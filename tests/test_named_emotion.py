@@ -99,9 +99,9 @@ def _coach_view(intake_context):
             ("get_recording", lambda rid: {"transcription_language": "en"}),
             ("claim_coach_review", lambda session_id, actor_user_id, **kw: {
                 "assigned_to": actor_user_id, "claimed": True}),
-            ("get_coach_snippet_drafts", lambda sid: []),
-            ("get_own_state_ratings_for_session", lambda sid, rater_id: {
-                "a": {"value": "yes", "unrateable": False}}),
+            ("get_coach_snippet_drafts_by_sessions", lambda ids: {}),
+            ("get_own_state_ratings_for_sessions", lambda ids, rater_id: {SID: {
+                "a": {"value": "yes", "unrateable": False}}}),
             ("get_ai_draft_coach_notes_by_session", lambda sid: {}),
         ):
             stack.enter_context(patch.object(db, attr, value, create=True))

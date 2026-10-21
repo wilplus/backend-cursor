@@ -576,6 +576,8 @@ def build_readout_from_session(
     include_upgrade_cards: bool = True,
     snippet_rows: Optional[list] = None,
     session_row: Optional[dict] = None,
+    edit_rows: Optional[list] = None,
+    feedback_rows: Optional[list] = None,
 ) -> dict:
     """Re-derive the §3.3 Readout from PERSISTED snippets — the canonical
     reader for parked-restore + history (contract: a report loads
@@ -618,7 +620,11 @@ def build_readout_from_session(
     # hand them in; None reads for itself, which is what every caller but the
     # coach panel does and exactly what this did before. The coach session
     # route read both a moment earlier for its language check, so without this
-    # opening one lesson paid for the same two queries twice.
+    # opening one lesson paid for the same two queries twice. The session row
+    # also serves its `intake_context` and `slide_transcripts` when it carries
+    # them, and `edit_rows` / `feedback_rows` are the transcript edits and
+    # suggestion taps the coach route read beside its other reads (founder
+    # 2026-10-21: the coach's link took 6.7 s, one read after another).
     snippets = (db.get_snippets_by_session(session_id) or []
                 if snippet_rows is None else snippet_rows)
 
@@ -633,6 +639,8 @@ def build_readout_from_session(
         feature_builder=build_readout_features,
         coach_prefill_enabled=_coach_prefill_enabled,
         log=logger,
+        edit_rows=edit_rows,
+        feedback_rows=feedback_rows,
     )
 
     result: dict = {
@@ -661,6 +669,7 @@ def build_readout_from_session(
         edits_by_chunk=_edits_by_chunk,
         include_upgrade_cards=include_upgrade_cards,
         log=logger,
+        session_row=session_row,
     )
 
     # Per-slide coverage ledger (Stickiness #2 (i)) — COACH-ONLY audit; parked

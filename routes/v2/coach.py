@@ -42,6 +42,7 @@ from services.coach_video_upload import (
 from services.training_import_request import start_training_import
 from services.training_import_setup import setup_complete
 from services.coach_review_claim import claim_review_and_reread
+from services.parallel import run_in_parallel
 from services.coach_video_storage import refreshed_media_url
 from services.coach_moment_errors import (
     apply_moment_edit,
@@ -96,7 +97,8 @@ def _drafts_by_snippet(session_id, draft_rows=None):
     }
 
 
-def _coach_state_map(session_id, rater_id=None, *, draft_rows=None):
+def _coach_state_map(session_id, rater_id=None, *, draft_rows=None,
+                     ratings=None, asks=None):
     """Per-snippet coach_state for the resume read.
 
     Draft authoring and the authenticated coach's own blind confidence rating
@@ -113,10 +115,15 @@ def _coach_state_map(session_id, rater_id=None, *, draft_rows=None):
     multi-rater agreement mean anything. Omitting `rater_id` yields no
     ratings at all, which is the safe default for any caller that has not
     thought about whose answer it is showing.
+
+    `ratings` and `asks` are this coach's own ratings of this session and
+    their open asks (`open_asks`) when the caller already read them, as the
+    session read does for a Take and its re-reads at once; None reads them.
     """
     drafts = _drafts_by_snippet(session_id, draft_rows)
-    ratings = (db.get_own_state_ratings_for_session(session_id, rater_id)
-               if rater_id else {})
+    if ratings is None:
+        ratings = (db.get_own_state_ratings_for_session(session_id, rater_id)
+                   if rater_id else {})
     out = {}
     for sid in set(drafts) | set(ratings):
         d = drafts.get(sid) or {}
@@ -141,7 +148,8 @@ def _coach_state_map(session_id, rater_id=None, *, draft_rows=None):
         # again until the new answer lands. The key of the signed line rides
         # as `listen_again`; nothing says why (BLIND COACH).
         from services.coach_listen_again import mask_states, open_asks
-        asks = open_asks(db, coach_id=rater_id, session_ids=[session_id])
+        if asks is None:
+            asks = open_asks(db, coach_id=rater_id, session_ids=[session_id])
         out = mask_states(out, asks.get(str(session_id), {}))
     return out
 
@@ -714,19 +722,18 @@ def _owner_confidence_answers(session):
     return out
 
 
-def _shape_coach_review_packet(readout, cstate_map, session, session_id):
+def _shape_coach_review_packet(readout, cstate_map, session_id, held):
     """Every evidence piece of one take, each saying whether it was bookmarked.
 
-    Its own function so the route does not grow: `v2_coach_get_session` is
-    grandfathered at the route fence and may only shrink, and the bookmark
-    lookup is one DB read for the whole packet rather than one per piece.
+    Its own function so the route does not grow. The bookmarks and the
+    speaker's answers are one read each for the whole packet rather than one
+    per piece, made beside the claim (`_coach_review_reads`).
     """
-    bookmarked = _bookmarked_snippet_ids(session, session_id) or set()
-    owner = _owner_confidence_answers(session)
     return [
         _shape_coach_review_snippet(
             snip, cstate_map, str(session_id),
-            bookmarked_ids=bookmarked, owner_answers=owner)
+            bookmarked_ids=held["bookmarked"],
+            owner_answers=held["owner_answers"])
         for snip in (readout.get("snippets") or [])
     ]
 
@@ -789,11 +796,25 @@ def _shape_coach_review_snippet(snip, cstate_map, owning_sid,
     }
 
 
-def _claim_coach_review(session_id, session):
-    """Claim the review, then re-read the session under the claim.
+def _claim_attempt(session_id, session, actor_id, actor_is_admin):
+    """Claim the review, then re-read the session under the claim:
+    ``(session, None)``, or ``(None, error)`` with what either step raised.
+    It runs beside the packet's reads, on another thread, so the error is
+    handed back for `_claim_coach_review` to answer on the request's own."""
+    try:
+        return claim_review_and_reread(
+            db, session_id, actor_id,
+            actor_is_admin=actor_is_admin, before_claim=session,
+        ), None
+    except Exception as e:  # noqa: BLE001 - handed back; _claim_coach_review logs it
+        return None, e
+
+
+def _claim_coach_review(session_id, session, attempt):
+    """The answer to a claim attempt (`_claim_attempt`).
 
     Returns ``(session, None, read_only)``, or ``(None, error_response,
-    False)`` when either step fails: a failed re-read is the same 503 as a
+    False)`` when either step failed: a failed re-read is the same 503 as a
     failed claim.
 
     A review another coach already owns opens READ-ONLY (founder
@@ -804,46 +825,43 @@ def _claim_coach_review(session_id, session):
     per-coach blind gate as the owner's (BLIND COACH), and the publish RPC
     still refuses a non-owner (``publish_coach_review_revision_v1``).
     """
-    try:
-        return claim_review_and_reread(
-            db,
-            session_id,
-            str(request.user_id),
-            actor_is_admin=is_admin(str(request.user_id)),
-            before_claim=session,
-        ), None, False
-    except Exception as assignment_error:
-        low = str(assignment_error).lower()
-        if "unclaimed guest" in low:
-            return None, (jsonify({
-                "code": "UNCLAIMED_GUEST",
-                "error": "This take must be claimed before coach review.",
-            }), 409), False
-        if "another coach" in low:
-            logger.info(
-                "coach/get-session: read-only open sid=%s (assigned to another coach)",
-                session_id)
-            return session, None, True
-        logger.error(
-            "coach/get-session: review assignment failed sid=%s: %s",
-            session_id,
-            assignment_error,
-        )
+    claimed, assignment_error = attempt
+    if assignment_error is None:
+        return claimed, None, False
+    low = str(assignment_error).lower()
+    if "unclaimed guest" in low:
         return None, (jsonify({
-            "code": "REVIEW_ASSIGNMENT_FAILED",
-            "error": "Could not open this review safely.",
-        }), 503), False
+            "code": "UNCLAIMED_GUEST",
+            "error": "This take must be claimed before coach review.",
+        }), 409), False
+    if "another coach" in low:
+        logger.info(
+            "coach/get-session: read-only open sid=%s (assigned to another coach)",
+            session_id)
+        return session, None, True
+    logger.error(
+        "coach/get-session: review assignment failed sid=%s: %s",
+        session_id,
+        assignment_error,
+        exc_info=assignment_error,
+    )
+    return None, (jsonify({
+        "code": "REVIEW_ASSIGNMENT_FAILED",
+        "error": "Could not open this review safely.",
+    }), 503), False
 
 
-def _coach_session_readout(session_id, snippet_rows, session_row):
+def _coach_session_readout(session_id, snippet_rows, session_row, held_rows):
     """The coach's readout for one session, built from rows already in hand.
 
     `include_slide_scores=True` gives the coach Stickiness #2: per-snippet
     on-slide-ness plus the per-slide coverage ledger. Coach-only (AC-9).
 
-    The caller read both of these a moment earlier — the snippets for its
-    language check, the session again after the review claim — so without
-    handing them in, opening one lesson paid for the same two queries twice.
+    The caller read the snippets for its language check and the session again
+    after the review claim; `held_rows` are the session's transcript edits and
+    suggestion taps, read beside the claim (`_coach_review_reads`). The session
+    row serves its `intake_context` and `slide_transcripts` too, so the readout
+    reads nothing of its own.
 
     The post-claim re-read (``_claim_coach_review``) STAYS, and this is why
     the session is passed rather than re-read here: review ownership must
@@ -855,42 +873,120 @@ def _coach_session_readout(session_id, snippet_rows, session_row):
     # and overall message, and the coach payload reads neither.
     return build_readout_from_session(
         session_id, include_insights=False, include_slide_scores=True,
-        snippet_rows=snippet_rows, session_row=session_row)
+        snippet_rows=snippet_rows, session_row=session_row, **held_rows)
 
 
-def _fold_coach_review_reads(session_id, snippets, cstate):
-    from services.lab_recording import build_readout_from_session
-    read_sessions = []
+def _read_sessions_of(session_id):
+    """The Take's mid-take re-reads, oldest first; [] on a failed lookup, and
+    the packet is then the parent take alone (LIVE LOOP)."""
     try:
-        read_sessions = [
+        return [
             r for r in (db.takes.get_read_sessions_for(session_id) or [])
             if isinstance(r, dict) and r.get("id")
         ]
     except Exception as _rl_err:
         logger.warning("coach/get-session: read lookup failed sid=%s: %s",
                        session_id, _rl_err)
-    # One snippet read for every re-read instead of one each (founder
-    # 2026-09-26). An empty or failed batch hands in None, and the readout
-    # then reads for itself exactly as before.
-    _read_snips: dict = {}
-    if read_sessions:
-        try:
-            _read_snips = db.get_snippets_by_sessions(
-                [str(r.get("id")) for r in read_sessions],
-                include_words=True) or {}
-        except Exception as _rb_err:
-            logger.warning("coach/get-session: read batch failed sid=%s: %s",
-                           session_id, _rb_err)
-    for _r in read_sessions:
+        return []
+
+
+def _read_snippets_of(session_id, read_ids):
+    """One snippet read for every re-read instead of one each (founder
+    2026-09-26). An empty or failed batch gives {}, and each re-read's
+    readout then reads its own snippets exactly as before."""
+    if not read_ids:
+        return {}
+    try:
+        return db.get_snippets_by_sessions(read_ids, include_words=True) or {}
+    except Exception as _rb_err:
+        logger.warning("coach/get-session: read batch failed sid=%s: %s",
+                       session_id, _rb_err)
+        return {}
+
+
+def _readout_reads(session_id, *, with_slide_transcripts=False):
+    """The reads of one session's readout that its rows do not carry, as
+    ``{build_readout_from_session keyword: thunk}``: transcript edits,
+    suggestion taps, and for a re-read (whose row has no `slide_transcripts`)
+    its persisted per-slide transcript."""
+    thunks = {
+        "edit_rows": lambda: db.get_user_transcript_edits(session_id),
+        "feedback_rows": lambda: db.get_suggestion_feedback_by_session(session_id),
+    }
+    if with_slide_transcripts:
+        thunks["slide_transcripts"] = (
+            lambda: db.takes.get_session_slide_transcripts(session_id))
+    return thunks
+
+
+def _coach_review_reads(session_id, session, rater_id):
+    """Every read of the coach's session payload but the Take, its pieces and
+    the claim, side by side (founder 2026-10-21: the coach's link took 6.7 s,
+    about thirty reads one after another). Nothing here is decided by the
+    claim, so it runs beside it; the packet is built only once it is taken.
+
+    Two rounds: what needs only this Take (its re-reads among them), then
+    what needs the re-reads' ids too, the coach's drafts, ratings and open
+    asks read once for the Take and all its re-reads. Every reader is
+    best-effort, as each was when it ran on its own.
+    """
+    from services.coach_listen_again import open_asks
+    sid = str(session_id)
+    take_reads = _readout_reads(sid)
+    owner_answers, reads, bookmarked, *take_rows = run_in_parallel(
+        # First: the speaker's answers are two reads (answers, revisions).
+        lambda: _owner_confidence_answers(session),
+        lambda: _read_sessions_of(sid),
+        lambda: _bookmarked_snippet_ids(session, sid) or set(),
+        *take_reads.values())
+    held_rows = {sid: dict(zip(take_reads, take_rows))}
+    read_ids = [str(r.get("id")) for r in reads]
+    ids = [sid, *read_ids]
+    read_reads = {
+        (rid, key): thunk for rid in read_ids
+        for key, thunk in _readout_reads(rid, with_slide_transcripts=True).items()
+    }
+    drafts, ratings, asks, read_snippets, *read_rows = run_in_parallel(
+        lambda: db.get_coach_snippet_drafts_by_sessions(ids) or {},
+        lambda: db.get_own_state_ratings_for_sessions(ids, rater_id) or {},
+        lambda: open_asks(db, coach_id=rater_id, session_ids=ids),
+        lambda: _read_snippets_of(sid, read_ids),
+        *read_reads.values())
+    for (rid, key), value in zip(read_reads, read_rows):
+        held_rows.setdefault(rid, {})[key] = value
+    return {
+        "owner_answers": owner_answers,
+        "bookmarked": bookmarked,
+        "reads": reads,
+        "read_snippets": read_snippets,
+        "rows": held_rows,
+        "states": {
+            i: _coach_state_map(
+                i, rater_id=rater_id or None,
+                draft_rows=drafts.get(i) or [],
+                ratings=ratings.get(i) or {}, asks=asks)
+            for i in ids
+        },
+    }
+
+
+def _fold_coach_review_reads(session_id, snippets, held):
+    """Fold the re-reads' pieces into the Take's packet, from the rows
+    `_coach_review_reads` holds, then stamp each folded re-read as opened."""
+    from services.lab_recording import build_readout_from_session
+    folded = []
+    for _r in held["reads"]:
         _rid = str(_r.get("id"))
+        rows = dict(held["rows"][_rid])
+        # The re-read's own row, with the per-slide transcript read for it.
+        session_row = {**_r, "slide_transcripts": rows.pop("slide_transcripts")}
         try:
             _r_readout = build_readout_from_session(
                 _rid, include_insights=False, include_slide_scores=True,
-                snippet_rows=_read_snips.get(_rid))
-            _r_cstate = _coach_state_map(
-                _rid, rater_id=getattr(request, "user_id", None))
+                snippet_rows=held["read_snippets"].get(_rid),
+                session_row=session_row, **rows)
             _r_snips = [
-                _shape_coach_review_snippet(s, _r_cstate, _rid, "read")
+                _shape_coach_review_snippet(s, held["states"][_rid], _rid, "read")
                 for s in (_r_readout.get("snippets") or [])
             ]
         except Exception as _rf_err:
@@ -898,12 +994,11 @@ def _fold_coach_review_reads(session_id, snippets, cstate):
                 "coach/get-session: read fold failed sid=%s read=%s: %s",
                 session_id, _rid, _rf_err)
             continue
-        try:
-            db.takes.stamp_review_opened(_rid)
-        except Exception:
-            pass
+        folded.append(_rid)
         snippets.extend(_r_snips)
-    return read_sessions
+    run_in_parallel(*[
+        (lambda rid=rid: db.takes.stamp_review_opened(rid)) for rid in folded])
+    return held["reads"]
 
 
 def _session_shows_slides(session):
@@ -1053,38 +1148,48 @@ def v2_coach_get_session(session_id):
     """
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
+    rater_id = str(getattr(request, "user_id", "") or "")
     try:
-        session = db.v2_get_session_by_id(session_id)
+        # Reads that need only the ids, side by side (founder 2026-10-21: the
+        # coach's link took 6.7 s, every read waiting on the one before).
+        session, snippets_for_language, proficient = run_in_parallel(
+            lambda: db.v2_get_session_by_id(session_id),
+            lambda: db.get_snippets_by_session(session_id) or [],
+            lambda: db.get_user_proficient_languages(rater_id))
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
 
-        snippets_for_language = db.get_snippets_by_session(session_id) or []
         language_outcome, _language = _rater_language_outcome(
-            session, snippets_for_language)
+            session, snippets_for_language, proficient=proficient or [])
         language_error = _rater_language_error(language_outcome, _language)
         if language_error is not None:
             return language_error
 
         # First open atomically owns the review; another coach's review opens
         # read-only and blind (_claim_coach_review). Publishing stays the owner's.
-        session, claim_error, read_only = _claim_coach_review(session_id, session)
+        # The packet's reads run beside the claim, none decided by it.
+        actor_is_admin = is_admin(rater_id)
+        attempt, held = run_in_parallel(
+            lambda: _claim_attempt(session_id, session, rater_id, actor_is_admin),
+            lambda: _coach_review_reads(session_id, session, rater_id))
+        session, claim_error, read_only = _claim_coach_review(
+            session_id, session, attempt)
         if claim_error is not None:
             return claim_error
 
         readout = _coach_session_readout(
-            session_id, snippets_for_language, session)
-        cstate = _coach_state_map(
-            session_id, rater_id=getattr(request, "user_id", None))
+            session_id, snippets_for_language, session,
+            held["rows"][str(session_id)])
+        cstate = held["states"][str(session_id)]
 
-        snippets = _shape_coach_review_packet(
-            readout, cstate, session, session_id)
+        snippets = _shape_coach_review_packet(readout, cstate, session_id, held)
         # Fold the paired mid-take RE-READS into this take's packet (founder
         # 2026-07-16: "re-reads are part of the take, revealed by clicking
         # next, never separate items"). Appended AFTER the parent's pieces —
         # NEVER sorted across sessions by start_offset_ms (the read's clock
         # restarts at 0). Best-effort: a fold hiccup degrades to the parent
         # take alone (LIVE LOOP).
-        read_sessions = _fold_coach_review_reads(session_id, snippets, cstate)
+        read_sessions = _fold_coach_review_reads(session_id, snippets, held)
         # One continuous "next" sequence across the merged packet.
         for _i, _s in enumerate(snippets):
             _s["index"] = _i

@@ -49,11 +49,14 @@ def replay_applied_upgrades(feedback_rows: list, card_sizes: dict) -> dict:
     return result
 
 
-def _load_user_edits(database: Any, session_id: str) -> tuple[dict, dict]:
+def _load_user_edits(
+    database: Any, session_id: str, rows: list | None = None,
+) -> tuple[dict, dict]:
     edits_by_snippet: dict = {}
     edits_by_chunk: dict = {}
     try:
-        rows = database.get_user_transcript_edits(session_id) or []
+        if rows is None:
+            rows = database.get_user_transcript_edits(session_id) or []
         for row in rows:
             text = (row.get("text") or "").strip()
             if not text:
@@ -149,9 +152,11 @@ def _fold_applied_upgrade_state(
     output_rows: list,
     *,
     log: logging.Logger,
+    feedback_rows: list | None = None,
 ) -> None:
     try:
-        feedback_rows = database.get_suggestion_feedback_by_session(session_id)
+        if feedback_rows is None:
+            feedback_rows = database.get_suggestion_feedback_by_session(session_id)
         if not feedback_rows:
             return
         card_sizes = {
@@ -226,9 +231,15 @@ def prepare_readout_snippets(
     feature_builder: Callable[[dict], dict],
     coach_prefill_enabled: Callable[[], bool],
     log: logging.Logger = logger,
+    edit_rows: list | None = None,
+    feedback_rows: list | None = None,
 ) -> tuple[list, dict]:
-    """Return serialized snippets plus deckless chunk edits for later folds."""
-    edits_by_snippet, edits_by_chunk = _load_user_edits(database, session_id)
+    """Return serialized snippets plus deckless chunk edits for later folds.
+
+    ``edit_rows`` / ``feedback_rows`` are the session's transcript edits and
+    suggestion taps when the caller already read them; None reads them."""
+    edits_by_snippet, edits_by_chunk = _load_user_edits(
+        database, session_id, edit_rows)
     output_rows = _serialize_snippets(
         snippets,
         edits_by_snippet=edits_by_snippet,
@@ -242,6 +253,7 @@ def prepare_readout_snippets(
         session_id,
         output_rows,
         log=log,
+        feedback_rows=feedback_rows,
     )
     _fold_auto_comments(
         snippets,

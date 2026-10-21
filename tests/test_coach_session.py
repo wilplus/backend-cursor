@@ -8,10 +8,16 @@ OUTCOME
   O2  Once my labels are in, my saved note, tag and surfaced state come back
       on the moment I left them on, and the context opens.
   O3  The payload never carries the speaker's user id (pseudonym only).
+  O4  A re-read's moments come after the Take's, each blind on my answers
+      for its own session; my drafts and ratings are read once for the Take
+      and its re-reads, and the re-read is stamped opened (the link took
+      6.7 s, one read after another).
 PROVES   O1 -> test_context_is_redacted_until_every_blind_label_is_committed
          O2 -> test_saved_notes_tags_and_surfaced_moments_resume_after_commit
          O3 -> test_saved_notes_tags_and_surfaced_moments_resume_after_commit
-WHY      FE PR #73: notes and tags were lost on reopen; section S.4 identity strip.
+         O4 -> test_a_reread_folds_after_the_take_blind_on_its_own_answers
+WHY      FE PR #73: notes and tags were lost on reopen; section S.4 identity
+         strip. O4: founder 2026-10-21, the coach's link took 6.7 s to open.
 """
 from __future__ import annotations
 
@@ -33,6 +39,7 @@ except Exception as e:  # pragma: no cover
 
 
 SID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+READ = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"coach session tests need app deps: {_IMPORT_ERROR}")
@@ -65,18 +72,19 @@ class CoachSessionReadTests(unittest.TestCase):
             },
         )
         # Prior coach work: snippet "a" noted + tagged + surfaced; "b" blank.
-        self._patch_db("get_coach_snippet_drafts", lambda sid: [
+        # The drafts and ratings are read once for the Take and its re-reads.
+        self._patch_db("get_coach_snippet_drafts_by_sessions", lambda ids: {SID: [
             {"snippet_id": "a", "note": "strong open", "tag": "strong", "surfaced": True},
-        ])
+        ]})
         # These legacy shape/resume tests exercise the contextual second pass.
         # Commit the fixture coach's blind answers first so the new hard gate
         # legitimately unlocks the context they assert below.
         self._patch_db(
-            "get_own_state_ratings_for_session",
-            lambda sid, rater_id: {
+            "get_own_state_ratings_for_sessions",
+            lambda ids, rater_id: {SID: {
                 "a": {"value": "yes", "unrateable": False},
                 "b": {"value": "neutral", "unrateable": False},
-            },
+            }},
         )
         # Phase 4 / Prompt 2 — AI-Commentator draft pre-fill for snippet "a".
         self._patch_db("get_ai_draft_coach_notes_by_session",
@@ -111,10 +119,10 @@ class CoachSessionReadTests(unittest.TestCase):
 
     def test_context_is_redacted_until_every_blind_label_is_committed(self):
         self._patch_db(
-            "get_own_state_ratings_for_session",
-            lambda sid, rater_id: {
+            "get_own_state_ratings_for_sessions",
+            lambda ids, rater_id: {SID: {
                 "a": {"value": "yes", "unrateable": False},
-            },
+            }},
         )
         status, data = self._get()
         self.assertEqual(status, 200)
@@ -151,6 +159,42 @@ class CoachSessionReadTests(unittest.TestCase):
         # The speaker is a pseudonym on the wire, never their user id.
         self.assertTrue(data["pseudonym"])
         self.assertNotIn("user-xyz-secret", json.dumps(data))
+
+    def test_a_reread_folds_after_the_take_blind_on_its_own_answers(self):
+        asked, stamped = [], []
+        self._patch_db("get_read_sessions_for", lambda sid: [
+            {"id": READ, "recording_kind": "read", "intake_context": {}},
+        ], target=db.takes)
+        self._patch_db("get_snippets_by_sessions", lambda ids, **kw: {READ: []})
+        self._patch_db("stamp_review_opened", stamped.append, target=db.takes)
+        self._patch_db("get_coach_snippet_drafts_by_sessions",
+                       lambda ids: asked.append(("drafts", ids)) or {})
+        # The Take's two moments are answered; the re-read's is not yet,
+        # and an answer filed under the Take never opens the re-read's.
+        self._patch_db("get_own_state_ratings_for_sessions", lambda ids, rater_id: (
+            asked.append(("ratings", ids)) or {SID: {
+                "a": {"value": "yes", "unrateable": False},
+                "b": {"value": "no", "unrateable": False},
+                "c": {"value": "yes", "unrateable": False},
+            }}))
+        lab.build_readout_from_session = lambda sid, **kw: {"snippets": (
+            [{"id": "c", "transcript": "again", "audio_ref": "p/c.wav",
+              "start_offset_ms": 0, "duration_ms": 4000, "recording_kind": "read"}]
+            if sid == READ else
+            [{"id": "a", "transcript": "hi", "audio_ref": "p/a.wav",
+              "start_offset_ms": 0, "duration_ms": 8000},
+             {"id": "b", "transcript": "yo", "audio_ref": "p/b.wav",
+              "start_offset_ms": 9000, "duration_ms": 5000}])}
+
+        status, data = self._get()
+
+        self.assertEqual(status, 200)
+        rows = [(r["id"], r["transcript"], r["coach_state"]["rating_value"])
+                for r in data["snippets"]]
+        self.assertEqual(rows, [("a", "hi", "yes"), ("b", "yo", "no"), ("c", "", None)])
+        self.assertFalse(data["context_unlocked"])
+        self.assertEqual(asked, [("drafts", [SID, READ]), ("ratings", [SID, READ])])
+        self.assertEqual(stamped, [READ])
 
 
 if __name__ == "__main__":
