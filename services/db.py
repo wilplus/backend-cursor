@@ -2429,6 +2429,8 @@ class DatabaseService:
                             .in_("id", chunk).execute().data) or []
                 except Exception:
                     # A PostgREST without JSON paths: the metrics whole.
+                    logger.info("snippet scores: reading metrics whole",
+                                exc_info=True)
                     cols = "id, session_id, metrics"
                     rows = (self.client.table(SNIPPETS_TABLE).select(cols)
                             .in_("id", chunk).execute().data) or []
