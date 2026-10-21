@@ -260,7 +260,24 @@ def resolve_request(database: Any, request: dict, body: Any,
                  previous=request)
     if resolved.get("shared_at") and not request.get("shared_at"):
         _tell_the_speaker(database, request)
+    _rebake_for_speaker(database, request)
     return 200, {"request": coach_request_payload(resolved, database)}
+
+
+def _rebake_for_speaker(database: Any, request: dict) -> None:
+    """The speaker's page is served from a stored bake that only the
+    speaker's own writes retire (founder 2026-10-21: the coach's video
+    "didn't pass through"). The answer in words is re-read on every read
+    (`ideal_text_feedback_bake._with_fresh_coach_answers`); a shared
+    exercise reaches the page through the bake, so the coach's answer asks
+    for one, debounced. Best-effort, off the coach's request."""
+    try:
+        from services.ideal_text_feedback_bake import request_rebake_for_take
+        session = database.v2_get_session_by_id(str(request.get("take_session_id") or ""))
+        request_rebake_for_take(session)
+    except Exception as e:  # noqa: BLE001 -- the answer is saved either way
+        logger.info("coach answer rebake skipped request=%s: %s", request.get("id"), e,
+                    exc_info=True)
 
 
 def _tell_the_speaker(database: Any, request: dict) -> None:
