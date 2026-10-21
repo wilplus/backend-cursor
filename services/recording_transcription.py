@@ -242,6 +242,7 @@ def transcribe_recording(
         transcription = transcription or {}
         segments = list(transcription.get("segments") or [])
         words = list(transcription.get("words") or [])
+        detected_language: Optional[str] = None
         # Persist the provider's explicit language result. Without this, a
         # successfully transcribed live Take later reaches the blind-review
         # router as ``language_unknown``. This never infers from transcript
@@ -289,4 +290,5 @@ def transcribe_recording(
         state,
         segments=tuple(segments),
         words_all=tuple(words),
+        language=detected_language,
     )

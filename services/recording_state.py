@@ -29,6 +29,10 @@ class RecordingState:
     signal: Any = None
     segments: tuple[Any, ...] = field(default_factory=tuple)
     words_all: tuple[Any, ...] = field(default_factory=tuple)
+    # The language Whisper reported for the whole Take (ISO 639-1), or None.
+    # Every piece is written with it, so the Ideal Text smooths each piece
+    # with its own language's hesitation list (transcript_document).
+    language: Optional[str] = None
     canonical_pieces: tuple[dict, ...] = field(default_factory=tuple)
     analyzed_pieces: tuple[dict, ...] = field(default_factory=tuple)
     llm_budget_indices: frozenset[int] = field(default_factory=frozenset)
