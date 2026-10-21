@@ -24,6 +24,15 @@ whatever closed the ask (``release``). The asks (``chain``), in order:
               Will's question when it has one; then "Did this help?" when
               the Take looks off.
 
+At most two asks a Take (founder 2026-10-21, N94): when more wait, the
+home screen and then WhatsApp wait for a later Take, and then "Did this
+help?"; the CEO panel's ask and Will's question keep their turn. The order
+above stays.
+
+Will's question opens with a bridge line in the chat (``BRIDGE``, founder
+2026-10-21, N94), between the summary and the question: two signed lines,
+one a Take in turn. Only the chat has it, never the walk.
+
 Will's lead-in (``will_question.lead_in``, started beside the summary's
 own call and under the Take's authority): one or two sentences tied to
 this Take before the ask's signed words said with a light touch, for
@@ -40,7 +49,9 @@ Advancing (``release``), always under the rows that closed the ask:
   - Will's question answered (a tap with no follow-up, Skip, or typed
     words), as written (``will_question``);
   - a typed turn that passes the ask, under Will's reply
-    (``chat_query.finish_chat_turn``);
+    (``chat_query.finish_chat_turn``); never under the chat's safety reply:
+    after a distressed message the asks wait until the speaker writes
+    again (founder 2026-10-21, N94);
   - the ask's form closing in the Lounge, whatever the choice (Save, Not
     now, See prices): POST /v2/user/lounge/after-take;
   - a newer Take's summary: an older held message is let go where it stands.
@@ -76,6 +87,17 @@ _OFFER_ASKS = ("whatsapp", "install")
 LEAD_IN_ASKS = ("whatsapp", "install", "feedback_check")
 #: WhatsApp is asked at most this many times (founder 2026-10-20).
 _WHATSAPP_TIMES = 2
+#: At most this many asks after a Take (founder 2026-10-21, N94).
+_MOST = 2
+#: Which asks wait for a later Take when more than ``_MOST`` would come,
+#: first to wait first.
+_WAITS_FIRST = ("install", "whatsapp", "feedback_check")
+#: Between the summary and Will's question, one a Take in turn (founder
+#: 2026-10-21, N94: chosen in chat from four, "and variations of it").
+BRIDGE = (
+    "Ok, now let's dive into the content for a bit.",
+    "Alright, let's dive into the content for a moment.",
+)
 #: How far back the thread is read for a held message and for earlier asks.
 _LOOK = 60
 _SCAN = 500
@@ -130,7 +152,30 @@ def chain(database: Any, user_id: str, *, take_index: int, off: bool,
         asks.append("will_question")
     if off:
         asks.append("feedback_check")
-    return asks
+    return capped(asks)
+
+
+def capped(asks: list[str]) -> list[str]:
+    """``asks`` with at most ``_MOST``, in their order: the home screen,
+    then WhatsApp, then "Did this help?" wait for a later Take. Pure."""
+    kept = list(asks)
+    for ask in _WAITS_FIRST:
+        if len(kept) <= _MOST:
+            break
+        if ask in kept:
+            kept.remove(ask)
+    return kept[:_MOST] if len(kept) > _MOST else kept
+
+
+def bridge_row(*, user_id: str, arc_id: str, take: str, take_index: Optional[int],
+               at: str) -> dict:
+    """The bridge line before Will's question, its own plain bubble (N94).
+    Pure."""
+    line = BRIDGE[max(0, (take_index or 1) - 1) % len(BRIDGE)]
+    return {"client_id": str(uuid.uuid5(_NAMESPACE, f"{user_id}:{take}:bridge")),
+            "role": "bot", "kind": "text", "body": line,
+            "metadata": {"bridge": True, "arc_id": str(arc_id), "take_session_id": str(take)},
+            "client_created_at": at}
 
 
 def choose(database: Any, user_id: str, *, take_index: int, off: bool,
@@ -154,15 +199,19 @@ def signed_ask(ask: str) -> Optional[str]:
 
 def ask_rows(database: Any, ask: Optional[str], *, user_id: str, arc_id: str,
              take: str, at: str, will: Any = None,
-             lead_in: Optional[str] = None) -> list[dict]:
+             lead_in: Optional[str] = None, take_index: Optional[int] = None) -> list[dict]:
     """The ask's bubble, in the shape the Lounge draws as an offer, with
     Will's lead-in as its words when he has one. The CEO panel's ask is
     drawn by the Lounge itself (its price words live there), so it has no
     row here. ``will``: Will's plan (``will_question.Plan``) when his
-    question is the ask."""
+    question is the ask; the bridge line comes before it."""
     if ask == "will_question":
         from services.will_question import ask_rows as will_rows
-        return will_rows(will, user_id=user_id, at=at)
+        wills = will_rows(will, user_id=user_id, at=_after(at, 1))
+        if not wills:
+            return []
+        return [bridge_row(user_id=user_id, arc_id=arc_id, take=take,
+                           take_index=take_index, at=at)] + wills
     if ask == "feedback_check":
         from services.feedback_check import ask_rows as question
         return question(database, user_id=user_id, arc_id=arc_id, take_session_id=take,

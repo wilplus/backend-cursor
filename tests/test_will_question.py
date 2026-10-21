@@ -24,8 +24,10 @@ OUTCOME
       do lands as the talk's call to action, my own note on the talk kept.
       Distress is never taken as an answer: the chat's safety reply comes.
   O5  After a Take that needs it, the summary's batch holds the message
-      under Will's question, and the summary hears the line I practised
-      last Take when this Take said it.
+      under Will's question, a bridge line between the summary and the
+      question ("Ok, now let's dive into the content for a bit.", founder
+      2026-10-21, N94), and the summary hears the line I practised last
+      Take when this Take said it.
   O6  The founder's words are what Will asks from the next Take: a changed
       question and renamed answers (each answer keeps its follow-up by its
       place), a filled empty slot asked after the signed deeper questions;
@@ -319,7 +321,10 @@ def test_the_summary_holds_its_message_under_wills_question(monkeypatch):
     assert closing["metadata"]["held_for"] == "will_question" and len(asked) == 1
     assert "held_for" not in msg["metadata"]
     assert asked[0]["body"] == QUESTIONS["audience_check"].format(heard="the board")
-    assert asked[0]["client_created_at"] > msg["client_created_at"]
+    # The bridge line between the summary and the question (N94).
+    bridge = next(r for r in db.thread.values() if (r.get("metadata") or {}).get("bridge"))
+    assert bridge["body"] in after_take.BRIDGE
+    assert msg["client_created_at"] < bridge["client_created_at"] < asked[0]["client_created_at"]
 
 
 def test_the_summary_hears_the_practised_line_when_it_came_back(monkeypatch):

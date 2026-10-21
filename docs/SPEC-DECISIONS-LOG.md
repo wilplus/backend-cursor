@@ -2714,3 +2714,17 @@ made only once, never came: a clip that fails its check is now made once
 more with a new seed, never a third time, and a try after a clip that was
 never made is not scored. The rules: the walk's page, C6, H2 (frontend
 `docs/flows/feedback-walk-and-chat.md`, §6 N93). No migration.
+
+**N94 · After the walk, a short cheeky summary, a bridge, then Will's
+question; at most two asks (founder, the Claude Code chat, 21 October
+2026).** The summary is one or two short sentences, only a cheeky sum-up of
+the Take: no greeting, no question (the app had asked about the talk's
+content inside it). In the chat a bridge line comes before Will's question
+("Ok, now let's dive into the content for a bit." / "Alright, let's dive
+into the content for a moment."); at most two asks a Take, the home screen,
+WhatsApp and then "Did this help?" waiting for a later Take; after the
+chat's safety reply the asks wait until the speaker writes again; a fourth
+Take's fallback is no longer called the third; the 48 reading lines are
+signed into `docs/SIGNED-line-bank-2026-10-06.md`. The rules: the walk's
+page, C2, C5, C7, D, E1, F3–F5, G1, K (frontend
+`docs/flows/feedback-walk-and-chat.md`, §6 N94). No migration.

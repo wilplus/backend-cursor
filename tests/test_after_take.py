@@ -8,9 +8,12 @@ OUTCOME
   O1  After Take 1 the chain holds Will's question when he has one and "Did
       this help?" when the Take looks off: never WhatsApp, never an ask from
       the CEO panel, even without a number.
-  O2  From Take 2 the chain runs: the CEO panel's ask, WhatsApp (at most
-      twice), the home screen (once, where the phone can add it), Will's
-      question, "Did this help?"; nothing waits when nothing applies.
+  O2  From Take 2 the chain runs in this order: the CEO panel's ask,
+      WhatsApp (at most twice), the home screen (once, where the phone can
+      add it), Will's question, "Did this help?"; at most two a Take: when
+      more wait, the home screen, then WhatsApp, then "Did this help?" wait
+      for a later Take (founder 2026-10-21, N94); nothing waits when nothing
+      applies.
   O3  The asks come one at a time, each under whatever closed the one
       before: a typed turn, under Will's reply; "Yes", tapped or typed,
       under "We're glad it helped you."; a reply that opens a form keeps the
@@ -18,10 +21,14 @@ OUTCOME
       the closing message comes, with its words.
   O4  A message still waiting when a newer Take is written shows where it
       stands.
+  O5  After a distressed message the chat's safety reply comes and the asks
+      wait: nothing lands under it until I write again (founder 2026-10-21,
+      N94).
 PROVES   O1 -> test_after_take_one_wills_question_and_the_question_when_it_looks_off
          O2 -> test_from_take_two_the_chain_runs_ceo_ask_whatsapp_home_screen_will_the_question
          O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_closing_message
          O4 -> test_an_older_waiting_message_shows_where_it_stands
+         O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
 WHY      Founder 2026-10-20: "one action at a time", then, after checking the
          app: the summary without the CTA, Will's liaison before each ask,
          "Look, practice makes perfect…" and the CTA last.
@@ -114,8 +121,18 @@ def test_after_take_one_wills_question_and_the_question_when_it_looks_off(monkey
 def test_from_take_two_the_chain_runs_ceo_ask_whatsapp_home_screen_will_the_question(monkeypatch):
     db = _Db()
     _world(monkeypatch, phone=None, admin={"id": "a1", "kind": "promo"})
+    # Five would wait: at most two come, the app's own asks wait (N94).
     assert after_take.chain(db, "u", take_index=2, off=True, can_install=True, will=True) == [
-        "admin", "whatsapp", "install", "will_question", "feedback_check"]
+        "admin", "will_question"]
+    assert after_take.chain(db, "u", take_index=2, off=False, can_install=True, will=False) == [
+        "admin", "whatsapp"]
+    _world(monkeypatch, phone=None, admin=None)
+    assert after_take.chain(db, "u", take_index=2, off=True, can_install=True, will=True) == [
+        "will_question", "feedback_check"]
+    assert after_take.chain(db, "u", take_index=2, off=False, can_install=True, will=True) == [
+        "whatsapp", "will_question"]
+    assert after_take.chain(db, "u", take_index=2, off=False, can_install=True) == [
+        "whatsapp", "install"]
 
     _world(monkeypatch, phone=None, admin=None)
     _waiting(db, "take-2", ["whatsapp"])
@@ -187,3 +204,17 @@ def test_an_older_waiting_message_shows_where_it_stands():
     after_take.release_older(db, "u")
     assert db.drawn()[0] == SUMMARY and after_take.held(db, "u") is None
     assert after_take.NEXT_TAKE in db.bodies() and feedback_check.COPY["ask"] in db.bodies()
+
+
+def test_after_a_distressed_message_the_asks_wait_until_i_write_again(monkeypatch):
+    _world(monkeypatch, phone=None, admin=None)
+    db = _Db()
+    _waiting(db, "take-1", ["feedback_check"])
+    _typed(db, monkeypatch, "no")
+    assert db.drawn()[-1] == feedback_check.COPY["missing"]
+    resp = _typed(db, monkeypatch, "Honestly I can't go on like this")
+    assert "sorry" in resp["answer"].lower() and not resp.get("after_take")
+    assert db.drawn()[-1] == resp["answer"] and after_take.held(db, "u") is not None
+    # Writing again: Will's reply, and the chain goes on under it.
+    _typed(db, monkeypatch, "Ok, I'm calmer now. How do I sound calmer on stage?")
+    assert db.drawn()[-2:] == ["Slow the first slide down.", after_take.NEXT_TAKE]
