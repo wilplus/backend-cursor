@@ -9,9 +9,12 @@ OUTCOME
       recording, else its pieces, read once for every such import.
   O3  Each import's labelled count stays right past the database's 1000
       rows a read (600 clips' labels pass it): a done import reads done.
+  O4  The list comes in steps (N100): ?limit imports from ?offset, newest
+      first, and next_offset leads to the next step, null after the last.
 PROVES   O1 -> test_declared_imports_need_no_read_of_their_pieces
          O2 -> test_undeclared_imports_take_their_language_from_one_read
          O3 -> test_labelled_counts_stay_right_past_a_thousand_labels
+         O4 -> test_the_list_comes_in_steps
 WHY      Founder 2026-10-21 (N99): "please make sure it is smooth that it
          loads fast".
 """
@@ -40,7 +43,10 @@ class ListDB:
         self.rows, self.pieces = rows, pieces
         self.piece_reads: list = []
         self.recording_reads: list = []
-        self.takes = SimpleNamespace(list_training_import_sessions=lambda **_: list(self.rows))
+        self.takes = SimpleNamespace(list_training_import_sessions=self._page)
+
+    def _page(self, *, user_id=None, limit=200, offset=0):
+        return self.rows[offset:offset + limit]
 
     def get_user_proficient_languages(self, _uid):
         return ["en"]
@@ -63,11 +69,16 @@ class ListDB:
         return {}
 
 
-def _listed(db, monkeypatch):
+def _list(db, monkeypatch, query=""):
     monkeypatch.setattr(v2_coach, "db", db)
-    status, body = _call(v2_coach.v2_coach_list_training_imports, method="GET")
+    status, body = _call(v2_coach.v2_coach_list_training_imports, method="GET",
+                         path=f"/v2/coach/training-imports{query}")
     assert status == 200, body
-    return [i["session_id"] for i in body["imports"]]
+    return body
+
+
+def _listed(db, monkeypatch):
+    return [i["session_id"] for i in _list(db, monkeypatch)["imports"]]
 
 
 def test_declared_imports_need_no_read_of_their_pieces(monkeypatch):
@@ -85,6 +96,19 @@ def test_undeclared_imports_take_their_language_from_one_read(monkeypatch):
     assert _listed(db, monkeypatch) == [EN, OLD]
     assert db.piece_reads == [sorted([OLD, OLD_DE])]
     assert db.recording_reads == [["rec-3", "rec-4"]]
+
+
+def test_the_list_comes_in_steps(monkeypatch):
+    rows = [_row(EN, "en"), _row(OLD, "en"), _row(OLD_DE, "en")]
+    db = ListDB(rows, {})
+    first = _list(db, monkeypatch, "?limit=2")
+    assert [i["session_id"] for i in first["imports"]] == [EN, OLD]
+    assert first["next_offset"] == 2
+    last = _list(db, monkeypatch, f"?limit=2&offset={first['next_offset']}")
+    assert [i["session_id"] for i in last["imports"]] == [OLD_DE]
+    assert last["next_offset"] is None
+    # Without ?limit the list reads its first 200, as it always did.
+    assert _list(db, monkeypatch)["next_offset"] is None
 
 
 class _CappedLabels:
