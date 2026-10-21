@@ -2370,7 +2370,8 @@ O2  A wrong-typed value (a truthy string, a bool) is refused, never coerced.
 O3  A state with no written definition cannot be rated.
 O4  The lane comes from the rating act's provenance: an unverified coach
 act is bootstrap, never panel.
-O5  Aggregation leaves out bootstrap rows and counts ""audio unclear"" apart.
+O5  Aggregation leaves out bootstrap rows, a self-report in any lane and an
+answer given after seeing the other side, and counts ""audio unclear"" apart.
 O6  A five-rater panel at 60% outweighs a unanimous pair.","O1 -> test_blind_is_the_default_and_the_answer_is_kept
 O2 -> test_truthy_strings_are_refused_not_coerced
 O3 -> test_a_state_without_a_definition_is_refused

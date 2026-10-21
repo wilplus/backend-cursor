@@ -280,7 +280,9 @@ own PR)**
    inside practice), never a self-report (`tests/test_golden_set_pool.py`).
 3. `research_quorum.py` counts a lane `peer` and rows with no lane, and
    treats Not sure as a definite answer.
-4. `state_ratings.aggregate` has no blind or self-report filter.
+4. ~~`state_ratings.aggregate` has no blind or self-report filter.~~
+   **Fixed (N111):** a panel read leaves out a self-report in any lane and a
+   non-blind answer. Nothing outside its tests calls it today.
 5. `communities.order_community_clips` skips only settled clips, so
    `unresolved` and quarantined clips still reach listeners, whose answers
    then become no label.
@@ -370,6 +372,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-10-21 · N111 · B4 fixed: a panel read in `state_ratings` leaves out self-reports and non-blind answers · BE
 - 2026-10-21 · N111 · B3 fixed: the research screen's label figures count what the ledger counts · BE
 - 2026-10-21 · N111 · B2 fixed: the golden set's pool takes only blind, independent labels · BE
 - 2026-10-21 · N102 · this page gathers the learning sources and the label quorum into one place, with what's open (§3) · BE #1234, FE #922
