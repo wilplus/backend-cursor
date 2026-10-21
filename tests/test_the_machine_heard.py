@@ -7,11 +7,15 @@ OUTCOME
       about the moment.
   O2  After the rating, the read opens and "heard" says in words what the
       machine heard - never a number.
+  O4  After the rating, the read carries the moment's willfidence as a whole
+      percent for the coach (founder 2026-10-21, N102); a clip with no sound
+      read carries none, never a made-up middle.
   O3  For each kind, "heard" names the right thing: the error labels, the
       confident cues behind praise, the clearer version's reason, all of it
       on an ambiguity, and an explicit "nothing" when it heard nothing.
 PROVES   O1 -> test_the_read_is_still_behind_the_blind_gate
          O2 -> test_after_my_rating_the_read_says_what_was_heard_in_words
+         O4 -> test_the_read_carries_willfidence_as_a_percent_only_when_heard
          O3 -> test_heard_names_what_the_machine_heard_for_each_kind
 WHY      D-CP-3; coach panel lock flow 5 ("What happened").
 """
@@ -125,3 +129,21 @@ def test_heard_names_what_the_machine_heard_for_each_kind():
 
     db.suggestion = None
     assert machine_heard(db, None, SNIPPET) == [{"kind": "nothing", "key": "nothing"}]
+
+
+def test_the_read_carries_willfidence_as_a_percent_only_when_heard():
+    from services.voice_confidence import _VERSION
+
+    db = _Db(rating={"value": "yes"})
+    _status, unheard = _read(db)
+    assert unheard["willfidence"] is None
+
+    class _Heard(_Db):
+        def get_snippets_by_session(self, _sid):
+            return [{"id": SNIPPET, "transcript": "We grew in every region.",
+                     "slide_index": 2,
+                     "metrics": {"voice_confidence": {"version": _VERSION, "score": 0.5}}}]
+
+    status, body = _read(_Heard(rating={"value": "yes"}))
+    assert status == 200
+    assert isinstance(body["willfidence"], int) and 0 <= body["willfidence"] <= 100

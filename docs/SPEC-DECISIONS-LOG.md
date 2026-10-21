@@ -2872,3 +2872,19 @@ COACH). Opening an import starts the round with one of its clips; the next
 round follows when one is done, and the list when none is left. This
 replaces N99's one import after another. The rules: frontend
 `docs/flows/coach-panel.md`, H3. No new words, no migration.
+
+**N102 · "What happened" on the coach panel gets one more line, Willfidence;
+the person's admin page loses the Confident Voice practice tile (founder,
+the Claude Code chat, 21 October 2026: "I would like to have it removed
+from here, at least the confidence level, and rather have it here ... after
+the judgement ... just add there one row: Willfidence ——— percentage").**
+After the coach's own blind answer, "What happened" shows a last line,
+**Willfidence**, with the moment's willfidence as a whole percent (S × W,
+the read the Take's moments are picked by; flow page H1). A clip with no
+sound read shows no line, not the middle of the scale. This is for the coach
+only: a speaker never sees it (Never 1), and the coach sees it only behind
+the blind gate (BLIND COACH). It is the one number in the coach's read;
+AC-9's "never a number on screen" still holds for speakers. The new word is
+"Willfidence", signed here. The person's admin page (WIL-73) no longer shows
+the Confident Voice practice progress tile. The rules: frontend
+`docs/flows/coach-panel.md`, E1. No migration.
