@@ -130,11 +130,12 @@ def test_frontend_citations_name_a_commit():
 
 
 # Commits cited in the pack that live in `wilplus/frontend-cursor`, verified
-# against a FULL clone of it on 2026-09-18 (both clones ship shallow at 50
-# commits, which is why an earlier pass could not resolve any of them and had to
-# say so rather than call them broken). Each is an ancestor of that repo's
-# `main`. Listed explicitly because this repository cannot reach that one: an
-# unlisted hash is therefore treated as a backend hash and must resolve here.
+# against a FULL clone of it on 2026-09-18 (`bfd45f1a` on 2026-10-21; both
+# clones ship shallow at 50 commits, which is why an earlier pass could not
+# resolve any of them and had to say so rather than call them broken). Each is
+# an ancestor of that repo's `main`. Listed explicitly because this repository
+# cannot reach that one: an unlisted hash is therefore treated as a backend hash
+# and must resolve here.
 #
 # Matched by prefix in either direction, because the pack cites the same commit
 # at seven and at eight characters.
@@ -153,14 +154,17 @@ _FRONTEND_COMMITS = (
     "c9a42974",  # 2026-09-18  landing; the CTA stops claiming consent (#400)
     "ae212ee9",  # 2026-09-19  Art 50(2) marking of generated text (#406)
     "9a928fd6",  # 2026-10-05  `main` when 03 v1.1 read what the screens label (#609)
+    "bfd45f1a",  # 2026-10-14  coach's answer in words, in the walk (#788); 25 §2 cites it
 )
 
 
 def _is_frontend(sha: str) -> bool:
     return any(sha.startswith(k) or k.startswith(sha) for k in _FRONTEND_COMMITS)
 
-# Backticked hex that is not a commit reference.
-_NOT_A_COMMIT = {"604800"}
+# Backticked hex that is not a commit reference. The two long numbers are the
+# Meta Business portfolio ID and WhatsApp Business Account ID (25 §4 E2 and the
+# processor contact log); 25 is signed, so their backticks stay.
+_NOT_A_COMMIT = {"604800", "1096268846348586", "1109192322091002"}
 
 _HASH = re.compile(r"`([0-9a-f]{7,40})`")
 
