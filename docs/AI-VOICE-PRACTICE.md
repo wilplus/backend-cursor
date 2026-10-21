@@ -28,7 +28,7 @@ The lock (flow, words, rules) is
    fallback: it resumes the same practice and finds the same cycle. One clip
    per practice, reused for every appearance; a clip that fails its check is
    made once more with a new seed, never a third time
-   (`AI_VOICE_GENERATION_RETRIES`, 1; founder 2026-10-21, N92), and a failed
+   (`AI_VOICE_GENERATION_RETRIES`, 1; founder 2026-10-21, N93), and a failed
    one is never shown. While the job is queued or waiting for the voice,
    `demo` already says `ai_voice` with the clip `pending`, so the walk shows
    the clip's place. A voice not ready yet (the clone from Take 1 still
@@ -38,7 +38,7 @@ The lock (flow, words, rules) is
    problem), and after a try that isn't better yet, at most 3 times. It never
    plays by itself.
 5. The next try is measured on the one problem practised and stored, only
-   after a clip that was made (N92: a try after a failed clip used to be
+   after a clip that was made (N93: a try after a failed clip used to be
    scored and could hold that problem back for the speaker). For
    fillers (founder 2026-10-18) the measure is hesitations per 100 words of
    the try's own transcript, against the same line as the pick.

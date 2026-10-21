@@ -481,7 +481,7 @@ def _speak_until_checked(job: _Job, voice_id: str, request: dict, selection: dic
                          context: dict) -> tuple[bytes, Optional[dict], Optional[str]]:
     """(audio, last check, provider failure). At most 1 + RETRIES clips are
     made: a clip that fails its check is made once more with a new seed
-    (founder 2026-10-21, N92; RETRIES is 1). A provider refusal that made
+    (founder 2026-10-21, N93; RETRIES is 1). A provider refusal that made
     nothing (429, 5xx) is asked once more and costs no generation."""
     from services.ai_voice_limits import estimated_credits
     from services.ai_voice_validator import validate

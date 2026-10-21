@@ -355,7 +355,7 @@ def _pcm_flat():
     (_pcm_flat(), "unavailable"),        # flat again: no clip, never a third
 ])
 def test_a_clip_that_fails_its_check_is_made_once_more_and_shown_only_if_it_passes(second, shown):
-    """Founder 2026-10-21 (N92): the stress clip of 2026-10-20 came out flat
+    """Founder 2026-10-21 (N93): the stress clip of 2026-10-20 came out flat
     (0.02 dB) and, made only once, never came. A failed clip is made once
     more with a new seed; a failed one is never shown, and a try after a
     clip that never came is not scored."""

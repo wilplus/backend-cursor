@@ -92,7 +92,7 @@ when it is made         only in this lane: when Practise is tapped (video fits),
                         reused for every appearance; a clip that fails its check
                         is made ONCE MORE with a new seed, never a third time,
                         and a failed clip is simply not shown (founder
-                        2026-10-21, N92; it was one generation, 2026-10-12)
+                        2026-10-21, N93; it was one generation, 2026-10-12)
 what is sent            the speaker's own transcript of the sentence, with the delivery
                         controls Eleven v4 supports; no unrestricted prompt
 checked before shown    decodes, not clipped, sane length and silence, the words kept
