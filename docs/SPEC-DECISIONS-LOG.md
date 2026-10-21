@@ -2808,3 +2808,15 @@ merged. The plan lives in `config/roadmap.json`; a PR that starts or finishes
 an item adds its number there. Read without a token (both repositories are
 public), cached five minutes; the page reads again every two minutes while on
 screen. No migration, no environment variable.
+
+**WIL-93, follow-up · The coach's link with nothing of the coach's goes
+back to the chat; in another account it says so (founder, the Claude Code
+chat, 21 October 2026: "if you can not direct me to the walk directly at
+least just open the lounge and the bubble with orange dot will be there";
+"ok" to the words).** A coach's door with nothing of the coach's to show
+goes back to the chat, where the coach's bubble is, never to the Ideal Text.
+Opened in an account the project is not in, the page says "This link is for
+another account." with "Log in with that account", which signs out and comes
+back to the link, instead of waiting on "Building your Ideal Text". The
+rules: the walk's page, C1, K (frontend `docs/flows/feedback-walk-and-chat.md`,
+§6 WIL-93; frontend #917). No backend change, no migration.
