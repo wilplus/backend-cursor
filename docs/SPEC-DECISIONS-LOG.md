@@ -2887,4 +2887,5 @@ the blind gate (BLIND COACH). It is the one number in the coach's read;
 AC-9's "never a number on screen" still holds for speakers. The new word is
 "Willfidence", signed here. The person's admin page (WIL-73) no longer shows
 the Confident Voice practice progress tile. The rules: frontend
-`docs/flows/coach-panel.md`, E1. No migration.
+`docs/flows/coach-panel.md`, E1. No migration; the person's admin read no
+longer carries `practice`.
