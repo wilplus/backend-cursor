@@ -458,6 +458,11 @@ O2  The evidence and the version never leave the server: the payload the
 speaker gets (strip_internal_evidence) keeps the rewrite and drops
 them (AC-9; Never rule 1, no numbers or verdicts shown to speakers).","O1 -> test_a_clearer_version_carries_the_weak_read_behind_it
 O2 -> test_the_served_rewrite_carries_no_evidence","D-ML-3 (contract 24f, 25, 27, 29b; ledger A059a/A066): the model's clearer versions reached the Manager with no evidence, so V3 excluded every one. V3's one-rewrite-per-weak-block selection is not pinned here."
+tests/test_coach_answer_brings_what_happened.py,Story,"As a coach, I want ""What happened"" to come back with my saved answer, fast, and never before I answer.","O1  A first answer's save carries the moment's read: the passage, my own
+answer, the machine's ""heard"", and the exposure is recorded; the save
+reads no piece of the talk beyond the one judged (it took 9 s).
+O2  BLIND COACH: an Audio unclear answer carries no read.","O1 -> test_a_first_answer_brings_what_happened_without_reading_the_talk
+O2 -> test_audio_unclear_brings_nothing","Founder 2026-10-21 (N99): ""please make sure it is smooth that it loads fast""; C2 (founder 2026-10-08): What happened arrives with the saved answer."
 tests/test_coach_answer_video_erase.py,Story,"As a speaker who closes my account, I want every coach answer video made for me deleted, and no one else's, so that my data really goes.","O1  All of my coach answer videos are deleted and counted.
 O2  Another speaker's videos stay.","O1, O2 -> test_closing_an_account_deletes_that_speakers_answer_videos_only","Founder 2026-10-15, fix 5; Privacy 3.6 section 7."
 tests/test_coach_answers_five_ways_postgres.py,Story,"As a coach, I want my answer on a practice recording limited to the speaker's five values, so that coach and speaker answers can be compared.","O1  yes, in_between, no, not_sure and audio_unclear are stored.
@@ -533,6 +538,13 @@ is skipped and the rest are still written.","O1 -> test_an_audit_item_takes_one_
 O2 -> test_the_coach_sheets_are_blind
 O3 -> test_no_training_yes_writes_no_block_pick
 O4 -> test_a_refused_block_pick_is_skipped_and_the_rest_are_written","Founder 2026-10-01 (F6, C5-b). O4: a Take has one frame per policy version sharing block ids, and an insert refused by coach_block_pick_once (a 500) emptied the coach's queue."
+tests/test_coach_queue_bookmarks.py,Story,"As a coach, I want my queue to open fast and list each Take's bookmarked moments in the order the speaker said them.","O1  A Take's bookmarked moments come in talk order (start, then id), only
+those that exist in that Take; a Take whose bookmarks are not frozen
+yet waits for its text.
+O2  The queue reads only the bookmarked pieces, in one read for every
+Take, never every piece of every Take (the queue took 6.7 s).
+O3  A failed piece read lists no moments rather than failing the queue.","O1, O2 -> QueueBookmarksTests::test_bookmarks_in_talk_order_from_one_read_of_only_them
+O3 -> QueueBookmarksTests::test_a_failed_read_lists_no_moments","Founder 2026-10-21 (N99): ""please make sure it is smooth that it loads fast""."
 tests/test_coach_queue_talk_setup.py,Story,"As a coach, I want to see who a speaker's talk is for and what they want the audience to do, in the speaker's own words, next to their goal, so that I judge and answer knowing what the talk is trying to do.","O1  The queue carries, per Take, the setup's audience and its call to
 action as the speaker said them (filled by Will's questions), None
 when they have not said; never a name, never a score.

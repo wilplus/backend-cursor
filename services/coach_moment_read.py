@@ -20,7 +20,14 @@ _log = logging.getLogger(__name__)
 _ANSWERS = ("yes", "in_between", "no", "not_sure", "audio_unclear")
 
 
-def _passage(database: Any, take_session_id: str, snippet_id: str) -> dict:
+def _passage(database: Any, take_session_id: str, snippet_id: str,
+             held: Optional[dict] = None) -> dict:
+    # The moment's own row, when the caller already holds it, is the row the
+    # read of the whole talk would find.
+    if (isinstance(held, dict) and str(held.get("id")) == snippet_id
+            and str(held.get("session_id")) == take_session_id):
+        return {"passage": str(held.get("transcript") or "").strip(),
+                "slide_index": held.get("slide_index")}
     for row in database.get_snippets_by_session(take_session_id) or []:
         if isinstance(row, dict) and str(row.get("id")) == snippet_id:
             return {"passage": str(row.get("transcript") or "").strip(),
@@ -139,29 +146,44 @@ def machine_heard(database: Any, request: Optional[dict], snippet_id: str) -> li
 
 
 def moment_read(database: Any, *, take_session_id: str, snippet_id: str,
-                rater_id: str, owner_user_id: Any) -> dict:
-    """Everything the Read screen shows, after the gate."""
+                rater_id: str, owner_user_id: Any,
+                snippet_row: Optional[dict] = None) -> dict:
+    """Everything the Read screen shows, after the gate. ``snippet_row`` is
+    the moment's own row when the caller holds it (the label save), so the
+    passage needs no read of the whole talk. Reads that need no other's
+    answer run side by side, their results and a failure in the order
+    written here (founder 2026-10-21: the label save took 9 s)."""
+    from services.coach_exposure import record_exposure
     from services.coach_practice_judgement import selected_practice
     from services.exercise_coach_requests import coach_request_payload
+    from services.parallel import run_in_parallel
     take, snip = str(take_session_id), str(snippet_id)
-    request = database.get_exercise_coach_request(take, snip)
+    request, passage, speaker_answer, coach_answer, goal, practice = run_in_parallel(
+        lambda: database.get_exercise_coach_request(take, snip),
+        lambda: _passage(database, take, snip, snippet_row),
+        lambda: _speaker_answer(database, snip),
+        lambda: _coach_answer(database, take, snip, str(rater_id)),
+        lambda: _goal(database, owner_user_id),
+        # The speaker's chosen practice recording, for the coach's answer
+        # on it (Q6; N45). None when there is none.
+        lambda: selected_practice(database, take, snip))
+    asked = request if isinstance(request, dict) else None
     # Task 4 (0411): the Read screen is the clip's non-blind side. From
     # here on a rating by this coach on this clip is not blind; the first
     # exposure stands and a repeat read records nothing new.
-    from services.coach_exposure import record_exposure
-    record_exposure(database, coach_id=str(rater_id), clip_id=snip, via="moment_read")
-    return {
-        **_passage(database, take, snip),
-        "speaker_answer": _speaker_answer(database, snip),
-        "coach_answer": _coach_answer(database, take, snip, str(rater_id)),
-        "speaker_goal": _goal(database, owner_user_id),
-        "request": (coach_request_payload(request, database)
-                    if isinstance(request, dict) else None),
+    _exposure, request_payload, heard = run_in_parallel(
+        lambda: record_exposure(database, coach_id=str(rater_id), clip_id=snip,
+                                via="moment_read"),
+        lambda: coach_request_payload(asked, database) if asked else None,
         # "The machine heard" (D-CP-3): in words, for every kind; behind the
         # same gate as everything here (BLIND COACH).
-        "heard": machine_heard(database, request if isinstance(request, dict) else None,
-                               snip),
-        # The speaker's chosen practice recording, for the coach's answer
-        # on it (Q6; N45). None when there is none.
-        "practice": selected_practice(database, take, snip),
+        lambda: machine_heard(database, asked, snip))
+    return {
+        **passage,
+        "speaker_answer": speaker_answer,
+        "coach_answer": coach_answer,
+        "speaker_goal": goal,
+        "request": request_payload,
+        "heard": heard,
+        "practice": practice,
     }

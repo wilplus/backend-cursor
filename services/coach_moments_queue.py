@@ -15,8 +15,9 @@ coach has rated (BLIND COACH): before the rating the row says only that a
 judgement is waiting. It is the speaker's side of the request once they
 judged (`answer_kind`, 0408; Phase 2, F1), else the kind it rose under. Nothing here is a count of quality (AC-9); the
 pseudonym is the queue's own, never a name (L3, §B.4). Pure apart from
-`reached_for_sessions`, which makes the two reach reads, and `close_moments`,
-the founder's Delete; every other read is handed in by the route.
+`reached_for_sessions`, which makes the two reach reads, `queue_for_coach`,
+which makes the queue's reads side by side, and `close_moments`, the
+founder's Delete; every other read is handed in by the route.
 
 ONLY MOMENTS THAT REACHED THE SPEAKER (founder 2026-10-05, N48.2, Q1 A;
 audit D9). The Take's frozen set is chosen BEFORE the window of three
@@ -575,20 +576,32 @@ def queue_for_coach(
     K4, K5). ``rows`` are the review queue's rows this coach may see (the
     language gate)."""
     from services.coach_listen_again import open_asks
+    from services.parallel import run_in_parallel
     ids = [str(r.get("id")) for r in rows if isinstance(r, dict)]
-    requests = database.list_exercise_coach_requests_for_sessions(ids)
     once = remembered(moments_for)
-    asks = open_asks(database, coach_id=rater_id, session_ids=ids)
-    ratings = database.get_own_state_ratings_for_sessions(ids, rater_id) or {}
+    takes = [r for r in rows if isinstance(r, dict)]
+    # No read below needs another's answer, so they run side by side; the
+    # results come back in this order and a failed read still raises here
+    # (founder 2026-10-21: one after another, the queue took 6.7 s). The
+    # last one reads each Take's bookmarks, which the labels read needs.
+    requests, asks, ratings, events, answered, goal_for, moments = run_in_parallel(
+        lambda: database.list_exercise_coach_requests_for_sessions(ids),
+        lambda: open_asks(database, coach_id=rater_id, session_ids=ids),
+        lambda: database.get_own_state_ratings_for_sessions(ids, rater_id) or {},
+        lambda: database.list_moment_events_for_sessions(ids),
+        lambda: database.list_confident_voice_answered_moments(ids),
+        lambda: speaker_goals(database, rows),
+        lambda: [once(r) for r in takes])
+    reached = reached_moments(events, answered, (requests or {}).keys())
     return moments_queue(
         rows, moments_for=once,
-        reached_for=reached_for_sessions(database, ids, requests),
+        reached_for=lambda sid: reached.get(str(sid), set()),
         ratings_for=lambda sid: ratings.get(str(sid)) or {},
         request_for=lambda sid, snip: requests.get((sid, snip)),
         pseudonym_for=pseudonym_for,
         labels_for=labels_for_snippets(
-            database, [s for r in rows if isinstance(r, dict) for s in (once(r) or [])]),
+            database, [s for m in moments for s in (m or [])]),
         rater_id=rater_id,
-        goal_for=speaker_goals(database, rows),
+        goal_for=goal_for,
         listen_again_for=lambda sid: asks.get(str(sid), {}),
         alarm=alarm)
