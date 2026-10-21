@@ -792,7 +792,7 @@ O3  Verdicts go to the shadow log once, under the fit's own version, for
 consented speakers' clips only; the live detector is unchanged.","O1 -> test_switch_off_reads_and_writes_nothing
 O2 -> test_only_consented_train_split_answers_are_fitted
 O3 -> test_verdicts_go_to_the_shadow_log_only_for_consented_clips","3.5 pack, file 22 E3; document 02 v1.2 §3c (dark lane, PLF1 Phase 2)."
-tests/test_doc_guard.py,Guard,"scripts/doc_guard.py: every part of the code has one home doc in README.md, every doc is listed there, and a new doc carries the founder's OK (N107, N110).","Code that no row of the home-doc table covers; a row that covers
+tests/test_doc_guard.py,Guard,"scripts/doc_guard.py: every part of the code has one home doc in README.md, every doc is listed there, and a new doc carries the founder's OK (N107, N111).","Code that no row of the home-doc table covers; a row that covers
 nothing or points at a missing, History or Archive doc; two rows
 claiming one file equally; a doc the master doc doesn't list; a new
 doc without `Founder-Approved:` on its line.","test_code_no_row_covers_is_named

@@ -540,7 +540,7 @@ cites. Git keeps every one. Browse them at the last commit that had them:
 
 ## 6. Home docs for the code
 
-Every part of the code has one home doc (founder, 21 October 2026, N107 and N110). A session that changes
+Every part of the code has one home doc (founder, 21 October 2026, N107 and N111). A session that changes
 code writes what changed into the code's home doc, or into the pull request, never into a new file. "No
 page" means no doc describes that part: the code and its comments do, and a rule about it goes into the
 decisions log. The frontend's table is in its own [`README.md`](https://github.com/wilplus/frontend-cursor/blob/main/README.md).
@@ -613,4 +613,4 @@ decisions log. The frontend's table is in its own [`README.md`](https://github.c
 - A label that changes changes in both places. A change to a rule is a decisions-log entry first (N95).
 - The labels were set on 21 October 2026 (N106) and the docs converged the same day (N107).
 - Don't start a new doc: write into the code's home doc (§6) or this page. `scripts/doc_guard.py` refuses code
-  without a home doc, a doc this page doesn't list, and a new doc without the founder's OK (N110).
+  without a home doc, a doc this page doesn't list, and a new doc without the founder's OK (N111).

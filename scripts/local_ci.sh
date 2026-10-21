@@ -180,7 +180,7 @@ ledger_check() {
 }
 step "Audit ledger check" ledger_check
 
-# The docs guard (N107, N110). Same base as the workflow step, fetched the way
+# The docs guard (N107, N111). Same base as the workflow step, fetched the way
 # the ledger check fetches it, so a full clone keeps its depth.
 doc_guard() {
   if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
