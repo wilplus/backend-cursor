@@ -360,4 +360,4 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
-- 2026-10-21 · N102 · this page gathers the learning sources and the label quorum into one place, with what's open (§3) · BE #PENDING
+- 2026-10-21 · N102 · this page gathers the learning sources and the label quorum into one place, with what's open (§3) · BE #1234, FE #922
