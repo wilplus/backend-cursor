@@ -121,6 +121,15 @@ jobs:
             echo "no docs/audit/LEDGER.md — skipped"
           fi
 
+      # The docs guard (founder, 2026-10-21, N107 and N111): every part of the
+      # code has one home doc in the table in README.md, every doc is listed
+      # there, and a new doc carries the founder's OK on its line. Compares
+      # the tree with origin/main's, so a shallow fetch of main is enough.
+      - name: Docs guard
+        run: |
+          git fetch -q --depth=1 origin main
+          python scripts/doc_guard.py --base origin/main
+
       - name: Run unit-tier tests
         env:
           # Minimal env so import-time guards don't hard-crash. These

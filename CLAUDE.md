@@ -57,11 +57,15 @@ to change together with the code. Every doc in both repos, with its label
 
 ## Docs
 
-Every doc is listed in [`README.md`](README.md) with its label (N106). Don't
-start a new doc: edit the area's rules page (the frontend's `docs/flows/`, or
-the backend page it belongs to) or the master doc. Handoffs and prompts for
-coding agents go in the pull request description, not in a file. A new doc
-needs the founder's OK and a line in `README.md` (N107).
+Every doc is listed in [`README.md`](README.md) with its label (N106), and
+every part of the code has one home doc, in the table
+[Home docs for the code](README.md#6-home-docs-for-the-code). Don't start a
+new doc: write what changed into the code's home doc, or into the pull
+request. Handoffs and prompts for coding agents go in the pull request
+description, not in a file. New code that no row covers gets a row in the
+same pull request. A new doc needs the founder's OK, written as
+`Founder-Approved:` on its line in `README.md`. `scripts/doc_guard.py` checks
+all of this in CI (N107, N111).
 
 ## How to ship
 

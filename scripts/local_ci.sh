@@ -180,6 +180,18 @@ ledger_check() {
 }
 step "Audit ledger check" ledger_check
 
+# The docs guard (N107, N111). Same base as the workflow step, fetched the way
+# the ledger check fetches it, so a full clone keeps its depth.
+doc_guard() {
+  if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+    git fetch -q --depth=1 origin main 2>/dev/null || true
+  else
+    git fetch -q origin main 2>/dev/null || true
+  fi
+  "$PY" scripts/doc_guard.py --base origin/main
+}
+step "Docs guard" doc_guard
+
 # Minimal placeholder env, same as the workflow: enough that import-time
 # guards don't hard-crash, and useless for reaching anything real.
 # CI=1 is what GitHub Actions exports on its own; tests marked CI-only (the

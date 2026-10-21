@@ -792,6 +792,15 @@ O3  Verdicts go to the shadow log once, under the fit's own version, for
 consented speakers' clips only; the live detector is unchanged.","O1 -> test_switch_off_reads_and_writes_nothing
 O2 -> test_only_consented_train_split_answers_are_fitted
 O3 -> test_verdicts_go_to_the_shadow_log_only_for_consented_clips","3.5 pack, file 22 E3; document 02 v1.2 §3c (dark lane, PLF1 Phase 2)."
+tests/test_doc_guard.py,Guard,"scripts/doc_guard.py: every part of the code has one home doc in README.md, every doc is listed there, and a new doc carries the founder's OK (N107, N111).","Code that no row of the home-doc table covers; a row that covers
+nothing or points at a missing, History or Archive doc; two rows
+claiming one file equally; a doc the master doc doesn't list; a new
+doc without `Founder-Approved:` on its line.","test_code_no_row_covers_is_named
+test_the_most_exact_pattern_wins
+test_an_equal_claim_with_two_homes_is_refused
+test_a_stale_row_and_a_bad_home_are_refused
+test_every_doc_is_listed_except_runtime_prompts
+test_a_new_doc_needs_the_founders_ok","If removed: The docs pile up again, one new file per piece of work, as they did until 21 October 2026 (423 files)."
 tests/test_each_served_take_keeps_its_coverage_postgres.py,Story,"As the founder, I want each served Take's feedback coverage and lane outcomes stored once, so that I can see where feedback found nothing worth saying.","O1  The row the serve path builds (`coverage_row`) fits the table, with an
 empty lane typed `no_defensible_candidate`.
 O2  One row per Take: a second serve inserts nothing.
