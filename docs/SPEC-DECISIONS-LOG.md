@@ -2576,6 +2576,20 @@ the rewrite passes the gate; otherwise the voice Exercise with the AI clip ("ok,
 push to prod" on <https://claude.ai/artifact/Ut2SqvHCoJ1hvH8dp17yQe>). The rule:
 flow page C4 and H3; `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`. No migration.
 
+**N77 · A coach's word for a Take shows on its own Take only (founder,
+Claude Code session, 18 October 2026).** Asked who gets a coach's recorded
+message, the founder chose every recommended answer on the plain-words map
+(<https://claude.ai/artifact/QU5ENGdftkJXFppAQYFhyj>). The part in force
+here: the coach's word for a Take shows on that Take only, and a later Take
+starts without it (supersedes N48.3 Q11 A's earlier-Take fallback). A word
+left on an earlier Take after a newer one exists reaches the speaker through
+its Lounge bubble ("Later · from your coach"), the WhatsApp and the email.
+Contract 35g-6 carries the dated amendment; `services/coach_message_read.py`
+serves the Take on screen only. Landed on main with N92. The rest of N77, a
+coach's video belonging to the speaker it was made for (and N78 after it),
+arrives with #1127 and migration 0480 and is not in force until that merges.
+No migration.
+
 **N79 · What we keep of what a coach says, and what may leave (founder, chat,
 19 October 2026).** The goal is a coach "text brain" trained on what coaches
 say, the situation and the error type; first we fix what is captured. Four
@@ -2706,3 +2720,16 @@ the "Later · from your coach" bubble is written the moment the coach
 shares, review ended or not; a try not heard says so; "Edit the helper
 words". The rules: the walk's page, B10, C3, C7, D5, E1, K (frontend
 `docs/flows/feedback-walk-and-chat.md`, §6 N90). No migration.
+
+**N92 · One source of truth: backend main's docs (founder, chat, 21 October
+2026).** What is in force is what is written and merged on this backend
+repo's `main`, read in this order: this log, then
+`docs/CANONICAL_PRODUCT_CONTRACT.md`, then `docs/LOCKS.md` and the
+`FOUNDER-LOCK-*.md` files with their prototypes. Nothing said only in chat,
+a PR description, an open branch or the frontend's own docs is in force; each
+founder decision made in chat comes here at once in its own small docs PR,
+never bundled with code waiting for review; where main's code disagrees with
+these docs, the docs win and the code is a bug. The rule: `CLAUDE.md`, "One
+source of truth". With it, N77's part about the coach's word showing on its
+own Take lands on main (contract 35g-6, `services/coach_message_read.py`).
+No migration.

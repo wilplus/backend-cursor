@@ -36,6 +36,19 @@ frontend PR that updates it. Its entry here in `docs/SPEC-DECISIONS-LOG.md`
 is two lines and a link. The other locked screens get a page of the same
 shape the next time one of them is changed.
 
+## One source of truth
+
+The single source of truth is this backend repo's `main`, read in this order:
+`docs/SPEC-DECISIONS-LOG.md` (the founder's dated decisions), then
+`docs/CANONICAL_PRODUCT_CONTRACT.md` (the numbered clauses), then
+`docs/LOCKS.md` and the `FOUNDER-LOCK-*.md` files with their prototypes.
+Nothing is in force until it is written there and merged: not a decision said
+only in chat, a PR description, an open branch, or the frontend's own docs.
+Write every founder decision made in chat into the decisions log right away,
+in its own small docs PR, never bundled with code that waits for review.
+Where the code on main disagrees with these docs, the docs win and the code
+is a bug to fix (founder, 2026-10-21, N92).
+
 ## How to ship
 
 - Branch from `main` → PR → checks green → squash-merge. "Merge when green" is standing permission.

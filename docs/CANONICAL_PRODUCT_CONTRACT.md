@@ -863,7 +863,11 @@ with this contract, this contract wins.
     label, verdict or number, and never edits Ideal Text (clause 40). Every
     per-moment answer reaches the speaker on its own moment the moment it
     is shared (35g-2); the arc-level publish that once held them back is
-    retired (clause 65).
+    retired (clause 65). **Amended 2026-10-18 (founder, decisions log N77;
+    supersedes N48.3 Q11 A's fallback):** the word shows on its own Take
+    only. A later Take starts without it; a word left on an earlier Take
+    after a newer one exists reaches the speaker through its Lounge bubble,
+    the WhatsApp and the email.
 35g-7. **The coach's exercise preference** (founder 2026-10-01, F8; Phase 1b
     of the coach panel; migration 0411; served only once
     `COACH_EXERCISE_PREFERENCE_ENABLED` is on). After the blind rating the
