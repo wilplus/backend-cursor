@@ -3123,3 +3123,15 @@ your helper words" on its paragraph, as after a praise. The server says which
 moments these are with a flag, never the score. A voice under the floor is
 unchanged: no helper words. No new words on screen. The rules: flow page C3,
 C5, H1 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). No migration.
+
+**N114 · No backfill for the Takes without a dark frame, and 0489 merges
+without the outside review (founder, the Claude Code chat, 22 October 2026:
+"no back fill bro"; then "no outside review").** From #1207 (N86, 20 October,
+~19:20 CEST) until migration 0489 ([wilplus/backend-cursor#1263](https://github.com/wilplus/backend-cursor/pull/1263)) the
+database refused every Take's dark frame, so those Takes have no frame, no
+random draw, no paragraph map and no willfidence read. They are not
+backfilled: a Take gets its frame when its Ideal Text is built again (opened
+as the speaker's current Take, or baked again), and the others stay without
+one, so no tagging call is made for them. 0489 merges on green checks without
+the GPT or Grok review CLAUDE.md asks of a new migration; the waiver is for
+0489. No migration in this entry.
