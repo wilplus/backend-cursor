@@ -2608,7 +2608,7 @@ O4  The writer is SECURITY DEFINER with search_path = public; only
 service_role may execute it.","O1 -> test_the_frame_the_code_builds_is_stored_and_read_back
 O2 -> test_an_older_label_or_detector_is_refused
 O3 -> test_re_applying_the_writer_keeps_it_accepting_the_frame
-O4 -> test_only_the_service_key_may_call_the_writer","0431/0441, ledger N20: after #893 every shadow write was refused and only logged. Released lane; every write is rolled back. Other suites import _migration_body, _seed_take and _write from here."
+O4 -> test_only_the_service_key_may_call_the_writer","0431/0441, ledger N20: after #893 every shadow write was refused and only logged; 0489: again after #1207 (N86, frame v7). Released lane; every write is rolled back. Other suites import _migration_body, _seed_take and _write from here."
 tests/test_the_walk_feeds_the_chain.py,Story,"As a coach, I want only my blind answers to become the confidence chain's training judgements, so that an answer given after I saw the machine's side never counts as blind.","O1  NEVER-2: a coach who has seen the moment's non-blind side gets no
 packet, and their answer writes no blind judgement (the rating itself
 is still saved).

@@ -895,6 +895,18 @@ hard migrations/a_legacy_take_takes_its_owner_from_its_account.sql
 hard migrations/a_confidence_event_without_a_clip_is_given_up.sql
 hard migrations/a_confidence_event_without_a_clip_is_given_up.sql
 
+# 0489 (N86, 2026-10-22): the shadow writer accepts frame v7. Re-issues
+# 0441's record_take_feedback_policy_v3_shadow_v3 with the frame schema check
+# on 'take-feedback-policy-v3-frame-v7'. Released lane only, like 0441 (its
+# tables live there). After 0487, as in the manifest (0488 is not in this
+# lane). Twice: apply/reapply idempotency. Its suites:
+# tests/test_the_shadow_writer_accepts_the_frame_the_code_builds_postgres.py
+# and tests/test_a_take_draws_its_random_moments_postgres.py.
+if [ "$LANE" = "released" ]; then
+  hard migrations/the_shadow_writer_accepts_frame_v7.sql
+  hard migrations/the_shadow_writer_accepts_frame_v7.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

@@ -144,8 +144,9 @@ exits 0 when the diff against `origin/main` touches `migrations/`,
 rehearsal suite (`tests/test_*_postgres.py`), an MLC-3 storage module, or the
 edit-then-Take-2 path the take-rewrite lane walks (`services/take_review.py`,
 `take_rebuild.py`, `slide_helper_words.py`, `ideal_text_parts.py`; founder
-lock 2026-09-30, B1-5: the test "runs in the gate"). The list is in the
-script.
+lock 2026-09-30, B1-5: the test "runs in the gate"), or the dark frame's
+builder (`services/take_feedback_policy_v3.py`, whose labels the shadow
+writer and the V4 tables check; 0489). The list is in the script.
 Both `scripts/local_ci.sh` and the `checks` job in
 `.github/workflows/tests.yml` consult it:
 
