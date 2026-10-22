@@ -169,7 +169,7 @@ class _BoundedRPCTransport:
         if remaining <= 0:
             raise ConfidentMomentSweepDeadline()
         from supabase import create_client
-        from supabase.lib.client_options import ClientOptions
+        from supabase.lib.client_options import SyncClientOptions
 
         supabase_url = Config.SUPABASE_URL
         service_role_key = Config.SUPABASE_SERVICE_ROLE_KEY
@@ -180,7 +180,7 @@ class _BoundedRPCTransport:
         self._client = create_client(
             supabase_url,
             service_role_key,
-            options=ClientOptions(
+            options=SyncClientOptions(
                 auto_refresh_token=False,
                 persist_session=False,
                 postgrest_client_timeout=max(0.001, remaining),

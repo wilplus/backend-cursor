@@ -109,10 +109,8 @@ def _fetch_user_email(user_id: str) -> str | None:
     try:
         import httpx
         from config import Config
-        headers = {
-            "Authorization": f"Bearer {Config.SUPABASE_SERVICE_ROLE_KEY}",
-            "apikey": Config.SUPABASE_SERVICE_ROLE_KEY,
-        }
+        from services.secrets import supabase_key_headers
+        headers = supabase_key_headers(Config.SUPABASE_SERVICE_ROLE_KEY)
         url = (
             f"{Config.SUPABASE_URL.rstrip('/')}"
             f"/auth/v1/admin/users/{user_id}"

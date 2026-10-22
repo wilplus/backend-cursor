@@ -11,6 +11,7 @@ import sentry_sdk
 from services.snippet_tables import SNIPPETS_TABLE
 from services.take_repository import TakeHasLineageError
 from services import db_transport
+from services.secrets import supabase_key_headers
 
 # A read on a dropped pooled connection is resent instead of failing the
 # request (see services/db_transport.py).
@@ -518,7 +519,7 @@ class DatabaseService:
             # Match storage-js/storage-py: POST .../object/upload/sign/{bucketId}/{objectPath} (no JSON body).
             resp = httpx.post(
                 f"{base}/storage/v1/object/upload/sign/{sign_segment}",
-                headers={"Authorization": f"Bearer {key}", "apikey": key},
+                headers=supabase_key_headers(key),
                 timeout=10.0,
             )
             if resp.status_code != 200:
@@ -1141,10 +1142,7 @@ class DatabaseService:
             resp = httpx.get(
                 base,
                 params={"per_page": min(limit, 1000), "page": page},
-                headers={
-                    "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
-                    "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
-                },
+                headers=supabase_key_headers(config.SUPABASE_SERVICE_ROLE_KEY),
                 timeout=10,
             )
             if resp.status_code != 200:
@@ -1423,10 +1421,7 @@ class DatabaseService:
             url = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users/{user_id}"
             resp = httpx.get(
                 url,
-                headers={
-                    "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
-                    "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
-                },
+                headers=supabase_key_headers(config.SUPABASE_SERVICE_ROLE_KEY),
                 timeout=5,
             )
             if resp.status_code == 200:
@@ -1440,10 +1435,7 @@ class DatabaseService:
                 list_resp = httpx.get(
                     base,
                     params={"per_page": 1000, "page": page},
-                    headers={
-                        "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
-                        "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
-                    },
+                    headers=supabase_key_headers(config.SUPABASE_SERVICE_ROLE_KEY),
                     timeout=10,
                 )
                 if list_resp.status_code != 200:
@@ -2034,10 +2026,7 @@ class DatabaseService:
                 resp = httpx.get(
                     base,
                     params={"per_page": per_page, "page": page},
-                    headers={
-                        "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
-                        "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
-                    },
+                    headers=supabase_key_headers(config.SUPABASE_SERVICE_ROLE_KEY),
                     timeout=30,
                 )
                 if resp.status_code != 200:

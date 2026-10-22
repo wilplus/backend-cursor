@@ -31,6 +31,7 @@ from collections.abc import Callable
 from typing import Any, Protocol
 
 from config import Config
+from services.secrets import supabase_key_headers
 from services.confident_moment_bundle import (
     runtime_is_enabled,
     validate_bundle_item_render_receipt,
@@ -87,7 +88,7 @@ class ServiceRoleReadRpcTransport:
                 "POST", f"{base}/rest/v1/rpc/{rpc_name}",
                 body=json.dumps(parameters, separators=(",", ":")).encode(),
                 headers={
-                    "Authorization": f"Bearer {key}", "apikey": key,
+                    **supabase_key_headers(key),
                     "Content-Type": "application/json",
                     "Accept": "application/json",
                 },

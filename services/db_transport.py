@@ -64,12 +64,20 @@ KEEPALIVE_S = 30.0  # drop idle sockets before Supabase does (then nothing stale
 USE_HTTP2 = (os.getenv("DB_HTTP2") or "").strip().lower() in {"1", "true", "yes"}
 
 
-def _pooled_session(SyncClient: type, base_url, headers, timeout, verify: bool = True):
+def _pooled_session(SyncClient: type, base_url, headers, timeout, verify: bool = True, proxy=None):
+    if USE_HTTP2:
+        # postgrest's own session, as a SyncClient so the read retry below
+        # still applies (postgrest 1.x builds a plain httpx.Client).
+        return SyncClient(
+            base_url=base_url, headers=headers, timeout=timeout, verify=verify,
+            proxy=proxy, follow_redirects=True, http2=True,
+        )
     return SyncClient(
         base_url=base_url,
         headers=headers,
         timeout=timeout,
         verify=verify,
+        proxy=proxy,
         follow_redirects=True,
         http2=False,
         limits=httpx.Limits(
@@ -83,7 +91,6 @@ def _pooled_session(SyncClient: type, base_url, headers, timeout, verify: bool =
 def _install_pool() -> None:
     if USE_HTTP2:
         logger.info("db_transport: DB_HTTP2 set; keeping postgrest's HTTP/2 session")
-        return
     try:
         from postgrest._sync.client import SyncPostgrestClient
         from postgrest.utils import SyncClient
@@ -93,8 +100,10 @@ def _install_pool() -> None:
     if getattr(SyncPostgrestClient, "_willab_pooled", False):
         return
 
-    def create_session(self, base_url, headers, timeout, verify: bool = True):
-        return _pooled_session(SyncClient, base_url, headers, timeout, verify)
+    # postgrest >= 1.0 passes ``proxy`` as a fifth argument: a create_session
+    # without it raised TypeError when the Supabase client was built.
+    def create_session(self, base_url, headers, timeout, verify: bool = True, proxy=None):
+        return _pooled_session(SyncClient, base_url, headers, timeout, verify, proxy)
 
     setattr(SyncPostgrestClient, "create_session", create_session)
     setattr(SyncPostgrestClient, "_willab_pooled", True)
