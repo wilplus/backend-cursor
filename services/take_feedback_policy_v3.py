@@ -530,9 +530,10 @@ def _mark_moments(blocks: list[dict], snippet_map: dict,
 
     Every block is written, so a re-run cannot leave a stale mark:
     `most_confident` (praised), `highest_moment` (the Take's highest, praised
-    or not), `level_key` (the praised moment's opening line), and
+    or not), `level_key` (the praised moment's opening line),
     `practice_prompt` / `carries_exercise` / `exercise_kind` on each
-    corrected block.
+    corrected block, and `helper_words_prompt` on each shown block whose
+    voice reached the floor (N113).
 
     Returns the praised blocks (praise anchors there), the blocks a rewrite
     may anchor to (each corrected block whose words need help and whose
@@ -572,7 +573,8 @@ def _mark_moments(blocks: list[dict], snippet_map: dict,
         # 2026-10-21, N108): a voice that cleared it whose rewrite did not
         # pass the gate is praised.
         if block["block_id"] in clears and block["exercise_kind"] == moment_pick.EXERCISE_VOICE:
-            _mark_shown(block, {"praise": True, "highest": block["highest_moment"]},
+            _mark_shown(block, {"praise": True, "highest": block["highest_moment"],
+                                "voice_clears": True},
                         value_of.get(block["block_id"]))
     rewrite_blocks = [
         block for block in blocks
@@ -594,6 +596,10 @@ def _mark_shown(block: dict, moment: Optional[dict], value: Any) -> None:
     block["practice_prompt"] = corrected
     block["carries_exercise"] = corrected
     block["exercise_kind"] = moment["kind"] if moment and corrected else None
+    # The voice reached the floor (founder 2026-10-22, N113): its helper
+    # words are offered, after the praise or after the Clearer version. A
+    # flag, never the score.
+    block["helper_words_prompt"] = bool(moment and moment.get("voice_clears"))
 
 
 def _gate_exercise(blocks: list[dict], snippet_map: dict,

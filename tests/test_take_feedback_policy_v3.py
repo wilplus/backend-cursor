@@ -16,14 +16,19 @@ OUTCOME
   O5  A shown moment whose own words hedge opens on a Clearer version with
       its hedges left out, nothing added, even when its voice cleared the
       floor; a hedge's words that are not a hedge where they stand stay.
+  O6  A shown moment whose voice reached the floor offers its helper words,
+      praised or corrected with its Clearer version; a voice under the
+      floor does not (N113).
 PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O4 -> test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate
          O5 -> test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version
+         O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version
 WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
          2026-10-18 ("words first, then voice"), 2026-10-21 (N108, "the
-         voice decides"; N112, "There was no single rewrite in the take").
+         voice decides"; N112, "There was no single rewrite in the take"), 2026-10-22 (N113, "After the
+         rewording").
 """
 from pathlib import Path
 
@@ -373,3 +378,14 @@ def test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version():
     # A hedge's words that are not a hedge where they stand stay whole.
     plain = "This kind of problem is what I think about every single day."
     assert evidence_backed_rewrite_candidates(plain, take_session_id="t", snippet_id="s") == []
+
+
+def test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version():
+    # Slide 1's voice reached the floor and its words carry fillers: the
+    # Clearer version, and its helper words after it (founder 2026-10-22).
+    strong = _practise_frame({}, scores=(0.9, 0.5, -0.6))
+    offered = [(b["slide_index"], b["exercise_kind"]) for b in strong["blocks"] if b["helper_words_prompt"]]
+    assert offered == [(0, None), (1, "clearer")]
+    # The same words under a voice below the floor: the Clearer version only.
+    weak = _practise_frame({})
+    assert [b["slide_index"] for b in weak["blocks"] if b["helper_words_prompt"]] == [0]
