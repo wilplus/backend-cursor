@@ -3133,3 +3133,15 @@ founder's own words. The full-screen screens (recording, Ideal Text, the
 walk, consent) stay above it, so no locked screen changes. It is temporary:
 it comes off when the servers are back. Frontend
 [#938](https://github.com/wilplus/frontend-cursor/pull/938). No migration.
+
+**N115 · No backfill for the Takes without a dark frame, and 0489 merged
+without the outside review (founder, the Claude Code chat, 22 October 2026:
+"no back fill bro"; then "no outside review").** From #1207 (N86, 20 October,
+~19:20 CEST) until 0489 ([#1262](https://github.com/wilplus/backend-cursor/pull/1262), `the_shadow_writer_accepts_frame_v7.sql`)
+the database refused every Take's dark frame, so those Takes have no frame,
+no random draw, no paragraph map and no willfidence read. They are not
+backfilled: a Take gets its frame when its Ideal Text is built again (opened
+as the speaker's current Take, or baked again), and the others stay without
+one, so no tagging call is made for them. 0489 merged on green checks without
+the GPT or Grok review CLAUDE.md asks of a new migration; the waiver was for
+0489. No migration in this entry.
