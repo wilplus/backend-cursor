@@ -1965,13 +1965,16 @@ never name a different project.
 O4  At most one open request per project: a second key returns the open one.
 O5  Cancelling works while pending and keeps the row as `cancelled`; a
 confirmed request cannot be cancelled.
-O6  Browser roles can neither call the functions nor read the table.","O1 -> test_owner_request_is_pending_and_due_in_seven_days
+O6  Browser roles can neither call the functions nor read the table.
+O7  With arc_id a UUID, as in production, my request is still pending and
+my project's erasure graph still holds the Take found by its arc.","O1 -> test_owner_request_is_pending_and_due_in_seven_days
 O2 -> test_someone_elses_project_is_not_found
 O3 -> test_a_double_tap_is_one_request
 O4 -> test_a_project_has_at_most_one_open_request
 O5 -> test_cancelling_keeps_the_row
 test_a_confirmed_request_cannot_be_cancelled
-O6 -> test_browser_roles_are_refused","Founder 2026-09-25, decisions log N8 (0364): Delete is a request an operator confirms within 7 days. Runs request_/cancel_project_deletion_v1 on the released rehearsal lane."
+O6 -> test_browser_roles_are_refused
+O7 -> TestProductionArcIsAUuid::test_my_request_and_my_projects_graph_work","Founder 2026-09-25, decisions log N8 (0364): Delete is a request an operator confirms within 7 days. O7: founder 2026-10-20 (0489), both raised ""operator does not exist: uuid = text"" in production, whose arc_id is a UUID; this lane's narrow copy declares it TEXT. Runs request_/cancel_project_deletion_v1 on the released rehearsal lane."
 tests/test_project_ownership.py,Story,"As a guest speaker, I want only my own guest token to open my projects, and none once the account is claimed, so that nobody else can open my work.","O1  The token issued to a guest opens that guest's own unclaimed principal.
 O2  The same token is refused once the principal is claimed, and against
 another guest's secret.","O1 -> test_my_own_guest_token_opens_my_projects
