@@ -3136,7 +3136,9 @@ it comes off when the servers are back. Frontend
 Railway's deploys still paused, the founder changed the words ("please change
 it to: there is a high upstream traffic - please visit us tomorrow!"): the bar
 now reads "There is a high upstream traffic - please visit us tomorrow!".
-Frontend [#939](https://github.com/wilplus/frontend-cursor/pull/939). No migration.
+Frontend [#939](https://github.com/wilplus/frontend-cursor/pull/939). The same
+afternoon, with the rotated keys deployed, the founder took the bar off ("take
+off the label cause all got deployed now!"). No migration.
 
 **N115 · No backfill for the Takes without a dark frame, and 0489 merged
 without the outside review (founder, the Claude Code chat, 22 October 2026:
