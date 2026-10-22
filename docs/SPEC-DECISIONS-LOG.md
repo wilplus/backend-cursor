@@ -3124,14 +3124,24 @@ moments these are with a flag, never the score. A voice under the floor is
 unchanged: no helper words. No new words on screen. The rules: flow page C3,
 C5, H1 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). No migration.
 
-**N114 · No backfill for the Takes without a dark frame, and 0489 merges
+**N114 · While the servers are down, every page says so (founder, the Claude
+Code chat, 22 October 2026, during Railway's security incident: "show a
+banner on the top of the site like a one like supabase does; with servers are
+temporarily down, will be back soon!").** A slim amber bar at the top of
+every page reads "Servers are temporarily down, will be back soon!", in the
+founder's own words. The full-screen screens (recording, Ideal Text, the
+walk, consent) stay above it, so no locked screen changes. It is temporary:
+it comes off when the servers are back. Frontend
+[#938](https://github.com/wilplus/frontend-cursor/pull/938). No migration.
+
+**N115 · No backfill for the Takes without a dark frame, and 0489 merged
 without the outside review (founder, the Claude Code chat, 22 October 2026:
 "no back fill bro"; then "no outside review").** From #1207 (N86, 20 October,
-~19:20 CEST) until migration 0489 ([wilplus/backend-cursor#1263](https://github.com/wilplus/backend-cursor/pull/1263)) the
-database refused every Take's dark frame, so those Takes have no frame, no
-random draw, no paragraph map and no willfidence read. They are not
+~19:20 CEST) until 0489 ([#1262](https://github.com/wilplus/backend-cursor/pull/1262), `the_shadow_writer_accepts_frame_v7.sql`)
+the database refused every Take's dark frame, so those Takes have no frame,
+no random draw, no paragraph map and no willfidence read. They are not
 backfilled: a Take gets its frame when its Ideal Text is built again (opened
 as the speaker's current Take, or baked again), and the others stay without
-one, so no tagging call is made for them. 0489 merges on green checks without
-the GPT or Grok review CLAUDE.md asks of a new migration; the waiver is for
+one, so no tagging call is made for them. 0489 merged on green checks without
+the GPT or Grok review CLAUDE.md asks of a new migration; the waiver was for
 0489. No migration in this entry.

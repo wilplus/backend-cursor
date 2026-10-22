@@ -16,8 +16,9 @@ PROVES   O1 -> test_the_frame_the_code_builds_is_stored_and_read_back
          O3 -> test_re_applying_the_writer_keeps_it_accepting_the_frame
          O4 -> test_only_the_service_key_may_call_the_writer
 WHY      0431/0441, ledger N20: after #893 every shadow write was refused and
-         only logged. Released lane; every write is rolled back. Other suites
-         import _migration_body, _seed_take and _write from here.
+         only logged; 0489: again after #1207 (N86, frame v7). Released lane;
+         every write is rolled back. Other suites import _migration_body,
+         _seed_take and _write from here.
 """
 from __future__ import annotations
 
@@ -43,10 +44,11 @@ pytestmark = pytest.mark.skipif(
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 # The writer as the code needs it today: 0431, then 0441 (V4 B1.1, the pick
-# log), applied in manifest order.
+# log), then 0489 (frame v7, N86), applied in manifest order.
 MIGRATIONS = (
     ROOT / "migrations" / "the_shadow_writer_accepts_the_frame_the_code_builds.sql",
     ROOT / "migrations" / "the_shadow_writer_keeps_the_pick_log.sql",
+    ROOT / "migrations" / "the_shadow_writer_accepts_frame_v7.sql",
 )
 CALL = ("SELECT public.record_take_feedback_policy_v3_shadow_v3("
         "%s, %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s, %s, %s, %s)")
@@ -192,6 +194,7 @@ def test_an_older_label_or_detector_is_refused(cur):
     frame = seed["frame"]
     older = [{**frame, "frame_schema_version": "take-feedback-policy-v3-frame-v3"},
              {**frame, "frame_schema_version": "take-feedback-policy-v3-frame-v4"},
+             {**frame, "frame_schema_version": "take-feedback-policy-v3-frame-v6"},
              {**frame, "implementation_versions": {
                  **frame["implementation_versions"],
                  "confidence_detector_version": "voice-confidence-universal-v2"}}]
