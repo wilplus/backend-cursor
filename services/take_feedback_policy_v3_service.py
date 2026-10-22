@@ -85,6 +85,11 @@ def _block_presentation(block: dict, block_id: str) -> dict:
         presentation["level_key"] = block["level_key"]
     if block.get("exercise_kind"):
         presentation["exercise_kind"] = block["exercise_kind"]
+    if block.get("helper_words_prompt"):
+        # The voice reached the floor (N113): the walk offers the moment's
+        # helper words, also after its Clearer version. A flag, never the
+        # score.
+        presentation["helper_words_prompt"] = True
     return presentation
 
 

@@ -2457,11 +2457,15 @@ passes the gate; a weak fallback opens the voice exercise instead, and
 only for a voice under the floor: a voice that cleared it is praised.
 O5  A shown moment whose own words hedge opens on a Clearer version with
 its hedges left out, nothing added, even when its voice cleared the
-floor; a hedge's words that are not a hedge where they stand stay.","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
+floor; a hedge's words that are not a hedge where they stand stay.
+O6  A shown moment whose voice reached the floor offers its helper words,
+praised or corrected with its Clearer version; a voice under the
+floor does not (N113).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O4 -> test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate
-O5 -> test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take"")."
+O5 -> test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version
+O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording"")."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name

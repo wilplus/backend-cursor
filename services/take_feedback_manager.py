@@ -419,6 +419,10 @@ CLIENT_READ_ROW_FIELDS = frozenset({
     # bubble with "This was your most confident moment." A flag, never the
     # score.
     "highest_moment",
+    # A shown moment whose voice reached the floor (founder 2026-10-22,
+    # N113): the walk offers its helper words, after the praise or after
+    # its Clearer version. A flag, never the score.
+    "helper_words_prompt",
 })
 UNRENDERED_ROW_FIELDS: frozenset[str] = frozenset()
 CLIENT_ROW_FIELDS = CLIENT_READ_ROW_FIELDS | UNRENDERED_ROW_FIELDS
