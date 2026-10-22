@@ -35,10 +35,14 @@ config = Config()
 logger = logging.getLogger(__name__)
 
 
-#: v4 (founder 2026-10-20): each shown moment is praised or corrected by its
-#: own willfidence; `green_soft` is gone and `highest_moment` is new.
-POLICY_VERSION = "take-feedback-policy-v3-universal-dark-v4"
+#: The key every V4 table holds in a CHECK and joins to the stored frame on
+#: (migrations 0447-0457), and the label the shadow writer accepts. A new
+#: label needs a migration for each of them; a change to the frame's shape is
+#: a FRAME_SCHEMA_VERSION bump and a writer migration (0489).
+POLICY_VERSION = "take-feedback-policy-v3-universal-dark-v3"
 SERVICE_POLICY_VERSION = "take-feedback-policy-v3-serving-v1"
+#: v7 (founder 2026-10-20, N86): each shown moment is praised or corrected;
+#: `green_soft` is gone and `highest_moment` is new.
 FRAME_SCHEMA_VERSION = "take-feedback-policy-v3-frame-v7"
 #: V4 Phase 1, B1.1 (pick logging). The frame carries every candidate with its
 #: chance of being picked, the Take's seed and the policy version, so V4 can be

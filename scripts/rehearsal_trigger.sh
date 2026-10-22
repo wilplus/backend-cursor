@@ -50,6 +50,11 @@ TRIGGER_PATHS=(
   'services/take_rebuild.py'
   'services/slide_helper_words.py'
   'services/ideal_text_parts.py'
+  # The dark frame's builder: its policy label and frame schema are what the
+  # shadow writer and every V4 table check. #1207 changed both with no
+  # migration, and every frame was refused from 2026-10-20 with CI green
+  # (0489).
+  'services/take_feedback_policy_v3.py'
 )
 
 if ! git rev-parse --verify -q origin/main >/dev/null; then
