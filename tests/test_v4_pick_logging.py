@@ -7,15 +7,24 @@ OUTCOME
       no pick log or pick chance.
   O2  The dark frame logs every candidate once, with its chance (1.0 for the
       block's pick, 0.0 for the rest), the Take's seed and the policy version.
+  O3  The database writer on main accepts the labels the code builds, and
+      V4's frame rule names every policy a stored frame carries.
 PROVES   O1 -> test_the_serving_frame_carries_no_pick_chance
          O2 -> test_the_dark_frame_logs_every_pick_with_seed_and_policy
-WHY      V4 Phase 1, B1.1 (build plan D-ML-6); AC-9.
+         O3 -> test_the_database_accepts_the_labels_the_code_builds
+WHY      V4 Phase 1, B1.1 (build plan D-ML-6); AC-9. O3: #1207 moved both
+         labels with no migration, and for two days no Take kept its frame;
+         the rehearsal tier, which would have caught it, runs only when a
+         migration changes (0489).
 """
 from __future__ import annotations
 
 import json
+import pathlib
 
 from services.take_feedback_policy_v3 import (
+    DARK_POLICY_VERSIONS,
+    FRAME_SCHEMA_VERSION,
     PICK_SEED_VERSION,
     POLICY_VERSION,
     build_service_candidate_frame,
@@ -80,3 +89,21 @@ def test_the_dark_frame_logs_every_pick_with_seed_and_policy():
         picked = [i for i in ids if chances[i] == 1.0]
         assert len(picked) == 1, block["block_id"]
         assert all(chances[i] == 0.0 for i in ids if i not in picked)
+
+
+def _last_definition(function: str) -> str:
+    """The text of the last migration in the manifest that defines it."""
+    migrations = pathlib.Path(__file__).resolve().parents[1] / "migrations"
+    files = [line.split("\t")[1] for line in
+             (migrations / "manifest.txt").read_text().splitlines() if "\t" in line]
+    texts = [(migrations / f).read_text() for f in files]
+    return [t for t in texts if f"FUNCTION public.{function}(" in t][-1]
+
+
+def test_the_database_accepts_the_labels_the_code_builds():
+    writer = _last_definition("record_take_feedback_policy_v3_shadow_v3")
+    assert f"'{POLICY_VERSION}'" in writer
+    assert f"'{FRAME_SCHEMA_VERSION}'" in writer
+    assert DARK_POLICY_VERSIONS[0] == POLICY_VERSION
+    rule = _last_definition("v4_frame_policy_v1")
+    assert all(f"'{policy}'" in rule for policy in DARK_POLICY_VERSIONS)

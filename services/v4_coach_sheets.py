@@ -54,7 +54,6 @@ from services import willfidence as wf
 
 _log = logging.getLogger(__name__)
 
-POLICY_VERSION = "take-feedback-policy-v3-universal-dark-v3"
 PICKER_VERSION = "v4-picker-v1"
 PAIR_RULE = "surer-pair-v1-lexical"
 #: H7, M9: about ten blocks a week each, for each sheet.
@@ -137,7 +136,10 @@ def candidate_blocks(frame_rows: Iterable[dict], picks_by_take: dict[str, list[d
             pick = picks.get(str(block.get("block_id")))
             if pick is None or len(block.get("snippet_ids") or []) < 2:
                 continue
+            # The sheet names the frame V4 picked on (the Take's own,
+            # migration 0489), not the newest frame the Take holds.
             out.append({"take_session_id": take, "block": block,
+                        "policy_version": pick.get("policy_version"),
                         "sureness": float(pick.get("sureness") or 0.0),
                         "v4": pick.get("v4_snippet_id"), "v3": pick.get("v3_snippet_id")})
     out.sort(key=lambda c: (c["sureness"], c["take_session_id"], str(c["block"].get("block_id"))))
@@ -199,7 +201,7 @@ def _write_pick(database: Any, *, rater_id: str, role: str, week: str, candidate
         row = database.insert_v4_pick_sheet({
             "rater_id": rater_id, "rater_role": role,
             "take_session_id": candidate["take_session_id"],
-            "policy_version": POLICY_VERSION, "picker_version": PICKER_VERSION,
+            "policy_version": candidate["policy_version"], "picker_version": PICKER_VERSION,
             "block_id": str(candidate["block"].get("block_id")), "clip_ids": chosen,
             "v4_snippet_id": candidate["v4"] if candidate["v4"] in chosen else None,
             "v3_snippet_id": candidate["v3"] if candidate["v3"] in chosen else None,
@@ -218,6 +220,7 @@ def _write_pick(database: Any, *, rater_id: str, role: str, week: str, candidate
 
 def _repick_candidate(due: dict) -> dict:
     return {"take_session_id": str(due["take_session_id"]),
+            "policy_version": due.get("policy_version"),
             "block": {"block_id": due["block_id"], "snippet_ids": due.get("clip_ids") or []},
             "v4": due.get("v4_snippet_id"), "v3": due.get("v3_snippet_id")}
 

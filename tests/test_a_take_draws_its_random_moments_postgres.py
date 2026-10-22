@@ -41,8 +41,10 @@ def _body(path: pathlib.Path) -> str:
 
 
 def _apply(cur):
-    cur.execute(base._migration_body())
+    # 0447, then the writer's chain, which ends in 0489: the draw reads the
+    # Take's own frame.
     cur.execute(_body(MIGRATION))
+    cur.execute(base._migration_body())
 
 
 def _stored_take(cur):

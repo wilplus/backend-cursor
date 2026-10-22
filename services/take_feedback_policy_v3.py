@@ -37,9 +37,16 @@ logger = logging.getLogger(__name__)
 
 #: v4 (founder 2026-10-20): each shown moment is praised or corrected by its
 #: own willfidence; `green_soft` is gone and `highest_moment` is new.
+#: A new label here or in FRAME_SCHEMA_VERSION needs a migration: the
+#: database writer refuses any other (0489), and the V4 chain's CHECKs and
+#: `v4_frame_policy_v1` name every policy in DARK_POLICY_VERSIONS. #1207
+#: moved both labels with none, and no frame was stored for two days.
 POLICY_VERSION = "take-feedback-policy-v3-universal-dark-v4"
 SERVICE_POLICY_VERSION = "take-feedback-policy-v3-serving-v1"
 FRAME_SCHEMA_VERSION = "take-feedback-policy-v3-frame-v7"
+#: Every policy a stored dark frame carries, newest first: dark-v3 until N86
+#: (2026-10-20), dark-v4 since. A Take opened again since keeps both.
+DARK_POLICY_VERSIONS = (POLICY_VERSION, "take-feedback-policy-v3-universal-dark-v3")
 #: V4 Phase 1, B1.1 (pick logging). The frame carries every candidate with its
 #: chance of being picked, the Take's seed and the policy version, so V4 can be
 #: evaluated against what V3 would have done. Internal only (AC-9).

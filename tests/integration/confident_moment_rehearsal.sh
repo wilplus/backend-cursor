@@ -789,20 +789,47 @@ hard migrations/the_coach_s_diagnosis_comes_first.sql
 hard migrations/a_coach_may_change_their_answer.sql
 hard migrations/a_coach_may_change_their_answer.sql
 
+# 0447 (V4 B1.2, D-ML-7): a Take draws its random moments. One table tied to
+# the dark frame table by its foreign key, and the draw. Released lane only,
+# where the frames live (0431, 0441); after 0446, as in the manifest. Until
+# 0489 its suite applied it alone; the V4 chain is in the lane since 0489
+# widens it. Twice: apply/reapply idempotency. Its suite:
+# tests/test_a_take_draws_its_random_moments_postgres.py.
+if [ "$LANE" = "released" ]; then
+  hard migrations/a_take_draws_its_random_moments.sql
+  hard migrations/a_take_draws_its_random_moments.sql
+fi
+
 # 0448 (N12; founder decision tree 2026-10-08, Q3/Q4 YES): a speaker's skip
 # keeps an empty receipt. feedback_revisions gets its own guard (0327's
 # refusal plus 0379's governed purge wipe, owner rows only), and 0379's wipe
 # counts an owner row it could not reach. Both lanes carry 0327 and 0379, so
-# both, after 0446 (0447 is not applied by this recipe), as in the manifest.
+# both, after 0447 (released lane only), as in the manifest.
 # Twice: apply/reapply idempotency.
 # Its suite: tests/test_a_skip_keeps_an_empty_receipt_postgres.py.
 hard migrations/a_skip_keeps_an_empty_receipt.sql
 hard migrations/a_skip_keeps_an_empty_receipt.sql
+
+# 0449, 0451, 0452, 0453 (V4 B1.3, B1.5, B1.6, B1.8/B1.9): the willfidence
+# read, the moment-to-Paragraph map and the pick outcomes, V4's dark picks
+# and the coach's two blind sheets. Each a table or two keyed to the dark
+# frame, and its writer. Released lane only, after 0448, as in the manifest
+# (0450, the practise try's read, is applied by its own suite). 0489 widens
+# them, so they are in the lane. Twice: apply/reapply idempotency. Their
+# suites: tests/test_a_take_since_n86_keeps_its_dark_frame_postgres.py and
+# tests/test_v4_asks_coaches_two_blind_questions_postgres.py.
+if [ "$LANE" = "released" ]; then
+  for m in the_machine_reads_willfidence each_pick_learns_if_the_paragraph_rose \
+           the_v4_picker_runs_dark_beside_v3 v4_asks_coaches_two_blind_questions; do
+    hard migrations/$m.sql
+    hard migrations/$m.sql
+  done
+fi
+
 # 0454 (N55, N66.2): practice is part of the service where the active policy
 # requires it, and the blind check's written objection. Its functions read
 # 0361's consent choices and 0363's purge graph, which only the released lane
-# carries. Released lane only, after 0453 (0449 to 0453 are applied by their
-# own suites), as in the manifest. Twice: apply/reapply idempotency. Its
+# carries. Released lane only, after 0453, as in the manifest. Twice: apply/reapply idempotency. Its
 # suite: tests/test_practice_is_part_of_the_service_postgres.py.
 if [ "$LANE" = "released" ]; then
   hard migrations/practice_is_part_of_the_service.sql
@@ -832,9 +859,16 @@ fi
 
 # 0457 (post-merge review of 0451, 0452, 0453): the V4 dark writes keep their
 # word. It replaces two functions of 0451 and 0452 and adds triggers on
-# 0453's tables, which this recipe does not apply (their suites apply them),
-# so it is applied the same way, by its own suite, after them:
-# tests/test_the_v4_dark_writes_keep_their_word_postgres.py.
+# 0453's tables, all applied above. Released lane only; after 0456, as in
+# the manifest. Twice: apply/reapply idempotency. Its cases are in
+# tests/test_a_take_since_n86_keeps_its_dark_frame_postgres.py (the
+# outcomes and picks it re-issued) and
+# tests/test_v4_asks_coaches_two_blind_questions_postgres.py (a sheet is
+# answered once).
+if [ "$LANE" = "released" ]; then
+  hard migrations/the_v4_dark_writes_keep_their_word.sql
+  hard migrations/the_v4_dark_writes_keep_their_word.sql
+fi
 
 # 0458 (N68, D3): a new training wording retires the old one, in one call.
 # The guard on ml_consent_policies (0302, 0373) gets its one door and the
@@ -894,6 +928,19 @@ hard migrations/a_legacy_take_takes_its_owner_from_its_account.sql
 # tests/test_a_confidence_event_without_a_clip_is_given_up_postgres.py.
 hard migrations/a_confidence_event_without_a_clip_is_given_up.sql
 hard migrations/a_confidence_event_without_a_clip_is_given_up.sql
+
+# 0489 (#1207, N86): a Take since N86 keeps its dark frame, and V4 reads it.
+# Re-issues 0441's writer with the dark-v4 / frame-v7 labels, widens eight
+# CHECKs (0311's reconciliation log and 0447 to 0453's tables) and re-issues
+# the draw, the read, the map, the picks and the outcomes to read each
+# Take's own frame. Released lane only, like 0441; after 0487, as in the
+# manifest (0488 is not in this lane). Twice: apply/reapply idempotency.
+# Its suites: tests/test_a_take_since_n86_keeps_its_dark_frame_postgres.py
+# and tests/test_the_shadow_writer_accepts_the_frame_the_code_builds_postgres.py.
+if [ "$LANE" = "released" ]; then
+  hard migrations/a_take_since_n86_keeps_its_dark_frame.sql
+  hard migrations/a_take_since_n86_keeps_its_dark_frame.sql
+fi
 
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and

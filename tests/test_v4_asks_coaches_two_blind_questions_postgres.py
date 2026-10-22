@@ -64,12 +64,16 @@ def _pick(cur, **kw):
 
 def test_a_pick_sheet_is_answered_with_one_of_its_clips(cur):
     sheet = _pick(cur)
+    # An answer outside the clips, on a sheet not yet answered (0457 refuses
+    # any change to an answered one before the CHECK is read).
+    cur.execute("SAVEPOINT outside")
+    with pytest.raises(psycopg2.errors.CheckViolation):
+        cur.execute("UPDATE public.v4_moment_pick_sheets SET answer_snippet_id = 'zzz', "
+                    "answered_at = now() WHERE id = %s", (sheet["id"],))
+    cur.execute("ROLLBACK TO SAVEPOINT outside")
     cur.execute("UPDATE public.v4_moment_pick_sheets SET answer_snippet_id = 'c', "
                 "answered_at = now() WHERE id = %s RETURNING answer_snippet_id", (sheet["id"],))
     assert cur.fetchone()["answer_snippet_id"] == "c"
-    with pytest.raises(psycopg2.errors.CheckViolation):
-        cur.execute("UPDATE public.v4_moment_pick_sheets SET answer_snippet_id = 'zzz' "
-                    "WHERE id = %s", (sheet["id"],))
 
 
 def _can(cur, role: str, sql: str) -> bool:

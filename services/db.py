@@ -9829,13 +9829,25 @@ class DatabaseService:
         return self._rpc_row(result.data)
 
     def get_v4_dark_frame(self, take_session_id: str) -> Optional[dict]:
-        """The Take's stored universal-v3 dark frame (V4 reads it), or None."""
-        from services.take_feedback_policy_v3 import POLICY_VERSION
+        """The Take's stored dark frame V4 reads, or None: the one its random
+        draw was made from and, before the draw, its newest. The rule of
+        `v4_frame_policy_v1` (migration 0489): a Take drawn under dark-v3
+        and opened again since N86 keeps both frames, and its reads, picks
+        and outcomes hang off the first."""
+        from services.take_feedback_policy_v3 import DARK_POLICY_VERSIONS
+        take = str(take_session_id)
+        drawn = [row for row in (self.client.table("v4_random_moments")
+                                 .select("policy_version").eq("take_session_id", take)
+                                 .limit(1).execute()).data or []
+                 if isinstance(row, dict)]
+        policies = ([str(drawn[0].get("policy_version"))] if drawn
+                    else list(DARK_POLICY_VERSIONS))
         res = (self.client.table("take_feedback_policy_v3_shadow_frames")
-               .select("frame").eq("take_session_id", str(take_session_id))
-               .eq("policy_version", POLICY_VERSION).limit(1).execute())
-        rows = res.data or []
-        frame = rows[0].get("frame") if rows and isinstance(rows[0], dict) else None
+               .select("policy_version,frame").eq("take_session_id", take)
+               .in_("policy_version", policies).execute())
+        frames = {row.get("policy_version"): row.get("frame")
+                  for row in res.data or [] if isinstance(row, dict)}
+        frame = next((frames[p] for p in policies if p in frames), None)
         return frame if isinstance(frame, dict) else None
 
     def record_v4_willfidence_reads(self, take_session_id: str,
@@ -9913,7 +9925,7 @@ class DatabaseService:
     # ── V4's blind coach sheets (migration 0453, B1.8, B1.9) ──────────────
     def list_v4_picks(self, take_session_id: str) -> list[dict]:
         res = (self.client.table("v4_picks")
-               .select("block_id,sureness,v4_snippet_id,v3_snippet_id,fallback")
+               .select("block_id,policy_version,sureness,v4_snippet_id,v3_snippet_id,fallback")
                .eq("take_session_id", str(take_session_id)).execute())
         return list(res.data or [])
 

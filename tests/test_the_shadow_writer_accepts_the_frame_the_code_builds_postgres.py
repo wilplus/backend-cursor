@@ -16,7 +16,8 @@ PROVES   O1 -> test_the_frame_the_code_builds_is_stored_and_read_back
          O3 -> test_re_applying_the_writer_keeps_it_accepting_the_frame
          O4 -> test_only_the_service_key_may_call_the_writer
 WHY      0431/0441, ledger N20: after #893 every shadow write was refused and
-         only logged. Released lane; every write is rolled back. Other suites
+         only logged. 0489: after #1207 (N86) moved the labels, it happened
+         again. Released lane; every write is rolled back. Other suites
          import _migration_body, _seed_take and _write from here.
 """
 from __future__ import annotations
@@ -43,10 +44,12 @@ pytestmark = pytest.mark.skipif(
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 # The writer as the code needs it today: 0431, then 0441 (V4 B1.1, the pick
-# log), applied in manifest order.
+# log), then 0489 (N86's labels; it also widens the V4 chain, 0447 to 0457,
+# which the released lane carries), applied in manifest order.
 MIGRATIONS = (
     ROOT / "migrations" / "the_shadow_writer_accepts_the_frame_the_code_builds.sql",
     ROOT / "migrations" / "the_shadow_writer_keeps_the_pick_log.sql",
+    ROOT / "migrations" / "a_take_since_n86_keeps_its_dark_frame.sql",
 )
 CALL = ("SELECT public.record_take_feedback_policy_v3_shadow_v3("
         "%s, %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s, %s, %s, %s)")
@@ -68,7 +71,7 @@ def cur():
 
 
 def _migration_body() -> str:
-    """0431 then 0441 without their own BEGIN/COMMIT, to run inside a
+    """0431, 0441 and 0489 without their own BEGIN/COMMIT, to run inside a
     test's transaction."""
     return "\n".join(
         line for path in MIGRATIONS for line in path.read_text().splitlines()
@@ -91,22 +94,26 @@ def _piece(take_id, recording_id, snippet_id, index, slide, words, score):
     }
 
 
-def _seed_take(cur):
+def _seed_take(cur, take_index=2, after=None):
     """One spoken Take with five snippets on two slides, as production
-    stores them; returns what `_v3_shadow` passes to the writer."""
-    arc_id = f"n20-arc-{uuid.uuid4()}"
-    user_id = str(uuid.uuid4())
-    principal = str(uuid.uuid4())
+    stores them; returns what `_v3_shadow` passes to the writer. `after`:
+    the seed of the Take before, whose project and speaker this one shares."""
+    if after:
+        arc_id, user_id, principal = after["arc_id"], after["user_id"], after["principal"]
+    else:
+        arc_id = f"n20-arc-{uuid.uuid4()}"
+        user_id = str(uuid.uuid4())
+        principal = str(uuid.uuid4())
+        cur.execute("INSERT INTO public.owner_principals (id, user_id) "
+                    "VALUES (%s, %s)", (principal, user_id))
     recording = str(uuid.uuid4())
     take = str(uuid.uuid4())
-    cur.execute("INSERT INTO public.owner_principals (id, user_id) "
-                "VALUES (%s, %s)", (principal, user_id))
     cur.execute("INSERT INTO public.recordings (id) VALUES (%s)", (recording,))
     cur.execute(
         "INSERT INTO public.v2_sessions (id, user_id, owner_principal_id, "
         "arc_id, take_index, recording_kind, recording_1_id) "
-        "VALUES (%s, %s, %s, %s, 2, 'spoken', %s)",
-        (take, user_id, principal, arc_id, recording))
+        "VALUES (%s, %s, %s, %s, %s, 'spoken', %s)",
+        (take, user_id, principal, arc_id, take_index, recording))
     shape = [(0, 0, 25, -0.4), (1, 0, 25, 0.2), (2, 0, 25, 0.7),
              (3, 1, 35, -0.5), (4, 1, 35, -0.2)]
     pieces, snippets = [], []
@@ -149,7 +156,7 @@ def _seed_take(cur):
         suggestions={pieces[2]["snippet_id"]: {
             "trigger": "confident", "cue_keys": ["full_volume"]}},
         feedback_candidates=feedback,
-        take_index=2,
+        take_index=take_index,
         expected_recording_id=recording,
         served_text="x" * 5000,
     )
@@ -158,13 +165,14 @@ def _seed_take(cur):
     return {
         "arc_id": arc_id, "take": take, "recording": recording,
         "principal": principal, "user_id": user_id, "frame": frame,
+        "take_index": take_index, "snippets": snippets,
     }
 
 
 def _write(cur, seed, frame):
     cur.execute(CALL, (
         seed["arc_id"], seed["take"], seed["recording"], seed["principal"],
-        seed["user_id"], 2, POLICY_VERSION, psycopg2.extras.Json(frame),
+        seed["user_id"], seed["take_index"], POLICY_VERSION, psycopg2.extras.Json(frame),
         frame["frame_hash"]))
     return cur.fetchone()["record_take_feedback_policy_v3_shadow_v3"]
 
@@ -192,6 +200,7 @@ def test_an_older_label_or_detector_is_refused(cur):
     frame = seed["frame"]
     older = [{**frame, "frame_schema_version": "take-feedback-policy-v3-frame-v3"},
              {**frame, "frame_schema_version": "take-feedback-policy-v3-frame-v4"},
+             {**frame, "frame_schema_version": "take-feedback-policy-v3-frame-v6"},
              {**frame, "implementation_versions": {
                  **frame["implementation_versions"],
                  "confidence_detector_version": "voice-confidence-universal-v2"}}]
