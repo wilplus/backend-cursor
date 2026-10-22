@@ -26,6 +26,7 @@ import httpx
 
 from config import Config
 from services.db import db
+from services.secrets import supabase_key_headers
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -38,8 +39,7 @@ def _auth_url(user_id: str) -> str:
 
 
 def _auth_headers() -> dict:
-    key = config.SUPABASE_SERVICE_ROLE_KEY
-    return {"Authorization": f"Bearer {key}", "apikey": key}
+    return supabase_key_headers(config.SUPABASE_SERVICE_ROLE_KEY)
 
 
 def auth_user(user_id: str) -> Optional[dict]:

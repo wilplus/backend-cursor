@@ -20,6 +20,7 @@ import logging
 import httpx
 
 from config import Config
+from services.secrets import supabase_key_headers
 
 config = Config()
 logger = logging.getLogger(__name__)
@@ -40,10 +41,7 @@ def broadcast_analysis_state(session_id: str, state: str) -> None:
     try:
         httpx.post(
             f"{url}/realtime/v1/api/broadcast",
-            headers={
-                "apikey": key,
-                "Authorization": f"Bearer {key}",
-            },
+            headers=supabase_key_headers(key),
             json={
                 "messages": [
                     {

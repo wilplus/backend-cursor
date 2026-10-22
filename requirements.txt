@@ -4,7 +4,19 @@ gunicorn==21.2.0
 python-dotenv==1.0.0
 PyJWT==2.8.0
 cryptography>=41.0.0
-supabase==2.6.0
+# 2.16.0 is the first supabase-py that accepts Supabase's new secret keys
+# (sb_secret_…): 2.6.0 refused any key that isn't a JWT ("Invalid API key"),
+# so the leaked legacy service_role key could not be replaced (Railway
+# incident, 2026-10-22). The sub-clients are pinned to what the gate runs
+# green with: services/db_transport patches postgrest's session internals
+# (tests/test_db_transport_pool.py is the tripwire), and storage3 0.12.2 would
+# pin pydantic back to 2.11.7. Bump them together, never by resolver drift.
+supabase==2.16.0
+postgrest==1.1.1
+storage3==0.12.1
+realtime==2.5.3
+supafunc==0.10.2
+gotrue==2.11.4
 httpx==0.27.2
 openai==1.59.2
 sentry-sdk[flask]==2.19.0

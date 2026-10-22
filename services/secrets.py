@@ -267,3 +267,20 @@ def redact(value: Optional[str], *, keep: int = 4) -> str:
 def missing(names: Iterable[str]) -> list[str]:
     """Which of ``names`` resolve to nothing. For feature preflights."""
     return [n for n in names if not resolve(n)]
+
+
+def supabase_key_headers(key: Optional[str]) -> dict[str, str]:
+    """The headers that authenticate a call to Supabase with a service key.
+
+    Two key types reach us (Railway incident, 2026-10-22): the legacy
+    service_role key is a JWT and goes in ``apikey`` and as the Bearer token;
+    a new secret key (``sb_secret_…``) is not a JWT and goes in ``apikey``
+    only, which Supabase runs as service_role. Supabase refuses a non-JWT
+    Bearer unless it equals ``apikey`` (supabase/discussions/29260), so
+    leaving it out is the documented form, not a guess.
+    """
+    key = key or ""
+    headers = {"apikey": key}
+    if key.startswith("eyJ"):
+        headers["Authorization"] = f"Bearer {key}"
+    return headers
