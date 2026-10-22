@@ -3132,7 +3132,11 @@ every page reads "Servers are temporarily down, will be back soon!", in the
 founder's own words. The full-screen screens (recording, Ideal Text, the
 walk, consent) stay above it, so no locked screen changes. It is temporary:
 it comes off when the servers are back. Frontend
-[#938](https://github.com/wilplus/frontend-cursor/pull/938). No migration.
+[#938](https://github.com/wilplus/frontend-cursor/pull/938). Same day, with
+Railway's deploys still paused, the founder changed the words ("please change
+it to: there is a high upstream traffic - please visit us tomorrow!"): the bar
+now reads "There is a high upstream traffic - please visit us tomorrow!".
+Frontend [#939](https://github.com/wilplus/frontend-cursor/pull/939). No migration.
 
 **N115 · No backfill for the Takes without a dark frame, and 0489 merged
 without the outside review (founder, the Claude Code chat, 22 October 2026:
