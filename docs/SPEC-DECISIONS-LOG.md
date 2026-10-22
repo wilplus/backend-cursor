@@ -3123,3 +3123,13 @@ your helper words" on its paragraph, as after a praise. The server says which
 moments these are with a flag, never the score. A voice under the floor is
 unchanged: no helper words. No new words on screen. The rules: flow page C3,
 C5, H1 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). No migration.
+
+**N114 · While the servers are down, every page says so (founder, the Claude
+Code chat, 22 October 2026, during Railway's security incident: "show a
+banner on the top of the site like a one like supabase does; with servers are
+temporarily down, will be back soon!").** A slim amber bar at the top of
+every page reads "Servers are temporarily down, will be back soon!", in the
+founder's own words. The full-screen screens (recording, Ideal Text, the
+walk, consent) stay above it, so no locked screen changes. It is temporary:
+it comes off when the servers are back. Frontend
+[#938](https://github.com/wilplus/frontend-cursor/pull/938). No migration.
