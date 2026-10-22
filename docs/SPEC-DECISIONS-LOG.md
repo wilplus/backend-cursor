@@ -3108,3 +3108,18 @@ left out, nothing added; a hedge's words that are not a hedge where they
 stand ("I think about it", "this kind of problem") stay. It opens with C5's
 "Here is a slightly more polished option:", so no new words on screen. The
 rules: flow page C4, C5, H3 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). No migration.
+
+**N113 · A confident voice whose words are reworded still gets its helper
+words (founder, the Claude Code chat, 22 October 2026: "in the walk the
+helpers for the moments were not there"; "we landed on the right place but
+the helpers were missing"; then, asked where they go, "After the
+rewording").** Since N108 a shown moment whose voice reaches the floor is
+praised only when its words need no help, and since N112 a sentence that
+hedges always has its clearer version, so most strong voices were walked as
+corrections, and helper words came only after a praise: a Take could end with
+none. Now a shown moment whose voice reaches the floor and whose words get
+the Clearer version keeps the Clearer version and its practise, then "Choose
+your helper words" on its paragraph, as after a praise. The server says which
+moments these are with a flag, never the score. A voice under the floor is
+unchanged: no helper words. No new words on screen. The rules: flow page C3,
+C5, H1 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). No migration.
