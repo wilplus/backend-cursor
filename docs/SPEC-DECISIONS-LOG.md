@@ -3177,3 +3177,23 @@ and token patterns: no real key was found. The only key-shaped strings are
 Supabase's published demo key (the fake the CI uses) and test fixtures that
 check keys are scrubbed. Not checked: personal data, and whether each file of
 the legal pack is meant to be public. No migration in this entry.
+
+**N118 · Every Take shows its two best moments, one per paragraph (founder,
+the Claude Code chat, 23 October 2026: "it should be minimum 2; best two;
+highest willfidence moments of the take; even if there is low willfidence in
+general you choose two best"; "it doesnt have to be separate slide"; "don't
+show two moments on the same paragraph"; "if you extend the length of the
+paragraph you can actually spot more confident moment you can extend the
+paragraph"; then, asked, "Move the boundary", "S×W picks, voice names top",
+"Keep the skip", "Split into two").** The Take shows the two moments with the
+highest willfidence (S × W), however low, at most one per ~75-word block and
+no longer one per slide, so both can be on one long slide; clips with enough
+words still rank first. Of the two, the stronger voice is "your most confident
+moment", and each is still praised or corrected by its own voice (N108). When
+the two best clips share a block, the boundary between them moves so each
+gets a block of its own (40 to 120 words, never across a slide, never cutting
+a clip; a typed partition exception, contract 24a), and a Take of one block is
+split in two the same way when each clip has 5 words or more. A Take shows
+fewer than two only when it has fewer than two clips that can be played. A
+correction with nothing to offer is still skipped (N108). No new words on
+screen. The rules: flow page C2, H1 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), frontend [#944](https://github.com/wilplus/frontend-cursor/pull/944)). Not built yet. No migration.
