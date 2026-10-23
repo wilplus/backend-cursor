@@ -3324,7 +3324,7 @@ tag and the "just" open with B10's line like undermining words. Weak openers
 count with the fillers (3 or more per 100 words). One rewrite per sentence
 carries every rule, and removing any of them is a real fix. A deliberate repeat
 across sentences is never touched. No new words on screen. First in the build
-queue, before N118. The rule: flow page H3 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). Not built yet. No migration.
+queue, before N118. The rule: flow page H3 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). Built 2026-10-23; the flow page's §6 names the pull request. No migration.
 
 **N125 · The six questions before development, settled (founder, the Claude
 Code chat, 23 October 2026: "For the 6 questions use your recommendations",

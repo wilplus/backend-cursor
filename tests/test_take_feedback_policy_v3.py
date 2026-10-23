@@ -19,16 +19,20 @@ OUTCOME
   O6  A shown moment whose voice reached the floor offers its helper words,
       praised or corrected with its Clearer version; a voice under the
       floor does not (N113).
+  O7  A shown moment whose sentence restarts or asks for approval opens on
+      the Clearer version: with the undermining opener for an approval tag
+      or a playing-down "just", with the plain opener for a restart.
 PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O4 -> test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate
          O5 -> test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version
          O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version
+         O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version
 WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
          2026-10-18 ("words first, then voice"), 2026-10-21 (N108, "the
          voice decides"; N112, "There was no single rewrite in the take"), 2026-10-22 (N113, "After the
-         rewording").
+         rewording"), 2026-10-23 (N124, "Let's do 1-4").
 """
 from pathlib import Path
 
@@ -339,6 +343,54 @@ def test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate():
 
 
 _HEDGED = "I think maybe we could kind of start the pilot in two cities and see how it goes."
+
+
+def _one_said_frame(said):
+    """Three slides; the middle one's words are ``said`` and its voice
+    clears the floor; returns the frame and the rule rows."""
+    from services.take_feedback_manager import evidence_backed_rewrite_candidates
+    pieces, snippets, at = [], [], 0
+    for index, score in enumerate((0.9, 0.5, -0.6)):
+        text = " ".join(f"w{index}x{n}" for n in range(75 - 17 * (index == 1))) + "."
+        text = f"{said} {text}" if index == 1 else text
+        pieces.append({"snippet_id": f"s{index}", "take_session_id": "take-2",
+                       "slide_index": index, "start": at, "end": at + len(text),
+                       "text": text, "recording_id": "recording-1",
+                       "start_offset_ms": index * 5000, "duration_ms": 5000})
+        at += len(text) + 1
+        snippets.append({"id": f"s{index}", "session_id": "take-2", "recording_id": "recording-1",
+                         "start_offset_ms": index * 5000, "duration_ms": 5000,
+                         "transcript": said if index == 1 else None,
+                         "metrics": {"voice_confidence": {
+                             "version": "voice-confidence-universal-v3", "score": score}}})
+    served = " ".join(piece["text"] for piece in pieces)
+    rows = evidence_backed_rewrite_candidates(served, take_session_id="take-2", snippet_id="s0")
+    frame = build_shadow_frame(
+        take_document={"take_session_id": "take-2", "text": served, "pieces": pieces},
+        snippets=snippets, suggestions={}, feedback_candidates=rows,
+        take_index=2, expected_recording_id="recording-1", served_text=served)
+    return frame, rows
+
+
+def test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version():
+    """The founder's Take 4 (2026-10-23, N124): a restart, an ask for
+    approval and a playing-down "just", and no rule wrote a Clearer
+    version for any of them."""
+    for said, clearer, reason in (
+        ("I want to, I want you to know the plan works for every team.",
+         "I want you to know the plan works for every team.", None),
+        ("We need emotions, but not from the professional life, okay?",
+         "We need emotions, but not from the professional life.", "undermining"),
+        ("Startup is just a job to be done every day by all of us.",
+         "Startup is a job to be done every day by all of us.", "undermining"),
+    ):
+        frame, rows = _one_said_frame(said)
+        assert [(b["slide_index"], b["exercise_kind"]) for b in frame["blocks"]
+                if b["carries_exercise"]] == [(1, "clearer")], said
+        (chosen,) = frame["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"]
+        (row,) = [r for r in rows if r["id"] == chosen]
+        assert (row["quote"], row["proposed_text"], row.get("rewrite_reason")) == (
+            said, clearer, reason)
 
 
 def test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version():

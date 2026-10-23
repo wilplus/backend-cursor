@@ -2157,10 +2157,13 @@ tests/test_repeated_phrase_feedback.py,Story,"As a speaker who repeats a phrase 
 are offered back said once, using only my words.
 O2  Emphasis (""Thank you, thank you."") and a sentence repeated on purpose
 are left alone.
-O3  The repeat fix wins the rewrite lane over the weaker fallback.","O1 -> test_a_phrase_said_again_is_offered_once_in_the_speakers_words,
+O3  The repeat fix wins the rewrite lane over the weaker fallback.
+O4  A weak opener (""So"", ""Well,"") goes with the repeat (N124).","O1 -> test_a_phrase_said_again_is_offered_once_in_the_speakers_words,
 test_a_sentence_that_starts_over_becomes_the_finished_one
 O2 -> test_emphasis_is_not_a_repeat_to_fix
-O3 -> test_the_repeat_wins_the_rewrite_lane_over_the_fallback",WIL-26; founder 2026-10-19.
+O3 -> test_the_repeat_wins_the_rewrite_lane_over_the_fallback
+O4 -> test_a_phrase_said_again_is_offered_once_in_the_speakers_words,
+test_the_repeat_wins_the_rewrite_lane_over_the_fallback",WIL-26; founder 2026-10-19; 2026-10-23 (N124).
 tests/test_reread_fold.py,Story,"As a coach, I want a mid-take re-read to show as part of its take, not a separate item, so that I review one take as one piece of work.","O1  The coach queue row marks the parent take (has_reread), is
 pseudonymized, and carries no user_id and no intake context.
 O2  A read never competes as a take: only spoken takes count.
@@ -2219,7 +2222,7 @@ O2 -> test_the_rewrite_is_offered_again_once_the_words_change
 O3 -> test_same_take_or_late_declines_do_not_count
 test_a_frozen_selection_is_never_taken_back
 O4 -> test_an_unreadable_record_applies_nothing","Founder 2026-10-05, N48.2 Q3 A (PARTS 12.3, the Intent Ledger)."
-tests/test_rewrite_gate.py,Story,"As a speaker, I want a Clearer version offered only when my words really need help and the rewrite stays mine, so that good words are left alone and practice opens on my voice otherwise.","O1  Good words never get a rewrite; fillers, hedges, broken sentences,
+tests/test_rewrite_gate.py,Story,"As a speaker, I want a Clearer version offered only when my words need help, and whenever they do in the ways people really speak, so that I see a better way to say it and never a rewrite of words that were fine.","O1  Good words never get a rewrite; fillers, hedges, broken sentences,
 repeats and off-slide words count as needing help.
 O2  A rewrite opens the moment only if it sits in the moment's clip, is
 backed by evidence, really fixes the words, uses only my words and is
@@ -2229,12 +2232,29 @@ O4  Words that undermine me (an apology or an ask for permission, the
 idea played down, self-doubt) need help even once; the same sentence
 said without them, nothing added, is a real fix that opens the
 moment, and a playing-down phrase that would need rewriting makes no
-rule rewrite (N85).","O1 -> test_only_words_that_need_help_can_open_on_a_rewrite
+rule rewrite (N85).
+O5  A restart in one sentence keeps its last attempt; a sentence said
+again on purpose (""I will say it again. ..."") is never touched.
+O6  An approval tag at a sentence's end ("", okay?"", "", right?"",
+"", you know?"", "", yeah?"") goes, and the sentence ends on a full stop.
+O7  A playing-down ""just"" goes; ""just now"", ""just in time"",
+""just before"" and ""just as"" stay.
+O8  A weak opener (""So,"", ""And so,"", ""So yeah,"", ""Well,"") goes with any
+other rewrite of its sentence; on its own it needs 3 or more per 100
+words; ""so that"" and ""so far"" stay.
+O9  On the founder's Take 4, the sentences a coach would reword get a
+Clearer version, each only taking words out and each passing the
+gate.","O1 -> test_only_words_that_need_help_can_open_on_a_rewrite
 O2 -> test_a_rewrite_that_fixes_the_words_and_keeps_them_theirs_opens_the_moment,
 test_a_rewrite_that_fails_any_check_falls_back_to_the_voice_exercise
 O3 -> test_a_mended_sentence_counts_as_the_fix
 O4 -> test_only_words_that_need_help_can_open_on_a_rewrite,
-test_undermining_words_said_with_conviction_open_the_moment","Founder 2026-10-18: ""words first, then voice""."
+test_undermining_words_said_with_conviction_open_the_moment
+O5 -> test_a_restart_keeps_its_last_attempt_and_a_deliberate_repeat_stays
+O6 -> test_an_approval_tag_goes_and_the_sentence_ends_on_a_full_stop
+O7 -> test_a_playing_down_just_goes_and_a_just_of_time_stays
+O8 -> test_a_weak_opener_goes_with_its_sentence_and_alone_only_when_frequent
+O9 -> test_the_founders_take_4_gets_its_clearer_versions","Founder 2026-10-18: ""words first, then voice""; 2026-10-23 (N124, ""Let's do 1-4"")."
 tests/test_rings_postgres.py,Story,"As the founder, I want features switched on per person by ring in the database, with a one-way kill and change history that cannot be edited, so that rollouts are safe and auditable.","O1  A person at or above the feature's ring has it; below does not.
 O2  An ordinary kill turns it off and the unkill turns it back on.
 O3  The Python preview (services/rings.rule_reaches) agrees with the
@@ -2466,12 +2486,16 @@ its hedges left out, nothing added, even when its voice cleared the
 floor; a hedge's words that are not a hedge where they stand stay.
 O6  A shown moment whose voice reached the floor offers its helper words,
 praised or corrected with its Clearer version; a voice under the
-floor does not (N113).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
+floor does not (N113).
+O7  A shown moment whose sentence restarts or asks for approval opens on
+the Clearer version: with the undermining opener for an approval tag
+or a playing-down ""just"", with the plain opener for a restart.","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O4 -> test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate
 O5 -> test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version
-O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording"")."
+O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version
+O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4"")."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name
