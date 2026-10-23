@@ -3283,3 +3283,25 @@ account (`GET /v2/user/profile` `first_name`), and the AI clip names its
 screen. The rules: flow page B5, C2, H1, K and the AI voice page's amendment
 (frontend [#947](https://github.com/wilplus/frontend-cursor/pull/947)). Not
 built yet; built with N120. No migration expected.
+
+**N123 · The asks and the walk's lines are said fresh, from their signed
+meaning (founder, the Claude Code chat, 23 October 2026: "please do not make
+the asks fixed all the time, please make them fairly smart like there should
+be some flexibility"; asked which, "both").** Each ask after the Take (E1, E2,
+the CEO panel's included) and each of the walk's own lines (the AI clip's
+opener, tip and closer, the Clearer version's opener and question, Line A, the
+not-yet and move-on lines, Line B and "Does this sound confident to you?")
+keeps its signed line as its anchor; Will says it fresh for this speaker and
+this Take (their name, their talk, how the Take went, what was said before),
+one or two short sentences, never the same wording twice in a row. A check
+keeps it only when it still means the signed line, carries no number or score,
+keeps the speaker's own words and quoted phrase, and stays short; otherwise
+the signed line shows. The founder signs the meaning and these guardrails once,
+which is rule 4's OK for the wordings that pass them. The walk's lines are
+written once per Take while it is processed, under its processing
+authorization, so the lens and the chat agree and nothing waits. Never varied:
+buttons and tap answers, the praise lines (N122), consent and sharing words,
+the legal lines, the AI clip's label, "We couldn't hear that clearly. Try
+again.", the safety reply. This widens N86's light touch on Will's question.
+The rules: flow page K, E1, E2 and the AI voice page's amendment (frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). Not built yet. No migration expected.
