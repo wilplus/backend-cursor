@@ -13,6 +13,7 @@ OUTCOME
   O4  A corrected moment opens on a Clearer version only when the rewrite
       passes the gate; a weak fallback opens the voice exercise instead, and
       only for a voice under the floor: a voice that cleared it is praised.
+      Hesitations only its transcript heard never open one (N121).
   O5  A shown moment whose own words hedge opens on a Clearer version with
       its hedges left out, nothing added, even when its voice cleared the
       floor; a hedge's words that are not a hedge where they stand stay.
@@ -22,6 +23,8 @@ OUTCOME
   O7  A shown moment whose sentence restarts or asks for approval opens on
       the Clearer version: with the undermining opener for an approval tag
       or a playing-down "just", with the plain opener for a restart.
+  O8  In a shown block the moment is its highest-willfidence clip that can
+      be served; a block already frozen keeps its clip.
 PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
@@ -29,10 +32,12 @@ PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O5 -> test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version
          O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version
          O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version
+         O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen
 WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
          2026-10-18 ("words first, then voice"), 2026-10-21 (N108, "the
          voice decides"; N112, "There was no single rewrite in the take"), 2026-10-22 (N113, "After the
-         rewording"), 2026-10-23 (N124, "Let's do 1-4").
+         rewording"), 2026-10-23 (N124, "Let's do 1-4"; N118 and N122, "S×W
+         picks, voice names top").
 """
 from pathlib import Path
 
@@ -289,13 +294,17 @@ def test_a_whole_take_is_partitioned_read_marked_noted_and_covered():
 _UMS = " ".join(["um we think it matters"] * 3 + ["w"] * 60)
 
 
-def _practise_frame(rewrite, scores=(0.9, -0.2, -0.6)):
-    """Three slides: the best is praised; the second's own words carry
-    fillers, so it is corrected and may open on a clearer version when the
-    rewrite passes (founder 2026-10-20)."""
+_SHOWN_HEDGED = "So I think we kind of maybe matter a lot to us here"
+
+
+def _practise_frame(rewrite, scores=(0.9, -0.2, -0.6), shown=_SHOWN_HEDGED):
+    """Three slides: the best is praised; the second's words on screen
+    (``shown``) hedge, and its own transcript is full of ums, so it is
+    corrected and may open on a clearer version when the rewrite passes
+    (founder 2026-10-20; N121: the words on screen decide)."""
     pieces, snippets, at = [], [], 0
     for index, score in enumerate(scores):
-        text = " ".join(f"w{index}x{n}" for n in range(75))
+        text = shown if index == 1 else " ".join(f"w{index}x{n}" for n in range(75))
         pieces.append({"snippet_id": f"s{index}", "take_session_id": "take-2",
                        "slide_index": index, "start": at, "end": at + len(text),
                        "text": text, "recording_id": "recording-1",
@@ -309,8 +318,8 @@ def _practise_frame(rewrite, scores=(0.9, -0.2, -0.6)):
     start = pieces[1]["start"] + 10
     note = {"id": "r-clip", "feedback_family": "rewrite_clarity", "snippet_id": "s1",
             "take_session_id": "take-2", "span": {"start": start, "end": start + 40},
-            "kind": "replace", "quote": "So um we think, uh, it matters a lot to us here",
-            "proposed_text": "We think it matters a lot to us here.",
+            "kind": "replace", "quote": _SHOWN_HEDGED,
+            "proposed_text": "We matter a lot to us here.",
             "model_version": "rewrite-model-v1",
             "_manager_evidence": {"specificity": 5, "fallback": False}, **rewrite}
     text = " ".join(piece["text"] for piece in pieces)
@@ -341,6 +350,14 @@ def test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate():
     assert [b["slide_index"] for b in strong["blocks"] if b["carries_exercise"]] == []
     assert sorted(b["slide_index"] for b in strong["blocks"] if b["most_confident"]) == [0, 1]
 
+    # Ums only the transcript heard (N121): the words on screen are clean,
+    # so a "rewrite" of them fixes nothing and the voice exercise opens.
+    clean = "We cut onboarding from three weeks to four days for all"
+    unseen = _practise_frame({"quote": clean, "proposed_text": clean + "."}, shown=clean)
+    assert [(b["slide_index"], b["exercise_kind"]) for b in unseen["blocks"]
+            if b["carries_exercise"]] == [(1, "voice")]
+    assert unseen["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"] == []
+
 
 _HEDGED = "I think maybe we could kind of start the pilot in two cities and see how it goes."
 
@@ -351,8 +368,7 @@ def _one_said_frame(said):
     from services.take_feedback_manager import evidence_backed_rewrite_candidates
     pieces, snippets, at = [], [], 0
     for index, score in enumerate((0.9, 0.5, -0.6)):
-        text = " ".join(f"w{index}x{n}" for n in range(75 - 17 * (index == 1))) + "."
-        text = f"{said} {text}" if index == 1 else text
+        text = said if index == 1 else " ".join(f"w{index}x{n}" for n in range(75)) + "."
         pieces.append({"snippet_id": f"s{index}", "take_session_id": "take-2",
                        "slide_index": index, "start": at, "end": at + len(text),
                        "text": text, "recording_id": "recording-1",
@@ -393,6 +409,53 @@ def test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version():
             said, clearer, reason)
 
 
+def _two_clip_frame(**options):
+    """Slide 1's block holds two clips: the louder one hedges in its own
+    transcript, the softer one is clean, so the softer one's willfidence is
+    the higher. Slides 0 and 2 hold one clip each."""
+    clips = (("p0", 0, 75, 0.95, None), ("p1a", 1, 37, 0.9, _HEDGED * 2),
+             ("p1b", 1, 37, 0.6, None), ("p2", 2, 75, -0.8, None))
+    pieces, snippets, at = [], [], 0
+    for index, (sid, slide, words, score, transcript) in enumerate(clips):
+        text = " ".join(f"{sid}x{n}" for n in range(words)) + "."
+        pieces.append({"snippet_id": sid, "take_session_id": "take-2", "slide_index": slide,
+                       "start": at, "end": at + len(text), "text": text,
+                       "recording_id": "recording-1", "start_offset_ms": index * 5000,
+                       "duration_ms": 5000, "part_id": f"part-{slide}",
+                       "served_start": at, "served_end": at + len(text)})
+        at += len(text) + 1
+        snippets.append({"id": sid, "session_id": "take-2", "recording_id": "recording-1",
+                         "start_offset_ms": index * 5000, "duration_ms": 5000,
+                         "transcript": transcript,
+                         "metrics": {"voice_confidence": {
+                             "version": "voice-confidence-universal-v3", "score": score}}})
+    served = " ".join(piece["text"] for piece in pieces)
+    return build_shadow_frame(
+        take_document={"take_session_id": "take-2", "text": served, "pieces": pieces},
+        snippets=snippets, suggestions={}, feedback_candidates=[],
+        take_index=2, expected_recording_id="recording-1", served_text=served, **options)
+
+
+def test_a_shown_block_takes_its_best_clip_unless_frozen():
+    """Founder 2026-10-23 (N118, N122): the Take's two best moments by
+    willfidence; inside a block the louder clip used to win on its voice
+    alone."""
+    def slide_1(frame):
+        (block,) = [b for b in frame["blocks"] if b["slide_index"] == 1]
+        chosen = [r["candidate_id"] for r in frame["selected_confidence"]
+                  if r["block_id"] == block["block_id"]]
+        return block["selected_candidate_id"], chosen, block["highest_moment"] or block["carries_exercise"] or block["most_confident"]
+
+    softer = "relative-confidence:take-2:p1b"
+    assert slide_1(_two_clip_frame()) == (softer, [softer], True)
+    assert slide_1(_two_clip_frame(select_servable=True)) == (softer, [softer], True)
+    # A Take frozen with the louder clip keeps it.
+    louder = "relative-confidence:take-2:p1a"
+    frozen = _two_clip_frame(select_servable=True, frozen_candidate_ids={
+        louder, "relative-confidence:take-2:p0", "relative-confidence:take-2:p2"})
+    assert slide_1(frozen) == (louder, [louder], True)
+
+
 def test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version():
     """The founder's Take (2026-10-21, N112): both shown moments had strong
     voices and one hedged, and no rule wrote its clearer version, so it was
@@ -400,8 +463,7 @@ def test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version():
     from services.take_feedback_manager import evidence_backed_rewrite_candidates
     pieces, snippets, at = [], [], 0
     for index, score in enumerate((0.9, 0.5, -0.6)):
-        text = " ".join(f"w{index}x{n}" for n in range(75 - 17 * (index == 1))) + "."
-        text = f"{_HEDGED} {text}" if index == 1 else text
+        text = _HEDGED if index == 1 else " ".join(f"w{index}x{n}" for n in range(75)) + "."
         pieces.append({"snippet_id": f"s{index}", "take_session_id": "take-2",
                        "slide_index": index, "start": at, "end": at + len(text),
                        "text": text, "recording_id": "recording-1",

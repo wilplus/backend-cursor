@@ -1525,17 +1525,18 @@ re-apply as a no-op.","O1 -> test_permissions_rls_and_learning_boundaries_are_cl
 O2 -> test_the_candidate_set_writer_repairs_land_on_the_d4_body","Production 42702, 2026-09-21: the writer had never been called. O2 reads the function definition from the catalog; it does not call the writer with a bundle (that needs the full V3 inventory harness)."
 tests/test_mlc3_n1_source_pattern_postgres.py,Story,"As a speaker who asks for deletion, I want every practice-pattern row about me found under my identity, so that erasure misses nothing.","O1  The deletion list finds every row of each practice-pattern table (N1)
 under my identity, in the expected numbers.",O1 -> test_deletion_inventory_attributes_every_n1_row_to_acquisition_principal,Rehearsal database only; the N1 pattern feature is disabled.
-tests/test_moment_pick.py,Story,"As a speaker, I want each Take to show my two most confident moments and, for each, either praise or one thing to practise, decided by how my voice sounded, so that a moment that sounded confident is called confident and never asked to sound more confident.","O1  The two strongest voices are shown, at most one per slide (a clip
-with enough words before a short one); the strongest is marked, even
-when weaker words put its willfidence under another moment's.
-O2  A voice at the floor is praised, even when its words pull its
-willfidence under the floor; words that need help get the clearer
-version; the voice exercise only for a voice under the floor. Both
-strong: two praises. Both weak: two corrections.
-O3  When no sound was read, the words alone order the clips, and both
-shown moments are corrected.","O1 -> test_the_strongest_voices_are_shown_and_the_first_is_marked
-O2 -> test_a_voice_at_the_floor_is_praised_and_only_a_voice_under_it_practises
-O3 -> test_with_no_sound_read_the_words_order_the_clips_and_both_are_corrected","Founder 2026-10-21 (N108, ""the voice decides"", flow page C2, C4, H1): a moment that ""was a confident moment ... even more confident than the first one"" was told ""Say this one like your confident moment.""; founder lock 2026-10-12 section 6; founder 2026-10-17 and 2026-10-18."
+tests/test_moment_pick.py,Story,"As a speaker, I want each Take to show my two best moments by willfidence, from any slide, and the stronger voice of the two called my most confident, so that I always get my two best moments and a confident voice is never asked to sound confident.","O1  The two highest willfidence clips are shown, however low, one per
+block, two on one slide allowed; a clip with enough words comes
+before a short one; fewer than two only with fewer than two clips.
+O2  Of the two, the stronger voice is marked most confident, even when
+its willfidence is the lower.
+O3  The voice decides each: at the floor praised (the Clearer version
+when the words need help), under it corrected.
+O4  With no sound read the words order the clips, and both are
+corrected.","O1 -> test_the_two_best_by_willfidence_are_shown_from_any_slide
+O2 -> test_the_stronger_voice_of_the_two_is_the_most_confident
+O3 -> test_a_voice_at_the_floor_is_praised_and_only_a_voice_under_it_practises
+O4 -> test_with_no_sound_read_the_words_order_the_clips_and_both_are_corrected","Founder 2026-10-23 (N118 ""minimum 2, best two""; N122 ""S×W picks, voice names top""); 2026-10-21 (N108, ""the voice decides"")."
 tests/test_moment_suggestions.py,Story,"As a speaker, I want my Ideal Text read to carry no star or suggestion outside the gated changes lane and no scores, so that I see only words and the latest text.","O1  Whatever lane a stored moment suggestion came from (replace,
 emphasize, structure), the GET serves the moment with its anchor and
 playback identity but no star and no suggestion.
@@ -2244,7 +2245,9 @@ other rewrite of its sentence; on its own it needs 3 or more per 100
 words; ""so that"" and ""so far"" stay.
 O9  On the founder's Take 4, the sentences a coach would reword get a
 Clearer version, each only taking words out and each passing the
-gate.","O1 -> test_only_words_that_need_help_can_open_on_a_rewrite
+gate.
+O10 Hesitations the Ideal Text already removed never make the words need
+help, and a rewrite is a real fix only against the words on screen.","O1 -> test_only_words_that_need_help_can_open_on_a_rewrite
 O2 -> test_a_rewrite_that_fixes_the_words_and_keeps_them_theirs_opens_the_moment,
 test_a_rewrite_that_fails_any_check_falls_back_to_the_voice_exercise
 O3 -> test_a_mended_sentence_counts_as_the_fix
@@ -2254,7 +2257,8 @@ O5 -> test_a_restart_keeps_its_last_attempt_and_a_deliberate_repeat_stays
 O6 -> test_an_approval_tag_goes_and_the_sentence_ends_on_a_full_stop
 O7 -> test_a_playing_down_just_goes_and_a_just_of_time_stays
 O8 -> test_a_weak_opener_goes_with_its_sentence_and_alone_only_when_frequent
-O9 -> test_the_founders_take_4_gets_its_clearer_versions","Founder 2026-10-18: ""words first, then voice""; 2026-10-23 (N124, ""Let's do 1-4"")."
+O9 -> test_the_founders_take_4_gets_its_clearer_versions
+O10 -> test_ums_the_speaker_never_saw_do_not_count","Founder 2026-10-18: ""words first, then voice""; 2026-10-23 (N124, ""Let's do 1-4""; N121, ""There won't be any fillers cause they are already corrected"")."
 tests/test_rings_postgres.py,Story,"As the founder, I want features switched on per person by ring in the database, with a one-way kill and change history that cannot be edited, so that rollouts are safe and auditable.","O1  A person at or above the feature's ring has it; below does not.
 O2  An ordinary kill turns it off and the unkill turns it back on.
 O3  The Python preview (services/rings.rule_reaches) agrees with the
@@ -2481,6 +2485,7 @@ the bar is higher from Take 3.
 O4  A corrected moment opens on a Clearer version only when the rewrite
 passes the gate; a weak fallback opens the voice exercise instead, and
 only for a voice under the floor: a voice that cleared it is praised.
+Hesitations only its transcript heard never open one (N121).
 O5  A shown moment whose own words hedge opens on a Clearer version with
 its hedges left out, nothing added, even when its voice cleared the
 floor; a hedge's words that are not a hedge where they stand stay.
@@ -2489,13 +2494,16 @@ praised or corrected with its Clearer version; a voice under the
 floor does not (N113).
 O7  A shown moment whose sentence restarts or asks for approval opens on
 the Clearer version: with the undermining opener for an approval tag
-or a playing-down ""just"", with the plain opener for a restart.","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
+or a playing-down ""just"", with the plain opener for a restart.
+O8  In a shown block the moment is its highest-willfidence clip that can
+be served; a block already frozen keeps its clip.","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O4 -> test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate
 O5 -> test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version
 O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version
-O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4"")."
+O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version
+O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top"")."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name

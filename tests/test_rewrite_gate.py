@@ -27,6 +27,8 @@ OUTCOME
   O9  On the founder's Take 4, the sentences a coach would reword get a
       Clearer version, each only taking words out and each passing the
       gate.
+  O10 Hesitations the Ideal Text already removed never make the words need
+      help, and a rewrite is a real fix only against the words on screen.
 PROVES   O1 -> test_only_words_that_need_help_can_open_on_a_rewrite
          O2 -> test_a_rewrite_that_fixes_the_words_and_keeps_them_theirs_opens_the_moment,
                test_a_rewrite_that_fails_any_check_falls_back_to_the_voice_exercise
@@ -38,8 +40,10 @@ PROVES   O1 -> test_only_words_that_need_help_can_open_on_a_rewrite
          O7 -> test_a_playing_down_just_goes_and_a_just_of_time_stays
          O8 -> test_a_weak_opener_goes_with_its_sentence_and_alone_only_when_frequent
          O9 -> test_the_founders_take_4_gets_its_clearer_versions
+         O10 -> test_ums_the_speaker_never_saw_do_not_count
 WHY      Founder 2026-10-18: "words first, then voice"; 2026-10-23 (N124,
-         "Let's do 1-4").
+         "Let's do 1-4"; N121, "There won't be any fillers cause they are
+         already corrected").
 """
 from __future__ import annotations
 
@@ -80,7 +84,7 @@ def test_only_words_that_need_help_can_open_on_a_rewrite(text, fit, why):
 
 def test_a_rewrite_that_fixes_the_words_and_keeps_them_theirs_opens_the_moment():
     row, item = _rewrite()
-    assert rewrite_refusal(row, item, CLIP, SAID) is None
+    assert rewrite_refusal(row, item, CLIP) is None
 
 
 @pytest.mark.parametrize("change, reason", [
@@ -100,7 +104,7 @@ def test_a_rewrite_that_fixes_the_words_and_keeps_them_theirs_opens_the_moment()
 ])
 def test_a_rewrite_that_fails_any_check_falls_back_to_the_voice_exercise(change, reason):
     row, item = _rewrite(**change)
-    assert rewrite_refusal(row, item, CLIP, row["quote"]) == reason
+    assert rewrite_refusal(row, item, CLIP) == reason
 
 
 @pytest.mark.parametrize("quote, proposed", [
@@ -109,7 +113,7 @@ def test_a_rewrite_that_fails_any_check_falls_back_to_the_voice_exercise(change,
 ])
 def test_a_mended_sentence_counts_as_the_fix(quote, proposed):
     row, item = _rewrite(quote=quote, proposed=proposed)
-    assert rewrite_refusal(row, item, CLIP, quote) is None
+    assert rewrite_refusal(row, item, CLIP) is None
 
 
 def test_undermining_words_said_with_conviction_open_the_moment():
@@ -121,7 +125,7 @@ def test_undermining_words_said_with_conviction_open_the_moment():
     assert row["proposed_text"] == "We could match their price."
     item = {"candidate_id": row["id"], "document_span": {"start": 120, "end": 200},
             "evidence": {"fallback": False}}
-    assert rewrite_refusal(row, item, CLIP, row["quote"]) is None
+    assert rewrite_refusal(row, item, CLIP) is None
     # The reason reaches V3's input and the client's payload.
     from services.take_feedback_manager import exposure_snapshot, strip_internal_evidence
     assert [r.get("rewrite_reason") for r in exposure_snapshot([row])] == ["undermining"]
@@ -142,7 +146,7 @@ def _rule(said):
         item = {"candidate_id": row["id"], "document_span": {"start": 120, "end": 200},
                 "evidence": {"fallback": False}}
         out.append((row["quote"], row["proposed_text"], row.get("rewrite_reason"),
-                    rewrite_refusal(row, item, CLIP, row["quote"])))
+                    rewrite_refusal(row, item, CLIP)))
     return out
 
 
@@ -271,3 +275,15 @@ def test_the_founders_take_4_gets_its_clearer_versions():
     }
     # The deliberate repeat, the parallel "we need ...", "Just do your work"
     # and "just came" stay as they were said.
+
+
+def test_ums_the_speaker_never_saw_do_not_count():
+    from services.moment_pick import read
+    heard = "So um we cut uh onboarding from three weeks um to four days and uh nobody stayed late"
+    shown = "We cut onboarding from three weeks to four days and nobody stayed late"
+    moment = read(0.5, heard, {}, shown=shown)
+    assert moment["words_help"] is None
+    assert moment["w"] < 1.0            # the willfidence still hears them
+    # A rewrite that only takes out what was never on screen fixes nothing.
+    row, item = _rewrite(quote=shown + ".", proposed=shown + ".")
+    assert rewrite_refusal(row, item, CLIP) == "no_real_fix"
