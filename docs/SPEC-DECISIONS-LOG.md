@@ -3305,3 +3305,23 @@ the legal lines, the AI clip's label, "We couldn't hear that clearly. Try
 again.", the safety reply. This widens N86's light touch on Will's question.
 The rules: flow page K, E1, E2 and the AI voice page's amendment (frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). Not built yet. No migration expected.
+
+**N124 · The rewrite rules find what speech really does (founder, the Claude
+Code chat, 23 October 2026: "Let's do 1-4").** Found the same day: the frames
+since 20 October showed the Clearer version on 2 of 69 shown moments, and on
+the founder's own Take 4 the four rules (N85 undermining, N112 hedges, the
+broken sentence, the repeated phrase) wrote nothing, while a coach would have
+reworded three sentences. Four more signals, each written by a rule that only
+takes words out: a restart (a phrase begun and begun again at once in the same
+sentence keeps its last attempt); an approval tag at the end of a sentence
+(", okay?", ", right?", ", you know?", ", yeah?" go and the sentence ends on a
+full stop); a playing-down "just" ("is just a job", "if you could just", "I
+just wanted to"; never "just now", "just in time", "just before", "just as");
+a weak opener ("So,", "And so,", "So yeah,", "Well," at a sentence's start;
+never "so that", "so far"). A restart, an approval tag or a playing-down
+"just" makes the words need help on its own, as an undermining word does; the
+tag and the "just" open with B10's line like undermining words. Weak openers
+count with the fillers (3 or more per 100 words). One rewrite per sentence
+carries every rule, and removing any of them is a real fix. A deliberate repeat
+across sentences is never touched. No new words on screen. First in the build
+queue, before N118. The rule: flow page H3 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). Not built yet. No migration.
