@@ -3197,3 +3197,25 @@ split in two the same way when each clip has 5 words or more. A Take shows
 fewer than two only when it has fewer than two clips that can be played. A
 correction with nothing to offer is still skipped (N108). No new words on
 screen. The rules: flow page C2, H1 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), frontend [#944](https://github.com/wilplus/frontend-cursor/pull/944)). Not built yet. No migration.
+
+**N119 · Three moments to judge every walk: high, middle and low, three
+speakers, and the imported corpus may be played to speakers (founder, the
+Claude Code chat, 23 October 2026: "I am choosing that my audience is only me,
+but still I should be getting the judgements to do from the training corpus";
+"3 clips (high, middle, low willfidence) from 3 different speakers ... ok,
+let's plan that"; then, asked, "Yes, the basis covers it", "First in their
+level", "Show fewer").** Found: the walk's training clips were read only from
+the licensed corpus table (`corpus_clips`, 0410), which nothing fills, so with
+no community clips the queue was empty and the step was left out without a
+word; the clips the coaches judge are the imported training corpus, a
+different store. Now every walk asks for three moments, one the machine reads
+high, one in the middle and one low, each from a different speaker, never the
+speaker's own or one already judged, in a blind order, fixed per Take; a
+community clip takes its level's place first and the training corpus fills
+the rest. The training corpus is the imported clips the coaches judge, played
+to speakers anonymously, audio only, under the corpus basis (CO2, N58), and
+the licensed corpus; this amends CM1 A ("the training clips mixed into judging
+are the licensed corpus") and replaces N97's one moment per try. With fewer
+than three different speakers it shows fewer, never one speaker twice; an
+empty queue is logged. A speaker's answer on a training clip is never a label
+(L3). No new words on screen. The rules: flow page C8, G4 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), frontend [#945](https://github.com/wilplus/frontend-cursor/pull/945)). Not built yet; the build needs one migration (speakers' answers on imported clips).
