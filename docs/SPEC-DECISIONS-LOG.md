@@ -3151,3 +3151,17 @@ as the speaker's current Take, or baked again), and the others stay without
 one, so no tagging call is made for them. 0489 merged on green checks without
 the GPT or Grok review CLAUDE.md asks of a new migration; the waiver was for
 0489. No migration in this entry.
+
+**N116 · The screen stays on while a Take records (founder, the Claude Code
+chat, 23 October 2026, after a Take recorded on the phone reached the server
+empty: "this time the screen was getting locked automatically cause I spent
+more time on the same slide without clicking … we should keep the screen up
+when the recording is ON").** While the mic records a Take, the app holds the
+browser's screen wake lock, so the phone cannot lock itself and cut the mic
+off. It asks again when the page comes back into view and lets go when the
+Take ends. Nothing on screen changes and no words are added; a browser without
+a wake lock records as before. The same fix keeps the audio in one-second
+pieces as it is spoken, so a lock the app cannot prevent (the side button)
+loses only what came after it, and an empty recording is never sent: the
+speaker is asked to record again. Frontend
+[#942](https://github.com/wilplus/frontend-cursor/pull/942). No migration.
