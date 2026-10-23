@@ -16,7 +16,8 @@ from typing import Any, Iterable, Optional
 POLICY_VERSION = "take-feedback-manager-v2"
 EVIDENCE_SCHEMA_VERSION = "take-feedback-manager-evidence-v1"
 STRUCTURAL_REWRITE_RULE_VERSION = "structural-rewrite-v1"
-REPEATED_PHRASE_RULE_VERSION = "repeated-phrase-v1"
+REPEATED_PHRASE_RULE_VERSION = "repeated-phrase-v2"
+WEAK_OPENER_RULE_VERSION = "weak-opener-v1"
 FALLBACK_GENERATOR_RULE_VERSION = "take-feedback-fallback-generator-v1"
 FAMILIES = (
     "confident_voice",
@@ -48,6 +49,29 @@ _REPEATED_PHRASE_RE = re.compile(
     rf"((?:,?\s+\1)+)(?![\w’'-])",
     re.IGNORECASE | re.UNICODE,
 )
+# A weak opener at a sentence's start (founder 2026-10-23, N124): "So,", "And
+# so,", "So yeah,", "Well,". "So" without its comma only where a clause
+# starts after it; "so that" and "so far" are never one.
+_WEAK_OPENER_RE = re.compile(
+    r"(?:(?:and\s+)?so(?:,?\s+yeah)?\s*,\s*|well\s*,\s*"
+    r"|(?:and\s+)?so\s+(?=(?:i|i'm|i’m|we|you|they|he|she|it|it's|it’s|this|these|"
+    r"those|there|here|the|a|an|our|my|your|their|in|if|now|let's|let’s|what|"
+    r"where|why|how|when|today|basically)\b))",
+    re.IGNORECASE,
+)
+# A restart inside one sentence (N124): an attempt of two to
+# ``_MAX_ATTEMPT`` words begun again at once with its first two words or
+# more. Its other words are small ones, or said again in the new attempt;
+# anything else is two things said the same way ("we need vitality, we
+# need emotions") and stays.
+_MAX_ATTEMPT = 6
+_RESTART_SMALL = frozenset("""
+a an the to of in on at for with by from and or but so be is are was were am
+been have has had do does did can could will would shall should may might
+must just like really very i you we they he she it me us them my your our
+their its this that
+""".split())
+_HESITATIONS = frozenset("um umm uh uhm er erm ah hmm".split())
 
 
 # ── VERBAL ELIGIBILITY: ONE RULE, TWO READERS (N48.1, Wave 1, E1) ──────────
@@ -551,12 +575,12 @@ def evidence_backed_rewrite_candidates(
     sentence ("I don't want. A script ..."). It emits every match; the Manager
     ranks the complete rewrite family instead of accepting the first fit.
 
-    The second rule keeps a phrase the speaker said twice in a row once
-    (`_repeated_phrase_rewrites`). The third says a sentence that undermines
-    the speaker with conviction: its apologies, asks for permission,
-    self-doubt and softening hedges left out, never a word added
-    (`_undermining_rewrites`, founder 2026-10-20, N85); a sentence that only
-    hedges gets the same with its hedges left out (founder 2026-10-21, N112).
+    Every other rule only takes words out, and one rewrite per sentence
+    carries them all (`_sentence_rewrites`, founder 2026-10-23, N124): a
+    phrase said twice in a row kept once, a restart kept as its last
+    attempt, the speaker said with conviction (apologies, asks for
+    permission or approval, self-doubt, a playing-down "just" and softening
+    hedges left out, N85, N112, N124), and a weak opener.
     """
     text = served_text if isinstance(served_text, str) else ""
     take = str(take_session_id or "")
@@ -601,77 +625,188 @@ def evidence_backed_rewrite_candidates(
                 "lexical_words_invented": 0,
             },
         })
-    rows.extend(_repeated_phrase_rewrites(text, sentences, take=take, sid=sid))
-    rows.extend(_undermining_rewrites(sentences, take=take, sid=sid))
+    rows.extend(_sentence_rewrites(text, sentences, take=take, sid=sid))
     return rows
 
 
-def _undermining_rewrites(sentences: list, *, take: str, sid: str) -> list[dict]:
-    """A rewrite for each sentence that undermines the speaker and reads
-    whole without those words (``services.undermining``). The row says why
-    (``rewrite_reason``), so the walk names it with the signed line.
+#: The rule a sentence's rewrite is named after, strongest first: what it
+#: fixes decides its opener in the walk (an undermining one says why, N85)
+#: and its rank in the Manager.
+_SENTENCE_RULES = {
+    "undermining": ("undermining-rewrite", "undermining_words", 4),
+    "repeat": ("repeated-phrase-rewrite", "repeated_phrase", 4),
+    "hedge": ("hedge-rewrite", "hedge_words", 3),
+    "opener": ("weak-opener-rewrite", "weak_opener", 2),
+}
 
-    A sentence that does not undermine but hedges gets its hedges left out
-    (N112): the walk's own opener, so no ``rewrite_reason``, and ranked
-    under the undermining and repeat rules."""
+
+def _sentence_rewrites(text: str, sentences: list, *, take: str,
+                       sid: str) -> list[dict]:
+    """One rewrite for each sentence whose words can simply go, carrying
+    every rule at once (founder 2026-10-23, N124), never a word added:
+
+      * a sentence that stopped mid-thought and started over keeps the new
+        one ("We need to. We need to fix it." -> "We need to fix it.",
+        `_is_restart`, WIL-26);
+      * a restart inside the sentence keeps its last attempt ("if you could
+        be just, if you could just help" -> "if you could just help");
+      * a phrase said again straight away is kept once ("we need to we need
+        to fix it" -> "we need to fix it");
+      * the sentence said with conviction (``undermining.without``, N85,
+        N124) or, when it does not undermine, without its softening hedges
+        (``undermining.without_hedges``, N112);
+      * a weak opener goes ("So, we ..." -> "We ...").
+
+    A sentence that is nothing but the repeat ("Thank you, thank you.") is
+    emphasis and stays; a sentence that undermines and cannot be said
+    without it (a playing-down phrase that would need rewriting) makes no
+    row, so the gate keeps the voice exercise (N85)."""
     from services import undermining
     rows: list[dict] = []
-    for start, end, sentence in sentences:
-        proposed = undermining.without(sentence)
-        if not proposed:
-            hedged = undermining.without_hedges(sentence)
-            if hedged:
-                rows.append(_hedge_rewrite(start, end, sentence, hedged, take=take, sid=sid))
+    consumed_until = -1
+    for index, (start, end, sentence) in enumerate(sentences):
+        if start < consumed_until:
             continue
-        rows.append({
-            "id": _stable_id("undermining-rewrite", take, sentence),
-            "snippet_id": sid,
-            "take_session_id": take,
-            "kind": "replace",
-            "source": "wording",
-            "span": {"start": start, "end": end},
-            "quote": sentence,
-            "proposed_text": proposed,
-            "why_key": "clarity",
-            "feedback_family": "rewrite_clarity",
-            "tentative": False,
-            "rule_version": undermining.RULE_VERSION,
-            "rewrite_reason": "undermining",
-            "_manager_evidence": {
-                "fallback": False,
-                "detector": "undermining_words",
-                "detector_rank": 4,
-                "specificity": 4,
-                "lexical_words_invented": 0,
-            },
-        })
+        span_end, quote, out, fixed = end, sentence, sentence, []
+        body = sentence.rstrip().rstrip(".!?").rstrip()
+        if index + 1 < len(sentences) and _is_restart(body, sentences[index + 1][2]):
+            span_end = consumed_until = sentences[index + 1][1]
+            quote, out = text[start:span_end], sentences[index + 1][2]
+            fixed.append("repeat")
+        cut = _without_restarts(_collapse_repeats(out))
+        if cut != out and not _only_the_repeat(out):
+            out = _capitalised(cut)
+            fixed.append("repeat")
+        if undermining.found(out):
+            said = undermining.without(out)
+            if not said:
+                continue
+            out = said
+            fixed.append("undermining")
+        else:
+            hedged = undermining.without_hedges(out)
+            if hedged:
+                out = hedged
+                fixed.append("hedge")
+        opened = _without_weak_opener(out)
+        if opened != out:
+            out = opened
+            fixed.append("opener")
+        if fixed and out and out != quote:
+            lead = min(fixed, key=list(_SENTENCE_RULES).index)
+            rows.append(_sentence_row(lead, start, span_end, quote, out, take=take, sid=sid))
     return rows
 
 
-def _hedge_rewrite(start: int, end: int, sentence: str, proposed: str, *,
-                   take: str, sid: str) -> dict:
+def _sentence_row(lead: str, start: int, end: int, quote: str, proposed: str, *,
+                  take: str, sid: str) -> dict:
     from services import undermining
+    prefix, detector, rank = _SENTENCE_RULES[lead]
+    version = {"undermining": undermining.RULE_VERSION,
+               "repeat": REPEATED_PHRASE_RULE_VERSION,
+               "hedge": undermining.HEDGE_RULE_VERSION,
+               "opener": WEAK_OPENER_RULE_VERSION}[lead]
     return {
-        "id": _stable_id("hedge-rewrite", take, sentence),
+        "id": _stable_id(prefix, take, quote),
         "snippet_id": sid,
         "take_session_id": take,
         "kind": "replace",
         "source": "wording",
         "span": {"start": start, "end": end},
-        "quote": sentence,
+        "quote": quote,
         "proposed_text": proposed,
         "why_key": "clarity",
         "feedback_family": "rewrite_clarity",
         "tentative": False,
-        "rule_version": undermining.HEDGE_RULE_VERSION,
+        "rule_version": version,
+        # The walk names an undermining rewrite with the signed line (N85).
+        **({"rewrite_reason": "undermining"} if lead == "undermining" else {}),
         "_manager_evidence": {
             "fallback": False,
-            "detector": "hedge_words",
-            "detector_rank": 3,
-            "specificity": 3,
+            "detector": detector,
+            "detector_rank": rank,
+            "specificity": rank,
             "lexical_words_invented": 0,
         },
     }
+
+
+def _capitalised(text: str) -> str:
+    text = text.lstrip(" ,;:")
+    return text[:1].upper() + text[1:]
+
+
+def _only_the_repeat(sentence: str) -> bool:
+    """Nothing but the phrase said again ("Thank you, thank you."):
+    emphasis, not a slip."""
+    phrases = [len(_WORD_RE.findall(m.group(1))) for m in _REPEATED_PHRASE_RE.finditer(sentence)]
+    return bool(phrases) and len(_WORD_RE.findall(_collapse_repeats(sentence))) <= max(phrases)
+
+
+def _without_weak_opener(sentence: str) -> str:
+    """The sentence without its weak openers (N124: "And so, so what we
+    did" -> "What we did"), when enough is left to say; otherwise as it
+    was."""
+    out = sentence
+    while True:
+        match = _WEAK_OPENER_RE.match(out, len(out) - len(out.lstrip(" ,;:")))
+        if not match or len(_WORD_RE.findall(out[match.end():])) < 5:
+            return out
+        out = _capitalised(out[match.end():])
+
+
+def weak_opener_count(text: Any) -> int:
+    """How many sentences open weakly (N124). A count for internal gates
+    only, never shown (AC-9)."""
+    return sum(1 for _, _, sentence in _sentences(text if isinstance(text, str) else "")
+               if _WEAK_OPENER_RE.match(sentence, len(sentence) - len(sentence.lstrip(" ,;:"))))
+
+
+def _restart_cuts(sentence: str) -> list[tuple[int, int]]:
+    """The abandoned attempts in one sentence, as spans to leave out, up to
+    where the new attempt begins (N124). Hesitations between them are not
+    words here; the same words said twice exactly are the repeat rule's, so
+    the sentence comes with them kept once (`_collapse_repeats`)."""
+    words = [m for m in _WORD_RE.finditer(sentence) if m.group(0).lower() not in _HESITATIONS]
+    low = [m.group(0).lower().replace("’", "'") for m in words]
+    cuts: list[tuple[int, int]] = []
+    i = 0
+    while i < len(low):
+        again = _restart_at(low, i)
+        if again is None:
+            i += 1
+            continue
+        cuts.append((words[i].start(), words[again].start()))
+        i = again
+    return cuts
+
+
+def _restart_at(low: list[str], i: int) -> Optional[int]:
+    """Where the attempt begun at ``i`` is begun again, or None."""
+    for j in range(i + 2, min(i + _MAX_ATTEMPT, len(low)) + 1):
+        shared = 0
+        while (shared < j - i and j + shared < len(low)
+               and low[i + shared] == low[j + shared]):
+            shared += 1
+        if shared < 2 or shared == j - i or len(low) - j < j - i:
+            continue
+        said_again = set(low[j:j + (j - i) + 3])
+        if all(word in _RESTART_SMALL or word in said_again for word in low[i + shared:j]):
+            return j
+    return None
+
+
+def _without_restarts(sentence: str) -> str:
+    for start, end in reversed(_restart_cuts(sentence)):
+        sentence = sentence[:start] + sentence[end:]
+    return sentence
+
+
+def restart_count(text: Any) -> int:
+    """How many restarts inside a sentence the speaker made (N124). A count
+    for internal gates only, never shown (AC-9)."""
+    return sum(len(_restart_cuts(_collapse_repeats(sentence)))
+               for _, _, sentence in _sentences(text if isinstance(text, str) else ""))
 
 
 #: Words a sentence cannot end on: a sentence that stops on one stopped
@@ -722,74 +857,6 @@ def repeat_count(text: Any) -> int:
 def _collapse_repeats(sentence: str) -> str:
     """The sentence with every phrase said again straight away kept once."""
     return _REPEATED_PHRASE_RE.sub(lambda m: m.group(1), sentence)
-
-
-def _repeated_phrase_rewrites(text: str, sentences: list, *, take: str,
-                              sid: str) -> list[dict]:
-    """A rewrite for each place the speaker said the same words twice.
-
-    Two shapes, both fixed by keeping the speaker's words once and adding
-    none (WIL-26):
-
-      * a phrase said again straight away inside one sentence: "we need to
-        we need to fix it" -> "we need to fix it";
-      * a sentence that stopped mid-thought and started over: "We need to.
-        We need to fix it." -> "We need to fix it." (`_is_restart`).
-
-    A sentence that is nothing but the repeat ("Thank you, thank you.") is
-    left alone: that is emphasis, not a restart.
-    """
-    rows: list[dict] = []
-    consumed_until = -1
-    for index, (start, end, sentence) in enumerate(sentences):
-        if start < consumed_until:
-            continue
-        body = sentence.rstrip().rstrip(".!?").rstrip()
-        restart = None
-        if index + 1 < len(sentences):
-            next_start, next_end, following = sentences[index + 1]
-            if _is_restart(body, following):
-                restart = (next_start, next_end, following)
-        if restart is not None:
-            span_end = restart[1]
-            quote = text[start:span_end]
-            proposed = _collapse_repeats(restart[2])
-            consumed_until = span_end
-        else:
-            collapsed = _collapse_repeats(sentence)
-            if collapsed == sentence:
-                continue
-            kept = _WORD_RE.findall(collapsed)
-            phrase_words = max(
-                len(_WORD_RE.findall(m.group(1)))
-                for m in _REPEATED_PHRASE_RE.finditer(sentence))
-            if len(kept) <= phrase_words:
-                continue
-            span_end, quote, proposed = end, sentence, collapsed
-        if not quote or not proposed or proposed == quote:
-            continue
-        rows.append({
-            "id": _stable_id("repeated-phrase-rewrite", take, quote),
-            "snippet_id": sid,
-            "take_session_id": take,
-            "kind": "replace",
-            "source": "wording",
-            "span": {"start": start, "end": span_end},
-            "quote": quote,
-            "proposed_text": proposed,
-            "why_key": "clarity",
-            "feedback_family": "rewrite_clarity",
-            "tentative": False,
-            "rule_version": REPEATED_PHRASE_RULE_VERSION,
-            "_manager_evidence": {
-                "fallback": False,
-                "detector": "repeated_phrase",
-                "detector_rank": 4,
-                "specificity": 4,
-                "lexical_words_invented": 0,
-            },
-        })
-    return rows
 
 
 def ensure_required_families(

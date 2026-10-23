@@ -13,8 +13,11 @@ every failed check falls back to:
      (founder 2026-10-19, WIL-26: often, not one slip), or words that
      undermine the speaker: an apology or an ask for permission, the idea
      played down, self-doubt (founder 2026-10-20, N85, ``undermining``; one
-     is enough). None of them: the wording is good and the moment goes to
-     the voice Exercise with the AI clip.
+     is enough), an ask for approval or a playing-down "just", or a phrase
+     begun again inside a sentence (founder 2026-10-23, N124; one is
+     enough). Weak openers ("So,", "Well,") count with the fillers (N124).
+     None of them: the wording is good and the moment goes to the voice
+     Exercise with the AI clip.
   2. THE NEW WORDS ARE GOOD ENOUGH. A rewrite row that is all of:
        - inside this moment's own clip (its span inside the clip's span);
        - backed by evidence: never the tentative fallback;
@@ -22,7 +25,8 @@ every failed check falls back to:
          ``MIN_LIFT`` better than on what the speaker said (the clip's own
          transcript, which keeps the hesitations the Ideal Text smooths
          away, or the replaced words when worse), or the broken sentence
-         mended, or a repeat said once, or fewer undermining words;
+         mended, or a repeat said once, or fewer undermining words, restarts
+         or weak openers (N124);
        - still the speaker's: at least ``MIN_KEPT`` of its words are theirs,
          and no number or name they did not say;
        - sayable in one go: not longer than what they said, ``MIN_WORDS``
@@ -38,7 +42,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-from services import undermining, willfidence
+from services import undermining, verbal_markers, willfidence
 
 GATE_VERSION = "rewrite-gate-v1"
 #: Gate 1: a filler or hedge signal below this is "too many" (willfidence's
@@ -66,10 +70,12 @@ def _below(value: Optional[float], floor: float) -> bool:
 def words_need_help(text: Any, slide_fit: Optional[float]) -> Optional[str]:
     """The first reason the moment's words need help, or None when the
     wording is good. ``slide_fit`` is the clip's own (None: not checked)."""
-    from services.take_feedback_manager import has_broken_boundary
+    from services.take_feedback_manager import has_broken_boundary, restart_count
     if undermining.found(str(text or "")):
         return "undermining"
-    if _below(willfidence.filler(text), WORD_SIGNAL_FLOOR):
+    if restart_count(text):
+        return "restart"
+    if _below(_fillers(text), WORD_SIGNAL_FLOOR):
         return "fillers"
     if _below(willfidence.hedging(text), WORD_SIGNAL_FLOOR):
         return "hedges"
@@ -93,8 +99,16 @@ def _words(text: Any) -> list[str]:
     return _WORD.findall(str(text or ""))
 
 
+def _fillers(text: Any) -> Optional[float]:
+    """The filler signal with weak openers counted as fillers (N124)."""
+    from services.take_feedback_manager import weak_opener_count
+    counted = verbal_markers.count(text)
+    return willfidence.scale(counted[verbal_markers.TIC]["strict"] + weak_opener_count(text),
+                             counted["n_words"])
+
+
 def _word_signal(text: Any) -> Optional[float]:
-    return willfidence.partial_w(willfidence.filler(text), willfidence.hedging(text))
+    return willfidence.partial_w(_fillers(text), willfidence.hedging(text))
 
 
 def _sentence_starts(text: str) -> set[str]:
@@ -140,13 +154,16 @@ def _in_clip(span: Any, clip_span: Any) -> bool:
 
 def _words_refusal(quote: str, proposed: str, clip_text: Any) -> Optional[str]:
     """The checks on the words alone: a real fix, still theirs, sayable."""
-    from services.take_feedback_manager import has_broken_boundary, repeat_count
+    from services.take_feedback_manager import (
+        has_broken_boundary, repeat_count, restart_count, weak_opener_count)
     said = [v for v in (_word_signal(quote), _word_signal(clip_text)) if v is not None]
     before, after = (min(said) if said else None), _word_signal(proposed)
     lifted = before is not None and after is not None and after - before >= MIN_LIFT
     mended = ((has_broken_boundary(quote) and not has_broken_boundary(proposed))
               or repeat_count(proposed) < repeat_count(quote)
-              or undermining.count(proposed) < undermining.count(quote))
+              or undermining.count(proposed) < undermining.count(quote)
+              or restart_count(proposed) < restart_count(quote)
+              or weak_opener_count(proposed) < weak_opener_count(quote))
     if not (lifted or mended):
         return "no_real_fix"
     if _kept_share(quote, proposed) < MIN_KEPT or _invents(quote, proposed):

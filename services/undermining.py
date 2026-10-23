@@ -23,6 +23,17 @@ undermine (founder 2026-10-21, N112: a Take whose words needed help for its
 hedges had no rule to write their clearer version, so it showed none): the
 sentence with its softening hedges left out. A hedge's words that are not a
 hedge where they stand ("I think about it", "this kind of problem") stay.
+
+Two more undermine the speaker (founder 2026-10-23, N124, "Let's do 1-4"),
+each found by where it stands, since the words alone are innocent:
+
+  an ask for approval              ", okay?", ", right?", ", you know?",
+                                   ", yeah?" ending a sentence; it goes and
+                                   the sentence ends on a full stop
+  a playing-down "just"            "is just a job", "if you could just",
+                                   "I just wanted to"; a "just" of time or
+                                   measure ("just now", "just in time",
+                                   "just before", "just as") stays
 Pure.
 """
 from __future__ import annotations
@@ -31,7 +42,7 @@ import functools
 import re
 from typing import Optional
 
-RULE_VERSION = "undermining-words-v2"
+RULE_VERSION = "undermining-words-v3"
 HEDGE_RULE_VERSION = "hedge-words-v1"
 
 _APOLOGY_PERMISSION = (
@@ -85,6 +96,28 @@ _LEAVE_OUT = _APOLOGY_PERMISSION + _SELF_DOUBT
 _MIN_WORDS = 5
 _WORD = re.compile(r"[^\W_]+(?:['’-][^\W_]+)*", re.UNICODE)
 
+#: An ask for approval ending a sentence (N124).
+_APPROVAL_TAG = re.compile(r",\s*(?:okay|ok|right|you know|yeah)\s*\?+(?=\s|$)",
+                           re.IGNORECASE)
+_JUST = re.compile(r"(?<![\w'’])just(?![\w'’])(?P<comma>,)?", re.IGNORECASE)
+#: A "just" before one of these is one of time or measure, or opens a
+#: meaning of its own ("just the beginning"): it stays.
+_JUST_STAYS = frozenset("""
+now then in before after as about like so because enough right that when
+while once the
+""".split())
+#: "if you could just", "can you just": an ask played down.
+_ASKS = frozenset("could can would will should".split())
+#: "I just wanted to", "we just need": the speaker's own wish played down.
+_WANTING = frozenset("""
+want wanted wanna need needed wonder wondered wondering think thought hope
+hoped hoping try tried trying mean meant feel felt
+""".split())
+#: After "is", "I'm" ...: these "-ing" words are played down ("I'm just
+#: trying to"); any other ("was just leaving") is time and stays.
+_PLAYED_DOWN_ING = frozenset("trying wondering saying asking hoping checking thinking".split())
+_BE = frozenset("is are was were am be".split())
+
 
 def _norm(text: str) -> str:
     return " ".join(str(text or "").replace("’", "'").lower().split())
@@ -116,19 +149,65 @@ _HEDGES = [(p, _hedge_pattern(p)) for p in sorted(_LEAVE_OUT_HEDGES, key=len, re
 
 
 def found(text: str) -> list[str]:
-    """The undermining phrases this text says, longest first, each once."""
+    """The undermining phrases this text says, longest first, each once;
+    then an ask for approval and a playing-down "just" (N124)."""
     said = _norm(text)
     hits: list[str] = []
     for phrase, pattern in _FOUND:
         if pattern.search(said) and not any(phrase in longer for longer in hits):
             hits.append(phrase)
+    raw = str(text or "")
+    if _APPROVAL_TAG.search(raw):
+        hits.append("approval tag")
+    if _just_spans(raw):
+        hits.append("just")
     return hits
 
 
 def count(text: str) -> int:
     """How many times this text undermines the speaker."""
     said = _norm(text)
-    return sum(len(pattern.findall(said)) for _, pattern in _FOUND)
+    raw = str(text or "")
+    return (sum(len(pattern.findall(said)) for _, pattern in _FOUND)
+            + len(_APPROVAL_TAG.findall(raw)) + len(_just_spans(raw)))
+
+
+def _just_spans(text: str) -> list[tuple[int, int]]:
+    """Where a playing-down "just" stands, each span with the space before
+    it (and its comma after an ask: "could just, help"), to leave out."""
+    spans: list[tuple[int, int]] = []
+    for match in _JUST.finditer(text):
+        base = max(0, match.start() - 80)
+        lead = re.search(r"([\w'’]+)\s+$", text[base:match.start()])
+        after = re.match(r"\s+([\w'’-]+)", text[match.end():])
+        if not lead or not after:
+            continue
+        head = text[base:base + lead.end()]
+        before = [w.lower().replace("’", "'") for w in _WORD.findall(head)[-2:]]
+        prev, nxt = before[-1], after.group(1).lower()
+        if nxt in _JUST_STAYS:
+            continue
+        ask = prev in _ASKS or (prev in ("you", "we", "i") and len(before) > 1
+                                and before[-2] in _ASKS)
+        wanting = prev in ("i", "we") and nxt in _WANTING
+        be = prev in _BE or prev.endswith(("'s", "'m", "'re"))
+        if match.group("comma") and not ask:
+            continue
+        if ask or wanting or (be and _played_down_after_be(nxt)):
+            spans.append((base + lead.end(1), match.end()))
+    return spans
+
+
+def _played_down_after_be(nxt: str) -> bool:
+    if nxt.endswith("ing"):
+        return nxt in _PLAYED_DOWN_ING
+    return not nxt.endswith("ed")
+
+
+def _without_just(text: str) -> str:
+    for start, end in reversed(_just_spans(text)):
+        text = text[:start] + text[end:]
+    return text
 
 
 def _tidy(text: str) -> str:
@@ -136,22 +215,24 @@ def _tidy(text: str) -> str:
     out = re.sub(r"\s+([,.;:!?])", r"\1", out)
     out = re.sub(r",(\s*[,.;:!?])", r"\1", out)
     out = re.sub(r"^[\s,;:.?!]+", "", out)
-    out = re.sub(r"^(?:but|and|so)\b[\s,]*", "", out, flags=re.IGNORECASE)
+    out = re.sub(r"^(?:but|and|so)\b(?!\s+(?:that|far)\b)[\s,]*", "", out,
+                 flags=re.IGNORECASE)
     return out.strip()
 
 
 def without(sentence: str) -> Optional[str]:
     """The sentence said with conviction: its apologies, asks for
-    permission, self-doubt and softening hedges left out, nothing added;
-    None when it does not undermine, when a playing-down phrase would have
-    to be rewritten rather than left out, or when too little is left."""
-    if not found(sentence):
+    permission or approval, self-doubt, playing-down "just" and softening
+    hedges left out, nothing added; None when it does not undermine, when a
+    playing-down phrase would have to be rewritten rather than left out, or
+    when too little is left."""
+    if not found(sentence) or any(p in _norm(sentence) for p in _PLAYING_DOWN):
         return None
-    out = sentence
+    out = _APPROVAL_TAG.sub(".", sentence)
     for pattern in _GONE:
         out = pattern.sub(" ", out)
-    out = _tidy(_hedges_out(out))
-    if not out or any(p in _norm(out) for p in _PLAYING_DOWN):
+    out = _tidy(_hedges_out(_without_just(out)))
+    if not out:
         return None
     return _finished(sentence, out)
 

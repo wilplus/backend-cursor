@@ -8,11 +8,14 @@ OUTCOME
   O2  Emphasis ("Thank you, thank you.") and a sentence repeated on purpose
       are left alone.
   O3  The repeat fix wins the rewrite lane over the weaker fallback.
+  O4  A weak opener ("So", "Well,") goes with the repeat (N124).
 PROVES   O1 -> test_a_phrase_said_again_is_offered_once_in_the_speakers_words,
                test_a_sentence_that_starts_over_becomes_the_finished_one
          O2 -> test_emphasis_is_not_a_repeat_to_fix
          O3 -> test_the_repeat_wins_the_rewrite_lane_over_the_fallback
-WHY      WIL-26; founder 2026-10-19.
+         O4 -> test_a_phrase_said_again_is_offered_once_in_the_speakers_words,
+               test_the_repeat_wins_the_rewrite_lane_over_the_fallback
+WHY      WIL-26; founder 2026-10-19; 2026-10-23 (N124).
 """
 from __future__ import annotations
 
@@ -32,7 +35,7 @@ def test_a_phrase_said_again_is_offered_once_in_the_speakers_words():
     text = "So we need to we need to fix the onboarding flow. Then we ship."
     [row] = _rewrites(text)
     assert row["quote"] == "So we need to we need to fix the onboarding flow."
-    assert row["proposed_text"] == "So we need to fix the onboarding flow."
+    assert row["proposed_text"] == "We need to fix the onboarding flow."
     assert text[row["span"]["start"]:row["span"]["end"]] == row["quote"]
     assert row["feedback_family"] == "rewrite_clarity"
     assert row["why_key"] == "clarity"
@@ -65,4 +68,4 @@ def test_the_repeat_wins_the_rewrite_lane_over_the_fallback():
         take_session_id="take-1", snippet_id="snip-1")
     [rewrite] = [r for r in rank_family_pool(pool)
                  if r["feedback_family"] == "rewrite_clarity"]
-    assert rewrite["proposed_text"] == "So we need to fix the onboarding flow."
+    assert rewrite["proposed_text"] == "We need to fix the onboarding flow."
