@@ -27,6 +27,13 @@ PRAISE_BANKS: Final[tuple[str, ...]] = (
 )
 CLEARER_BANKS: Final[tuple[str, ...]] = ("B10", "B11", "B12", "B13", "B14")
 PRACTISE_BANKS: Final[tuple[str, ...]] = ("NX3a", "CM3b")
+#: The AI clip's one short bubble (founder 2026-10-23, N120): the opener,
+#: the tip per problem (``{phrase}`` is the speaker's own phrase) and the
+#: closer.
+AI_CLIP_BANKS: Final[tuple[str, ...]] = (
+    "AIopen", "AIagain", "AIstress", "AIpause", "AIpace", "AIfill", "AInone", "AIend",
+)
+PHRASE_PLACEHOLDER: Final = "{phrase}"
 
 # Bullet text after "- ", byte-identical to the signed markdown. A "Later:"
 # bullet is not a sayable line; it lives in LATER.
@@ -144,6 +151,26 @@ BANKS: Final[dict[str, tuple[str, ...]]] = {
         "You worked hard on this one. Let's keep going!",
         "Nice persistence! We'll move on for now.",
     ),
+    "AIopen": ("Nice.", "Good."),
+    "AIagain": ("Close.",),
+    "AIstress": (
+        "Say \u201c{phrase}\u201d stronger",
+        "Lean on \u201c{phrase}\u201d",
+        "Push \u201c{phrase}\u201d a little more",
+    ),
+    "AIpause": (
+        "Pause before \u201c{phrase}\u201d",
+        "Take a breath before \u201c{phrase}\u201d",
+        "Let \u201c{phrase}\u201d wait a beat",
+    ),
+    "AIpace": ("Slow it down a little", "Take your time", "A bit slower"),
+    "AIfill": ("Say it without the ums", "Straight through, no ums", "Drop the ums"),
+    "AInone": (
+        "Lean on \u201c{phrase}\u201d",
+        "Give \u201c{phrase}\u201d more weight",
+        "Say \u201c{phrase}\u201d a little stronger",
+    ),
+    "AIend": ("Your turn.", "Try again."),
 }
 
 # Text after "Later: " for B01-B09. {n} stays literal until the caller fills it.

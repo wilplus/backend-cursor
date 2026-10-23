@@ -237,7 +237,7 @@ def v2_user_get_profile():
       { "domain": "<enum>" | null, "goal": "<str>" | null,
         "proficient_languages": ["en", "pl"] | null,
         "domain_vocabulary_default": [ ...seed for domain... ],
-        "is_coach": bool }
+        "is_coach": bool, "first_name": "<str>" | null }
 
     `domain_vocabulary_default` is the editable seed the Lab pre-fills
     `session_context.domain_vocabulary` from (empty list when no
@@ -247,6 +247,11 @@ def v2_user_get_profile():
     surface. It is NEVER the authorization gate: every coach route is
     server-enforced via require_admin_or_coach against the coach_users
     allowlist. Append-only field; existing consumers ignore it.
+
+    `first_name` is the first word of the account's name (the sign-in
+    token's ``user_metadata``), for the walk's hello (founder 2026-10-23,
+    N120: "Hi Artur, good to see you back!"); null when the account has no
+    name. Append-only like `is_coach`.
     """
     try:
         from services.domains import default_domain_vocabulary
@@ -265,6 +270,7 @@ def v2_user_get_profile():
                 profile.get("domain"),
             ),
             "is_coach": is_coach(request.user_id),
+            "first_name": _first_name(getattr(request, "token_payload", None)),
         }), 200
     except Exception as e:
         logger.error(
@@ -275,6 +281,15 @@ def v2_user_get_profile():
             "code": "V2_ERROR",
             "error": "Failed to fetch profile",
         }), 500
+
+
+def _first_name(token_payload: object) -> str | None:
+    """The first word of the account's name, or None (N120)."""
+    meta = token_payload.get("user_metadata") if isinstance(token_payload, dict) else None
+    meta = meta if isinstance(meta, dict) else {}
+    name = meta.get("full_name") or meta.get("name") or meta.get("display_name")
+    words = str(name or "").split()
+    return words[0] if words else None
 
 
 @v2_bp.route("/user/profile", methods=["POST"])

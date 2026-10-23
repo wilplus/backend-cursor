@@ -1064,9 +1064,10 @@ def _prewarm_voice_clip(database: Any, arc_id: str, actor_id: str,
     """The AI version of your voice starts here (founder 2026-10-15, B).
 
     The bake is the first moment the backend knows which moments carry a
-    voice exercise (one or two, founder 2026-10-20), minutes before the walk
-    reaches its Exercise screen. So each clip's job is queued now, in the
-    bake's own lane, for the latest Take's own actor only;
+    voice exercise (one or two, founder 2026-10-20) and which praised
+    moments are practised (N122), minutes before the walk reaches them. So
+    each clip's job is queued now, in the bake's own lane, for the latest
+    Take's own actor only;
     `services.ai_voice_clip.prewarm` opens the practice as the walk would
     and starts the clip. Never raises and never changes the bake's result;
     the walk's own ask stays as the fallback. True when a job was queued.
@@ -1076,7 +1077,7 @@ def _prewarm_voice_clip(database: Any, arc_id: str, actor_id: str,
         from services.ai_voice_clone import available_to
         if not available_to(actor_id):
             return False
-        moments = [m for m in ai_voice_clip.exercise_moments_of(block)
+        moments = [m for m in ai_voice_clip.practised_moments_of(block)
                    if m["take_session_id"] == take_session_id]
         if not moments:
             return False

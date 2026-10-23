@@ -90,6 +90,10 @@ def _block_presentation(block: dict, block_id: str) -> dict:
         # helper words, also after its Clearer version. A flag, never the
         # score.
         presentation["helper_words_prompt"] = True
+    if block.get("confident_practice"):
+        # A praised moment is practised with its AI clip (N122). A flag,
+        # never the score.
+        presentation["confident_practice"] = True
     return presentation
 
 

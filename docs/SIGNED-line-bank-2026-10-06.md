@@ -237,6 +237,54 @@ The walk reads each try against the speaker's own voice and says the line for th
 - Not quite my tempo 🥁 One more time!
 - Close, but not there yet. Give it another go! 💪
 
+## The AI clip's bubble (founder 2026-10-23, N120; signed in the Claude Code chat, "Signed as drafted")
+
+One short bubble around the AI version of the speaker's voice: an opener,
+one tip for the problem the clip fixes followed by ", like this:", the clip,
+then a closer. A tip quotes the speaker's own phrase where its problem has
+one, in place of `{phrase}`. Each bank rotates as above. The first bubble
+opens with AIopen and closes with "Your turn."; the bubble after a try that
+is not yet better opens with "Close." and closes with "Try again." (the
+review page the founder signed, 23 October). The clip keeps its label "AI
+version of your voice". When the Take's most confident moment is corrected,
+its own line takes the opener's place (the walk's page, C2).
+
+**AIopen · the opener, on the first bubble**
+- Nice.
+- Good.
+
+**AIagain · the opener, after a try that is not yet better**
+- Close.
+
+**AIstress · the tip when the clip says the phrase stronger**
+- Say “{phrase}” stronger
+- Lean on “{phrase}”
+- Push “{phrase}” a little more
+
+**AIpause · the tip when the clip pauses before the phrase**
+- Pause before “{phrase}”
+- Take a breath before “{phrase}”
+- Let “{phrase}” wait a beat
+
+**AIpace · the tip when the clip is a little slower**
+- Slow it down a little
+- Take your time
+- A bit slower
+
+**AIfill · the tip when the clip drops the ums**
+- Say it without the ums
+- Straight through, no ums
+- Drop the ums
+
+**AInone · the tip when nothing was off (the default clip)**
+- Lean on “{phrase}”
+- Give “{phrase}” more weight
+- Say “{phrase}” a little stronger
+
+**AIend · the closer: the first bubble, then after a try that is not yet better**
+- Your turn.
+- Try again.
+
 ## The judgements
 
 **The answer toast** (WQ4 A): the answer the speaker chose, with a tick:

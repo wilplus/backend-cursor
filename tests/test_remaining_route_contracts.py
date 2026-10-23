@@ -13,6 +13,8 @@ OUTCOME
       session is refused.
   O5  Journal generators, the day card and the profile keep their success
       and refusal answers.
+  O6  The profile names the speaker's first name, the first word of the
+      account's name, or null; every other field is unchanged (N120).
 PROVES   O1 -> test_a_chat_turn_answers_persists_and_charges,
                test_the_librarian_answers_the_rest_and_a_blank_question_is_refused
          O2 -> test_a_transcript_edit_lands_on_its_snippet_or_chunk,
@@ -27,7 +29,9 @@ PROVES   O1 -> test_a_chat_turn_answers_persists_and_charges,
                test_day_update_refusals,
                test_the_profile_saves_what_was_sent_and_reads_back_the_rest,
                test_profile_refusals
-WHY      Founder 2026-10-12: "move logic out of the backend routes and cut glue".
+         O6 -> test_the_profile_names_the_speakers_first_name
+WHY      Founder 2026-10-12: "move logic out of the backend routes and cut glue";
+         2026-10-23 (N120, "add the name at the start").
 """
 from __future__ import annotations
 
@@ -61,11 +65,12 @@ class _Unstubbed:
         return call
 
 
-def _call(view, *args, user=USER, peel=True, **ctx):
+def _call(view, *args, user=USER, peel=True, token=None, **ctx):
     app = Flask(__name__)
     with app.test_request_context("/", **ctx), \
             patch.object(db, "client", _Unstubbed()):
         request.user_id = user
+        request.token_payload = token or {}
         fn = inspect.unwrap(view) if peel else view
         out = fn(*args)
     resp, status = out if isinstance(out, tuple) else (out, 200)
@@ -462,3 +467,22 @@ def test_profile_refusals():
             422, {"code": "INVALID_INPUT", "error": "goal: must be a string"})
         assert _call(view, method="POST", json={"goal": "g" * 501})[0] == 422
     save.assert_not_called()
+
+
+def test_the_profile_names_the_speakers_first_name():
+    from routes.v2 import user_account as ua
+    stored = {"domain": "sales", "goal": "win", "proficient_languages": ["en"]}
+
+    def read(meta):
+        with patch.object(db, "get_user_profile", return_value=dict(stored)), \
+                patch("services.domains.default_domain_vocabulary", return_value=[]), \
+                patch.object(ua, "is_coach", return_value=False):
+            return _call(ua.v2_user_get_profile, method="GET", token={"user_metadata": meta})
+
+    status, body = read({"full_name": "  Artur   Willonski "})
+    assert status == 200 and body["first_name"] == "Artur"
+    assert {k: body[k] for k in ("domain", "goal", "proficient_languages", "is_coach")} == {
+        "domain": "sales", "goal": "win", "proficient_languages": ["en"], "is_coach": False}
+    assert read({"name": "Maja"})[1]["first_name"] == "Maja"
+    assert read({"display_name": "   "})[1]["first_name"] is None
+    assert read({})[1]["first_name"] is None

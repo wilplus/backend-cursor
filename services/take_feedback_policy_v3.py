@@ -624,8 +624,9 @@ def _mark_moments(blocks: list[dict], picked: dict,
     `most_confident` (praised), `highest_moment` (the stronger voice of the
     two, praised or not, N122), `level_key` (the praised moment's opening
     line), `practice_prompt` / `carries_exercise` / `exercise_kind` on each
-    corrected block, and `helper_words_prompt` on each shown block whose
-    voice reached the floor (N113).
+    corrected block, `helper_words_prompt` on each shown block whose voice
+    reached the floor (N113), and `confident_practice` on each praised block
+    (N122).
 
     Returns the praised blocks (praise anchors there), the blocks a rewrite
     may anchor to (each corrected block whose words need help and whose
@@ -672,6 +673,9 @@ def _mark_shown(block: dict, moment: Optional[dict], value: Any) -> None:
     # words are offered, after the praise or after the Clearer version. A
     # flag, never the score.
     block["helper_words_prompt"] = bool(moment and moment.get("voice_clears"))
+    # A praised moment is practised too, with the AI clip of its own words
+    # (founder 2026-10-23, N122). A flag, never the score.
+    block["confident_practice"] = praised
 
 
 def _gate_exercise(blocks: list[dict],
