@@ -254,8 +254,9 @@ processing (N84), so the clip can be ready by the walk.
 O5  Delete removes my voice at the provider and every clip, old links
 stop working, and deleting twice is safe; closing my account
 removes the voice first.
-O6  A ready clip names its problem (pace, pause, stress, fillers or
-default) and the phrase it was made with; never a number (N120).
+O6  A clip names its problem (pace, pause, stress, fillers or default)
+and the phrase it is made with as soon as they are chosen, ready or
+still being made; never a number (N120).
 O7  A praised moment's practice gets its clip too, started early like a
 corrected moment's (N122).","O1 -> test_a_problem_from_the_line_up_else_the_default,
 test_raw_units_are_never_compared_and_the_phrase_has_a_fallback,

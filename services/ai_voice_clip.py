@@ -660,6 +660,10 @@ def state(database: Any, practice: dict, cycle: Optional[dict], *, sign=None) ->
                 **problem_of(cycle)}
     elif status in ("pending", "analyzing", "choosing_exercise", "generating", "validating"):
         clip = {"state": "pending", "url": None, "max_appearances": MAX_APPEARANCES}
+        if (cycle.get("selection") or {}).get("exercise"):
+            # Chosen, still being made: the walk can word its bubble now and
+            # the chat says the same (N120).
+            clip.update(problem_of(cycle))
     else:
         clip = {"state": "unavailable", "url": None, "max_appearances": MAX_APPEARANCES}
     if clip["state"] == "unavailable" and demo == "ai_voice":

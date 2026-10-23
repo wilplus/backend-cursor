@@ -19,8 +19,9 @@ OUTCOME
   O5  Delete removes my voice at the provider and every clip, old links
       stop working, and deleting twice is safe; closing my account
       removes the voice first.
-  O6  A ready clip names its problem (pace, pause, stress, fillers or
-      default) and the phrase it was made with; never a number (N120).
+  O6  A clip names its problem (pace, pause, stress, fillers or default)
+      and the phrase it is made with as soon as they are chosen, ready or
+      still being made; never a number (N120).
   O7  A praised moment's practice gets its clip too, started early like a
       corrected moment's (N122).
 PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
@@ -798,8 +799,11 @@ def test_a_voice_still_being_made_is_waited_for_a_bounded_number_of_times(monkey
         voices = _Voices()
         out = _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
         cycle = db.client.tables["ai_voice_cycles"][0]
-        assert out == {"demo": "ai_voice", "clip": {"state": "pending", "url": None,
-                                                    "max_appearances": 3}}
+        # Chosen before the wait: the clip already names what it fixes (N120).
+        assert out == {"demo": "ai_voice", "clip": {
+            "state": "pending", "url": None, "max_appearances": 3,
+            **ai_voice_clip.problem_of(cycle)}}
+        assert out["clip"]["problem"] == cycle["selection"]["exercise"]
         assert (cycle["status"], cycle["failure_kind"]) == ("pending", "no_voice")
         assert cycle["generation_metadata"] == {"no_voice_waits": 1}
         assert voices.spoken == 0 and len(queued) == 1
@@ -890,8 +894,12 @@ def test_a_ready_clip_names_its_problem_and_phrase(selection, problem, phrase):
     assert (clip["state"], clip["problem"], clip["phrase"]) == ("ready", problem, phrase)
     # Words only: the severity, the scores and the check never cross.
     assert set(clip) == {"state", "url", "duration_ms", "max_appearances", "why", "problem", "phrase"}
-    pending = ai_voice_clip.state(None, practice, {**cycle, "status": "generating"})["clip"]
-    assert "problem" not in pending and "phrase" not in pending
+    # Chosen and still being made: named already, so the walk's bubble and
+    # the chat say the same; not chosen yet: nothing to name.
+    chosen = ai_voice_clip.state(None, practice, {**cycle, "status": "generating"})["clip"]
+    assert (chosen["state"], chosen["problem"], chosen["phrase"]) == ("pending", problem, phrase)
+    waiting = ai_voice_clip.state(None, practice, {"status": "pending", "demo": "ai_voice"})["clip"]
+    assert "problem" not in waiting and "phrase" not in waiting
 
 
 def test_a_praised_moments_practice_gets_a_clip(baked):

@@ -3243,7 +3243,7 @@ or "Try again." after a try not yet better; it replaces L4 "That was good.
 But…", L3, L5 and L14–L18, and the clip keeps its label (L1). The Take's most
 confident moment keeps its own line when it is corrected (N109). Every word,
 verbatim: frontend flow page C0, C2, C5, C6, C7 and K, and the AI voice page's
-amendment of 23 October (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), [`docs/flows/ai-voice-practice.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md), frontend [#946](https://github.com/wilplus/frontend-cursor/pull/946)). Not built yet. No migration expected.
+amendment of 23 October (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), [`docs/flows/ai-voice-practice.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md), frontend [#946](https://github.com/wilplus/frontend-cursor/pull/946)). Built 2026-10-23 with N122 (the one-sentence praise dropped first); the AI clip's lines are signed into `docs/SIGNED-line-bank-2026-10-06.md`. No migration.
 
 **N121 · The rewrite gate reads the words on screen (founder, the Claude Code
 chat, 23 October 2026: "But for the help where do you source the fillers? From
@@ -3281,8 +3281,9 @@ served, a frozen choice kept. With N120, the first name comes from the
 account (`GET /v2/user/profile` `first_name`), and the AI clip names its
 `problem` and `phrase` while the app picks the signed tip. No new words on
 screen. The rules: flow page B5, C2, H1, K and the AI voice page's amendment
-(frontend [#947](https://github.com/wilplus/frontend-cursor/pull/947)). Not
-built yet; built with N120. No migration expected.
+(frontend [#947](https://github.com/wilplus/frontend-cursor/pull/947)). Built
+2026-10-23 with N120 (the clip in a shown block with N118's core); the flow
+pages' §6 name the pull requests. No migration.
 
 **N123 · The asks and the walk's lines are said fresh, from their signed
 meaning (founder, the Claude Code chat, 23 October 2026: "please do not make
