@@ -3325,3 +3325,32 @@ count with the fillers (3 or more per 100 words). One rewrite per sentence
 carries every rule, and removing any of them is a real fix. A deliberate repeat
 across sentences is never touched. No new words on screen. First in the build
 queue, before N118. The rule: flow page H3 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). Not built yet. No migration.
+
+**N125 · The six questions before development, settled (founder, the Claude
+Code chat, 23 October 2026: "For the 6 questions use your recommendations",
+on the development plan <https://claude.ai/artifact/F1cP9grzdTLj3r83zoUmVm>).**
+1. N118 is built in two parts: the core first (the pick by willfidence from
+any slide, the stronger voice named most confident, a shown block's best
+clip), the boundary move and the one-block split last. 2. The walk builds'
+commits end with "Founder-Approved: Claude Code chat 2026-10-23, N120 N122
+N123". 3. N123's fresh lines are written by the small model Will already uses
+for his light touch (gpt-4o-mini), one call per Take for the walk's lines and
+one per ask. 4. N124 is measured before it is tuned: the share of shown
+moments with a Clearer version is read from the frames after the next ten
+Takes (3% before; 15 to 35% expected for most speakers). 5. A full stop
+between sentences is allowed where the speaker paused (N126). 6. Whether the
+blocks re-cut by N118's second part may change their ids is decided when that
+part comes. Every build still starts on the founder's go, one at a time, test
+first, as the plan sets out. No migration in this entry.
+
+**N126 · A full stop between sentences, where the speaker paused (founder,
+the Claude Code chat, 23 October 2026, the recommendation of N125's question
+5 taken).** On the founder's Take 4 the Ideal Text ran sentences together
+where a piece ended without its full stop ("Startup is just a job It's a
+job…", "we need vitality We need emotions…"). The smoothing fence of
+2026-07-20 (`services/transcript_smoothing.py`) allowed one closing mark, at
+the end of the document only. Now, where a piece ends with no closing mark,
+the next piece begins with a capital, and the recording has a clear pause at
+that seam, one full stop goes in silently; nothing else changes, and every
+other change stays visible and approvable as the fence says. The rule:
+frontend [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md) §2. Not built yet. No migration.
