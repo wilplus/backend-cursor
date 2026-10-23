@@ -3196,7 +3196,7 @@ a clip; a typed partition exception, contract 24a), and a Take of one block is
 split in two the same way when each clip has 5 words or more. A Take shows
 fewer than two only when it has fewer than two clips that can be played. A
 correction with nothing to offer is still skipped (N108). No new words on
-screen. The rules: flow page C2, H1 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), frontend [#944](https://github.com/wilplus/frontend-cursor/pull/944)). Not built yet. No migration.
+screen. The rules: flow page C2, H1 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), frontend [#944](https://github.com/wilplus/frontend-cursor/pull/944)). Its core built 2026-10-23 (the flow page's §6 names the pull requests); the boundary move and the one-block split still to build (N125). No migration.
 
 **N119 · Three moments to judge every walk: high, middle and low, three
 speakers, and the imported corpus may be played to speakers (founder, the
@@ -3256,7 +3256,7 @@ is a real fix only against the shown words. Until now gate 1 counted fillers
 on the clip's raw transcript and gate 2 measured the lift against the worse of
 the raw and the shown words, so a moment could go to a rewrite for ums the
 speaker never saw and almost any rewrite passed. Hesitations reach the speaker
-only through the AI clip's fillers tip (N120). Built with N118. The rule: flow
+only through the AI clip's fillers tip (N120). Built 2026-10-23 with N118's core. The rule: flow
 page H3 (frontend [#946](https://github.com/wilplus/frontend-cursor/pull/946)). No migration.
 
 **N122 · Confident moments are practised, the praise stays short, new bubbles

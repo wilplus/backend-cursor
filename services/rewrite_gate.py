@@ -6,7 +6,9 @@ The practise moment is still the Take's second best (moment_pick). What it
 opens on is decided here, in two gates, and the voice Exercise is what
 every failed check falls back to:
 
-  1. THE WORDS NEED HELP. At least one of: fillers at 3 or more per 100
+  1. THE WORDS NEED HELP, read on the words the speaker sees, the Ideal
+     Text's after the silent smoothing (founder 2026-10-23, N121: the
+     hesitations it removed never count). At least one of: fillers at 3 or more per 100
      words, hedges at 3 or more per 100 words, the clip misses its slide
      (slide fit below 0.5), a broken sentence, words said again straight
      away, two or more and ``REPEATS_PER_100`` or more per 100 words
@@ -22,11 +24,11 @@ every failed check falls back to:
        - inside this moment's own clip (its span inside the clip's span);
        - backed by evidence: never the tentative fallback;
        - a real fix: fillers and hedges, read on the new words, at least
-         ``MIN_LIFT`` better than on what the speaker said (the clip's own
-         transcript, which keeps the hesitations the Ideal Text smooths
-         away, or the replaced words when worse), or the broken sentence
-         mended, or a repeat said once, or fewer undermining words, restarts
-         or weak openers (N124);
+         ``MIN_LIFT`` better than on the words on screen they replace
+         (founder 2026-10-23, N121: until then the clip's own transcript,
+         hesitations included, when worse, so almost any rewrite passed),
+         or the broken sentence mended, or a repeat said once, or fewer
+         undermining words, restarts or weak openers (N124);
        - still the speaker's: at least ``MIN_KEPT`` of its words are theirs,
          and no number or name they did not say;
        - sayable in one go: not longer than what they said, ``MIN_WORDS``
@@ -152,12 +154,12 @@ def _in_clip(span: Any, clip_span: Any) -> bool:
             and span["end"] <= clip_span.get("end", -1))
 
 
-def _words_refusal(quote: str, proposed: str, clip_text: Any) -> Optional[str]:
-    """The checks on the words alone: a real fix, still theirs, sayable."""
+def _words_refusal(quote: str, proposed: str) -> Optional[str]:
+    """The checks on the words alone: a real fix, still theirs, sayable.
+    ``quote`` is the words on screen it replaces (N121)."""
     from services.take_feedback_manager import (
         has_broken_boundary, repeat_count, restart_count, weak_opener_count)
-    said = [v for v in (_word_signal(quote), _word_signal(clip_text)) if v is not None]
-    before, after = (min(said) if said else None), _word_signal(proposed)
+    before, after = _word_signal(quote), _word_signal(proposed)
     lifted = before is not None and after is not None and after - before >= MIN_LIFT
     mended = ((has_broken_boundary(quote) and not has_broken_boundary(proposed))
               or repeat_count(proposed) < repeat_count(quote)
@@ -174,14 +176,13 @@ def _words_refusal(quote: str, proposed: str, clip_text: Any) -> Optional[str]:
     return None
 
 
-def rewrite_refusal(row: Any, item: Any, clip_span: Optional[dict],
-                    clip_text: Any = None) -> Optional[str]:
+def rewrite_refusal(row: Any, item: Any, clip_span: Optional[dict]) -> Optional[str]:
     """Why this rewrite cannot open the moment, or None when it can.
 
-    ``row`` is the rewrite candidate as the Manager made it (quote,
-    proposed_text, tentative); ``item`` its V3 inventory row (document_span,
-    evidence); ``clip_span`` the moment's own clip in the same document and
-    ``clip_text`` its transcript."""
+    ``row`` is the rewrite candidate as the Manager made it (quote, the
+    words on screen it replaces; proposed_text; tentative); ``item`` its V3
+    inventory row (document_span, evidence); ``clip_span`` the moment's own
+    clip in the same document."""
     row = row if isinstance(row, dict) else {}
     item = item if isinstance(item, dict) else {}
     if not _in_clip(item.get("document_span"), clip_span):
@@ -190,4 +191,4 @@ def rewrite_refusal(row: Any, item: Any, clip_span: Optional[dict],
             or (item.get("evidence") or {}).get("fallback"):
         return "fallback"
     return _words_refusal(str(row.get("quote") or ""),
-                          str(row.get("proposed_text") or ""), clip_text)
+                          str(row.get("proposed_text") or ""))

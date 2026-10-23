@@ -222,6 +222,10 @@ def _piece(raw: Any, ordinal: int) -> Optional[dict]:
         # (24b) asks the serve path's own predicate, so both must hand it the
         # same value. Internal to the partition; it never reaches the frame.
         "part_id": row.get("part_id"),
+        # Its words as the document has them, after the silent smoothing:
+        # what the words check reads when no served span is proven (N121).
+        # Internal, like ``part_id``.
+        "text": text,
     }
 
 
@@ -498,7 +502,7 @@ def willfidence_level_key(value) -> str | None:
     return "W1"
 
 
-def _gate_clearer(block: dict, snippet_map: dict, ranked: list[dict],
+def _gate_clearer(block: dict, ranked: list[dict],
                   rows_by_id: dict) -> list[dict]:
     """The exercise block's rewrite that passes the gate (founder
     2026-10-18, `services.rewrite_gate`), as a one-row ranking, best first;
@@ -508,13 +512,12 @@ def _gate_clearer(block: dict, snippet_map: dict, ranked: list[dict],
     from services.rewrite_gate import rewrite_refusal
     chosen = _selected_candidate(block) or {}
     clip_span = chosen.get("document_span")
-    clip_text = (snippet_map.get(str(chosen.get("snippet_id")), {}) or {}).get("transcript")
     refused: dict[str, int] = {}
     for item in ranked:
         row = rows_by_id.get(str(item.get("candidate_id") or ""))
         if row is None:
             continue
-        reason = rewrite_refusal(row, item, clip_span, clip_text)
+        reason = rewrite_refusal(row, item, clip_span)
         if reason is None:
             return [item]
         refused[reason] = refused.get(reason, 0) + 1
@@ -524,18 +527,103 @@ def _gate_clearer(block: dict, snippet_map: dict, ranked: list[dict],
     return []
 
 
-def _mark_moments(blocks: list[dict], snippet_map: dict,
+def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
+                  servability: Optional[_Servability], selections: list[dict],
+                  served_text: Any) -> dict:
+    """The Take's two shown moments, each its block's best clip (founder
+    2026-10-23, N118 and N122, flow page C2 and H1; `services.moment_pick`).
+
+    Every clip a block may show is read: its eligible clips the serve path
+    can prove (`unservable`; all of them on the dark frame, which selects by
+    rank alone), or, on a Take whose selection is frozen, only the clip it
+    was frozen with (a frozen Take does not grow, `_winner`). The two
+    highest willfidence clips are shown, one per block; a shown block whose
+    selection was another clip takes the shown one, so the moment, its
+    bookmark and its routing name the same clip. Run before coverage and
+    routing read the selection.
+
+    Returns ``{"shown": [...], "values": {block_id: willfidence}}``."""
+    from services import moment_pick
+
+    reads = []
+    for block in blocks:
+        for candidate in _showable(block, clips, servability):
+            snippet = snippet_map.get(str(candidate["snippet_id"]), {})
+            reads.append({
+                "block_id": block["block_id"],
+                "candidate_id": candidate["candidate_id"],
+                "slide_index": block.get("slide_index"),
+                "word_count": candidate.get("word_count") or 0,
+                "read": moment_pick.read(
+                    candidate.get("machine_score"), snippet.get("transcript"),
+                    snippet.get("metrics"),
+                    shown=_shown_words(candidate, clips, served_text)),
+            })
+    picked = moment_pick.pick(reads)
+    if reads and not any(r["read"]["sound"] for r in reads):
+        # The words alone picked the moments: say so, so the next Take with
+        # no sound read is read from the log, not guessed at (2026-10-17).
+        logger.warning("moment_pick: no sound read on any of %d clips; "
+                       "the words picked shown=%s",
+                       len(reads), [s["block_id"] for s in picked["shown"]])
+    by_id = {block["block_id"]: block for block in blocks}
+    for moment in picked["shown"]:
+        _take_clip(by_id[moment["block_id"]], moment["candidate_id"], selections)
+    values = {r["candidate_id"]: r["read"]["value"] for r in reads}
+    return {"shown": picked["shown"],
+            "values": {m["block_id"]: values.get(m["candidate_id"]) for m in picked["shown"]}}
+
+
+def _showable(block: dict, clips: dict,
+              servability: Optional[_Servability]) -> list[dict]:
+    """The clips this block may show (`_pick_moments`)."""
+    selected = block.get("selected_candidate_id")
+    eligible = [row for row in block.get("confidence_candidates") or []
+                if row["eligibility"] == "eligible"]
+    if servability is None:
+        return eligible
+    if servability.frozen_ids:
+        return [row for row in eligible if row["candidate_id"] == selected]
+    return [row for row in eligible
+            if unservable((clips.get(row["candidate_id"]) or {}).get("part_id"),
+                          row.get("target_span"), servability.served_text) is None]
+
+
+def _shown_words(candidate: dict, clips: dict, served_text: Any) -> str:
+    """The words the speaker sees for this clip (N121): the Ideal Text at
+    its proven served span, else the document's own words, smoothed."""
+    span = candidate.get("target_span")
+    if isinstance(span, dict) and isinstance(served_text, str) \
+            and span_rejection(span, served_text, prefix="served_") is None:
+        return served_text[span["start"]:span["end"]]
+    return str((clips.get(candidate["candidate_id"]) or {}).get("text") or "")
+
+
+def _take_clip(block: dict, candidate_id: Any, selections: list[dict]) -> None:
+    """A shown block's selection becomes its shown clip (N122)."""
+    if not candidate_id or block.get("selected_candidate_id") == candidate_id:
+        return
+    chosen = next(row for row in block["confidence_candidates"]
+                  if row["candidate_id"] == candidate_id)
+    block["selected_candidate_id"] = candidate_id
+    block["selection_reason"] = chosen["selection_language"]
+    for row in selections:
+        if row["block_id"] == block["block_id"]:
+            row["candidate_id"] = candidate_id
+
+
+def _mark_moments(blocks: list[dict], picked: dict,
                   rewrite_ranked: Optional[list[dict]] = None,
                   rewrite_rows: Optional[list] = None,
                   ) -> tuple[list[dict], list[dict], list[dict]]:
-    """The Take's two shown moments, each praised or corrected by its own
-    voice (founder 2026-10-21, N108, flow page C2 and C4;
-    `services.moment_pick`).
+    """Each shown moment praised or corrected by its own voice (founder
+    2026-10-21, N108, flow page C2 and C4; `services.moment_pick`), from the
+    pick `_pick_moments` made.
 
     Every block is written, so a re-run cannot leave a stale mark:
-    `most_confident` (praised), `highest_moment` (the Take's highest, praised
-    or not), `level_key` (the praised moment's opening line),
-    `practice_prompt` / `carries_exercise` / `exercise_kind` on each
+    `most_confident` (praised), `highest_moment` (the stronger voice of the
+    two, praised or not, N122), `level_key` (the praised moment's opening
+    line), `practice_prompt` / `carries_exercise` / `exercise_kind` on each
     corrected block, and `helper_words_prompt` on each shown block whose
     voice reached the floor (N113).
 
@@ -546,31 +634,11 @@ def _mark_moments(blocks: list[dict], snippet_map: dict,
     """
     from services import moment_pick
 
-    reads = []
+    shown = {s["block_id"]: s for s in picked["shown"]}
+    value_of = picked["values"]
     for block in blocks:
-        chosen = _selected_candidate(block)
-        snippet = snippet_map.get(str(chosen["snippet_id"]), {}) if chosen else {}
-        reads.append({
-            "block_id": block["block_id"],
-            "slide_index": block.get("slide_index"),
-            "word_count": chosen.get("word_count") if chosen else 0,
-            "read": moment_pick.read(
-                chosen.get("machine_score"), snippet.get("transcript"),
-                snippet.get("metrics")) if chosen else None,
-        })
-    picked = moment_pick.pick(reads)
-    heard = sum(1 for r in reads if (r["read"] or {}).get("sound"))
-    if reads and not heard:
-        # The words alone picked the moments: say so, so the next Take with
-        # no sound read is read from the log, not guessed at (2026-10-17).
-        logger.warning("moment_pick: no sound read on any of %d blocks; "
-                       "the words picked shown=%s",
-                       len(reads), [s["block_id"] for s in picked["shown"]])
-    value_of = {r["block_id"]: (r["read"] or {}).get("value") for r in reads}
-    for block in blocks:
-        _mark_shown(block, {s["block_id"]: s for s in picked["shown"]}.get(block["block_id"]),
-                    value_of.get(block["block_id"]))
-    pool = _gate_exercise(blocks, snippet_map, rewrite_ranked, rewrite_rows)
+        _mark_shown(block, shown.get(block["block_id"]), value_of.get(block["block_id"]))
+    pool = _gate_exercise(blocks, rewrite_ranked, rewrite_rows)
     clears = {s["block_id"] for s in picked["shown"] if s["voice_clears"]}
     for block in blocks:
         # The voice exercise is only for a voice under the floor (founder
@@ -606,7 +674,7 @@ def _mark_shown(block: dict, moment: Optional[dict], value: Any) -> None:
     block["helper_words_prompt"] = bool(moment and moment.get("voice_clears"))
 
 
-def _gate_exercise(blocks: list[dict], snippet_map: dict,
+def _gate_exercise(blocks: list[dict],
                    rewrite_ranked: Optional[list[dict]],
                    rewrite_rows: Optional[list]) -> list[dict]:
     """Each corrected block whose words need help keeps the clearer version
@@ -618,7 +686,7 @@ def _gate_exercise(blocks: list[dict], snippet_map: dict,
     pool: list[dict] = []
     for block in blocks:
         if block["carries_exercise"] and block["exercise_kind"] == moment_pick.EXERCISE_CLEARER:
-            pool.extend(_gate_clearer(block, snippet_map, [
+            pool.extend(_gate_clearer(block, [
                 item for item in rewrite_ranked or []
                 if _inside(item.get("document_span"), block)], rows_by_id))
     return pool
@@ -1082,11 +1150,13 @@ def _select_in_block(block: dict, candidates: list[dict], pieces: list[dict],
 def _select_confidence(
     blocks: list[dict], exclusions: list[dict], *, snippet_map: dict,
     suggestion_map: dict, take_id: str, recording_id: str,
-    servability: Optional[_Servability],
+    servability: Optional[_Servability], clips: dict,
 ) -> list[dict]:
     """Every block's Confident Voice inventory and selection, and the Take's
     selected ``{block_id, candidate_id}`` rows; each excluded clip is also
-    named in ``exclusions``.
+    named in ``exclusions``, and each clip's piece in ``clips`` (by
+    candidate id, internal: the moment pick reads it, the frame never
+    holds it).
 
     Lifted out of `build_shadow_frame` (grandfathered at the complexity
     ratchet, which only lets it come down) unchanged, apart from the winner
@@ -1104,6 +1174,7 @@ def _select_confidence(
             )
             for piece in pieces
         ]
+        clips.update((row["candidate_id"], piece) for row, piece in zip(candidates, pieces))
         selected = _select_in_block(block, candidates, pieces, servability)
         if selected:
             selections.append({
@@ -1368,13 +1439,15 @@ def build_shadow_frame(
         for row in (snippets or []) if isinstance(row, dict) and row.get("id")
     }
     suggestion_map = suggestions if isinstance(suggestions, dict) else {}
+    servability = _servability(select_servable, served_text, frozen_candidate_ids)
+    clips: dict = {}
     confidence_selections = _select_confidence(
         blocks, exclusions, snippet_map=snippet_map,
         suggestion_map=suggestion_map, take_id=take_id,
-        recording_id=recording_id,
-        servability=_servability(
-            select_servable, served_text, frozen_candidate_ids),
+        recording_id=recording_id, servability=servability, clips=clips,
     )
+    picked = _pick_moments(blocks, snippet_map, clips, servability,
+                           confidence_selections, served_text)
 
     # THE ONLY PLACE THE REASON LAYER IS OBSERVABLE (24j). Everything else it
     # does is internal ordering that leaves no trace: the failure it can have
@@ -1415,7 +1488,7 @@ def build_shadow_frame(
     # candidate sits inside the block. The green mark stays on the top two
     # (24g); it no longer decides where praise goes.
     green_blocks, weak_blocks, rewrite_pool = _mark_moments(
-        blocks, snippet_map, rewrite_ranked, feedback_rows)
+        blocks, picked, rewrite_ranked, feedback_rows)
     rewrite_anchors = _anchored_notes(rewrite_pool, weak_blocks)
     praise_anchors = _anchored_notes(praise_ranked, green_blocks)
     rewrite_selected_ids = [row["candidate_id"] for row in rewrite_anchors]
