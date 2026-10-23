@@ -3165,3 +3165,15 @@ pieces as it is spoken, so a lock the app cannot prevent (the side button)
 loses only what came after it, and an empty recording is never sent: the
 speaker is asked to record again. Frontend
 [#942](https://github.com/wilplus/frontend-cursor/pull/942). No migration.
+
+**N117 · Both repos stay public (founder, the Claude Code chat, 23 October
+2026: "ok, let's keep it public I think we don't overshare there").**
+`wilplus/backend-cursor` and `wilplus/frontend-cursor` are public on GitHub:
+anyone can read the README, every doc, the legal pack and the history without
+logging in. Asked whether to make them private (which would limit some
+things), the founder chose to keep them public. Checked the same day, in the
+files and the whole history of both repos (2,033 and 2,066 commits), for key
+and token patterns: no real key was found. The only key-shaped strings are
+Supabase's published demo key (the fake the CI uses) and test fixtures that
+check keys are scrubbed. Not checked: personal data, and whether each file of
+the legal pack is meant to be public. No migration in this entry.
