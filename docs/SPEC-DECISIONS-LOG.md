@@ -3219,3 +3219,42 @@ are the licensed corpus") and replaces N97's one moment per try. With fewer
 than three different speakers it shows fewer, never one speaker twice; an
 empty queue is logged. A speaker's answer on a training clip is never a label
 (L3). No new words on screen. The rules: flow page C8, G4 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), frontend [#945](https://github.com/wilplus/frontend-cursor/pull/945)). Not built yet; the build needs one migration (speakers' answers on imported clips).
+
+**N120 · The walk speaks like a coach: a hello with the name, the praise as
+one sentence, the AI clip in one short bubble (founder, the Claude Code chat,
+23 October 2026: "could we make it more flexible and human like more
+appealing and inviting for the user?"; "as a coach I would use here more
+friendly language and make it shorter focused on one only thing without the
+general assessment, like one word for the general"; "say it stronger; or lean
+on this sentence"; "also add the name at the start: Hi Artur, good to see you
+back! It seems like this was your most confident moment, cause it was nice and
+steady, no question mark at the end, you simply fired it!"; then every line
+below signed, "Signed as drafted").** The walk opens once with "Hi {name},
+good to see you back!" ("Hi {name}, great to meet you!" on Take 1; without a
+name, the same lines without it), the first name from the account. A praised
+moment is one sentence built from signed pieces: "It seems like this was your
+most confident moment, cause it was {level}, {cue}, {closer}" on the highest,
+"This one was {level}, {cue}, {closer}" on the other; the level (W1–W10) and
+the clip's strongest confident voice cue still choose the pieces (a cue is
+left out when none stands out), the closer rotates. The AI clip comes in one
+short bubble: a one-word opener ("Nice." / "Close." / "Good."), one tip for
+the problem the clip fixes ending ", like this:", the clip, then "Your turn.",
+or "Try again." after a try not yet better; it replaces L4 "That was good.
+But…", L3, L5 and L14–L18, and the clip keeps its label (L1). The Take's most
+confident moment keeps its own line when it is corrected (N109). Every word,
+verbatim: frontend flow page C0, C2, C5, C6, C7 and K, and the AI voice page's
+amendment of 23 October (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), [`docs/flows/ai-voice-practice.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md), frontend [#946](https://github.com/wilplus/frontend-cursor/pull/946)). Not built yet. No migration expected.
+
+**N121 · The rewrite gate reads the words on screen (founder, the Claude Code
+chat, 23 October 2026: "But for the help where do you source the fillers? From
+the corrected transcript? There won't be any fillers cause they are already
+corrected bro"; then, asked, "Yes, add it to N118").** Both halves of the
+rewrite gate (`services/rewrite_gate.py`) read the words the speaker sees, the
+Ideal Text's own words after the silent smoothing: hesitations ("um", "uh")
+that never reach the screen no longer make the words need help, and a rewrite
+is a real fix only against the shown words. Until now gate 1 counted fillers
+on the clip's raw transcript and gate 2 measured the lift against the worse of
+the raw and the shown words, so a moment could go to a rewrite for ums the
+speaker never saw and almost any rewrite passed. Hesitations reach the speaker
+only through the AI clip's fillers tip (N120). Built with N118. The rule: flow
+page H3 (frontend [#946](https://github.com/wilplus/frontend-cursor/pull/946)). No migration.
