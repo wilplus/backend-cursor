@@ -3244,3 +3244,17 @@ But…", L3, L5 and L14–L18, and the clip keeps its label (L1). The Take's mos
 confident moment keeps its own line when it is corrected (N109). Every word,
 verbatim: frontend flow page C0, C2, C5, C6, C7 and K, and the AI voice page's
 amendment of 23 October (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), [`docs/flows/ai-voice-practice.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md), frontend [#946](https://github.com/wilplus/frontend-cursor/pull/946)). Not built yet. No migration expected.
+
+**N121 · The rewrite gate reads the words on screen (founder, the Claude Code
+chat, 23 October 2026: "But for the help where do you source the fillers? From
+the corrected transcript? There won't be any fillers cause they are already
+corrected bro"; then, asked, "Yes, add it to N118").** Both halves of the
+rewrite gate (`services/rewrite_gate.py`) read the words the speaker sees, the
+Ideal Text's own words after the silent smoothing: hesitations ("um", "uh")
+that never reach the screen no longer make the words need help, and a rewrite
+is a real fix only against the shown words. Until now gate 1 counted fillers
+on the clip's raw transcript and gate 2 measured the lift against the worse of
+the raw and the shown words, so a moment could go to a rewrite for ums the
+speaker never saw and almost any rewrite passed. Hesitations reach the speaker
+only through the AI clip's fillers tip (N120). Built with N118. The rule: flow
+page H3 (frontend [#946](https://github.com/wilplus/frontend-cursor/pull/946)). No migration.
