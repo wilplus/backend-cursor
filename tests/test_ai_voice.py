@@ -19,6 +19,11 @@ OUTCOME
   O5  Delete removes my voice at the provider and every clip, old links
       stop working, and deleting twice is safe; closing my account
       removes the voice first.
+  O6  A clip names its problem (pace, pause, stress, fillers or default)
+      and the phrase it is made with as soon as they are chosen, ready or
+      still being made; never a number (N120).
+  O7  A praised moment's practice gets its clip too, started early like a
+      corrected moment's (N122).
 PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
                test_raw_units_are_never_compared_and_the_phrase_has_a_fallback,
                test_the_sentence_under_the_clip_comes_from_the_transcript_and_their_own_numbers,
@@ -33,7 +38,7 @@ PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
                test_two_corrected_moments_queue_two_prewarms,
                test_one_recording_makes_one_checked_clip_then_measures_the_next_try,
                test_a_stored_bake_with_a_voice_exercise_queues_one_prewarm_once,
-               test_the_bake_queues_the_offered_exercise_and_never_a_rewrite_or_praise,
+               test_the_bake_queues_the_offered_exercise_and_never_a_rewrite,
                test_prewarm_opens_the_practice_and_the_clip_and_skips_without_a_voice,
                test_a_voice_still_being_made_is_waited_for_a_bounded_number_of_times,
                test_a_spoken_takes_upload_starts_the_voice_and_a_read_take_or_guest_does_not
@@ -41,8 +46,11 @@ PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
                test_a_voice_already_gone_at_elevenlabs_counts_as_deleted,
                test_account_deletion_removes_the_voice_before_the_account_is_blocked,
                test_delete_removes_the_voice_and_clips_and_is_safe_twice
+         O6 -> test_a_ready_clip_names_its_problem_and_phrase
+         O7 -> test_a_praised_moments_practice_gets_a_clip
 WHY      Founder lock 2026-10-12 (N71); Never-rule 1 for the sentence under
-         the clip.
+         the clip; 2026-10-23 (N120, the short bubble; N122, "do we practice
+         the confident moments? I think yes we should!").
 """
 from __future__ import annotations
 
@@ -672,10 +680,10 @@ def test_a_stored_bake_with_a_voice_exercise_queues_one_prewarm_once(baked):
         assert stored and len(queued) == 1
 
 
-def test_the_bake_queues_the_offered_exercise_and_never_a_rewrite_or_praise(baked):
+def test_the_bake_queues_the_offered_exercise_and_never_a_rewrite(baked):
     """With an exercise offered on the moment the practice is the exercise's
-    (the walk's own choice); a clearer version riding it, or a Take whose
-    marked moment is green, starts no clip."""
+    (the walk's own choice); a clearer version riding it, or a green moment
+    the walk does not practise (no `confident_practice`), starts no clip."""
     run, queued = baked
     offer = {"exercise_id": "hear-every-word-v1", "passage": SENTENCE, "version": 1}
     with _on():
@@ -791,8 +799,11 @@ def test_a_voice_still_being_made_is_waited_for_a_bounded_number_of_times(monkey
         voices = _Voices()
         out = _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
         cycle = db.client.tables["ai_voice_cycles"][0]
-        assert out == {"demo": "ai_voice", "clip": {"state": "pending", "url": None,
-                                                    "max_appearances": 3}}
+        # Chosen before the wait: the clip already names what it fixes (N120).
+        assert out == {"demo": "ai_voice", "clip": {
+            "state": "pending", "url": None, "max_appearances": 3,
+            **ai_voice_clip.problem_of(cycle)}}
+        assert out["clip"]["problem"] == cycle["selection"]["exercise"]
         assert (cycle["status"], cycle["failure_kind"]) == ("pending", "no_voice")
         assert cycle["generation_metadata"] == {"no_voice_waits": 1}
         assert voices.spoken == 0 and len(queued) == 1
@@ -866,3 +877,41 @@ def test_two_corrected_moments_queue_two_prewarms(baked):
             f"ai-voice-prewarm-{TAKE_ID}-{SNIP_ID}", f"ai-voice-prewarm-{TAKE_ID}-snip-2"}
         run({"changes": [_item(), second], "style_changes": []})
         assert len(queued) == 2
+
+
+@pytest.mark.parametrize("selection, problem, phrase", [
+    ({"exercise": "stress", "target_phrase": "twice  as long"}, "stress", "twice as long"),
+    ({"exercise": "pause", "target_phrase": "four days"}, "pause", "four days"),
+    ({"exercise": "pace", "target_phrase": None}, "pace", None),
+    ({"exercise": "fillers", "target_phrase": None}, "fillers", None),
+    ({"exercise": "stress", "target_phrase": "the window", "default": True}, "default", "the window"),
+])
+def test_a_ready_clip_names_its_problem_and_phrase(selection, problem, phrase):
+    practice = {"id": "p1", "kind": "plain"}
+    cycle = {"status": "completed", "storage_key": "k", "bucket": "b", "duration_ms": 4200,
+             "demo": "ai_voice", "exercise": selection["exercise"], "selection": selection}
+    clip = ai_voice_clip.state(None, practice, cycle, sign=lambda *_a: "https://clip")["clip"]
+    assert (clip["state"], clip["problem"], clip["phrase"]) == ("ready", problem, phrase)
+    # Words only: the severity, the scores and the check never cross.
+    assert set(clip) == {"state", "url", "duration_ms", "max_appearances", "why", "problem", "phrase"}
+    # Chosen and still being made: named already, so the walk's bubble and
+    # the chat say the same; not chosen yet: nothing to name.
+    chosen = ai_voice_clip.state(None, practice, {**cycle, "status": "generating"})["clip"]
+    assert (chosen["state"], chosen["problem"], chosen["phrase"]) == ("pending", problem, phrase)
+    waiting = ai_voice_clip.state(None, practice, {"status": "pending", "demo": "ai_voice"})["clip"]
+    assert "problem" not in waiting and "phrase" not in waiting
+
+
+def test_a_praised_moments_practice_gets_a_clip(baked):
+    """A praised moment is practised too (N122): the bake starts its clip
+    as the walk would open it, the moment said again, beside a corrected
+    moment's."""
+    run, queued = baked
+    corrected = str(uuid.uuid4())
+    with _on():
+        run({"changes": [_item(block_id="b1", bookmark_tier="confident", practice_prompt=False,
+                               confident_practice=True),
+                         _item(block_id="b2", id="cand-2", snippet_id=corrected)],
+             "style_changes": []})
+        assert sorted((q[1][2], q[1][4]["kind"]) for q in queued) == sorted(
+            [(SNIP_ID, "plain"), (corrected, "plain")])

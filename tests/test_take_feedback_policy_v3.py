@@ -19,7 +19,8 @@ OUTCOME
       floor; a hedge's words that are not a hedge where they stand stay.
   O6  A shown moment whose voice reached the floor offers its helper words,
       praised or corrected with its Clearer version; a voice under the
-      floor does not (N113).
+      floor does not (N113). A praised one also carries a practice
+      (`confident_practice`, N122).
   O7  A shown moment whose sentence restarts or asks for approval opens on
       the Clearer version: with the undermining opener for an approval tag
       or a playing-down "just", with the plain opener for a restart.
@@ -503,3 +504,7 @@ def test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_versio
     # The same words under a voice below the floor: the Clearer version only.
     weak = _practise_frame({})
     assert [b["slide_index"] for b in weak["blocks"] if b["helper_words_prompt"]] == [0]
+    # A praised moment is practised too (N122); a corrected one is not marked.
+    assert [(b["slide_index"], b["confident_practice"]) for b in strong["blocks"]
+            if b["most_confident"] or b["carries_exercise"]] == [(0, True), (1, False)]
+    assert not any(b["confident_practice"] for b in strong["blocks"] if not b["most_confident"])

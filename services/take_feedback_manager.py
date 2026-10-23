@@ -447,6 +447,9 @@ CLIENT_READ_ROW_FIELDS = frozenset({
     # N113): the walk offers its helper words, after the praise or after
     # its Clearer version. A flag, never the score.
     "helper_words_prompt",
+    # A praised moment the walk practises with its AI clip (founder
+    # 2026-10-23, N122). A flag, never the score.
+    "confident_practice",
 })
 UNRENDERED_ROW_FIELDS: frozenset[str] = frozenset()
 CLIENT_ROW_FIELDS = CLIENT_READ_ROW_FIELDS | UNRENDERED_ROW_FIELDS

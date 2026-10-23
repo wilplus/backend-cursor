@@ -198,6 +198,30 @@ def exercise_moments_of(block: Any) -> list[dict]:
     return found
 
 
+def practised_moments_of(block: Any) -> list[dict]:
+    """Every moment the walk practises with the AI clip, in page order: the
+    voice-exercise moments (:func:`exercise_moments_of`) and each praised
+    moment the server marked `confident_practice` (founder 2026-10-23,
+    N122: "do we practice the confident moments? I think yes we should!"),
+    practised as the moment said again (`plain`)."""
+    found = list(exercise_moments_of(block))
+    for group in _moment_groups(block):
+        if not any(r.get("bookmark_tier") == "confident" and r.get("confident_practice") is True
+                   for r in group):
+            continue
+        source = next((r for r in group if _practisable(r)), None)
+        if source is None:
+            continue
+        found.append({
+            "snippet_id": str(source["snippet_id"]),
+            "take_session_id": str(source["evidence"]["take_session_id"]),
+            "kind": "plain", "exercise_id": None,
+            "evidence": dict(source["evidence"]),
+            "feedback_id": str(source.get("id") or "") or None,
+        })
+    return found
+
+
 def exercise_moment_of(block: Any) -> Optional[dict]:
     """The first of :func:`exercise_moments_of`, or None."""
     return next(iter(exercise_moments_of(block)), None)
@@ -632,9 +656,14 @@ def state(database: Any, practice: dict, cycle: Optional[dict], *, sign=None) ->
         url = (sign or _sign)(str(cycle.get("bucket") or ""), str(cycle["storage_key"]))
         clip = {"state": "ready" if url else "unavailable", "url": url,
                 "duration_ms": cycle.get("duration_ms"),
-                "max_appearances": MAX_APPEARANCES, "why": why_of(cycle)}
+                "max_appearances": MAX_APPEARANCES, "why": why_of(cycle),
+                **problem_of(cycle)}
     elif status in ("pending", "analyzing", "choosing_exercise", "generating", "validating"):
         clip = {"state": "pending", "url": None, "max_appearances": MAX_APPEARANCES}
+        if (cycle.get("selection") or {}).get("exercise"):
+            # Chosen, still being made: the walk can word its bubble now and
+            # the chat says the same (N120).
+            clip.update(problem_of(cycle))
     else:
         clip = {"state": "unavailable", "url": None, "max_appearances": MAX_APPEARANCES}
     if clip["state"] == "unavailable" and demo == "ai_voice":
@@ -670,6 +699,19 @@ WHY = {
                 "them. Without them each thought comes out whole, so it sounds sure "
                 "and is easier to follow."),
 }
+
+
+def problem_of(cycle: dict) -> dict:
+    """What the clip fixes, in words, for the walk's short bubble (founder
+    2026-10-23, N120): ``problem`` (pace, pause, stress, fillers, or default
+    when nothing was off) and ``phrase``, the speaker's own target words, or
+    None when its problem has none. The app picks the signed tip
+    (docs/SIGNED-line-bank-2026-10-06.md, the AI clip's bubble). No severity,
+    score or check crosses (AC-9)."""
+    selection = cycle.get("selection") or {}
+    exercise = str(cycle.get("exercise") or selection.get("exercise") or "") or None
+    phrase = " ".join(str(selection.get("target_phrase") or "").split()) or None
+    return {"problem": "default" if selection.get("default") else exercise, "phrase": phrase}
 
 
 def why_of(cycle: dict) -> Optional[str]:
