@@ -3258,3 +3258,28 @@ the raw and the shown words, so a moment could go to a rewrite for ums the
 speaker never saw and almost any rewrite passed. Hesitations reach the speaker
 only through the AI clip's fillers tip (N120). Built with N118. The rule: flow
 page H3 (frontend [#946](https://github.com/wilplus/frontend-cursor/pull/946)). No migration.
+
+**N122 · Confident moments are practised, the praise stays short, new bubbles
+land at the bottom (founder, the Claude Code chat and the review page
+<https://claude.ai/artifact/R8xUjSkVfHS2vyPJw5vqYr>, 23 October 2026: "do we
+practice the confident moments? I think yes we should!"; "the 3 dots loading
+should be at the bottom"; "i like this old version more it is shorter!"; then
+"ok this is good" on the page's six choices).** A praised moment is practised
+too: after its praise, the AI clip's short bubble (N120) with the clip of its
+own sentence a little stronger, up to three tries, a Good job ends it, then its
+helper words; with no clip there is no practise and the praise stands on its
+own. This amends the walk's "two praises and no practise" (N108) and the AI
+voice lock's "Never with praise" and "Praise still never gets a clip"; up to
+two more clips a Take, inside the same limits. The praise keeps its three
+lines ("This was your most confident moment.", the level line, the cue line);
+N120's one-sentence praise is dropped before it was built. Every new bubble,
+and the typing dots before it, land at the bottom, right above the buttons, and
+the thread follows them, as in the Lounge (replacing 20 October's "the newest
+step comes to the top"; a door still brings its step to the top, N91). With
+N118, a shown block's moment is its highest-willfidence clip that can be
+served, a frozen choice kept. With N120, the first name comes from the
+account (`GET /v2/user/profile` `first_name`), and the AI clip names its
+`problem` and `phrase` while the app picks the signed tip. No new words on
+screen. The rules: flow page B5, C2, H1, K and the AI voice page's amendment
+(frontend [#947](https://github.com/wilplus/frontend-cursor/pull/947)). Not
+built yet; built with N120. No migration expected.
