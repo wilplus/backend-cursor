@@ -3478,3 +3478,33 @@ the construct rule requires before N130 ships: `pace-speed-v1`,
 two different things about pauses. Speed leaves pauses out, so its starting
 centre is the rate syllables are said while talking (about 5 a second in
 English), not the brief's 4. Not built yet. No migration.
+
+**N134 · The treatment picker's twelve decisions (founder, the decision page
+<https://claude.ai/artifact/6my4BFJMsresHfmmCY18g2>, 24 October 2026, every
+recommendation taken, sent from the page).** For N129, N131 and N132:
+1. The treatment decides how the walk looks ("lock" read as "look").
+2. A walk shows the Take's best moment and the moment where this week's
+level shows most; when no moment shows the level (the speaker already does
+it well), it shows the two best, as N118 does today. This amends N118's "the
+two best moments" for a speaker with a plan.
+3. The next level starts when the current one is reached on two Takes in a
+row, or when its time runs out; the speaker then sees the next level, with
+no words about their voice (Never 1 stays).
+4. A level that has not moved after three Takes switches to the next
+intervention in its row, and the coach sees it in their queue.
+5. The level names stand: "Say it once, and it lands", "Let your key line
+land", "Pauses that hold the room", "A voice that moves", "Make it yours".
+6. The two questions are asked in the Lounge after consent, with "Not now,
+just record"; nothing stands before a Take (the consent lock stays).
+7. The Pace Circle (N130, N133) is the plan's practice for pace and pauses:
+two minutes before the Take in a pace or pause week.
+8. "Um" and "uh" do not count for the filler-words level: N121 stays, and
+the AI voice's fillers tip covers them.
+9. Mannerisms are voice habits (a rising ending, a croaky or breathy voice),
+practised with the AI version of the voice.
+10. Recording for the crowd waits for a later version.
+11. Each Friday call is booked and paid on its own, as today (contract §8
+item 50, N44, unchanged).
+12. The founder is the coach on the calls, for now.
+Drawn on the prototype <https://claude.ai/artifact/R3FVcoDNasDY9JcR82VmDF>.
+Not built yet. No migration in this entry.
