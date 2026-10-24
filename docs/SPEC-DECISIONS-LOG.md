@@ -3563,3 +3563,27 @@ replace "When is your presentation?" and "Why does it matter, and what is it
 about? Tell me in about a minute." on the prototype
 <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>. Not built yet. No
 migration.
+
+**N138 · After the voice message, Will says what it heard and asks follow-up
+questions about the goal (founder, the Claude Code chat, 24 October 2026:
+"give it a little bit more context after the recording. Say something like,
+okay, now I can hear you speaking about your goal and important life even. I
+can already see what are your fundamental vocal cues and verbal habits. Let me
+draft a plan. And then ask a couple of questions. So you can hear that person
+more. You can understand where they're coming from. ... I think these
+questions should not be fixed. There should be a follow-up on the goal of
+theirs. And should calculate, for example, did they fit in the time? It should
+calculate certain parameters. Please list out those parameters and the
+questions you would ask").** For N131 and N137:
+1. When the voice message is sent, Will says in a bubble that it heard the
+speaker talk about their goal and can already hear their vocal cues and verbal
+habits, and that it will draft the plan; the wording waits for the founder's
+OK (Never 4).
+2. Then Will asks a couple of follow-up questions, answered by voice with the
+same recorder (N135). They are not fixed: each follows up on the speaker's own
+goal and is chosen by what the diagnosis still lacks.
+3. The diagnosis computes a set of parameters from the message and the answers
+(for example, whether the speaker fit in the time). The list of parameters and
+the question bank were proposed in the chat on the same day and wait for the
+founder's picks.
+Not built yet. No migration.
