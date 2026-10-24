@@ -3432,3 +3432,18 @@ of their own Ideal Text; phone and desktop; loudness left out. Before it
 ships, pace and pause each get a one-line written definition. Brief:
 <https://claude.ai/artifact/VJ2uSugQWmbAsmReyxuufz>. Not built yet. No
 migration.
+
+**N131 · The diagnosis and the plan, made as simple as they can be (founder,
+the Claude Code chat, 24 October 2026: "please simplify it as much as you can
+make it super stupid simple when it comes to design and mechanics, but do not
+compromise the logic behind it"; then, asked, "Yes, tap the date", "Yes, one
+minute", "Yes, one at a time", "Yes, a Take is a practice").** N129 made
+simple: two questions in the Lounge, the presentation's date by a tap and one
+voice message of about a minute ("Why does it matter, and what is it about?"),
+which carries the reason, the topic and the voice sample the diagnosis
+measures. The plan names one thing to fix first, in words with the speaker's
+own clip; the other things heard follow one a week, each named when its week
+starts. One practice is one Take with its walk, about 15 minutes; "3 times a
+week" is three Takes, and the progress bar fills one part per Take. Drawn on
+the prototype <https://claude.ai/artifact/R3FVcoDNasDY9JcR82VmDF>. Not built
+yet. No migration in this entry.
