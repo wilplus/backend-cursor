@@ -3355,3 +3355,12 @@ the next piece begins with a capital, and the recording has a clear pause at
 that seam, one full stop goes in silently; nothing else changes, and every
 other change stays visible and approvable as the fence says. The rule:
 frontend [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md) §2. Not built yet. No migration.
+
+**N127 · session_sniper_metrics is dropped; user_sniper_profile stays
+(founder, the Claude Code chat, 24 October 2026, an exception to "never drop
+anything").** The retired Sniper dartboard's per-session table held 143 rows
+(2026-03-05 to 2026-06-02), nothing writes or reads it, and no foreign key
+points at it. It is dropped and leaves the retention schedule
+(`retention_measurement_stores_v1`); `user_sniper_profile` is kept. Migration
+0491, applied by hand after an outside review, then recorded:
+[wilplus/backend-cursor#1281](https://github.com/wilplus/backend-cursor/pull/1281).
