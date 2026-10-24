@@ -3508,3 +3508,58 @@ item 50, N44, unchanged).
 12. The founder is the coach on the calls, for now.
 Drawn on the prototype <https://claude.ai/artifact/R3FVcoDNasDY9JcR82VmDF>.
 Not built yet. No migration in this entry.
+
+**N135 · No date means two months, said in words; one recorder (founder, the
+Claude Code chat, 24 October 2026: "if there is no date yet, we assume that the
+practice will take around 2 months, and we say it. So let's assume a 2 months
+horizon for whatever your goal is. Put it in the nice words, please. And for
+the mic, please use the mic or the recording interface that we use for the
+feedback walk practice. The same. I want it unified, please").** For N131's
+two questions:
+1. A speaker who answers "No date yet" gets a two-month plan, whatever the
+goal: three practices a week and a call every second Friday, as the treatment
+picker's journey table drew for no date. The app says so in words; the
+wording is drawn on the prototype
+<https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn> for the founder's OK
+(Never 4).
+2. The voice message in the Lounge is recorded with the walk practise's own
+recorder: the Take's recording strip (dot, clock, bar), Skip and the red Stop
+(`RecordingStrip`, `RecorderFooter` in the frontend), and the message lands in
+the chat as the speaker's orange voice bubble. No separate microphone button.
+Not built yet. No migration.
+
+**N136 · Every speaker is diagnosed and gets a plan; "Not now, just record"
+goes (founder, the Claude Code chat, 24 October 2026: "delete does not now
+just record, because we want practice. When you go to a doctor, you don't
+say, oh, just check me. You ask for a treatment plan. So the same is here.
+You come in and it doesn't matter if you just want to test it or not. We're
+going to diagnose you and we're going to give you a treatment plan. So you can
+either click your date or you can click skip the date and you're going to be
+given the date. And we will tell you that in the bubble").** Amends N134 item
+6 and N135:
+1. The two questions are asked in the Lounge after consent and before the
+first Take, and they cannot be skipped: "Not now, just record" is dropped.
+This overrides N134 item 6's "nothing stands before a Take" for the first
+Take, and CLAUDE.md's Never 3 ("coaches and exercises are never in the way")
+for it; the founder decides whether that line is reworded.
+2. Only the date can be skipped. A speaker who skips it is given a date two
+months away (N135: eight weeks, three practices a week, a call every second
+Friday), and Will says that date in the bubble. The words are drawn on the
+prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn> for the
+founder's OK (Never 4).
+3. The voice message is recorded with the walk practise's recorder (N135)
+without its Skip: the strip and the red Stop.
+Not built yet. No migration.
+
+**N137 · The two questions' words (founder, the Claude Code chat, 24 October
+2026: "Ask when is your deadline, not when is your presentation. Then for the
+second question, say, I assume you came here to practice for some important
+event in your life. Please tell me, why does it matter and what is it
+about?").** The first question reads "When is your deadline?". The second
+reads "I assume you came here to practise for some important event in your
+life. Please tell me, why does it matter and what is it about?" ("practise",
+the verb, as the app spells it). These words are signed (Never 4); they
+replace "When is your presentation?" and "Why does it matter, and what is it
+about? Tell me in about a minute." on the prototype
+<https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>. Not built yet. No
+migration.
