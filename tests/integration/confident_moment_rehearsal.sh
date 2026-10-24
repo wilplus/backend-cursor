@@ -907,6 +907,18 @@ if [ "$LANE" = "released" ]; then
   hard migrations/the_shadow_writer_accepts_frame_v7.sql
 fi
 
+# 0491 (founder 2026-10-24): session_sniper_metrics is dropped. Re-issues
+# 0423's retention_measurement_stores_v1 without it, so the cleaner's list
+# and the database's agree. This lane has no session_sniper_metrics (its
+# suite, tests/test_retention_cleaner_postgres.py, builds the tables it
+# needs), so the drop is the IF EXISTS no-op. Released lane only, like 0423.
+# After 0489, as in the manifest (0490 is not in this lane). Twice:
+# apply/reapply idempotency.
+if [ "$LANE" = "released" ]; then
+  hard migrations/the_sniper_metrics_table_is_dropped.sql
+  hard migrations/the_sniper_metrics_table_is_dropped.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

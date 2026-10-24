@@ -190,7 +190,6 @@ class DatabaseService:
         # Cache missing optional columns discovered at runtime on older schemas.
         self._v2_sessions_missing_columns: set[str] = set()
         self._student_profile_table = "student_profile"
-        self._legacy_student_profile_table = "user_sniper_profile"
 
     # ── F1 repositories (audit Q-A1 step 2 / Q-A2) ──────────────────────
     # Lazy, cached on the instance's own dict, imported on first use: the

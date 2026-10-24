@@ -67,7 +67,7 @@ AS_OF = AS_OF_AT.isoformat()
 TABLE_FILES = (
     "add_dev_bugs.sql", "add_life_push_reminders.sql",
     "add_admin_annotations_log.sql", "add_candidate_windows.sql",
-    "add_user_sniper_profile.sql", "add_arc_part_acoustics.sql",
+    "add_arc_part_acoustics.sql",
     "add_user_acoustic_baseline.sql", "add_dimension_evaluations.sql",
     "add_dimension_evaluations_snippet_grain.sql",
     "add_llm_usage.sql", "add_token_pricing.sql",
@@ -77,7 +77,7 @@ FINANCIAL_MIGRATION = "financial_records_go_after_five_years.sql"
 #: What Supabase grants service_role on every public table by default.
 SUPABASE_DEFAULT_GRANTS = (
     "processing_jobs", "dev_bugs", "life_reminder_log", "admin_annotations_log",
-    "candidate_windows", "session_sniper_metrics", "arc_part_acoustics",
+    "candidate_windows", "arc_part_acoustics",
     "user_acoustic_baseline", "dimension_evaluations", "snippets",
 )
 
@@ -94,7 +94,6 @@ EXPECTED = {
     (2, MEASURES + "arc_part_acoustics"): 1,
     (2, MEASURES + "candidate_windows.metrics"): 1,
     (2, MEASURES + "dimension_evaluations"): 2,
-    (2, MEASURES + "session_sniper_metrics"): 1,
     (2, MEASURES + "snippets.metrics"): 2,
     (2, MEASURES + "user_acoustic_baseline"): 1,
     (2, MEASURES + "v2_sessions.voice_measures"): 1,
@@ -410,9 +409,6 @@ def _measurements(db, rec: dict) -> None:
                global_dynamic_db = 11.2, global_pitch_center = 4.1,
                global_energy = 0.6, global_fillers = 3, kpi_score = 71
          WHERE id = %s RETURNING id""", (take,))
-    _one(db, """
-        INSERT INTO public.session_sniper_metrics (session_id, user_id, wpm, pause_ms)
-        VALUES (%s, %s, 141, 380) RETURNING session_id""", (take, owner["user"]))
     for dimension in ("wpm", "pitch_center"):
         _one(db, """
             INSERT INTO public.dimension_evaluations (recording_id, session_id,
@@ -645,8 +641,6 @@ def _measurements_left(db, rec: dict) -> dict:
               AND num_nonnulls(global_wpm, global_pause_ms, global_dynamic_db,
                                global_pitch_center, global_energy, kpi_score) > 0)
              AS take_measures,
-          (SELECT count(*) FROM public.session_sniper_metrics
-            WHERE session_id = %(t)s) AS sniper,
           (SELECT count(*) FROM public.dimension_evaluations
             WHERE session_id = %(t)s::text) AS dimensions,
           (SELECT count(*) FROM public.acoustic_feature_snapshots a
@@ -734,7 +728,7 @@ class TestALiveRun:
         assert str(event["retention_run_id"]) == summary["run_id"]
         assert _measurements_left(db, w["idle_rec"]) == {
             "snippets": 0, "words": 2, "windows": 0, "take_measures": 0,
-            "sniper": 0, "dimensions": 0, "snapshots": 0, "parts": 0,
+            "dimensions": 0, "snapshots": 0, "parts": 0,
             "baselines": 0}
         assert _one(db, """
             SELECT global_fillers FROM public.v2_sessions WHERE id = %s""",

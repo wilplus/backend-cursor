@@ -310,8 +310,6 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "delete", "database_row", 60),
     PurgeDependency("sniper_profile", "user_sniper_profile", "user_id", "user",
                     "delete", "database_row", 60),
-    PurgeDependency("sniper_metrics", "session_sniper_metrics", "user_id", "user",
-                    "delete", "database_row", 60),
     PurgeDependency("acoustic_baseline", "user_acoustic_baseline", "user_id",
                     "user", "delete", "database_row", 60),
     # voice_album has no user column (add_voice_album.sql: arc_id, snippet_id);
@@ -1598,7 +1596,7 @@ DYNAMIC_RUNTIME_RELATIONS: frozenset[str] = frozenset({
     # clean-up's (N50 C4 B).
     "processing_jobs", "admin_annotations_log",
     "mlc3_service_backpressure_events", "dimension_evaluations",
-    "session_sniper_metrics", "arc_part_acoustics", "user_acoustic_baseline",
+    "arc_part_acoustics", "user_acoustic_baseline",
 })
 
 

@@ -185,6 +185,12 @@ class DestructiveDetectionTests(unittest.TestCase):
             # destructive migration here aborts the Railway migrate step and
             # blocks every deploy (see #359).
             "add_confident_moment_coaching_bundle_v1.sql",
+            # Deliberate (founder 2026-10-24): drops the retired Sniper
+            # dartboard's session_sniper_metrics (143 rows, newest
+            # 2026-06-02, nothing writes or reads it, no foreign key points
+            # at it). APPLIED BY HAND and recorded as 0491 before the PR
+            # that adds it to the manifest merges (see #359).
+            "the_sniper_metrics_table_is_dropped.sql",
         }, "The destructive set changed. If you added a migration that drops "
            "something, add it here deliberately — don't just update the literal.")
 
