@@ -927,6 +927,25 @@ Partial **W** is the mean of the word signals present (H3); naturalness and the 
 
 **Status:** definition signed by the founder on 2026-10-06 and frozen as `willfidence-v1`; the machine-only read `willfidence-v1-machine` is built dark (V4 Phase 1, B1.3). A change to the definition is a new version, never an edit in place.
 
+### `pace-speed-v1`, `pace-pause-share-v1`, `pace-pause-length-v1` — the Pace Circle (machine reads; founder-signed 2026-10-24, decisions log N130, N133 — DEFINED, NOT BUILT)
+
+Three live reads for the Pace Circle practice screen (N130). Each asks one thing and is measured in the browser from the voice's loudness alone: no transcript, no provider call, nothing stored. All three are **machine** reads with no rater and no question. None is a verdict, and none is ever shown as a number (AC-9): each moves exactly one thing on the screen.
+
+| Read | One-line operational definition | Shown as |
+|---|---|---|
+| **`pace-speed-v1`** speaking speed | How fast the speaker is saying syllables right now: syllables, counted as peaks in the voice's loudness, per second of speech over the last ~5 s, with pauses taken out. | The ball's left/right position only |
+| **`pace-pause-share-v1`** how much of the time you pause | The share of the last ~45 s that was silence, counting only gaps of a quarter of a second or longer; silence is quieter than the room's noise as measured in the first 2 s. | The ball's up/down position only (up: less silence) |
+| **`pace-pause-length-v1`** the pause happening now | How long the voice has been silent in the current gap, reset the moment the speaker talks again. | The circle's rim colour only: green, then amber, then deep amber (never red) |
+
+**What they are not.**
+
+- **Not each other.** Speed leaves pauses out, so a long pause moves the ball down, never left. The share counts how much silence; the rim shows how long this one is.
+- **Not hesitation.** "Um" makes sound, so it counts as speech, never as a pause.
+- **Not loudness, clarity or confidence.** None of them is `conf-q-v1` or `acoustic-confidence-v1`, and none feeds them, the §7.2 blend, willfidence or the label ledger.
+- **Not "good".** Each says only faster or slower, more or less silence, shorter or longer than the centre of the speaker's circle. A deliberate pause for effect is fine; the rim shows its length, never its quality.
+
+**The centre.** Speed and share start from research values (speed: the rate syllables are said while talking, about 5 a second in English; share: about a quarter to a third of the time silent) and move gradually to the speaker's own, never leaving a healthy research band (N130). The rim's starting points are about 1.2 s for amber and 2.5 s for deep amber. Every starting value is tuned on the microphone prototype; a change to a definition is a new version, never an edit in place.
+
 ### Adding an entry
 
 A new entry requires, in order: the construct written out; what it is explicitly *not*, naming the adjacent constructs it will be confused with; the single-barrelled question; the answer semantics; the engine; and an external anchor if one exists. Then the lane, then the capacity.

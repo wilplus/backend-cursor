@@ -3468,3 +3468,13 @@ names the next level of excellence they are working towards. The picker's
 table is drafted on the prototype
 <https://claude.ai/artifact/R3FVcoDNasDY9JcR82VmDF>; its open questions are
 asked in the chat. Not built yet. No migration in this entry.
+
+**N133 · The Pace Circle's three reads are defined (founder, the Claude Code
+chat, 24 October 2026).** Speed, how much of the time the speaker pauses,
+and the pause happening now each get a one-line operational definition, as
+the construct rule requires before N130 ships: `pace-speed-v1`,
+`pace-pause-share-v1` and `pace-pause-length-v1`, in
+[`docs/SPEC.md`](SPEC.md) §17. Three, not two, because the screen measures
+two different things about pauses. Speed leaves pauses out, so its starting
+centre is the rate syllables are said while talking (about 5 a second in
+English), not the brief's 4. Not built yet. No migration.
