@@ -3412,3 +3412,23 @@ built (the consent lock's no screen before a Take, N121's hesitations kept
 out of the Clearer version, contract §8 item 50 and N44's no subscriptions
 for calls on a rhythm, and the retired sniper exercise, N127). No migration
 in this entry.
+
+**N130 · The Pace Circle, a live rhythm practice screen (founder, the Claude
+Code chat and the "Pace Circle" brief, 24 October 2026, every recommendation
+taken).** A separate practice screen, never between a Take and the Ideal
+Text: one soft mid-screen circle and one puffy orange ball that guides and
+never grades. Speed moves the ball left and right; how often the speaker
+pauses moves it up (fewer) and down (more); the circle's rim, never the
+ball, shows the pause happening now: green, then amber, then a deep amber,
+never red. Measured live in the browser from the voice's loudness, with no
+transcript and no provider call: syllables per second over the last ~5 s,
+share of time silent over the last ~45 s, a slow, floaty ball. The centre
+starts at research values and moves gradually to the speaker's own (about
+half-way after 10 minutes of speech, at most 80% their own), learned from
+every practice session but never leaving a healthy research band. No words
+on screen while speaking beyond start and stop; listen only, nothing
+recorded or stored, in the first version; the speaker practises a paragraph
+of their own Ideal Text; phone and desktop; loudness left out. Before it
+ships, pace and pause each get a one-line written definition. Brief:
+<https://claude.ai/artifact/VJ2uSugQWmbAsmReyxuufz>. Not built yet. No
+migration.
