@@ -3364,3 +3364,51 @@ points at it. It is dropped and leaves the retention schedule
 (`retention_measurement_stores_v1`); `user_sniper_profile` is kept. Migration
 0491, applied by hand after an outside review, then recorded:
 [wilplus/backend-cursor#1281](https://github.com/wilplus/backend-cursor/pull/1281).
+
+**N128 · N118's second part goes ahead, and re-cut blocks get new ids
+(founder, the Claude Code chat, 24 October 2026: "Finish the 4th", then,
+asked which, "Build 6, N118 extras", the answer that also gives the OK that
+re-cut paragraphs get new ids; answers N125's sixth question).** When a
+Take's two best clips fall in one block, the cut between them moves so each
+gets a block of its own, and a Take of one block is split in two the same
+way, as N118 says; the blocks this makes are new blocks with new ids, so
+nothing that points at a block id is carried over to them. A Take whose
+blocks are already frozen keeps them. The rule: contract 24a. No migration.
+
+**N129 · A diagnosis and a treatment plan decide what each walk practises
+(founder, the Claude Code chat, 24 October 2026: "we need to build a
+modification that allows for a diagnosis and then a clear action plan for a
+user depending on their deadline and then a gamified progress bar after each
+take"; "before there is a need for a diagnosis few questions and voice
+measurement of those like when is your presentation, why do you believe your
+presentation is important ... it will relay on the voice messages from the
+user right after they do the first onboarding and before they start the
+practise with the slides"; "The walk stays the same this is the practise
+itself. Now we need a flow that will define what goes into that walk so it
+serves the purples [purpose] and solves the problem identified during the diagnosis";
+then, asked, "The plan's progress", "Words + plan, machine first", "The
+deadline sets it").** The direction: after onboarding and before the first
+practice with slides, the speaker answers a few questions by voice message
+(when the presentation is, why it matters), and their voice is measured; the
+app names in words, with the speaker's own clip, the one to three things it
+heard, and the plan that treats them; a coach later hears the voice messages
+blind and may change the plan, never seeing the machine's guess first (Never
+2). The plan's interventions, as the founder lists them: the Clearer version
+for filler and repeated words; the AI version of the voice for mannerisms or
+a flat voice; a coach-recorded exercise for an error of the speaker's own
+that fits neither; the sniper exercise for pace that runs too fast and too
+few or wrongly long pauses; judging others from the speaker's team;
+recording for a bigger audience ("the crowd"); a 15-minute live coach call
+every Friday or every second Friday by need; and 15 minutes of exercises in
+the app three times a week, for example for two months. The deadline sets
+the schedule by rule from the presentation date and the diagnosis; the
+speaker may move the days. After each Take a progress bar fills with what
+the speaker did (Takes, exercises, calls, the days to the presentation),
+never with a measure of the voice, so Never-rule 1 stands. The walk itself
+does not change: the plan decides which interventions go into it. Not
+specified in full and not built: the flow is drawn as a prototype first, and
+each part that meets an existing rule gets its own decision before it is
+built (the consent lock's no screen before a Take, N121's hesitations kept
+out of the Clearer version, contract §8 item 50 and N44's no subscriptions
+for calls on a rhythm, and the retired sniper exercise, N127). No migration
+in this entry.

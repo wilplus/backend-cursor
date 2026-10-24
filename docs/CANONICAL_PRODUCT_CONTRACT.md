@@ -173,6 +173,14 @@ with this contract, this contract wins.
     closest to 75 words, normally 60-90 words. It never cuts words, fabricates
     boundaries, reorders chronology, or crosses a Slide boundary. An indivisible
     short or long Paragraph remains intact with a typed partition exception.
+    *(Amended 2026-10-24, N118, N128.)* When the Take's two best clips (N118)
+    fall in one block, the cut between them moves to a persisted boundary
+    between the two clips so each gets a block of its own, each 40 to 120
+    words, never across a Slide and never cutting a clip; a Take of one block
+    is split in two the same way when each clip has 5 words or more. When no
+    such cut exists, the blocks stay as partitioned. A block made this way is
+    a new block with a new id and carries the typed partition exception
+    `moment_split`. A Take whose blocks are frozen keeps them.
 24b. **(REPLACED 2026-09-18 — founder. Prior text retained at 24b-prior.)** V3
     surfaces exactly one relative-best Confident Voice item per valid block, on
     **every** Take including Take 1 — see 24e for what every item carries and
