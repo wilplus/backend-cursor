@@ -13,19 +13,39 @@ OUTCOME
       leave the queue; "None" with a community is refused.
   O5  A listener hears audio only (no words, no speaker, no Take), never
       their own clip, and answering their own clip is refused.
+  O6  Every walk serves three clips, one per level (high, middle, low),
+      from three different speakers, community clips first in their level,
+      never mine or one I answered, in a blind order fixed for the Take;
+      fewer only when fewer speakers are left.
+  O7  An imported corpus clip plays through a short-lived signed link,
+      audio only, never a name, transcript or level.
+  O8  My answer on an imported clip is kept once (a second answer is
+      refused) and never becomes a label.
+  O9  The judging reopened from the Lounge lists imported clips too.
+  O10 An empty queue is logged with its reason, and so is a short one.
 PROVES   O1 -> test_answered_self_labelled_and_settled_clips_are_not_queued
          O2 -> test_the_judging_reopened_shows_the_latest_answers_with_their_clips
          O3 -> test_data_and_consent_lists_each_shared_take_once_with_where
          O4 -> test_none_withdraws_a_take_from_every_community
          O5 -> test_a_listener_hears_audio_only_and_never_their_own_clip
+         O6 -> test_three_clips_one_per_level_three_speakers_fixed_per_take
+         O7 -> test_an_imported_clip_plays_by_a_signed_link_audio_only
+         O8 -> test_an_answer_on_an_imported_clip_is_kept_once_and_never_a_label
+         O9 -> test_the_replay_lists_imported_clips
+         O10 -> test_an_empty_queue_is_logged_with_why
 WHY      Founder 2026-10-06 (N52.4, migration 0432; CM2). The consent and
          words versions on a share are pinned on the database in
          test_a_share_records_the_words_the_speaker_saw_postgres.py.
+         O6 to O10: founder 2026-10-23 (N119, migration
+         a_speaker_may_judge_an_imported_clip.sql): the imported corpus the
+         coaches judge is played to speakers, three levels, three speakers;
+         this amends CM1 A and replaces N97's one moment per try.
 """
 from __future__ import annotations
 
 import json
-import random
+import logging
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -56,6 +76,11 @@ class _Db:
         self.ratings: list = []
         self.corpus: list = []
         self.sessions = {_uuid(901): "owner-1", _uuid(902): "owner-2"}
+        # The imported training corpus (N119): ownerless import sessions,
+        # each with its frozen cohort, and the speakers' answers on them.
+        self.imports: dict = {}
+        self.import_answers: list = []
+        self.takes = SimpleNamespace(list_training_import_cohorts=lambda: list(self.imports.values()))
         self.next = 100
 
     # communities
@@ -89,6 +114,8 @@ class _Db:
 
     # shares
     def v2_get_session_by_id(self, sid):
+        if sid in self.imports:
+            return self.imports[sid]
         return {"id": sid, "user_id": self.sessions[sid]} if sid in self.sessions else None
 
     def upsert_take_share(self, *, take_session_id, owner_user_id, community_id,
@@ -164,6 +191,28 @@ class _Db:
     def get_corpus_clip(self, cid):
         return next((c for c in self.corpus if c["id"] == cid), None)
 
+    def get_snippet_scores_by_ids(self, ids):
+        return {i: {"session_id": self.snippets[i]["session_id"],
+                    "score": ((self.snippets[i].get("metrics") or {})
+                              .get("voice_confidence") or {}).get("score")}
+                for i in ids if i in self.snippets}
+
+    # the imported corpus's answers (N119)
+    def list_import_clip_answered_ids(self, listener):
+        return [a["snippet_id"] for a in self.import_answers if a["listener_user_id"] == listener]
+
+    def insert_import_clip_answer(self, row):
+        if any(a["listener_user_id"] == row["listener_user_id"]
+               and a["snippet_id"] == row["snippet_id"] for a in self.import_answers):
+            return None
+        n = len(self.answers) + len(self.import_answers)
+        self.import_answers.append({**row, "created_at": f"2026-10-18T10:00:{n:02d}Z"})
+        return self.import_answers[-1]
+
+    def list_import_clip_answers(self, listener, *, limit=50):
+        mine = [a for a in self.import_answers if a["listener_user_id"] == listener]
+        return list(reversed(mine))[:limit]
+
 
 POLICY = patch.object(Config, "COMMUNITY_SHARE_POLICY_VERSION", "phase1-2026-11-01")
 ACCEPTED = patch("services.lend_your_ear.accepted_policy_at_least", return_value=True)
@@ -177,9 +226,13 @@ def _switches():
         yield
 
 
-def _snippet(sid, take, user="owner-1", **extra):
+HIGH, MIDDLE, LOW = 0.8, 0.0, -0.8
+
+
+def _snippet(sid, take, user="owner-1", score=HIGH, **extra):
     return {"id": sid, "session_id": take, "user_id": user, "start_offset_ms": 1200,
-            "duration_ms": 3000, "transcript": "the words they said", **extra}
+            "duration_ms": 3000, "transcript": "the words they said",
+            "metrics": {"voice_confidence": {"score": score}}, **extra}
 
 
 def _private(db, owner="owner-1", code="friends-of-mine"):
@@ -211,7 +264,7 @@ def _world():
     db.sessions[_uuid(903)] = "listener"
     db.snippets = {
         _uuid(11): _snippet(_uuid(11), _uuid(901)),
-        _uuid(21): _snippet(_uuid(21), _uuid(902), user="owner-2"),
+        _uuid(21): _snippet(_uuid(21), _uuid(902), user="owner-2", score=LOW),
         _uuid(31): _snippet(_uuid(31), _uuid(903), user="listener"),
     }
     club = _private(db, owner="owner-2", code="the-club-code")
@@ -228,8 +281,11 @@ def _world():
     return db, club
 
 
-def _queue(db, listener="listener"):
-    status, payload = cm.queue_for(db, listener_id=listener, rng=random.Random(4))
+TAKE = _uuid(990)
+
+
+def _queue(db, listener="listener", take=TAKE):
+    status, payload = cm.queue_for(db, listener_id=listener, take=take)
     assert status == 200
     return payload["clips"]
 
@@ -327,3 +383,163 @@ def test_data_and_consent_lists_each_shared_take_once_with_where():
         "communities": [{"id": GENERAL_ID, "name": None, "kind": "general"},
                         {"id": _uuid(7), "name": "Friends", "kind": "private"}]}]}
 
+
+
+# ── three levels, three speakers, and the imported corpus (N119) ─────────
+
+IMPORT_A, IMPORT_B, IMPORT_C = _uuid(801), _uuid(802), _uuid(803)
+
+
+def _import(db, sid, speaker, clips, *, set_up=True, archived=False):
+    """One training import the coaches judge: ownerless, its cohort frozen
+    on its context, each clip a snippet of it with the machine's read."""
+    ctx = {"topic": "Board pitch", "speaker_label": speaker,
+           "label_queue_selection": [{"snippet_id": c} for c, _ in clips]}
+    if set_up:
+        ctx["language"] = "en"
+    if archived:
+        ctx["archived_at"] = "2026-10-20T00:00:00Z"
+    db.imports[sid] = {"id": sid, "source": "training_import", "recording_id": None,
+                       "intake_context": ctx}
+    for clip_id, score in clips:
+        db.snippets[clip_id] = {
+            "id": clip_id, "session_id": sid, "user_id": None, "start_offset_ms": 4000,
+            "duration_ms": 2500, "transcript": "an imported speaker's words",
+            "audio_segment_path": f"corpus/{clip_id}.webm",
+            "metrics": {"voice_confidence": {"score": score}}}
+
+
+def _signed(ref, expires_in=None, **_):
+    return f"https://signed.example/{ref}?ttl={expires_in}"
+
+
+SIGNED = patch("services.audio_ref_resolver.resolve_playable_ref", _signed)
+
+
+def _imported_world():
+    """The queue world, the licensed corpus emptied (it is, on main), and
+    two coaches' imports: Ada (three levels) and Bo (middle and low); a
+    third import not set up and a fourth archived are never served."""
+    db, club = _world()
+    db.corpus = []
+    _import(db, IMPORT_A, "Ada", [(_uuid(61), HIGH), (_uuid(62), MIDDLE), (_uuid(63), LOW)])
+    _import(db, IMPORT_B, "Bo", [(_uuid(71), MIDDLE), (_uuid(72), LOW)])
+    _import(db, IMPORT_C, "Cy", [(_uuid(81), MIDDLE)], set_up=False)
+    _import(db, _uuid(804), "Di", [(_uuid(91), MIDDLE)], archived=True)
+    return db, club
+
+
+def _level(db, clip):
+    score = db.snippets.get(clip["clip_id"], {}).get("metrics", {}).get("voice_confidence", {}).get("score")
+    return {HIGH: "high", MIDDLE: "middle", LOW: "low"}[score]
+
+
+def _speaker(db, clip):
+    snippet = db.snippets[clip["clip_id"]]
+    if snippet["session_id"] in db.imports:
+        return db.imports[snippet["session_id"]]["intake_context"]["speaker_label"]
+    return snippet["user_id"]
+
+
+def test_three_clips_one_per_level_three_speakers_fixed_per_take():
+    with SIGNED:
+        db, _ = _imported_world()
+        clips = _queue(db)
+        # Community clips first in their level: owner-1's high, owner-2's
+        # low; the imported corpus fills the middle (Ada's or Bo's).
+        assert sorted(_level(db, c) for c in clips) == ["high", "low", "middle"]
+        assert len({_speaker(db, c) for c in clips}) == 3
+        assert {_uuid(11), _uuid(21)} <= {c["clip_id"] for c in clips}
+        assert {c["source"] for c in clips} == {"community", "training"}
+        never = {_uuid(31), _uuid(81), _uuid(91)}   # mine, not set up, archived
+        assert not never & {c["clip_id"] for c in clips}
+        # Fixed for the Take: asked again, the same three in the same order.
+        assert _queue(db) == clips
+        # A blind order: the place never tells the level.
+        places = {[_level(db, c) for c in _queue(db, take=_uuid(990 + n))].index("high")
+                  for n in range(12)}
+        assert len(places) > 1
+        # Never one I answered: with both imported middles answered, the
+        # middle is left out, never filled from another level.
+        for clip_id in (_uuid(62), _uuid(71)):
+            assert cm.answer(db, listener_id="listener",
+                             body={"clip_id": clip_id, "value": "yes"})[0] == 200
+        clips = _queue(db, take=_uuid(991))
+        assert sorted(_level(db, c) for c in clips) == ["high", "low"]
+        # Fewer only with fewer speakers: Ada alone gives one clip, never two.
+        lone = _Db()
+        _import(lone, IMPORT_A, "Ada", [(_uuid(61), HIGH), (_uuid(62), MIDDLE), (_uuid(63), LOW)])
+        assert len(_queue(lone)) == 1
+        # Three speakers whose clips crowd one level still fill all three.
+        crowd = _Db()
+        _import(crowd, IMPORT_A, "Ada", [(_uuid(61), HIGH), (_uuid(62), MIDDLE)])
+        _import(crowd, IMPORT_B, "Bo", [(_uuid(71), HIGH), (_uuid(72), LOW)])
+        _import(crowd, IMPORT_C, "Cy", [(_uuid(81), HIGH)])
+        clips = _queue(crowd)
+        assert sorted(_level(crowd, c) for c in clips) == ["high", "low", "middle"]
+        assert len({_speaker(crowd, c) for c in clips}) == 3
+
+
+def test_an_imported_clip_plays_by_a_signed_link_audio_only():
+    with SIGNED:
+        db = _Db()
+        _import(db, IMPORT_A, "Ada", [(_uuid(61), HIGH)])
+        [clip] = _queue(db)
+    assert clip == {"clip_id": _uuid(61), "source": "training",
+                    "audio_ref": f"https://signed.example/corpus/{_uuid(61)}.webm?ttl=900",
+                    "start_offset_ms": 4000, "duration_ms": 2500, "community": None}
+    served = json.dumps(clip)
+    for private in ("Ada", "Board pitch", "an imported speaker's words", IMPORT_A,
+                    "0.8", "delivery_signal"):
+        assert private not in served
+    # A clip whose sound cannot be signed is never served.
+    with patch("services.audio_ref_resolver.resolve_playable_ref", lambda *_a, **_k: None):
+        assert _queue(db) == []
+
+
+def test_an_answer_on_an_imported_clip_is_kept_once_and_never_a_label():
+    db, _ = _imported_world()
+    body = {"clip_id": _uuid(61), "value": "in_between"}
+    assert cm.answer(db, listener_id="listener", body=body) == (200, {"recorded": True})
+    assert cm.answer(db, listener_id="listener", body=body) == (409, {"code": "ALREADY_ANSWERED"})
+    assert db.import_answers == [{"listener_user_id": "listener", "snippet_id": _uuid(61),
+                                  "import_session_id": IMPORT_A, "value": "in_between",
+                                  "created_at": db.import_answers[0]["created_at"]}]
+    # Never a label, never a community answer: the coaches' ledger and the
+    # peer rows are untouched.
+    assert db.ratings == [] and db.answers == []
+    # A clip of an import not set up, or archived, is not one to answer.
+    for clip_id in (_uuid(81), _uuid(91)):
+        assert cm.answer(db, listener_id="listener",
+                         body={"clip_id": clip_id, "value": "yes"}) == (404, {"code": "CLIP_NOT_FOUND"})
+    with SIGNED:
+        assert _uuid(61) not in {c["clip_id"] for c in _queue(db)}
+
+
+def test_the_replay_lists_imported_clips():
+    db, _ = _imported_world()
+    assert cm.answer(db, listener_id="listener", body={"clip_id": _uuid(21), "value": "no"})[0] == 200
+    assert cm.answer(db, listener_id="listener", body={"clip_id": _uuid(61), "value": "yes"})[0] == 200
+    with SIGNED:
+        status, payload = cm.my_answers(db, listener_id="listener")
+    assert status == 200
+    assert [(a["clip_id"], a["value"]) for a in payload["answers"]] == [(_uuid(61), "yes"), (_uuid(21), "no")]
+    imported = payload["answers"][0]
+    assert imported["audio_ref"] == f"https://signed.example/corpus/{_uuid(61)}.webm?ttl=900"
+    assert (imported["source"], imported["community"]) == ("training", None)
+    assert "Ada" not in json.dumps(payload)
+
+
+def test_an_empty_queue_is_logged_with_why(caplog):
+    with caplog.at_level(logging.INFO, logger="services.lend_your_ear"):
+        assert _queue(_Db()) == []
+    empty = [r for r in caplog.records if "no other speakers" in r.getMessage()]
+    assert empty and empty[0].levelno == logging.WARNING
+    assert "high: no clip" in empty[0].getMessage()
+    caplog.clear()
+    lone = _Db()
+    with SIGNED, caplog.at_level(logging.INFO, logger="services.lend_your_ear"):
+        _import(lone, IMPORT_A, "Ada", [(_uuid(61), HIGH), (_uuid(62), MIDDLE)])
+        assert len(_queue(lone)) == 1
+    short = [r for r in caplog.records if "fewer than three" in r.getMessage()]
+    assert short and "speaker already in the set" in short[0].getMessage()

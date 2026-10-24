@@ -133,8 +133,9 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
 |---|---|---|---|---|---|
 | **Coach's blind answer** on a speaker's moment | Coach, on the Judge (panel D) | Yes | The label ledger. A single coach answer is also product authority: key moments, the Album's coach leg (`professional_confidence.py`), and the calibration of the reached bar (N51 V8, V9) | Coach review is contract (M) | Live |
 | **Coach's blind answer** on a training-corpus import | Coach, in mixed rounds (N101) | Yes (N58) | The label ledger; 80/20 split by speaker (`corpus_split.py`) | The founder's processing basis (N58; N68 D4, N69) | Judging live. Nothing trains on these labels until the founder says so (N56) |
-| **Other speakers' answers** | Speakers, one moment per practice try (walk C8; N97) | Yes, while the ledger still needs a rater | The label ledger (lane `game_peer`) and `community_answers`. Never a coach label or owner routing (N52.4). No authority over feedback, key moments, styling or the Album (contract 35) | The owner's per-Take community share (N52.4) | Live since 2026-10-08 |
-| **Answers on licensed corpus clips** | Speakers, in the places peers leave (walk C8; N97) | **No.** A corpus clip is not a snippet and takes no label | `community_answers` (`clip_source = 'corpus'`) only | A licensed clip, never a speaker's training-corpus clip (CM1 A) | Served when rows exist. Nothing on main writes new ones since the tool was deleted on 2026-10-11 |
+| **Other speakers' answers** | Speakers, three moments per walk, high, middle and low, three speakers (walk C8; N119) | Yes, while the ledger still needs a rater | The label ledger (lane `game_peer`) and `community_answers`. Never a coach label or owner routing (N52.4). No authority over feedback, key moments, styling or the Album (contract 35) | The owner's per-Take community share (N52.4) | Live since 2026-10-08 |
+| **Answers on imported corpus clips** | Speakers, in the levels peers leave (walk C8, G4; N119) | **No** (L3). The coaches' labels on the same clip are a separate ledger | `import_clip_answers` only | The corpus basis (CO2, N58); anonymous, audio only, by a signed link (N119 amends CM1 A) | Live with N119 |
+| **Answers on licensed corpus clips** | Speakers, in the levels peers and the imported corpus leave (walk C8; N119) | **No.** A corpus clip is not a snippet and takes no label | `community_answers` (`clip_source = 'corpus'`) only | A licensed clip | Served when rows exist. Nothing on main writes new ones since the tool was deleted on 2026-10-11 |
 | **The machine's proposal** (`machine_value`) | The voice-confidence read, stamped server-side | **Never** | Ordering only: the line (section D), the corpus rounds' bands (N101), the mixed queue (K9), the S term of `willfidence-v1` (N51 carve-out) | none | Live |
 | **The speaker's own answer** (`take_feedback_self_report`) | The speaker | **Never** (rule 2) | The Album's user leg (contract 32), rater calibration (rule 2), routing (N97, waiting) | none | Kept. Almost no new answers: judging your own moments left the walk on 2026-10-12 (walk C10), and judging your own practice try is off until about 50 clips have both answers (walk §3) |
 | **Soft-label counts** (`clip_answer_counts`) | Built from blind coach and peer answers | Not a label | Yes 1, In-between ½, No 0; Not sure counted apart. Nothing reads it to decide anything yet | none | Live writes |
@@ -181,7 +182,7 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
   walk I2).
 - Will's conversation (N73). Whether a message helped is a report for the
   founder, not a label (walk I4).
-- Answers on licensed corpus clips (section E).
+- Speakers' answers on imported and licensed corpus clips (section E).
 - A rating that wasn't blind (contract 35g-11), and every `unresolved` or
   quarantined clip (K4, K5).
 
@@ -327,7 +328,9 @@ one confirms it first.
 - `migrations/version_confidence_rating_instrument_v2.sql` (0289): the
   `snippet_label_quorum` view
 - `services/lend_your_ear.py` and `services/communities.py`: other speakers'
-  clips and licensed clips
+  clips, imported corpus clips and licensed clips, one per level (N119)
+- `migrations/a_speaker_may_judge_an_imported_clip.sql`: speakers' answers
+  on imported clips (`import_clip_answers`)
 - `services/professional_confidence.py`: a single coach answer as product
   authority
 - `services/clip_answer_counts.py`: the soft label
@@ -380,6 +383,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-10-24 · N119 · speakers judge three clips per walk, high, middle and low, three speakers; the imported corpus is played to them and their answers there are kept in `import_clip_answers`, never a label · BE
 - 2026-10-21 · N111 · C1 built in the ledger: two historical v1 neutrals close a clip as perceptually ambiguous, never a label · BE
 - 2026-10-21 · N111 · B7 fixed: four modules' notes say the coach-word surfaces are closed (N79) and the doors' switches are gone · BE
 - 2026-10-21 · N111 · B6 fixed: the ledger's notes point to today's serving order and today's view · BE

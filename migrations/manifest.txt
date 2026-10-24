@@ -525,3 +525,4 @@
 0487	a_confidence_event_without_a_clip_is_given_up.sql
 0488	the_founder_edits_wills_questions.sql
 0489	the_shadow_writer_accepts_frame_v7.sql
+0490	a_speaker_may_judge_an_imported_clip.sql

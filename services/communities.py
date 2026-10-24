@@ -35,15 +35,17 @@ the policy version and carries no words version: taking consent back is
 always possible.
 
 THE QUEUE is the walk's other voices, served by the Lend your ear engine
-(``lend_your_ear.other_voices``; founder 2026-10-07, Q-B11 A, N62): at most
-three per walk, the community clips first (the speaker's private
-communities, then the general one), never the listener's own, never one
-they answered, never one the coach + peer quorum already settled
-(``label_quorum``), then training clips from the licensed corpus for the
-places left, machine-picked by stratum (``lend_your_ear.build_set``). The
-per-Take share above is the ONE consent path that admits a speaker's
-moment to this queue: ``community_clips`` reads ``community_clips_live``
-and nothing else (the Album share switch is retired). The speaker's own
+(``lend_your_ear.other_voices``; founder 2026-10-07, Q-B11 A, N62; three
+levels and three speakers since 2026-10-23, N119): one clip per level of
+the machine's read, each of another speaker, fixed for the Take, the
+community clips first in their level (the speaker's private communities,
+then the general one), never the listener's own, never one they answered,
+never one the coach + peer quorum already settled (``label_quorum``), then
+the training corpus (the imported clips the coaches judge, then the
+licensed corpus). The per-Take share above is the ONE consent path that
+admits a speaker's moment to this queue: ``community_candidates`` reads
+``community_clips_live`` and nothing else (the Album share switch is
+retired). The speaker's own
 moments are judged in the existing owner judgement flow, which this
 module does not touch. Audio only (AC-9): the clip id, the sound, where it
 starts, how long it is and which kind it is. No names, no words, no
@@ -54,10 +56,12 @@ THE ANSWER is one per person per clip, the same five answers
 rating: it is kept in ``community_answers`` and becomes a peer label
 (lane ``game_peer``) only under the quorum's access rule, exactly as
 ``lend_your_ear._peer_label`` writes one; it is never a coach label, never
-owner routing and never a training label by itself (L3). A training clip is
-not a snippet and takes no label: its answer stays in ``community_answers``
-alone, beside but apart from the community rows (clip_source 'corpus').
-The listener's own clip is never accepted.
+owner routing and never a training label by itself (L3). A training clip
+takes no label: a licensed clip's answer stays in ``community_answers``
+alone, beside but apart from the community rows (clip_source 'corpus'); an
+imported clip's stays in ``import_clip_answers`` alone (N119), apart from
+the coaches' labels on the same clip. The listener's own clip is never
+accepted.
 """
 from __future__ import annotations
 
@@ -390,24 +394,30 @@ def order_community_clips(rows: list[dict], *, listener_id: str, answered: set[s
 
 def _clip_audio(database: Any, snippet: dict) -> Optional[str]:
     from services.lend_your_ear import _audio
-    return _audio(database, {"source": "community", "snippet": snippet})
+    return _audio(database, snippet)
 
 
 def answered_clip_ids(database: Any, listener_id: str) -> set[str]:
     """Every clip this listener answered in the queue: the snippet of a
-    community clip, the corpus id of a training clip."""
-    return {str(c) for c in database.list_community_answered_clip_ids(str(listener_id)) or []}
+    community clip or of an imported corpus clip, the corpus id of a
+    licensed clip."""
+    me = str(listener_id)
+    return ({str(c) for c in database.list_community_answered_clip_ids(me) or []}
+            | {str(c) for c in database.list_import_clip_answered_ids(me) or []})
 
 
-def community_clips(database: Any, *, listener_id: str, answered: set[str],
-                    limit: int,
-                    hearing: Optional[tuple[Optional[str], list[dict]]] = None,
-                    ) -> list[dict]:
-    """Up to `limit` community clips the listener may hear, in the queue's
-    order. THE ONE DOOR for another speaker's moment into a peer queue:
-    only a Take shared under the per-Take consent (``community_clips_live``)
-    is read here. Audio only (AC-9). ``hearing`` is ``hearing_for``'s
-    answer when the caller already has it."""
+def community_candidates(database: Any, *, listener_id: str, answered: set[str],
+                         hearing: Optional[tuple[Optional[str], list[dict]]] = None,
+                         seed: str = "") -> list[dict]:
+    """The community clips the listener may hear, each with the machine's
+    level and its speaker, in the queue's order: their private communities'
+    first, then the general one's, each group in a seeded order (``seed``
+    is the walk's, so the set stays fixed for the Take). THE ONE DOOR for
+    another speaker's moment into a peer queue: only a Take shared under
+    the per-Take consent (``community_clips_live``) is read here. Nothing of
+    it leaves the server but the clip (``lend_your_ear._serve``).
+    ``hearing`` is ``hearing_for``'s answer when the caller already has it."""
+    from services.confidence_labels import band_of
     me = str(listener_id)
     general_id, private_rows = hearing if hearing is not None else hearing_for(database, me)
     private_ids = {str(r.get("id")) for r in private_rows}
@@ -415,38 +425,42 @@ def community_clips(database: Any, *, listener_id: str, answered: set[str],
     rows = [r for r in database.list_community_clips_live(hearable) or [] if isinstance(r, dict)]
     ids = list(dict.fromkeys(str(r["snippet_id"]) for r in rows if r.get("snippet_id")))
     labels = (database.get_confidence_labels_by_snippet_ids(ids) or {}) if ids else {}
+    ordered = order_community_clips(rows, listener_id=me, answered=answered,
+                                    labels=labels, private_ids=private_ids)
+    scores = (database.get_snippet_scores_by_ids(
+        [str(r["snippet_id"]) for r in ordered]) or {}) if ordered else {}
     # A clip from one of the listener's own communities carries its name, so
     # the walk says "Now N moments from Invita." (lock 2026-10-12, section 9).
     # The same rows `hearing_for` read; they are not read again.
     names = {str(r.get("id")): r.get("name") for r in private_rows
              if isinstance(r.get("name"), str) and r.get("name")}
-    clips: list[dict] = []
-    for row in order_community_clips(rows, listener_id=me, answered=answered,
-                                     labels=labels, private_ids=private_ids):
-        if len(clips) >= limit:
-            break
-        snippet = database.get_snippet_by_id(str(row["snippet_id"]))
-        if not isinstance(snippet, dict) or snippet.get("is_skipped"):
-            continue
-        if snippet.get("user_id") and str(snippet.get("user_id")) == me:
-            continue
-        audio = _clip_audio(database, snippet)
-        if not audio:
-            continue
-        clips.append({"clip_id": str(row["snippet_id"]), "source": "community",
-                      "audio_ref": audio,
-                      "start_offset_ms": snippet.get("start_offset_ms"),
-                      "duration_ms": snippet.get("duration_ms"),
-                      "community": names.get(str(row.get("community_id")))})
-    return clips
+
+    def place(row: dict) -> tuple[int, str]:
+        sid = str(row["snippet_id"])
+        private = str(row.get("community_id")) in private_ids
+        return (0 if private else 1,
+                hashlib.sha1(f"{seed}:community:{sid}".encode("utf-8")).hexdigest())
+
+    out: list[dict] = []
+    for row in sorted(ordered, key=place):
+        sid = str(row["snippet_id"])
+        out.append({"clip_id": sid, "source": "community",
+                    "level": band_of((scores.get(sid) or {}).get("score")),
+                    "speaker": f"user:{row.get('owner_user_id')}",
+                    "community": names.get(str(row.get("community_id")))})
+    return out
 
 
-def queue_for(database: Any, *, listener_id: str, rng: Any = None) -> tuple[int, dict]:
-    """The listener's queue: the walk's other voices, at most three,
-    community clips first, then training clips (Q-B11 A), served by the
-    Lend your ear engine. Audio only (AC-9)."""
+def queue_for(database: Any, *, listener_id: str,
+              take: Optional[str] = None) -> tuple[int, dict]:
+    """The listener's queue for the walk of one of their Takes (N119):
+    three clips, one per level, three speakers, community clips first in
+    their level, then the training corpus, fixed for the Take. Served by
+    the Lend your ear engine. Audio only (AC-9)."""
     from services.lend_your_ear import other_voices
-    return 200, {"clips": other_voices(database, listener_id=str(listener_id), rng=rng)}
+    if take is not None and not _is_uuid(take):
+        return 400, {"code": "INVALID_INPUT"}
+    return 200, {"clips": other_voices(database, listener_id=str(listener_id), take=take)}
 
 
 def my_answers(database: Any, *, listener_id: str, limit: int = 3) -> tuple[int, dict]:
@@ -460,11 +474,16 @@ def my_answers(database: Any, *, listener_id: str, limit: int = 3) -> tuple[int,
              if isinstance(r.get("name"), str) and r.get("name")}
     out: list[dict] = []
     # A few more rows than asked: one whose sound is gone takes no place.
-    for row in database.list_community_answers(me, limit=max(0, int(limit)) * 3) or []:
+    # The answers on imported clips are kept apart (N119) and merged here by
+    # when they were given.
+    more = max(0, int(limit)) * 3
+    rows = [r for r in (database.list_community_answers(me, limit=more) or [])
+            + (database.list_import_clip_answers(me, limit=more) or [])
+            if isinstance(r, dict)]
+    rows.sort(key=lambda r: str(r.get("created_at") or ""), reverse=True)
+    for row in rows:
         if len(out) >= limit:
             break
-        if not isinstance(row, dict):
-            continue
         clip = _answered_clip(database, row)
         if clip is None:
             continue
@@ -477,7 +496,16 @@ def my_answers(database: Any, *, listener_id: str, limit: int = 3) -> tuple[int,
 
 def _answered_clip(database: Any, row: dict) -> Optional[dict]:
     """The clip an answer was given on, as the queue served it; None when
-    its sound is gone."""
+    its sound is gone. An imported clip plays by a fresh signed link."""
+    if row.get("import_session_id"):
+        from services.corpus_coach_queue import playback_body
+        snippet = database.get_snippet_by_id(str(row.get("snippet_id")))
+        body = playback_body(snippet) if isinstance(snippet, dict) else None
+        if body is None:
+            return None
+        return {"clip_id": str(row.get("snippet_id")), "source": "training",
+                "audio_ref": body["url"], "start_offset_ms": body.get("start_offset_ms"),
+                "duration_ms": body.get("duration_ms")}
     if row.get("snippet_id"):
         snippet = database.get_snippet_by_id(str(row["snippet_id"]))
         if not isinstance(snippet, dict):
@@ -519,6 +547,10 @@ def answer(database: Any, *, listener_id: str, body: Any) -> tuple[int, dict]:
     if shared:
         return _answer_community(database, listener_id=me, clip_id=clip_id, rows=shared,
                                  answered=answered, row=row)
+    imported = _imported_clip(database, clip_id)
+    if imported is not None:
+        return _answer_imported(database, listener_id=me, clip_id=clip_id,
+                                import_session_id=imported, answered=answered, row=row)
     corpus = database.get_corpus_clip(clip_id)
     if not isinstance(corpus, dict) or not corpus.get("active", True):
         return 404, {"code": "CLIP_NOT_FOUND"}
@@ -559,6 +591,37 @@ def _answer_community(database: Any, *, listener_id: str, clip_id: str, rows: li
         "listener_user_id": listener_id, "snippet_id": clip_id,
         "take_session_id": str(heard.get("take_session_id")),
         "value": row["value"], "label_id": label_id, "label_outcome": outcome})
+    if saved is None:
+        return 409, {"code": "ALREADY_ANSWERED"}
+    if not isinstance(saved, dict):
+        return 500, {"code": "V2_ERROR"}
+    return 200, {"recorded": True}
+
+
+def _imported_clip(database: Any, clip_id: str) -> Optional[str]:
+    """The import a clip of the training corpus belongs to, when the walk
+    may serve it (in an import's frozen cohort, set up, not archived), else
+    None."""
+    from services.corpus_coach_queue import queued_corpus_clip
+    snippet, session = queued_corpus_clip(database, clip_id)
+    if snippet is None or not isinstance(session, dict):
+        return None
+    if (session.get("intake_context") or {}).get("archived_at"):
+        return None
+    return str(session.get("id"))
+
+
+def _answer_imported(database: Any, *, listener_id: str, clip_id: str,
+                     import_session_id: str, answered: set[str],
+                     row: dict) -> tuple[int, dict]:
+    """A speaker's answer on an imported clip (N119): kept once, in a table
+    of its own, and never a label (L3). The coaches' ledger for the corpus
+    (N58) takes only coaches' blind answers."""
+    if clip_id in answered:
+        return 409, {"code": "ALREADY_ANSWERED"}
+    saved = database.insert_import_clip_answer({
+        "listener_user_id": listener_id, "snippet_id": clip_id,
+        "import_session_id": import_session_id, "value": row["value"]})
     if saved is None:
         return 409, {"code": "ALREADY_ANSWERED"}
     if not isinstance(saved, dict):

@@ -642,11 +642,26 @@ O3  Stop sharing (Data & consent) lists each shared Take once, with where.
 O4  ""None"" withdraws a Take from every community at once, and its clips
 leave the queue; ""None"" with a community is refused.
 O5  A listener hears audio only (no words, no speaker, no Take), never
-their own clip, and answering their own clip is refused.","O1 -> test_answered_self_labelled_and_settled_clips_are_not_queued
+their own clip, and answering their own clip is refused.
+O6  Every walk serves three clips, one per level (high, middle, low),
+from three different speakers, community clips first in their level,
+never mine or one I answered, in a blind order fixed for the Take;
+fewer only when fewer speakers are left.
+O7  An imported corpus clip plays through a short-lived signed link,
+audio only, never a name, transcript or level.
+O8  My answer on an imported clip is kept once (a second answer is
+refused) and never becomes a label.
+O9  The judging reopened from the Lounge lists imported clips too.
+O10 An empty queue is logged with its reason, and so is a short one.","O1 -> test_answered_self_labelled_and_settled_clips_are_not_queued
 O2 -> test_the_judging_reopened_shows_the_latest_answers_with_their_clips
 O3 -> test_data_and_consent_lists_each_shared_take_once_with_where
 O4 -> test_none_withdraws_a_take_from_every_community
-O5 -> test_a_listener_hears_audio_only_and_never_their_own_clip","Founder 2026-10-06 (N52.4, migration 0432; CM2). The consent and words versions on a share are pinned on the database in test_a_share_records_the_words_the_speaker_saw_postgres.py."
+O5 -> test_a_listener_hears_audio_only_and_never_their_own_clip
+O6 -> test_three_clips_one_per_level_three_speakers_fixed_per_take
+O7 -> test_an_imported_clip_plays_by_a_signed_link_audio_only
+O8 -> test_an_answer_on_an_imported_clip_is_kept_once_and_never_a_label
+O9 -> test_the_replay_lists_imported_clips
+O10 -> test_an_empty_queue_is_logged_with_why","Founder 2026-10-06 (N52.4, migration 0432; CM2). The consent and words versions on a share are pinned on the database in test_a_share_records_the_words_the_speaker_saw_postgres.py. O6 to O10: founder 2026-10-23 (N119, migration a_speaker_may_judge_an_imported_clip.sql): the imported corpus the coaches judge is played to speakers, three levels, three speakers; this amends CM1 A and replaces N97's one moment per try."
 tests/test_compose_locked_paths.py,Story,"As a speaker, I want the paragraphs I locked kept word for word and in place when a new Take rebuilds my Ideal Text, so that my chosen words stay until I pick new ones.","O1  With the same number of paragraphs, locked ones stay and the new
 Take's text fills the rest.
 O2  When the number of paragraphs changes, a locked paragraph keeps its

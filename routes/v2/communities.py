@@ -95,11 +95,12 @@ def v2_take_share(take_id):
 @v2_bp.route("/user/communities/queue", methods=["GET"])
 @require_auth
 def v2_community_queue():
-    """The listener's clips: their communities' first, then training clips.
-    Audio only."""
+    """The listener's clips for the walk of one of their Takes (``?take=``,
+    N119): one per level, three speakers, their communities' first in each
+    level, then the training corpus; fixed for the Take. Audio only."""
     from services.communities import queue_for
     return _run("community queue", lambda: queue_for(
-        db, listener_id=str(request.user_id)))
+        db, listener_id=str(request.user_id), take=request.args.get("take") or None))
 
 
 @v2_bp.route("/user/communities/answers", methods=["GET"])
