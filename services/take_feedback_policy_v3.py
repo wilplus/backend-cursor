@@ -757,7 +757,11 @@ def _showable(block: dict, clips: dict,
     if servability is None:
         return eligible
     if servability.frozen_ids:
-        return [row for row in eligible if row["candidate_id"] == selected]
+        # The clip the Take was frozen with, which since N118 may be a
+        # softer clip than the one the block selects again on a later read;
+        # else the selection, as before.
+        return ([row for row in eligible if row["candidate_id"] in servability.frozen_ids]
+                or [row for row in eligible if row["candidate_id"] == selected])
     return [row for row in eligible
             if unservable((clips.get(row["candidate_id"]) or {}).get("part_id"),
                           row.get("target_span"), servability.served_text) is None]

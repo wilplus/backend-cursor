@@ -471,6 +471,12 @@ def test_a_shown_block_takes_its_best_clip_unless_frozen():
     frozen = _two_clip_frame(select_servable=True, frozen_candidate_ids={
         louder, "relative-confidence:take-2:p0", "relative-confidence:take-2:p2"})
     assert slide_1(frozen) == (louder, [louder], True)
+    # A Take frozen with the softer clip, the one it showed, keeps that one
+    # too: read again, the block never swaps in the louder clip, which the
+    # frozen set would filter off the page.
+    kept = _two_clip_frame(select_servable=True, frozen_candidate_ids={
+        softer, "relative-confidence:take-2:p0", "relative-confidence:take-2:p2"})
+    assert slide_1(kept) == (softer, [softer], True)
 
 
 # ── the two best moments get a block each (founder 2026-10-24, N128; N118) ──
