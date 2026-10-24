@@ -3587,3 +3587,14 @@ goal and is chosen by what the diagnosis still lacks.
 the question bank were proposed in the chat on the same day and wait for the
 founder's picks.
 Not built yet. No migration.
+
+**N139 · At most three follow-up questions (founder, the Claude Code chat, 24
+October 2026: "Please choose maximum three follow-up questions. And show me
+this whole thing on the clickable prototype and make it as simple and easy to
+use as possible").** N138's follow-up questions are at most three, chosen by
+what the diagnosis still lacks: the key-line question every time, then the
+first missing of audience, talk length and slides, experience, success, worry
+and opening. They come one after another in the Lounge chat, each answered with
+the same "Record your answer" button. Drawn on the prototype
+<https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>. Not built yet. No
+migration.
