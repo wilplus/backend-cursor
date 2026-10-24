@@ -440,6 +440,13 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("community_answers_by_listener", "community_answers",
                     "listener_user_id", "user", "delete", "derived_feedback", 35),
+    # A speaker's answer on an imported corpus clip (N119): the listener's
+    # own words, so it goes with the listener; it is also about the import's
+    # clip, so it goes with that import (a training import is a Take row).
+    PurgeDependency("import_clip_answers", "import_clip_answers",
+                    "import_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("import_clip_answers_by_listener", "import_clip_answers",
+                    "listener_user_id", "user", "delete", "derived_feedback", 35),
     PurgeDependency("community_members", "community_members",
                     "user_id", "user", "delete", "database_row", 35),
     PurgeDependency("communities_created", "communities",

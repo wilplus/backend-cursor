@@ -3218,7 +3218,7 @@ the licensed corpus; this amends CM1 A ("the training clips mixed into judging
 are the licensed corpus") and replaces N97's one moment per try. With fewer
 than three different speakers it shows fewer, never one speaker twice; an
 empty queue is logged. A speaker's answer on a training clip is never a label
-(L3). No new words on screen. The rules: flow page C8, G4 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), frontend [#945](https://github.com/wilplus/frontend-cursor/pull/945)). Not built yet; the build needs one migration (speakers' answers on imported clips).
+(L3). No new words on screen. The rules: flow page C8, G4 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), frontend [#945](https://github.com/wilplus/frontend-cursor/pull/945)). Built 2026-10-24 (the flow page's §6 names the pull requests), with one migration, `migrations/a_speaker_may_judge_an_imported_clip.sql` (speakers' answers on imported clips, `import_clip_answers`).
 
 **N120 · The walk speaks like a coach: a hello with the name, the praise as
 one sentence, the AI clip in one short bubble (founder, the Claude Code chat,

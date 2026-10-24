@@ -13682,6 +13682,32 @@ class DatabaseService:
                .eq("id", str(clip_id)).limit(1).execute())
         return (res.data or [None])[0]
 
+    # ── A speaker's answers on imported corpus clips (N119) ───────────────
+
+    def list_import_clip_answered_ids(self, listener_id: str) -> list[str]:
+        """Every imported corpus clip this listener answered in the walk."""
+        res = (self.client.table("import_clip_answers").select("snippet_id")
+               .eq("listener_user_id", str(listener_id)).limit(5000).execute())
+        return [str(r["snippet_id"]) for r in res.data or [] if r.get("snippet_id")]
+
+    def list_import_clip_answers(self, listener_id: str, *, limit: int = 50) -> list[dict]:
+        """This listener's answers on imported clips, newest first."""
+        res = (self.client.table("import_clip_answers").select("*")
+               .eq("listener_user_id", str(listener_id))
+               .order("created_at", desc=True).limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def insert_import_clip_answer(self, row: dict) -> Optional[dict]:
+        """One per listener per clip: a duplicate answers None. Never a
+        label (L3): nothing else is written."""
+        try:
+            res = self.client.table("import_clip_answers").insert(dict(row)).execute()
+        except Exception as e:  # noqa: BLE001 — the unique key is the rule
+            if "23505" in str(e) or "duplicate" in str(e).lower():
+                return None
+            raise
+        return (res.data or [None])[0]
+
     def upsert_coach_take_word(
         self, *, take_session_id: str, coach_id: str, text: Optional[str],
         video_ref: Optional[str], share: bool, keep_video: bool = False,

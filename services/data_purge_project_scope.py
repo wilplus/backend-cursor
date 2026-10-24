@@ -130,6 +130,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # private community its creator set up belong to the account; the
     # Take-keyed answers and shares go with the Take under their own codes.
     "community_answers_by_listener", "community_members", "communities_created",
+    # A speaker's answers on imported corpus clips (N119): the listener's
+    # account; the import-keyed twin goes with the import.
+    "import_clip_answers_by_listener",
     # The signed line last shown per bank (0438): the speaker's, not a
     # project's.
     "line_bank_memory",
