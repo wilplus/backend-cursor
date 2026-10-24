@@ -74,8 +74,8 @@ def _latest(name: str) -> str:
 
 
 def _stores() -> list[dict]:
-    """retention_measurement_stores_v1, read from the migration."""
-    body = _function("retention_measurement_stores_v1")
+    """retention_measurement_stores_v1, as the latest migration wrote it."""
+    body = _latest("retention_measurement_stores_v1")
     rows = re.findall(
         r"\('([a-z0-9_.]+)', '([a-z0-9_]+)',\s*'(take|account)', '(wipe|delete)', "
         r"'([a-z0-9_]+)', (NULL::text\[\]|ARRAY\[[^\]]*\])\)", body)
@@ -291,7 +291,7 @@ def test_a_live_run_works_through_the_four_rules_in_order(live, storage, erasure
     db = _live_db(logs={"life_reminder_log": [["7", "8"], []]},
                   financial={"token_ledger": [["11", "12", "13"], []]})
     storage["db"] = db
-    db.rows = {"session_sniper_metrics": [{"session_id": "t1"}],
+    db.rows = {"dimension_evaluations": [{"session_id": "t1"}],
                "user_acoustic_baseline": [{"user_id": "u1"}, {"user_id": "u1"}]}
     summary = rc.run(db, mode="live", purge_execution=True)
 
@@ -302,7 +302,7 @@ def test_a_live_run_works_through_the_four_rules_in_order(live, storage, erasure
     # measurement rows, the object by its hash, and only then the event.
     claim = db.index("rpc", "claim_retention_audio_v1")
     rows = [i for i, c in enumerate(db.calls) if c[0] == "delete"
-            and c[1] in ("session_sniper_metrics", "dimension_evaluations",
+            and c[1] in ("dimension_evaluations",
                          "arc_part_acoustics", "user_acoustic_baseline")]
     obj = db.index("storage", "delete")
     settle = db.index("rpc", "settle_retention_audio_v1")
@@ -324,7 +324,7 @@ def test_a_live_run_works_through_the_four_rules_in_order(live, storage, erasure
                if c[1] == "count_retention_outcome_v1"}
     assert {("guests.erased", 1), ("logs.life_reminder_log", 2),
             ("financial.token_ledger", 3),
-            ("measurements.session_sniper_metrics", 1),
+            ("measurements.dimension_evaluations", 1),
             ("measurements.user_acoustic_baseline", 2)} <= counted
     assert db.index("rpc", "finish_retention_live_run_v1") == len(db.calls) - 1
 

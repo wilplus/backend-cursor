@@ -526,3 +526,4 @@
 0488	the_founder_edits_wills_questions.sql
 0489	the_shadow_writer_accepts_frame_v7.sql
 0490	a_speaker_may_judge_an_imported_clip.sql
+0491	the_sniper_metrics_table_is_dropped.sql
