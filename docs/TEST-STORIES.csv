@@ -2501,8 +2501,11 @@ O4 -> test_a_take_frozen_under_v2_refuses_a_v3_item
 O5 -> test_the_exposure_record_takes_a_v3_selection",#597: the founder's red bar under the Confident Voice question; no lane installed either function until then. Runs on the freeze lane of scripts/rehearsal_tier.sh against the real claim_ideal_text_feedback_set_v1 and record_take_feedback_response_v1. The target must be a disposable local database whose name starts with ``willab_freeze_``.
 tests/test_take_feedback_manager.py,Story,"As a speaker, I want every required kind of feedback (Confident Voice, a Clearer version, praise) to reach me, so that an old focus rule cannot silently drop one.","O1  With the current feedback contract, all three required kinds are
 kept even when an older focus rule points at one Paragraph.",O1 -> test_mvp_contract_does_not_let_old_focus_gate_drop_a_required_lane,
-tests/test_take_feedback_policy_v3.py,Story,"As a speaker, I want one whole Take turned into my two best moments, each praised or corrected by how it sounded, and honest coverage of my slides, so that the feedback is fair and evidence-backed.","O1  The Take is cut into blocks of the right size; a block that cannot be
-cut well stays whole and says why.
+tests/test_take_feedback_policy_v3.py,Story,"As a speaker, I want one whole Take turned into my two best moments, each praised or corrected by how it sounded, and honest coverage of my slides, so that the feedback is fair and evidence-backed.","O1  The Take is cut into blocks of the right size; when the two best clips
+fall in one block, the boundary between them moves (40 to 120 words,
+never across a slide, never cutting a clip); a one-block Take whose
+two clips have 5 or more words each becomes two blocks; with no cut
+possible, nothing changes; each such block names its typed exception.
 O2  The two highest blocks are shown and the score decides each: one at
 or above the floor is praised (the highest is marked), one below it
 gets the practice prompt; praise is anchored inside a praised block.
@@ -2524,13 +2527,17 @@ the Clearer version: with the undermining opener for an approval tag
 or a playing-down ""just"", with the plain opener for a restart.
 O8  In a shown block the moment is its highest-willfidence clip that can
 be served; a block already frozen keeps its clip.","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
+O1 -> test_two_best_clips_in_one_block_get_a_block_each
+O1 -> test_a_one_block_take_is_split_for_two_moments
+O1 -> test_no_possible_cut_leaves_the_blocks_as_they_were
+O1 -> test_a_frozen_take_keeps_its_blocks
 O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O4 -> test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate
 O5 -> test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version
 O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version
 O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version
-O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top"")."
+O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118)."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name

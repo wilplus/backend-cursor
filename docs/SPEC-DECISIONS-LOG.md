@@ -3196,7 +3196,7 @@ a clip; a typed partition exception, contract 24a), and a Take of one block is
 split in two the same way when each clip has 5 words or more. A Take shows
 fewer than two only when it has fewer than two clips that can be played. A
 correction with nothing to offer is still skipped (N108). No new words on
-screen. The rules: flow page C2, H1 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), frontend [#944](https://github.com/wilplus/frontend-cursor/pull/944)). Its core built 2026-10-23 (the flow page's §6 names the pull requests); the boundary move and the one-block split still to build (N125). No migration.
+screen. The rules: flow page C2, H1 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), frontend [#944](https://github.com/wilplus/frontend-cursor/pull/944)). Its core built 2026-10-23 (the flow page's §6 names the pull requests); the boundary move and the one-block split built 2026-10-24 (N128). No migration.
 
 **N119 · Three moments to judge every walk: high, middle and low, three
 speakers, and the imported corpus may be played to speakers (founder, the

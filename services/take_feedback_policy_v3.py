@@ -294,27 +294,36 @@ def _semantic_blocks(raw_pieces: Any) -> tuple[list[dict], list[dict]]:
     blocks: list[dict] = []
     for run_index, run in enumerate(runs):
         for local_index, pack in enumerate(_partition_run(run)):
-            raw_key = "\0".join([
-                pack[0]["take_id"],
-                str(pack[0]["slide_index"]),
-                str(run_index),
-                str(local_index),
-                *(piece["snippet_id"] for piece in pack),
-            ])
-            block_id = "speech-block:" + hashlib.sha256(
-                raw_key.encode("utf-8")
-            ).hexdigest()[:20]
-            blocks.append({
-                "block_id": block_id,
-                "slide_index": pack[0]["slide_index"],
-                "word_count": sum(piece["word_count"] for piece in pack),
-                "snippet_ids": [piece["snippet_id"] for piece in pack],
-                "start": pack[0]["start"],
-                "end": pack[-1]["end"],
-                "partition_exception": _partition_exception(pack, run),
-                "pieces": pack,
-            })
+            blocks.append(_block(pack, run_index, local_index,
+                                 _partition_exception(pack, run)))
     return blocks, exclusions
+
+
+def _block(pack: list[dict], run_index: int, local_index: int,
+           exception: Optional[str]) -> dict:
+    """One block of ``pack``, the ``local_index``-th of Slide run
+    ``run_index``. Its id hashes where it stands and what it holds; a block
+    the moment split made (`_split_for_moments`) hashes its exception too, so
+    its id is new, never one the plain partition gives."""
+    raw_key = "\0".join([
+        *([exception] if exception == MOMENT_SPLIT else []),
+        pack[0]["take_id"],
+        str(pack[0]["slide_index"]),
+        str(run_index),
+        str(local_index),
+        *(piece["snippet_id"] for piece in pack),
+    ])
+    return {
+        "block_id": "speech-block:" + hashlib.sha256(
+            raw_key.encode("utf-8")).hexdigest()[:20],
+        "slide_index": pack[0]["slide_index"],
+        "word_count": sum(piece["word_count"] for piece in pack),
+        "snippet_ids": [piece["snippet_id"] for piece in pack],
+        "start": pack[0]["start"],
+        "end": pack[-1]["end"],
+        "partition_exception": exception,
+        "pieces": pack,
+    }
 
 
 #: Why a block stands outside the normal 60-90 words (contract 24a: "An
@@ -325,9 +334,19 @@ def _semantic_blocks(raw_pieces: Any) -> tuple[list[dict], list[dict]]:
 #:                           block never crosses a Slide boundary
 #:   closest_outside_range   any other: the closest partition at the piece
 #:                           boundaries still falls outside the normal range
+#:   moment_split            one of the two blocks made when the Take's two
+#:                           best clips fell in one block and the cut between
+#:                           them moved (`_split_for_moments`, N128)
+MOMENT_SPLIT = "moment_split"
 PARTITION_EXCEPTIONS = (
     "indivisible_long", "short_slide_run", "closest_outside_range",
+    MOMENT_SPLIT,
 )
+#: Each side of a moved cut (contract 24a as amended, founder 2026-10-24,
+#: N128): wider than the normal 60-90, so one side can give words the other
+#: takes.
+MOMENT_SPLIT_MIN_WORDS = 40
+MOMENT_SPLIT_MAX_WORDS = 120
 
 
 def _partition_exception(pack: list[dict], run: list[dict]) -> Optional[str]:
@@ -340,6 +359,152 @@ def _partition_exception(pack: list[dict], run: list[dict]) -> Optional[str]:
     if words < MIN_WORDS and len(pack) == len(run):
         return "short_slide_run"
     return "closest_outside_range"
+
+
+# ── THE TWO BEST MOMENTS GET A BLOCK EACH (contract 24a as amended, founder
+# 2026-10-24, N128; N118's second part) ──────────────────────────────────────
+#
+# A block shows one moment (`_pick_moments`), so when the Take's two best
+# clips fell in one block the second best was never shown. The cut between
+# that block and its neighbour on the same Slide now moves to a persisted
+# piece boundary between the two clips, and a Take of one block is split in
+# two there; each side keeps 40 to 120 words. No such cut, no change.
+
+
+def _split_for_moments(
+    blocks: list[dict], *, snippet_map: dict, take_id: str, recording_id: str,
+    servability: Optional[_Servability], served_text: Any,
+    frozen_candidate_ids: Any,
+) -> list[dict]:
+    """``blocks`` with the cut moved between the Take's two best clips when
+    they fall in one block; ``blocks`` itself when they do not or no cut
+    fits (`_moment_cut`).
+
+    The two best are ranked as `_pick_moments` ranks them, from any block
+    (`moment_pick.best_two`), over the clips a block may show: lineage
+    eligible, and servable on the service frame.
+
+    A TAKE WHOSE BLOCKS ARE FROZEN KEEPS THEM. Its selection is frozen with
+    its blocks (`take_feedback_set`, insert-once), one clip per block, so the
+    pair is read from it: two frozen clips in one block of the plain
+    partition, which only a Take frozen with the cut moved holds. A Take
+    frozen before the cut moved has no such pair and keeps the plain blocks.
+    The cut depends on the pieces alone, so a Take is cut the same way on
+    every read."""
+    frozen = frozenset(str(value) for value in (frozen_candidate_ids or ()))
+    pair = _frozen_pair(blocks, frozen) if frozen else _best_pair(
+        blocks, snippet_map=snippet_map, take_id=take_id,
+        recording_id=recording_id, servability=servability,
+        served_text=served_text)
+    cut = _moment_cut(blocks, *pair) if pair else None
+    if cut is None:
+        return blocks
+    first, count, left, right = cut
+    run_index, local_index = _run_positions(blocks)[first]
+    made = [_block(left, run_index, local_index, MOMENT_SPLIT),
+            _block(right, run_index, local_index + 1, MOMENT_SPLIT)]
+    logger.info("moment split take=%s slide=%s words=%d+%d", take_id,
+                made[0]["slide_index"], made[0]["word_count"],
+                made[1]["word_count"])
+    return [*blocks[:first], *made, *blocks[first + count:]]
+
+
+def _frozen_pair(blocks: list[dict],
+                 frozen: frozenset) -> Optional[tuple[int, int, int]]:
+    """(block, first clip, second clip) of the one block holding two frozen
+    clips, or None (`_split_for_moments`)."""
+    shared = []
+    for at, block in enumerate(blocks):
+        held = [index for index, piece in enumerate(block["pieces"])
+                if _clip_candidate_id(piece) in frozen]
+        if len(held) > 2:
+            return None
+        if len(held) == 2:
+            shared.append((at, held[0], held[1]))
+    return shared[0] if len(shared) == 1 else None
+
+
+def _best_pair(
+    blocks: list[dict], *, snippet_map: dict, take_id: str, recording_id: str,
+    servability: Optional[_Servability], served_text: Any,
+) -> Optional[tuple[int, int, int]]:
+    """(block, first clip, second clip) when the Take's two best clips share
+    a block, else None (`_split_for_moments`)."""
+    from services import moment_pick
+
+    reads = []
+    for at, block in enumerate(blocks):
+        for index, piece in enumerate(block["pieces"]):
+            candidate = _confidence_candidate(
+                piece, snippet_map.get(piece["snippet_id"], {}), {},
+                expected_take_id=take_id, expected_recording_id=recording_id)
+            if candidate["eligibility"] != "eligible" or (
+                    servability is not None and unservable(
+                        piece.get("part_id"), candidate.get("target_span"),
+                        servability.served_text) is not None):
+                continue
+            reads.append({**_moment_read(
+                candidate, block, snippet_map,
+                {candidate["candidate_id"]: piece}, served_text),
+                "at": (at, index)})
+    best = sorted(row["at"] for row in moment_pick.best_two(reads))
+    if len(best) < 2 or best[0][0] != best[1][0]:
+        return None
+    return best[0][0], best[0][1], best[1][1]
+
+
+def _moment_cut(blocks: list[dict], at: int, first: int,
+                second: int) -> Optional[tuple[int, int, list, list]]:
+    """Where the cut between clips ``first`` < ``second`` of block ``at``
+    goes: (first block replaced, how many, the two new blocks' pieces), or
+    None when no cut fits.
+
+    In a Take of more than one block the cut that moves is the block's own
+    with its neighbour on the same Slide, the one before or the one after,
+    never a Slide's; a Take of one block is split, and only when each clip
+    has ``moment_pick.MIN_WORDS``. The cut is a piece boundary between the
+    two clips and each side keeps 40 to 120 words. Of the cuts that fit, the
+    one whose two sides are closest to 75 words each, then the earliest,
+    then the one with the block before."""
+    from services import moment_pick
+
+    pieces = blocks[at]["pieces"]
+    slide = blocks[at]["slide_index"]
+    sides: list[tuple[int, int, list, list]] = []
+    if len(blocks) == 1:
+        if min(pieces[first]["word_count"],
+               pieces[second]["word_count"]) >= moment_pick.MIN_WORDS:
+            sides.append((at, 1, [], []))
+    else:
+        if at > 0 and blocks[at - 1]["slide_index"] == slide:
+            sides.append((at - 1, 2, blocks[at - 1]["pieces"], []))
+        if at + 1 < len(blocks) and blocks[at + 1]["slide_index"] == slide:
+            sides.append((at, 2, [], blocks[at + 1]["pieces"]))
+    fitting: list[tuple[int, int, tuple[int, int, list, list]]] = []
+    for boundary in range(first + 1, second + 1):
+        for replaced, count, before, after in sides:
+            left, right = before + pieces[:boundary], pieces[boundary:] + after
+            words = [sum(int(piece["word_count"]) for piece in side)
+                     for side in (left, right)]
+            if all(MOMENT_SPLIT_MIN_WORDS <= value <= MOMENT_SPLIT_MAX_WORDS
+                   for value in words):
+                fitting.append((sum(abs(value - TARGET_WORDS) for value in words),
+                                len(fitting), (replaced, count, left, right)))
+    return min(fitting)[2] if fitting else None
+
+
+def _run_positions(blocks: list[dict]) -> list[tuple[int, int]]:
+    """Each block's (Slide run, place in the run), as `_semantic_blocks`
+    numbered them: a run ends where the Slide changes."""
+    positions: list[tuple[int, int]] = []
+    run_index = local_index = -1
+    for at, block in enumerate(blocks):
+        if at and block["slide_index"] == blocks[at - 1]["slide_index"]:
+            local_index += 1
+        else:
+            run_index, local_index = run_index + 1, 0
+        positions.append((run_index, local_index))
+    return positions
 
 
 def _clip_lineage(
@@ -537,7 +702,9 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
     can prove (`unservable`; all of them on the dark frame, which selects by
     rank alone), or, on a Take whose selection is frozen, only the clip it
     was frozen with (a frozen Take does not grow, `_winner`). The two
-    highest willfidence clips are shown, one per block; a shown block whose
+    highest willfidence clips are shown, one per block (the cut has already
+    moved so the two best have a block each where it can, N128,
+    `_split_for_moments`); a shown block whose
     selection was another clip takes the shown one, so the moment, its
     bookmark and its routing name the same clip. Run before coverage and
     routing read the selection.
@@ -545,20 +712,9 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
     Returns ``{"shown": [...], "values": {block_id: willfidence}}``."""
     from services import moment_pick
 
-    reads = []
-    for block in blocks:
-        for candidate in _showable(block, clips, servability):
-            snippet = snippet_map.get(str(candidate["snippet_id"]), {})
-            reads.append({
-                "block_id": block["block_id"],
-                "candidate_id": candidate["candidate_id"],
-                "slide_index": block.get("slide_index"),
-                "word_count": candidate.get("word_count") or 0,
-                "read": moment_pick.read(
-                    candidate.get("machine_score"), snippet.get("transcript"),
-                    snippet.get("metrics"),
-                    shown=_shown_words(candidate, clips, served_text)),
-            })
+    reads = [_moment_read(candidate, block, snippet_map, clips, served_text)
+             for block in blocks
+             for candidate in _showable(block, clips, servability)]
     picked = moment_pick.pick(reads)
     if reads and not any(r["read"]["sound"] for r in reads):
         # The words alone picked the moments: say so, so the next Take with
@@ -572,6 +728,24 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
     values = {r["candidate_id"]: r["read"]["value"] for r in reads}
     return {"shown": picked["shown"],
             "values": {m["block_id"]: values.get(m["candidate_id"]) for m in picked["shown"]}}
+
+
+def _moment_read(candidate: dict, block: dict, snippet_map: dict, clips: dict,
+                 served_text: Any) -> dict:
+    """One clip's row for `moment_pick`, with its willfidence read."""
+    from services import moment_pick
+
+    snippet = snippet_map.get(str(candidate["snippet_id"]), {})
+    return {
+        "block_id": block["block_id"],
+        "candidate_id": candidate["candidate_id"],
+        "slide_index": block.get("slide_index"),
+        "word_count": candidate.get("word_count") or 0,
+        "read": moment_pick.read(
+            candidate.get("machine_score"), snippet.get("transcript"),
+            snippet.get("metrics"),
+            shown=_shown_words(candidate, clips, served_text)),
+    }
 
 
 def _showable(block: dict, clips: dict,
@@ -895,9 +1069,7 @@ def _confidence_candidate(
     ):
         exclusion_reason = "incompatible_detector_version"
     return {
-        "candidate_id": (
-            f"relative-confidence:{piece['take_id']}:{piece['snippet_id']}"
-        ),
+        "candidate_id": _clip_candidate_id(piece),
         "snippet_id": piece["snippet_id"],
         "take_id": piece["take_id"],
         "slide_index": piece["slide_index"],
@@ -939,6 +1111,12 @@ def _confidence_candidate(
             else "best_available_tentative"
         ),
     }
+
+
+def _clip_candidate_id(piece: dict) -> str:
+    """The Confident Voice candidate id of one piece's clip: its Take and
+    its snippet, the id a frozen selection holds."""
+    return f"relative-confidence:{piece['take_id']}:{piece['snippet_id']}"
 
 
 def _confidence_rank(candidate: dict) -> tuple:
@@ -1444,6 +1622,12 @@ def build_shadow_frame(
     }
     suggestion_map = suggestions if isinstance(suggestions, dict) else {}
     servability = _servability(select_servable, served_text, frozen_candidate_ids)
+    # The Take's two best clips get a block each (24a as amended, N128),
+    # before any block is read.
+    blocks = _split_for_moments(
+        blocks, snippet_map=snippet_map, take_id=take_id,
+        recording_id=recording_id, servability=servability,
+        served_text=served_text, frozen_candidate_ids=frozen_candidate_ids)
     clips: dict = {}
     confidence_selections = _select_confidence(
         blocks, exclusions, snippet_map=snippet_map,
