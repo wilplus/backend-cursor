@@ -3508,3 +3508,22 @@ item 50, N44, unchanged).
 12. The founder is the coach on the calls, for now.
 Drawn on the prototype <https://claude.ai/artifact/R3FVcoDNasDY9JcR82VmDF>.
 Not built yet. No migration in this entry.
+
+**N135 · No date means two months, said in words; one recorder (founder, the
+Claude Code chat, 24 October 2026: "if there is no date yet, we assume that the
+practice will take around 2 months, and we say it. So let's assume a 2 months
+horizon for whatever your goal is. Put it in the nice words, please. And for
+the mic, please use the mic or the recording interface that we use for the
+feedback walk practice. The same. I want it unified, please").** For N131's
+two questions:
+1. A speaker who answers "No date yet" gets a two-month plan, whatever the
+goal: three practices a week and a call every second Friday, as the treatment
+picker's journey table drew for no date. The app says so in words; the
+wording is drawn on the prototype
+<https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn> for the founder's OK
+(Never 4).
+2. The voice message in the Lounge is recorded with the walk practise's own
+recorder: the Take's recording strip (dot, clock, bar), Skip and the red Stop
+(`RecordingStrip`, `RecorderFooter` in the frontend), and the message lands in
+the chat as the speaker's orange voice bubble. No separate microphone button.
+Not built yet. No migration.
