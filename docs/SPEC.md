@@ -927,7 +927,7 @@ Partial **W** is the mean of the word signals present (H3); naturalness and the 
 
 **Status:** definition signed by the founder on 2026-10-06 and frozen as `willfidence-v1`; the machine-only read `willfidence-v1-machine` is built dark (V4 Phase 1, B1.3). A change to the definition is a new version, never an edit in place.
 
-### `pace-speed-v1`, `pace-pause-share-v1`, `pace-pause-length-v1` — the Pace Circle (machine reads; founder-signed 2026-10-24, decisions log N130, N131 — DEFINED, NOT BUILT)
+### `pace-speed-v1`, `pace-pause-share-v1`, `pace-pause-length-v1` — the Pace Circle (machine reads; founder-signed 2026-10-24, decisions log N130, N133 — DEFINED, NOT BUILT)
 
 Three live reads for the Pace Circle practice screen (N130). Each asks one thing and is measured in the browser from the voice's loudness alone: no transcript, no provider call, nothing stored. All three are **machine** reads with no rater and no question. None is a verdict, and none is ever shown as a number (AC-9): each moves exactly one thing on the screen.
 

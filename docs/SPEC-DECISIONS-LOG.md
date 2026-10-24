@@ -3433,7 +3433,43 @@ ships, pace and pause each get a one-line written definition. Brief:
 <https://claude.ai/artifact/VJ2uSugQWmbAsmReyxuufz>. Not built yet. No
 migration.
 
-**N131 · The Pace Circle's three reads are defined (founder, the Claude Code
+**N131 · The diagnosis and the plan, made as simple as they can be (founder,
+the Claude Code chat, 24 October 2026: "please simplify it as much as you can
+make it super stupid simple when it comes to design and mechanics, but do not
+compromise the logic behind it"; then, asked, "Yes, tap the date", "Yes, one
+minute", "Yes, one at a time", "Yes, a Take is a practice").** N129 made
+simple: two questions in the Lounge, the presentation's date by a tap and one
+voice message of about a minute ("Why does it matter, and what is it about?"),
+which carries the reason, the topic and the voice sample the diagnosis
+measures. The plan names one thing to fix first, in words with the speaker's
+own clip; the other things heard follow one a week, each named when its week
+starts. One practice is one Take with its walk, about 15 minutes; "3 times a
+week" is three Takes, and the progress bar fills one part per Take. Drawn on
+the prototype <https://claude.ai/artifact/R3FVcoDNasDY9JcR82VmDF>. Not built
+yet. No migration in this entry.
+
+**N132 · A treatment picker, and nobody is fixed (founder, the Claude Code
+chat, 24 October 2026: "we need to make the matching algorithm maybe sort of
+like a picker for the treatment. So first we do the diagnosis and then the
+treatment. A treatment defines how the lock looks like, how the walk looks
+like. And the deadline defines how the journey, user journey will look like.
+So the picker is something that picks the moments, right? It is right now
+like that. But now we need the treatment picker. So a new function that shows
+how the treatment is adjusted to the needs of the user and what interventions
+are being used"; "drop that we will fix your pace. We're not gonna fix
+anything. We're just gonna help you reach another level of excellence. We're
+not fixing you, you're not broken, you're just fine").** The moment picker
+keeps choosing which moments a walk shows (N118). A new treatment picker
+takes the diagnosis and chooses the treatment: what each walk does with its
+moments and which interventions it uses, adjusted to the speaker as their
+Takes go on; the deadline chooses the journey (N129, N131). No word on screen
+says the speaker will be fixed or that something is wrong with them: the plan
+names the next level of excellence they are working towards. The picker's
+table is drafted on the prototype
+<https://claude.ai/artifact/R3FVcoDNasDY9JcR82VmDF>; its open questions are
+asked in the chat. Not built yet. No migration in this entry.
+
+**N133 · The Pace Circle's three reads are defined (founder, the Claude Code
 chat, 24 October 2026).** Speed, how much of the time the speaker pauses,
 and the pause happening now each get a one-line operational definition, as
 the construct rule requires before N130 ships: `pace-speed-v1`,
