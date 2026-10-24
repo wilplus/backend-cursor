@@ -3550,3 +3550,16 @@ founder's OK (Never 4).
 3. The voice message is recorded with the walk practise's recorder (N135)
 without its Skip: the strip and the red Stop.
 Not built yet. No migration.
+
+**N137 · The two questions' words (founder, the Claude Code chat, 24 October
+2026: "Ask when is your deadline, not when is your presentation. Then for the
+second question, say, I assume you came here to practice for some important
+event in your life. Please tell me, why does it matter and what is it
+about?").** The first question reads "When is your deadline?". The second
+reads "I assume you came here to practise for some important event in your
+life. Please tell me, why does it matter and what is it about?" ("practise",
+the verb, as the app spells it). These words are signed (Never 4); they
+replace "When is your presentation?" and "Why does it matter, and what is it
+about? Tell me in about a minute." on the prototype
+<https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>. Not built yet. No
+migration.
