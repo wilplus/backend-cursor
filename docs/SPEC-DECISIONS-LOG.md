@@ -3432,3 +3432,13 @@ of their own Ideal Text; phone and desktop; loudness left out. Before it
 ships, pace and pause each get a one-line written definition. Brief:
 <https://claude.ai/artifact/VJ2uSugQWmbAsmReyxuufz>. Not built yet. No
 migration.
+
+**N131 · The Pace Circle's three reads are defined (founder, the Claude Code
+chat, 24 October 2026).** Speed, how much of the time the speaker pauses,
+and the pause happening now each get a one-line operational definition, as
+the construct rule requires before N130 ships: `pace-speed-v1`,
+`pace-pause-share-v1` and `pace-pause-length-v1`, in
+[`docs/SPEC.md`](SPEC.md) §17. Three, not two, because the screen measures
+two different things about pauses. Speed leaves pauses out, so its starting
+centre is the rate syllables are said while talking (about 5 a second in
+English), not the brief's 4. Not built yet. No migration.
