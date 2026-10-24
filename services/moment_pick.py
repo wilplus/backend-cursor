@@ -15,7 +15,9 @@ Shown: the Take's two highest willfidence clips, however low, at most one
 per block and from any slide, so both can be on one long slide (N118); a
 block's best clip stands for it, and clips with enough words (``MIN_WORDS``)
 rank before short ones. Fewer than two only when the Take has fewer than two
-clips. Of the two, the stronger voice is "your most confident moment", even
+clips. When the two best clips share a block, the V3 policy first moves the
+boundary between them, so each has a block of its own (``best_two``; N128).
+Of the two, the stronger voice is "your most confident moment", even
 when its willfidence is the lower (N122, "S×W picks, voice names top").
 
 The voice decides each (N108). A shown moment whose voice reaches ``FLOOR``
@@ -130,6 +132,14 @@ def pick(reads: list[dict]) -> dict:
             "voice_clears": clears,
         })
     return {"shown": shown}
+
+
+def best_two(reads: list[dict]) -> list[dict]:
+    """The Take's two highest willfidence clips from any block, by the rank
+    :func:`pick` uses (rows as it takes them). When both sit in one block,
+    the V3 policy moves the block's boundary between them first, so
+    :func:`pick` then shows both (founder 2026-10-24, N128)."""
+    return sorted((row for row in reads if row.get("read")), key=_rank)[:SHOWN_LIMIT]
 
 
 def _rank(row: dict) -> tuple:

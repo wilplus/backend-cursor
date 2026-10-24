@@ -3,8 +3,11 @@ STORY    As a speaker, I want one whole Take turned into my two best moments,
          each praised or corrected by how it sounded, and honest coverage of
          my slides, so that the feedback is fair and evidence-backed.
 OUTCOME
-  O1  The Take is cut into blocks of the right size; a block that cannot be
-      cut well stays whole and says why.
+  O1  The Take is cut into blocks of the right size; when the two best clips
+      fall in one block, the boundary between them moves (40 to 120 words,
+      never across a slide, never cutting a clip); a one-block Take whose
+      two clips have 5 or more words each becomes two blocks; with no cut
+      possible, nothing changes; each such block names its typed exception.
   O2  The two highest blocks are shown and the score decides each: one at
       or above the floor is praised (the highest is marked), one below it
       gets the practice prompt; praise is anchored inside a praised block.
@@ -27,6 +30,10 @@ OUTCOME
   O8  In a shown block the moment is its highest-willfidence clip that can
       be served; a block already frozen keeps its clip.
 PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
+         O1 -> test_two_best_clips_in_one_block_get_a_block_each
+         O1 -> test_a_one_block_take_is_split_for_two_moments
+         O1 -> test_no_possible_cut_leaves_the_blocks_as_they_were
+         O1 -> test_a_frozen_take_keeps_its_blocks
          O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O4 -> test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate
@@ -38,7 +45,7 @@ WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
          2026-10-18 ("words first, then voice"), 2026-10-21 (N108, "the
          voice decides"; N112, "There was no single rewrite in the take"), 2026-10-22 (N113, "After the
          rewording"), 2026-10-23 (N124, "Let's do 1-4"; N118 and N122, "S×W
-         picks, voice names top").
+         picks, voice names top"), 2026-10-24 (N128; N118).
 """
 from pathlib import Path
 
@@ -410,12 +417,11 @@ def test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version():
             said, clearer, reason)
 
 
-def _two_clip_frame(**options):
-    """Slide 1's block holds two clips: the louder one hedges in its own
-    transcript, the softer one is clean, so the softer one's willfidence is
-    the higher. Slides 0 and 2 hold one clip each."""
-    clips = (("p0", 0, 75, 0.95, None), ("p1a", 1, 37, 0.9, _HEDGED * 2),
-             ("p1b", 1, 37, 0.6, None), ("p2", 2, 75, -0.8, None))
+def _clips_frame(clips, **options):
+    """A Take of ``clips``: (snippet id, slide, words, delivery score,
+    transcript), each bound to its slide's Paragraph and served where it is
+    said; a clip whose score is None has no snippet record, so it cannot be
+    played."""
     pieces, snippets, at = [], [], 0
     for index, (sid, slide, words, score, transcript) in enumerate(clips):
         text = " ".join(f"{sid}x{n}" for n in range(words)) + "."
@@ -425,6 +431,8 @@ def _two_clip_frame(**options):
                        "duration_ms": 5000, "part_id": f"part-{slide}",
                        "served_start": at, "served_end": at + len(text)})
         at += len(text) + 1
+        if score is None:
+            continue
         snippets.append({"id": sid, "session_id": "take-2", "recording_id": "recording-1",
                          "start_offset_ms": index * 5000, "duration_ms": 5000,
                          "transcript": transcript,
@@ -435,6 +443,14 @@ def _two_clip_frame(**options):
         take_document={"take_session_id": "take-2", "text": served, "pieces": pieces},
         snippets=snippets, suggestions={}, feedback_candidates=[],
         take_index=2, expected_recording_id="recording-1", served_text=served, **options)
+
+
+def _two_clip_frame(**options):
+    """Slide 1's block holds two clips: the louder one hedges in its own
+    transcript, the softer one is clean, so the softer one's willfidence is
+    the higher. Slides 0 and 2 hold one clip each."""
+    return _clips_frame((("p0", 0, 75, 0.95, None), ("p1a", 1, 37, 0.9, _HEDGED * 2),
+                         ("p1b", 1, 37, 0.6, None), ("p2", 2, 75, -0.8, None)), **options)
 
 
 def test_a_shown_block_takes_its_best_clip_unless_frozen():
@@ -455,6 +471,128 @@ def test_a_shown_block_takes_its_best_clip_unless_frozen():
     frozen = _two_clip_frame(select_servable=True, frozen_candidate_ids={
         louder, "relative-confidence:take-2:p0", "relative-confidence:take-2:p2"})
     assert slide_1(frozen) == (louder, [louder], True)
+    # A Take frozen with the softer clip, the one it showed, keeps that one
+    # too: read again, the block never swaps in the louder clip, which the
+    # frozen set would filter off the page.
+    kept = _two_clip_frame(select_servable=True, frozen_candidate_ids={
+        softer, "relative-confidence:take-2:p0", "relative-confidence:take-2:p2"})
+    assert slide_1(kept) == (softer, [softer], True)
+
+
+# ── the two best moments get a block each (founder 2026-10-24, N128; N118) ──
+
+def _clips(*rows):
+    """(snippet id, slide, words, delivery score) rows as `_clips_frame`
+    clips, with no transcript of their own."""
+    return tuple((sid, slide, words, score, None) for sid, slide, words, score in rows)
+
+
+def _rescored(take, **scores):
+    return tuple((sid, slide, words, scores.get(sid, score), transcript)
+                 for sid, slide, words, score, transcript in take)
+
+
+def _clip(sid):
+    return f"relative-confidence:take-2:{sid}"
+
+
+def _cut(frame):
+    return [(b["slide_index"], b["word_count"], b["partition_exception"])
+            for b in frame["blocks"]]
+
+
+def _ids(frame):
+    return [b["block_id"] for b in frame["blocks"]]
+
+
+def _moments(frame):
+    """The shown moments: each block's clip, and whether it is the highest."""
+    return [(b["selected_candidate_id"], b["highest_moment"]) for b in frame["blocks"]
+            if b["most_confident"] or b["carries_exercise"]]
+
+
+# Slide 1's two best clips, b3 and b5, fall in its second ~75-word block.
+_SHARED = _clips(("a0", 0, 75, -0.5), ("b0", 1, 25, -0.6), ("b1", 1, 25, -0.6),
+                 ("b2", 1, 25, -0.6), ("b3", 1, 25, 0.9), ("b4", 1, 25, -0.6),
+                 ("b5", 1, 25, 0.8))
+
+
+def test_two_best_clips_in_one_block_get_a_block_each():
+    """Founder 2026-10-24 (N128; N118, "Move the boundary"): one block
+    shows one moment, so the second best of the Take was never shown."""
+    plain = _clips_frame(_rescored(_SHARED, b0=0.9, b3=-0.6))   # the best two in two blocks
+    assert _cut(plain) == [(0, 75, None), (1, 75, None), (1, 75, None)]
+
+    frame = _clips_frame(_SHARED)
+    # The cut between slide 1's blocks moves to between b3 and b5: each side
+    # 40 to 120 words, every clip whole and in its order.
+    assert _cut(frame) == [(0, 75, None), (1, 100, "moment_split"), (1, 50, "moment_split")]
+    assert [b["snippet_ids"] for b in frame["blocks"]] == [
+        ["a0"], ["b0", "b1", "b2", "b3"], ["b4", "b5"]]
+    # Both are shown, each in a block of its own.
+    assert _moments(frame) == [(_clip("b3"), True), (_clip("b5"), False)]
+    # The moved blocks are new blocks with new ids, the others keep theirs,
+    # and the same Take is cut the same way every time.
+    assert _ids(frame)[0] == _ids(plain)[0]
+    assert not set(_ids(frame)[1:]) & set(_ids(plain))
+    assert _clips_frame(_SHARED)["blocks"] == frame["blocks"]
+
+
+def test_a_one_block_take_is_split_for_two_moments():
+    """Founder 2026-10-24 (N128; N118, "Split into two"): a Take of one
+    block showed one moment."""
+    one = _clips(("d0", 0, 25, 0.9), ("d1", 0, 25, -0.6), ("d2", 0, 25, -0.6),
+                 ("d3", 0, 25, 0.8))
+    frame = _clips_frame(one)
+    assert _cut(frame) == [(0, 50, "moment_split"), (0, 50, "moment_split")]
+    assert _moments(frame) == [(_clip("d0"), True), (_clip("d3"), False)]
+    # Not when one of the two clips is under 5 words: the block stays whole.
+    short = _clips(("e0", 0, 4, 0.9), ("e1", 0, 45, None), ("e2", 0, 45, 0.5))
+    assert _cut(_clips_frame(short)) == [(0, 94, "closest_outside_range")]
+
+
+def test_no_possible_cut_leaves_the_blocks_as_they_were():
+    """Founder 2026-10-24 (N128): the cut moves only where both sides keep
+    40 to 120 words and no slide is crossed; otherwise nothing changes."""
+    # f3 and f4 share slide 0's second block, and only 30 words follow f3.
+    tight = _clips(("f0", 0, 25, -0.6), ("f1", 0, 25, -0.6), ("f2", 0, 25, -0.6),
+                   ("f3", 0, 45, 0.9), ("f4", 0, 30, 0.8))
+    # g1 and g2 are slide 1's one block; the cut before it is a slide's.
+    across = _clips(("g0", 0, 75, -0.6), ("g1", 1, 30, 0.9), ("g2", 1, 45, 0.8))
+    # h0 and h1 are a one-block Take of 60 words: no half reaches 40.
+    halves = _clips(("h0", 0, 30, 0.9), ("h1", 0, 30, 0.8))
+    for take, plain in ((tight, _rescored(tight, f0=0.9, f3=-0.6)),
+                        (across, _rescored(across, g0=0.9, g1=-0.6)),
+                        (halves, _rescored(halves, h1=None))):
+        frame, before = _clips_frame(take), _clips_frame(plain)
+        assert (_cut(frame), _ids(frame)) == (_cut(before), _ids(before)), take
+    # Ten more words after f3, or g0 on slide 1, and the cut moves.
+    roomier = tight[:4] + _clips(("f4", 0, 40, 0.8))
+    assert _cut(_clips_frame(roomier)) == [(0, 120, "moment_split"), (0, 40, "moment_split")]
+    one_slide = _clips(("g0", 1, 75, -0.6)) + across[1:]
+    assert _cut(_clips_frame(one_slide)) == [(1, 105, "moment_split"), (1, 45, "moment_split")]
+
+
+def test_a_frozen_take_keeps_its_blocks():
+    """A Take's blocks are frozen with its selection (`take_feedback_set`,
+    insert-once): frozen before the cut moved, it keeps the old blocks;
+    frozen with the moved cut, it keeps the new ones (founder 2026-10-24,
+    N128)."""
+    served = _clips_frame(_SHARED, select_servable=True)
+    assert _ids(served) == _ids(_clips_frame(_SHARED))     # the serve path cuts alike
+    assert _moments(served) == [(_clip("b3"), True), (_clip("b5"), False)]
+
+    plain = _clips_frame(_rescored(_SHARED, b0=0.9, b3=-0.6), select_servable=True)
+    before = _clips_frame(_SHARED, select_servable=True, frozen_candidate_ids={
+        _clip("a0"), _clip("b0"), _clip("b3")})
+    assert (_cut(before), _ids(before)) == (_cut(plain), _ids(plain))
+    assert [r["candidate_id"] for r in before["selected_confidence"]] == [
+        _clip("a0"), _clip("b0"), _clip("b3")]
+
+    after = _clips_frame(_SHARED, select_servable=True, frozen_candidate_ids={
+        _clip("a0"), _clip("b3"), _clip("b5")})
+    assert (_cut(after), _ids(after)) == (_cut(served), _ids(served))
+    assert _moments(after) == _moments(served)
 
 
 def test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version():
