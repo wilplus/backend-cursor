@@ -3693,3 +3693,30 @@ normal page. Links made before this keep working, at the page's length.
 the way in (as every booking link already asks), pick a time for the kick-off
 session at their earliest convenience, and pay nothing.
 Built with this entry. No migration.
+
+**N144 · A booking can carry a WhatsApp number: the confirmation and a
+reminder 1 hour before go there (founder, the Claude Code chat, 25 October
+2026: "Can you make it possible to confirm the date / sign up using what's app
+and have the remainder 1h earlier sent to them", then, to three questions: the
+number on the booking form, every booking with a number, "Use these words").**
+1. Sign-up stays as it is (email or Google). The booking form's last step asks
+for a WhatsApp number, optionally: "WhatsApp number (optional)", and under it
+"We'll confirm your time here and remind you 1 hour before." The field shows
+the Lounge's example number (+44 7700 900123), and a number without its
+country code gets the Lounge's words for it.
+2. Every booking that leaves a number gets, on WhatsApp, the confirmation:
+"You're booked with Artur Willoński: {date and time}. Join on Google Meet:
+{link}", and 1 hour before: "Your session with Artur Willoński starts in 1
+hour, at {time}. Join on Google Meet: {link}". Times are in the person's own
+time zone. The emails and the calendar invite stay as they are.
+3. The number is kept on the booking, for these two messages only; it is not
+the Lounge's number for the coach's feedback. Closing the account deletes it
+with the booking, or wipes it from a paid lesson's accounting record.
+4. Both messages are Meta templates the founder submits (category Utility)
+with the words above, {{1}} for the date and time and {{2}} for the link.
+Until Meta approves them, a message reaches only a person who wrote to the
+number in the last 24 hours.
+Open: Privacy 3.6 names WhatsApp for the coach's message; whether it needs a
+line for the booking's two messages is the founder's call.
+Migration 0491 (two columns on bookings). A Railway cron service runs every 5
+minutes.
