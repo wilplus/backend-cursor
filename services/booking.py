@@ -42,6 +42,7 @@ config = Config()
 
 BOOKING_KIND = "booking"
 SLOT_STEP_MIN = 30
+SHORT_SLOT_STEP_MIN = 15  # a meeting shorter than SLOT_STEP_MIN starts on the quarter hour
 # Stripe refuses a Checkout expiry under 30 minutes from its own clock, so
 # leave room. The hold outlives it a little, so a guest who pays in the last
 # second still finds the slot held.
@@ -166,8 +167,9 @@ def save_settings(payload: dict) -> dict:
 
 def public_settings(slug: str, link: str = "") -> dict:
     """The page's public face, or NOT_FOUND when the link is wrong or off.
-    With a valid price link, its price is what everyone is shown."""
-    s = get_settings()
+    With a valid price link, its price is what everyone is shown, and its
+    length (when it has one) is the meeting's length."""
+    s = settings_for_link(get_settings(), link)
     if not s.get("enabled") or (slug or "").strip().lower() != s["slug"]:
         raise BookingError("NOT_FOUND", "No booking page at this link.", 404)
     link_price = price_from_link(link)
@@ -196,8 +198,14 @@ def public_settings(slug: str, link: str = "") -> dict:
 # URL to a lower one gives an invalid link, which falls back to the normal page.
 # A link at 0 is the meeting without a price: none shown, nothing paid, and
 # the person's own price is left as it was.
+# A link may also set the meeting's length (founder 2026-10-25): the link
+# without a price for a new person's kick-off, 15 minutes unless the founder
+# changes it. Then it reads /book/<slug>?link=<cents>-<minutes>-<signature>,
+# the signature covering both numbers. A link made before this has no minutes
+# and keeps the page's own length.
 _PRICE_LINK_LABEL = b"willab-booking-price-link-v1"
 PRICE_LINK_MIN_CENTS = 100  # Stripe will not charge less than about 50 cents
+LINK_MIN_MINUTES, LINK_MAX_MINUTES = 15, 240  # the range the page's own length may take
 
 
 def _price_link_key() -> Optional[bytes]:
@@ -208,34 +216,69 @@ def _price_link_key() -> Optional[bytes]:
     return hmac.new(secret.encode("utf-8"), _PRICE_LINK_LABEL, hashlib.sha256).digest()
 
 
-def _price_link_sig(key: bytes, cents: int) -> str:
-    return hmac.new(key, str(cents).encode("utf-8"), hashlib.sha256).hexdigest()[:24]
+def _price_link_sig(key: bytes, cents: int, minutes: Optional[int] = None) -> str:
+    signed = str(cents) if minutes is None else f"{cents}:{minutes}"
+    return hmac.new(key, signed.encode("utf-8"), hashlib.sha256).hexdigest()[:24]
 
 
-def make_price_link(price_cents: Any) -> str:
-    """The ?link= value for a price in cents."""
+def make_price_link(price_cents: Any, duration_min: Any = None) -> str:
+    """The ?link= value for a price in cents, and a meeting length in minutes
+    when `duration_min` is given (None or "" leaves the page's own length)."""
     try:
         cents = int(price_cents)
     except (TypeError, ValueError):
         raise BookingError("INVALID_INPUT", "The price must be a whole number of cents.")
     if not (cents == 0 or PRICE_LINK_MIN_CENTS <= cents <= 10_000_000):
         raise BookingError("INVALID_INPUT", "The price must be 0 (no price) or at least 1.")
+    minutes: Optional[int] = None
+    if duration_min not in (None, ""):
+        try:
+            minutes = int(duration_min)
+        except (TypeError, ValueError):
+            raise BookingError("INVALID_INPUT", "The length must be a whole number of minutes.")
+        if not LINK_MIN_MINUTES <= minutes <= LINK_MAX_MINUTES:
+            raise BookingError("INVALID_INPUT",
+                               f"The length must be between {LINK_MIN_MINUTES} and {LINK_MAX_MINUTES} minutes.")
     key = _price_link_key()
     if key is None:
         raise BookingError("NOT_SET_UP", "The server secret is not set.", 503)
-    return f"{cents}-{_price_link_sig(key, cents)}"
+    sig = _price_link_sig(key, cents, minutes)
+    return f"{cents}-{sig}" if minutes is None else f"{cents}-{minutes}-{sig}"
 
 
-def price_from_link(link: Any) -> Optional[int]:
-    """The price a ?link= value carries, or None when it is missing or not ours."""
-    m = re.fullmatch(r"(\d{1,8})-([0-9a-f]{24})", str(link or "").strip())
+def _read_link(link: Any) -> Optional[tuple[int, Optional[int]]]:
+    """(price in cents, minutes or None) from a ?link= value, or None when it
+    is missing or not ours."""
+    m = re.fullmatch(r"(\d{1,8})(?:-([1-9]\d{1,2}))?-([0-9a-f]{24})", str(link or "").strip())
     key = _price_link_key() if m else None
     if not m or key is None:
         return None
     cents = int(m.group(1))
-    if 0 < cents < PRICE_LINK_MIN_CENTS or not hmac.compare_digest(_price_link_sig(key, cents), m.group(2)):
+    minutes = int(m.group(2)) if m.group(2) else None
+    if 0 < cents < PRICE_LINK_MIN_CENTS or (minutes is not None and not LINK_MIN_MINUTES <= minutes <= LINK_MAX_MINUTES):
         return None
-    return cents
+    if not hmac.compare_digest(_price_link_sig(key, cents, minutes), m.group(3)):
+        return None
+    return cents, minutes
+
+
+def price_from_link(link: Any) -> Optional[int]:
+    """The price a ?link= value carries, or None when it is missing or not ours."""
+    terms = _read_link(link)
+    return None if terms is None else terms[0]
+
+
+def duration_from_link(link: Any) -> Optional[int]:
+    """The meeting length in minutes a ?link= value carries, or None when it
+    is missing, not ours, or carries no length."""
+    terms = _read_link(link)
+    return None if terms is None else terms[1]
+
+
+def settings_for_link(s: dict, link: Any = "") -> dict:
+    """The settings as they are, with the meeting length a valid link sets."""
+    minutes = duration_from_link(link)
+    return s if minutes is None else {**s, "duration_min": minutes}
 
 
 # ------------------------------------------------------- per-person prices
@@ -402,6 +445,7 @@ def open_slots(s: dict, start: datetime, end: datetime, *, now: Optional[datetim
     now = now or datetime.now(timezone.utc)
     tz = ZoneInfo(s["timezone"])
     dur = timedelta(minutes=int(s["duration_min"]))
+    step = SLOT_STEP_MIN if int(s["duration_min"]) >= SLOT_STEP_MIN else SHORT_SLOT_STEP_MIN
     before = timedelta(minutes=int(s["buffer_before_min"]))
     after = timedelta(minutes=int(s["buffer_after_min"]))
     earliest = max(start, now + timedelta(hours=int(s["notice_hours"])))
@@ -431,7 +475,7 @@ def open_slots(s: dict, start: datetime, end: datetime, *, now: Optional[datetim
                     if earliest <= st < latest and not any(
                             st - before < b_.end and en + after > b_.start for b_ in busy):
                         out.append(st)
-                minute += SLOT_STEP_MIN
+                minute += step
         day += timedelta(days=1)
     return sorted(set(out))
 
@@ -449,7 +493,7 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     {"client_secret": ...} for the card form inside the booking page when
     `embedded`, else {"url": ...} for Stripe's own page; a free meeting skips
     Stripe and returns {"url": ...} to the confirmation."""
-    s = get_settings()
+    s = settings_for_link(get_settings(), link)  # the link's length, when it has one
     offer = offer_for(slug, user_id, link)  # raises NOT_FOUND when off or wrong link
     price = int(offer["price_cents"])
     price_link = bool(offer.get("price_link"))

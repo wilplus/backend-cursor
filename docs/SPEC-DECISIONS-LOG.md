@@ -3678,3 +3678,18 @@ runs these settled values:
 It replaces the bench's earlier reads (N133, N134 were never built for
 speakers). Founder's bench only; the speaker's screen is not built and will
 show no number. No migration.
+
+**N143 · A link without a price can set its own meeting length (founder, the
+Claude Code chat, 25 October 2026: "I want to do the link without the price,
+but also the time set, specifically for that link, which is going to be like
+15 minutes by default, but I can change it").**
+1. On /admin/booking, "Make a link without a price" has a length beside it:
+15 minutes unless the founder changes it (15 to 240).
+2. The length is part of the signed link. The booking page, the open times and
+the booking itself use it instead of the page's length, and times shorter than
+30 minutes start on the quarter hour. Editing the length in the URL gives the
+normal page. Links made before this keep working, at the page's length.
+3. It is for new people on the corporate plan: they open the link, sign up on
+the way in (as every booking link already asks), pick a time for the kick-off
+session at their earliest convenience, and pay nothing.
+Built with this entry. No migration.

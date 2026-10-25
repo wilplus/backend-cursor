@@ -373,6 +373,12 @@ O2  A paid booking keeps only its date, price and Stripe reference; my
 name, email, note and account link are removed.
 O3  Other people's bookings stay as they were.","O1, O2, O3 ->
 test_closing_an_account_deletes_bookings_and_keeps_paid_lessons_bare","Founder 2026-10-15, fix 6; Privacy 3.6 sections 7 and 9."
+tests/test_booking_link_length.py,Story,"As the founder, I want a link without a price that books a short kick-off of the length I set, so that a new person on the corporate plan can sign up and book it when it suits them.","O1  A link with a length shows that length, offers only times that fit it
+and books exactly that long, with nothing to pay.
+O2  An edited link gives the normal page and its normal length.
+O3  A link made before links had a length still works, at the page's length.","O1 -> test_a_link_with_a_length_shows_it_offers_times_that_fit_and_books_that_long
+O2 -> test_an_edited_link_gives_the_normal_page
+O3 -> test_a_link_made_before_lengths_existed_keeps_the_page_length",Founder 2026-10-25.
 tests/test_booking_price_link.py,Story,"As the founder, I want to send a price link that charges exactly its price, by card, now, so that special prices can't be tampered with or used without paying.","O1  A link charges exactly its price, with no first-lesson discount;
 without the link the normal price and discount apply.
 O2  An edited link gives the normal price.
