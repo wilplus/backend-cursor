@@ -65,6 +65,7 @@ def _snippet_rows(state: RecordingState) -> tuple[list[dict], list[dict]]:
             "metrics": metrics,
             "transcript": piece["transcript"] or None,
             "words": snippet_words or None,
+            "language": state.language,
         })
     return rows, metrics_by_index
 

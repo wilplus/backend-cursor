@@ -2068,6 +2068,7 @@ class DatabaseService:
         metrics: dict | None = None,
         transcript: str | None = None,
         words: list | None = None,
+        language: str | None = None,
     ) -> dict | None:
         """Create a new charisma snippet record (unlabeled by default).
 
@@ -2107,18 +2108,22 @@ class DatabaseService:
                 payload["transcript"] = transcript
             if words:
                 payload["words"] = words
+            if language:
+                payload["language"] = language
             try:
                 return _insert(payload)
             except Exception as col_err:
                 # The `words` column may not be migrated in this env yet — never
                 # let it cost us the snippet. Retry without words (#6 degrades to
-                # the legacy whole-snippet per-slide bucketing).
-                if "words" in payload:
+                # the legacy whole-snippet per-slide bucketing). `language`
+                # came with the same migration, so it goes with them.
+                if "words" in payload or "language" in payload:
                     logger.warning(
                         "create_charisma_snippet: retry without words "
                         "(run add_snippet_transcripts.sql?): %s", col_err,
                     )
                     payload.pop("words", None)
+                    payload.pop("language", None)
                     return _insert(payload)
                 raise
         except Exception as e:
@@ -2159,6 +2164,10 @@ class DatabaseService:
                 p["transcript"] = r["transcript"]
             if with_words and r.get("words"):
                 p["words"] = r["words"]
+            # `language` arrived with `words` (add_snippet_transcripts.sql),
+            # so it rides the same no-pending-migration fallback.
+            if with_words and r.get("language"):
+                p["language"] = r["language"]
             return p
 
         def _bulk(with_words):
@@ -2178,7 +2187,7 @@ class DatabaseService:
             raise RuntimeError(f"bulk returned {len(ids)} of {len(rows)}")
         except Exception as bulk_err:
             _e = str(bulk_err).lower()
-            if "words" in _e:
+            if "words" in _e or "language" in _e:
                 try:
                     ids = _bulk(False)
                     if len(ids) == len(rows):
@@ -2202,7 +2211,7 @@ class DatabaseService:
                     duration_ms=r.get("duration_ms"),
                     audio_segment_path=r.get("audio_segment_path"),
                     metrics=r.get("metrics"), transcript=r.get("transcript"),
-                    words=r.get("words"),
+                    words=r.get("words"), language=r.get("language"),
                 )
                 out.append(row.get("id") if row else None)
             return out
