@@ -7,7 +7,7 @@ import os
 from flask import jsonify
 
 from config import Config
-from routes.admin import require_admin_or_coach
+from routes.admin import require_admin, require_admin_or_coach
 from routes.v2.blueprint import v2_bp
 from utils.errors import safe_error
 
@@ -16,13 +16,18 @@ config = Config()
 
 
 @v2_bp.route("/internal/whisper-health", methods=["GET"])
+@require_admin
 def v2_internal_whisper_health():
-    """Report whether transcription credentials and the provider are healthy."""
+    """Report whether transcription credentials and the provider are healthy.
+
+    Admin only: it names the deployed commit and asks OpenAI on every call,
+    so an anonymous caller must never reach it (2026-10-25). It says only
+    whether the key is set, never its prefix or length.
+    """
     try:
         from services.openai_service import OpenAIService
 
         service = OpenAIService()
-        key = config.OPENAI_API_KEY or ""
         reachable = False
         api_error: str | None = None
         model_count = 0
@@ -35,9 +40,7 @@ def v2_internal_whisper_health():
                 api_error = f"{type(error).__name__}: {error}"
         return jsonify({
             "client_initialized": service.client is not None,
-            "api_key_present": bool(key),
-            "api_key_length": len(key),
-            "api_key_prefix": (key[:7] + "...") if key else None,
+            "api_key_present": bool(config.OPENAI_API_KEY),
             "api_reachable": reachable,
             "api_error": api_error,
             "api_model_count": model_count,
