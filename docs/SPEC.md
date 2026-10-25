@@ -946,6 +946,20 @@ Three live reads for the Pace Circle practice screen (N130). Each asks one thing
 
 **The centre.** Speed and share start from research values (speed: the rate syllables are said while talking, about 5 a second in English; share: about a quarter to a third of the time silent) and move gradually to the speaker's own, never leaving a healthy research band (N130). The rim's starting points are about 1.2 s for amber and 2.5 s for deep amber. Every starting value is tuned on the microphone prototype; a change to a definition is a new version, never an edit in place.
 
+### `pace-scale-v1` — the pace scale (machine read; founder-settled 2026-10-25, decisions log N142 — DEFINED, ON THE FOUNDER'S TEST BENCH ONLY)
+
+Supersedes the Pace Circle's three reads above (`pace-speed-v1`, `pace-pause-share-v1`, `pace-pause-length-v1`) for the founder's bench at `/admin/pace-circle`. After live tuning on 24-25 October the founder settled one read that moves one dot on one horizontal scale from 0 to 1, with no counting window, so nothing waits.
+
+| | |
+|---|---|
+| **Construct** | How much the speaker is talking without pausing, right now: it climbs while a voice sounds and sinks while it is silent, at fixed, settled speeds. 0 is silence (no pace); about 0.5 is talking with natural pauses; 1 is talking a long time without a pause (rushing). |
+| **Voice** | A 10 ms frame is voice when it is at least 14 dB louder than the room for 70 ms **and** at least 62% voice-like (normalised autocorrelation at a speaking pitch, 80-400 Hz, on the 70 Hz-1 kHz band, newest ~40 ms); it stays voice while 9 dB over the room and 42% voice-like. The room is the quietest moment of the last 3 s; digital zeros and the first 0.3 s after Start are never voice. A gap under 250 ms is between words, not a pause. |
+| **Shown as** | The dot's place on the scale, and its colour by place (green in the middle, orange, red only at the ends). Never a number to a speaker (AC-9); the 0 and 1 and the numbers panel are on the founder's bench only. |
+
+**What it is not.** Not words a minute or syllables (the loudness cannot count them reliably), not loudness or pitch as a quality, not confidence, and not a verdict: the colour names a place on the scale, never whether the speaker is good.
+
+The settled speeds, in seconds of voice or of pause, are in decisions log N142; a change to any of them is a new version.
+
 ### Adding an entry
 
 A new entry requires, in order: the construct written out; what it is explicitly *not*, naming the adjacent constructs it will be confused with; the single-barrelled question; the answer semantics; the engine; and an external anchor if one exists. Then the lane, then the capacity.

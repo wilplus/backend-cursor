@@ -3653,7 +3653,33 @@ ordinary change.
 Drawn on the prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>.
 Not built yet. No migration.
 
-**N142 · A link without a price can set its own meeting length (founder, the
+**N142 · The pace scale is settled (founder, the Claude Code chat, 24-25
+October 2026, after live tuning on the founder's bench: "that works good,
+settle it").** The Pace Circle (N130) became a horizontal scale from 0 to 1
+with one dot, moved only by what is known at once, every 10 ms
+(`pace-scale-v1`, [`docs/SPEC.md`](SPEC.md) §17). The founder's bench at
+`/admin/pace-circle` (frontend `src/app/admin/pace-circle/paceSignal.ts`)
+runs these settled values:
+
+- *Voice:* 14 dB over the room for 70 ms and 62% voice-like (pitch); the
+  room is the quietest moment of the last 3 s.
+- *Rising, while a voice sounds* (seconds of voice): 0 to 0.3 in 0.24 s;
+  0.3 to 0.5 in 0.32 s; 0.5 to 0.6 in 3.5 s; 0.6 to 0.65 in 2.8 s; 0.65 to
+  0.75 in 4.4 s; 0.75 to 1 in 11.3 s. After 22 s without a pause every
+  brake is lifted and it runs into the red.
+- *Holding:* a gap under 250 ms between words holds the dot, except above
+  0.75, where any gap brings it down.
+- *Falling, while silent* (seconds of pause): 1 to 0.75 in 0.5 s; 0.75 to
+  0.6 in 0.8 s; 0.6 to 0.5 in 1 s; 0.5 to 0.4 in 2 s; 0.4 to 0.37 in 0.3 s;
+  0.37 to 0 in 9.3 s.
+- *Colour by place:* green from about 0.28 to 0.72, orange towards the ends,
+  red in the last 0.08 at each end.
+
+It replaces the bench's earlier reads (N133, N134 were never built for
+speakers). Founder's bench only; the speaker's screen is not built and will
+show no number. No migration.
+
+**N143 · A link without a price can set its own meeting length (founder, the
 Claude Code chat, 25 October 2026: "I want to do the link without the price,
 but also the time set, specifically for that link, which is going to be like
 15 minutes by default, but I can change it").**
