@@ -3599,3 +3599,44 @@ still change the bank and its order. They come one after another in the Lounge
 chat, each answered with the same "Record your answer" button. Drawn on the prototype
 <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>. Not built yet. No
 migration.
+
+**N140 · Changing the plan, coming back, and the prototype's open points
+(founder, the decision page <https://claude.ai/artifact/CbvkxMeHXfnjRwQdkRDjH8>,
+25 October 2026, every recommendation taken, sent from the page).** For N131
+to N139:
+1. The speaker changes their deadline from "Change your plan" on the plan
+card; the plan recalculates (practices a week, calls, weeks and the bar).
+2. The speaker picks any three practice days; with two weeks or less to go,
+it is every day.
+3. The level comes from the diagnosis: the speaker cannot change it and asks
+the coach ("Ask your coach"). The coach changes it in the coach panel or talks
+it over on the next call; a coach's change always wins (N134).
+4. A new event gets the questions again and a new plan, started from a fourth
+row in the plan sheet, "I have a new event". One plan runs at a time: the new
+one replaces the old, which stays in the history.
+5. On a practice day Will says so as the Lounge opens: "Hi Artur, good to see
+you back! Today is practice 2 of 9: Let your key line land."
+6. Practice days may have a reminder: opt-in and off by default, offered once
+as a switch on the plan card, sent as a web push like the Life Panel's, saying
+"Today's practice is ready: Let your key line land." It never counts missed
+days, never says "come back" and never fires twice in a day. This widens the
+Life Panel's exception to "no nudges" (founder 2026-07-30) by this one opt-in
+reminder and nothing more.
+7. CLAUDE.md's Never 3 is reworded narrowly, in both repos: the plan's
+questions come once, before the first Take (N136).
+8. The Pace Circle starts before Take 2, because Take 1 has no Ideal Text yet.
+9. After the key line, the follow-up questions come in this order: audience,
+talk length and slides, worry, experience, success, opening (amends N139's
+drawn order).
+10. "Did they fit in the time" is measured on every Take, against the length
+set in the set-up.
+11. The progress bar shows on the walk's end sheet and on the plan card. This
+changes the locked end sheet, approved here.
+12. A practise that slowed down gets its own signed lines, said in turn: "You
+gave it room, and it landed." · "Slower, and every word counted." · "That pace
+lets them keep up with you."
+13. The answer button for no deadline stays "No date yet".
+14. The other new words on the prototype
+<https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn> (version 6) are approved
+as drawn (Never 4).
+Not built yet. No migration in this entry.
