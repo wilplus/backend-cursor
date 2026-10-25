@@ -3640,3 +3640,15 @@ lets them keep up with you."
 <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn> (version 6) are approved
 as drawn (Never 4).
 Not built yet. No migration in this entry.
+
+**N141 · The reminder's switch, and the topic from the voice message
+(founder, the Claude Code chat, 25 October 2026: "OK" and "yes", to the two
+questions left after N140).**
+1. The practice-day reminder's switch on the plan card reads "Remind me on
+practice days" (N140 item 6); the words are signed.
+2. The set-up's first question, "What is the topic?", is filled in from the
+voice message (N131), and the speaker can still change it. The set-up
+(`RecordingSetup.tsx`) is not on the locked-screens lists, so this is an
+ordinary change.
+Drawn on the prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>.
+Not built yet. No migration.
