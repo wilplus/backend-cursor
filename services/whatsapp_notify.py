@@ -21,7 +21,7 @@ import logging
 import re
 import threading
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import quote
 
 import httpx
@@ -198,6 +198,33 @@ def send_whatsapp(to: str, *, config: Any = None, path: str = "chat") -> bool:
     it; False when sending is off or not configured. Raises on a provider
     error."""
     cfg = config or Config()
+    return _deliver(to, cfg, lambda number: _payload(number, cfg, path))
+
+
+def send_template(to: str, *, template: str, params: list[str], text: str,
+                  config: Any = None) -> bool:
+    """A message the business starts other than the coach's note (the
+    booking's confirmation and reminder, founder 2026-10-25, N144): the
+    approved `template` with `params` as its body's {{1}}, {{2}}, ...; or
+    `text` when no template is named, which WhatsApp only delivers within
+    24 hours of the person's last message. Same switch, number and redirect
+    as send_whatsapp; raises on a provider error."""
+    cfg = config or Config()
+
+    def payload(number: str) -> dict:
+        base = {"messaging_product": "whatsapp", "to": number.lstrip("+")}
+        if not template:
+            return {**base, "type": "text", "text": {"body": text}}
+        return {**base, "type": "template", "template": {
+            "name": template,
+            "language": {"code": cfg.WHATSAPP_TEMPLATE_LANGUAGE or "en"},
+            "components": [{"type": "body", "parameters": [
+                {"type": "text", "text": p} for p in params]}]}}
+
+    return _deliver(to, cfg, payload)
+
+
+def _deliver(to: str, cfg: Any, payload: Callable[[str], dict]) -> bool:
     if not cfg.WHATSAPP_NOTIFICATIONS:
         return False
     if not (cfg.WHATSAPP_ACCESS_TOKEN and cfg.WHATSAPP_PHONE_NUMBER_ID):
@@ -207,8 +234,9 @@ def send_whatsapp(to: str, *, config: Any = None, path: str = "chat") -> bool:
     if redirect and not cfg.is_production:
         _log.info("whatsapp: redirecting a message to WHATSAPP_REDIRECT_TO (env=%s)", cfg.ENV)
         to = redirect
+    body = payload(to)
     res = httpx.post(_GRAPH_URL.format(phone_number_id=cfg.WHATSAPP_PHONE_NUMBER_ID),
-                     json=_payload(to, cfg, path),
+                     json=body,
                      headers={"Authorization": f"Bearer {cfg.WHATSAPP_ACCESS_TOKEN}"},
                      timeout=_TIMEOUT_SEC)
     if res.status_code >= 400:
@@ -218,7 +246,7 @@ def send_whatsapp(to: str, *, config: Any = None, path: str = "chat") -> bool:
                      res.status_code, _meta_error(res))
     res.raise_for_status()
     _log.info("whatsapp: Meta accepted the message template=%s",
-              cfg.WHATSAPP_TEMPLATE_NAME or "(plain text)")
+              (body.get("template") or {}).get("name") or "(plain text)")
     return True
 
 

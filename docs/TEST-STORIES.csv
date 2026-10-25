@@ -373,7 +373,7 @@ only after the coach's own answer is committed; before it, nothing.","O1 -> test
 O2 -> test_the_comparison_opens_only_after_the_coach_answers","CLAUDE.md Never rule 2; 0296 add_canonical_feedback_data_contract.sql. Runs on the released confident-moment lane (scripts/rehearsal_tier.sh). Every case is one transaction as the superuser that seeds, then calls the functions as service_role (the backend's role), and is always rolled back."
 tests/test_booking_erase.py,Story,"As a speaker who closes my account, I want my lesson bookings deleted, with a paid lesson kept only as a bare accounting record, so that nothing personal about me stays.","O1  Unpaid bookings are deleted.
 O2  A paid booking keeps only its date, price and Stripe reference; my
-name, email, note and account link are removed.
+name, email, WhatsApp number, note and account link are removed.
 O3  Other people's bookings stay as they were.","O1, O2, O3 ->
 test_closing_an_account_deletes_bookings_and_keeps_paid_lessons_bare","Founder 2026-10-15, fix 6; Privacy 3.6 sections 7 and 9."
 tests/test_booking_link_length.py,Story,"As the founder, I want a link without a price that books a short kick-off of the length I set, so that a new person on the corporate plan can sign up and book it when it suits them.","O1  A link with a length shows that length, offers only times that fit it
@@ -390,6 +390,14 @@ O4  A link set to zero shows no price and charges nothing.","O1 -> test_link_cha
 O2 -> test_an_edited_link_gives_the_normal_price
 O3 -> test_a_link_cannot_book_without_paying
 O4 -> test_a_link_at_zero_shows_no_price_and_charges_nothing",Founder 2026-10-18.
+tests/test_booking_whatsapp.py,Story,"As someone booking a session, I want to leave my WhatsApp number and get the confirmation of my time and a reminder 1 hour before there, so that I don't miss it.","O1  A number left on the booking form is kept with the booking, and the
+confirmation goes to it with the time in my own zone and the Meet link.
+A number without its country code is refused with words that say so.
+O2  The reminder goes once, about 1 hour before; a second run sends
+nothing, and a booking further away or without a number gets nothing.
+O3  The reminders' door is shut without its secret.","O1 -> test_a_number_on_the_booking_gets_the_confirmation_in_their_own_time
+O2 -> test_the_reminder_goes_once_an_hour_before
+O3 -> test_the_reminders_door_needs_its_secret","Founder 2026-10-25, N144."
 tests/test_bundled_era_erasure_postgres.py,Story,"As the founder, I want the one-time erasure of the old corpus to run only with my sign-off, counsel's sign-off and an exact snapshot, so that we delete exactly what was approved and keep consent records.","O1  Apply refuses, deleting nothing, on a wrong hash or a missing founder,
 counsel or external-copies record.
 O2  Apply refuses, deleting nothing, while any listed stored object has

@@ -19,11 +19,17 @@ Admin:
                                              and makes it the booker's own,
                                              for a meeting of that length
 
+Internal (cron, X-Internal-Secret: BOOKING_REMINDER_SECRET):
+  POST /v2/internal/booking/whatsapp-reminders  the WhatsApp reminders due
+                                             1 hour before (N144)
+
 The Stripe webhook (routes/internal_webhooks.py) confirms on
 checkout.session.completed with metadata.kind == "booking".
 """
 from __future__ import annotations
 
+import hmac
+import os
 from datetime import timedelta, timezone
 
 from flask import Blueprint, jsonify, request
@@ -104,6 +110,7 @@ def booking_checkout(slug: str):
         embedded=body.get("embedded") is True,
         skip_payment=body.get("skip_payment") is True,
         link=str(body.get("link") or ""),
+        whatsapp=str(body.get("whatsapp") or ""),
     ))
 
 
@@ -166,3 +173,18 @@ def admin_booking_price_link():
     return _reply({"url": f"{base}/book/{settings['slug']}?link={link}", "link": link,
                    "price_cents": booking.price_from_link(link),
                    "duration_min": booking.duration_from_link(link), "currency": settings["currency"]})
+
+
+@booking_bp.route("/v2/internal/booking/whatsapp-reminders", methods=["POST"])
+def booking_whatsapp_reminders():
+    """The cron's door (bin/railway-booking-reminders-cron.sh, every 5
+    minutes): send the WhatsApp reminders due 1 hour before (founder
+    2026-10-25, N144). One shared secret; 503 while BOOKING_REMINDER_SECRET is
+    not set, so the door is shut by default."""
+    secret = (os.environ.get("BOOKING_REMINDER_SECRET") or "").strip()
+    if not secret:
+        return _reply({"code": "NOT_SET_UP", "error": "BOOKING_REMINDER_SECRET not configured"}, 503)
+    given = (request.headers.get("X-Internal-Secret") or "").strip()
+    if not hmac.compare_digest(given.encode(), secret.encode()):
+        return _reply({"code": "UNAUTHORIZED", "error": "Invalid or missing X-Internal-Secret"}, 401)
+    return _reply(booking.send_whatsapp_reminders())
