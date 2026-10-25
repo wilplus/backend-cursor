@@ -116,7 +116,6 @@ FINANCIAL_ROWS_PER_TABLE = 5_000
 #: columns on rows whose words outlive the audio -- are emptied by the claim.
 TAKE_MEASUREMENT_ROWS: tuple[tuple[str, str], ...] = (
     ("dimension_evaluations", "session_id"),
-    ("session_sniper_metrics", "session_id"),
 )
 #: Aggregates over every recording of a speaker: they go with the account's
 #: last live recording, when nothing they were made from is left.

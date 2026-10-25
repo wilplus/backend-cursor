@@ -69,7 +69,6 @@ PROJECT_SELECTORS: Mapping[str, tuple[str, str]] = {
     "evidence_spans": ("project_id", "project"),
     "recording_boundary": ("project_id", "project"),
     "rejected_takes": ("arc_id", "project"),
-    "sniper_metrics": ("session_id", "take"),
     "uploaded_files": ("session_id", "take"),
     # The project's ideal text and moments.
     "projects": ("id", "project"),
