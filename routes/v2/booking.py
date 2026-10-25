@@ -2,7 +2,8 @@
 
 Public (no login):
   GET  /v2/booking/<slug>[?link=]            the page: title, length, price
-  GET  /v2/booking/<slug>/slots?from=&to=    open start times, UTC ISO
+  GET  /v2/booking/<slug>/slots?from=&to=[&link=]  open start times, UTC ISO
+                                             (a link with a length: times that fit it)
   GET  /v2/booking/confirmation?session_id=  what the success page shows
 
 Signed in (booking needs a WillpowerLab account):
@@ -13,8 +14,10 @@ Admin:
   GET  /v2/admin/booking                     settings + upcoming bookings
   PUT  /v2/admin/booking/settings            save settings
   GET/PUT /v2/admin/booking/user-price       one person's lesson price
-  GET  /v2/admin/booking/price-link?price_cents=  a link that charges that price
-                                             and makes it the booker's own
+  GET  /v2/admin/booking/price-link?price_cents=[&duration_min=]
+                                             a link that charges that price
+                                             and makes it the booker's own,
+                                             for a meeting of that length
 
 The Stripe webhook (routes/internal_webhooks.py) confirms on
 checkout.session.completed with metadata.kind == "booking".
@@ -61,8 +64,8 @@ def booking_slots(slug: str):
         return _reply({"code": "INVALID_RANGE", "error": "from and to must be ISO times"}, 400)
     if end <= start or end - start > timedelta(days=MAX_RANGE_DAYS):
         return _reply({"code": "INVALID_RANGE", "error": f"Ask for at most {MAX_RANGE_DAYS} days"}, 400)
-    slots = booking.open_slots(booking.get_settings(), start.astimezone(timezone.utc),
-                               end.astimezone(timezone.utc))
+    settings = booking.settings_for_link(booking.get_settings(), request.args.get("link", ""))
+    slots = booking.open_slots(settings, start.astimezone(timezone.utc), end.astimezone(timezone.utc))
     return _reply({"slots": [s.isoformat().replace("+00:00", "Z") for s in slots]})
 
 
@@ -155,9 +158,11 @@ def admin_booking_user_price():
 @require_admin
 def admin_booking_price_link():
     """The booking page link for one price (founder 2026-10-18). Whoever pays
-    through it gets that price as their own lesson price."""
+    through it gets that price as their own lesson price. `duration_min` sets
+    the meeting's length for this link (founder 2026-10-25)."""
     settings = booking.get_settings()
-    link = booking.make_price_link(request.args.get("price_cents"))
+    link = booking.make_price_link(request.args.get("price_cents"), request.args.get("duration_min"))
     base = (booking.config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
     return _reply({"url": f"{base}/book/{settings['slug']}?link={link}", "link": link,
-                   "price_cents": booking.price_from_link(link), "currency": settings["currency"]})
+                   "price_cents": booking.price_from_link(link),
+                   "duration_min": booking.duration_from_link(link), "currency": settings["currency"]})
