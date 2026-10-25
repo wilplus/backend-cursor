@@ -13,6 +13,8 @@ OUTCOME
   O4  Errors come back in a form the app can read, never as a web page.
   O5  The browser's pre-upload check accepts every header the app sends,
       so big deck uploads go through.
+  O6  Without a sign-in, the provider diagnostics answer "not signed in"
+      and never ask OpenAI.
 PROVES   O1 -> test_critical_routes_are_wired, test_health_endpoints_answer_200
          O2 -> test_protected_route_without_header_is_401_json,
                test_protected_route_non_bearer_is_401_json,
@@ -24,8 +26,10 @@ PROVES   O1 -> test_critical_routes_are_wired, test_health_endpoints_answer_200
          O4 -> test_405_answers_json_not_html,
                test_413_handler_is_registered_and_answers_json
          O5 -> test_preflight_allows_every_header_the_fe_sends
+         O6 -> test_provider_diagnostics_refuse_an_anonymous_caller
 WHY      Incident 2026-07-15: big deck uploads failed at the browser's
-         pre-upload (CORS) check.
+         pre-upload (CORS) check. 2026-10-25: the provider diagnostics
+         answered anyone, with the key's prefix and the deployed commit.
 """
 import uuid
 
@@ -98,6 +102,18 @@ def test_protected_route_garbage_token_is_401_json(app_client):
     # "garbage" is not even JWT-shaped: verification dies at parse, before
     # any JWKS network fetch — deterministic offline and in CI.
     resp = app_client.get("/user/profile", headers={"Authorization": "Bearer garbage"})
+    assert resp.status_code == 401
+    assert resp.get_json()["code"] == "UNAUTHORIZED"
+
+
+def test_provider_diagnostics_refuse_an_anonymous_caller(app_client, monkeypatch):
+    import services.openai_service as openai_service
+
+    def _no_provider_call():
+        raise AssertionError("an anonymous caller reached OpenAI")
+
+    monkeypatch.setattr(openai_service, "OpenAIService", _no_provider_call)
+    resp = app_client.get("/v2/internal/whisper-health")
     assert resp.status_code == 401
     assert resp.get_json()["code"] == "UNAUTHORIZED"
 

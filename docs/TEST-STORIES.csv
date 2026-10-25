@@ -7,7 +7,9 @@ O3  A guest or the owner can follow their own processing job; someone
 else's job looks exactly like no job at all.
 O4  Errors come back in a form the app can read, never as a web page.
 O5  The browser's pre-upload check accepts every header the app sends,
-so big deck uploads go through.","O1 -> test_critical_routes_are_wired, test_health_endpoints_answer_200
+so big deck uploads go through.
+O6  Without a sign-in, the provider diagnostics answer ""not signed in""
+and never ask OpenAI.","O1 -> test_critical_routes_are_wired, test_health_endpoints_answer_200
 O2 -> test_protected_route_without_header_is_401_json,
 test_protected_route_non_bearer_is_401_json,
 test_protected_route_garbage_token_is_401_json
@@ -17,7 +19,8 @@ test_foreign_job_and_unknown_job_are_indistinguishable,
 test_non_uuid_job_id_is_404_without_db
 O4 -> test_405_answers_json_not_html,
 test_413_handler_is_registered_and_answers_json
-O5 -> test_preflight_allows_every_header_the_fe_sends",Incident 2026-07-15: big deck uploads failed at the browser's pre-upload (CORS) check.
+O5 -> test_preflight_allows_every_header_the_fe_sends
+O6 -> test_provider_diagnostics_refuse_an_anonymous_caller","Incident 2026-07-15: big deck uploads failed at the browser's pre-upload (CORS) check. 2026-10-25: the provider diagnostics answered anyone, with the key's prefix and the deployed commit."
 tests/test_a_coach_is_asked_to_listen_again_postgres.py,Story,"As a coach, I want to be asked to listen again only for clips I judged blind, once at a time, with a fresh line each time, so that my second answer is still my own and not prompted by the machine.","O1  The flag opens one ask per coach with a blind judgment of record and
 none for a self-report, a peer, an abstention, an anonymous row or a
 coach whose rating was not blind; no second ask while one is open.
