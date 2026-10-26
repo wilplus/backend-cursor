@@ -216,6 +216,13 @@ test_directives_reach_the_permit_through_the_real_llm_wrapper
 O2 -> test_the_icebreaker_runs_under_the_speakers_scope
 test_the_icebreaker_is_refused_without_the_speakers_authority
 O3 -> every test (_FakeDB)","Founder 2026-10-05, N48.1 step 6: ""every AI call carries its permission slip""; the two admin tools called the provider with none."
+tests/test_admin_takes_transcripts.py,Story,"As the founder, I want each Take on a person's admin page to show what was said, and to export the full text to a CSV only for speakers who said yes to training, so that I can look for verbal patterns without taking words the speaker never agreed to share.","O1  A Take row carries a one-line preview of its transcript, cut at a word,
+never the whole text.
+O2  Without the training yes the export releases no text.
+O3  With the training yes it releases each Take's full transcript, and
+leaves out a Take of a project the speaker archived or erased.","O1 -> test_a_take_row_carries_a_one_line_preview
+O2 -> test_the_export_releases_nothing_without_the_training_yes
+O3 -> test_the_export_releases_full_text_with_the_yes_and_skips_hidden_projects","Founder 2026-10-26 (WIL-110): ""Go with the training-yes gate, and build the transcript column"". Privacy 3.7 section 4 lets the person who runs WillpowerLab see transcripts; it names no export of them."
 tests/test_admin_takes_willfidence.py,Story,"As the founder, I want each Take on a person's admin page to show its willfidence, so I can read how a speaker's Takes are going.","O1  A Take row carries `willfidence`: the mean of its pieces' willfidence in
 whole percent, counting only pieces with a sound read; none when no piece
 has one (never the middle of the scale made up).",O1 -> test_a_take_row_carries_its_willfidence_in_percent,"Founder 2026-10-21 (N105): ""add the willfidence column here (in the ceo panel but only here)""."

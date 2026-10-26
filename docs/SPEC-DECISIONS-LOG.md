@@ -3931,8 +3931,29 @@ and Meta's template (N153 item 4). Until then the WhatsApp number is asked
 only as today, from Take 2, for the coach's feedback.
 No migration.
 
-**N156 · The ratings one at a time in the footer; a simpler plan; the two
-calls with the coach booked before the first Take (founder, the Claude Code
+**N156 · Transcripts on a person's admin page, and the CSV (founder, the
+Claude Code chat, 26 October 2026: "Go with the training-yes gate, and build
+the transcript column"; Linear WIL-110).**
+1. Each Take row on the person's admin page (`/admin/users/<id>`, the Takes
+table) shows one line of what was said. The full text is not in that list.
+2. The page's Export CSV carries each Take's full transcript only for a
+speaker who holds the training yes now. For anyone else the column is blank.
+Only the founder can ask for it; it fails closed on any doubt; Takes of a
+project the speaker erased or archived are left out; each release is logged
+(who, whose, how many). The file's name carries no user id.
+3. Why. Privacy 3.7 section 4 lets the person who runs WillpowerLab see
+transcripts, but names no export of them, and a file on a laptop is out of
+the deletion promise's reach. Naming the export in a new policy version that
+everyone re-accepts is the other road; it is not taken.
+4. Open for the founder: `scripts/corpus_base_rates.py` reads every
+transcript with no consent filter (its output is rates only); and WIL-110's
+"store them so the dev team can reach them" is wider than "the person who
+runs WillpowerLab" in section 4.
+Built in the frontend's `TakesExplorer.tsx` and the backend's
+`services/admin_takes.py`. No migration.
+
+**N157 · The ratings one at a time in the footer; a simpler plan; the two
+calls with the coach offered before the first Take (founder, the Claude Code
 chat, 26 October 2026: "The scale is shown instead of the type here. One at a
 time ... Then the plan should be less crowded. Make it really simplistic. In
 the bullet points ... just call it plan ... you have two meetings to schedule
@@ -3952,18 +3973,20 @@ then "Plan" in bullet points: the practice days, the Pace Circle, the kickoff
 call and the summary call, each with its time once booked. "Your coach will
 listen too, and may change it." leaves the card; "Change your plan" stays.
 3. Under the card, the footer books the two calls with the coach: a calendar
-like the deadline's, with the deadline marked, then a time, then Book. The
-kickoff call first, before the deadline; then the summary call, after it,
-which can wait ("Next"). The footer counts "1 of 2 booked".
+like the deadline's, with the deadline marked, then a time, then "Book and
+pay". The kickoff call first, before the deadline; then the summary call,
+after it. The footer counts "1 of 2 booked".
 4. Then Will says "You're all set." and "Start your first recording" takes
 the footer's place.
 5. A summary call booked here is shown at the deadline instead of being
 offered again (N149 item 5).
-Open, put to the founder: whether the kickoff call may wait too, since a
-booking that must be made before the first Take puts a coach in the way of the
-loop (Never 3); how the two calls are paid (free on the corporate plan, N143;
-today a paid booking page otherwise); and whether the weekly call (N134 item
-11) still runs beside them (drawn without it). The new words wait for the
-founder's OK (Never 4). Drawn on the prototype
+6. The founder's answers to three questions in the chat the same morning (the
+recommended answer on the first and the third): either call can wait
+("Next"), so no coach stands in the way of the first Take (Never 3), and a
+kickoff not booked is offered again after Take 1; booking is paid as the
+booking page is paid today ("Book and pay"), and free with a link without a
+price (N143); the plan's calls are these two, and the weekly call (N134 item
+11) goes.
+The new words wait for the founder's OK (Never 4). Drawn on the prototype
 <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>. Not built yet. No
 migration.
