@@ -59,11 +59,11 @@ def _sellable() -> tuple[str, ...]:
 def package_spec(package: Optional[str]) -> Optional[dict]:
     """``{"package", "tokens", "coach_reviews", "usd", "cents"}`` for a
     package on sale, else None. A retired tier is not a package."""
-    from services.token_prices import TIERS
+    from services.token_prices import tier_row
     key = (package or "").strip().lower()
     if key not in _sellable():
         return None
-    row = TIERS[key]
+    row = tier_row(key)
     return {
         "package": key,
         "tokens": int(row["tokens"]),

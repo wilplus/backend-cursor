@@ -2016,6 +2016,21 @@ O3  A PDF over the size cap is refused as too large, with the limit in MB
 as a number and named in the message, so the screen can say it.","O1 -> PresentationExtractValidationTests::test_non_pdf_415
 O2 -> PresentationExtractValidationTests::test_empty_pdf_400
 O3 -> PresentationExtractValidationTests::test_oversize_pdf_413_contract",
+tests/test_pricing_v4.py,Story,"As a speaker, I want one currency for my practice and my coach's time, so that any package can pay for a call and a bigger one simply lasts longer. (Critical path: payments.)","O1  While pricing v4 is off, nothing changes: the shop, the prices and the
+unit are today's.
+O2  With it on, tokens read in hundreds of today's units: Starter $39 for
+3,900, Plus $99 for 11,000, Pro $149 for 18,000; a short Take reads 10,
+chat 1, the free grant 120, the coach's minute 200.
+O3  A package bought with it on is charged and granted at the new price.
+O4  A Take that reaches the coach costs nothing: a review is charged only
+when it is asked for.
+O5  A call can be booked with tokens at its own price, a token a cent; with
+too few tokens, or with v4 off, nothing is booked and the slot is free.","O1 -> test_with_v4_off_nothing_changes
+O2 -> test_with_v4_on_the_shop_and_prices_read_in_shown_tokens
+O3 -> test_a_package_bought_with_v4_on_is_charged_and_granted_its_new_price
+O4 -> test_a_take_reaching_the_coach_costs_nothing_with_v4_on
+O5 -> test_a_call_booked_with_tokens_costs_its_price_a_token_a_cent,
+test_a_call_tokens_cannot_pay_for_is_not_booked","Founder 2026-10-26, N198 (the prototype's version 3, ""accepted, start the build""); N187 for the coach's rate."
 tests/test_prior_take_changes.py,Story,"As a speaker, I want to be told when I said a passage better in an earlier take, and to accept or keep it, so that my Ideal Text keeps my best wording.","O1  Fragments align by text, not position; an offer is made only where
 the old fragment clearly beats the new one, anchored on the NEW words
 and proposing the OLD ones; the new take holding its ground is silence.

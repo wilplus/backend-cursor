@@ -37,7 +37,7 @@ from flask import Blueprint, jsonify, request
 from auth import require_auth
 from services import token_account as ta
 from services.token_prices import (
-    PER_ARC_ACTIONS, band_for_balance, price_of, public_price_list,
+    PER_ARC_ACTIONS, band_for_balance, price_of, public_price_list, shown,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,8 @@ def tokens_balance():
         # Unreadable account must not look like "you have nothing" — that would
         # push the FE into an empty-balance state and hide the record button.
         return jsonify({"enabled": True, "available": False}), 200
-    return jsonify({"enabled": True, "available": True, **acct}), 200
+    return jsonify({"enabled": True, "available": True, **acct,
+                    **{k: shown(acct.get(k)) for k in ("balance", "monthly_balance", "bonus_balance")}}), 200
 
 
 @tokens_bp.route("/v2/tokens/prices", methods=["GET"])
@@ -98,12 +99,12 @@ def tokens_recording_band():
     band = band_for_balance(acct.get("balance"))
     if not band:
         return jsonify({"enabled": True, "can_record": False,
-                        "balance": acct.get("balance"),
+                        "balance": shown(acct.get("balance")),
                         "period_ends_at": acct.get("period_ends_at")}), 200
     return jsonify({"enabled": True, "can_record": True,
-                    "balance": acct.get("balance"),
+                    "balance": shown(acct.get("balance")),
                     "period_ends_at": acct.get("period_ends_at"),
-                    **band}), 200
+                    **band, "price": shown(band.get("price"))}), 200
 
 
 @tokens_bp.route("/v2/tokens/arc/<arc_id>", methods=["GET"])
@@ -136,7 +137,7 @@ def tokens_arc_state(arc_id):
         "enabled": True,
         "arc_id": str(arc_id),
         "charged": {a: (a in charged) for a in PER_ARC_ACTIONS},
-        "prices": {a: price_of(a) for a in PER_ARC_ACTIONS},
+        "prices": {a: shown(price_of(a)) for a in PER_ARC_ACTIONS},
     }), 200
 
 
@@ -186,6 +187,8 @@ def tokens_history():
         before_id = int(before_id) if before_id else None
     except (TypeError, ValueError):
         before_id = None
-    rows = ta.history(str(request.user_id), limit=limit, before_id=before_id)
+    rows = [{**row, "delta": shown(row.get("delta")), "balance_after": shown(row.get("balance_after"))}
+            if "delta" in row else row
+            for row in ta.history(str(request.user_id), limit=limit, before_id=before_id)]
     return jsonify({"enabled": True, "entries": rows,
                     "next_before_id": rows[-1]["id"] if rows else None}), 200

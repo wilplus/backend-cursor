@@ -89,9 +89,12 @@ def booking_offer(slug: str):
         return _reply({**booking.offer_for(slug, preview, link), "preview": True})
     payload = getattr(request, "token_payload", None) or {}
     meta = payload.get("user_metadata") or {}
-    return _reply({**booking.offer_for(slug, user_id, link), "preview": False,
+    offer = booking.offer_for(slug, user_id, link)
+    return _reply({**offer, "preview": False,
                    "email": payload.get("email") or "",
-                   "name": meta.get("full_name") or meta.get("name") or ""})
+                   "name": meta.get("full_name") or meta.get("name") or "",
+                   # Booking with tokens (N198): null while it is off.
+                   "tokens": booking.token_offer(user_id, int(offer.get("price_cents") or 0))})
 
 
 @booking_bp.route("/v2/booking/<slug>/checkout", methods=["POST"])
@@ -111,6 +114,7 @@ def booking_checkout(slug: str):
         skip_payment=body.get("skip_payment") is True,
         link=str(body.get("link") or ""),
         whatsapp=str(body.get("whatsapp") or ""),
+        pay_with_tokens=body.get("pay_with_tokens") is True,
     ))
 
 

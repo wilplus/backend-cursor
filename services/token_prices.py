@@ -97,6 +97,74 @@ is no longer sold."""
 DEFAULT_TIER = "free"
 
 
+# ── Pricing v4 (founder 2026-10-26, N198): everything in tokens ──────
+#
+# Off until Terms 3.7 describe it (N198 item 7): PRICING_V4_ENABLED=1 on every
+# Railway service switches it on, and off again just as safely, because
+# NOTHING STORED CHANGES. A token as the speaker sees it is DISPLAY_UNIT_V4 of
+# the stored units every balance, price and ledger row already holds: a short
+# Take is still 1,000 stored and reads 10, the free grant is still 12,000 and
+# reads 120. N198's "divided by 100" is this display unit, not a migration.
+#
+# What v4 does change: the three sold packages (each now holds at least one
+# call with the coach), chat (1 shown token, it would be 1.5), the coach's
+# time (200 shown tokens a minute, paid at booking), and the review, which is
+# no longer charged when the coach sends it (N198 item 5: only when asked).
+
+PRICE_VERSION_V4 = "2026-10-26-v4"
+DISPLAY_UNIT_V4 = 100
+"""Stored units in one token as shown, while v4 is on."""
+
+TIERS_V4: dict[str, dict] = {
+    # Shown as Starter / Plus / Pro, as before; the keys stay as Stripe and
+    # existing ledger rows know them.
+    "practice":  {"tokens":   390_000, "coach_reviews": 0, "usd":  39},
+    "coaching":  {"tokens": 1_100_000, "coach_reviews": 0, "usd":  99},
+    "intensive": {"tokens": 1_800_000, "coach_reviews": 0, "usd": 149},
+}
+
+COACH_MINUTE_V4 = 20_000
+"""The coach's published rate, stored units a minute (200 shown, $2; N187)."""
+
+
+def v4_enabled() -> bool:
+    import os
+    return (os.getenv("PRICING_V4_ENABLED") or "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def price_version() -> str:
+    """The version a ledger row records: v4's while it is on."""
+    return PRICE_VERSION_V4 if v4_enabled() else PRICE_VERSION
+
+
+def display_unit() -> int:
+    return DISPLAY_UNIT_V4 if v4_enabled() else 1
+
+
+def shown(units: Optional[int]) -> Optional[int]:
+    """Stored units as the speaker sees them: whole tokens, toward zero, so a
+    balance is never shown larger than it is. Every number the app or the
+    admin reads passes through here (routes/token_routes.py and the admin
+    endpoints); nothing else needs to know the unit."""
+    if units is None:
+        return None
+    n, unit = int(units), display_unit()
+    return n // unit if n >= 0 else -((-n) // unit)
+
+
+def stored(tokens: int) -> int:
+    """Tokens as typed (the admin's grant) in stored units."""
+    return int(tokens) * display_unit()
+
+
+def tier_row(tier: Optional[str]) -> dict:
+    """One tier's grant and price, v4's for the sold packages while it is on."""
+    key = normalize_tier(tier)
+    if v4_enabled() and key in TIERS_V4:
+        return TIERS_V4[key]
+    return TIERS[key]
+
+
 def normalize_tier(tier: Optional[str]) -> str:
     """Unknown or NULL reads as free. Never raises — a bad tier string must
     degrade to the smallest grant, never to an exception on a balance read."""
@@ -106,12 +174,12 @@ def normalize_tier(tier: Optional[str]) -> str:
 
 def grant_for(tier: Optional[str]) -> int:
     """Tokens granted at each period roll. SET, not added — no rollover."""
-    return int(TIERS[normalize_tier(tier)]["tokens"])
+    return int(tier_row(tier)["tokens"])
 
 
 def coach_reviews_for(tier: Optional[str]) -> int:
     """Human-coach reviews allowed per period."""
-    return int(TIERS[normalize_tier(tier)]["coach_reviews"])
+    return int(tier_row(tier)["coach_reviews"])
 
 
 # ── Action prices ────────────────────────────────────────────────────
@@ -153,6 +221,23 @@ PRICES: dict[str, int] = {
     # re-charges.
     "coach_feedback":    35_000,
 }
+
+PRICES_V4: dict[str, int] = {
+    **{action: price for action, price in PRICES.items() if action != "coach_feedback"},
+    "chat": 100,
+    # The coach's time, paid in tokens at booking (N198 item 4): one stored
+    # unit per hundredth of a cent, so a booking's own price in cents times
+    # this is its charge. A link's or a person's own price counts the same.
+    "coach_time": 100,
+}
+"""v4's price list. ``coach_feedback`` is absent: the review is charged only
+when the speaker asks for one (N198 item 5), and that ask comes with its own
+screen. Until then a review costs nothing."""
+
+
+def prices() -> dict[str, int]:
+    return PRICES_V4 if v4_enabled() else PRICES
+
 
 PER_ARC_ACTIONS: tuple[str, ...] = (
     "insights", "moment_explanation",
@@ -267,7 +352,7 @@ def price_of(action: str) -> int:
     Charging zero for something we forgot to price loses a little revenue.
     Raising here would break the user's action instead, on the live loop, over
     a billing detail — strictly the worse failure."""
-    return int(PRICES.get((action or "").strip(), 0))
+    return int(prices().get((action or "").strip(), 0))
 
 
 def band_for_seconds(seconds: Optional[float]) -> str:
@@ -314,14 +399,20 @@ def public_price_list() -> dict:
     can legitimately name a key that appears in no card — the FE treats
     "matches nothing" as correct rather than as a bug."""
     return {
-        "price_version": PRICE_VERSION,
-        "actions": dict(PRICES),
-        "bands": [{"max_seconds": s, "action": a, "price": price_of(a)}
+        "price_version": price_version(),
+        # Every number here is already in tokens as shown; the unit is for
+        # anyone reconciling with the ledger, which keeps stored units.
+        "display_unit": display_unit(),
+        "actions": {action: shown(price) for action, price in prices().items()
+                    if action != "coach_time"},
+        "bands": [{"max_seconds": s, "action": a, "price": shown(price_of(a))}
                   for s, a in BANDS],
+        # The coach's time, a minute (v4 only; null before).
+        "coach_minute": shown(COACH_MINUTE_V4) if v4_enabled() else None,
         "tiers": {
-            name: {"tokens_per_month": TIERS[name]["tokens"],
-                   "coach_reviews_per_month": TIERS[name]["coach_reviews"],
-                   "usd_per_month": TIERS[name]["usd"]}
+            name: {"tokens_per_month": shown(tier_row(name)["tokens"]),
+                   "coach_reviews_per_month": tier_row(name)["coach_reviews"],
+                   "usd_per_month": tier_row(name)["usd"]}
             for name in SOLD_TIERS
             if name in TIERS
         },

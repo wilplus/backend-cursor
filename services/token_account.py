@@ -47,11 +47,11 @@ from typing import Any, Optional
 from services.token_prices import (
     COACH_ACTIONS,
     DEFAULT_TIER,
-    PRICE_VERSION,
     coach_reviews_for,
     grant_for,
     normalize_tier,
     price_of,
+    price_version,
 )
 
 logger = logging.getLogger(__name__)
@@ -551,7 +551,7 @@ def _charge_atomic(db, user_id: str, action: str, price: int, *,
             "p_price": int(price),
             "p_ref_id": str(ref_id) if ref_id is not None else None,
             "p_tier": tier,
-            "p_price_version": PRICE_VERSION,
+            "p_price_version": price_version(),
             "p_coach_action": bool(coach_action),
             "p_coach_allowed": int(coach_allowed),
         }).execute()
@@ -590,7 +590,7 @@ def _charge_atomic(db, user_id: str, action: str, price: int, *,
 
 
 def charge(user_id: str, action: str, *, ref_id: Optional[str] = None,
-           database=None) -> ChargeResult:
+           quantity: int = 1, database=None) -> ChargeResult:
     """Deduct the flat price of ``action``. NEVER raises.
 
     Soft by design (fence §6.1): the balance floors at zero and ``ok`` reports
@@ -618,7 +618,9 @@ def charge(user_id: str, action: str, *, ref_id: Optional[str] = None,
     """
     if not enabled():
         return ChargeResult(True, 0, 0, "disabled", action)
-    price = price_of(action)
+    # ``quantity`` prices an action by the unit, as the coach's time is by the
+    # cent of its booking (N198); everything else is one.
+    price = price_of(action) * max(0, int(quantity or 0))
     db = database or _db()
 
     acct = ensure_period_current(user_id, database=db)
@@ -959,7 +961,7 @@ def _ledger(user_id: str, delta: int, balance_after: int, action: str, *,
             "balance_after": int(balance_after),
             "action": action,
             "ref_id": str(ref_id) if ref_id is not None else None,
-            "price_version": PRICE_VERSION,
+            "price_version": price_version(),
             "tier": tier,
         }).execute()
     except Exception as e:

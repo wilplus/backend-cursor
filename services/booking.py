@@ -493,12 +493,14 @@ EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email: str,
                    guest_timezone: str, note: str = "", embedded: bool = False,
-                   skip_payment: bool = False, link: str = "", whatsapp: str = "") -> dict:
+                   skip_payment: bool = False, link: str = "", whatsapp: str = "",
+                   pay_with_tokens: bool = False) -> dict:
     """Hold the slot and open Stripe Checkout for a signed-in account, at that
     person's price (charged as an amount, not a Stripe product). Returns
     {"client_secret": ...} for the card form inside the booking page when
     `embedded`, else {"url": ...} for Stripe's own page; a free meeting skips
-    Stripe and returns {"url": ...} to the confirmation."""
+    Stripe and returns {"url": ...} to the confirmation. `pay_with_tokens`
+    pays from the account's tokens instead (N198 item 4), and skips Stripe."""
     s = settings_for_link(get_settings(), link)  # the link's length, when it has one
     offer = offer_for(slug, user_id, link)  # raises NOT_FOUND when off or wrong link
     price = int(offer["price_cents"])
@@ -508,6 +510,7 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     # Book and pay later: a confirmed booking at 0 that remembers what is due.
     if skip_payment:
         price = 0
+    tokens_cost = _tokens_for(pay_with_tokens, price)
     name, email, note = (name or "").strip()[:120], (email or "").strip()[:254], (note or "").strip()[:2000]
     if not name:
         raise BookingError("NAME_REQUIRED", "Add your name.")
@@ -532,7 +535,8 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
         "p_buffer_before": int(s["buffer_before_min"]), "p_buffer_after": int(s["buffer_after_min"]),
         "p_held_until": held_until.isoformat(), "p_guest_name": name, "p_guest_email": email,
         "p_guest_timezone": guest_timezone, "p_note": note, "p_title": s["title"],
-        "p_price_cents": price, "p_currency": s["currency"], "p_meet_url": s["meet_url"],
+        "p_price_cents": _money_price(price, tokens_cost), "p_currency": s["currency"],
+        "p_meet_url": s["meet_url"],
     }).execute().data
     if not booking_id:
         raise BookingError("SLOT_TAKEN", "That time was just taken. Pick another.", 409)
@@ -544,9 +548,10 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     }).eq("id", booking_id).execute()
     base = (config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
 
-    if price == 0:
-        _confirm(booking_id, session_id=None)
-        return {"url": f"{base}/book/{s['slug']}/done?booking={booking_id}"}
+    done = _confirm_without_stripe(booking_id, user_id, price, tokens_cost,
+                                   price_link=price_link, done_url=f"{base}/book/{s['slug']}/done")
+    if done:
+        return done
 
     api_key = (getattr(config, "STRIPE_SECRET_KEY", None) or "").strip()
     if not api_key:
@@ -592,6 +597,91 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     if embedded:
         return {"client_secret": _get(session, "client_secret")}
     return {"url": _get(session, "url")}
+
+
+def _tokens_for(pay_with_tokens: bool, price_cents: int) -> int:
+    """The booking's cost in stored token units when the guest pays with
+    tokens; refused when tokens can't pay for it."""
+    if not pay_with_tokens:
+        return 0
+    cost = _tokens_cost(price_cents)
+    if not cost:
+        raise BookingError("TOKENS_OFF", "Payment could not start. Try again.", 409)
+    return cost
+
+
+def _money_price(price_cents: int, tokens_cost: int) -> int:
+    """What the row records in money. Paid in tokens, nothing is charged in
+    money: the token ledger holds the record (ref = the booking), and the row
+    reads like a free one."""
+    return 0 if tokens_cost else price_cents
+
+
+def _confirm_without_stripe(booking_id: str, user_id: str, price_cents: int, tokens_cost: int,
+                            *, price_link: bool, done_url: str) -> Optional[dict]:
+    """A booking paid in tokens, or a free one, is confirmed here and never
+    reaches Stripe. None when the card has to pay."""
+    if tokens_cost:
+        _pay_with_tokens(booking_id, user_id, price_cents, tokens_cost)
+        if price_link:
+            # As by card (confirm_checkout): once paid, a link's price becomes
+            # the person's own.
+            try:
+                set_user_price(str(user_id), price_cents)
+            except Exception:  # noqa: BLE001 — the booking stands; the admin can set it
+                logger.warning("booking: link price not kept booking=%s", booking_id, exc_info=True)
+        _confirm(booking_id, session_id=None, paid_tokens=tokens_cost)
+        from services.token_prices import shown
+        return {"url": f"{done_url}?booking={booking_id}&tokens={shown(tokens_cost)}"}
+    if price_cents == 0:
+        _confirm(booking_id, session_id=None)
+        return {"url": f"{done_url}?booking={booking_id}"}
+    return None
+
+
+def _tokens_cost(price_cents: int) -> int:
+    """What a booking costs in stored token units: its own price, a token a
+    cent (N198 item 4), while pricing v4 is on; 0 when it is off, the meeting
+    is free, or the price is not in dollars (tokens are pegged to the dollar)."""
+    from services.token_account import enabled as metering_on
+    from services.token_prices import price_of, v4_enabled
+    if (not v4_enabled() or not metering_on() or price_cents <= 0
+            or (get_settings().get("currency") or "usd") != "usd"):
+        return 0
+    return price_of("coach_time") * int(price_cents)
+
+
+def token_offer(user_id: str, price_cents: int) -> Optional[dict]:
+    """For the booking page: the price in tokens as shown, the person's
+    balance as shown, and whether it covers it. None when tokens can't pay."""
+    from services import token_account
+    from services.token_prices import display_unit
+    cost = _tokens_cost(int(price_cents or 0))
+    if not cost:
+        return None
+    try:
+        account = token_account.get_account(str(user_id)) or {}
+    except Exception:  # noqa: BLE001 — the card stays; tokens just aren't offered
+        logger.warning("booking: token balance unreadable user=%s", user_id, exc_info=True)
+        return None
+    balance = int(account.get("balance") or 0)
+    unit = display_unit()
+    return {"price": cost // unit, "balance": balance // unit, "enough": balance >= cost}
+
+
+def _pay_with_tokens(booking_id: str, user_id: str, price_cents: int, cost: int) -> None:
+    """Take the tokens or give the slot back. Unlike the soft charges on the
+    live loop, this one fails closed: a call nobody paid for is not booked."""
+    from services.token_account import charge
+    result = charge(str(user_id), "coach_time", ref_id=booking_id, quantity=int(price_cents))
+    if result.ok and result.charged == cost:
+        return
+    _release(booking_id)
+    logger.info("booking: tokens refused booking=%s user=%s reason=%s",
+                booking_id, user_id, result.reason)
+    if result.reason == "insufficient":
+        raise BookingError("NOT_ENOUGH_TOKENS", "Not enough tokens.", 402)
+    raise BookingError("PAYMENT_ERROR", "Payment could not start. Try again.", 502)
 
 
 def _whatsapp_number(raw: str) -> Optional[str]:
@@ -650,7 +740,7 @@ def confirm_checkout(session_id: str) -> Optional[dict]:
     return _confirm(booking_id, session_id=str(session_id))
 
 
-def _confirm(booking_id: str, *, session_id: Optional[str]) -> dict:
+def _confirm(booking_id: str, *, session_id: Optional[str], paid_tokens: int = 0) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     upd: dict[str, Any] = {"status": "confirmed", "confirmed_at": now}
     if session_id:
@@ -664,7 +754,7 @@ def _confirm(booking_id: str, *, session_id: Optional[str]) -> dict:
     row = (db.client.table("bookings").select("*").eq("id", booking_id).limit(1).execute().data or [{}])[0]
     if claimed:
         try:
-            send_confirmation_emails(row)
+            send_confirmation_emails(row, paid_tokens=paid_tokens)
         except Exception as e:  # the booking stands; the host sees it in admin
             logger.error("booking: confirmation emails failed booking=%s: %s", booking_id, e, exc_info=True)
         if row.get("guest_whatsapp"):
@@ -815,7 +905,7 @@ def _email_html(paragraphs: list[str]) -> str:
             f'font-size:15px;line-height:1.5;color:#141414;max-width:520px">{body}</div>')
 
 
-def send_confirmation_emails(row: dict) -> None:
+def send_confirmation_emails(row: dict, *, paid_tokens: int = 0) -> None:
     from services.email_service import send_email_resend
 
     s = get_settings()
@@ -835,7 +925,9 @@ def send_confirmation_emails(row: dict) -> None:
         "content_type": "text/calendar; method=PUBLISH; charset=UTF-8",
     }]
     due = int(row.get("due_cents") or 0)
-    paid = (f"To be paid {money(due, row['currency'])}." if due and not int(row["price_cents"])
+    from services.token_prices import display_unit
+    paid = (f"Paid with {paid_tokens // display_unit():,} tokens." if paid_tokens
+            else f"To be paid {money(due, row['currency'])}." if due and not int(row["price_cents"])
             else "No price (link without a price)." if row.get("list_price_cents") == 0
             else f"Paid {money(int(row['price_cents']), row['currency'])}.")
     start, end = _dt(row["start_at"]), _dt(row["end_at"])
