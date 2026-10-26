@@ -458,6 +458,14 @@ def v2_explore_arc_review_summary(arc_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to save the summary"}), 500
 
 
+def _tempo_on() -> bool:
+    """The caller has the tempo step: the founder, or the rings panel's
+    ``tempo_step`` row reaches them (N166 step 6)."""
+    from routes.admin import _token_email, is_founder_email
+    from services.tempo_stretch import tempo_is_on
+    return tempo_is_on(getattr(request, "user_id", None), founder=is_founder_email(_token_email()))
+
+
 @v2_bp.route("/explore/arc/<arc_id>/review/tempo/<take_session_id>", methods=["GET"])
 @require_auth
 def v2_explore_arc_review_tempo(arc_id, take_session_id):
@@ -471,6 +479,8 @@ def v2_explore_arc_review_tempo(arc_id, take_session_id):
         take = str(take_session_id)
         if not owned or take not in {str(s.get("id")) for s in _completed_spoken_sessions(sessions)}:
             return jsonify({"code": "NOT_FOUND", "error": "take not found"}), 404
+        if not _tempo_on():
+            return jsonify({"tempo": None}), 200
         tempo = tempo_for_take(db, take=take, user_id=str(request.user_id), arc_id=str(arc_id))
         return jsonify({"tempo": tempo}), 200
     except ProcessingAuthorizationError:
@@ -491,7 +501,8 @@ def v2_explore_arc_review_tempo_tries(arc_id, take_session_id):
     try:
         owned, sessions = _arc_owned_by_caller(arc_id)
         take = str(take_session_id)
-        if not owned or take not in {str(s.get("id")) for s in _completed_spoken_sessions(sessions)}:
+        if (not owned or not _tempo_on()
+                or take not in {str(s.get("id")) for s in _completed_spoken_sessions(sessions)}):
             return jsonify({"code": "NOT_FOUND", "error": "take not found"}), 404
         if not keep_tries(db, user_id=str(request.user_id), take=take,
                           body=request.get_json(silent=True) or {}):

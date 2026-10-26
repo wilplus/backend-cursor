@@ -10,6 +10,7 @@ CATCHES
   C5  a failed topic call losing the step, instead of saying "that part"
   C6  a played tempo game no longer kept for Will, or kept with a number in his note
   C7  a broken or partial game kept as if it were whole
+  C8  the tempo step reaching a speaker the rings panel has not switched on
 IF REMOVED  the tempo step could practise the wrong stretch, or put a number
          or a made-up sentence on screen (Never 1, Never 4).
 PROVES   C1 -> test_a_clip_spoken_without_a_pause_is_rushed
@@ -19,6 +20,7 @@ PROVES   C1 -> test_a_clip_spoken_without_a_pause_is_rushed
          C5 -> test_a_failed_topic_still_gives_the_step
          C6 -> test_a_played_game_is_kept_for_will_in_words
          C7 -> test_a_partial_game_is_not_kept
+         C8 -> test_only_the_founder_and_the_ring_have_the_step
 """
 from services import speaker_memory, tempo_stretch
 
@@ -129,3 +131,13 @@ def test_a_partial_game_is_not_kept():
     assert db.events == []
     # Skipped before a try: kept as skipped.
     assert tempo_stretch.read_tries({"reading": "slow", "tries": [], "close": None})["tries"] == []
+
+
+def test_only_the_founder_and_the_ring_have_the_step(monkeypatch):
+    reached: set[str] = set()
+    monkeypatch.setattr("services.rings.feature_is_on_for_user",
+                        lambda feature, user, **_k: feature == "tempo_step" and user in reached)
+    assert tempo_stretch.tempo_is_on("founder", founder=True)
+    assert not tempo_stretch.tempo_is_on("speaker", founder=False)
+    reached.add("speaker")
+    assert tempo_stretch.tempo_is_on("speaker", founder=False)
