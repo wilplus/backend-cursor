@@ -58,7 +58,7 @@ The lock (flow, words, rules) is
 | `services/ai_voice_validator.py` | decodes, clipping, silence, duration, words kept, the change really there |
 | `services/ai_voice_clone.py` | the speaker's one voice: make, reuse, delete, turn on |
 | `services/ai_voice_clip.py` | the lane, the video rule, the job, what the walk may know |
-| `services/ai_voice_limits.py` | daily and monthly limits, fail closed |
+| `services/ai_voice_limits.py` | daily and monthly limits, fail closed: 3 clips a day and 20 a calendar month for each speaker (N188), the app's day, the month's credits, and no new voice while the plan's voice slots are full (`AI_VOICE_VOICE_SLOTS`, Starter's 10) |
 | `services/ai_voice_store.py` | the two tables (migration 0462; 0475 admits the fillers exercise) |
 | `services/admin_takes.py` | the admin Take view: each Take's clip, its outcome and the fillers rate before and after |
 | `routes/v2/ai_voice.py` | the walk's routes and the card's routes |
