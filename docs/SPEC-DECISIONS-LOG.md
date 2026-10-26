@@ -4663,3 +4663,17 @@ wins" or "You decide each time".
 4. It changes by tapping like any step; the earlier answer is kept with its
 date.
 The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M12.
+
+**N186 · The quarter comes back the first time the Lounge opens on its last
+day (founder, the Claude Code chat, 26 October 2026: "build the quarter
+coming back next", then choosing "the first time you open it").**
+For N172 M13:
+1. No clock and nothing pushed. On a goal's quarter's last day, the first
+time the speaker opens the Lounge, "The quarter ends today." and "{emoji}
+{step}. Did it move?" with Not now | Start are waiting there.
+2. If the Lounge is not opened that day, they come the next time it is,
+with "The quarter ended on {date}." in place of "The quarter ends today."
+3. Once per goal and quarter. The rest of M13 stands as written: the lens,
+"Did it move?", "What got in the way?", their own # notes when some match,
+the next quarter's step, the ladder, "Noted.".
+The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M13.
