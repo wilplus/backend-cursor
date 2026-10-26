@@ -29,49 +29,6 @@ _ALREADY_SENT_STATUSES = {"pending_admin_review", "completed"}
 _ALREADY_REVIEW_STATES = {"queued", "in_review", "published", "revised"}
 
 
-#: Charge outcomes that mean the ledger could not RECORD the review, as
-#: opposed to the account not AFFORDING it. Only these stop the hand-off.
-_UNRECORDED = frozenset({"account_unavailable", "write_failed", "cas_contention"})
-
-
-def _reserve_review_credit(user_id: str, session_id: str):
-    """Record the review against the account; never refuse it for the price.
-
-    FOUNDER 2026-09-21: "just make everyone receive the coach human feedback
-    … it depends on the coach if they send it or not, but the architecture
-    should allow the full experience." Until then this function refused the
-    hand-off whenever the charge came back ``ok=False`` — a free tier has
-    zero coach reviews, so ``coach_cap_reached`` fired on every automatic
-    delivery, the route answered 500 "could not be sent, please retry", and
-    not one line of log said why. That was the day's silent 500.
-
-    Now the charge is soft here exactly as it is on the F1 path (fence §6.1):
-    the ledger records what it can, the balance floors at zero, and the Take
-    goes to the coach regardless of tier or balance. What still stops the
-    hand-off is a charge the ledger could not RECORD (no account, a failed
-    write, a lost CAS) — the reasons the old ``unsafe_success`` guard named —
-    because a review nobody can account for is the one case the founder did
-    not ask for. Every outcome is logged; nothing here is silent any more.
-    """
-    from services.token_account import ChargeResult, charge
-    from services.token_prices import v4_enabled
-
-    # N198 item 5: with everything in tokens, a review is charged only when the
-    # speaker asks for one; a Take that simply reaches the coach costs nothing.
-    if v4_enabled():
-        return ChargeResult(True, 0, 0, "not_asked", "coach_feedback")
-
-    result = charge(user_id, "coach_feedback", ref_id=session_id)
-    if result.reason in _UNRECORDED:
-        logger.warning("lab_send: review credit unrecorded sid=%s user=%s "
-                       "reason=%s", session_id, user_id, result.reason)
-        return None
-    if not result.ok:
-        logger.info("lab_send: review admitted past the price sid=%s "
-                    "user=%s reason=%s", session_id, user_id, result.reason)
-    return result
-
-
 def _load_session(db, session_id: str) -> dict | None:
     """The Take's session row, or None (logged) when it cannot be read."""
     try:
@@ -148,7 +105,11 @@ def _flip_to_pending_review(db, session_id: str) -> bool:
 
 def _unwind_failed_hand_off(db, adapter, permit_id, session_id: str,
                             user_id: str) -> None:
-    """The flip did not land: say so once, close the permit, refund."""
+    """The flip did not land: say so once, close the permit, refund.
+
+    Nothing is charged at hand-off any more (N205 item 4); the refund still
+    returns a review charged before then whose hand-off is being retried.
+    """
     # The flip either raised (logged there) or returned no row; either
     # way the hand-off did not land, and this line says so once.
     logger.error("lab_send: hand-off not queued sid=%s user=%s",
@@ -282,19 +243,8 @@ def send_lab_recording_to_coach(session_id: str, user_id: str, *,
             "reason": "processing_authorization_required", "code": error.code,
         }
 
-    # Reserve the human-review allowance before accepting work.  Idempotency
-    # is per Take, so retries never double-consume a slot.
-    credit = _reserve_review_credit(str(user_id), str(session_id))
-    if credit is None:
-        logger.error("lab_send: review credit unavailable sid=%s user=%s",
-                     session_id, user_id)
-        return {
-            "ok": False,
-            "already_sent": False,
-            "status": current,
-            "reason": "review_credit_unavailable",
-        }
-
+    # The coach answers every Take and nobody pays for it (N205): the
+    # hand-off never touches the token account.
     if not _flip_to_pending_review(db, session_id):
         _unwind_failed_hand_off(db, adapter, permit_id, session_id, user_id)
         return {"ok": False, "already_sent": False, "status": current,

@@ -9,18 +9,19 @@ OUTCOME
       3,900, Plus $99 for 11,000, Pro $149 for 18,000; a short Take reads 10,
       chat 1, the free grant 120, the coach's minute 200.
   O3  A package bought with it on is charged and granted at the new price.
-  O4  A Take that reaches the coach costs nothing: a review is charged only
-      when it is asked for.
+  O4  A Take that reaches the coach costs nothing, with v4 on or off: the
+      coach answers every Take and no price list carries a review.
   O5  A call can be booked with tokens at its own price, a token a cent; with
       too few tokens, or with v4 off, nothing is booked and the slot is free.
 PROVES   O1 -> test_with_v4_off_nothing_changes
          O2 -> test_with_v4_on_the_shop_and_prices_read_in_shown_tokens
          O3 -> test_a_package_bought_with_v4_on_is_charged_and_granted_its_new_price
-         O4 -> test_a_take_reaching_the_coach_costs_nothing_with_v4_on
+         O4 -> test_a_take_reaching_the_coach_costs_nothing
          O5 -> test_a_call_booked_with_tokens_costs_its_price_a_token_a_cent,
                test_a_call_tokens_cannot_pay_for_is_not_booked
 WHY      Founder 2026-10-26, N198 (the prototype's version 3, "accepted, start
-         the build"); N187 for the coach's rate.
+         the build"); N187 for the coach's rate; N205 for the review (items
+         3 and 4: "Yes, for the first one, yes").
 """
 from __future__ import annotations
 
@@ -31,6 +32,7 @@ import pytest
 
 from services import booking, lab_send, token_packages
 from services import token_prices as tp
+from services.db import db
 from services.token_account import ChargeResult
 
 SETTINGS = {"id": 1, "slug": "artur", "enabled": True, "title": "Call", "host_name": "Artur",
@@ -53,7 +55,7 @@ def test_with_v4_off_nothing_changes(monkeypatch):
     assert sheet["display_unit"] == 1 and sheet["coach_minute"] is None
     assert sheet["price_version"] == tp.PRICE_VERSION
     assert sheet["tiers"]["practice"]["usd_per_month"] == 12
-    assert sheet["actions"]["chat"] == 150 and sheet["actions"]["coach_feedback"] == 35_000
+    assert sheet["actions"]["chat"] == 150
 
 
 def test_with_v4_on_the_shop_and_prices_read_in_shown_tokens(v4):
@@ -76,11 +78,18 @@ def test_a_package_bought_with_v4_on_is_charged_and_granted_its_new_price(v4):
     assert (spec["cents"], spec["tokens"]) == (9_900, 1_100_000)
 
 
-def test_a_take_reaching_the_coach_costs_nothing_with_v4_on(v4):
-    with patch("services.token_account.charge") as charge:
-        credit = lab_send._reserve_review_credit("u1", "s1")
+@pytest.mark.parametrize("v4_on", [True, False])
+def test_a_take_reaching_the_coach_costs_nothing(monkeypatch, v4_on):
+    monkeypatch.setenv("PRICING_V4_ENABLED", "1" if v4_on else "0")
+    monkeypatch.setenv("TOKEN_PRICING_ENABLED", "1")
+    take = {"id": "s1", "user_id": "u1", "status": "processing", "recording_kind": "spoken"}
+    with patch.object(db, "v2_get_session_by_id", return_value=take), \
+            patch.object(db.takes, "v2_mark_session_pending_review", return_value=True), \
+            patch("services.token_account.charge") as charge:
+        sent = lab_send.send_lab_recording_to_coach("s1", "u1", notify_admin=False)
+    assert sent["ok"] and sent["coach_review_status"] == "queued"
     charge.assert_not_called()
-    assert credit is not None and credit.ok and credit.charged == 0
+    assert "coach_feedback" not in tp.public_price_list()["actions"]
 
 
 def _book(pay_with_tokens=True):

@@ -2064,15 +2064,15 @@ O2  With it on, tokens read in hundreds of today's units: Starter $39 for
 3,900, Plus $99 for 11,000, Pro $149 for 18,000; a short Take reads 10,
 chat 1, the free grant 120, the coach's minute 200.
 O3  A package bought with it on is charged and granted at the new price.
-O4  A Take that reaches the coach costs nothing: a review is charged only
-when it is asked for.
+O4  A Take that reaches the coach costs nothing, with v4 on or off: the
+coach answers every Take and no price list carries a review.
 O5  A call can be booked with tokens at its own price, a token a cent; with
 too few tokens, or with v4 off, nothing is booked and the slot is free.","O1 -> test_with_v4_off_nothing_changes
 O2 -> test_with_v4_on_the_shop_and_prices_read_in_shown_tokens
 O3 -> test_a_package_bought_with_v4_on_is_charged_and_granted_its_new_price
-O4 -> test_a_take_reaching_the_coach_costs_nothing_with_v4_on
+O4 -> test_a_take_reaching_the_coach_costs_nothing
 O5 -> test_a_call_booked_with_tokens_costs_its_price_a_token_a_cent,
-test_a_call_tokens_cannot_pay_for_is_not_booked","Founder 2026-10-26, N198 (the prototype's version 3, ""accepted, start the build""); N187 for the coach's rate."
+test_a_call_tokens_cannot_pay_for_is_not_booked","Founder 2026-10-26, N198 (the prototype's version 3, ""accepted, start the build""); N187 for the coach's rate; N205 for the review (items 3 and 4: ""Yes, for the first one, yes"")."
 tests/test_prior_take_changes.py,Story,"As a speaker, I want to be told when I said a passage better in an earlier take, and to accept or keep it, so that my Ideal Text keeps my best wording.","O1  Fragments align by text, not position; an offer is made only where
 the old fragment clearly beats the new one, anchored on the NEW words
 and proposing the OLD ones; the new take holding its ground is silence.

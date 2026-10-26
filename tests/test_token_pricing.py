@@ -152,7 +152,7 @@ class FlatPriceTests(_Base):
     def test_an_action_is_charged_its_flat_price(self):
         for tier, action, ref in (("free", "take_short", "rec1"),
                                   ("intensive", "take_short", "rec2"),
-                                  ("practice", "coach_feedback", "s9")):
+                                  ("practice", "moment_explanation", "s9")):
             price = price_of(action)
             db = FakeDB(tier=tier, balance=500_000, answer={
                 "ok": True, "charged": price, "balance": 500_000 - price,
@@ -164,7 +164,6 @@ class FlatPriceTests(_Base):
             self.assertEqual((r.ok, r.charged, r.balance),
                              (True, price, 500_000 - price))
         self.assertEqual(price_of("take_short"), 1_000)
-        self.assertEqual(price_of("coach_feedback"), 35_000)
 
     def test_pricing_never_imports_the_cost_ledger(self):
         """Checks import lines, not prose: the modules explain at length why

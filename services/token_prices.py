@@ -28,7 +28,7 @@ from __future__ import annotations
 from typing import Optional
 
 
-PRICE_VERSION = "2026-08-14-v3"
+PRICE_VERSION = "2026-10-26-v3.1"
 """Bump on ANY change to the numbers in this file."""
 
 
@@ -51,7 +51,7 @@ PRICE_VERSION = "2026-08-14-v3"
 TIERS: dict[str, dict] = {
     # ── SOLD ──
     # Founder 2026-10-14: plans differ by TOKENS ONLY. A coach review is
-    # paid in tokens like any action (`coach_feedback` below), so no plan
+    # free since N205 item 4 (the coach answers every Take), and no plan
     # carries review slots any more. Shown as Starter / Plus / Pro.
     "free":      {"tokens":    12_000, "coach_reviews": 0, "usd":  0},
     "practice":  {"tokens":   150_000, "coach_reviews": 0, "usd": 12},
@@ -212,27 +212,21 @@ PRICES: dict[str, int] = {
     "insights":           1_000,
     # Conversation
     "chat":                 150,
-    # A COACH REVIEW IS PAID IN TOKENS (founder 2026-10-14). Plans no longer
-    # carry review slots, so the review itself carries the price. The charge
-    # stays soft at delivery (services/lab_send.py): the Take reaches the
-    # coach whatever the balance.
-    #
-    # Charged per SESSION (ref_id=session_id), so a re-publish never
-    # re-charges.
-    "coach_feedback":    35_000,
+    # No coach review here: the coach answers every Take and nobody pays for
+    # it (N205 item 4). It cost 35,000 from 2026-10-14 to 2026-10-26; those
+    # ledger rows keep their price under the version that charged them.
 }
 
 PRICES_V4: dict[str, int] = {
-    **{action: price for action, price in PRICES.items() if action != "coach_feedback"},
+    **PRICES,
     "chat": 100,
     # The coach's time, paid in tokens at booking (N198 item 4): one stored
     # unit per hundredth of a cent, so a booking's own price in cents times
     # this is its charge. A link's or a person's own price counts the same.
     "coach_time": 100,
 }
-"""v4's price list. ``coach_feedback`` is absent: the review is charged only
-when the speaker asks for one (N198 item 5), and that ask comes with its own
-screen. Until then a review costs nothing."""
+"""v4's price list. Like v3's it has no coach review: the coach answers every
+Take and nobody pays for it (N205)."""
 
 
 def prices() -> dict[str, int]:
@@ -312,8 +306,8 @@ def legacy_credit_tokens(credits: Optional[int]) -> int:
 
 COACH_ACTIONS: frozenset[str] = frozenset()
 """Actions that consume the per-period coach-review allowance. EMPTY since
-2026-10-14: a coach review is paid in tokens (`coach_feedback` in PRICES), so
-nothing spends review slots. Kept so purchased review credits and the RPC's
+2026-10-14: a coach review was paid in tokens instead, and since N205 it costs
+nothing, so nothing spends review slots. Kept so purchased review credits and the RPC's
 coach branch stay readable until they are retired.
 
 ⚠️ THE MEMBER CHANGED IN v3 (founder 2026-08-14), and it is the fix for a
