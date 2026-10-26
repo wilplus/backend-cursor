@@ -200,6 +200,29 @@ Don't give up after one take. One recording isn't the finish line; it's the firs
 
 Long talks — chunk them, don't swallow them whole. If your presentation runs 30–40 minutes or longer, don't try to nail the whole thing at once. Split it. Get the first 5–10 minutes really right — the opening carries the most weight and sets the tone — then move on to the next chunk. Often you won't need to drill every minute: once the beginning is solid and you find your rhythm, the nerves settle and the delivery gets stronger on its own, so the key sections plus a well-prepared opening are usually enough. You don't have to memorize an entire long talk to give it well — master the parts that matter most and get the beginning right.
 
+When nerves get in the way — what the research says
+
+Nerves before speaking are common, and they respond to training. A 2025 review of two decades of controlled studies found that psychological approaches reliably lower speaking anxiety, though how much they help varies a lot between methods and between people. Facing the fear in steps had the most consistent support; changing the thoughts behind it helped in several studies, with more mixed results. (McWilliam, Beattie, & Callow, 2025, The Journal of Psychology — free to read at https://doi.org/10.1080/00223980.2025.2459662.)
+
+Facing it in steps:
+— Say it more than once. Giving the same talk several times in a row to different listeners, with a few minutes between runs to adjust it, lowered nerves compared with not speaking at all (Finn et al., 2009). That is the same loop as recording Take after Take.
+— Climb a ladder. Start with what you can manage — picturing the room, then a rehearsal with nothing at stake, then a small live audience, then a bigger one. Jumping straight to the big room can overwhelm someone whose nerves run high (Reeves et al., 2021; McWilliam et al., 2025).
+— Picture it going well. Relax, picture a speaker doing well, then picture yourself in their place (Ayres & Heuett, 2000). A short script of the talk going well, paired with simple sketches of each step, worked better than either one alone (Ayres & Ayres, 2003).
+— Turn toward the wobble. Name what bothers you most — a shaky voice, a stumble — and do it on purpose in practice. Exaggerating it removes the strain of trying to hide it (Ayres & Schliesman, 2002).
+
+Changing the thought:
+— Talk to them, don't perform at them. Seeing a talk as getting a message across to people, rather than a performance being judged, lowered anxiety (Ayres et al., 2000, after Motley).
+— Shrink the scary sentence. Write down the worst thing you tell yourself ("I'll look like a fool"), boil it down to one word, and say that word aloud, fast, for about half a minute until it is just a sound. In one study this beat telling yourself something positive, which did not help (Brandrick et al., 2021).
+— Know what's coming. Hearing beforehand which nerves are likely to show up, that they are normal, and answers to the usual worries left people less anxious before speaking and less troubled by their nerves (Jackson et al., 2017).
+
+Quick relief is not lasting change. Some things calm you in the minutes before you speak: slow breathing with muscle relaxation, a few minutes with a friendly dog, a wearable that pulses a slow, calm rhythm (Dincer et al., 2022; Buttelmann & Römpke, 2014; Azevedo et al., 2017). They help in the moment and leave the cause where it was. A drink is the one to avoid: it eased nerves during the talk but not the dread before it, and it can do harm over time (Abrams et al., 2001). Lasting change comes from work over weeks on where the nerves come from.
+
+Not one method for everyone. Nerves come from different places — the body racing, the thoughts spiralling, or not feeling skilled enough — and in one small study each answered to a different method (Heuett et al., 2003). Most studies gave everyone the same treatment, and the review's authors count that as a weakness. It is one reason we don't run you through a fixed program.
+
+Making it stick. Gains fade when practice stops, unless you can keep using the skills on your own. The review's advice is to practise them in several pressured but safe settings until they run by themselves.
+
+Honest limits. The review collected only studies that worked, so it leans optimistic. Most studies measured how people felt, not how they spoke, and few checked back months later. The single biggest result came from a study in which participants ran their own speaking test, which the authors themselves flag as hard to trust. And when anxiety is heavy — when it shapes your life well beyond the stage — a specialist is the right next step, and we can help you find one. We train speaking; we don't treat anxiety.
+
 Pricing
 
 Pay per iteration — $5. One iteration is one full cycle: you submit, a human analyses it, and you get back a personalized recommendation and whatever that specific step calls for. Sometimes that's a written breakdown. Sometimes a short video. Sometimes a task to go practice in the real world. The format depends on what you need at that point — the work is tailored, not templated.
