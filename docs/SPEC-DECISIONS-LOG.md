@@ -4853,7 +4853,27 @@ new version lands at the bottom and the read hides the old one), and the
 coach's word served to the walk says whether it changed since it was first
 shared (`services/coach_take_word.py`). No migration.
 
-**N193 · The voice note is written as it is said (founder, the Claude Code
+**N193 · Quiet hours use the country of residence (founder, the Claude Code
+chat, 26 October 2026: "Can you assume the time zone based on what the user
+said in the consent form, which country they chose?", then "yes, log it").**
+For N189 item 1:
+1. "No messages at night" (21:00 to 8:00) reads the speaker's time zone from
+the country they gave on the acceptance screen (`country_of_residence`), so
+nothing new is asked or stored. A country with one time zone uses it; small
+islands an hour off (the Canaries, the Azores) are left as they are.
+2. For the United States, the quiet window covers the mainland: coach
+messages go only between 11:00 and 21:00 New York time (8:00 to 18:00
+California).
+3. A speaker abroad gets messages on their home country's clock. With no
+country on record, messages go as today.
+4. A practice-day reminder at a set hour (N177) needs the real time zone:
+when it is built, the app saves the phone's time zone with the time the
+speaker picks.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§2, the messages line. No migration.
+
+**N194 · The voice note is written as it is said (founder, the Claude Code
 chat, 26 October 2026: "approved, build it", to the prototype
 <https://claude.ai/artifact/Wfr7i2RYR7ubYHTRqS6cYe>).** For the voice
 notebook (Will learning plan step 1; N182, N183):
@@ -4878,4 +4898,4 @@ note" and "Close".
 6. The live words are a preview: the audio goes in short pieces to the same
 transcription provider under the processing-authorization path, and is not
 kept. No migration.
-The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 (the voice notebook).
+The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 B.
