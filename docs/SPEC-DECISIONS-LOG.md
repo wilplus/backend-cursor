@@ -4994,3 +4994,11 @@ Terms promise.
 on sale once Terms 3.7 describe them; until then the build stays switched
 off.
 No rules page. No migration in this entry.
+
+**N199 · The password notice says its time in UTC (founder, the Claude Code
+chat, 26 October 2026: "keep UTC in the email").**
+For N190, the email "Your password was changed": the time is written as
+"on 26 October at 16:40 UTC". The prototype had no time zone; the person's
+own zone is not known, and a time without one would be wrong for anyone
+outside UTC. Already so in `services/email_account_security.py`; nothing
+changes. No rules page.
