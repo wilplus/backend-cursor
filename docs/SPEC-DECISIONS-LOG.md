@@ -4664,7 +4664,7 @@ wins" or "You decide each time".
 date.
 The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M12.
 
-**N186 · The founder's time is priced at $30 for 15 minutes; no automatic
+**N187 · The founder's time is priced at $30 for 15 minutes; no automatic
 renewal (founder, the Claude Code chat, 26 October 2026: "my 15min is 30$",
 "no auto renewal"; before that, "it takes me 10 minutes to review each manual
 item" and "I don't record all the exercise videos sometimes when there is an
