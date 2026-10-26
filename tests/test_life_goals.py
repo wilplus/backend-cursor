@@ -22,12 +22,18 @@ OUTCOME
       clash, which wins?" once per pair, before the new goal is set; the
       answer is a step on both ladders, and a changed answer keeps the
       earlier one with its date (N185).
+  O7  On the quarter's last day the first opening of the Lounge finds "The
+      quarter ends today." and "Did it move?" with Not now | Start, once;
+      opened later, "The quarter ended on …"; the review keeps how it went
+      in words, quotes only notes that match, and sets the next quarter's
+      step with the earlier one kept (N186).
 PROVES   O1 -> test_the_ask_comes_after_the_first_note_and_once_more_after_not_now
          O2 -> test_the_draft_quotes_only_my_words
          O3 -> test_a_set_goal_posts_its_ladder_and_keeps_the_one_it_replaces
          O4 -> test_a_changed_step_keeps_its_earlier_words
          O5 -> test_asking_in_my_own_words_opens_the_lens
          O6 -> test_a_clash_is_asked_once_and_kept_on_both_ladders
+         O7 -> test_the_quarter_comes_back_on_its_last_day
 WHY      Will learning plan, step 3 (founder 2026-10-26, N172: "build the
          life goals now"; rules in the frontend flow page §1 M).
 """
@@ -60,6 +66,10 @@ class _Db:
     def update_user_goal(self, user_id, new, previous):
         self.goal = new
         return True
+
+    def list_voice_notes(self, user_id, limit=20):
+        return [{"text_clean": "Too many late calls again.", "created_at": "2026-11-12T08:00:00"},
+                {"text_clean": "Lovely walk.", "created_at": "2026-11-20T08:00:00"}]
 
     def bodies(self, user_id="u"):
         return [r["body"] for r in reversed(self.get_lounge_messages_page(user_id, 500))]
@@ -246,3 +256,34 @@ def test_a_clash_is_asked_once_and_kept_on_both_ladders(store, monkeypatch):
     _model(monkeypatch, {"other": None, "line": ""})
     good = lg.save_draft("u", None, "good", {"goal": "Teach a free class."})
     assert lg.check_clash(db, "u", good["id"]) == {"clash": None}  # nothing in their words
+
+
+def test_the_quarter_comes_back_on_its_last_day(store, monkeypatch):
+    from datetime import date
+    db = _Db()
+    goal = lg.save_draft("u", None, "career", CAREER)
+    lg.finish(db, "u", goal["id"])
+    assert lg.quarter_due(db, "u", date(2026, 12, 30)) == []
+    rows = lg.quarter_due(db, "u", date(2026, 12, 31))
+    assert [r["body"] for r in rows] == ["The quarter ends today.",
+                                         "💼 Ten paying teams. Did it move?"]
+    assert rows[1]["metadata"]["offer"] == lg.QUARTER_OFFER
+    assert lg.quarter_due(db, "u", date(2026, 12, 31)) == []  # once
+
+    lg.answer_quarter(db, "u", goal["id"], "not_now")
+    assert db.bodies()[-2:] == [COPY["not_now"], COPY["noted"]]
+
+    _model(monkeypatch, {"notes": [1]})
+    found = lg.quarter_notes(db, "u", goal["id"], "Late calls ate my evenings.")
+    assert found == {"notes": [{"text": "Too many late calls again.", "on": "12 November"}]}
+
+    shown = lg.review_quarter(db, "u", goal["id"], "moved", "Late calls.", "Twenty paying teams.")
+    assert shown["ladder"]["quarter"] == {"text": "Twenty paying teams.", "by": "31 March",
+                                          "next": False, "on": "2027-03-31"}
+    assert shown["ladder"]["reviews"][-1]["outcome"] == "moved"
+    assert shown["changes"]["quarter"]["earlier"] == "Ten paying teams."
+    with pytest.raises(lg.GoalsError):
+        lg.review_quarter(db, "u", goal["id"], "7/10")  # never a score
+
+    rows = lg.quarter_due(db, "u", date(2027, 4, 2))
+    assert rows[0]["body"] == "The quarter ended on 31 March."

@@ -4664,6 +4664,20 @@ wins" or "You decide each time".
 date.
 The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M12.
 
+**N186 · The quarter comes back the first time the Lounge opens on its last
+day (founder, the Claude Code chat, 26 October 2026: "build the quarter
+coming back next", then choosing "the first time you open it").**
+For N172 M13:
+1. No clock and nothing pushed. On a goal's quarter's last day, the first
+time the speaker opens the Lounge, "The quarter ends today." and "{emoji}
+{step}. Did it move?" with Not now | Start are waiting there.
+2. If the Lounge is not opened that day, they come the next time it is,
+with "The quarter ended on {date}." in place of "The quarter ends today."
+3. Once per goal and quarter. The rest of M13 stands as written: the lens,
+"Did it move?", "What got in the way?", their own # notes when some match,
+the next quarter's step, the ladder, "Noted.".
+The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M13.
+
 **N187 · The founder's time is priced at $30 for 15 minutes; no automatic
 renewal (founder, the Claude Code chat, 26 October 2026: "my 15min is 30$",
 "no auto renewal"; before that, "it takes me 10 minutes to review each manual
@@ -4686,3 +4700,33 @@ plan with its two calls, a review and a custom message), what happens to a
 Take sent to the coach when no review is left, and the AI voice's limits per
 speaker. Until they are, the token prices and the packages are unchanged.
 No rules page. No migration.
+
+**N188 · The plan package, a review not included, and the AI voice's limits
+per speaker (founder, the decision page
+<https://claude.ai/artifact/NqCyUjhU16pHTYguJxbYZo>, 26 October 2026, every
+recommendation taken, sent from the page; and "plan = starter; voice slots =
+1 out of 10").**
+For N187:
+1. A two-month plan package is sold once at $99: 150,000 tokens, the
+kickoff and summary calls (15 minutes each, N157), one written coach review
+and one custom message. It never renews (contract §8). It goes on sale once
+the Terms describe it: Terms 3.6 still say a paid plan "renews each month".
+2. The Starter, Plus and Pro token packages stay as they are; the plan is
+sold beside them.
+3. A Take that reaches the coach when the speaker has no review left: the
+coach's queue marks it "not included" and the coach decides whether to write
+the review. The speaker is never blocked, and the Take still reaches the
+coach.
+4. The AI voice: at most 3 new clips a day and 20 a month for each speaker
+(it was 10 a day, with no monthly limit). Over a limit the walk shows the
+video or nothing, and the Take is never held (Never 3). The month's stop
+follows the ElevenLabs plan's own credit limit as ElevenLabs reports it, and
+no new voice is made while the plan's voice slots are full. The plan is
+Starter, with 1 of its 10 voice slots in use on 26 October.
+5. An AI voice clip has no token price of its own: the Take's price covers
+it (over the last 30 days a Take cost about $0.007 in OpenAI and a clip about
+$0.014, against 1,000 tokens, $0.064 to $0.08).
+The rules: frontend
+[`docs/flows/ai-voice-practice.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md)
+§1, the limits (item 4). Items 1 to 3 and 5 have no rules page. No migration
+in this entry.

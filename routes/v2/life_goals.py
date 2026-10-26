@@ -158,3 +158,40 @@ def v2_life_goals_answer_clash(goal_id):
     return _run("clash", lambda: (jsonify(answer_clash(
         db, str(request.user_id), str(goal_id), body.get("with"),
         body.get("wins"))), 200))
+
+
+@v2_bp.route("/life-goals/quarter/due", methods=["POST"])
+@require_auth
+def v2_life_goals_quarter_due():
+    from services.life_goals import quarter_due
+    return _run("quarter due", lambda: (jsonify(
+        {"messages": quarter_due(db, str(request.user_id))}), 200))
+
+
+@v2_bp.route("/life-goals/<goal_id>/quarter/ask", methods=["POST"])
+@require_auth
+def v2_life_goals_quarter_ask(goal_id):
+    from services.life_goals import answer_quarter
+    choice = str(_body().get("choice") or "")
+    return _run("quarter ask", lambda: (jsonify({"messages": answer_quarter(
+        db, str(request.user_id), str(goal_id), choice)}), 200))
+
+
+@v2_bp.route("/life-goals/<goal_id>/quarter/notes", methods=["POST"])
+@phase1_provider_route
+@llm_limit
+@require_auth
+def v2_life_goals_quarter_notes(goal_id):
+    from services.life_goals import quarter_notes
+    return _run("quarter notes", lambda: (jsonify(quarter_notes(
+        db, str(request.user_id), str(goal_id), _body().get("in_the_way"))), 200))
+
+
+@v2_bp.route("/life-goals/<goal_id>/quarter", methods=["POST"])
+@require_auth
+def v2_life_goals_quarter_review(goal_id):
+    from services.life_goals import review_quarter
+    body = _body()
+    return _run("quarter", lambda: (jsonify(review_quarter(
+        db, str(request.user_id), str(goal_id), body.get("outcome"),
+        body.get("in_the_way"), body.get("next"))), 200))

@@ -236,6 +236,11 @@
       "module": "pending",
       "sha256": "1b868da9903f8ad8fa0bd89cf237166b7929803b2c5fdecf8429db13aedd28e0"
     },
+    "life_goals.quarter_notes": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "0bdb8f2f2a15c06f5de9fe9a63e5bc650c80a76aa778f788802e212bf1856014"
+    },
     "life_goals.redraft": {
       "kind": "source_ref",
       "module": "pending",
@@ -264,12 +269,12 @@
     "master_doc_rag.master_document": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "fe0fc61e157e27d588c679fa25dbdc02bdda1294d33ad06e704528c19280b017"
+      "sha256": "2aaa8df6a950bc30c761a3a28a72464415402bbb8c6fa3c3e19f015c9616ec9b"
     },
     "master_doc_rag.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "2bae415cc9618f03ddb7ca66399bd4eecc2c7f3c11309e07ff0a13a2a8f998dc"
+      "sha256": "21d3545f2d0ddbeb90a0e87d4115b4da00d94688661226bab181a6e7f4fe0872"
     },
     "master_doc_rag_lane.base": {
       "kind": "source_ref",
@@ -279,7 +284,7 @@
     "master_doc_rag_lane.bodies": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "b57be25056c32575128703443b0f9117ce643beb7b4a6af854b4046111d912ac"
+      "sha256": "5678eb5b736f6c276f08a8e2d16afceb41c30f9773e2d2ca5c0e5a9a831f6627"
     },
     "master_doc_rag_lane.builder": {
       "kind": "source_ref",
@@ -289,7 +294,7 @@
     "master_doc_rag_router.classifier": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "2340aa53eb189a14e235fbf2072569fdb25146d44e0231d280c939ca1e5c78b8"
+      "sha256": "83f64a6b244d9b204e8b9400654da00306fb3379ceeaa9bd26bcc339de2b5e90"
     },
     "master_document_chunking.frame_long": {
       "kind": "static",
