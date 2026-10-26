@@ -4994,3 +4994,22 @@ Terms promise.
 on sale once Terms 3.7 describe them; until then the build stays switched
 off.
 No rules page. No migration in this entry.
+
+**N200 · The booking reminder's words (founder, the Claude Code chat, 26
+October 2026: "please rewrite the texts as if you are a steven pinker",
+"short and concise though", "recommended", then "the session with your coach
+starts... don't use the name and rewrite it as steven pinker pls; but still
+acceptable by whatsapp as a tool").** For N165 item 1 and N189:
+1. The booking's WhatsApp reminder, 10 minutes before, reads "Your coaching
+session starts in 10 minutes. Join here: {link} See you there." It names no
+one. This replaces N165's "Your session with Artur Willoński starts in 10
+minutes. Join on Google Meet: {link}".
+2. Meta's template `booking_reminder` (category Utility, Meta's
+"Narzędzia"; English) carries these words, with {{1}} for the link. "See you
+there." stays after the link because Meta refuses a template that ends with
+a variable.
+3. The backend's plain-text reminder (`WHATSAPP_REMINDER` in
+`services/booking.py`, sent when no template is named) carries the same
+words; the 10-minute code is
+[backend-cursor#1321](https://github.com/wilplus/backend-cursor/pull/1321).
+The words are signed (Never 4). No rules page. No migration.
