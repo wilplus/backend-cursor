@@ -207,97 +207,145 @@ bug.
 
 **A · Docs that disagree with each other (the founder decides)**
 
-1. **What admits a clip to the Voice Album.** Log C1 and C4 say the Album
+The founder answered these on 21 October (N111), all but A11 and A14, which
+N111 holds and asks again.
+
+1. ~~**What admits a clip to the Voice Album.**~~ Log C1 and C4 say the Album
    and a two-human quorum are the same thing. Contract 32 (2026-09-29) says
    a Machine Yes, a User Yes and a Coach Yes on the same recording, and
    contract 35 gives the peer quorum no say over the Album. The contract
    looks current, and C1 and C4 look stale.
-2. **Does the coach see the machine's read after answering?** Contract 34,
+   **Decided (N111):** "contract 32 decides. A clip is admitted by a Machine
+   Yes, a User Yes and a Coach Yes on the same recording. C1 and C4 are out
+   of date where they make the Album a two-person quorum."
+2. ~~**Does the coach see the machine's read after answering?**~~ Contract 34,
    as amended 2026-10-06 (P28 B), says nothing is revealed, after
    submitting either. The coach panel (D2, E1) shows "The machine heard"
    once the coach's rating is saved.
-3. **Detector training.** `config.py` has `DETECTOR_TRAINING_AUTHORISED =
+   **Decided (N111):** "Once a coach's answer is saved, the coach panel
+   shows what the machine heard (coach panel D2, E1)." On that point it
+   replaces contract 34's amendment of 6 October; before the answer the
+   coach sees nothing (CLAUDE.md, Never 2).
+3. ~~**Detector training.**~~ `config.py` has `DETECTOR_TRAINING_AUTHORISED =
    True` ("ON again from 2026-10-08"). Contract 35g-9 and N29.6 say off
    since 2026-10-03, and no log entry records it going back on. Did the
    founder's "turn it all ON" of 2026-10-08 cover it?
-4. **The blind lines.** Panel B3 and contract 35g-10 say they're switched
+   **Decided (N111):** "Detector training is on: the founder's 'turn it all
+   ON' of 8 October covered it." Contract 35g-9 and N29.6 are out of date on
+   that point.
+4. ~~**The blind lines.**~~ Panel B3 and contract 35g-10 say they're switched
    off. The docstrings of `error_presence_audit.py`, `coach_block_pick.py`
    and `v4_coach_sheets.py` say they're on. This wasn't checked in
    production.
-5. **"Half praised and half low."** Walk I1 says the clips judged are half
+   **Decided (N111):** "The blind lines are off (coach panel B3, contract
+   35g-10). Production is checked, and the notes of `error_presence_audit.py`,
+   `coach_block_pick.py` and `v4_coach_sheets.py` are corrected."
+5. ~~**"Half praised and half low."**~~ Walk I1 says the clips judged are half
    praised and half low sentences. The shown moments follow the score
    (N86), the corpus rounds take equal thirds by the machine's band (N101),
    and other speakers' clips come before licensed ones (N97). No code
    picks half and half.
-6. **What "200 labels" means for willfidence-v2.** Walk I1 says a label
+   **Decided (N111):** "'Half praised and half low' leaves walk rule I1. The
+   order is N86's, N101's and N97's."
+6. ~~**What "200 labels" means for willfidence-v2.**~~ Walk I1 says a label
    counts once two answers match. Walk I3 trains on the soft label, which
    any single blind answer feeds. Is it 200 settled clips or 200 answers?
-7. **A coach's own talk, imported.** N58 says a coach can't judge their own
+   **Decided (N111):** "willfidence-v2's '200 labels' means 200 settled
+   clips."
+7. ~~**A coach's own talk, imported.**~~ N58 says a coach can't judge their own
    voice anywhere. `rating_is_self_report` treats every import as not a
    self-report, so a coach's label on an import of their own talk would
    count.
-8. **The training-yes screen.** N28 asks "Turn on the learning?" before
+   **Decided (N111):** "A coach's answer on an import of their own talk is a
+   self-report and never counts (N58). The code is corrected." As read on
+   2026-10-26 it is not yet: `rating_is_self_report` still treats every
+   import as no self-report, a code bug (N95).
+8. ~~**The training-yes screen.**~~ N28 asks "Turn on the learning?" before
    every Take. The consent-screens lock (amended 2026-10-18) removes that
    screen. The amendment isn't in the log, and the log comes first (N95).
-9. **Where rule 3's line applies.** J3 sends a clashing singleton to a
+   **Decided (N111):** "The 'Turn on the learning?' question before every
+   Take is gone, by the consent screens' lock as amended on 18 October.
+   N28's question is retired."
+9. ~~**Where rule 3's line applies.**~~ J3 sends a clashing singleton to a
    second listener immediately. The coach panel's queue, the corpus's mixed
    rounds (N101) and other speakers' clips each have their own founder-set
    order, so rule 3 orders only a Take's confidence queue. Should it also
    order any of the others?
-10. **Copies for training: text or audio?** N6 Q1 and N10 say audio. N68 D1
+   **Decided (N111):** "The ledger's 'a second listener right away' (J3)
+   orders only a Take's confidence queue. The coach panel's queue, the
+   corpus rounds (N101) and other speakers' clips (N97) keep their own
+   order."
+10. ~~**Copies for training: text or audio?**~~ N6 Q1 and N10 say audio. N68 D1
     and `training_corpus.py` say text only.
+    **Decided (N111):** "The copies kept for training are text only (N68,
+    D1). N6 Q1 and N10 are out of date on that point."
 11. **An Art 9 basis for training.** [`LEARNING-DOORS.md`](LEARNING-DOORS.md), `pair_consent.py`
     and the ROPA addendum name Art 9(2)(a). N69 says no Art 9 basis is
     needed.
-12. **A practice self-report as training data.** MLC3 §8 says it is
+    **Still open: held and asked again (N111).** The question put to the
+    founder missed that "N69 is counsel's answer as the founder relayed it,
+    and the 3.5 pack was signed without counsel". "Until the founder answers
+    again, nothing changes." No later entry answers it (log read to N179 on
+    2026-10-26).
+12. ~~**A practice self-report as training data.**~~ MLC3 §8 says it is
     "potentially training-eligible". Contract 30 and walk I2 say never. The
     founder's "never trains any model" of 2026-10-19 is written only in the
     WIL-70 note, not in the log.
-13. **What willfidence is.** SPEC §17 says S is (coach + peer + machine) ÷ 3
+    **Decided (N111):** "A speaker's answer about their own practice never
+    trains any model (contract 30, walk I2; the founder, 19 October: 'never
+    trains any model'). MLC3 §8 is out of date on that point."
+13. ~~**What willfidence is.**~~ SPEC §17 says S is (coach + peer + machine) ÷ 3
     over a block of about 75 words. Walk H1 says S is `voice_confidence`
     over a sentence.
+    **Decided (N111):** "Willfidence is the voice-confidence read of one
+    sentence (walk H1). SPEC §17 is out of date on that point."
 14. **Doors 3 and 4 "held behind 3.5".** `config.py` says Privacy and Terms
     3.5 were published. N68 says publication was blocked. No log entry
     records a publication.
-15. **Exercise measures built from chat answers.** `exercise_held.py` and
+    **Still open: held and asked again (N111).** The question put to the
+    founder missed "that migration 0458 cleared the blocker N68 names, that
+    `config.py` records the publication on the evening of 8 October, and
+    that doors 3 and 4 have been open for three surfaces since". "Until the
+    founder answers again, nothing changes." No later entry answers it (log
+    read to N179 on 2026-10-26).
+15. ~~**Exercise measures built from chat answers.**~~ `exercise_held.py` and
     `practice_effects.py` (WIL-29) rest on answers given in chat that aren't
     in the log. Under N95 they aren't in force until they are.
+    **Decided (N111):** "The exercise measures of WIL-29 count, with the
+    founder's chat answers of 18 October as the code states them"; N111
+    writes the four answers out.
 
 **B · Code that disagrees with the docs (N95: the docs win; each fix is its
 own PR)**
 
 1. The SQL view `snippet_label_quorum` (migration 0289) counts ratings with
    `blind = false`. `label_quorum.py` excludes them (contract 35g-11).
-2. The golden set's candidate pool reads every `confidence_labels` row,
+   **Not fixed yet.** N111: "The first changes the view
+   `snippet_label_quorum`, so it is a migration and gets its outside review
+   before it merges." As read on 2026-10-26 the view is still migration
+   0289's, and C1's change to the view waits for the same migration.
+2. ~~The golden set's candidate pool reads every `confidence_labels` row,
    with no lane, self-report or blind filter. Its docstring says "moments
-   coaches have already labelled blind".
+   coaches have already labelled blind".~~ **Fixed (N111):** the pool
+   takes only blind answers in the ledger's lanes (a coach, another speaker
+   inside practice), never a self-report (`tests/test_golden_set_pool.py`).
 3. ~~`research_quorum.py` counts a lane `peer` and rows with no lane, and
    treats Not sure as a definite answer.~~ **Fixed (N111):** the research
    figures count by the ledger's rules; Not sure is a label but never agrees
    (`tests/test_research_quorum.py`).
-2. ~~The golden set's candidate pool reads every `confidence_labels` row,
-   with no lane, self-report or blind filter.~~ **Fixed (N111):** the pool
-   takes only blind answers in the ledger's lanes (a coach, another speaker
-   inside practice), never a self-report (`tests/test_golden_set_pool.py`).
-3. `research_quorum.py` counts a lane `peer` and rows with no lane, and
-   treats Not sure as a definite answer.
-4. `state_ratings.aggregate` has no blind or self-report filter.
-5. ~~`communities.order_community_clips` skips only settled clips, so
 4. ~~`state_ratings.aggregate` has no blind or self-report filter.~~
    **Fixed (N111):** a panel read leaves out a self-report in any lane and a
    non-blind answer. Nothing outside its tests calls it today.
-5. `communities.order_community_clips` skips only settled clips, so
+5. ~~`communities.order_community_clips` skips only settled clips, so
    `unresolved` and quarantined clips still reach listeners, whose answers
-   then become no label.
-6. ~~The `label_quorum.py` docstring points to `game_engine._source_class`,
-   which is gone, and to the old SQL file.~~ **Fixed (N111):** it says where
-   the serving order lives now (N97, N101) and that the view is migration
-   0289's.
    then become no label.~~ **Fixed (N111):** a community clip reaches a
    listener only while the ledger says it still needs a rater.
-6. The `label_quorum.py` docstring points to `game_engine._source_class`,
-   which is gone. It also says the SQL file holds the same truth table, but
-   the current view is migration 0289, not `add_label_quorum_ledger.sql`.
+6. ~~The `label_quorum.py` docstring points to `game_engine._source_class`,
+   which is gone, and to the old SQL file. It also says the SQL file holds
+   the same truth table, but the current view is migration 0289, not
+   `add_label_quorum_ledger.sql`.~~ **Fixed (N111):** it says where the
+   serving order lives now (N97, N101) and that the view is migration
+   0289's.
 7. ~~The docstrings of `coach_word_pairs.py`, `pair_consent.py` and
    `feedback_pairs.py` don't mention N79's closing of the coach-word
    surfaces. `training_import.py` still names door constants that were
@@ -305,6 +353,10 @@ own PR)**
 
 Items B2 to B5 were read from the code but not run. The PR that fixes each
 one confirms it first.
+
+B2 to B7 are fixed, each in its own backend pull request (N111; §6,
+2026-10-21). Neither this page nor the log records their numbers. B1 is
+still open.
 
 **C · History**
 
@@ -383,6 +435,10 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-10-26 · N111 · §3 marks the founder's answers of 21 October: A1 to A10, A12, A13 and A15 decided, A11 and A14 held and asked again; B2 to B7 marked fixed, B1 still open · BE
+- 2026-10-26 · N172 · life goals, founder only (ring 6), asked once after the first # note and kept in the Life Panel, every version kept with its date, for step 3 of Will's learning plan · BE
+- 2026-10-26 · N166 · the tempo step's tries are kept for Will: each try's path, comment and summary, the path only, never the audio · BE
+- 2026-10-26 · N145 · the diagnosis may use the readings still in their silent shadow stage (filler words, hedges, restarts, a flat voice, a quiet voice), and the founder checks each new plan for the first weeks; nothing else is promoted, and those readings still route nothing outside the plan; not built yet · BE
 - 2026-10-24 · N119 · speakers judge three clips per walk, high, middle and low, three speakers; the imported corpus is played to them and their answers there are kept in `import_clip_answers`, never a label · BE
 - 2026-10-21 · N111 · C1 built in the ledger: two historical v1 neutrals close a clip as perceptually ambiguous, never a label · BE
 - 2026-10-21 · N111 · B7 fixed: four modules' notes say the coach-word surfaces are closed (N79) and the doors' switches are gone · BE
