@@ -3750,3 +3750,12 @@ is asked in the same chat and logged when answered.
 questions) and `docs/flows/recording-screens.md` one line (the topic arrives
 filled in, N141).
 Not built yet. No migration.
+
+**N147 · A speaker who already has Takes gets one question (founder, the
+Claude Code chat, 26 October 2026: "A", to the choice left open in N146).**
+Before their next Take, a speaker who already has Takes is asked only "When is
+your deadline?" in the Lounge (a date, or "No date yet", N135), and their plan
+is built from the Takes they have recorded: no voice message and no follow-up
+questions. The rest of the plan (N131 to N146) applies to them as to a new
+speaker. Not built yet; the founder holds the build (26 October: "not yet").
+No migration.
