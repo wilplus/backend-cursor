@@ -2543,6 +2543,11 @@ tests/test_signup_claim_repeat.py,Story,"As a new speaker who recorded a Take as
 first claim landed, is answered (200) from the claim function.
 O2  Another account presenting that token is still refused.","O1 -> test_a_repeated_claim_by_the_same_account_is_answered
 O2 -> test_another_account_is_still_refused","Founder 2026-10-20: ""after I sign up ... it shows me a button like my take was not registered; particularly the new users""."
+tests/test_signup_count.py,Story,"As the founder, I want to know how many people open the sign-up screen and how many make an account, by way, so that I can decide on signing up with WhatsApp from real numbers.","O1  Opening the sign-up screen counts once, with no account needed and
+nothing kept about the person.
+O2  The founder reads, per day and in all, how many opened the screen and
+how many made an account, by way; nobody else can read it.","O1 -> SignupCountTest::test_opening_the_screen_counts_without_an_account
+O2 -> SignupCountTest::test_the_founder_reads_seen_and_made_by_way","Founder 2026-10-26, N207 item 6 (N174 item 6)."
 tests/test_single_deliverable.py,Story,"As a speaker, I want my Ideal Text free in both states, never the coach's unfinished edit, with the only paid item being key-moment explanations, so that I get my text without a paywall and pay only for extras.","O1  The Ideal Text GET never shows the coach's in-progress edit.
 O2  Never-1: the Ideal Text GET carries the text and no scores or
 internal reads; the stored suggestions snapshot drops internal
