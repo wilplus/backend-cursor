@@ -4098,8 +4098,11 @@ minutes before too.
 2. The line under the booking form's WhatsApp field reads "We'll confirm your
 time here and remind you 10 minutes before." This changes N144 item 1 and the
 form's "We'll confirm your time here."
-([frontend-cursor#962](https://github.com/wilplus/frontend-cursor/pull/962),
-which cited N145; no entry had dropped the reminder).
+([frontend-cursor#962](https://github.com/wilplus/frontend-cursor/pull/962)).
+That line and "no reminder for now" earlier the same day were written as an
+N145 that never merged
+([backend-cursor#1298](https://github.com/wilplus/backend-cursor/pull/1298));
+this entry replaces it.
 3. Booking needs a signed-in account (email or Google, N144 item 1), so every
 booking has an email and gets the calendar invite by email; the WhatsApp
 messages come on top when a number is left. A booking without an email does
