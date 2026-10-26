@@ -3916,3 +3916,17 @@ you on practice days and to tell you when your coach texted you".
 practice days and when your coach's feedback is in."
 The privacy policy's new version and Meta's template for the reminder are
 still needed before the reminder is built (N153 item 4). No migration.
+
+**N155 · No practice-day reminder for now (founder, the Claude Code chat, 26
+October 2026, asked whether the WhatsApp reminder of N153 is worth building at
+this stage: "There's no WhatsApp reminder for now").** For N140 item 6, N141,
+N153 and N154:
+1. The practice-day reminder is not built for now, on WhatsApp or as a web
+push. The plan card goes straight to "Start your first recording"; the card
+keeps no reminder switch.
+2. N153 item 1 (the clearer plan card) and "Change your plan" stand.
+3. When the reminder comes, it is the WhatsApp ask under the plan card (N153
+items 2 and 3) with the approved words of N154, after the new privacy version
+and Meta's template (N153 item 4). Until then the WhatsApp number is asked
+only as today, from Take 2, for the coach's feedback.
+No migration.
