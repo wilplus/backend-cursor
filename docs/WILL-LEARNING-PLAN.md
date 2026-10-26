@@ -101,7 +101,7 @@ Panel, <https://claude.ai/artifact/HaWehtwfg1jzJvGeGM1c24>. The rules are
 frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M.
 
-Built (M1 to M14), founder only (ring row `life_goals`, ring 6):
+Built (M1 to M15), founder only (ring row `life_goals`, ring 6):
 
 - **The ask:** after a # note's "Noted." (typed, voice, or the held note on
   Yes), `life_goals.after_note` writes the two bubbles, the second with the
@@ -145,9 +145,13 @@ Built (M1 to M14), founder only (ring row `life_goals`, ring 6):
   /v2/life-goals/<id>/change`) writes it through `change_step` on Change,
   or drops it on Not now. Only the quarter step (the founder: "this
   quarter only is fine").
+- **In the Life Panel (M15, N194):** the frontend's Goals screen shows the
+  ladders above the three bets. `serialize` adds `set_on` and `history`:
+  every version newest first (`life_goal_versions`), with the quarter's
+  answers in words from `ladder.reviews`.
 - **Will reads** the ladders in the chat (`prompt_lines`, inside the
   notebook block).
-- **Not built yet:** the ladders in the Life Panel's own screens, and this week's focus on the ladder (no source for it yet).
+- **Not built yet:** this week's focus on the ladder (no source for it yet).
 - Code: `services/life_goals.py`, `routes/v2/life_goals.py`, the store in
   `services/life_store.py`, migration `the_founder_keeps_life_goals`
   (0492), `tests/test_life_goals.py`.
