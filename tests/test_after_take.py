@@ -5,15 +5,15 @@ STORY    As a speaker, after a Take I want one thing to do at a time: the
          "Record Take N", so that nothing competes with the walk or with
          recording again (founder 2026-10-20, N89).
 OUTCOME
-  O1  After Take 1 the chain holds Will's question when he has one and "Did
-      this help?" when the Take looks off: never WhatsApp, never an ask from
-      the CEO panel, even without a number.
-  O2  From Take 2 the chain runs in this order: the CEO panel's ask,
-      WhatsApp (at most twice), the home screen (once, where the phone can
-      add it), Will's question, "Did this help?"; at most two a Take: when
-      more wait, the home screen, then WhatsApp, then "Did this help?" wait
-      for a later Take (founder 2026-10-21, N94); nothing waits when nothing
-      applies.
+  O1  One ask after each Take, the first that waits (founder 2026-10-26,
+      N189; was two, N94). After Take 1 that is WhatsApp when I left no
+      number (N171), else Will's question when he has one, else "Did this
+      help?" when the Take looks off; never an ask from the CEO panel or
+      the home screen on Take 1.
+  O2  From Take 2 the order is the CEO panel's ask, WhatsApp (at most twice
+      in all), the home screen (once, where the phone can add it), Will's
+      question, "Did this help?"; the first that waits comes and the others
+      wait for a later Take; nothing comes when nothing applies.
   O3  The asks come one at a time, each under whatever closed the one
       before: a typed turn, under Will's reply; "Yes", tapped or typed,
       under "We're glad it helped you."; a reply that opens a form keeps the
@@ -24,8 +24,8 @@ OUTCOME
   O5  After a distressed message the chat's safety reply comes and the asks
       wait: nothing lands under it until I write again (founder 2026-10-21,
       N94).
-PROVES   O1 -> test_after_take_one_wills_question_and_the_question_when_it_looks_off
-         O2 -> test_from_take_two_the_chain_runs_ceo_ask_whatsapp_home_screen_will_the_question
+PROVES   O1 -> test_after_take_one_the_whatsapp_ask_else_will_else_the_question
+         O2 -> test_from_take_two_one_ask_ceo_ask_whatsapp_home_screen_will_the_question
          O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_closing_message
          O4 -> test_an_older_waiting_message_shows_where_it_stands
          O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
@@ -109,38 +109,33 @@ def _typed(db, monkeypatch, question, answer="Slow the first slide down."):
             user_client_id=None, user_created_at=None, intent=intent))
 
 
-def test_after_take_one_wills_question_and_the_question_when_it_looks_off(monkeypatch):
+def test_after_take_one_the_whatsapp_ask_else_will_else_the_question(monkeypatch):
     _world(monkeypatch, phone=None, admin={"id": "a1", "kind": "promo"})
     db = _Db()
-    assert after_take.chain(db, "u", take_index=1, off=True, can_install=True, will=True) == [
-        "will_question", "feedback_check"]
-    assert after_take.chain(db, "u", take_index=1, off=False, can_install=True, will=True) == ["will_question"]
+    # No number: WhatsApp is Take 1's one ask; the CEO panel's ask and the
+    # home screen never come on Take 1.
+    assert after_take.chain(db, "u", take_index=1, off=True, can_install=True, will=True) == ["whatsapp"]
+    _world(monkeypatch, phone="+447700900461", admin={"id": "a1", "kind": "promo"})
+    assert after_take.chain(db, "u", take_index=1, off=True, can_install=True, will=True) == ["will_question"]
+    assert after_take.chain(db, "u", take_index=1, off=True, can_install=True) == ["feedback_check"]
     assert after_take.chain(db, "u", take_index=1, off=False, can_install=True) == []
 
 
-def test_from_take_two_the_chain_runs_ceo_ask_whatsapp_home_screen_will_the_question(monkeypatch):
+def test_from_take_two_one_ask_ceo_ask_whatsapp_home_screen_will_the_question(monkeypatch):
     db = _Db()
     _world(monkeypatch, phone=None, admin={"id": "a1", "kind": "promo"})
-    # Five would wait: at most two come, the app's own asks wait (N94).
-    assert after_take.chain(db, "u", take_index=2, off=True, can_install=True, will=True) == [
-        "admin", "will_question"]
-    assert after_take.chain(db, "u", take_index=2, off=False, can_install=True, will=False) == [
-        "admin", "whatsapp"]
+    # Five would wait: the first comes, the others wait (N189).
+    assert after_take.chain(db, "u", take_index=2, off=True, can_install=True, will=True) == ["admin"]
     _world(monkeypatch, phone=None, admin=None)
-    assert after_take.chain(db, "u", take_index=2, off=True, can_install=True, will=True) == [
-        "will_question", "feedback_check"]
-    assert after_take.chain(db, "u", take_index=2, off=False, can_install=True, will=True) == [
-        "whatsapp", "will_question"]
-    assert after_take.chain(db, "u", take_index=2, off=False, can_install=True) == [
-        "whatsapp", "install"]
+    assert after_take.chain(db, "u", take_index=2, off=True, can_install=True, will=True) == ["whatsapp"]
 
-    _world(monkeypatch, phone=None, admin=None)
+    _waiting(db, "take-1", ["whatsapp"])
     _waiting(db, "take-2", ["whatsapp"])
-    _waiting(db, "take-3", ["whatsapp"])
-    # Asked twice: WhatsApp no longer comes; the home screen once.
-    assert after_take.chain(db, "u", take_index=4, off=False, can_install=True) == ["install"]
-    _waiting(db, "take-4", ["install"])
-    assert after_take.chain(db, "u", take_index=5, off=True, can_install=True) == ["feedback_check"]
+    # Asked twice: WhatsApp no longer comes; then the home screen, once.
+    assert after_take.chain(db, "u", take_index=3, off=True, can_install=True, will=True) == ["install"]
+    _waiting(db, "take-3", ["install"])
+    assert after_take.chain(db, "u", take_index=4, off=True, can_install=True, will=True) == ["will_question"]
+    assert after_take.chain(db, "u", take_index=4, off=True, can_install=True) == ["feedback_check"]
 
     _world(monkeypatch, phone="+447700900461", admin=None)
     assert after_take.chain(_Db(), "u", take_index=2, off=False) == []
