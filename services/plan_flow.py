@@ -795,13 +795,53 @@ def _after_active_take(database: Any, user_id: str, plan: dict) -> list[dict]:
         rows += [_bot(P.COPY["fifteen_1"], f"fifteen:{today.isoformat()}"),
                  _bot(P.COPY["fifteen_2"], f"fifteen2:{today.isoformat()}")]
         fields["done_on"] = today.isoformat()
+    facts, new_project = _with_project(database, user_id, facts)
+    fields["facts"] = facts
     moment = _ratings_due(plan, facts, done)
-    if moment:
+    if new_project and deadline and plan.get("step") == "done":
+        fields["step"] = "same_event"
+        rows.append(_bot(P.COPY["is_this_for"].format(date=P.fmt_day(deadline)),
+                         f"same_event:{new_project}", plan_ask="same_event"))
+    elif moment:
         fields.update({"step": "stress", "facts": {**facts, "rating_moment": moment}})
         rows += _ratings_rows(moment)
     if fields:
         plan = _save(database, user_id, plan, fields)
     return _write(database, user_id, plan["id"], rows)
+
+
+def _with_project(database: Any, user_id: str, facts: dict) -> tuple[dict, Optional[str]]:
+    """The plan's projects, with this Take's: a new project's first Take,
+    after the plan already had one, is the arc to ask about (H2)."""
+    take = _latest_take(database, user_id)
+    arc = str(take.get("arc_id") or "")
+    arcs = [str(a) for a in facts.get("arcs") or []]
+    if not arc or arc in arcs:
+        return facts, None
+    asked = bool(arcs) and take.get("take_index") == 1
+    return {**facts, "arcs": arcs + [arc]}, (arc if asked else None)
+
+
+def same_event(database: Any, user_id: str, yes: Any, *, tz: Any = None,
+               first_name: Optional[str] = None) -> dict:
+    """"Is this for {date}?" on a new project (H2): Yes keeps the plan; No
+    starts "When is your deadline?" and the questions for a new plan, now,
+    after the Take (N149, N178)."""
+    plan = _open(database, user_id)
+    _need_step(plan, "same_event")
+    if yes is True:
+        rows = [_me(P.COPY["yes"], f"same_event_yes:{_now().isoformat()}")]
+        plan = _save(database, user_id, plan, {"step": "done"})
+        return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
+    written = _write(database, user_id, plan["id"], [_me(P.COPY["no"], f"same_event_no:{_now().isoformat()}")])
+    _save(database, user_id, plan, {"status": "replaced", "ended_at": _now().isoformat(), "step": "done"})
+    zone_name = valid_zone(tz) or plan.get("time_zone")
+    fresh = database.insert_plan({"user_id": str(user_id), "status": "asking", "step": "deadline",
+                                  "time_zone": zone_name, "facts": {"mode": "new", "again": True}})
+    if not fresh:
+        raise PlanError("V2_ERROR", "Failed to keep the plan", 500)
+    more = _write(database, user_id, fresh["id"], _opening(fresh, first_name))
+    return {"plan": fresh, "messages": written + more}
 
 
 def _ratings_due(plan: dict, facts: dict, done: int) -> Optional[str]:

@@ -85,6 +85,8 @@ COPY = {
     "new_event": "I have a new event",
     "next_plan": "Here's your next plan.",
     "is_this_for": "Is this for {date}?",
+    "yes": "Yes",
+    "no": "No",
 }
 
 #: Why this line (N154): the sentence under "Why this line?", by level.

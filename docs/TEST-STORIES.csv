@@ -1929,12 +1929,19 @@ kickoff call is offered, then the summary call; skipping both still
 gives ""You're all set. Here's your plan."" and the card.
 O6  On a practice day after the first Take, the first open writes the
 hello and today's one thing, once; after a Take on a practice day the
-15 minutes lines come, once.","O1 -> test_without_the_ring_nothing_happens
+15 minutes lines come, once.
+O7  A new project's first Take asks ""Is this for {date}?""; Yes keeps the
+plan, No starts ""When is your deadline?"" for a new one, the old plan
+kept in the history.
+O8  The career goal's ladder shows THIS WEEK, the plan's level, once the
+plan is active; nothing before (N172 M10).","O1 -> test_without_the_ring_nothing_happens
 O2 -> test_a_new_speaker_is_asked_once
 O3 -> test_no_date_gives_two_months_then_the_voice_message
 O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
 O5 -> test_ratings_are_kept_quietly_and_the_calls_lead_to_the_plan
-O6 -> test_a_practice_day_hello_and_the_fifteen_minutes","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); the rules are frontend docs/flows/the-plan.md §1."
+O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
+O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
+O8 -> test_the_ladder_shows_this_weeks_level","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); the rules are frontend docs/flows/the-plan.md §1."
 tests/test_playback_copy.py,Story,"As a speaker on iPhone or Safari, I want my recordings to play back, and the playback copy deleted with the recording, so that I can hear myself and deletion leaves nothing. (Record -> next Take: hearing the Take; and deletion.)","O1  A stored short recording gets its Safari-safe copy (.playback.m4a,
 audio/mp4) beside it at upload; the original is untouched.
 O2  The player is handed the original until the copy exists, and the copy

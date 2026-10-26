@@ -187,7 +187,8 @@ def _versions(user_id: str, goal: dict) -> tuple[dict, list[dict]]:
     return changes, history
 
 
-def serialize(user_id: str, goal: dict, *, talk: Optional[str] = None) -> dict:
+def serialize(user_id: str, goal: dict, *, talk: Optional[str] = None,
+              week: Optional[str] = None) -> dict:
     ladder = dict(goal.get("ladder") or {})
     changes, history = _versions(user_id, goal) if goal["status"] == "active" else ({}, [])
     out = {"id": str(goal["id"]), "space": goal["space"], "status": goal["status"],
@@ -195,7 +196,22 @@ def serialize(user_id: str, goal: dict, *, talk: Optional[str] = None) -> dict:
            "set_on": str(goal.get("created_at") or "")[:10]}
     if goal["space"] == "career" and talk:
         out["talk"] = talk
+    if goal["space"] == "career" and week:
+        out["week"] = week
     return out
+
+
+def _this_week(database: Any, user_id: str) -> Optional[str]:
+    """THIS WEEK · from your practice (M10): the plan's level this week, read
+    only, when the speaker has an active plan (frontend the-plan.md)."""
+    try:
+        from services import plan
+        current = database.get_open_plan(str(user_id))
+        if current and current.get("status") == "active" and current.get("level"):
+            return plan.level_name(current["level"])
+    except Exception as error:  # noqa: BLE001 -- the ladder shows without it
+        logger.warning("life goals: this week not read user=%s: %s", user_id, error)
+    return None
 
 
 def _talk_goal(database: Any, user_id: str) -> Optional[str]:
@@ -211,7 +227,8 @@ def state(database: Any, user_id: str) -> dict:
     if not enabled(database, user_id):
         return {"enabled": False}
     talk = _talk_goal(database, user_id)
-    goals = [serialize(user_id, g, talk=talk)
+    week = _this_week(database, user_id)
+    goals = [serialize(user_id, g, talk=talk, week=week)
              for g in life_store.list_goals(str(user_id))]
     drafts = life_store.list_goals(str(user_id), status="draft")
     return {"enabled": True, "goals": goals,
