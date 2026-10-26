@@ -4730,3 +4730,36 @@ The rules: frontend
 [`docs/flows/ai-voice-practice.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md)
 §1, the limits (item 4). Items 1 to 3 and 5 have no rules page. No migration
 in this entry.
+
+**N189 · Email and password on Data & consent (WIL-95) (founder, the Claude
+Code chat, 26 October 2026: "approved, implement it", on the clickable
+prototype <https://claude.ai/artifact/5tNVcdnq9PjkTyHHm9hzfT>, version 1;
+copy in `docs/design/settings-email-password-2026-10-26.html`).**
+1. Data & consent gets a card, **Email and password**, between Your projects
+and Support: the email with Change, the password with Change.
+2. Change email asks for the new email and the current password, then sends
+a link to the new address and a notice to the old one. The email changes
+when the link is opened. Only the new address confirms, because people
+lose old work addresses; the notice tells the old one to write to
+contact@willpowerlab.com if it wasn't them.
+3. Change password asks for the current password and the new one twice.
+The change signs the person out on their other devices and sends a notice.
+**Forgot password?** under it sends a reset link to the account's email; the
+link opens the live Set new password screen, which signs out everywhere, as
+it does today.
+4. An account that signs in with Google or LinkedIn and has no password:
+the email form has no password field, and the password row reads "You sign
+in with Google." with **Set a password**, which sends a link to the same
+screen.
+5. Every request, change and wrong password is a row in a backend security
+log (`account_security_events`, migration 0493): what happened, the old and
+new email where one changed, the time, the IP address and the device; never
+a password. The speaker never sees it. It is deleted with the account.
+6. The words are the prototype's, the ones with dashed outlines on the card
+and in the five emails, approved with it. Not in the prototype and so not
+signed: what an expired or already used link says. Until the founder words
+it, the card shows the page's signed "Couldn’t save that. Try again."
+7. The `/change-password` page, which nothing linked to, goes; the card
+replaces it. The login page's Forgot password? is unchanged.
+The rules: frontend [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+§1, "Amended 2026-10-26".
