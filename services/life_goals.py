@@ -167,21 +167,32 @@ def answer(database: Any, user_id: str, choice: str) -> list[dict]:
 
 # ── The goals as the lens reads them ─────────────────────────────────────
 
-def _changes(user_id: str, goal_id: str) -> dict:
-    """The newest change of each step: its date and the words before it."""
+def _versions(user_id: str, goal: dict) -> tuple[dict, list[dict]]:
+    """The newest change of each step (its date and the words before it), and
+    every version newest first, with the quarter's answers in words (M15,
+    N197): what the Life Panel's History shows."""
     from services import life_store
-    out: dict[str, dict] = {}
-    for v in life_store.goal_versions(user_id, goal_id):
-        out[v["step"]] = {"on": str(v.get("created_at") or "")[:10],
-                          "earlier": v.get("before_text")}
-    return out
+    changes: dict[str, dict] = {}
+    history: list[dict] = []
+    for v in life_store.goal_versions(user_id, str(goal["id"])):
+        on = str(v.get("created_at") or "")[:10]
+        changes[v["step"]] = {"on": on, "earlier": v.get("before_text")}
+        history.append({"on": on, "step": v["step"], "before": v.get("before_text"),
+                        "after": v.get("after_text")})
+    for review in (goal.get("ladder") or {}).get("reviews") or []:
+        history.append({"on": str(review.get("at") or review.get("on") or "")[:10],
+                        "step": "quarter_review", "outcome": review.get("outcome"),
+                        "before": review.get("step")})
+    history.sort(key=lambda h: h["on"], reverse=True)
+    return changes, history
 
 
 def serialize(user_id: str, goal: dict, *, talk: Optional[str] = None) -> dict:
     ladder = dict(goal.get("ladder") or {})
+    changes, history = _versions(user_id, goal) if goal["status"] == "active" else ({}, [])
     out = {"id": str(goal["id"]), "space": goal["space"], "status": goal["status"],
-           "ladder": ladder, "changes": _changes(user_id, str(goal["id"]))
-           if goal["status"] == "active" else {}}
+           "ladder": ladder, "changes": changes, "history": history,
+           "set_on": str(goal.get("created_at") or "")[:10]}
     if goal["space"] == "career" and talk:
         out["talk"] = talk
     return out
