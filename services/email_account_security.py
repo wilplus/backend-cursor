@@ -1,5 +1,5 @@
 """The five emails of Email and password on Data & consent (WIL-95; founder
-2026-10-26, N189, approved on the prototype
+2026-10-26, N190, approved on the prototype
 docs/design/settings-email-password-2026-10-26.html).
 
 Every word below is the prototype's, signed with it. The logic that decides

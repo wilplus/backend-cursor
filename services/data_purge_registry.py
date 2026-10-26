@@ -302,7 +302,7 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "database_row", 60),
     PurgeDependency("life_goal_asks", "life_goal_asks", "user_id", "user",
                     "delete", "database_row", 60),
-    # Email and password on Data & consent (WIL-95, N189, migration 0493):
+    # Email and password on Data & consent (WIL-95, N190, migration 0493):
     # the person's own security log goes with the account.
     PurgeDependency("account_security_events", "account_security_events",
                     "user_id", "user", "delete", "database_row", 60),

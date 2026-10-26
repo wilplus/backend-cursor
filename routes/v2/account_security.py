@@ -1,4 +1,4 @@
-"""Email and password on Data & consent (WIL-95; founder 2026-10-26, N189).
+"""Email and password on Data & consent (WIL-95; founder 2026-10-26, N190).
 Service: services/account_security.py.
 
   GET  /v2/account/sign-in                 {email, has_password, provider}

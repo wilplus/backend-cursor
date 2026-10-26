@@ -1,4 +1,4 @@
-"""Email and password on Data & consent (WIL-95; founder 2026-10-26, N189).
+"""Email and password on Data & consent (WIL-95; founder 2026-10-26, N190).
 
 What the card does, and the one log every change lands in:
 
@@ -22,7 +22,7 @@ Every request, change and wrong password is one row in
 ``account_security_events`` (migration 0493): the time, the IP address, the
 device, the old and new email where one changed. Never a password, never a
 token (only its SHA-256). Only the new address confirms an email change
-(N189 item 2), so the confirmation is ours, not Supabase's double opt-in:
+(N190 item 2), so the confirmation is ours, not Supabase's double opt-in:
 the backend sets the email itself when the link comes back.
 
 The words of the emails are services/email_account_security.py.

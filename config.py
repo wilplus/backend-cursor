@@ -900,10 +900,16 @@ class Config:
     # reads the provider's real cost header; never a promotional price.
     AI_VOICE_CREDITS_PER_CHARACTER = _env_float("AI_VOICE_CREDITS_PER_CHARACTER", 1.0)
     AI_VOICE_USD_PER_1000_CREDITS = _env_float("AI_VOICE_USD_PER_1000_CREDITS", 0.0)
-    # Founder 2026-10-15: more accepting, so the clip is there more often.
-    AI_VOICE_DAILY_CLIPS_PER_SPEAKER = _env_int("AI_VOICE_DAILY_CLIPS_PER_SPEAKER", 10)
+    # Founder 2026-10-26 (N188): 3 a day and 20 a month for each speaker,
+    # so no one speaker uses up the plan's month. It was 10 a day with no
+    # monthly limit (founder 2026-10-15). The month is the calendar month.
+    AI_VOICE_DAILY_CLIPS_PER_SPEAKER = _env_int("AI_VOICE_DAILY_CLIPS_PER_SPEAKER", 3)
+    AI_VOICE_MONTHLY_CLIPS_PER_SPEAKER = _env_int("AI_VOICE_MONTHLY_CLIPS_PER_SPEAKER", 20)
     AI_VOICE_DAILY_CLIPS_TOTAL = _env_int("AI_VOICE_DAILY_CLIPS_TOTAL", 30)
     AI_VOICE_DAILY_CLONES_TOTAL = _env_int("AI_VOICE_DAILY_CLONES_TOTAL", 3)
+    # The plan's voice slots (Starter: 10; N188). Each speaker's AI voice
+    # holds one; no new voice is made while they are full.
+    AI_VOICE_VOICE_SLOTS = _env_int("AI_VOICE_VOICE_SLOTS", 10)
     AI_VOICE_MAX_SENTENCE_CHARACTERS = _env_int("AI_VOICE_MAX_SENTENCE_CHARACTERS", 600)
     # Founder 2026-10-13: the whole sentence, and no AI clip longer than 17
     # seconds. A sentence too long to say slowly in that time is never sent;

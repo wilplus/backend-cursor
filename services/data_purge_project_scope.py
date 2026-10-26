@@ -168,7 +168,7 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     "sunday_notes",
     # Life goals (Will learning plan, step 3, N172): the person's own.
     "life_goals", "life_goal_versions", "life_goal_asks",
-    # The security log of Email and password (WIL-95, N189): the account's.
+    # The security log of Email and password (WIL-95, N190): the account's.
     "account_security_events",
     # Retention schedule v1.4: product records and job evidence that name
     # only the person, never a project. Deleted with the account (or kept
