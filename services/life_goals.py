@@ -47,6 +47,10 @@ COPY = {
     "set": "Noted. Your {space} goal is set.",
     # N180, N183: the app is the base; the speaker goes and lives it.
     "go_live": "That's the base. Now go and live it. Come back for a short recap.",
+    # M12, N185: the clash between two goals.
+    "each_time": "I decide each time",
+    "wins": "{who} wins",
+    "each_time_kept": "You decide each time",
 }
 #: The three spaces: emoji, name, and how the first question names it.
 SPACES = {
@@ -213,7 +217,17 @@ def _clean_ladder(raw: Any) -> dict:
         out["quarter"] = {"text": _clip(quarter.get("text")),
                           "by": _clip(quarter.get("by")),
                           "next": bool(quarter.get("next"))}
+    clashes = _clean_clashes(raw.get("clashes"))
+    if clashes:
+        out["clashes"] = clashes
     return out
+
+
+def _clean_clashes(raw: Any) -> list[dict]:
+    """The WHEN THEY CLASH answers (M12): which goal, who wins, the words."""
+    keys = ("with", "wins", "text")
+    return [{k: _clip(c.get(k)) for k in keys} for c in (raw if isinstance(raw, list) else [])
+            if isinstance(c, dict) and all(_clip(c.get(k)) for k in keys)][:10]
 
 
 def save_draft(user_id: str, goal_id: Optional[str], space: str, ladder: Any) -> dict:
@@ -222,11 +236,16 @@ def save_draft(user_id: str, goal_id: Optional[str], space: str, ladder: Any) ->
     from services import life_store
     if space not in SPACES:
         raise GoalsError("INVALID_SPACE", "Unknown space.")
-    fields = {"space": space, "ladder": _clean_ladder(ladder)}
+    cleaned = _clean_ladder(ladder)
+    fields = {"space": space, "ladder": cleaned}
     if goal_id:
         goal = life_store.get_goal(str(user_id), goal_id)
         if not goal or goal["status"] != "draft":
             raise GoalsError("NOT_FOUND", "Not found.", 404)
+        # The clash answers are the server's (N185): a save never drops them.
+        kept = (goal.get("ladder") or {}).get("clashes")
+        if kept:
+            cleaned["clashes"] = kept
         saved = life_store.update_goal(str(user_id), goal_id, fields)
     else:
         saved = life_store.insert_goal(str(user_id), {**fields, "status": "draft"})
@@ -248,6 +267,8 @@ def ladder_text(goal: dict, talk: Optional[str] = None) -> str:
         step = (ladder.get("steps") or {}).get(key)
         if step:
             lines.append(f"{_LABELS[key]}: {step['text']}")
+    for clash in ladder.get("clashes") or []:
+        lines.append(f"WHEN THEY CLASH: {clash['text']}")
     quarter = ladder.get("quarter")
     if quarter:
         lines.append(f"{'NEXT' if quarter.get('next') else 'THIS'} QUARTER: {quarter['text']}")
@@ -350,6 +371,111 @@ def change_step(database: Any, user_id: str, goal_id: str, step: str,
     life_store.insert_goal_version(str(user_id), goal_id, step=step,
                                    before=before, after=words)
     return serialize(user_id, goal, talk=talk)
+
+
+# ── The clash between two goals (M12, N185) ──────────────────────────────
+
+_CLASH_SYSTEM = """One person keeps several life goals. Each has its space, the goal and
+what they said they would give up for it. You get one NEW goal and the
+OTHER goals, numbered.
+
+Decide whether the new goal and one of the others pull at the same thing:
+what one gives up is what the other needs (time, evenings, money, energy),
+or the other way round. Use only their words. When nothing in their words
+shows a clash, there is none; never invent one.
+
+If there is a clash, write ONE short sentence that names both goals by
+their space and says what pulls, quoting their words where you can, in the
+language they used, at most 30 words. No advice, no question.
+
+Return JSON: {"other": <number of the other goal> or null, "line": "..." or ""}."""
+
+
+def _label(goal: dict, twin: bool) -> str:
+    """How a goal is named in the clash: its space, or its first words when
+    both goals share the space."""
+    name = SPACES[goal["space"]][1]
+    if not twin:
+        return name
+    words = ((goal.get("ladder") or {}).get("goal") or name).split()
+    return " ".join(words[:4]) + ("…" if len(words) > 4 else "")
+
+
+def _options(goal: dict, other: dict) -> list[dict]:
+    twin = goal["space"] == other["space"]
+    return [{"wins": str(g["id"]), "emoji": SPACES[g["space"]][0], "label": _label(g, twin)}
+            for g in (goal, other)] + [{"wins": "each_time", "emoji": "⚖️",
+                                       "label": COPY["each_time"]}]
+
+
+def check_clash(database: Any, user_id: str, goal_id: str) -> dict:
+    """Before a new goal is set (M12): ``{"clash": None}``, or the other goal
+    it pulls against with the line that names both and the three answers.
+    Asked once per pair; only from their words."""
+    from services import life_store
+    if not enabled(database, user_id):
+        raise GoalsError("NOT_FOUND", "Not found.", 404)
+    goal = life_store.get_goal(str(user_id), goal_id)
+    if not goal or goal["status"] not in ("draft", "active"):
+        raise GoalsError("NOT_FOUND", "Not found.", 404)
+    asked = {c.get("with") for c in (goal.get("ladder") or {}).get("clashes") or []}
+    others = [g for g in life_store.list_goals(str(user_id))
+              if str(g["id"]) != str(goal_id) and str(g["id"]) not in asked]
+    ladder = goal.get("ladder") or {}
+    if not others or not ladder.get("goal"):
+        return {"clash": None}
+    def about(g: dict) -> str:
+        lad = g.get("ladder") or {}
+        return (f"{SPACES[g['space']][1]}: {lad.get('goal', '')} "
+                f"(gives up: {lad.get('give') or 'nothing said'})")
+    user = "NEW: " + about(goal) + "\nOTHERS:\n" + "\n".join(
+        f"{i + 1}. {about(g)}" for i, g in enumerate(others))
+    try:
+        parsed = _model(_CLASH_SYSTEM, user, user_id)
+    except Exception as error:  # noqa: BLE001 -- no check never holds the goal up
+        logger.warning("life goals: clash not checked user=%s: %s", user_id, error,
+                       exc_info=True)
+        return {"clash": None}
+    index, line = parsed.get("other"), _clip(parsed.get("line"))
+    if not isinstance(index, int) or not 1 <= index <= len(others) or not line:
+        return {"clash": None}
+    other = others[index - 1]
+    return {"clash": {"with": str(other["id"]), "line": line[:300],
+                      "options": _options(goal, other)}}
+
+
+def answer_clash(database: Any, user_id: str, goal_id: str, other_id: Any,
+                 wins: Any) -> dict:
+    """Which wins when they clash (M12), kept on both ladders as the step
+    WHEN THEY CLASH; a changed answer keeps the earlier one, dated."""
+    from services import life_store
+    if not enabled(database, user_id):
+        raise GoalsError("NOT_FOUND", "Not found.", 404)
+    goal = life_store.get_goal(str(user_id), goal_id)
+    other = life_store.get_goal(str(user_id), str(other_id or ""))
+    if (not goal or not other or goal["status"] not in ("draft", "active")
+            or other["status"] != "active" or str(goal["id"]) == str(other["id"])):
+        raise GoalsError("NOT_FOUND", "Not found.", 404)
+    choice = {o["wins"]: o for o in _options(goal, other)}.get(str(wins or ""))
+    if not choice:
+        raise GoalsError("INVALID_CHOICE", "Unknown answer.")
+    text = (COPY["each_time_kept"] if choice["wins"] == "each_time"
+            else COPY["wins"].format(who=f"{choice['emoji']} {choice['label']}"))
+    for mine, theirs in ((goal, other), (other, goal)):
+        ladder = dict(mine.get("ladder") or {})
+        clashes = [c for c in ladder.get("clashes") or [] if c.get("with") != str(theirs["id"])]
+        before = next((c["text"] for c in ladder.get("clashes") or []
+                       if c.get("with") == str(theirs["id"])), None)
+        ladder["clashes"] = clashes + [{"with": str(theirs["id"]), "wins": choice["wins"],
+                                        "text": text}]
+        if not life_store.update_goal(str(user_id), str(mine["id"]), {"ladder": ladder}):
+            raise GoalsError("V2_ERROR", "Failed to keep the answer", 500)
+        if before and before != text and mine["status"] == "active":
+            life_store.insert_goal_version(str(user_id), str(mine["id"]), step="clash",
+                                           before=before, after=text)
+    fresh = life_store.get_goal(str(user_id), goal_id) or goal
+    return {"text": text, "goal": serialize(user_id, fresh,
+                                            talk=_talk_goal(database, user_id))}
 
 
 # ── Will's drafts, only from their words (M5, M6) ────────────────────────

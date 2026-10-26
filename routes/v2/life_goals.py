@@ -138,3 +138,23 @@ def v2_life_goals_change_step(goal_id):
     return _run("step", lambda: (jsonify(change_step(
         db, str(request.user_id), str(goal_id), str(body.get("step") or ""),
         body.get("text"))), 200))
+
+
+@v2_bp.route("/life-goals/<goal_id>/clash/check", methods=["POST"])
+@phase1_provider_route
+@llm_limit
+@require_auth
+def v2_life_goals_check_clash(goal_id):
+    from services.life_goals import check_clash
+    return _run("clash check", lambda: (jsonify(check_clash(
+        db, str(request.user_id), str(goal_id))), 200))
+
+
+@v2_bp.route("/life-goals/<goal_id>/clash", methods=["POST"])
+@require_auth
+def v2_life_goals_answer_clash(goal_id):
+    from services.life_goals import answer_clash
+    body = _body()
+    return _run("clash", lambda: (jsonify(answer_clash(
+        db, str(request.user_id), str(goal_id), body.get("with"),
+        body.get("wins"))), 200))

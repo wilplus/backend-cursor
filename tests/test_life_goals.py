@@ -18,11 +18,16 @@ OUTCOME
   O5  "#goals" opens my ladders; "can I add another goal? I want to get
       healthier" is answered "Of course, ..." and opens the lens with my
       words; a talk-goal change and anyone else go on as before.
+  O6  Two goals whose words pull against each other are asked "When they
+      clash, which wins?" once per pair, before the new goal is set; the
+      answer is a step on both ladders, and a changed answer keeps the
+      earlier one with its date (N185).
 PROVES   O1 -> test_the_ask_comes_after_the_first_note_and_once_more_after_not_now
          O2 -> test_the_draft_quotes_only_my_words
          O3 -> test_a_set_goal_posts_its_ladder_and_keeps_the_one_it_replaces
          O4 -> test_a_changed_step_keeps_its_earlier_words
          O5 -> test_asking_in_my_own_words_opens_the_lens
+         O6 -> test_a_clash_is_asked_once_and_kept_on_both_ladders
 WHY      Will learning plan, step 3 (founder 2026-10-26, N172: "build the
          life goals now"; rules in the frontend flow page §1 M).
 """
@@ -213,3 +218,31 @@ def test_asking_in_my_own_words_opens_the_lens(store, monkeypatch):
     assert lg.chat_turn(db, "u", "change my goal to they book a demo") is None
     assert lg.chat_turn(db, "someone", "can I add another goal?") is None
     assert lg.chat_turn(db, "u", "# a note about my goals") is None  # a note stays a note
+
+
+def test_a_clash_is_asked_once_and_kept_on_both_ladders(store, monkeypatch):
+    db = _Db()
+    career = lg.save_draft("u", None, "career", {**CAREER, "give": "My evenings."})
+    lg.finish(db, "u", career["id"])
+    home = lg.save_draft("u", None, "personal", {"goal": "Dinner with my family.",
+                                                  "give": "Work after 7 pm."})
+    _model(monkeypatch, {"other": 1, "line": "💼 Career wants your evenings. 🏡 Personal "
+                                             "life gives up work after 7 pm."})
+    clash = lg.check_clash(db, "u", home["id"])["clash"]
+    assert clash["with"] == career["id"]
+    assert [o["label"] for o in clash["options"]] == ["Personal life", "Career", "I decide each time"]
+
+    kept = lg.answer_clash(db, "u", home["id"], career["id"], home["id"])
+    assert kept["text"] == "🏡 Personal life wins"
+    assert store.goals[career["id"]]["ladder"]["clashes"][0]["text"] == "🏡 Personal life wins"
+    assert lg.check_clash(db, "u", home["id"]) == {"clash": None}  # asked once per pair
+
+    rows = lg.finish(db, "u", home["id"])
+    assert "WHEN THEY CLASH: 🏡 Personal life wins" in rows[0]["body"]
+    shown = lg.answer_clash(db, "u", career["id"], home["id"], "each_time")
+    assert shown["goal"]["ladder"]["clashes"][0]["text"] == "You decide each time"
+    assert shown["goal"]["changes"]["clash"]["earlier"] == "🏡 Personal life wins"
+
+    _model(monkeypatch, {"other": None, "line": ""})
+    good = lg.save_draft("u", None, "good", {"goal": "Teach a free class."})
+    assert lg.check_clash(db, "u", good["id"]) == {"clash": None}  # nothing in their words

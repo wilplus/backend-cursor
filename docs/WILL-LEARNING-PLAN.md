@@ -101,7 +101,7 @@ Panel, <https://claude.ai/artifact/HaWehtwfg1jzJvGeGM1c24>. The rules are
 frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M.
 
-Built (M1 to M11), founder only (ring row `life_goals`, ring 6):
+Built (M1 to M12), founder only (ring row `life_goals`, ring 6):
 
 - **The ask:** after a # note's "Noted." (typed, voice, or the held note on
   Yes), `life_goals.after_note` writes the two bubbles, the second with the
@@ -120,9 +120,15 @@ Built (M1 to M11), founder only (ring row `life_goals`, ring 6):
   "Noted. Your … goal is set." to the Lounge. `change_step` keeps the
   earlier words as a dated row in `life_goal_versions`. The talk goal
   changes the profile goal, with its own history.
+- **The clash (M12, N185):** before a new goal is set, `check_clash`
+  (`POST /v2/life-goals/<id>/clash/check`) asks the model whether its
+  give-up pulls against a kept goal, from their words only, once per pair.
+  `answer_clash` (`POST /v2/life-goals/<id>/clash`) keeps the answer on
+  both ladders as `clashes`, shown as WHEN THEY CLASH; a changed answer
+  keeps the earlier one as a dated version (step `clash`).
 - **Will reads** the ladders in the chat (`prompt_lines`, inside the
   notebook block).
-- **Not built yet:** M12 (the clash), M13 (the quarter comes back), M14 (a
+- **Not built yet:** M13 (the quarter comes back), M14 (a
   note that sounds like a change), the ladders in the Life Panel's own
   screens, and this week's focus on the ladder (no source for it yet).
 - Code: `services/life_goals.py`, `routes/v2/life_goals.py`, the store in
