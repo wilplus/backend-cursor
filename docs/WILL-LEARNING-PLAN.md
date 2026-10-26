@@ -27,9 +27,14 @@ short private note before it chats and before the summary after a Take.
   database next to the note, so account deletion removes it with the notes.
 - **Private:** only the person and Will read notes. Never a coach, never the
   Ideal Text. Will reads the newest notes in the chat.
-- **Consent:** before the first note: "Your notes are private. Only you and
-  Will read them. Keep a voice notebook?" **Yes** / **Not now**. After each
-  note: "Noted."
+- **Consent:** before the first note, the notebook says why it exists (N195,
+  not built yet): "The jitters before a talk are often about more than the
+  talk. Underneath is a bigger question: where is my life going?" · "So we
+  made a place for your answer: your goals, in your own words." · "A goal
+  you can recall is a goal you can steer by. Keep yours here, and when the
+  jitters come back before your next talk, we'll show you what you're doing
+  it for." Then: "Your notes are private. Only you and Will read them. Keep
+  a voice notebook?" **Yes** / **Not now**. After each note: "Noted."
 - **Safety:** a note that sounds like a crisis gets the chat's existing
   safety reply at once.
 - **Life Panel:** a `#principle`, `#mistake` (and the Life Panel's other tags)
