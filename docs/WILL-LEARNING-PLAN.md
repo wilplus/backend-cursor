@@ -143,11 +143,11 @@ Built (M1 to M14), founder only (ring row `life_goals`, ring 6):
   The ask ("Change {emoji} this quarter to “…”?", offer
   `life_goals_change`) keeps a `quarter.proposal`; `answer_change` (`POST
   /v2/life-goals/<id>/change`) writes it through `change_step` on Change,
-  or drops it on Not now. Only the quarter step.
+  or drops it on Not now. Only the quarter step (the founder: "this
+  quarter only is fine").
 - **Will reads** the ladders in the chat (`prompt_lines`, inside the
   notebook block).
-- **Not built yet:** a note that changes a step other than the quarter
-  (waits for the founder), the ladders in the Life Panel's own screens, and this week's focus on the ladder (no source for it yet).
+- **Not built yet:** the ladders in the Life Panel's own screens, and this week's focus on the ladder (no source for it yet).
 - Code: `services/life_goals.py`, `routes/v2/life_goals.py`, the store in
   `services/life_store.py`, migration `the_founder_keeps_life_goals`
   (0492), `tests/test_life_goals.py`.
