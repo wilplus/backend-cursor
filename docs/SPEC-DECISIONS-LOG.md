@@ -4872,3 +4872,14 @@ speaker picks.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §2, the messages line. No migration.
+
+**N194 · The ☰ menu's row for Data & consent reads "Settings" (founder, the
+Claude Code chat, 26 October 2026: "in the hamburger change the data &
+consent to 'settings'").**
+1. The ☰ menu's row that opens `/account/data-consent` reads **Settings**.
+It stays orange on light orange while you are on the page (ST1 A).
+2. Only the row changes. The page's title, "Data & consent", and the
+recording screen's line that names it ("You can turn it back on in Data &
+consent.") stay until the founder says otherwise.
+The rules: frontend [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+§1, "Amended 2026-10-26: Settings in the menu".
