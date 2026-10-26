@@ -4852,6 +4852,7 @@ marked edited (`services/take_summary.py` `coach_update_message`; today the
 new version lands at the bottom and the read hides the old one), and the
 coach's word served to the walk says whether it changed since it was first
 shared (`services/coach_take_word.py`). No migration.
+
 **N193 · The voice note is written as it is said (founder, the Claude Code
 chat, 26 October 2026: "approved, build it", to the prototype
 <https://claude.ai/artifact/Wfr7i2RYR7ubYHTRqS6cYe>).** For the voice
