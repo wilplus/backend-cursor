@@ -3759,3 +3759,17 @@ is built from the Takes they have recorded: no voice message and no follow-up
 questions. The rest of the plan (N131 to N146) applies to them as to a new
 speaker. Not built yet; the founder holds the build (26 October: "not yet").
 No migration.
+
+**N148 · Stress and readiness, from 1 to 10 (founder, the Claude Code chat, 26
+October 2026: "When the deadline comes, we can ask them to rate their stress
+from 1 to 10 and how ready they feel from 1 to 10. And after first practice,
+we can also ask them, no, before the practice, we can also ask them how ready
+they are and from 1 to 10").**
+1. Before the first practice, the speaker rates how ready they feel, from 1 to
+10.
+2. When the deadline comes, the speaker rates their stress and how ready they
+feel, each from 1 to 10.
+These are the speaker's own answers, not scores the app gives. How they are
+used and whether they are ever shown back (Never 1), where the questions sit,
+and what follows the deadline's ratings are asked in the same chat and logged
+when answered. Not built yet. No migration.
