@@ -4527,3 +4527,28 @@ The rules and the words: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §1 K and §2 "Tempo". Who sees the step is unchanged: the founder, and whoever
 the rings panel's `tempo_step` row reaches. Docs only. No migration.
+
+**N180 · The app is the proverbial 15 minutes a day, never more (founder, the
+Claude Code chat, 26 October 2026: "This feature should not be addictive";
+"we really don't want you to spending this app more than 15 minutes a day";
+"learn here the base and then go and testing real life and then come for a
+quick recap and practice"; "Their own physical one outside of the app";
+"przysłowiowe 15 min for the training and leave to live your life outside
+the digital world").**
+1. The philosophy: the app teaches the base. The speaker practises it out
+there, away from the phone and any app, and comes back for a short recap
+and practice that keep the base fresh. No feature is built to keep someone
+in the app longer: no streaks, no counts of missed days, nothing that pulls
+them back for its own sake.
+2. Personal details belong in the speaker's own paper notebook, outside the
+app. The app keeps only the base (the goal, its steps, the speaker's
+practice).
+3. "15 minutes" is the proverbial 15 minutes, not a timer the speaker
+watches or a limit that locks anything.
+4. Where the app says it is drawn on the life goals prototype (version 8):
+<https://claude.ai/artifact/HaWehtwfg1jzJvGeGM1c24>.
+   - when the lens first opens;
+   - when a goal is set;
+   - once a day, in the chat, after about 15 minutes in the app, never
+     during a Take, the processing or the Feedback walk.
+   Its words wait for the founder's OK (Never 4). Not built yet.
