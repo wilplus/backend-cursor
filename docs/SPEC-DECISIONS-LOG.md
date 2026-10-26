@@ -4677,3 +4677,21 @@ with "The quarter ended on {date}." in place of "The quarter ends today."
 "Did it move?", "What got in the way?", their own # notes when some match,
 the next quarter's step, the ladder, "Noted.".
 The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M13.
+
+**N187 · A note that sounds like a change to this quarter: Will asks once,
+under the note, with the new words only from the note (founder, the Claude
+Code chat, 26 October 2026: "build the note that sounds like a change next
+show it to me on the clickable prototype").**
+For N172 M14, as the prototype shows it (version 9, scene 5):
+1. After a # note's "Noted.", when the note sounds like a change to one
+goal's quarter step, Will asks once: "Change {emoji} this quarter to
+“…”?" and "Now: …. From your note: “…”", with Not now | Change. The new
+words and the quote are found word for word in the note; when they are
+not, or the note is no change, nothing is asked.
+2. Change: "Noted. {emoji} This quarter is now “…”. “…” stays in its
+history." and the ladder, the step dated and its earlier words kept. Not
+now: "Noted." and nothing changes. The same note is never asked about
+again, and a step never changes by itself.
+3. Only the quarter step, as M14 is written. Other steps wait for the
+founder's word.
+The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M14.
