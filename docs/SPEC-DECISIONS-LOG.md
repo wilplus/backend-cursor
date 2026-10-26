@@ -12,6 +12,11 @@ N78; N122 and the walk's page cite N91) but were never written as entries. N70 a
 twice (N70 and N70.1). N92 comes before N90, and N168 before N166. N127 and N144 both name
 migration 0491; the manifest gives 0491 to N144's WhatsApp number on bookings.
 
+**Known overlaps between entries** (docs audit, 2026-10-26): N130 says the pace practice
+"never grades" and is never red; N142, later, sets the pace scale red in the last 0.08 at each
+end (no number, so Never 1 holds). The rules pages follow N142: the walk's page, §1 T, and
+SPEC.md §17 `pace-scale-v1`.
+
 **From 2026-10-20, the Feedback walk and the chat have one page** (frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), <https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md>), where their rules are
 edited in place. A decision about that flow keeps its N-number here as two lines
