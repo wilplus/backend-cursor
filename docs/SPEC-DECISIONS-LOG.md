@@ -4345,3 +4345,59 @@ Rules and words: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 M. The
 founder's "build the life goals now" on the prototype signs its words
 (Never 4). Not built yet.
+
+**N173 · The plan's words from the three journeys, signed (founder, the
+Claude Code chat, 26 October 2026: "You have my OK on the wording", on the
+words marked as not signed in the prototype
+<https://claude.ai/artifact/D3ytWWsMbpBrmLQYUEV7Zr>).** For N140, N149,
+N151, N157, N161, N167 and N169, signed (Never 4):
+1. A practice day's one thing, by level, after N167's key-line lines:
+"Today, one thing: a short pause between your ideas. You've got this 💪"
+(pauses) · "Today, one thing: say each idea once, without the extras. You've
+got this 💪" (filler words) · "Today, one thing: lean on your numbers. You've
+got this 💪" (a voice that moves) · "Today, one thing: say it like your best
+moment. You've got this 💪" (make it yours).
+2. The ratings' questions: "How stressed do you feel about it right now?" ·
+"How ready do you feel for it right now?"
+3. The calls and the plan: "Booked: {weekday date month}, {time}." ·
+"You're all set. Here's your plan."
+4. The day after the deadline: "Your deadline was {date}." · "How did it go?
+Tell me in a voice message." · "Thank you for telling me." · "Your summary
+call" · "What's next?" · "Keep practising".
+5. The coach's queue, for a level that hasn't moved in three Takes (N134 item
+4): "{name} · {level}" · "Three Takes without moving. Next in the row: your
+video."
+Not in this OK: the pace game's words (the tempo step has its own drafts on
+the walk's page, N166, which the prototype drew simplified) and the deadline
+morning's good-luck line (no words yet, N169 item 7). The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+K. Docs only. No migration.
+
+**N174 · Six answers on the Doorbell Decisions page (founder, the Claude
+Code chat, 26 October 2026: "all your recommended", to the six questions on
+<https://claude.ai/artifact/8XPLcBbA8xmajs6LKJqLt1>).** For N155, N165, N169
+and N171:
+1. The practice-day reminder, when it comes (N155 stands until then): the
+speaker's own calendar first, then WhatsApp for those who want it; no web
+push for speakers. This settles N171's open point and changes N169 item 6.
+The calendar is one the phone subscribes to, so it follows "Change your
+plan" and the deadline's "Edit" and stops when the plan ends (N169 item 4);
+its alarm goes at the reminder's time (9:00 by default, N169 item 5) and its
+link opens the chat at that day's line. The phone rings the alarm, so the
+day's hello is written when the app first opens that day (N169 item 2). The
+calendar offer's words wait for the founder's OK (Never 4).
+2. One message when the coach is done (N171 items 3 and 4) is built now.
+3. The founder's "Homework" email, today one for every spoken Take sent to
+the coach queue, becomes one email a day with the list. The coach queue in
+the app still shows every Take at once.
+4. backend [#1298](https://github.com/wilplus/backend-cursor/pull/1298), the
+N145 that never merged, is closed: N165 replaced it.
+5. The answer to "STOP" on WhatsApp is signed (Never 4): "Done. We've
+stopped the WhatsApp messages and deleted your number."
+6. Signing up with a WhatsApp code, in place of email or Google (talked
+through in another chat, 25 and 26 October), is not built now. First count
+how many people leave at the sign-up screen; the founder decides on those
+numbers.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+G11. No migration in this entry.

@@ -116,6 +116,24 @@ def _question_line(p: dict) -> str:
     return f"- Asked {asked}: they said \"{said}\"." if said else ""
 
 
+_TEMPO_TRY = {"ok": "better", "rush": "still rushed", "slow": "slow"}
+_TEMPO_CLOSE = {"dynamic": "it ended dynamic", "rush": "it ended still rushed",
+                "slow": "it ended slow"}
+
+
+def _tempo_bit(tempo: Any) -> str:
+    """The tempo game of a Take in words (founder 2026-10-26, N166 step 4):
+    the stretch it practised, each try, how it ended. Never a number."""
+    if not isinstance(tempo, dict) or tempo.get("reading") not in ("rushed", "slow"):
+        return ""
+    stretch = f"a tempo game on a stretch they {'rushed' if tempo['reading'] == 'rushed' else 'dragged'}"
+    tries = [_TEMPO_TRY[t] for t in tempo.get("tries") or [] if t in _TEMPO_TRY]
+    if not tries:
+        return f"{stretch}, skipped"
+    ending = _TEMPO_CLOSE.get(str(tempo.get("close") or ""), "")
+    return f"{stretch}: tries {', '.join(tries)}" + (f", {ending}" if ending else "")
+
+
 def _event_line(event: dict) -> str:
     p = event.get("payload") or {}
     if event.get("kind") == "answer" and p.get("question"):
@@ -144,6 +162,9 @@ def _event_line(event: dict) -> str:
         words = [w for w in (p.get("helper_words") or []) if isinstance(w, str)][:2]
         if words:
             bits.append("chose helper words " + ", ".join(f'"{w}"' for w in words))
+        tempo = _tempo_bit(p.get("tempo"))
+        if tempo:
+            bits.append(tempo)
         return f"- A take: {'; '.join(bits)}." if bits else ""
     return ""
 

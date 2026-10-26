@@ -17,6 +17,11 @@ The topic is one small-model call inside the Take's protected provider
 scope (``services.take_summary._under_authority``), kept only when it is a
 short plain phrase (``read_topic``); otherwise the step says "that part".
 Internal only (AC-9): no number leaves the server.
+
+When the game ends, the walk sends it back (build step 4): each try's
+result and the dot's path, and how it ended. ``keep_tries`` keeps it as one
+speaker-memory event (kind "take", its ``tempo`` part), so Will's note
+learns it in words; the paths are kept, never audio.
 """
 from __future__ import annotations
 
@@ -203,3 +208,45 @@ def tempo_for_take(database: Any, *, take: str, user_id: str, arc_id: str) -> Op
         while len(_CACHE) > _CACHE_MAX:
             _CACHE.popitem(last=False)
     return result
+
+
+_TRY_RESULTS = ("ok", "rush", "slow")
+_CLOSES = ("dynamic", "rush", "slow")
+#: At most a minute of path a try, one point every 200 ms.
+_PATH_MAX = 300
+
+
+def read_tries(body: dict) -> Optional[dict]:
+    """The tempo game as the walk sends it, when it is whole: the stretch's
+    reading, up to three tries (each its result and the dot's path, 0..1),
+    and how it ended (none when skipped before a try). Else None. Pure."""
+    if not isinstance(body, dict) or body.get("reading") not in ("rushed", "slow"):
+        return None
+    tries = body.get("tries")
+    if not isinstance(tries, list) or len(tries) > 3:
+        return None
+    results, paths = [], []
+    for t in tries:
+        path = t.get("path") if isinstance(t, dict) else None
+        if (not isinstance(t, dict) or t.get("result") not in _TRY_RESULTS
+                or not isinstance(path, list) or len(path) > _PATH_MAX
+                or not all(isinstance(v, (int, float)) and 0 <= v <= 1 for v in path)):
+            return None
+        results.append(t["result"])
+        paths.append([round(float(v), 3) for v in path])
+    close = body.get("close")
+    if (close is None) != (not results) or (close is not None and close not in _CLOSES):
+        return None
+    return {"reading": body["reading"], "tries": results, "paths": paths, "close": close}
+
+
+def keep_tries(database: Any, *, user_id: str, take: str, body: dict) -> bool:
+    """Keep a Take's tempo game for Will (N166 step 4): one speaker-memory
+    event of kind "take" with its ``tempo`` part, the paths only, never
+    audio. False when the body is not whole."""
+    tempo = read_tries(body)
+    if tempo is None:
+        return False
+    from services import speaker_memory
+    speaker_memory.record(database, user_id, "take", {"tempo": tempo}, take)
+    return True

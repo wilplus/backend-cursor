@@ -8,6 +8,8 @@ CATCHES
   C3  a Take in the green picking a stretch anyway, so the step shows for nothing
   C4  a topic with a number, a quote or a whole sentence reaching the speaker
   C5  a failed topic call losing the step, instead of saying "that part"
+  C6  a played tempo game no longer kept for Will, or kept with a number in his note
+  C7  a broken or partial game kept as if it were whole
 IF REMOVED  the tempo step could practise the wrong stretch, or put a number
          or a made-up sentence on screen (Never 1, Never 4).
 PROVES   C1 -> test_a_clip_spoken_without_a_pause_is_rushed
@@ -15,8 +17,10 @@ PROVES   C1 -> test_a_clip_spoken_without_a_pause_is_rushed
          C3 -> test_a_take_in_the_green_has_no_stretch
          C4 -> test_only_a_short_plain_topic_is_kept
          C5 -> test_a_failed_topic_still_gives_the_step
+         C6 -> test_a_played_game_is_kept_for_will_in_words
+         C7 -> test_a_partial_game_is_not_kept
 """
-from services import tempo_stretch
+from services import speaker_memory, tempo_stretch
 
 
 def _clip(start: float, words: int, word_s: float, gap_s: float, text: str) -> dict:
@@ -90,3 +94,38 @@ def test_a_failed_topic_still_gives_the_step(monkeypatch):
         "said": {"before": "Big day.", "stretch": "And the beds are on sale this week.",
                  "after": "So come and see us."},
     }
+
+
+class _MemoryDb:
+    def __init__(self):
+        self.events = []
+
+    def insert_speaker_memory_event(self, row):
+        self.events.append(row)
+
+
+def test_a_played_game_is_kept_for_will_in_words(monkeypatch):
+    monkeypatch.setattr("services.parallel.start_scoped_thread", lambda *_a, **_k: None)
+    db = _MemoryDb()
+    body = {"reading": "rushed", "close": "dynamic",
+            "tries": [{"result": "rush", "path": [0.5, 0.9]}, {"result": "ok", "path": [0.5, 0.6]}]}
+    assert tempo_stretch.keep_tries(db, user_id="u", take="t1", body=body)
+    event = db.events[-1]
+    assert event["kind"] == "take" and event["take_session_id"] == "t1"
+    assert event["payload"]["tempo"]["paths"] == [[0.5, 0.9], [0.5, 0.6]]
+    line = speaker_memory._event_line(event)
+    assert line == ("- A take: a tempo game on a stretch they rushed: tries still rushed, "
+                    "better, it ended dynamic.")
+    assert not any(ch.isdigit() for ch in line)
+
+
+def test_a_partial_game_is_not_kept():
+    db = _MemoryDb()
+    for body in ({"reading": "fast", "tries": [], "close": None},
+                 {"reading": "rushed", "tries": [{"result": "ok", "path": [2]}], "close": "dynamic"},
+                 {"reading": "rushed", "tries": [{"result": "ok", "path": []}], "close": None},
+                 {"reading": "rushed", "tries": [{"result": "ok", "path": []}] * 4, "close": "dynamic"}):
+        assert not tempo_stretch.keep_tries(db, user_id="u", take="t1", body=body)
+    assert db.events == []
+    # Skipped before a try: kept as skipped.
+    assert tempo_stretch.read_tries({"reading": "slow", "tries": [], "close": None})["tries"] == []
