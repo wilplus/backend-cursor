@@ -4811,6 +4811,6 @@ not, or the note is no change, nothing is asked.
 history." and the ladder, the step dated and its earlier words kept. Not
 now: "Noted." and nothing changes. The same note is never asked about
 again, and a step never changes by itself.
-3. Only the quarter step, as M14 is written. Other steps wait for the
-founder's word.
+3. Only the quarter step, as M14 is written: asked, the founder answered
+"this quarter only is fine".
 The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M14.
