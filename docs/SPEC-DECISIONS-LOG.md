@@ -4318,3 +4318,30 @@ practice-day reminder (N153 item 4); the reply webhook's secrets are set on
 Railway before it merges. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 E1. Not built yet. No migration in this entry.
+
+**N173 · The plan's words from the three journeys, signed (founder, the
+Claude Code chat, 26 October 2026: "You have my OK on the wording", on the
+words marked as not signed in the prototype
+<https://claude.ai/artifact/D3ytWWsMbpBrmLQYUEV7Zr>).** For N140, N149,
+N151, N157, N161, N167 and N169, signed (Never 4):
+1. A practice day's one thing, by level, after N167's key-line lines:
+"Today, one thing: a short pause between your ideas. You've got this 💪"
+(pauses) · "Today, one thing: say each idea once, without the extras. You've
+got this 💪" (filler words) · "Today, one thing: lean on your numbers. You've
+got this 💪" (a voice that moves) · "Today, one thing: say it like your best
+moment. You've got this 💪" (make it yours).
+2. The ratings' questions: "How stressed do you feel about it right now?" ·
+"How ready do you feel for it right now?"
+3. The calls and the plan: "Booked: {weekday date month}, {time}." ·
+"You're all set. Here's your plan."
+4. The day after the deadline: "Your deadline was {date}." · "How did it go?
+Tell me in a voice message." · "Thank you for telling me." · "Your summary
+call" · "What's next?" · "Keep practising".
+5. The coach's queue, for a level that hasn't moved in three Takes (N134 item
+4): "{name} · {level}" · "Three Takes without moving. Next in the row: your
+video."
+Not in this OK: the pace game's words (the tempo step has its own drafts on
+the walk's page, N166, which the prototype drew simplified) and the deadline
+morning's good-luck line (no words yet, N169 item 7). The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+K. Docs only. No migration.
