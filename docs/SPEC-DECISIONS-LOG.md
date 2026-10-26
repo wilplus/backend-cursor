@@ -5103,7 +5103,12 @@ ask N198 item 5 named is dropped, with its prototype
 <https://claude.ai/artifact/C3dnYam7DDicPWz142EGCd>.
 3. With nothing to ask for, everything in tokens (N198) never charges for the
 coach's answer to a Take: it charges for practice and for calls.
-Not decided here: whether the price the review carries today (35,000 tokens,
-before N198 is switched on) stops now, and whether the packages' words, which
-name "a written review" and "two written reviews", change.
+4. The price the review carries today stops now, before N198 is switched on:
+a Take that reaches the coach is no longer charged its 35,000 tokens (asked
+whether it should stop now, "Yes, for the first one, yes").
+5. The packages' words stay as the accepted prototype shows them, "a written
+review" and "two written reviews" included; anything that does not match the
+prototype waits ("I accepted the design you suggested and build it like
+this. Anything that does not align with the prototype that you showed to me
+should be deferred.").
 No rules page. No migration in this entry.
