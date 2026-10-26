@@ -1,18 +1,20 @@
 """
-STORY    As someone booking a session, I want to leave my WhatsApp number and
-         get the join link there 10 minutes before, so that I don't miss it.
+STORY    As someone booking a session, I want the join link on WhatsApp 10
+         minutes before, at the number my account holds, so that I don't
+         miss it.
 OUTCOME
-  O1  A number left on the booking form is kept with the booking. A number
-      without its country code is refused with words that say so.
-  O2  The reminder goes once, about 10 minutes before, with the Meet link; a
+  O1  The reminder goes once, about 10 minutes before, with the Meet link; a
       second run sends nothing, and a booking further away or without a
       number gets nothing.
+  O2  A booking that carries no number reminds the number saved on the
+      account, once the switch is on; with it off, nothing goes there.
   O3  The reminders' door is shut without its secret.
-PROVES   O1 -> test_a_number_on_the_booking_is_kept_for_the_reminder
-         O2 -> test_the_reminder_goes_once_10_minutes_before
+PROVES   O1 -> test_the_reminder_goes_once_10_minutes_before
+         O2 -> test_the_reminder_goes_to_the_accounts_number
          O3 -> test_the_reminders_door_needs_its_secret
 WHY      Founder 2026-10-25, N144; 10 minutes before, N165; the WhatsApp
-         confirmation gone, N189; the words, N200.
+         confirmation gone, N189; the words, N200; the account's number and
+         no number on the booking form, N207.
 """
 from __future__ import annotations
 
@@ -62,27 +64,19 @@ def _params(body: dict) -> list[str]:
     return [p["text"] for p in body["template"]["components"][0]["parameters"]]
 
 
-def test_a_number_on_the_booking_is_kept_for_the_reminder(sent):
-    start = (datetime.now(timezone.utc) + timedelta(days=2)).replace(hour=12, minute=0, second=0, microsecond=0)
-    checkout = dict(slug="artur", user_id="u1", start_iso=start.isoformat(), name="Ann",
-                    email="a@x.co", guest_timezone="UTC", link=booking.make_price_link(0))
-    with patch.object(booking, "db", MagicMock()) as db, patch.object(booking, "_confirm"):
-        booking.start_checkout(**checkout, whatsapp="+48 600 100 200")
-        with pytest.raises(booking.BookingError) as refused:
-            booking.start_checkout(**checkout, whatsapp="600 100 200")
-    kept = [c.args[0].get("guest_whatsapp") for c in db.client.table.return_value.update.call_args_list]
-    assert "+48600100200" in kept
-    assert refused.value.code == "WHATSAPP_INVALID" and "country code" in str(refused.value)
-
-
 class _Bookings:
-    """The bookings table, as far as the reminders read and write it."""
+    """The bookings table and the accounts' numbers (user_settings), as far
+    as the reminders read and write them."""
 
-    def __init__(self, rows):
+    def __init__(self, rows, settings=()):
+        self.tables = {"bookings": rows, "user_settings": list(settings)}
         self.rows, self._filters, self._values = rows, [], None
 
-    def table(self, _name):
-        self._filters, self._values = [], None
+    def table(self, name):
+        self.rows, self._filters, self._values = self.tables[name], [], None
+        return self
+
+    def limit(self, _n):
         return self
 
     @property
@@ -135,6 +129,22 @@ def test_the_reminder_goes_once_10_minutes_before(sent):
         assert booking.send_whatsapp_reminders(now + timedelta(minutes=5)) == {"due": 0, "sent": 0}
     assert len(sent) == 1 and sent[0]["template"]["name"] == "booking_reminder"
     assert _params(sent[0]) == [MEET]
+
+
+def test_the_reminder_goes_to_the_accounts_number(sent):
+    now = datetime(2030, 1, 7, 5, 2, tzinfo=timezone.utc)
+    rows = [{"id": id_, "user_id": user, "status": "confirmed", "guest_whatsapp": None,
+             "meet_url": MEET, "whatsapp_reminder_sent_at": None,
+             "start_at": (now + timedelta(minutes=8)).isoformat()}
+            for id_, user in (("with-number", "u1"), ("no-number", "u2"))]
+    table = _Bookings(rows, settings=[{"user_id": "u1", "whatsapp_phone": "+48600100200"},
+                                      {"user_id": "u2", "whatsapp_phone": None}])
+    with patch.object(booking, "db", table):
+        with patch.object(booking.config, "BOOKING_WHATSAPP_TO_ACCOUNT", False, create=True):
+            assert booking.send_whatsapp_reminders(now) == {"due": 0, "sent": 0}
+        with patch.object(booking.config, "BOOKING_WHATSAPP_TO_ACCOUNT", True, create=True):
+            assert booking.send_whatsapp_reminders(now) == {"due": 1, "sent": 1}
+    assert [m["to"] for m in sent] == ["48600100200"]
 
 
 def test_the_reminders_door_needs_its_secret(monkeypatch):

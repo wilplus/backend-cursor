@@ -494,7 +494,7 @@ EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email: str,
                    guest_timezone: str, note: str = "", embedded: bool = False,
-                   skip_payment: bool = False, link: str = "", whatsapp: str = "",
+                   skip_payment: bool = False, link: str = "",
                    pay_with_tokens: bool = False) -> dict:
     """Hold the slot and open Stripe Checkout for a signed-in account, at that
     person's price (charged as an amount, not a Stripe product). Returns
@@ -517,7 +517,6 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
         raise BookingError("NAME_REQUIRED", "Add your name.")
     if not EMAIL_RE.match(email):
         raise BookingError("EMAIL_INVALID", "Check the email address.")
-    phone = _whatsapp_number(whatsapp)
     try:
         ZoneInfo(guest_timezone)
     except (ZoneInfoNotFoundError, ValueError):
@@ -545,7 +544,6 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     db.client.table("bookings").update({
         "user_id": user_id, "list_price_cents": int(offer["list_price_cents"]),
         "due_cents": int(offer["price_cents"]) if skip_payment else None,
-        **({"guest_whatsapp": phone} if phone else {}),
     }).eq("id", booking_id).execute()
     base = (config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
 
@@ -683,17 +681,6 @@ def _pay_with_tokens(booking_id: str, user_id: str, price_cents: int, cost: int)
     if result.reason == "insufficient":
         raise BookingError("NOT_ENOUGH_TOKENS", "Not enough tokens.", 402)
     raise BookingError("PAYMENT_ERROR", "Payment could not start. Try again.", 502)
-
-
-def _whatsapp_number(raw: str) -> Optional[str]:
-    """The WhatsApp number left on the booking form in E.164, or None when
-    the guest left none (it is optional)."""
-    if not (raw or "").strip():
-        return None
-    try:
-        return whatsapp_notify.normalize_phone(raw)
-    except whatsapp_notify.WhatsAppRefusal as refusal:
-        raise BookingError("WHATSAPP_INVALID", refusal.message)
 
 
 def _release(booking_id: str) -> None:
@@ -964,8 +951,10 @@ def send_confirmation_emails(row: dict, *, paid_tokens: int = 0) -> None:
 
 # ----------------------------------------------------------------- WhatsApp
 
-# A booking with a WhatsApp number (left on the booking form) gets one
-# WhatsApp: the join link 10 minutes before (founder 2026-10-26, N165, N189).
+# A booking with a WhatsApp number gets one WhatsApp: the join link 10
+# minutes before (founder 2026-10-26, N165, N189). The booking form asks for
+# no number (N207): the reminder goes to the number saved on the account, and
+# a booking made before keeps the number it carries.
 # The booking is confirmed by the email with the calendar invite only; the
 # WhatsApp "You're booked" went (N189 item 3). The reminder's words (N200):
 # Meta's template carries them with the Meet link as {{1}}; this is the
@@ -973,9 +962,21 @@ def send_confirmation_emails(row: dict, *, paid_tokens: int = 0) -> None:
 WHATSAPP_REMINDER = "Your coaching session starts in 10 minutes. Join here: {meet} See you there."
 
 
+def _reminder_number(row: dict) -> Optional[str]:
+    """Where a booking's reminder goes: the number the booking carries (made
+    before N207), else the number saved on the account, once the privacy
+    version names the reminder (BOOKING_WHATSAPP_TO_ACCOUNT); else None."""
+    if row.get("guest_whatsapp"):
+        return str(row["guest_whatsapp"])
+    if not (config.BOOKING_WHATSAPP_TO_ACCOUNT and row.get("user_id")):
+        return None
+    return whatsapp_notify.whatsapp_state(db, str(row["user_id"])).get("phone")
+
+
 def send_whatsapp_reminders(now: Optional[datetime] = None) -> dict:
     """The reminder 10 minutes before, on WhatsApp, with the join link, for
-    every confirmed booking with a number (the cron, every 5 minutes). Each
+    every confirmed booking with a number (``_reminder_number``; the cron,
+    every 5 minutes). Each
     booking is claimed before its message goes, so a cron that fires twice
     sends it once; a message Meta refuses is given back for the next run to
     try."""
@@ -983,13 +984,14 @@ def send_whatsapp_reminders(now: Optional[datetime] = None) -> dict:
     if not config.WHATSAPP_NOTIFICATIONS:
         return out
     now = now or datetime.now(timezone.utc)
-    rows = (db.client.table("bookings").select("id,start_at,guest_whatsapp,meet_url")
+    rows = (db.client.table("bookings").select("id,user_id,start_at,guest_whatsapp,meet_url")
             .eq("status", "confirmed").is_("whatsapp_reminder_sent_at", "null")
             .gt("start_at", (now + REMINDER_BEFORE - REMINDER_WINDOW).isoformat())
             .lte("start_at", (now + REMINDER_BEFORE).isoformat())
             .execute().data) or []
     for row in rows:
-        if not row.get("guest_whatsapp"):
+        to = _reminder_number(row)
+        if not to:
             continue
         out["due"] += 1
         claimed = (db.client.table("bookings").update({"whatsapp_reminder_sent_at": now.isoformat()})
@@ -998,7 +1000,7 @@ def send_whatsapp_reminders(now: Optional[datetime] = None) -> dict:
             continue
         try:
             if whatsapp_notify.send_template(
-                    str(row["guest_whatsapp"]), config=config,
+                    to, config=config,
                     template=config.WHATSAPP_BOOKING_REMINDER_TEMPLATE, params=[row["meet_url"]],
                     text=WHATSAPP_REMINDER.format(meet=row["meet_url"])):
                 out["sent"] += 1
