@@ -4719,10 +4719,10 @@ the review. The speaker is never blocked, and the Take still reaches the
 coach.
 4. The AI voice: at most 3 new clips a day and 20 a month for each speaker
 (it was 10 a day, with no monthly limit). Over a limit the walk shows the
-video or nothing, and the Take is never held (Never 3). The month's stop
-follows the ElevenLabs plan's own credit limit as ElevenLabs reports it, and
-no new voice is made while the plan's voice slots are full. The plan is
-Starter, with 1 of its 10 voice slots in use on 26 October.
+video or nothing, and the Take is never held (Never 3). No new voice is made
+while the plan's voice slots are full, counted from the voices the app has
+made: Starter has 10, with 1 in use on 26 October. The month's credit stop
+stays as it is.
 5. An AI voice clip has no token price of its own: the Take's price covers
 it (over the last 30 days a Take cost about $0.007 in OpenAI and a clip about
 $0.014, against 1,000 tokens, $0.064 to $0.08).
