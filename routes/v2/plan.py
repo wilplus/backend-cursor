@@ -11,6 +11,7 @@ services/plan_flow.py; its rules: services/plan.py.
   POST /v2/plan/ask-coach        {}
   POST /v2/plan/next             {choice: keep_practising | new_event, tz}
   POST /v2/plan/new-event        {tz}
+  POST /v2/plan/same-event       {yes: bool, tz}  ("Is this for {date}?", H2)
   GET  /v2/plan/answers/<id>/audio
 
 Every write answers ``{plan, messages}``: the plan as it now stands and the
@@ -174,6 +175,15 @@ def v2_plan_next():
     body = request.get_json(silent=True) or {}
     return _run(lambda uid: next_plan(db, uid, str(body.get("choice") or ""), tz=body.get("tz"),
                                       first_name=_first_name()))
+
+
+@v2_bp.route("/plan/same-event", methods=["POST"])
+@require_auth
+def v2_plan_same_event():
+    from services.plan_flow import same_event
+    body = request.get_json(silent=True) or {}
+    return _run(lambda uid: same_event(db, uid, body.get("yes"), tz=body.get("tz"),
+                                       first_name=_first_name()))
 
 
 @v2_bp.route("/plan/new-event", methods=["POST"])

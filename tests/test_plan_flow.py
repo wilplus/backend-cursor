@@ -18,12 +18,16 @@ OUTCOME
   O6  On a practice day after the first Take, the first open writes the
       hello and today's one thing, once; after a Take on a practice day the
       15 minutes lines come, once.
+  O7  A new project's first Take asks "Is this for {date}?"; Yes keeps the
+      plan, No starts "When is your deadline?" for a new one, the old plan
+      kept in the history.
 PROVES   O1 -> test_without_the_ring_nothing_happens
          O2 -> test_a_new_speaker_is_asked_once
          O3 -> test_no_date_gives_two_months_then_the_voice_message
          O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
          O5 -> test_ratings_are_kept_quietly_and_the_calls_lead_to_the_plan
          O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
+         O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
 WHY      The plan, built one to one with the prototype (founder 2026-10-26,
          N203, N204); the rules are frontend docs/flows/the-plan.md §1.
 """
@@ -232,3 +236,29 @@ def test_a_practice_day_hello_and_the_fifteen_minutes(db, monkeypatch):
     assert one["body"].startswith("Today, one thing: ")
     assert one["metadata"]["arc_id"] == "arc-1" and one["metadata"]["take_index"] == 1
     assert not F.state(db, USER, tz="UTC", first_name="Artur")["wrote"]
+
+
+def _active(db):
+    _to_ratings(db)
+    F.answer_rating(db, USER, 7)
+    F.answer_rating(db, USER, 4)
+    F.book_call(db, USER, "kickoff", None)
+    F.book_call(db, USER, "summary", None)
+    return db.get_open_plan(USER)
+
+
+def test_a_new_project_asks_whether_it_is_for_the_same_event(db, monkeypatch):
+    plan = _active(db)
+    started = datetime.fromisoformat(plan["started_at"])
+    monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: False)
+    db.takes.rows = [{"created_at": (started + timedelta(minutes=5)).isoformat(), "arc_id": "arc-1", "take_index": 1}]
+    F.after_take(db, USER)
+    assert "Is this for" not in " ".join(bodies(db))
+    db.takes.rows.append({"created_at": (started + timedelta(days=2)).isoformat(), "arc_id": "arc-2", "take_index": 1})
+    F.after_take(db, USER)
+    deadline = F.P.fmt_day(date.fromisoformat(plan["deadline"]))
+    assert bodies(db)[-1] == f"Is this for {deadline}?"
+    out = F.same_event(db, USER, False, tz="UTC", first_name="Artur")
+    assert bodies(db)[-2:] == ["No", "When is your deadline?"]
+    assert out["plan"]["status"] == "asking"
+    assert [p["status"] for p in db.plans] == ["replaced", "asking"]
