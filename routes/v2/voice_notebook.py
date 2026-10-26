@@ -7,8 +7,8 @@
   POST /v2/notebook/notes    multipart: audio (≤ 5 min), duration_ms, key
   POST /v2/notebook/live     multipart: audio, a few seconds → {text} (N194)
   POST /v2/notebook/fix      {client_id, text}: a voice note's words fixed
-  POST /v2/notebook/sunday/<id>/pattern    {choice: old | new}
-  POST /v2/notebook/sunday/<id>/principle  {choice: add | not_now}
+  GET  /v2/notebook/sunday/<id>           the Sunday note's lens as it stands
+  POST /v2/notebook/sunday/<id>/answer    {step, value}: one tap of the lens
 
 GET state takes ?tz=<IANA zone> (the browser's): kept for whoever said Yes,
 so the Sunday note (services/sunday_note.py) comes at 6 pm their time.
@@ -169,35 +169,36 @@ def v2_notebook_fix():
         return jsonify({"code": "V2_ERROR", "error": "Failed to keep the words"}), 500
 
 
-def _sunday(answer, note_id):
+def _sunday(work):
     from services.sunday_note import SundayError
     from services.voice_notebook import enabled
     user_id = str(request.user_id)
     if not enabled(db, user_id):
         return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
-    body = request.get_json(silent=True) or {}
     try:
-        return jsonify({"messages": answer(db, user_id, str(note_id),
-                                           str(body.get("choice") or ""))}), 200
+        return jsonify(work(user_id)), 200
     except SundayError as e:
         return _error(e)
     except Exception as e:
-        logger.error("sunday note answer failed: %s", e, exc_info=True)
+        logger.error("sunday note failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to save the answer"}), 500
 
 
-@v2_bp.route("/notebook/sunday/<note_id>/pattern", methods=["POST"])
+@v2_bp.route("/notebook/sunday/<note_id>", methods=["GET"])
 @require_auth
-def v2_sunday_note_pattern(note_id):
-    """Old or New for the week's bug (Will learning plan, step 2)."""
-    from services.sunday_note import mark
-    return _sunday(mark, note_id)
+def v2_sunday_note_state(note_id):
+    """The Sunday note's lens as it stands (N158 L3 to L8)."""
+    from services.sunday_note import state
+    return _sunday(lambda user_id: state(db, user_id, str(note_id)))
 
 
-@v2_bp.route("/notebook/sunday/<note_id>/principle", methods=["POST"])
+@v2_bp.route("/notebook/sunday/<note_id>/answer", methods=["POST"])
 @require_auth
-def v2_sunday_note_principle(note_id):
-    """Add principle (to the Life Panel's active principles) or Not now."""
-    from services.sunday_note import principle
-    return _sunday(principle, note_id)
+def v2_sunday_note_answer(note_id):
+    """One tap of the lens, or Not now under the case: kept as rows of the
+    one thread; answers with the lens as it stands."""
+    from services.sunday_note import answer
+    body = request.get_json(silent=True) or {}
+    return _sunday(lambda user_id: answer(db, user_id, str(note_id),
+                                          str(body.get("step") or ""), body.get("value")))
