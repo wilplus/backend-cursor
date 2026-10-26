@@ -11479,6 +11479,29 @@ class DatabaseService:
             logger.warning("get_lounge_message_by_client_id failed: %s", e)
             return None
 
+    def first_coach_update_bubble(
+        self, user_id: str, take_session_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """The Take's first "Later · from your coach" bubble (the walk step
+        ``coachnote`` with ``coach_update``), or None when it has none. A
+        changed word is written at its place (N192). Raises on a failed read:
+        read as "none", a changed word would land at the bottom again."""
+        if not user_id or not take_session_id:
+            return None
+        res = (
+            self.client.table("lounge_messages")
+            .select("client_id,metadata,client_created_at")
+            .eq("user_id", user_id)
+            .eq("kind", "walk_step")
+            .eq("metadata->>step", "coachnote")
+            .eq("metadata->>coach_update", "true")
+            .eq("metadata->>take_session_id", str(take_session_id))
+            .order("client_created_at", desc=False)
+            .limit(1)
+            .execute()
+        )
+        return (res.data or [None])[0]
+
     def rewrite_lounge_message(
         self, user_id: str, client_id: str, body: str, metadata: dict,
         at: Optional[str] = None,
