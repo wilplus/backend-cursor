@@ -236,6 +236,11 @@
       "module": "pending",
       "sha256": "1b868da9903f8ad8fa0bd89cf237166b7929803b2c5fdecf8429db13aedd28e0"
     },
+    "life_goals.quarter_notes": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "0bdb8f2f2a15c06f5de9fe9a63e5bc650c80a76aa778f788802e212bf1856014"
+    },
     "life_goals.redraft": {
       "kind": "source_ref",
       "module": "pending",

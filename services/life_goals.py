@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,16 @@ COPY = {
     "each_time": "I decide each time",
     "wins": "{who} wins",
     "each_time_kept": "You decide each time",
+    # M13, N186: the quarter comes back.
+    "ends_today": "The quarter ends today.",
+    "ended_on": "The quarter ended on {date}.",
+    "did_it_move": "{emoji} {step}. Did it move?",
 }
+QUARTER_OFFER = "life_goals_quarter"
+#: Did it move (M13): never a score.
+OUTCOMES = ("got_there", "moved", "stalled")
+_MONTHS = ("January", "February", "March", "April", "May", "June", "July",
+           "August", "September", "October", "November", "December")
 #: The three spaces: emoji, name, and how the first question names it.
 SPACES = {
     "personal": ("🏡", "Personal life", "in your personal life"),
@@ -476,6 +486,163 @@ def answer_clash(database: Any, user_id: str, goal_id: str, other_id: Any,
     fresh = life_store.get_goal(str(user_id), goal_id) or goal
     return {"text": text, "goal": serialize(user_id, fresh,
                                             talk=_talk_goal(database, user_id))}
+
+
+# ── The quarter comes back (M13, N186) ───────────────────────────────────
+
+def _day_label(day: date) -> str:
+    return f"{day.day} {_MONTHS[day.month - 1]}"
+
+
+def _quarter_on(goal: dict) -> Optional[date]:
+    """The quarter step's last day: kept as ``on`` once a review set it;
+    before that, its "31 December" read as the first such day on or after
+    the day the goal was made."""
+    quarter = (goal.get("ladder") or {}).get("quarter") or {}
+    if not quarter.get("text"):
+        return None
+    try:
+        if quarter.get("on"):
+            return date.fromisoformat(str(quarter["on"])[:10])
+        day, month = str(quarter.get("by") or "").split(" ", 1)
+        since = date.fromisoformat(str(goal.get("created_at") or "")[:10])
+        found = date(since.year, _MONTHS.index(month.strip()) + 1, int(day))
+        return found if found >= since else found.replace(year=since.year + 1)
+    except (ValueError, TypeError):
+        return None
+
+
+def _next_quarter_end(after: date) -> date:
+    """The last day of the quarter after the one ending ``after``."""
+    month = ((after.month - 1) // 3) * 3 + 6  # the next quarter's last month
+    year, month = (after.year + 1, month - 12) if month > 12 else (after.year, month)
+    first = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    return first - timedelta(days=1)
+
+
+def quarter_due(database: Any, user_id: str, today: Optional[date] = None) -> list[dict]:
+    """The first time the Lounge opens on a quarter's last day, or later (N186):
+    "The quarter ends today." (or "ended on …") and "{emoji} {step}. Did it
+    move?" with Not now | Start. Once per goal and quarter."""
+    from services import life_store
+    from services.lounge_messages import stamp_after, thread_stamp
+    if not enabled(database, user_id):
+        return []
+    today = today or datetime.now(timezone.utc).date()
+    rows: list[dict] = []
+    at = thread_stamp(database, user_id)
+    for goal in life_store.list_goals(str(user_id)):
+        on = _quarter_on(goal)
+        ladder = dict(goal.get("ladder") or {})
+        quarter = dict(ladder.get("quarter") or {})
+        if not on or on > today or quarter.get("asked") == on.isoformat():
+            continue
+        quarter["asked"] = on.isoformat()
+        if not life_store.update_goal(str(user_id), str(goal["id"]),
+                                      {"ladder": {**ladder, "quarter": quarter}}):
+            continue
+        first = (COPY["ends_today"] if on == today
+                 else COPY["ended_on"].format(date=_day_label(on)))
+        meta = {"life_goal_quarter": str(goal["id"]), "on": on.isoformat()}
+        key = f"{user_id}:quarter:{goal['id']}:{on.isoformat()}"
+        at = stamp_after(at)
+        rows.append(_row(key + ":1", "bot", first, meta, at))
+        at = stamp_after(at)
+        rows.append(_row(key + ":2", "bot", COPY["did_it_move"].format(
+            emoji=SPACES[goal["space"]][0], step=quarter["text"].rstrip(".")),
+            {**meta, "offer": QUARTER_OFFER}, at))
+    return (database.insert_lounge_messages(str(user_id), rows) or []) if rows else []
+
+
+def answer_quarter(database: Any, user_id: str, goal_id: str, choice: str) -> list[dict]:
+    """Start or Not now under the quarter's ask: the tap in the thread, and
+    "Noted." after Not now. Start opens the lens (the frontend's)."""
+    from services import life_store
+    from services.lounge_messages import stamp_after, thread_stamp
+    if choice not in CHOICES:
+        raise GoalsError("INVALID_CHOICE", "Unknown answer.")
+    goal = life_store.get_goal(str(user_id), goal_id) if enabled(database, user_id) else None
+    if not goal or goal["status"] != "active":
+        raise GoalsError("NOT_FOUND", "Not found.", 404)
+    on = ((goal.get("ladder") or {}).get("quarter") or {}).get("asked") or ""
+    at = thread_stamp(database, user_id)
+    key = f"{user_id}:quarter:{goal_id}:{on}:{choice}"
+    rows = [_row(key, "user", COPY[choice], {"life_goals_quarter": choice}, at)]
+    if choice == "not_now":
+        rows.append(_row(key + ":noted", "bot", COPY["noted"], {}, stamp_after(at)))
+    return database.insert_lounge_messages(str(user_id), rows) or []
+
+
+_NOTES_SYSTEM = """One person says what got in the way of a goal this quarter. You get
+their own short notes from the quarter, numbered. Pick the notes that say the
+same thing in their own words (the same obstacle, not just the same topic).
+Most of the time none match; then return an empty list. Never more than 3.
+
+Return JSON: {"notes": [<numbers>]}."""
+
+
+def quarter_notes(database: Any, user_id: str, goal_id: str, in_the_way: Any) -> dict:
+    """Their own # notes from the quarter that say what got in the way too
+    (M13): ``{"notes": [{"text", "on"}]}``, most often none."""
+    from services import life_store
+    words = _clip(in_the_way)
+    goal = life_store.get_goal(str(user_id), goal_id) if enabled(database, user_id) else None
+    if not goal or goal["status"] != "active":
+        raise GoalsError("NOT_FOUND", "Not found.", 404)
+    on = _quarter_on(goal)
+    if not words or not on:
+        return {"notes": []}
+    start = (on - timedelta(days=92)).isoformat()
+    notes = [n for n in database.list_voice_notes(str(user_id), limit=100)
+             if str(n.get("created_at") or "")[:10] > start and _clip(n.get("text_clean"))]
+    if not notes:
+        return {"notes": []}
+    user = f"WHAT GOT IN THE WAY: {words}\nNOTES:\n" + "\n".join(
+        f"{i + 1}. {(_clip(n['text_clean']) or '')[:400]}" for i, n in enumerate(notes))
+    try:
+        picked = _model(_NOTES_SYSTEM, user, user_id).get("notes") or []
+    except Exception as error:  # noqa: BLE001 -- the lens goes on without them
+        logger.warning("life goals: quarter notes not read user=%s: %s", user_id, error,
+                       exc_info=True)
+        return {"notes": []}
+    found = [notes[i - 1] for i in dict.fromkeys(picked)
+             if isinstance(i, int) and 1 <= i <= len(notes)][:3]
+    return {"notes": [{"text": _clip(n["text_clean"]),
+                       "on": _day_label(date.fromisoformat(str(n["created_at"])[:10]))}
+                      for n in found]}
+
+
+def review_quarter(database: Any, user_id: str, goal_id: str, outcome: Any,
+                   in_the_way: Any = None, next_text: Any = None) -> dict:
+    """Did it move, what got in the way, and the next quarter's step (M13):
+    the review kept on the ladder, the step changed with its earlier words
+    kept. Never a score."""
+    from services import life_store
+    if outcome not in OUTCOMES:
+        raise GoalsError("INVALID_CHOICE", "Unknown answer.")
+    goal = life_store.get_goal(str(user_id), goal_id) if enabled(database, user_id) else None
+    on = _quarter_on(goal) if goal and goal["status"] == "active" else None
+    if not goal or not on:
+        raise GoalsError("NOT_FOUND", "Not found.", 404)
+    ladder = dict(goal.get("ladder") or {})
+    quarter = dict(ladder.get("quarter") or {})
+    nxt = _next_quarter_end(on)
+    review = {"on": on.isoformat(), "outcome": outcome, "step": quarter.get("text"),
+              "in_the_way": _clip(in_the_way), "next": _clip(next_text),
+              "at": datetime.now(timezone.utc).date().isoformat()}
+    ladder["reviews"] = [r for r in ladder.get("reviews") or []
+                         if r.get("on") != on.isoformat()][-11:] + [review]
+    words = _clip(next_text)
+    if words:
+        ladder["quarter"] = {"text": words, "by": _day_label(nxt), "next": False,
+                             "on": nxt.isoformat()}
+    saved = life_store.update_goal(str(user_id), goal_id, {"ladder": ladder})
+    if not saved:
+        raise GoalsError("V2_ERROR", "Failed to keep the review", 500)
+    if words and words != quarter.get("text"):
+        life_store.insert_goal_version(str(user_id), goal_id, step="quarter",
+                                       before=quarter.get("text"), after=words)
+    return serialize(user_id, saved, talk=_talk_goal(database, user_id))
 
 
 # ── Will's drafts, only from their words (M5, M6) ────────────────────────
