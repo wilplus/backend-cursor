@@ -65,6 +65,14 @@ def word_changed_at(words: Iterable[Any]) -> Optional[datetime]:
     return max((s for s in stamps if s is not None), default=None)
 
 
+def word_edited(changed_at: Any, shared_at: Any) -> bool:
+    """The coach changed the word after first sharing it: the first share
+    stamps shared_at with the save's own time, so any later save is later
+    (N192, "Edited" in the walk). False when either time is missing. Pure."""
+    changed, shared = _moment(changed_at), _moment(shared_at)
+    return changed is not None and shared is not None and changed > shared
+
+
 def newer_than_seen(changed_at: Any, seen_at: Any) -> bool:
     """The word changed after the speaker last watched it, or they never
     watched it. A word with no change time is never new. Pure."""

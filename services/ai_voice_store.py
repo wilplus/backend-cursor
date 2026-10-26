@@ -164,6 +164,20 @@ def clones_created_since(database: Any, since: datetime) -> int:
         raise
 
 
+#: Clone states that hold one of the plan's voice slots at ElevenLabs.
+_HOLDS_A_SLOT = ("creating", "ready", "deleting")
+
+
+def voices_in_use(database: Any) -> int:
+    """How many speakers' voices hold a slot on the plan (for the limits)."""
+    try:
+        res = database.client.table(CLONES).select("owner_user_id,status").execute()
+        return sum(1 for row in _rows(res) if row.get("status") in _HOLDS_A_SLOT)
+    except Exception as error:  # noqa: BLE001
+        _log.warning("ai voice: slot count failed: %s", type(error).__name__, exc_info=True)
+        raise
+
+
 def start_of_day() -> datetime:
     now = datetime.now(timezone.utc)
     return now.replace(hour=0, minute=0, second=0, microsecond=0)
