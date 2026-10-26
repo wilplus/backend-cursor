@@ -56,7 +56,8 @@ jobs:
   # target Supabase — auth.users, storage.*, service_role — so it would be
   # red for environmental reasons forever.)
   checks:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, which has no Python 3.12.1.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
 
     steps:
@@ -203,7 +204,7 @@ jobs:
   #
   # To activate: add OPENAI_API_KEY under Settings → Secrets → Actions.
   evals:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       # Shallow, like before: the prompt evals fetch just the base ref they
