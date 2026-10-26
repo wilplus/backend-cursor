@@ -1270,7 +1270,10 @@ O6 -> test_a_seed_with_open_feedback_locks
 O7 -> test_changed_words_are_edited_and_only_those,
 test_no_generated_text_means_no_flag_at_all","Founder field report #5: ""my locked chunk came back unlocked""."
 tests/test_ideal_text_publication_rests_after_repeated_failures.py,Story,"As a developer on call, I want an Ideal Text whose publication keeps failing to stop being retried every minute, so that the logs and the job queue stay usable.","O1  After three failed publications the sweep leaves that version alone for
-the failure window instead of queueing it again.",O1 -> test_three_failed_deliveries_put_the_generation_to_rest,Production 2026-10-03: two documents failed LINEAGE_REQUIRED every minute.
+the failure window instead of queueing it again.
+O2  Resting versions never use up the sweep: a newer interrupted
+publication behind them is still queued.","O1 -> test_three_failed_deliveries_put_the_generation_to_rest
+O2 -> test_resting_generations_do_not_starve_a_newer_one",Production 2026-10-03: two documents failed LINEAGE_REQUIRED every minute. Production 2026-10-26: 103 resting versions filled the 100-row sweep.
 tests/test_ideal_text_route_contracts.py,Story,"As a speaker, I want the Ideal Text routes (read, extras, earlier-Take decision, paragraph lock, helper words and my own edits) to answer exactly as they did before the code was moved into services, so that the loop never breaks.","O1  Reading my Ideal Text returns the same full answer and records, in
 order, what I was shown; someone else's project is ""not found"".
 O2  The extras (notes, history, entitlement) are served for the current
@@ -3136,12 +3139,22 @@ chat's safety reply; before the question is answered it is never asked
 instead of that reply.
 O5  Will reads the notes, only once the person said Yes.
 O6  A tag the Life Panel owns is kept as a note, then left to the Life
-Panel to answer.","O1 -> test_without_the_notebook_the_chat_is_unchanged
+Panel to answer.
+O7  While a note is said, its words so far come back, hesitations and
+all, and nothing is kept (N194).
+O8  A note the app sends twice under one key (the app closed mid-send)
+is kept and answered once (N194).
+O9  The person fixes a voice note's words: the note and its row in the
+thread change, Will does not answer again, and only their own voice
+note can be fixed (N194).","O1 -> test_without_the_notebook_the_chat_is_unchanged
 O2 -> test_the_first_note_asks_and_yes_keeps_it
 O3 -> test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash
 O4 -> test_a_crisis_note_gets_the_safety_reply
 O5 -> test_will_reads_the_notes_only_after_yes
-O6 -> test_a_life_panel_tag_is_kept_and_left_to_the_life_panel","Will learning plan, step 1 (founder 2026-10-20, ""approved, start step 1""; words signed the same day)."
+O6 -> test_a_life_panel_tag_is_kept_and_left_to_the_life_panel
+O7 -> test_the_live_words_come_back_and_nothing_is_kept
+O8 -> test_a_note_sent_twice_is_kept_once
+O9 -> test_a_voice_note_is_fixed_in_the_notebook_and_the_thread","Will learning plan, step 1 (founder 2026-10-20, ""approved, start step 1""; words signed the same day)."
 tests/test_webm_remux.py,Story,"As a speaker, I want my recording made seekable without changing its timing, and kept as-is if that fails, so that playback works everywhere and my Take is never lost. (Critical path: record.)","O1  The remuxed file carries a seek index and exactly the same packets and
 timestamps as the recording (even one not starting at zero), so no
 stored offset moves.

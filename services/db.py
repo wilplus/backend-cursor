@@ -11016,6 +11016,20 @@ class DatabaseService:
                            user_id, e, exc_info=True)
             return False
 
+    def update_voice_note_text(self, user_id: str, note_id: str, text: str) -> bool:
+        """The person's own words for one of their notes (N194). False when
+        nothing of theirs matched or on any failure."""
+        try:
+            data = (self.client.table("voice_notebook_notes")
+                    .update({"text_clean": text})
+                    .eq("id", note_id).eq("user_id", user_id)
+                    .execute().data)
+            return bool(data)
+        except Exception as e:
+            logger.warning("update_voice_note_text failed user=%s: %s", user_id, e,
+                           exc_info=True)
+            return False
+
     def list_voice_notes(self, user_id: str, limit: int = 20) -> list[dict]:
         """One person's newest notes, oldest first. [] on any failure."""
         try:

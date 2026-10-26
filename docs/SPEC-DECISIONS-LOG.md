@@ -4920,3 +4920,21 @@ frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor
 A5 and K; backend [`docs/WILL-LEARNING-PLAN.md`](docs/WILL-LEARNING-PLAN.md) step 1.
 Drawn on <https://claude.ai/artifact/JiF2eoxoaJmnjQYry53LKm> (version 3). Not
 built yet. No migration.
+
+**N196 · Data & consent is called "Settings" (founder, the Claude Code chat,
+26 October 2026: "in the hamburger change the data & consent to
+'settings'", then, asked whether the page's title and the recording
+screen's line should match, "yes change it to “Settings”").**
+1. The ☰ menu's row that opens `/account/data-consent` reads **Settings**.
+It stays orange on light orange while you are on the page (ST1 A).
+2. The page's title reads **Settings**, and so does the link to it on the
+screen for an account being deleted, which shows the page's title.
+3. The recording screen's line after the consent was withdrawn reads
+"Recording is off because you withdrew your consent. You can turn it back on
+in Settings."
+4. Will's map of the app names the page Settings, so the chat sends people
+to the name the menu shows.
+5. The address stays `/account/data-consent`, and the documents already
+accepted keep their words.
+The rules: frontend [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+§1, "Amended 2026-10-26: the page is called Settings".

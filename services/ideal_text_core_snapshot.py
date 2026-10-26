@@ -520,11 +520,23 @@ def _failed_enough(key: str, arc_id: str) -> bool:
         return False
 
 
+# RESTING ROWS MUST NOT FILL THE WINDOW (production, 2026-10-26). The list
+# is oldest first, and the sweep read exactly `limit` rows. With 103 resting
+# generations pending, the first 100 were all resting, so the sweep queued
+# nothing and a newer interrupted publication never got its retry. The sweep
+# now reads up to the list's own ceiling and spends `limit` on rows that are
+# not resting.
+PUBLICATION_SWEEP_READ_CEILING = 500
+
+
 def sweep_pending_publications(database: Any, limit: int = 100) -> int:
     """Re-enqueue durable invalidations whose materialisation was interrupted."""
     queued = 0
     resting: list[str] = []
-    for row in database.list_pending_ideal_text_document_publications(limit):
+    for row in database.list_pending_ideal_text_document_publications(
+            max(limit, PUBLICATION_SWEEP_READ_CEILING)):
+        if queued >= limit:
+            break
         arc_id = str(row.get("arc_id") or "")
         generation = row.get("generation")
         if not arc_id or not isinstance(generation, int):
@@ -538,7 +550,7 @@ def sweep_pending_publications(database: Any, limit: int = 100) -> int:
         logger.info(
             "ideal-text publication sweep: %d generation(s) resting after %d "
             "failures: %s", len(resting), PUBLICATION_FAILURES_BEFORE_REST,
-            ",".join(resting))
+            ",".join(resting[:10]) + (",..." if len(resting) > 10 else ""))
     return queued
 
 
