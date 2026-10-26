@@ -3720,3 +3720,14 @@ Open: Privacy 3.6 names WhatsApp for the coach's message; whether it needs a
 line for the booking's two messages is the founder's call.
 Migration 0491 (two columns on bookings). A Railway cron service runs every 5
 minutes.
+
+**N145 · No WhatsApp reminder for now (founder, the Claude Code chat, 26
+October 2026: "No, for now we just don't do the reminder. We just don't do
+it.", and to the line under the field: "We'll confirm your time here.").**
+1. A booking with a WhatsApp number gets the confirmation only (N144 item 2,
+first message). The reminder 1 hour before is not sent: no cron service and no
+reminder template. Its code stays in the backend unused; its route answers 503
+while BOOKING_REMINDER_SECRET is unset.
+2. The line under the booking form's WhatsApp field reads "We'll confirm your
+time here." (amends N144 item 1).
+No migration.
