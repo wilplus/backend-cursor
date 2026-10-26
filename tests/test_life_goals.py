@@ -32,6 +32,9 @@ OUTCOME
       under its Noted., quoting it: Change writes the step with the earlier
       words kept, Not now changes nothing; words not in the note ask
       nothing (N191).
+  O9  While a plan runs, the career ladder's THIS WEEK is this week's
+      level from the plan, read-only; no plan, or the plan not on: none
+      (the plan's G5).
 PROVES   O1 -> test_the_ask_comes_after_the_first_note_and_once_more_after_not_now
          O2 -> test_the_draft_quotes_only_my_words
          O3 -> test_a_set_goal_posts_its_ladder_and_keeps_the_one_it_replaces
@@ -40,6 +43,7 @@ PROVES   O1 -> test_the_ask_comes_after_the_first_note_and_once_more_after_not_n
          O6 -> test_a_clash_is_asked_once_and_kept_on_both_ladders
          O7 -> test_the_quarter_comes_back_on_its_last_day
          O8 -> test_a_note_that_sounds_like_a_change_asks_first
+         O9 -> test_this_week_is_the_plans_level_on_the_career_ladder
 WHY      Will learning plan, step 3 (founder 2026-10-26, N172: "build the
          life goals now"; rules in the frontend flow page §1 M).
 """
@@ -329,3 +333,21 @@ def test_a_note_that_sounds_like_a_change_asks_first(store, monkeypatch):
     assert lg.after_note(db, "u") == []  # words not in the note ask nothing
     _model(monkeypatch, {"goal": None, "text": "", "quote": ""})
     assert lg.after_note(db, "u") == []
+
+
+def test_this_week_is_the_plans_level_on_the_career_ladder(store, monkeypatch):
+    db = _Db()
+    career = lg.save_draft("u", None, "career", CAREER)
+    lg.finish(db, "u", career["id"])
+    home = lg.save_draft("u", None, "personal", {"goal": "Dinner with my family."})
+    lg.finish(db, "u", home["id"])
+    assert all("week" not in g for g in lg.state(db, "u")["goals"])  # the plan is not on
+
+    monkeypatch.setattr("services.plan_flow.enabled", lambda database, user: user == "u")
+    db.get_open_plan = lambda user: {"status": "active", "level": "key_line"}
+    weeks = {g["space"]: g.get("week") for g in lg.state(db, "u")["goals"]}
+    assert weeks == {"career": "Let your key line land", "personal": None}
+    assert "THIS WEEK: Let your key line land" in lg.prompt_lines(db, "u")
+
+    db.get_open_plan = lambda user: {"status": "asking", "level": None}
+    assert all("week" not in g for g in lg.state(db, "u")["goals"])  # no plan running yet
