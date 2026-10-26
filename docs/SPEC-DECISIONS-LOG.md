@@ -4814,3 +4814,41 @@ again, and a step never changes by itself.
 3. Only the quarter step, as M14 is written: asked, the founder answered
 "this quarter only is fine".
 The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M14.
+
+**N192 · The chat shows a Take's walk as one bubble, "Feedback walk"; an
+edit says "Edited" in place (founder, the Claude Code chat, 26 October 2026:
+"please show it in the chat as feedback walk; there should be just the ideal
+text after the take and the feedback walk above it; and whenever smth from
+the feedback walk is getting edited it should show on the feedback walk as
+edited like on the whatsapp; but it should not go at the bttom like a new
+message cause it is not!"; then "go with all three recommendations" and "go
+with A", on the prototype <https://claude.ai/artifact/Xb51mpaFDguFdBuL8Gjv18>).**
+1. In the Lounge a Take is its recording, one "Feedback walk" bubble with the
+Take's date and a small arrow, and its Ideal Text card under it once the walk
+is done. Everything else the walk says stays in the walk; opening a walk
+posts nothing in the chat. Every step is still stored as before
+(`lounge_messages`, kind `walk_step`), so Will, the summary and the coach's
+queue read the same rows. This overrides "whatever happens in the walk is
+shown in the chat" (the founder's own words).
+2. A change to the walk after it was said (the speaker's helper words, the
+coach's changed word, the summary a coach's note rewrites) is an edit: it
+changes in place and reads "Edited", in the walk and on the Take's Feedback
+walk. Nothing lands at the bottom.
+3. The closing summary lives in the walk only. The coach's word that was there
+when the walk ran stays in the walk; a word sent later lands at the bottom
+under "Later · from your coach"; a changed word is Edited in place (was:
+moved to the bottom, N80). The sharing choice is one line under the Take's
+recording (was: three bubbles).
+4. An outlined bubble has a full stroke and no tail.
+The Ideal Text card alone with a black line on every paragraph that has
+feedback, and one card with a Feedback walk row, were drawn and not chosen.
+Signed (Never 4): "Feedback walk", "Edited". The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+B3, B10, B12, B13, C1, C3, D4, D5, G1 and K (frontend
+[#1001](https://github.com/wilplus/frontend-cursor/pull/1001)). Not built
+yet. Built in the frontend, with two small backend changes for item 3: a
+coach's changed word is written at its earlier bubble's place in the thread,
+marked edited (`services/take_summary.py` `coach_update_message`; today the
+new version lands at the bottom and the read hides the old one), and the
+coach's word served to the walk says whether it changed since it was first
+shared (`services/coach_take_word.py`). No migration.
