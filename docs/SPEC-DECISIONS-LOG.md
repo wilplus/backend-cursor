@@ -4613,5 +4613,6 @@ is locked; the message box stays. Its own ring row, `fifteen_minutes`, ring
 page.
 4. The voice notebook (Will learning plan step 1) stays as it is, for short
 # notes for Will; the long personal writing goes in the paper notebook.
-Rules: frontend
-[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 M.
+Rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 M16 (lines 1, 2 and 4) and
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 N (line 3).
