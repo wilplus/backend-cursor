@@ -4611,7 +4611,8 @@ as soon as that day's practice is done, Will says in the chat "That's your
 15 minutes for today." and "Now go and live it, away from the phone." The
 practice is the 15 minutes. Nothing is locked; the message box stays. On
 other days, nothing. It waits for the plan's practice days to be built; the
-founder first, then everyone.
+founder first, then everyone. This replaces the third place in N180 item 4
+("once a day … after about 15 minutes in the app").
 4. The voice notebook (Will learning plan step 1) stays as it is, for short
 # notes for Will; the long personal writing goes in the paper notebook.
 Rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
