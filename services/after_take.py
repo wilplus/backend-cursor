@@ -12,22 +12,23 @@ batch but held back (``metadata.held_for`` names the ask in front of the
 speaker, ``metadata.chain`` the asks still to come) and advances under
 whatever closed the ask (``release``). The asks (``chain``), in order:
 
-  Take 1      Will's question when it has one (``will_question``); "Did
-              this help?" when the Take looks off
-              (``feedback_check.looks_off``). Never WhatsApp, never an ask
-              from the CEO panel.
+  Take 1      WhatsApp, while there is no number and it was asked fewer
+              than twice (founder 2026-10-26, N171: the Take has gone to
+              the coach, as every spoken Take does once it is processed,
+              so the speaker has a reply to wait for); Will's question
+              when it has one (``will_question``); "Did this help?" when
+              the Take looks off (``feedback_check.looks_off``). Never an
+              ask from the CEO panel, never the home screen.
   Take 2 on   the founder's ask from the CEO panel when one is open
               ("admin"; the Lounge draws it, and "Not now" leaves it open,
-              so it comes back at the end of the next Take); WhatsApp,
-              while there is no number and it was asked fewer than twice;
-              the home screen, once, where the phone can add it; then
-              Will's question when it has one; then "Did this help?" when
-              the Take looks off.
+              so it comes back at the end of the next Take); WhatsApp, as
+              above; the home screen, once, where the phone can add it;
+              then Will's question when it has one; then "Did this help?"
+              when the Take looks off.
 
-At most two asks a Take (founder 2026-10-21, N94): when more wait, the
-home screen and then WhatsApp wait for a later Take, and then "Did this
-help?"; the CEO panel's ask and Will's question keep their turn. The order
-above stays.
+One ask a Take (founder 2026-10-26, N189): the first that waits, in the
+order above; the others wait for a later Take. So Take 1 brings the
+WhatsApp ask and Take 2 the home screen. Was at most two (N94).
 
 Will's question opens with a bridge line in the chat (``BRIDGE``, founder
 2026-10-21, N94), between the summary and the question: two signed lines,
@@ -87,11 +88,9 @@ _OFFER_ASKS = ("whatsapp", "install")
 LEAD_IN_ASKS = ("whatsapp", "install", "feedback_check")
 #: WhatsApp is asked at most this many times (founder 2026-10-20).
 _WHATSAPP_TIMES = 2
-#: At most this many asks after a Take (founder 2026-10-21, N94).
-_MOST = 2
-#: Which asks wait for a later Take when more than ``_MOST`` would come,
-#: first to wait first.
-_WAITS_FIRST = ("install", "whatsapp", "feedback_check")
+#: At most this many asks after a Take (founder 2026-10-26, N189; was two,
+#: N94).
+_MOST = 1
 #: Between the summary and Will's question, one a Take in turn (founder
 #: 2026-10-21, N94: chosen in chat from four, "and variations of it").
 BRIDGE = (
@@ -141,13 +140,12 @@ def chain(database: Any, user_id: str, *, take_index: int, off: bool,
     table); [] when nothing waits. ``will``: Will has a question for this
     Take."""
     asks: list[str] = []
-    if take_index >= 2:
-        if _admin_ask(user_id):
-            asks.append("admin")
-        if _no_phone(database, user_id) and asked(database, user_id, "whatsapp") < _WHATSAPP_TIMES:
-            asks.append("whatsapp")
-        if can_install and asked(database, user_id, "install") == 0:
-            asks.append("install")
+    if take_index >= 2 and _admin_ask(user_id):
+        asks.append("admin")
+    if _no_phone(database, user_id) and asked(database, user_id, "whatsapp") < _WHATSAPP_TIMES:
+        asks.append("whatsapp")
+    if take_index >= 2 and can_install and asked(database, user_id, "install") == 0:
+        asks.append("install")
     if will:
         asks.append("will_question")
     if off:
@@ -156,15 +154,9 @@ def chain(database: Any, user_id: str, *, take_index: int, off: bool,
 
 
 def capped(asks: list[str]) -> list[str]:
-    """``asks`` with at most ``_MOST``, in their order: the home screen,
-    then WhatsApp, then "Did this help?" wait for a later Take. Pure."""
-    kept = list(asks)
-    for ask in _WAITS_FIRST:
-        if len(kept) <= _MOST:
-            break
-        if ask in kept:
-            kept.remove(ask)
-    return kept[:_MOST] if len(kept) > _MOST else kept
+    """The first ``_MOST`` of ``asks``, in their order; the others wait for
+    a later Take (N189). Pure."""
+    return list(asks[:_MOST])
 
 
 def bridge_row(*, user_id: str, arc_id: str, take: str, take_index: Optional[int],

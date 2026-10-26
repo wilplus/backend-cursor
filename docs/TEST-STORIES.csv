@@ -206,6 +206,30 @@ practice rows are gone.
 O3  Without the deletion-evidence retention rule, the run stops for
 review and names only that missing rule.","O1 -> TestAnAccountDeletionStarts::test_a_graph_that_is_not_the_subjects_is_still_refused
 O2, O3 -> TestAnAccountDeletionStarts::test_the_erasure_runs_to_the_end_once_the_retention_rules_exist","Founder 2026-09-25, decision 6: every deletion sat at ""requested"" (migration 0362)."
+tests/test_account_security.py,Story,"As a speaker, I want to change my email and my password on Data & consent, with a link for a forgotten password, so that I keep my account when I lose an address or a password; and as the founder, I want every request, change and wrong password kept in a security log, so that a taken-over account can be traced.","O1  Change email: a wrong current password changes nothing and is logged;
+the right one sends a link to the new address and a notice to the old
+one, and the email stays until the link is opened. The log keeps the
+token's SHA-256, never the token, and never a password.
+O2  An address another account has is refused before any link goes, and
+the refusal is logged.
+O3  The link changes the email once and logs it; opened twice it changes
+nothing more. An older link after a newer request, an expired link and
+an unknown token change nothing.
+O4  Change password: a wrong current password or one under 6 characters
+changes nothing; the right one sets the new password, signs out the
+other devices, sends the notice and is logged with the IP address and
+the device.
+O5  An account that signs in with Google has no password to ask for: its
+email change needs none, Set a password sends the set email, and the
+saved password is logged as its first; a reset link's password is a
+change and gets the notice.
+O6  When the email doesn't go, the card is told so: nothing is reported
+as sent.","O1 -> test_an_email_change_waits_for_the_link_from_the_new_address
+O2 -> test_an_address_with_an_account_is_refused_before_any_link
+O3 -> test_the_link_changes_the_email_once_and_only_the_newest
+O4 -> test_a_password_change_checks_the_current_one_and_signs_out_the_rest
+O5 -> test_a_google_account_sets_its_first_password_with_a_link
+O6 -> test_an_email_that_didnt_go_is_not_reported_as_sent","WIL-95 (founder 2026-10-26, N190: ""approved, implement it""; rules in the frontend's docs/flows/consent-screens.md §1)."
 tests/test_admin_speaker_permit.py,Story,"As a speaker, I want any AI call an admin makes about me to run under my own processing permit, and be refused when I have none, so that my words never reach a provider without my authority (processing authorization on the critical path).","O1  Directive suggestions: with my authority the model call runs inside
 the protected scope bound to MY principal; a refused permit answers
 403 before any provider client exists.
@@ -226,15 +250,15 @@ O3 -> test_the_export_releases_full_text_with_the_yes_and_skips_hidden_projects"
 tests/test_admin_takes_willfidence.py,Story,"As the founder, I want each Take on a person's admin page to show its willfidence, so I can read how a speaker's Takes are going.","O1  A Take row carries `willfidence`: the mean of its pieces' willfidence in
 whole percent, counting only pieces with a sound read; none when no piece
 has one (never the middle of the scale made up).",O1 -> test_a_take_row_carries_its_willfidence_in_percent,"Founder 2026-10-21 (N105): ""add the willfidence column here (in the ceo panel but only here)""."
-tests/test_after_take.py,Story,"As a speaker, after a Take I want one thing to do at a time: the Take's card and its summary, then each ask on its own with Will's words leading into it, and only then ""practice makes perfect"" with ""Record Take N"", so that nothing competes with the walk or with recording again (founder 2026-10-20, N89).","O1  After Take 1 the chain holds Will's question when he has one and ""Did
-this help?"" when the Take looks off: never WhatsApp, never an ask from
-the CEO panel, even without a number.
-O2  From Take 2 the chain runs in this order: the CEO panel's ask,
-WhatsApp (at most twice), the home screen (once, where the phone can
-add it), Will's question, ""Did this help?""; at most two a Take: when
-more wait, the home screen, then WhatsApp, then ""Did this help?"" wait
-for a later Take (founder 2026-10-21, N94); nothing waits when nothing
-applies.
+tests/test_after_take.py,Story,"As a speaker, after a Take I want one thing to do at a time: the Take's card and its summary, then each ask on its own with Will's words leading into it, and only then ""practice makes perfect"" with ""Record Take N"", so that nothing competes with the walk or with recording again (founder 2026-10-20, N89).","O1  One ask after each Take, the first that waits (founder 2026-10-26,
+N189; was two, N94). After Take 1 that is WhatsApp when I left no
+number (N171), else Will's question when he has one, else ""Did this
+help?"" when the Take looks off; never an ask from the CEO panel or
+the home screen on Take 1.
+O2  From Take 2 the order is the CEO panel's ask, WhatsApp (at most twice
+in all), the home screen (once, where the phone can add it), Will's
+question, ""Did this help?""; the first that waits comes and the others
+wait for a later Take; nothing comes when nothing applies.
 O3  The asks come one at a time, each under whatever closed the one
 before: a typed turn, under Will's reply; ""Yes"", tapped or typed,
 under ""We're glad it helped you.""; a reply that opens a form keeps the
@@ -244,8 +268,8 @@ O4  A message still waiting when a newer Take is written shows where it
 stands.
 O5  After a distressed message the chat's safety reply comes and the asks
 wait: nothing lands under it until I write again (founder 2026-10-21,
-N94).","O1 -> test_after_take_one_wills_question_and_the_question_when_it_looks_off
-O2 -> test_from_take_two_the_chain_runs_ceo_ask_whatsapp_home_screen_will_the_question
+N94).","O1 -> test_after_take_one_the_whatsapp_ask_else_will_else_the_question
+O2 -> test_from_take_two_one_ask_ceo_ask_whatsapp_home_screen_will_the_question
 O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_closing_message
 O4 -> test_an_older_waiting_message_shows_where_it_stands
 O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again","Founder 2026-10-20: ""one action at a time"", then, after checking the app: the summary without the CTA, Will's liaison before each ask, ""Look, practice makes perfect…"" and the CTA last."

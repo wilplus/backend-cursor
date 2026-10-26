@@ -27,7 +27,7 @@ short private note before it chats and before the summary after a Take.
   database next to the note, so account deletion removes it with the notes.
 - **Private:** only the person and Will read notes. Never a coach, never the
   Ideal Text. Will reads the newest notes in the chat.
-- **Consent:** before the first note, the notebook says why it exists (N194,
+- **Consent:** before the first note, the notebook says why it exists (N195,
   not built yet): "The jitters before a talk are often about more than the
   talk. Underneath is a bigger question: where is my life going?" · "So we
   made a place for your answer: your goals, in your own words." · "A goal
