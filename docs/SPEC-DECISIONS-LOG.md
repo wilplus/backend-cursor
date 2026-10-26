@@ -4001,3 +4001,16 @@ lens: the bug, the principle held, the reflection, then the new principle
 with Accept or Edit. Rules and words: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 L and K.
 Not built yet; the backend half is on branch `claude/gracious-faraday-x8tin9`. No migration.
+
+**N159 · The plan has its own flow page (founder, the Claude Code chat, 26
+October 2026, shown that the plan lived only in 24 entries of this log, N129
+to N157, and asked where its page should go: "Okay", to its own flow page).**
+Changes N146 item 2, which made it a section of the walk's page. The plan's
+rules as they stand live in the frontend's
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md),
+started from those entries and the same shape as the other flow pages; a
+change to the plan is a line there and an entry here. The walk's page, the
+consent screens' and the recording screens' each point to it with one line
+(N146). The pace practice keeps its home on the walk's page (the tempo step);
+where it sits is open on the plan's page. Frontend PR #967. Docs only. No
+migration.
