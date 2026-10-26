@@ -26,6 +26,8 @@ founder 2026-10-18, WIL-29):
 Takes and acoustic data (services/admin_takes.py, admin only):
   GET    /v2/admin/people/<user_id>/takes                  every Take with its measures
   GET    /v2/admin/people/<user_id>/takes/<session_id>     one Take's pieces, every measure
+  GET    /v2/admin/people/<user_id>/transcripts            full transcripts for the CSV, founder
+         only, and only while the person holds the training yes; each release is logged
 
 Deleting an account (the person's own deletion road, seven-day window):
   POST   /v2/admin/people/<user_id>/delete              request it
@@ -230,3 +232,13 @@ def person_take_pieces(user_id: str, session_id: str):
     if rows is None:
         return _reply({"code": "NOT_FOUND", "error": "No such Take for this person"}, 404)
     return _reply({"pieces": rows})
+
+
+@people_bp.route("/v2/admin/people/<user_id>/transcripts", methods=["GET"])
+@require_founder
+def person_transcripts(user_id: str):
+    from services import admin_takes
+    out = admin_takes.transcripts_export(user_id)
+    logger.info("admin transcript export admin=%s person=%s allowed=%s takes=%d",
+                _me(), user_id, out["allowed"], len(out["transcripts"]))
+    return _reply(out)

@@ -3930,3 +3930,24 @@ items 2 and 3) with the approved words of N154, after the new privacy version
 and Meta's template (N153 item 4). Until then the WhatsApp number is asked
 only as today, from Take 2, for the coach's feedback.
 No migration.
+
+**N156 · Transcripts on a person's admin page, and the CSV (founder, the
+Claude Code chat, 26 October 2026: "Go with the training-yes gate, and build
+the transcript column"; Linear WIL-110).**
+1. Each Take row on the person's admin page (`/admin/users/<id>`, the Takes
+table) shows one line of what was said. The full text is not in that list.
+2. The page's Export CSV carries each Take's full transcript only for a
+speaker who holds the training yes now. For anyone else the column is blank.
+Only the founder can ask for it; it fails closed on any doubt; Takes of a
+project the speaker erased or archived are left out; each release is logged
+(who, whose, how many). The file's name carries no user id.
+3. Why. Privacy 3.7 section 4 lets the person who runs WillpowerLab see
+transcripts, but names no export of them, and a file on a laptop is out of
+the deletion promise's reach. Naming the export in a new policy version that
+everyone re-accepts is the other road; it is not taken.
+4. Open for the founder: `scripts/corpus_base_rates.py` reads every
+transcript with no consent filter (its output is rates only); and WIL-110's
+"store them so the dev team can reach them" is wider than "the person who
+runs WillpowerLab" in section 4.
+Built in the frontend's `TakesExplorer.tsx` and the backend's
+`services/admin_takes.py`. No migration.
