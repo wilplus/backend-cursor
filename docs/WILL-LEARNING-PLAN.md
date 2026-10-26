@@ -42,6 +42,14 @@ composer.
 
 ## Step 2: the Sunday note (built 2026-10-20)
 
+**Locked 2026-10-26 (N157), not built yet:** the Sunday note as a lens,
+<https://claude.ai/artifact/Bt2YEZLKhu9fLTA1deWTvo>. Only when asked, only from # notes, no Old | New; in the
+Lounge "We spotted a pattern!" with Not now | Investigate; in the lens one
+step at a time (the bug, the principle held, the reflection, the new
+principle with Accept or Edit). The rules are frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 L. What follows
+describes the build of 2026-10-20 until then.
+
 How it works now:
 
 - **When:** Sunday from 6 pm in the founder's time zone (the browser's,

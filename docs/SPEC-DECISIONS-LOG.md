@@ -3951,3 +3951,14 @@ transcript with no consent filter (its output is rates only); and WIL-110's
 runs WillpowerLab" in section 4.
 Built in the frontend's `TakesExplorer.tsx` and the backend's
 `services/admin_takes.py`. No migration.
+
+**N157 · The Sunday note, locked as a lens (founder, the Claude Code chat, 26
+October 2026: "great!! lock it!", on <https://claude.ai/artifact/Bt2YEZLKhu9fLTA1deWTvo>).**
+1. Only when asked, only from the week's # notes (the talk goal and the
+principles held are context; Takes and the chat never reach it); Old | New
+is gone. In the Lounge, "We spotted a pattern!" and the one-sentence case,
+with Not now | Investigate in place of the message box; Investigate opens the
+lens: the bug, the principle held, the reflection, then the new principle
+with Accept or Edit. Rules and words: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 L and K.
+Not built yet; the backend half is on branch `claude/gracious-faraday-x8tin9`. No migration.
