@@ -160,6 +160,15 @@ def persist_chat_turn(
         return None
 
 
+def _goals_after_note(database, user_id) -> bool:
+    try:
+        from services.life_goals import after_note
+        return bool(after_note(database, str(user_id)))
+    except Exception as e:  # noqa: BLE001 -- the note is kept either way
+        logger.warning("chat/query: life goals ask failed user=%s: %s", user_id, e)
+        return False
+
+
 def finish_chat_turn(database, resp: dict, *, user_id, question,
                      persist_thread, user_client_id, user_created_at,
                      intent=None) -> dict:
@@ -187,6 +196,12 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
         # wait until the speaker writes again (founder 2026-10-21, N94).
         if (bot_cid and intent != "crisis" and after_take.passes(resp)
                 and after_take.release(database, user_id)):
+            resp["after_take"] = True
+        # Under a # note's "Noted.", the ask for life goals (N172 M1); the
+        # same flag reads the thread again.
+        if (bot_cid and intent == "voice_notebook"
+                and (resp.get("row_metadata") or {}).get("voice_note")
+                and _goals_after_note(database, user_id)):
             resp["after_take"] = True
     # Charge after answering, never before. Chat is repeatable, so it has no
     # idempotency ref; billing failure must never replace the answer.
@@ -285,6 +300,19 @@ def _sunday_note(user_id, question, _context, _history=None) -> Optional[tuple[d
                   debug={"intent": "sunday_note"}), "sunday_note"
 
 
+def _life_goals(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
+    """Life goals asked for in the founder's own words (Will learning plan,
+    step 3, N172 M2): "#goals" or "can I add another goal?" is answered and
+    opens the lens. Anyone else, anything else: None."""
+    from services.db import db
+    from services.life_goals import chat_turn
+    turn = chat_turn(db, user_id, question)
+    if not turn:
+        return None
+    return _reply(turn["answer"], row_metadata=turn["row_metadata"],
+                  debug={"intent": "life_goals"}), "life_goals"
+
+
 def _voice_notebook(user_id, question, _context, _history=None,
                     *, life_on: bool = False) -> Optional[tuple[dict, str]]:
     """A typed "#" note in the founder's voice notebook (Will learning plan,
@@ -353,6 +381,7 @@ def _intercepts(user_id, app_config) -> list[tuple[str, Callable]]:
         chain.append(("will-question intercept failed user=%s: %s", _will_question))
         chain.append(("whatsapp-number intercept failed user=%s: %s", _whatsapp_number))
         chain.append(("sunday-note intercept failed user=%s: %s", _sunday_note))
+        chain.append(("life-goals intercept failed user=%s: %s", _life_goals))
         chain.append(("voice-notebook intercept failed user=%s: %s",
                       functools.partial(_voice_notebook, life_on=life_on)))
     if life_on:

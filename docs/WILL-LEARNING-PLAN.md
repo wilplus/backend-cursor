@@ -94,13 +94,42 @@ principles. Never on the recording screens.
 
 ## Step 3: life goals, the Dalio way
 
-**Decided 2026-10-26 (N172), not built yet:** asked once after the first #
-note, one goal per sitting in a lens, drafted only from the speaker's words,
-worked back from the horizon to the quarter, the ladder per goal, kept in
-the Life Panel, <https://claude.ai/artifact/HaWehtwfg1jzJvGeGM1c24>. The
-rules are frontend
-[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 M. What follows is
-the plan of 2026-10-20 it grew from.
+**Decided 2026-10-26 (N172):** asked once after the first # note, one goal
+per sitting in a lens, drafted only from the speaker's words, worked back
+from the horizon to the quarter, the ladder per goal, kept in the Life
+Panel, <https://claude.ai/artifact/HaWehtwfg1jzJvGeGM1c24>. The rules are
+frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 M.
+
+Built (M1 to M11), founder only (ring row `life_goals`, ring 6):
+
+- **The ask:** after a # note's "Noted." (typed, voice, or the held note on
+  Yes), `life_goals.after_note` writes the two bubbles, the second with the
+  offer `life_goals` (Not now | Start). Asked once; after Not now, once more
+  after the next note (`life_goal_asks`).
+- **Asked for in the chat:** `life_goals.chat_turn`, before the notebook's
+  intercept: "#goals", or an ask for a goal in their own words (a keyword
+  pre-gate, then a cheap classifier that answers none for the talk's goal).
+  The reply carries `life_goals_open` (not an offer), and the Lounge opens
+  the lens.
+- **The lens** is the frontend's. Each answer is kept on a draft (`PUT
+  /v2/life-goals/drafts`). Will's draft and redraft keep only quotes found
+  word for word in the answers. A spoken answer is transcribed without
+  becoming a note.
+- **Set and changed:** `finish` posts the ladder (metadata `life_goal`) and
+  "Noted. Your … goal is set." to the Lounge. `change_step` keeps the
+  earlier words as a dated row in `life_goal_versions`. The talk goal
+  changes the profile goal, with its own history.
+- **Will reads** the ladders in the chat (`prompt_lines`, inside the
+  notebook block).
+- **Not built yet:** M12 (the clash), M13 (the quarter comes back), M14 (a
+  note that sounds like a change), the ladders in the Life Panel's own
+  screens, and this week's focus on the ladder (no source for it yet).
+- Code: `services/life_goals.py`, `routes/v2/life_goals.py`, the store in
+  `services/life_store.py`, migration `the_founder_keeps_life_goals`
+  (0492), `tests/test_life_goals.py`.
+
+What follows is the plan of 2026-10-20 it grew from.
 
 Seven questions: What do you truly want most? What fits your nature and
 strengths? What will you give up for it? Is it a real goal or a desire? What

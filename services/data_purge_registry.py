@@ -293,6 +293,15 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "user", "delete", "database_row", 60),
     PurgeDependency("voice_notebook_consent", "voice_notebook_consent", "user_id",
                     "user", "delete", "database_row", 60),
+    # Life goals (Will learning plan, step 3, N172, migration 0492): a goal's
+    # dated versions before the goal they point at, then the record of the
+    # Lounge's ask.
+    PurgeDependency("life_goal_versions", "life_goal_versions", "user_id",
+                    "user", "delete", "database_row", 59),
+    PurgeDependency("life_goals", "life_goals", "user_id", "user", "delete",
+                    "database_row", 60),
+    PurgeDependency("life_goal_asks", "life_goal_asks", "user_id", "user",
+                    "delete", "database_row", 60),
     # The Sunday note (Will learning plan, step 2, migration 0485).
     PurgeDependency("sunday_notes", "sunday_notes", "user_id", "user", "delete",
                     "database_row", 60),
@@ -1589,7 +1598,8 @@ DYNAMIC_RUNTIME_RELATIONS: frozenset[str] = frozenset({
     "life_strategy", "life_proposals", "life_applications", "life_days",
     "life_weeks", "life_period_reviews", "life_setup_documents",
     "life_push_subscriptions", "life_reminder_settings", "life_reminder_log",
-    "life_user_copy", "dev_bugs", "dev_tasks",
+    "life_user_copy", "life_goals", "life_goal_versions", "life_goal_asks",
+    "dev_bugs", "dev_tasks",
     # The scheduled clean-up (services/retention_cleaner.py) removes rows
     # from the relations its reviewed lists name: the four logs, the
     # voice-measurement stores and, once their five years end, the financial

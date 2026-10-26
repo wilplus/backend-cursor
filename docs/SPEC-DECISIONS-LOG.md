@@ -4412,7 +4412,31 @@ frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 K. Docs only. No migration.
 
-**N176 · The practice-day reminder: email or WhatsApp, no calendar (founder,
+**N176 · The plan's remaining waiting words, signed (founder, the Claude Code
+chat, 26 October 2026: "Agreed.", then "Yes, sign them all" to the list of
+the plan's words still waiting).** For N140, N148, N149, N157 and N161,
+signed (Never 4):
+1. The follow-up templates: "What worries you most about it?" · "Have you
+given a talk like this before? How did it go?" · "What has to happen for you
+to call it a success?" · "How will you open? Say your first sentence." · the
+plain key line, "If your audience remembers one sentence from you, what is
+it? Say it the way you'll say it."
+2. The ratings: "Two quick taps before your plan." · "Calm" · "Very
+stressed" · "Not ready" · "Fully ready".
+3. The calls: "Before I show you your plan, pick a time for a 15-minute call
+with your coach. It's your kickoff call." · "{n} of 2 booked" · "Your
+deadline" · "Skip" · "Book" · "Book now" · "Would you also like to book your
+summary call? It's after your deadline, to look back and plan what's next."
+4. The plan's end: "15 minutes with your coach, to look back and plan what's
+next." · "Choose a date" · "Not now" · "Here's your next plan." · "Is this
+for {date}?"
+Still open: the deadline morning's good-luck line, which has no words yet
+(N169 item 7); the pace game's words belong to the tempo step (N166). The
+rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+K. Docs only. No migration.
+
+**N177 · The practice-day reminder: email or WhatsApp, no calendar (founder,
 the Claude Code chat, 26 October 2026: "How do you mean their calendar we
 don't have access to it", then "I want two options email or what's app we
 don't have a add to calendar option yet").** For N169 item 6 and N174 item 1:
