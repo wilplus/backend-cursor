@@ -1433,13 +1433,18 @@ O7  On the quarter's last day the first opening of the Lounge finds ""The
 quarter ends today."" and ""Did it move?"" with Not now | Start, once;
 opened later, ""The quarter ended on …""; the review keeps how it went
 in words, quotes only notes that match, and sets the next quarter's
-step with the earlier one kept (N186).","O1 -> test_the_ask_comes_after_the_first_note_and_once_more_after_not_now
+step with the earlier one kept (N186).
+O8  A note that says the quarter should be different is asked about once,
+under its Noted., quoting it: Change writes the step with the earlier
+words kept, Not now changes nothing; words not in the note ask
+nothing (N191).","O1 -> test_the_ask_comes_after_the_first_note_and_once_more_after_not_now
 O2 -> test_the_draft_quotes_only_my_words
 O3 -> test_a_set_goal_posts_its_ladder_and_keeps_the_one_it_replaces
 O4 -> test_a_changed_step_keeps_its_earlier_words
 O5 -> test_asking_in_my_own_words_opens_the_lens
 O6 -> test_a_clash_is_asked_once_and_kept_on_both_ladders
-O7 -> test_the_quarter_comes_back_on_its_last_day","Will learning plan, step 3 (founder 2026-10-26, N172: ""build the life goals now""; rules in the frontend flow page §1 M)."
+O7 -> test_the_quarter_comes_back_on_its_last_day
+O8 -> test_a_note_that_sounds_like_a_change_asks_first","Will learning plan, step 3 (founder 2026-10-26, N172: ""build the life goals now""; rules in the frontend flow page §1 M)."
 tests/test_line_bank.py,Story,"As the founder, I want the lines in code to be exactly the lines I signed, with no number but the Take number, so that no unapproved words or scores reach a speaker.","O1  Every bank in services/line_bank.py, the AI clip's openers, tips per
 problem and closers included (N120), equals the signed doc, bullet for
 bullet and in order; no line is invented, dropped or reworded (Never-4).

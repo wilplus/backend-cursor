@@ -56,7 +56,13 @@ COPY = {
     "ends_today": "The quarter ends today.",
     "ended_on": "The quarter ended on {date}.",
     "did_it_move": "{emoji} {step}. Did it move?",
+    # M14, N191: a note that sounds like a change.
+    "change_ask": "Change {emoji} this quarter to “{text}”?",
+    "change_now": "Now: {now}. From your note: “{quote}”",
+    "change": "Change",
+    "changed": "Noted. {emoji} This quarter is now “{text}”. “{now}” stays in its history.",
 }
+CHANGE_OFFER = "life_goals_change"
 QUARTER_OFFER = "life_goals_quarter"
 #: Did it move (M13): never a score.
 OUTCOMES = ("got_there", "moved", "stalled")
@@ -117,8 +123,11 @@ def after_note(database: Any, user_id: str) -> list[dict]:
     the ask was answered Start, or it was asked twice."""
     from services import life_store
     from services.lounge_messages import stamp_after, thread_stamp
-    if not enabled(database, user_id) or life_store.list_goals(str(user_id)):
+    if not enabled(database, user_id):
         return []
+    goals = life_store.list_goals(str(user_id))
+    if goals:
+        return note_change(database, user_id, goals)
     asks = life_store.get_goal_asks(str(user_id))
     asked = int(asks.get("asked") or 0)
     if asked >= _MAX_ASKS or asks.get("answer") == "start":
@@ -643,6 +652,101 @@ def review_quarter(database: Any, user_id: str, goal_id: str, outcome: Any,
         life_store.insert_goal_version(str(user_id), goal_id, step="quarter",
                                        before=quarter.get("text"), after=words)
     return serialize(user_id, saved, talk=_talk_goal(database, user_id))
+
+
+# ── A note that sounds like a change (M14, N191) ─────────────────────────
+
+_CHANGE_SYSTEM = """One person keeps life goals, each with a step for this quarter. You get
+the quarter steps, numbered, and one short note they just wrote to
+themselves. Decide whether the note says that one of those quarter steps
+should now be different (a new target, a new amount, a new aim), not only
+that something happened. Most notes are no change: then return null.
+
+If it is a change, return the new step as a short phrase copied word for
+word from the note (no words of your own), and the part of the note that
+says it, also copied word for word.
+
+Return JSON: {"goal": <number> or null, "text": "...", "quote": "..."}."""
+
+
+def _words(text: str) -> str:
+    """A phrase from the note as a step: its first letter up, one full stop."""
+    text = text.strip().strip(" .,!?;:\"'“”")
+    return (text[:1].upper() + text[1:] + ".") if text else ""
+
+
+def note_change(database: Any, user_id: str, goals: list[dict]) -> list[dict]:
+    """Under a # note's "Noted." (M14): when the newest note sounds like a
+    change to one goal's quarter step, the ask, quoting it. Asked once per
+    note; the words only from the note; never a change by itself."""
+    from services import life_store
+    from services.lounge_messages import stamp_after, thread_stamp
+    stepped = [g for g in goals if ((g.get("ladder") or {}).get("quarter") or {}).get("text")]
+    notes = database.list_voice_notes(str(user_id), limit=1) if stepped else []
+    note = _clip((notes[-1] if notes else {}).get("text_clean"))
+    if not note:
+        return []
+    lines = "\n".join(f"{i + 1}. {SPACES[g['space']][1]}: {g['ladder']['quarter']['text']}"
+                      for i, g in enumerate(stepped))
+    try:
+        parsed = _model(_CHANGE_SYSTEM, f"QUARTER STEPS:\n{lines}\nNOTE: {note}", user_id)
+    except Exception as error:  # noqa: BLE001 -- the note is kept either way
+        logger.warning("life goals: note not read for a change user=%s: %s", user_id, error,
+                       exc_info=True)
+        return []
+    index, text, quote = parsed.get("goal"), _clip(parsed.get("text")), _clip(parsed.get("quote"))
+    if (not isinstance(index, int) or not 1 <= index <= len(stepped) or not text
+            or not quote or not _said(text, note) or not _said(quote, note)):
+        return []
+    goal = stepped[index - 1]
+    ladder = dict(goal["ladder"])
+    quarter = dict(ladder["quarter"])
+    new = _words(text)
+    if new.rstrip(".").lower() == quarter["text"].rstrip(".").lower():
+        return []
+    key = f"{user_id}:change:{goal['id']}:{uuid.uuid5(_NAMESPACE, note)}"
+    quarter["proposal"] = {"text": new, "quote": quote.strip(" .,"), "key": key}
+    if not life_store.update_goal(str(user_id), str(goal["id"]), {"ladder": {**ladder, "quarter": quarter}}):
+        return []
+    emoji = SPACES[goal["space"]][0]
+    meta = {"life_goal_change": str(goal["id"])}
+    at = stamp_after(thread_stamp(database, user_id))
+    rows = [_row(key + ":1", "bot", COPY["change_ask"].format(emoji=emoji, text=new.rstrip(".")),
+                 meta, at),
+            _row(key + ":2", "bot", COPY["change_now"].format(
+                now=quarter["text"].rstrip("."), quote=quote.strip(" .,")),
+                 {**meta, "offer": CHANGE_OFFER}, stamp_after(at))]
+    return database.insert_lounge_messages(str(user_id), rows) or []
+
+
+def answer_change(database: Any, user_id: str, goal_id: str, choice: str) -> list[dict]:
+    """Change or Not now under the ask (M14): Change writes the step, the
+    earlier words kept as a dated version, then the ladder; Not now,
+    "Noted." and nothing changes. Either way the ask is spent."""
+    from services import life_store
+    from services.lounge_messages import stamp_after, thread_stamp
+    if choice not in ("change", "not_now"):
+        raise GoalsError("INVALID_CHOICE", "Unknown answer.")
+    goal = life_store.get_goal(str(user_id), goal_id) if enabled(database, user_id) else None
+    quarter = dict(((goal or {}).get("ladder") or {}).get("quarter") or {})
+    proposal = quarter.pop("proposal", None)
+    if not goal or goal["status"] != "active" or not proposal:
+        raise GoalsError("NOT_FOUND", "Not found.", 404)
+    life_store.update_goal(str(user_id), goal_id, {"ladder": {**goal["ladder"], "quarter": quarter}})
+    at = thread_stamp(database, user_id)
+    key = proposal["key"]
+    rows = [_row(key + ":" + choice, "user", COPY[choice], {"life_goal_change": choice}, at)]
+    if choice == "not_now":
+        rows.append(_row(key + ":noted", "bot", COPY["noted"], {}, stamp_after(at)))
+        return database.insert_lounge_messages(str(user_id), rows) or []
+    shown = change_step(database, user_id, goal_id, "quarter", proposal["text"])
+    emoji = SPACES[goal["space"]][0]
+    at = stamp_after(at)
+    rows.append(_row(key + ":noted", "bot", COPY["changed"].format(
+        emoji=emoji, text=proposal["text"].rstrip("."), now=quarter["text"].rstrip(".")), {}, at))
+    rows.append(_row(key + ":ladder", "bot", ladder_text(shown, shown.get("talk")),
+                     {"life_goal": shown}, stamp_after(at)))
+    return database.insert_lounge_messages(str(user_id), rows) or []
 
 
 # ── Will's drafts, only from their words (M5, M6) ────────────────────────
