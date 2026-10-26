@@ -3720,3 +3720,18 @@ Open: Privacy 3.6 names WhatsApp for the coach's message; whether it needs a
 line for the booking's two messages is the founder's call.
 Migration 0491 (two columns on bookings). A Railway cron service runs every 5
 minutes.
+
+**N142 · The diagnosis's first version (founder, the Claude Code chat, 26
+October 2026: "2. Yes. 3. Okay. 4. Okay.", to decisions 2 to 4 of the build
+plan <https://claude.ai/artifact/5wuXkBNDctRcbxYs9V7R8A>).** For N129 to N141:
+1. The diagnosis may use the readings still in their silent shadow stage
+(filler words, hedges, restarts, a flat voice, a quiet voice); the founder
+checks each new plan for the first weeks. Nothing else is promoted: those
+readings still route nothing outside the plan.
+2. The follow-up questions are signed templates, filled in by the AI with the
+speaker's own words (their event, their audience, their date); the plain
+template is the fallback when the AI fails. Never 4 holds.
+3. The first version picks levels only from what is measured today. "A voice
+that moves" uses pitch range until rising endings and a croaky or breathy
+voice are measured.
+Not built yet. No migration.
