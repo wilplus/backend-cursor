@@ -1405,6 +1405,23 @@ test_every_cited_line_is_real_and_not_blank
 test_frontend_citations_name_a_commit
 test_every_cited_commit_is_reachable_from_this_branch
 (git subprocesses; skipped on a shallow clone)","If removed: Counsel follows a citation in a signed, immutable document and lands on code that does not say what the document says (2026-09-18: the DPIA cited services/voice_confidence.py:177, a comment rule). It cannot check that a line still MEANS what the document claims."
+tests/test_life_goals.py,Story,"As the founder, I want Will to ask for my life goals once after my first note and walk me through one goal at a time, drafted only from my words, so that my notes, my talk and my week answer to the same goals, and I can change any step without losing what it said before.","O1  After the first # note's ""Noted."" the two signed bubbles come, the
+second carrying the Not now | Start ask; not again while it waits;
+after a Not now once more after the next note, never a third time;
+nothing once a goal is set, and nothing for anyone else.
+O2  Will's draft keeps only phrases found word for word in my answers;
+with every question skipped there is no goal.
+O3  A set goal leaves the draft, posts its ladder and ""Noted. Your career
+goal is set."" to the Lounge; a goal it replaces is kept as replaced.
+O4  A changed step keeps the earlier words as a dated version; the talk
+goal changes the setup answer itself; the same words change nothing.
+O5  ""#goals"" opens my ladders; ""can I add another goal? I want to get
+healthier"" is answered ""Of course, ..."" and opens the lens with my
+words; a talk-goal change and anyone else go on as before.","O1 -> test_the_ask_comes_after_the_first_note_and_once_more_after_not_now
+O2 -> test_the_draft_quotes_only_my_words
+O3 -> test_a_set_goal_posts_its_ladder_and_keeps_the_one_it_replaces
+O4 -> test_a_changed_step_keeps_its_earlier_words
+O5 -> test_asking_in_my_own_words_opens_the_lens","Will learning plan, step 3 (founder 2026-10-26, N172: ""build the life goals now""; rules in the frontend flow page §1 M)."
 tests/test_line_bank.py,Story,"As the founder, I want the lines in code to be exactly the lines I signed, with no number but the Take number, so that no unapproved words or scores reach a speaker.","O1  Every bank in services/line_bank.py, the AI clip's openers, tips per
 problem and closers included (N120), equals the signed doc, bullet for
 bullet and in order; no line is invented, dropped or reworded (Never-4).

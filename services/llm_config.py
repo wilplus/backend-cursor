@@ -467,6 +467,30 @@ in the founder's form from the week's notes, Takes and chat. Founder only;
 read in the Lounge (services.sunday_note)."""
 
 
+SPEC_LIFE_GOAL_DRAFT = LLMSpec(
+    model=STRONG_MODEL,
+    # Their own words in one sentence; no room to invent.
+    temperature=0.2,
+    max_tokens=300,
+    response_format={"type": "json_object"},
+)
+"""Life goals (Will learning plan step 3, N172): one goal drafted from the
+founder's own answers in the lens, with the words it came from. Founder only
+(services.life_goals)."""
+
+
+SPEC_LIFE_GOAL_ASK = LLMSpec(
+    model=CHEAP_MODEL,
+    # Detection only: a life goal asked for, or not.
+    temperature=0.0,
+    max_tokens=120,
+    response_format={"type": "json_object"},
+)
+"""Life goals (N172 M2): does a chat message ask to add or see a life goal
+(never the talk's goal)? Runs only after a keyword pre-gate, founder only
+(services.life_goals)."""
+
+
 SPEC_TEMPO_TOPIC = LLMSpec(
     model=CHEAP_MODEL,
     # A name for what the speaker talked about, never a new idea.
