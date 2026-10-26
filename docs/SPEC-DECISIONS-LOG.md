@@ -4872,3 +4872,21 @@ speaker picks.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §2, the messages line. No migration.
+
+**N194 · The life goals ladders on the Life Panel's Goals screen, above the
+three bets (founder, the Claude Code chat, 26 October 2026: "build the
+ladders on the Life Panel screens next", then choosing on the clickable
+prototype).**
+For N172 M15, as the prototype shows it
+(<https://claude.ai/artifact/BeKgTGi1KXvF5ruvMEiA33>, version 1):
+1. On the Goals screen, above "Three bets, in order.": "Life goals", one
+ladder per set goal, the same steps as the Lounge's ladder, each tap on a
+step opening the lens over the panel to change it, as in the Lounge.
+2. Under each ladder "Set on {date}" and "History" (then "Hide history"):
+every version, newest first, dated; the panel only shows, the lens changes.
+3. Under the ladders "＋ Add a goal" opens the lens on "Which matters most
+right now?".
+4. Before the first goal is set, the screen is as it is today: nothing new.
+The words "History", "Hide history", "Set on {date}" and "＋ Add a goal"
+are signed with this entry.
+The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M15.
