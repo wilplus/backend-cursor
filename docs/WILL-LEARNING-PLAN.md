@@ -162,7 +162,10 @@ Built (M1 to M15), founder only (ring row `life_goals`, ring 6):
   answers in words from `ladder.reviews`.
 - **Will reads** the ladders in the chat (`prompt_lines`, inside the
   notebook block).
-- **Not built yet:** this week's focus on the ladder (no source for it yet).
+- **THIS WEEK (M10):** the career ladder shows this week's level from the
+  plan while a plan runs (`this_week`, read-only from `get_open_plan`; the
+  plan's G5), in the lens, on the Goals screen and in Will's prompt; with no
+  plan, or the plan not on (ring row `plan`), the row is left out.
 - Code: `services/life_goals.py`, `routes/v2/life_goals.py`, the store in
   `services/life_store.py`, migration `the_founder_keeps_life_goals`
   (0492), `tests/test_life_goals.py`.
