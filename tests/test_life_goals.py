@@ -215,7 +215,7 @@ def test_a_changed_step_keeps_its_earlier_words(store):
 
     assert shown["history"][0] == {"on": "2026-11-03", "step": "quarter",
                                    "before": "Ten paying teams.", "after": "Twenty paying teams."}
-    assert shown["set_on"] == "2026-10-26"  # every version dated, for the Life Panel (N196)
+    assert shown["set_on"] == "2026-10-26"  # every version dated, for the Life Panel (N197)
 
     shown = lg.change_step(db, "u", goal["id"], "talk", "They sign up for a pilot")
     assert db.goal == "They sign up for a pilot" and shown["talk"] == db.goal

@@ -150,7 +150,7 @@ Built (M1 to M15), founder only (ring row `life_goals`, ring 6):
   /v2/life-goals/<id>/change`) writes it through `change_step` on Change,
   or drops it on Not now. Only the quarter step (the founder: "this
   quarter only is fine").
-- **In the Life Panel (M15, N196):** the frontend's Goals screen shows the
+- **In the Life Panel (M15, N197):** the frontend's Goals screen shows the
   ladders above the three bets. `serialize` adds `set_on` and `history`:
   every version newest first (`life_goal_versions`), with the quarter's
   answers in words from `ladder.reviews`.
