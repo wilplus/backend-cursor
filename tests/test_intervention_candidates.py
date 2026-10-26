@@ -216,6 +216,17 @@ class TestMvpFeedbackContract(unittest.TestCase):
         out = ic.select([confident], mvp_feedback_contract=True)["changes"]
         self.assertEqual(out, [])
 
+    def test_an_old_take_with_no_set_is_logged_not_raised(self):
+        # The 2026-10-24 weekly report: one August Take, reopened, was an
+        # ERROR on every open. A Take recorded after the cutover still is.
+        confident = _change(0, source="confident_voice", kind="bold")
+        with self.assertLogs(ic.logger, level="INFO") as old:
+            ic.select([confident], mvp_feedback_contract=True,
+                      legacy_take=True)
+        self.assertEqual({r.levelname for r in old.records}, {"INFO"})
+        with self.assertLogs(ic.logger, level="ERROR"):
+            ic.select([confident], mvp_feedback_contract=True)
+
 
     def test_confident_voice_reserved_slot_survives_single_point_focus(self):
         served = "focus words\n\nvoice words"
