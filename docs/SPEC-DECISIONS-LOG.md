@@ -4109,5 +4109,7 @@ messages come on top when a number is left. A booking without an email does
 not exist, so it needs nothing built.
 4. The practice-day reminder stays out for now (N155).
 The words are signed (Never 4). Before the code merges, Meta approves the new
-template and `WHATSAPP_BOOKING_REMINDER_TEMPLATE` names it on Railway. No
-migration.
+template, `WHATSAPP_BOOKING_REMINDER_TEMPLATE` names it on Railway, and the
+reminders' cron service runs there every 5 minutes
+(`bin/railway-booking-reminders-cron.sh`, with `BOOKING_REMINDER_SECRET` on
+it and on the web service). No migration.
