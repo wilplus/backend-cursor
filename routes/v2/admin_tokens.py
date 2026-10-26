@@ -37,6 +37,7 @@ from flask import Blueprint, jsonify, request
 
 from routes.admin import require_admin
 from services import token_account as ta
+from services.token_prices import shown, stored
 from services.db import db
 
 logger = logging.getLogger(__name__)
@@ -108,9 +109,9 @@ def _account_payload(user_id: str) -> dict:
     return {
         "user_id": user_id,
         "available": True,
-        "balance": acct.get("balance"),
-        "monthly_balance": acct.get("monthly_balance"),
-        "bonus_balance": acct.get("bonus_balance"),
+        "balance": shown(acct.get("balance")),
+        "monthly_balance": shown(acct.get("monthly_balance")),
+        "bonus_balance": shown(acct.get("bonus_balance")),
         "tier": acct.get("tier"),
         "period_ends_at": acct.get("period_ends_at"),
         # Whether metering is live at all. Without it the panel cannot tell
@@ -189,7 +190,8 @@ def admin_tokens_grant():
         return _no_store({"code": "INVALID_INPUT",
                           "error": "ref_id is required (idempotency key)"},
                          400)
-    out = ta.admin_grant(user_id, tokens, ref_id=ref_id)
+    # Typed in tokens as shown (N198); the ledger keeps stored units.
+    out = ta.admin_grant(user_id, stored(tokens), ref_id=ref_id)
     if not out.get("ok"):
         # THE REASON IS THE POINT. Every failure here needs a different human
         # action, and "could not apply the grant" sends the operator to the

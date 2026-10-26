@@ -53,7 +53,13 @@ def _reserve_review_credit(user_id: str, session_id: str):
     because a review nobody can account for is the one case the founder did
     not ask for. Every outcome is logged; nothing here is silent any more.
     """
-    from services.token_account import charge
+    from services.token_account import ChargeResult, charge
+    from services.token_prices import v4_enabled
+
+    # N198 item 5: with everything in tokens, a review is charged only when the
+    # speaker asks for one; a Take that simply reaches the coach costs nothing.
+    if v4_enabled():
+        return ChargeResult(True, 0, 0, "not_asked", "coach_feedback")
 
     result = charge(user_id, "coach_feedback", ref_id=session_id)
     if result.reason in _UNRECORDED:

@@ -27,6 +27,7 @@ import httpx
 from config import Config
 from services.db import db
 from services.secrets import supabase_key_headers
+from services.token_prices import shown
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -217,8 +218,8 @@ def person(user_id: str) -> Optional[dict]:
         "home_screen_at": meta.get("home_screen_at"),
         "consents": _with_chat_no(consent_rows, f_asks.result() or []),
         "tokens": account and {
-            "balance": account.get("balance"), "monthly": account.get("monthly_balance"),
-            "bonus": account.get("bonus_balance"), "tier": account.get("tier"),
+            "balance": shown(account.get("balance")), "monthly": shown(account.get("monthly_balance")),
+            "bonus": shown(account.get("bonus_balance")), "tier": account.get("tier"),
         },
         "lesson_price_cents": f_price.result(),
         "list_price_cents": f_list.result(),
