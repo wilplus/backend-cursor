@@ -3930,3 +3930,40 @@ items 2 and 3) with the approved words of N154, after the new privacy version
 and Meta's template (N153 item 4). Until then the WhatsApp number is asked
 only as today, from Take 2, for the coach's feedback.
 No migration.
+
+**N156 · The ratings one at a time in the footer; a simpler plan; the two
+calls with the coach booked before the first Take (founder, the Claude Code
+chat, 26 October 2026: "The scale is shown instead of the type here. One at a
+time ... Then the plan should be less crowded. Make it really simplistic. In
+the bullet points ... just call it plan ... you have two meetings to schedule
+with the coach, the kickoff meeting and the summary meeting ... instead of a
+type here form, you just have a calendar, just like for the deadline, and you
+set the date and the time ... you have one out of two booked, and you have in
+your calendar already the deadline marked ... you can already do the summary
+meeting, but you don't have to ... You can just click next. And then it says
+you're all set. Start your first recording. Instead of the type here,
+form").** For N148, N149, N151, N153 and N154:
+1. Stress and readiness come one at a time: the question in the thread, its 1
+to 10 scale in the footer in place of "Type here". The pick is not written
+back into the thread (N149 item 4). The same at the last practice (N151).
+2. The plan card is simpler: the level, its line in the speaker's own words
+with their recording ("How you said it"), the reason behind "Why this line?",
+then "Plan" in bullet points: the practice days, the Pace Circle, the kickoff
+call and the summary call, each with its time once booked. "Your coach will
+listen too, and may change it." leaves the card; "Change your plan" stays.
+3. Under the card, the footer books the two calls with the coach: a calendar
+like the deadline's, with the deadline marked, then a time, then Book. The
+kickoff call first, before the deadline; then the summary call, after it,
+which can wait ("Next"). The footer counts "1 of 2 booked".
+4. Then Will says "You're all set." and "Start your first recording" takes
+the footer's place.
+5. A summary call booked here is shown at the deadline instead of being
+offered again (N149 item 5).
+Open, put to the founder: whether the kickoff call may wait too, since a
+booking that must be made before the first Take puts a coach in the way of the
+loop (Never 3); how the two calls are paid (free on the corporate plan, N143;
+today a paid booking page otherwise); and whether the weekly call (N134 item
+11) still runs beside them (drawn without it). The new words wait for the
+founder's OK (Never 4). Drawn on the prototype
+<https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>. Not built yet. No
+migration.
