@@ -4957,10 +4957,40 @@ The words "History", "Hide history", "Set on {date}" and "＋ Add a goal"
 are signed with this entry.
 The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M15.
 
-**N198 · The password notice says its time in UTC (founder, the Claude Code
-chat, 26 October 2026: "keep UTC in the email").**
-For N190, the email "Your password was changed": the time is written as
-"on 26 October at 16:40 UTC". The prototype had no time zone; the person's
-own zone is not known, and a time without one would be wrong for anyone
-outside UTC. Already so in `services/email_account_security.py`; nothing
-changes. No rules page.
+**N198 · Everything in tokens: three packages, each with a call with your
+coach (founder, the prototype
+<https://claude.ai/artifact/4WdWu3QDPmgoirUi4uJUUZ>, version 3, 26 October
+2026: "accepted, start the build"; before that, in the Claude Code chat, "the
+other two also get the video and the coaching session etc. just that it gets
+used faster").**
+For N187 and N188; it replaces N188 items 1 to 3, and N188 items 4 and 5
+stand.
+1. One currency. Calls, written reviews and messages with the coach are paid
+in tokens, like Takes. Today's balances and every machine price are divided by
+100, so nobody loses a Take: a short Take reads 10, the free grant 120. Chat
+is 1 token (it would be 1.5).
+2. The founder's time in tokens, 200 a minute: a 15-minute call 3,000, a
+60-minute lesson 12,000, a written review 2,000, a message 2,000.
+3. Every package comes with the same things: calls with the coach, an AI
+analysis of every Take, and exercises built around the way the speaker
+speaks. A bigger package lasts longer and costs less per token. Starter $39
+for 3,900 tokens, about a month with one call; Plus $99 for 11,000, save $11,
+about two months with two calls and a review; Pro $149 for 18,000, save $31,
+about three months with three calls and two reviews. The savings are against
+Starter's 100 tokens for $1. The $12 Starter goes; Plus was $39 and Pro $89.
+Anyone who bought keeps what they hold.
+4. A call can be booked with tokens, at the booking's own price, a token a
+cent, so a price link or a person's own price counts the same way. Without
+enough tokens, booking by card stays as it is. Tokens for a call cancelled at
+least 12 hours before come back.
+5. A review or a message is charged only when the speaker asks for one.
+Every Take still reaches the coach; one not asked for is the coach's to
+answer or not, free. Where the speaker asks is drawn next, for the founder's
+OK, beside the Feedback walk (a locked screen).
+6. The review's price rises from 35,000 of today's tokens (about $2.80) to
+2,000 ($20): speakers who hold tokens are told before it changes, as the
+Terms promise.
+7. The words on the cards as the prototype shows them. The new packages go
+on sale once Terms 3.7 describe them; until then the build stays switched
+off.
+No rules page. No migration in this entry.
