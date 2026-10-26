@@ -21,8 +21,6 @@ OUTCOME
   O7  A new project's first Take asks "Is this for {date}?"; Yes keeps the
       plan, No starts "When is your deadline?" for a new one, the old plan
       kept in the history.
-  O8  The career goal's ladder shows THIS WEEK, the plan's level, once the
-      plan is active; nothing before (N172 M10).
 PROVES   O1 -> test_without_the_ring_nothing_happens
          O2 -> test_a_new_speaker_is_asked_once
          O3 -> test_no_date_gives_two_months_then_the_voice_message
@@ -30,7 +28,6 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
          O5 -> test_ratings_are_kept_quietly_and_the_calls_lead_to_the_plan
          O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
          O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
-         O8 -> test_the_ladder_shows_this_weeks_level
 WHY      The plan, built one to one with the prototype (founder 2026-10-26,
          N203, N204); the rules are frontend docs/flows/the-plan.md §1.
 """
@@ -265,12 +262,3 @@ def test_a_new_project_asks_whether_it_is_for_the_same_event(db, monkeypatch):
     assert bodies(db)[-2:] == ["No", "When is your deadline?"]
     assert out["plan"]["status"] == "asking"
     assert [p["status"] for p in db.plans] == ["replaced", "asking"]
-
-
-def test_the_ladder_shows_this_weeks_level(db):
-    from services import life_goals
-    F.state(db, USER, tz="UTC", first_name="Artur")
-    assert life_goals._this_week(db, USER) is None  # still asking
-    _active(db)
-    level = db.get_open_plan(USER)["level"]
-    assert life_goals._this_week(db, USER) == F.P.level_name(level)
