@@ -1,12 +1,16 @@
-# Decisions log — settled in review, not yet folded into SPEC.md
+# Decisions log
 
 > **Label: In force** · one of the rules, read in N95's order. Every doc and its label: [`README.md`](../README.md) (N106).
 
-**Last updated:** 2026-09-25.
+**What this is:** the founder's dated decisions, newest last. It is the first of the rules (N95):
+where any other doc or the code disagrees with an entry, the entry wins, and the rules pages it
+names are changed to match. An entry is not rewritten; a later entry says what it replaces.
+SPEC.md is Reference and is no longer where entries get folded (N95, N106).
 
-**Purpose:** everything agreed after SPEC.md v3 was committed. This file exists so a long
-review session survives itself. Entries here are **binding** and get folded into the numbered
-sections on the next spec pass. Where this file and SPEC.md v3 disagree, **this file is newer.**
+**Known gaps in the numbering** (docs audit, 2026-10-26): N78 and N91 are cited (N77 and N103 cite
+N78; N122 and the walk's page cite N91) but were never written as entries. N70 appears
+twice (N70 and N70.1). N92 comes before N90, and N168 before N166. N127 and N144 both name
+migration 0491; the manifest gives 0491 to N144's WhatsApp number on bookings.
 
 **From 2026-10-20, the Feedback walk and the chat have one page** (frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), <https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md>), where their rules are

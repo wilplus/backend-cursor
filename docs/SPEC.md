@@ -4,14 +4,16 @@
 
 > **2026-10-21 (N102):** what the app learns from and how a label settles are now one page, [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md). The decisions log wins over this file (N95). Its §3, §9 and §17 are partly out of date; that page says where.
 
+> **2026-10-26 (docs audit):** build from the decisions log, the contract and the frontend's flow pages, not from this file. Also out of date: §0 D2 and §5.2 to §5.3, which keep a sex-routed confidence table; sex routing was retired on 29 August (log §L, L1: the product neither asks for speaker sex nor infers it). §17 `pace-scale-v1` is kept current.
+
 **Last updated:** 2026-08-13.
 
 **Version:** v3. Supersedes v1 and v2 entirely.
-**Status:** v1.0 scope locked. Build to this document.
+**Status:** Reference since N95 (2026-10-21). It was the v1.0 build spec; the rules now live in the decisions log, the contract and the flow pages.
 **Audience:** implementing engineer / coding agent.
 **Read §0 and §1 before anything else.**
 
-**Companion documents (normative, not optional):**
+**Companion documents (Reference, like this file):**
 - [Appendix A — Verbal Computations](SPEC-APPENDIX-A-verbal-computations.md)
 - [Appendix B — Feedback Progression](SPEC-APPENDIX-B-progression.md)
 - [Appendix C — Intervention Contract](SPEC-APPENDIX-C-intervention-contract.md)
@@ -24,7 +26,7 @@
 
 **Operational documents (non-normative, but load-bearing):**
 - [Product-manager backlog — recurring processes and deferred unlocks](PRODUCT-MANAGER-BACKLOG.md)
-- [Prompt — build the drift layer (execute now)](PROMPT-drift-layer.md)
+- [Prompt — build the drift layer (Archive)](PROMPT-drift-layer.md)
 - [Prompt — IRT / CAT / DIF (deferred, trigger-gated)](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/PROMPT-irt-dif-deferred.md)
 
 ---
