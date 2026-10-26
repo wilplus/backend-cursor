@@ -1384,6 +1384,14 @@ def run_sweep_loop(chain_id: Optional[str] = None) -> None:
         except Exception as sunday_error:
             logger.warning("pipeline_jobs: sunday-note sweep failed: %s", sunday_error,
                            exc_info=True)
+        try:
+            # The founder's one "Homework" email a day (N174 item 3): a
+            # Redis flag read each minute; it sends once the hour has come.
+            from services.homework_digest import sweep_due as homework_due
+            homework_due()
+        except Exception as homework_error:
+            logger.warning("pipeline_jobs: homework-digest sweep failed: %s",
+                           homework_error, exc_info=True)
     finally:
         if chain_id and job_queue.renew_sweep_lease(
                 chain_id,

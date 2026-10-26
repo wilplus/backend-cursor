@@ -1140,6 +1140,13 @@ returns the stored helper words on that Paragraph, with Take 2's text.
 O2  Their position is kept while it proves the words, re-found when they
 occur once in the new text, and otherwise left empty, never guessed.","O1 -> test_helper_words_survive_a_take_said_differently
 O2 -> test_root_span_in","Contract 14, founder 2026-09-25: the helper words are their own text."
+tests/test_homework_digest.py,Story,"As the founder, I want one ""Homework"" email a day listing who sent a Take, not one email per Take, so that my inbox stays readable while the coach queue still shows every Take at once.","O1  The Takes noted during the day go out as one email from 8:00 in my
+time zone, a row per student with their Takes and moments; nothing
+before 8:00 and nothing twice in a day.
+O2  A day with no Takes sends nothing.
+O3  A failed send keeps its Takes for the next day's email.","O1 -> test_one_email_a_day_lists_every_student
+O2 -> test_a_day_without_takes_sends_nothing
+O3 -> test_a_failed_send_keeps_its_takes_for_tomorrow","Founder 2026-10-26, N174 item 3: ""One email a day with the list. The coach queue in the app still shows every Take straight away."""
 tests/test_ideal_text_bake_fresh_head.py,Story,"As a speaker, I want my feedback marks built on the Take I was just told is ready, so that I never see the previous Take's marks.","O1  If the stored Ideal Text still points at the previous Take, it is
 republished first and the new Take is the one baked.
 O2  If it is already current, it is baked as it stands, with no republish.","O1 -> test_a_stale_head_is_republished_and_the_new_take_is_baked
@@ -2672,13 +2679,15 @@ C3  a Take in the green picking a stretch anyway, so the step shows for nothing
 C4  a topic with a number, a quote or a whole sentence reaching the speaker
 C5  a failed topic call losing the step, instead of saying ""that part""
 C6  a played tempo game no longer kept for Will, or kept with a number in his note
-C7  a broken or partial game kept as if it were whole","C1 -> test_a_clip_spoken_without_a_pause_is_rushed
+C7  a broken or partial game kept as if it were whole
+C8  the tempo step reaching a speaker the rings panel has not switched on","C1 -> test_a_clip_spoken_without_a_pause_is_rushed
 C2 -> test_a_clip_with_long_pauses_is_slow
 C3 -> test_a_take_in_the_green_has_no_stretch
 C4 -> test_only_a_short_plain_topic_is_kept
 C5 -> test_a_failed_topic_still_gives_the_step
 C6 -> test_a_played_game_is_kept_for_will_in_words
-C7 -> test_a_partial_game_is_not_kept","If removed: the tempo step could practise the wrong stretch, or put a number or a made-up sentence on screen (Never 1, Never 4)."
+C7 -> test_a_partial_game_is_not_kept
+C8 -> test_only_the_founder_and_the_ring_have_the_step","If removed: the tempo step could practise the wrong stretch, or put a number or a made-up sentence on screen (Never 1, Never 4)."
 tests/test_tests_never_touch_a_real_database.py,Guard,The test suite refuses to start against a real Supabase project.,"C1  a `pytest` run in an environment that carries a production SUPABASE_URL
 (founder 2026-10-20: fixture values ""arc-9"", ""owner-1"" reached the live
 database this way) -- it stops before any test module imports.

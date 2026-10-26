@@ -4401,3 +4401,13 @@ numbers.
 The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 G11. No migration in this entry.
+
+**N175 · The plan card's last waiting words, signed (founder, the Claude Code
+chat, 26 October 2026: "OK", to "Does your OK cover those too?" about the
+words the journeys prototype showed on the plan card without marking them).**
+For N153, N157, N161, N164 and N173, signed (Never 4): "Why this line?" ·
+"Plan" · "Kickoff call with your coach" · "Summary call with your coach" ·
+"Your deadline: {date}" (the orange line in the plan's list, N164). The rules:
+frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+K. Docs only. No migration.

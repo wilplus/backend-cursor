@@ -210,6 +210,16 @@ def tempo_for_take(database: Any, *, take: str, user_id: str, arc_id: str) -> Op
     return result
 
 
+def tempo_is_on(user_id: Any, *, founder: bool) -> bool:
+    """Who has the tempo step (N166 step 6): the founder always; anyone
+    else when the rings panel's ``tempo_step`` row reaches them. A missing
+    row or an unreachable ring table is a closed door."""
+    if founder:
+        return True
+    from services import rings
+    return rings.feature_is_on_for_user(rings.TEMPO_STEP, user_id)
+
+
 _TRY_RESULTS = ("ok", "rush", "slow")
 _CLOSES = ("dynamic", "rush", "slow")
 #: At most a minute of path a try, one point every 200 ms.
