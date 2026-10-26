@@ -4873,13 +4873,29 @@ The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §2, the messages line. No migration.
 
-**N194 · The ☰ menu's row for Data & consent reads "Settings" (founder, the
-Claude Code chat, 26 October 2026: "in the hamburger change the data &
-consent to 'settings'").**
-1. The ☰ menu's row that opens `/account/data-consent` reads **Settings**.
-It stays orange on light orange while you are on the page (ST1 A).
-2. Only the row changes. The page's title, "Data & consent", and the
-recording screen's line that names it ("You can turn it back on in Data &
-consent.") stay until the founder says otherwise.
-The rules: frontend [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
-§1, "Amended 2026-10-26: Settings in the menu".
+**N194 · The voice note is written as it is said (founder, the Claude Code
+chat, 26 October 2026: "approved, build it", to the prototype
+<https://claude.ai/artifact/Wfr7i2RYR7ubYHTRqS6cYe>).** For the voice
+notebook (Will learning plan step 1; N182, N183):
+1. A tap on the mic records at once, and the person's own orange "# " note
+appears at the bottom of the thread with a cursor; the words appear in it
+as they are said, the newest one or two lighter while they may still change.
+The bar under the thread stays as it is: delete, the running time, send
+(founder 2026-10-20).
+2. On send, the hesitations fade out and the note settles into the cleaned
+words: the same transcription and cleaning as today, which stay the kept
+text. A small tick under the note means it is kept; then Will's typing dots
+and "Noted.".
+3. Only delete throws a note away. Closing or leaving the app keeps what was
+said and sends it. A note that cannot leave the phone waits there with a
+small clock and goes the next time the app is open with a connection; then
+the clock turns into the tick.
+4. A tap on one's own note opens its words in the message box to fix a word;
+send replaces the note's words in the thread and in the notebook. Will does
+not answer again.
+5. No new words on screen; two labels only screen readers say: "Fix this
+note" and "Close".
+6. The live words are a preview: the audio goes in short pieces to the same
+transcription provider under the processing-authorization path, and is not
+kept. No migration.
+The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 B.
