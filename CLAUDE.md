@@ -7,16 +7,18 @@ per slide, the **Ideal Text**, and gives evidence-backed feedback after every
 Take. Then they record the next Take. That loop is the product.
 
 Second priority: coach review, Confident Voice and practice. These never
-slow the loop down.
+slow the loop down. The plan (diagnosis, practice days, calls) chooses what
+each walk practises; when it competes with the loop, the loop wins (N129,
+N178).
 
 This repo: **backend** (Flask, Railway, Supabase). The frontend is
 `wilplus/frontend-cursor` (Next.js, Vercel).
 
 ## Never
 
-1. **No scores, numbers or verdicts shown to speakers.** Feedback is in words. A processing-progress percentage and a token price are not about the speaker and are allowed (founder, 2026-10-19).
+1. **No scores, numbers or verdicts shown to speakers.** Feedback is in words. A processing-progress percentage and a token price are not about the speaker and are allowed (founder, 2026-10-19), and so is a count of where the speaker is in their plan ("Practice 2 of 9"); their own 1 to 10 answers are never shown back (N178).
 2. **No coach sees the machine's guess before answering.** Coach judgements stay blind.
-3. **Never break record → process → Ideal Text → next Take.** Coaches and exercises are never in the way; the plan's questions come once, before the first Take (N136, N140).
+3. **Never break record → process → Ideal Text → next Take.** Coaches and exercises are never in the way; the plan's questions come once, before the first Take; before any other Take, only the feelings check, with a Skip (N136, N140, N178).
 4. **No new words on screen without the founder's OK.**
 5. **The Ideal Text is only what the speaker said in their latest Take.** Their helper words stay until they pick new ones. Every old version stays in the history.
 
@@ -35,7 +37,9 @@ that flow is a line on that page, never a new file: the backend PR names the
 frontend PR that updates it. Its entry here in [`docs/SPEC-DECISIONS-LOG.md`](docs/SPEC-DECISIONS-LOG.md)
 is two lines and a link. Every other locked screen has a page of the same
 shape in the frontend's `docs/flows/`: the recording screens, the consent
-screens, the Ideal Text page and the AI voice in practice (N107).
+screens, the Ideal Text page and the AI voice in practice (N107). The plan
+has one too, [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md):
+a rules page, locked once its first part is built (N160, N178).
 
 ## One source of truth
 

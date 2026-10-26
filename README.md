@@ -16,6 +16,19 @@ Each doc also says its label in a line under its title, except the docs that mus
 the legal pack (a test checks its citations), the signed texts, files that live beside code, and files
 already in an archive or history folder.
 
+## 0. Strategy now
+
+The founder's direction in one place (N129, N178). Where a rule below says more, the rule wins.
+
+- **The loop is the product.** Record a Take, get the Ideal Text and evidence-backed feedback, record the next Take.
+- **The plan serves the loop.** Every speaker is diagnosed and gets a plan up to their deadline (N136). The plan
+  chooses what each Feedback walk practises (N129). When the plan and the loop compete, the loop wins: before any
+  Take but the first, the only thing shown is the feelings check, with a Skip (N178).
+- **Second priority**, never slowing the loop: coach review, Confident Voice and practice.
+- **Built:** the loop and the Feedback walk, the coach panel, and the tempo step for the speakers a ring lets in.
+  **Decided and held:** the plan's diagnosis, practice days, calls and reminders; the founder holds their build (N147).
+- **Next builds:** not named yet (N178).
+
 ## 1. The rules (In force)
 
 For coding agents, first: [`CLAUDE.md`](CLAUDE.md) (and [`AGENTS.md`](AGENTS.md)). Then, in N95's order:
@@ -30,7 +43,7 @@ For coding agents, first: [`CLAUDE.md`](CLAUDE.md) (and [`AGENTS.md`](AGENTS.md)
    - [The recording screens](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
    - [The consent screens and the Data & consent page](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
    - [The AI version of your voice in practice](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md)
-   - [The plan: from the first questions to the deadline](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md), the one page for the diagnosis and the plan (N129 to N157), not a locked screen · Founder-Approved: the Claude Code chat, 26 October 2026, "Okay", to the plan having its own flow page (N160)
+   - [The plan: from the first questions to the deadline](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md), the one page for the diagnosis and the plan (N129 to N178), a rules page, locked once its first part is built (N178) · Founder-Approved: the Claude Code chat, 26 October 2026, "Okay", to the plan having its own flow page (N160)
 5. [Learning and the label quorum](docs/LEARNING-AND-QUORUM.md): what the app learns from and how a label settles.
 6. [The signed line bank](docs/SIGNED-line-bank-2026-10-06.md): the signed words a speaker may see.
 
