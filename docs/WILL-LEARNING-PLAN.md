@@ -94,6 +94,14 @@ principles. Never on the recording screens.
 
 ## Step 3: life goals, the Dalio way
 
+**Decided 2026-10-26 (N172), not built yet:** asked once after the first #
+note, one goal per sitting in a lens, drafted only from the speaker's words,
+worked back from the horizon to the quarter, the ladder per goal, kept in
+the Life Panel, <https://claude.ai/artifact/HaWehtwfg1jzJvGeGM1c24>. The
+rules are frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 M. What follows is
+the plan of 2026-10-20 it grew from.
+
 Seven questions: What do you truly want most? What fits your nature and
 strengths? What will you give up for it? Is it a real goal or a desire? What
 will actually fulfil you? Is it ambitious enough? What path feels right?

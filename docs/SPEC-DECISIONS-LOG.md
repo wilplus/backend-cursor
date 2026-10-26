@@ -4319,6 +4319,33 @@ Railway before it merges. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 E1. Not built yet. No migration in this entry.
 
+**N172 · Life goals: asked once after the first # note, one goal per
+sitting in a lens, worked back from the horizon to the quarter, kept in the
+Life Panel (founder, the Claude Code chat, 26 October 2026: "build the life
+goals now", on <https://claude.ai/artifact/HaWehtwfg1jzJvGeGM1c24>, version 7;
+the three open points answered the same day: Not now asks once more after
+the next note, the goals live in the Life Panel, a space may hold more than
+one goal).**
+For the Will learning plan's step 3. Founder only (ring 6, `life_goals`).
+1. Asked once right after the first # note's "Noted.", with Not now | Start
+in place of the message box; Not now asks once more after the next note;
+any day when asked in the speaker's own words, and then the lens opens by
+itself.
+2. One goal per sitting: the space that matters most; three open questions,
+said or typed; Will drafts only from their words and quotes them; goal or
+want ("What would having it give you?" redrafts the goal); ambitious enough;
+what they give up; a horizon, then the steps worked back from it to the
+quarter, with the four-week rule.
+3. The ladder per goal, with the talk goal and this week's focus under the
+goal the talk serves; any step changed by tapping it, a change checks the
+step below, every version kept with its date.
+4. Later in the build order: the clash between two goals, the quarter
+coming back on its last day, and a # note that sounds like a change.
+Rules and words: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 M. The
+founder's "build the life goals now" on the prototype signs its words
+(Never 4). Not built yet.
+
 **N173 · The plan's words from the three journeys, signed (founder, the
 Claude Code chat, 26 October 2026: "You have my OK on the wording", on the
 words marked as not signed in the prototype
