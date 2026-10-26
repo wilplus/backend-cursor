@@ -120,7 +120,7 @@ Built (M1 to M12), founder only (ring row `life_goals`, ring 6):
   "Noted. Your … goal is set." to the Lounge. `change_step` keeps the
   earlier words as a dated row in `life_goal_versions`. The talk goal
   changes the profile goal, with its own history.
-- **The clash (M12, N184):** before a new goal is set, `check_clash`
+- **The clash (M12, N185):** before a new goal is set, `check_clash`
   (`POST /v2/life-goals/<id>/clash/check`) asks the model whether its
   give-up pulls against a kept goal, from their words only, once per pair.
   `answer_clash` (`POST /v2/life-goals/<id>/clash`) keeps the answer on

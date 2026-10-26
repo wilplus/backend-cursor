@@ -47,7 +47,7 @@ COPY = {
     "set": "Noted. Your {space} goal is set.",
     # N180, N183: the app is the base; the speaker goes and lives it.
     "go_live": "That's the base. Now go and live it. Come back for a short recap.",
-    # M12, N184: the clash between two goals.
+    # M12, N185: the clash between two goals.
     "each_time": "I decide each time",
     "wins": "{who} wins",
     "each_time_kept": "You decide each time",
@@ -242,7 +242,7 @@ def save_draft(user_id: str, goal_id: Optional[str], space: str, ladder: Any) ->
         goal = life_store.get_goal(str(user_id), goal_id)
         if not goal or goal["status"] != "draft":
             raise GoalsError("NOT_FOUND", "Not found.", 404)
-        # The clash answers are the server's (N184): a save never drops them.
+        # The clash answers are the server's (N185): a save never drops them.
         kept = (goal.get("ladder") or {}).get("clashes")
         if kept:
             cleaned["clashes"] = kept
@@ -373,7 +373,7 @@ def change_step(database: Any, user_id: str, goal_id: str, step: str,
     return serialize(user_id, goal, talk=talk)
 
 
-# ── The clash between two goals (M12, N184) ──────────────────────────────
+# ── The clash between two goals (M12, N185) ──────────────────────────────
 
 _CLASH_SYSTEM = """One person keeps several life goals. Each has its space, the goal and
 what they said they would give up for it. You get one NEW goal and the
