@@ -3899,3 +3899,20 @@ promises the coach's message only, must name both.
 The new words wait for the founder's OK (Never 4). Drawn on the prototype
 <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>. Not built yet. No
 migration.
+
+**N154 · The words of N153 are approved (founder, the Claude Code chat, 26
+October 2026: "You have my okay for the wording. Yeah, it has to change, like
+the privacy policy, Meta, the gray card's title").** For N153, word for word
+(Never 4):
+1. The plan card: "How you said it" (under the speaker's recording of their
+key line); "Why this line:" followed by one sentence from what the diagnosis
+heard, for the board pitch "It's the sentence you want the board to remember,
+and you said it a little faster than the rest. Give it more room, and it
+lands."; "How you'll practise".
+2. The reminder ask: "Want a WhatsApp on your practice days? Add your number."
+3. The grey card's title, for both WhatsApp asks: "We'll only use it to remind
+you on practice days and to tell you when your coach texted you".
+4. After Save: "Saved ✓ We'll message you on WhatsApp at {number} on your
+practice days and when your coach's feedback is in."
+The privacy policy's new version and Meta's template for the reminder are
+still needed before the reminder is built (N153 item 4). No migration.
