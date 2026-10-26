@@ -3773,3 +3773,33 @@ These are the speaker's own answers, not scores the app gives. How they are
 used and whether they are ever shown back (Never 1), where the questions sit,
 and what follows the deadline's ratings are asked in the same chat and logged
 when answered. Not built yet. No migration.
+
+**N149 · Stress before the first Take, feelings before every other, and the
+summary call (founder, the Claude Code chat, 26 October 2026: "replace the
+emotional assessment with the stress rating before the first take and then
+keep the 4 or 5 emotions before every take and don't do the stress assessment
+until the last lesson ... When the project is finished, there usually should
+be to choose the call with the coach, like a summary call. Choose a date for
+the summary call and a button to go to the booking page, 15 minutes one. And
+to all the rest, yes").** For N148:
+1. Before the first Take, the stress rating (1 to 10) takes the place of the
+feelings check ("How do you feel?"). It is asked with the readiness rating at
+the end of the onboarding questions, right before the plan card.
+2. From Take 2 on, the feelings check (its four answers) comes before every
+Take. Today it is asked once, before Take 1; this widens it. Before the feelings
+check leaves Take 1, everything it feeds is listed and kept (CLAUDE.md,
+"Replacing a feature").
+3. Stress is asked again only at the deadline, with readiness (N148).
+4. The ratings are never shown back to the speaker as numbers; the founder and
+the coach see them, and Will speaks of them only in words (Never 1).
+5. The deadline's ratings come the first time the speaker opens the app on or
+after the deadline day. Then Will asks "How did it go?" (a voice message),
+offers the summary call (a 15-minute call with the coach: the speaker chooses
+a date on the booking page, booked and paid on its own as today, N44), and
+asks what's next: "I have a new event" (the questions again, a new plan) or
+"Keep practising" (a new two-month plan from their Takes, no questions).
+6. A new project asks "Is this for 14 November?" (the plan's deadline): yes
+keeps the plan, no starts "When is your deadline?" and the questions for a new
+plan. New slides or a rewrite for the same event keep the plan as it is.
+Drawn on the prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>.
+Not built yet. No migration.
