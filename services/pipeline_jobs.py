@@ -1376,14 +1376,6 @@ def run_sweep_loop(chain_id: Optional[str] = None) -> None:
                 "pipeline_jobs: confident-moment sweep failed: %s",
                 delivery_error,
             )
-        try:
-            # The founder's Sunday note (Will learning plan, step 2): one
-            # read of a few rows; it enqueues only on Sunday evening.
-            from services.sunday_note import sweep_due
-            sweep_due()
-        except Exception as sunday_error:
-            logger.warning("pipeline_jobs: sunday-note sweep failed: %s", sunday_error,
-                           exc_info=True)
     finally:
         if chain_id and job_queue.renew_sweep_lease(
                 chain_id,

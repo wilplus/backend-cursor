@@ -5,11 +5,11 @@
   POST /v2/notebook/ask      the question before the first note, in the thread
   POST /v2/notebook/consent  {choice: yes | not_now}
   POST /v2/notebook/notes    multipart: audio (≤ 5 min), duration_ms
-  POST /v2/notebook/sunday/<id>/pattern    {choice: old | new}
+  POST /v2/notebook/sunday/<id>/pattern    {choice: old | new}  (cases before 2026-10-26)
   POST /v2/notebook/sunday/<id>/principle  {choice: add | not_now}
 
 GET state takes ?tz=<IANA zone> (the browser's): kept for whoever said Yes,
-so the Sunday note (services/sunday_note.py) comes at 6 pm their time.
+so a Sunday note they ask for (services/sunday_note.py) reads their own week.
 
 A person without the notebook gets enabled false from state and 404 from
 the rest. The recording's transcription runs under the caller's

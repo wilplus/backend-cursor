@@ -42,23 +42,24 @@ composer.
 
 ## Step 2: the Sunday note (built 2026-10-20)
 
-How it works now:
+How it works now (narrowed by the founder 2026-10-26):
 
-- **When:** Sunday from 6 pm in the founder's time zone (the browser's,
-  saved when the chat opens), once a week, from the worker's minute sweep.
-  Also whenever the founder types "sunday note", "#sunday" or "case of the
-  week".
-- **Reads:** the week's notebook, the Lounge thread (their words, Will's
-  replies, the summaries after each Take), the talk goal, Will's note on
-  them and their active Life Panel principles.
+- **When:** only when the founder asks: "sunday note", "#sunday" or "case of
+  the week". Nothing on a schedule; the worker's Sunday sweep is gone ("If
+  not asked, no answer from Will").
+- **Reads:** only the week's # notes (the voice notebook: the small mic and
+  typed "#" notes) as evidence, with the talk goal and their active Life
+  Panel principles as context. The Lounge thread, the Take summaries and
+  Will's note on them are not read ("Takes are separate from this"). A week
+  without a # note gets no case; Will answers as usual.
 - **Writes:** one bubble in the form below, with only the bug the week
   shows explained. No numbers.
-- **Then:** the footer asks **Old | New** (a bug they already knew, or a new
-  one). If Will has a new principle, "⚜️ <principle>" follows with
-  **Not now | Add principle**. Only Add principle puts it among the Life
-  Panel's active principles; the reply is "Noted.".
-- **Will remembers:** the last case's bug, and whether it was old or new, is
-  in Will's private notebook block in the chat.
+- **Then:** if Will has a new principle, **Not now | Add principle** sits
+  under the case. Only Add principle puts it among the Life Panel's active
+  principles; the reply is "Noted.". The **Old | New** ask is gone (the user
+  could not tell what it asked); a case written before still answers it.
+- **Will remembers:** the last case's bug is in Will's private notebook
+  block in the chat.
 - Code: `services/sunday_note.py`, migration
   `will_writes_the_founder_a_sunday_case.sql`, `tests/test_sunday_note.py`.
 
