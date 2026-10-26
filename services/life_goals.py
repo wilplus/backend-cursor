@@ -170,7 +170,7 @@ def answer(database: Any, user_id: str, choice: str) -> list[dict]:
 def _versions(user_id: str, goal: dict) -> tuple[dict, list[dict]]:
     """The newest change of each step (its date and the words before it), and
     every version newest first, with the quarter's answers in words (M15,
-    N194): what the Life Panel's History shows."""
+    N196): what the Life Panel's History shows."""
     from services import life_store
     changes: dict[str, dict] = {}
     history: list[dict] = []
