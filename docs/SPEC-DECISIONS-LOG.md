@@ -4155,3 +4155,29 @@ The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 E and G. Drawn on the prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>
 (version 24). No migration.
+
+**N168 · "Edit" next to the deadline under the calls' calendar (founder, the
+Claude Code chat, 26 October 2026: "what happens if I want to update my
+deadline when I realize I want to schedule a kickoff call with the coach?
+Can there be a small edit next to your deadline text on the calendar?").**
+For N157, N161 and N167: under the calendar that books a call with the coach,
+the deadline line reads "Your deadline: {day date month}" (for example "Sat
+14 Nov"), with a small "Edit" next to it.
+1. "Edit" turns the same calendar into the deadline's: "Your deadline" above
+it, the deadline ringed in orange, any day after today; with a call booked,
+the deadline stays after the kickoff and before the summary call. "Back"
+returns to the call; "Save" keeps the new date.
+2. After "Save", Will says in the chat "Done. Your plan now runs to {date}."
+(and "Your deadline is close, so you practise every day." when it is two
+weeks away or less), as "Change your plan" does (N140). The practice days,
+the bar and the plan's list follow the new date, and the calendar goes back
+to the call with the new deadline marked. A call picked but not booked that
+no longer fits is cleared.
+3. It works wherever the calendar opens: before the plan (N161) and from a
+call's "Book" in the list (N167).
+Signed (Never 4): "Edit" here, and "Your deadline: {date}" under the
+calendar. Before this, the deadline moved only from "Change your plan", after
+the calls. The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+F. Drawn on the prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>
+(version 26). No migration.
