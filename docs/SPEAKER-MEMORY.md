@@ -25,7 +25,7 @@ public functions:
 
 | Function | Who calls it | What it does |
 |---|---|---|
-| `record(db, user_id, kind, payload, take)` | `feedback_check._save` (every answer), `take_summary.summary_message` (every Take) | keeps the event, rewrites the note in the background |
+| `record(db, user_id, kind, payload, take)` | `feedback_check._save` (every answer), `take_summary.summary_message` (every Take), `tempo_stretch.keep_tries` (each tempo game, kind `take` with a `tempo` part: the stretch's reading, each try, how it ended, and the dot's paths; N166) | keeps the event, rewrites the note in the background |
 | `note_for(db, user_id)` | `chat_query._librarian`, `take_summary.memory_facts` | the current note, `''` when none |
 | `prompt_block(note)` | `chat_query._librarian` (as `app_context["memory"]`) | the note as Will's private prompt block |
 | `history_for(db, user_id, question)` | `chat_query._librarian` (added to `app_context["memory"]`) | the pieces of the speaker's own history that match the question, as Will's private block (see Lookup) |
