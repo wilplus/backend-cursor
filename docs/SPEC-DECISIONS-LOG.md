@@ -4247,3 +4247,15 @@ Signed (Never 4): the day line's form. The rules: frontend
 G and I; the chat's page names the day line. Drawn on the prototype
 <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn> (version 27). No
 migration.
+
+**N170 · Asking for the Sunday note: any wording, an honest "nothing", the
+last seven days (founder, the Claude Code chat, 26 October 2026: "yes, log
+it and update the flow page", on <https://claude.ai/artifact/M5GWxvbNPRbkEjoL2ivZxB>).**
+For N158 L1: Will understands the ask by its meaning ("do you see a
+pattern?", "what keeps tripping me up?", "sunday note"), not three set
+phrases; with nothing to find it says so in one line ("Nothing stands out in
+your notes from the last seven days yet." / "There are no # notes from the
+last seven days yet.") instead of answering as usual; the case reads the
+last seven days of # notes, not the calendar week. Still never on its own;
+the lens is unchanged. Rules and words: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 L1. Not built yet. No migration.

@@ -43,7 +43,7 @@ composer.
 ## Step 2: the Sunday note (built 2026-10-20)
 
 **Locked 2026-10-26 (N158), not built yet:** the Sunday note as a lens,
-<https://claude.ai/artifact/Bt2YEZLKhu9fLTA1deWTvo>. Only when asked, only from # notes, no Old | New; in the
+<https://claude.ai/artifact/Bt2YEZLKhu9fLTA1deWTvo>. Only when asked (in any words, N170), only from the last seven days of # notes, no Old | New, and with nothing to find Will says so; in the
 Lounge "We spotted a pattern!" with Not now | Investigate; in the lens one
 step at a time (the bug, the principle held, the reflection, the new
 principle with Accept or Edit). The rules are frontend
