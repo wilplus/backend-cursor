@@ -63,10 +63,13 @@ EXERCISE_SERVICE_UI = "exercise_service_ui"
 COACH_INLINE_AUTHORING = "coach_inline_authoring"
 CONFIDENT_MOMENT_BUNDLES = "confident_moment_bundles"
 ROOTING_COVERAGE = "rooting_coverage"
+#: The walk's tempo step (founder 2026-10-26, N166 step 6). No row until the
+#: founder makes one in the panel; until then only the founder has it.
+TEMPO_STEP = "tempo_step"
 GATED_FEATURES: tuple[str, ...] = (
     CANONICAL_TAKE_ROWS, CONFIDENCE_LEARNING_WRITES, EXERCISE_SERVICE,
     EXERCISE_SERVICE_UI, COACH_INLINE_AUTHORING, CONFIDENT_MOMENT_BUNDLES,
-    ROOTING_COVERAGE,
+    ROOTING_COVERAGE, TEMPO_STEP,
 )
 
 CONSENT_PURPOSES: tuple[str, ...] = (
