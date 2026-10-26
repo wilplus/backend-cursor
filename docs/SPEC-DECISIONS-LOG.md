@@ -4500,3 +4500,26 @@ The rules: both CLAUDE.md files, contract clause 13, and frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 and [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md),
 in their own docs pull requests. Docs only. No migration.
+
+**N179 · The tempo step's words are signed (founder, the Claude Code chat, 26
+October 2026, shown every line in order: "Signed").** For N166 step 5, the
+words of the tempo step as the prototype drew them:
+- The top bar: "Tempo".
+- Will's opening: "That part went fast. 🏃 Let's try a little game." (a rushed
+  stretch) or "That part slowed down, with long pauses. 🐢 Let's try a little
+  game." (a slow one); "Tell me more about {topic}, and keep the ball in the
+  green." ({topic} the backend's few words, else "that part"); "🤫 Find a
+  quiet spot first."
+- The buttons: "I'm ready", "Skip", "Stop", "Practise again", "See how it
+  went", "Next"; the speaker's own bubble "Try 1", "Try 2", "Try 3".
+- After a try: "Better. You let it breathe." · "Still rushed. Take a breath
+  after each offer." · "A bit slow. Keep the words moving between the pauses."
+- The close: "Dynamic. You paused where it mattered. 🔥" · "Still rushed. Give
+  each offer its own breath next Take." · "Slow. Keep the words moving between
+  the pauses."
+- A blocked microphone: "The microphone is blocked. Allow it for this site in
+  the browser's settings, then try again."
+The rules and the words: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§1 K and §2 "Tempo". Who sees the step is unchanged: the founder, and whoever
+the rings panel's `tempo_step` row reaches. Docs only. No migration.
