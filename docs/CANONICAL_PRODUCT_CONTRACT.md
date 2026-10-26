@@ -616,6 +616,8 @@ with this contract, this contract wins.
 
 ## 5a. Confidence-linked exercise policy
 
+How an exercise is chosen for a moment, the whole rule in order: 35g-1.
+
 35a. The product may assign an exercise to an exact Confident Voice clip. The
     match is made when the Take's Feedback is built, before any answer exists.
     **Which answers open it is the follow-up matrix (24f, founder 2026-09-29,
@@ -630,14 +632,16 @@ with this contract, this contract wins.
     length, noise and voiced-share checks) whatever the speaker answered. The
     responses remain separate self-reports and never override deterministic
     exercise eligibility.
-35b. A deterministic safety and need-compatibility gate runs before ranking.
+35b. A deterministic safety and need-compatibility gate runs before ranking
+    (step 2 of the whole rule, 35g-1).
     A model may rank only eligible exercise versions and may never bypass the
     gate. The complete in-scope catalogue is frozen with every version marked
     eligible or typed-excluded. If none is eligible, the product creates a
     post-blind coach request rather than inventing or forcing an exercise.
 35c. 80/20 exploration is an exposure policy, not a dataset split (founder
     2026-09-26: "please do the 80/20 try smth new", superseding the earlier
-    "deterministic top until an evaluation contract is approved"). With two or
+    "deterministic top until an evaluation contract is approved"). The draw is
+    step 7 of the whole rule (35g-1). With two or
     more eligible exercises for a moment, the best match is served with
     probability 4/5 and each other eligible one with 1/(5(n-1)); one eligible
     exercise is served with probability 1 and is not a randomized comparison.
@@ -695,18 +699,48 @@ with this contract, this contract wins.
     and Voice Album admission remain separate provenance. Exercise outcomes
     never train Confidence Classification. A practice recording enters Voice
     Album only through Machine Yes + User Yes + Coach Yes on that exact attempt.
-35g-1. **Exercise fit** (founder 2026-09-28, D1/D5/D5a/D6). An exercise is
-    offered only when a detected problem fired on that exact clip; a clip's
-    confidence level alone never picks one. An exercise names one main target
-    and may list secondary targets. **Exact**: its main target fired.
-    **Trial**: no exercise's main target fired, but one of its secondary
-    targets did; it is shown like any exercise and marked a trial internally so
-    its outcomes can show whether it helps. A trial never competes with an
-    exact fit, not even in the 80/20 exploration slot. Nothing fired, or
-    nothing targets what fired: no exercise, and the item keeps "Let's
-    practice" alone. Fit is a category, never a number, and never reaches the
-    speaker. Among equal fits, the exercise covering more of what fired wins,
-    then the one claiming fewer targets. **The ladder** (founder 2026-10-01,
+35g-1. **How an exercise is chosen: the whole rule in one place** (founder
+    2026-09-26 and 2026-09-28, D1/D5/D5a/D6; gathered into this one clause
+    2026-10-26, N152). For one moment, in this order:
+    1. **The pool.** Only catalogue exercises that are active, carry their
+       explanation video, and whose journal post, where one is attached, is
+       published.
+    2. **The gate** (35b) runs before anything is ranked.
+    3. **Fit.** An exercise is offered only when a detected problem fired on
+       that exact clip; a clip's confidence level alone never picks one. An
+       exercise names one main target and may list secondary targets.
+       **Exact**: its main target fired. **Trial**: no exercise's main target
+       fired, but one of its secondary targets did; it is shown like any
+       exercise and marked a trial internally so its outcomes can show whether
+       it helps. A trial never competes with an exact fit, not even in the
+       80/20 exploration slot: only the best fit present stays. Fit is a
+       category, never a number, and never reaches the speaker.
+    4. **Confidence level.** An exercise names the confidence levels it suits
+       (rushing, near confident, confident). One that names none the product
+       can place is left out.
+    5. **The order.** What is left is put in order by these rules, each one
+       only breaking a tie of the rule above it. There is no score and no
+       weighting, so nothing lower down can lift a trial above an exact fit:
+       a. exact before trial;
+       b. the one covering more of what fired;
+       c. one for a problem this speaker showed on at least two earlier Takes
+          (35g-4);
+       d. one they have not completed before one they have (35g-4);
+       e. the one claiming fewer targets (the specialist);
+       f. the one suited closest to how confident the clip sounded;
+       g. the higher editorial priority the catalogue gave it;
+       h. the exercise id, so the order is the same every time.
+    6. **A learned order** may reorder ties only once it passes the bar in
+       35c. It has not, so the order of step 5 is served.
+    7. **The draw** (35c). With two or more exercises left, the first is
+       served with probability 4/5 and each other with 1/(5(n-1)); one left is
+       served with probability 1. The draw is frozen once per (Take, moment).
+    8. **One exercise per Take.** A completed or declined exercise ends the
+       offer for that Take; an open one stays on the moment it was offered on.
+    9. **Nothing left** (nothing fired, or nothing targets what fired): no
+       exercise, the item keeps "Let's practice" alone, and the coach request
+       still rises (35g-2).
+    **The ladder** (founder 2026-10-01,
     F2): "Every moment read weak with an error gets an exercise: the exact
     match, else the closest match, else the general exercise for that error,
     else the warm-up. Fallbacks are traced and never teach the exercise
@@ -719,6 +753,10 @@ with this contract, this contract wins.
     `EXERCISE_FALLBACK_LADDER_ENABLED` until the three general exercises
     and the warm-up exist (switched on 2026-10-02 before they did, off again
     from 2026-10-03, N29).
+    The detail of each step stays where it was decided: the gate in 35b, the
+    draw and how outcomes are evaluated in 35c, the coach request in 35g-2,
+    how history is read in 35g-4. The code is
+    `services/confident_voice_practice.py`.
 35g-2. **The coach hears when nothing fits** (founder 2026-09-28; extended
     2026-09-29). When the Take's exercise item gets no exercise under 35g-1,
     one coach request is recorded for that exact moment with why (nothing
@@ -838,7 +876,8 @@ with this contract, this contract wins.
     Q9); named moments are reported as history only. The audit's No
     answers measure how often it fires falsely. A pattern the audit does
     not sample has no Yes to count and cannot clear the bar.
-35g-4. **The speaker's own history breaks ties** (founder 2026-09-28). Among
+35g-4. **The speaker's own history breaks ties** (founder 2026-09-28; steps
+    5c and 5d of the whole rule, 35g-1). Among
     exercises of equal fit that cover as much of what was spotted, one for a
     problem this speaker showed on at least two earlier Takes comes first,
     and one they already completed comes after one they have not. An
