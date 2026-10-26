@@ -226,6 +226,11 @@
       "module": "pending",
       "sha256": "ddfa22d8b3fa46a69d692478ce4caef8d3def89ea2e54dcd153948829b212952"
     },
+    "life_goals.clash": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "cdbd989606cf00fb1ecb96fbf72c762b9b447fb06eb6fd7a0432e0b8045cc9d3"
+    },
     "life_goals.draft": {
       "kind": "source_ref",
       "module": "pending",

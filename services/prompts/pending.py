@@ -86,6 +86,7 @@ REGISTER = {
     "life_goals.draft": SourceRef("services/life_goals.py", "_DRAFT_SYSTEM"),
     "life_goals.redraft": SourceRef("services/life_goals.py", "_REDRAFT_SYSTEM"),
     "life_goals.ask": SourceRef("services/life_goals.py", "_ASK_SYSTEM"),
+    "life_goals.clash": SourceRef("services/life_goals.py", "_CLASH_SYSTEM"),
     "will_question.heard": SourceRef("services/will_question.py", "_HEARD_SYSTEM"),
     "will_question.heard_user": SourceRef("services/will_question.py", "heard"),
     "will_question.vary": SourceRef("services/will_question.py", "_VARY_SYSTEM"),
