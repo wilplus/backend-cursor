@@ -4411,3 +4411,24 @@ For N153, N157, N161, N164 and N173, signed (Never 4): "Why this line?" ·
 frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 K. Docs only. No migration.
+
+**N176 · The practice-day reminder: email or WhatsApp, no calendar (founder,
+the Claude Code chat, 26 October 2026: "How do you mean their calendar we
+don't have access to it", then "I want two options email or what's app we
+don't have a add to calendar option yet").** For N169 item 6 and N174 item 1:
+1. When the practice-day reminder comes (N155 stands until then), the
+speaker picks one of two: an email or a WhatsApp. No calendar and no web
+push. This replaces N174 item 1 (the speaker's own calendar first, then
+WhatsApp).
+2. Either keeps N169 item 4's rules: opt-in and off by default, at the
+reminder's time (9:00 by default, N169 item 5), at most one a day and only
+between 8:00 and 21:00 in the speaker's time zone, never "come back", never
+a count of missed days. The email carries its own unsubscribe link.
+3. The WhatsApp option keeps N154's words. The two-option offer under the
+plan card and the email's words wait for the founder's OK (Never 4).
+4. A lesson's reminder stays as N165 has it: the calendar invite in the
+booking email rings 10 minutes before, and a WhatsApp goes too when a
+number was left.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+G11. Not built yet. No migration.
