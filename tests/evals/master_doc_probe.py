@@ -28,6 +28,9 @@ v2 changes vs v1:
     MDR-10: acknowledge the corrected topic + don't re-deliver. MDR-05:
     don't answer the weather + pivot to the product (must_mention_any
     voice/speak/coach/...). No semantic grader left on either.
+  • MDR-18 (WIL-115, DETERMINISTIC): a nerves question about their own
+    talk must not land in a lane that does not answer from the Master Document
+    (``must_not_route_to`` reads the router's chosen lane from debug).
   • 15 cases total. ~$0.08/run. Still <60s wall time.
   • Report-only lane (2026-09-14): a rubric key ``report_only_<check>``
     is measured and printed under the verdict but never fails the run.
@@ -427,6 +430,18 @@ CASES: list[Case] = [
             "can't create", "cannot create", "can't make", "cannot make",
             "copy and paste", "copy it"]},
     ),
+    # WIL-115 (2026-10-26): nerves about their own talk read like my_project,
+    # whose lane has no Master Document, so the research section on nerves
+    # never reached the answer. Deterministic: only the lane is checked.
+    Case(
+        id="MDR-18",
+        category="Nerves about their own talk reach the Master Document",
+        user_message=(
+            "I have a big talk on Monday and I'm really nervous. "
+            "What can I do?"
+        ),
+        rubric={"must_not_route_to": ["my_project", "off_topic"]},
+    ),
 ]
 
 
@@ -460,7 +475,9 @@ def _report_only_notes(case: Case, payload: dict) -> list[str]:
     return notes
 
 
-def _deterministic_check(case: Case, payload: dict) -> Optional[str]:
+def _deterministic_check(
+    case: Case, payload: dict, debug: Optional[dict] = None,
+) -> Optional[str]:
     """Returns None on pass, a reason string on failure. Run BEFORE
     the LLM grader so we never burn grader cost on cases that fail
     a hard structural check."""
@@ -506,6 +523,12 @@ def _deterministic_check(case: Case, payload: dict) -> Optional[str]:
         m = _CONSTRUCT_RE.search(answer)
         if m:
             return f"answer contains a retired-construct token: {m.group(0)!r}"
+
+    # ── Routing: the lane that answered must answer from the Master Document ──
+    # A mega-prompt fallback has no router_intent and always does.
+    routed = (debug or {}).get("router_intent")
+    if routed in (rubric.get("must_not_route_to") or []):
+        return f"routed to the {routed!r} lane, which does not answer from the Master Document"
 
     # ── Length ──
     max_chars = rubric.get("max_answer_chars", _DEFAULT_MAX_ANSWER_CHARS)
@@ -648,7 +671,7 @@ def grade(case: Case) -> Verdict:
     ``answer_question`` output, runs deterministic then semantic
     checks, and returns a Verdict."""
     try:
-        payload, _debug = master_doc_rag.answer_question(
+        payload, debug = master_doc_rag.answer_question(
             case.user_message,
             history=case.history or None,
             life_context=case.life_context,
@@ -665,7 +688,7 @@ def grade(case: Case) -> Verdict:
         )
 
     notes = _report_only_notes(case, payload)
-    det_fail = _deterministic_check(case, payload)
+    det_fail = _deterministic_check(case, payload, debug)
     if det_fail:
         return Verdict(
             case_id=case.id,
