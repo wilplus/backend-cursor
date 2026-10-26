@@ -3803,3 +3803,23 @@ keeps the plan, no starts "When is your deadline?" and the questions for a new
 plan. New slides or a rewrite for the same event keep the plan as it is.
 Drawn on the prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>.
 Not built yet. No migration.
+
+**N150 · Will's replies in the intake read what the speaker said (founder,
+the Claude Code chat, 26 October 2026, on the prototype's bubbles "Thank you.
+Now I can hear you talking about your goal and why it matters...": "Please make
+sure these bubbles are actually smart, so they read from the context from what
+the user said").** For N138, N139 and N145:
+1. Will's reply to the voice message names the speaker's own event, date and
+why it matters, in their words (for example, "Thank you. On 14 November you'll
+ask the board for two more hires, and your team's funding for next year rides
+on it."), then says "I can already hear your main vocal cues and verbal
+habits." and "Let me draft your plan. A few more questions first."
+2. Each follow-up may open by naming what the speaker just said, and its
+template fits their event: a part that cannot apply is left out (a toast gets
+no slides question) and a worry they already named is asked about in their
+words.
+3. The AI writes these within fixed rules: the speaker's own words and facts
+only, no judgement of how they spoke, no numbers, no promises, nothing about
+fixing them (N132); when the AI fails, the plain signed template is said.
+Drawn on the prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>.
+Not built yet. No migration.
