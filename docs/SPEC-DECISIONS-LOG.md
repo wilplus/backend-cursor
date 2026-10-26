@@ -3870,7 +3870,68 @@ app does changes. The README's home doc for `services/confident_voice_practice.p
 is now the contract; `docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md` stays the home of
 how an exercise's outcome is measured. No migration.
 
-**N153 · Transcripts on a person's admin page, and the CSV (founder, the
+**N153 · The plan card says which line and why; the practice-day reminder is
+asked on WhatsApp before the first Take (founder, the Claude Code chat, 26
+October 2026, on the plan card's "Here's the line that's ready for more room:":
+"What is this line? Why you chose this one? Can you make it more clear, the
+whole design of it, of this plan? And if you click remind me on practice days,
+it should open the WhatsApp icon. And type your number. So before the start
+your first recording, there should be this remind me on your practice days
+bubble. The same one we have later on ... It should be the same. ... And you
+can keep the change your plan").** For N132, N134, N138, N140 item 6 and N141:
+1. The plan card says what the level works on and why: the speaker's key line
+in their own words (their answer to the key-line question, N138), their own
+recording of it, and one line on why this line, from what the diagnosis
+heard. Then how they will practise. "Change your plan" stays.
+2. The practice-day reminder leaves the card's switch (N140 item 6, N141, a
+web push) and goes to WhatsApp. Right after the plan card, before "Start your
+first recording", Will asks for it in a bubble: the same ask as today's
+WhatsApp ask for the coach's feedback (`WillabWhatsAppPrompt`), the number in
+the grey card, with the WhatsApp icon, then Not now | Save. "Start your first
+recording" follows either answer.
+3. One number serves both: the practice-day reminder and "The feedback from
+your coach is in!". A number saved here means the later WhatsApp ask (from
+Take 2) never comes.
+4. Before it is built: Privacy 3.7 names WhatsApp only for the coach's
+feedback, so a new policy version must name the reminder; Meta must approve
+the reminder's message template; and the grey card's title, which today
+promises the coach's message only, must name both.
+The new words wait for the founder's OK (Never 4). Drawn on the prototype
+<https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>. Not built yet. No
+migration.
+
+**N154 · The words of N153 are approved (founder, the Claude Code chat, 26
+October 2026: "You have my okay for the wording. Yeah, it has to change, like
+the privacy policy, Meta, the gray card's title").** For N153, word for word
+(Never 4):
+1. The plan card: "How you said it" (under the speaker's recording of their
+key line); "Why this line:" followed by one sentence from what the diagnosis
+heard, for the board pitch "It's the sentence you want the board to remember,
+and you said it a little faster than the rest. Give it more room, and it
+lands."; "How you'll practise".
+2. The reminder ask: "Want a WhatsApp on your practice days? Add your number."
+3. The grey card's title, for both WhatsApp asks: "We'll only use it to remind
+you on practice days and to tell you when your coach texted you".
+4. After Save: "Saved ✓ We'll message you on WhatsApp at {number} on your
+practice days and when your coach's feedback is in."
+The privacy policy's new version and Meta's template for the reminder are
+still needed before the reminder is built (N153 item 4). No migration.
+
+**N155 · No practice-day reminder for now (founder, the Claude Code chat, 26
+October 2026, asked whether the WhatsApp reminder of N153 is worth building at
+this stage: "There's no WhatsApp reminder for now").** For N140 item 6, N141,
+N153 and N154:
+1. The practice-day reminder is not built for now, on WhatsApp or as a web
+push. The plan card goes straight to "Start your first recording"; the card
+keeps no reminder switch.
+2. N153 item 1 (the clearer plan card) and "Change your plan" stand.
+3. When the reminder comes, it is the WhatsApp ask under the plan card (N153
+items 2 and 3) with the approved words of N154, after the new privacy version
+and Meta's template (N153 item 4). Until then the WhatsApp number is asked
+only as today, from Take 2, for the coach's feedback.
+No migration.
+
+**N156 · Transcripts on a person's admin page, and the CSV (founder, the
 Claude Code chat, 26 October 2026: "Go with the training-yes gate, and build
 the transcript column"; Linear WIL-110).**
 1. Each Take row on the person's admin page (`/admin/users/<id>`, the Takes
