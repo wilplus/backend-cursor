@@ -5,7 +5,10 @@ GUARD      scripts/doc_guard.py: every part of the code has one home doc in
 CATCHES    Code that no row of the home-doc table covers; a row that covers
            nothing or points at a missing, History or Archive doc; two rows
            claiming one file equally; a doc the master doc doesn't list; a new
-           doc without `Founder-Approved:` on its line.
+           doc without `Founder-Approved:` on its line; a decisions-log number
+           used twice or written below a higher one; a rules page citing an
+           N-number the log doesn't have; a new entry that doesn't say where
+           it landed.
 IF REMOVED The docs pile up again, one new file per piece of work, as they
            did until 21 October 2026 (423 files).
 PROVES     test_code_no_row_covers_is_named
@@ -14,6 +17,7 @@ PROVES     test_code_no_row_covers_is_named
            test_a_stale_row_and_a_bad_home_are_refused
            test_every_doc_is_listed_except_runtime_prompts
            test_a_new_doc_needs_the_founders_ok
+           test_the_log_numbers_and_the_rules_pages_citations_hold
 """
 from __future__ import annotations
 
@@ -94,3 +98,17 @@ def test_a_new_doc_needs_the_founders_ok():
     assert len(guard.check_new(added, without)) == 1
     assert "docs/NEW.md is a new doc" in guard.check_new(added, empty)[0]
     assert guard.check_new(added, approved) == []
+
+
+def test_the_log_numbers_and_the_rules_pages_citations_hold():
+    log = ("**N1 · a\n\n**N2 · b\n\n**N2 · twice\n\n**N4 · c\n\n**N3 · late\n\n"
+           "**N92 · d\n\n**N90 · known late\n\n"
+           "**N183 · landed. The rules: the walk's page.\n\n**N184 · says nothing about where\n")
+    pages = {"docs/LOCKS.md": "N1, N4 and N91 (never logged, known); N5 is not an entry.",
+             "README.md": "the newest is N184; N1.1 is a sub-item of N1."}
+    assert guard.check_log(log, pages) == [
+        "docs/SPEC-DECISIONS-LOG.md has two entries numbered N2. Give the newer one the next free number.",
+        "docs/SPEC-DECISIONS-LOG.md: N3 is written after N4. Entries go newest last; use the next free number.",
+        'docs/SPEC-DECISIONS-LOG.md: N184 doesn\'t say where it landed. End it with "The rules:" and the page, or "No rules page".',
+        "docs/LOCKS.md cites N5, which docs/SPEC-DECISIONS-LOG.md doesn't have. Log the decision first (N95), or fix the number.",
+    ]

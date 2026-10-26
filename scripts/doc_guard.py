@@ -7,7 +7,7 @@ piece of work started a file of its own: a handoff, a design, an audit, a
 prompt. N107 cut them to 246 and said a new doc is not started. This is the
 check that keeps that true.
 
-Three checks, all against README.md (the master doc, N106):
+Four checks. The first three are against README.md (the master doc, N106):
 
   * Every part of the code has a home doc. The table under "Home docs for the
     code" names code by folder or file pattern, and its home doc ("No page"
@@ -20,6 +20,17 @@ Three checks, all against README.md (the master doc, N106):
   * A new doc needs the founder. A .md file that is not on the base
     (origin/main) must be linked from a README.md line that carries
     `Founder-Approved: <where and when the founder said yes>`.
+
+The fourth is the decisions log itself (docs audit, 2026-10-26; N95 says
+nothing is in force until it is written there):
+
+  * Every entry's number is unique, and an entry is never written below a
+    higher one (the two that were, N90 and N166, are named in KNOWN_LATE).
+  * Every N-number a rules page cites is an entry. A rules page is CLAUDE.md,
+    README.md, or a doc labelled In force. N78 and N91 were cited but never
+    written (KNOWN_UNLOGGED); the log's header says so.
+  * From N183 on, an entry says where it landed: "The rules:" naming the
+    page, or "No rules page" when nothing else changes.
 
 Pattern rules: a pattern ending in "/" covers its whole folder; "*" matches
 within one path segment; anything else is one exact file. When several rows
@@ -50,6 +61,17 @@ NOT_DOCS = ("services/prompts/",)
 NOT_CODE = ("docs/", "legal/", "tests/", ".")
 OTHER_REPO = "https://github.com/wilplus/frontend-cursor/blob/main/"
 LINK = re.compile(r"\]\(([^)\s]+)\)")
+LOG = "docs/SPEC-DECISIONS-LOG.md"
+ENTRY = re.compile(r"^\*\*N(\d+) ·", re.M)
+CITE = re.compile(r"(?<![A-Za-z0-9_\-./#])N(\d{1,3})(?!\d)")
+IN_FORCE = "**Label: In force**"
+#: Cited but never written as entries; the log's header lists them.
+KNOWN_UNLOGGED = {78, 91}
+#: Written after a higher number; the log's header lists them.
+KNOWN_LATE = {90, 166}
+#: From this entry on, an entry names the rules page it landed on.
+LANDED_FROM = 183
+LANDED = re.compile(r"The rules:|Rules and words:|No rules page")
 UNEDITED = re.compile(r"\*\*Label: (History|Archive)\*\*")
 
 
@@ -152,6 +174,45 @@ def check_new(added: list[str], readme: str) -> list[str]:
     return problems
 
 
+def entries(log: str) -> list[tuple[int, str]]:
+    """The log's entries in file order: (number, text up to the next entry)."""
+    marks = list(ENTRY.finditer(log))
+    return [(int(m.group(1)), log[m.start():(marks[i + 1].start() if i + 1 < len(marks) else len(log))])
+            for i, m in enumerate(marks)]
+
+
+def check_log(log: str, pages: dict[str, str]) -> list[str]:
+    """The decisions log's numbers and the N-numbers the rules pages cite."""
+    problems, seen, top = [], set(), 0
+    for n, text in entries(log):
+        if n in seen:
+            problems.append(f"{LOG} has two entries numbered N{n}. Give the newer one the next free number.")
+        elif n < top and n not in KNOWN_LATE:
+            problems.append(f"{LOG}: N{n} is written after N{top}. Entries go newest last; use the next free number.")
+        if n >= LANDED_FROM and not LANDED.search(text):
+            problems.append(f"{LOG}: N{n} doesn't say where it landed. End it with \"The rules:\" and the page, or \"No rules page\".")
+        seen.add(n)
+        top = max(top, n)
+    for path, text in pages.items():
+        missing = sorted({int(k) for k in CITE.findall(text)} - seen - KNOWN_UNLOGGED)
+        if missing:
+            problems.append(f"{path} cites {', '.join(f'N{k}' for k in missing)}, which {LOG} doesn't have. "
+                            "Log the decision first (N95), or fix the number.")
+    return problems
+
+
+def rules_pages(files: list[str], root: Path) -> dict[str, str]:
+    """CLAUDE.md, README.md and every doc labelled In force."""
+    pages = {}
+    for f in files:
+        if not f.endswith(".md") or f.startswith(NOT_DOCS) or f.startswith("legal/"):
+            continue
+        text = (root / f).read_text(encoding="utf-8")
+        if f in ("CLAUDE.md", MASTER) or IN_FORCE in text[:2000]:
+            pages[f] = text
+    return pages
+
+
 def git(*args: str) -> str:
     return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True).stdout
 
@@ -167,6 +228,7 @@ def run(base: str) -> tuple[int, list[str]]:
     readme = (ROOT / MASTER).read_text(encoding="utf-8")
     rows = parse_homes(readme)
     problems = check_homes(files, rows, ROOT) + check_listed(files, readme)
+    problems += check_log((ROOT / LOG).read_text(encoding="utf-8"), rules_pages(files, ROOT))
     try:
         git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
     except subprocess.CalledProcessError:
@@ -176,7 +238,8 @@ def run(base: str) -> tuple[int, list[str]]:
     if problems:
         return 1, problems
     code = sum(1 for f in files if is_code(f))
-    return 0, [f"docs guard: clean. {code} code files in {len(rows)} rows of home docs; every doc listed; no unapproved new doc."]
+    return 0, [f"docs guard: clean. {code} code files in {len(rows)} rows of home docs; every doc listed; "
+               "no unapproved new doc; the log's numbers and the rules pages' citations hold."]
 
 
 def main(argv: list[str] | None = None) -> int:
