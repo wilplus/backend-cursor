@@ -4457,7 +4457,51 @@ The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 G11. Not built yet. No migration.
 
-**N178 · The tempo step's words are signed (founder, the Claude Code chat, 26
+**N178 · Six answers from the docs audit (founder, the Claude Code chat, 26
+October 2026: "Answered", choosing the recommended answer to each of the eight
+questions on <https://claude.ai/artifact/MGpi9Q23qqeioeXeZEKbU9>).** Two of
+the eight were settled the same day in other chats: the Sunday note on Sunday
+by itself (N170, which stands), and the practice-day reminder, where this
+page's "calendar first" gives way to N177 (email or WhatsApp, no calendar,
+which replaced N174 item 1). The other six:
+1. Numbers in the plan (Never 1). A count of where the speaker is in the plan
+("Practice 2 of 9", "{n} of {total} practices done") may be shown: it is not
+about the voice. The speaker's own answers to the two 1 to 10 questions are
+never shown back as numbers. This changes N161 item 1 (the orange bubble with
+the number they tapped); how the tap is answered in the chat waits for the
+founder's words (Never 4). Never 1 in both CLAUDE.md files says so. This entry
+also records Never 1's earlier exception, written only in CLAUDE.md until now
+(founder, 2026-10-19): a processing-progress percentage and a token price are
+not about the speaker and are allowed.
+2. Before a Take (Never 3). Before every Take but the first, the only thing
+shown is the feelings check, one tap, with a Skip (this adds the Skip to N149
+item 2). The plan's intake questions still come once, before the first Take
+(N136, N140). The questions later entries put before a Take are asked after
+it instead: the deadline question for a speaker who already has Takes (N147),
+a new event's questions (N140 item 4), a new project's "Is this for {date}?"
+(N149 item 6), and the two ratings before the last practice and before a new
+plan's first Take (N151). Never 3 in both CLAUDE.md files says so.
+3. The tempo step stays in the Feedback walk, before the Ideal Text (N162),
+with a Skip, and the whole walk gets a time limit. This replaces N130's "never
+between a Take and the Ideal Text" for the walk's own practice steps. Open:
+the limit; the founder sets it.
+4. Helper words: up to eight in one pick, as the app has done since 15 October
+(`HELPER_WORDS_MAX = 8`). Contract clause 13 and the Ideal Text page change
+from six to eight.
+5. The plan stays a rules page, not a locked screen, until its first part is
+built; then it is locked like the others and its files join the frontend's
+`scripts/flow-pages.txt`.
+6. The loop comes first. "That loop is the product" stands: when the plan and
+the loop compete, the loop wins. The plan chooses what each walk practises
+(N129) and never slows the loop. CLAUDE.md's "What we are building" in both
+repos and the top of README.md say so. The next three builds were not named.
+The rules: both CLAUDE.md files, contract clause 13, and frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md),
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+and [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md),
+in their own docs pull requests. Docs only. No migration.
+
+**N179 · The tempo step's words are signed (founder, the Claude Code chat, 26
 October 2026, shown every line in order: "Signed").** For N166 step 5, the
 words of the tempo step as the prototype drew them:
 - The top bar: "Tempo".
