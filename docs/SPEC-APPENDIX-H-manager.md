@@ -35,6 +35,8 @@ With `C(FA) >> C(Miss)` and `P(signal)` low, the optimal criterion sits **high**
 
 ### Verdict: **flat cap. Do not scale with length. Default 1, hard ceiling 3.**
 
+> **Today (docs audit, 2026-10-26):** the code's ceiling is 2 per slide (`services/manager_engine.py`, `BUDGET_CEILING = 2`). Where this page and the code differ, the decisions log and the contract decide (N95).
+
 - **Kulhavy, White, Topp, Chan & Adams (1985)** manipulated feedback across four complexity levels. **"Complexity of feedback was inversely related to both ability to correct errors and learning efficiency."** The *simplest* feedback beat the most elaborate on both outcomes.
 - **Composition research converges around 3–5.** Shuman (1979): no more than five comments per composition. Arnold (1964): no significant difference between marking every error and marking minimally. Harris (1978), Lamberg (1980): extensive commenting did not improve subsequent writing.
 - **Cowan (2001)**: true chunk capacity for novel, un-rehearsed material is **3–5, centrally ~4** — not Miller's 7±2, which measured familiar chunkable items under rehearsal-friendly conditions.

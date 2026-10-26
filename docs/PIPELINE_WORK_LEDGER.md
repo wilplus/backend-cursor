@@ -1,6 +1,6 @@
 # Pipeline work ledger
 
-> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+> **Label: History** · kept as written, because the rules or the code still name it. Out of date: its last entry is from 2026-09-29. Every doc and its label: [`README.md`](../README.md) (N106).
 
 **What this is.** One file that every workstream pull request appends to, so
 five parallel agent sessions can see what the others did without any of them

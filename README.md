@@ -94,7 +94,6 @@ The frontend has its own short [`README.md`](https://github.com/wilplus/frontend
 - [Appendix G — Silent Population Telemetry](docs/SPEC-APPENDIX-G-telemetry.md) · `backend` `docs/SPEC-APPENDIX-G-telemetry.md`
 - [Appendix H — Manager Engine Parameters](docs/SPEC-APPENDIX-H-manager.md) · `backend` `docs/SPEC-APPENDIX-H-manager.md`
 - [SPEC — Immutable source data and provenance](docs/SPEC-immutable-provenance.md) · `backend` `docs/SPEC-immutable-provenance.md`
-- [SPEC — The lock-in loop, offers, and the coach panel](docs/SPEC-lockin-loop-and-coach-panel.md) · `backend` `docs/SPEC-lockin-loop-and-coach-panel.md`
 - [SPEC — Parts, Locking, and the Two Intervention Layers](docs/SPEC-parts-locking-and-layers.md) · `backend` `docs/SPEC-parts-locking-and-layers.md`
 - [SPEC — Pipeline queue admin panel (Task IV)](docs/SPEC-pipeline-admin-panel.md) · `backend` `docs/SPEC-pipeline-admin-panel.md`
 - [SPEC — Training corpus, training consent and project-scoped purge](docs/SPEC-training-corpus-and-project-purge.md) · `backend` `docs/SPEC-training-corpus-and-project-purge.md`
@@ -110,10 +109,6 @@ The frontend has its own short [`README.md`](https://github.com/wilplus/frontend
 
 **Plans and backlogs**
 
-- [willab backlog — status as of 2026-07-23](docs/BACKLOG.md) · `backend` `docs/BACKLOG.md`
-- [The coach panel redesign · build plan P2 to P7](docs/COACH-PANEL-BUILD-PLAN-P2-P7.md) · `backend` `docs/COACH-PANEL-BUILD-PLAN-P2-P7.md`
-- [Pipeline work ledger](docs/PIPELINE_WORK_LEDGER.md) · `backend` `docs/PIPELINE_WORK_LEDGER.md`
-- [Product-manager backlog — recurring processes and deferred unlocks](docs/PRODUCT-MANAGER-BACKLOG.md) · `backend` `docs/PRODUCT-MANAGER-BACKLOG.md`
 - [Will's learning plan (founder, 2026-10-20)](docs/WILL-LEARNING-PLAN.md) · `backend` `docs/WILL-LEARNING-PLAN.md`
 - [Production Data Foundation](docs/work-items/production-data-foundation.md) · `backend` `docs/work-items/production-data-foundation.md`
 
@@ -140,13 +135,8 @@ The frontend has its own short [`README.md`](https://github.com/wilplus/frontend
 
 **Specs and designs**
 
-- [The two coach feedback lanes](https://github.com/wilplus/frontend-cursor/blob/main/docs/COACH-FEEDBACK-LANES.md) · `frontend` `docs/COACH-FEEDBACK-LANES.md`
-- [Designer brief — Wave 5 (October 2026)](https://github.com/wilplus/frontend-cursor/blob/main/docs/DESIGNER-BRIEF-wave5-2026-10.md) · `frontend` `docs/DESIGNER-BRIEF-wave5-2026-10.md`
 - [WIL-74 principles (founder, 2026-10-20)](https://github.com/wilplus/frontend-cursor/blob/main/docs/PRINCIPLES-WIL-74.md) · `frontend` `docs/PRINCIPLES-WIL-74.md`
 - [Confidence recognizer — FE pointer](https://github.com/wilplus/frontend-cursor/blob/main/docs/SPEC-confidence-recognizer.md) · `frontend` `docs/SPEC-confidence-recognizer.md`
-- [SPEC — the in-thread top-up card (Lounge)](https://github.com/wilplus/frontend-cursor/blob/main/docs/SPEC-lounge-topup-card.md) · `frontend` `docs/SPEC-lounge-topup-card.md`
-- [Coach review flow — judgement first, one action per screen](https://github.com/wilplus/frontend-cursor/blob/main/docs/coach-review-flow/SPEC.md) · `frontend` `docs/coach-review-flow/SPEC.md`
-- [Ideal-text flow — how the app talks to the user between takes](https://github.com/wilplus/frontend-cursor/blob/main/docs/ideal-text-flow-communication.md) · `frontend` `docs/ideal-text-flow-communication.md`
 - [The Life Panel — implementation document](https://github.com/wilplus/frontend-cursor/blob/main/docs/life-panel-spec.md) · `frontend` `docs/life-panel-spec.md`
 
 **Plans and backlogs**
@@ -264,6 +254,17 @@ Kept as written, because the rules still cite them.
 
 </details>
 
+<details><summary>Plans and specs that later rules replaced (docs audit, 2026-10-26; 6 files)</summary>
+
+- [willab backlog — status as of 2026-07-23](docs/BACKLOG.md) · `backend` `docs/BACKLOG.md`
+- [Product-manager backlog — recurring processes and deferred unlocks](docs/PRODUCT-MANAGER-BACKLOG.md) · `backend` `docs/PRODUCT-MANAGER-BACKLOG.md`
+- [Pipeline work ledger](docs/PIPELINE_WORK_LEDGER.md) · `backend` `docs/PIPELINE_WORK_LEDGER.md`
+- [The coach panel redesign · build plan P2 to P7](docs/COACH-PANEL-BUILD-PLAN-P2-P7.md) · `backend` `docs/COACH-PANEL-BUILD-PLAN-P2-P7.md`
+- [Ideal-text flow — how the app talks to the user between takes](https://github.com/wilplus/frontend-cursor/blob/main/docs/ideal-text-flow-communication.md) · `frontend` `docs/ideal-text-flow-communication.md`
+- [Designer brief — Wave 5 (October 2026)](https://github.com/wilplus/frontend-cursor/blob/main/docs/DESIGNER-BRIEF-wave5-2026-10.md) · `frontend` `docs/DESIGNER-BRIEF-wave5-2026-10.md`
+
+</details>
+
 ## 4. Archive
 
 Out of date, but code, tests or the legal pack still name them, so they stay in the folders for now (N107).
@@ -284,6 +285,15 @@ Out of date, but code, tests or the legal pack still name them, so they stay in 
 <details><summary>Session handoffs (1 file)</summary>
 
 - [Handoffs — dated messages between the two repos (backend copy)](docs/handoffs/README.md) · `backend` `docs/handoffs/README.md`
+
+</details>
+
+<details><summary>Specs that describe retired features (docs audit, 2026-10-26; 4 files)</summary>
+
+- [SPEC — The lock-in loop, offers, and the coach panel](docs/SPEC-lockin-loop-and-coach-panel.md) · `backend` `docs/SPEC-lockin-loop-and-coach-panel.md`
+- [SPEC — the in-thread top-up card (Lounge)](https://github.com/wilplus/frontend-cursor/blob/main/docs/SPEC-lounge-topup-card.md) · `frontend` `docs/SPEC-lounge-topup-card.md`
+- [The two coach feedback lanes](https://github.com/wilplus/frontend-cursor/blob/main/docs/COACH-FEEDBACK-LANES.md) · `frontend` `docs/COACH-FEEDBACK-LANES.md`
+- [Coach review flow — judgement first, one action per screen](https://github.com/wilplus/frontend-cursor/blob/main/docs/coach-review-flow/SPEC.md) · `frontend` `docs/coach-review-flow/SPEC.md`
 
 </details>
 

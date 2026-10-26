@@ -2,6 +2,8 @@
 
 > **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
 
+> **Out of date in part (docs audit, 2026-10-26):** §0 and §12.1 say a locked part protects its text ("a HARD, IMMUTABLE ANCHOR"). The rules now say a lock keeps the helper words, not the text, and each Take rewrites every Slide it covers (contract clauses 8 and 14; Never 5).
+
 **Status:** design agreed (founder, 2026-08-07). **Step 0 built 2026-08-07**
 — see §10 for the two places the build had to diverge from this document and
 why. **Locking has since shipped** with the transcript review deck (the lock

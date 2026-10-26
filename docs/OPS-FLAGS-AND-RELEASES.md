@@ -2,7 +2,9 @@
 
 > **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
 
-Every boolean flag the backend reads, what it gates, and — for the ones that
+> **Not complete (docs audit, 2026-10-26):** the code also names these flags, not yet written up here: `AUDIT_SURFACE_ENABLED` · `COMMUNITY_CONTENT_ENABLED` · `CONFIDENT_MOMENT_BUNDLE_V1_ENABLED` · `DEV_TASKS_ENABLED` · `DEV_TASKS_REEVAL_ENABLED` · `IDEAL_TEXT_FEEDBACK_BAKE_ENABLED` · `JOURNAL_IMAGE_ENABLED` · `LIFE_PANEL_ENABLED` · `LOUNGE_ROUTER_ENABLED` · `MLC3_COACH_INLINE_AUTHORING_ENABLED` · `MLC3_SERVICE_ENABLED` · `PIPELINE_QUEUE_ENABLED` · `PLAYBACK_COPY_ENABLED` · `RATELIMIT_ENABLED` · `RATELIMIT_HEADERS_ENABLED` · `RATELIMIT_IN_MEMORY_FALLBACK_ENABLED` · `RATE_LIMIT_ENABLED` · `REASONABLE_CONFIDENCE_ENABLED` · `ROOTING_COVERAGE_V1_ENABLED`.
+
+The boolean flags the backend reads, what they gate, and — for the ones that
 are OFF — **what has to happen before they go on**. A flag with no owner and
 no exit condition becomes permanent by accident: nobody can reconstruct what
 it was protecting against, so nobody dares flip it.

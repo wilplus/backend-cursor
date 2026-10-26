@@ -1,6 +1,6 @@
 # Product-manager backlog — recurring processes and deferred unlocks
 
-> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+> **Label: History** · kept as written, because the rules or the code still name it. Out of date: it says speaker sex is collected, which L1 retired on 2026-08-29; today's direction is README.md §0 and the decisions log. Every doc and its label: [`README.md`](../README.md) (N106).
 
 **Last updated:** 2026-08-06.
 
