@@ -4644,3 +4644,22 @@ and Meta's template. Not decided here: a confirmation email at sign-up.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §2, N171's line. No migration.
+
+**N185 · The clash between two goals: asked before the new goal is set, kept
+as a step on both ladders (founder, the Claude Code chat, 26 October 2026:
+"build the clash between two goals next", then choosing a row "WHEN THEY
+CLASH").**
+For N172 M12:
+1. When a new goal is about to be set and another goal is kept, Will checks
+once whether the new goal's give-up pulls against the other goal, or the
+other's give-up against the new one, from their words only. If so, before
+the ladder, one bubble names both in their words, then "When they clash,
+which wins?" ({emoji} {space} · {emoji} {space} · ⚖️ I decide each time;
+when both goals share a space, each is named by its first words), then
+"Noted. On both ladders: when they clash, …".
+2. Asked once per pair of goals.
+3. Both ladders show a new step, WHEN THEY CLASH, with "{emoji} {space}
+wins" or "You decide each time".
+4. It changes by tapping like any step; the earlier answer is kept with its
+date.
+The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M12.
