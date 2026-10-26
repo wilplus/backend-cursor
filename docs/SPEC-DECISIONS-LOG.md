@@ -4995,6 +4995,22 @@ on sale once Terms 3.7 describe them; until then the build stays switched
 off.
 No rules page. No migration in this entry.
 
+**N199 · The voice note: the wave first, the words follow (founder, the
+Claude Code chat, 26 October 2026: "great!!!", to version 4 of the prototype
+<https://claude.ai/artifact/Wfr7i2RYR7ubYHTRqS6cYe>, after the live words
+were found to arrive 2 to 4 seconds behind the voice).** Amends N194 item 1
+and 2:
+1. A tap on the mic shows, in the person's own note, a small wave of their
+voice at once, drawn on the phone; no network is waited for.
+2. The words replace the wave a phrase at a time, about 2 to 4 seconds
+behind the voice; a phrase is lighter until its whole piece has been heard.
+The wave not yet written stays at the end of the note.
+3. On send, the note stays where it is; the wave not yet written shimmers
+while Will's typing dots show, then the last words land, the hesitations
+fade, the tick and "Noted.".
+Everything else in N194 stands. No new words on screen. No migration.
+The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 B.
+
 **N200 · The booking reminder's words (founder, the Claude Code chat, 26
 October 2026: "please rewrite the texts as if you are a steven pinker",
 "short and concise though", "recommended", then "the session with your coach
