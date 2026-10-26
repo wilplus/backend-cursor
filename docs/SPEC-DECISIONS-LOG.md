@@ -4075,7 +4075,46 @@ E2 and K. Drawn on the prototype
 <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn> (version 18). No
 migration.
 
-**N164 · The tempo step: the defaults and the build order (founder, the
+**N164 · The deadline in the plan's list, in orange (founder, the Claude Code
+chat, 26 October 2026, on the plan card's bullets: "add the deadline on
+orange").** For N157 and N161: under "Plan", between the kickoff call and the
+summary call, a bullet reads "Your deadline: {day date month}" (for example
+"Your deadline: Sat 14 Nov"), the date in orange as the booked calls' times
+are in green. With no date given it is the date two months away (N135). The
+words wait for the founder's OK (Never 4). The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+E2. Drawn on the prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>
+(version 20). No migration.
+
+**N165 · The booking's WhatsApp reminder goes 10 minutes before (founder, the
+Claude Code chat, 26 October 2026, on WIL-106 "Implement booking notifications
+& practice reminders": "10 min, replacing 1 hour" and "Keep N155: not now", to
+two questions).** For N144 and N155:
+1. A booking's WhatsApp reminder goes 10 minutes before, in place of 1 hour
+before: "Your session with Artur Willoński starts in 10 minutes. Join on
+Google Meet: {link}". Meta's template for it (category Utility) carries these
+words, with {{1}} for the link. The calendar invite's alarm moves to 10
+minutes before too.
+2. The line under the booking form's WhatsApp field reads "We'll confirm your
+time here and remind you 10 minutes before." This changes N144 item 1 and the
+form's "We'll confirm your time here."
+([frontend-cursor#962](https://github.com/wilplus/frontend-cursor/pull/962)).
+That line and "no reminder for now" earlier the same day were written as an
+N145 that never merged
+([backend-cursor#1298](https://github.com/wilplus/backend-cursor/pull/1298));
+this entry replaces it.
+3. Booking needs a signed-in account (email or Google, N144 item 1), so every
+booking has an email and gets the calendar invite by email; the WhatsApp
+messages come on top when a number is left. A booking without an email does
+not exist, so it needs nothing built.
+4. The practice-day reminder stays out for now (N155).
+The words are signed (Never 4). Before the code merges, Meta approves the new
+template, `WHATSAPP_BOOKING_REMINDER_TEMPLATE` names it on Railway, and the
+reminders' cron service runs there every 5 minutes
+(`bin/railway-booking-reminders-cron.sh`, with `BOOKING_REMINDER_SECRET` on
+it and on the web service). No migration.
+
+**N166 · The tempo step: the defaults and the build order (founder, the
 Claude Code chat, 26 October 2026: "go with the defaults").**
 1. Which stretch: the one the pace scale reads furthest from the green.
 2. Where: in the Feedback walk, right after the practise moment (N162).
