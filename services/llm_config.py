@@ -502,3 +502,17 @@ SPEC_TEMPO_TOPIC = LLMSpec(
 what the stretch was about, said back in "Tell me more about {topic}". Code
 keeps it only when it is short and plain (services.tempo_stretch.read_topic);
 else the step says "that part"."""
+
+
+SPEC_PLAN_TURN = LLMSpec(
+    model=STRONG_MODEL,
+    # The speaker's own words in a signed template; no room to invent.
+    temperature=0.2,
+    max_tokens=600,
+    response_format={"type": "json_object"},
+    timeout_seconds=25.0,
+)
+"""The plan's questions (N138, N139, N145, N150): Will's reply naming the
+speaker's event in their words, and the next follow-up as a signed template
+fitted to them. Code keeps a question only when it matches its template
+(services.plan.fitted_question); else Will says the plain template."""

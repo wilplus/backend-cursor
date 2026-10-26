@@ -1897,6 +1897,44 @@ O2 -> test_a_healthy_job_result_is_the_old_shape
 test_a_job_that_fell_back_names_the_stage
 O3 -> test_a_failed_trailing_stage_still_saves_the_ideal_text
 O4 -> test_the_whole_assembly_failing_is_false_and_named",Audit Q-C1: best-effort stages were swallowed into log lines. The analysis worker's own stages are pinned in tests/test_analysis_worker.py.
+tests/test_plan.py,Story,"As a speaker with an event coming, I want the app to turn my deadline and my voice into a plan, so that each practice works on the one thing that will help most, in words, never a score.","O1  A deadline three weeks away gives three practices a week, nine in
+all; two weeks or less gives every day; no date gives two months.
+O2  The practice count reads the Takes done plus one and never passes the
+total; the next practice day is a weekday name, or ""tomorrow"".
+O3  The level comes from what was measured today, strongest first: a key
+line said faster than the rest gives ""Let your key line land""; with
+nothing measured it is ""Make it yours"", never a guess.
+O4  The key line is always the first follow-up, and never more than three;
+a fact already said is not asked again, a named worry still is.
+O5  The AI's question is kept only in its signed template's shape;
+anything else falls back to the plain template.
+O6  The dates read as the chat writes them (""14 November"", ""Sat 14 Nov"",
+""Tuesday 27 October, 10:00"").","O1 -> test_the_deadline_sets_the_journey
+O2 -> test_practice_count_and_next_day
+O3 -> test_the_level_comes_from_what_was_measured
+O4 -> test_the_key_line_first_and_at_most_three
+O5 -> test_the_ai_question_must_keep_its_template
+O6 -> test_dates_read_as_the_chat_writes_them","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); the rules are frontend docs/flows/the-plan.md §1."
+tests/test_plan_flow.py,Story,"As a new speaker on the plan's ring, I want Will to ask me a few questions in the Lounge before my first Take and give me a plan, so that my practice starts from my event and my own voice.","O1  Someone without the plan sees nothing of it: no plan, nothing written.
+O2  A new speaker with no Take is asked, once: ""Hi Artur! A few quick
+questions before your first practice."" and ""When is your deadline?"".
+O3  ""No date yet"" gives two months, said in words; then the voice
+message's two questions.
+O4  Each voice answer is transcribed under the caller's authorization,
+kept with its recording, kept for Will, and shown as the speaker's
+voice bubble; when the AI fails Will says the plain words, and the key
+line is always the first follow-up.
+O5  The two ratings are kept and never shown back as a number; then the
+kickoff call is offered, then the summary call; skipping both still
+gives ""You're all set. Here's your plan."" and the card.
+O6  On a practice day after the first Take, the first open writes the
+hello and today's one thing, once; after a Take on a practice day the
+15 minutes lines come, once.","O1 -> test_without_the_ring_nothing_happens
+O2 -> test_a_new_speaker_is_asked_once
+O3 -> test_no_date_gives_two_months_then_the_voice_message
+O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
+O5 -> test_ratings_are_kept_quietly_and_the_calls_lead_to_the_plan
+O6 -> test_a_practice_day_hello_and_the_fifteen_minutes","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); the rules are frontend docs/flows/the-plan.md §1."
 tests/test_playback_copy.py,Story,"As a speaker on iPhone or Safari, I want my recordings to play back, and the playback copy deleted with the recording, so that I can hear myself and deletion leaves nothing. (Record -> next Take: hearing the Take; and deletion.)","O1  A stored short recording gets its Safari-safe copy (.playback.m4a,
 audio/mp4) beside it at upload; the original is untouched.
 O2  The player is handed the original until the copy exists, and the copy

@@ -11161,6 +11161,146 @@ class DatabaseService:
                            row.get("user_id"), e, exc_info=True)
             return False
 
+    # ── the plan (migration the_plan_keeps_each_speakers_plan, services/plan_flow.py) ──
+
+    def get_open_plan(self, user_id: str) -> Optional[dict]:
+        """The person's open plan (asking, active or ending), or None. None
+        too on any failure, the table missing included: no plan is shown."""
+        try:
+            rows = (self.client.table("speaker_plans").select("*")
+                    .eq("user_id", user_id)
+                    .in_("status", ["asking", "active", "ending"])
+                    .order("created_at", desc=True).limit(1).execute().data)
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("get_open_plan failed user=%s: %s", user_id, e, exc_info=True)
+            return None
+
+    def get_latest_plan(self, user_id: str) -> Optional[dict]:
+        """The person's newest plan in any state, or None."""
+        try:
+            rows = (self.client.table("speaker_plans").select("*")
+                    .eq("user_id", user_id)
+                    .order("created_at", desc=True).limit(1).execute().data)
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("get_latest_plan failed user=%s: %s", user_id, e, exc_info=True)
+            return None
+
+    def insert_plan(self, row: dict) -> Optional[dict]:
+        """A new plan; the stored row, or None (an open plan already there
+        included: the unique index refuses a second)."""
+        try:
+            data = self.client.table("speaker_plans").insert(row).execute().data
+            return data[0] if data else None
+        except Exception as e:
+            logger.warning("insert_plan failed user=%s: %s", row.get("user_id"), e,
+                           exc_info=True)
+            return None
+
+    def update_plan(self, user_id: str, plan_id: str, fields: dict) -> Optional[dict]:
+        """One of the person's plans changed; the stored row, or None."""
+        try:
+            data = (self.client.table("speaker_plans")
+                    .update({**fields, "updated_at": datetime.now(timezone.utc).isoformat()})
+                    .eq("id", plan_id).eq("user_id", user_id).execute().data)
+            return data[0] if data else None
+        except Exception as e:
+            logger.warning("update_plan failed user=%s: %s", user_id, e, exc_info=True)
+            return None
+
+    def insert_plan_answer(self, row: dict) -> Optional[dict]:
+        try:
+            data = self.client.table("plan_answers").insert(row).execute().data
+            return data[0] if data else None
+        except Exception as e:
+            logger.warning("insert_plan_answer failed user=%s: %s", row.get("user_id"), e,
+                           exc_info=True)
+            return None
+
+    def list_plan_answers(self, user_id: str, plan_id: str) -> list[dict]:
+        """A plan's answers, oldest first. [] on any failure."""
+        try:
+            return (self.client.table("plan_answers")
+                    .select("id, kind, moment, question, transcript, value, duration_ms, readings, created_at")
+                    .eq("user_id", user_id).eq("plan_id", plan_id)
+                    .order("created_at").execute().data) or []
+        except Exception as e:
+            logger.warning("list_plan_answers failed user=%s: %s", user_id, e, exc_info=True)
+            return []
+
+    def insert_plan_answer_audio(self, answer_id: str, user_id: str,
+                                 content_type: str, audio: bytes) -> bool:
+        try:
+            (self.client.table("plan_answer_audio")
+             .insert({"answer_id": answer_id, "user_id": user_id,
+                      "content_type": content_type,
+                      "audio": "\\x" + audio.hex()})
+             .execute())
+            return True
+        except Exception as e:
+            logger.warning("insert_plan_answer_audio failed user=%s: %s", user_id, e,
+                           exc_info=True)
+            return False
+
+    def get_plan_answer_audio(self, user_id: str, answer_id: str) -> Optional[dict]:
+        """``{content_type, audio: bytes}`` for one of the person's answers."""
+        try:
+            rows = (self.client.table("plan_answer_audio")
+                    .select("content_type, audio")
+                    .eq("answer_id", answer_id).eq("user_id", user_id)
+                    .limit(1).execute().data)
+        except Exception as e:
+            logger.warning("get_plan_answer_audio failed user=%s: %s", user_id, e,
+                           exc_info=True)
+            return None
+        if not rows:
+            return None
+        raw = rows[0].get("audio") or ""
+        try:
+            audio = bytes.fromhex(raw[2:]) if isinstance(raw, str) and raw.startswith("\\x") else bytes(raw)
+        except (TypeError, ValueError):
+            return None
+        return {"content_type": rows[0].get("content_type") or "audio/webm", "audio": audio}
+
+    def insert_plan_level_event(self, row: dict) -> bool:
+        try:
+            self.client.table("plan_level_events").insert(row).execute()
+            return True
+        except Exception as e:
+            logger.warning("insert_plan_level_event failed user=%s: %s", row.get("user_id"),
+                           e, exc_info=True)
+            return False
+
+    def list_user_bookings(self, user_id: str, *, ids: Optional[list] = None,
+                           start_at: Optional[str] = None) -> list[dict]:
+        """The person's confirmed bookings: by id, or the one at a start
+        time (the plan's two calls, services/booking.py). [] on any failure."""
+        try:
+            q = (self.client.table("bookings").select("id, start_at, status")
+                 .eq("user_id", user_id).eq("status", "confirmed"))
+            if ids is not None:
+                if not ids:
+                    return []
+                q = q.in_("id", ids)
+            if start_at is not None:
+                q = q.eq("start_at", start_at)
+            return q.order("start_at").limit(20).execute().data or []
+        except Exception as e:
+            logger.warning("list_user_bookings failed user=%s: %s", user_id, e, exc_info=True)
+            return []
+
+    def list_plan_level_events(self, user_id: str, plan_id: str) -> list[dict]:
+        try:
+            return (self.client.table("plan_level_events")
+                    .select("level, reason, by_who, note, created_at")
+                    .eq("user_id", user_id).eq("plan_id", plan_id)
+                    .order("created_at").execute().data) or []
+        except Exception as e:
+            logger.warning("list_plan_level_events failed user=%s: %s", user_id, e,
+                           exc_info=True)
+            return []
+
     # ── blind-rater language eligibility ───────────────────────────
 
     def get_user_proficient_languages(self, user_id: str) -> Optional[list]:
