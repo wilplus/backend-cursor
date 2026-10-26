@@ -112,6 +112,9 @@ def _limit_string(name: str, default: str) -> str:
 DEFAULT_WHISPER_LIMIT = "20 per minute;200 per hour"
 DEFAULT_LLM_LIMIT = "30 per minute;400 per hour"
 DEFAULT_HEAVY_LIMIT = "10 per minute;100 per hour"
+#: The live words of a voice note being said (N194): a few-second piece
+#: about every second and a half, for up to five minutes.
+DEFAULT_LIVE_NOTE_LIMIT = "60 per minute;1200 per hour"
 # Phase 0.6: a guest identity is minted for nothing but a first visit, so a
 # person needs one or two; a script minting thousands is the threat.
 DEFAULT_GUEST_IDENTITY_LIMIT = "10 per minute;60 per hour"
@@ -138,6 +141,10 @@ def llm_limit_value() -> str:
 
 def heavy_limit_value() -> str:
     return _limit_string("RATE_LIMIT_HEAVY", DEFAULT_HEAVY_LIMIT)
+
+
+def live_note_limit_value() -> str:
+    return _limit_string("RATE_LIMIT_LIVE_NOTE", DEFAULT_LIVE_NOTE_LIMIT)
 
 
 def guest_identity_limit_value() -> str:
@@ -433,6 +440,13 @@ def heavy_limit(fn):
     return _transparent(
         limiter.limit(heavy_limit_value, key_func=identity_key,
                       scope="heavy")(fn), fn)
+
+
+def live_note_limit(fn):
+    """The live words of a voice note being said (N194)."""
+    return _transparent(
+        limiter.limit(live_note_limit_value, key_func=identity_key,
+                      scope="live_note")(fn), fn)
 
 
 def guest_identity_limit(fn):
