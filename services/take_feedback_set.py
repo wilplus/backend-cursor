@@ -6,6 +6,7 @@ identities are stored, so accepting item one can never reveal item four.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Iterable, Optional
 
 
@@ -27,6 +28,31 @@ REQUIRED_FAMILIES = {
 #: copies of one number is how V2's budget came to be enforced in four places
 #: that then had to be changed together.
 MAX_SELECTED_KEYS = 64
+
+#: THE V3 CUTOVER (contract 24, founder 2026-09-18). A Take recorded before it
+#: was served under an older policy, and its stored candidates may carry no
+#: Confident Voice item a set can be frozen with. Reopening one then failed
+#: the same way on every GET, and each open was an ERROR in Sentry (the 2026-
+#: 10-24 weekly report: 75 + 38 events, all one August arc). Only the LOG
+#: LEVEL depends on this: what is served is unchanged, and a Take recorded
+#: after the cutover that cannot be frozen is still an error.
+V3_CUTOVER = datetime(2026, 9, 18, tzinfo=timezone.utc)
+
+
+def recorded_before_cutover(created_at: Any) -> bool:
+    """True when a Take's ``created_at`` is before the V3 cutover.
+
+    An unreadable timestamp is False: a Take of unknown age keeps its error.
+    A naive timestamp is UTC, which is how ``v2_sessions`` stores it."""
+    if not isinstance(created_at, str) or not created_at.strip():
+        return False
+    try:
+        when = datetime.fromisoformat(created_at.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return when < V3_CUTOVER
 
 
 def feedback_identity(change: Any) -> Optional[dict]:
