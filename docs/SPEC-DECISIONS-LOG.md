@@ -4615,6 +4615,6 @@ founder first, then everyone. This replaces the third place in N180 item 4
 ("once a day … after about 15 minutes in the app").
 4. The voice notebook (Will learning plan step 1) stays as it is, for short
 # notes for Will; the long personal writing goes in the paper notebook.
-Rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 §1 M16 (lines 1, 2 and 4) and
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md) (line 3, with the practice day).
