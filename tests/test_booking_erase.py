@@ -5,7 +5,7 @@ STORY    As a speaker who closes my account, I want my lesson bookings
 OUTCOME
   O1  Unpaid bookings are deleted.
   O2  A paid booking keeps only its date, price and Stripe reference; my
-      name, email, note and account link are removed.
+      name, email, WhatsApp number, note and account link are removed.
   O3  Other people's bookings stay as they were.
 PROVES   O1, O2, O3 ->
              test_closing_an_account_deletes_bookings_and_keeps_paid_lessons_bare
@@ -66,7 +66,7 @@ def test_closing_an_account_deletes_bookings_and_keeps_paid_lessons_bare():
     rows = [
         {"id": "a", "user_id": "u1", "status": "confirmed", "price_cents": 6000,
          "stripe_session_id": "cs_1", "guest_name": "Ann", "guest_email": "a@x",
-         "note": "hi", "guest_timezone": "Europe/Warsaw"},
+         "note": "hi", "guest_timezone": "Europe/Warsaw", "guest_whatsapp": "+48600100200"},
         {"id": "b", "user_id": "u1", "status": "held", "price_cents": 6000,
          "stripe_session_id": None, "guest_name": "Ann", "guest_email": "a@x",
          "note": "", "guest_timezone": "Europe/Warsaw"},
@@ -78,5 +78,6 @@ def test_closing_an_account_deletes_bookings_and_keeps_paid_lessons_bare():
         assert booking.erase_for_user("u1") == {"deleted": 1, "kept_for_accounting": 1}
     paid = next(r for r in rows if r["id"] == "a")
     assert paid["user_id"] is None and paid["guest_name"] == "" and paid["guest_email"] == ""
-    assert paid["note"] == "" and paid["price_cents"] == 6000 and paid["stripe_session_id"] == "cs_1"
+    assert paid["note"] == "" and paid["guest_whatsapp"] is None
+    assert paid["price_cents"] == 6000 and paid["stripe_session_id"] == "cs_1"
     assert [r["id"] for r in rows] == ["a", "c"]

@@ -35,6 +35,7 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from config import Config
+from services import whatsapp_notify
 from services.db import db
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,11 @@ SHORT_SLOT_STEP_MIN = 15  # a meeting shorter than SLOT_STEP_MIN starts on the q
 CHECKOUT_MINUTES = 35
 HOLD_MINUTES = CHECKOUT_MINUTES + 5
 CURRENCIES = ("usd", "eur", "pln", "gbp")
+# The WhatsApp reminder (N144) goes 1 hour before. The cron runs every 5
+# minutes; a booking is due from 1 hour before until 45 minutes before, so a
+# late or missed run still reminds, once.
+REMINDER_BEFORE = timedelta(hours=1)
+REMINDER_WINDOW = timedelta(minutes=15)
 DAYS = ("0", "1", "2", "3", "4", "5", "6")  # Sunday=0, JS getDay() order
 
 SETTINGS_FIELDS = (
@@ -487,7 +493,7 @@ EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email: str,
                    guest_timezone: str, note: str = "", embedded: bool = False,
-                   skip_payment: bool = False, link: str = "") -> dict:
+                   skip_payment: bool = False, link: str = "", whatsapp: str = "") -> dict:
     """Hold the slot and open Stripe Checkout for a signed-in account, at that
     person's price (charged as an amount, not a Stripe product). Returns
     {"client_secret": ...} for the card form inside the booking page when
@@ -507,6 +513,7 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
         raise BookingError("NAME_REQUIRED", "Add your name.")
     if not EMAIL_RE.match(email):
         raise BookingError("EMAIL_INVALID", "Check the email address.")
+    phone = _whatsapp_number(whatsapp)
     try:
         ZoneInfo(guest_timezone)
     except (ZoneInfoNotFoundError, ValueError):
@@ -533,6 +540,7 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     db.client.table("bookings").update({
         "user_id": user_id, "list_price_cents": int(offer["list_price_cents"]),
         "due_cents": int(offer["price_cents"]) if skip_payment else None,
+        **({"guest_whatsapp": phone} if phone else {}),
     }).eq("id", booking_id).execute()
     base = (config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
 
@@ -584,6 +592,17 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     if embedded:
         return {"client_secret": _get(session, "client_secret")}
     return {"url": _get(session, "url")}
+
+
+def _whatsapp_number(raw: str) -> Optional[str]:
+    """The WhatsApp number left on the booking form in E.164, or None when
+    the guest left none (it is optional)."""
+    if not (raw or "").strip():
+        return None
+    try:
+        return whatsapp_notify.normalize_phone(raw)
+    except whatsapp_notify.WhatsAppRefusal as refusal:
+        raise BookingError("WHATSAPP_INVALID", refusal.message)
 
 
 def _release(booking_id: str) -> None:
@@ -648,6 +667,12 @@ def _confirm(booking_id: str, *, session_id: Optional[str]) -> dict:
             send_confirmation_emails(row)
         except Exception as e:  # the booking stands; the host sees it in admin
             logger.error("booking: confirmation emails failed booking=%s: %s", booking_id, e, exc_info=True)
+        if row.get("guest_whatsapp"):
+            try:
+                send_confirmation_whatsapp(row)
+            except Exception as e:  # the emails carry the same; the booking stands
+                logger.warning("booking: WhatsApp confirmation failed booking=%s: %s",
+                               booking_id, type(e).__name__, exc_info=True)
     return row
 
 
@@ -678,8 +703,8 @@ def erase_for_user(user_id: str) -> dict:
     """Closing an account (founder 2026-10-15, fix 6; Privacy 3.6 §7, §9):
     a booking goes with the account, except a paid lesson's accounting
     record, which keeps only the date, the price, the currency and the
-    Stripe reference; the name, the email, the note and the time zone are
-    wiped and the row no longer names the account. Called at the
+    Stripe reference; the name, the email, the WhatsApp number, the note and
+    the time zone are wiped and the row no longer names the account. Called at the
     termination request with the AI voice's erase. Never raises."""
     out = {"deleted": 0, "kept_for_accounting": 0}
     if not user_id:
@@ -693,7 +718,7 @@ def erase_for_user(user_id: str) -> dict:
             if paid:
                 db.client.table("bookings").update({
                     "guest_name": "", "guest_email": "", "note": "",
-                    "guest_timezone": "UTC", "user_id": None,
+                    "guest_timezone": "UTC", "user_id": None, "guest_whatsapp": None,
                 }).eq("id", row["id"]).execute()
                 out["kept_for_accounting"] += 1
             else:
@@ -848,3 +873,67 @@ def send_confirmation_emails(row: dict) -> None:
         headers={"Reply-To": row["guest_email"]},
         attachments=host_attachment,
     )
+
+
+# ----------------------------------------------------------------- WhatsApp
+
+# A booking with a WhatsApp number (left on the booking form) also gets a
+# WhatsApp confirmation and a reminder 1 hour before (founder 2026-10-25,
+# N144). The words of the two messages: the templates Meta approved carry the
+# same words, with the date and time as {{1}} and the Meet link as {{2}};
+# these are the plain-text fallback.
+WHATSAPP_CONFIRMED = "You're booked with {host}: {when}. Join on Google Meet: {meet}"
+WHATSAPP_REMINDER = "Your session with {host} starts in 1 hour, at {at}. Join on Google Meet: {meet}"
+
+
+def _at(start: datetime, tz_name: str) -> str:
+    s = start.astimezone(ZoneInfo(tz_name))
+    return f"{s.strftime('%I:%M %p').lstrip('0')} ({tz_name.split('/')[-1].replace('_', ' ')} time)"
+
+
+def send_confirmation_whatsapp(row: dict) -> bool:
+    """The WhatsApp confirmation to the number left on the booking: the date
+    and time in the guest's own zone and the Meet link. Raises on a provider
+    error; the caller logs it."""
+    tz_name = row.get("guest_timezone") or "UTC"
+    when = _when(_dt(row["start_at"]), _dt(row["end_at"]), tz_name)
+    return whatsapp_notify.send_template(
+        str(row["guest_whatsapp"]), config=config,
+        template=config.WHATSAPP_BOOKING_CONFIRMED_TEMPLATE, params=[when, row["meet_url"]],
+        text=WHATSAPP_CONFIRMED.format(host=get_settings()["host_name"], when=when, meet=row["meet_url"]))
+
+
+def send_whatsapp_reminders(now: Optional[datetime] = None) -> dict:
+    """The reminder 1 hour before, on WhatsApp, for every confirmed booking
+    with a number (the cron, every 5 minutes). Each booking is claimed before
+    its message goes, so a cron that fires twice sends it once; a message
+    Meta refuses is given back for the next run to try."""
+    out = {"due": 0, "sent": 0}
+    if not config.WHATSAPP_NOTIFICATIONS:
+        return out
+    now = now or datetime.now(timezone.utc)
+    rows = (db.client.table("bookings").select("id,start_at,guest_whatsapp,guest_timezone,meet_url")
+            .eq("status", "confirmed").is_("whatsapp_reminder_sent_at", "null")
+            .gt("start_at", (now + REMINDER_BEFORE - REMINDER_WINDOW).isoformat())
+            .lte("start_at", (now + REMINDER_BEFORE).isoformat())
+            .execute().data) or []
+    host = get_settings()["host_name"] if rows else ""
+    for row in rows:
+        if not row.get("guest_whatsapp"):
+            continue
+        out["due"] += 1
+        claimed = (db.client.table("bookings").update({"whatsapp_reminder_sent_at": now.isoformat()})
+                   .eq("id", row["id"]).is_("whatsapp_reminder_sent_at", "null").execute().data) or []
+        if not claimed:
+            continue
+        at = _at(_dt(row["start_at"]), row.get("guest_timezone") or "UTC")
+        try:
+            if whatsapp_notify.send_template(
+                    str(row["guest_whatsapp"]), config=config,
+                    template=config.WHATSAPP_BOOKING_REMINDER_TEMPLATE, params=[at, row["meet_url"]],
+                    text=WHATSAPP_REMINDER.format(host=host, at=at, meet=row["meet_url"])):
+                out["sent"] += 1
+        except Exception as e:  # noqa: BLE001 -- given back; the next run tries again
+            db.client.table("bookings").update({"whatsapp_reminder_sent_at": None}).eq("id", row["id"]).execute()
+            logger.warning("booking: WhatsApp reminder failed booking=%s: %s", row["id"], type(e).__name__)
+    return out
