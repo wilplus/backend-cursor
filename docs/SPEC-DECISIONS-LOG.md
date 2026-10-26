@@ -4731,6 +4731,39 @@ The rules: frontend
 §1, the limits (item 4). Items 1 to 3 and 5 have no rules page. No migration
 in this entry.
 
+**N189 · Messages, simpler and quieter (founder, the Claude Code chat, 26
+October 2026: "all your recommended", to the six changes of a notifications
+audit).** For N94, N144, N165, N171 and N184:
+1. No messages at night: a coach-feedback WhatsApp or email that falls due
+between 21:00 and 8:00 in the speaker's time zone waits until 8:00. With no
+time zone known for the speaker, it goes as today.
+2. Before a lesson, one ping at a time: the calendar invite's alarm goes
+back to 1 hour before; the WhatsApp stays at 10 minutes, with the join link.
+This changes N165 item 1's alarm.
+3. One booking confirmation: the email with the calendar invite. The
+WhatsApp "You're booked" (N144 item 2) goes, so WhatsApp rings only 10
+minutes before. The line under the booking form's WhatsApp field needs new
+words; proposed: "We'll remind you here 10 minutes before." They wait for
+the founder's OK (Never 4).
+4. One ask after each Take, not two: the first that waits, in E1's order
+(the CEO panel's ask, WhatsApp, the home screen, Will's question, "Did this
+help?" when the Take looks off); the others wait for a later Take. So Take 1
+brings the WhatsApp ask and Take 2 the home screen. This replaces N94's "at
+most two asks a Take".
+5. No check message when a number is saved: the app already shows the
+number back ("Saved ✓ … at {number}"), and STOP to any message removes it
+(N171 item 6). This replaces N184 items 2 to 4.
+6. One "Messages" place for the speaker, on Data & consent: WhatsApp on or
+off with the number, email on or off, practice reminders on or off with
+their time. It changes a locked consent screen, so its design and words wait
+for the founder's OK.
+Built in this order: 5 and 4 (rules), then 2 and 3, then 1, then 6.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C1, E1 and §2, and
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+§2. No migration.
+
 **N190 · The chat shows a Take's walk as one bubble, "Feedback walk"; an
 edit says "Edited" in place (founder, the Claude Code chat, 26 October 2026:
 "please show it in the chat as feedback walk; there should be just the ideal
