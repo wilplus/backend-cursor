@@ -217,12 +217,17 @@ def _clean_ladder(raw: Any) -> dict:
         out["quarter"] = {"text": _clip(quarter.get("text")),
                           "by": _clip(quarter.get("by")),
                           "next": bool(quarter.get("next"))}
-    clashes = [c for c in (raw.get("clashes") or []) if isinstance(c, dict)
-               and _clip(c.get("with")) and _clip(c.get("wins")) and _clip(c.get("text"))]
-    if clashes and isinstance(raw.get("clashes"), list):
-        out["clashes"] = [{k: _clip(c.get(k)) for k in ("with", "wins", "text")}
-                          for c in clashes][:10]
+    clashes = _clean_clashes(raw.get("clashes"))
+    if clashes:
+        out["clashes"] = clashes
     return out
+
+
+def _clean_clashes(raw: Any) -> list[dict]:
+    """The WHEN THEY CLASH answers (M12): which goal, who wins, the words."""
+    keys = ("with", "wins", "text")
+    return [{k: _clip(c.get(k)) for k in keys} for c in (raw if isinstance(raw, list) else [])
+            if isinstance(c, dict) and all(_clip(c.get(k)) for k in keys)][:10]
 
 
 def save_draft(user_id: str, goal_id: Optional[str], space: str, ladder: Any) -> dict:
@@ -231,7 +236,8 @@ def save_draft(user_id: str, goal_id: Optional[str], space: str, ladder: Any) ->
     from services import life_store
     if space not in SPACES:
         raise GoalsError("INVALID_SPACE", "Unknown space.")
-    fields = {"space": space, "ladder": _clean_ladder(ladder)}
+    cleaned = _clean_ladder(ladder)
+    fields = {"space": space, "ladder": cleaned}
     if goal_id:
         goal = life_store.get_goal(str(user_id), goal_id)
         if not goal or goal["status"] != "draft":
@@ -239,7 +245,7 @@ def save_draft(user_id: str, goal_id: Optional[str], space: str, ladder: Any) ->
         # The clash answers are the server's (N184): a save never drops them.
         kept = (goal.get("ladder") or {}).get("clashes")
         if kept:
-            fields["ladder"]["clashes"] = kept
+            cleaned["clashes"] = kept
         saved = life_store.update_goal(str(user_id), goal_id, fields)
     else:
         saved = life_store.insert_goal(str(user_id), {**fields, "status": "draft"})
