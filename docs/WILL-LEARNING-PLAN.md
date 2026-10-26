@@ -148,14 +148,10 @@ paper notebook; the voice notebook stays for short # notes for Will.
 - When the life goals lens first opens: "📓 Use your notebook!" and its
   explanation (frontend). When a goal is set: "That's the base. Now go and
   live it. Come back for a short recap." (`life_goals.finish`).
-- Once a day, after about 15 minutes in the app: "That's your 15 minutes
-  for today." and "Now go and live it, away from the phone." The app counts
-  the minutes and asks at a quiet moment; `POST /v2/chat/enough-for-today`
-  writes the two bubbles once per day of the speaker's calendar. Ring row
-  `fifteen_minutes`, ring 6 first (migration
-  `the_founder_hears_the_fifteen_minutes`, 0493).
-- Code: `services/fifteen_minutes.py`, `routes/v2/fifteen_minutes.py`,
-  `tests/test_fifteen_minutes.py`.
+- "That's your 15 minutes for today." and "Now go and live it, away from the
+  phone." come on a practice day once that day's practice is done, never on
+  a clock: they wait for the plan's practice days (frontend
+  `docs/flows/the-plan.md`).
 
 ## Step 4: later
 
