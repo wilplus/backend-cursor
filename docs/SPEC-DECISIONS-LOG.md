@@ -4048,3 +4048,19 @@ The rules: frontend
 D, E and F. The new words wait for the founder's OK (Never 4). Drawn on the
 prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn> (version 17).
 Not built yet. No migration.
+
+**N162 · The tempo step lives in the Feedback walk only (founder, the Claude
+Code chat, 26 October 2026: "it should be in the walk, not in the CO panel or
+anywhere else. It should be in the feedback walk only and displayed as per what
+the diagnosis and the treatment plan says").**
+1. The pace practice (the pace scale, N142) is a step of the Feedback walk and
+nowhere else: not in the coach panel, not in the Lounge, not before the Take.
+2. The walk shows it when the diagnosis and the plan say so: in a pace or pause
+week, from Take 2 (N134, N140, the plan's item 5).
+This settles the plan page's open point "where the pace practice sits" and
+changes N134 item 7 and N140 item 8, which put it before the Take, 2 minutes.
+The card's line "Before each Take this week: 2 minutes with the Pace Circle"
+now needs new words, which wait for the founder's OK (Never 4). The rules:
+frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§2 "Tempo" and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
+Not built yet. Docs only. No migration.
