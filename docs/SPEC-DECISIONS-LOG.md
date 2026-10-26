@@ -5126,3 +5126,47 @@ is removed from the worker and the web service on Railway, since Meta
 refuses a message whose parts differ from its template. Set it again only
 with a template that has a picture header.
 No rules page. No migration.
+
+**N207 · The booking form stops asking for a WhatsApp number; the reminder
+goes to the account's number; sign-up is counted before WhatsApp sign-up
+(founder, the Claude Code chat, 26 October 2026: "can we remove it from the
+booking page and add it on the sign up page - or add the sign up with
+whatsapp? not through twilio though", then, to three questions, "Remove it,
+use account number", "Count drop-off first" and "Change the words").** For
+N144, N165, N171, N174 item 6 and N189:
+1. The booking form no longer asks for a WhatsApp number: the field and the
+line under it go. This replaces N144 item 1, N165 item 2 and N189 item 3's
+proposed line; frontend
+[#972](https://github.com/wilplus/frontend-cursor/pull/972) is no longer
+needed.
+2. Booking needs a signed-in account (N165 item 3), so the booking's WhatsApp
+reminder (N165: 10 minutes before, with the join link) goes to the number
+saved on the account, the one the Lounge's ask and Settings hold. A booking
+made before this keeps the number it carries. With no number saved: the
+email and the calendar invite only. No "You're booked" WhatsApp goes to the
+account's number (N189 item 3). This replaces N144 item 3.
+3. The number was given for the coach's messages, so the words that say so
+change (signed, Never 4):
+   - the Lounge's WhatsApp form: "We will only use it to let you know your
+     coach texted you, or that your call starts soon." (was "… texted you");
+   - Settings, with a number saved: "We message {number} when your coach's
+     feedback is in and 10 minutes before a booked call."
+The next privacy version names the booking reminder (N171, "Before the
+build"). Until it is published the reminder goes only to a number left on a
+booking; `BOOKING_WHATSAPP_TO_ACCOUNT=true` on Railway turns on the
+account's number (off by default).
+4. Sign-up stays email, Google or LinkedIn, with no number field: Google and
+LinkedIn never show the form, and the WhatsApp ask comes after Take 1.
+5. Signing up with WhatsApp still waits for the count (N174 item 6). It needs
+no Twilio: Supabase's Send SMS hook hands the code to the backend, which
+sends it through Meta as it sends the coach's message (a Meta
+Authentication template). An account made that way has no email, which the
+booking's invite, receipts and password reset need; that is decided then.
+6. The count N174 item 6 asks for is built now: how many people reach the
+sign-up screen and how many make an account, by way (email, Google,
+LinkedIn). The founder's only; no speaker sees it.
+The rules: frontend
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+(Settings' WhatsApp card) and
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E (the WhatsApp ask's form). No migration in this entry.
