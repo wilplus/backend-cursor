@@ -709,7 +709,8 @@ def coach_update_message(database: Any, *, take_session_id: str, text: Optional[
     """A coach's word shared on a Take: its own Lounge bubble under "Later ·
     from your coach", as the coach wrote it (lock 2026-10-12, section 3), at
     the bottom of the thread the moment it is shared, like a new message
-    (founder 2026-10-21), whether or not the review has ended: the walk
+    (founder 2026-10-21), whether or not the review has ended; a changed
+    word takes that bubble's place, marked edited (N192): the walk
     still shows the word as its first step, and writes no second copy into
     the chat while this one is there (frontend `coachNoteToChat`). Until
     2026-10-21 the bubble waited for the review to end, so a word shared
@@ -733,18 +734,40 @@ def coach_update_message(database: Any, *, take_session_id: str, text: Optional[
         from services.coach_video_storage import refreshed_media_url
         video_url = refreshed_media_url(video_ref)
     body = f"{COACH_TITLE}\n{text}" if text else COACH_TITLE
+    client_id = str(uuid.uuid5(_NAMESPACE, f"{take}:coach-update:{text or ''}:{video_ref or ''}"))
+    earlier = _earlier_coach_bubble(database, str(user_id), take)
+    # A changed word is an edit, not a new message (founder 2026-10-26,
+    # N192): it takes the place of the Take's first bubble, marked edited,
+    # and the Lounge read hides the version it replaces. Until then it
+    # landed at the bottom (N80).
+    edited = earlier is not None and earlier.get("client_id") != client_id
     persisted = database.insert_lounge_messages(str(user_id), [{
-        "client_id": str(uuid.uuid5(_NAMESPACE, f"{take}:coach-update:{text or ''}:{video_ref or ''}")),
+        "client_id": client_id,
         "role": "bot",
         "kind": "walk_step",
         "body": body,
         "metadata": {"step": "coachnote", "author": "coach", "coach_update": True,
                      "heading": COACH_UPDATE_LABEL, "arc_id": str(arc_id),
                      "take_session_id": take, "take_index": take_index,
-                     "video": video_url},
-        "client_created_at": thread_stamp(database, user_id),
+                     "video": video_url, **({"edited": True} if edited else {})},
+        "client_created_at": (earlier.get("client_created_at") if earlier is not None and edited else None)
+        or thread_stamp(database, user_id),
     }])
     return persisted[0] if persisted else None
+
+
+def _earlier_coach_bubble(database: Any, user_id: str, take: str) -> Optional[dict]:
+    """The Take's first "Later · from your coach" bubble, or None. A failed
+    read is None: the word still reaches the chat, at the bottom."""
+    reader = getattr(database, "first_coach_update_bubble", None)
+    if reader is None:
+        return None
+    try:
+        row = reader(user_id, take)
+    except Exception as e:  # noqa: BLE001 -- the word is written either way
+        logger.info("earlier coach bubble unread take=%s: %s", take, e)
+        return None
+    return row if isinstance(row, dict) else None
 
 
 def line_bank_lines() -> set:

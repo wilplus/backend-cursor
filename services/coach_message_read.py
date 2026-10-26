@@ -141,7 +141,7 @@ def journey_payload(database: Any, actor_id: str, arc_id: str,
     read for the message's own Take, the Take on screen (N77). When the
     watch cannot be read, the word counts as unseen: one more tap at most,
     never a hidden coach word."""
-    from services.coach_feedback_signal import newer_than_seen
+    from services.coach_feedback_signal import newer_than_seen, word_edited
     from services.journey_messages import journey_seen
     from services.parallel import run_in_parallel
     # Independent reads, read together (2026-10-18: this section was the
@@ -154,6 +154,7 @@ def journey_payload(database: Any, actor_id: str, arc_id: str,
         changed = message.pop("changed_at", None) or message.get("published_at")
         message["unseen"] = watched is None or newer_than_seen(
             changed, watched.get(str(message.get("take_session_id") or "")))
+        message["edited"] = word_edited(changed, message.get("published_at"))
     return {
         "journey_next_steps_seen": seen,
         "coach_message": message,
