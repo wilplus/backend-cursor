@@ -13,7 +13,8 @@ OUTCOME
   O3  A set goal leaves the draft, posts its ladder, "Noted. Your career
       goal is set." and the line that sends me out to live it (N183) to the
       Lounge; a goal it replaces is kept as replaced.
-  O4  A changed step keeps the earlier words as a dated version; the talk
+  O4  A changed step keeps the earlier words as a dated version, shown
+      newest first in its history with the day the goal was set; the talk
       goal changes the setup answer itself; the same words change nothing.
   O5  "#goals" opens my ladders; "can I add another goal? I want to get
       healthier" is answered "Of course, ..." and opens the lens with my
@@ -211,6 +212,10 @@ def test_a_changed_step_keeps_its_earlier_words(store):
     shown = lg.change_step(db, "u", goal["id"], "quarter", "Twenty paying teams.")
     assert shown["ladder"]["quarter"]["text"] == "Twenty paying teams."
     assert shown["changes"]["quarter"] == {"on": "2026-11-03", "earlier": "Ten paying teams."}
+
+    assert shown["history"][0] == {"on": "2026-11-03", "step": "quarter",
+                                   "before": "Ten paying teams.", "after": "Twenty paying teams."}
+    assert shown["set_on"] == "2026-10-26"  # every version dated, for the Life Panel (N197)
 
     shown = lg.change_step(db, "u", goal["id"], "talk", "They sign up for a pilot")
     assert db.goal == "They sign up for a pilot" and shown["talk"] == db.goal
