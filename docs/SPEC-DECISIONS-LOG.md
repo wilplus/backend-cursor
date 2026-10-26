@@ -4181,3 +4181,20 @@ the calls. The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 F. Drawn on the prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>
 (version 26). No migration.
+
+**N166 · The tempo step: the defaults and the build order (founder, the
+Claude Code chat, 26 October 2026: "go with the defaults").**
+1. Which stretch: the one the pace scale reads furthest from the green.
+2. Where: in the Feedback walk, right after the practise moment (N162).
+3. Up to three tries.
+4. A noisy room: the line "🤫 Find a quiet spot first." only; no listening check.
+5. Built inside the walk, behind a switch, in this order: the meter moves from
+the founder's bench to shared code, and the walk gets a list of interventions
+(empty by default, tempo the first); the step's screen, founder-only, on a
+stand-in stretch; the stretch, its reading and its topic from the backend's
+per-clip pace reads; each try's path, comment and summary kept for Will (the
+path only, never the audio); the signed words; then who sees it, a per-speaker
+switch until the plan (N147) sets it in a pace or pause week.
+The words on the step stay drafts until the founder signs them (Never 4). The
+rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§2 "Tempo". Docs only. No migration.
