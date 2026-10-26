@@ -397,14 +397,15 @@ O4  A link set to zero shows no price and charges nothing.","O1 -> test_link_cha
 O2 -> test_an_edited_link_gives_the_normal_price
 O3 -> test_a_link_cannot_book_without_paying
 O4 -> test_a_link_at_zero_shows_no_price_and_charges_nothing",Founder 2026-10-18.
-tests/test_booking_whatsapp.py,Story,"As someone booking a session, I want to leave my WhatsApp number and get the confirmation of my time and a reminder 1 hour before there, so that I don't miss it.","O1  A number left on the booking form is kept with the booking, and the
+tests/test_booking_whatsapp.py,Story,"As someone booking a session, I want to leave my WhatsApp number and get the confirmation of my time there, and the join link 10 minutes before, so that I don't miss it.","O1  A number left on the booking form is kept with the booking, and the
 confirmation goes to it with the time in my own zone and the Meet link.
 A number without its country code is refused with words that say so.
-O2  The reminder goes once, about 1 hour before; a second run sends
-nothing, and a booking further away or without a number gets nothing.
+O2  The reminder goes once, about 10 minutes before, with the Meet link; a
+second run sends nothing, and a booking further away or without a
+number gets nothing.
 O3  The reminders' door is shut without its secret.","O1 -> test_a_number_on_the_booking_gets_the_confirmation_in_their_own_time
-O2 -> test_the_reminder_goes_once_an_hour_before
-O3 -> test_the_reminders_door_needs_its_secret","Founder 2026-10-25, N144."
+O2 -> test_the_reminder_goes_once_10_minutes_before
+O3 -> test_the_reminders_door_needs_its_secret","Founder 2026-10-25, N144; 10 minutes before, 2026-10-26, N165."
 tests/test_bundled_era_erasure_postgres.py,Story,"As the founder, I want the one-time erasure of the old corpus to run only with my sign-off, counsel's sign-off and an exact snapshot, so that we delete exactly what was approved and keep consent records.","O1  Apply refuses, deleting nothing, on a wrong hash or a missing founder,
 counsel or external-copies record.
 O2  Apply refuses, deleting nothing, while any listed stored object has

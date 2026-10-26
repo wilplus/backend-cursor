@@ -50,11 +50,11 @@ SHORT_SLOT_STEP_MIN = 15  # a meeting shorter than SLOT_STEP_MIN starts on the q
 CHECKOUT_MINUTES = 35
 HOLD_MINUTES = CHECKOUT_MINUTES + 5
 CURRENCIES = ("usd", "eur", "pln", "gbp")
-# The WhatsApp reminder (N144) goes 1 hour before. The cron runs every 5
-# minutes; a booking is due from 1 hour before until 45 minutes before, so a
-# late or missed run still reminds, once.
-REMINDER_BEFORE = timedelta(hours=1)
-REMINDER_WINDOW = timedelta(minutes=15)
+# The WhatsApp reminder (N165) goes 10 minutes before, with the join link.
+# The cron runs every 5 minutes; a booking is due from 10 minutes before until
+# 2 minutes before, so a late or missed run still sends the link, once.
+REMINDER_BEFORE = timedelta(minutes=10)
+REMINDER_WINDOW = timedelta(minutes=8)
 DAYS = ("0", "1", "2", "3", "4", "5", "6")  # Sunday=0, JS getDay() order
 
 SETTINGS_FIELDS = (
@@ -787,8 +787,8 @@ def build_invite(row: dict, *, organizer_email: str, host_email: str, host_name:
             f"ATTENDEE;CN={_ics_text(row['guest_name'])};ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:{row['guest_email']}",
         ]),
         "SEQUENCE:0", "STATUS:CONFIRMED", "TRANSP:OPAQUE",
-        "BEGIN:VALARM", "TRIGGER:-PT1H", "ACTION:DISPLAY",
-        f"DESCRIPTION:{_ics_text(row['title'])} in 1 hour", "END:VALARM",
+        "BEGIN:VALARM", "TRIGGER:-PT10M", "ACTION:DISPLAY",
+        f"DESCRIPTION:{_ics_text(row['title'])} in 10 minutes", "END:VALARM",
         "END:VEVENT", "END:VCALENDAR",
     ]
     return "".join(_fold(line) + "\r\n" for line in lines)
@@ -878,17 +878,13 @@ def send_confirmation_emails(row: dict) -> None:
 # ----------------------------------------------------------------- WhatsApp
 
 # A booking with a WhatsApp number (left on the booking form) also gets a
-# WhatsApp confirmation and a reminder 1 hour before (founder 2026-10-25,
-# N144). The words of the two messages: the templates Meta approved carry the
-# same words, with the date and time as {{1}} and the Meet link as {{2}};
-# these are the plain-text fallback.
+# WhatsApp confirmation (founder 2026-10-25, N144) and a reminder with the
+# join link 10 minutes before (founder 2026-10-26, N165). The words of the two
+# messages: the templates Meta approved carry the same words, the confirmation
+# with the date and time as {{1}} and the Meet link as {{2}}, the reminder
+# with the Meet link as {{1}}; these are the plain-text fallback.
 WHATSAPP_CONFIRMED = "You're booked with {host}: {when}. Join on Google Meet: {meet}"
-WHATSAPP_REMINDER = "Your session with {host} starts in 1 hour, at {at}. Join on Google Meet: {meet}"
-
-
-def _at(start: datetime, tz_name: str) -> str:
-    s = start.astimezone(ZoneInfo(tz_name))
-    return f"{s.strftime('%I:%M %p').lstrip('0')} ({tz_name.split('/')[-1].replace('_', ' ')} time)"
+WHATSAPP_REMINDER = "Your session with {host} starts in 10 minutes. Join on Google Meet: {meet}"
 
 
 def send_confirmation_whatsapp(row: dict) -> bool:
@@ -904,15 +900,16 @@ def send_confirmation_whatsapp(row: dict) -> bool:
 
 
 def send_whatsapp_reminders(now: Optional[datetime] = None) -> dict:
-    """The reminder 1 hour before, on WhatsApp, for every confirmed booking
-    with a number (the cron, every 5 minutes). Each booking is claimed before
-    its message goes, so a cron that fires twice sends it once; a message
-    Meta refuses is given back for the next run to try."""
+    """The reminder 10 minutes before, on WhatsApp, with the join link, for
+    every confirmed booking with a number (the cron, every 5 minutes). Each
+    booking is claimed before its message goes, so a cron that fires twice
+    sends it once; a message Meta refuses is given back for the next run to
+    try."""
     out = {"due": 0, "sent": 0}
     if not config.WHATSAPP_NOTIFICATIONS:
         return out
     now = now or datetime.now(timezone.utc)
-    rows = (db.client.table("bookings").select("id,start_at,guest_whatsapp,guest_timezone,meet_url")
+    rows = (db.client.table("bookings").select("id,start_at,guest_whatsapp,meet_url")
             .eq("status", "confirmed").is_("whatsapp_reminder_sent_at", "null")
             .gt("start_at", (now + REMINDER_BEFORE - REMINDER_WINDOW).isoformat())
             .lte("start_at", (now + REMINDER_BEFORE).isoformat())
@@ -926,12 +923,11 @@ def send_whatsapp_reminders(now: Optional[datetime] = None) -> dict:
                    .eq("id", row["id"]).is_("whatsapp_reminder_sent_at", "null").execute().data) or []
         if not claimed:
             continue
-        at = _at(_dt(row["start_at"]), row.get("guest_timezone") or "UTC")
         try:
             if whatsapp_notify.send_template(
                     str(row["guest_whatsapp"]), config=config,
-                    template=config.WHATSAPP_BOOKING_REMINDER_TEMPLATE, params=[at, row["meet_url"]],
-                    text=WHATSAPP_REMINDER.format(host=host, at=at, meet=row["meet_url"])):
+                    template=config.WHATSAPP_BOOKING_REMINDER_TEMPLATE, params=[row["meet_url"]],
+                    text=WHATSAPP_REMINDER.format(host=host, meet=row["meet_url"])):
                 out["sent"] += 1
         except Exception as e:  # noqa: BLE001 -- given back; the next run tries again
             db.client.table("bookings").update({"whatsapp_reminder_sent_at": None}).eq("id", row["id"]).execute()

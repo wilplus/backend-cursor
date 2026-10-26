@@ -430,11 +430,11 @@ class Config:
     # project's feedback address. Off = the template's link as Meta stores it.
     WHATSAPP_TEMPLATE_LINK_BUTTON = os.getenv("WHATSAPP_TEMPLATE_LINK_BUTTON", "false").lower() == "true"
     # The booking's two WhatsApp messages (founder 2026-10-25, N144), each a
-    # template Meta approved with two body variables: the confirmation
-    # ({{1}} the date and time, {{2}} the Meet link) and the reminder 1 hour
-    # before ({{1}} the time, {{2}} the Meet link). Unset, the plain text is
-    # sent, which WhatsApp only delivers within 24 hours of the person's last
-    # message. Same switch, number and language as the coach's message.
+    # template Meta approved: the confirmation ({{1}} the date and time, {{2}}
+    # the Meet link) and the reminder 10 minutes before (N165, {{1}} the Meet
+    # link). Unset, the plain text is sent, which WhatsApp only delivers
+    # within 24 hours of the person's last message. Same switch, number and
+    # language as the coach's message.
     WHATSAPP_BOOKING_CONFIRMED_TEMPLATE = (os.getenv("WHATSAPP_BOOKING_CONFIRMED_TEMPLATE") or "").strip()
     WHATSAPP_BOOKING_REMINDER_TEMPLATE = (os.getenv("WHATSAPP_BOOKING_REMINDER_TEMPLATE") or "").strip()
 

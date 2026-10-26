@@ -1,13 +1,14 @@
 #!/bin/sh
 # One-shot job for Railway Cron: send the booking WhatsApp reminders that are
-# due, then exit 0/1. Founder 2026-10-25 (N144): a reminder 1 hour before, on
-# WhatsApp, to every booking that left a number on the booking form.
+# due, then exit 0/1. Founder 2026-10-26 (N165): a reminder with the join
+# link 10 minutes before, on WhatsApp, to every booking that left a number on
+# the booking form.
 # Cloned from bin/railway-devbugs-cron.sh (the house HTTP-poker pattern).
 #
 # Fires POST /v2/internal/booking/whatsapp-reminders with the
 # X-Internal-Secret header. The backend claims each booking before its
 # message goes, so a double-fired cron sends nothing twice, and a booking is
-# due from 1 hour before until 45 minutes before, so one missed run is fine.
+# due from 10 minutes before until 2 minutes before, so one missed run is fine.
 #
 # Railway: one cron service, same repo. Two ways:
 #   A) Settings → Start Command:  sh bin/railway-booking-reminders-cron.sh

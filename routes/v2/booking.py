@@ -21,7 +21,7 @@ Admin:
 
 Internal (cron, X-Internal-Secret: BOOKING_REMINDER_SECRET):
   POST /v2/internal/booking/whatsapp-reminders  the WhatsApp reminders due
-                                             1 hour before (N144)
+                                             10 minutes before (N165)
 
 The Stripe webhook (routes/internal_webhooks.py) confirms on
 checkout.session.completed with metadata.kind == "booking".
@@ -178,8 +178,8 @@ def admin_booking_price_link():
 @booking_bp.route("/v2/internal/booking/whatsapp-reminders", methods=["POST"])
 def booking_whatsapp_reminders():
     """The cron's door (bin/railway-booking-reminders-cron.sh, every 5
-    minutes): send the WhatsApp reminders due 1 hour before (founder
-    2026-10-25, N144). One shared secret; 503 while BOOKING_REMINDER_SECRET is
+    minutes): send the WhatsApp reminders due 10 minutes before, with the
+    join link (founder 2026-10-26, N165). One shared secret; 503 while BOOKING_REMINDER_SECRET is
     not set, so the door is shut by default."""
     secret = (os.environ.get("BOOKING_REMINDER_SECRET") or "").strip()
     if not secret:
