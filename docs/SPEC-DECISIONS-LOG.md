@@ -4593,3 +4593,25 @@ goals in the Lounge and their lens, the principles in the Life Panel.
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md),
 out of the walk's page; L and M keep their letters there, so N158, N170 and
 N172 still point at the right rules. No migration.
+
+**N183 · N180's three lines signed; the voice notebook stays for short
+notes (founder, the Claude Code chat, 26 October 2026: "You have my okay on
+the wording. You can add a small emoji about the notebook, like how to use
+it with an exclamation mark and then the explanation"; "You first, then
+everyone"; "Keep it for short # notes").**
+For N180, on <https://claude.ai/artifact/HaWehtwfg1jzJvGeGM1c24> (version 8):
+1. When the life goals lens first opens (no goal yet, no draft): "📓 Use
+your notebook!", then "Keep the details in your own notebook, the paper
+one. Here we keep only the base."
+2. When a goal is set, after "Noted. Your … goal is set.": "That's the
+base. Now go and live it. Come back for a short recap."
+3. Once a day, in the chat, after about 15 minutes in the app, never during
+a Take, the processing, the Feedback walk or any lens: "That's your 15
+minutes for today." and "Now go and live it, away from the phone." Nothing
+is locked; the message box stays. Its own ring row, `fifteen_minutes`, ring
+6 (founder only) first; the founder moves it to everyone in the admin rings
+page.
+4. The voice notebook (Will learning plan step 1) stays as it is, for short
+# notes for Will; the long personal writing goes in the paper notebook.
+Rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 M.
