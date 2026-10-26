@@ -1,6 +1,8 @@
 # VERSIONING_SPEC.md — how the ideal text evolves
 
-> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+> **Label: History** · kept as written. Every doc and its label: [`README.md`](../README.md) (N106).
+
+> **Out of date (docs audit, 2026-10-26):** this page describes the master-document model, where a new Take "only offers block-level upgrades where it beats the current text". That model is retired: the code says so (`services/master_document.py`, "Retired master-document experiment"), and the rules say the Ideal Text is only what the speaker said in their latest Take (Never 5; contract clause 8). Build the Ideal Text from contract clauses 8 to 14 and the frontend's [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md), not from this page.
 
 **Status:** confirmed against shipped code, 2026-07-23 (Stage 4 / T1).
 **Scope:** the versioning engine — how a project's ideal text is built from
