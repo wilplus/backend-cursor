@@ -2641,11 +2641,15 @@ tests/test_tempo_stretch.py,Guard,"The tempo step practises the stretch of the T
 C2  a Take with long pauses no longer picks that clip as slow
 C3  a Take in the green picking a stretch anyway, so the step shows for nothing
 C4  a topic with a number, a quote or a whole sentence reaching the speaker
-C5  a failed topic call losing the step, instead of saying ""that part""","C1 -> test_a_clip_spoken_without_a_pause_is_rushed
+C5  a failed topic call losing the step, instead of saying ""that part""
+C6  a played tempo game no longer kept for Will, or kept with a number in his note
+C7  a broken or partial game kept as if it were whole","C1 -> test_a_clip_spoken_without_a_pause_is_rushed
 C2 -> test_a_clip_with_long_pauses_is_slow
 C3 -> test_a_take_in_the_green_has_no_stretch
 C4 -> test_only_a_short_plain_topic_is_kept
-C5 -> test_a_failed_topic_still_gives_the_step","If removed: the tempo step could practise the wrong stretch, or put a number or a made-up sentence on screen (Never 1, Never 4)."
+C5 -> test_a_failed_topic_still_gives_the_step
+C6 -> test_a_played_game_is_kept_for_will_in_words
+C7 -> test_a_partial_game_is_not_kept","If removed: the tempo step could practise the wrong stretch, or put a number or a made-up sentence on screen (Never 1, Never 4)."
 tests/test_tests_never_touch_a_real_database.py,Guard,The test suite refuses to start against a real Supabase project.,"C1  a `pytest` run in an environment that carries a production SUPABASE_URL
 (founder 2026-10-20: fixture values ""arc-9"", ""owner-1"" reached the live
 database this way) -- it stops before any test module imports.
