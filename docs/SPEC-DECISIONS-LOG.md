@@ -5029,3 +5029,11 @@ a variable.
 words; the 10-minute code is
 [backend-cursor#1321](https://github.com/wilplus/backend-cursor/pull/1321).
 The words are signed (Never 4). No rules page. No migration.
+
+**N201 · The password notice says its time in UTC (founder, the Claude Code
+chat, 26 October 2026: "keep UTC in the email").**
+For N190, the email "Your password was changed": the time is written as
+"on 26 October at 16:40 UTC". The prototype had no time zone; the person's
+own zone is not known, and a time without one would be wrong for anyone
+outside UTC. Already so in `services/email_account_security.py`; nothing
+changes. No rules page.
