@@ -4598,21 +4598,22 @@ N172 still point at the right rules. No migration.
 notes (founder, the Claude Code chat, 26 October 2026: "You have my okay on
 the wording. You can add a small emoji about the notebook, like how to use
 it with an exclamation mark and then the explanation"; "You first, then
-everyone"; "Keep it for short # notes").**
+everyone"; "Keep it for short # notes"; "it is not everyday it is when the
+practice time comes", choosing "When the day's practice is done").**
 For N180, on <https://claude.ai/artifact/HaWehtwfg1jzJvGeGM1c24> (version 8):
 1. When the life goals lens first opens (no goal yet, no draft): "📓 Use
 your notebook!", then "Keep the details in your own notebook, the paper
 one. Here we keep only the base."
 2. When a goal is set, after "Noted. Your … goal is set.": "That's the
 base. Now go and live it. Come back for a short recap."
-3. Once a day, in the chat, after about 15 minutes in the app, never during
-a Take, the processing, the Feedback walk or any lens: "That's your 15
-minutes for today." and "Now go and live it, away from the phone." Nothing
-is locked; the message box stays. Its own ring row, `fifteen_minutes`, ring
-6 (founder only) first; the founder moves it to everyone in the admin rings
-page.
+3. Not every day and not on a clock: on a practice day (the plan's, N140),
+as soon as that day's practice is done, Will says in the chat "That's your
+15 minutes for today." and "Now go and live it, away from the phone." The
+practice is the 15 minutes. Nothing is locked; the message box stays. On
+other days, nothing. It waits for the plan's practice days to be built; the
+founder first, then everyone.
 4. The voice notebook (Will learning plan step 1) stays as it is, for short
 # notes for Will; the long personal writing goes in the paper notebook.
 Rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 §1 M16 (lines 1, 2 and 4) and
-[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 N (line 3).
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md) (line 3, with the practice day).
