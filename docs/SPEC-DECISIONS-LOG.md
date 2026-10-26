@@ -3823,3 +3823,33 @@ only, no judgement of how they spoke, no numbers, no promises, nothing about
 fixing them (N132); when the AI fails, the plain signed template is said.
 Drawn on the prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>.
 Not built yet. No migration.
+
+**N151 · Stress and readiness on a plan's first and last practice; "How do
+you feel?" on every practice between (founder, the Claude Code chat, 26
+October 2026: "on the first take of the lesson, so like for the first time
+user, give them the scale from 1 to 10, but on the next takes, when they
+practice already, they should not be seeing anything like that, just the how
+do you feel, the usual how do you feel. But on the first and the last practice
+day or practice at all, there should be the stress and the other one,
+assessment, and then how do you feel, screen should be removed"; then "Last
+practice replaces it" and "Every plan", the two recommended answers).** For
+N148 and N149, changing N149 items 3 and 5:
+1. "How do you feel?" (Nervous, Excited, Calm, Not sure) is today's screen and
+stays as it is. Today it shows once per new project, before Take 1.
+2. A plan's first practice and its last practice get the stress and readiness
+ratings (1 to 10) and no "How do you feel?". On the first practice the ratings
+come at the end of the onboarding questions, before the plan card (N149 item
+1).
+3. The last practice is the speaker's first Take on or after the plan's last
+practice day, before the deadline. The ratings come before that Take, in place
+of "How do you feel?".
+4. Every practice in between gets only "How do you feel?" (N149 item 2), never
+the ratings.
+5. After the deadline the ratings are not asked again: Will asks "How did it
+go?", offers the summary call and asks what's next (N149 item 5, without its
+ratings).
+6. Every plan works this way: a new event or "Keep practising" starts a new
+plan whose first and last practice get the ratings. With "Keep practising",
+which has no questions, the first ratings come before its first Take.
+Drawn on the prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>.
+Not built yet. No migration.
