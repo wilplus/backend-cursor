@@ -50,11 +50,12 @@ SHORT_SLOT_STEP_MIN = 15  # a meeting shorter than SLOT_STEP_MIN starts on the q
 CHECKOUT_MINUTES = 35
 HOLD_MINUTES = CHECKOUT_MINUTES + 5
 CURRENCIES = ("usd", "eur", "pln", "gbp")
-# The WhatsApp reminder (N144) goes 1 hour before. The cron runs every 5
-# minutes; a booking is due from 1 hour before until 45 minutes before, so a
-# late or missed run still reminds, once.
-REMINDER_BEFORE = timedelta(hours=1)
-REMINDER_WINDOW = timedelta(minutes=15)
+# The WhatsApp reminder goes 10 minutes before, with the join link (N165,
+# N189). The cron runs every 5 minutes; a booking is due from 10 minutes
+# before until 2 minutes before, so a late or missed run still sends the
+# link, once.
+REMINDER_BEFORE = timedelta(minutes=10)
+REMINDER_WINDOW = timedelta(minutes=8)
 DAYS = ("0", "1", "2", "3", "4", "5", "6")  # Sunday=0, JS getDay() order
 
 SETTINGS_FIELDS = (
@@ -757,12 +758,6 @@ def _confirm(booking_id: str, *, session_id: Optional[str], paid_tokens: int = 0
             send_confirmation_emails(row, paid_tokens=paid_tokens)
         except Exception as e:  # the booking stands; the host sees it in admin
             logger.error("booking: confirmation emails failed booking=%s: %s", booking_id, e, exc_info=True)
-        if row.get("guest_whatsapp"):
-            try:
-                send_confirmation_whatsapp(row)
-            except Exception as e:  # the emails carry the same; the booking stands
-                logger.warning("booking: WhatsApp confirmation failed booking=%s: %s",
-                               booking_id, type(e).__name__, exc_info=True)
     return row
 
 
@@ -969,47 +964,30 @@ def send_confirmation_emails(row: dict, *, paid_tokens: int = 0) -> None:
 
 # ----------------------------------------------------------------- WhatsApp
 
-# A booking with a WhatsApp number (left on the booking form) also gets a
-# WhatsApp confirmation and a reminder 1 hour before (founder 2026-10-25,
-# N144). The words of the two messages: the templates Meta approved carry the
-# same words, with the date and time as {{1}} and the Meet link as {{2}};
-# these are the plain-text fallback.
-WHATSAPP_CONFIRMED = "You're booked with {host}: {when}. Join on Google Meet: {meet}"
-WHATSAPP_REMINDER = "Your session with {host} starts in 1 hour, at {at}. Join on Google Meet: {meet}"
-
-
-def _at(start: datetime, tz_name: str) -> str:
-    s = start.astimezone(ZoneInfo(tz_name))
-    return f"{s.strftime('%I:%M %p').lstrip('0')} ({tz_name.split('/')[-1].replace('_', ' ')} time)"
-
-
-def send_confirmation_whatsapp(row: dict) -> bool:
-    """The WhatsApp confirmation to the number left on the booking: the date
-    and time in the guest's own zone and the Meet link. Raises on a provider
-    error; the caller logs it."""
-    tz_name = row.get("guest_timezone") or "UTC"
-    when = _when(_dt(row["start_at"]), _dt(row["end_at"]), tz_name)
-    return whatsapp_notify.send_template(
-        str(row["guest_whatsapp"]), config=config,
-        template=config.WHATSAPP_BOOKING_CONFIRMED_TEMPLATE, params=[when, row["meet_url"]],
-        text=WHATSAPP_CONFIRMED.format(host=get_settings()["host_name"], when=when, meet=row["meet_url"]))
+# A booking with a WhatsApp number (left on the booking form) gets one
+# WhatsApp: the join link 10 minutes before (founder 2026-10-26, N165, N189).
+# The booking is confirmed by the email with the calendar invite only; the
+# WhatsApp "You're booked" went (N189 item 3). The reminder's words (N200):
+# Meta's template carries them with the Meet link as {{1}}; this is the
+# plain-text fallback.
+WHATSAPP_REMINDER = "Your coaching session starts in 10 minutes. Join here: {meet} See you there."
 
 
 def send_whatsapp_reminders(now: Optional[datetime] = None) -> dict:
-    """The reminder 1 hour before, on WhatsApp, for every confirmed booking
-    with a number (the cron, every 5 minutes). Each booking is claimed before
-    its message goes, so a cron that fires twice sends it once; a message
-    Meta refuses is given back for the next run to try."""
+    """The reminder 10 minutes before, on WhatsApp, with the join link, for
+    every confirmed booking with a number (the cron, every 5 minutes). Each
+    booking is claimed before its message goes, so a cron that fires twice
+    sends it once; a message Meta refuses is given back for the next run to
+    try."""
     out = {"due": 0, "sent": 0}
     if not config.WHATSAPP_NOTIFICATIONS:
         return out
     now = now or datetime.now(timezone.utc)
-    rows = (db.client.table("bookings").select("id,start_at,guest_whatsapp,guest_timezone,meet_url")
+    rows = (db.client.table("bookings").select("id,start_at,guest_whatsapp,meet_url")
             .eq("status", "confirmed").is_("whatsapp_reminder_sent_at", "null")
             .gt("start_at", (now + REMINDER_BEFORE - REMINDER_WINDOW).isoformat())
             .lte("start_at", (now + REMINDER_BEFORE).isoformat())
             .execute().data) or []
-    host = get_settings()["host_name"] if rows else ""
     for row in rows:
         if not row.get("guest_whatsapp"):
             continue
@@ -1018,12 +996,11 @@ def send_whatsapp_reminders(now: Optional[datetime] = None) -> dict:
                    .eq("id", row["id"]).is_("whatsapp_reminder_sent_at", "null").execute().data) or []
         if not claimed:
             continue
-        at = _at(_dt(row["start_at"]), row.get("guest_timezone") or "UTC")
         try:
             if whatsapp_notify.send_template(
                     str(row["guest_whatsapp"]), config=config,
-                    template=config.WHATSAPP_BOOKING_REMINDER_TEMPLATE, params=[at, row["meet_url"]],
-                    text=WHATSAPP_REMINDER.format(host=host, at=at, meet=row["meet_url"])):
+                    template=config.WHATSAPP_BOOKING_REMINDER_TEMPLATE, params=[row["meet_url"]],
+                    text=WHATSAPP_REMINDER.format(meet=row["meet_url"])):
                 out["sent"] += 1
         except Exception as e:  # noqa: BLE001 -- given back; the next run tries again
             db.client.table("bookings").update({"whatsapp_reminder_sent_at": None}).eq("id", row["id"]).execute()
