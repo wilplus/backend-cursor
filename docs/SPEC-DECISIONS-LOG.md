@@ -5112,3 +5112,17 @@ prototype waits ("I accepted the design you suggested and build it like
 this. Anything that does not align with the prototype that you showed to me
 should be deferred.").
 No rules page. No migration in this entry.
+
+**N206 · The coach's WhatsApp carries no picture (founder, the Claude Code
+chat, 26 October 2026: "i removed the image", then "feedback is active").**
+For N171 and N174:
+1. Meta's `feedback` template, the message that tells a speaker their
+coach's feedback is in, has no picture at the top: the founder took the logo
+out, and Meta approved the edit. It reads "Your coach has replied to your
+latest Take. Open it to see their feedback." with one button, "See the
+message", that opens the Take's feedback.
+2. The backend sends no picture with it: `WHATSAPP_TEMPLATE_HEADER_IMAGE_URL`
+is removed from the worker and the web service on Railway, since Meta
+refuses a message whose parts differ from its template. Set it again only
+with a template that has a picture header.
+No rules page. No migration.
