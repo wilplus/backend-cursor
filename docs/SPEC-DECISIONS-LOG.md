@@ -4663,3 +4663,26 @@ wins" or "You decide each time".
 4. It changes by tapping like any step; the earlier answer is kept with its
 date.
 The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M12.
+
+**N186 · The founder's time is priced at $30 for 15 minutes; no automatic
+renewal (founder, the Claude Code chat, 26 October 2026: "my 15min is 30$",
+"no auto renewal"; before that, "it takes me 10 minutes to review each manual
+item" and "I don't record all the exercise videos sometimes when there is an
+error that doesn't match the library of errors and interventions or
+exercises, than i add a new one, but generally the idea is that I don't").**
+1. The founder's time with a speaker is priced at $30 for 15 minutes, $2 a
+minute: a 15-minute call is $30, and a 10-minute manual item (a written coach
+review, a custom message) is $20. The app's machine work keeps flat token
+prices (fence §6.2); the founder's minutes are priced at this rate, not as a
+multiple of what the machine costs.
+2. A new exercise video for the library and labelling for the training
+corpus are library work, not something a speaker buys: they are not priced
+per speaker.
+3. No automatic renewal: purchases stay one-time packages (contract §8 items
+48 to 50, N44). Linear WIL-97 ("Automatic subscription renewal") is not
+built.
+4. Not decided here: the packages and their prices under item 1 (a two-month
+plan with its two calls, a review and a custom message), what happens to a
+Take sent to the coach when no review is left, and the AI voice's limits per
+speaker. Until they are, the token prices and the packages are unchanged.
+No rules page. No migration.
