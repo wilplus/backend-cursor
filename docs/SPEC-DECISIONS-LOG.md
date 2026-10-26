@@ -4678,7 +4678,60 @@ with "The quarter ended on {date}." in place of "The quarter ends today."
 the next quarter's step, the ladder, "Noted.".
 The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M13.
 
-**N187 · A note that sounds like a change to this quarter: Will asks once,
+**N187 · The founder's time is priced at $30 for 15 minutes; no automatic
+renewal (founder, the Claude Code chat, 26 October 2026: "my 15min is 30$",
+"no auto renewal"; before that, "it takes me 10 minutes to review each manual
+item" and "I don't record all the exercise videos sometimes when there is an
+error that doesn't match the library of errors and interventions or
+exercises, than i add a new one, but generally the idea is that I don't").**
+1. The founder's time with a speaker is priced at $30 for 15 minutes, $2 a
+minute: a 15-minute call is $30, and a 10-minute manual item (a written coach
+review, a custom message) is $20. The app's machine work keeps flat token
+prices (fence §6.2); the founder's minutes are priced at this rate, not as a
+multiple of what the machine costs.
+2. A new exercise video for the library and labelling for the training
+corpus are library work, not something a speaker buys: they are not priced
+per speaker.
+3. No automatic renewal: purchases stay one-time packages (contract §8 items
+48 to 50, N44). Linear WIL-97 ("Automatic subscription renewal") is not
+built.
+4. Not decided here: the packages and their prices under item 1 (a two-month
+plan with its two calls, a review and a custom message), what happens to a
+Take sent to the coach when no review is left, and the AI voice's limits per
+speaker. Until they are, the token prices and the packages are unchanged.
+No rules page. No migration.
+
+**N188 · The plan package, a review not included, and the AI voice's limits
+per speaker (founder, the decision page
+<https://claude.ai/artifact/NqCyUjhU16pHTYguJxbYZo>, 26 October 2026, every
+recommendation taken, sent from the page; and "plan = starter; voice slots =
+1 out of 10").**
+For N187:
+1. A two-month plan package is sold once at $99: 150,000 tokens, the
+kickoff and summary calls (15 minutes each, N157), one written coach review
+and one custom message. It never renews (contract §8). It goes on sale once
+the Terms describe it: Terms 3.6 still say a paid plan "renews each month".
+2. The Starter, Plus and Pro token packages stay as they are; the plan is
+sold beside them.
+3. A Take that reaches the coach when the speaker has no review left: the
+coach's queue marks it "not included" and the coach decides whether to write
+the review. The speaker is never blocked, and the Take still reaches the
+coach.
+4. The AI voice: at most 3 new clips a day and 20 a month for each speaker
+(it was 10 a day, with no monthly limit). Over a limit the walk shows the
+video or nothing, and the Take is never held (Never 3). No new voice is made
+while the plan's voice slots are full, counted from the voices the app has
+made: Starter has 10, with 1 in use on 26 October. The month's credit stop
+stays as it is.
+5. An AI voice clip has no token price of its own: the Take's price covers
+it (over the last 30 days a Take cost about $0.007 in OpenAI and a clip about
+$0.014, against 1,000 tokens, $0.064 to $0.08).
+The rules: frontend
+[`docs/flows/ai-voice-practice.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md)
+§1, the limits (item 4). Items 1 to 3 and 5 have no rules page. No migration
+in this entry.
+
+**N189 · A note that sounds like a change to this quarter: Will asks once,
 under the note, with the new words only from the note (founder, the Claude
 Code chat, 26 October 2026: "build the note that sounds like a change next
 show it to me on the clickable prototype").**
