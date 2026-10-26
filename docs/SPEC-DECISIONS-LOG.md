@@ -4198,3 +4198,57 @@ switch until the plan (N147) sets it in a pace or pause week.
 The words on the step stay drafts until the founder signs them (Never 4). The
 rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §2 "Tempo". Docs only. No migration.
+
+**N169 · Notifications and reminders: the Lounge is the inbox, WhatsApp the
+doorbell (founder, the Claude Code chat, 26 October 2026: "all your
+recommended", to the six questions after an inventory of every message the
+app sends).** Four kinds, one rule each:
+- *A notification* is news from someone else (the coach's feedback is in, a
+  booking is confirmed). It leaves the app only when the person must know
+  (WIL-74 principle 5).
+- *A reminder* hands back something the person chose, with a time (a booked
+  session; practice days, when they come). Only one they turned on, and it
+  keeps the Life Panel's rules: off by default, never counts missed days,
+  never says "come back", never twice in a day. No message ever asks a
+  speaker to come back.
+- *A signal* is news inside the app: the Lounge's bubbles and the orange dot.
+- *An ask* is Will's, in the chat, at most two a Take (N94).
+
+1. The Lounge is the inbox. Its bubbles and the orange dot stay as they are;
+there is no bell, no notification centre, no unread count and no reminder
+inside the app. Web push stays the Life Panel's own; speakers get none.
+2. A message outside the app opens one place in it (the coach's links,
+WIL-93) and never carries the content (Privacy 3.7).
+3. One channel a speaker: with a WhatsApp number, the coach's WhatsApp and
+no email; without one, the email. When the WhatsApp cannot be sent, the
+email goes instead. The booking's emails and calendar invite stay as they
+are (N165 item 3). Contract 35g-6 carries the amendment.
+4. One message a coach's sitting: after a coach shares a word or a moment
+answer, the message waits until the coach has shared nothing more with that
+speaker for 10 minutes, then one goes for all of it, its link naming the
+Take of the last share. None goes when the speaker has opened the coach's
+feedback in the app meanwhile (the orange dot cleared). Was: one WhatsApp
+and one email for every share (founder 2026-10-14: "any message the coach
+shares").
+5. The WhatsApp ask comes from Take 1, once the Take has gone to the coach:
+the first ask of Take 1's chain, still at most twice in all. Within N94's
+two asks, "Did this help?" waits on Take 1 rather than WhatsApp. No new
+words: Will's lead-in and the ask's signed words, as from Take 2 today.
+Was: never on Take 1 (confirmed 2026-10-21).
+6. Replies on WhatsApp reach us: "STOP" removes the number, as Remove on
+Data & consent does; any other reply is forwarded to the founder by email.
+Built before any new WhatsApp reminder. The answer to "STOP" is new words
+and waits for the founder's OK (Never 4).
+7. The practice-day reminder stays out for now (N155). When it comes, the
+plan card first offers to add the practice days to the speaker's own
+calendar (no permission prompt, no Meta template), then the WhatsApp ask
+(N153, N154) for those who want it. Its words wait for the founder's OK.
+This changes N155 item 3.
+
+Before the build: one new privacy version names the booking's WhatsApp
+messages (N144's open point), the replies (item 6) and, when it comes, the
+practice-day reminder (N153 item 4); the reply webhook's secrets are set on
+Railway before it merges. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E1 and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+G9. Not built yet. No migration in this entry.
