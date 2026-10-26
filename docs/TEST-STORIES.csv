@@ -1270,7 +1270,10 @@ O6 -> test_a_seed_with_open_feedback_locks
 O7 -> test_changed_words_are_edited_and_only_those,
 test_no_generated_text_means_no_flag_at_all","Founder field report #5: ""my locked chunk came back unlocked""."
 tests/test_ideal_text_publication_rests_after_repeated_failures.py,Story,"As a developer on call, I want an Ideal Text whose publication keeps failing to stop being retried every minute, so that the logs and the job queue stay usable.","O1  After three failed publications the sweep leaves that version alone for
-the failure window instead of queueing it again.",O1 -> test_three_failed_deliveries_put_the_generation_to_rest,Production 2026-10-03: two documents failed LINEAGE_REQUIRED every minute.
+the failure window instead of queueing it again.
+O2  Resting versions never use up the sweep: a newer interrupted
+publication behind them is still queued.","O1 -> test_three_failed_deliveries_put_the_generation_to_rest
+O2 -> test_resting_generations_do_not_starve_a_newer_one",Production 2026-10-03: two documents failed LINEAGE_REQUIRED every minute. Production 2026-10-26: 103 resting versions filled the 100-row sweep.
 tests/test_ideal_text_route_contracts.py,Story,"As a speaker, I want the Ideal Text routes (read, extras, earlier-Take decision, paragraph lock, helper words and my own edits) to answer exactly as they did before the code was moved into services, so that the loop never breaks.","O1  Reading my Ideal Text returns the same full answer and records, in
 order, what I was shown; someone else's project is ""not found"".
 O2  The extras (notes, history, entitlement) are served for the current
