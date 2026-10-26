@@ -4623,3 +4623,24 @@ founder first, then everyone. This replaces the third place in N180 item 4
 The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 §1 M16 (lines 1, 2 and 4) and
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md) (line 3, with the practice day).
+
+**N184 · A saved WhatsApp number gets one check message, no code (founder,
+the Claude Code chat, 26 October 2026: "mmm agreed", to "don't add a code
+step. It's friction at exactly the moment someone is saying yes. Instead,
+make the first message the check").** For N171 items 3 and 6:
+1. No verification code for a WhatsApp number, at sign-up or when it is
+saved. The number stays format-checked only (country code, 8 to 15 digits).
+2. When a speaker saves a number (the Lounge's ask, a number typed in the
+chat, Data & consent), one WhatsApp goes to it at once: the messages will
+come here, and reply STOP if this isn't you. A STOP removes the number
+(N171 item 6), so a mistyped number reaches a stranger once at most.
+3. Its words, proposed: "You'll get your WillpowerLab messages here. Reply
+STOP if this isn't you." They wait for the founder's OK (Never 4); the
+message is a Meta template, category Utility.
+4. A booking's number already gets its confirmation at once (N144); that
+message is its check.
+5. Built with N171 item 6 (replies reach us), after the new privacy version
+and Meta's template. Not decided here: a confirmation email at sign-up.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§2, N171's line. No migration.
