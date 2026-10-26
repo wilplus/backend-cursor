@@ -139,6 +139,20 @@ Up to three spaces, each can hold a goal: personal life, career, the greater
 good. The goal ladder: life goal → talk goal (the setup answer "What do you
 want your audience to do?") → this week's focus (the moment being practised).
 
+## The proverbial 15 minutes (N180, N183)
+
+The app teaches the base; the speaker goes and lives it, away from the
+phone, and comes back for a short recap. Personal details go in their own
+paper notebook; the voice notebook stays for short # notes for Will.
+
+- When the life goals lens first opens: "📓 Use your notebook!" and its
+  explanation (frontend). When a goal is set: "That's the base. Now go and
+  live it. Come back for a short recap." (`life_goals.finish`).
+- "That's your 15 minutes for today." and "Now go and live it, away from the
+  phone." come on a practice day once that day's practice is done, never on
+  a clock: they wait for the plan's practice days (frontend
+  `docs/flows/the-plan.md`).
+
 ## Step 4: later
 
 - Speaking-only thinking patterns: six signed patterns, consent first
