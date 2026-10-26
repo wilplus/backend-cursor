@@ -206,6 +206,30 @@ practice rows are gone.
 O3  Without the deletion-evidence retention rule, the run stops for
 review and names only that missing rule.","O1 -> TestAnAccountDeletionStarts::test_a_graph_that_is_not_the_subjects_is_still_refused
 O2, O3 -> TestAnAccountDeletionStarts::test_the_erasure_runs_to_the_end_once_the_retention_rules_exist","Founder 2026-09-25, decision 6: every deletion sat at ""requested"" (migration 0362)."
+tests/test_account_security.py,Story,"As a speaker, I want to change my email and my password on Data & consent, with a link for a forgotten password, so that I keep my account when I lose an address or a password; and as the founder, I want every request, change and wrong password kept in a security log, so that a taken-over account can be traced.","O1  Change email: a wrong current password changes nothing and is logged;
+the right one sends a link to the new address and a notice to the old
+one, and the email stays until the link is opened. The log keeps the
+token's SHA-256, never the token, and never a password.
+O2  An address another account has is refused before any link goes, and
+the refusal is logged.
+O3  The link changes the email once and logs it; opened twice it changes
+nothing more. An older link after a newer request, an expired link and
+an unknown token change nothing.
+O4  Change password: a wrong current password or one under 6 characters
+changes nothing; the right one sets the new password, signs out the
+other devices, sends the notice and is logged with the IP address and
+the device.
+O5  An account that signs in with Google has no password to ask for: its
+email change needs none, Set a password sends the set email, and the
+saved password is logged as its first; a reset link's password is a
+change and gets the notice.
+O6  When the email doesn't go, the card is told so: nothing is reported
+as sent.","O1 -> test_an_email_change_waits_for_the_link_from_the_new_address
+O2 -> test_an_address_with_an_account_is_refused_before_any_link
+O3 -> test_the_link_changes_the_email_once_and_only_the_newest
+O4 -> test_a_password_change_checks_the_current_one_and_signs_out_the_rest
+O5 -> test_a_google_account_sets_its_first_password_with_a_link
+O6 -> test_an_email_that_didnt_go_is_not_reported_as_sent","WIL-95 (founder 2026-10-26, N187: ""approved, implement it""; rules in the frontend's docs/flows/consent-screens.md §1)."
 tests/test_admin_speaker_permit.py,Story,"As a speaker, I want any AI call an admin makes about me to run under my own processing permit, and be refused when I have none, so that my words never reach a provider without my authority (processing authorization on the critical path).","O1  Directive suggestions: with my authority the model call runs inside
 the protected scope bound to MY principal; a refused permit answers
 403 before any provider client exists.

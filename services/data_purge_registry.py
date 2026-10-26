@@ -302,6 +302,10 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "database_row", 60),
     PurgeDependency("life_goal_asks", "life_goal_asks", "user_id", "user",
                     "delete", "database_row", 60),
+    # Email and password on Data & consent (WIL-95, N187, migration 0493):
+    # the person's own security log goes with the account.
+    PurgeDependency("account_security_events", "account_security_events",
+                    "user_id", "user", "delete", "database_row", 60),
     # The Sunday note (Will learning plan, step 2, migration 0485).
     PurgeDependency("sunday_notes", "sunday_notes", "user_id", "user", "delete",
                     "database_row", 60),
@@ -1599,7 +1603,7 @@ DYNAMIC_RUNTIME_RELATIONS: frozenset[str] = frozenset({
     "life_weeks", "life_period_reviews", "life_setup_documents",
     "life_push_subscriptions", "life_reminder_settings", "life_reminder_log",
     "life_user_copy", "life_goals", "life_goal_versions", "life_goal_asks",
-    "dev_bugs", "dev_tasks",
+    "dev_bugs", "dev_tasks", "account_security_events",
     # The scheduled clean-up (services/retention_cleaner.py) removes rows
     # from the relations its reviewed lists name: the four logs, the
     # voice-measurement stores and, once their five years end, the financial
