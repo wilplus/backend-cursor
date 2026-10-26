@@ -4074,3 +4074,14 @@ this week: 2 minutes with the Pace Circle" (Never 4). The rules: frontend
 E2 and K. Drawn on the prototype
 <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn> (version 18). No
 migration.
+
+**N164 · The deadline in the plan's list, in orange (founder, the Claude Code
+chat, 26 October 2026, on the plan card's bullets: "add the deadline on
+orange").** For N157 and N161: under "Plan", between the kickoff call and the
+summary call, a bullet reads "Your deadline: {day date month}" (for example
+"Your deadline: Sat 14 Nov"), the date in orange as the booked calls' times
+are in green. With no date given it is the date two months away (N135). The
+words wait for the founder's OK (Never 4). The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+E2. Drawn on the prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>
+(version 20). No migration.
