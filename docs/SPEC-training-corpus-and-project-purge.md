@@ -2,6 +2,15 @@
 
 > **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
 
+> **2026-10-26 (docs audit):** the training copies are text only, never
+> audio (N68 D1: "the corpus copy copies no audio"; N111 A10: "The copies
+> kept for training are text only"). Out of date here: §4.1's "Audio bytes
+> are copied to a separate storage prefix", §4.2's `item_kind`
+> `audio_segment` and its `storage_key`, `object_sha256` row "for audio
+> kinds", and §9 Q1's "all of audio segments around Confident Voice items".
+> The copy job has no audio branch (`services/training_corpus.py`); its
+> erasure still deletes any stored object a row names.
+
 **Status:** DRAFT design. Docs only. Nothing here is built, switched on, or
 authorized to run. Founder locks C1–C4 (2026-09-25) are recorded in
 `docs/SPEC-DECISIONS-LOG.md` §N and are binding on this design.
