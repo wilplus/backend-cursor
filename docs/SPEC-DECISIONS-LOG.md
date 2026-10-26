@@ -3853,3 +3853,19 @@ plan whose first and last practice get the ratings. With "Keep practising",
 which has no questions, the first ratings come before its first Take.
 Drawn on the prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>.
 Not built yet. No migration.
+
+**N152 · How an exercise is chosen, in one place (founder, the Claude Code
+chat, 26 October 2026: "Can you sort it out so it makes sense, it's in one
+place?").** The matching rule was spread over contract clauses 35b, 35c,
+35g-1 and 35g-4, and four of its parts were written nowhere but the code.
+Contract 35g-1 now holds the whole rule, in order: the pool, the gate, fit,
+confidence level, the order (eight tie-breaks), the learned order, the 80/20
+draw, one exercise per Take, and what happens when nothing fits. 35b, 35c and
+35g-4 keep their detail and point to it. The four parts written in as the code
+already runs them: an exercise needs its video, and its journal post published
+where one is attached; one that suits no confidence level the product can place
+is left out; among ties, the one suited closest to how confident the clip
+sounded, then the higher editorial priority, then the exercise id. Nothing the
+app does changes. The README's home doc for `services/confident_voice_practice.py`
+is now the contract; `docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md` stays the home of
+how an exercise's outcome is measured. No migration.
