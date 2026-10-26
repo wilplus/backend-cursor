@@ -113,7 +113,6 @@ def booking_checkout(slug: str):
         embedded=body.get("embedded") is True,
         skip_payment=body.get("skip_payment") is True,
         link=str(body.get("link") or ""),
-        whatsapp=str(body.get("whatsapp") or ""),
         pay_with_tokens=body.get("pay_with_tokens") is True,
     ))
 

@@ -435,6 +435,11 @@ class Config:
     # only delivers within 24 hours of the person's last message. Same switch,
     # number and language as the coach's message.
     WHATSAPP_BOOKING_REMINDER_TEMPLATE = (os.getenv("WHATSAPP_BOOKING_REMINDER_TEMPLATE") or "").strip()
+    # The booking's reminder to the number saved on the account (founder
+    # 2026-10-26, N207; the booking form asks for none). On once the privacy
+    # version names the reminder; off, only a booking that carries a number
+    # (made before N207) gets it.
+    BOOKING_WHATSAPP_TO_ACCOUNT = os.getenv("BOOKING_WHATSAPP_TO_ACCOUNT", "false").lower() == "true"
 
     # Current published Terms / Privacy Policy version. Must match the
     # "Last updated" date in the live legal docs (e.g. "1.0" = Terms
