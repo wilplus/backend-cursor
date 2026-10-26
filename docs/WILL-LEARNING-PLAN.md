@@ -136,7 +136,7 @@ Built (M1 to M14), founder only (ring row `life_goals`, ring 6):
   the quarter that say the same obstacle, most often none;
   `review_quarter` keeps the outcome in words on `reviews` and sets the
   next quarter's step, the earlier one kept as a version.
-- **A note that sounds like a change (M14, N190):** once a goal is set,
+- **A note that sounds like a change (M14, N191):** once a goal is set,
   `after_note` hands the newest # note to `note_change`: the model says
   whether it changes one goal's quarter step, and the new words and the
   quote must be found word for word in the note, else nothing is asked.

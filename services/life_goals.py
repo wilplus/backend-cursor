@@ -56,7 +56,7 @@ COPY = {
     "ends_today": "The quarter ends today.",
     "ended_on": "The quarter ended on {date}.",
     "did_it_move": "{emoji} {step}. Did it move?",
-    # M14, N190: a note that sounds like a change.
+    # M14, N191: a note that sounds like a change.
     "change_ask": "Change {emoji} this quarter to “{text}”?",
     "change_now": "Now: {now}. From your note: “{quote}”",
     "change": "Change",
@@ -654,7 +654,7 @@ def review_quarter(database: Any, user_id: str, goal_id: str, outcome: Any,
     return serialize(user_id, saved, talk=_talk_goal(database, user_id))
 
 
-# ── A note that sounds like a change (M14, N190) ─────────────────────────
+# ── A note that sounds like a change (M14, N191) ─────────────────────────
 
 _CHANGE_SYSTEM = """One person keeps life goals, each with a step for this quarter. You get
 the quarter steps, numbered, and one short note they just wrote to
