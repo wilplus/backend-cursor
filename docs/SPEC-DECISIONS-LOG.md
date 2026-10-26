@@ -4001,3 +4001,6 @@ lens: the bug, the principle held, the reflection, then the new principle
 with Accept or Edit. Rules and words: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 L and K.
 Not built yet; the backend half is on branch `claude/gracious-faraday-x8tin9`. No migration.
+
+**N159 · The tempo step: one home (founder, the Claude Code chat, 26 October 2026).**
+The pace scale (N130, N133, N142) and the tempo step it will drive live in one place: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §2 "Tempo", with its prototype in §5. Not built; no migration.
