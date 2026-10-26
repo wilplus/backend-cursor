@@ -221,6 +221,21 @@
       "module": "pending",
       "sha256": "1334b3d2a311b07a5395297232c37798df891e0f955447d331c778d50768323a"
     },
+    "life_goals.ask": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "ddfa22d8b3fa46a69d692478ce4caef8d3def89ea2e54dcd153948829b212952"
+    },
+    "life_goals.draft": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "1b868da9903f8ad8fa0bd89cf237166b7929803b2c5fdecf8429db13aedd28e0"
+    },
+    "life_goals.redraft": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "39457634fb7e296a194f6c125422d11b128c10306950139e0abc3d519463e854"
+    },
     "life_wins.system": {
       "kind": "source_ref",
       "module": "pending",

@@ -41,13 +41,15 @@ logger = logging.getLogger(__name__)
 LIFE_TABLES: tuple[str, ...] = (
     "life_consent", "life_setup", "life_notes", "life_cases", "life_items",
     "life_strategy", "life_proposals", "life_applications", "life_days",
-    "life_weeks", "life_period_reviews",
+    "life_weeks", "life_period_reviews", "life_goals", "life_goal_versions",
+    "life_goal_asks",
 )
 
 # Deleted in this order so a partial failure never strands a child row whose
 # parent is gone: leaves first, then the roots, consent last (it is the record
 # that the rest was ever allowed to exist).
 _DELETE_ORDER: tuple[str, ...] = (
+    "life_goal_versions", "life_goals", "life_goal_asks",
     "life_applications", "life_proposals", "life_items", "life_cases",
     "life_days", "life_weeks", "life_period_reviews", "life_strategy",
     "life_notes", "life_setup", "life_consent",
@@ -390,6 +392,97 @@ def principles(user_id: str, *, limit: int = 500) -> list[dict]:
     and must never be retrieved as if it were part of the archive — that is
     propose-never-commit, applied on the READ side too."""
     return list_items(user_id, kind="principle", status="active", limit=limit)
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Life goals (Will learning plan, step 3, N172) — services/life_goals.py
+# ═════════════════════════════════════════════════════════════════════════
+
+def insert_goal(user_id: str, fields: dict) -> Optional[dict]:
+    try:
+        return _one(_t("life_goals").insert({"user_id": user_id, **fields}).execute())
+    except Exception as e:
+        logger.error("life: insert_goal failed user=%s: %s", user_id, e, exc_info=True)
+        return None
+
+
+def update_goal(user_id: str, goal_id: str, fields: dict) -> Optional[dict]:
+    try:
+        return _one(
+            _t("life_goals").update({**fields, "updated_at": _now()})
+            .eq("id", goal_id).eq("user_id", user_id).execute()
+        )
+    except Exception as e:
+        logger.error("life: update_goal failed id=%s: %s", goal_id, e, exc_info=True)
+        return None
+
+
+def get_goal(user_id: str, goal_id: str) -> Optional[dict]:
+    try:
+        return _one(
+            _t("life_goals").select("*")
+            .eq("id", goal_id).eq("user_id", user_id).limit(1).execute()
+        )
+    except Exception as e:
+        logger.warning("life: get_goal failed id=%s: %s", goal_id, e, exc_info=True)
+        return None
+
+
+def list_goals(user_id: str, *, status: str = "active") -> list[dict]:
+    """Oldest first: the order the ladders are shown in."""
+    try:
+        return _rows(
+            _t("life_goals").select("*").eq("user_id", user_id)
+            .eq("status", status).order("created_at", desc=False)
+            .limit(50).execute()
+        )
+    except Exception as e:
+        logger.warning("life: list_goals failed user=%s: %s", user_id, e, exc_info=True)
+        return []
+
+
+def insert_goal_version(user_id: str, goal_id: str, *, step: str,
+                        before: Optional[str], after: Optional[str]) -> Optional[dict]:
+    """A changed step, dated; never overwritten."""
+    try:
+        return _one(_t("life_goal_versions").insert({
+            "user_id": user_id, "goal_id": goal_id, "step": step,
+            "before_text": before, "after_text": after}).execute())
+    except Exception as e:
+        logger.error("life: insert_goal_version failed id=%s: %s", goal_id, e, exc_info=True)
+        return None
+
+
+def goal_versions(user_id: str, goal_id: str) -> list[dict]:
+    try:
+        return _rows(
+            _t("life_goal_versions").select("*").eq("user_id", user_id)
+            .eq("goal_id", goal_id).order("created_at", desc=False)
+            .limit(500).execute()
+        )
+    except Exception as e:
+        logger.warning("life: goal_versions failed id=%s: %s", goal_id, e, exc_info=True)
+        return []
+
+
+def get_goal_asks(user_id: str) -> dict:
+    try:
+        return _one(_t("life_goal_asks").select("*").eq("user_id", user_id)
+                    .limit(1).execute()) or {}
+    except Exception as e:
+        logger.warning("life: get_goal_asks failed user=%s: %s", user_id, e, exc_info=True)
+        return {}
+
+
+def save_goal_asks(user_id: str, *, asked: int, answer: Optional[str]) -> bool:
+    try:
+        _t("life_goal_asks").upsert(
+            {"user_id": user_id, "asked": asked, "answer": answer,
+             "updated_at": _now()}, on_conflict="user_id").execute()
+        return True
+    except Exception as e:
+        logger.error("life: save_goal_asks failed user=%s: %s", user_id, e, exc_info=True)
+        return False
 
 
 def items_for_case(user_id: str, case_id: str) -> list[dict]:

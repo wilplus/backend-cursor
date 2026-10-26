@@ -60,14 +60,27 @@ def v2_notebook_consent():
     from services.voice_notebook import NotebookError, decide
     body = request.get_json(silent=True) or {}
     try:
-        return jsonify({"messages": decide(db, str(request.user_id),
-                                           str(body.get("choice") or ""))}), 200
+        messages = decide(db, str(request.user_id), str(body.get("choice") or ""))
+        if any((m.get("metadata") or {}).get("voice_note") for m in messages):
+            messages += _goals_after_note(str(request.user_id))
+        return jsonify({"messages": messages}), 200
     except NotebookError as e:
         return _error(e)
     except Exception as e:
         logger.error("notebook consent failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to save the answer"}), 500
+
+
+def _goals_after_note(user_id: str) -> list:
+    """Under a note's "Noted.", the ask for life goals (N172 M1); never in
+    the way of the note."""
+    try:
+        from services.life_goals import after_note
+        return after_note(db, user_id)
+    except Exception as e:  # noqa: BLE001 -- the note is kept either way
+        logger.warning("life goals ask failed user=%s: %s", user_id, e)
+        return []
 
 
 def _adapter(user_id: str):
@@ -102,7 +115,7 @@ def v2_notebook_note():
             db, user_id, _adapter(user_id), upload.read(),
             filename=upload.filename or "note.webm",
             content_type=upload.mimetype or "audio/webm", duration_ms=duration)
-        return jsonify({"messages": messages}), 200
+        return jsonify({"messages": messages + _goals_after_note(user_id)}), 200
     except NotebookError as e:
         return _error(e)
     except Exception as e:
