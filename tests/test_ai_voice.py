@@ -12,7 +12,8 @@ OUTCOME
       is never shown; a try after it is not scored; a real pause heard in
       the audio passes.
   O4  One clip per practice, started early once the exercise is known,
-      within the daily limit; a voice still being made is waited for a
+      within my daily and monthly limits (3 and 20, N188), and a new voice
+      only while the plan has a voice slot free; a voice still being made is waited for a
       few times only; my next try is measured on that one problem. My
       voice starts being made as my spoken Take is stored, beside its
       processing (N84), so the clip can be ready by the walk.
@@ -34,7 +35,8 @@ PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
                test_a_sentence_with_fillers_is_said_without_them_and_the_next_try_is_measured_on_them
          O3 -> test_a_clip_that_fails_its_check_is_made_once_more_and_shown_only_if_it_passes,
                test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it
-         O4 -> test_the_daily_limit_stops_the_provider_call,
+         O4 -> test_a_speakers_daily_or_monthly_limit_stops_the_provider_call,
+               test_no_new_voice_while_the_plans_voice_slots_are_full,
                test_two_corrected_moments_queue_two_prewarms,
                test_one_recording_makes_one_checked_clip_then_measures_the_next_try,
                test_a_stored_bake_with_a_voice_exercise_queues_one_prewarm_once,
@@ -416,14 +418,52 @@ def test_the_sentence_under_the_clip_comes_from_the_transcript_and_their_own_num
             assert quotes in SENTENCE and cycle["selection"]["target_phrase"] == quotes
         assert not re.search(r"\d", why)
 
-def test_the_daily_limit_stops_the_provider_call():
-    with _on(AI_VOICE_DAILY_CLIPS_PER_SPEAKER=0):
+@pytest.mark.parametrize("limit, code", [
+    ("AI_VOICE_DAILY_CLIPS_PER_SPEAKER", "speaker_daily"),
+    ("AI_VOICE_MONTHLY_CLIPS_PER_SPEAKER", "speaker_monthly"),
+])
+def test_a_speakers_daily_or_monthly_limit_stops_the_provider_call(limit, code):
+    """N188: 3 clips a day and 20 a month for each speaker, so no one speaker
+    uses up the plan's month. A limit reached makes no provider call."""
+    with _on(**{limit: 0}):
         db = _Db(_practice(), _snip(150, pause_ratio=0.02), TAKE)
         _ready_voice(db)
         voices = _Voices()
         _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
         assert voices.spoken == 0
-        assert db.client.tables["ai_voice_cycles"][0]["failure_code"] == "speaker_daily"
+        assert db.client.tables["ai_voice_cycles"][0]["failure_code"] == code
+
+
+def test_no_new_voice_while_the_plans_voice_slots_are_full():
+    """N188: each speaker's voice holds one of the plan's slots. With every
+    slot held, no voice is asked of the provider; with one free, it is."""
+    made = []
+
+    class _Cloner(_Voices):
+        def create_voice(self, **k):
+            made.append(k.get("owner_key"))
+            return super().create_voice(**k)
+
+    def clone(db):
+        return ai_voice_clone.run_clone(
+            OWNER, "principal", str(uuid.uuid4()), str(uuid.uuid4()), "r2", "bucket", "key",
+            database=db, provider=_Cloner(), read_audio=lambda: b"audio",
+            prepare=lambda audio: (audio, None))
+
+    with _on(AI_VOICE_VOICE_SLOTS=2):
+        full = _Db(_practice(), _snip(150), TAKE)
+        full.client.tables["ai_voice_clones"] = [
+            {"owner_user_id": str(uuid.uuid4()), "status": status, "enabled": True}
+            for status in ("ready", "creating")]
+        assert clone(full) == "voice_slots"
+        assert made == []
+
+        one_free = _Db(_practice(), _snip(150), TAKE)
+        one_free.client.tables["ai_voice_clones"] = [
+            {"owner_user_id": str(uuid.uuid4()), "status": status, "enabled": True}
+            for status in ("ready", "deleted")]
+        assert clone(one_free) == "ready"
+        assert made == [OWNER]
 
 
 def test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it():
