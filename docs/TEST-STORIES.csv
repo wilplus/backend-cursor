@@ -1140,6 +1140,13 @@ returns the stored helper words on that Paragraph, with Take 2's text.
 O2  Their position is kept while it proves the words, re-found when they
 occur once in the new text, and otherwise left empty, never guessed.","O1 -> test_helper_words_survive_a_take_said_differently
 O2 -> test_root_span_in","Contract 14, founder 2026-09-25: the helper words are their own text."
+tests/test_homework_digest.py,Story,"As the founder, I want one ""Homework"" email a day listing who sent a Take, not one email per Take, so that my inbox stays readable while the coach queue still shows every Take at once.","O1  The Takes noted during the day go out as one email from 8:00 in my
+time zone, a row per student with their Takes and moments; nothing
+before 8:00 and nothing twice in a day.
+O2  A day with no Takes sends nothing.
+O3  A failed send keeps its Takes for the next day's email.","O1 -> test_one_email_a_day_lists_every_student
+O2 -> test_a_day_without_takes_sends_nothing
+O3 -> test_a_failed_send_keeps_its_takes_for_tomorrow","Founder 2026-10-26, N174 item 3: ""One email a day with the list. The coach queue in the app still shows every Take straight away."""
 tests/test_ideal_text_bake_fresh_head.py,Story,"As a speaker, I want my feedback marks built on the Take I was just told is ready, so that I never see the previous Take's marks.","O1  If the stored Ideal Text still points at the previous Take, it is
 republished first and the new Take is the one baked.
 O2  If it is already current, it is baked as it stands, with no republish.","O1 -> test_a_stale_head_is_republished_and_the_new_take_is_baked

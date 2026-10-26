@@ -181,8 +181,11 @@ def _notify_admin(db, session: dict, session_id: str, user_id: str) -> None:
 
     Founder 2026-07-16 (BE-3a): a mid-take RE-READ is part of its parent
     take — it still enters the review flow (the coach packet folds it),
-    but it NEVER fires its own "homework completed" email. One email per
-    spoken take ⇒ max 3 per arc.
+    but it NEVER fires its own "homework completed" email.
+
+    Founder 2026-10-26 (N174 item 3): a spoken Take is noted for the day's
+    one "Homework" email (``homework_digest``); only when it cannot be
+    noted does it send its own email at once, as before.
     """
     _is_read = (session.get("recording_kind") == "read"
                 or bool(session.get("paired_session_id")))
@@ -193,8 +196,12 @@ def _notify_admin(db, session: dict, session_id: str, user_id: str) -> None:
         )
         return
     try:
+        from services.homework_digest import record
         from services.session_publish import _send_admin_notification
         snippets = db.get_snippets_by_session(session_id) or []
+        if record(session_id, user_id, len(snippets)):
+            logger.info("lab_send: sid=%s noted for the day's homework email", session_id)
+            return
         _send_admin_notification(
             session_id=session_id,
             user_id=user_id,

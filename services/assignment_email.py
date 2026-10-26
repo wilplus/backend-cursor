@@ -127,3 +127,51 @@ def build_admin_homework_completed_email_html(
 </body>
 </html>"""
 
+
+
+def build_admin_homework_digest_email_html(*, rows: list[dict],
+                                           date_label: str) -> dict[str, str]:
+    """The founder's once-a-day "Homework" email (founder 2026-10-26, N174
+    item 3): one row per student who sent a Take since the last one, with
+    how many Takes and moments wait in the coach queue, and their profile.
+    Same look as the one-Take email above; no machine read of any Take
+    (BLIND COACH). ``{html, text}``. Pure."""
+    lines = []
+    for row in rows:
+        takes = int(row.get("takes") or 0)
+        moments = int(row.get("moments") or 0)
+        what = f"{takes} {'Take' if takes == 1 else 'Takes'}"
+        if moments > 0:
+            what += f", {moments} {'moment' if moments == 1 else 'moments'} to review"
+        lines.append((row.get("label") or "", what, row.get("url") or "#"))
+    table = "".join(
+        '<tr><td style="padding:12px 0;border-top:1px solid #EFE9DE;font-size:16px;'
+        f'color:#1F1A14;font-weight:600;">{escape(label)}'
+        f'<div style="font-size:13px;color:#6B6256;font-weight:400;margin-top:2px;">{escape(what)}</div></td>'
+        '<td style="padding:12px 0;border-top:1px solid #EFE9DE;text-align:right;vertical-align:top;">'
+        f'<a href="{escape(url, quote=True)}" style="color:#F97316;font-weight:600;font-size:14px;'
+        'text-decoration:none;">Profile</a></td></tr>'
+        for label, what, url in lines)
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Homework — Willab</title>
+</head>
+<body style="margin:0;padding:0;background:#FAF7F2;font-family:{_FONT_STACK};color:#1F1A14;">
+  <div style="max-width:600px;margin:0 auto;padding:32px 20px;">
+    {wordmark_html()}
+    <div style="background:#FCFAF6;border:1px solid #EFE9DE;border-radius:16px;padding:40px;">
+      <p style="margin:0;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#F97316;font-weight:600;">Homework · {escape(date_label)}</p>
+      <h1 style="margin:8px 0 0 0;font-family:{_FONT_STACK};font-weight:600;font-size:28px;line-height:34px;color:#1F1A14;">Students who completed a homework lesson.</h1>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0 0;border-collapse:collapse;">{table}</table>
+    </div>
+    <p style="margin:24px 0 0;text-align:center;font-size:12px;color:#6B6256;">Willab</p>
+  </div>
+</body>
+</html>"""
+    text = "\n".join(
+        [f"Homework · {date_label}", "", "Students who completed a homework lesson.", ""]
+        + [f"{label}: {what}\n  {url}" for label, what, url in lines])
+    return {"html": html, "text": text}
