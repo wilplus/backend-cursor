@@ -5037,3 +5037,20 @@ For N190, the email "Your password was changed": the time is written as
 own zone is not known, and a time without one would be wrong for anyone
 outside UTC. Already so in `services/email_account_security.py`; nothing
 changes. No rules page.
+
+**N202 · The Feedback walk and its Ideal Text card, one pair (founder, the
+Claude Code chat, 26 October 2026: "can the ideal text and the feedback walk
+be similar width and always together, first the feedback walk and the ideal
+text bubble next, but always as two bubble pair", then "yes, go with both
+recommendations", on version 6 of the prototype
+<https://claude.ai/artifact/Xb51mpaFDguFdBuL8Gjv18>).** Amends N192 item 1:
+1. A Take's Feedback walk is as wide as its Ideal Text card (80% of the chat,
+at most 384px) from the moment it lands, and the card sits right under it, a
+few pixels apart, their left corners drawn in where they meet, as one pair.
+2. The card still joins when the walk is done, not before (question 1).
+3. The pair stays under the Take's recording: what lands while the walk
+waits, such as the speaker writing to Will, stays under the pair, and nothing
+moves (question 2).
+Both answers as recommended. No new words on screen. No migration. The rules:
+frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+B3 and D4.
