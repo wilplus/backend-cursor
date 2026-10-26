@@ -5,9 +5,9 @@
 -- first Take, the level and the practice days that follow, and the plan's
 -- end at the deadline (frontend docs/flows/the-plan.md).
 --
---   speaker_plans       One row per plan. At most one open plan (asking or
---                       active) per person; an ended or replaced plan stays
---                       as history (N140).
+--   speaker_plans       One row per plan. At most one open plan (asking,
+--                       active or ending) per person; an ended or replaced
+--                       plan stays as history (N140).
 --   plan_answers        Each answer: a voice answer's words and its
 --                       readings, or a rating from 1 to 10 (never shown
 --                       back to the speaker, N178).
