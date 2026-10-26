@@ -229,7 +229,7 @@ O2 -> test_an_address_with_an_account_is_refused_before_any_link
 O3 -> test_the_link_changes_the_email_once_and_only_the_newest
 O4 -> test_a_password_change_checks_the_current_one_and_signs_out_the_rest
 O5 -> test_a_google_account_sets_its_first_password_with_a_link
-O6 -> test_an_email_that_didnt_go_is_not_reported_as_sent","WIL-95 (founder 2026-10-26, N187: ""approved, implement it""; rules in the frontend's docs/flows/consent-screens.md §1)."
+O6 -> test_an_email_that_didnt_go_is_not_reported_as_sent","WIL-95 (founder 2026-10-26, N189: ""approved, implement it""; rules in the frontend's docs/flows/consent-screens.md §1)."
 tests/test_admin_speaker_permit.py,Story,"As a speaker, I want any AI call an admin makes about me to run under my own processing permit, and be refused when I have none, so that my words never reach a provider without my authority (processing authorization on the critical path).","O1  Directive suggestions: with my authority the model call runs inside
 the protected scope bound to MY principal; a refused permit answers
 403 before any provider client exists.

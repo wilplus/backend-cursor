@@ -30,7 +30,7 @@ PROVES   O1 -> test_an_email_change_waits_for_the_link_from_the_new_address
          O4 -> test_a_password_change_checks_the_current_one_and_signs_out_the_rest
          O5 -> test_a_google_account_sets_its_first_password_with_a_link
          O6 -> test_an_email_that_didnt_go_is_not_reported_as_sent
-WHY      WIL-95 (founder 2026-10-26, N187: "approved, implement it"; rules in
+WHY      WIL-95 (founder 2026-10-26, N189: "approved, implement it"; rules in
          the frontend's docs/flows/consent-screens.md §1).
 """
 from datetime import datetime, timedelta, timezone

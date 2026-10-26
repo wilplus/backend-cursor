@@ -1,5 +1,5 @@
 -- every_email_and_password_change_is_logged (WIL-95; founder 2026-10-26,
--- N187: "approved, implement it", Email and password on Data & consent)
+-- N189: "approved, implement it", Email and password on Data & consent)
 --
 -- A speaker changes their email and their password on Data & consent, and
 -- every request, change and wrong password is kept as one row here, with
