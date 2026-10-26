@@ -113,9 +113,9 @@ def _tell_the_speaker(database: Any, take_session_id: str, *,
                       first_share: bool = False) -> None:
     """The project's Ideal Text bubble comes back to the bottom of the chat,
     as a publish did (founder 2026-09-25, Q39 B); after the Take's review, the
-    word is its own coach update bubble (lock 2026-10-12, section 3). On the
-    first share the speaker also gets one WhatsApp message if they left a
-    number (founder 2026-10-12) and the coach-feedback email (2026-10-14).
+    word is its own coach update bubble (lock 2026-10-12, section 3). The
+    first share also counts towards the one WhatsApp or email the speaker
+    gets once the coach is done (N171, ``coach_feedback_notice``).
     Best-effort."""
     try:
         from services.arc_notifications import bump_ideal_bubble
@@ -123,13 +123,11 @@ def _tell_the_speaker(database: Any, take_session_id: str, *,
         if session.get("user_id") and session.get("arc_id"):
             bump_ideal_bubble(database, session["user_id"], session["arc_id"])
         if not first_share:
-            _log.info("whatsapp: take=%s was shared before, no message", take_session_id)
+            _log.info("coach notice: take=%s was shared before, no message", take_session_id)
         elif session.get("user_id"):
-            from services.coach_feedback_email import send_coach_feedback_email_in_background
-            from services.whatsapp_notify import notify_coach_feedback_in_background
-            notify_coach_feedback_in_background(database, session["user_id"], take_session_id)
-            send_coach_feedback_email_in_background(
-                database, take_session_id=take_session_id, moments=0)
+            from services.coach_feedback_notice import coach_shared
+            coach_shared(database, user_id=session["user_id"],
+                         take_session_id=take_session_id, moments=0)
     except Exception as e:  # noqa: BLE001 -- the word is saved either way
         _log.info("take word bubble bump skipped take=%s: %s", take_session_id, e)
     try:
