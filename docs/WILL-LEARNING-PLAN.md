@@ -101,7 +101,7 @@ Panel, <https://claude.ai/artifact/HaWehtwfg1jzJvGeGM1c24>. The rules are
 frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M.
 
-Built (M1 to M13), founder only (ring row `life_goals`, ring 6):
+Built (M1 to M14), founder only (ring row `life_goals`, ring 6):
 
 - **The ask:** after a # note's "Noted." (typed, voice, or the held note on
   Yes), `life_goals.after_note` writes the two bubbles, the second with the
@@ -136,11 +136,18 @@ Built (M1 to M13), founder only (ring row `life_goals`, ring 6):
   the quarter that say the same obstacle, most often none;
   `review_quarter` keeps the outcome in words on `reviews` and sets the
   next quarter's step, the earlier one kept as a version.
+- **A note that sounds like a change (M14, N191):** once a goal is set,
+  `after_note` hands the newest # note to `note_change`: the model says
+  whether it changes one goal's quarter step, and the new words and the
+  quote must be found word for word in the note, else nothing is asked.
+  The ask ("Change {emoji} this quarter to “…”?", offer
+  `life_goals_change`) keeps a `quarter.proposal`; `answer_change` (`POST
+  /v2/life-goals/<id>/change`) writes it through `change_step` on Change,
+  or drops it on Not now. Only the quarter step (the founder: "this
+  quarter only is fine").
 - **Will reads** the ladders in the chat (`prompt_lines`, inside the
   notebook block).
-- **Not built yet:** M14 (a
-  note that sounds like a change), the ladders in the Life Panel's own
-  screens, and this week's focus on the ladder (no source for it yet).
+- **Not built yet:** the ladders in the Life Panel's own screens, and this week's focus on the ladder (no source for it yet).
 - Code: `services/life_goals.py`, `routes/v2/life_goals.py`, the store in
   `services/life_store.py`, migration `the_founder_keeps_life_goals`
   (0492), `tests/test_life_goals.py`.

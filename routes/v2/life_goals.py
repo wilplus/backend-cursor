@@ -195,3 +195,12 @@ def v2_life_goals_quarter_review(goal_id):
     return _run("quarter", lambda: (jsonify(review_quarter(
         db, str(request.user_id), str(goal_id), body.get("outcome"),
         body.get("in_the_way"), body.get("next"))), 200))
+
+
+@v2_bp.route("/life-goals/<goal_id>/change", methods=["POST"])
+@require_auth
+def v2_life_goals_answer_change(goal_id):
+    from services.life_goals import answer_change
+    choice = str(_body().get("choice") or "")
+    return _run("change", lambda: (jsonify({"messages": answer_change(
+        db, str(request.user_id), str(goal_id), choice)}), 200))
