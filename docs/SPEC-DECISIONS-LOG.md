@@ -4762,4 +4762,9 @@ Signed (Never 4): "Feedback walk", "Edited". The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 B3, B10, B12, B13, C1, C3, D4, D5, G1 and K (frontend
 [#1001](https://github.com/wilplus/frontend-cursor/pull/1001)). Not built
-yet. Frontend only. No migration.
+yet. Built in the frontend, with two small backend changes for item 3: a
+coach's changed word is written at its earlier bubble's place in the thread,
+marked edited (`services/take_summary.py` `coach_update_message`; today the
+new version lands at the bottom and the read hides the old one), and the
+coach's word served to the walk says whether it changed since it was first
+shared (`services/coach_take_word.py`). No migration.
