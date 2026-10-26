@@ -5054,3 +5054,22 @@ moves (question 2).
 Both answers as recommended. No new words on screen. No migration. The rules:
 frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 B3 and D4.
+
+**N203 · The plan is built now, one to one with the prototype (founder, the
+Claude Code chat, 26 October 2026: "yes, start building the plan; just like
+we built it in the prototype; mach that 1 to 1").** This lifts N147's hold
+("not yet"). All of the plan's rules (frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1, N129 onward) are built as drawn on the prototype
+<https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn> (version 27), screen for
+screen and word for word. The weeks from the plan to the deadline follow the
+three journeys <https://claude.ai/artifact/D3ytWWsMbpBrmLQYUEV7Zr>. Where the
+prototype and the rules disagree, the rules page says so in §3, and the
+founder is asked before that part is built. It ships behind a switch, the
+founder first, then new speakers, then everyone. Not in this build: what the
+rules hold back (§1 J: the practice-day reminder) and the words still
+waiting (the deadline's good-luck line, the chat's answer to a rating tap).
+The build plan: <https://claude.ai/artifact/5wuXkBNDctRcbxYs9V7R8A>. Each of
+the build's migrations gets an outside review before it merges. The rules:
+frontend [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§2. No migration in this entry.
