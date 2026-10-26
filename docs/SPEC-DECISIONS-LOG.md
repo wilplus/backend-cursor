@@ -3721,7 +3721,7 @@ line for the booking's two messages is the founder's call.
 Migration 0491 (two columns on bookings). A Railway cron service runs every 5
 minutes.
 
-**N142 · The diagnosis's first version (founder, the Claude Code chat, 26
+**N145 · The diagnosis's first version (founder, the Claude Code chat, 26
 October 2026: "2. Yes. 3. Okay. 4. Okay.", to decisions 2 to 4 of the build
 plan <https://claude.ai/artifact/5wuXkBNDctRcbxYs9V7R8A>).** For N129 to N141:
 1. The diagnosis may use the readings still in their silent shadow stage
