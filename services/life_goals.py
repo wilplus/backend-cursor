@@ -45,6 +45,8 @@ COPY = {
     "of_course": "Of course, you can add a new goal anytime. Let's do it.",
     "your_goals": "Your goals.",
     "set": "Noted. Your {space} goal is set.",
+    # N180, N183: the app is the base; the speaker goes and lives it.
+    "go_live": "That's the base. Now go and live it. Come back for a short recap.",
 }
 #: The three spaces: emoji, name, and how the first question names it.
 SPACES = {
@@ -257,7 +259,8 @@ def ladder_text(goal: dict, talk: Optional[str] = None) -> str:
 def finish(database: Any, user_id: str, goal_id: str,
            replaces: Optional[str] = None) -> list[dict]:
     """The goal is set (M10): active, the goal it replaces kept as replaced,
-    and its ladder, then "Noted. Your … goal is set.", in the Lounge."""
+    and its ladder, then "Noted. Your … goal is set." and the line that
+    sends them out to live it (N180, N183), in the Lounge."""
     from services import life_store
     from services.lounge_messages import stamp_after, thread_stamp
     if not enabled(database, user_id):
@@ -283,7 +286,9 @@ def finish(database: Any, user_id: str, goal_id: str,
                  {"life_goal": shown}, at),
             _row(f"{user_id}:set:{goal_id}", "bot",
                  COPY["set"].format(space=SPACES[goal["space"]][1].lower()), {},
-                 stamp_after(at))]
+                 stamp_after(at)),
+            _row(f"{user_id}:go-live:{goal_id}", "bot", COPY["go_live"], {},
+                 stamp_after(at, gap_ms=2))]
     return database.insert_lounge_messages(str(user_id), rows) or []
 
 

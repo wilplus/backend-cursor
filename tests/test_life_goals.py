@@ -10,8 +10,9 @@ OUTCOME
       nothing once a goal is set, and nothing for anyone else.
   O2  Will's draft keeps only phrases found word for word in my answers;
       with every question skipped there is no goal.
-  O3  A set goal leaves the draft, posts its ladder and "Noted. Your career
-      goal is set." to the Lounge; a goal it replaces is kept as replaced.
+  O3  A set goal leaves the draft, posts its ladder, "Noted. Your career
+      goal is set." and the line that sends me out to live it (N183) to the
+      Lounge; a goal it replaces is kept as replaced.
   O4  A changed step keeps the earlier words as a dated version; the talk
       goal changes the setup answer itself; the same words change nothing.
   O5  "#goals" opens my ladders; "can I add another goal? I want to get
@@ -170,8 +171,9 @@ def test_a_set_goal_posts_its_ladder_and_keeps_the_one_it_replaces(store):
     assert "invented" not in new["ladder"] and new["status"] == "draft"
 
     rows = lg.finish(db, "u", new["id"], replaces=old["id"])
-    ladder, noted = rows
+    ladder, noted, go_live = rows
     assert noted["body"] == "Noted. Your career goal is set."
+    assert go_live["body"] == COPY["go_live"]
     assert ladder["metadata"]["life_goal"]["ladder"]["quarter"]["text"] == "Ten paying teams."
     assert "TALK GOAL: They book a demo" in ladder["body"]
     assert store.goals[old["id"]]["status"] == "replaced"

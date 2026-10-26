@@ -528,3 +528,4 @@
 0490	a_speaker_may_judge_an_imported_clip.sql
 0491	a_booking_may_carry_a_whatsapp_number.sql
 0492	the_founder_keeps_life_goals.sql
+0493	the_founder_hears_the_fifteen_minutes.sql
