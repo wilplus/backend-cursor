@@ -4198,3 +4198,52 @@ switch until the plan (N147) sets it in a pace or pause week.
 The words on the step stay drafts until the founder signs them (Never 4). The
 rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §2 "Tempo". Docs only. No migration.
+
+**N169 · The practice day in time order, and the plan for reminders
+(founder, the Claude Code chat, 26 October 2026: "it shows the messages as if
+today is practice 2 out of 9, and then it shows my plan ... the order of the
+messages is wrong ... It's misleading", then "all ok" to the six questions on
+the page <https://claude.ai/artifact/6AyadMpFL24WeaeRzibwGY>).** For N140,
+N149, N154, N155 and N167:
+1. The chat shows a day line, small and grey, before the first message of
+each day, in the speaker's time zone: "Monday 26 October" (weekday, date,
+month).
+2. Will's practice-day hello is written once per practice day: the first
+time the app opens that day, or when that day's reminder goes once there is
+one, whichever is first. Never right after a Take, never on a day off, not
+when a Take was already recorded that day. Missed practice days leave no
+trace: no catch-up hello, no "you missed"; "practice {n} of {total}" counts
+the Takes done plus one. A Take on a day off is a practice (N131).
+3. The plan card is posted in the chat only when the plan is made or
+changed. On a practice day the chat reads, under the day line: Will's hello
+with the level, "Hi Artur, good to see you back! Today is practice {n} of
+{total}: {level}." (N140's words), the bar under it, and "See your plan",
+which opens the plan in a sheet ("Your plan", "This week's level", the list
+with "Book", "Change your plan"); then today's one thing, "Today, one thing:
+…", with the key line in the speaker's words, their recording and the one
+"● Record Take N" (N167). This replaces N167 items 2 and 3: no card in the
+chat on a practice day, and the hello names the level again.
+4. A reminder and its chat message say the same words, written at the same
+moment; tapping the reminder opens the chat at that day line. Every reminder
+is opt-in per channel and off by default; at most one practice reminder a
+day, never twice on the same local day, between 8:00 and 21:00 in the
+speaker's time zone; it says what is ready, never "come back", never a count
+of missed days, never a number about the voice (Never 1); outside the app it
+carries the level's name at most, never the key line, transcript or
+recording; it stops when the plan ends; it never stands in the way of a Take
+(Never 3).
+5. The practice-day reminder goes at 9:00 in the speaker's time zone by
+default, changed in "Change your plan"; no new question before Take 1.
+6. Its first channel is WhatsApp, with N154's words, once a privacy version
+names practice reminders and Meta approves the template; web push (built
+for the Life Panel) comes second. Until then N155 stands: no practice-day
+reminder.
+7. On the deadline's morning a short good-luck line, in the chat and on the
+chosen channel; the morning after, "How did it go?" with the link outside
+the app, beside N149's message in the chat. Their words wait for the
+founder's OK (Never 4).
+Signed (Never 4): the day line's form. The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+G and I; the chat's page names the day line. Drawn on the prototype
+<https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn> (version 27). No
+migration.
