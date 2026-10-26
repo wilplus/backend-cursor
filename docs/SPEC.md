@@ -927,7 +927,9 @@ Partial **W** is the mean of the word signals present (H3); naturalness and the 
 
 **Status:** definition signed by the founder on 2026-10-06 and frozen as `willfidence-v1`; the machine-only read `willfidence-v1-machine` is built dark (V4 Phase 1, B1.3). A change to the definition is a new version, never an edit in place.
 
-### `pace-speed-v1`, `pace-pause-share-v1`, `pace-pause-length-v1` — the Pace Circle (machine reads; founder-signed 2026-10-24, decisions log N130, N133 — DEFINED, NOT BUILT)
+### `pace-speed-v1`, `pace-pause-share-v1`, `pace-pause-length-v1` — the Pace Circle (machine reads; founder-signed 2026-10-24, decisions log N130, N133 — SUPERSEDED by `pace-scale-v1` below (N142); kept as history)
+
+> **Superseded.** The circle and these three reads were replaced by one read, `pace-scale-v1` (next entry). The feature's one home is the frontend's [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §2 "Tempo".
 
 Three live reads for the Pace Circle practice screen (N130). Each asks one thing and is measured in the browser from the voice's loudness alone: no transcript, no provider call, nothing stored. All three are **machine** reads with no rater and no question. None is a verdict, and none is ever shown as a number (AC-9): each moves exactly one thing on the screen.
 
@@ -947,6 +949,8 @@ Three live reads for the Pace Circle practice screen (N130). Each asks one thing
 **The centre.** Speed and share start from research values (speed: the rate syllables are said while talking, about 5 a second in English; share: about a quarter to a third of the time silent) and move gradually to the speaker's own, never leaving a healthy research band (N130). The rim's starting points are about 1.2 s for amber and 2.5 s for deep amber. Every starting value is tuned on the microphone prototype; a change to a definition is a new version, never an edit in place.
 
 ### `pace-scale-v1` — the pace scale (machine read; founder-settled 2026-10-25, decisions log N142 — DEFINED, ON THE FOUNDER'S TEST BENCH ONLY)
+
+Home: the frontend's [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §2 "Tempo", where the step of the walk it will drive is described.
 
 Supersedes the Pace Circle's three reads above (`pace-speed-v1`, `pace-pause-share-v1`, `pace-pause-length-v1`) for the founder's bench at `/admin/pace-circle`. After live tuning on 24-25 October the founder settled one read that moves one dot on one horizontal scale from 0 to 1, with no counting window, so nothing waits.
 

@@ -3990,3 +3990,6 @@ price (N143); the plan's calls are these two, and the weekly call (N134 item
 The new words wait for the founder's OK (Never 4). Drawn on the prototype
 <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>. Not built yet. No
 migration.
+
+**N158 · The tempo step: one home (founder, the Claude Code chat, 26 October 2026).**
+The pace scale (N130, N133, N142) and the tempo step it will drive live in one place: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §2 "Tempo", with its prototype in §5. Not built; no migration.
