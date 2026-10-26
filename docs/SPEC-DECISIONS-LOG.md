@@ -4199,7 +4199,56 @@ The words on the step stay drafts until the founder signs them (Never 4). The
 rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §2 "Tempo". Docs only. No migration.
 
-**N169 · Notifications and reminders: the Lounge is the inbox, WhatsApp the
+**N169 · The practice day in time order, and the plan for reminders
+(founder, the Claude Code chat, 26 October 2026: "it shows the messages as if
+today is practice 2 out of 9, and then it shows my plan ... the order of the
+messages is wrong ... It's misleading", then "all ok" to the six questions on
+the page <https://claude.ai/artifact/6AyadMpFL24WeaeRzibwGY>).** For N140,
+N149, N154, N155 and N167:
+1. The chat shows a day line, small and grey, before the first message of
+each day, in the speaker's time zone: "Monday 26 October" (weekday, date,
+month).
+2. Will's practice-day hello is written once per practice day: the first
+time the app opens that day, or when that day's reminder goes once there is
+one, whichever is first. Never right after a Take, never on a day off, not
+when a Take was already recorded that day. Missed practice days leave no
+trace: no catch-up hello, no "you missed"; "practice {n} of {total}" counts
+the Takes done plus one. A Take on a day off is a practice (N131).
+3. The plan card is posted in the chat only when the plan is made or
+changed. On a practice day the chat reads, under the day line: Will's hello
+with the level, "Hi Artur, good to see you back! Today is practice {n} of
+{total}: {level}." (N140's words), the bar under it, and "See your plan",
+which opens the plan in a sheet ("Your plan", "This week's level", the list
+with "Book", "Change your plan"); then today's one thing, "Today, one thing:
+…", with the key line in the speaker's words, their recording and the one
+"● Record Take N" (N167). This replaces N167 items 2 and 3: no card in the
+chat on a practice day, and the hello names the level again.
+4. A reminder and its chat message say the same words, written at the same
+moment; tapping the reminder opens the chat at that day line. Every reminder
+is opt-in per channel and off by default; at most one practice reminder a
+day, never twice on the same local day, between 8:00 and 21:00 in the
+speaker's time zone; it says what is ready, never "come back", never a count
+of missed days, never a number about the voice (Never 1); outside the app it
+carries the level's name at most, never the key line, transcript or
+recording; it stops when the plan ends; it never stands in the way of a Take
+(Never 3).
+5. The practice-day reminder goes at 9:00 in the speaker's time zone by
+default, changed in "Change your plan"; no new question before Take 1.
+6. Its first channel is WhatsApp, with N154's words, once a privacy version
+names practice reminders and Meta approves the template; web push (built
+for the Life Panel) comes second. Until then N155 stands: no practice-day
+reminder.
+7. On the deadline's morning a short good-luck line, in the chat and on the
+chosen channel; the morning after, "How did it go?" with the link outside
+the app, beside N149's message in the chat. Their words wait for the
+founder's OK (Never 4).
+Signed (Never 4): the day line's form. The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+G and I; the chat's page names the day line. Drawn on the prototype
+<https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn> (version 27). No
+migration.
+
+**N171 · Notifications and reminders: the Lounge is the inbox, WhatsApp the
 doorbell (founder, the Claude Code chat, 26 October 2026: "all your
 recommended", to the six questions after an inventory of every message the
 app sends).** Four kinds, one rule each:
@@ -4208,15 +4257,14 @@ app sends).** Four kinds, one rule each:
   (WIL-74 principle 5).
 - *A reminder* hands back something the person chose, with a time (a booked
   session; practice days, when they come). Only one they turned on, and it
-  keeps the Life Panel's rules: off by default, never counts missed days,
-  never says "come back", never twice in a day. No message ever asks a
+  keeps N169 item 4's rules on every channel. No message ever asks a
   speaker to come back.
 - *A signal* is news inside the app: the Lounge's bubbles and the orange dot.
 - *An ask* is Will's, in the chat, at most two a Take (N94).
 
 1. The Lounge is the inbox. Its bubbles and the orange dot stay as they are;
 there is no bell, no notification centre, no unread count and no reminder
-inside the app. Web push stays the Life Panel's own; speakers get none.
+inside the app.
 2. A message outside the app opens one place in it (the coach's links,
 WIL-93) and never carries the content (Privacy 3.7).
 3. One channel a speaker: with a WhatsApp number, the coach's WhatsApp and
@@ -4239,16 +4287,16 @@ Was: never on Take 1 (confirmed 2026-10-21).
 Data & consent does; any other reply is forwarded to the founder by email.
 Built before any new WhatsApp reminder. The answer to "STOP" is new words
 and waits for the founder's OK (Never 4).
-7. The practice-day reminder stays out for now (N155). When it comes, the
-plan card first offers to add the practice days to the speaker's own
-calendar (no permission prompt, no Meta template), then the WhatsApp ask
-(N153, N154) for those who want it. Its words wait for the founder's OK.
-This changes N155 item 3.
+
+Open: the same morning, in another chat, N169 item 6 gave the practice-day
+reminder WhatsApp first and web push second. This chat's answer was the
+speaker's own calendar first and WhatsApp second, with no web push for
+speakers. The founder decides which stands; until then N169 item 6 does, and
+N155 holds the reminder back either way.
 
 Before the build: one new privacy version names the booking's WhatsApp
 messages (N144's open point), the replies (item 6) and, when it comes, the
 practice-day reminder (N153 item 4); the reply webhook's secrets are set on
 Railway before it merges. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
-E1 and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
-G9. Not built yet. No migration in this entry.
+E1. Not built yet. No migration in this entry.

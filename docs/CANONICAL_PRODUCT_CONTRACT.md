@@ -921,7 +921,7 @@ How an exercise is chosen for a moment, the whole rule in order: 35g-1.
     the WhatsApp and the email. The WhatsApp and email links name the Take
     the coach wrote on (`take=<session_id>`, founder 2026-10-21) and open
     that Take's coach-only walk with its word. **Amended 2026-10-26
-    (founder, decisions log N169):** a speaker with a WhatsApp number gets
+    (founder, decisions log N171):** a speaker with a WhatsApp number gets
     the WhatsApp and no email, one for a coach's sitting; without a number,
     the email.
 35g-7. **The coach's exercise preference** (founder 2026-10-01, F8; Phase 1b
