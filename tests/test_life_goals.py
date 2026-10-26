@@ -30,7 +30,7 @@ OUTCOME
   O8  A note that says the quarter should be different is asked about once,
       under its Noted., quoting it: Change writes the step with the earlier
       words kept, Not now changes nothing; words not in the note ask
-      nothing (N187).
+      nothing (N189).
 PROVES   O1 -> test_the_ask_comes_after_the_first_note_and_once_more_after_not_now
          O2 -> test_the_draft_quotes_only_my_words
          O3 -> test_a_set_goal_posts_its_ladder_and_keeps_the_one_it_replaces
