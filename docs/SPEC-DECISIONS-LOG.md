@@ -5073,3 +5073,18 @@ The build plan: <https://claude.ai/artifact/5wuXkBNDctRcbxYs9V7R8A>. Each of
 the build's migrations gets an outside review before it merges. The rules:
 frontend [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §2. No migration in this entry.
+
+**N204 · The plan goes on ring 5, built in one night (founder, the Claude
+Code chat, 26 October 2026: "go ahead, start build 1 to the end so I can test
+it in the morning please build it all; and place it on ring 5"; then, on the
+migration, "Review it in the morning").** For N203:
+1. The plan is one ring row, `plan`, at ring 5: everyone on ring 5 or 6 gets
+it, nobody below. The row comes with the plan's migration.
+2. Every build goes in now, the code switched off until the row exists. The
+migration's pull request waits for the founder's outside review (GPT or
+Grok) in the morning; merging it creates the tables and the row, and the
+plan is on for ring 5.
+3. The coach's side (Build 9) is drawn for the founder's OK, as the coach
+panel is locked, and built after it.
+The rules: frontend [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§2. No migration in this entry.
