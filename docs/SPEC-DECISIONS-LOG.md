@@ -4064,3 +4064,13 @@ now needs new words, which wait for the founder's OK (Never 4). The rules:
 frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §2 "Tempo" and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
 Not built yet. Docs only. No migration.
+
+**N163 · The plan card's pace line is signed (founder, the Claude Code chat,
+26 October 2026: "You have my okay on the wording", to "This week your walk
+has a pace game").** For N162: in a pace or pause week the plan card's bullet
+reads "This week your walk has a pace game", in place of "Before each Take
+this week: 2 minutes with the Pace Circle" (Never 4). The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+E2 and K. Drawn on the prototype
+<https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn> (version 18). No
+migration.
