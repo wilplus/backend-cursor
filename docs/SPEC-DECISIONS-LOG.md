@@ -4017,3 +4017,34 @@ consent screens' and the recording screens' each point to it with one line
 (N146). The pace practice keeps its home on the walk's page (the tempo step);
 where it sits is open on the plan's page. Frontend PR #967. Docs only. No
 migration.
+
+**N161 · The rating answered in the chat; the kickoff call before the plan
+(founder, the Claude Code chat, 26 October 2026: "the stress assessment should
+be displayed as the answer to the chat in both cases. Explain that before I
+show you your plan, choose a date for a 15-minute call with a coach. This is
+your kickoff event ... And do not write book and pay. Just leave book. And then
+ask, do they want also to schedule the summary meeting? ... just display the
+calendar again and leave skip or book now. And then display, we're all set,
+and then display the plan. And try to use at most two types of font in the
+plan and maximum three sizes of font. And below the plan, in the place where
+the type the text is, leave only the CTA for the practice").** For N149, N151
+and N157:
+1. The stress and readiness picks show in the chat as the speaker's own
+answer, the number they tapped, on the first and the last practice alike. This
+changes N157 item 1 ("not written back"); beyond that answer the number is
+never shown again, and Will speaks of it only in words (N149 item 4).
+2. The calls come before the plan card: Will says "Before I show you your
+plan, pick a time for a 15-minute call with your coach. It's your kickoff
+call.", and the footer shows the calendar with the deadline marked, a time and
+"Book". Then the summary call is offered, the calendar again with "Skip" or
+"Book now", with no yes-or-no question first. "Book and pay" goes; booking
+stays paid as today (N157 item 6). Either call can still wait (N157 item 6,
+Never 3).
+3. Then "You're all set. Here's your plan." and the card. The card uses at
+most two typefaces and three sizes; under it, in place of "Type here", only
+"Start your first recording".
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+D, E and F. The new words wait for the founder's OK (Never 4). Drawn on the
+prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn> (version 17).
+Not built yet. No migration.
