@@ -3735,3 +3735,18 @@ template is the fallback when the AI fails. Never 4 holds.
 that moves" uses pitch range until rising endings and a croaky or breathy
 voice are measured.
 Not built yet. No migration.
+
+**N146 · The questions are for onboarding only; the plan's docs extend three
+pages (founder, the Claude Code chat, 26 October 2026: "not all the questions
+that is only for the onboading!" and "yes", to decisions 1 and 5 of the build
+plan <https://claude.ai/artifact/5wuXkBNDctRcbxYs9V7R8A>).**
+1. The two questions and the follow-ups (N131, N137 to N139) are the
+onboarding: a new speaker answers them before the first Take. A speaker who
+already has Takes does not go through them; what such a speaker gets instead
+is asked in the same chat and logged when answered.
+2. No new doc for the plan: it becomes a section of the frontend's
+`docs/flows/feedback-walk-and-chat.md`, which already holds the Lounge chat;
+`docs/flows/consent-screens.md` gets one line (Agree and continue opens the
+questions) and `docs/flows/recording-screens.md` one line (the topic arrives
+filled in, N141).
+Not built yet. No migration.
