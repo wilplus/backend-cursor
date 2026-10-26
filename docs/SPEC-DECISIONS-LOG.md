@@ -4852,3 +4852,24 @@ marked edited (`services/take_summary.py` `coach_update_message`; today the
 new version lands at the bottom and the read hides the old one), and the
 coach's word served to the walk says whether it changed since it was first
 shared (`services/coach_take_word.py`). No migration.
+
+**N194 · Why the voice notebook exists, said before its first question
+(founder, the Claude Code chat, 26 October 2026: a note before the first
+message, "Look public speaking anxiety sometimes comes from the deeper
+uncertainty about life; We have designed a way to keep your goals in check";
+then "please imagine you are a steve pinker how would you phrase it?" and
+"go with the pinker one").** For N182 and the voice notebook (Will's learning
+plan, step 1): the first time the person taps the mic, before "Your notes are
+private. Only you and Will read them. Keep a voice notebook?", Will says
+three grey bubbles, signed (Never 4):
+1. "The jitters before a talk are often about more than the talk. Underneath
+is a bigger question: where is my life going?"
+2. "So we made a place for your answer: your goals, in your own words."
+3. "A goal you can recall is a goal you can steer by. Keep yours here, and
+when the jitters come back before your next talk, we'll show you what you're
+doing it for."
+Once only, with the question; ring 6 as the notebook (N182). The rules:
+frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+A5 and K; backend [`docs/WILL-LEARNING-PLAN.md`](docs/WILL-LEARNING-PLAN.md) step 1.
+Drawn on <https://claude.ai/artifact/JiF2eoxoaJmnjQYry53LKm> (version 3). Not
+built yet. No migration.
