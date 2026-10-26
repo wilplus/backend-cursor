@@ -2,6 +2,13 @@
 
 > **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
 
+> **2026-10-26 (docs audit):** the training copies are text only, never
+> audio (N68 D1: "the corpus copy copies no audio"; N111 A10: "The copies
+> kept for training are text only"). Out of date here: §1's "a short audio
+> cut, its words, and a coach's label if one exists", and §5's copy-job row
+> ("bytes removed if the copy is refused"): the copy job has no audio branch
+> and writes no bytes (`services/training_corpus.py`).
+
 **Update 2026-09-26:** the founder signed the four wordings in §3 and relayed
 counsel's answers to §2; both are recorded in `SPEC-DECISIONS-LOG.md` §N10.
 Still open: counsel's drafted policy text, the named training processors, and
