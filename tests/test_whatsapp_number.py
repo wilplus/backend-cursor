@@ -6,9 +6,11 @@ OUTCOME
   O1  A valid number is saved in international form; a number without a
       country code is refused and nothing is written.
   O2  I can read my number back and remove it.
-  O3  A coach's first share sends one WhatsApp message (with the brand
-      image when the template has one); editing a shared note or having
-      WhatsApp switched off sends nothing.
+  O3  A coach's first share, told at once when there is no queue to wait
+      on, sends one WhatsApp message (with the brand image when the
+      template has one); editing a shared note or having WhatsApp switched
+      off sends no WhatsApp. (Waiting for the coach to be done:
+      tests/test_coach_feedback_notice.py.)
   O4  When WhatsApp refuses a message, the log names its reason.
 PROVES   O1 -> WhatsAppNumberRouteTest::test_a_valid_number_is_saved_in_e164,
                WhatsAppNumberRouteTest::test_a_number_without_country_code_is_refused
@@ -26,6 +28,7 @@ import unittest
 from unittest.mock import patch
 
 from config import Config
+from services import coach_feedback_notice as notice
 from services import coach_take_word as ctw
 from services import whatsapp_notify as wn
 from services.db import db
@@ -144,7 +147,8 @@ class CoachFeedbackMessageTest(unittest.TestCase):
                   patch.object(Config, "WHATSAPP_TEMPLATE_HEADER_IMAGE_URL", ""),
                   patch.object(Config, "WHATSAPP_REDIRECT_TO", ""),
                   patch.object(wn.httpx, "post", _post),
-                  patch.object(wn.threading, "Thread", _SyncThread),
+                  patch.object(notice.threading, "Thread", _SyncThread),
+                  patch.object(notice, "_store", lambda: None),
                   patch.object(ctw, "_the_pair", lambda *a, **k: None)):
             p.start()
             self.addCleanup(p.stop)

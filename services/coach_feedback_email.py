@@ -2,9 +2,10 @@
 
 The publish-results email went with the arc-level publish on 2026-10-01
 (#838). Since then a coach's shared answer reached the speaker as a Lounge
-dot and, for the Take's word, a WhatsApp, but no email. It is back, sent on
-the same events as the WhatsApp: each message a coach shares, the Take's
-word or the answer on one moment.
+dot and, for the Take's word, a WhatsApp, but no email. It is back: since
+N171 it is the speaker's one message once the coach is done when they left
+no WhatsApp number or the WhatsApp could not be sent
+(``coach_feedback_notice``), counting every moment the coach answered.
 
 THE DESIGN IS THE ONE THE FOUNDER SIGNED OFF ON 2026-09-25 (the frontend's
 PostSessionResultsEmail), confirmed again 2026-10-14, with the text logo of
@@ -12,8 +13,8 @@ PostSessionResultsEmail), confirmed again 2026-10-14, with the text logo of
 round trip to the frontend, nothing that can fail between the coach's share
 and the speaker's inbox. A count of moments, never a score (AC-9).
 
-The send is best-effort and off the coach's request: a failed or skipped
-email never fails the coach's save (LIVE LOOP). Off unless SEND_EMAILS is
+The send is best-effort and never on the coach's request: a failed or
+skipped email never fails the coach's save (LIVE LOOP). Off unless SEND_EMAILS is
 true and Resend is set; skipped for a speaker who unsubscribed (the
 `email_pref_publish_results` flag the footer link flips).
 """
@@ -21,7 +22,6 @@ from __future__ import annotations
 
 import html
 import logging
-import threading
 from typing import Any, Optional
 from urllib.parse import quote
 
@@ -180,16 +180,3 @@ def send_coach_feedback_email(database: Any, *, take_session_id: str,
                      take_session_id, e, exc_info=True)
         return "failed"
 
-
-def send_coach_feedback_email_in_background(database: Any, *, take_session_id: Any,
-                                            moments: int) -> None:
-    """The same, off the coach's request so Resend never slows the save."""
-    if not take_session_id:
-        return
-    if not Config.SEND_EMAILS:
-        _log.info("coach feedback email: SEND_EMAILS is off, nothing sent")
-        return
-    threading.Thread(
-        target=send_coach_feedback_email, args=(database,),
-        kwargs={"take_session_id": str(take_session_id), "moments": int(moments)},
-        name="coach-feedback-email", daemon=True).start()
