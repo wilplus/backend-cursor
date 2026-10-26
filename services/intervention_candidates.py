@@ -966,7 +966,7 @@ def _style_lane(style_rows: list, para_of: Any, spent_count: int,
 
 def _serve_feedback_contract(rows: list, style_rows: list, decided_count: int,
                              style_decided_count: int, session_id: str,
-                             funnel: dict) -> dict:
+                             funnel: dict, legacy_take: bool = False) -> dict:
     """Apply the Take-level family quota only AFTER layer, focus, window and
     style-lane admissibility. Selecting a Confident Voice candidate before
     those gates let them erase the reserved slot. Combining both lanes here
@@ -985,10 +985,15 @@ def _serve_feedback_contract(rows: list, style_rows: list, decided_count: int,
     funnel["after_feedback_contract"] = len(mixed)
     funnel["style_lane"] = len(mixed_style)
     if len(mixed) != max(0, min(3, remaining)):
-        logger.error(
-            "required feedback families unavailable session=%s families=%s",
+        # A Take recorded before the V3 cutover fails this on every open,
+        # forever; that is old data, not a fault (take_feedback_set.V3_CUTOVER).
+        logger.log(
+            logging.INFO if legacy_take else logging.ERROR,
+            "required feedback families unavailable session=%s families=%s "
+            "legacy=%s funnel=%s",
             session_id,
             [c.get("feedback_family") for c in mixed],
+            legacy_take, funnel,
         )
         return _empty_serve(funnel)
     return {
@@ -1125,7 +1130,8 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
            served_text: Any = None, spent_by_paragraph: Any = None,
            focus_part_id: Any = None, style_decided_count: int = 0,
            style_spent_by_paragraph: Any = None,
-           mvp_feedback_contract: bool = False) -> dict:
+           mvp_feedback_contract: bool = False,
+           legacy_take: bool = False) -> dict:
     """Run every change through the manager and return the survivors.
 
     Returns ``{"changes": [...], "result": <arbitrate() dict>|None}``. The
@@ -1208,7 +1214,7 @@ def select(changes: Any, *, user_id: str = "", session_id: str = "",
         if mvp_feedback_contract:
             return _serve_feedback_contract(
                 rows, style_rows, decided_count, style_decided_count,
-                session_id, funnel)
+                session_id, funnel, legacy_take=legacy_take)
         style = {"style_changes": style_rows} if style_rows else {}
         if not rows:
             logger.info("intervention funnel session=%s %s (empty after "

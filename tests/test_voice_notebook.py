@@ -16,12 +16,22 @@ OUTCOME
   O5  Will reads the notes, only once the person said Yes.
   O6  A tag the Life Panel owns is kept as a note, then left to the Life
       Panel to answer.
+  O7  While a note is said, its words so far come back, hesitations and
+      all, and nothing is kept (N194).
+  O8  A note the app sends twice under one key (the app closed mid-send)
+      is kept and answered once (N194).
+  O9  The person fixes a voice note's words: the note and its row in the
+      thread change, Will does not answer again, and only their own voice
+      note can be fixed (N194).
 PROVES   O1 -> test_without_the_notebook_the_chat_is_unchanged
          O2 -> test_the_first_note_asks_and_yes_keeps_it
          O3 -> test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash
          O4 -> test_a_crisis_note_gets_the_safety_reply
          O5 -> test_will_reads_the_notes_only_after_yes
          O6 -> test_a_life_panel_tag_is_kept_and_left_to_the_life_panel
+         O7 -> test_the_live_words_come_back_and_nothing_is_kept
+         O8 -> test_a_note_sent_twice_is_kept_once
+         O9 -> test_a_voice_note_is_fixed_in_the_notebook_and_the_thread
 WHY      Will learning plan, step 1 (founder 2026-10-20, "approved, start
          step 1"; words signed the same day).
 """
@@ -65,6 +75,21 @@ class _Db:
     def save_voice_notebook_consent(self, user_id, decision):
         self.consent[user_id] = {"decision": decision}
         return True
+
+    def get_lounge_message_by_client_id(self, user_id, client_id):
+        return self.thread.get((user_id, client_id))
+
+    def rewrite_lounge_message(self, user_id, client_id, body, metadata, at=None):
+        row = self.thread.get((user_id, client_id))
+        if row:
+            row.update(body=body, metadata=metadata)
+        return row
+
+    def update_voice_note_text(self, user_id, note_id, text):
+        mine = [n for n in self.notes if n["id"] == note_id and n["user_id"] == user_id]
+        for n in mine:
+            n["text_clean"] = text
+        return bool(mine)
 
     def bodies(self, user_id="u"):
         return [r["body"] for r in reversed(self.get_lounge_messages_page(user_id))]
@@ -163,3 +188,49 @@ def test_a_life_panel_tag_is_kept_and_left_to_the_life_panel(founder):
     db.consent["u"] = {"decision": "yes"}
     assert nb.chat_turn(db, "u", "#mistake I skipped the pause", life_on=True) is None
     assert db.notes[0]["text_clean"] == "#mistake I skipped the pause"
+
+
+def _note(db, adapter, key=None):
+    return nb.add_voice_note(db, "u", adapter, b"webm", filename="n.webm",
+                             content_type="audio/webm", duration_ms=4000, key=key)
+
+
+def test_the_live_words_come_back_and_nothing_is_kept(founder):
+    db = _Db()
+    nb.decide(db, "u", "yes")
+    before = (len(db.notes), len(db.thread), len(db.audio))
+    words = nb.preview(db, "u", _Adapter("um so the opening"), b"piece", filename="p.webm")
+    assert words == "um so the opening"
+    assert (len(db.notes), len(db.thread), len(db.audio)) == before
+    with pytest.raises(nb.NotebookError):  # someone without the notebook
+        nb.preview(db, "someone", _Adapter("x"), b"piece", filename="p.webm")
+
+
+def test_a_note_sent_twice_is_kept_once(founder):
+    db = _Db()
+    nb.decide(db, "u", "yes")
+    adapter = _Adapter("slow the first line")
+    first = _note(db, adapter, key="note-1234-abcd")
+    again = _note(db, adapter, key="note-1234-abcd")
+    assert [r["client_id"] for r in again] == [r["client_id"] for r in first]
+    assert len(db.notes) == 1 and adapter.calls == 1
+    assert db.bodies().count("Noted.") == 1  # answered once
+    _note(db, adapter, key="note-5678-efgh")
+    assert len(db.notes) == 2
+
+
+def test_a_voice_note_is_fixed_in_the_notebook_and_the_thread(founder):
+    db = _Db()
+    nb.decide(db, "u", "yes")
+    mine, _ = _note(db, _Adapter("ask marta for the venue mike"))
+    replies = db.bodies().count("Noted.")
+    fixed = nb.fix_note(db, "u", mine["client_id"], "# Ask Marta for the venue mic")
+    assert fixed["body"] == "# Ask Marta for the venue mic"
+    assert db.notes[0]["text_clean"] == "Ask Marta for the venue mic"
+    assert db.bodies().count("Noted.") == replies  # Will does not answer again
+    noted = next(r for r in db.thread.values() if r["role"] == "bot" and r["body"] == "Noted.")
+    for client_id in (noted["client_id"], "not-a-row"):
+        with pytest.raises(nb.NotebookError):
+            nb.fix_note(db, "u", client_id, "anything")
+    with pytest.raises(nb.NotebookError):  # someone else's row
+        nb.fix_note(db, "someone", mine["client_id"], "anything")

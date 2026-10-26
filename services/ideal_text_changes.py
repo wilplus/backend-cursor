@@ -284,6 +284,17 @@ class _ChangesRun:
             self._sessions[sid] = row
         return self._sessions[sid]
 
+    def _recorded_before_cutover(self, session_id: Any) -> bool:
+        """An old Take reopened: its unfreezable set is logged, not raised."""
+        from services.take_feedback_set import recorded_before_cutover
+        try:
+            row = self._session_row(session_id)
+        except Exception:
+            logger.warning("take age unreadable take=%s", session_id,
+                           exc_info=True)
+            return False
+        return recorded_before_cutover(row.get("created_at"))
+
     def _take_snippets(self, session_id: Any) -> list:
         sid = str(session_id or "")
         if not sid:
@@ -1076,6 +1087,8 @@ class _ChangesRun:
             ),
             style_spent_by_paragraph=_style_spent["by_paragraph"],
             mvp_feedback_contract=self.take_contract_on,
+            legacy_take=(self.take_contract_on
+                         and self._recorded_before_cutover(_arm_sid)),
             # R1 gen-3 — the layer filter runs inside the gate, BEFORE the
             # budget: an open part takes everything; a locked part takes
             # the STYLE LANE (bold only) plus a pending Confident Voice.
@@ -1331,7 +1344,10 @@ class _ChangesRun:
                     or isinstance(_take_index, bool)
                     or _version_int != _take_index
                     or not is_claimable_set(_keys)):
-                logger.error(
+                logger.log(
+                    logging.INFO
+                    if self._recorded_before_cutover(self.arm_sid)
+                    else logging.ERROR,
                     "feedback set not claimable arc=%s take=%s index=%s "
                     "version=%s families=%s",
                     self.arc_id, self.arm_sid, _take_index, _version_int,

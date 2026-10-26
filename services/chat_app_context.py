@@ -73,7 +73,7 @@ FEATURES: dict[str, dict[str, str]] = {
         "opens": "offer",
     },
     "consent": {
-        "says": "See and change how their data is used (Data & consent).",
+        "says": "See and change how their data is used (Settings).",
         "opens": f"{SITE}/account/data-consent",
     },
     "pricing": {
