@@ -5089,6 +5089,30 @@ panel is locked, and built after it.
 The rules: frontend [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §2. No migration in this entry.
 
+**N205 · The coach answers every Take; nobody asks for it (founder, the
+Claude Code chat, 26 October 2026: "There should be no option like this,
+because coach writes and records for each take, at least at the beginning
+months of the operation of the system, because the system needs to learn how
+the coach answers and needs to get smart. So please do not do anything like
+write a review or something like that. It will happen either way.").**
+For N198:
+1. The coach writes and records an answer to every Take, at least in the
+system's first months, because the system learns from how the coach answers.
+2. So there is no way to ask for a review or a message, and none is built: the
+ask N198 item 5 named is dropped, with its prototype
+<https://claude.ai/artifact/C3dnYam7DDicPWz142EGCd>.
+3. With nothing to ask for, everything in tokens (N198) never charges for the
+coach's answer to a Take: it charges for practice and for calls.
+4. The price the review carries today stops now, before N198 is switched on:
+a Take that reaches the coach is no longer charged its 35,000 tokens (asked
+whether it should stop now, "Yes, for the first one, yes").
+5. The packages' words stay as the accepted prototype shows them, "a written
+review" and "two written reviews" included; anything that does not match the
+prototype waits ("I accepted the design you suggested and build it like
+this. Anything that does not align with the prototype that you showed to me
+should be deferred.").
+No rules page. No migration in this entry.
+
 **N206 · The coach's WhatsApp carries no picture (founder, the Claude Code
 chat, 26 October 2026: "i removed the image", then "feedback is active").**
 For N171 and N174:
