@@ -1,5 +1,7 @@
 """Cost safeguards for the AI voice (founder 2026-10-12: Starter, 40,000
-credits a month; warn at 28,000, stop at 38,000).
+credits a month; warn at 28,000, stop at 38,000. Founder 2026-10-26, N188:
+3 clips a day and 20 a month for each speaker, and no new voice while the
+plan's voice slots are full).
 
 Checked before every provider call that costs credits. When usage cannot be
 read, the answer is no: an unknown spend is never a reason to spend. Nothing
@@ -35,10 +37,13 @@ def _month_credits(database: Any, provider_usage: Optional[dict]) -> float:
 def clip_refusal(database: Any, owner_user_id: str, *,
                  characters: int, provider_usage: Optional[dict] = None) -> Optional[str]:
     """None when one more clip of ``characters`` may be made; else a code:
-    ``usage_unknown`` · ``speaker_daily`` · ``total_daily`` · ``monthly``."""
+    ``usage_unknown`` · ``speaker_daily`` · ``speaker_monthly`` ·
+    ``total_daily`` · ``monthly``."""
     try:
         today = store.start_of_day()
         mine = store.cycles_since(database, today, owner_user_id=owner_user_id)
+        mine_this_month = store.cycles_since(database, store.start_of_month(),
+                                             owner_user_id=owner_user_id)
         everyone = store.cycles_since(database, today)
         month = _month_credits(database, provider_usage)
     except Exception:  # noqa: BLE001 — fail closed on cost
@@ -46,6 +51,8 @@ def clip_refusal(database: Any, owner_user_id: str, *,
         return "usage_unknown"
     if len(mine) >= int(Config.AI_VOICE_DAILY_CLIPS_PER_SPEAKER):
         return "speaker_daily"
+    if len(mine_this_month) >= int(Config.AI_VOICE_MONTHLY_CLIPS_PER_SPEAKER):
+        return "speaker_monthly"
     if len(everyone) >= int(Config.AI_VOICE_DAILY_CLIPS_TOTAL):
         return "total_daily"
     after = month + estimated_credits(characters)
@@ -59,11 +66,16 @@ def clip_refusal(database: Any, owner_user_id: str, *,
 def clone_refusal(database: Any) -> Optional[str]:
     try:
         made_today = store.clones_created_since(database, store.start_of_day())
+        in_use = store.voices_in_use(database)
     except Exception:  # noqa: BLE001 — fail closed on cost
         _log.warning("ai voice: clone count unreadable, no clone", exc_info=True)
         return "usage_unknown"
     if made_today >= int(Config.AI_VOICE_DAILY_CLONES_TOTAL):
         return "clones_daily"
+    if in_use >= int(Config.AI_VOICE_VOICE_SLOTS):
+        _log.warning("ai voice: the plan's %d voice slots are full, no clone",
+                     int(Config.AI_VOICE_VOICE_SLOTS))
+        return "voice_slots"
     return None
 
 
