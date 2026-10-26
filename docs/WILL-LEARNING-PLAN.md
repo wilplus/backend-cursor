@@ -45,35 +45,41 @@ Code: `services/voice_notebook.py`, `routes/v2/voice_notebook.py`, migration
 `tests/test_voice_notebook.py`; frontend `useVoiceNote.ts` and the Lounge
 composer.
 
-## Step 2: the Sunday note (built 2026-10-20)
+## Step 2: the Sunday note (a lens since 2026-10-26)
 
-**Locked 2026-10-26 (N158), not built yet:** the Sunday note as a lens,
-<https://claude.ai/artifact/Bt2YEZLKhu9fLTA1deWTvo>. On Sunday from 6 pm by itself when there is a pattern, and whenever asked in any words (N170), only from the last seven days of # notes, no Old | New, and with nothing to find Will says so; in the
-Lounge "We spotted a pattern!" with Not now | Investigate; in the lens one
-step at a time (the bug, the principle held, the reflection, the new
-principle with Accept or Edit). The rules are frontend
-[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 L. What follows
-describes the build of 2026-10-20 until then.
+Built as the lens locked on 2026-10-26 (N158, N170),
+<https://claude.ai/artifact/Bt2YEZLKhu9fLTA1deWTvo>. The rules are frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 L.
 
-How it works now:
-
-- **When:** Sunday from 6 pm in the founder's time zone (the browser's,
-  saved when the chat opens), once a week, from the worker's minute sweep.
-  Also whenever the founder types "sunday note", "#sunday" or "case of the
-  week".
-- **Reads:** the week's notebook, the Lounge thread (their words, Will's
-  replies, the summaries after each Take), the talk goal, Will's note on
-  them and their active Life Panel principles.
-- **Writes:** one bubble in the form below, with only the bug the week
-  shows explained. No numbers.
-- **Then:** the footer asks **Old | New** (a bug they already knew, or a new
-  one). If Will has a new principle, "⚜️ <principle>" follows with
-  **Not now | Add principle**. Only Add principle puts it among the Life
-  Panel's active principles; the reply is "Noted.".
-- **Will remembers:** the last case's bug, and whether it was old or new, is
-  in Will's private notebook block in the chat.
-- Code: `services/sunday_note.py`, migration
-  `will_writes_the_founder_a_sunday_case.sql`, `tests/test_sunday_note.py`.
+- **When (L1):** on Sunday from 6 pm in the founder's time zone, once, from
+  the worker's minute sweep (`sweep_due` → `run_sunday`), only when the
+  last seven days of # notes show a pattern and no case was shown in those
+  days; with nothing to find, nothing is sent. On any day, when asked in
+  any words: `chat_turn` (a cheap pre-gate, then a small classifier, or
+  "sunday note"/"#sunday" by name). Asked with nothing to find: "Nothing
+  stands out in your notes from the last seven days yet." or "There are no
+  # notes from the last seven days yet."
+- **Reads:** only the # notes of the last seven days; the principles held
+  and the talk goal as context. Never the Takes, the Lounge thread or
+  Will's note on them.
+- **Writes (L2):** "We spotted a pattern!" and the case in one sentence (no
+  numbers), the second with the offer `sunday_note` (Not now |
+  Investigate) and the two held principles most likely to apply.
+- **The lens (L3 to L8):** `GET /v2/notebook/sunday/<id>` and `POST
+  /v2/notebook/sunday/<id>/answer {step, value}`, steps open, bug (one of
+  the four, or a name of their own), applied (a likely principle or none),
+  reflection (their words or Skip), principle (accept, edit with their
+  words, not_now), and dismiss for Not now in the Lounge. Every question and
+  answer is a row of the one Lounge thread (metadata `sunday_note_id`,
+  `sunday_step`), so the lens reopens where it stands; a repeat or
+  out-of-turn tap writes nothing. Only accept or edit adds the principle to
+  the Life Panel's active principles.
+- **Will remembers:** the last case and the bug they named, in Will's
+  private notebook block in the chat.
+- **What stopped (2026-10-26):** the long case form (CASE AT HAND and its
+  headings), Old | New, and reading the Takes, the thread and Will's note.
+- Code: `services/sunday_note.py`, `routes/v2/voice_notebook.py`, migration
+  `will_writes_the_founder_a_sunday_case.sql` (no new one), `tests/test_sunday_note.py`.
 
 The plan as decided:
 

@@ -1,28 +1,27 @@
-"""The Sunday note (Will learning plan, step 2; founder 2026-10-20, "start
-step 2"; the form is the founder's own).
+"""The Sunday note as a lens (Will learning plan, step 2; locked 2026-10-26,
+N158, N170; rules: frontend docs/flows/principles.md §1 L; prototype
+https://claude.ai/artifact/Bt2YEZLKhu9fLTA1deWTvo).
 
-Once a week, on Sunday at 6 pm the founder's local time, and whenever they
-ask ("sunday note"), Will writes one case in the chat, in the founder's form:
+On Sunday from 6 pm the founder's local time, once, Will brings a case by
+itself when the last seven days of # notes show a pattern, and not when a
+case was already shown in those seven days; on any day, when asked in any
+words, Will looks (L1). The case comes only from the # notes of the last
+seven days; the talk goal and the principles held are context, never
+evidence. With nothing to find, an asked look says so in one bubble; Sunday
+by itself never does.
 
-    CASE AT HAND
-    WHAT ONE OF THOSE WAS IT?
-    👾 Too much pleasure  👾 Blind spots  👾 Hubris  👾 Wishful thinking
-    PRINCIPLES I APPLIED AND HOW I WEIGHED THEM
-    REFLECTIONS
-    NEW PRINCIPLE ⚜️
-
-It reads the week: the voice notebook, the Lounge thread (their words, Will's
-replies, the summaries after each Take), their talk goal, Will's note on
-them and the principles they hold in the Life Panel. It names the one bug the
-week shows. The footer then asks Old | New (a bug they already knew, or a new
-one). When Will has a new principle, it follows as "⚜️ <principle>" with
-Not now | Add principle; only "Add principle" puts it among the Life Panel's
-active principles (propose, never commit). Never on the recording screens:
-the Lounge only.
+In the Lounge (L2): "We spotted a pattern!" and the case in one sentence,
+with Not now | Investigate. The lens (L3 to L7) asks which of the four bugs
+it was (or a new one), which held principle was in place (the two most
+likely, or None yet), the speaker's reflection (never Will's), then Will's
+new principle: Accept, Edit or Not now. Only Accept or an edited Add puts it
+among the Life Panel's active principles (propose, never commit). Every
+question and answer is a row of the one Lounge thread (L8), so the lens and
+the Lounge show the same rows and the lens reopens where it stands.
 
 Founder only: the notebook's ring row and its Yes (``voice_notebook``). The
-call to the model runs under the founder's processing authorization, in the
-chat's request or, on Sunday, from the worker's sweep
+model call runs under the founder's processing authorization, in the chat's
+request or, on Sunday, from the worker's sweep
 (``pipeline_jobs.run_sweep_loop`` → ``sweep_due`` → ``run_sunday``).
 Table: sunday_notes (migration 0486), purged with the account.
 """
@@ -31,62 +30,69 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
-#: The founder's form and buttons (2026-10-20). No new words without the
-#: founder's OK.
-HEADINGS = {
-    "case": "CASE AT HAND",
-    "which": "WHAT ONE OF THOSE WAS IT?",
-    "applied": "PRINCIPLES I APPLIED AND HOW I WEIGHED THEM",
-    "reflections": "REFLECTIONS",
-    "new": "NEW PRINCIPLE ⚜️",
-}
+#: The four bugs (the founder's own form, 2026-10-20).
 PATTERNS = {
     "too_much_pleasure": "👾 Too much pleasure",
     "blind_spots": "👾 Blind spots",
     "hubris": "👾 Hubris",
     "wishful_thinking": "👾 Wishful thinking",
 }
-COPY = {"old": "Old", "new": "New", "add": "Add principle", "not_now": "Not now",
-        "noted": "Noted."}
+#: The signed words (N158, N170). No new words without the founder's OK.
+COPY = {
+    "head": "We spotted a pattern!",
+    "no_notes": "There are no # notes from the last seven days yet.",
+    "nothing": "Nothing stands out in your notes from the last seven days yet.",
+    "which": "What one of those was it?",
+    "applied": "Did you have a principle in place already?",
+    "none_yet": "None yet",
+    "reflections": "Reflections: what do you take from this?",
+    "skip": "Skip",
+    "suggests": "Will suggests a new principle:",
+    "accept": "Accept",
+    "not_now": "Not now",
+    "added": "Noted. Added to your principles.",
+    "noted": "Noted.",
+}
 OFFER = "sunday_note"
-PRINCIPLE_OFFER = "sunday_principle"
+#: The lens's steps, in order (L4 to L7).
+STEPS = ("bug", "applied", "reflection", "principle")
 #: Sunday, from 6 pm local, until the day ends.
 _DUE_WEEKDAY, _DUE_HOUR = 6, 18
+_WINDOW = timedelta(days=7)
 _SURFACE = "sunday_note"
 _NAMESPACE = uuid.UUID("5d2c9a71-0e43-4b8f-9f1a-3c6e2b7d8a14")
+#: Asked by its name: no model call needed to know.
 _ASKED = re.compile(r"^\s*(#\s*sunday|(my\s+)?sunday\s+note|case of the week)\s*[.!?]*\s*$", re.I)
+#: The cheap pre-gate before the meaning is classified: a question that may be
+#: about what keeps happening (L1, "goes by the meaning").
+_MAYBE = re.compile(r"pattern|sunday|niedziel|wzorz|trip|keep[s]?\b|again|repeat|habit|"
+                    r"notice|same (mistake|thing)|what.*(my )?notes|stuck|holding me back|"
+                    r"powtarza|ciągle|znowu", re.I)
 _DIGIT = re.compile(r"\d|%")
 _MAX_INPUT = 14000
 
 _SYSTEM = (
-    "You are Will, the private coach in a public-speaking app. Once a week "
-    "you write the founder one case about their week, in their own form, "
-    "the way Ray Dalio writes a case: the situation, the bug behind it, the "
-    "principles used and how they were weighed, what to learn, and one new "
-    "principle.\n"
-    "You read their private notebook, their chat with you, the summaries "
-    "after their Takes, their talk goal, your note on them and the "
-    "principles they already hold.\n"
+    "You are Will, the private coach in a public-speaking app. You read one "
+    "person's own short notes from the last seven days and look for one "
+    "pattern in what they did: the same kind of slip more than once, or one "
+    "clear case of it.\n"
+    "You get, numbered, the principles they already hold, and their talk "
+    "goal: context only, never evidence. The notes are the only evidence.\n"
     "Reply with JSON only, these keys:\n"
-    "  case: the one case at hand this week, two or three sentences.\n"
-    "  pattern: which bug it was, one of too_much_pleasure, blind_spots, "
-    "hubris, wishful_thinking, or \"\" when the week does not show one.\n"
-    "  why: one sentence, how the week shows that bug.\n"
-    "  applied: the principles they applied and how they weighed them, two "
-    "or three sentences; name a principle they hold when the week shows it.\n"
-    "  reflections: two or three sentences that link the case to their talk "
-    "goal and to what they keep doing, helpful or harmful.\n"
-    "  new_principle: one short principle in their voice, or \"\" when the "
-    "week does not earn one, or it repeats one they hold.\n"
-    "Rules: only what the week shows, never invent. Write to them as "
-    "\"you\". Plain words, short. No numbers, scores, percentages or "
-    "verdicts. No names of other people. If the week is too thin for a "
-    "case, say so in case and leave the rest \"\"."
+    "  case: the pattern in ONE sentence, to them as \"you\", in the "
+    "language of the notes; \"\" when the notes do not show one. Never "
+    "invent.\n"
+    "  principles: the numbers of at most two held principles most likely "
+    "to apply to this case, most likely first; [] when none fits.\n"
+    "  new_principle: one short principle in their voice that the case "
+    "teaches, or \"\" when it repeats one they hold.\n"
+    "Plain words. No numbers or digits, no scores, percentages or verdicts. "
+    "No names of other people."
 )
 
 
@@ -134,92 +140,54 @@ def due_week(now_utc: datetime, zone_name: Optional[str]) -> Optional[date]:
     return None
 
 
-def _since(week_start: date, zone_name: Optional[str]) -> str:
-    return datetime.combine(week_start, time(0), _zone(zone_name)).astimezone(
-        timezone.utc).isoformat()
+# ── what Will reads: the # notes of the last seven days (L1) ────────────
 
-
-# ── what Will reads ──────────────────────────────────────────────────────
-
-def _thread_lines(database: Any, user_id: str, since: str) -> list[str]:
-    rows = database.get_lounge_messages_page(user_id, limit=300) or []
-    lines = []
-    for r in reversed(rows):  # oldest first
-        if str(r.get("client_created_at") or "") < since or not r.get("body"):
-            continue
-        meta = r.get("metadata") or {}
-        if meta.get("offer") in (OFFER, PRINCIPLE_OFFER):
-            continue  # an earlier case is not evidence for this one
-        who = ("Take summary" if meta.get("summary") else
-               "They" if r.get("role") == "user" else "Will")
-        lines.append(f"{who}: {str(r['body'])[:600]}")
-    return lines
-
-
-def _principles(user_id: str) -> list[str]:
+def _held(user_id: str) -> list[dict]:
+    """The principles they hold, as context: ``[{"id", "title"}]``."""
     try:
         from services import life_store
-        return [str(p.get("title") or p.get("body") or "")[:200]
-                for p in life_store.principles(user_id, limit=40)]
+        return [{"id": str(p["id"]), "title": str(p.get("title") or p.get("body") or "")[:200]}
+                for p in life_store.principles(user_id, limit=40) if p.get("id")]
     except Exception as error:  # noqa: BLE001 -- no Life Panel: none held
         logger.warning("sunday note: principles unread user=%s: %s", user_id, error,
                        exc_info=True)
         return []
 
 
-def gather(database: Any, user_id: str, since: str) -> str:
-    """The week, as the model reads it."""
-    from services import speaker_memory
+def notes_since(database: Any, user_id: str, now: datetime) -> list[dict]:
+    """The # notes of the last seven days, not the calendar week (N170)."""
+    since = (now - _WINDOW).isoformat()
+    return [n for n in database.list_voice_notes(user_id, limit=60)
+            if str(n.get("created_at") or "") >= since and n.get("text_clean")]
+
+
+def gather(database: Any, user_id: str, notes: list[dict], held: list[dict]) -> str:
+    """The notes, as the model reads them: the evidence, then the context."""
     goal = ((database.get_user_profile(user_id) or {}).get("goal") or "").strip()
-    notes = [f"- {str(n.get('created_at') or '')[:10]}: {n.get('text_clean', '')[:800]}"
-             for n in database.list_voice_notes(user_id, limit=60)
-             if str(n.get("created_at") or "") >= since]
     parts = [
+        "Their notes, oldest first:\n" + "\n".join(
+            f"- {str(n.get('created_at') or '')[:10]}: {str(n['text_clean'])[:800]}"
+            for n in notes),
+        "Principles they hold:\n" + ("\n".join(f"{i + 1}. {p['title']}" for i, p in
+                                                 enumerate(held)) or "(none yet)"),
         f"Talk goal: {goal[:300] or '(none set)'}",
-        "Principles they hold:\n" + ("\n".join(f"- {p}" for p in _principles(user_id) if p)
-                                     or "(none yet)"),
-        "Your note on them:\n" + (speaker_memory.note_for(database, user_id) or "(none yet)"),
-        "Their notebook this week:\n" + ("\n".join(notes) or "(no notes)"),
-        "The chat this week, oldest first:\n"
-        + ("\n".join(_thread_lines(database, user_id, since)) or "(nothing)"),
     ]
     return "\n\n".join(parts)[-_MAX_INPUT:]
 
 
-# ── the note ─────────────────────────────────────────────────────────────
-
-def _clean(value: Any, limit: int = 700) -> str:
+def _clean(value: Any, limit: int = 500) -> str:
     text = " ".join(str(value or "").split())[:limit]
     return "" if _DIGIT.search(text) else text
 
 
-def render(parsed: dict) -> tuple[str, Optional[str], str]:
-    """(the note's text, the bug's key or None, the new principle or "").
-    Pure."""
-    pattern = parsed.get("pattern") if parsed.get("pattern") in PATTERNS else None
-    why = _clean(parsed.get("why"), 300)
-    which = [f"{label}: {why}" if key == pattern and why else label
-             for key, label in PATTERNS.items()]
-    principle = _clean(parsed.get("new_principle"), 300)
-    sections = [
-        (HEADINGS["case"], _clean(parsed.get("case"))),
-        (HEADINGS["which"], "\n".join(which)),
-        (HEADINGS["applied"], _clean(parsed.get("applied"))),
-        (HEADINGS["reflections"], _clean(parsed.get("reflections"))),
-        (HEADINGS["new"], principle),
-    ]
-    return ("\n\n".join(f"{head}\n{text}" for head, text in sections if text),
-            pattern, principle)
-
-
-def _write(database: Any, user_id: str, since: str) -> Optional[dict]:
+def _write(database: Any, user_id: str, notes: list[dict], held: list[dict]) -> Optional[dict]:
     from services.llm import chat_complete
     from services.llm_config import SPEC_SUNDAY_NOTE
     result = chat_complete(spec=SPEC_SUNDAY_NOTE, system=_SYSTEM,
-                           user=gather(database, user_id, since),
+                           user=gather(database, user_id, notes, held),
                            surface=_SURFACE, user_id=user_id)
     parsed = getattr(result, "parsed", None) if result else None
-    return parsed if isinstance(parsed, dict) and _clean(parsed.get("case")) else None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _under_authority(database: Any, user_id: str, key: str, write: Callable[[], Any]):
@@ -255,35 +223,62 @@ def _row(key: str, role: str, body: str, meta: dict, at: str) -> dict:
             "kind": "text", "body": body, "metadata": meta, "client_created_at": at}
 
 
-def compose(database: Any, user_id: str, *, source: str, week_start: date,
-            zone_name: Optional[str]) -> Optional[dict]:
-    """Claim the note, write it and keep it: the stored row with its text,
-    or None (a Sunday already claimed, not authorized, or nothing written)."""
+def _likely(parsed: dict, held: list[dict]) -> list[dict]:
+    """The two held principles most likely to apply (L5), from the model's
+    numbers; never one it made up."""
+    raw = parsed.get("principles")
+    picked: list = raw if isinstance(raw, list) else []
+    return [held[i - 1] for i in dict.fromkeys(picked)
+            if isinstance(i, int) and 1 <= i <= len(held)][:2]
+
+
+def compose(database: Any, user_id: str, *, source: str, now: datetime,
+            zone_name: Optional[str]) -> tuple[str, Optional[dict]]:
+    """Look at the last seven days: ``("no_notes", None)``, ``("nothing",
+    None)``, ``("shown", None)`` (Sunday only: a case was already shown in
+    those days) or ``("case", note)`` with the note kept and its likely
+    principles."""
+    notes = notes_since(database, user_id, now)
+    if not notes:
+        return "no_notes", None
+    if source == "sunday":
+        last = database.latest_sunday_note(user_id) or {}
+        if str(last.get("created_at") or "") >= (now - _WINDOW).isoformat():
+            return "shown", None
+    week = week_of(now.astimezone(_zone(zone_name)))
     claim = database.insert_sunday_note({
-        "user_id": user_id, "week_start": week_start.isoformat(), "source": source})
+        "user_id": user_id, "week_start": week.isoformat(), "source": source})
     if not claim:
-        return None
-    since = _since(week_start, zone_name)
+        return "shown", None
+    held = _held(user_id)
     parsed = _under_authority(database, user_id, claim["id"],
-                              lambda: _write(database, user_id, since))
-    if not parsed:
+                              lambda: _write(database, user_id, notes, held)) or {}
+    case = _clean(parsed.get("case"), 400)
+    if not case:
         database.update_sunday_note(claim["id"], {"status": "failed", "updated_at": _now()})
-        return None
-    body, pattern, principle = render(parsed)
-    fields = {"status": "written", "body": body, "pattern": pattern,
-              "new_principle": principle or None, "updated_at": _now()}
+        return "nothing", None
+    fields = {"status": "written", "body": case, "updated_at": _now(),
+              "new_principle": _clean(parsed.get("new_principle"), 300) or None}
     database.update_sunday_note(claim["id"], fields)
-    return {**claim, **fields}
+    return "case", {**claim, **fields, "likely": _likely(parsed, held)}
 
 
-def note_meta(note: dict) -> dict:
-    return {"offer": OFFER, "sunday_note_id": str(note["id"])}
+def _head_meta(note: dict) -> dict:
+    return {"sunday_note_id": str(note["id"]), "sunday_step": "head"}
 
 
-def run_sunday(user_id: str, week_start_iso: str) -> None:
-    """The worker's job: Sunday's note, once per week, into the Lounge."""
+def case_row(user_id: str, note: dict, at: str) -> dict:
+    """The case in one sentence, with Not now | Investigate (L2)."""
+    return _row(f"{note['id']}:case", "bot", note["body"],
+                {"offer": OFFER, "sunday_note_id": str(note["id"]), "sunday_step": "case",
+                 "likely": note.get("likely") or []}, at)
+
+
+def run_sunday(user_id: str, now_iso: str) -> None:
+    """The worker's job: Sunday's look, once, into the Lounge only when the
+    notes show a pattern; nothing otherwise (L1)."""
     from services.db import db
-    from services.lounge_messages import thread_stamp
+    from services.lounge_messages import stamp_after, thread_stamp
     from services import voice_notebook
     try:
         if not voice_notebook.enabled(db, user_id):
@@ -291,22 +286,31 @@ def run_sunday(user_id: str, week_start_iso: str) -> None:
         consent = db.get_voice_notebook_consent(user_id) or {}
         if consent.get("decision") != "yes":
             return
-        note = compose(db, user_id, source="sunday",
-                       week_start=date.fromisoformat(week_start_iso),
-                       zone_name=consent.get("time_zone"))
-        if not note:
+        found, note = compose(db, user_id, source="sunday",
+                              now=_moment(now_iso), zone_name=consent.get("time_zone"))
+        if found != "case" or not note:
             return
-        db.insert_lounge_messages(user_id, [_row(
-            f"{user_id}:note:{note['id']}", "bot", note["body"], note_meta(note),
-            thread_stamp(db, user_id))])
+        at = thread_stamp(db, user_id)
+        db.insert_lounge_messages(user_id, [
+            _row(f"{note['id']}:head", "bot", COPY["head"], _head_meta(note), at),
+            case_row(user_id, note, stamp_after(at))])
     except Exception as error:  # noqa: BLE001 -- next Sunday tries again
         logger.warning("sunday note failed user=%s: %s", user_id, error, exc_info=True)
 
 
+def _moment(value: str) -> datetime:
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:  # a week_start from before the lens: the day's end
+        moment = datetime.combine(date.fromisoformat(value) + timedelta(days=6),
+                                  datetime.max.time())
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
 def sweep_due(database: Any = None, now: Optional[datetime] = None) -> int:
-    """Each minute, from the worker's sweep: enqueue the Sunday note for
-    whoever said Yes to the notebook and whose Sunday 6 pm has come. Cheap:
-    one read of a table of a few rows; the job itself claims the week."""
+    """Each minute, from the worker's sweep: enqueue Sunday's look for whoever
+    said Yes to the notebook and whose Sunday 6 pm has come. Cheap: one read
+    of a table of a few rows; the job itself claims the week."""
     from services import job_queue
     if database is None:
         from services.db import db as database
@@ -317,59 +321,72 @@ def sweep_due(database: Any = None, now: Optional[datetime] = None) -> int:
         if not week or database.get_sunday_note_for_week(str(row["user_id"]), week.isoformat()):
             continue
         if job_queue.enqueue("services.sunday_note.run_sunday", str(row["user_id"]),
-                             week.isoformat(),
+                             moment.isoformat(),
                              rq_job_id=f"sunday-note-{row['user_id']}-{week.isoformat()}"):
             queued += 1
     return queued
 
 
-# ── the chat and the footer ──────────────────────────────────────────────
+# ── asked in the chat, in any words (L1) ─────────────────────────────────
 
-def _newest_bot(database: Any, user_id: str) -> dict:
-    rows = database.get_lounge_messages_page(str(user_id), limit=4) or []
-    return next((r for r in rows if r.get("role") == "bot"), None) or {}
+_ASK_SYSTEM = (
+    "Decide whether this message asks to look at the person's own notes for "
+    "a pattern, a habit or what keeps tripping them up (for example: \"do you "
+    "see a pattern?\", \"what keeps tripping me up?\", \"sunday note\"). A "
+    "question about speaking technique, a Take or anything else is not.\n"
+    "Return JSON: {\"asks\": true or false}."
+)
+
+
+def _asks(question: str, user_id: str) -> bool:
+    if _ASKED.match(question):
+        return True
+    if not _MAYBE.search(question):
+        return False
+    try:
+        from services.llm import chat_complete
+        from services.llm_config import SPEC_LIFE_GOAL_ASK
+        result = chat_complete(spec=SPEC_LIFE_GOAL_ASK, system=_ASK_SYSTEM,
+                               user=question[:600], surface=_SURFACE, user_id=str(user_id))
+        parsed = getattr(result, "parsed", None) if result else None
+        return isinstance(parsed, dict) and parsed.get("asks") is True
+    except Exception as error:  # noqa: BLE001 -- the chat answers as usual
+        logger.warning("sunday note: ask unread user=%s: %s", user_id, error, exc_info=True)
+        return False
 
 
 def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:
-    """The chat's intercept: "sunday note" writes one now; "Old"/"New" or
-    "Add principle"/"Not now" typed under the open ask count as the tap.
-    None for anything else, and for anyone without the notebook."""
+    """The chat's intercept: an ask for the case, in any words. The reply is
+    "We spotted a pattern!" (the case row follows it, ``after_head``) or, with
+    nothing to find, the one grey bubble that says so. None for anything
+    else, for a # note, and for anyone without the notebook."""
     from services import voice_notebook
     text = (question or "").strip()
-    asked = bool(_ASKED.match(text))
-    said = text.rstrip(".!").lower()
-    if not asked and said not in ("old", "new", "add principle", "not now"):
+    if not text or text.startswith("#") and not _ASKED.match(text):
         return None
     if not voice_notebook.enabled(database, user_id) or not voice_notebook.consented(
             database, user_id):
         return None
-    if asked:
-        consent = database.get_voice_notebook_consent(str(user_id)) or {}
-        zone = consent.get("time_zone")
-        local = datetime.now(timezone.utc).astimezone(_zone(zone))
-        note = compose(database, str(user_id), source="asked",
-                       week_start=week_of(local), zone_name=zone)
-        if not note:
-            return None  # Will answers as usual
-        return {"answer": note["body"], "row_metadata": note_meta(note)}
-    meta = _newest_bot(database, user_id).get("metadata") or {}
-    note_id = meta.get("sunday_note_id")
-    if meta.get("offer") == OFFER and said in ("old", "new"):
-        return _as_reply(mark(database, str(user_id), str(note_id), said, write=False))
-    if meta.get("offer") == PRINCIPLE_OFFER and said in ("add principle", "not now"):
-        choice = "add" if said == "add principle" else "not_now"
-        return _as_reply(principle(database, str(user_id), str(note_id), choice, write=False))
-    return None
-
-
-def _as_reply(rows: list[dict]) -> Optional[dict]:
-    """A typed answer: the chat stores their words; the bot's row is the
-    reply (empty when the tap writes none, which hands the turn on)."""
-    bot = next((r for r in rows if r["role"] == "bot"), None)
-    if not bot:
+    if not _asks(text, user_id):
         return None
-    return {"answer": bot["body"], "row_metadata": bot.get("metadata") or {}}
+    consent = database.get_voice_notebook_consent(str(user_id)) or {}
+    found, note = compose(database, str(user_id), source="asked",
+                          now=datetime.now(timezone.utc), zone_name=consent.get("time_zone"))
+    if found == "case" and note:
+        return {"answer": COPY["head"], "row_metadata": _head_meta(note),
+                "case": note}
+    return {"answer": COPY["no_notes" if found == "no_notes" else "nothing"],
+            "row_metadata": {"sunday_empty": found}}
 
+
+def after_head(database: Any, user_id: str, note: dict) -> bool:
+    """Under the chat's "We spotted a pattern!": the case row (L2)."""
+    from services.lounge_messages import thread_stamp
+    return bool(database.insert_lounge_messages(
+        str(user_id), [case_row(str(user_id), note, thread_stamp(database, user_id))]))
+
+
+# ── the lens: one thread, step by step (L3 to L8) ────────────────────────
 
 def _owned(database: Any, user_id: str, note_id: str) -> dict:
     note = database.get_sunday_note(user_id, note_id)
@@ -378,59 +395,123 @@ def _owned(database: Any, user_id: str, note_id: str) -> dict:
     return note
 
 
-def mark(database: Any, user_id: str, note_id: str, choice: str, *,
-         write: bool = True) -> list[dict]:
-    """Old or New for the week's bug. Then, when Will has a new principle,
-    "⚜️ <principle>" with Not now | Add principle. A repeat tap writes nothing."""
-    if choice not in ("old", "new"):
-        raise SundayError("INVALID_CHOICE", "Unknown answer.")
-    note = _owned(database, user_id, note_id)
-    if note.get("pattern_known"):
-        return []
-    database.update_sunday_note(note_id, {"pattern_known": choice, "updated_at": _now()})
-    from services.lounge_messages import stamp_after, thread_stamp
-    at = thread_stamp(database, user_id)
-    rows = [_row(f"{note_id}:{choice}", "user", COPY[choice], {"sunday_note": choice}, at)]
-    if note.get("new_principle"):
-        rows.append(_row(f"{note_id}:principle", "bot", f"⚜️ {note['new_principle']}",
-                         {"offer": PRINCIPLE_OFFER, "sunday_note_id": note_id},
-                         stamp_after(at)))
-    else:
-        rows.append(_row(f"{note_id}:noted", "bot", COPY["noted"],
-                         {"sunday_note": "noted"}, stamp_after(at)))
-    if not write:
-        return rows  # typed: the chat stores their turn and the reply itself
-    return database.insert_lounge_messages(user_id, rows) or []
+def _rows_of(database: Any, user_id: str, note_id: str) -> list[dict]:
+    """The note's rows in the thread, oldest first."""
+    rows = database.get_lounge_messages_page(str(user_id), limit=300) or []
+    return [r for r in reversed(rows)
+            if (r.get("metadata") or {}).get("sunday_note_id") == str(note_id)]
 
 
-def principle(database: Any, user_id: str, note_id: str, choice: str, *,
-              write: bool = True) -> list[dict]:
-    """Add principle: it joins the Life Panel's active principles (the
-    founder's own approval) and is answered "Noted."; Not now keeps it out.
-    Either way the reply is "Noted.". A repeat tap writes nothing."""
-    if choice not in ("add", "not_now"):
-        raise SundayError("INVALID_CHOICE", "Unknown answer.")
+def _answered(rows: list[dict]) -> set:
+    return {(r.get("metadata") or {}).get("sunday_step") for r in rows if r.get("role") == "user"}
+
+
+def state(database: Any, user_id: str, note_id: str) -> dict:
+    """The lens as it stands: the case, the two likely principles, Will's new
+    principle, the rows so far and the step it waits on ("done" at the end,
+    "closed" after Not now in the Lounge)."""
     note = _owned(database, user_id, note_id)
-    line = note.get("new_principle")
-    if not line or note.get("principle_item_id") or note.get("principle_declined"):
-        return []
-    from services.lounge_messages import stamp_after, thread_stamp
-    at = thread_stamp(database, user_id)
-    rows = [_row(f"{note_id}:{choice}", "user", COPY[choice], {"sunday_note": choice}, at)]
-    if choice == "add":
-        item = _add_principle(user_id, line)
-        if not item:
-            raise SundayError("V2_ERROR", "Failed to add the principle", 500)
-        database.update_sunday_note(note_id, {"principle_item_id": item["id"],
-                                              "updated_at": _now()})
+    rows = _rows_of(database, user_id, note_id)
+    done = _answered(rows)
+    case = next((r for r in rows if (r.get("metadata") or {}).get("sunday_step") == "case"), {})
+    likely = (case.get("metadata") or {}).get("likely") or []
+    if "dismiss" in done:
+        step = "closed"
     else:
-        database.update_sunday_note(note_id, {"principle_declined": True,
-                                              "updated_at": _now()})
-    rows.append(_row(f"{note_id}:noted", "bot", COPY["noted"],
-                     {"sunday_note": choice}, stamp_after(at)))
-    if not write:
-        return rows
-    return database.insert_lounge_messages(user_id, rows) or []
+        step = next((s for s in STEPS if s not in done), "done")
+        if step == "principle" and not note.get("new_principle"):
+            step = "done"
+    return {"id": str(note["id"]), "case": note.get("body") or "", "likely": likely,
+            "new_principle": note.get("new_principle"), "step": step,
+            "rows": [{"role": r["role"], "body": r["body"],
+                      "step": (r.get("metadata") or {}).get("sunday_step")}
+                     for r in rows if (r.get("metadata") or {}).get("sunday_step")
+                     not in ("head", "case")]}
+
+
+def _say(note_id: str, step: str, role: str, body: str, at: str) -> dict:
+    return _row(f"{note_id}:{step}:{role}", role, body,
+                {"sunday_note_id": str(note_id), "sunday_step": step}, at)
+
+
+def _bug_words(value: str) -> tuple[str, Optional[str]]:
+    if value in PATTERNS:
+        return PATTERNS[value], value
+    name = " ".join(value.split())[:80]
+    if not name:
+        raise SundayError("EMPTY", "No words.")
+    return f"👾 {name}", None
+
+
+def answer(database: Any, user_id: str, note_id: str, step: str, value: Any = None) -> dict:
+    """One tap in the lens (or Not now under the case), kept as rows of the
+    thread: the answer as the speaker's bubble, then Will's next question.
+    A step already answered, or out of turn, writes nothing."""
+    from services.lounge_messages import stamp_after, thread_stamp
+    now = state(database, user_id, note_id)
+    expected = {"open": now["step"] == "bug", "dismiss": now["step"] == "bug",
+                **{s: now["step"] == s for s in STEPS}}
+    if step not in expected:
+        raise SundayError("INVALID_STEP", "Unknown step.")
+    if not expected[step] or (step == "open" and any(r["step"] == "open" for r in now["rows"])):
+        return now
+    # Their own words are kept as they wrote them, numbers too.
+    text = " ".join(value.split())[:2000] if isinstance(value, str) else ""
+    at = thread_stamp(database, user_id)
+    rows: list[dict] = []
+    if step == "dismiss":
+        rows = [_say(note_id, "dismiss", "user", COPY["not_now"], at),
+                _say(note_id, "dismiss", "bot", COPY["noted"], stamp_after(at))]
+    elif step == "open":
+        rows = [_say(note_id, "open", "bot", COPY["which"], at)]
+    elif step == "bug":
+        words, key = _bug_words(text)
+        if key:
+            database.update_sunday_note(note_id, {"pattern": key, "updated_at": _now()})
+        rows = [_say(note_id, "bug", "user", words, at),
+                _say(note_id, "bug", "bot", COPY["applied"], stamp_after(at))]
+    elif step == "applied":
+        held = next((p for p in now["likely"] if p.get("id") == str(value)), None)
+        words = f"⚜️ {held['title']}" if held else COPY["none_yet"]
+        rows = [_say(note_id, "applied", "user", words, at),
+                _say(note_id, "applied", "bot", COPY["reflections"], stamp_after(at))]
+    elif step == "reflection":
+        rows = [_say(note_id, "reflection", "user", text or COPY["skip"], at)]
+        if now["new_principle"]:
+            later = stamp_after(at)
+            rows += [_say(note_id, "reflection", "bot", COPY["suggests"], later),
+                     _row(f"{note_id}:suggested", "bot", f"⚜️ {now['new_principle']}",
+                          {"sunday_note_id": str(note_id), "sunday_step": "suggested"},
+                          stamp_after(later))]
+        else:
+            rows.append(_say(note_id, "reflection", "bot", COPY["noted"], stamp_after(at)))
+    else:
+        rows = _principle_rows(database, user_id, now, value, at)
+    database.insert_lounge_messages(str(user_id), rows)
+    return state(database, user_id, note_id)
+
+
+def _principle_rows(database: Any, user_id: str, now: dict, value: Any, at: str) -> list[dict]:
+    """Accept, Add principle (edited) or Not now (L7)."""
+    from services.lounge_messages import stamp_after
+    note_id = now["id"]
+    choice = value.get("choice") if isinstance(value, dict) else value
+    if choice == "not_now":
+        database.update_sunday_note(note_id, {"principle_declined": True, "updated_at": _now()})
+        return [_say(note_id, "principle", "user", COPY["not_now"], at),
+                _say(note_id, "principle", "bot", COPY["noted"], stamp_after(at))]
+    edited = " ".join(str(value.get("text") or "").split())[:300] if isinstance(value, dict) else ""
+    if choice not in ("accept", "edit") or (choice == "edit" and not edited):
+        raise SundayError("INVALID_CHOICE", "Unknown answer.")
+    line = edited or now["new_principle"]
+    item = _add_principle(user_id, line)
+    if not item:
+        raise SundayError("V2_ERROR", "Failed to add the principle", 500)
+    database.update_sunday_note(note_id, {"principle_item_id": item["id"], "new_principle": line,
+                                          "updated_at": _now()})
+    return [_say(note_id, "principle", "user",
+                 COPY["accept"] if choice == "accept" else f"⚜️ {line}", at),
+            _say(note_id, "principle", "bot", COPY["added"], stamp_after(at))]
 
 
 def _add_principle(user_id: str, line: str) -> Optional[dict]:
@@ -442,7 +523,7 @@ def _add_principle(user_id: str, line: str) -> Optional[dict]:
 
 
 def latest_line(database: Any, user_id: str) -> str:
-    """Last week's case for Will's chat prompt, one line; "" without one.
+    """The last case for Will's chat prompt, one line; "" without one.
     Never raises: the notebook's notes are read either way."""
     try:
         note = database.latest_sunday_note(str(user_id))
@@ -450,9 +531,8 @@ def latest_line(database: Any, user_id: str) -> str:
         logger.warning("sunday note: last case unread user=%s: %s", user_id, error,
                        exc_info=True)
         return ""
-    if not note or note.get("status") != "written" or not note.get("pattern"):
+    if not note or note.get("status") != "written" or not note.get("body"):
         return ""
-    known = {"old": " (a bug they already knew)", "new": " (a new bug)"}.get(
-        note.get("pattern_known") or "", "")
-    return (f"  • Their last Sunday case named {PATTERNS[note['pattern']][2:].lower()}"
-            f"{known}.\n")
+    bug = f" They named it {PATTERNS[note['pattern']][2:].lower()}." if note.get(
+        "pattern") in PATTERNS else ""
+    return f"  • Their last Sunday case: {str(note['body'])[:300]}{bug}\n"

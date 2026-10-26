@@ -197,6 +197,13 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
         if (bot_cid and intent != "crisis" and after_take.passes(resp)
                 and after_take.release(database, user_id)):
             resp["after_take"] = True
+        # Under the asked "We spotted a pattern!", the case with Not now |
+        # Investigate (N170 L2); the same flag reads the thread again.
+        case = resp.pop("sunday_case", None)
+        if bot_cid and intent == "sunday_note" and case:
+            from services.sunday_note import after_head
+            if after_head(database, user_id, case):
+                resp["after_take"] = True
         # Under a # note's "Noted.", the ask for life goals (N172 M1); the
         # same flag reads the thread again.
         if (bot_cid and intent == "voice_notebook"
@@ -288,16 +295,18 @@ def _whatsapp_number(user_id, question, _context, _history=None) -> Optional[tup
 
 
 def _sunday_note(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
-    """The founder's Sunday case (Will learning plan, step 2): "sunday note"
-    writes one now; "Old"/"New" and "Add principle"/"Not now" typed under
-    its ask count as the tap. Anyone else, anything else: None."""
+    """The founder's Sunday note, asked for in any words (Will learning plan,
+    step 2, N170 L1): "We spotted a pattern!" (its case row follows the
+    turn), or the one bubble that says there is nothing. Anyone else,
+    anything else: None."""
     from services.db import db
     from services.sunday_note import chat_turn
     turn = chat_turn(db, user_id, question)
     if not turn:
         return None
+    extra = {"sunday_case": turn["case"]} if turn.get("case") else {}
     return _reply(turn["answer"], row_metadata=turn["row_metadata"],
-                  debug={"intent": "sunday_note"}), "sunday_note"
+                  debug={"intent": "sunday_note"}, **extra), "sunday_note"
 
 
 def _life_goals(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:

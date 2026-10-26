@@ -83,6 +83,7 @@ REGISTER = {
     "goal_update.builder": SourceRef("services/goal_update.py", "_classify_goal_update"),
     "speaker_memory.system": SourceRef("services/speaker_memory.py", "_SYSTEM"),
     "sunday_note.system": SourceRef("services/sunday_note.py", "_SYSTEM"),
+    "sunday_note.ask": SourceRef("services/sunday_note.py", "_ASK_SYSTEM"),
     "life_goals.draft": SourceRef("services/life_goals.py", "_DRAFT_SYSTEM"),
     "life_goals.redraft": SourceRef("services/life_goals.py", "_REDRAFT_SYSTEM"),
     "life_goals.ask": SourceRef("services/life_goals.py", "_ASK_SYSTEM"),
