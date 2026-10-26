@@ -249,6 +249,13 @@ with this contract, this contract wins.
     praise, instead of a Yes or In-between judgement; the judgements come
     after all the praise and practising, under "Judgement time!". Until the
     walk's switch, 24e is served as written above.
+    **Amended 2026-10-21 (founder, the WIL-32 decision page; decisions log
+    N97; frontend `docs/flows/feedback-walk-and-chat.md` C10):** "Judgement
+    time!" and judging your own moments are no longer in the walk (walk page
+    C10; its §6 dates the change 2026-10-12), and judging your own moments
+    stays out of the walk (N97). The 2026-10-07 amendment above is out of date
+    where it puts the judgements after the praise and practising, under
+    "Judgement time!".
 
 24e-1. **Judgement after feedback** (founder 2026-10-01, F1; Phase 2 of the
     after-practice paths, served only once `JUDGEMENT_AFTER_FEEDBACK_ENABLED`
@@ -272,6 +279,16 @@ with this contract, this contract wins.
     "Judgement time!" asks the judgement of every moment in turn. The coach
     request still rises at the open, under the machine's kind, and the
     judgement still sets its answer kind.
+    **Amended 2026-10-21 (founder, the WIL-32 decision page; decisions log
+    N97, with N86; frontend `docs/flows/feedback-walk-and-chat.md` C10):**
+    inside the walk there is no "Judgement time!", no judging of your own
+    moments and no self-judging of a practice try (walk page C10; the last is
+    on hold, its §3), and judging your own moments stays out of the walk
+    (N97); self-judgement waits for about 50 clips with both answers, then the
+    founder sees the numbers (N86). The 2026-10-07 amendment above is out of
+    date where "Judgement time!" asks the judgement of every moment in turn.
+    What sets the coach request's answer kind inside the walk without that
+    judgement is not said there; see N97.
 
 24f. **On top of that, each Take carries anchored notes**, each attached to
     the item it concerns and never floating free of a Slide. **The caps are
@@ -609,6 +626,15 @@ with this contract, this contract wins.
     never changes project styling already accepted by the user. The Voice
     Album introduction is emitted once per user after the first eligible clip
     and Take 3 completion; it never repeats for later Projects.
+    **Amended 2026-10-21 (founder, the decision page "Docs and Learning
+    Decisions"; decisions log N111 A2, N104):** once a coach's answer is
+    saved, the coach panel shows what the machine heard (frontend
+    `docs/flows/coach-panel.md` D2, E1); on that point this replaces the
+    amendment of 2026-10-06 above (N51). Before the answer the coach sees
+    nothing (CLAUDE.md, Never 2). After the coach's own blind answer, "What
+    happened" shows a last line, "Willfidence", with the moment's willfidence
+    as a whole percent, and no line for a clip with no sound read; it is for
+    the coach only and a speaker never sees it (N104).
 35. Blind peer confidence rating is retained exclusively for internal model
     training and evaluation. It has separate provenance, access, and serving
     rules and has zero authority over user Feedback, key moments, Manager
@@ -878,6 +904,12 @@ How an exercise is chosen for a moment, the whole rule in order: 35g-1.
     Q9); named moments are reported as history only. The audit's No
     answers measure how often it fires falsely. A pattern the audit does
     not sample has no Yes to count and cannot clear the bar.
+    **Amended 2026-10-26 (founder, the Claude Code chat; decisions log N145
+    item 1):** the diagnosis may use the readings still in their silent shadow
+    stage (filler words, hedges, restarts, a flat voice, a quiet voice); the
+    founder checks each new plan for the first weeks. Nothing else is
+    promoted: those readings still route nothing outside the plan. Not built
+    yet (N145).
 35g-4. **The speaker's own history breaks ties** (founder 2026-09-28; steps
     5c and 5d of the whole rule, 35g-1). Among
     exercises of equal fit that cover as much of what was spotted, one for a
@@ -983,6 +1015,14 @@ How an exercise is chosen for a moment, the whole rule in order: 35g-1.
     learned detector is voice-based training and waits for separate voice
     consent and the AI Act opinion; the tuned thresholds run in shadow
     regardless.
+    **Amended 2026-10-21 (founder, the decision page "Docs and Learning
+    Decisions"; decisions log N111 A3):** detector training is on: the
+    founder's "turn it all ON" of 8 October covered it (`config.py`,
+    `DETECTOR_TRAINING_AUTHORISED`), and "the latter off again from
+    2026-10-03" above is out of date on that point (N111 A3 says the same of
+    N29.6). N111 does not say whether "Fitting a learned detector" just above
+    still "waits for separate voice consent and the AI Act opinion"; see N26,
+    N111 A3.
 35g-10. **The coach's block pick** (founder 2026-10-01, C5-b; Phase 8;
     migration 0411; `COACH_BLOCK_PICK_ENABLED`, on from 2026-10-02 (N22),
     off again from 2026-10-03 until it samples every speaker's blocks, N29). On a Take the coach is not
@@ -1065,13 +1105,33 @@ How an exercise is chosen for a moment, the whole rule in order: 35g-1.
     routes the user to an unrelated Chat.
 44. When processing and initial document/feedback preparation succeed, the app
     automatically opens that Project's Ideal Text.
+    **Amended 2026-10-20 (founder, the flow page's first review and the app;
+    decisions log N86, N88, with N110):** the walk opens the moment processing
+    finishes, nothing in between (N86, N88). The waiting screen stays over it
+    until the walk's first step is on screen, or, with nothing to walk, the
+    text (N110, 2026-10-21). The rules: frontend
+    `docs/flows/feedback-walk-and-chat.md` A1, A2.
 45. Takes 1-3 follow Ideal Text -> See next steps -> stage-specific Chat bubble
     -> return to the next recording action. Refresh and reopening preserve the
     state and never repeat setup.
+    **Amended 2026-10-20 (founder, the app; decisions log N89, with N63 Q-B10
+    A):** "See next steps" is removed (N63 Q-B10 A, 2026-10-07). After a Take
+    the walk opens (44); after its summary, with no next step and no record
+    button, the asks come one at a time, each with Will's lead-in, then "Look,
+    practice makes perfect. If you're ready, let's go with the next take. 💪"
+    and "Record Take N" (N89). The rules: frontend
+    `docs/flows/feedback-walk-and-chat.md` D3, D4, E1.
 46. Take 3 completes the guided journey. Take 4+ is optional refinement and
     immediately offers Record again without another See-next-steps loop.
     **Amended 2026-10-05 (founder, decisions log N48.3 Q8 A):** the action
     reads "Record Take N".
+    **Amended 2026-10-24 (founder, the Claude Code chat; decisions log N129,
+    N132, N136):** every speaker is diagnosed and gets a plan (N136); the
+    deadline "sets the schedule by rule from the presentation date and the
+    diagnosis" (N129) and "chooses the journey" (N132), and a speaker who
+    skips the date is given a date two months away (N136). The log does not
+    say how Take 3 or Take 4+ read under a plan; see N129, N136. Not built yet
+    (N129, N136).
 47. Accepted anchors persist across Takes and are never automatically
     replaced. First-time Paragraph/Slide coverage precedes replacement
     optimization. Replacement candidates must independently deserve
