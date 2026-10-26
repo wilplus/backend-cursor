@@ -465,3 +465,16 @@ SPEC_SUNDAY_NOTE = LLMSpec(
 """The Sunday note (Will learning plan step 2, founder 2026-10-20): one case
 in the founder's form from the week's notes, Takes and chat. Founder only;
 read in the Lounge (services.sunday_note)."""
+
+
+SPEC_TEMPO_TOPIC = LLMSpec(
+    model=CHEAP_MODEL,
+    # A name for what the speaker talked about, never a new idea.
+    temperature=0.2,
+    max_tokens=24,
+    timeout_seconds=8.0,
+)
+"""The tempo step's topic (founder 2026-10-26, N162, N166): a few words naming
+what the stretch was about, said back in "Tell me more about {topic}". Code
+keeps it only when it is short and plain (services.tempo_stretch.read_topic);
+else the step says "that part"."""

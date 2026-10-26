@@ -2637,6 +2637,15 @@ test_a_reworded_open_paragraph_keeps_its_id_through_the_snapshot_publish
 O4 -> test_take_two_rewrites_the_edited_slide_and_keeps_the_rest,
 test_an_edit_on_a_slide_take_two_did_not_speak_is_its_last_version,
 test_a_reworded_open_paragraph_keeps_its_id_through_the_snapshot_publish","Never-rule 5; contracts 8, 9, 14, 16 (N29, N48.1 Wave 1)."
+tests/test_tempo_stretch.py,Guard,"The tempo step practises the stretch of the Take the pace scale reads furthest from the green, says whether it ran fast or slow, and names what it was about in a few plain words (founder 2026-10-26, N162, N166).","C1  a Take spoken without a pause no longer picks that clip as rushed
+C2  a Take with long pauses no longer picks that clip as slow
+C3  a Take in the green picking a stretch anyway, so the step shows for nothing
+C4  a topic with a number, a quote or a whole sentence reaching the speaker
+C5  a failed topic call losing the step, instead of saying ""that part""","C1 -> test_a_clip_spoken_without_a_pause_is_rushed
+C2 -> test_a_clip_with_long_pauses_is_slow
+C3 -> test_a_take_in_the_green_has_no_stretch
+C4 -> test_only_a_short_plain_topic_is_kept
+C5 -> test_a_failed_topic_still_gives_the_step","If removed: the tempo step could practise the wrong stretch, or put a number or a made-up sentence on screen (Never 1, Never 4)."
 tests/test_tests_never_touch_a_real_database.py,Guard,The test suite refuses to start against a real Supabase project.,"C1  a `pytest` run in an environment that carries a production SUPABASE_URL
 (founder 2026-10-20: fixture values ""arc-9"", ""owner-1"" reached the live
 database this way) -- it stops before any test module imports.

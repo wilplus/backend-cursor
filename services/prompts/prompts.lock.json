@@ -386,6 +386,11 @@
       "module": "pending",
       "sha256": "822d400f6df1fe551a0d712bc6ad8ae4b90384c5a2f741264bf69023d716d028"
     },
+    "tempo_topic.system": {
+      "kind": "static",
+      "module": "tempo_topic",
+      "sha256": "db306083e922a99b9f0346630fe4fb6ca05d0d53263c666cf9a877219e1a3dc9"
+    },
     "v4_take_tags.system": {
       "kind": "static",
       "module": "v4_take_tags",
