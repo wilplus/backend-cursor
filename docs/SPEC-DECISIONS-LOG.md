@@ -4956,3 +4956,11 @@ right now?".
 The words "History", "Hide history", "Set on {date}" and "＋ Add a goal"
 are signed with this entry.
 The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M15.
+
+**N198 · The password notice says its time in UTC (founder, the Claude Code
+chat, 26 October 2026: "keep UTC in the email").**
+For N190, the email "Your password was changed": the time is written as
+"on 26 October at 16:40 UTC". The prototype had no time zone; the person's
+own zone is not known, and a time without one would be wrong for anyone
+outside UTC. Already so in `services/email_account_security.py`; nothing
+changes. No rules page.
