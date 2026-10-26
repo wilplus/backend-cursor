@@ -101,7 +101,7 @@ Panel, <https://claude.ai/artifact/HaWehtwfg1jzJvGeGM1c24>. The rules are
 frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M.
 
-Built (M1 to M12), founder only (ring row `life_goals`, ring 6):
+Built (M1 to M13), founder only (ring row `life_goals`, ring 6):
 
 - **The ask:** after a # note's "Noted." (typed, voice, or the held note on
   Yes), `life_goals.after_note` writes the two bubbles, the second with the
@@ -126,9 +126,19 @@ Built (M1 to M12), founder only (ring row `life_goals`, ring 6):
   `answer_clash` (`POST /v2/life-goals/<id>/clash`) keeps the answer on
   both ladders as `clashes`, shown as WHEN THEY CLASH; a changed answer
   keeps the earlier one as a dated version (step `clash`).
+- **The quarter comes back (M13, N186):** no clock. The Lounge calls
+  `POST /v2/life-goals/quarter/due` when it opens; `quarter_due` writes
+  "The quarter ends today." (or "The quarter ended on {date}.") and "{emoji}
+  {step}. Did it move?" with the offer `life_goals_quarter`, once per goal
+  and quarter (`quarter.asked`). The quarter's last day is `quarter.on`, or
+  its "31 December" read from the day the goal was made. `answer_quarter`
+  takes Not now | Start; `quarter_notes` returns their own # notes from
+  the quarter that say the same obstacle, most often none;
+  `review_quarter` keeps the outcome in words on `reviews` and sets the
+  next quarter's step, the earlier one kept as a version.
 - **Will reads** the ladders in the chat (`prompt_lines`, inside the
   notebook block).
-- **Not built yet:** M13 (the quarter comes back), M14 (a
+- **Not built yet:** M14 (a
   note that sounds like a change), the ladders in the Life Panel's own
   screens, and this week's focus on the ladder (no source for it yet).
 - Code: `services/life_goals.py`, `routes/v2/life_goals.py`, the store in
