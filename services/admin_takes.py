@@ -11,6 +11,12 @@ Admin only. These numbers never reach a speaker (CLAUDE.md, never #1).
                           100 words before and after), and the person's
                           current acoustic baseline
   pieces(user_id, sid)    one Take's pieces, each with every measure stored
+  transcripts_export(uid) every Take's full transcript, ONLY while the person
+                          holds the training yes (founder 2026-10-26, WIL-110;
+                          the profile's Export CSV; founder-only route)
+
+The Take rows carry a one-line preview of the transcript, never the whole
+text: the full text leaves only through ``transcripts_export``.
 """
 from __future__ import annotations
 
@@ -22,6 +28,9 @@ from services.db import db
 logger = logging.getLogger(__name__)
 
 MAX_TAKES = 200
+
+#: The most characters of a Take's transcript on its row (one line).
+PREVIEW_CHARS = 160
 
 #: Measures stored on each piece's metrics blob that are averaged per Take.
 PIECE_KEYS = ("f0_mean", "f0_sd", "f0_slope", "f0_mid_end_delta", "pause_count", "pause_ratio",
@@ -55,6 +64,29 @@ def _willfidence(pieces: list[dict]) -> Optional[int]:
              for p in pieces]
     heard = [r["value"] for r in reads if r["sound"]]
     return round(100 * sum(heard) / len(heard)) if heard else None
+
+
+def _slide_texts(session: dict, own: list[dict]) -> list[str]:
+    """What the speaker said in this Take, one text per slide: the whole
+    per-slide transcript when the Take holds it, else its pieces in the
+    order they were said."""
+    slides = session.get("slide_transcripts")
+    texts = [str(s.get("transcript") or "").strip() for s in slides if isinstance(s, dict)] \
+        if isinstance(slides, list) else []
+    texts = [t for t in texts if t]
+    if texts:
+        return texts
+    ordered = sorted(own, key=lambda p: _num(p.get("start_offset_ms")) or 0)
+    return [t for t in (str(p.get("transcript") or "").strip() for p in ordered) if t]
+
+
+def _preview(texts: list[str]) -> str:
+    """The transcript as one line of at most PREVIEW_CHARS, cut at a word."""
+    flat = " ".join(" ".join(texts).split())
+    if len(flat) <= PREVIEW_CHARS:
+        return flat
+    cut = flat[:PREVIEW_CHARS]
+    return (cut[: cut.rfind(" ")] if " " in cut else cut) + "…"
 
 
 def _projects(ids: set[str]) -> dict[str, str]:
@@ -112,6 +144,7 @@ def takes(user_id: str) -> dict:
                 "pitch_center": s.get("global_pitch_center"), "energy": s.get("global_energy"),
                 "kpi_score": s.get("kpi_score"),
             },
+            "transcript": _preview(_slide_texts(s, own)),
             "piece_means": _piece_means(own),
             "willfidence": _willfidence(own),
             "ai_clip": clips.get(str(s["id"])),
@@ -148,3 +181,37 @@ def pieces(user_id: str, session_id: str) -> Optional[list[dict]]:
             "metrics": {k: v for k, v in (p.get("metrics") or {}).items() if k != "intensity_envelope"},
         })
     return out
+
+
+def transcripts_export(user_id: str) -> dict:
+    """Every Take's full transcript for the profile's CSV, only while this
+    person holds the training yes (Privacy 3.7 section 4: the person who runs
+    WillpowerLab may see transcripts, but the policy names no export of them,
+    so the file carries only what the speaker said yes to for learning).
+
+    ``{"allowed": False, "transcripts": {}}`` without the yes, and on any
+    doubt: an unreadable consent, an unreadable project state. A project the
+    speaker erased or archived is left out, as in Will's own lookup. The
+    text is keyed by Take id; the caller logs the release.
+    """
+    from services import pair_consent
+    from services.project_deletion import ProjectDeletionService
+    refused: dict = {"allowed": False, "transcripts": {}}
+    if not pair_consent.user_holds_training_yes(db, user_id):
+        return refused
+    sessions = db.takes.list_sessions_for_user_admin(user_id)[:MAX_TAKES]
+    try:
+        arcs = {str(s["arc_id"]) for s in sessions if s.get("arc_id")}
+        service = ProjectDeletionService(db)
+        hidden = service.erased_projects(arcs) | service.archived_projects(arcs)
+    except Exception:
+        logger.warning("admin transcripts: project state unreadable user=%s", user_id, exc_info=True)
+        return refused
+    kept = [s for s in sessions if str(s.get("arc_id") or "") not in hidden]
+    pieces = db.get_snippets_by_sessions([s["id"] for s in kept])
+    out = {}
+    for s in kept:
+        texts = _slide_texts(s, pieces.get(str(s["id"])) or [])
+        if texts:
+            out[str(s["id"])] = "\n".join(texts)
+    return {"allowed": True, "transcripts": out}
