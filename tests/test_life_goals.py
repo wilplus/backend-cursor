@@ -27,6 +27,10 @@ OUTCOME
       opened later, "The quarter ended on …"; the review keeps how it went
       in words, quotes only notes that match, and sets the next quarter's
       step with the earlier one kept (N186).
+  O8  A note that says the quarter should be different is asked about once,
+      under its Noted., quoting it: Change writes the step with the earlier
+      words kept, Not now changes nothing; words not in the note ask
+      nothing (N187).
 PROVES   O1 -> test_the_ask_comes_after_the_first_note_and_once_more_after_not_now
          O2 -> test_the_draft_quotes_only_my_words
          O3 -> test_a_set_goal_posts_its_ladder_and_keeps_the_one_it_replaces
@@ -34,6 +38,7 @@ PROVES   O1 -> test_the_ask_comes_after_the_first_note_and_once_more_after_not_n
          O5 -> test_asking_in_my_own_words_opens_the_lens
          O6 -> test_a_clash_is_asked_once_and_kept_on_both_ladders
          O7 -> test_the_quarter_comes_back_on_its_last_day
+         O8 -> test_a_note_that_sounds_like_a_change_asks_first
 WHY      Will learning plan, step 3 (founder 2026-10-26, N172: "build the
          life goals now"; rules in the frontend flow page §1 M).
 """
@@ -68,6 +73,9 @@ class _Db:
         return True
 
     def list_voice_notes(self, user_id, limit=20):
+        if limit == 1:
+            note = getattr(self, "note", None)
+            return [{"text_clean": note, "created_at": "2026-11-05T08:00:00"}] if note else []
         return [{"text_clean": "Too many late calls again.", "created_at": "2026-11-12T08:00:00"},
                 {"text_clean": "Lovely walk.", "created_at": "2026-11-20T08:00:00"}]
 
@@ -287,3 +295,32 @@ def test_the_quarter_comes_back_on_its_last_day(store, monkeypatch):
 
     rows = lg.quarter_due(db, "u", date(2027, 4, 2))
     assert rows[0]["body"] == "The quarter ended on 31 March."
+
+
+def test_a_note_that_sounds_like_a_change_asks_first(store, monkeypatch):
+    db = _Db()
+    goal = lg.save_draft("u", None, "career", CAREER)
+    lg.finish(db, "u", goal["id"])
+    db.note = "Honestly, five teams is more realistic for this quarter"
+    _model(monkeypatch, {"goal": 1, "text": "five teams",
+                         "quote": "five teams is more realistic for this quarter"})
+    rows = lg.after_note(db, "u")
+    assert [r["body"] for r in rows] == [
+        "Change 💼 this quarter to “Five teams”?",
+        "Now: Ten paying teams. From your note: “five teams is more realistic for this quarter”"]
+    assert rows[1]["metadata"]["offer"] == lg.CHANGE_OFFER
+    assert store.goals[goal["id"]]["ladder"]["quarter"]["text"] == "Ten paying teams."  # never by itself
+
+    lg.answer_change(db, "u", goal["id"], "change")
+    assert db.bodies()[-3:-1] == ["Change", "Noted. 💼 This quarter is now “Five teams”. "
+                                            "“Ten paying teams” stays in its history."]
+    assert store.goals[goal["id"]]["ladder"]["quarter"]["text"] == "Five teams."
+    assert store.versions[-1]["before_text"] == "Ten paying teams."
+    with pytest.raises(lg.GoalsError):
+        lg.answer_change(db, "u", goal["id"], "change")  # asked once
+
+    db.note = "Twenty teams would be great someday"
+    _model(monkeypatch, {"goal": 1, "text": "thirty teams", "quote": "Twenty teams"})
+    assert lg.after_note(db, "u") == []  # words not in the note ask nothing
+    _model(monkeypatch, {"goal": None, "text": "", "quote": ""})
+    assert lg.after_note(db, "u") == []
