@@ -4,7 +4,9 @@
   GET  /v2/notebook/state    {enabled, consented, max_seconds}
   POST /v2/notebook/ask      the question before the first note, in the thread
   POST /v2/notebook/consent  {choice: yes | not_now}
-  POST /v2/notebook/notes    multipart: audio (≤ 5 min), duration_ms
+  POST /v2/notebook/notes    multipart: audio (≤ 5 min), duration_ms, key
+  POST /v2/notebook/live     multipart: audio, a few seconds → {text} (N194)
+  POST /v2/notebook/fix      {client_id, text}: a voice note's words fixed
   POST /v2/notebook/sunday/<id>/pattern    {choice: old | new}
   POST /v2/notebook/sunday/<id>/principle  {choice: add | not_now}
 
@@ -24,7 +26,7 @@ from auth import require_auth
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import phase1_provider_route
 from services.db import db
-from services.rate_limits import llm_limit
+from services.rate_limits import live_note_limit, llm_limit
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +116,8 @@ def v2_notebook_note():
         messages = add_voice_note(
             db, user_id, _adapter(user_id), upload.read(),
             filename=upload.filename or "note.webm",
-            content_type=upload.mimetype or "audio/webm", duration_ms=duration)
+            content_type=upload.mimetype or "audio/webm", duration_ms=duration,
+            key=request.form.get("key"))
         return jsonify({"messages": messages + _goals_after_note(user_id)}), 200
     except NotebookError as e:
         return _error(e)
@@ -122,6 +125,48 @@ def v2_notebook_note():
         logger.error("voice note failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to keep the note"}), 500
+
+
+@v2_bp.route("/notebook/live", methods=["POST"])
+@phase1_provider_route
+@live_note_limit
+@require_auth
+def v2_notebook_live():
+    """The words so far of a note being said (N194); nothing is kept."""
+    from services.voice_notebook import NotebookError, enabled, preview
+    user_id = str(request.user_id)
+    if not enabled(db, user_id):
+        return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
+    upload = request.files.get("audio")
+    if upload is None:
+        return jsonify({"code": "EMPTY_AUDIO", "error": "No audio."}), 400
+    try:
+        text = preview(db, user_id, _adapter(user_id), upload.read(),
+                       filename=upload.filename or "piece.webm")
+        return jsonify({"text": text}), 200
+    except NotebookError as e:
+        return _error(e)
+    except Exception as e:
+        logger.warning("live note piece failed: %s", e, exc_info=True)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to hear the piece"}), 500
+
+
+@v2_bp.route("/notebook/fix", methods=["POST"])
+@require_auth
+def v2_notebook_fix():
+    """A voice note's words fixed by the person (N194)."""
+    from services.voice_notebook import NotebookError, fix_note
+    body = request.get_json(silent=True) or {}
+    try:
+        row = fix_note(db, str(request.user_id), str(body.get("client_id") or ""),
+                       str(body.get("text") or ""))
+        return jsonify({"messages": [row]}), 200
+    except NotebookError as e:
+        return _error(e)
+    except Exception as e:
+        logger.error("voice note fix failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to keep the words"}), 500
 
 
 def _sunday(answer, note_id):
