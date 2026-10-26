@@ -44,6 +44,7 @@ For coding agents, first: [`CLAUDE.md`](CLAUDE.md) (and [`AGENTS.md`](AGENTS.md)
    - [The consent screens and the Data & consent page](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
    - [The AI version of your voice in practice](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md)
    - [The plan: from the first questions to the deadline](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md), the one page for the diagnosis and the plan (N129 to N178), a rules page, locked once its first part is built (N178) · Founder-Approved: the Claude Code chat, 26 October 2026, "Okay", to the plan having its own flow page (N160)
+   - [The principles: the Sunday note and life goals](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md), a ring 6 feature apart from the speaking coach (N182) · Founder-Approved: the Claude Code chat, 26 October 2026, "Own page, ring 6", to the principles having their own flow page (N182)
 5. [Learning and the label quorum](docs/LEARNING-AND-QUORUM.md): what the app learns from and how a label settles.
 6. [The signed line bank](docs/SIGNED-line-bank-2026-10-06.md): the signed words a speaker may see.
 

@@ -4527,3 +4527,44 @@ The rules and the words: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §1 K and §2 "Tempo". Who sees the step is unchanged: the founder, and whoever
 the rings panel's `tempo_step` row reaches. Docs only. No migration.
+
+**N181 · The Sniper is the walk's pace step, for speakers with a plan or
+without one (founder, the Claude Code chat, 26 October 2026: "Sniper should
+be a part of the feedback walk as one of the interventions available for
+existing users", then, asked, "The pace step, as built" and "When the Take
+needs it").** For N127, N129, N162, N166 and N179:
+1. "The Sniper", the founder's name for the pace exercise in N129, is the
+tempo step: one of the Feedback walk's interventions, right after the
+practise moments, up to three tries, with a Skip (N162, N166, N178 item 3),
+in the words of N179. The old Strength/Pace dartboard stays retired (N127).
+2. A speaker with a plan gets it in a pace or pause week (N162). A speaker
+without a plan, as every speaker has today, gets it from Take 2 whenever the
+pace scale finds a stretch outside the green (N166 item 1), once in that
+walk; with no such stretch, there is no step.
+3. It reaches people through the rings panel's `tempo_step` row: the ring is
+widened, then turned on for everyone. Until then, the founder and whoever
+the ring reaches, as today.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§2 "Tempo". No migration in this entry.
+
+**N182 · The principles are their own feature, ring 6, not the speaking
+coach (founder, the Claude Code chat, 26 October 2026: "the principles is a
+ring 6 separate feature not a speaking coach but a reflection and cohesion
+tool for a deeper grounding and relaxation and identity based motivation to
+be a principled man woman", then, asked, "Own page, ring 6").**
+1. The principles, the Sunday note that suggests them (N158, N170) and life
+goals (N172), with the voice notebook's # notes they read, are one feature: a
+reflection and cohesion tool for grounding, calm and identity-based
+motivation, to live as a principled man or woman. It is not the speaking
+coach.
+2. Ring 6: the founder only, through the rings panel's rows
+(`voice_notebook`, `life_goals`), until the founder widens them.
+3. The Feedback walk, the plan, the coach panel and a Take's feedback and
+summary never read or show the principles, the Sunday note or life goals.
+4. In the app they stay where they are decided: the Sunday note and life
+goals in the Lounge and their lens, the principles in the Life Panel.
+5. Their rules move to their own frontend flow page,
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md),
+out of the walk's page; L and M keep their letters there, so N158, N170 and
+N172 still point at the right rules. No migration.
