@@ -4085,3 +4085,26 @@ words wait for the founder's OK (Never 4). The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 E2. Drawn on the prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>
 (version 20). No migration.
+
+**N165 · The booking's WhatsApp reminder goes 10 minutes before (founder, the
+Claude Code chat, 26 October 2026, on WIL-106 "Implement booking notifications
+& practice reminders": "10 min, replacing 1 hour" and "Keep N155: not now", to
+two questions).** For N144 and N155:
+1. A booking's WhatsApp reminder goes 10 minutes before, in place of 1 hour
+before: "Your session with Artur Willoński starts in 10 minutes. Join on
+Google Meet: {link}". Meta's template for it (category Utility) carries these
+words, with {{1}} for the link. The calendar invite's alarm moves to 10
+minutes before too.
+2. The line under the booking form's WhatsApp field reads "We'll confirm your
+time here and remind you 10 minutes before." This changes N144 item 1 and the
+form's "We'll confirm your time here."
+([frontend-cursor#962](https://github.com/wilplus/frontend-cursor/pull/962),
+which cited N145; no entry had dropped the reminder).
+3. Booking needs a signed-in account (email or Google, N144 item 1), so every
+booking has an email and gets the calendar invite by email; the WhatsApp
+messages come on top when a number is left. A booking without an email does
+not exist, so it needs nothing built.
+4. The practice-day reminder stays out for now (N155).
+The words are signed (Never 4). Before the code merges, Meta approves the new
+template and `WHATSAPP_BOOKING_REMINDER_TEMPLATE` names it on Railway. No
+migration.
