@@ -4113,3 +4113,45 @@ template, `WHATSAPP_BOOKING_REMINDER_TEMPLATE` names it on Railway, and the
 reminders' cron service runs there every 5 minutes
 (`bin/railway-booking-reminders-cron.sh`, with `BOOKING_REMINDER_SECRET` on
 it and on the web service). No migration.
+
+**N167 · The practice day: "Record Take N" inside a bubble, the card closed
+(founder, the Claude Code chat, 26 October 2026, on the practice day's
+screen: "After the plan, I would not want to have the record second take.
+I'd like to have a bubble that shows an encouragement message ... with the
+button inside", then "You have my OK" to the eight points of the design
+audit and their words).** For N140, N157, N161 and N164, on a practice day in
+the Lounge:
+1. After the plan card, one grey bubble, drawn as the app's closing message
+is today (N89), with "● Record Take N" inside, under its words: "Today, one
+thing: say your key line a little slower than the rest. You've got this 💪"
+(the wedding toast: "take a breath before your key line"; a speaker's own
+case: "give your key line a little more room"). The chat has one record
+button, in the newest bubble: the previous Take's closing message keeps its
+words and gives its button up, and a line written after it (a booking) moves
+the bubble below. The last practice and the next plan show the same bubble
+with N89's signed closing line. No "Start a new project" under it: the "+"
+next to "Type here" opens the projects, as today.
+2. On a practice day the card is closed: "This week's level", the level, its
+line with the speaker's recording, "Why this line?", the bar. "See your
+plan" opens the list and "Change your plan". Will's hello, the card and the
+record button fit on the first screen.
+3. Progress has one unit. Will says "Today is practice {n} of {total}." with
+no level (the card names it), and the card shows the bar. "Week {n} of
+{weeks}" goes; "{n} of {total} practices done. Next: {day}." stays only
+after the Take, on the walk's end sheet.
+4. No "Ready by {date}" heading on any plan card: the deadline is the orange
+line in the list (N164), in one date format.
+5. A call not booked yet reads "Book", a link that opens the same calendar in
+the footer (N161), in place of "(not booked yet)"; then "Booked: {when}."
+6. Text colours read on white (4.5:1): the deadline's orange #C2410C, a
+booked time's green #1F7A4A, the grey #737373.
+7. "How you said it" plays from a small grey button, so the record button is
+the strongest action on the screen.
+8. Every link (Why this line?, See your plan, Change your plan, Book) has a
+fingertip's tap area; the text keeps its size.
+Signed (Never 4): "This week's level", "See your plan", "Book" in the list,
+the three "Today, one thing" lines and "Today is practice {n} of {total}."
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+E and G. Drawn on the prototype <https://claude.ai/artifact/ApK5fCkbc55aVN4iYQLdcn>
+(version 24). No migration.
