@@ -281,19 +281,16 @@ def _rebake_for_speaker(database: Any, request: dict) -> None:
 
 
 def _tell_the_speaker(database: Any, request: dict) -> None:
-    """This save shared the answer (a first share, or a share again after the
-    coach changed it): the speaker gets the WhatsApp and the email, as for
-    the Take's word (founder 2026-10-14: any message the coach shares).
-    Best-effort, off the coach's request."""
+    """This save shared the answer for the first time: it counts towards the
+    one WhatsApp or email the speaker gets once the coach is done, as the
+    Take's word does (N171, ``coach_feedback_notice``). Best-effort, off the
+    coach's request."""
     try:
-        from services.coach_feedback_email import send_coach_feedback_email_in_background
-        from services.whatsapp_notify import notify_coach_feedback_in_background
-        notify_coach_feedback_in_background(database, request.get("owner_user_id"),
-                                            request.get("take_session_id"))
-        send_coach_feedback_email_in_background(
-            database, take_session_id=request.get("take_session_id"), moments=1)
+        from services.coach_feedback_notice import coach_shared
+        coach_shared(database, user_id=request.get("owner_user_id"),
+                     take_session_id=request.get("take_session_id"), moments=1)
     except Exception as e:  # noqa: BLE001 -- the answer is saved either way
-        logger.info("coach answer whatsapp skipped request=%s: %s", request.get("id"), e)
+        logger.info("coach answer notice skipped request=%s: %s", request.get("id"), e)
 
 
 def _authored_for_this_moment(request: dict, resolution: str,

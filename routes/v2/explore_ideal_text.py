@@ -481,6 +481,28 @@ def v2_explore_arc_review_tempo(arc_id, take_session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to read the tempo step"}), 500
 
 
+@v2_bp.route("/explore/arc/<arc_id>/review/tempo/<take_session_id>", methods=["POST"])
+@require_auth
+def v2_explore_arc_review_tempo_tries(arc_id, take_session_id):
+    """The tempo game as played (founder 2026-10-26, N166 step 4), kept for
+    Will. Body: {reading, tries: [{result, path}], close}. 200 {kept: true}
+    · 400 · 404 · 500"""
+    from services.tempo_stretch import keep_tries
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        take = str(take_session_id)
+        if not owned or take not in {str(s.get("id")) for s in _completed_spoken_sessions(sessions)}:
+            return jsonify({"code": "NOT_FOUND", "error": "take not found"}), 404
+        if not keep_tries(db, user_id=str(request.user_id), take=take,
+                          body=request.get_json(silent=True) or {}):
+            return jsonify({"code": "INVALID", "error": "the tempo game is not whole"}), 400
+        return jsonify({"kept": True}), 200
+    except Exception as e:
+        logger.error("review tempo tries failed arc=%s: %s", arc_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to keep the tempo game"}), 500
+
+
 @v2_bp.route("/explore/arc/<arc_id>/feedback-check", methods=["POST"])
 @require_auth
 def v2_explore_arc_feedback_check(arc_id):

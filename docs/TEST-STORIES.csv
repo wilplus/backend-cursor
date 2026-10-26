@@ -515,6 +515,18 @@ removed from the list of moments.","O1 -> test_transcript_is_released_only_after
 test_redaction_withholds_unanswered_transcript_from_the_payload
 O2 -> test_acoustic_features_are_released_only_after_a_committed_answer
 O3 -> test_the_allowlist_still_drops_everything_that_judges_the_speaker",Never-rule 2 (N1): no coach sees the machine's guess before answering.
+tests/test_coach_feedback_notice.py,Story,"As a speaker, I want one message when my coach is done with my Take, not one for every answer, so that my phone buzzes once and only when I have not already seen it.","O1  A coach who leaves a word and answers four moments sends one message,
+after the last share, naming the Take of the last share; the job of
+an earlier share sends nothing, and a job that runs twice sends once.
+O2  With a WhatsApp number the WhatsApp goes and no email; without one
+the email goes, counting every moment the coach answered.
+O3  A speaker who opened the coach's feedback before it was due (the
+orange dot cleared) gets nothing.
+O4  A later sitting counts only its own moments.","O1 -> test_a_sitting_sends_one_message_after_the_last_share
+O2 -> test_a_sitting_sends_one_message_after_the_last_share,
+test_without_a_number_one_email_counts_every_moment
+O3 -> test_nothing_goes_when_the_speaker_already_opened_it
+O4 -> test_a_later_sitting_counts_only_its_own_moments","Founder 2026-10-26, N171 items 3 and 4 and N174 item 2: ""Today, if a coach answers 5 moments and leaves a note, the speaker's phone buzzes 6 times and 6 emails arrive."""
 tests/test_coach_founder_closes_moments.py,Story,"As the founder, I want to delete a speaker's waiting moments from the coach queue, so that the queue holds only moments worth a coach's ear.","O1  A closed moment leaves every coach's queue and stops counting as
 waiting; the reach alarm still hears the Take.
 O2  Delete closes exactly what the speaker's row counts as waiting (never
@@ -2658,11 +2670,15 @@ tests/test_tempo_stretch.py,Guard,"The tempo step practises the stretch of the T
 C2  a Take with long pauses no longer picks that clip as slow
 C3  a Take in the green picking a stretch anyway, so the step shows for nothing
 C4  a topic with a number, a quote or a whole sentence reaching the speaker
-C5  a failed topic call losing the step, instead of saying ""that part""","C1 -> test_a_clip_spoken_without_a_pause_is_rushed
+C5  a failed topic call losing the step, instead of saying ""that part""
+C6  a played tempo game no longer kept for Will, or kept with a number in his note
+C7  a broken or partial game kept as if it were whole","C1 -> test_a_clip_spoken_without_a_pause_is_rushed
 C2 -> test_a_clip_with_long_pauses_is_slow
 C3 -> test_a_take_in_the_green_has_no_stretch
 C4 -> test_only_a_short_plain_topic_is_kept
-C5 -> test_a_failed_topic_still_gives_the_step","If removed: the tempo step could practise the wrong stretch, or put a number or a made-up sentence on screen (Never 1, Never 4)."
+C5 -> test_a_failed_topic_still_gives_the_step
+C6 -> test_a_played_game_is_kept_for_will_in_words
+C7 -> test_a_partial_game_is_not_kept","If removed: the tempo step could practise the wrong stretch, or put a number or a made-up sentence on screen (Never 1, Never 4)."
 tests/test_tests_never_touch_a_real_database.py,Guard,The test suite refuses to start against a real Supabase project.,"C1  a `pytest` run in an environment that carries a production SUPABASE_URL
 (founder 2026-10-20: fixture values ""arc-9"", ""owner-1"" reached the live
 database this way) -- it stops before any test module imports.
@@ -3084,9 +3100,11 @@ flagged as stuck, released and re-queued once.",O1 -> SweeperRecoversTheWedgedJo
 tests/test_whatsapp_number.py,Story,"As a speaker, I want to save my WhatsApp number and get one message when my coach first shares feedback, so that I know feedback arrived without spam.","O1  A valid number is saved in international form; a number without a
 country code is refused and nothing is written.
 O2  I can read my number back and remove it.
-O3  A coach's first share sends one WhatsApp message (with the brand
-image when the template has one); editing a shared note or having
-WhatsApp switched off sends nothing.
+O3  A coach's first share, told at once when there is no queue to wait
+on, sends one WhatsApp message (with the brand image when the
+template has one); editing a shared note or having WhatsApp switched
+off sends no WhatsApp. (Waiting for the coach to be done:
+tests/test_coach_feedback_notice.py.)
 O4  When WhatsApp refuses a message, the log names its reason.","O1 -> WhatsAppNumberRouteTest::test_a_valid_number_is_saved_in_e164,
 WhatsAppNumberRouteTest::test_a_number_without_country_code_is_refused
 O2 -> WhatsAppNumberRouteTest::test_the_number_reads_back_and_can_be_removed

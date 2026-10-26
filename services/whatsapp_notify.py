@@ -1,9 +1,10 @@
 """WhatsApp: "the feedback from your coach is in" (founder 2026-10-12).
 
 The speaker leaves a phone number in the Lounge's second footer offer (after
-"Add to home screen"). Each message a coach shares (their word for a Take,
-or their answer on one moment; founder 2026-10-14) sends the speaker one
-WhatsApp message beside the Lounge bubble. It carries
+"Add to home screen"). Once the coach is done sharing (their word for a
+Take, or their answers on moments), the speaker gets one WhatsApp message
+beside the Lounge bubble (N171; when and to whom: ``coach_feedback_notice``).
+It carries
 no speaker content and no score (AC-9): only that feedback is in, and the
 link to the app.
 
@@ -19,7 +20,6 @@ from __future__ import annotations
 
 import logging
 import re
-import threading
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 from urllib.parse import quote
@@ -281,16 +281,3 @@ def notify_coach_feedback_in(database: Any, user_id: Optional[str],
                      user_id, type(e).__name__)
         return False
 
-
-def notify_coach_feedback_in_background(database: Any, user_id: Optional[str],
-                                        take_session_id: Optional[str] = None) -> None:
-    """The same, off the coach's request so Meta never slows the save."""
-    if not user_id:
-        return
-    if not Config.WHATSAPP_NOTIFICATIONS:
-        _log.info("whatsapp: WHATSAPP_NOTIFICATIONS is off, nothing sent")
-        return
-    threading.Thread(target=notify_coach_feedback_in,
-                     args=(database, str(user_id),
-                           str(take_session_id) if take_session_id else None),
-                     name="whatsapp-coach-feedback", daemon=True).start()
