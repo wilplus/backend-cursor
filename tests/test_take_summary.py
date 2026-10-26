@@ -78,6 +78,11 @@ class _Db:
             self.rows.setdefault(m["client_id"], m)
         return [self.rows[m["client_id"]] for m in messages]
 
+    def first_coach_update_bubble(self, user_id, take):
+        bubbles = [r for r in self.rows.values() if (r.get("metadata") or {}).get("coach_update")
+                   and r["metadata"].get("take_session_id") == take]
+        return min(bubbles, key=lambda r: r["client_created_at"], default=None)
+
 
 # Who it is for and what it asks are known: Will has no question after these
 # Takes (services/will_question.py), so the asks here are the app's own.
@@ -172,6 +177,12 @@ def test_a_coach_word_shared_after_the_review_is_its_own_bubble(monkeypatch):
     assert msg["body"] == "Your coach\nBreathe before the price."
     take_summary.coach_update_message(db, **word)
     assert len(db.rows) == 3  # one update, stored once; the summary and the closing message
+    # A changed word is an edit, not a new message (N192): it takes the first
+    # bubble's place in the thread, marked edited, and never lands at the bottom.
+    changed = take_summary.coach_update_message(db, **dict(word, text="Breathe, then say the price."))
+    assert changed["body"] == "Your coach\nBreathe, then say the price."
+    assert changed["client_created_at"] == first["client_created_at"]
+    assert changed["metadata"]["edited"] is True and "edited" not in first["metadata"]
 
 
 def test_the_summary_knows_the_talk_and_asks_for_whatsapp_once(monkeypatch):

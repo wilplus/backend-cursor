@@ -77,16 +77,17 @@ def test_the_coach_s_word_is_new_until_watched_and_again_after_a_new_video(monke
                         lambda ref: f"signed-{ref}")
     db = _Db()
     first = _message(db)
-    assert first["unseen"] is True
+    assert first["unseen"] is True and first["edited"] is False
     assert set(first) == {"text", "video_url", "take_index", "published_at",
-                          "take_session_id", "unseen"}
+                          "take_session_id", "unseen", "edited"}
 
     db.seen = {TAKE: "2026-10-19T11:00:00+00:00"}
     assert _message(db)["unseen"] is False
 
     db.word.update(video_ref=None, updated_at="2026-10-19T12:00:00+00:00")
     again = _message(db)
-    assert again["unseen"] is True and again["video_url"] is None
+    # Changed after it was first shared: new again, and "Edited" in the walk (N192).
+    assert again["unseen"] is True and again["video_url"] is None and again["edited"] is True
     assert again["text"] == "Breathe before the price."
 
 
