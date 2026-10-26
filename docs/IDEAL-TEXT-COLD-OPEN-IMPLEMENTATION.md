@@ -2,7 +2,7 @@
 
 > **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
 
-Status: locally implemented and verified; not yet migrated or deployed.
+Status: built (f7309ac8, 2026-09-01); its migration is in the manifest as 0315 (`add_ideal_text_core_snapshot.sql`). (Corrected by the docs audit, 2026-10-26; it said "not yet migrated or deployed".)
 
 ## Contract
 

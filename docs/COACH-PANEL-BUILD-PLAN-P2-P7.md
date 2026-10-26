@@ -1,6 +1,6 @@
 # The coach panel redesign · build plan P2 to P7
 
-> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+> **Label: History** · kept as written, because the rules or the code still name it. Out of date: a build plan the coach panel's rules page replaced (frontend docs/flows/coach-panel.md). Every doc and its label: [`README.md`](../README.md) (N106).
 
 Written 2026-10-07 (build plan D-CP-1). It turns the locked coach panel
 ([`docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md); prototype

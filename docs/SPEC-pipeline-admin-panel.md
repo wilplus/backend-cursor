@@ -2,7 +2,7 @@
 
 > **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
 
-**Status:** DESIGN, awaiting founder review. Nothing here is built.
+**Status:** built in #371 (2026-08-10); its routes were removed in #504 (2026-09-15). What is left in the code is `services/pipeline_health.py`. (Corrected by the docs audit, 2026-10-26; it said "Nothing here is built".)
 **Spans both repos:** backend routes + services here, BFF and UI in
 `frontend-cursor`.
 
