@@ -4900,20 +4900,23 @@ transcription provider under the processing-authorization path, and is not
 kept. No migration.
 The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 B.
 
-**N195 · Data & consent is called "Settings" (founder, the Claude Code chat,
-26 October 2026: "in the hamburger change the data & consent to
-'settings'", then, asked whether the page's title and the recording
-screen's line should match, "yes change it to “Settings”").**
-1. The ☰ menu's row that opens `/account/data-consent` reads **Settings**.
-It stays orange on light orange while you are on the page (ST1 A).
-2. The page's title reads **Settings**, and so does the link to it on the
-screen for an account being deleted, which shows the page's title.
-3. The recording screen's line after the consent was withdrawn reads
-"Recording is off because you withdrew your consent. You can turn it back on
-in Settings."
-4. Will's map of the app names the page Settings, so the chat sends people
-to the name the menu shows.
-5. The address stays `/account/data-consent`, and the documents already
-accepted keep their words.
-The rules: frontend [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
-§1, "Amended 2026-10-26: the page is called Settings".
+**N195 · Why the voice notebook exists, said before its first question
+(founder, the Claude Code chat, 26 October 2026: a note before the first
+message, "Look public speaking anxiety sometimes comes from the deeper
+uncertainty about life; We have designed a way to keep your goals in check";
+then "please imagine you are a steve pinker how would you phrase it?" and
+"go with the pinker one").** For N182 and the voice notebook (Will's learning
+plan, step 1): the first time the person taps the mic, before "Your notes are
+private. Only you and Will read them. Keep a voice notebook?", Will says
+three grey bubbles, signed (Never 4):
+1. "The jitters before a talk are often about more than the talk. Underneath
+is a bigger question: where is my life going?"
+2. "So we made a place for your answer: your goals, in your own words."
+3. "A goal you can recall is a goal you can steer by. Keep yours here, and
+when the jitters come back before your next talk, we'll show you what you're
+doing it for."
+Once only, with the question; ring 6 as the notebook (N182). The rules:
+frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+A5 and K; backend [`docs/WILL-LEARNING-PLAN.md`](docs/WILL-LEARNING-PLAN.md) step 1.
+Drawn on <https://claude.ai/artifact/JiF2eoxoaJmnjQYry53LKm> (version 3). Not
+built yet. No migration.
