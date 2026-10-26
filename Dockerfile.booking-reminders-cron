@@ -9,7 +9,8 @@
 #   Variables: BOOKING_BACKEND_URL, BOOKING_REMINDER_SECRET (the same secret
 #   as on the web service)
 #
-# Founder 2026-10-25 (N144): the WhatsApp reminder 1 hour before a booking.
+# Founder 2026-10-26 (N165, N189): the WhatsApp join link 10 minutes before a
+# booking.
 # The backend claims each booking before sending, so a double-fired schedule
 # sends nothing twice.
 FROM curlimages/curl:8.20.0
