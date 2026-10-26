@@ -458,6 +458,29 @@ def v2_explore_arc_review_summary(arc_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to save the summary"}), 500
 
 
+@v2_bp.route("/explore/arc/<arc_id>/review/tempo", methods=["GET"])
+@require_auth
+def v2_explore_arc_review_tempo(arc_id):
+    """The tempo step's stretch for one Take (founder 2026-10-26, N162,
+    N166): ?take_session_id=. 200 {tempo: {reading, topic, said} | null}
+    · 403 a denied permit · 404 · 500"""
+    from services.processing_authorization import ProcessingAuthorizationError
+    from services.tempo_stretch import tempo_for_take
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        take = str(request.args.get("take_session_id") or "")
+        if not owned or take not in {str(s.get("id")) for s in _completed_spoken_sessions(sessions)}:
+            return jsonify({"code": "NOT_FOUND", "error": "take not found"}), 404
+        tempo = tempo_for_take(db, take=take, user_id=str(request.user_id), arc_id=str(arc_id))
+        return jsonify({"tempo": tempo}), 200
+    except ProcessingAuthorizationError:
+        return jsonify({"code": "NOT_AUTHORIZED", "error": "processing not authorized"}), 403
+    except Exception as e:
+        logger.error("review tempo failed arc=%s: %s", arc_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to read the tempo step"}), 500
+
+
 @v2_bp.route("/explore/arc/<arc_id>/feedback-check", methods=["POST"])
 @require_auth
 def v2_explore_arc_feedback_check(arc_id):
