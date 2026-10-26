@@ -1,6 +1,6 @@
 """Life goals (Will learning plan, step 3; founder 2026-10-26, N172: "build
 the life goals now"; rules and words: frontend
-docs/flows/feedback-walk-and-chat.md §1 M).
+docs/flows/principles.md §1 M).
 
 Founder only for now (ring row ``life_goals``, ring 6). Life goals the Dalio
 way, one goal per sitting:

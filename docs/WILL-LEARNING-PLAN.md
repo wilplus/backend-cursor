@@ -47,7 +47,7 @@ composer.
 Lounge "We spotted a pattern!" with Not now | Investigate; in the lens one
 step at a time (the bug, the principle held, the reflection, the new
 principle with Accept or Edit). The rules are frontend
-[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 L. What follows
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 L. What follows
 describes the build of 2026-10-20 until then.
 
 How it works now:
@@ -99,7 +99,7 @@ per sitting in a lens, drafted only from the speaker's words, worked back
 from the horizon to the quarter, the ladder per goal, kept in the Life
 Panel, <https://claude.ai/artifact/HaWehtwfg1jzJvGeGM1c24>. The rules are
 frontend
-[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) §1 M.
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md) §1 M.
 
 Built (M1 to M11), founder only (ring row `life_goals`, ring 6):
 
