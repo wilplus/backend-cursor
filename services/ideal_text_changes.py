@@ -817,6 +817,7 @@ class _ChangesRun:
                          _user_sugs: Any, _changes: list) -> None:
         """The dark frame and what follows it (the V4 draw, the paragraph
         map, the willfidence read), as `_v3_shadow` wrote them inline."""
+        from services.plan_walk import walk_inputs
         from services.take_feedback_policy_v3 import (
             POLICY_VERSION as V3_POLICY_VERSION,
             build_shadow_frame,
@@ -837,6 +838,7 @@ class _ChangesRun:
             take_index=_v3_take_index,
             expected_recording_id=_v3_session.get("recording_id"),
             served_text=self.served_text,
+            **walk_inputs(db, self.user_id, _v3_session),
         )
         if _v3_frame is None:
             return

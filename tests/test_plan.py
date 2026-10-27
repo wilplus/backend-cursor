@@ -16,14 +16,20 @@ OUTCOME
       anything else falls back to the plain template.
   O6  The dates read as the chat writes them ("14 November", "Sat 14 Nov",
       "Tuesday 27 October, 10:00").
+  O7  A Take reaches its level when the check that picked it no longer
+      fires; the next level is the next thing heard, never one the plan
+      already had, else "Make it yours"; a level runs a week, or two in a
+      longer plan, and a plan of two weeks or less keeps one level.
 PROVES   O1 -> test_the_deadline_sets_the_journey
          O2 -> test_practice_count_and_next_day
          O3 -> test_the_level_comes_from_what_was_measured
          O4 -> test_the_key_line_first_and_at_most_three
          O5 -> test_the_ai_question_must_keep_its_template
          O6 -> test_dates_read_as_the_chat_writes_them
+         O7 -> test_a_level_is_reached_on_its_own_check
 WHY      The plan, built one to one with the prototype (founder 2026-10-26,
-         N203, N204); the rules are frontend docs/flows/the-plan.md §1.
+         N203, N204); a level moving on, N134 items 3 and 4, N209; the rules
+         are frontend docs/flows/the-plan.md §1.
 """
 from datetime import date, datetime
 
@@ -98,3 +104,21 @@ def test_dates_read_as_the_chat_writes_them():
     assert plan.fmt_when_short(datetime(2026, 10, 27, 10, 0)) == "Tue 27 Oct, 10:00"
     assert plan.days_text((1, 3, 5)) == "Mon, Wed, Fri"
     assert plan.days_text((5, 1, 3), joined=True) == "Mon, Wed and Fri"
+
+
+def test_a_level_is_reached_on_its_own_check():
+    assert plan.reached("key_line", {"wpm": 150, "key_wpm": 170}) is False
+    assert plan.reached("key_line", {"wpm": 150, "key_wpm": 152}) is True
+    assert plan.reached("key_line", {"wpm": 150}) is None  # the key line wasn't said
+    assert plan.reached("pauses", {"pauses_per_min": 9, "mean_pause_ms": 600}) is True
+    assert plan.reached("make_it_yours", {"wpm": 150}) is None
+    heard = {"pauses_per_min": 2, "fillers_per_min": 6}
+    assert plan.next_level(heard, ["key_line"]) == "pauses"
+    assert plan.next_level(heard, ["key_line", "pauses"]) == "say_once"
+    assert plan.next_level({}, ["pauses"]) == "make_it_yours"
+    assert plan.level_days(SAT, date(2026, 11, 14)) == 7
+    assert plan.level_days(SAT, date(2026, 12, 19)) == 14
+    assert plan.level_days(SAT, date(2026, 11, 3)) is None
+    texts = ["Good morning, everyone.", "The window closes once the incumbents match our price."]
+    assert plan.key_line_at(texts, "The window closes once incumbents match our price") == 1
+    assert plan.key_line_at(texts, "We need two more hires") is None

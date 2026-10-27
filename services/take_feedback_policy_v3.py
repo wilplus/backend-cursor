@@ -694,7 +694,7 @@ def _gate_clearer(block: dict, ranked: list[dict],
 
 def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
                   servability: Optional[_Servability], selections: list[dict],
-                  served_text: Any) -> dict:
+                  served_text: Any, plan: tuple = (None, None)) -> dict:
     """The Take's two shown moments, each its block's best clip (founder
     2026-10-23, N118 and N122, flow page C2 and H1; `services.moment_pick`).
 
@@ -709,13 +709,18 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
     bookmark and its routing name the same clip. Run before coverage and
     routing read the selection.
 
+    On a plan (``plan``, the level and the key line; G7, N209 item 2) the
+    second is where this week's level shows most (`_level_pick`).
+
     Returns ``{"shown": [...], "values": {block_id: willfidence}}``."""
     from services import moment_pick
 
+    showable = [(block, candidate) for block in blocks
+                for candidate in _showable(block, clips, servability)]
     reads = [_moment_read(candidate, block, snippet_map, clips, served_text)
-             for block in blocks
-             for candidate in _showable(block, clips, servability)]
-    picked = moment_pick.pick(reads)
+             for block, candidate in showable]
+    picked = _level_pick(reads, showable, snippet_map, clips, served_text, plan) \
+        or moment_pick.pick(reads)
     if reads and not any(r["read"]["sound"] for r in reads):
         # The words alone picked the moments: say so, so the next Take with
         # no sound read is read from the log, not guessed at (2026-10-17).
@@ -728,6 +733,30 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
     values = {r["candidate_id"]: r["read"]["value"] for r in reads}
     return {"shown": picked["shown"],
             "values": {m["block_id"]: values.get(m["candidate_id"]) for m in picked["shown"]}}
+
+
+def _level_pick(reads: list[dict], showable: list[tuple], snippet_map: dict,
+                clips: dict, served_text: Any, plan: tuple) -> Optional[dict]:
+    """The best moment and the level's (`moment_pick.pick_with_level`), or
+    None when there is no level or no clip shows it: the two best, as
+    today (N134 item 2)."""
+    level, key_line = plan
+    if not level:
+        return None
+    from services import moment_pick, plan_walk
+    rows = [{"candidate_id": candidate["candidate_id"],
+             "word_count": candidate.get("word_count") or 0,
+             "snippet": snippet_map.get(str(candidate["snippet_id"]), {}),
+             "text": _shown_words(candidate, clips, served_text)}
+            for _block, candidate in showable]
+    try:
+        at = plan_walk.level_moment(level, rows, list(snippet_map.values()), key_line=key_line)
+    except Exception as error:  # noqa: BLE001 -- the walk as today
+        logger.warning("plan walk: the level's moment not read level=%s: %s", level, error)
+        return None
+    if at is None:
+        return None
+    return moment_pick.pick_with_level(reads, at, level, plan_walk.practice_kind(level))
 
 
 def _moment_read(candidate: dict, block: dict, snippet_map: dict, clips: dict,
@@ -818,7 +847,9 @@ def _mark_moments(blocks: list[dict], picked: dict,
     for block in blocks:
         _mark_shown(block, shown.get(block["block_id"]), value_of.get(block["block_id"]))
     pool = _gate_exercise(blocks, rewrite_ranked, rewrite_rows)
-    clears = {s["block_id"] for s in picked["shown"] if s["voice_clears"]}
+    # The level's moment is practised whatever its voice (G7, N209 item 2).
+    clears = {s["block_id"] for s in picked["shown"]
+              if s["voice_clears"] and not s.get("plan_level")}
     for block in blocks:
         # The voice exercise is only for a voice under the floor (founder
         # 2026-10-21, N108): a voice that cleared it whose rewrite did not
@@ -854,6 +885,12 @@ def _mark_shown(block: dict, moment: Optional[dict], value: Any) -> None:
     # A praised moment is practised too, with the AI clip of its own words
     # (founder 2026-10-23, N122). A flag, never the score.
     block["confident_practice"] = praised
+    # The moment where this week's level shows most (G7, N209 item 2): the
+    # level's key, a word. Only on that block, so a walk off a plan keeps
+    # its frame as it was.
+    block.pop("plan_level", None)
+    if moment and moment.get("plan_level"):
+        block["plan_level"] = moment["plan_level"]
 
 
 def _gate_exercise(blocks: list[dict],
@@ -1579,8 +1616,17 @@ def build_shadow_frame(
     declined_rewrites: Any = frozenset(),
     frozen_candidate_ids: Any = frozenset(),
     select_servable: bool = False,
+    plan_level: Optional[str] = None,
+    key_line: Any = None,
 ) -> Optional[dict]:
     """Build the complete v3 frame; return None for an unusable Take.
+
+    ``plan_level`` is this week's level when the Take was recorded, for a
+    speaker on a plan (`services.plan_walk.walk_inputs`): one of the two
+    shown moments is then where that level shows most, practised with the
+    level's own intervention (G7, N134 item 2, N209 item 2); ``key_line``
+    the speaker's key line, which that level's moment prefers. Without it,
+    the walk is as today.
 
     ``served_text`` is the Ideal Text the verbal rows' spans address. Without
     it no verbal row can be proven to sit in this Take's words, so every one
@@ -1639,7 +1685,8 @@ def build_shadow_frame(
         recording_id=recording_id, servability=servability, clips=clips,
     )
     picked = _pick_moments(blocks, snippet_map, clips, servability,
-                           confidence_selections, served_text)
+                           confidence_selections, served_text,
+                           plan=(plan_level, key_line))
 
     # THE ONLY PLACE THE REASON LAYER IS OBSERVABLE (24j). Everything else it
     # does is internal ordering that leaves no trace: the failure it can have

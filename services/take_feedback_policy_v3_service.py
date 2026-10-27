@@ -94,6 +94,11 @@ def _block_presentation(block: dict, block_id: str) -> dict:
         # A praised moment is practised with its AI clip (N122). A flag,
         # never the score.
         presentation["confident_practice"] = True
+    if block.get("plan_level"):
+        # The moment where this week's level shows most (G7, N209): the
+        # level's key, from which the walk says "This week's level:
+        # {level}. Here's where it shows:". A word, never a score.
+        presentation["plan_level"] = block["plan_level"]
     return presentation
 
 

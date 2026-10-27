@@ -15,6 +15,10 @@ kind "text"; the app draws a row by its ``metadata``):
     walk's summary is written): the 15 minutes lines on a practice day
     (G13), the last practice's ratings (D1), a new event's questions, and a
     speaker with Takes but no plan asked "When is your deadline?" (A2);
+  * no row, the level on each Take (G10, N209): the level's own check read
+    again on the Take; two in a row that reach it, or its time run out, and
+    the next thing heard becomes the level; three on a level without
+    moving, a ``stuck`` event for the coach's queue (Build 9);
   * the plan's end (I): "Your deadline was …", "How did it go?" by voice,
     the summary call, "What's next?".
 
@@ -300,6 +304,13 @@ def _visit(database: Any, user_id: str, plan: dict, first_name: Optional[str]) -
     deadline = _deadline(plan)
     if deadline and today > deadline:
         return _end(database, user_id, plan, first_name), True
+    try:
+        moved = _level_time(database, user_id, plan, _facts(plan), today)
+    except Exception as error:  # noqa: BLE001 -- the level waits for the next open
+        logger.warning("plan: the level's time not read user=%s: %s", user_id, error)
+        moved = {}
+    if moved:
+        plan = _save(database, user_id, plan, moved)  # today's hello names the new level
     takes = _takes(database, user_id)
     done = _done(plan, takes)
     tz = zone(plan.get("time_zone"))
@@ -603,6 +614,158 @@ def _set_level(database: Any, user_id: str, plan: dict, d: P.Diagnosis) -> Optio
     return d.level
 
 
+# ── the level on each Take (G10; N134 items 3 and 4, N209) ────────────────
+
+def _secs(clip: dict) -> float:
+    try:
+        return max(0.0, float(clip.get("duration_ms") or 0) / 1000.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _number(v: Any) -> Optional[float]:
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def _take_readings(clips: list, key_line: Any, language: Any = None) -> dict:
+    """The diagnosis's readings, read again on a Take's clips (N209 item 1):
+    the pace of all its words and of the clip that says the key line, its
+    pauses, its filler words ("um" and "uh" don't count) and its pitch.
+    Never shown; a reading that can't be read is left out."""
+    clips = [c for c in clips or [] if isinstance(c, dict) and _secs(c) > 0]
+    minutes = sum(_secs(c) for c in clips) / 60.0
+    if minutes <= 0:
+        return {}
+    text = " ".join(str(c.get("transcript") or "") for c in clips)
+    out: dict[str, Any] = {}
+    if text.split():
+        out["wpm"] = round(len(text.split()) / minutes, 1)
+    at = P.key_line_at([c.get("transcript") for c in clips], key_line)
+    if at is not None:
+        said = str(clips[at].get("transcript") or "").split()
+        out["key_wpm"] = round(len(said) / (_secs(clips[at]) / 60.0), 1)
+    out.update(_take_pauses([c.get("metrics") or {} for c in clips], minutes))
+    try:
+        from services.verbal_markers import count
+        out["fillers_per_min"] = round(float(count(text, language=language)["tic"]["strict"]) / minutes, 2)
+    except Exception:  # noqa: BLE001 -- the reading is left out
+        pass
+    flat = _take_flat_pitch([c.get("metrics") or {} for c in clips])
+    if flat is not None:
+        out["flat_pitch"] = flat
+    return out
+
+
+def _take_pauses(metrics: list[dict], minutes: float) -> dict:
+    """Pauses a minute over the Take, and their mean length (each clip's
+    mean weighted by its count)."""
+    counted = [(_number(m.get("pause_count")), _number(m.get("pause_ms"))) for m in metrics]
+    counts = [n for n, _ in counted if n is not None]
+    if not counts:
+        return {}
+    total = sum(counts)
+    out = {"pauses_per_min": round(total / minutes, 2)}
+    weighted = [(n, ms) for n, ms in counted if n and ms is not None]
+    if weighted:
+        out["mean_pause_ms"] = round(sum(n * ms for n, ms in weighted) / sum(n for n, _ in weighted), 1)
+    return out
+
+
+def _take_flat_pitch(metrics: list[dict]) -> Optional[bool]:
+    """A flat voice over the Take: pitch varying less than the diagnosis's
+    line, each clip weighted by its voiced frames; None with too few."""
+    rows = []
+    for m in metrics:
+        mean, sd, frames = _number(m.get("f0_mean")), _number(m.get("f0_sd")), _number(m.get("pitch_frame_count"))
+        if mean and sd is not None and frames:
+            rows.append((frames, sd / mean))
+    frames = sum(f for f, _ in rows)
+    if frames < P.FLAT_PITCH_FRAMES:
+        return None
+    return sum(f * cv for f, cv in rows) / frames < P.FLAT_PITCH_RATIO
+
+
+def _event(database: Any, user_id: str, plan: dict, level: str, reason: str, note: str) -> None:
+    database.insert_plan_level_event({"plan_id": plan["id"], "user_id": str(user_id), "level": level,
+                                      "reason": reason, "by_who": "machine", "note": note})
+
+
+def _run(plan: dict, facts: dict) -> dict:
+    """The current level's run: since when, its Takes and whether each
+    reached it, and whether it was noted stuck. A new level (the machine's
+    or a coach's) starts a new run; the plan's first starts with the plan."""
+    run = dict(facts.get("level_run") or {})
+    if run.get("level") == plan.get("level"):
+        return {**run, "takes": list(run.get("takes") or [])}
+    since = _now().isoformat() if run else (plan.get("started_at") or _now().isoformat())
+    return {"level": plan.get("level"), "since": since, "takes": [], "stuck": False}
+
+
+def _move_level(database: Any, user_id: str, plan: dict, facts: dict, readings: dict,
+                reason: str) -> dict:
+    """The next level: the next thing heard, never one this plan already
+    had (N209 item 3). The speaker just sees it, no words about their voice
+    (N134 item 3)."""
+    had = list(facts.get("levels_had") or [plan.get("level")])
+    nxt = P.next_level(readings, had)
+    _event(database, user_id, plan, nxt, reason,
+           "two Takes in a row reached the level" if reason == "reached" else "the level's time ran out")
+    logger.info("plan: the level moves on user=%s %s -> %s (%s)", user_id, plan.get("level"), nxt, reason)
+    run = {"level": nxt, "since": _now().isoformat(), "takes": [], "stuck": False}
+    return {"level": nxt, "level_by": "machine",
+            "facts": {**facts, "levels_had": had + [nxt], "level_run": run}}
+
+
+def _level_time(database: Any, user_id: str, plan: dict, facts: dict, today: date) -> dict:
+    """A level whose time ran out gives way to the next thing heard on the
+    latest Take (N134 item 3, N209 item 3); with nothing heard yet, it
+    stays. Never a coach's level, never "Make it yours"."""
+    level, deadline, started = plan.get("level"), _deadline(plan), _parse_dt(plan.get("started_at"))
+    if level not in P.PICK_ORDER or plan.get("level_by") == "coach" or not deadline or not started:
+        return {}
+    tz = zone(plan.get("time_zone"))
+    step = P.level_days(started.astimezone(tz).date(), deadline)
+    since = _parse_dt(_run(plan, facts).get("since")) or started
+    readings = facts.get("take_readings")
+    if not step or not readings or (today - since.astimezone(tz).date()).days < step:
+        return {}
+    return _move_level(database, user_id, plan, facts, readings, "time")
+
+
+def _level_on_take(database: Any, user_id: str, plan: dict, facts: dict, today: date) -> dict:
+    """After a Take on an active plan (G10): did it reach the level; two in a
+    row, the next level; three on a level without moving, noted for the
+    coach's queue; then the level's time. Returns the plan's fields to save,
+    ``facts`` among them, or {} when there is nothing to read."""
+    take_id = str(_latest_take(database, user_id).get("id") or "")
+    if not take_id or not plan.get("level") or facts.get("level_take") == take_id:
+        return {}  # each Take is read once, whatever level it moved to
+    run = _run(plan, facts)
+    readings = _take_readings(database.get_snippets_by_session(take_id) or [], facts.get("key_line"))
+    facts = {**facts, "take_readings": readings, "level_take": take_id}
+    machine = plan.get("level_by") != "coach"
+    if facts.get("mode") == "takes" and not facts.get("picked") and machine and readings:
+        # A plan made from Takes starts at "Make it yours" until its next
+        # Take is read (A2): that Take picks its level.
+        d = P.pick_level(readings)
+        facts["picked"] = True
+        if d.level != plan["level"]:
+            _event(database, user_id, plan, d.level, "diagnosis", d.reason)
+            return {"level": d.level, "level_by": "machine",
+                    "facts": {**facts, "levels_had": [d.level], "level_run": {
+                        "level": d.level, "since": _now().isoformat(), "takes": [], "stuck": False}}}
+    level = plan["level"]
+    run["takes"].append({"id": take_id, "reached": P.reached(level, readings)})
+    last = [t.get("reached") for t in run["takes"][-P.REACH_IN_A_ROW:]]
+    if machine and len(last) == P.REACH_IN_A_ROW and all(r is True for r in last):
+        return _move_level(database, user_id, plan, facts, readings, "reached")
+    if level in P.PICK_ORDER and len(run["takes"]) >= P.STUCK_AFTER and not run.get("stuck"):
+        run["stuck"] = True
+        _event(database, user_id, plan, level, "stuck", "three Takes without moving")
+    facts = {**facts, "level_run": run}
+    return _level_time(database, user_id, plan, facts, today) or {"facts": facts}
+
+
 # ── the two calls (F) ──────────────────────────────────────────────────────
 
 def _kickoff_rows(plan: dict) -> list[tuple]:
@@ -804,6 +967,13 @@ def _after_active_take(database: Any, user_id: str, plan: dict) -> list[dict]:
                  _bot(P.COPY["fifteen_2"], f"fifteen2:{today.isoformat()}")]
         fields["done_on"] = today.isoformat()
     facts, new_project = _with_project(database, user_id, facts)
+    try:
+        moved = _level_on_take(database, user_id, plan, facts, today)
+    except Exception as error:  # noqa: BLE001 -- the lines after the Take stand either way
+        logger.warning("plan: the level not read user=%s: %s", user_id, error, exc_info=True)
+        moved = {}
+    facts = moved.pop("facts", facts)
+    fields.update(moved)
     fields["facts"] = facts
     moment = _ratings_due(plan, facts, done)
     if new_project and deadline and plan.get("step") == "done":

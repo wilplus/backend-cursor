@@ -48,7 +48,7 @@ word.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from services import willfidence
 
@@ -117,21 +117,38 @@ def pick(reads: list[dict]) -> dict:
             best_per_block[row["block_id"]] = row
     ranked = sorted(best_per_block.values(), key=_rank)[:SHOWN_LIMIT]
     top = min(ranked, key=_voice_rank) if ranked else None
-    shown = []
-    for row in ranked:
-        clears = _voice_clears(row)
-        words_help = bool(row["read"].get("words_help"))
-        praise = clears and not words_help
-        shown.append({
-            "block_id": row["block_id"],
-            "candidate_id": row.get("candidate_id"),
-            "praise": praise,
-            "kind": None if praise else (
-                EXERCISE_CLEARER if words_help else EXERCISE_VOICE),
-            "highest": row is top,
-            "voice_clears": clears,
-        })
-    return {"shown": shown}
+    return {"shown": [_entry(row, top) for row in ranked]}
+
+
+def _entry(row: dict, top: Optional[dict]) -> dict:
+    clears = _voice_clears(row)
+    words_help = bool(row["read"].get("words_help"))
+    praise = clears and not words_help
+    return {
+        "block_id": row["block_id"],
+        "candidate_id": row.get("candidate_id"),
+        "praise": praise,
+        "kind": None if praise else (
+            EXERCISE_CLEARER if words_help else EXERCISE_VOICE),
+        "highest": row is top,
+        "voice_clears": clears,
+    }
+
+
+def pick_with_level(reads: list[dict], candidate_id: Any, level: str, kind: str) -> dict:
+    """A Take on a plan (N134 item 2, N209 item 2): the Take's best moment,
+    as :func:`pick` reads it, then the moment where this week's level shows
+    most, ``candidate_id``, always practised with the level's own
+    ``kind`` and marked ``plan_level``. When that clip has no read or
+    shares the best moment's block, :func:`pick`, as today."""
+    rows = [row for row in reads if row.get("read")]
+    level_row = next((row for row in rows if row.get("candidate_id") == candidate_id), None)
+    best = min(rows, key=_rank) if rows else None
+    if level_row is None or best is None or best["block_id"] == level_row["block_id"]:
+        return pick(reads)
+    top = min((best, level_row), key=_voice_rank)
+    return {"shown": [_entry(best, top),
+                      {**_entry(level_row, top), "praise": False, "kind": kind, "plan_level": level}]}
 
 
 def best_two(reads: list[dict]) -> list[dict]:

@@ -23,6 +23,14 @@ OUTCOME
       kept in the history.
   O8  Moving the deadline keeps the practices done and counts the ones
       ahead: today's practice, already done, is not counted twice.
+  O9  Two Takes in a row that reach the level start the next thing heard;
+      three Takes on a level without moving are noted for the coach's
+      queue, once; a coach's level is never moved; a level whose time ran
+      out gives way at the next open, and that day's hello names the new
+      level. Nothing about it is said in the chat.
+  O10 A Take's walk reads the level the plan had when the Take was
+      recorded, so it reads the same on every opening; off a plan, or on
+      "Make it yours", the walk is as today.
 PROVES   O1 -> test_without_the_ring_nothing_happens
          O2 -> test_a_new_speaker_is_asked_once
          O3 -> test_no_date_gives_two_months_then_the_voice_message
@@ -31,8 +39,12 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
          O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
          O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
          O8 -> test_moving_the_deadline_keeps_the_practices_done
+         O9 -> test_the_level_moves_on_after_two_takes_that_reach_it
+               test_a_level_whose_time_ran_out_gives_way
+         O10 -> test_a_walk_reads_the_level_of_its_takes_time
 WHY      The plan, built one to one with the prototype (founder 2026-10-26,
-         N203, N204); the rules are frontend docs/flows/the-plan.md §1.
+         N203, N204); a level moving on, N134 items 3 and 4, N209; the rules
+         are frontend docs/flows/the-plan.md §1.
 """
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -56,6 +68,7 @@ class _Db:
     def __init__(self):
         self.plans, self.answers, self.audio, self.events, self.thread = [], [], {}, [], []
         self.takes = _Takes()
+        self.clips = {}
 
     def get_open_plan(self, user_id):
         rows = [p for p in self.plans if p["status"] in ("asking", "active", "ending")]
@@ -93,9 +106,15 @@ class _Db:
         self.audio[answer_id] = audio
         return True
 
+    def get_snippets_by_session(self, session_id):
+        return list(self.clips.get(session_id, []))
+
     def insert_plan_level_event(self, row):
-        self.events.append(row)
+        self.events.append({**row, "created_at": datetime.now(timezone.utc).isoformat()})
         return True
+
+    def list_plan_level_events(self, user_id, plan_id):
+        return [e for e in self.events if e["plan_id"] == plan_id]
 
     def list_user_bookings(self, user_id, *, ids=None, start_at=None):
         return []
@@ -277,3 +296,78 @@ def test_moving_the_deadline_keeps_the_practices_done(db, monkeypatch):
     # One practice done (today's); nine days ahead, every day: 1 + 9.
     assert out["plan"]["every_day"] and out["plan"]["total"] == 10
     assert F.P.practice_number(1, out["plan"]["total"]) == 2
+
+
+FEW_PAUSES = [{"transcript": "We need two more hires this quarter.", "duration_ms": 60000,
+               "metrics": {"pause_count": 1, "pause_ms": 300}}]
+MANY_PAUSES = [{"transcript": "We need two more hires this quarter.", "duration_ms": 60000,
+                "metrics": {"pause_count": 9, "pause_ms": 650}}]
+FILLERS = [{"transcript": "So basically, you know, we basically, you know, need, basically, "
+            "you know, two hires, basically.", "duration_ms": 30000,
+            "metrics": {"pause_count": 6, "pause_ms": 650}}]
+
+
+def _take(db, plan, n, clips):
+    started = datetime.fromisoformat(plan["started_at"])
+    db.takes.rows.append({"id": f"t{n}", "created_at": (started + timedelta(minutes=n)).isoformat(),
+                          "arc_id": "arc-1", "take_index": n})
+    db.clips[f"t{n}"] = clips
+    F.after_take(db, USER)
+    return db.get_open_plan(USER)
+
+
+def test_the_level_moves_on_after_two_takes_that_reach_it(db, monkeypatch):
+    plan = _active(db)
+    monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: False)
+    db.update_plan(USER, plan["id"], {"level": "pauses", "level_by": "machine"})
+    said = len(db.thread)
+    plan = _take(db, plan, 1, FEW_PAUSES)
+    plan = _take(db, plan, 2, MANY_PAUSES)
+    assert plan["level"] == "pauses"
+    plan = _take(db, plan, 3, FILLERS)  # reached twice in a row; the fillers are heard next
+    assert plan["level"] == "say_once"
+    assert [e["reason"] for e in db.events][-1:] == ["reached"]
+    assert len(db.thread) == said  # the speaker just sees the next level (N134 item 3)
+    for n in (4, 5, 6, 7):
+        plan = _take(db, plan, n, FILLERS)
+    assert plan["level"] == "say_once"
+    assert [e["reason"] for e in db.events].count("stuck") == 1
+    db.update_plan(USER, plan["id"], {"level": "pauses", "level_by": "coach"})
+    for n in (8, 9):
+        plan = _take(db, plan, n, MANY_PAUSES)
+    assert plan["level"] == "pauses"  # a coach's level is never moved (C5)
+
+
+def test_a_level_whose_time_ran_out_gives_way(db, monkeypatch):
+    plan = _active(db)
+    monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: True)
+    db.update_plan(USER, plan["id"], {"level": "key_line", "level_by": "machine"})
+    plan = _take(db, plan, 1, FEW_PAUSES)  # no key line said: not read, still the level
+    assert plan["level"] == "key_line"
+    today = datetime.now(timezone.utc).date()
+    monkeypatch.setattr(F, "today_in", lambda name: today + timedelta(days=8))
+    F.state(db, USER, tz="UTC", first_name="Artur")
+    plan = db.get_open_plan(USER)
+    assert plan["level"] == "pauses" and db.events[-1]["reason"] == "time"
+    hello = next(r["body"] for r in reversed(db.thread) if r["metadata"].get("plan_hello"))
+    assert hello.endswith(": Pauses that hold the room.")
+
+
+def test_a_walk_reads_the_level_of_its_takes_time(db, monkeypatch):
+    from services import plan_walk
+    plan = _active(db)
+    monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: False)
+    first = {"created_at": plan["started_at"]}
+    assert plan_walk.level_for_take(db, USER, first) is None  # "Make it yours": as today
+    db.update_plan(USER, plan["id"], {"level": "pauses", "level_by": "machine"})
+    F._event(db, USER, plan, "pauses", "coach", "the coach's level")
+    first = {"created_at": datetime.now(timezone.utc).isoformat()}
+    for n, clips in ((1, MANY_PAUSES), (2, FILLERS)):
+        plan = _take(db, plan, n, clips)
+    assert plan["level"] == "say_once"
+    later = {"created_at": (datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat()}
+    assert plan_walk.level_for_take(db, USER, first) == "pauses"
+    assert plan_walk.level_for_take(db, USER, later) == "say_once"
+    assert plan_walk.walk_inputs(db, USER, later)["plan_level"] == "say_once"
+    monkeypatch.setattr("services.rings.feature_is_on_for_user", lambda *a, **k: False)
+    assert plan_walk.walk_inputs(db, USER, later) == {}

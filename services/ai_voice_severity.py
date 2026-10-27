@@ -225,12 +225,22 @@ def target_phrase(sentence: str, max_words: int = 4) -> Optional[str]:
 
 
 def select(snippet: dict, medians: dict, *, sentence: str, seed: str,
-           history: Iterable[dict] = ()) -> Optional[dict]:
+           history: Iterable[dict] = (), prefer: Optional[str] = None) -> Optional[dict]:
     """The one exercise for this clip. With every signal weak, the default
     (stress on the main point); None only when the sentence has no main
-    point apart from itself."""
+    point apart from itself.
+
+    ``prefer``: the problem this week's level practises, on a plan (G7,
+    N209; ``services.plan_walk.AI_PROBLEM``). It is the exercise whenever
+    the clip shows it (its severity reaches the minimum) and it has what it
+    needs; otherwise the pick is as without a plan."""
     scores = severities(snippet, medians, sentence=sentence)
     held = _held_back(history)
+    if prefer in PROBLEMS and scores[prefer] >= float(Config.AI_VOICE_MIN_SEVERITY):
+        phrase = None if prefer in _NO_PHRASE else target_phrase(sentence)
+        if prefer in _NO_PHRASE or phrase:
+            return _selection(prefer, phrase, scores, snippet, medians, held,  # type: ignore[arg-type]
+                              explored=False, default=False, sentence=sentence)
     ranked = sorted(
         PROBLEMS,
         key=lambda p: -(scores[p] * (HELD_BACK_FACTOR if p in held else 1.0)))

@@ -450,6 +450,9 @@ CLIENT_READ_ROW_FIELDS = frozenset({
     # A praised moment the walk practises with its AI clip (founder
     # 2026-10-23, N122). A flag, never the score.
     "confident_practice",
+    # The moment where this week's level shows most, on a plan (G7, N209):
+    # the level's key, a word, never a score.
+    "plan_level",
 })
 UNRENDERED_ROW_FIELDS: frozenset[str] = frozenset()
 CLIENT_ROW_FIELDS = CLIENT_READ_ROW_FIELDS | UNRENDERED_ROW_FIELDS
