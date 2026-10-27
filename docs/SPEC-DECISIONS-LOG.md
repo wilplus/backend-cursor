@@ -5290,3 +5290,8 @@ ones when the yes is built) and
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md).
 No migration in this entry; the consent record's migration comes with its
 build, and an outside review.
+- **Counsel** (founder, the Claude Code chat, 27 October 2026, after being
+told that counsel should see the final text before the founder signs:
+"counsle agrees"): counsel agrees with the plan's consent as decided above,
+its own yes before the personal answers. The final text of Privacy 3.9 goes
+back to counsel with the signature page, as for 3.8.
