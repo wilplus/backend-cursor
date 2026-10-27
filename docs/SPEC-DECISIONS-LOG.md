@@ -5415,9 +5415,12 @@ a plan").** For N211 item 4:
 anywhere else, and gets no card in Data & consent for it. The ask drawn for
 them on <https://claude.ai/artifact/9ELP4RVTtXjDQJqXRzGGM2> is not built, and
 its words are not in force.
-2. Not decided here: what "How do you feel?" does for a speaker without a
-plan (N211 item 2 puts it behind the yes, and they have none to give). The
-switch, `PLAN_CONSENT_ENABLED`, stays off until it is decided. The plan's own
-ask and card are built and merged, switched off (backend #1416, frontend
-#1028).
-No rules page: nothing is built for this. No migration in this entry.
+2. "How do you feel?" stays as it is today for a speaker without a plan, with
+its Skip, until they have a plan (founder, the Claude Code chat, 27 October
+2026, to the question what the tap does for them: "Leave it as today until
+they have a plan"). When a plan reaches them it is asked behind the plan's own
+yes (N211 item 2), and Privacy 3.9's section 4e names the plan's answers only.
+3. Still to build before the switch, `PLAN_CONSENT_ENABLED`, goes on: the tap
+behind the yes for a speaker who has a plan. The plan's own ask and card are
+built and merged, switched off (backend #1416, frontend #1028).
+No rules page: nothing is built for item 1 or 2; item 3 lands on frontend `docs/flows/the-plan.md` D4 with its build. No migration in this entry.
