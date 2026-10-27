@@ -12,6 +12,10 @@ services/plan_flow.py; its rules: services/plan.py.
   POST /v2/plan/next             {choice: keep_practising | new_event, tz}
   POST /v2/plan/new-event        {tz}
   POST /v2/plan/same-event       {yes: bool, tz}  ("Is this for {date}?", H2)
+  POST /v2/plan/consent/answer   {yes: bool}  Will's ask: "Yes, ask me" or "Not now" (N211)
+  GET  /v2/plan/consent                       the card in Data & consent → {enabled, state}
+  POST /v2/plan/consent          {on: bool}   the card's Turn on / Turn off (off deletes the
+                                              personal answers) → {state, messages}
   GET  /v2/plan/answers/<id>/audio
 
 Every write answers ``{plan, messages}``: the plan as it now stands and the
@@ -112,6 +116,54 @@ def v2_plan_answer():
         db, uid, _adapter(uid), audio, filename=upload.filename or "answer.webm",
         content_type=upload.mimetype or "audio/webm", duration_ms=duration,
         first_name=_first_name()))
+
+
+@v2_bp.route("/plan/consent/answer", methods=["POST"])
+@require_auth
+def v2_plan_consent_answer():
+    from services.plan_flow import answer_consent
+    body = request.get_json(silent=True) or {}
+    return _run(lambda uid: answer_consent(db, uid, body.get("yes")))
+
+
+def _consent_view(user_id, messages=None):
+    from services import plan_consent as C
+    from services.plan_flow import enabled
+    return {"enabled": bool(C.enabled() and enabled(db, user_id)),
+            "state": C.state(db, user_id), "messages": messages or []}
+
+
+@v2_bp.route("/plan/consent", methods=["GET"])
+@require_auth
+def v2_plan_consent_state():
+    try:
+        return jsonify(_consent_view(str(request.user_id))), 200
+    except Exception as e:
+        logger.error("plan consent state failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"enabled": False, "state": "declined", "messages": []}), 200
+
+
+@v2_bp.route("/plan/consent", methods=["POST"])
+@require_auth
+def v2_plan_consent_set():
+    """The card: Turn on, or Turn off (which deletes the personal answers).
+    With the plan waiting on Will's ask, the card answers it."""
+    from services import plan_consent as C
+    from services import plan_flow
+    uid = str(request.user_id)
+    body = request.get_json(silent=True) or {}
+    if not (C.enabled() and plan_flow.enabled(db, uid)):
+        return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
+    if not isinstance(body.get("on"), bool):
+        return jsonify({"code": "INVALID_INPUT", "error": "on must be true or false."}), 400
+    try:
+        out = plan_flow.set_consent(db, uid, body["on"])
+        return jsonify(_consent_view(uid, out.get("messages"))), 200
+    except Exception as e:
+        logger.error("plan consent change failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to keep the answer"}), 500
 
 
 @v2_bp.route("/plan/rating", methods=["POST"])

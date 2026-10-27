@@ -1936,6 +1936,33 @@ O4 -> test_the_key_line_first_and_at_most_three
 O5 -> test_the_ai_question_must_keep_its_template
 O6 -> test_dates_read_as_the_chat_writes_them
 O7 -> test_a_level_is_reached_on_its_own_check","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the rules are frontend docs/flows/the-plan.md §1."
+tests/test_plan_consent.py,Story,"As a speaker on the plan, I want Will to ask for my yes before the plan's personal questions, and to delete what I gave if I turn it off, so that I share how I feel only when I choose to.","O1  With the switch off, the plan asks as it did: no ask, nothing written.
+O2  With it on and no answer yet, Will asks once, after the speaker's
+first voice message, and waits; nothing else is taken meanwhile.
+""Yes, ask me"" is kept (the sentence's hash, the policy version) and
+the plan goes on: the worry question, the two ratings.
+O3  ""Not now"" is kept; the worry is never asked or kept, the ratings are
+not asked (then or at any later moment), the plan still reaches the
+calls and its end without ""How did it go?"".
+O4  The card's Turn off deletes the personal answers: the answers and
+their recordings, their bubbles in the Lounge, the plan's worry,
+Will's memory of them (his note is cleared), the feelings before a
+Take; then it is kept. A step that fails leaves the yes on and says
+so, never ""deleted"".
+O5  A plan made before the switch is asked at its next personal moment:
+the last practice's ratings and ""How did it go?"" at its end wait for
+the yes; ""Not now"" skips them, and the end goes on to what's next.
+O6  When the answer cannot be read, nothing personal is asked; a yes that
+cannot be kept is not a yes: Will asks again before the next personal
+question.","O1 -> test_with_the_switch_off_the_plan_asks_as_before
+O2 -> test_will_asks_once_and_a_yes_goes_on_with_the_personal_questions
+O3 -> test_not_now_skips_the_personal_questions_and_keeps_the_plan
+O4 -> test_turning_off_deletes_what_the_speaker_gave
+test_a_turn_off_that_fails_leaves_the_yes_on
+O5 -> test_the_last_ratings_wait_for_the_yes
+test_the_plans_end_asks_for_the_yes_before_how_did_it_go
+O6 -> test_a_doubt_means_nothing_personal_is_asked
+test_a_yes_that_cannot_be_kept_is_not_a_yes","The plan's own yes, drawn and approved by the founder 2026-10-27 (N211; Privacy 3.9 section 4e, to be published); the rules are frontend docs/flows/the-plan.md."
 tests/test_plan_flow.py,Story,"As a new speaker on the plan's ring, I want Will to ask me a few questions in the Lounge before my first Take and give me a plan, so that my practice starts from my event and my own voice.","O1  Someone without the plan sees nothing of it: no plan, nothing written.
 O2  A new speaker with no Take is asked, once: ""Hi Artur! A few quick
 questions before your first practice."" and ""When is your deadline?"".

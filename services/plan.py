@@ -87,6 +87,15 @@ COPY = {
     "is_this_for": "Is this for {date}?",
     "yes": "Yes",
     "no": "No",
+    # The plan's own yes (founder 2026-10-27, N211: "approved as drawn", on
+    # the prototype https://claude.ai/artifact/3GtUo7eVdf9SAhZQCDsTR7): asked
+    # once, before the personal questions. Will's words, then the two taps.
+    "consent_ask": ("A few of my questions are personal: how stressed and how ready you feel, "
+                    "what worries you, and how you feel before each Take. I only ask with your "
+                    "yes. Your coach and I use your answers to shape your plan. You can turn "
+                    "this off in Data & consent."),
+    "consent_yes": "Yes, ask me",
+    "consent_no": "Not now",
 }
 
 #: Why this line (N154): the sentence under "Why this line?", by level.
@@ -398,15 +407,18 @@ def plain_question(bank: str, deadline: Optional[date], deadline_given: bool) ->
     return BANK[bank][0] or ""
 
 
-def next_plain_bank(asked: Sequence[str], facts: Mapping[str, Any]) -> Optional[str]:
+def next_plain_bank(asked: Sequence[str], facts: Mapping[str, Any],
+                    skip: Sequence[str] = ()) -> Optional[str]:
     """The key line first; then the first bank not asked whose fact isn't
-    known yet (a named worry still gets its question, N150)."""
+    known yet (a named worry still gets its question, N150). ``skip`` names
+    banks not to ask at all: the personal one, without the speaker's yes
+    (N211)."""
     if len(asked) >= MAX_FOLLOWUPS:
         return None
     if "key" not in asked:
         return "key"
     for bank in BANK_ORDER:
-        if bank in asked:
+        if bank in asked or bank in skip:
             continue
         if bank == "worry" or not facts.get(bank):
             return bank
@@ -416,7 +428,7 @@ def next_plain_bank(asked: Sequence[str], facts: Mapping[str, Any]) -> Optional[
 _BAD = re.compile(r"[!%]|\d+\s*/\s*10")
 
 
-def fitted_question(nx: Any, asked: Sequence[str]) -> Optional[dict]:
+def fitted_question(nx: Any, asked: Sequence[str], skip: Sequence[str] = ()) -> Optional[dict]:
     """The AI's next question, kept only when it matches its signed
     template: a known bank not asked yet, the key line first, its anchor
     words kept, short, no "!" or "%". Otherwise None, and Will says the
@@ -424,7 +436,7 @@ def fitted_question(nx: Any, asked: Sequence[str]) -> Optional[dict]:
     if not isinstance(nx, Mapping):
         return None
     bank, question = nx.get("bank"), nx.get("question")
-    if bank not in BANK or bank in asked or not isinstance(question, str):
+    if bank not in BANK or bank in asked or bank in skip or not isinstance(question, str):
         return None
     if not asked and bank != "key":
         return None
