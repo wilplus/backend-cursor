@@ -1946,6 +1946,24 @@ O4 -> test_the_key_line_first_and_at_most_three
 O5 -> test_the_ai_question_must_keep_its_template
 O6 -> test_dates_read_as_the_chat_writes_them
 O7 -> test_a_level_is_reached_on_its_own_check","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the rules are frontend docs/flows/the-plan.md §1."
+tests/test_plan_coach.py,Story,"As a coach, I want a speaker's plan to reach my queue when it needs me, so that I pick their level blind, or record my video for a level that hasn't moved, and the speaker's plan follows my answer.","O1  A plan reaches the queue on its speaker's card as a new plan, the
+speaker's ask, or a level three Takes without moving, the ask first;
+a speaker with no Take in the queue gets a card of their own; a coach
+who can't hear the speaker's language never sees it.
+O2  The pick is blind: the plan opens on the voice message, the key line
+and the five levels, never the plan's level; What happened comes with
+the pick: the coach's level, the machine's, the deadline, and stress
+and ready only when the speaker gave them.
+O3  The coach's answer takes the plan out of every coach's queue until the
+speaker asks again or the level is stuck again; ""Change my answer""
+picks again; ""Audio unclear"" takes it out of this coach's queue only.
+O4  A stuck level opens on its name and the Take the coach's video goes
+on; once shared, the plan leaves the queue.
+O5  Only the voice message and the key line play to a coach.","O1 -> test_a_plan_reaches_the_queue_on_its_speakers_card
+O2 -> test_the_pick_is_blind_and_what_happened_comes_with_it
+O3 -> test_an_answer_takes_the_plan_out_of_the_queue
+O4 -> test_a_stuck_level_is_answered_with_the_coachs_video
+O5 -> test_only_the_voice_message_and_the_key_line_play","The coach's side of the plan, built as the founder's prototype draws it (N213); the rules are frontend docs/flows/the-plan.md §1 C5, G10 and H1, and docs/flows/coach-panel.md."
 tests/test_plan_consent.py,Story,"As a speaker on the plan, I want Will to ask for my yes before the plan's personal questions, and to delete what I gave if I turn it off, so that I share how I feel only when I choose to.","O1  With the switch off, the plan asks as it did: no ask, nothing written.
 O2  With it on and no answer yet, Will asks once, after the speaker's
 first voice message, and waits; nothing else is taken meanwhile.

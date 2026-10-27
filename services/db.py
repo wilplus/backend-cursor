@@ -11301,6 +11301,45 @@ class DatabaseService:
                            exc_info=True)
             return []
 
+    # ── the coach's side of the plan (services/plan_coach.py, N213) ──
+
+    def get_plan_by_id(self, plan_id: str) -> Optional[dict]:
+        try:
+            rows = (self.client.table("speaker_plans").select("*")
+                    .eq("id", plan_id).limit(1).execute().data)
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("get_plan_by_id failed plan=%s: %s", plan_id, e, exc_info=True)
+            return None
+
+    def list_waiting_plans(self, limit: int = 500) -> list[dict]:
+        """The open plans that have a level: what a coach's queue may hold,
+        oldest first. [] on any failure: the queue draws without them."""
+        try:
+            return (self.client.table("speaker_plans")
+                    .select("id, user_id, status, level, level_by, facts, deadline, created_at")
+                    .in_("status", ["asking", "active"])
+                    .not_.is_("level", "null")
+                    .order("created_at").limit(limit).execute().data) or []
+        except Exception as e:
+            logger.warning("list_waiting_plans failed: %s", e, exc_info=True)
+            return []
+
+    def list_plans_level_events(self, plan_ids: list, reasons: list) -> list[dict]:
+        """Many plans' level events of the given reasons, oldest first, in
+        one read. [] on any failure."""
+        ids = [str(i) for i in plan_ids or [] if i]
+        if not ids:
+            return []
+        try:
+            return (self.client.table("plan_level_events")
+                    .select("plan_id, level, reason, by_who, created_at")
+                    .in_("plan_id", ids).in_("reason", list(reasons))
+                    .order("created_at").execute().data) or []
+        except Exception as e:
+            logger.warning("list_plans_level_events failed: %s", e, exc_info=True)
+            return []
+
     # ── blind-rater language eligibility ───────────────────────────
 
 

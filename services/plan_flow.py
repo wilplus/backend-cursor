@@ -424,6 +424,11 @@ def answer_voice(database: Any, user_id: str, adapter: Any, audio: bytes, *,
     if not database.insert_plan_answer_audio(answer["id"], str(user_id),
                                              content_type or "audio/webm", audio):
         logger.warning("plan: audio not kept answer=%s", answer.get("id"))
+    from services.rater_languages import normalize_provider_language
+    language = normalize_provider_language(result.get("language"))
+    if kind == "why" and language:
+        # The coaches who may hear a speaker with no Take yet (N213).
+        plan = _save(database, user_id, plan, {"facts": {**_facts(plan), "language": language}})
     from services import speaker_memory
     speaker_memory.record(database, str(user_id), "answer", {"question": question, "said": raw})
     rows = [_me(raw, f"answer:{answer['id']}", plan_voice=answer["id"], duration_ms=duration)]
@@ -537,7 +542,9 @@ def _next_question(database: Any, user_id: str, plan: dict, answer: dict,
     if answer["kind"] == "key":
         facts.update({"key_line": said[:300], "key_answer_id": answer["id"]})
     turn = _turn(database, user_id, plan, asked)
-    facts = P.clean_facts((turn or {}).get("facts"), facts)
+    # The AI's facts over what was known; the plan's own (the key line's
+    # recording, the mode, the language) are kept, not the AI's to drop.
+    facts = {**facts, **P.clean_facts((turn or {}).get("facts"), facts)}
     consent = C.state(database, user_id)
     if consent != C.GRANTED:
         facts.pop("worry", None)  # a worry the speaker did not agree to share is not kept
