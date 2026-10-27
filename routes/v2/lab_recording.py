@@ -227,7 +227,7 @@ def v2_lab_presentation_extract():
         return jsonify({"code": "V2_ERROR", "error": "Failed to process presentation"}), 500
 
 
-def _recording_flow_tags(form) -> dict:
+def _recording_flow_tags(form, *, feelings: bool = True) -> dict:
     """The optional recording-flow tags a take can carry (founder
     2026-07-20), read from FLAT multipart fields and folded into the
     session_context AFTER validation (the validator strips unknown keys —
@@ -241,6 +241,8 @@ def _recording_flow_tags(form) -> dict:
                          words are dropped (never block a recording). The
                          key is the user's own self-report and may be shown to
                          the coach. No inferred psychological state is added.
+                         Dropped when ``feelings`` is False: a plan without its
+                         own yes (services/plan_consent.py, N211, N217).
     """
     tags: dict = {}
     # read_target / ideal_version RETIRED (founder 2026-08-05): they only
@@ -252,7 +254,7 @@ def _recording_flow_tags(form) -> dict:
         tags["paired_snippet_id"] = _psnip
     try:
         from services.named_emotion import normalize_named_emotion
-        _emo = normalize_named_emotion(form.get("named_emotion"))
+        _emo = normalize_named_emotion(form.get("named_emotion")) if feelings else None
         if _emo:
             tags["named_emotion"] = _emo
     except Exception:
@@ -448,10 +450,12 @@ def _persist_lab_take(
         except Exception:
             pass
         raise
+    from services import plan_consent
+    feelings = plan_consent.feelings_allowed(db, user_id)
     persist_session_metadata(
         stored.session_id,
         upload.session_context,
-        flow_tags=_recording_flow_tags(upload.form),
+        flow_tags=_recording_flow_tags(upload.form, feelings=feelings),
         duration_seconds=upload.gate.get("duration_sec"),
         user_id=user_id,
         database=db,
@@ -476,6 +480,7 @@ def _persist_lab_take(
         take_index=coordinates.take_index,
         database=db,
         log=logger,
+        feelings=feelings,
     )
     canonical_attempt_registered = _is_data_foundation_canary_owner(
         user_id, upload.project.principal.id,

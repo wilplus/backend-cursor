@@ -22,6 +22,9 @@ OUTCOME
   O6  When the answer cannot be read, nothing personal is asked; a yes that
       cannot be kept is not a yes: Will asks again before the next personal
       question.
+  O7  "How do you feel?" before a Take is kept for a speaker without a
+      plan, and on a plan only after its own yes; the plan tells the app
+      which. With the switch off, as before for everyone.
 PROVES   O1 -> test_with_the_switch_off_the_plan_asks_as_before
          O2 -> test_will_asks_once_and_a_yes_goes_on_with_the_personal_questions
          O3 -> test_not_now_skips_the_personal_questions_and_keeps_the_plan
@@ -31,6 +34,7 @@ PROVES   O1 -> test_with_the_switch_off_the_plan_asks_as_before
                test_the_plans_end_asks_for_the_yes_before_how_did_it_go
          O6 -> test_a_doubt_means_nothing_personal_is_asked
                test_a_yes_that_cannot_be_kept_is_not_a_yes
+         O7 -> test_how_do_you_feel_is_kept_on_a_plan_only_after_its_yes
 WHY      The plan's own yes, drawn and approved by the founder 2026-10-27
          (N211; Privacy 3.9 section 4e, to be published); the rules are
          frontend docs/flows/the-plan.md.
@@ -303,3 +307,17 @@ def test_the_plans_end_asks_for_the_yes_before_how_did_it_go(db, monkeypatch, ye
         assert F.P.COPY["thanks_told"] not in bodies(db)
         assert bodies(db)[-1] == F.P.COPY["whats_next"]
         assert db.get_open_plan(USER)["step"] == "whats_next"
+
+
+def test_how_do_you_feel_is_kept_on_a_plan_only_after_its_yes(db, monkeypatch):
+    assert C.feelings_allowed(db, USER)  # no plan: answering is the yes (N215, N217)
+    _to_the_ask(db)
+    assert not C.feelings_allowed(db, USER)
+    assert F.state(db, USER, tz="UTC", first_name="Artur")["plan"]["consent"] == C.UNANSWERED
+    F.answer_consent(db, USER, True)
+    assert C.feelings_allowed(db, USER)
+    assert F.state(db, USER, tz="UTC", first_name="Artur")["plan"]["consent"] == C.GRANTED
+    F.set_consent(db, USER, False)
+    assert not C.feelings_allowed(db, USER)
+    monkeypatch.setattr(Config, "PLAN_CONSENT_ENABLED", False)
+    assert C.feelings_allowed(db, USER)
