@@ -1840,6 +1840,12 @@ privacy fingerprints (hashes) are checked by the script.
 O2  It publishes version 3.7 with privacy 3.7, keeps the United States, and
 does not replace the training wording.","O1 -> test_the_copy_is_the_legal_pack_byte_for_byte_and_its_hash_is_checked
 O2 -> test_it_publishes_3_7_and_leaves_the_training_wording_alone","Founder 2026-10-15, N74."
+tests/test_phase1_policy_3_8.py,Story,"As a speaker, I want the 3.8 terms I accept to be the legal pack's files exactly, with the training wording left alone, so that I can later prove what I agreed to.","O1  The terms (3.7), privacy (3.8), AI notice and agreement text in the
+publish script equal the legal pack's files byte for byte, and the
+terms' and privacy fingerprints (hashes) are checked by the script.
+O2  It publishes version 3.8 over 3.7, keeps the United States, and does
+not replace the training wording.","O1 -> test_the_copy_is_the_legal_pack_byte_for_byte_and_its_hash_is_checked
+O2 -> test_it_publishes_3_8_over_3_7_and_leaves_the_training_wording_alone","Founder 2026-10-27, N208 (signed ""as drafted, question 1 A, question 2 A"")."
 tests/test_phase1_policy_unbundled.py,Story,"As a speaker, I want every policy I may have accepted to carry exactly the signed copy and never make an optional purpose a condition of the service, so that refusing an optional purpose never blocks me and I can later prove what I agreed to.","O1  In every publish since the unbundling (3.1 to the live 3.7), every
 required purpose is on contract ...
 O2  ... and every consent purpose is optional; neither check passes alone.

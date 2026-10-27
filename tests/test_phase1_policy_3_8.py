@@ -10,7 +10,8 @@ OUTCOME
       not replace the training wording.
 PROVES   O1 -> test_the_copy_is_the_legal_pack_byte_for_byte_and_its_hash_is_checked
          O2 -> test_it_publishes_3_8_over_3_7_and_leaves_the_training_wording_alone
-WHY      Founder 2026-10-27, N208.
+WHY      Founder 2026-10-27, N208 (signed "as drafted, question 1 A,
+         question 2 A").
 """
 from __future__ import annotations
 

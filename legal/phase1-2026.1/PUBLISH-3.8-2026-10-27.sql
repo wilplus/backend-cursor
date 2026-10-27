@@ -5,10 +5,10 @@
 -- ════════════════════════════════════════════════════════════════════════
 --
 -- What you signed (decisions log N208; 29-terms-3.7-privacy-3.8-tokens-
--- and-reminders-SIGNED-2026-10-27.md): Terms 3.7 and Privacy 3.8 are Terms
+-- and-what-is-live-SIGNED-2026-10-27.md): Terms 3.7 and Privacy 3.8 are Terms
 -- 3.6 and Privacy 3.7 with the passages that document lists, and nothing
--- else. AI notice 3.2 and the agreement are unchanged. This block, in ONE
--- transaction:
+-- else. AI notice 3.2 and the agreement are unchanged; document 02 is now
+-- v1.3 (its note, signed the same day). This block, in ONE transaction:
 --
 --   1. publishes them as processing policy phase1-2026-10-27-3.8 (AI notice
 --      3.2, the 3.1 agreement, the same countries), exactly as 3.7 was
@@ -1259,11 +1259,11 @@ SELECT public.register_phase1_policy_v1(
     'version','provisional-founder-2026-10-27-3.8',
     'approving_authority','founder:artur@willonski.com',
     'approved_at', now(),
-    'object_key','phase1-2026.1/legal/power-score-classification-v1.2.pdf',
+    'object_key','phase1-2026.1/legal/power-score-classification-v1.3.pdf',
     'sha256', encode(extensions.digest('provisional-power-2026-10-27-3.8','sha256'),'hex'),
     'metadata', jsonb_build_object(
       'counsel_review','founder_determination_not_counsel_reviewed',
-      'document_version','1.2 signed 2026-10-08 (N68)',
+      'document_version','1.3 note signed 2026-10-27 (N208), on 1.2 signed 2026-10-08 (N68)',
       'biometric_identification', false,
       'sex_gender_inference', false,
       'emotion_intention_inference', false,
