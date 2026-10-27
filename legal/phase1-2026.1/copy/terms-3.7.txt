@@ -11,11 +11,13 @@ nothing that renews (section 2). It says that your coach's answer to a take
 costs nothing (sections 2 and 11), that a lesson can be paid for with tokens
 where the booking page offers it (section 2), and that WhatsApp also reminds
 you of a lesson you booked and, if you ask for it, of your practice days
-(section 1). Version 3.6 added the AI version of your voice, Will in the
-Lounge, WhatsApp messages and one-to-one lessons (sections 1 and 2), and
-opened the service to residents of California (sections 4 and 16). Under these
-terms the sound of your recordings is processed to deliver your own coaching
-and is never used to train models.
+(section 1). It also says what a coach sees of the one reading the service
+takes of how sure a moment sounds, which you are never shown (sections 10 and
+11). Version 3.6 added the AI version of your voice, Will in the Lounge,
+WhatsApp messages and one-to-one lessons (sections 1 and 2), and opened the
+service to residents of California (sections 4 and 16). Under these terms the
+sound of your recordings is processed to deliver your own coaching and is
+never used to train models.
 Three things are yours to choose, and all are off unless you choose them: your
 practice may train the models that give every WillpowerLab speaker feedback
 when you turn on Help improve WillpowerLab (section 8 and the Privacy Policy,
@@ -246,8 +248,10 @@ you present.
 
 The service is practice tooling. It is not professional, medical, psychological
 or career advice, and it is not an assessment of you as a person. It does not
-score you, rate you, or produce a verdict about you, and nothing it produces is
-a measurement of your ability.
+grade you or produce a verdict about you, and nothing it produces is a
+measurement of your ability. The one reading it takes of how sure a moment
+sounds, used to choose what to show you, is never shown to you (Privacy
+Policy, section 3).
 
 
 11. HUMAN COACHES
@@ -260,7 +264,8 @@ What that means in practice. A coach may listen to your recordings in order to
 review the feedback you were given and to prepare practice for you, and may
 answer a take in words or with a video. None of this depends on the tokens
 you hold, and the answer costs nothing (section 2). A coach does not see the
-voice measurements described in section 3 of the Privacy Policy.
+voice measurements described in section 3 of the Privacy Policy, only, after
+answering about a moment, the reading of it that section describes.
 
 A coach may also hear a short clip of a recording in order to check our
 automated listening, without being told what it found and without seeing

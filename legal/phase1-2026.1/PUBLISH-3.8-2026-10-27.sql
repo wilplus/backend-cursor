@@ -75,7 +75,7 @@ $$;
 
 -- ── STEP 2 · register 3.8 ───────────────────────────────────────────────
 -- The four texts, byte for byte, from legal/phase1-2026.1/copy/: Terms 3.7
--- (fea28adc…), Privacy 3.8 (5ce3f4c8…), AI notice 3.2 (8b85806c…,
+-- (35127e36…), Privacy 3.8 (55f63dd4…), AI notice 3.2 (8b85806c…,
 -- unchanged) and the agreement, unchanged since 3.1.
 
 WITH c AS (SELECT
@@ -92,11 +92,13 @@ nothing that renews (section 2). It says that your coach's answer to a take
 costs nothing (sections 2 and 11), that a lesson can be paid for with tokens
 where the booking page offers it (section 2), and that WhatsApp also reminds
 you of a lesson you booked and, if you ask for it, of your practice days
-(section 1). Version 3.6 added the AI version of your voice, Will in the
-Lounge, WhatsApp messages and one-to-one lessons (sections 1 and 2), and
-opened the service to residents of California (sections 4 and 16). Under these
-terms the sound of your recordings is processed to deliver your own coaching
-and is never used to train models.
+(section 1). It also says what a coach sees of the one reading the service
+takes of how sure a moment sounds, which you are never shown (sections 10 and
+11). Version 3.6 added the AI version of your voice, Will in the Lounge,
+WhatsApp messages and one-to-one lessons (sections 1 and 2), and opened the
+service to residents of California (sections 4 and 16). Under these terms the
+sound of your recordings is processed to deliver your own coaching and is
+never used to train models.
 Three things are yours to choose, and all are off unless you choose them: your
 practice may train the models that give every WillpowerLab speaker feedback
 when you turn on Help improve WillpowerLab (section 8 and the Privacy Policy,
@@ -327,8 +329,10 @@ you present.
 
 The service is practice tooling. It is not professional, medical, psychological
 or career advice, and it is not an assessment of you as a person. It does not
-score you, rate you, or produce a verdict about you, and nothing it produces is
-a measurement of your ability.
+grade you or produce a verdict about you, and nothing it produces is a
+measurement of your ability. The one reading it takes of how sure a moment
+sounds, used to choose what to show you, is never shown to you (Privacy
+Policy, section 3).
 
 
 11. HUMAN COACHES
@@ -341,7 +345,8 @@ What that means in practice. A coach may listen to your recordings in order to
 review the feedback you were given and to prepare practice for you, and may
 answer a take in words or with a video. None of this depends on the tokens
 you hold, and the answer costs nothing (section 2). A coach does not see the
-voice measurements described in section 3 of the Privacy Policy.
+voice measurements described in section 3 of the Privacy Policy, only, after
+answering about a moment, the reading of it that section describes.
 
 A coach may also hear a short clip of a recording in order to check our
 automated listening, without being told what it found and without seeing
@@ -445,21 +450,27 @@ receives it, how long we keep it, and how you get it deleted.
 
 Version 3.8 replaces every earlier version. It names two more WhatsApp
 messages: a reminder 10 minutes before a lesson you booked and, if you ask for
-it, a reminder on your practice days (sections 4 and 5). It also says that you
-buy tokens rather than a plan (sections 4 and 5) and that your coach's answer
-costs nothing (section 5). Version 3.7 said more fully what Will is given to
-answer you in the Lounge (sections 4 and 7). Version 3.6 described what
-WillpowerLab now does that earlier versions did not: the AI version of your
-voice, made by ElevenLabs (sections 3 and 5); talking to Will in the Lounge
-(section 4); WhatsApp messages when your coach's feedback is in (section 4);
-one-to-one lessons you book with a coach (section 4); signing in with Google
-or LinkedIn (section 2); sharing a take with a community (section 4d); and
-what residents of California should know, now that the service is open to them
-(section 14). It also asked you again for one choice, Help improve
-WillpowerLab (section 4a), in fewer words: a yes you gave before version 3.6
-does not carry over, so it counts as off until you say yes again. Your
-conversation with Will is never used for training. No recording of your voice,
-and no clip of one, is ever copied or sent for training.
+it, a reminder on your practice days (sections 4 and 5). It says that you buy
+tokens rather than a plan (sections 4 and 5) and that your coach's answer
+costs nothing (section 5). It also says five things the service already does
+that the last version left out: the one reading we take of how sure a moment
+sounds, who sees it, and that you never do (section 3); Will's note about you
+and what Will reads of your history (sections 2, 4, 5 and 7); what you tell
+Will that reaches your coach or us (section 4); the card in the Lounge that
+can ask for the choice in section 4a; and that clips of recordings we import
+may be played to you (section 4c). Version 3.7 said more fully what Will is
+given to answer you in the Lounge (sections 4 and 7). Version 3.6 described
+what WillpowerLab now does that earlier versions did not: the AI version of
+your voice, made by ElevenLabs (sections 3 and 5); talking to Will in the
+Lounge (section 4); WhatsApp messages when your coach's feedback is in
+(section 4); one-to-one lessons you book with a coach (section 4); signing in
+with Google or LinkedIn (section 2); sharing a take with a community (section
+4d); and what residents of California should know, now that the service is
+open to them (section 14). It also asked you again for one choice, Help
+improve WillpowerLab (section 4a), in fewer words: a yes you gave before
+version 3.6 does not carry over, so it counts as off until you say yes again.
+Your conversation with Will is never used for training. No recording of your
+voice, and no clip of one, is ever copied or sent for training.
 
 
 1. WHO IS RESPONSIBLE FOR YOUR DATA
@@ -503,6 +514,9 @@ Things produced from your recordings
 - Whether a fragment you re-recorded after an exercise came out better.
 - The AI version of your voice, and the practice examples made with it
   (section 3).
+- A short note about you, at most five lines, on what has helped you and what
+  you are working on, written by AI from your answers and your takes
+  (section 4).
 
 Things collected automatically
 - Technical and security logs: IP address, device and browser information,
@@ -521,8 +535,12 @@ We take measurements from how your voice sounds and compare them against your
 own earlier recordings — never against other people. We use them to help choose
 which of your own sentences to show back to you.
 
-We do not produce a score, a rating, a grade or a verdict about you, and no such
-thing is shown to you, to a coach, or to anyone else. We do not use your voice
+We do not produce a grade or a verdict about you. To choose which of your
+moments to show you, we work out for each moment how sure it sounds, from
+these measurements, and how plainly it is worded. That reading is a
+percentage, and you are never shown it. A coach sees it for a moment only
+after giving their own answer about that moment, and the person who runs
+WillpowerLab sees it for each take, to check our software. We do not use your voice
 to identify you. We do not infer, record or guess your sex, gender, age, health,
 ethnicity, or any other characteristic about you from the sound of your voice.
 
@@ -573,13 +591,26 @@ summary after each take and your coach's word. He is also given your current
 project: its title, what each of your slides says, your Ideal Text slide by
 slide, how many takes you have recorded, and whether your coach's feedback is
 in. If your talk is long, he gets the slides you ask about in full and the
-others by their titles. Will only ever sees your own project. Your
+others by their titles. To answer about your past, he is also given the parts
+of your own history that fit the question: what you said in earlier takes, in
+any of your projects, what your coach sent you, including the words of their
+videos, and your own earlier messages. Will only ever sees what is yours. Your
 conversation is kept in your account so you can come back to it, and you can
 clear it at any time.
-Your conversation with Will is private. Nobody at WillpowerLab reads it,
-except when we must to keep the service safe and working, when the law
-requires it, or when you ask us to, for example for help with your account.
-It is never used for training.
+Will's note about you. Will keeps a short note about you, at most five lines:
+what has helped you and what you are working on. OpenAI rewrites it from your
+answers to "Did this help?" and from how each take went. Will reads it before
+he answers you and before he writes the summary after a take. The person who
+runs WillpowerLab can read it and correct it.
+Your conversation with Will is private. A few things you tell Will reach a
+person, because your coaching needs them: your coach sees who your talk is
+for and what you want your audience to do, and your goal, including when you
+change it; the person who runs WillpowerLab sees your answers to "Did this
+help?", quotes up to three of them a week, without your name, in a note to
+themselves, and can read Will's note about you. Beyond that, nobody at
+WillpowerLab reads your conversation, except when we must to keep the service
+safe and working, when the law requires it, or when you ask us to, for
+example for help with your account. It is never used for training.
 Legal basis: performance of our contract with you (Article 6(1)(b) GDPR).
 
 WhatsApp messages. If you give us your phone number, we send you a WhatsApp
@@ -703,14 +734,19 @@ What we use, and what for:
 
 Text and numbers only. No recording of your voice, and no clip of one, is ever
 copied or sent for training. The AI version of your voice, the examples made
-with it, and your coach's videos are not part of it either.
+with it, and your coach's videos are not part of it either. While the switch
+is on, OpenAI writes out the words of your coach's videos about your takes;
+those words are kept with the take, and Will can read them to answer you, but
+they are not used for training.
 
 What is used from before you turn it on: the words of passages already in your
 account, and your coach's words about them, can be used too. Separate copies are made only from takes you record while the
 switch is on.
 
-Legal basis: your consent (Article 6(1)(a) GDPR). You give it on its own
-screen, by turning the switch on. It is never on when you sign up, never
+Legal basis: your consent (Article 6(1)(a) GDPR). You give it by turning the
+switch on, on its own screen, or by answering yes on a card in the Lounge
+that asks only this, in the same words. If you answer no, it is not asked
+again for at least 30 days. It is never on when you sign up, never
 pre-ticked, and never a condition of using WillpowerLab. Saying no costs you
 nothing. You can turn it off at any time.
 
@@ -786,11 +822,13 @@ We may import recordings of people speaking that we hold the rights to use,
 to build a set of examples on which our coaches judge speaking patterns and
 moments, and on which our software is checked and trained. An imported
 recording is transcribed by OpenAI, measured as section 3 describes, and heard
-by WillpowerLab coaches without a name. It is never shown to WillpowerLab
-users, and the person speaking has no account with us.
+by WillpowerLab coaches without a name. Short clips of it may be played to
+WillpowerLab users in their feedback, as another speaker's voice to listen
+to: sound only, without a name or any words. The person speaking has no
+account with us.
 
 What we hold: the recording, its transcript, its measurements, and coaches'
-answers about it. Like everything else used for training, it is never sent to
+and users' answers about it. Like everything else used for training, it is never sent to
 anyone for training as audio.
 
 Legal basis: our legitimate interest in coaching software that is accurate and
@@ -839,7 +877,11 @@ OpenAI receives:
 - what you write to Will, your recent Lounge messages and your project as
   described in section 4, in order to answer you;
 - each practice example made in the AI version of your voice, in order to
-  check by transcribing it that it says your words.
+  check by transcribing it that it says your words;
+- your answers and how your takes went, in order to rewrite Will's note about
+  you;
+- if you turned on the choice in section 4a, the sound of your coach's videos
+  about your takes, in order to write out their words.
 
 ElevenLabs receives:
 - up to two and a half minutes of audio from one of your takes, in order to
@@ -893,7 +935,8 @@ review the feedback you were given and to prepare practice for you. The review
 is part of the service rather than an extra you
 switch on, because WillpowerLab is hybrid coaching; the Terms say so in section 1 and section 11, and an answer
 that comes back to you costs nothing. A coach who reviews your
-recording does not see the voice measurements described in section 3. Coaches
+recording does not see the voice measurements described in section 3, only,
+after answering about a moment, the reading of it that section describes. Coaches
 are bound to confidentiality and see only what a review requires.
 A coach may answer you in writing or with a video; a video answer is for you.
 If you book a lesson, the coach receives your name, your email address, the
@@ -964,6 +1007,9 @@ your other practice attempts.
 
 Your conversation with Will: kept while your account is open, and deleted
 when you clear it or close your account.
+
+Will's note about you, and the answers and take outcomes it is written from:
+kept while your account is open, and deleted when you close it.
 
 Your phone number: kept until you remove it or close your account.
 
@@ -1307,10 +1353,10 @@ BEGIN
      OR (SELECT count(*) FROM public.processing_policy_versions WHERE status = 'active') <> 1
      OR (SELECT terms_copy_sha256 FROM public.processing_policy_versions
           WHERE version = 'phase1-2026-10-27-3.8')
-        <> 'fea28adcf188c474df115df010d4890d06a170881fde22efb11fbaf2a9cbf353'
+        <> '35127e36efd1e5b6fc9b548f5b01bd855578180219a36208ef8a508e8aab14fe'
      OR (SELECT privacy_copy_sha256 FROM public.processing_policy_versions
           WHERE version = 'phase1-2026-10-27-3.8')
-        <> '5ce3f4c83c9b4db5153c2a4db8689819f21b3e74dc5b0085b2a9c53789f8abcc'
+        <> '55f63dd4a2fd10fde5e9d7375d91e7c464a34cb3b04a89df2b46c0bc299fd212'
      OR NOT EXISTS (SELECT 1 FROM public.processing_policy_versions
           WHERE version = 'phase1-2026-10-27-3.8' AND 'us' = ANY(allowed_countries)) THEN
     RAISE EXCEPTION 'STOP: 3.8 is not in force with the approved bytes and the United States.';
@@ -1338,8 +1384,8 @@ SELECT p.version AS processing_policy,
          WHERE pp.policy_id = p.id) AS purposes,
        (SELECT count(*) FROM public.processing_policy_purposes pp
          WHERE pp.policy_id = p.id AND pp.required_for_core_service) AS required,
-       (p.terms_copy_sha256 = 'fea28adcf188c474df115df010d4890d06a170881fde22efb11fbaf2a9cbf353'
-        AND p.privacy_copy_sha256 = '5ce3f4c83c9b4db5153c2a4db8689819f21b3e74dc5b0085b2a9c53789f8abcc') AS approved_bytes,
+       (p.terms_copy_sha256 = '35127e36efd1e5b6fc9b548f5b01bd855578180219a36208ef8a508e8aab14fe'
+        AND p.privacy_copy_sha256 = '55f63dd4a2fd10fde5e9d7375d91e7c464a34cb3b04a89df2b46c0bc299fd212') AS approved_bytes,
        ('us' = ANY(p.allowed_countries)) AS has_us,
        (SELECT array_agg(version) FROM public.ml_consent_policies
          WHERE grant_scope = 'training_only' AND active_from <= now()
