@@ -5295,6 +5295,24 @@ told that counsel should see the final text before the founder signs:
 "counsle agrees"): counsel agrees with the plan's consent as decided above,
 its own yes before the personal answers. The final text of Privacy 3.9 goes
 back to counsel with the signature page, as for 3.8.
+- **The words** (founder, the Claude Code chat, 27 October 2026, to the
+prototype <https://claude.ai/artifact/3GtUo7eVdf9SAhZQCDsTR7>: "approved as
+drawn"): approved, the new words included. The ask: "A few of my questions
+are personal: how stressed and how ready you feel, what worries you, and how
+you feel before each Take. I only ask with your yes. Your coach and I use your
+answers to shape your plan. You can turn this off in Data & consent." with
+"Yes, ask me" and "Not now" (and Read more). The card, "Personal answers in
+your plan": "Will asks how stressed and how ready you feel, what worries you,
+and how you feel before each Take. Your coach and Will use the answers to
+shape your plan." with Turn on / Turn off; its off line, "Off. Turn it on and
+Will asks how stressed and how ready you feel, what worries you, and how you
+feel before each Take."; its question, "Turn off personal answers?" with "We
+stop asking, and delete the personal answers you have given. Your plan
+stays."; its outcome, "Off. We deleted your personal answers." The ask comes
+once, after the speaker's voice answer about the event, before any personal
+question; "Not now" writes no line of Will's. Built switched off
+(`PLAN_CONSENT_ENABLED`) until Privacy 3.9 is published, so the ring 5
+testers' plan does not change before then.
 
 **N212 · The principles open to ring 5 (founder, the Claude Code chat, 27
 October 2026: "open principles to ring 5").** Amends N182 item 2:
