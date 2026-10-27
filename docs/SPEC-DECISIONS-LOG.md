@@ -5468,3 +5468,76 @@ The rules: frontend
 (the line on the tap's screen) and
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 D4 and D5, each with its build. No migration in this entry.
+
+**N218 · Customer requests: a widget on a client's site, answered in the
+chat as a Take (founder, the Claude Code chat, 27 October 2026: "we rather
+want to do what we do and already think about another feature and about
+testing that hypothesis").** A hypothesis to test beside the speaker loop,
+not a pivot: a client (the first testers sell shampoo and run head spas)
+puts a widget on their website; a customer fills a short form; the request
+reaches the client in our chat; the client records a short video answer; the
+customer gets it; every answered request is a pair the client owns. The
+founder's answers to engineering's sixteen questions:
+1. The answerer is a normal WillpowerLab user. The request is a card in
+their chat; the answer is recorded on the recording screen and goes through
+the Take pipeline, so they get the transcript and the feedback on how they
+communicated it. No new role, no new panel.
+2. One backend, one database: a `workspaces` table owned by the client's
+account, row-level security by workspace, the widget a static file on
+Vercel. No service or deployment per client. A workspace is metadata on a
+project, never a fork in the loop (the rule `services/domains.py` already
+keeps for domains).
+3. Inside the app, each request opens one project named by the customer's
+ask; the answer is its first Take; a re-record is Take 2, and the Ideal Text
+stays what they said in their latest Take (Never 5). The customer gets the
+latest shared Take.
+4. The AI does nothing visible in the first version. It collects pairs:
+request, photo, the final answer and its transcript. No draft, no automatic
+answer, so Never 2 is not yet in question; when a draft comes, the
+founder decides whether the answerer answers first.
+5. The client's IP is their pairs and their uploaded documents, exported as
+JSONL. No model is trained in the MVP; a per-client surface in the existing
+fine-tune pipeline (`services/model_training.py`) opens later, per client,
+by the founder's word.
+6. The customer receives the answer by WhatsApp: a link to an answer page
+with the video, the transcript, the recommendation in words, and one reply
+box. The reply lands back in the client's chat and is the second pair.
+7. The form is fixed for the MVP: the need in the customer's words, an
+optional photo (hair, scalp), the WhatsApp number, one consent tick. Fields
+per client come later, from the pairs.
+8. The client is the data controller; WillpowerLab is the processor. Hair
+and scalp advice is health data (GDPR Article 9): a data processing
+agreement per client, and the consent line in the widget is given in the
+client's name. Counsel reads the DPA and the widget's words before the
+first client goes live.
+9. The photo is stored in a private bucket under the workspace, read by
+signed URL only, and deleted by the retention cleaner 30 days after the
+answer. The pair keeps the text, not the photo.
+10. An unanswered request alarms after 24 hours: one email per overdue
+request to the founder and to the client, the same pattern as
+`coach_moments_queue.reach_alarm`. The promise: every request reaches
+someone.
+11. The customer sees the client's name and one accent colour, with a
+"powered by WillpowerLab" line. Two settings on the workspace; no custom
+domain in the MVP.
+12. Free for testers, a flag on the workspace. Later each answered request
+costs tokens from the client's token account.
+13. The founder creates a workspace in admin (name, colour, WhatsApp
+sender) and the admin page shows the script tag; the client pastes it. No
+self-serve screen in the MVP.
+14. The client sees only their delivery feedback on the answer. The pairs
+and the corpus accumulate unseen; the founder reads the counts in admin.
+15. Build order, each slice proving one thing: (a) workspace, widget,
+request card in the chat, WhatsApp link to a plain answer page; (b) the
+answer as a Take with the walk; (c) the reply box and the second pair;
+(d) photo retention, the 24-hour alarm, the JSONL export. The build plan
+lives in that pull request's description, not in a new file.
+16. The widget, the answer page and the request card are new words on
+screen; their texts come to the founder for OK before they are built
+(Never 4). The request card sits in the chat's footer slot, the one
+`person_asks` uses, one at a time, never between a Take and its Ideal Text
+(Never 3).
+No rules page: a rules page for this flow (frontend
+`docs/flows/customer-requests.md`) waits for the founder's `Founder-Approved:`
+line; until then this entry is the only text in force. No migration in this
+entry.
