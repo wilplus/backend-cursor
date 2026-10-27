@@ -71,8 +71,9 @@ def test_three_failed_deliveries_put_the_generation_to_rest(
 
     for _attempt in range(core.PUBLICATION_FAILURES_BEFORE_REST):
         assert core.sweep_pending_publications(PendingDatabase(rows)) == 1
-        with pytest.raises(RuntimeError, match="PUBLICATION_RETRY_REQUIRED"):
-            core.run_pending_publication("arc-a", 7)
+        # A failed delivery is counted, not raised: a raise reached Sentry
+        # once per failure and retried nothing (PYTHON-FLASK-7V).
+        assert core.run_pending_publication("arc-a", 7) is None
 
     assert len(queued) == core.PUBLICATION_FAILURES_BEFORE_REST
     # The fourth sweep leaves it alone.
