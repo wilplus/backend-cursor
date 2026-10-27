@@ -1768,8 +1768,9 @@ its history is still complete.","O1 -> test_each_batched_body_is_the_single_body
 O2 -> test_a_failed_batched_read_falls_back_to_the_per_paragraph_read","F5, founder 2026-10-08; Never-rule 5 (every old version stays)."
 tests/test_payment_copy_contract.py,Story,"As a speaker, I want never to be charged while the Terms I agreed to say the service takes no payment, so that what I agreed to matches what happens. (Payments.)","O1  The check fails when a Stripe key is set and the Terms in force claim
 that no payment is taken.
-O2  Every Terms copy we ship describes the paid plans and makes no such
-claim, so a Stripe key may be set (the copy decision came first).
+O2  Every Terms copy we ship describes what is paid for (the paid plans;
+from Terms 3.7 the packages, N44) and makes no such claim, so a Stripe
+key may be set (the copy decision came first).
 O3  This process's own config does not contradict the Terms in force.","O1 -> test_the_contradiction_is_detected_when_it_exists
 O2 -> test_every_shipped_terms_describes_payment
 O3 -> test_this_environment_does_not_contradict_the_terms_in_force","2026-09-17: STRIPE_SECRET_KEY was live in production while the Terms said ""there is no paid plan and we do not take payment"". LIMITS   The check lives in this test file only; production has no boot or readiness check for it yet. O3 passes trivially wherever the key is absent (CI); it bites on a box that holds the key."
@@ -1840,6 +1841,12 @@ privacy fingerprints (hashes) are checked by the script.
 O2  It publishes version 3.7 with privacy 3.7, keeps the United States, and
 does not replace the training wording.","O1 -> test_the_copy_is_the_legal_pack_byte_for_byte_and_its_hash_is_checked
 O2 -> test_it_publishes_3_7_and_leaves_the_training_wording_alone","Founder 2026-10-15, N74."
+tests/test_phase1_policy_3_8.py,Story,"As a speaker, I want the 3.8 terms I accept to be the legal pack's files exactly, with the training wording left alone, so that I can later prove what I agreed to.","O1  The terms (3.7), privacy (3.8), AI notice and agreement text in the
+publish script equal the legal pack's files byte for byte, and the
+terms' and privacy fingerprints (hashes) are checked by the script.
+O2  It publishes version 3.8 over 3.7, keeps the United States, and does
+not replace the training wording.","O1 -> test_the_copy_is_the_legal_pack_byte_for_byte_and_its_hash_is_checked
+O2 -> test_it_publishes_3_8_over_3_7_and_leaves_the_training_wording_alone","Founder 2026-10-27, N208 (signed ""as drafted, question 1 A, question 2 A"")."
 tests/test_phase1_policy_unbundled.py,Story,"As a speaker, I want every policy I may have accepted to carry exactly the signed copy and never make an optional purpose a condition of the service, so that refusing an optional purpose never blocks me and I can later prove what I agreed to.","O1  In every publish since the unbundling (3.1 to the live 3.7), every
 required purpose is on contract ...
 O2  ... and every consent purpose is optional; neither check passes alone.
