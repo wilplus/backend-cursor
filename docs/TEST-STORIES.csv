@@ -83,10 +83,20 @@ O2  I can cancel inside the seven days and the block lifts; asking again
 later starts a new request.
 O3  After the seven days the run erases my data, marks the request done
 with proof, and never does it twice.
-O4  A dry run only reports what is due and writes nothing.","O1 -> test_a_request_blocks_at_once_deletes_nothing_and_waits_seven_days
+O4  A dry run only reports what is due and writes nothing.
+O5  Once it is done, my sign-in is gone: no email, no phone, no password,
+no linked sign-in, no live session, and I cannot sign in; what the
+policy says survives (the proof of my agreement, my training choice) is
+still there, and nobody else's sign-in is touched. If my sign-in cannot
+be erased, the deletion is not marked done and the next run finishes
+it. An account deleted before this was fixed loses its sign-in on the
+next run.","O1 -> test_a_request_blocks_at_once_deletes_nothing_and_waits_seven_days
 O2 -> test_the_requester_cancels_inside_the_window_and_the_block_lifts
 O3 -> test_the_run_completes_a_due_deletion_on_verified_evidence
-O4 -> test_a_dry_run_reads_what_is_due_and_writes_nothing","Founder 2026-10-05, N48.4 Q14 A, Q17 A, Q19 A (migration 0422)."
+O4 -> test_a_dry_run_reads_what_is_due_and_writes_nothing
+O5 -> test_a_completed_deletion_leaves_no_way_to_sign_in_and_keeps_what_survives
+test_a_deletion_whose_sign_in_cannot_be_erased_is_not_marked_done
+test_an_account_deleted_before_the_fix_loses_its_sign_in_on_the_next_run","Founder 2026-10-05, N48.4 Q14 A, Q17 A, Q19 A (migration 0422); Privacy 3.8 sections 7 and 9, N217 item 4 and N95 (migration 0497)."
 tests/test_a_failed_export_voids_its_release_postgres.py,Story,"As a speaker who withdrew my training ""yes"", I want a half-finished export that held my pair voided and cleaned up, so that my data never leaves in a broken release.","O1  When an export's last step is refused because a pair is no longer
 allowed, the release is voided as ""export_failed"" and queued for
 file cleanup.
@@ -866,18 +876,13 @@ nothing of mine is released for learning.
 O4  Asking to delete my account opens the cancellable seven-day window;
 ending the service (termination) purges straight away.
 O5  The daily run's route is shut without its secret, refuses a wrong one,
-and deletes for real only when the kill switch is on.
-O6  Before my deletion is marked done, my sign-in record is closed (its
-email and phone number scrambled, no more sign-in) while the evidence
-that must survive keeps its id; if closing fails, the deletion is not
-marked done and the next run tries again; a guest has none to close.","O1 -> RunTests::test_a_due_request_is_started_purged_and_finished,
+and deletes for real only when the kill switch is on.","O1 -> RunTests::test_a_due_request_is_started_purged_and_finished,
 RunTests::test_a_dry_run_reads_and_writes_nothing
 O2 -> RunTests::test_a_purge_that_stops_is_left_for_a_person_with_its_reasons
 O3 -> LearningTests::test_the_stamp_keeps_the_yes_and_releases_nothing_of_a_leaving_person
 O4 -> SpeakerRouteTests::test_an_account_deletion_takes_the_window_and_a_termination_does_not
 O5 -> CronRouteTests::test_the_route_is_dead_without_its_secret_and_refuses_a_wrong_one,
-CronRouteTests::test_it_deletes_only_with_the_kill_switch_on
-O6 -> RunTests::test_the_sign_in_record_is_closed_before_the_deletion_is_done","Founder 2026-10-05, decisions log N48.4 Q14 A, Q17 A, Q19 A (migration 0422). O6: Privacy 3.8 sections 7 and 9 (account records are deleted), founder 2026-10-27, N217 (N95: the text wins, the code is the bug)."
+CronRouteTests::test_it_deletes_only_with_the_kill_switch_on","Founder 2026-10-05, decisions log N48.4 Q14 A, Q17 A, Q19 A (migration 0422)."
 tests/test_delivery_layer.py,Story,"As a speaker, I want my feedback page to show the moments my coach surfaced, with playback and the coach's words, never verdicts or scores, and my readout to show processing or failed states honestly, so that feedback is in words and the next Take is never blocked.","O1  Never-1: a surfaced moment comes back with its words, exact playback and
 the coach's note, exactly those fields, and no score, confidence,
 quorum or acoustic read anywhere in the page.
