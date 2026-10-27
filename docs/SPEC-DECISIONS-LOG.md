@@ -5424,3 +5424,17 @@ yes (N211 item 2), and Privacy 3.9's section 4e names the plan's answers only.
 behind the yes for a speaker who has a plan. The plan's own ask and card are
 built and merged, switched off (backend #1416, frontend #1028).
 No rules page: nothing is built for item 1 or 2; item 3 lands on frontend `docs/flows/the-plan.md` D4 with its build. No migration in this entry.
+
+**N216 · Privacy 3.9 is one version for the plan and WhatsApp sign-in
+(founder, the Claude Code chat, 27 October 2026, asked whether Privacy 3.9
+also covers WhatsApp sign-in: "Yes, one 3.9 for both").** For N211 item 3,
+N214 and N215:
+1. Privacy 3.9 names, in one version: the plan and its personal answers behind
+their own yes (section 4e, N211); "How do you feel?" before a Take, for every
+speaker, which today's Privacy 3.8 does not name (N215 item 2); and the
+WhatsApp number as a way to sign up and sign in, with its code by WhatsApp
+(N214).
+2. One draft, one signature, one read by counsel, and one update prompt for
+speakers. The text is drafted next and waits for the founder's signature.
+No rules page: the text lands in `legal/phase1-2026.1/` when it is signed. No
+migration in this entry.
