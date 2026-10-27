@@ -30,6 +30,16 @@ request resumes, a finished purge is never run again (its finalize would
 write a second 'completed' event), and a request left for a person is not
 retried.
 
+THE SIGN-IN RECORD (founder 2026-10-27, N217; Privacy 3.8 sections 7 and 9).
+Before an account request is marked done, the person's Supabase sign-in
+record is soft-deleted: Supabase replaces its email and phone number with a
+hash, clears its password and metadata, and it can no longer sign in. The
+row itself stays, because what must survive a deletion (the deletion and
+consent evidence, ``owner_principals`` among it) points at its id; a hard
+delete would cascade into that evidence or be refused by it. A soft delete
+that fails leaves the request started, so the next run tries again before
+it marks it done. A guest has no sign-in record, and none is closed.
+
 THE RELEASED COPIES (0456). An erasure request voids every pair release
 holding one of its pairs at once. A run that executes ends by sweeping the
 voided releases (services/pair_release.py), so their objects go within the
@@ -45,7 +55,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +248,36 @@ def _finish(database: Any, work: Work) -> None:
             "p_purge_request_id": work.purge_request_id}).execute().data)
 
 
-def _execute(database: Any, work: Work) -> dict:
+def _sign_in_of(database: Any, request_id: str) -> Optional[str]:
+    """The auth user behind an account request, through its principal (kept
+    as deletion evidence). None for a guest; raises when it cannot be read."""
+    client = database.client
+    rows = (client.table("account_deletion_requests").select("acquisition_principal_id")
+            .eq("id", request_id).limit(1).execute().data or [])
+    principal = str((rows[0] if rows else {}).get("acquisition_principal_id") or "")
+    if not principal:
+        raise RuntimeError("DELETION_PRINCIPAL_UNREAD")
+    owners = (client.table("owner_principals").select("user_id")
+              .eq("id", principal).limit(1).execute().data or [])
+    if not owners:
+        raise RuntimeError("DELETION_OWNER_UNREAD")
+    return str(owners[0].get("user_id") or "") or None
+
+
+def soft_delete_sign_in(user_id: str) -> None:
+    """Supabase's soft delete of one sign-in record (see THE SIGN-IN RECORD).
+    A record already gone counts as closed."""
+    from services.db import new_client
+    try:
+        new_client().auth.admin.delete_user(user_id, should_soft_delete=True)
+    except Exception as error:
+        if getattr(error, "status", None) == 404 or "not found" in str(error).lower():
+            return
+        raise
+
+
+def _execute(database: Any, work: Work,
+             close_sign_in: Callable[[str], None] = soft_delete_sign_in) -> dict:
     from services.data_purge_project_scope import orchestrator_for
 
     purge = work.purge_request_id
@@ -251,6 +290,10 @@ def _execute(database: Any, work: Work) -> dict:
     done = Work(work.kind, work.request_id, work.action, work.due_at,
                 purge, work.project_id)
     if state == "done":
+        if work.kind == "account":
+            user_id = _sign_in_of(database, work.request_id)
+            if user_id:
+                close_sign_in(user_id)
         _finish(database, done)
         return {"purge_request_id": purge, "result": "completed"}
     if state == "review_required":
@@ -264,13 +307,14 @@ def _execute(database: Any, work: Work) -> dict:
     return {"purge_request_id": purge, "result": state or "unknown"}
 
 
-def _handle(database: Any, work: Work, *, execute: bool) -> dict:
+def _handle(database: Any, work: Work, *, execute: bool,
+            close_sign_in: Callable[[str], None] = soft_delete_sign_in) -> dict:
     outcome = work.view()
     if not execute:
         outcome["result"] = f"would_{work.action}"
         return outcome
     try:
-        outcome.update(_execute(database, work))
+        outcome.update(_execute(database, work, close_sign_in))
     except Exception as error:
         logger.error("deletion completion failed kind=%s request=%s: %s",
                      work.kind, work.request_id, error, exc_info=True)
@@ -311,9 +355,11 @@ def _left_for_a_person(database: Any, work: list[Work]) -> list[dict]:
 def run_due_deletions(database: Any, *, execute: bool,
                       limit: int = DEFAULT_LIMIT,
                       now: Optional[datetime] = None,
-                      release_storage: Any = None) -> dict:
+                      release_storage: Any = None,
+                      close_sign_in: Callable[[str], None] = soft_delete_sign_in) -> dict:
     """One completion run. Returns the report for the cron's log.
-    ``release_storage`` is the release bucket's storage (default: R2)."""
+    ``release_storage`` is the release bucket's storage (default: R2);
+    ``close_sign_in`` soft-deletes a sign-in record (default: Supabase's)."""
     limit = max(1, min(int(limit), MAX_LIMIT))
     work = collect(database, now)
     actionable = [item for item in work if item.action != "review"]
@@ -343,7 +389,8 @@ def run_due_deletions(database: Any, *, execute: bool,
                 # Our lease ran out and another run holds it: stop here.
                 report["stopped"] = "LEASE_LOST"
                 break
-            outcomes.append(_handle(database, item, execute=True))
+            outcomes.append(_handle(database, item, execute=True,
+                                    close_sign_in=close_sign_in))
         if "stopped" not in report:
             report["release_sweep"] = _sweep_releases(database, release_storage)
     finally:
