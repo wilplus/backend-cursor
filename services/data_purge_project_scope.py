@@ -173,6 +173,8 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # The plan (N203): one per person, across their projects; the account
     # purge deletes it, with its answers, their recordings and its levels.
     "speaker_plans", "plan_answers", "plan_answer_audio", "plan_level_events",
+    # The plan's own yes (N211): the person's, across their projects.
+    "plan_consent_events",
     # Retention schedule v1.4: product records and job evidence that name
     # only the person, never a project. Deleted with the account (or kept
     # 12 months as job evidence); a project purge leaves them. Placed only

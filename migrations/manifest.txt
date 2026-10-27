@@ -531,3 +531,4 @@
 0493	every_email_and_password_change_is_logged.sql
 0494	the_sign_up_screen_is_counted.sql
 0495	the_plan_keeps_each_speakers_plan.sql
+0496	the_plan_asks_before_it_gets_personal.sql

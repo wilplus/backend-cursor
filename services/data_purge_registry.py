@@ -317,6 +317,10 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "delete", "database_row", 59),
     PurgeDependency("speaker_plans", "speaker_plans", "user_id", "user", "delete",
                     "database_row", 60),
+    # The plan's own yes (N211, migration 0496): the record of each answer
+    # goes with the account.
+    PurgeDependency("plan_consent_events", "plan_consent_events", "user_id", "user",
+                    "delete", "database_row", 60),
     # The Sunday note (Will learning plan, step 2, migration 0485).
     PurgeDependency("sunday_notes", "sunday_notes", "user_id", "user", "delete",
                     "database_row", 60),

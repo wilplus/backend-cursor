@@ -440,6 +440,11 @@ class Config:
     # version names the reminder; off, only a booking that carries a number
     # (made before N207) gets it.
     BOOKING_WHATSAPP_TO_ACCOUNT = os.getenv("BOOKING_WHATSAPP_TO_ACCOUNT", "false").lower() == "true"
+    # The plan's own yes (founder 2026-10-27, N211): the worry question, the
+    # two ratings and "How did it go?" are asked only after a yes to a question
+    # of its own (the feelings check follows it in a later change). Off until
+    # Privacy 3.9, which names it, is published; off, the plan asks as it did.
+    PLAN_CONSENT_ENABLED = os.getenv("PLAN_CONSENT_ENABLED", "false").lower() == "true"
 
     # Current published Terms / Privacy Policy version. Must match the
     # "Last updated" date in the live legal docs (e.g. "1.0" = Terms
