@@ -49,7 +49,9 @@ MIN_PASSWORD = 6         # the live forms' rule ("At least 6 characters")
 MAX_PASSWORD = 72        # bcrypt reads no further; Supabase refuses longer
 MAX_EMAIL = 320
 _EMAIL = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
-PROVIDER_NAMES = {"google": "Google", "linkedin_oidc": "LinkedIn", "linkedin": "LinkedIn"}
+PROVIDER_NAMES = {"google": "Google", "linkedin_oidc": "LinkedIn", "linkedin": "LinkedIn",
+                  # A WhatsApp account signs in with its phone (N214).
+                  "phone": "WhatsApp"}
 
 
 class AccountError(Exception):

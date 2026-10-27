@@ -415,6 +415,15 @@ timing, and nothing else: no owner, machine or peer value, no words.
 O2  coach_evidence_comparison_v1 shows the owner, machine and peer answers
 only after the coach's own answer is committed; before it, nothing.","O1 -> test_the_blind_packet_is_audio_and_timing_only
 O2 -> test_the_comparison_opens_only_after_the_coach_answers","CLAUDE.md Never rule 2; 0296 add_canonical_feedback_data_contract.sql. Runs on the released confident-moment lane (scripts/rehearsal_tier.sh). Every case is one transaction as the superuser that seeds, then calls the functions as service_role (the backend's role), and is always rolled back."
+tests/test_booking_email.py,Story,"As someone who signed up with WhatsApp, I want to give my email only when I book a call, so that the calendar invite reaches me and my account keeps the email for receipts and later invites.","O1  An account with no email books with the email it typed, and that
+address gets the link that makes it the account's email; once the
+link is opened, the account has it.
+O2  An account that has an email books with it, whatever is typed, and
+no link goes.
+O3  When the link cannot go (the address has another account), the
+booking still goes ahead.","O1 -> test_an_account_without_email_books_with_the_one_it_typed
+O2 -> test_an_account_with_email_books_with_its_own
+O3 -> test_a_link_that_cannot_go_does_not_stop_the_booking","Founder 2026-10-27, N214 item 4."
 tests/test_booking_erase.py,Story,"As a speaker who closes my account, I want my lesson bookings deleted, with a paid lesson kept only as a bare accounting record, so that nothing personal about me stays.","O1  Unpaid bookings are deleted.
 O2  A paid booking keeps only its date, price and Stripe reference; my
 name, email, WhatsApp number, note and account link are removed.
@@ -864,13 +873,18 @@ nothing of mine is released for learning.
 O4  Asking to delete my account opens the cancellable seven-day window;
 ending the service (termination) purges straight away.
 O5  The daily run's route is shut without its secret, refuses a wrong one,
-and deletes for real only when the kill switch is on.","O1 -> RunTests::test_a_due_request_is_started_purged_and_finished,
+and deletes for real only when the kill switch is on.
+O6  Before my deletion is marked done, my sign-in record is closed (its
+email and phone number scrambled, no more sign-in) while the evidence
+that must survive keeps its id; if closing fails, the deletion is not
+marked done and the next run tries again; a guest has none to close.","O1 -> RunTests::test_a_due_request_is_started_purged_and_finished,
 RunTests::test_a_dry_run_reads_and_writes_nothing
 O2 -> RunTests::test_a_purge_that_stops_is_left_for_a_person_with_its_reasons
 O3 -> LearningTests::test_the_stamp_keeps_the_yes_and_releases_nothing_of_a_leaving_person
 O4 -> SpeakerRouteTests::test_an_account_deletion_takes_the_window_and_a_termination_does_not
 O5 -> CronRouteTests::test_the_route_is_dead_without_its_secret_and_refuses_a_wrong_one,
-CronRouteTests::test_it_deletes_only_with_the_kill_switch_on","Founder 2026-10-05, decisions log N48.4 Q14 A, Q17 A, Q19 A (migration 0422)."
+CronRouteTests::test_it_deletes_only_with_the_kill_switch_on
+O6 -> RunTests::test_the_sign_in_record_is_closed_before_the_deletion_is_done","Founder 2026-10-05, decisions log N48.4 Q14 A, Q17 A, Q19 A (migration 0422). O6: Privacy 3.8 sections 7 and 9 (account records are deleted), founder 2026-10-27, N217 (N95: the text wins, the code is the bug)."
 tests/test_delivery_layer.py,Story,"As a speaker, I want my feedback page to show the moments my coach surfaced, with playback and the coach's words, never verdicts or scores, and my readout to show processing or failed states honestly, so that feedback is in words and the next Take is never blocked.","O1  Never-1: a surfaced moment comes back with its words, exact playback and
 the coach's note, exactly those fields, and no score, confidence,
 quorum or acoustic read anywhere in the page.
@@ -1530,9 +1544,12 @@ O2  A request without Supabase's signature, signed with another secret
 or too old sends nothing (401); with no secret set the door is shut
 (503).
 O3  When WhatsApp sending is off the hook answers an error, so Supabase
-tells the person the code could not be sent.","O1 -> test_a_signed_request_sends_the_code_on_whatsapp
+tells the person the code could not be sent.
+O4  A number being added in Settings gets its code at that number, which
+is not yet the account's.","O1 -> test_a_signed_request_sends_the_code_on_whatsapp
 O2 -> test_an_unsigned_or_stale_request_sends_nothing
-O3 -> test_sending_off_answers_an_error","Founder 2026-10-27, N214."
+O3 -> test_sending_off_answers_an_error
+O4 -> test_a_number_being_added_gets_the_code","Founder 2026-10-27, N214."
 tests/test_lounge_clips.py,Story,"As a speaker, I want the clips, recordings and slide decks in my Lounge to get fresh links from my own recordings only, a coach's video to play only while it is their word's current one, and each page to load quickly, so that my media plays and I never see another user's.","O1  My own clip gets a fresh link; a clip pointing at another user's
 recording is left untouched.
 O2  One page gets fresh clip, recording and deck links and the ""new coach
@@ -1989,7 +2006,10 @@ the last practice's ratings and ""How did it go?"" at its end wait for
 the yes; ""Not now"" skips them, and the end goes on to what's next.
 O6  When the answer cannot be read, nothing personal is asked; a yes that
 cannot be kept is not a yes: Will asks again before the next personal
-question.","O1 -> test_with_the_switch_off_the_plan_asks_as_before
+question.
+O7  ""How do you feel?"" before a Take is kept for a speaker without a
+plan, and on a plan only after its own yes; the plan tells the app
+which. With the switch off, as before for everyone.","O1 -> test_with_the_switch_off_the_plan_asks_as_before
 O2 -> test_will_asks_once_and_a_yes_goes_on_with_the_personal_questions
 O3 -> test_not_now_skips_the_personal_questions_and_keeps_the_plan
 O4 -> test_turning_off_deletes_what_the_speaker_gave
@@ -1997,7 +2017,8 @@ test_a_turn_off_that_fails_leaves_the_yes_on
 O5 -> test_the_last_ratings_wait_for_the_yes
 test_the_plans_end_asks_for_the_yes_before_how_did_it_go
 O6 -> test_a_doubt_means_nothing_personal_is_asked
-test_a_yes_that_cannot_be_kept_is_not_a_yes","The plan's own yes, drawn and approved by the founder 2026-10-27 (N211; Privacy 3.9 section 4e, to be published); the rules are frontend docs/flows/the-plan.md."
+test_a_yes_that_cannot_be_kept_is_not_a_yes
+O7 -> test_how_do_you_feel_is_kept_on_a_plan_only_after_its_yes","The plan's own yes, drawn and approved by the founder 2026-10-27 (N211; Privacy 3.9 section 4e, to be published); the rules are frontend docs/flows/the-plan.md."
 tests/test_plan_flow.py,Story,"As a new speaker on the plan's ring, I want Will to ask me a few questions in the Lounge before my first Take and give me a plan, so that my practice starts from my event and my own voice.","O1  Someone without the plan sees nothing of it: no plan, nothing written.
 O2  A new speaker with no Take is asked, once: ""Hi Artur! A few quick
 questions before your first practice."" and ""When is your deadline?"".

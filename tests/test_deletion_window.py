@@ -12,6 +12,10 @@ OUTCOME
       ending the service (termination) purges straight away.
   O5  The daily run's route is shut without its secret, refuses a wrong one,
       and deletes for real only when the kill switch is on.
+  O6  Before my deletion is marked done, my sign-in record is closed (its
+      email and phone number scrambled, no more sign-in) while the evidence
+      that must survive keeps its id; if closing fails, the deletion is not
+      marked done and the next run tries again; a guest has none to close.
 PROVES   O1 -> RunTests::test_a_due_request_is_started_purged_and_finished,
                RunTests::test_a_dry_run_reads_and_writes_nothing
          O2 -> RunTests::test_a_purge_that_stops_is_left_for_a_person_with_its_reasons
@@ -19,7 +23,10 @@ PROVES   O1 -> RunTests::test_a_due_request_is_started_purged_and_finished,
          O4 -> SpeakerRouteTests::test_an_account_deletion_takes_the_window_and_a_termination_does_not
          O5 -> CronRouteTests::test_the_route_is_dead_without_its_secret_and_refuses_a_wrong_one,
                CronRouteTests::test_it_deletes_only_with_the_kill_switch_on
+         O6 -> RunTests::test_the_sign_in_record_is_closed_before_the_deletion_is_done
 WHY      Founder 2026-10-05, decisions log N48.4 Q14 A, Q17 A, Q19 A (migration 0422).
+         O6: Privacy 3.8 sections 7 and 9 (account records are deleted), founder
+         2026-10-27, N217 (N95: the text wins, the code is the bug).
 """
 from __future__ import annotations
 
@@ -45,6 +52,7 @@ NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
 PRINCIPAL = "11111111-1111-4111-8111-111111111111"
 REQUEST = "22222222-2222-4222-8222-222222222222"
 PURGE = "33333333-3333-4333-8333-333333333333"
+USER = "44444444-4444-4444-8444-444444444444"
 
 
 def _iso(moment: datetime) -> str:
@@ -125,11 +133,13 @@ def _account_row(**over):
 # ── The completion run ────────────────────────────────────────────────────
 
 
-def _tables(*, account=(), project=(), purges=(), targets=()):
+def _tables(*, account=(), project=(), purges=(), targets=(),
+            owners=({"id": PRINCIPAL, "user_id": USER},)):
     return {"account_deletion_requests": list(account),
             "project_deletion_requests": list(project),
             "data_purge_requests": list(purges),
-            "data_purge_targets": list(targets)}
+            "data_purge_targets": list(targets),
+            "owner_principals": list(owners)}
 
 
 def _due(**over):
@@ -153,12 +163,16 @@ class RunTests(unittest.TestCase):
                          ["account_sign_ins_left_v1"])
 
 
-    def _run(self, database, final_state):
+    def _run(self, database, final_state, close_sign_in=None):
         orchestrator = mock.Mock()
         orchestrator.run.return_value = {"result": {"state": final_state}}
+        if close_sign_in is None:
+            def close_sign_in(user_id):
+                database.client.calls.append(("close_sign_in", user_id))
         with mock.patch("services.data_purge_project_scope.orchestrator_for",
                         return_value=orchestrator) as chooser:
-            report = dc.run_due_deletions(database, execute=True, now=NOW)
+            report = dc.run_due_deletions(database, execute=True, now=NOW,
+                                          close_sign_in=close_sign_in)
         return report, orchestrator, chooser
 
     def test_a_due_request_is_started_purged_and_finished(self):
@@ -190,6 +204,45 @@ class RunTests(unittest.TestCase):
             "reason": "EXPLICIT_RESOLVER_REQUIRED"}])
         self.assertNotIn("complete_phase1_account_deletion_v1",
                          [c[0] for c in database.client.calls])
+        self.assertNotIn("close_sign_in", [c[0] for c in database.client.calls])
+
+    def test_the_sign_in_record_is_closed_before_the_deletion_is_done(self):
+        database = self._db(
+            _tables(account=[_due()]),
+            start_due_account_deletion_v1=[_due(state="started", purge_request_id=PURGE)],
+            complete_phase1_account_deletion_v1=[_due(state="done")])
+        report, _, _ = self._run(database, "done")
+        names = [c[0] for c in database.client.calls]
+        self.assertEqual(report["outcomes"][0]["result"], "completed")
+        self.assertIn(("close_sign_in", USER), database.client.calls)
+        self.assertLess(names.index("close_sign_in"),
+                        names.index("complete_phase1_account_deletion_v1"))
+
+        # Closing fails: not marked done; the next run closes it, then finishes.
+        started = _due(state="started", purge_request_id=PURGE)
+        database = self._db(
+            _tables(account=[started], purges=[{"id": PURGE, "state": "done"}]),
+            complete_phase1_account_deletion_v1=[_due(state="done")])
+
+        def refused(user_id):
+            raise RuntimeError("AUTH_UNAVAILABLE")
+        with self.assertLogs("services.deletion_completion", "ERROR"):
+            report, _, _ = self._run(database, "done", close_sign_in=refused)
+        self.assertEqual(report["outcomes"][0]["result"], "error")
+        self.assertNotIn("complete_phase1_account_deletion_v1",
+                         [c[0] for c in database.client.calls])
+        report, _, _ = self._run(database, "done")
+        self.assertEqual(report["outcomes"][0]["result"], "completed")
+        self.assertIn(("close_sign_in", USER), database.client.calls)
+
+        # A guest has no sign-in record: nothing to close, still finished.
+        database = self._db(
+            _tables(account=[started], purges=[{"id": PURGE, "state": "done"}],
+                    owners=[{"id": PRINCIPAL, "user_id": None}]),
+            complete_phase1_account_deletion_v1=[_due(state="done")])
+        report, _, _ = self._run(database, "done")
+        self.assertEqual(report["outcomes"][0]["result"], "completed")
+        self.assertNotIn("close_sign_in", [c[0] for c in database.client.calls])
 
 
 # ── Learning stops ────────────────────────────────────────────────────────

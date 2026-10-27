@@ -9,6 +9,8 @@ Public (no login):
 Signed in (booking needs a WillpowerLab account):
   GET  /v2/booking/<slug>/offer[?as=&link=] my price (admins may preview anyone)
   POST /v2/booking/<slug>/checkout           hold the slot, open Stripe at my price
+                                             (an account with no email sends the
+                                             one it typed, N214 item 4)
 
 Admin:
   GET  /v2/admin/booking                     settings + upcoming bookings
@@ -24,6 +26,7 @@ checkout.session.completed with metadata.kind == "booking".
 """
 from __future__ import annotations
 
+import logging
 from datetime import timedelta, timezone
 
 from flask import Blueprint, jsonify, request
@@ -32,6 +35,8 @@ from auth import require_auth
 from routes.admin import is_admin, require_admin
 from services import booking
 from services.rate_limits import client_ip, limiter
+
+logger = logging.getLogger(__name__)
 
 booking_bp = Blueprint("booking", __name__)
 
@@ -96,19 +101,48 @@ def booking_offer(slug: str):
 @require_auth
 def booking_checkout(slug: str):
     body = request.get_json(silent=True) or {}
-    return _reply(booking.start_checkout(
+    account_email = str((getattr(request, "token_payload", None) or {}).get("email") or "")
+    # An account with no email (signed up with WhatsApp) types one on the
+    # form (N214 item 4); an account that has one books with it.
+    typed = "" if account_email else str(body.get("email") or "").strip()
+    reply = booking.start_checkout(
         slug=slug,
         user_id=str(getattr(request, "user_id", "")),
         start_iso=str(body.get("start") or ""),
         name=str(body.get("name") or ""),
-        email=str((getattr(request, "token_payload", None) or {}).get("email") or ""),
+        email=account_email or typed,
         guest_timezone=str(body.get("timezone") or "UTC"),
         note=str(body.get("note") or ""),
         embedded=body.get("embedded") is True,
         skip_payment=body.get("skip_payment") is True,
         link=str(body.get("link") or ""),
         pay_with_tokens=body.get("pay_with_tokens") is True,
-    ))
+    )
+    if typed:
+        _offer_account_email(typed)
+    return _reply(reply)
+
+
+def _offer_account_email(email: str) -> None:
+    """The typed email becomes the account's once its owner opens the link
+    Settings' email change sends ("Confirm your new email"), so receipts and
+    later invites use it too; never before, so nobody takes an address that
+    is not theirs. The slot is held either way: the invite goes to it."""
+    from routes.v2.common import _client_ip_from_request
+    from services.account_security import AccountError, Caller, Ports, change_email
+    header = request.headers.get("Authorization") or ""
+    caller = Caller(user_id=str(getattr(request, "user_id", "")),
+                    jwt=header.replace("Bearer ", "", 1).strip(),
+                    ip=_client_ip_from_request(),
+                    user_agent=request.headers.get("User-Agent"))
+    try:
+        change_email(Ports(), caller, email)
+    except AccountError as e:
+        logger.info("booking: account email not offered for %s (%s)", caller.user_id, e.code)
+    except Exception as e:  # noqa: BLE001 -- the booking stands
+        import sentry_sdk
+        logger.error("booking: account email link failed for %s: %s", caller.user_id, e)
+        sentry_sdk.capture_exception(e)
 
 
 @booking_bp.route("/v2/booking/confirmation", methods=["GET"])
