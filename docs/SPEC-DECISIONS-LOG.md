@@ -5414,8 +5414,7 @@ after their first Take").** For N211 items 2 and 4, N151 and N178:
 1. A speaker who has no plan, a plan being for the ring 5 testers today, is
 asked for a yes once, in the Lounge, after their first Take. After it, never
 before it: the loop is not slowed (Never 3). A speaker with a plan gets the
-plan's own ask (N211 item 1); the one yes covers both, so no one is asked
-twice.
+plan's own ask (N211 item 1).
 2. "How do you feel?" shows only after a yes, with its Skip every time (N211
 item 2). Before the yes a Take opens at its set-up with no feelings check.
 Its answer is kept as the plan's personal answers are: the yes can be turned
@@ -5426,9 +5425,12 @@ stress, a worry or "How did it go?", so the plan's words do not fit it. Its
 words, the card's words for them, and the Privacy 3.9 section 4e wording that
 covers it are new words on locked screens (Never 4): they are drawn on a
 prototype for the founder's OK before they are built.
-4. Not decided here: whether "Not now" is asked again and when; what becomes
-of the feelings already given by speakers who never said yes (a decision for
-when the switch goes on).
+4. Not decided here: whether "Not now" is asked again and when; whether a yes
+to the tap alone covers the plan's other personal answers (it names only the
+tap, so it cannot, unless its words say more): until decided, a speaker who
+said yes to the tap and later gets a plan is asked the plan's own ask once;
+what becomes of the feelings already given by speakers who never said yes (a
+decision for when the switch goes on).
 5. The switch, `PLAN_CONSENT_ENABLED`, stays off until this is built and
 Privacy 3.9 is published. The plan's own ask and card are built and merged,
 switched off (backend #1416, frontend #1028).
