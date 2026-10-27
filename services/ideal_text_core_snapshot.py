@@ -460,8 +460,16 @@ def run_pending_publication(arc_id: str, source_generation: int) -> None:
     if current != int(source_generation):
         return
     if publish_for_arc(db, str(arc_id), enqueue_on_failure=False) is None:
+        # A failed delivery returns, it does not raise (production,
+        # 2026-10-27). The raise retried nothing (the sweep owns retries and
+        # the count above decides them), but every one reached Sentry as an
+        # unhandled RQ error: about a hundred resting generations, three
+        # failures each per window, used 80% of the month's error budget in
+        # one issue (PYTHON-FLASK-7V) carrying no cause. The cause is the
+        # warning `publish_for_arc` logs; the rest is the sweep's info line.
         _note_publication_failure(str(arc_id), int(source_generation))
-        raise RuntimeError("IDEAL_TEXT_DOCUMENT_PUBLICATION_RETRY_REQUIRED")
+        logger.warning("ideal-text publication delivery failed arc=%s "
+                       "generation=%s", arc_id, source_generation)
 
 
 # A generation that keeps failing rests (production, 2026-10-03). The sweep
