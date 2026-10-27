@@ -293,7 +293,10 @@ O6  A clip names its problem (pace, pause, stress, fillers or default)
 and the phrase it is made with as soon as they are chosen, ready or
 still being made; never a number (N120).
 O7  A praised moment's practice gets its clip too, started early like a
-corrected moment's (N122).","O1 -> test_a_problem_from_the_line_up_else_the_default,
+corrected moment's (N122).
+O8  On a plan, the clip practises the level's own problem whenever my
+clip shows it; where it doesn't, the pick is as without a plan (G7,
+N209).","O1 -> test_a_problem_from_the_line_up_else_the_default,
 test_raw_units_are_never_compared_and_the_phrase_has_a_fallback,
 test_the_sentence_under_the_clip_comes_from_the_transcript_and_their_own_numbers,
 test_a_clean_sentence_never_gets_the_fillers_clip
@@ -317,7 +320,8 @@ test_a_voice_already_gone_at_elevenlabs_counts_as_deleted,
 test_account_deletion_removes_the_voice_before_the_account_is_blocked,
 test_delete_removes_the_voice_and_clips_and_is_safe_twice
 O6 -> test_a_ready_clip_names_its_problem_and_phrase
-O7 -> test_a_praised_moments_practice_gets_a_clip","Founder lock 2026-10-12 (N71); Never-rule 1 for the sentence under the clip; 2026-10-23 (N120, the short bubble; N122, ""do we practice the confident moments? I think yes we should!"")."
+O7 -> test_a_praised_moments_practice_gets_a_clip
+O8 -> test_on_a_plan_the_clip_practises_the_levels_problem","Founder lock 2026-10-12 (N71); Never-rule 1 for the sentence under the clip; 2026-10-23 (N120, the short bubble; N122, ""do we practice the confident moments? I think yes we should!"")."
 tests/test_an_attempt_after_the_third_saves_postgres.py,Story,"As a speaker practising, I want my 4th and 10th tries saved like my 1st, so that practice never silently stops recording.","O1  Through the app's writer (DatabaseService.
 insert_confident_voice_practice_attempt), attempts 1, 2, 3, 4 and 10
 of one practice all save.
@@ -1920,12 +1924,17 @@ a fact already said is not asked again, a named worry still is.
 O5  The AI's question is kept only in its signed template's shape;
 anything else falls back to the plain template.
 O6  The dates read as the chat writes them (""14 November"", ""Sat 14 Nov"",
-""Tuesday 27 October, 10:00"").","O1 -> test_the_deadline_sets_the_journey
+""Tuesday 27 October, 10:00"").
+O7  A Take reaches its level when the check that picked it no longer
+fires; the next level is the next thing heard, never one the plan
+already had, else ""Make it yours""; a level runs a week, or two in a
+longer plan, and a plan of two weeks or less keeps one level.","O1 -> test_the_deadline_sets_the_journey
 O2 -> test_practice_count_and_next_day
 O3 -> test_the_level_comes_from_what_was_measured
 O4 -> test_the_key_line_first_and_at_most_three
 O5 -> test_the_ai_question_must_keep_its_template
-O6 -> test_dates_read_as_the_chat_writes_them","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); the rules are frontend docs/flows/the-plan.md §1."
+O6 -> test_dates_read_as_the_chat_writes_them
+O7 -> test_a_level_is_reached_on_its_own_check","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the rules are frontend docs/flows/the-plan.md §1."
 tests/test_plan_flow.py,Story,"As a new speaker on the plan's ring, I want Will to ask me a few questions in the Lounge before my first Take and give me a plan, so that my practice starts from my event and my own voice.","O1  Someone without the plan sees nothing of it: no plan, nothing written.
 O2  A new speaker with no Take is asked, once: ""Hi Artur! A few quick
 questions before your first practice."" and ""When is your deadline?"".
@@ -1943,13 +1952,24 @@ hello and today's one thing, once; after a Take on a practice day the
 15 minutes lines come, once.
 O7  A new project's first Take asks ""Is this for {date}?""; Yes keeps the
 plan, No starts ""When is your deadline?"" for a new one, the old plan
-kept in the history.","O1 -> test_without_the_ring_nothing_happens
+kept in the history.
+O8  Two Takes in a row that reach the level start the next thing heard;
+three Takes on a level without moving are noted for the coach's
+queue, once; a coach's level is never moved; a level whose time ran
+out gives way at the next open, and that day's hello names the new
+level. Nothing about it is said in the chat.
+O9  A Take's walk reads the level the plan had when the Take was
+recorded, so it reads the same on every opening; off a plan, or on
+""Make it yours"", the walk is as today.","O1 -> test_without_the_ring_nothing_happens
 O2 -> test_a_new_speaker_is_asked_once
 O3 -> test_no_date_gives_two_months_then_the_voice_message
 O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
 O5 -> test_ratings_are_kept_quietly_and_the_calls_lead_to_the_plan
 O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
-O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); the rules are frontend docs/flows/the-plan.md §1."
+O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
+O8 -> test_the_level_moves_on_after_two_takes_that_reach_it
+test_a_level_whose_time_ran_out_gives_way
+O9 -> test_a_walk_reads_the_level_of_its_takes_time","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the rules are frontend docs/flows/the-plan.md §1."
 tests/test_playback_copy.py,Story,"As a speaker on iPhone or Safari, I want my recordings to play back, and the playback copy deleted with the recording, so that I can hear myself and deletion leaves nothing. (Record -> next Take: hearing the Take; and deletion.)","O1  A stored short recording gets its Safari-safe copy (.playback.m4a,
 audio/mp4) beside it at upload; the original is untouched.
 O2  The player is handed the original until the copy exists, and the copy
@@ -2716,7 +2736,12 @@ O7  A shown moment whose sentence restarts or asks for approval opens on
 the Clearer version: with the undermining opener for an approval tag
 or a playing-down ""just"", with the plain opener for a restart.
 O8  In a shown block the moment is its highest-willfidence clip that can
-be served; a block already frozen keeps its clip.","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
+be served; a block already frozen keeps its clip.
+O9  On a plan, the walk shows the best moment and the moment where this
+week's level shows most, practised with the level's own practice
+(the AI voice for pace) and marked with the level's key, even when
+its voice cleared the floor; with no clip showing the level, the two
+best, as today (G7, N134 item 2, N209).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O1 -> test_two_best_clips_in_one_block_get_a_block_each
 O1 -> test_a_one_block_take_is_split_for_two_moments
 O1 -> test_no_possible_cut_leaves_the_blocks_as_they_were
@@ -2727,7 +2752,8 @@ O4 -> test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate
 O5 -> test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version
 O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version
 O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version
-O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118)."
+O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen
+O9 -> test_on_a_plan_one_moment_is_where_the_level_shows","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment)."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name

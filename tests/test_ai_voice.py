@@ -25,6 +25,9 @@ OUTCOME
       still being made; never a number (N120).
   O7  A praised moment's practice gets its clip too, started early like a
       corrected moment's (N122).
+  O8  On a plan, the clip practises the level's own problem whenever my
+      clip shows it; where it doesn't, the pick is as without a plan (G7,
+      N209).
 PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
                test_raw_units_are_never_compared_and_the_phrase_has_a_fallback,
                test_the_sentence_under_the_clip_comes_from_the_transcript_and_their_own_numbers,
@@ -50,6 +53,7 @@ PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
                test_delete_removes_the_voice_and_clips_and_is_safe_twice
          O6 -> test_a_ready_clip_names_its_problem_and_phrase
          O7 -> test_a_praised_moments_practice_gets_a_clip
+         O8 -> test_on_a_plan_the_clip_practises_the_levels_problem
 WHY      Founder lock 2026-10-12 (N71); Never-rule 1 for the sentence under
          the clip; 2026-10-23 (N120, the short bubble; N122, "do we practice
          the confident moments? I think yes we should!").
@@ -292,6 +296,21 @@ def test_raw_units_are_never_compared_and_the_phrase_has_a_fallback():
     # No comma or joining word: the last third of the sentence.
     assert ai_voice_severity.target_phrase(
         "Our revenue grew twelve percent last quarter in Europe") == "quarter in Europe"
+
+
+def test_on_a_plan_the_clip_practises_the_levels_problem():
+    with _on():
+        medians = ai_voice_severity.own_medians(TAKE)
+        clip = _snip(168, pause_ratio=0.05)  # fewer pauses is the worse problem
+        plain = ai_voice_severity.select(clip, medians, sentence=SENTENCE, seed="s")
+        assert plain["exercise"] == "pause"
+        paced = ai_voice_severity.select(clip, medians, sentence=SENTENCE, seed="s", prefer="pace")
+        assert paced["exercise"] == "pace" and not paced["default"]
+        # A level the clip doesn't show (its loudness range is its usual):
+        # the pick as without a plan.
+        level_off = ai_voice_severity.select(clip, medians, sentence=SENTENCE, seed="s",
+                                             prefer="stress")
+        assert level_off["exercise"] == "pause"
 
 
 # ── the request keeps the words ───────────────────────────────────────────

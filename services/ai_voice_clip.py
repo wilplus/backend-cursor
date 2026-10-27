@@ -367,8 +367,11 @@ def _choose(database: Any, practice: dict, cycle: dict) -> tuple[Optional[dict],
     history = [row for row in store.owner_cycles(database, str(cycle["owner_user_id"]))
                if str(row.get("id")) != str(cycle["id"])]
     sentence = str(practice.get("exact_passage") or snippet.get("transcript") or "")
+    # On a plan, the level's own problem where the clip shows it (G7, N209).
+    from services.plan_walk import AI_PROBLEM, level_of_practice
     selection = select(snippet, medians, sentence=sentence,
-                       seed=str(practice["id"]), history=history)
+                       seed=str(practice["id"]), history=history,
+                       prefer=AI_PROBLEM.get(level_of_practice(database, practice) or ""))
     before = {k: (snippet.get("metrics") or {}).get(k)
               for k in ("wpm", "pause_ratio", "dynamic_db")}
     from services.ai_voice_severity import fillers_per_100

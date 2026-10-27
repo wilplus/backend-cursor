@@ -259,27 +259,108 @@ class Diagnosis:
     reason: str
 
 
-def pick_level(readings: Mapping[str, Any]) -> Diagnosis:
-    """The level from what was measured today, strongest first (C2, C3).
+#: The levels a check picks, strongest first; "Make it yours" is what is
+#: left when none fires (C3).
+PICK_ORDER = ("key_line", "pauses", "say_once", "voice_moves")
+PICK_REASONS = {
+    "key_line": "the key line came out faster than the rest",
+    "pauses": "few, short pauses",
+    "say_once": "filler and repeated words",
+    "voice_moves": "a narrow pitch range",
+}
 
-    ``readings`` holds what the voice message and the key line's answer
-    gave: ``wpm`` (the message), ``key_wpm`` (the key line), ``pauses_per_min``,
-    ``mean_pause_ms``, ``fillers_per_min`` (without "um" and "uh"),
-    ``flat_pitch``. A reading that wasn't measured is simply absent; the
-    plan falls back to "Make it yours", never to a guess.
-    """
-    wpm, key_wpm = _num(readings.get("wpm")), _num(readings.get("key_wpm"))
-    if wpm and key_wpm and key_wpm >= wpm * KEY_LINE_FASTER:
-        return Diagnosis("key_line", "the key line came out faster than the rest")
-    ppm, mean_ms = _num(readings.get("pauses_per_min")), _num(readings.get("mean_pause_ms"))
-    if (ppm is not None and ppm < FEW_PAUSES_PER_MIN) or (mean_ms is not None and 0 < mean_ms < SHORT_PAUSE_MS):
-        return Diagnosis("pauses", "few, short pauses")
-    fpm = _num(readings.get("fillers_per_min"))
-    if fpm is not None and fpm >= MANY_FILLERS_PER_MIN:
-        return Diagnosis("say_once", "filler and repeated words")
-    if readings.get("flat_pitch") is True:
-        return Diagnosis("voice_moves", "a narrow pitch range")
+
+def fires(level: str, readings: Mapping[str, Any]) -> Optional[bool]:
+    """Does the check that picks ``level`` fire on these readings? None when
+    the reading it needs was not measured, so nothing is guessed.
+
+    ``readings`` holds ``wpm`` (all the words), ``key_wpm`` (the key line),
+    ``pauses_per_min``, ``mean_pause_ms``, ``fillers_per_min`` (without "um"
+    and "uh"), ``flat_pitch``; a reading that wasn't measured is absent."""
+    if level == "key_line":
+        wpm, key_wpm = _num(readings.get("wpm")), _num(readings.get("key_wpm"))
+        return key_wpm >= wpm * KEY_LINE_FASTER if wpm and key_wpm else None
+    if level == "pauses":
+        ppm, mean_ms = _num(readings.get("pauses_per_min")), _num(readings.get("mean_pause_ms"))
+        if ppm is None and mean_ms is None:
+            return None
+        return (ppm is not None and ppm < FEW_PAUSES_PER_MIN) or (
+            mean_ms is not None and 0 < mean_ms < SHORT_PAUSE_MS)
+    if level == "say_once":
+        fpm = _num(readings.get("fillers_per_min"))
+        return None if fpm is None else fpm >= MANY_FILLERS_PER_MIN
+    if level == "voice_moves":
+        flat = readings.get("flat_pitch")
+        return flat if isinstance(flat, bool) else None
+    return None
+
+
+def pick_level(readings: Mapping[str, Any]) -> Diagnosis:
+    """The level from what was measured today, strongest first (C2, C3):
+    the first check in ``PICK_ORDER`` that fires. With nothing measured, or
+    nothing past its line, "Make it yours", never a guess."""
+    for level in PICK_ORDER:
+        if fires(level, readings):
+            return Diagnosis(level, PICK_REASONS[level])
     return Diagnosis("make_it_yours", "nothing stood out more than the speaker's own best moment")
+
+
+# ── a level on each Take (G10; N134 items 3 and 4, N209) ──────────────────
+
+#: Two Takes in a row that reach the level start the next one.
+REACH_IN_A_ROW = 2
+#: Three Takes on a level without moving are noted for the coach's queue.
+STUCK_AFTER = 3
+
+
+def reached(level: Optional[str], readings: Mapping[str, Any]) -> Optional[bool]:
+    """A Take reaches its level when the check that picked the level no
+    longer fires on it (N209 item 1). None when it can't be read, and for
+    "Make it yours", which stays."""
+    if level not in PICK_ORDER:
+        return None
+    on = fires(level, readings)  # type: ignore[arg-type]
+    return None if on is None else not on
+
+
+def next_level(readings: Mapping[str, Any], had: Sequence[str]) -> str:
+    """The next thing heard, strongest first, skipping the levels this plan
+    already had; "Make it yours" when no other check fires (N209 item 3)."""
+    for level in PICK_ORDER:
+        if level not in had and fires(level, readings):
+            return level
+    return "make_it_yours"
+
+
+_WORD = re.compile(r"[a-z']+")
+#: The share of the key line's words a clip must hold to be the one that
+#: says it.
+KEY_LINE_MATCH = 0.6
+
+
+def key_line_at(texts: Sequence[Any], key_line: Any) -> Optional[int]:
+    """Which clip of a Take says the key line: the one holding most of its
+    words, at least ``KEY_LINE_MATCH`` of them; None when none does, or when
+    the key line has fewer than three words to look for."""
+    want = {w for w in _WORD.findall(str(key_line or "").lower()) if len(w) > 2}
+    if len(want) < 3:
+        return None
+    best, at = 0.0, None
+    for i, text in enumerate(texts):
+        share = len(want & set(_WORD.findall(str(text or "").lower()))) / len(want)
+        if share > best:
+            best, at = share, i
+    return at if best >= KEY_LINE_MATCH else None
+
+
+def level_days(start: date, deadline: date) -> Optional[int]:
+    """The longest a level runs, by the plan's length (the treatment
+    picker's journey table, N134): two weeks or less, one level for the
+    whole plan (None); up to six weeks, a week; longer, two weeks."""
+    days = (deadline - start).days
+    if days <= EVERY_DAY_WITHIN:
+        return None
+    return 7 if days <= 42 else 14
 
 
 def _num(v: Any) -> Optional[float]:

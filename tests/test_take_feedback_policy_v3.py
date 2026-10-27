@@ -29,6 +29,11 @@ OUTCOME
       or a playing-down "just", with the plain opener for a restart.
   O8  In a shown block the moment is its highest-willfidence clip that can
       be served; a block already frozen keeps its clip.
+  O9  On a plan, the walk shows the best moment and the moment where this
+      week's level shows most, practised with the level's own practice
+      (the AI voice for pace) and marked with the level's key, even when
+      its voice cleared the floor; with no clip showing the level, the two
+      best, as today (G7, N134 item 2, N209).
 PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O1 -> test_two_best_clips_in_one_block_get_a_block_each
          O1 -> test_a_one_block_take_is_split_for_two_moments
@@ -41,11 +46,13 @@ PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version
          O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version
          O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen
+         O9 -> test_on_a_plan_one_moment_is_where_the_level_shows
 WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
          2026-10-18 ("words first, then voice"), 2026-10-21 (N108, "the
          voice decides"; N112, "There was no single rewrite in the take"), 2026-10-22 (N113, "After the
          rewording"), 2026-10-23 (N124, "Let's do 1-4"; N118 and N122, "S×W
-         picks, voice names top"), 2026-10-24 (N128; N118).
+         picks, voice names top"), 2026-10-24 (N128; N118); 2026-10-27
+         (N209, the level's moment).
 """
 from pathlib import Path
 
@@ -646,3 +653,46 @@ def test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_versio
     assert [(b["slide_index"], b["confident_practice"]) for b in strong["blocks"]
             if b["most_confident"] or b["carries_exercise"]] == [(0, True), (1, False)]
     assert not any(b["confident_practice"] for b in strong["blocks"] if not b["most_confident"])
+
+
+# ── on a plan, one moment is where the level shows (G7, N209) ────────────
+
+def _paced_frame(wpms, **options):
+    """Four slides, one clip each: p0 the best by far, p1 the second best,
+    p2 and p3 under the floor; each clip said at its own pace."""
+    scores = (0.95, 0.8, -0.2, 0.3)
+    pieces, snippets, at = [], [], 0
+    for index, (score, wpm) in enumerate(zip(scores, wpms)):
+        sid = f"p{index}"
+        text = " ".join(f"{sid}x{n}" for n in range(75)) + "."
+        pieces.append({"snippet_id": sid, "take_session_id": "take-2", "slide_index": index,
+                       "start": at, "end": at + len(text), "text": text,
+                       "recording_id": "recording-1", "start_offset_ms": index * 5000,
+                       "duration_ms": 5000})
+        at += len(text) + 1
+        snippets.append({"id": sid, "session_id": "take-2", "recording_id": "recording-1",
+                         "start_offset_ms": index * 5000, "duration_ms": 5000,
+                         "metrics": {"wpm": wpm, "voice_confidence": {
+                             "version": "voice-confidence-universal-v3", "score": score}}})
+    served = " ".join(piece["text"] for piece in pieces)
+    return build_shadow_frame(
+        take_document={"take_session_id": "take-2", "text": served, "pieces": pieces},
+        snippets=snippets, suggestions={}, feedback_candidates=[],
+        take_index=2, expected_recording_id="recording-1", served_text=served, **options)
+
+
+def _walk(frame):
+    return [(b["selected_candidate_id"].rsplit(":", 1)[-1], b["most_confident"],
+             b["exercise_kind"], b.get("plan_level"))
+            for b in frame["blocks"] if b["most_confident"] or b["carries_exercise"]]
+
+
+def test_on_a_plan_one_moment_is_where_the_level_shows():
+    rushed = (140, 140, 140, 200)  # p3 is said far faster than the speaker's own usual
+    assert _walk(_paced_frame(rushed)) == [("p0", True, None, None), ("p1", True, None, None)]
+    assert _walk(_paced_frame(rushed, plan_level="key_line")) == [
+        ("p0", True, None, None), ("p3", False, "voice", "key_line")]
+    # No clip shows the level: the two best, as today.
+    even = (140, 141, 139, 140)
+    assert _walk(_paced_frame(even, plan_level="key_line")) == [
+        ("p0", True, None, None), ("p1", True, None, None)]
