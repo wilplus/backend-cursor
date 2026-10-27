@@ -11,9 +11,12 @@ OUTCOME
       (503).
   O3  When WhatsApp sending is off the hook answers an error, so Supabase
       tells the person the code could not be sent.
+  O4  A number being added in Settings gets its code at that number, which
+      is not yet the account's.
 PROVES   O1 -> test_a_signed_request_sends_the_code_on_whatsapp
          O2 -> test_an_unsigned_or_stale_request_sends_nothing
          O3 -> test_sending_off_answers_an_error
+         O4 -> test_a_number_being_added_gets_the_code
 WHY      Founder 2026-10-27, N214.
 """
 from __future__ import annotations
@@ -107,3 +110,15 @@ def test_sending_off_answers_an_error(door):
         res = client.post(DOOR, data=raw, headers=headers)
     assert res.status_code == 503 and res.get_json()["error"]["http_code"] == 503
     assert sent == []
+
+
+def test_a_number_being_added_gets_the_code(door):
+    client, sent = door
+    adding = {"user": {"id": "u2", "phone": "", "new_phone": "447700900123"},
+              "sms": {"otp": "135790"}}
+    named = {"user": {"id": "u3", "phone": "48600100200"},
+             "sms": {"otp": "135790", "phone": "447700900999"}}
+    for body in (adding, named):
+        raw, headers = _signed(body)
+        assert client.post(DOOR, data=raw, headers=headers).status_code == 200
+    assert [m["to"] for m in sent] == ["447700900123", "447700900999"]

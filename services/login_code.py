@@ -94,8 +94,12 @@ def send(payload: dict, *, config: Any = None) -> None:
     """Send the hook's code to the hook's number on WhatsApp; HookRefusal
     when it cannot go."""
     cfg = config or Config()
-    phone = str(((payload.get("user") or {}).get("phone")) or "").strip()
-    code = str(((payload.get("sms") or {}).get("otp")) or "").strip()
+    user, sms = payload.get("user") or {}, payload.get("sms") or {}
+    # The number the code is for: Supabase names it in sms.phone. A number
+    # being added in Settings is not the account's phone until its code is
+    # typed; older payloads carry it only as user.new_phone (N214 item 5).
+    phone = str(sms.get("phone") or user.get("phone") or user.get("new_phone") or "").strip()
+    code = str(sms.get("otp") or "").strip()
     if not phone or not _CODE.match(code):
         raise HookRefusal(400, "No number or no code")
     to = phone if phone.startswith("+") else f"+{phone}"
