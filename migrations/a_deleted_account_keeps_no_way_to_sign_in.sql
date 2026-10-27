@@ -31,7 +31,7 @@
 --          password hash cleared; every one-time token blanked; the profile a
 --          sign-in brought (raw_user_meta_data) emptied; raw_app_meta_data
 --          keeps only `provider` and `providers` (how the account was made,
---          which the sign-up count reads, 0494); banned until 9999-12-31;
+--          which the sign-up count reads, 0494); banned until 2099-12-31;
 --          deleted_at set, as Supabase marks a deleted user;
 --        - auth.identities (the linked Google, LinkedIn, email and phone
 --          sign-ins): the email, name and picture each brought emptied, and
@@ -198,7 +198,7 @@ BEGIN
            raw_app_meta_data = jsonb_strip_nulls(jsonb_build_object(
                'provider', raw_app_meta_data -> 'provider',
                'providers', raw_app_meta_data -> 'providers')),
-           banned_until = '9999-12-31 00:00:00+00',
+           banned_until = '2099-12-31 00:00:00+00',
            deleted_at = COALESCE(deleted_at, now()),
            updated_at = now()
      WHERE id = account_user;

@@ -439,7 +439,7 @@ def _a_deleted_account_keeps_no_sign_in(db, user_id: str, email: str,
     assert auth["raw_user_meta_data"] == {}
     assert auth["raw_app_meta_data"] == {"provider": "phone",
                                          "providers": ["phone", "email", "google"]}
-    assert auth["banned_until"].year == 9999 and auth["deleted_at"] is not None
+    assert auth["banned_until"].year == 2099 and auth["deleted_at"] is not None
     # No Google or phone sign-in finds the user; every session has ended and
     # every refresh token is revoked.
     assert _one(db, """

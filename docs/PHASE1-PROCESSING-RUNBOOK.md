@@ -119,7 +119,7 @@ In the same transaction that marks an account request done,
 deleted: its id stays, because `owner_principals` and the older terms records
 point at it with `ON DELETE CASCADE` and the records that survive point at
 `owner_principals`. Its email, phone, pending changes, password hash, tokens
-and sign-in profile are cleared, and it is banned until 9999-12-31 and marked
+and sign-in profile are cleared, and it is banned until 2099-12-31 and marked
 `deleted_at`. Its identities lose the data a provider brought and the
 provider's id for the person, so no Google, LinkedIn or WhatsApp sign-in finds
 it again. Its sessions end, with device and IP cleared, every refresh token is
