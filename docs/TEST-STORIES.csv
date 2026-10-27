@@ -83,10 +83,17 @@ O2  I can cancel inside the seven days and the block lifts; asking again
 later starts a new request.
 O3  After the seven days the run erases my data, marks the request done
 with proof, and never does it twice.
-O4  A dry run only reports what is due and writes nothing.","O1 -> test_a_request_blocks_at_once_deletes_nothing_and_waits_seven_days
+O4  A dry run only reports what is due and writes nothing.
+O5  Once it is done, my sign-in is gone: no email, no phone, no password,
+no linked sign-in, no live session, and I cannot sign in; what the
+policy says survives (the proof of my agreement, my training choice) is
+still there, and nobody else's sign-in is touched. An account deleted
+before this was fixed loses its sign-in on the next run.","O1 -> test_a_request_blocks_at_once_deletes_nothing_and_waits_seven_days
 O2 -> test_the_requester_cancels_inside_the_window_and_the_block_lifts
 O3 -> test_the_run_completes_a_due_deletion_on_verified_evidence
-O4 -> test_a_dry_run_reads_what_is_due_and_writes_nothing","Founder 2026-10-05, N48.4 Q14 A, Q17 A, Q19 A (migration 0422)."
+O4 -> test_a_dry_run_reads_what_is_due_and_writes_nothing
+O5 -> test_a_completed_deletion_leaves_no_way_to_sign_in_and_keeps_what_survives
+test_an_account_deleted_before_the_fix_loses_its_sign_in_on_the_next_run","Founder 2026-10-05, N48.4 Q14 A, Q17 A, Q19 A (migration 0422); Privacy 3.8 sections 7 and 9 and N95 (migration 0497)."
 tests/test_a_failed_export_voids_its_release_postgres.py,Story,"As a speaker who withdrew my training ""yes"", I want a half-finished export that held my pair voided and cleaned up, so that my data never leaves in a broken release.","O1  When an export's last step is refused because a pair is no longer
 allowed, the release is voided as ""export_failed"" and queued for
 file cleanup.

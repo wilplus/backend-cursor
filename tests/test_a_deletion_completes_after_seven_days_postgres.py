@@ -11,11 +11,19 @@ OUTCOME
   O3  After the seven days the run erases my data, marks the request done
       with proof, and never does it twice.
   O4  A dry run only reports what is due and writes nothing.
+  O5  Once it is done, my sign-in is gone: no email, no phone, no password,
+      no linked sign-in, no live session, and I cannot sign in; what the
+      policy says survives (the proof of my agreement, my training choice) is
+      still there, and nobody else's sign-in is touched. An account deleted
+      before this was fixed loses its sign-in on the next run.
 PROVES   O1 -> test_a_request_blocks_at_once_deletes_nothing_and_waits_seven_days
          O2 -> test_the_requester_cancels_inside_the_window_and_the_block_lifts
          O3 -> test_the_run_completes_a_due_deletion_on_verified_evidence
          O4 -> test_a_dry_run_reads_what_is_due_and_writes_nothing
-WHY      Founder 2026-10-05, N48.4 Q14 A, Q17 A, Q19 A (migration 0422).
+         O5 -> test_a_completed_deletion_leaves_no_way_to_sign_in_and_keeps_what_survives
+               test_an_account_deleted_before_the_fix_loses_its_sign_in_on_the_next_run
+WHY      Founder 2026-10-05, N48.4 Q14 A, Q17 A, Q19 A (migration 0422);
+         Privacy 3.8 sections 7 and 9 and N95 (migration 0497).
 """
 from __future__ import annotations
 
@@ -329,6 +337,181 @@ def test_a_dry_run_reads_what_is_due_and_writes_nothing(db):
     assert _row(db, "SELECT holder, lease_until FROM public.deletion_completion_lease") == lease
 
 
+# ── The sign-in goes with the account ─────────────────────────────────────
+
+# What Privacy 3.8 section 9 says survives: the proof that recordings were
+# processed with agreement, the training choice, and the person they name.
+_SURVIVING = {
+    "owner_principals": "SELECT count(*) FROM public.owner_principals WHERE id = %s",
+    "authorization_receipts": "SELECT count(*) FROM public.processing_authorization_receipts "
+                              "WHERE acquisition_principal_id = %s",
+    "authorization_snapshots": "SELECT count(*) FROM public.processing_authorization_snapshots "
+                               "WHERE acquisition_principal_id = %s",
+    "recording_attempts": "SELECT count(*) FROM public.processing_recording_attempts "
+                          "WHERE acquisition_principal_id = %s",
+    "audio_metadata": "SELECT count(*) FROM public.processing_audio_objects "
+                      "WHERE acquisition_principal_id = %s",
+    "provider_permits": "SELECT count(*) FROM public.processing_provider_permits "
+                        "WHERE acquisition_principal_id = %s",
+    "training_choice": "SELECT count(*) FROM public.ml_consent_events "
+                       "WHERE acquisition_principal_id = %s",
+}
+# Every row Supabase Auth keeps for one person.
+_AUTH_TABLES = {
+    "users": "id = %s", "identities": "user_id = %s", "sessions": "user_id = %s",
+    "refresh_tokens": "user_id = %s::text", "one_time_tokens": "user_id = %s",
+    "flow_state": "user_id = %s", "mfa_factors": "user_id = %s",
+}
+
+
+def _signs_in(db, user_id: str, email: str, phone: str) -> None:
+    """An account as Supabase Auth keeps it: signed up with WhatsApp, then
+    an email with a password and Google added; signed in on a phone, with a
+    code still out, a Google sign-in half done and an SMS second factor."""
+    with db.cursor() as cur:
+        cur.execute("""
+            INSERT INTO auth.users (
+                id, aud, role, email, phone, encrypted_password,
+                email_confirmed_at, phone_confirmed_at, confirmation_token,
+                recovery_token, email_change_token_new, email_change,
+                raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+            VALUES (%s, 'authenticated', 'authenticated', %s, %s,
+                    '$2a$10$abcdefghijklmnopqrstuv', now(), now(), '',
+                    'recovery-token', '', '',
+                    '{"provider": "phone", "providers": ["phone", "email", "google"]}',
+                    %s::jsonb, now(), now())""",
+            (user_id, email, phone, json.dumps({
+                "full_name": "Ada Speaker", "email": email,
+                "avatar_url": "https://example.com/ada.png"})))
+        cur.execute("""
+            INSERT INTO auth.identities (provider_id, user_id, identity_data, provider)
+            VALUES (%s, %s, %s::jsonb, 'phone'), (%s, %s, %s::jsonb, 'google')""",
+            (user_id, user_id, json.dumps({"sub": user_id, "phone": phone}),
+             f"google-{user_id}", user_id, json.dumps({
+                 "sub": f"google-{user_id}", "email": email,
+                 "full_name": "Ada Speaker"})))
+        session = str(uuid.uuid4())
+        cur.execute("""
+            INSERT INTO auth.sessions (id, user_id, user_agent, ip)
+            VALUES (%s, %s, 'Mozilla/5.0 (iPhone)', '203.0.113.7')""",
+            (session, user_id))
+        cur.execute("""
+            INSERT INTO auth.refresh_tokens (token, user_id, revoked, session_id)
+            VALUES (%s, %s, false, %s), (%s, %s, false, NULL)""",
+            (f"rt-{uuid.uuid4()}", user_id, session, f"rt-{uuid.uuid4()}", user_id))
+        cur.execute("""
+            INSERT INTO auth.one_time_tokens (id, user_id, token_type, token_hash, relates_to)
+            VALUES (gen_random_uuid(), %s, 'recovery_token', 'hash', %s)""",
+            (user_id, email))
+        cur.execute("""
+            INSERT INTO auth.flow_state (id, user_id, provider_type,
+                provider_access_token, authentication_method)
+            VALUES (gen_random_uuid(), %s, 'google', 'google-access', 'oauth')""",
+            (user_id,))
+        cur.execute("""
+            INSERT INTO auth.mfa_factors (id, user_id, friendly_name, factor_type,
+                status, created_at, updated_at, phone)
+            VALUES (gen_random_uuid(), %s, 'Ada''s phone', 'phone', 'verified',
+                    now(), now(), %s)""",
+            (user_id, phone))
+
+
+def _counts(db, queries: dict, key: str) -> dict:
+    return {name: _one(db, sql, (key,)) for name, sql in queries.items()}
+
+
+def _auth_rows(db, user_id: str) -> dict:
+    """Every Supabase Auth row of one person, as JSON text."""
+    return {table: _one(db, f"""
+        SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text), '[]')::text
+          FROM auth.{table} r WHERE {where}""", (user_id,))
+        for table, where in _AUTH_TABLES.items()}
+
+
+def _a_deleted_account_keeps_no_sign_in(db, user_id: str, email: str,
+                                        phone: str) -> None:
+    """The auth record keeps its id and nothing to sign in with or be known
+    by; neither the email nor the phone is anywhere in it."""
+    auth = _row(db, "SELECT * FROM auth.users WHERE id = %s", (user_id,))
+    assert auth is not None
+    assert (auth["email"], auth["phone"], auth["encrypted_password"]) == (None, None, None)
+    assert (auth["email_change"], auth["phone_change"], auth["recovery_token"]) == ("", "", "")
+    assert auth["raw_user_meta_data"] == {}
+    assert auth["raw_app_meta_data"] == {"provider": "phone",
+                                         "providers": ["phone", "email", "google"]}
+    assert auth["banned_until"].year == 9999 and auth["deleted_at"] is not None
+    # No Google or phone sign-in finds the user; every session has ended and
+    # every refresh token is revoked.
+    assert _one(db, """
+        SELECT count(*) FROM auth.identities
+         WHERE user_id = %s AND (identity_data <> '{}' OR provider_id <> id::text)""",
+        (user_id,)) == 0
+    assert _one(db, """
+        SELECT count(*) FROM auth.sessions
+         WHERE user_id = %s AND (not_after > now() OR user_agent IS NOT NULL
+                                 OR ip IS NOT NULL)""", (user_id,)) == 0
+    assert _one(db, """
+        SELECT count(*) FROM auth.refresh_tokens
+         WHERE user_id = %s::text AND revoked IS NOT TRUE""", (user_id,)) == 0
+    assert _one(db, """
+        SELECT count(*) FROM auth.mfa_factors
+         WHERE user_id = %s AND (status <> 'unverified' OR friendly_name <> '')""",
+        (user_id,)) == 0
+    rows = _auth_rows(db, user_id)
+    assert not any(email in text or phone in text for text in rows.values()), rows
+    assert "google-access" not in rows["flow_state"]
+
+
+def test_a_completed_deletion_leaves_no_way_to_sign_in_and_keeps_what_survives(
+        db, fake_storage):
+    _purge_ready(db)
+    subject = _speaker(db)
+    user_id, principal = subject["user_id"], subject["principal"]
+    _yes(db, principal)
+    marker = uuid.uuid4().hex[:10]
+    email, phone = f"ada-{marker}@example.com", f"48{int(marker, 16) % 10**9:09d}"
+    _signs_in(db, user_id, email, phone)
+    bystander = str(uuid.uuid4())
+    _signs_in(db, bystander, f"other-{marker}@example.com", f"49{int(marker, 16) % 10**9:09d}")
+    theirs = _auth_rows(db, bystander)
+    kept = _counts(db, _SURVIVING, principal)
+    assert all(kept.values()), kept
+    request = _due_account_request(db, principal)
+
+    outcome = _mine(_run(db), request)
+
+    assert outcome["result"] == "completed", outcome
+    assert _one(db, "SELECT state FROM public.account_deletion_requests WHERE id = %s",
+                (request,)) == "done"
+    _a_deleted_account_keeps_no_sign_in(db, user_id, email, phone)
+    # What the policy says survives is all still there, naming the same person.
+    assert _counts(db, _SURVIVING, principal) == kept
+    assert _one(db, "SELECT user_id::text FROM public.owner_principals WHERE id = %s",
+                (principal,)) == user_id
+    # Nobody else's sign-in is touched.
+    assert _auth_rows(db, bystander) == theirs
+
+
+def test_an_account_deleted_before_the_fix_loses_its_sign_in_on_the_next_run(
+        db, fake_storage):
+    _purge_ready(db)
+    subject = _speaker(db)
+    request = _due_account_request(db, subject["principal"])
+    assert _mine(_run(db), request)["result"] == "completed"
+    # As a deletion finished before 0497 left it: done, the sign-in intact.
+    marker = uuid.uuid4().hex[:10]
+    email, phone = f"bo-{marker}@example.com", f"47{int(marker, 16) % 10**9:09d}"
+    _signs_in(db, subject["user_id"], email, phone)
+    before = _auth_rows(db, subject["user_id"])
+
+    assert _mine(_run(db, execute=False), request)["result"] == "would_erase_sign_in"
+    assert _auth_rows(db, subject["user_id"]) == before
+
+    assert _mine(_run(db), request)["result"] == "sign_in_erased"
+    _a_deleted_account_keeps_no_sign_in(db, subject["user_id"], email, phone)
+    assert all(o["request_id"] != request for o in _run(db)["outcomes"])
+
+
 # ── A project keeps the same window ───────────────────────────────────────
 
 
@@ -361,13 +544,15 @@ def _training_policy(db) -> dict:
     return {"version": "training-only-window-v1", "sha": sha}
 
 
-def _yes(db) -> tuple[str, str]:
-    """A person with a receipt and an active training yes."""
+def _yes(db, principal: str | None = None) -> tuple[str, str]:
+    """A person (new, or the one given) with a receipt and an active
+    training yes."""
     policy = _training_policy(db)
     processing = _one(db, "SELECT version FROM public.processing_policy_versions "
                           "ORDER BY created_at LIMIT 1")
-    principal = str(_one(db, "INSERT INTO public.owner_principals (id, user_id) "
-                             "VALUES (gen_random_uuid(), gen_random_uuid()) RETURNING id"))
+    principal = principal or str(_one(
+        db, "INSERT INTO public.owner_principals (id, user_id) "
+            "VALUES (gen_random_uuid(), gen_random_uuid()) RETURNING id"))
     _one(db, """
         INSERT INTO public.processing_authorization_receipts (
             acquisition_principal_id, policy_id, idempotency_key, explicit_action,
