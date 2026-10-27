@@ -5235,3 +5235,23 @@ Until the coach's side is built (N204 item 3), the walk keeps the level's own
 practice; the coach's recorded exercise comes with it.
 The rules: frontend [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §1 G7 and G10. No migration in this entry.
+
+**N210 · No price after the pricing page (founder, the Claude Code chat, 27
+October 2026: "what I would like to have is that the user does not know that
+the coach charges them … It's just for us to calculate how much package should
+be … once they see the price on the pricing page, they don't see any prices
+later on", then, to two options, "go with A").** For N187, N198 and N208:
+1. A speaker sees prices on the pricing page (the package cards) and in the
+offers that repeat it: the Lounge's out-of-tokens packages and a price the
+founder sends them. Nowhere else: the feedback bubble in the Lounge shows no
+price, and Will names no price; he points to the pricing page.
+2. The coach's time is an internal number, 200 tokens a minute (N198 item 2),
+used to size the packages. No screen shows a call or a lesson in tokens: the
+wallet's two lines for them go. A call booked at $0 shows no token price.
+3. The wallet keeps the balance and, behind "Show more", its list of what
+things cost and the recent spending: Terms 3.7 §2 promises "The price of each
+thing in tokens is shown in the app before you use it", and a buyer must be
+able to find what their tokens pay for. Hiding those too (option B) would need
+a new Terms version that every speaker accepts again; it is not taken.
+4. If a call is given a price again, how it is shown is decided then.
+No rules page. No migration in this entry.
