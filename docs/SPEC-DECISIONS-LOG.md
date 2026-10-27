@@ -5346,8 +5346,9 @@ No migration in this entry.
 Claude Code chat, 27 October 2026, on the clickable prototype
 <https://claude.ai/artifact/Dcf2FCyDs5c4Pb7BJc7oZ7>: "ok, looks good", then,
 to four questions, "Build now, switched on", "Ask for email later", "Add it
-in Settings first" and "Yes, use them as shown").** For N174 item 6, N184
-item 1 and N207 items 4 and 5:
+in Settings first" and "Yes, use them as shown"; then the remaining words,
+each "use these words").** For N174 item 6, N184 item 1 and N207 items 4 and
+5:
 1. The sign-up page gets "Sign up with WhatsApp", first, above LinkedIn,
 Google and email. It is built now and goes on once it is built, Supabase is
 set up and the new privacy version names it; it no longer waits for the
@@ -5365,13 +5366,19 @@ code; Meta's own words: "{code} is your verification code. For your
 security, do not share this code." and "This code expires in 10 minutes.";
 the founder submitted it on 27 October 2026). No Twilio.
 4. No email at sign-up. The email is asked for only when something needs it:
-booking a call (the calendar invite) and buying tokens (the receipt). Those
-asks' words wait for the founder (Never 4).
-5. Sign in with WhatsApp: the login page signs in only a number that is
-already an account's way in, and never makes a new account. Someone who
-signed up with email, Google or LinkedIn adds WhatsApp as a way in from
-Settings, with a code. The words for that Settings row and for "no account
-with this number" wait for the founder (Never 4).
+booking a call (the calendar invite) and buying tokens (the receipt). On the
+booking form, an account with no email gets an "Email" field with "We'll
+send your calendar invite here." under it; the email is saved to the
+account, so receipts and later invites use it too.
+5. Sign in with WhatsApp: the login page's "Sign in with WhatsApp" signs in
+only a number that is already an account's way in, and never makes a new
+account. A number that is not: "No account signs in with this number. Sign
+in another way, or sign up with WhatsApp." ("sign up with WhatsApp" links to
+the sign-up page). Someone who signed up with email, Google or LinkedIn adds
+WhatsApp as a way in from Settings, in the "Email and password" card: off,
+"WhatsApp", "Sign in with your WhatsApp number too." and "Add" (then the
+number and the code); on, "You can sign in with WhatsApp at {number}." A
+WhatsApp account's card says the same, with no email row until it has one.
 6. The words, signed (Never 4): "Sign up with WhatsApp", "Your WhatsApp
 number", "Send code", "Enter the code we sent you on WhatsApp", "Resend
 code", "Use a different number", "That code didn't work. Try again.", "What
@@ -5380,5 +5387,4 @@ Before it goes on: Meta approves `login_code`; the new privacy version names
 the phone number as a way to sign in; in Supabase, phone sign-in is on and
 the Send SMS hook points at the backend, with its secret on Railway.
 No rules page yet: the Settings row lands on frontend
-`docs/flows/consent-screens.md` when its words are signed. No migration in
-this entry.
+`docs/flows/consent-screens.md` with its build. No migration in this entry.
