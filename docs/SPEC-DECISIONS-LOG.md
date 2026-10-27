@@ -5210,3 +5210,28 @@ and `PRICING_V4_ENABLED=1` once token holders are told (N198).
   shortly before. Nobody had bought a package (`package_purchase` rows: 0), so
   no token holder was owed notice of the new prices.
 No rules page. No migration in this entry.
+
+**N209 · The level's moment in the walk and a level moving on: four calls
+(founder, the Claude Code chat, 27 October 2026, "build G7 and G10 next";
+then, asked, every recommendation taken: "Level's own check", "One", "Next
+thing heard", "Note it, walk unchanged").** For N134 items 2 to 4, N203 and
+the plan's G7 and G10:
+1. A Take reaches this week's level when the same check that picked the level
+no longer fires on that Take, read on the whole Take (the key line no longer
+faster than the rest; pauses no longer few and short; filler words no longer
+many; the pitch no longer flat). Never shown, as a number or in words
+(Never 1). This answers the first of the two calls the plan's rules page
+held open since 26 October.
+2. One of the walk's two moments goes to the level: the Take's best moment,
+then the moment where this week's level shows most; when no moment shows it,
+the two best, as today (N134 item 2). This answers the second call.
+3. After two Takes in a row reach the level, or when its time runs out, the
+next level is the next thing heard: strongest first, the next level whose
+check fires on the latest Take, skipping the levels this plan already had;
+when none fires, "Make it yours". "Make it yours" stays. A coach's level is
+never moved by the machine (C5).
+4. Three Takes on a level without moving are noted for the coach's queue.
+Until the coach's side is built (N204 item 3), the walk keeps the level's own
+practice; the coach's recorded exercise comes with it.
+The rules: frontend [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 G7 and G10. No migration in this entry.
