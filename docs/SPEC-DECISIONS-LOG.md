@@ -5630,3 +5630,27 @@ to a request is always a Take, because the walk on it is half of what the
 client buys.
 No rules page: the flow page for customer requests waits for the founder's
 `Founder-Approved:` line (N218). No migration in this entry.
+
+**N222 · The nearest salon: the customer's postcode is asked at the booking,
+once, and remembered (founder, the Claude Code chat, 27 October 2026: "we
+want them to at least enter the zip code during the sign up or later on in
+the process, so we can display head spa near them, the closest to them";
+then "At the booking only, remembered after").** For N220 item 2:
+1. The widget form stays three fields (N220 item 4). The postcode is asked on
+the answer page the first time the customer taps to book a visit: a postcode
+field, or "Use my location" with the postcode as the fallback. The guest
+identity keeps it, so it is asked once.
+2. A workspace has its salons: name, street, coordinates, and the days each
+answerer is there. The page lists them nearest first by the customer's
+postcode, with the distance and the answerer's days; the nearest is
+preselected, then the day, then Book, which opens the client's booking page
+for that salon with the request's code. The booked card shows the salon, the
+street and a directions link.
+3. The outcome on the pair (N220 item 3) names the salon. Distance is a fact
+about a place, never a number about a person.
+4. Geocoding a postcode is a provider call and goes through the
+processing-authorization path; a client's salon coordinates are entered once
+in admin.
+No rules page: the flow page for customer requests waits for the founder's
+`Founder-Approved:` line (N218). No migration in this entry; the salons table
+comes with the first code.
