@@ -5258,3 +5258,16 @@ able to find what their tokens pay for. Hiding those too (option B) would need
 a new Terms version that every speaker accepts again; it is not taken.
 4. If a call is given a price again, how it is shown is decided then.
 No rules page. No migration in this entry.
+
+**N211 · The principles open to ring 5 (founder, the Claude Code chat, 27
+October 2026: "open principles to ring 5").** Amends N182 item 2:
+1. The principles (the voice notebook's # notes, the Sunday note and life
+goals) reach ring 5 and ring 6, through the rings panel's two rows,
+`voice_notebook` and `life_goals`, each set to ring 5. Nobody below ring 5.
+2. Everything else in N182 stands: their own feature, apart from the
+speaking coach; the walk, the plan, the coach panel and a Take's feedback
+never read or show them; private, never shown to a coach. Each speaker still
+says Yes to the notebook before it records.
+3. Ring 5 holds only people who know it is a test (N208 item 5).
+The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 A. No migration: the founder sets the two rows on the admin's rings page.
