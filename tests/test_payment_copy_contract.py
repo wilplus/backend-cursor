@@ -5,8 +5,9 @@ STORY    As a speaker, I want never to be charged while the Terms I agreed to
 OUTCOME
   O1  The check fails when a Stripe key is set and the Terms in force claim
       that no payment is taken.
-  O2  Every Terms copy we ship describes the paid plans and makes no such
-      claim, so a Stripe key may be set (the copy decision came first).
+  O2  Every Terms copy we ship describes what is paid for (the paid plans;
+      from Terms 3.7 the packages, N44) and makes no such claim, so a Stripe
+      key may be set (the copy decision came first).
   O3  This process's own config does not contradict the Terms in force.
 PROVES   O1 -> test_the_contradiction_is_detected_when_it_exists
          O2 -> test_every_shipped_terms_describes_payment
@@ -100,7 +101,7 @@ def test_the_contradiction_is_detected_when_it_exists():
 @pytest.mark.parametrize("terms", SHIPPED_TERMS, ids=lambda p: p.name)
 def test_every_shipped_terms_describes_payment(terms):
     body = normalised(terms.read_text(encoding="utf-8"))
-    assert "paid plan" in body and "payment" in body
+    assert ("paid plan" in body or "package" in body) and "payment" in body
     assert not claims_no_payment_is_taken(body)
 
 
