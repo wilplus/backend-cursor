@@ -9,10 +9,14 @@ days have passed, oldest first:
     purge request and the permanent block), its purge is run by the
     existing orchestrator (freeze -> resolve -> finalize), and a purge that
     finalized 'done' marks the request done on verified terminal evidence
-    (``complete_phase1_account_deletion_v1``);
+    (``complete_phase1_account_deletion_v1``), which in the same transaction
+    closes the person's sign-in record (THE SIGN-IN RECORD, below);
   * a project deletion is confirmed by the system
     (``start_due_project_deletion_v1``) and its one-project purge is run;
-    the project orchestrator marks the project request done itself.
+    the project orchestrator marks the project request done itself;
+  * an account deletion that was done before 0497 and still has its sign-in
+    (``account_sign_ins_left_v1``) has it erased
+    (``erase_deleted_account_sign_in_v1``, action ``erase_sign_in``).
 
 A purge that stops on rows no rule decides finalizes 'review_required'. The
 orchestrator deletes nothing when any target is unknown, so nothing is ever
@@ -30,15 +34,17 @@ request resumes, a finished purge is never run again (its finalize would
 write a second 'completed' event), and a request left for a person is not
 retried.
 
-THE SIGN-IN RECORD (founder 2026-10-27, N217; Privacy 3.8 sections 7 and 9).
-Before an account request is marked done, the person's Supabase sign-in
-record is soft-deleted: Supabase replaces its email and phone number with a
-hash, clears its password and metadata, and it can no longer sign in. The
-row itself stays, because what must survive a deletion (the deletion and
+THE SIGN-IN RECORD (founder 2026-10-27, N217; Privacy 3.8 sections 7 and 9;
+migration 0497). In the transaction that marks an account request done,
+``erase_deleted_account_sign_in_v1`` empties the person's Supabase sign-in
+record: no email, phone, password, sign-in profile or linked sign-in left
+(NULL, not Supabase's soft-delete hash, which anyone holding the email can
+check), its sessions ended and its refresh tokens revoked, and it is banned.
+The row itself stays, because what must survive a deletion (the deletion and
 consent evidence, ``owner_principals`` among it) points at its id; a hard
-delete would cascade into that evidence or be refused by it. A soft delete
-that fails leaves the request started, so the next run tries again before
-it marks it done. A guest has no sign-in record, and none is closed.
+delete would cascade into that evidence or be refused by it. An erasure that
+fails leaves the request started, so the next run tries again before it
+marks it done. A guest has no sign-in record, and none is erased.
 
 THE RELEASED COPIES (0456). An erasure request voids every pair release
 holding one of its pairs at once. A run that executes ends by sweeping the
@@ -55,7 +61,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -67,17 +73,20 @@ MAX_LIMIT = 20
 RUNNABLE = ("requested", "in_progress")
 #: Fresh starts first, then bookkeeping, then resumptions: a request that
 #: fails on every run cannot hold back one whose seven days just ended.
-_ORDER = {"start": 0, "complete": 1, "resume": 2, "review": 3}
+_ORDER = {"start": 0, "complete": 1, "erase_sign_in": 1, "resume": 2,
+          "review": 3}
 _REASONS_SHOWN = 50
 _ACCOUNT_COLUMNS = "id,state,completes_after,purge_request_id"
 _PROJECT_COLUMNS = "id,project_id,state,due_at,purge_request_id"
+#: A database without 0497 has no sign-ins to list yet.
+_MISSING_FUNCTION = ("42883", "PGRST202")
 
 
 @dataclass(frozen=True)
 class Work:
     kind: str                 # "account" | "project"
     request_id: str
-    action: str               # "start" | "resume" | "complete" | "review"
+    action: str               # "start" | "resume" | "complete" | "erase_sign_in" | "review"
     due_at: str
     purge_request_id: Optional[str] = None
     project_id: Optional[str] = None
@@ -143,6 +152,22 @@ def _due(rows: list[dict], key: str, now: datetime) -> list[dict]:
     return out
 
 
+def _sign_ins_left(client: Any) -> list[Work]:
+    """Account deletions done before 0497 whose sign-in is still there. A
+    read that fails is logged and lists none: catching up on old accounts
+    never stops a run from finishing the new ones."""
+    try:
+        rows = client.rpc("account_sign_ins_left_v1", {}).execute().data or []
+    except Exception as error:  # noqa: BLE001 -- logged; the next run reads again
+        if not any(code in f"{getattr(error, 'code', '')} {error}"
+                   for code in _MISSING_FUNCTION):
+            logger.warning("sign-ins left unreadable: %s", error, exc_info=True)
+        return []
+    return [Work("account", str(row["request_id"]), "erase_sign_in",
+                 str(row.get("completes_after") or ""))
+            for row in rows if isinstance(row, dict) and row.get("request_id")]
+
+
 def _after_start(kind: str, row: dict, state: str, key: str,
                  now: datetime) -> Optional[Work]:
     """A started (account) or confirmed (project) request, by its purge.
@@ -164,8 +189,9 @@ def _after_start(kind: str, row: dict, state: str, key: str,
 
 def collect(database: Any, now: Optional[datetime] = None) -> list[Work]:
     """Everything due, oldest first: requests past their seven days to
-    start, started ones to resume or mark done, and the ones a person must
-    look at (action 'review'). Reads only."""
+    start, started ones to resume or mark done, done ones whose sign-in is
+    still there, and the ones a person must look at (action 'review').
+    Reads only."""
     client = database.client
     moment = now or datetime.now(timezone.utc)
     work: list[Work] = []
@@ -190,6 +216,7 @@ def collect(database: Any, now: Optional[datetime] = None) -> list[Work]:
             item = _after_start(kind, row, state, key, moment)
             if item is not None:
                 work.append(item)
+    work.extend(_sign_ins_left(client))
     work.sort(key=lambda item: (_ORDER[item.action], item.due_at, item.kind,
                                 item.request_id))
     return work
@@ -248,38 +275,13 @@ def _finish(database: Any, work: Work) -> None:
             "p_purge_request_id": work.purge_request_id}).execute().data)
 
 
-def _sign_in_of(database: Any, request_id: str) -> Optional[str]:
-    """The auth user behind an account request, through its principal (kept
-    as deletion evidence). None for a guest; raises when it cannot be read."""
-    client = database.client
-    rows = (client.table("account_deletion_requests").select("acquisition_principal_id")
-            .eq("id", request_id).limit(1).execute().data or [])
-    principal = str((rows[0] if rows else {}).get("acquisition_principal_id") or "")
-    if not principal:
-        raise RuntimeError("DELETION_PRINCIPAL_UNREAD")
-    owners = (client.table("owner_principals").select("user_id")
-              .eq("id", principal).limit(1).execute().data or [])
-    if not owners:
-        raise RuntimeError("DELETION_OWNER_UNREAD")
-    return str(owners[0].get("user_id") or "") or None
-
-
-def soft_delete_sign_in(user_id: str) -> None:
-    """Supabase's soft delete of one sign-in record (see THE SIGN-IN RECORD).
-    A record already gone counts as closed."""
-    from services.db import new_client
-    try:
-        new_client().auth.admin.delete_user(user_id, should_soft_delete=True)
-    except Exception as error:
-        if getattr(error, "status", None) == 404 or "not found" in str(error).lower():
-            return
-        raise
-
-
-def _execute(database: Any, work: Work,
-             close_sign_in: Callable[[str], None] = soft_delete_sign_in) -> dict:
+def _execute(database: Any, work: Work) -> dict:
     from services.data_purge_project_scope import orchestrator_for
 
+    if work.action == "erase_sign_in":
+        database.client.rpc("erase_deleted_account_sign_in_v1", {
+            "p_request_id": work.request_id}).execute()
+        return {"result": "sign_in_erased"}
     purge = work.purge_request_id
     state = "done" if work.action == "complete" else ""
     if work.action == "start":
@@ -290,10 +292,6 @@ def _execute(database: Any, work: Work,
     done = Work(work.kind, work.request_id, work.action, work.due_at,
                 purge, work.project_id)
     if state == "done":
-        if work.kind == "account":
-            user_id = _sign_in_of(database, work.request_id)
-            if user_id:
-                close_sign_in(user_id)
         _finish(database, done)
         return {"purge_request_id": purge, "result": "completed"}
     if state == "review_required":
@@ -307,14 +305,13 @@ def _execute(database: Any, work: Work,
     return {"purge_request_id": purge, "result": state or "unknown"}
 
 
-def _handle(database: Any, work: Work, *, execute: bool,
-            close_sign_in: Callable[[str], None] = soft_delete_sign_in) -> dict:
+def _handle(database: Any, work: Work, *, execute: bool) -> dict:
     outcome = work.view()
     if not execute:
         outcome["result"] = f"would_{work.action}"
         return outcome
     try:
-        outcome.update(_execute(database, work, close_sign_in))
+        outcome.update(_execute(database, work))
     except Exception as error:
         logger.error("deletion completion failed kind=%s request=%s: %s",
                      work.kind, work.request_id, error, exc_info=True)
@@ -355,11 +352,9 @@ def _left_for_a_person(database: Any, work: list[Work]) -> list[dict]:
 def run_due_deletions(database: Any, *, execute: bool,
                       limit: int = DEFAULT_LIMIT,
                       now: Optional[datetime] = None,
-                      release_storage: Any = None,
-                      close_sign_in: Callable[[str], None] = soft_delete_sign_in) -> dict:
+                      release_storage: Any = None) -> dict:
     """One completion run. Returns the report for the cron's log.
-    ``release_storage`` is the release bucket's storage (default: R2);
-    ``close_sign_in`` soft-deletes a sign-in record (default: Supabase's)."""
+    ``release_storage`` is the release bucket's storage (default: R2)."""
     limit = max(1, min(int(limit), MAX_LIMIT))
     work = collect(database, now)
     actionable = [item for item in work if item.action != "review"]
@@ -389,8 +384,7 @@ def run_due_deletions(database: Any, *, execute: bool,
                 # Our lease ran out and another run holds it: stop here.
                 report["stopped"] = "LEASE_LOST"
                 break
-            outcomes.append(_handle(database, item, execute=True,
-                                    close_sign_in=close_sign_in))
+            outcomes.append(_handle(database, item, execute=True))
         if "stopped" not in report:
             report["release_sweep"] = _sweep_releases(database, release_storage)
     finally:
