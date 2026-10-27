@@ -9,7 +9,9 @@ Two views (founder 2026-10-27): ``active``, everyone whose account is not
 being deleted, and ``deleting``, everyone whose deletion is recorded and not
 cancelled, with its dates. A deleted person leaves the active list at once,
 though their data is deleted only after the seven-day window. Once the
-deletion is done the sign-in record stays, emptied (N218), and is in neither.
+deletion is done the sign-in record stays, emptied (N218), and is in neither:
+that record and Supabase's own soft delete both carry ``deleted_at``, which
+the Auth admin API returns, so neither is ever listed.
 """
 from __future__ import annotations
 
@@ -52,6 +54,10 @@ def _auth_page(*, limit: int, offset: int) -> list[dict]:
     if users is None:
         raise AdminUserDirectoryError("auth users could not be read")
     return users
+
+
+def _is_deleted(user: dict) -> bool:
+    return bool(user.get("deleted_at"))
 
 
 def _being_deleted() -> dict[str, dict]:
@@ -122,6 +128,8 @@ def list_users(*, limit: int = 50, offset: int = 0, search: str = "",
     deleting = _being_deleted()
 
     def in_view(user: dict) -> bool:
+        if _is_deleted(user):
+            return False
         deletion = deleting.get(str(user.get("user_id") or ""))
         if deletion and deletion.get("state") == "done":
             return False

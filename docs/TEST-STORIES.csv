@@ -266,6 +266,9 @@ starts where this one ended. A finished deletion is in neither list.
 O2  The deleting view lists exactly those people, each with the dates and
 the id the cancel takes.","O1 -> AdminUsersBeingDeletedTest::test_the_active_list_leaves_out_who_is_being_deleted
 O2 -> AdminUsersBeingDeletedTest::test_the_deleting_view_lists_them_with_their_dates",Founder 2026-10-27 (delete and hide from the Users list).
+tests/test_admin_users_leave_out_deleted_accounts.py,Story,"As the founder, I want a finished deletion gone from the Users list, so that the list never shows an emptied account with no email and no name.","O1  Every auth user whose deleted_at is set is left out of the paged list
+and of the search; one without it stays. A page shortened by a deleted
+account still says there is more, so the list does not end early.",O1 -> AdminUsersLeaveOutDeletedAccountsTest::test_a_deleted_account_is_in_neither_the_page_nor_the_search,"N219: a finished deletion is in neither tab. N218: its auth record stays, emptied, with deleted_at set."
 tests/test_after_take.py,Story,"As a speaker, after a Take I want one thing to do at a time: the Take's card and its summary, then each ask on its own with Will's words leading into it, and only then ""practice makes perfect"" with ""Record Take N"", so that nothing competes with the walk or with recording again (founder 2026-10-20, N89).","O1  One ask after each Take, the first that waits (founder 2026-10-26,
 N189; was two, N94). After Take 1 that is WhatsApp when I left no
 number (N171), else Will's question when he has one, else ""Did this
