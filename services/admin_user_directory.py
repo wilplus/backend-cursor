@@ -5,18 +5,19 @@ accounts and open the existing token top-up tool: identity, access class, and
 account timestamps. Token grants remain behind the separate idempotent grant
 endpoint.
 
-Two views (founder 2026-10-27): ``active``, everyone whose account is not
-being deleted, and ``deleting``, everyone whose deletion is recorded and not
-cancelled, with its dates. A deleted person leaves the active list at once,
-though their data is deleted only after the seven-day window. Once the
-deletion is done the sign-in record stays, emptied (N218), and is in neither:
-that record and Supabase's own soft delete both carry ``deleted_at``, which
-the Auth admin API returns, so neither is ever listed.
+One list (founder 2026-10-27, N221): everyone still here. Three kinds of
+people are left out. Someone whose account deletion is recorded and not
+cancelled leaves it at once, though their data is deleted only after the
+seven-day window. Once the deletion is done the sign-in record stays, emptied
+(N218): that record and Supabase's own soft delete both carry ``deleted_at``,
+which the Auth admin API returns, so neither is ever listed. And someone the
+founder hides from the list (``admin_person.set_hidden``) leaves it, with
+their account untouched.
 """
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from services.db import db
 
@@ -25,7 +26,6 @@ logger = logging.getLogger(__name__)
 
 MAX_PAGE_SIZE = 100
 MAX_SEARCH_USERS = 2_000
-VIEWS = ("active", "deleting")
 
 
 class AdminUserDirectoryError(RuntimeError):
@@ -60,16 +60,16 @@ def _is_deleted(user: dict) -> bool:
     return bool(user.get("deleted_at"))
 
 
-def _being_deleted() -> dict[str, dict]:
-    """user id -> the deletion that governs them, for every live account
-    deletion. An admin's deletion names the user in its key; the person's own
-    names them through their principal. If this cannot be read, nobody is
-    hidden: the list shows everyone, as it did before."""
-    from services.account_deletion import COLUMNS, LIVE_STATES, deletion_view
+def _being_deleted() -> set[str]:
+    """The user ids of every live account deletion. An admin's deletion names
+    the user in its key; the person's own names them through their principal.
+    If this cannot be read, nobody is left out for it: the list shows
+    everyone, as it did before."""
+    from services.account_deletion import LIVE_STATES
     from services.admin_person import ADMIN_DELETE_KEY
     try:
         rows = (db.client.table("account_deletion_requests")
-                .select(f"{COLUMNS},idempotency_key")
+                .select("acquisition_principal_id,idempotency_key")
                 .in_("state", list(LIVE_STATES))
                 .limit(MAX_SEARCH_USERS).execute().data or [])
         principals = sorted({str(row["acquisition_principal_id"]) for row in rows
@@ -78,18 +78,30 @@ def _being_deleted() -> dict[str, dict]:
                   .in_("id", principals).execute().data or []) if principals else []
     except Exception as exc:  # noqa: BLE001 -- the list still loads
         logger.warning("admin/users: deletions not read: %s", type(exc).__name__)
-        return {}
+        return set()
     user_of = {str(o["id"]): str(o["user_id"]) for o in owners if o.get("user_id")}
-    found: dict[str, dict] = {}
-    for row in sorted(rows, key=lambda r: str(r.get("requested_at") or "")):
+    found: set[str] = set()
+    for row in rows:
         key = str(row.get("idempotency_key") or "")
         user_id = (key[len(ADMIN_DELETE_KEY):] if key.startswith(ADMIN_DELETE_KEY)
                    else user_of.get(str(row.get("acquisition_principal_id"))))
-        view = deletion_view(row)
-        if user_id and view:
-            found[user_id] = {name: view.get(name) for name in (
-                "request_id", "state", "requested_at", "completes_after", "cancellable")}
+        if user_id:
+            found.add(user_id)
     return found
+
+
+def _hidden() -> set[str]:
+    """The user ids the founder hid from the list. If this cannot be read,
+    nobody is left out for it."""
+    from services.admin_person import HIDDEN_FLAG, HIDDEN_TABLE
+    try:
+        rows = (db.client.table(HIDDEN_TABLE).select("user_id")
+                .eq(HIDDEN_FLAG, True)
+                .limit(MAX_SEARCH_USERS).execute().data or [])
+    except Exception as exc:  # noqa: BLE001 -- the list still loads
+        logger.warning("admin/users: hidden people not read: %s", type(exc).__name__)
+        return set()
+    return {str(row["user_id"]) for row in rows if row.get("user_id")}
 
 
 def _matches(user: dict, search: str) -> bool:
@@ -101,8 +113,7 @@ def _matches(user: dict, search: str) -> bool:
     return search in haystack
 
 
-def _public_user(user: dict, admin_emails: set[str],
-                 deletion: Optional[dict] = None) -> dict[str, Any]:
+def _public_user(user: dict, admin_emails: set[str]) -> dict[str, Any]:
     user_id = str(user.get("user_id") or "")
     email = user.get("email")
     return {
@@ -113,29 +124,23 @@ def _public_user(user: dict, admin_emails: set[str],
         "last_sign_in_at": user.get("last_sign_in_at"),
         "email_confirmed_at": user.get("email_confirmed_at"),
         "is_admin": str(email or "").strip().lower() in admin_emails,
-        "deletion": deletion,
     }
 
 
-def list_users(*, limit: int = 50, offset: int = 0, search: str = "",
-               view: str = "active") -> dict:
-    """Return one stable page of one view, scanning Auth only when a search
-    or the deleting view is asked for."""
+def list_users(*, limit: int = 50, offset: int = 0, search: str = "") -> dict:
+    """Return one stable page of the list, scanning Auth only when a search
+    is asked for."""
     clean_limit = max(1, min(int(limit), MAX_PAGE_SIZE))
     clean_offset = max(0, int(offset))
     clean_search = str(search or "").strip().lower()[:200]
-    clean_view = view if view in VIEWS else "active"
-    deleting = _being_deleted()
+    left_out = _being_deleted() | _hidden()
 
     def in_view(user: dict) -> bool:
         if _is_deleted(user):
             return False
-        deletion = deleting.get(str(user.get("user_id") or ""))
-        if deletion and deletion.get("state") == "done":
-            return False
-        return (deletion is not None) == (clean_view == "deleting")
+        return str(user.get("user_id") or "") not in left_out
 
-    if clean_search or clean_view == "deleting":
+    if clean_search:
         matches: list[dict] = []
         cursor = 0
         while cursor < MAX_SEARCH_USERS:
@@ -155,20 +160,17 @@ def list_users(*, limit: int = 50, offset: int = 0, search: str = "",
         # A full page may be the final page; one harmless empty follow-up is
         # preferable to fetching a differently-sized page and shifting the
         # offset calculation in db.v2_list_auth_users. The page is counted
-        # before the hidden people are taken out, so the next one starts
+        # before the people left out are taken out, so the next one starts
         # where this one ended.
         has_more = len(page) == clean_limit
         next_offset = clean_offset + len(page)
 
     admin_emails = _admin_emails()
     return {
-        "users": [_public_user(user, admin_emails,
-                               deleting.get(str(user.get("user_id") or "")))
-                  for user in selected],
+        "users": [_public_user(user, admin_emails) for user in selected],
         "limit": clean_limit,
         "offset": clean_offset,
         "next_offset": next_offset,
         "has_more": has_more,
         "search": clean_search,
-        "view": clean_view,
     }

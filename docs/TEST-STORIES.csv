@@ -260,12 +260,14 @@ O3 -> test_the_export_releases_full_text_with_the_yes_and_skips_hidden_projects"
 tests/test_admin_takes_willfidence.py,Story,"As the founder, I want each Take on a person's admin page to show its willfidence, so I can read how a speaker's Takes are going.","O1  A Take row carries `willfidence`: the mean of its pieces' willfidence in
 whole percent, counting only pieces with a sound read; none when no piece
 has one (never the middle of the scale made up).",O1 -> test_a_take_row_carries_its_willfidence_in_percent,"Founder 2026-10-21 (N105): ""add the willfidence column here (in the ceo panel but only here)""."
-tests/test_admin_users_being_deleted.py,Story,"As the founder, I want a person I delete to leave the Users list at once, though their data is deleted only after seven days, so that the list shows only the people who are still here.","O1  The active list leaves out everyone whose account is being deleted,
-whether the founder deleted it or the person did, and the next page
-starts where this one ended. A finished deletion is in neither list.
-O2  The deleting view lists exactly those people, each with the dates and
-the id the cancel takes.","O1 -> AdminUsersBeingDeletedTest::test_the_active_list_leaves_out_who_is_being_deleted
-O2 -> AdminUsersBeingDeletedTest::test_the_deleting_view_lists_them_with_their_dates",Founder 2026-10-27 (delete and hide from the Users list).
+tests/test_admin_users_being_deleted.py,Story,"As the founder, I want a person whose account is being deleted to leave the Users list at once, though their data is deleted only after seven days, so that the list shows only the people who are still here.","O1  The list leaves out everyone whose account is being deleted, whether
+the founder deleted it or the person did, and the next page starts
+where this one ended. A finished deletion is left out too.",O1 -> AdminUsersBeingDeletedTest::test_the_list_leaves_out_who_is_being_deleted,"Founder 2026-10-27 (N219; N221 drops the ""Being deleted"" view)."
+tests/test_admin_users_hide.py,Story,"As the founder, I want to hide people from the Users list, and undo it, so that the list shows only the people I still need, without touching anyone's account.","O1  A person I hide leaves the list at once, in the page and in the
+search; Undo brings them back.
+O2  Hiding changes only the list: no deletion is recorded and nothing is
+asked of the person's sign-in.","O1 -> AdminUsersHideTest::test_a_hidden_person_leaves_the_list_until_undo
+O2 -> AdminUsersHideTest::test_hiding_touches_no_account","Founder 2026-10-27 (N221): ""Just hide them cause they are deleted through other workflow inside the app""."
 tests/test_admin_users_leave_out_deleted_accounts.py,Story,"As the founder, I want a finished deletion gone from the Users list, so that the list never shows an emptied account with no email and no name.","O1  Every auth user whose deleted_at is set is left out of the paged list
 and of the search; one without it stays. A page shortened by a deleted
 account still says there is more, so the list does not end early.",O1 -> AdminUsersLeaveOutDeletedAccountsTest::test_a_deleted_account_is_in_neither_the_page_nor_the_search,"N219: a finished deletion is in neither tab. N218: its auth record stays, emptied, with deleted_at set."

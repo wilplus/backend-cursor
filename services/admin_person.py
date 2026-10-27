@@ -256,6 +256,28 @@ def deletion(user_id: str, principal: Optional[str]) -> Optional[dict]:
 #: the Users list reads it back to hide the person (services/admin_user_directory.py).
 ADMIN_DELETE_KEY = "admin-delete:"
 
+#: Where "hidden from the Users list" is kept: the account row's own
+#: "hidden from lists" flag (add_is_archived_to_student_details.sql), so
+#: hiding needs no table of its own.
+HIDDEN_TABLE = "v2_student_details"
+HIDDEN_FLAG = "is_archived"
+
+
+def set_hidden(user_id: str, hidden: bool) -> None:
+    """The founder hides this person from the Users list, or shows them again
+    with Undo (founder 2026-10-27, N221). Only the list changes: the account,
+    its sign-in and its data stay exactly as they are. Deleting an account is
+    "Delete user" on the profile, or the person's own "Delete my account"."""
+    now = datetime.now(timezone.utc).isoformat()
+    if hidden:
+        db.client.table(HIDDEN_TABLE).upsert(
+            {"user_id": str(user_id), HIDDEN_FLAG: True, "updated_at": now},
+            on_conflict="user_id").execute()
+    else:
+        (db.client.table(HIDDEN_TABLE).update({HIDDEN_FLAG: False, "updated_at": now})
+         .eq("user_id", str(user_id)).execute())
+    logger.info("admin users list: user=%s hidden=%s", user_id, hidden)
+
 
 def request_deletion(user_id: str, admin_id: str) -> dict:
     """The admin deletes this account (founder 2026-10-14). The same road as
