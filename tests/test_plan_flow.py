@@ -21,6 +21,8 @@ OUTCOME
   O7  A new project's first Take asks "Is this for {date}?"; Yes keeps the
       plan, No starts "When is your deadline?" for a new one, the old plan
       kept in the history.
+  O8  Moving the deadline keeps the practices done and counts the ones
+      ahead: today's practice, already done, is not counted twice.
 PROVES   O1 -> test_without_the_ring_nothing_happens
          O2 -> test_a_new_speaker_is_asked_once
          O3 -> test_no_date_gives_two_months_then_the_voice_message
@@ -28,6 +30,7 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
          O5 -> test_ratings_are_kept_quietly_and_the_calls_lead_to_the_plan
          O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
          O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
+         O8 -> test_moving_the_deadline_keeps_the_practices_done
 WHY      The plan, built one to one with the prototype (founder 2026-10-26,
          N203, N204); the rules are frontend docs/flows/the-plan.md §1.
 """
@@ -262,3 +265,15 @@ def test_a_new_project_asks_whether_it_is_for_the_same_event(db, monkeypatch):
     assert bodies(db)[-2:] == ["No", "When is your deadline?"]
     assert out["plan"]["status"] == "asking"
     assert [p["status"] for p in db.plans] == ["replaced", "asking"]
+
+
+def test_moving_the_deadline_keeps_the_practices_done(db, monkeypatch):
+    plan = _active(db)
+    took = datetime.fromisoformat(plan["started_at"]) + timedelta(seconds=1)
+    db.takes.rows = [{"created_at": took.isoformat(), "arc_id": "arc-1", "take_index": 1}]
+    today = took.astimezone(timezone.utc).date()
+    monkeypatch.setattr(F, "today_in", lambda name: today)
+    out = F.change(db, USER, deadline=(today + timedelta(days=10)).isoformat(), tz="UTC")
+    # One practice done (today's); nine days ahead, every day: 1 + 9.
+    assert out["plan"]["every_day"] and out["plan"]["total"] == 10
+    assert F.P.practice_number(1, out["plan"]["total"]) == 2
