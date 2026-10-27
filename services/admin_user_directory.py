@@ -4,6 +4,11 @@ The route owns no user mutation. It exposes only the fields needed to review
 accounts and open the existing token top-up tool: identity, access class, and
 account timestamps. Token grants remain behind the separate idempotent grant
 endpoint.
+
+A deleted account is never listed. A finished deletion empties its auth
+record and keeps its id (N218); that record and Supabase's own soft delete
+both carry ``deleted_at``, which the Auth admin API returns. N219: a finished
+deletion is in neither tab.
 """
 from __future__ import annotations
 
@@ -44,6 +49,10 @@ def _auth_page(*, limit: int, offset: int) -> list[dict]:
     return users
 
 
+def _is_deleted(user: dict) -> bool:
+    return bool(user.get("deleted_at"))
+
+
 def _matches(user: dict, search: str) -> bool:
     if not search:
         return True
@@ -78,19 +87,23 @@ def list_users(*, limit: int = 50, offset: int = 0, search: str = "") -> dict:
         cursor = 0
         while cursor < MAX_SEARCH_USERS:
             page = _auth_page(limit=MAX_PAGE_SIZE, offset=cursor)
-            matches.extend(user for user in page if _matches(user, clean_search))
+            matches.extend(user for user in page
+                           if not _is_deleted(user) and _matches(user, clean_search))
             if len(page) < MAX_PAGE_SIZE:
                 break
             cursor += MAX_PAGE_SIZE
         selected = matches[clean_offset : clean_offset + clean_limit]
         has_more = len(matches) > clean_offset + clean_limit
     else:
-        selected = _auth_page(limit=clean_limit, offset=clean_offset)
+        page = _auth_page(limit=clean_limit, offset=clean_offset)
+        selected = [user for user in page if not _is_deleted(user)]
         # GoTrue exposes page-based pagination rather than a stable total.
         # A full page may be the final page; one harmless empty follow-up is
         # preferable to fetching a differently-sized page and shifting the
-        # offset calculation in db.v2_list_auth_users.
-        has_more = len(selected) == clean_limit
+        # offset calculation in db.v2_list_auth_users. The Auth page is
+        # counted before deleted accounts are taken out, so a page shortened
+        # by them does not end the list; the next page is still offset+limit.
+        has_more = len(page) == clean_limit
 
     admin_emails = _admin_emails()
     return {
