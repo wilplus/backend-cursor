@@ -5515,3 +5515,24 @@ goes after <day>." with "Undo".
 4. The list shows no counts: "N shown" goes, and "Being deleted" carries no
 number ("you don't need to show how many were deleted, how many are active").
 No rules page: the admin console has none. No migration.
+
+**N220 · A correction that ends on a Good job offers its helper words
+(founder, the Claude Code chat, 27 October 2026, asked why the helper words
+were often missing: "if you improved, you can make it your habit words",
+"the correction that ends on the good job and above offers helper words",
+then, of the three options, "B").** For N113 and the lock of 2026-10-12,
+section 2.5:
+1. A corrected moment whose practise ends on a Good job (a try the machine
+reads as better) offers "Choose your helper words" on its paragraph right
+after the Good job, before the walk goes on, as after a praise. Until now
+helper words came only from a voice that was confident in the Take itself
+(a praise, or N113's Clearer version), and a correction's Good job went on
+with none, so a Take whose two shown moments were both under the floor
+ended with no helper words.
+2. A practise that ends on the third try without a Good job, or is skipped,
+offers none, as before. A moment that already has its helper words step (a
+praise, N113) gets it once.
+3. No new words on screen: the step is C3's, word for word. The server is
+unchanged: it already saves helper words on any paragraph.
+The rules: frontend flow page C3 and C7
+([`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). No migration.
