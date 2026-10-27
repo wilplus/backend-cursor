@@ -8,7 +8,8 @@ OUTCOME
   O2  With it on, tokens read in hundreds of today's units: Starter $39 for
       3,900, Plus $99 for 11,000, Pro $149 for 18,000; a short Take reads 10,
       chat 1, the free grant 120, the coach's minute 200.
-  O3  A package bought with it on is charged and granted at the new price.
+  O3  A package bought with it on is charged and granted at the new price,
+      and Stripe's page names it as the cards do ("Plus · 11,000 tokens").
   O4  A Take that reaches the coach costs nothing, with v4 on or off: the
       coach answers every Take and no price list carries a review.
   O5  A call can be booked with tokens at its own price, a token a cent; with
@@ -76,6 +77,15 @@ def test_with_v4_on_the_shop_and_prices_read_in_shown_tokens(v4):
 def test_a_package_bought_with_v4_on_is_charged_and_granted_its_new_price(v4):
     spec = token_packages.package_spec("coaching")
     assert (spec["cents"], spec["tokens"]) == (9_900, 1_100_000)
+    config = MagicMock(STRIPE_SECRET_KEY="sk_test", FRONTEND_URL="https://x.co")
+    with patch("stripe.checkout.Session.create",
+               return_value=MagicMock(url="https://pay", id="cs_1")) as create, \
+            patch("services.plan_promotions.active", return_value=None):
+        token_packages.create_package_checkout_session(user_id="u1", package="coaching",
+                                                       app_config=config)
+    item = create.call_args.kwargs["line_items"][0]["price_data"]
+    assert item["unit_amount"] == 9_900
+    assert item["product_data"]["name"] == "Plus · 11,000 tokens"
 
 
 @pytest.mark.parametrize("v4_on", [True, False])

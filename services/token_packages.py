@@ -73,10 +73,16 @@ def package_spec(package: Optional[str]) -> Optional[dict]:
     }
 
 
+#: The names the pricing cards show (N198); the keys stay as they are.
+_SHOWN_NAMES = {"practice": "Starter", "coaching": "Plus", "intensive": "Pro"}
+
+
 def _line_item_name(spec: dict) -> str:
-    """What Stripe's page shows: the package and its tokens, in the words the
-    purchase screen's chip already uses ("Practice · 150,000 tokens")."""
-    return f"{spec['package'].capitalize()} · {spec['tokens']:,} tokens"
+    """What Stripe's page shows: the package and its tokens as the cards show
+    them ("Plus · 11,000 tokens"), never the stored units."""
+    from services.token_prices import shown
+    name = _SHOWN_NAMES.get(spec["package"], spec["package"].capitalize())
+    return f"{name} · {shown(spec['tokens']):,} tokens"
 
 
 def create_package_checkout_session(
