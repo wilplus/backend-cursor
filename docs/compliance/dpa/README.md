@@ -36,6 +36,12 @@ report or support thread that carries them. If a capture includes an account
 number in a header, re-capture it rather than committing and redacting —
 a redaction in git history is not a redaction.
 
+The same goes for a person's postal address. Our controller is a natural person,
+so a DPA that is executed in the controller's own name carries a home address in
+its signature block or annex. Such an executed copy is held privately by the
+founder, never committed here, and its register row says so and cites the
+envelope ID instead.
+
 ## Capture quality
 
 A `Cmd+P` capture of a web page can silently produce a blank page, a cookie
