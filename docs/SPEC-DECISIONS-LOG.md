@@ -5536,3 +5536,25 @@ praise, N113) gets it once.
 unchanged: it already saves helper words on any paragraph.
 The rules: frontend flow page C3 and C7
 ([`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). No migration.
+
+**N221 · Users: the list hides people instead of deleting them (founder,
+the Claude Code chat, 27 October 2026, after "Can not delete the selected
+users nor a single user": "Just hide them cause they are deleted through
+other workflow inside the app", then, of the options, "Gone from the list",
+"Yes, use these" and "Drop it").** For N219:
+1. On the admin Users list, ⋮ has "Select" and "Hide"; the bar while
+choosing reads "N selected", "Select all shown", "Cancel" and "Hide N users"
+("Hide user" for one). Hiding asks nothing first: the person leaves the list
+at once and "Hidden." shows at the bottom with "Undo". If it fails, "Could
+not do that. Try again." shows, as before. Admins have no ⋮, as before.
+2. Hiding changes only the list. The account, its sign-in and its data stay
+as they are. People are deleted elsewhere: "Delete user" on their profile,
+or their own "Delete my account". The list no longer deletes anyone, so
+N219 items 2 and 3 (its seven-day deletion and its confirmation) end here.
+3. A hidden person leaves the list for good: no tab lists them, and only
+the "Undo" right after brings them back. The "Being deleted" tab goes too
+(N219 item 2); the list is one list. Someone whose account is being deleted,
+or is deleted, still leaves it on their own.
+4. Hiding is kept on the account row's own "hidden from lists" flag
+(`v2_student_details.is_archived`), so it needs no new table.
+No rules page: the admin console has none. No migration.
