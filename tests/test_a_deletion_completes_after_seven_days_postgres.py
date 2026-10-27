@@ -14,16 +14,19 @@ OUTCOME
   O5  Once it is done, my sign-in is gone: no email, no phone, no password,
       no linked sign-in, no live session, and I cannot sign in; what the
       policy says survives (the proof of my agreement, my training choice) is
-      still there, and nobody else's sign-in is touched. An account deleted
-      before this was fixed loses its sign-in on the next run.
+      still there, and nobody else's sign-in is touched. If my sign-in cannot
+      be erased, the deletion is not marked done and the next run finishes
+      it. An account deleted before this was fixed loses its sign-in on the
+      next run.
 PROVES   O1 -> test_a_request_blocks_at_once_deletes_nothing_and_waits_seven_days
          O2 -> test_the_requester_cancels_inside_the_window_and_the_block_lifts
          O3 -> test_the_run_completes_a_due_deletion_on_verified_evidence
          O4 -> test_a_dry_run_reads_what_is_due_and_writes_nothing
          O5 -> test_a_completed_deletion_leaves_no_way_to_sign_in_and_keeps_what_survives
+               test_a_deletion_whose_sign_in_cannot_be_erased_is_not_marked_done
                test_an_account_deleted_before_the_fix_loses_its_sign_in_on_the_next_run
 WHY      Founder 2026-10-05, N48.4 Q14 A, Q17 A, Q19 A (migration 0422);
-         Privacy 3.8 sections 7 and 9 and N95 (migration 0497).
+         Privacy 3.8 sections 7 and 9, N217 item 4 and N95 (migration 0497).
 """
 from __future__ import annotations
 
@@ -510,6 +513,39 @@ def test_an_account_deleted_before_the_fix_loses_its_sign_in_on_the_next_run(
     assert _mine(_run(db), request)["result"] == "sign_in_erased"
     _a_deleted_account_keeps_no_sign_in(db, subject["user_id"], email, phone)
     assert all(o["request_id"] != request for o in _run(db)["outcomes"])
+
+
+def test_a_deletion_whose_sign_in_cannot_be_erased_is_not_marked_done(
+        db, fake_storage):
+    _purge_ready(db)
+    subject = _speaker(db)
+    marker = uuid.uuid4().hex[:10]
+    email, phone = f"cy-{marker}@example.com", f"46{int(marker, 16) % 10**9:09d}"
+    _signs_in(db, subject["user_id"], email, phone)
+    request = _due_account_request(db, subject["principal"])
+    # Supabase Auth refuses the change to this one record, as a lost
+    # privilege or a failing trigger would.
+    with db.cursor() as cur:
+        cur.execute("""
+            CREATE FUNCTION public.refuse_sign_in_erasure_for_test() RETURNS trigger
+            LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'AUTH_REFUSED'; END $$;
+            CREATE TRIGGER refuse_sign_in_erasure_for_test BEFORE UPDATE ON auth.users
+               FOR EACH ROW WHEN (OLD.id = %s::uuid)
+               EXECUTE FUNCTION public.refuse_sign_in_erasure_for_test();""",
+            (subject["user_id"],))
+    try:
+        assert _mine(_run(db), request)["result"] == "error"
+        assert _one(db, "SELECT state FROM public.account_deletion_requests WHERE id = %s",
+                    (request,)) == "started"
+        assert _one(db, "SELECT email FROM auth.users WHERE id = %s",
+                    (subject["user_id"],)) == email
+    finally:
+        with db.cursor() as cur:
+            cur.execute("DROP TRIGGER refuse_sign_in_erasure_for_test ON auth.users;"
+                        "DROP FUNCTION public.refuse_sign_in_erasure_for_test();")
+
+    assert _mine(_run(db), request)["result"] == "completed"
+    _a_deleted_account_keeps_no_sign_in(db, subject["user_id"], email, phone)
 
 
 # ── A project keeps the same window ───────────────────────────────────────
