@@ -5472,3 +5472,24 @@ D4 and D5, each with its build. No migration in this entry.
 counsel the sign-off page: "counsel agrees"): counsel agrees with Terms 3.8
 and Privacy 3.9 as signed, the answers to questions 1 and 2 and the WhatsApp
 messages' consent included.
+
+**N218 · A deleted account's sign-in record is emptied in SQL, not soft-deleted
+(founder, the Claude Code chat, 27 October 2026, asked which of the two fixes
+for N217 item 4 should stay: "This PR replaces #1425").** For N217 item 4 and
+N95:
+1. When an account deletion is marked done, the person's Supabase sign-in
+record keeps its id and nothing else that signs in or names them: email and
+phone are NULL, not Supabase's soft-delete hash `sha256(user id + email)`,
+which anyone holding the email can check. Password, tokens, sign-in profile
+and linked sign-ins are cleared, sessions ended, refresh tokens revoked, and
+it is banned. How the account signed up stays, for the sign-up count.
+2. This replaces #1425's soft delete through Supabase's admin API (merged
+earlier the same day). Backend #1423 (migration 0497) does it in the
+transaction that marks the request done; an erasure that fails leaves the
+request for the next run. Accounts deleted before it are erased by the
+completion run.
+3. Not in this decision: Supabase Auth's own audit log, which names the
+email, and purges an operator runs by hand (service termination, lawful
+deletion).
+No rules page: the deletion runbook, `docs/PHASE1-PROCESSING-RUNBOOK.md`,
+says how it works. Migration 0497, in #1423.
