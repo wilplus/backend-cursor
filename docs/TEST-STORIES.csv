@@ -1548,9 +1548,12 @@ tests/test_master_doc_output_guards.py,Story,"As a speaker, I want the Lounge ch
 a safe answer in words.
 O2  An answer that recreates the retired ""Strong Sides"" collection (in any
 language) is replaced by a pointer to Voice Album.
-O3  Ordinary answers pass through untouched.","O1 -> ChatAnswerGuardTests::test_every_answer_leaves_through_the_guards
+O3  Ordinary answers pass through untouched.
+O4  Will's knowledge holds no price and tells him to name none: prices are
+on the pricing page only.","O1 -> ChatAnswerGuardTests::test_every_answer_leaves_through_the_guards
 O2 -> ChatAnswerGuardTests::test_every_answer_leaves_through_the_guards
-O3 -> ChatAnswerGuardTests::test_every_answer_leaves_through_the_guards",Never-rule 1 (RULE A / AC-9) and RULE K; no AI call is made in the test.
+O3 -> ChatAnswerGuardTests::test_every_answer_leaves_through_the_guards
+O4 -> ChatAnswerGuardTests::test_will_knows_no_price","Never-rule 1 (RULE A / AC-9) and RULE K; no AI call is made in the test. O4: founder 2026-10-27, N210 (""once they see the price on the pricing page, they don't see any prices later on"")."
 tests/test_migration_security_rules.py,Story,"As a developer, I want every new table to switch on RLS and every new function to revoke EXECUTE from public, anon and authenticated, so that the browser's anon key can never read tables or call money-moving functions again.","O1  CI goes red on a new migration that creates a public table without
 ENABLE ROW LEVEL SECURITY in the same file.
 O2  CI goes red on a new function that does not revoke EXECUTE from PUBLIC.
