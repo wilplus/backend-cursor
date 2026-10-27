@@ -5425,8 +5425,9 @@ stress, a worry or "How did it go?", so the plan's words do not fit it. Its
 words, the card's words for them, and the Privacy 3.9 section 4e wording that
 covers it are new words on locked screens (Never 4): they are drawn on a
 prototype for the founder's OK before they are built.
-4. Not decided here: whether "Not now" is asked again and when; whether a yes
-to the tap alone covers the plan's other personal answers (it names only the
+4. "Not now" is never asked again; Data & consent is the way back (the
+suggested answer on the prototype, drawn preselected). Not decided here:
+whether a yes to the tap alone covers the plan's other personal answers (it names only the
 tap, so it cannot, unless its words say more): until decided, a speaker who
 said yes to the tap and later gets a plan is asked the plan's own ask once;
 what becomes of the feelings already given by speakers who never said yes (a
@@ -5434,6 +5435,21 @@ decision for when the switch goes on).
 5. The switch, `PLAN_CONSENT_ENABLED`, stays off until this is built and
 Privacy 3.9 is published. The plan's own ask and card are built and merged,
 switched off (backend #1416, frontend #1028).
+- **The words** (founder, the Claude Code chat, 27 October 2026, to the
+prototype <https://claude.ai/artifact/9ELP4RVTtXjDQJqXRzGGM2>: "approved as
+drawn"): approved, the new words included. The ask, once, after the first
+Take, to a speaker without a plan: "Before each Take I can ask how you feel,
+with one tap: Nervous, Excited, Calm or Not sure. Your coach sees your answer.
+I only ask with your yes. You can turn this off in Data & consent." with "Yes,
+ask me", "Not now" and Read more. The card, "How you feel before a Take": "Will
+asks how you feel before each Take, with one tap. Your coach sees your
+answer." with Turn on / Turn off; its off line, "Off. Turn it on and Will asks
+how you feel before each Take, with one tap."; its question, "Stop asking how
+you feel?" with "We stop asking, and delete the feelings you have given."; its
+outcome, "Off. We deleted the feelings you gave." Read more opens "Privacy
+Policy 3.9, section 4f", whose text is drafted on the prototype and waits for
+the founder's signature with Privacy 3.9. A speaker with a plan sees the
+plan's card instead.
 The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §1 D4 and D5 and
