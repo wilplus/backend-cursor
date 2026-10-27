@@ -5341,3 +5341,44 @@ The rules: frontend
 §1 C5, G10 and H1, and
 [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md).
 No migration in this entry.
+
+**N214 · Sign up and sign in with WhatsApp, built now and on (founder, the
+Claude Code chat, 27 October 2026, on the clickable prototype
+<https://claude.ai/artifact/Dcf2FCyDs5c4Pb7BJc7oZ7>: "ok, looks good", then,
+to four questions, "Build now, switched on", "Ask for email later", "Add it
+in Settings first" and "Yes, use them as shown").** For N174 item 6, N184
+item 1 and N207 items 4 and 5:
+1. The sign-up page gets "Sign up with WhatsApp", first, above LinkedIn,
+Google and email. It is built now and goes on once it is built, Supabase is
+set up and the new privacy version names it; it no longer waits for the
+sign-up count, which keeps running. This replaces N174 item 6 and N207
+item 5.
+2. The flow, as the prototype draws it: the number, with its country code
+(the Lounge's words when it has none); a code by WhatsApp; the code typed
+in; the name; then in. The number becomes the account's WhatsApp number, so
+the WhatsApp ask after Take 1 does not come (N189). The code proves the
+number is theirs: for this way in only, it replaces N184 item 1's "no code".
+3. The code: Supabase makes and checks it (6 digits, valid 10 minutes). Its
+Send SMS hook hands it to the backend, which sends it through Meta's
+WhatsApp API with the Authentication template `login_code` (English, Copy
+code; Meta's own words: "{code} is your verification code. For your
+security, do not share this code." and "This code expires in 10 minutes.";
+the founder submitted it on 27 October 2026). No Twilio.
+4. No email at sign-up. The email is asked for only when something needs it:
+booking a call (the calendar invite) and buying tokens (the receipt). Those
+asks' words wait for the founder (Never 4).
+5. Sign in with WhatsApp: the login page signs in only a number that is
+already an account's way in, and never makes a new account. Someone who
+signed up with email, Google or LinkedIn adds WhatsApp as a way in from
+Settings, with a code. The words for that Settings row and for "no account
+with this number" wait for the founder (Never 4).
+6. The words, signed (Never 4): "Sign up with WhatsApp", "Your WhatsApp
+number", "Send code", "Enter the code we sent you on WhatsApp", "Resend
+code", "Use a different number", "That code didn't work. Try again.", "What
+should we call you?", "Continue".
+Before it goes on: Meta approves `login_code`; the new privacy version names
+the phone number as a way to sign in; in Supabase, phone sign-in is on and
+the Send SMS hook points at the backend, with its secret on Railway.
+No rules page yet: the Settings row lands on frontend
+`docs/flows/consent-screens.md` when its words are signed. No migration in
+this entry.
