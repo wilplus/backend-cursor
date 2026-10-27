@@ -206,6 +206,8 @@ def test_voice_answers_are_kept_and_the_key_line_comes_first(db):
     assert said[-2:] == ["Two quick taps before your plan.", "How stressed do you feel about it right now?"]
     plan = db.get_open_plan(USER)
     assert plan["facts"]["key_line"] == "The window closes soon."
+    assert plan["facts"]["key_answer_id"] == next(a["id"] for a in db.answers if a["kind"] == "key")
+    assert plan["facts"]["language"] == "en"  # which coaches may hear them before a Take (N213)
     assert len(plan["asked"]) == 3
 
 

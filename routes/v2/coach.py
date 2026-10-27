@@ -509,14 +509,36 @@ def v2_coach_moments_queue():
             return _rater_language_error("profile_required")
         rows, snips, _states = load_review_queue(db, snippets=False)
         matched = _language_matched_rows(rows, snips, proficient)
-        return jsonify(queue_for_coach(
+        queue = queue_for_coach(
             db, matched, rater_id=rater_id,
             moments_for=_queue_moments_for(matched),
-            pseudonym_for=_coach_pseudonym)), 200
+            pseudonym_for=_coach_pseudonym)
+        return jsonify(_queue_with_plans(queue, rows, matched, rater_id, proficient)), 200
     except Exception as e:
         logger.error("coach/queue/moments GET failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch the queue"}), 500
+
+
+def _queue_with_plans(queue, rows, matched, rater_id, proficient):
+    """The queue with each plan waiting on this coach on its speaker's card
+    (N213; routes.v2.coach_plans opens it). Best-effort: a failed read
+    draws the queue as it was."""
+    from services import plan_coach
+    from services.coach_moments_queue import speaker_goals
+    try:
+        items = plan_coach.queue_items(
+            db, rater_id=rater_id, proficient=proficient,
+            matched_users={str(r.get("user_id")) for r in matched},
+            queued_users={str(r.get("user_id")) for r in rows})
+        if not items:
+            return queue
+        return plan_coach.with_plans(
+            queue, items, pseudonym_for=_coach_pseudonym,
+            goal_for=speaker_goals(db, [item["plan"] for item in items]))
+    except Exception as e:  # noqa: BLE001 -- the moments are drawn either way
+        logger.warning("coach queue: the plans not read: %s", e, exc_info=True)
+        return queue
 
 
 @v2_bp.route("/coach/queue/moments/close", methods=["POST"])

@@ -22,7 +22,7 @@ DOMAIN_MODULES = (
     "processing_authorization", "lounge", "coach",
     "coach_exercises", "line_bank",
     "communities",
-    "coach_preference", "coach_audit", "coach_words",
+    "coach_preference", "coach_audit", "coach_words", "coach_plans",
     "coach_bubbles",
     "admin", "coaching", "canonical_publish", "auth_alias", "lab_recording",
     "projects", "learning_exposures", "user_sessions", "rings",
