@@ -5308,3 +5308,36 @@ says Yes to the notebook before it records.
 3. Ring 5 holds only people who know it is a test (N208 item 5).
 The rules: frontend [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 §1 A. No migration: the founder sets the two rows on the admin's rings page.
+
+**N213 · The coach's side of the plan is built as drawn (founder, the Claude
+Code chat, 27 October 2026, to the clickable prototype
+<https://claude.ai/artifact/QznwCAgkBHAVAGDMKVUKvE> and the question "Should I
+build the coach's side of the plan now, exactly as the clickable prototype
+draws it?": "Build it, words OK", then "OK, build the coach's side").** For
+N204 item 3, N209 item 4, N211 and N173:
+1. A plan reaches the coach's queue on the speaker's card, beside their Takes:
+"New plan" when the machine has picked a level no coach has picked yet,
+"Asked about their level" after the speaker's "Ask your coach", "Three Takes
+without moving" when a level is noted stuck; with the orange dot. On the
+speaker's page a "Their plan" card sits above their Takes.
+2. A new plan and "Asked about their level" open "Which level comes first?":
+the speaker's voice message ("Why it matters") and their key line ("Their key
+line"), then the five levels. Blind: nothing about the machine's level is
+fetched before the coach picks (Never 2).
+3. After the pick, "What happened": You, The machine heard, the Deadline, and
+Stress and Ready when the speaker gave them (N211). "Keep yours" keeps the
+coach's level, which the machine never moves (C5); "Change my answer" goes
+back to the five levels.
+4. A level noted stuck opens on the level's name and "Three Takes without
+moving. Next in the row: your video." (N173), the panel's own Record, then
+"Ready for {p}" and "Share with {p}". The video reaches the speaker as the
+coach's word on their latest Take ("Later · from your coach", opening their
+walk), the way a coach's word already does (coach panel G2 to G4).
+5. The new words are OK'd: "New plan", "Their plan", "Which level comes
+first?", "Why it matters", "Their key line", "Keep yours", "Asked about their
+level", "Deadline", "Stress", "Ready".
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 C5, G10 and H1, and
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md).
+No migration in this entry.
