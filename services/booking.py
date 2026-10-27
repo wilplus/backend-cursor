@@ -51,9 +51,9 @@ CHECKOUT_MINUTES = 35
 HOLD_MINUTES = CHECKOUT_MINUTES + 5
 CURRENCIES = ("usd", "eur", "pln", "gbp")
 # The WhatsApp reminder goes 10 minutes before, with the join link (N165,
-# N189). The cron runs every 5 minutes; a booking is due from 10 minutes
-# before until 2 minutes before, so a late or missed run still sends the
-# link, once.
+# N189). The worker's sweep (pipeline_jobs.run_sweep_loop) runs it every
+# minute; a booking is due from 10 minutes before until 2 minutes before, so
+# a late or missed sweep still sends the link, once.
 REMINDER_BEFORE = timedelta(minutes=10)
 REMINDER_WINDOW = timedelta(minutes=8)
 DAYS = ("0", "1", "2", "3", "4", "5", "6")  # Sunday=0, JS getDay() order
@@ -975,11 +975,10 @@ def _reminder_number(row: dict) -> Optional[str]:
 
 def send_whatsapp_reminders(now: Optional[datetime] = None) -> dict:
     """The reminder 10 minutes before, on WhatsApp, with the join link, for
-    every confirmed booking with a number (``_reminder_number``; the cron,
-    every 5 minutes). Each
-    booking is claimed before its message goes, so a cron that fires twice
-    sends it once; a message Meta refuses is given back for the next run to
-    try."""
+    every confirmed booking with a number (``_reminder_number``), from the
+    worker's sweep every minute. Each booking is claimed before its message
+    goes, so two sweeps at once send it once; a message Meta refuses is given
+    back for the next sweep to try."""
     out = {"due": 0, "sent": 0}
     if not config.WHATSAPP_NOTIFICATIONS:
         return out
