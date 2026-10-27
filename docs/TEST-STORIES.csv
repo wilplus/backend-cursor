@@ -250,6 +250,12 @@ O3 -> test_the_export_releases_full_text_with_the_yes_and_skips_hidden_projects"
 tests/test_admin_takes_willfidence.py,Story,"As the founder, I want each Take on a person's admin page to show its willfidence, so I can read how a speaker's Takes are going.","O1  A Take row carries `willfidence`: the mean of its pieces' willfidence in
 whole percent, counting only pieces with a sound read; none when no piece
 has one (never the middle of the scale made up).",O1 -> test_a_take_row_carries_its_willfidence_in_percent,"Founder 2026-10-21 (N105): ""add the willfidence column here (in the ceo panel but only here)""."
+tests/test_admin_users_being_deleted.py,Story,"As the founder, I want a person I delete to leave the Users list at once, though their data is deleted only after seven days, so that the list shows only the people who are still here.","O1  The active list leaves out everyone whose account is being deleted,
+whether the founder deleted it or the person did, and the next page
+starts where this one ended. A finished deletion is in neither list.
+O2  The deleting view lists exactly those people, each with the dates and
+the id the cancel takes.","O1 -> AdminUsersBeingDeletedTest::test_the_active_list_leaves_out_who_is_being_deleted
+O2 -> AdminUsersBeingDeletedTest::test_the_deleting_view_lists_them_with_their_dates",Founder 2026-10-27 (delete and hide from the Users list).
 tests/test_after_take.py,Story,"As a speaker, after a Take I want one thing to do at a time: the Take's card and its summary, then each ask on its own with Will's words leading into it, and only then ""practice makes perfect"" with ""Record Take N"", so that nothing competes with the walk or with recording again (founder 2026-10-20, N89).","O1  One ask after each Take, the first that waits (founder 2026-10-26,
 N189; was two, N94). After Take 1 that is WhatsApp when I left no
 number (N171), else Will's question when he has one, else ""Did this

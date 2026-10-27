@@ -70,6 +70,7 @@ def v2_admin_users():
             limit=limit,
             offset=offset,
             search=request.args.get("search", ""),
+            view=request.args.get("view", "active"),
         )
         return jsonify(result), 200
     except admin_user_directory.AdminUserDirectoryError as exc:
