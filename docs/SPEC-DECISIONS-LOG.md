@@ -5607,3 +5607,26 @@ what the model hands to a person. Nothing is built for instant answers
 before that door opens.
 No rules page: the flow page for customer requests waits for the founder's
 `Founder-Approved:` line (N218). No migration in this entry.
+
+**N221 · The answer is a Take: her voice over slides she picks, camera off;
+typed answers for follow-ups only (founder, the Claude Code chat, 27 October
+2026: "she does not want to show herself, she just wants to record like
+slide by slide, or just her voice, or just a text").** For N218 item 1, which
+said "a short video answer" and now reads: a Take, the answerer's voice over
+slides. Nothing in the loop needs a camera.
+1. Before the recording, the answerer taps what they recommend from the
+client's catalogue. Each pick is a slide: the customer's request and photo
+first, then each product, in the order picked. The recording screen stays the
+locked one; the picker is the same kind of tap list as the helper words.
+2. The picks fill the answer schema (N219 item 1) before a word is spoken;
+the transcript adds the routine and the reasons. One paragraph per slide is
+the Ideal Text.
+3. The customer hears the voice over the slides, the slides turning as the
+answer goes, with the product cards and the booking under it (N220 item 2).
+No video is sent or stored unless the answerer adds one, as a coach may.
+4. A typed answer is allowed only for a customer's follow-up: typed in the
+card, no Take, the pair still recorded, sent the same way. The first answer
+to a request is always a Take, because the walk on it is half of what the
+client buys.
+No rules page: the flow page for customer requests waits for the founder's
+`Founder-Approved:` line (N218). No migration in this entry.
