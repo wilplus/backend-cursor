@@ -5468,3 +5468,7 @@ The rules: frontend
 (the line on the tap's screen) and
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 D4 and D5, each with its build. No migration in this entry.
+- **Counsel** (founder, the Claude Code chat, 27 October 2026, after sending
+counsel the sign-off page: "counsel agrees"): counsel agrees with Terms 3.8
+and Privacy 3.9 as signed, the answers to questions 1 and 2 and the WhatsApp
+messages' consent included.
