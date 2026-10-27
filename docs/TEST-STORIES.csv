@@ -1953,12 +1953,14 @@ hello and today's one thing, once; after a Take on a practice day the
 O7  A new project's first Take asks ""Is this for {date}?""; Yes keeps the
 plan, No starts ""When is your deadline?"" for a new one, the old plan
 kept in the history.
-O8  Two Takes in a row that reach the level start the next thing heard;
+O8  Moving the deadline keeps the practices done and counts the ones
+ahead: today's practice, already done, is not counted twice.
+O9  Two Takes in a row that reach the level start the next thing heard;
 three Takes on a level without moving are noted for the coach's
 queue, once; a coach's level is never moved; a level whose time ran
 out gives way at the next open, and that day's hello names the new
 level. Nothing about it is said in the chat.
-O9  A Take's walk reads the level the plan had when the Take was
+O10 A Take's walk reads the level the plan had when the Take was
 recorded, so it reads the same on every opening; off a plan, or on
 ""Make it yours"", the walk is as today.","O1 -> test_without_the_ring_nothing_happens
 O2 -> test_a_new_speaker_is_asked_once
@@ -1967,9 +1969,10 @@ O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
 O5 -> test_ratings_are_kept_quietly_and_the_calls_lead_to_the_plan
 O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
 O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
-O8 -> test_the_level_moves_on_after_two_takes_that_reach_it
+O8 -> test_moving_the_deadline_keeps_the_practices_done
+O9 -> test_the_level_moves_on_after_two_takes_that_reach_it
 test_a_level_whose_time_ran_out_gives_way
-O9 -> test_a_walk_reads_the_level_of_its_takes_time","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the rules are frontend docs/flows/the-plan.md §1."
+O10 -> test_a_walk_reads_the_level_of_its_takes_time","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the rules are frontend docs/flows/the-plan.md §1."
 tests/test_playback_copy.py,Story,"As a speaker on iPhone or Safari, I want my recordings to play back, and the playback copy deleted with the recording, so that I can hear myself and deletion leaves nothing. (Record -> next Take: hearing the Take; and deletion.)","O1  A stored short recording gets its Safari-safe copy (.playback.m4a,
 audio/mp4) beside it at upload; the original is untouched.
 O2  The player is handed the original until the copy exists, and the copy
@@ -2094,7 +2097,8 @@ unit are today's.
 O2  With it on, tokens read in hundreds of today's units: Starter $39 for
 3,900, Plus $99 for 11,000, Pro $149 for 18,000; a short Take reads 10,
 chat 1, the free grant 120, the coach's minute 200.
-O3  A package bought with it on is charged and granted at the new price.
+O3  A package bought with it on is charged and granted at the new price,
+and Stripe's page names it as the cards do (""Plus · 11,000 tokens"").
 O4  A Take that reaches the coach costs nothing, with v4 on or off: the
 coach answers every Take and no price list carries a review.
 O5  A call can be booked with tokens at its own price, a token a cent; with

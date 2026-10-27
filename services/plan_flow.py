@@ -810,7 +810,7 @@ def book_call(database: Any, user_id: str, which: str, start: Any, *, tz: Any = 
         raise PlanError("INVALID_CALL", "Which call?")
     calls = dict(plan.get("calls") or {})
     rows: list[tuple] = []
-    if start:
+    if start and not (calls.get(which) or {}).get("booking_id"):  # booked once, never twice
         calls[which] = _book(database, user_id, plan, which, str(start), tz=tz, name=name, email=email)
         local = _parse_dt(calls[which]["start"]).astimezone(zone(plan.get("time_zone")))  # type: ignore[union-attr]
         rows.append(_bot(P.COPY["booked"].format(when=P.fmt_when(local)), f"booked:{which}:{calls[which]['booking_id']}"))
@@ -889,7 +889,8 @@ def change(database: Any, user_id: str, *, deadline: Any = None, days: Any = Non
 
 
 def _move_deadline(database: Any, user_id: str, plan: dict, raw: Any, tz: Any) -> tuple[dict, list[tuple]]:
-    today = today_in(valid_zone(tz) or plan.get("time_zone"))
+    zone_name = valid_zone(tz) or plan.get("time_zone")
+    today = today_in(zone_name)
     new = _parse_day(raw)
     if new is None or new <= today:
         raise PlanError("INVALID_DATE", "Pick a day after today.")
@@ -902,9 +903,16 @@ def _move_deadline(database: Any, user_id: str, plan: dict, raw: Any, tz: Any) -
         raise PlanError("OUTSIDE_PLAN", "The deadline stays before the summary call.")
     was_daily = bool(plan.get("every_day"))
     j = P.journey(today, new)
-    done = _done(plan, _takes(database, user_id)) if plan.get("status") == "active" else 0
+    takes = _takes(database, user_id) if plan.get("status") == "active" else []
+    done = _done(plan, takes)
+    # The practices done, then the ones still ahead. An every-day journey
+    # counts today, so a practice already done today is not counted twice.
+    started = _parse_dt(plan.get("started_at"))
+    today_done = j.every_day and any(started and t >= started and t.astimezone(zone(zone_name)).date() == today
+                                     for t in takes)
     plan = _save(database, user_id, plan, {"deadline": new.isoformat(), "deadline_given": False,
-                                           "every_day": j.every_day, "total": done + j.total})
+                                           "every_day": j.every_day,
+                                           "total": done + j.total - (1 if today_done else 0)})
     rows = [_bot(P.COPY["runs_to"].format(date=P.fmt_day(new)), f"runs_to:{new.isoformat()}:{_now().isoformat()}")]
     if j.every_day and not was_daily:
         rows.append(_bot(P.COPY["every_day"], f"every_day:{new.isoformat()}:{_now().isoformat()}"))
@@ -972,7 +980,7 @@ def _after_active_take(database: Any, user_id: str, plan: dict) -> list[dict]:
         fields["step"] = "same_event"
         rows.append(_bot(P.COPY["is_this_for"].format(date=P.fmt_day(deadline)),
                          f"same_event:{new_project}", plan_ask="same_event"))
-    elif moment:
+    elif moment and plan.get("step") == "done":  # never over ratings already being asked
         fields.update({"step": "stress", "facts": {**facts, "rating_moment": moment}})
         rows += _ratings_rows(moment)
     if fields:
