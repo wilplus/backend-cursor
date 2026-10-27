@@ -5406,3 +5406,35 @@ the phone number as a way to sign in; in Supabase, phone sign-in is on and
 the Send SMS hook points at the backend, with its secret on Railway.
 No rules page yet: the Settings row lands on frontend
 `docs/flows/consent-screens.md` with its build. No migration in this entry.
+
+**N215 · A speaker without a plan is asked for the feelings yes once, after
+their first Take (founder, the Claude Code chat, 27 October 2026, to the
+question where the yes is asked for a speaker who has no plan: "Ask them once,
+after their first Take").** For N211 items 2 and 4, N151 and N178:
+1. A speaker who has no plan, a plan being for the ring 5 testers today, is
+asked for a yes once, in the Lounge, after their first Take. After it, never
+before it: the loop is not slowed (Never 3). A speaker with a plan gets the
+plan's own ask (N211 item 1); the one yes covers both, so no one is asked
+twice.
+2. "How do you feel?" shows only after a yes, with its Skip every time (N211
+item 2). Before the yes a Take opens at its set-up with no feelings check.
+Its answer is kept as the plan's personal answers are: the yes can be turned
+off in the same card in Data & consent, and turning it off deletes the
+feelings given.
+3. The ask for these speakers is about the tap alone: it does not ask about
+stress, a worry or "How did it go?", so the plan's words do not fit it. Its
+words, the card's words for them, and the Privacy 3.9 section 4e wording that
+covers it are new words on locked screens (Never 4): they are drawn on a
+prototype for the founder's OK before they are built.
+4. Not decided here: whether "Not now" is asked again and when; what becomes
+of the feelings already given by speakers who never said yes (a decision for
+when the switch goes on).
+5. The switch, `PLAN_CONSENT_ENABLED`, stays off until this is built and
+Privacy 3.9 is published. The plan's own ask and card are built and merged,
+switched off (backend #1416, frontend #1028).
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 D4 and D5 and
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md),
+updated with the build. No migration in this entry: the record is the same
+table, `plan_consent_events`.
