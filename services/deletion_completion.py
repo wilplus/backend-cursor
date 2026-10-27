@@ -143,14 +143,16 @@ def _due(rows: list[dict], key: str, now: datetime) -> list[dict]:
 
 
 def _sign_ins_left(client: Any) -> list[Work]:
-    """Account deletions done before 0497 whose sign-in is still there."""
+    """Account deletions done before 0497 whose sign-in is still there. A
+    read that fails is logged and lists none: catching up on old accounts
+    never stops a run from finishing the new ones."""
     try:
         rows = client.rpc("account_sign_ins_left_v1", {}).execute().data or []
-    except Exception as error:
-        if any(code in f"{getattr(error, 'code', '')} {error}"
-               for code in _MISSING_FUNCTION):
-            return []
-        raise
+    except Exception as error:  # noqa: BLE001 -- logged; the next run reads again
+        if not any(code in f"{getattr(error, 'code', '')} {error}"
+                   for code in _MISSING_FUNCTION):
+            logger.warning("sign-ins left unreadable: %s", error, exc_info=True)
+        return []
     return [Work("account", str(row["request_id"]), "erase_sign_in",
                  str(row.get("completes_after") or ""))
             for row in rows if isinstance(row, dict) and row.get("request_id")]
