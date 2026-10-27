@@ -5493,3 +5493,25 @@ email, and purges an operator runs by hand (service termination, lawful
 deletion).
 No rules page: the deletion runbook, `docs/PHASE1-PROCESSING-RUNBOOK.md`,
 says how it works. Migration 0497, in #1423.
+
+**N219 · Users: delete people from the list, several at once, and they leave
+the list at once (founder, the Claude Code chat, 27 October 2026, after the
+clickable prototype <https://claude.ai/artifact/Gbi8PZmdL2hCitQsycvurw>:
+"yes, build the delete and hide").** For N95:
+1. On the admin Users list each row has ⋮ on its left, with "Select" and
+"Delete user". "Select" puts a tick box on every row, with a bar: "N
+selected", "Select all shown", "Cancel" and "Delete N users"; one
+confirmation deletes them all. Admins have no ⋮ and are never selected.
+2. A deletion here is the one "Delete user" on the profile already makes:
+the account stops now, the data is deleted after seven days, and it can be
+cancelled until then. The person leaves the list at once and waits under a
+second tab, "Being deleted", with "Deletion asked", "Data deleted after"
+and "Cancel deletion". The first tab is "Active". A finished deletion is in
+neither tab.
+3. The confirmation reads "Delete <email>?" or "Delete N users?" with the
+emails, then "Their account stops now. They leave this list now. Their data
+is deleted after <day>. You can cancel until then." After it, "Deleted. Data
+goes after <day>." with "Undo".
+4. The list shows no counts: "N shown" goes, and "Being deleted" carries no
+number ("you don't need to show how many were deleted, how many are active").
+No rules page: the admin console has none. No migration.
