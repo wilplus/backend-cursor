@@ -66,6 +66,21 @@ def state(database: Any, user_id: Any) -> str:
     return GRANTED if latest.get("event_kind") == "grant" else DECLINED
 
 
+def feelings_allowed(database: Any, user_id: Any) -> bool:
+    """May "How do you feel?" be kept for this speaker's next Take? Without a
+    plan, yes: answering is the yes for that one answer (N215, N217; Privacy
+    3.9 section 4e). With a plan, only after the plan's own yes (N211). The
+    switch off, yes for everyone, as before."""
+    if not enabled() or not user_id:
+        return True
+    try:
+        plan = database.get_open_plan(str(user_id))
+    except Exception as error:  # noqa: BLE001 -- read as no plan, as the plan's own read does
+        logger.warning("plan consent: plan not read user=%s: %s", user_id, error, exc_info=True)
+        plan = None
+    return plan is None or state(database, user_id) == GRANTED
+
+
 def _policy_version(database: Any) -> Optional[str]:
     try:
         policy = database.get_active_processing_policy()

@@ -218,6 +218,7 @@ def view(database: Any, user_id: str, plan: dict) -> dict:
     return {
         "id": plan["id"], "status": plan["status"],
         "step": "consent" if facts.get("awaiting") == "consent" else plan["step"],
+        "consent": C.state(database, user_id),
         "deadline": deadline.isoformat() if deadline else None,
         "deadline_given": bool(plan.get("deadline_given")),
         "deadline_short": P.fmt_short(deadline) if deadline else None,

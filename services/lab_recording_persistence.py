@@ -198,11 +198,14 @@ def persist_recording_row(
     take_index: int | None,
     database: Any,
     log: Any,
+    feelings: bool = True,
 ) -> RecordingRow:
-    """Persist private signals and the recording row with schema fallback."""
+    """Persist private signals and the recording row with schema fallback.
+    ``feelings`` False: "How do you feel?" is not kept (a plan without its own
+    yes, services/plan_consent.py)."""
     from services.feelings import normalize_feeling
 
-    feeling = normalize_feeling(form.get("feeling"))
+    feeling = normalize_feeling(form.get("feeling")) if feelings else None
     if feeling:
         database.insert_recording_feeling(
             session_id=session_id,
