@@ -1,16 +1,14 @@
 """
-STORY    As the founder, I want a person I delete to leave the Users list at
-         once, though their data is deleted only after seven days, so that
-         the list shows only the people who are still here.
+STORY    As the founder, I want a person whose account is being deleted to
+         leave the Users list at once, though their data is deleted only
+         after seven days, so that the list shows only the people who are
+         still here.
 OUTCOME
-  O1  The active list leaves out everyone whose account is being deleted,
-      whether the founder deleted it or the person did, and the next page
-      starts where this one ended. A finished deletion is in neither list.
-  O2  The deleting view lists exactly those people, each with the dates and
-      the id the cancel takes.
-PROVES   O1 -> AdminUsersBeingDeletedTest::test_the_active_list_leaves_out_who_is_being_deleted
-         O2 -> AdminUsersBeingDeletedTest::test_the_deleting_view_lists_them_with_their_dates
-WHY      Founder 2026-10-27 (delete and hide from the Users list).
+  O1  The list leaves out everyone whose account is being deleted, whether
+      the founder deleted it or the person did, and the next page starts
+      where this one ended. A finished deletion is left out too.
+PROVES   O1 -> AdminUsersBeingDeletedTest::test_the_list_leaves_out_who_is_being_deleted
+WHY      Founder 2026-10-27 (N219; N221 drops the "Being deleted" view).
 """
 from __future__ import annotations
 
@@ -80,21 +78,11 @@ class AdminUsersBeingDeletedTest(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         return res.get_json()
 
-    def test_the_active_list_leaves_out_who_is_being_deleted(self):
+    def test_the_list_leaves_out_who_is_being_deleted(self):
         body = self._get("limit=4&offset=0")
         self.assertEqual([u["user_id"] for u in body["users"]], [STAYS])
-        self.assertIsNone(body["users"][0]["deletion"])
         self.assertEqual(body["next_offset"], 4)
         self.assertTrue(body["has_more"])
-
-    def test_the_deleting_view_lists_them_with_their_dates(self):
-        body = self._get("view=deleting")
-        by_id = {u["user_id"]: u["deletion"] for u in body["users"]}
-        self.assertEqual(set(by_id), {DELETED_BY_FOUNDER, DELETED_THEMSELVES})
-        self.assertEqual(by_id[DELETED_BY_FOUNDER], {
-            "request_id": "req-a", "state": "pending", "requested_at": "2026-10-27T10:00:00+00:00",
-            "completes_after": "2099-11-03T10:00:00+00:00", "cancellable": True})
-        self.assertEqual(by_id[DELETED_THEMSELVES]["request_id"], "req-b")
 
 
 if __name__ == "__main__":
