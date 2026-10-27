@@ -5202,4 +5202,11 @@ then ring 5 holds only people who know it is a test.
 6. Publishing is the founder's step, `PUBLISH-3.8-2026-10-27.sql` in
 Supabase. After it runs: `BOOKING_WHATSAPP_TO_ACCOUNT=true` on Railway (N207),
 and `PRICING_V4_ENABLED=1` once token holders are told (N198).
+- **Published** (founder, 27 October 2026, 06:34:33 UTC):
+  `PUBLISH-3.8-2026-10-27.sql` run in Supabase. `phase1-2026-10-27-3.8` is in
+  force with the signed bytes and the United States; training-only-v4 is
+  unchanged and the two people with a training yes keep it. The founder set
+  `PRICING_V4_ENABLED=1` on the web service and the worker the same morning,
+  shortly before. Nobody had bought a package (`package_purchase` rows: 0), so
+  no token holder was owed notice of the new prices.
 No rules page. No migration in this entry.
