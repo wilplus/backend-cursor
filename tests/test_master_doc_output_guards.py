@@ -8,10 +8,15 @@ OUTCOME
   O2  An answer that recreates the retired "Strong Sides" collection (in any
       language) is replaced by a pointer to Voice Album.
   O3  Ordinary answers pass through untouched.
+  O4  Will's knowledge holds no price and tells him to name none: prices are
+      on the pricing page only.
 PROVES   O1 -> ChatAnswerGuardTests::test_every_answer_leaves_through_the_guards
          O2 -> ChatAnswerGuardTests::test_every_answer_leaves_through_the_guards
          O3 -> ChatAnswerGuardTests::test_every_answer_leaves_through_the_guards
+         O4 -> ChatAnswerGuardTests::test_will_knows_no_price
 WHY      Never-rule 1 (RULE A / AC-9) and RULE K; no AI call is made in the test.
+         O4: founder 2026-10-27, N210 ("once they see the price on the
+         pricing page, they don't see any prices later on").
 """
 from __future__ import annotations
 
@@ -116,6 +121,13 @@ class ChatAnswerGuardTests(unittest.TestCase):
                 self.assertEqual(answer, "Your confirmed confident moments "
                                          "are in Voice Album in the menu.")
                 self.assertIsNone(payload["suggested_action"])
+
+    def test_will_knows_no_price(self):
+        import re
+
+        from services import master_doc_rag
+        self.assertIsNone(re.search(r"[$€£]\s?\d", master_doc_rag.MASTER_DOCUMENT))
+        self.assertIn("Never name a price", master_doc_rag._LANE_BODIES["app_feature"])
 
 
 if __name__ == "__main__":

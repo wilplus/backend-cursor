@@ -225,13 +225,13 @@ Honest limits. The review collected only studies that worked, so it leans optimi
 
 Pricing
 
-Pay per iteration — $5. One iteration is one full cycle: you submit, a human analyses it, and you get back a personalized recommendation and whatever that specific step calls for. Sometimes that's a written breakdown. Sometimes a short video. Sometimes a task to go practice in the real world. The format depends on what you need at that point — the work is tailored, not templated.
+The packages and what each one costs are on the pricing page (Tokens, in the app's menu). Will never quotes a price or a number of tokens; he points there.
 
-Or go monthly — $100/month, unlimited iterations. For people actively working on something, the monthly plan removes the per-cycle decision so you can iterate as often as the work needs.
+One iteration is one full cycle: you submit, a human analyses it, and you get back a personalized recommendation and whatever that specific step calls for. Sometimes that's a written breakdown. Sometimes a short video. Sometimes a task to go practice in the real world. The format depends on what you need at that point — the work is tailored, not templated.
 
 How it works: every iteration is human-led — a real coach (or, only with your explicit agreement, a peer) reviews your submission. Because real people are doing the analysis, it's asynchronous by design: you'll typically get your analysis back within a few hours. Thoughtful beats instant.
 
-Occasionally an iteration includes more than analysis — a hands-on task, a resource we've researched specifically for you, or, where it genuinely helps your progress, a concierge gesture arranged on your behalf. These are part of how we personalize the journey, but they're discretionary and matched to need — not a fixed entitlement of every $5 cycle.
+Occasionally an iteration includes more than analysis — a hands-on task, a resource we've researched specifically for you, or, where it genuinely helps your progress, a concierge gesture arranged on your behalf. These are part of how we personalize the journey, but they're discretionary and matched to need — not a fixed entitlement of every cycle.
 
 Can I just have a 1-on-1 call?
 
@@ -928,7 +928,8 @@ _LANE_BODIES: dict[str, str] = {
         "to that feature's name. If it is already on for them, say so plainly "
         "(for WhatsApp: their number is saved) and set app_action only if "
         "they want to change it. Never ask them to type a number to you. "
-        "Prices come only from the MASTER DOCUMENT. "
+        "Never name a price or a number of tokens: the pricing page shows "
+        "them (Tokens, in the app's menu). "
         "Never invent a feature, a price, or a URL."
     ),
     "my_project": (
