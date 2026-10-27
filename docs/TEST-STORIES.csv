@@ -423,14 +423,14 @@ O4  A link set to zero shows no price and charges nothing.","O1 -> test_link_cha
 O2 -> test_an_edited_link_gives_the_normal_price
 O3 -> test_a_link_cannot_book_without_paying
 O4 -> test_a_link_at_zero_shows_no_price_and_charges_nothing",Founder 2026-10-18.
-tests/test_booking_whatsapp.py,Story,"As someone booking a session, I want to leave my WhatsApp number and get the join link there 10 minutes before, so that I don't miss it.","O1  A number left on the booking form is kept with the booking. A number
-without its country code is refused with words that say so.
-O2  The reminder goes once, about 10 minutes before, with the Meet link; a
+tests/test_booking_whatsapp.py,Story,"As someone booking a session, I want the join link on WhatsApp 10 minutes before, at the number my account holds, so that I don't miss it.","O1  The reminder goes once, about 10 minutes before, with the Meet link; a
 second run sends nothing, and a booking further away or without a
 number gets nothing.
-O3  The reminders' door is shut without its secret.","O1 -> test_a_number_on_the_booking_is_kept_for_the_reminder
-O2 -> test_the_reminder_goes_once_10_minutes_before
-O3 -> test_the_reminders_door_needs_its_secret","Founder 2026-10-25, N144; 10 minutes before, N165; the WhatsApp confirmation gone, N189; the words, N200."
+O2  A booking that carries no number reminds the number saved on the
+account, once the switch is on; with it off, nothing goes there.
+O3  The reminders' door is shut without its secret.","O1 -> test_the_reminder_goes_once_10_minutes_before
+O2 -> test_the_reminder_goes_to_the_accounts_number
+O3 -> test_the_reminders_door_needs_its_secret","Founder 2026-10-25, N144; 10 minutes before, N165; the WhatsApp confirmation gone, N189; the words, N200; the account's number and no number on the booking form, N207."
 tests/test_bundled_era_erasure_postgres.py,Story,"As the founder, I want the one-time erasure of the old corpus to run only with my sign-off, counsel's sign-off and an exact snapshot, so that we delete exactly what was approved and keep consent records.","O1  Apply refuses, deleting nothing, on a wrong hash or a missing founder,
 counsel or external-copies record.
 O2  Apply refuses, deleting nothing, while any listed stored object has
@@ -2543,6 +2543,11 @@ tests/test_signup_claim_repeat.py,Story,"As a new speaker who recorded a Take as
 first claim landed, is answered (200) from the claim function.
 O2  Another account presenting that token is still refused.","O1 -> test_a_repeated_claim_by_the_same_account_is_answered
 O2 -> test_another_account_is_still_refused","Founder 2026-10-20: ""after I sign up ... it shows me a button like my take was not registered; particularly the new users""."
+tests/test_signup_count.py,Story,"As the founder, I want to know how many people open the sign-up screen and how many make an account, by way, so that I can decide on signing up with WhatsApp from real numbers.","O1  Opening the sign-up screen counts once, with no account needed and
+nothing kept about the person.
+O2  The founder reads, per day and in all, how many opened the screen and
+how many made an account, by way; nobody else can read it.","O1 -> SignupCountTest::test_opening_the_screen_counts_without_an_account
+O2 -> SignupCountTest::test_the_founder_reads_seen_and_made_by_way","Founder 2026-10-26, N207 item 6 (N174 item 6)."
 tests/test_single_deliverable.py,Story,"As a speaker, I want my Ideal Text free in both states, never the coach's unfinished edit, with the only paid item being key-moment explanations, so that I get my text without a paywall and pay only for extras.","O1  The Ideal Text GET never shows the coach's in-progress edit.
 O2  Never-1: the Ideal Text GET carries the text and no scores or
 internal reads; the stored suggestions snapshot drops internal

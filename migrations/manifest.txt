@@ -529,4 +529,5 @@
 0491	a_booking_may_carry_a_whatsapp_number.sql
 0492	the_founder_keeps_life_goals.sql
 0493	every_email_and_password_change_is_logged.sql
-0494	the_plan_keeps_each_speakers_plan.sql
+0494	the_sign_up_screen_is_counted.sql
+0495	the_plan_keeps_each_speakers_plan.sql

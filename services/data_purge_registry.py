@@ -306,7 +306,7 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # the person's own security log goes with the account.
     PurgeDependency("account_security_events", "account_security_events",
                     "user_id", "user", "delete", "database_row", 60),
-    # The plan (N203, N204, migration 0494): a voice answer's recording
+    # The plan (N203, N204, migration 0495): a voice answer's recording
     # first (it points at its answer), then the answers and the level
     # history (they point at their plan), then the plan.
     PurgeDependency("plan_answer_audio", "plan_answer_audio", "user_id", "user",
