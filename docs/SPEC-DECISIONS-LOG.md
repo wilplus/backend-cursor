@@ -5407,36 +5407,17 @@ the Send SMS hook points at the backend, with its secret on Railway.
 No rules page yet: the Settings row lands on frontend
 `docs/flows/consent-screens.md` with its build. No migration in this entry.
 
-**N215 · A speaker without a plan is asked for the feelings yes once, after
-their first Take (founder, the Claude Code chat, 27 October 2026, to the
-question where the yes is asked for a speaker who has no plan: "Ask them once,
-after their first Take").** For N211 items 2 and 4, N151 and N178:
-1. A speaker who has no plan, a plan being for the ring 5 testers today, is
-asked for a yes once, in the Lounge, after their first Take. After it, never
-before it: the loop is not slowed (Never 3). A speaker with a plan gets the
-plan's own ask (N211 item 1).
-2. "How do you feel?" shows only after a yes, with its Skip every time (N211
-item 2). Before the yes a Take opens at its set-up with no feelings check.
-Its answer is kept as the plan's personal answers are: the yes can be turned
-off in the same card in Data & consent, and turning it off deletes the
-feelings given.
-3. The ask for these speakers is about the tap alone: it does not ask about
-stress, a worry or "How did it go?", so the plan's words do not fit it. Its
-words, the card's words for them, and the Privacy 3.9 section 4e wording that
-covers it are new words on locked screens (Never 4): they are drawn on a
-prototype for the founder's OK before they are built.
-4. Not decided here: whether "Not now" is asked again and when; whether a yes
-to the tap alone covers the plan's other personal answers (it names only the
-tap, so it cannot, unless its words say more): until decided, a speaker who
-said yes to the tap and later gets a plan is asked the plan's own ask once;
-what becomes of the feelings already given by speakers who never said yes (a
-decision for when the switch goes on).
-5. The switch, `PLAN_CONSENT_ENABLED`, stays off until this is built and
-Privacy 3.9 is published. The plan's own ask and card are built and merged,
-switched off (backend #1416, frontend #1028).
-The rules: frontend
-[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
-§1 D4 and D5 and
-[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md),
-updated with the build. No migration in this entry: the record is the same
-table, `plan_consent_events`.
+**N215 · No ask, and no card, for a speaker without a plan (founder, the
+Claude Code chat, 27 October 2026, on the draft of a separate ask for them:
+"do not add that", then, asked which part, "The whole ask for speakers without
+a plan").** For N211 item 4:
+1. A speaker who has no plan is not asked for the plan's yes, in the Lounge or
+anywhere else, and gets no card in Data & consent for it. The ask drawn for
+them on <https://claude.ai/artifact/9ELP4RVTtXjDQJqXRzGGM2> is not built, and
+its words are not in force.
+2. Not decided here: what "How do you feel?" does for a speaker without a
+plan (N211 item 2 puts it behind the yes, and they have none to give). The
+switch, `PLAN_CONSENT_ENABLED`, stays off until it is decided. The plan's own
+ask and card are built and merged, switched off (backend #1416, frontend
+#1028).
+No rules page: nothing is built for this. No migration in this entry.
