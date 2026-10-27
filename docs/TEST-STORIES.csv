@@ -1516,6 +1516,16 @@ through it).","test_the_openai_client_is_constructed_in_exactly_one_module
 test_direct_chat_calls_can_only_go_down
 the ratchet: counts must equal CHAT_CALLS_ALLOWED; migrating a
 site to chat_complete lowers its number here in the same change","If removed: A provider call can be added anywhere without authorization or usage accounting, and nothing goes red."
+tests/test_login_code.py,Story,"As someone signing up or in with WhatsApp, I want my code to arrive on WhatsApp, and only when Supabase asked for it, so that my number is proven and nobody else can send codes in our name.","O1  A request signed with the hook's secret sends the code to the
+number with the login template, the code in its body and its Copy
+code button.
+O2  A request without Supabase's signature, signed with another secret
+or too old sends nothing (401); with no secret set the door is shut
+(503).
+O3  When WhatsApp sending is off the hook answers an error, so Supabase
+tells the person the code could not be sent.","O1 -> test_a_signed_request_sends_the_code_on_whatsapp
+O2 -> test_an_unsigned_or_stale_request_sends_nothing
+O3 -> test_sending_off_answers_an_error","Founder 2026-10-27, N214."
 tests/test_lounge_clips.py,Story,"As a speaker, I want the clips, recordings and slide decks in my Lounge to get fresh links from my own recordings only, a coach's video to play only while it is their word's current one, and each page to load quickly, so that my media plays and I never see another user's.","O1  My own clip gets a fresh link; a clip pointing at another user's
 recording is left untouched.
 O2  One page gets fresh clip, recording and deck links and the ""new coach
@@ -1954,6 +1964,33 @@ O2 -> test_the_pick_is_blind_and_what_happened_comes_with_it
 O3 -> test_an_answer_takes_the_plan_out_of_the_queue
 O4 -> test_a_stuck_level_is_answered_with_the_coachs_video
 O5 -> test_only_the_voice_message_and_the_key_line_play","The coach's side of the plan, built as the founder's prototype draws it (N213); the rules are frontend docs/flows/the-plan.md §1 C5, G10 and H1, and docs/flows/coach-panel.md."
+tests/test_plan_consent.py,Story,"As a speaker on the plan, I want Will to ask for my yes before the plan's personal questions, and to delete what I gave if I turn it off, so that I share how I feel only when I choose to.","O1  With the switch off, the plan asks as it did: no ask, nothing written.
+O2  With it on and no answer yet, Will asks once, after the speaker's
+first voice message, and waits; nothing else is taken meanwhile.
+""Yes, ask me"" is kept (the sentence's hash, the policy version) and
+the plan goes on: the worry question, the two ratings.
+O3  ""Not now"" is kept; the worry is never asked or kept, the ratings are
+not asked (then or at any later moment), the plan still reaches the
+calls and its end without ""How did it go?"".
+O4  The card's Turn off deletes the personal answers: the answers and
+their recordings, their bubbles in the Lounge, the plan's worry,
+Will's memory of them (his note is cleared), the feelings before a
+Take; then it is kept. A step that fails leaves the yes on and says
+so, never ""deleted"".
+O5  A plan made before the switch is asked at its next personal moment:
+the last practice's ratings and ""How did it go?"" at its end wait for
+the yes; ""Not now"" skips them, and the end goes on to what's next.
+O6  When the answer cannot be read, nothing personal is asked; a yes that
+cannot be kept is not a yes: Will asks again before the next personal
+question.","O1 -> test_with_the_switch_off_the_plan_asks_as_before
+O2 -> test_will_asks_once_and_a_yes_goes_on_with_the_personal_questions
+O3 -> test_not_now_skips_the_personal_questions_and_keeps_the_plan
+O4 -> test_turning_off_deletes_what_the_speaker_gave
+test_a_turn_off_that_fails_leaves_the_yes_on
+O5 -> test_the_last_ratings_wait_for_the_yes
+test_the_plans_end_asks_for_the_yes_before_how_did_it_go
+O6 -> test_a_doubt_means_nothing_personal_is_asked
+test_a_yes_that_cannot_be_kept_is_not_a_yes","The plan's own yes, drawn and approved by the founder 2026-10-27 (N211; Privacy 3.9 section 4e, to be published); the rules are frontend docs/flows/the-plan.md."
 tests/test_plan_flow.py,Story,"As a new speaker on the plan's ring, I want Will to ask me a few questions in the Lounge before my first Take and give me a plan, so that my practice starts from my event and my own voice.","O1  Someone without the plan sees nothing of it: no plan, nothing written.
 O2  A new speaker with no Take is asked, once: ""Hi Artur! A few quick
 questions before your first practice."" and ""When is your deadline?"".

@@ -40,6 +40,7 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from services import plan as P
+from services import plan_consent as C
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,11 @@ def _parse_day(raw: Any) -> Optional[date]:
 
 # ── rows ───────────────────────────────────────────────────────────────────
 
+def client_id(user_id: Any, plan_id: Any, key: str) -> str:
+    """The Lounge row's id for one of a plan's rows, by its key."""
+    return str(uuid.uuid5(_NS, f"{user_id}:{plan_id}:{key}"))
+
+
 def _write(database: Any, user_id: str, plan_id: str, items: list[tuple]) -> list[dict]:
     """Rows at the bottom of the thread, in order: ``(role, body, meta, key)``.
     The key names the row inside its plan, so a row written twice is kept
@@ -121,7 +127,7 @@ def _write(database: Any, user_id: str, plan_id: str, items: list[tuple]) -> lis
     rows = []
     for i, (role, body, meta, key) in enumerate(items):
         rows.append({
-            "client_id": str(uuid.uuid5(_NS, f"{user_id}:{plan_id}:{key}")),
+            "client_id": client_id(user_id, plan_id, key),
             "role": role, "kind": "text", "body": body,
             "metadata": {"plan": plan_id, **(meta or {})},
             "client_created_at": stamp_after(at, gap_ms=i) if i else at,
@@ -210,7 +216,8 @@ def view(database: Any, user_id: str, plan: dict) -> dict:
     done = _done(plan, _takes(database, user_id))
     level = plan.get("level")
     return {
-        "id": plan["id"], "status": plan["status"], "step": plan["step"],
+        "id": plan["id"], "status": plan["status"],
+        "step": "consent" if facts.get("awaiting") == "consent" else plan["step"],
         "deadline": deadline.isoformat() if deadline else None,
         "deadline_given": bool(plan.get("deadline_given")),
         "deadline_short": P.fmt_short(deadline) if deadline else None,
@@ -244,8 +251,13 @@ def _save(database: Any, user_id: str, plan: dict, fields: dict) -> dict:
     return stored
 
 
+def _awaiting(plan: dict) -> bool:
+    """Will has asked for the plan's own yes and is waiting for the answer."""
+    return _facts(plan).get("awaiting") == "consent"
+
+
 def _need_step(plan: dict, *steps: str) -> None:
-    if plan.get("step") not in steps:
+    if plan.get("step") not in steps or _awaiting(plan):
         raise PlanError("NOT_NOW", "Not now.", 409)
 
 
@@ -502,18 +514,20 @@ def _turn(database: Any, user_id: str, plan: dict, asked: list[str]) -> Optional
     return parsed if isinstance(parsed, dict) else None
 
 
-def _choose(turn: Optional[dict], asked: list[str], facts: dict, plan: dict) -> Optional[dict]:
+def _choose(turn: Optional[dict], asked: list[str], facts: dict, plan: dict,
+            skip: tuple[str, ...] = ()) -> Optional[dict]:
     """The next question: the AI's when it fits its template; else the plain
-    template, unless the AI said nothing is missing (N150)."""
+    template, unless the AI said nothing is missing (N150). ``skip`` is the
+    personal bank, without the speaker's yes (N211)."""
     if len(asked) >= P.MAX_FOLLOWUPS:
         return None
     nx = (turn or {}).get("next") if turn else None
-    q = P.fitted_question(nx, asked)
+    q = P.fitted_question(nx, asked, skip)
     if q:
         return q
     if turn is not None and "next" in turn and nx is None and asked:
         return None
-    bank = P.next_plain_bank(asked, facts)
+    bank = P.next_plain_bank(asked, facts, skip)
     if not bank:
         return None
     return {"bank": bank, "question": P.plain_question(bank, _deadline(plan), bool(plan.get("deadline_given"))),
@@ -531,11 +545,29 @@ def _next_question(database: Any, user_id: str, plan: dict, answer: dict,
     # The AI's facts over what was known; the plan's own (the key line's
     # recording, the mode, the language) are kept, not the AI's to drop.
     facts = {**facts, **P.clean_facts((turn or {}).get("facts"), facts)}
+    consent = C.state(database, user_id)
+    if consent != C.GRANTED:
+        facts.pop("worry", None)  # a worry the speaker did not agree to share is not kept
     rows: list[tuple] = []
     if plan["step"] == "why":
         ack = P.fitted_ack((turn or {}).get("ack")) or P.COPY["plain_ack"]
         rows += [_bot(f"{ack} {P.COPY['heard']}", "ack"), _bot(P.COPY["draft"], "draft")]
-    q = _choose(turn, asked, facts, plan)
+    q = _choose(turn, asked, facts, plan,
+                skip=C.PERSONAL_BANKS if consent == C.DECLINED else ())
+    if consent == C.UNANSWERED and (plan["step"] == "why" or q is None
+                                    or q["bank"] in C.PERSONAL_BANKS):
+        # Will asks for the yes first (N211): before any personal question, once.
+        key = _ask_key(plan)
+        plan = _park(database, user_id, plan, {"facts": facts}, resume="followup", pending_q=q,
+                     ask_key=key)
+        return plan, rows + _ask_rows(key)
+    return _ask_or_rate(database, user_id, plan, facts, asked_rows, q, rows, consent)
+
+
+def _ask_or_rate(database: Any, user_id: str, plan: dict, facts: dict, asked_rows: list,
+                 q: Optional[dict], rows: list[tuple], consent: str) -> tuple[dict, list[tuple]]:
+    """The next follow-up, or, when there is none, the two ratings: or, with
+    no yes to them, straight on to the calls (N211)."""
     if q:
         text = P.question_text(q)
         if q["bank"] == "key":
@@ -543,8 +575,105 @@ def _next_question(database: Any, user_id: str, plan: dict, answer: dict,
         asked_rows.append({"bank": q["bank"], "text": text, "ai": q["ai"]})
         plan = _save(database, user_id, plan, {"step": "followup", "asked": asked_rows, "facts": facts})
         return plan, rows + [_bot(text, f"q:{q['bank']}", plan_ask="voice")]
+    if consent != C.GRANTED:
+        plan = _save(database, user_id, plan, {"step": "kickoff", "facts": facts})
+        _diagnose(database, user_id, plan)
+        return plan, rows + _kickoff_rows(plan)
     plan = _save(database, user_id, plan, {"step": "stress", "facts": {**facts, "rating_moment": "first"}})
     return plan, rows + _ratings_rows("first")
+
+
+# ── the plan's own yes (N211) ──────────────────────────────────────────────
+
+def _ask_key(plan: dict, where: str = "") -> str:
+    """Names one ask inside its plan: where the plan stood, so that Will's
+    ask, if it comes again (a yes that could not be kept), is a new row."""
+    return f"{plan.get('step')}:{len(plan.get('asked') or [])}:{where}"
+
+
+def _ask_rows(key: str) -> list[tuple]:
+    return [_bot(P.COPY["consent_ask"], f"consent_ask:{key}", plan_ask="consent")]
+
+
+def _park(database: Any, user_id: str, plan: dict, fields: dict, *, resume: str,
+          pending_q: Optional[dict] = None, **facts_more: Any) -> dict:
+    """The plan stays where it is while Will asks for the yes, and keeps what
+    it was about to do: ``resume`` names it, ``pending_q`` the next question."""
+    facts = {**_facts(plan), **(fields.get("facts") or {}), **facts_more,
+             "awaiting": "consent", "resume": resume, "pending_q": pending_q}
+    return _save(database, user_id, plan, {**{k: v for k, v in fields.items() if k != "facts"},
+                                           "facts": facts})
+
+
+def answer_consent(database: Any, user_id: str, yes: Any) -> dict:
+    """"Yes, ask me" or "Not now" to Will's ask: kept, then the plan goes on
+    where it was (N211). An answer that cannot be kept counts as "Not now"."""
+    plan = _open(database, user_id)
+    if not _awaiting(plan):
+        raise PlanError("NOT_NOW", "Not now.", 409)
+    return _settle(database, user_id, plan, yes is True)
+
+
+def settled(database: Any, user_id: str, yes: bool) -> dict:
+    """The card's Turn on, with the plan waiting on the yes: the plan goes on
+    as if the speaker had answered Will's ask. ``{}`` when it is not waiting."""
+    plan = database.get_open_plan(str(user_id))
+    if not plan or not _awaiting(plan):
+        return {}
+    return _settle(database, user_id, plan, yes)
+
+
+def set_consent(database: Any, user_id: Any, on: bool) -> dict:
+    """The card in Data & consent: Turn on, or Turn off (which deletes the
+    personal answers given so far). With the plan waiting on Will's ask, the
+    card answers it. Returns ``{"messages": [...]}`` for what the plan wrote."""
+    if on:
+        out = settled(database, user_id, True)
+        if not out:
+            C.answer(database, user_id, True)
+        return out
+    if C.state(database, user_id) == C.GRANTED:
+        C.withdraw(database, user_id)
+        return {}
+    return settled(database, user_id, False)
+
+
+def _settle(database: Any, user_id: str, plan: dict, yes: bool) -> dict:
+    granted = C.answer(database, user_id, yes) == C.GRANTED
+    consent = C.GRANTED if granted else C.DECLINED
+    facts = _facts(plan)
+    resume = facts.pop("resume", "followup")
+    pending = facts.pop("pending_q", None)
+    facts.pop("awaiting", None)
+    key = facts.pop("ask_key", "")
+    if not granted:
+        facts.pop("worry", None)
+    rows: list[tuple] = [_me(P.COPY["consent_yes" if granted else "consent_no"],
+                             f"consent_answer:{key}")]
+    if resume == "stress":
+        moment = facts.get("rating_moment") or "last"
+        if granted:
+            plan = _save(database, user_id, plan, {"step": "stress", "facts": facts})
+            rows += _ratings_rows(moment)
+        else:
+            plan = _save(database, user_id, plan, {"step": "done", "facts": {**facts, f"rated_{moment}": True}})
+    elif resume == "how_it_went":
+        if granted:
+            plan = _save(database, user_id, plan, {"step": "how_it_went", "facts": facts})
+            rows += [_bot(P.COPY["how_did_it_go"], "how_did_it_go", plan_ask="voice")]
+        else:
+            plan = _save(database, user_id, plan, {"facts": facts})
+            plan, more = _after_how_it_went(database, user_id, plan, told=False)
+            rows += more
+    else:
+        q = pending if isinstance(pending, dict) else None
+        if q and q.get("bank") in C.PERSONAL_BANKS and not granted:
+            asked = [str(a.get("bank")) for a in plan.get("asked") or []]
+            q = _choose(None, asked, facts, plan, skip=C.PERSONAL_BANKS)
+        plan, more = _ask_or_rate(database, user_id, plan, facts, list(plan.get("asked") or []),
+                                  q, [], consent)
+        rows += more
+    return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
 
 
 def _ratings_rows(moment: str) -> list[tuple]:
@@ -983,13 +1112,23 @@ def _after_active_take(database: Any, user_id: str, plan: dict) -> list[dict]:
     fields.update(moved)
     fields["facts"] = facts
     moment = _ratings_due(plan, facts, done)
-    if new_project and deadline and plan.get("step") == "done":
+    asking = _awaiting(plan)  # Will is waiting for the plan's yes: nothing new over it
+    consent = C.state(database, user_id) if moment else C.GRANTED
+    if new_project and deadline and plan.get("step") == "done" and not asking:
         fields["step"] = "same_event"
         rows.append(_bot(P.COPY["is_this_for"].format(date=P.fmt_day(deadline)),
                          f"same_event:{new_project}", plan_ask="same_event"))
-    elif moment and plan.get("step") == "done":  # never over ratings already being asked
-        fields.update({"step": "stress", "facts": {**facts, "rating_moment": moment}})
-        rows += _ratings_rows(moment)
+    elif moment and plan.get("step") == "done" and not asking:  # never over ratings already being asked
+        if consent == C.GRANTED:
+            fields.update({"step": "stress", "facts": {**facts, "rating_moment": moment}})
+            rows += _ratings_rows(moment)
+        elif consent == C.DECLINED:  # no yes to them: they are not asked, nor asked again
+            fields["facts"] = {**facts, f"rated_{moment}": True}
+        else:
+            key = _ask_key(plan, moment)
+            fields["facts"] = {**facts, "rating_moment": moment, "awaiting": "consent",
+                               "resume": "stress", "pending_q": None, "ask_key": key}
+            rows += _ask_rows(key)
     if fields:
         plan = _save(database, user_id, plan, fields)
     return _write(database, user_id, plan["id"], rows)
@@ -1045,21 +1184,32 @@ def _ratings_due(plan: dict, facts: dict, done: int) -> Optional[str]:
 
 def _end(database: Any, user_id: str, plan: dict, first_name: Optional[str]) -> dict:
     deadline = _deadline(plan)
+    consent = C.state(database, user_id)
     plan = _save(database, user_id, plan, {"status": "ending", "step": "how_it_went"})
     was = P.COPY["deadline_was"].format(date=P.fmt_day(deadline)) if deadline else ""
-    _write(database, user_id, plan["id"], [
-        _bot(f"{_greeting(first_name)} {was}".strip(), "deadline_was",
-             day_line=P.fmt_long(today_in(plan.get("time_zone")))),
-        _bot(P.COPY["how_did_it_go"], "how_did_it_go", plan_ask="voice"),
-    ])
+    rows = [_bot(f"{_greeting(first_name)} {was}".strip(), "deadline_was",
+                 day_line=P.fmt_long(today_in(plan.get("time_zone"))))]
+    if consent == C.GRANTED:
+        rows += [_bot(P.COPY["how_did_it_go"], "how_did_it_go", plan_ask="voice")]
+    elif consent == C.UNANSWERED:  # Will asks for the yes first (N211)
+        key = _ask_key(plan, "end")
+        plan = _park(database, user_id, plan, {}, resume="how_it_went", ask_key=key)
+        rows += _ask_rows(key)
+    else:  # no yes to it: the plan's end goes straight to what's next
+        plan, more = _after_how_it_went(database, user_id, plan, told=False)
+        rows += more
+    _write(database, user_id, plan["id"], rows)
     return plan
 
 
-def _after_how_it_went(database: Any, user_id: str, plan: dict) -> tuple[dict, list[tuple]]:
+def _after_how_it_went(database: Any, user_id: str, plan: dict, *,
+                       told: bool = True) -> tuple[dict, list[tuple]]:
+    """What follows the plan's end: "Thank you for telling me." only when the
+    speaker told Will how it went."""
     plan = _save(database, user_id, plan, {"step": "whats_next"})
-    return plan, [_bot(P.COPY["thanks_told"], "thanks_told"),
-                  _bot("", "summary_card", plan_summary_call=True),
-                  _bot(P.COPY["whats_next"], "whats_next", plan_ask="next")]
+    thanks = [_bot(P.COPY["thanks_told"], "thanks_told")] if told else []
+    return plan, thanks + [_bot("", "summary_card", plan_summary_call=True),
+                           _bot(P.COPY["whats_next"], "whats_next", plan_ask="next")]
 
 
 def next_plan(database: Any, user_id: str, choice: str, *, tz: Any = None,

@@ -5295,6 +5295,24 @@ told that counsel should see the final text before the founder signs:
 "counsle agrees"): counsel agrees with the plan's consent as decided above,
 its own yes before the personal answers. The final text of Privacy 3.9 goes
 back to counsel with the signature page, as for 3.8.
+- **The words** (founder, the Claude Code chat, 27 October 2026, to the
+prototype <https://claude.ai/artifact/3GtUo7eVdf9SAhZQCDsTR7>: "approved as
+drawn"): approved, the new words included. The ask: "A few of my questions
+are personal: how stressed and how ready you feel, what worries you, and how
+you feel before each Take. I only ask with your yes. Your coach and I use your
+answers to shape your plan. You can turn this off in Data & consent." with
+"Yes, ask me" and "Not now" (and Read more). The card, "Personal answers in
+your plan": "Will asks how stressed and how ready you feel, what worries you,
+and how you feel before each Take. Your coach and Will use the answers to
+shape your plan." with Turn on / Turn off; its off line, "Off. Turn it on and
+Will asks how stressed and how ready you feel, what worries you, and how you
+feel before each Take."; its question, "Turn off personal answers?" with "We
+stop asking, and delete the personal answers you have given. Your plan
+stays."; its outcome, "Off. We deleted your personal answers." The ask comes
+once, after the speaker's voice answer about the event, before any personal
+question; "Not now" writes no line of Will's. Built switched off
+(`PLAN_CONSENT_ENABLED`) until Privacy 3.9 is published, so the ring 5
+testers' plan does not change before then.
 
 **N212 · The principles open to ring 5 (founder, the Claude Code chat, 27
 October 2026: "open principles to ring 5").** Amends N182 item 2:
@@ -5341,3 +5359,50 @@ The rules: frontend
 §1 C5, G10 and H1, and
 [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md).
 No migration in this entry.
+
+**N214 · Sign up and sign in with WhatsApp, built now and on (founder, the
+Claude Code chat, 27 October 2026, on the clickable prototype
+<https://claude.ai/artifact/Dcf2FCyDs5c4Pb7BJc7oZ7>: "ok, looks good", then,
+to four questions, "Build now, switched on", "Ask for email later", "Add it
+in Settings first" and "Yes, use them as shown"; then the remaining words,
+each "use these words").** For N174 item 6, N184 item 1 and N207 items 4 and
+5:
+1. The sign-up page gets "Sign up with WhatsApp", first, above LinkedIn,
+Google and email. It is built now and goes on once it is built, Supabase is
+set up and the new privacy version names it; it no longer waits for the
+sign-up count, which keeps running. This replaces N174 item 6 and N207
+item 5.
+2. The flow, as the prototype draws it: the number, with its country code
+(the Lounge's words when it has none); a code by WhatsApp; the code typed
+in; the name; then in. The number becomes the account's WhatsApp number, so
+the WhatsApp ask after Take 1 does not come (N189). The code proves the
+number is theirs: for this way in only, it replaces N184 item 1's "no code".
+3. The code: Supabase makes and checks it (6 digits, valid 10 minutes). Its
+Send SMS hook hands it to the backend, which sends it through Meta's
+WhatsApp API with the Authentication template `login_code` (English, Copy
+code; Meta's own words: "{code} is your verification code. For your
+security, do not share this code." and "This code expires in 10 minutes.";
+the founder submitted it on 27 October 2026). No Twilio.
+4. No email at sign-up. The email is asked for only when something needs it:
+booking a call (the calendar invite) and buying tokens (the receipt). On the
+booking form, an account with no email gets an "Email" field with "We'll
+send your calendar invite here." under it; the email is saved to the
+account, so receipts and later invites use it too.
+5. Sign in with WhatsApp: the login page's "Sign in with WhatsApp" signs in
+only a number that is already an account's way in, and never makes a new
+account. A number that is not: "No account signs in with this number. Sign
+in another way, or sign up with WhatsApp." ("sign up with WhatsApp" links to
+the sign-up page). Someone who signed up with email, Google or LinkedIn adds
+WhatsApp as a way in from Settings, in the "Email and password" card: off,
+"WhatsApp", "Sign in with your WhatsApp number too." and "Add" (then the
+number and the code); on, "You can sign in with WhatsApp at {number}." A
+WhatsApp account's card says the same, with no email row until it has one.
+6. The words, signed (Never 4): "Sign up with WhatsApp", "Your WhatsApp
+number", "Send code", "Enter the code we sent you on WhatsApp", "Resend
+code", "Use a different number", "That code didn't work. Try again.", "What
+should we call you?", "Continue".
+Before it goes on: Meta approves `login_code`; the new privacy version names
+the phone number as a way to sign in; in Supabase, phone sign-in is on and
+the Send SMS hook points at the backend, with its secret on Railway.
+No rules page yet: the Settings row lands on frontend
+`docs/flows/consent-screens.md` with its build. No migration in this entry.

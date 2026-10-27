@@ -10961,7 +10961,7 @@ class DatabaseService:
         given. [] on any failure."""
         try:
             q = (self.client.table("speaker_memory_events")
-                 .select("kind, payload, take_session_id, created_at")
+                 .select("id, kind, payload, take_session_id, created_at")
                  .eq("user_id", user_id).order("created_at", desc=True))
             rows = (q.limit(limit) if limit else q.limit(5000)).execute().data or []
             return list(reversed(rows))
@@ -11341,6 +11341,98 @@ class DatabaseService:
             return []
 
     # ── blind-rater language eligibility ───────────────────────────
+
+
+    # ── the plan's own yes (migration the_plan_asks_before_it_gets_personal,
+    #    services/plan_consent.py) ──
+
+    def insert_plan_consent_event(self, row: dict) -> bool:
+        """One answer kept: grant, decline or withdraw. False on any failure."""
+        try:
+            self.client.table("plan_consent_events").insert(row).execute()
+            return True
+        except Exception as e:
+            logger.warning("insert_plan_consent_event failed user=%s: %s", row.get("user_id"),
+                           e, exc_info=True)
+            return False
+
+    def latest_plan_consent_event(self, user_id: str) -> Optional[dict]:
+        """The person's newest answer, or None when they have given none.
+        RAISES on a failed read, so that the caller can tell "no answer" from
+        "could not read" (services/plan_consent.py fails closed)."""
+        rows = (self.client.table("plan_consent_events")
+                .select("event_kind, copy_sha256, policy_version, created_at")
+                .eq("user_id", user_id).order("seq", desc=True).limit(1).execute().data)
+        return rows[0] if rows else None
+
+    # The four below are for the plan's Turn off (services/plan_consent.py): the
+    # caller says "deleted" to the speaker, so a failure RAISES, never a quiet 0.
+
+    def list_plan_answers_of_kinds(self, user_id: str, kinds: list[str]) -> list[dict]:
+        """The person's answers of these kinds, every plan. Raises on a failed read."""
+        return (self.client.table("plan_answers")
+                .select("id, plan_id, kind, question")
+                .eq("user_id", user_id).in_("kind", list(kinds))
+                .limit(2000).execute().data) or []
+
+    def delete_plan_answers(self, user_id: str, ids: list[str]) -> None:
+        """These answers of the person, their recordings with them (the
+        recording's row follows its answer). Raises on failure."""
+        if ids:
+            (self.client.table("plan_answers").delete()
+             .eq("user_id", user_id).in_("id", list(ids)).execute())
+
+    def delete_speaker_memory_events(self, user_id: str, ids: list[str]) -> None:
+        """Raises on failure."""
+        if ids:
+            (self.client.table("speaker_memory_events").delete()
+             .eq("user_id", user_id).in_("id", list(ids)).execute())
+
+    def erase_plan_fact(self, user_id: str, key: str) -> int:
+        """Take ``key`` out of what each of the person's plans kept of their
+        words (``facts``). How many plans changed; raises on failure."""
+        changed = 0
+        rows = (self.client.table("speaker_plans").select("id, facts")
+                .eq("user_id", user_id).limit(200).execute().data) or []
+        for row in rows:
+            facts = row.get("facts")
+            if isinstance(facts, dict) and key in facts:
+                rest = {k: v for k, v in facts.items() if k != key}
+                (self.client.table("speaker_plans").update({"facts": rest})
+                 .eq("id", row["id"]).eq("user_id", user_id).execute())
+                changed += 1
+        return changed
+
+    def erase_pre_take_feelings(self, user_id: str) -> int:
+        """Every "How do you feel?" answer the person gave: the recording's
+        row, and the key on its Take's context (``named_emotion``). How many
+        Takes lost the key; raises on failure (after trying every part)."""
+        failed: Optional[Exception] = None
+        removed = 0
+        sessions = (self.client.table("v2_sessions").select("id, intake_context")
+                    .eq("user_id", user_id).limit(5000).execute().data) or []
+        try:
+            ids = [str(r["id"]) for r in sessions if r.get("id")]
+            for chunk in (ids[i:i + 200] for i in range(0, len(ids), 200)):
+                (self.client.table("recording_feelings").delete()
+                 .in_("session_id", chunk).execute())
+            (self.client.table("recording_feelings").delete().eq("user_id", user_id).execute())
+        except Exception as e:  # noqa: BLE001 -- the keys below are still taken out
+            failed = e
+        for row in sessions:
+            ctx = row.get("intake_context")
+            if not (isinstance(ctx, dict) and "named_emotion" in ctx):
+                continue
+            try:
+                rest = {k: v for k, v in ctx.items() if k != "named_emotion"}
+                (self.client.table("v2_sessions").update({"intake_context": rest})
+                 .eq("id", row["id"]).eq("user_id", user_id).execute())
+                removed += 1
+            except Exception as e:  # noqa: BLE001 -- the rest are still taken out; raised below
+                failed = e
+        if failed is not None:
+            raise failed
+        return removed
 
     def get_user_proficient_languages(self, user_id: str) -> Optional[list]:
         """Explicit languages this rater may receive; None = never set."""

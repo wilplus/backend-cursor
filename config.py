@@ -440,6 +440,11 @@ class Config:
     # version names the reminder; off, only a booking that carries a number
     # (made before N207) gets it.
     BOOKING_WHATSAPP_TO_ACCOUNT = os.getenv("BOOKING_WHATSAPP_TO_ACCOUNT", "false").lower() == "true"
+    # The plan's own yes (founder 2026-10-27, N211): the worry question, the
+    # two ratings and "How did it go?" are asked only after a yes to a question
+    # of its own (the feelings check follows it in a later change). Off until
+    # Privacy 3.9, which names it, is published; off, the plan asks as it did.
+    PLAN_CONSENT_ENABLED = os.getenv("PLAN_CONSENT_ENABLED", "false").lower() == "true"
 
     # Current published Terms / Privacy Policy version. Must match the
     # "Last updated" date in the live legal docs (e.g. "1.0" = Terms
@@ -670,6 +675,12 @@ class Config:
     # route answers 503. It never decides whether anything is deleted: that is
     # RETENTION_CLEANER_LIVE in services/retention_cleaner.py.
     RETENTION_CLEANER_SECRET = (os.getenv("RETENTION_CLEANER_SECRET") or "").strip()
+    # Sign up and sign in with WhatsApp (founder 2026-10-27, N214): Supabase's
+    # Send SMS hook signs each request with this secret (Supabase shows it as
+    # "v1,whsec_..."); unset, the hook's door is shut (503). The code goes out
+    # with the Authentication template Meta approved, named here.
+    SEND_SMS_HOOK_SECRET = (os.getenv("SEND_SMS_HOOK_SECRET") or "").strip()
+    WHATSAPP_LOGIN_TEMPLATE = (os.getenv("WHATSAPP_LOGIN_TEMPLATE") or "login_code").strip()
 
     # willab — upfront free credit grant seeded on a user's first ledger touch
     # (founder testing 2026-07-13: bumped 15 → 25 so every user can unlock one
