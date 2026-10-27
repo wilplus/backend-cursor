@@ -5170,3 +5170,36 @@ The rules: frontend
 (Settings' WhatsApp card) and
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 E (the WhatsApp ask's form). No migration in this entry.
+
+**N208 · Terms 3.7 and Privacy 3.8 are signed (founder, the sign-off page
+<https://claude.ai/artifact/R65WrnFbUUFr3SEGeZaikA>, then the Claude Code
+chat, 27 October 2026: "I sign as drafted, question 1 A, question 2 A").**
+For N44, N104, N105, N153, N198, N205 and N207:
+1. Terms 3.7 and Privacy 3.8 are signed as drafted (`copy/terms-3.7.txt`,
+`copy/privacy-3.8.txt`), to be published as `phase1-2026-10-27-3.8` with AI
+notice 3.2 and the 3.1 agreement unchanged. Engineering drafted them from the
+code; counsel has not seen them.
+2. They say what was decided: free tokens once, then packages bought once,
+nothing renews (N44; Terms 3.6 still sold monthly plans); the coach's answer
+costs nothing (N205); a lesson can be paid with tokens, and tokens paid for a
+lesson cancelled at least 12 hours before come back (N198 item 4); WhatsApp
+10 minutes before a booked lesson (N207) and, if the speaker asks for it, on
+practice days (N153). They name no price and no token count, so the new
+packages can go on sale without another version (N198 item 7).
+3. They say what was already live and the texts in force denied or left out:
+clips of imported recordings play to speakers (N119); Will's note about each
+speaker (WIL-74); the history Will reads; what a speaker tells Will that
+reaches the coach (N87, the goal card) or the founder (the weekly note, the
+note); the training yes on a card in the Lounge; the words of the coach's
+videos, written out for speakers with the training yes (N79).
+4. Question 1, A: the Willfidence reading stays as N104 and N105 have it,
+and the texts describe it: never shown to the speaker, seen by a coach only
+after their own answer and by the founder per Take. Document 02 gets a note,
+version 1.3, for counsel's next look.
+5. Question 2, A: the plan (N203, N204) is named, with its own yes for the
+stress and readiness answers, in the version that opens it below ring 5. Until
+then ring 5 holds only people who know it is a test.
+6. Publishing is the founder's step, `PUBLISH-3.8-2026-10-27.sql` in
+Supabase. After it runs: `BOOKING_WHATSAPP_TO_ACCOUNT=true` on Railway (N207),
+and `PRICING_V4_ENABLED=1` once token holders are told (N198).
+No rules page. No migration in this entry.
