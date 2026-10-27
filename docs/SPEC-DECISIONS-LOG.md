@@ -5209,6 +5209,9 @@ and `PRICING_V4_ENABLED=1` once token holders are told (N198).
   `PRICING_V4_ENABLED=1` on the web service and the worker the same morning,
   shortly before. Nobody had bought a package (`package_purchase` rows: 0), so
   no token holder was owed notice of the new prices.
+- **Counsel** (founder, the Claude Code chat, 27 October 2026, told that
+  counsel had not seen them: "they ve seen ti and they accept it!!!"): counsel has seen Terms 3.7, Privacy 3.8
+  and the document 02 v1.3 note, and accepts them.
 No rules page. No migration in this entry.
 
 **N209 · The level's moment in the walk and a level moving on: four calls

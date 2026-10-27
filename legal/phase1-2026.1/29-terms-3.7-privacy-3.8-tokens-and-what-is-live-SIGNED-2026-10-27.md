@@ -3,8 +3,9 @@
 **SIGNED by the founder, 27 October 2026** (the sign-off page
 <https://claude.ai/artifact/R65WrnFbUUFr3SEGeZaikA>, which showed every change
 word for word, then in chat: "I sign as drafted, question 1 A, question 2 A";
-decisions log N208). **Counsel has not seen it**; the founder signed knowing
-that. Published 2026-10-27 06:34:33 UTC by the founder
+decisions log N208). Counsel had not seen it when the founder signed; since
+then **counsel has seen it and accepts it** (the founder, in chat, 27 October
+2026: "they ve seen ti and they accept it!!!"; N208). Published 2026-10-27 06:34:33 UTC by the founder
 (`PUBLISH-3.8-2026-10-27.sql`, `phase1-2026-10-27-3.8`).
 
     documents:   copy/terms-3.7.txt, copy/privacy-3.8.txt (the exact bytes to publish)
