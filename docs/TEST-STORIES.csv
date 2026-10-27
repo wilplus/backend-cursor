@@ -1516,6 +1516,16 @@ through it).","test_the_openai_client_is_constructed_in_exactly_one_module
 test_direct_chat_calls_can_only_go_down
 the ratchet: counts must equal CHAT_CALLS_ALLOWED; migrating a
 site to chat_complete lowers its number here in the same change","If removed: A provider call can be added anywhere without authorization or usage accounting, and nothing goes red."
+tests/test_login_code.py,Story,"As someone signing up or in with WhatsApp, I want my code to arrive on WhatsApp, and only when Supabase asked for it, so that my number is proven and nobody else can send codes in our name.","O1  A request signed with the hook's secret sends the code to the
+number with the login template, the code in its body and its Copy
+code button.
+O2  A request without Supabase's signature, signed with another secret
+or too old sends nothing (401); with no secret set the door is shut
+(503).
+O3  When WhatsApp sending is off the hook answers an error, so Supabase
+tells the person the code could not be sent.","O1 -> test_a_signed_request_sends_the_code_on_whatsapp
+O2 -> test_an_unsigned_or_stale_request_sends_nothing
+O3 -> test_sending_off_answers_an_error","Founder 2026-10-27, N214."
 tests/test_lounge_clips.py,Story,"As a speaker, I want the clips, recordings and slide decks in my Lounge to get fresh links from my own recordings only, a coach's video to play only while it is their word's current one, and each page to load quickly, so that my media plays and I never see another user's.","O1  My own clip gets a fresh link; a clip pointing at another user's
 recording is left untouched.
 O2  One page gets fresh clip, recording and deck links and the ""new coach

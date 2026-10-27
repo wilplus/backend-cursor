@@ -202,24 +202,30 @@ def send_whatsapp(to: str, *, config: Any = None, path: str = "chat") -> bool:
 
 
 def send_template(to: str, *, template: str, params: list[str], text: str,
-                  config: Any = None) -> bool:
+                  config: Any = None, button: Optional[str] = None) -> bool:
     """A message the business starts other than the coach's note (the
-    booking's confirmation and reminder, founder 2026-10-25, N144): the
-    approved `template` with `params` as its body's {{1}}, {{2}}, ...; or
-    `text` when no template is named, which WhatsApp only delivers within
-    24 hours of the person's last message. Same switch, number and redirect
-    as send_whatsapp; raises on a provider error."""
+    booking's reminder, N144; the sign-in code, N214): the approved
+    `template` with `params` as its body's {{1}}, {{2}}, ...; or `text` when
+    no template is named, which WhatsApp only delivers within 24 hours of
+    the person's last message. `button` fills the template's first button
+    (an Authentication template's Copy code button carries the code). Same
+    switch, number and redirect as send_whatsapp; raises on a provider
+    error."""
     cfg = config or Config()
 
     def payload(number: str) -> dict:
         base = {"messaging_product": "whatsapp", "to": number.lstrip("+")}
         if not template:
             return {**base, "type": "text", "text": {"body": text}}
+        components: list[dict] = [{"type": "body", "parameters": [
+            {"type": "text", "text": p} for p in params]}]
+        if button is not None:
+            components.append({"type": "button", "sub_type": "url", "index": "0",
+                               "parameters": [{"type": "text", "text": button}]})
         return {**base, "type": "template", "template": {
             "name": template,
             "language": {"code": cfg.WHATSAPP_TEMPLATE_LANGUAGE or "en"},
-            "components": [{"type": "body", "parameters": [
-                {"type": "text", "text": p} for p in params]}]}}
+            "components": components}}
 
     return _deliver(to, cfg, payload)
 
