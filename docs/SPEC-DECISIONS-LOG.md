@@ -5438,3 +5438,33 @@ WhatsApp number as a way to sign up and sign in, with its code by WhatsApp
 speakers. The text is drafted next and waits for the founder's signature.
 No rules page: the text lands in `legal/phase1-2026.1/` when it is signed. No
 migration in this entry.
+
+**N217 · Terms 3.8 and Privacy 3.9 are signed (founder, the sign-off page
+<https://claude.ai/artifact/HbNkdtWhYgKmXy312wL4sC>, then the Claude Code
+chat, 27 October 2026: "I sign as drafted, question 1 A, question 2 A").** For N211, N214, N215 and N216:
+1. Terms 3.8 and Privacy 3.9 are signed as drafted, word for word in
+`legal/phase1-2026.1/30-terms-3.8-privacy-3.9-the-plan-feelings-and-whatsapp-sign-in-SIGNED-2026-10-27.md`. They name the plan, its personal answers behind
+their own yes (Privacy section 4e), "How do you feel?" before a take, and
+signing up and signing in with the WhatsApp number. Engineering drafted them
+from the code; the session building N214 checked the WhatsApp sign-in facts
+against its build. Counsel has not seen them.
+2. Question 1, A: for a speaker without a plan, answering "How do you feel?"
+is their explicit consent for that one answer. The tap's screen gets one line,
+"Your coach sees your answer." (new words on a locked screen, OK'd by this
+signature).
+3. Question 2, A: every "How do you feel?" answer given before 3.9 is deleted
+when 3.9 is published.
+4. Before it is published: counsel reads it; built: the tap behind the yes
+for a speaker who has a plan, the line on the tap's screen, the deletion of
+2 and 3 run at publication, the WhatsApp sign-in screens, Meta's approval of
+`login_code`; fixed: closing an account leaves its sign-in record (email, and
+with WhatsApp the phone number) in Supabase, against Privacy 3.8 sections 7
+and 9 and this text, so by N95 the code is the bug. The texts read "Effective
+{publication date}"; on the day, only that line changes, they become the
+legal pack's copy files, and a PUBLISH-3.9 script is made for the founder to
+run.
+The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+(the line on the tap's screen) and
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+D4 and D5, each with its build. No migration in this entry.
