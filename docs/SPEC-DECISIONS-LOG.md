@@ -5541,3 +5541,44 @@ No rules page: a rules page for this flow (frontend
 `docs/flows/customer-requests.md`) waits for the founder's `Founder-Approved:`
 line; until then this entry is the only text in force. No migration in this
 entry.
+
+**N219 · Customer requests: how the client's own model is built (founder, the
+Claude Code chat, 27 October 2026, four answers to engineering's questions on
+the learning side of N218).** The machine stays the one that exists: pairs per
+surface, a fine-tune at 200 pairs, the sealed golden set, the evaluation, the
+regurgitation check and promotion by the founder's word
+(`services/feedback_pairs.py`, `model_training.py`, `golden_set.py`,
+`golden_evaluation.py`, `model_promotion.py`). A client's model is a surface
+named for its workspace in that pipeline, never a separate infrastructure.
+1. **The answer schema.** Every answer a trichologist (or any client's
+answerer) records is also stored in a structured shape read from the
+transcript against the client's catalogue and documents: what was observed,
+which products, what routine, when to come in, which signs mean a doctor. The
+AI extracts it after each Take; the answerer sees nothing new; the founder
+reads and corrects it on the admin page, as Will's note is corrected today
+(`SpeakerMemory.tsx`). A pair is the request, the schema and the final answer
+with its transcript. No new step in the answerer's loop (Never 3).
+2. **Never 2 holds for the answerer.** When the AI starts drafting (from
+about a hundred pairs), the answerer records first and sees the draft after.
+The pair is their own judgement against the machine's, by the rule that
+exists: recorded only when a draft was shown and the final differs.
+3. **Who opens autonomy.** A client's model answers customers alone only
+after its golden evaluation passes, scored on the schema (same products, same
+routine, same red flags), never on token overlap alone. The founder opens the
+door per workspace, as the promotion doors today; the client turns it on per
+request type they trust; a health red flag always goes to a person. The
+answerer reviews a sample and every correction is a pair.
+4. **Retrieval.** Per workspace, embeddings in Supabase with pgvector: one
+table with a workspace column, the embedding call through the
+processing-authorization path, exportable as rows. One migration, idempotent,
+reviewed outside before merging. The client's export (N218 item 5) gains the
+schema and the golden set: JSONL of pairs, the documents, the evaluation set.
+The order of build: collect (no AI, the schema extracted and checked), draft
+(retrieval, blind), fine-tune at 200 pairs with the schema score, alone with
+the gate. A client whose answers are open-ended (a marketing specialist
+advising on campaigns) runs the same loop with a weaker schema and far more
+pairs: it drafts early and runs alone much later.
+No rules page: the flow page for customer requests waits for the founder's
+`Founder-Approved:` line (N218); the learning rules land on
+[`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) in the same PR as the
+first code. No migration in this entry.
