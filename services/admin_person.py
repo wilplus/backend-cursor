@@ -252,6 +252,11 @@ def deletion(user_id: str, principal: Optional[str]) -> Optional[dict]:
     return deletion_view(AccountDeletionService(db).live_for_principal(principal))
 
 
+#: The key an admin's deletion is recorded under, followed by the user id:
+#: the Users list reads it back to hide the person (services/admin_user_directory.py).
+ADMIN_DELETE_KEY = "admin-delete:"
+
+
 def request_deletion(user_id: str, admin_id: str) -> dict:
     """The admin deletes this account (founder 2026-10-14). The same road as
     the person's own "Delete my account": processing stops now, the AI voice
@@ -272,7 +277,7 @@ def request_deletion(user_id: str, admin_id: str) -> dict:
     from services.booking import erase_for_user as erase_bookings
     erase_bookings(user_id)
     row = ProcessingAuthorizationService(db).request_account_deletion(
-        principal, idempotency_key=f"admin-delete:{user_id}", reason_code="ADMIN_DELETION")
+        principal, idempotency_key=f"{ADMIN_DELETE_KEY}{user_id}", reason_code="ADMIN_DELETION")
     logger.info("admin %s requested account deletion user=%s", admin_id, user_id)
     return row
 
