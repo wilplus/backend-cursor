@@ -5582,3 +5582,28 @@ No rules page: the flow page for customer requests waits for the founder's
 `Founder-Approved:` line (N218); the learning rules land on
 [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) in the same PR as the
 first code. No migration in this entry.
+
+**N220 · Customer requests are a sales tool first (founder, the Claude Code
+chat, 27 October 2026: "it is the sales tool; that if automatised will
+become a support tool (the instant smart answers); before the AI gets smart
+it is a sales tool only because it answers asynchronously").** For N218 and
+N219:
+1. The widget is judged by purchases and bookings, not by answer time. While
+a person answers, the wait is hours, so the answer is a recommendation to
+buy, never live support.
+2. The answer page carries the sale: each recommended product with the
+client's "Add to cart" link, and "Book" with a date when the answerer says
+"come in". The link carries the client's code, so a purchase is attributable
+to the request.
+3. A pair keeps its outcome: whether the customer bought or booked, read from
+the client's link, in words on the admin page and never shown to a customer
+or an answerer as a score. The model learns what worked, not only what was
+said.
+4. The form is the client's product finder: a photo or a few words, the
+WhatsApp number, one tick. Words optional when there is a photo.
+5. Support comes with autonomy (N219 item 3): once a client's model answers
+alone, the same widget answers at once, and the asynchronous loop stays for
+what the model hands to a person. Nothing is built for instant answers
+before that door opens.
+No rules page: the flow page for customer requests waits for the founder's
+`Founder-Approved:` line (N218). No migration in this entry.
