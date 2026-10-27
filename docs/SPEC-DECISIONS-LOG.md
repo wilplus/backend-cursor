@@ -5258,3 +5258,35 @@ able to find what their tokens pay for. Hiding those too (option B) would need
 a new Terms version that every speaker accepts again; it is not taken.
 4. If a call is given a price again, how it is shown is decided then.
 No rules page. No migration in this entry.
+
+**N211 · The plan's personal answers get their own yes; the feelings check gets
+a Skip now (founder, the Claude Code chat, 27 October 2026, to the draft page
+<https://claude.ai/artifact/FFTYRbR3cyMAp229Dy4eYx> and its three questions,
+each with a suggested answer: "Go with the suggested answers").** For N148,
+N149, N151, N178 and N208 item 5:
+1. The plan's personal answers are asked only after the speaker says yes to a
+question of its own, once, before them: "Yes, ask me" or "Not now". They are
+the worry follow-up ("What worries you most about it?"), the stress and
+readiness taps, how the speaker feels before a Take, and "How did it go?" at
+the plan's end. With "Not now" none is asked and the plan is built from the
+rest. The yes can be changed on a card in Data & consent, "Personal answers in
+your plan"; turning it off deletes the personal answers given so far.
+(Question 1, A.)
+2. The feelings check, "How do you feel?", shows only after that yes, with a
+Skip every time. (Question 2, A.)
+3. The text and the yes ship together, in Privacy 3.9, before the plan reaches
+anyone beyond ring 5's testers; the text that goes with them is drafted on the
+page above and waits for the founder's signature. Meanwhile the feelings check
+gets a Skip wherever it shows, now: until today a new project's check, once
+before Take 1, had none unless a plan's first Take was already recorded.
+(Question 3, A.)
+4. Not decided here: the words of the ask and of the card (new words on locked
+screens, Never 4), which wait for the founder's OK on a prototype; where the
+yes is asked for a speaker who has no plan; and the final text of Privacy 3.9.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 A and D (the questions "can't be skipped" stops applying to the personal
+ones when the yes is built) and
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md).
+No migration in this entry; the consent record's migration comes with its
+build, and an outside review.
