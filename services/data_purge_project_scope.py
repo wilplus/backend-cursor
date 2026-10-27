@@ -170,6 +170,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     "life_goals", "life_goal_versions", "life_goal_asks",
     # The security log of Email and password (WIL-95, N190): the account's.
     "account_security_events",
+    # The plan (N203): one per person, across their projects; the account
+    # purge deletes it, with its answers, their recordings and its levels.
+    "speaker_plans", "plan_answers", "plan_answer_audio", "plan_level_events",
     # Retention schedule v1.4: product records and job evidence that name
     # only the person, never a project. Deleted with the account (or kept
     # 12 months as job evidence); a project purge leaves them. Placed only
