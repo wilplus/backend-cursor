@@ -1392,6 +1392,16 @@ def run_sweep_loop(chain_id: Optional[str] = None) -> None:
         except Exception as homework_error:
             logger.warning("pipeline_jobs: homework-digest sweep failed: %s",
                            homework_error, exc_info=True)
+        try:
+            # A booking's WhatsApp join link, 10 minutes before (N165, N189):
+            # one indexed read a minute, and only while WhatsApp is on.
+            from services.booking import send_whatsapp_reminders
+            reminded = send_whatsapp_reminders()
+            if reminded.get("due"):
+                logger.info("pipeline_jobs: booking reminders %s", reminded)
+        except Exception as booking_error:
+            logger.warning("pipeline_jobs: booking-reminder sweep failed: %s",
+                           booking_error, exc_info=True)
     finally:
         if chain_id and job_queue.renew_sweep_lease(
                 chain_id,

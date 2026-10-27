@@ -8,10 +8,8 @@ OUTCOME
       number gets nothing.
   O2  A booking that carries no number reminds the number saved on the
       account, once the switch is on; with it off, nothing goes there.
-  O3  The reminders' door is shut without its secret.
 PROVES   O1 -> test_the_reminder_goes_once_10_minutes_before
          O2 -> test_the_reminder_goes_to_the_accounts_number
-         O3 -> test_the_reminders_door_needs_its_secret
 WHY      Founder 2026-10-25, N144; 10 minutes before, N165; the WhatsApp
          confirmation gone, N189; the words, N200; the account's number and
          no number on the booking form, N207.
@@ -23,9 +21,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
-from flask import Flask
 
-from routes.v2 import booking as booking_routes
 from services import booking
 from services import whatsapp_notify as wn
 
@@ -145,13 +141,3 @@ def test_the_reminder_goes_to_the_accounts_number(sent):
         with patch.object(booking.config, "BOOKING_WHATSAPP_TO_ACCOUNT", True, create=True):
             assert booking.send_whatsapp_reminders(now) == {"due": 1, "sent": 1}
     assert [m["to"] for m in sent] == ["48600100200"]
-
-
-def test_the_reminders_door_needs_its_secret(monkeypatch):
-    app = Flask(__name__)
-    app.register_blueprint(booking_routes.booking_bp)
-    door = "/v2/internal/booking/whatsapp-reminders"
-    monkeypatch.delenv("BOOKING_REMINDER_SECRET", raising=False)
-    assert app.test_client().post(door).status_code == 503
-    monkeypatch.setenv("BOOKING_REMINDER_SECRET", "s3cret")
-    assert app.test_client().post(door, headers={"X-Internal-Secret": "wrong"}).status_code == 401
