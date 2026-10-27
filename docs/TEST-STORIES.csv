@@ -866,13 +866,18 @@ nothing of mine is released for learning.
 O4  Asking to delete my account opens the cancellable seven-day window;
 ending the service (termination) purges straight away.
 O5  The daily run's route is shut without its secret, refuses a wrong one,
-and deletes for real only when the kill switch is on.","O1 -> RunTests::test_a_due_request_is_started_purged_and_finished,
+and deletes for real only when the kill switch is on.
+O6  Before my deletion is marked done, my sign-in record is closed (its
+email and phone number scrambled, no more sign-in) while the evidence
+that must survive keeps its id; if closing fails, the deletion is not
+marked done and the next run tries again; a guest has none to close.","O1 -> RunTests::test_a_due_request_is_started_purged_and_finished,
 RunTests::test_a_dry_run_reads_and_writes_nothing
 O2 -> RunTests::test_a_purge_that_stops_is_left_for_a_person_with_its_reasons
 O3 -> LearningTests::test_the_stamp_keeps_the_yes_and_releases_nothing_of_a_leaving_person
 O4 -> SpeakerRouteTests::test_an_account_deletion_takes_the_window_and_a_termination_does_not
 O5 -> CronRouteTests::test_the_route_is_dead_without_its_secret_and_refuses_a_wrong_one,
-CronRouteTests::test_it_deletes_only_with_the_kill_switch_on","Founder 2026-10-05, decisions log N48.4 Q14 A, Q17 A, Q19 A (migration 0422)."
+CronRouteTests::test_it_deletes_only_with_the_kill_switch_on
+O6 -> RunTests::test_the_sign_in_record_is_closed_before_the_deletion_is_done","Founder 2026-10-05, decisions log N48.4 Q14 A, Q17 A, Q19 A (migration 0422). O6: Privacy 3.8 sections 7 and 9 (account records are deleted), founder 2026-10-27, N217 (N95: the text wins, the code is the bug)."
 tests/test_delivery_layer.py,Story,"As a speaker, I want my feedback page to show the moments my coach surfaced, with playback and the coach's words, never verdicts or scores, and my readout to show processing or failed states honestly, so that feedback is in words and the next Take is never blocked.","O1  Never-1: a surfaced moment comes back with its words, exact playback and
 the coach's note, exactly those fields, and no score, confidence,
 quorum or acoustic read anywhere in the page.
