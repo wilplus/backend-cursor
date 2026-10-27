@@ -2074,7 +2074,8 @@ unit are today's.
 O2  With it on, tokens read in hundreds of today's units: Starter $39 for
 3,900, Plus $99 for 11,000, Pro $149 for 18,000; a short Take reads 10,
 chat 1, the free grant 120, the coach's minute 200.
-O3  A package bought with it on is charged and granted at the new price.
+O3  A package bought with it on is charged and granted at the new price,
+and Stripe's page names it as the cards do (""Plus · 11,000 tokens"").
 O4  A Take that reaches the coach costs nothing, with v4 on or off: the
 coach answers every Take and no price list carries a review.
 O5  A call can be booked with tokens at its own price, a token a cent; with
