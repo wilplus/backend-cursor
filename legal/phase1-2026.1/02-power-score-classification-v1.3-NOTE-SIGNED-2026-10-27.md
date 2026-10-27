@@ -4,14 +4,16 @@
 Privacy 3.8, question 1, answer A: "Keep it, and say so … I add a one-page
 note to document 02 (v1.3) that records the change, for counsel's next look";
 in chat: "I sign as drafted, question 1 A, question 2 A"; decisions log N208).
-**Counsel has not seen this change**; the founder signed knowing that.
+Counsel had not seen this change when the founder signed; since then
+**counsel has seen it and accepts it** (the founder, in chat, 27 October
+2026: "they ve seen ti and they accept it!!!"; N208).
 
     artifact_kind:       power_score_classification
     version:             1.3 — supersedes 1.2 (signed 2026-10-08) by version bump, never in place (04 §5)
     form:                this note lists the changes; on signature v1.3 is rendered as v1.2's full text
                          with these changes applied, then signed and hashed
-    approving_authority: Artur Willoński (founder and controller) — controller's own determination, NOT counsel-reviewed
-    approved_at:         2026-10-27 (decisions log N208; counsel has not seen it)
+    approving_authority: Artur Willoński (founder and controller) — controller's own determination; counsel has since seen it and accepts it
+    approved_at:         2026-10-27 (decisions log N208; counsel's acceptance relayed by the founder the same day)
     object_key:          phase1-2026.1/legal/power-score-classification-v1.3.pdf
     sha256:              [[computed from the signed PDF at registration time]]
     metadata:            unchanged from 1.2 (biometric_identification false, sex_gender_inference false,
@@ -88,3 +90,6 @@ Does showing the derived reading to a coach after their blind answer, and to
 the controller per Take, change the §7 analysis or the §8 profiling question
 (Article 6(3), final subparagraph)? The founder's position is that it does
 not, for the reasons above.
+
+**Counsel's answer** (relayed by the founder, 27 October 2026: "they ve seen ti and they accept it!!!"): counsel
+has seen this note and accepts it.
