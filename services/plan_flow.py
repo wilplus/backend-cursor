@@ -36,7 +36,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import date, datetime, timezone
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from services import plan as P
@@ -235,6 +235,7 @@ def view(database: Any, user_id: str, plan: dict) -> dict:
         "next_day": (P.next_day_text(today, deadline, days, every_day) if deadline else None),
         "topic": facts.get("topic") or facts.get("event"),
         "waiting": bool(facts.get("wait_take")),
+        "onboarding": _onboarding(plan, lambda: done),
     }
 
 
@@ -260,6 +261,33 @@ def _awaiting(plan: dict) -> bool:
 def _need_step(plan: dict, *steps: str) -> None:
     if plan.get("step") not in steps or _awaiting(plan):
         raise PlanError("NOT_NOW", "Not now.", 409)
+
+
+# ── onboarding, which the principles wait for (N243) ───────────────────────
+
+def _onboarding(plan: dict, done: Callable[[], int]) -> bool:
+    """Any plan while its questions are asked (A2, A3), but not one waiting
+    for the next Take; a new speaker's first plan until its first Take."""
+    facts = _facts(plan)
+    if plan.get("status") == "asking":
+        return not facts.get("wait_take")
+    return (plan.get("status") == "active" and facts.get("mode") == "new"
+            and not facts.get("again") and done() == 0)
+
+
+def onboarding(database: Any, user_id: Any) -> bool:
+    """Is the person being onboarded (N243)? While they are, the principles
+    (the voice notebook, the Sunday note, life goals) show nothing. False
+    where the plan doesn't reach, and when the plan can't be read: the
+    principles are then as before."""
+    try:
+        if not enabled(database, user_id):
+            return False
+        plan = database.get_open_plan(str(user_id))
+        return bool(plan) and _onboarding(plan, lambda: _done(plan, _takes(database, user_id)))
+    except Exception as error:  # noqa: BLE001 -- an unread plan holds nothing back
+        logger.warning("plan: onboarding not read user=%s: %s", user_id, error)
+        return False
 
 
 # ── the state, read when the Lounge opens ──────────────────────────────────

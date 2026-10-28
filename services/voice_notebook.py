@@ -274,6 +274,9 @@ def chat_turn(database: Any, user_id: str, question: str,
         return None
     if not enabled(database, user_id):
         return None
+    from services import plan_flow
+    if plan_flow.onboarding(database, user_id):
+        return None  # the principles wait while the person is onboarded (N243)
     if not consented(database, user_id):
         safety = _crisis(text)
         if safety:  # the chat's safety reply comes first, never the question
