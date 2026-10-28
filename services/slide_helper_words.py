@@ -165,6 +165,67 @@ def phrase_in_version(phrase: Any, paragraphs: Any) -> Optional[str]:
     return None
 
 
+def holds(text: Any, phrases: Any) -> bool:
+    """Do these words hold one of the helper-word picks in ``phrases``,
+    every piece of it in the order picked? Case, spacing and punctuation
+    aside (founder 2026-10-28, N246 item 2: the sentence that already has
+    its helper words gives its place to the next confident moment)."""
+    said = _tokens(text)
+    for phrase in phrases or []:
+        parts = [part for part in (_tokens(piece) for piece in pieces(phrase)) if part]
+        if parts and _in_order(said, parts):
+            return True
+    return False
+
+
+def _tokens(text: Any) -> list[str]:
+    import re
+    return re.findall(r"[\w']+", str(text or "").replace("’", "'").lower())
+
+
+def _in_order(said: list[str], parts: list[list[str]]) -> bool:
+    at = 0
+    for part in parts:
+        size = len(part)
+        found = next((i for i in range(at, len(said) - size + 1)
+                      if said[i:i + size] == part), None)
+        if found is None:
+            return False
+        at = found + size
+    return True
+
+
+def held_at_take(database: Any, arc_id: Any, user_id: Any, take: Any,
+                 slides: Any) -> dict[int, list[str]]:
+    """``{slide_index: [phrase, ...]}``: the locked helper words each of
+    ``slides`` had when ``take`` was recorded, the last set the log holds
+    from before it began (N246 item 2). Read from the log, not the live rows,
+    so words picked in this Take's own walk never move its moments, and an
+    older Take reads the same on every opening. {} on anything unreadable,
+    logged: the moments are then picked as before."""
+    from services.rewrite_declines import instant
+    started = instant(take.get("created_at")) if isinstance(take, Mapping) else None
+    wanted = sorted({s for s in slides or () if isinstance(s, int)
+                     and not isinstance(s, bool) and s >= 0})
+    if started is None or not arc_id or not user_id or not wanted:
+        return {}
+    try:
+        logs = database.list_slide_helper_words_log_for_slides(
+            str(arc_id), str(user_id), wanted)
+    except Exception as error:  # noqa: BLE001 -- the moments as before
+        logger.warning("slide helper words at the take unreadable arc=%s: %s",
+                       arc_id, error)
+        return {}
+    held: dict[int, list[str]] = {}
+    for slide, rows in (logs or {}).items():
+        before = [row for row in rows or [] if isinstance(row, Mapping)
+                  and (instant(row.get("created_at")) or started) < started]
+        phrases = [str(p) for p in (before[-1].get("phrases") or []) if p] if before else []
+        if phrases:
+            held[slide] = phrases
+    return held
+
+
 def version_of_take(history: Mapping, take_index: Any) -> Optional[dict]:
     """The Slide's version spoken in one Take, by its Take number — the
     number the history labels each version with and the overlay's chips
