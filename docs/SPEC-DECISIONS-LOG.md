@@ -6327,6 +6327,6 @@ paragraph saved with helper words in this Take still hides every other
 moment and note.
 No new words on screen (Never 4). The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
-C2 and H1, and
+C2, C3 and H1, and
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §1 G7. No migration in this entry.
