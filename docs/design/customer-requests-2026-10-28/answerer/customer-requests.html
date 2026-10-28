@@ -1,0 +1,944 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Customer Requests</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: the steps on the left · the phone in the middle (the real Lounge and processing screens as screenshots, every other screen drawn in the app's own parts) · what changes on the right. The same chrome as "Welcome to Take 2". */
+:root {
+  --ground: #ECEAE6; --panel: #FFFFFF; --ink: #171615; --muted: #67635D; --line: #DAD6CF;
+  --accent: #FF640A; --accent-soft: #FFE9DA; --accent-ink: #A83E00; --real: #E3E0DA; --real-ink: #3D3A35; --focus: #1D6FE0;
+  --font-ui: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --font-app: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --ground: #151413; --panel: #1F1E1C; --ink: #EDEBE7; --muted: #A39F98; --line: #36332F;
+  --accent: #FF7A2B; --accent-soft: #3A2414; --accent-ink: #FFB487; --real: #2C2A27; --real-ink: #D7D3CC; --focus: #6AA5FF; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --ground: #151413; --panel: #1F1E1C; --ink: #EDEBE7; --muted: #A39F98; --line: #36332F;
+  --accent: #FF7A2B; --accent-soft: #3A2414; --accent-ink: #FFB487; --real: #2C2A27; --real-ink: #D7D3CC; --focus: #6AA5FF; color-scheme: dark }
+html, body { height: 100%; }
+body { background: var(--ground); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.app { display: grid; grid-template-columns: 236px minmax(0, 1fr) 340px; gap: 28px; max-width: 1380px; margin: 0 auto;
+  padding-block: 20px 28px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); box-sizing: border-box; }
+.rail { position: sticky; top: 20px; align-self: start; max-height: calc(100vh - 40px); overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding-right: 4px; }
+.rail h1 { font-size: 21px; line-height: 1.2; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.rail .lede { margin: 6px 0 0; color: var(--muted); font-size: 13.5px; }
+.chap { display: flex; flex-direction: column; gap: 2px; }
+.chap-h { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; }
+.step { display: flex; align-items: center; gap: 8px; text-align: left; border: 0; background: transparent; padding: 6px 8px; border-radius: 8px; font-size: 14px; color: var(--ink); }
+.step:hover { background: var(--real); }
+.step[aria-current="step"] { background: var(--panel); box-shadow: 0 0 0 1px var(--line); font-weight: 600; }
+.step.side { padding-left: 22px; font-size: 13px; color: var(--muted); }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--real-ink); opacity: 0.35; }
+.dot.new { background: var(--accent); opacity: 1; }
+.dot.mixed { background: linear-gradient(90deg, var(--accent) 50%, var(--real-ink) 50%); opacity: 1; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.legend span { display: flex; gap: 6px; align-items: center; }
+.centre { display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 0; }
+.jump { display: none; width: 100%; gap: 10px; align-items: center; flex-wrap: wrap; }
+.jump h1 { font-size: 19px; margin: 0; flex: 1 1 180px; }
+.jump select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); max-width: 100%; }
+.stage { width: 100%; display: flex; justify-content: center; }
+.device { position: relative; }
+.bezel { position: absolute; left: 0; top: 0; width: 410px; height: 864px; transform-origin: 0 0; border-radius: 52px; background: #0D0D0D; padding: 10px; box-sizing: border-box; box-shadow: 0 30px 60px -30px rgba(20, 15, 10, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.25); }
+.screen { position: relative; width: 390px; height: 844px; border-radius: 42px; overflow: hidden; background: #FFFFFF; color: #121212; font-family: var(--font-app); isolation: isolate; }
+@media (max-width: 520px) { .bezel { background: transparent; box-shadow: none; padding: 0; border-radius: 0; } .screen { border-radius: 18px; box-shadow: 0 0 0 1px var(--line); } }
+.controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 8px 16px; font-weight: 500; }
+.btn:hover { border-color: var(--muted); }
+.where { font-family: var(--font-mono); font-size: 12px; color: var(--muted); min-width: 92px; text-align: center; font-variant-numeric: tabular-nums; }
+.toggles { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; font-size: 13px; color: var(--muted); }
+.toggles label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.toggles input { accent-color: var(--accent); }
+.notes { position: sticky; top: 20px; align-self: start; display: flex; flex-direction: column; gap: 14px; max-height: calc(100vh - 40px); overflow-y: auto; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.badge { align-self: flex-start; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; padding: 3px 8px; border-radius: 999px; background: var(--real); color: var(--real-ink); }
+.badge.new { background: var(--accent); color: #FFFFFF; }
+.badge.mixed { background: var(--accent-soft); color: var(--accent-ink); }
+.notes h2 { margin: 0; font-size: 19px; line-height: 1.25; text-wrap: balance; }
+.notes p { margin: 0; }
+.notes h3 { margin: 4px 0 0; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.notes ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.words { list-style: none; padding: 0 !important; }
+.words li { background: var(--accent-soft); color: var(--accent-ink); border-radius: 8px; padding: 5px 9px; font-size: 14px; }
+.refs { font-size: 13px; color: var(--muted); }
+.open { border-style: dashed; }
+.open ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+@media (max-width: 1120px) { .app { grid-template-columns: minmax(0, 1fr) 320px; } .rail { display: none; } .jump { display: flex; } }
+@media (max-width: 780px) { .app { grid-template-columns: minmax(0, 1fr); gap: 20px; } .notes { position: static; max-height: none; overflow: visible; } }
+
+/* ---------- Inside the phone: the app's own look (always light, like the app) ---------- */
+.screen img.shot { position: absolute; inset: 0; width: 390px; height: 844px; display: block; user-select: none; -webkit-user-drag: none; }
+.hot { position: absolute; border: 0; background: transparent; border-radius: 14px; padding: 0; z-index: 5; }
+.show-hot .hot.cue, .show-hot .screen .cue-ring { outline: 2px dashed rgba(255, 100, 10, 0.9); outline-offset: 2px; animation: cue 1.8s ease-in-out infinite; }
+.show-hot .hot:not(.cue) { outline: 1px dashed rgba(255, 100, 10, 0.45); outline-offset: 1px; }
+.flash .hot { background: rgba(255, 100, 10, 0.16); }
+@keyframes cue { 0%, 100% { outline-color: rgba(255, 100, 10, 0.9); } 50% { outline-color: rgba(255, 100, 10, 0.25); } }
+.mark-new .nw { text-decoration: underline dotted #FF640A 2px; text-underline-offset: 4px; }
+.toast { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); background: #121212; color: #FFFFFF; font-size: 13.5px; padding: 9px 14px; border-radius: 12px; z-index: 30; max-width: 300px; text-align: center; animation: toast 2.6s ease forwards; pointer-events: none; }
+@keyframes toast { 0% { opacity: 0; transform: translate(-50%, 6px); } 10%, 85% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
+@keyframes up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes blink { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+@keyframes pulse { 50% { opacity: 0.5; } }
+
+/* The Lounge, drawn over the real Lounge's header and composer (lounge.webp) */
+.lg-area { position: absolute; left: 0; right: 0; top: 73px; height: 672px; background: #FFFFFF; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; padding: 16px 16px 14px; box-sizing: border-box; overflow: hidden; }
+.lg-area > * { flex-shrink: 0; }
+.lg-area.scroll { overflow-y: auto; justify-content: flex-start; scrollbar-width: none; }
+.lg-area.scroll::-webkit-scrollbar { display: none; }
+.lg-area.scroll > :first-child { margin-top: auto; }
+.lg-b { position: relative; align-self: flex-start; max-width: 85%; background: #F5F5F5; border-radius: 16px; padding: 8px 12px; font-size: 15px; line-height: 1.45; animation: up 0.28s ease both; white-space: pre-wrap; }
+.lg-b::after, .wk-b::after { content: ""; position: absolute; left: -7px; bottom: 0; width: 10px; height: 14px; background: inherit; clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+.lg-b.notail::after { display: none; }
+.lg-me { align-self: flex-end; background: #FF640A; color: #FFFFFF; }
+.lg-me::after { left: auto; right: -7px; clip-path: polygon(0 0, 0 100%, 100% 100%); }
+.lg-day { align-self: center; font-size: 12px; color: #737373; padding: 6px 0 2px; text-align: center; max-width: 90%; }
+.lg-rec { display: flex; width: fit-content; align-items: center; gap: 6px; height: 32px; margin: 18px 0 10px; padding: 0 14px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; color: #121212; font: 600 14px var(--font-app); }
+.rdot { width: 8px; height: 8px; border-radius: 50%; background: #E63C2D; flex: none; }
+.typing { align-self: flex-start; background: #F5F5F5; border-radius: 16px; padding: 12px 14px; display: flex; gap: 5px; }
+.typing i { width: 7px; height: 7px; border-radius: 50%; background: #A3A3A3; animation: blink 1s infinite; }
+.typing i:nth-child(2) { animation-delay: 0.15s; } .typing i:nth-child(3) { animation-delay: 0.3s; }
+/* "Your Recording" (ReportCard) */
+.lg-rec-b { align-self: flex-end; width: 78%; display: flex; flex-direction: column; gap: 4px; border-radius: 16px; border-top-right-radius: 4px; background: #FF640A; color: #FFFFFF; padding: 8px 12px; font-size: 15px; animation: up 0.28s ease both; position: relative; }
+.lg-rec-b::after { content: ""; position: absolute; right: -7px; bottom: 0; width: 10px; height: 14px; background: #FF640A; clip-path: polygon(0 0, 0 100%, 100% 100%); }
+.lg-rec-b .rl { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.lg-rec-b .rl small { font-weight: 400; font-size: 12.5px; opacity: 0.9; }
+.lg-rec-b .shr { font-size: 12.5px; color: rgba(255,255,255,0.9); }
+.player { display: flex; align-items: center; gap: 9px; }
+.play { width: 30px; height: 30px; border-radius: 50%; border: 0; display: grid; place-items: center; flex: none; padding: 0; }
+.play.w { background: #FFFFFF; } .play.k { background: #121212; }
+.bars { flex: 1; display: flex; align-items: center; gap: 2px; height: 20px; min-width: 0; }
+.bars i { flex: 1; min-width: 2px; border-radius: 2px; background: rgba(255,255,255,0.55); }
+.bars i.on { background: #FFFFFF; }
+.gbars i { background: #C9C9C9; } .gbars i.on { background: #121212; }
+.t { font-size: 12px; font-variant-numeric: tabular-nums; color: rgba(255,255,255,0.92); flex: none; }
+/* The pair: Feedback walk + the Ideal Text card (N192, N202) */
+.pair-w { align-self: flex-start; width: 80%; max-width: 384px; display: flex; flex-direction: column; gap: 3px; animation: up 0.28s ease both; }
+.fw { position: relative; background: #F5F5F5; border-radius: 16px; border-bottom-left-radius: 6px; padding: 8px 30px 8px 12px; font-size: 15px; line-height: 1.45; text-align: left; border: 0; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; }
+.fw::after { content: "›"; position: absolute; right: 11px; top: 50%; transform: translateY(-50%); font-size: 20px; color: #737373; }
+.fw .fmeta { font-size: 11.5px; color: #737373; margin-top: 2px; }
+.itcard { position: relative; display: flex; align-items: center; gap: 10px; border: 1px solid #EBEBEB; border-radius: 18px; border-top-left-radius: 6px; padding: 10px 28px 10px 10px; background: #FFFFFF; text-align: left; width: 100%; box-sizing: border-box; }
+.itcard::after { content: "›"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 20px; color: #737373; }
+.itcard .tile { width: 72px; aspect-ratio: 16/9; flex: none; border-radius: 6px; background: #E9E2D6; overflow: hidden; display: grid; place-items: center; }
+.itcard b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 15px; font-weight: 600; }
+.itcard .ver { flex: none; border-radius: 999px; background: #F5F5F5; padding: 2px 10px; font-size: 12px; font-weight: 600; }
+/* The ask's footer: the grey card and the pair (WillabWhatsAppPrompt, SymmetricPair) */
+.lg-dock { position: absolute; left: 0; right: 0; bottom: 33px; background: #FFFFFF; padding: 8px 16px 10px; display: flex; flex-direction: column; gap: 8px; z-index: 4; }
+.wa-card { background: #F5F5F5; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.wa-title { font-size: 13px; font-weight: 500; color: #121212; line-height: 1.35; }
+.req { display: flex; gap: 10px; align-items: flex-start; }
+.req .ph { width: 56px; height: 56px; border-radius: 8px; flex: none; background: linear-gradient(135deg, #D9B8A5, #B98B74); }
+.req .txt { font-size: 14px; line-height: 1.4; color: #121212; }
+.req .when { font-size: 12px; color: #737373; margin-top: 3px; }
+.pair { display: flex; gap: 12px; }
+.pair button { height: 44px; flex: 1; border-radius: 999px; font: 400 15px var(--font-app); display: flex; align-items: center; justify-content: center; }
+.pair .close { border: 1px solid #EBEBEB; background: #FFFFFF; color: #121212; }
+.pair .act { border: 0; background: #121212; color: #FFFFFF; font-weight: 500; }
+.lg-plus { position: absolute; left: 14px; top: 736px; width: 44px; height: 42px; border: 0; background: transparent; border-radius: 50%; z-index: 5; }
+
+/* The recording screen (locked, N70): drawn from its prototype */
+.rs { position: absolute; inset: 0; display: flex; flex-direction: column; background: #FFFFFF; padding-top: 44px; }
+.rs .h { height: 48px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+.rs .whr { margin: 0; font-size: 13px; font-weight: 600; color: #737373; font-variant-numeric: tabular-nums; }
+.rs .x, .wk-x, .it-x { width: 28px; height: 28px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; display: grid; place-items: center; padding: 0; color: #737373; }
+.rs .band { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 16px 20px; }
+.rs .slide { width: 100%; aspect-ratio: 16/9; border-radius: 16px; border: 1px solid #EBEBEB; overflow: hidden; background: #FAF7F2; display: flex; gap: 12px; padding: 14px; box-sizing: border-box; }
+.rs .slide .ph { width: 64px; height: 64px; border-radius: 10px; flex: none; background: linear-gradient(135deg, #D9B8A5, #B98B74); }
+.rs .slide .q { font-size: 13.5px; line-height: 1.4; color: #1b1b1b; }
+.rs .slide .q b { display: block; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #777; margin-bottom: 4px; }
+.rs .road { flex: 1; display: flex; align-items: center; justify-content: center; }
+.rs .dock { flex: none; padding-top: 16px; }
+.strip { display: flex; align-items: center; gap: 12px; border-radius: 16px; background: #F5F5F5; padding: 12px 16px; }
+.strip .sdot { width: 10px; height: 10px; border-radius: 50%; background: rgba(224,69,58,0.5); flex: none; animation: pulse 2s ease-in-out infinite; }
+.strip .clock { font: 600 17px ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; color: #121212; }
+.strip .sbar { flex: 1; height: 4px; border-radius: 999px; background: #EBEBEB; overflow: hidden; }
+.strip .sbar b { display: block; height: 100%; width: 0; border-radius: 999px; background: #FF6A0A; transition: width 1s linear; }
+.rs .pr { display: flex; gap: 10px; margin-top: 10px; }
+.rs .pr button { flex: 1; height: 48px; border-radius: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; font: 600 15px var(--font-app); }
+.rs .back { border: 1.5px solid #EBEBEB; background: #FFFFFF; color: #121212; opacity: 0.35; }
+.rs .fin { border: 0; background: #E0453A; color: #FFFFFF; }
+.rs .fin i { width: 12px; height: 12px; border-radius: 2px; background: currentColor; }
+.scrim { position: absolute; inset: 0; background: rgba(18,18,18,0.35); z-index: 20; display: flex; align-items: flex-end; justify-content: center; padding: 16px; box-sizing: border-box; }
+.dlg { width: 100%; max-width: 24rem; border-radius: 24px; background: #FFFFFF; padding: 20px; box-sizing: border-box; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+.dlg h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.dlg p { margin: 8px 0 0; font-size: 14px; color: #737373; }
+.dlg .row { margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dlg .row button { height: 40px; border-radius: 999px; font: 500 14px var(--font-app); }
+.dlg .o { border: 1px solid #EBEBEB; background: #FFFFFF; color: #121212; }
+.dlg .r { border: 0; background: #E0453A; color: #FFFFFF; }
+
+/* The lens (the walk): 18.5px, 22px corners (B2) */
+.wk-top { position: absolute; left: 0; right: 0; top: 0; height: 52px; display: flex; align-items: center; gap: 2px; padding: 8px 10px 0; background: #FFFFFF; z-index: 3; }
+.wk-top .chev { width: 36px; height: 36px; display: grid; place-items: center; color: #737373; font-size: 22px; }
+.wk-cap { font-weight: 600; font-size: 13.5px; }
+.wk-top .wk-x { margin-left: auto; margin-right: 6px; width: 30px; height: 30px; }
+.wk-thread { position: absolute; left: 0; right: 0; top: 52px; bottom: 0; overflow-y: auto; padding: 8px 20px 20px; display: flex; flex-direction: column; gap: 14px; scrollbar-width: none; }
+.wk-thread::-webkit-scrollbar { display: none; }
+.wk-cap-c { align-self: center; font-size: 12.5px; color: #737373; }
+.wk-b { position: relative; align-self: flex-start; max-width: 94%; background: #F5F5F5; border-radius: 22px; padding: 13px 17px; font-size: 18.5px; line-height: 1.45; animation: up 0.28s ease both; display: flex; flex-direction: column; gap: 6px; box-sizing: border-box; }
+.wk-b .qt { color: #d65200; }
+.wk-clip { align-self: flex-end; width: 90%; box-sizing: border-box; background: #FF640A; border-radius: 22px; display: flex; flex-direction: column; gap: 8px; padding: 13px 17px; position: relative; animation: up 0.28s ease both; color: #FFFFFF; }
+.wk-clip::after { content: ""; position: absolute; right: -7px; bottom: 0; width: 10px; height: 14px; background: #FF640A; clip-path: polygon(0 0, 0 100%, 100% 100%); }
+.wk-clip .said { font-size: 16px; }
+.wk-clip .player { gap: 12px; } .wk-clip .play { width: 44px; height: 44px; } .wk-clip .bars { height: 28px; } .wk-clip .t { font-size: 14px; }
+.dock { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 20px 30px; background: #FFFFFF; display: flex; flex-direction: column; gap: 4px; z-index: 4; }
+.dock::before { content: ""; position: absolute; left: 0; right: 0; top: -18px; height: 18px; background: linear-gradient(to bottom, rgba(255,255,255,0), #FFFFFF); pointer-events: none; }
+.pill { height: 54px; border-radius: 999px; border: 0; background: #121212; color: #FFFFFF; font: 600 16px var(--font-app); display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; }
+.pill .rdot { width: 10px; height: 10px; }
+.link { border: 0; background: transparent; color: #737373; font: 400 16px var(--font-app); height: 40px; width: 100%; }
+
+/* The Ideal Text page (as the live code draws it) */
+.it { position: absolute; inset: 0; display: flex; flex-direction: column; background: #FFFFFF; }
+.ithead { flex: none; min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; border-bottom: 1px solid #EBEBEB; }
+.ithead .itt { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.ithead .itt b { font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ithead .itt small { font-size: 11px; color: #737373; }
+.ithead .hb { display: flex; gap: 8px; align-items: center; }
+.ithead .more { font-size: 20px; color: #737373; letter-spacing: 1px; }
+.itbody { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: 10px; padding: 22px 22px 24px; }
+.itbody::-webkit-scrollbar { display: none; }
+.scap { align-self: flex-start; font-size: 11px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #737373; margin-bottom: 6px; }
+.itbody .reqslide { width: 100%; aspect-ratio: 16/9; border-radius: 8px; background: #FAF7F2; border: 1px solid #EBEBEB; display: flex; gap: 12px; padding: 14px; box-sizing: border-box; margin-bottom: 8px; }
+.itbody .reqslide .ph { width: 56px; height: 56px; border-radius: 10px; flex: none; background: linear-gradient(135deg, #D9B8A5, #B98B74); }
+.itbody .reqslide .q { font-size: 13px; line-height: 1.4; color: #1b1b1b; }
+.itbody .reqslide .q b { display: block; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #777; margin-bottom: 4px; }
+.para { margin: 0 0 14px; font-size: 18px; line-height: 1.6; }
+.itfoot { flex: none; padding: 10px 20px 26px; display: flex; flex-direction: column; gap: 2px; border-top: 1px solid #EBEBEB; }
+.itfoot .link { height: 40px; }
+
+/* The shop's site, the widget and the answer page: the client's colours, "powered by" us */
+.site { position: absolute; inset: 0; background: #FAF7F2; color: #1B1B1B; font-family: var(--font-app); display: flex; flex-direction: column; overflow: hidden; }
+.site .top { display: flex; align-items: center; justify-content: space-between; padding: 54px 20px 12px; }
+.site .brand { font-size: 16px; font-weight: 700; letter-spacing: 0.06em; color: #1D4F3F; }
+.site .nav { display: flex; gap: 14px; font-size: 13px; color: #555; }
+.site .hero { margin: 0 20px; height: 200px; border-radius: 16px; background: #D9E4DE; display: flex; align-items: flex-end; padding: 18px; box-sizing: border-box; font-size: 26px; font-weight: 600; line-height: 1.15; color: #163D31; }
+.site .sec { padding: 22px 20px 0; display: flex; flex-direction: column; gap: 14px; }
+.site .kick { font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #777; }
+.site .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.site .pr { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.site .pr .img { height: 130px; border-radius: 12px; background: #E9E2D6; }
+.site .pr b { font-weight: 600; } .site .pr small { color: #666; font-size: 13px; }
+.widget { position: absolute; left: 16px; right: 16px; bottom: 22px; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 18px; background: #FFFFFF; color: #1B1B1B; box-shadow: 0 8px 28px rgba(20, 40, 30, 0.18); border: 1px solid #E3DED5; text-align: left; font-family: var(--font-app); }
+.widget .av { width: 44px; height: 44px; border-radius: 50%; background: #1D4F3F; display: grid; place-items: center; flex: none; }
+.widget b { display: block; font-size: 15px; font-weight: 600; } .widget small { display: block; font-size: 12.5px; color: #666; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 24px 24px 0 0; padding: 18px 20px 22px; display: flex; flex-direction: column; gap: 14px; z-index: 21; animation: rise 0.25s ease both; color: #1B1B1B; font-family: var(--font-app); box-sizing: border-box; }
+@keyframes rise { from { transform: translateY(40px); opacity: 0; } }
+.dim { position: absolute; inset: 0; background: rgba(27,27,27,0.45); z-index: 20; }
+.sheet .who { display: flex; align-items: center; justify-content: space-between; }
+.sheet .who .l { display: flex; align-items: center; gap: 10px; }
+.sheet .who .av { width: 36px; height: 36px; border-radius: 50%; background: #C9D6CF; }
+.sheet .who b { display: block; font-size: 15px; } .sheet .who small { display: block; font-size: 12px; color: #666; }
+.sheet h3 { margin: 0; font-size: 19px; font-weight: 600; line-height: 1.25; }
+.sheet label { font-size: 13px; font-weight: 600; color: #444; display: flex; flex-direction: column; gap: 6px; }
+.sheet textarea, .sheet input[type="tel"] { width: 100%; box-sizing: border-box; border: 1px solid #DDD6CB; border-radius: 12px; padding: 10px 12px; font: 400 15px var(--font-app); line-height: 1.4; resize: none; color: #1B1B1B; background: #FFFFFF; }
+.sheet .photo { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; border: 1px dashed #C9C2B6; background: #FAF7F2; text-align: left; font-family: var(--font-app); color: #1B1B1B; }
+.sheet .photo[aria-pressed="true"] { border-style: solid; border-color: #1D4F3F; }
+.sheet .photo b { display: block; font-size: 14px; } .sheet .photo small { display: block; font-size: 12px; color: #666; }
+.sheet .consent { display: flex; align-items: flex-start; gap: 10px; font-size: 12.5px; line-height: 1.4; color: #444; font-weight: 400; flex-direction: row; }
+.sheet .consent input { width: 18px; height: 18px; margin: 1px 0 0; flex-shrink: 0; accent-color: #1D4F3F; }
+.gbtn { display: flex; align-items: center; justify-content: center; height: 50px; border-radius: 14px; background: #1D4F3F; color: #FFFFFF; font: 600 16px var(--font-app); border: 0; width: 100%; }
+.gbtn:disabled { opacity: 0.4; }
+.pby { text-align: center; font-size: 11px; color: #999; }
+.sent { display: flex; flex-direction: column; gap: 16px; align-items: center; text-align: center; }
+.sent .ok { width: 56px; height: 56px; border-radius: 50%; background: #E4EFE9; display: grid; place-items: center; }
+.sent .box { width: 100%; border-radius: 12px; background: #FAF7F2; padding: 12px 14px; box-sizing: border-box; text-align: left; font-size: 13.5px; line-height: 1.45; color: #444; }
+/* Ola's messages and the answer page */
+.msgs { position: absolute; inset: 0; background: #F2F0EB; display: flex; flex-direction: column; font-family: var(--font-app); color: #1B1B1B; }
+.msgs .mh { padding: 54px 16px 12px; background: #FFFFFF; border-bottom: 1px solid #E6E2DA; display: flex; align-items: center; gap: 10px; }
+.msgs .mh .av { width: 36px; height: 36px; border-radius: 50%; background: #1D4F3F; color: #FFFFFF; display: grid; place-items: center; font-weight: 700; font-size: 14px; }
+.msgs .mh b { display: block; font-size: 15px; } .msgs .mh small { display: block; font-size: 12px; color: #666; }
+.msgs .mt { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 8px; justify-content: flex-end; }
+.msgs .m { align-self: flex-start; max-width: 86%; background: #FFFFFF; border-radius: 14px; padding: 9px 12px; font-size: 15px; line-height: 1.4; box-shadow: 0 1px 1px rgba(0,0,0,0.05); animation: up 0.28s ease both; }
+.msgs .m a { color: #1D4F3F; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.msgs .m .tm { display: block; font-size: 11px; color: #999; text-align: right; margin-top: 4px; }
+.msgs .mt .day { align-self: center; font-size: 12px; color: #777; background: #E6E2DA; border-radius: 8px; padding: 3px 8px; }
+.msgs .mc { padding: 10px 16px 30px; background: #FFFFFF; border-top: 1px solid #E6E2DA; display: flex; gap: 8px; align-items: center; }
+.msgs .mc .fld { flex: 1; height: 40px; border-radius: 20px; border: 1px solid #E6E2DA; padding: 0 14px; display: flex; align-items: center; font-size: 14px; color: #999; }
+.ans { position: absolute; inset: 0; background: #FFFFFF; color: #1B1B1B; font-family: var(--font-app); display: flex; flex-direction: column; }
+.ans .ah { padding: 54px 20px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #EFEBE4; }
+.ans .ab { flex: 1; overflow-y: auto; padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 16px; scrollbar-width: none; }
+.ans .ab::-webkit-scrollbar { display: none; }
+.ans .vid { position: relative; width: 100%; aspect-ratio: 16/10; border-radius: 16px; background: #2A2A2A; overflow: hidden; border: 0; padding: 0; }
+.ans .vid .face { position: absolute; inset: 0; background: radial-gradient(circle at 50% 42%, #C9A58E 0 18%, #4A4A4A 19% 100%); opacity: 0.55; }
+.ans .vid .pl { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 62px; height: 62px; border-radius: 50%; background: rgba(255,255,255,0.95); display: grid; place-items: center; }
+.ans .vid .dur { position: absolute; right: 12px; bottom: 10px; font-size: 12px; color: #FFFFFF; background: rgba(0,0,0,0.5); border-radius: 6px; padding: 2px 7px; font-variant-numeric: tabular-nums; }
+.ans h2 { margin: 0; font-size: 21px; font-weight: 600; line-height: 1.25; }
+.ans .kick { font-size: 11.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #777; }
+.ans .txt { font-size: 15.5px; line-height: 1.55; color: #2A2A2A; }
+.ans ol { margin: 0; padding-left: 20px; font-size: 15px; line-height: 1.5; display: flex; flex-direction: column; gap: 8px; }
+.ans ol b { font-weight: 600; }
+.ans .reply { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #EFEBE4; padding-top: 16px; }
+.ans .reply textarea { width: 100%; box-sizing: border-box; border: 1px solid #DDD6CB; border-radius: 12px; padding: 10px 12px; font: 400 15px var(--font-app); resize: none; }
+.ans .replied { border-radius: 12px; background: #E4EFE9; padding: 12px 14px; font-size: 14px; color: #163D31; }
+
+.ans .who { display: flex; align-items: center; gap: 12px; }
+.ans .who .av { width: 44px; height: 44px; border-radius: 50%; background: #C9D6CF; flex: none; }
+.ans .who small { display: block; font-size: 12.5px; color: #777; margin-top: 2px; }
+.ans .vid { display: block; width: 100%; height: 210px; flex: none; }
+.ans .vid .cap { position: absolute; left: 12px; right: 12px; bottom: 10px; font-size: 13px; color: #FFFFFF; text-align: left; text-shadow: 0 1px 2px rgba(0,0,0,0.5); padding-right: 60px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ans .sec { display: flex; flex-direction: column; gap: 8px; }
+.ans .steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 15px; line-height: 1.4; }
+.ans .steps li { display: flex; gap: 10px; align-items: flex-start; }
+.ans .steps li::before { content: ""; width: 18px; height: 18px; border-radius: 50%; flex: none; margin-top: 2px; background: #E4EFE9 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231D4F3F' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6L9 17l-5-5'/%3E%3C/svg%3E") center/11px no-repeat; }
+.ans .pcard { border: 1px solid #E6E2DA; border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.ans .prow { display: flex; align-items: center; gap: 12px; }
+.ans .pimg { width: 64px; height: 64px; border-radius: 12px; background: #E9E2D6; flex: none; }
+.ans .pt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ans .pt b { font-size: 16px; font-weight: 600; } .ans .pt small { font-size: 13px; color: #666; line-height: 1.35; }
+.ans .price { font-size: 13px; color: #1B1B1B; font-weight: 600; margin-top: 2px; }
+.ans .gbtn.o { background: #FFFFFF; color: #1D4F3F; border: 1.5px solid #1D4F3F; }
+.ans .gbtn.done { background: #E4EFE9; color: #163D31; border: 0; opacity: 1; font-size: 14px; }
+.ans .days { display: flex; gap: 8px; flex-wrap: wrap; }
+.ans .dchip { height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #DDD6CB; background: #FFFFFF; font: 500 13.5px var(--font-app); color: #1B1B1B; }
+.ans .dchip[aria-pressed="true"] { background: #1B1B1B; color: #FFFFFF; border-color: #1B1B1B; }
+.ans details.said { border-top: 1px solid #EFEBE4; padding-top: 12px; }
+.ans details.said summary { cursor: pointer; font-size: 15px; font-weight: 600; color: #1D4F3F; list-style: none; display: flex; align-items: center; gap: 8px; }
+.ans details.said summary::before { content: "›"; display: inline-block; font-size: 20px; color: #999; transition: transform 0.15s; }
+.ans details.said[open] summary::before { transform: rotate(90deg); }
+.ans details.said .txt { margin-top: 10px; }
+.ans .bar { position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-top: 1px solid #E6E2DA; padding: 10px 16px 28px; display: flex; align-items: center; justify-content: space-between; gap: 12px; z-index: 5; }
+.ans .bar b { display: block; font-size: 14px; } .ans .bar small { display: block; font-size: 12px; color: #666; }
+.ans .ab { padding-bottom: 110px; }
+.prodslide .pimg { width: 64px; height: 64px; border-radius: 12px; flex: none; }
+.picker { align-self: stretch; border: 1.5px solid #EBEBEB; border-radius: 24px; padding: 18px 16px; background: #FFFFFF; display: flex; flex-wrap: wrap; gap: 6px; animation: up 0.28s ease both; }
+.picker button { border-radius: 10px; padding: 4px 8px; border: 0; background: none; font: 600 22px var(--font-app); color: #121212; line-height: 1.3; }
+.picker button[aria-pressed="true"] { background: rgba(255, 100, 10, 0.09); color: #FF640A; }
+.rs .nxt { border: 0; background: #121212; color: #FFFFFF; }
+.wa-in { height: 40px; width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid #EBEBEB; background: #FFFFFF; padding: 0 12px; font: 400 15px var(--font-app); color: #121212; }
+.ans .deck { border: 1px solid #E6E2DA; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; }
+.ans .dslide .reqslide { border: 0; border-radius: 0; margin: 0; aspect-ratio: 16/10; }
+.ans .dctl { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-top: 1px solid #E6E2DA; }
+.ans .dots { display: flex; gap: 5px; justify-content: center; padding: 0 0 10px; }
+.ans .dots i { width: 6px; height: 6px; border-radius: 50%; background: #D9D4CB; }
+.ans .dots i.on { background: #1D4F3F; }
+.ans .zipl { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: #444; }
+.ans .ziprow { display: flex; gap: 8px; }
+.ans .zip { flex: 1; min-width: 0; height: 44px; box-sizing: border-box; border: 1px solid #DDD6CB; border-radius: 12px; padding: 0 12px; font: 400 16px var(--font-app); color: #1B1B1B; }
+.ans .loc { align-self: flex-start; border: 0; background: none; padding: 4px 0; font: 500 13.5px var(--font-app); color: #1D4F3F; text-decoration: underline; text-underline-offset: 3px; }
+.ans .near { display: flex; align-items: center; justify-content: space-between; }
+.ans .near .loc { padding: 0; }
+.ans .salons { display: flex; flex-direction: column; gap: 8px; }
+.ans .salon { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1.5px solid #E6E2DA; border-radius: 12px; background: #FFFFFF; text-align: left; font-family: var(--font-app); color: #1B1B1B; }
+.ans .salon[aria-pressed="true"] { border-color: #1D4F3F; box-shadow: inset 0 0 0 1px #1D4F3F; }
+.ans .salon .sn { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ans .salon .sn b { font-size: 14.5px; font-weight: 600; } .ans .salon .sn small { font-size: 12.5px; color: #666; }
+.ans .salon .km { flex: none; font-size: 13px; font-weight: 600; color: #1D4F3F; font-variant-numeric: tabular-nums; }
+.ans .where { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #555; }
+.ans .where a { color: #1D4F3F; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+/* Admin: the workspace page (the admin's look: side nav on desktop, a top bar on a phone) */
+.adm { position: absolute; inset: 0; background: #FFFFFF; color: #121212; font-family: var(--font-app); display: flex; flex-direction: column; }
+.adm .ah { height: 56px; margin-top: 44px; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid #EBEBEB; }
+.adm .ah .chip { margin-left: auto; font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: #737373; border: 1px solid #EBEBEB; border-radius: 999px; padding: 3px 8px; }
+.adm .ab { flex: 1; overflow-y: auto; padding: 18px 16px 24px; display: flex; flex-direction: column; gap: 18px; scrollbar-width: none; }
+.adm .back { font-size: 13px; color: #737373; }
+.adm h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.adm .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.adm .tile { border-radius: 12px; border: 1px solid #EBEBEB; padding: 10px 12px; }
+.adm .tile small { display: block; font-size: 11px; color: #737373; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+.adm .tile b { display: block; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.adm h2 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: #737373; }
+.adm .box { border-radius: 16px; border: 1px solid #EBEBEB; padding: 0 14px; }
+.adm .row { display: grid; grid-template-columns: minmax(0, 7.5rem) minmax(0, 1fr); gap: 10px; border-bottom: 1px solid #EBEBEB; padding: 10px 0; font-size: 13.5px; }
+.adm .row:last-child { border-bottom: 0; }
+.adm .row span:first-child { color: #737373; }
+.adm code { font: 500 11.5px var(--font-mono); background: #F5F5F5; border-radius: 6px; padding: 2px 5px; word-break: break-all; }
+.adm .abtn { border-radius: 10px; background: #121212; color: #FFFFFF; padding: 8px 14px; font: 500 13.5px var(--font-app); border: 0; align-self: flex-start; }
+.adm .abtn.o { background: #FFFFFF; color: #121212; border: 1px solid #EBEBEB; }
+.adm .sw { color: #1F7A4A; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition: none !important; } }
+</style>
+
+<div class="app" id="app">
+  <nav class="rail" aria-label="Screens">
+    <div>
+      <h1>Customer requests</h1>
+      <p class="lede">A customer asks on the shop's site; the trichologist answers with a Take in the app; the customer gets it on WhatsApp. Tap inside the phone.</p>
+    </div>
+    <div class="legend" aria-hidden="true">
+      <span><i class="dot"></i>Real app</span>
+      <span><i class="dot mixed"></i>Real, with new parts</span>
+      <span><i class="dot new"></i>New</span>
+    </div>
+    <div id="steps" style="display:flex;flex-direction:column;gap:16px"></div>
+  </nav>
+
+  <main class="centre">
+    <div class="jump">
+      <h1>Customer requests</h1>
+      <label for="jumpto" class="where" style="min-width:0">Screen</label>
+      <select id="jumpto" aria-label="Jump to a screen"></select>
+    </div>
+    <div class="stage" id="stage">
+      <div class="device" id="device">
+        <div class="bezel" id="bezel"><div class="screen" id="screen" aria-live="polite"></div></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="btn" id="back" type="button">‹ Back</button>
+      <span class="where" id="where">1 of 12</span>
+      <button class="btn" id="next" type="button">Next ›</button>
+    </div>
+    <div class="toggles">
+      <label for="tgHot"><input type="checkbox" id="tgHot" checked> Show what to tap</label>
+      <label for="tgNew"><input type="checkbox" id="tgNew"> Underline new words</label>
+    </div>
+  </main>
+
+  <aside class="notes" aria-label="About this screen">
+    <div class="card" id="note"></div>
+    <div class="card open">
+      <h3>Decided (N223)</h3>
+      <p class="refs" style="margin:0">A normal user answers, as a Take; one backend, a workspaces table; one project per request; no AI visible in the MVP, pairs and documents as the client's JSONL export; WhatsApp to an answer page with one reply box; the client is the controller; the photo kept 30 days after the answer; a 24-hour alarm; the client's name with "powered by"; free for testers; the founder creates the workspace in admin. N224: the answer schema extracted by the AI and checked in admin, Never 2 for the answerer, autonomy per workspace and request type, pgvector. N225: a sales tool first, judged by purchases and bookings; the answer page carries the cart and the booking; a pair keeps its outcome; the form is the product finder; instant answers only once a model answers alone. N226: the answer is a Take, her voice over the slides she picks, camera off; a typed answer for follow-ups only. Every word on these screens waits for your OK (Never 4).</p>
+    </div>
+    <p class="refs" style="margin:0 4px">The Lounge and the processing wait are screenshots of today's app; the recording screen, the lens and the Ideal Text page are drawn from their locked prototypes. Marta, Ola and Mila Hair Studio are examples. Clips are silent here. The product picker, the typed follow-up and the customer's pages are new screens.</p>
+  </aside>
+</div>
+
+<script>
+(() => {
+  const S = { photo: true, consent: false, sent: false, answered: false, replied: false, secs: 0, cart: [], booked: null, picks: ["Calm Scalp Shampoo", "Head Spa Visit"], zip: "", salon: null };
+  const nw = (s) => `<span class="nw">${s}</span>`;
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const OLA = "Itchy scalp for two months, hair feels thinner at the top. I wash every day with a supermarket shampoo. What should I use?";
+  const ANSWER = [
+    "Hi Ola, thank you for the photo. What I see on the crown is a dry, slightly irritated scalp, and washing every day with a strong shampoo is most likely what keeps it that way.",
+    "For the next three weeks I would wash every second day with the Calm Scalp Shampoo, lukewarm water, and leave the foam on for one minute before you rinse.",
+    "The thinner feeling at the top usually follows the irritation, so let the scalp settle first. If it is still itchy after three weeks, come in for a head spa and I will look at it properly.",
+  ];
+  const ICON = {
+    play: (c) => `<svg width="12" height="13" viewBox="0 0 12 13" aria-hidden="true"><path d="M2 1.2v10.6L11 6.5z" fill="${c}"/></svg>`,
+    x: `<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+    mic: `<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>`,
+    video: `<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`,
+    cam: `<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#1D4F3F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
+    check: `<svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#1D4F3F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`,
+    logo: `<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="4" cy="11" r="2.2" fill="#121212"/><circle cx="11" cy="11" r="3.2" fill="#121212"/><circle cx="18" cy="11" r="2.2" fill="#121212"/></svg>`,
+  };
+  function bars(n, seed, h = 20) { let s = seed, out = ""; for (let i = 0; i < n; i++) { s = (s * 9301 + 49297) % 233280; out += `<i style="height:${Math.round((0.25 + (s / 233280) * 0.75) * h)}px"></i>`; } return out; }
+  const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const ansSecs = () => Math.max(S.secs, 42);
+  const player = (secs, seed, cls = "w", h = 20) => `<div class="player"><button class="play ${cls}" type="button" data-play="${secs}" aria-label="Play">${ICON.play(cls === "w" ? "#FF640A" : "#FFFFFF")}</button><div class="bars${cls === "k" ? " gbars" : ""}">${bars(32, seed, h)}</div><span class="t"${cls === "k" ? ' style="color:#737373"' : ""}>${mmss(secs)}</span></div>`;
+  const loungeBase = (inner, scroll) => `<img class="shot" src="img/lounge.webp" alt="The Lounge, the real app screen"><div class="lg-area${scroll ? " scroll" : ""}" id="lg">${inner}</div>`;
+  const reqCard = (text, when) => `<div class="wa-card"><div class="req"><div class="ph" aria-label="Ola's photo of her scalp"></div><div><div class="txt">${esc(text)}</div><div class="when">${when}</div></div></div></div>`;
+  const reqSlide = (cls) => `<div class="${cls}"><div class="ph" aria-label="Ola's photo"></div><div class="q"><b>Ola asks</b>${esc(OLA)}</div></div>`;
+
+  // ---------- Screens ----------
+  // hot: [x, y, w, h, target, cue?]; target is a screen id, "!message" for a toast, or "<" for back.
+  const SCREENS = [
+    { id: "shop", ch: "On the shop's site", name: "The widget", kind: "new",
+      note: { what: "Mila Hair Studio's own site, with one new thing at the bottom: the widget. The client pastes one script tag; the words, the name and the colour come from their workspace. Tapping it opens the form.",
+        changes: ["A widget on the client's site, in the client's name"],
+        pending: ["Not sure which one? Ask Marta.", "Our trichologist answers you with a short video, within a day."],
+        refs: "N223 items 2, 11 and 13. The site itself is the client's; only the widget is ours." } },
+    { id: "form", ch: "On the shop's site", name: "The form", kind: "new",
+      note: { what: "The form is the shop's product finder (N225 item 4): a photo first, a few words optional, her WhatsApp number, one consent tick in the client's name. Send is live once there is a photo or words, and the tick. The request creates a guest identity for Ola and one request row in Mila's workspace.",
+        changes: ["The photo is the main input; words are optional", "One form for every tester; per-client fields come later, from the pairs"],
+        pending: ["Show Marta your scalp or hair. She answers with a short video and what to use.", "Add a photo of your scalp or hair · Deleted 30 days after the answer.", "Or tell her in a few words (optional)", "Your WhatsApp number, for the answer", "Mila Hair Studio may use what I wrote and my photo to advise me about my hair and scalp, and may message me on WhatsApp. How Mila keeps it.", "Send to Marta", "powered by WillpowerLab"],
+        refs: "N223 items 7, 8 and 9; N225 item 4. The consent sentence is a stand-in: counsel writes the one that goes live, with the DPA.",
+        tip: "The photo is already added and the words are filled in so you can tap through. Tick the box, then Send to Marta." } },
+    { id: "sent", ch: "On the shop's site", name: "Sent", kind: "new",
+      note: { what: "What Ola sees after sending. Nothing else happens on the site. From here the prototype moves to Marta's phone.",
+        changes: [], pending: ["Sent to Marta.", "She will watch what you wrote, record a short video for you, and you will get it on WhatsApp within a day.", "What you sent", "Back to the shop"],
+        refs: "N223 item 10: if nobody answers within 24 hours, one email goes to you and to Mila." } },
+
+    { id: "request", ch: "Marta's chat", name: "The request lands", kind: "mixed",
+      note: { what: "The Lounge as it is today. The request is the Take's one ask, in the slot every ask uses: Will's lead-in bubble in the thread, the grey card and the pair in the footer in place of Type here (E1, D4). Nothing sits between a Take and its Ideal Text: a request waits until the chain of the last Take is done. Not now brings it back after the next Take, as every ask.",
+        changes: ["A new kind of ask in the footer slot: a customer's request"],
+        pending: ["Ola, a customer of Mila Hair Studio, asks for your advice.", "Asked 12 minutes ago · will get the answer on WhatsApp", "Not now", "Answer"],
+        refs: "N223 items 1 and 16; the walk page's E1 (one ask per Take, the first that waits) and D4 (an ask and its buttons are adjacent). The card's text is Ola's own words, uncut." } },
+
+    { id: "pick", ch: "The answer is a Take", name: "What she recommends", kind: "new",
+      note: { what: "Before the recording, Marta taps what she recommends from Mila's catalogue. Each pick is a slide: Ola's request and photo first, then each product. The same kind of tap list as the helper words, in the lens. Her picks fill the answer schema before she says a word (N224 item 1). Camera off: a Take is her voice over slides, never her face.",
+        changes: ["A product picker before the recording; the picks are the slides and the schema"],
+        pending: ["What do you recommend to Ola? Tap it.", "Each pick is a slide. You record over them, camera off.", "Record over 3 slides · Record over the request", "Just the request"],
+        refs: "N226 items 1 and 2. The catalogue is the client's documents (N223 item 5).",
+        tip: "Tap or untap products, then Record over N slides." } },
+    { id: "rec", ch: "The answer is a Take", name: "Recording the answer", kind: "mixed",
+      note: { what: "The locked recording screen, unchanged: the top line, the slides, the strip, Back and Next slide, Finish take on the last. The deck is Ola's request and Marta's picks, so she speaks to each product in turn and the Ideal Text comes out one paragraph per slide. Her voice only; the camera is never on. Finish take leads to the processing wait, as every Take.",
+        changes: ["The request and the picks as the Take's slides"],
+        pending: ["Ola asks · Marta recommends (the slides' labels)"],
+        refs: "N223 items 1, 3 and 5. The recording goes through the processing-authorization path like every Take. No helper words on Take 1, as today.",
+        tip: "Next slide through the deck, then Finish take. ✕ asks whether to discard, as today." } },
+    { id: "processing", ch: "The answer is a Take", name: "Processing", kind: "real", img: "processing", auto: 3800,
+      hot: [[0, 60, 390, 784, "walk", 1]],
+      note: { what: "The processing wait, unchanged. It moves on by itself.", changes: [] } },
+    { id: "walk", ch: "The answer is a Take", name: "The lens", kind: "mixed",
+      note: { what: "The lens opens by itself on the walk, as after every Take: the hello, Marta's clip, the praised moment and why it was good. This is the part that trains Marta's sales communication: the walk's feedback is about how she said it, never about the shampoo. Next, after the summary, opens the Ideal Text.",
+        changes: ["Nothing in the lens; only its content is an answer to a customer"],
+        refs: "N223 items 1 and 14. The walk's words are signed; the praise reason is an example the backend writes. The helper words, the practise moment and other speakers come as in any walk; the prototype shows the first step only." } },
+    { id: "ideal", ch: "The answer is a Take", name: "The Ideal Text is the recommendation", kind: "mixed",
+      note: { what: "The Ideal Text page, unchanged: what Marta said in her latest Take, one paragraph per slide, the request and each product as the slides. This text is the written recommendation Ola will read. Record Take 2 re-records the answer over the same slides; the Ideal Text then becomes what she said in Take 2, and every version stays in the history (Never 5). Close goes back to the Lounge.",
+        changes: ["The request and the picks as the slides above the text"],
+        refs: "N223 item 3. The page's words and buttons are the locked ones; nothing is added here. Sending comes in the chat, so the page stays as it is.",
+        tip: "Scroll the text, then Close." } },
+    { id: "chat2", ch: "The answer is a Take", name: "Send it", kind: "mixed",
+      note: { what: "Back in the Lounge: Marta's recording, the pair (the Feedback walk and the Ideal Text card, N202), and then the Take's one ask: send this to Ola? The pair sits in the footer slot. Send posts her choice as her bubble, a line says it went, and the closing message with Record Take 2 comes last, as after every Take. Not yet keeps the answer unsent; Record Take 2 replaces it before sending.",
+        changes: ["A new ask after the walk: sending the answer to the customer", "A line in the thread when it was sent"],
+        pending: ["Send this answer to Ola on WhatsApp?", "Not yet", "Send to Ola", "Sent to Ola on WhatsApp · 14:12"],
+        refs: "N223 items 3 and 6; the walk page's B3 (the pair under its recording) and D4 (the closing message with Record Take N comes after the asks). The pair stored is: Ola's request, no draft, Marta's final answer and its transcript (item 4).",
+        tip: "Tap Send to Ola. Then the prototype moves to Ola's phone." } },
+
+    { id: "wa", ch: "Ola's phone", name: "WhatsApp", kind: "new",
+      note: { what: "The message Ola gets, from the WhatsApp number set on Mila's workspace. One line and a link; the video is never sent as a file, it is on the answer page, so a re-record never leaves an old video behind.",
+        changes: ["A WhatsApp message to the customer from the client's number"],
+        pending: ["Hi Ola, Marta has answered you with a short video. Watch it here:"],
+        refs: "N223 items 6 and 11. The number and the template are the client's; Meta approves the template, as with our own sign-in messages (N214)." } },
+    { id: "answer", ch: "Ola's phone", name: "The answer page", kind: "new",
+      note: { what: "The answer page carries the sale (N225 item 2): Marta's voice over the slides she picked, the slides turning as she speaks (N226 item 3), what she said as text (the Ideal Text), each recommended product with Add to cart and Mila's code in the link, Book with a date when Marta says come in, and one reply box. The page shows the latest shared Take. No score, no number, no verdict about Ola. A purchase or a booking through these links is the request's outcome, kept on the pair.",
+        changes: ["A public answer page per request, by signed link, in the client's colours", "Add to cart on each product, Book with a date: the money moment is on the page", "The outcome rides the pair (N225 item 3)"],
+        pending: ["Marta answered you", "Trichologist at Mila · this afternoon", "Listen to Marta. The slides turn as she speaks.", "Your routine for the next three weeks", "Marta's pick for a dry, irritated scalp", "Add to cart · Added to your cart · code MARTA10 applied", "Head spa visit with Marta", "Where should we book you? Your postcode · Find · Use my location instead", "Near 02-566 · Change", "Marta here Thu and Fri", "Pick a day at Mila Mokotów · Book Thu 12 Nov, 10:00 at Mila Mokotów · Booked", "Directions", "Read what Marta said", "Ask Marta one more thing", "Send", "Thanks, Ola. Marta has your question.", "Marta checks in with you in three weeks.", "powered by WillpowerLab"],
+        refs: "N223 items 6, 9 and 11; N225 items 2 and 3; the nearest salon (postcode asked at the booking, once, remembered on Ola's guest identity; salons with Marta's days from the workspace). The product list is the backend's reading of the Ideal Text against Mila's catalogue, in Marta's words; the cart and the booking are Mila's own pages, opened with the request's code.",
+        tip: "The page is in the order Ola uses it: the person and her voice over the slides, the routine as a checklist, one product with one big action (also in the bar at the bottom, so it is one tap from the first screen), the visit asks where only when she taps to book (postcode or her location, once, remembered), lists Mila's salons nearest first with the days Marta is there, then the day; the full text folded away, the reply last. Add the shampoo, enter 02-566 or Use my location, pick a salon and a day, Book, reply, Send." } },
+    { id: "chat3", ch: "Ola's phone", name: "The reply lands", kind: "mixed",
+      note: { what: "Ola's reply reaches Marta's Lounge the same way the request did: Will's lead-in, the card with her words. A follow-up may be typed in the card, no Take, sent the same way, the pair still recorded (N226 item 4). Record instead opens the picker, so a Take over the same project is Take 2 and the Ideal Text follows the newest answer.",
+        changes: ["A customer's follow-up as the same kind of ask", "A typed answer, for follow-ups only"],
+        pending: ["Ola replied to your answer.", "Replied 2 hours ago", "Record instead", "Send", "Sent to Ola on WhatsApp · 16:30"],
+        refs: "N223 items 3 and 6; N226 item 4. One project per request keeps the thread, the history and the export in one place." } },
+
+    { id: "admin", ch: "Founder admin", name: "The workspace", kind: "new", side: true,
+      note: { what: "Where you create a client's workspace: the name and colour the customer sees, the WhatsApp sender, the answerer, the script tag, the DPA, and the counts. The requests list shows each outcome in words: bought, booked, or neither, read from Mila's links (N225 item 3). Export pairs gives the JSONL of (request, schema, final answer, transcript, outcome) with the client's documents and the golden set. A weekly note to Mila's owner says the same in five lines. Nothing here is a score about a person.",
+        changes: ["An admin page per workspace", "The outcome of each request, in words", "A weekly note to the client's owner"],
+        pending: ["Workspaces", "Salons", "Requests · Bought · Booked", "Outcome: bought Calm Scalp Shampoo · booked the head spa · not yet", "Weekly note to Mila: sent Mondays", "Script tag", "Export pairs (JSONL)", "Data processing agreement", "Free for testers"],
+        refs: "N223 items 2, 5, 12 and 13; N224 item 1; N225 items 1 and 3." } },
+  ];
+  const BY = Object.fromEntries(SCREENS.map((s) => [s.id, s]));
+  const ORDER = SCREENS.filter((s) => !s.side).map((s) => s.id);
+
+  // ---------- Engine ----------
+  const screen = document.getElementById("screen");
+  let cur = "shop", hist = [], timers = [];
+  const later = (fn, ms) => { const t = setTimeout(fn, ms); timers.push(t); return t; };
+  const every = (fn, ms) => { const t = setInterval(fn, ms); timers.push(t); return t; };
+  function clearAll() { timers.forEach((t) => { clearTimeout(t); clearInterval(t); }); timers = []; }
+  function toast(msg) { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; screen.appendChild(t); later(() => t.remove(), 2700); }
+  function go(id, push = true) {
+    if (id === "<") { back(); return; }
+    if (id.startsWith("!")) { toast(id.slice(1)); return; }
+    if (!BY[id]) return;
+    if (push && cur !== id) hist.push(cur);
+    cur = id; render();
+  }
+  function back() { const p = hist.pop(); if (p) { cur = p; render(); } else { const i = ORDER.indexOf(cur); if (i > 0) { cur = ORDER[i - 1]; render(); } } }
+  function render() {
+    clearAll();
+    screen.innerHTML = "";
+    const sc = BY[cur];
+    if (sc.img) {
+      screen.innerHTML = `<img class="shot" src="img/${sc.img}.webp" alt="${sc.name}, the real app screen">`;
+      (sc.hot || []).forEach(([x, y, w, h, to, cue]) => {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "hot" + (cue ? " cue" : "");
+        Object.assign(b.style, { left: x + "px", top: y + "px", width: w + "px", height: h + "px" });
+        b.setAttribute("aria-label", to.startsWith("!") ? to.slice(1) : "Go to " + (BY[to] ? BY[to].name : "back"));
+        b.addEventListener("click", (e) => { e.stopPropagation(); go(to); });
+        screen.appendChild(b);
+      });
+      if (sc.auto) later(() => go((sc.hot[0] || [])[4]), sc.auto);
+    }
+    (DRAW[cur] || (() => {}))();
+    paintNote(sc); paintRail();
+    try { history.replaceState(null, "", "#" + cur); } catch (e) {}
+  }
+  screen.addEventListener("click", (e) => {
+    if (e.target.closest("button, a, input, textarea, label")) return;
+    if (!BY[cur] || !BY[cur].img) return;
+    screen.classList.add("flash"); later(() => screen.classList.remove("flash"), 450);
+  });
+  screen.addEventListener("click", (e) => {
+    const p = e.target.closest("[data-play]");
+    if (p) { playBars(p); return; }
+  });
+  function playBars(btn) {
+    const host = btn.parentElement, bs = [...host.querySelectorAll(".bars i")];
+    if (!bs.length) return;
+    const secs = Math.min(4, Number(btn.dataset.play) || 3);
+    bs.forEach((b) => b.classList.remove("on"));
+    let i = 0;
+    const t = every(() => { if (i >= bs.length) { clearInterval(t); later(() => bs.forEach((b) => b.classList.remove("on")), 400); return; } bs[i++].classList.add("on"); }, (secs * 1000) / bs.length);
+  }
+
+  // ---------- Drawn screens ----------
+  const DRAW = {};
+  DRAW.shop = () => {
+    screen.innerHTML = `<div class="site">
+      <div class="top"><span class="brand">MILA HAIR STUDIO</span><span class="nav"><span>Shop</span><span>Head spa</span><span>Cart</span></span></div>
+      <div class="hero">Scalp first.<br>Then the hair.</div>
+      <div class="sec"><span class="kick">Bestsellers</span><div class="grid">
+        <div class="pr"><div class="img"></div><b>Calm Scalp Shampoo</b><small>[PRICE]</small></div>
+        <div class="pr"><div class="img" style="background:#DFE6E2"></div><b>Oil Balance Wash</b><small>[PRICE]</small></div>
+        <div class="pr"><div class="img" style="background:#ECE4E0"></div><b>Density Serum</b><small>[PRICE]</small></div>
+        <div class="pr"><div class="img" style="background:#E3E8DF"></div><b>Head Spa Visit</b><small>[PRICE]</small></div>
+      </div></div>
+      <button class="widget cue-ring" type="button" id="wg"><span class="av">${ICON.video}</span><span style="flex:1;min-width:0"><b>${nw("Not sure which one? Ask Marta.")}</b><small>${nw("Our trichologist answers you with a short video, within a day.")}</small></span><span style="color:#999;font-size:20px">›</span></button>
+    </div>`;
+    screen.querySelector("#wg").onclick = () => go("form");
+  };
+  DRAW.form = () => {
+    S.consent = false;
+    screen.innerHTML = `<div class="site"><div class="top"><span class="brand">MILA HAIR STUDIO</span></div><div class="hero">Scalp first.<br>Then the hair.</div></div><div class="dim" id="dim"></div>
+      <div class="sheet">
+        <div class="who"><span class="l"><span class="av"></span><span><b>Marta, trichologist</b><small>Mila Hair Studio</small></span></span><button class="it-x" type="button" id="fx" aria-label="Close">${ICON.x}</button></div>
+        <h3>${nw("Show Marta your scalp or hair. She answers with a short video and what to use.")}</h3>
+        <button class="photo" type="button" id="photo" aria-pressed="${S.photo}">${ICON.cam}<span><b>${nw(S.photo ? "scalp.jpg added" : "Add a photo of your scalp or hair")}</b><small>${nw("Deleted 30 days after the answer.")}</small></span></button>
+        <label>${nw("Or tell her in a few words (optional)")}<textarea id="need" rows="2">${esc(OLA)}</textarea></label>
+        <label>${nw("Your WhatsApp number, for the answer")}<input id="wa" type="tel" value="+48 600 123 456"></label>
+        <label class="consent cue-ring" for="ck"><input id="ck" type="checkbox"><span>${nw("Mila Hair Studio may use what I wrote and my photo to advise me about my hair and scalp, and may message me on WhatsApp.")} <u>${nw("How Mila keeps it")}</u>.</span></label>
+        <button class="gbtn" type="button" id="send" disabled>${nw("Send to Marta")}</button>
+        <div class="pby">${nw("powered by WillpowerLab")}</div>
+      </div>`;
+    const ck = screen.querySelector("#ck"), send = screen.querySelector("#send"), need = screen.querySelector("#need"), photo = screen.querySelector("#photo");
+    const sync = () => { send.disabled = !(ck.checked && (S.photo || need.value.trim())); send.classList.toggle("cue-ring", !send.disabled); ck.closest("label").classList.toggle("cue-ring", !ck.checked); };
+    ck.onchange = sync; need.oninput = sync;
+    photo.onclick = () => { S.photo = !S.photo; photo.setAttribute("aria-pressed", String(S.photo)); photo.querySelector("b").innerHTML = nw(S.photo ? "scalp.jpg added" : "Add a photo of your scalp or hair"); sync(); };
+    screen.querySelector("#fx").onclick = () => go("shop");
+    screen.querySelector("#dim").onclick = () => go("shop");
+    send.onclick = () => { S.sent = true; go("sent"); };
+  };
+  DRAW.sent = () => {
+    screen.innerHTML = `<div class="site"><div class="top"><span class="brand">MILA HAIR STUDIO</span></div><div class="hero">Scalp first.<br>Then the hair.</div></div><div class="dim"></div>
+      <div class="sheet sent">
+        <span class="ok">${ICON.check}</span>
+        <h3>${nw("Sent to Marta.")}</h3>
+        <p style="margin:0;font-size:15px;line-height:1.45;color:#444;max-width:300px">${nw("She will watch what you wrote, record a short video for you, and you will get it on WhatsApp within a day.")}</p>
+        <div class="box"><b style="display:block;color:#1B1B1B;margin-bottom:4px">${nw("What you sent")}</b>${esc(OLA)}${S.photo ? ' <span style="color:#888">· 1 photo</span>' : ""}</div>
+        <button class="gbtn cue-ring" type="button" id="bk">${nw("Back to the shop")}</button>
+        <div class="pby">${nw("powered by WillpowerLab")}</div>
+      </div>`;
+    screen.querySelector("#bk").onclick = () => { go("request"); toast("Now you are Marta, in the WillpowerLab app."); };
+  };
+
+  // The request in the Lounge: the Take's one ask, in the footer slot (E1, D4).
+  const earlier = () => `<div class="lg-day">Monday 26 October</div>
+    <div class="lg-rec-b"><span class="rl">${ICON.mic}<span>Your Recording <small>· Take 1</small></span></span>${player(38, 5)}<span class="shr">Only me</span></div>
+    <div class="pair-w"><button class="fw" type="button"><span>Feedback walk</span><span class="fmeta">Oct 26, 2026</span></button><button class="itcard" type="button"><span class="tile"></span><b>Head spa intro</b><span class="ver">1.0</span></button></div>
+    <div class="lg-b">Look, practice makes perfect. If you're ready, let's go with the next take. 💪<button class="lg-rec" type="button"><span class="rdot"></span>Record Take 2</button></div>`;
+  function askInLounge({ day, lead, card, act, onAct, onNot, notSaid }) {
+    screen.innerHTML = loungeBase(`${earlier()}<div class="lg-day">${day}</div><div class="lg-b" id="lead">${nw(lead)}</div>`, true)
+      + `<div class="lg-dock" id="dock">${card}<div class="pair"><button class="close" type="button" id="not">${nw("Not now")}</button><button class="act cue-ring" type="button" id="act">${nw(act)}</button></div></div>`;
+    const lg = screen.querySelector("#lg"), dock = screen.querySelector("#dock");
+    const fit = () => { lg.style.height = (811 - dock.offsetHeight - 73) + "px"; lg.scrollTop = lg.scrollHeight; };
+    fit();
+    screen.querySelector("#act").onclick = onAct;
+    screen.querySelector("#not").onclick = () => {
+      dock.remove(); lg.style.height = "672px";
+      lg.insertAdjacentHTML("beforeend", `<div class="lg-b lg-me">Not now</div><div class="lg-b">${notSaid}</div>`); lg.scrollTop = lg.scrollHeight;
+      if (onNot) onNot();
+    };
+  }
+  DRAW.request = () => askInLounge({
+    day: "Tuesday 27 October", lead: "Ola, a customer of Mila Hair Studio, asks for your advice.",
+    card: reqCard(OLA, nw("Asked 12 minutes ago · will get the answer on WhatsApp")), act: "Answer",
+    onAct: () => go("pick"), notSaid: "Noted. I'll bring it back after your next Take.",
+  });
+
+  // The catalogue, the picks and the slides (N226): the request first, then each product picked.
+  const PRODUCTS = { "Calm Scalp Shampoo": { bg: "#E9E2D6", why: "for a dry, irritated scalp" }, "Oil Balance Wash": { bg: "#DFE6E2", why: "for an oily scalp" }, "Density Serum": { bg: "#ECE4E0", why: "for thinning hair, once the scalp is calm" }, "Head Spa Visit": { bg: "#E3E8DF", why: "a proper look at the scalp, 45 minutes" } };
+  // Mila's salons, nearest first once Ola's postcode is known (N227). Marta works at each on set days.
+  const SALONS = [
+    { id: "mok", name: "Mila Mokotów", street: "Puławska 12", km: "1.2 km", marta: "Marta here Thu and Fri", days: ["Thu 12 Nov", "Fri 13 Nov", "Thu 19 Nov"] },
+    { id: "wol", name: "Mila Wola", street: "Górczewska 8", km: "4.7 km", marta: "Marta here Mon", days: ["Mon 16 Nov", "Mon 23 Nov"] },
+    { id: "pra", name: "Mila Praga", street: "Targowa 21", km: "6.3 km", marta: "Marta here Wed", days: ["Wed 18 Nov"] },
+  ];
+  const slides = () => [{ kind: "req" }].concat(S.picks.map((p) => ({ kind: "prod", name: p })));
+  const slideHtml = (sl, cls) => sl.kind === "req" ? reqSlide(cls) : `<div class="${cls} prodslide"><div class="pimg" style="background:${PRODUCTS[sl.name].bg}"></div><div class="q"><b>Marta recommends</b>${esc(sl.name)}<br><span style="color:#666">${esc(PRODUCTS[sl.name].why)}</span></div></div>`;
+  const takeNo = () => (S.replied ? 2 : 1);
+
+  // Before the recording: what she recommends, each pick a slide (the helper words' kind of tap list).
+  DRAW.pick = () => {
+    screen.innerHTML = `<div class="wk-top"><span class="wk-cap" style="margin-left:8px">Ola · itchy scalp</span><button class="wk-x" type="button" id="px" aria-label="Close">${ICON.x}</button></div>
+      <div class="wk-thread" id="th">
+        <div class="wk-b"><span>${nw("What do you recommend to Ola? Tap it.")}</span><span style="font-size:15px;color:#737373">${nw("Each pick is a slide. You record over them, camera off.")}</span></div>
+        <div class="picker" id="pk">${Object.keys(PRODUCTS).map((p) => `<button type="button" data-p="${p}" aria-pressed="${S.picks.includes(p)}">${p}</button>`).join("")}</div>
+      </div><div class="dock"><button class="pill cue-ring" type="button" id="go"><span class="rdot"></span><span id="gol"></span></button><button class="link" type="button" id="only">${nw("Just the request")}</button></div>`;
+    const label = () => { screen.querySelector("#gol").innerHTML = nw(S.picks.length ? `Record over ${1 + S.picks.length} slides` : "Record over the request"); };
+    label();
+    screen.querySelectorAll("[data-p]").forEach((b) => b.onclick = () => { const p = b.dataset.p; S.picks = S.picks.includes(p) ? S.picks.filter((x) => x !== p) : [...S.picks, p]; b.setAttribute("aria-pressed", String(S.picks.includes(p))); label(); });
+    screen.querySelector("#go").onclick = () => go("rec");
+    screen.querySelector("#only").onclick = () => { S.picks = []; go("rec"); };
+    screen.querySelector("#px").onclick = () => go("request");
+  };
+
+  // The locked recording screen: the request and her picks as the slides.
+  DRAW.rec = () => {
+    S.secs = 0; let i = 0; const sl = slides(), n = takeNo();
+    screen.innerHTML = `<div class="rs">
+      <div class="h"><p class="whr" id="whr"></p><button class="x" type="button" id="rx" aria-label="Close">${ICON.x}</button></div>
+      <div class="band"><div id="sb"></div><div class="road"></div>
+        <div class="dock"><div class="strip"><span class="sdot"></span><span class="clock" id="clk">3:00</span><span class="sbar"><b id="fill"></b></span></div>
+        <div class="pr"><button class="back" type="button" id="bk">Back</button><button class="nxt" type="button" id="nx">Next slide</button></div></div>
+      </div></div>`;
+    const bk = screen.querySelector("#bk"), nx = screen.querySelector("#nx");
+    const paint = () => {
+      screen.querySelector("#whr").textContent = `Take ${n} · Slide ${i + 1} of ${sl.length}`;
+      screen.querySelector("#sb").innerHTML = slideHtml(sl[i], "slide");
+      bk.disabled = i === 0; bk.style.opacity = i === 0 ? "0.35" : "1";
+      const last = i === sl.length - 1;
+      nx.className = (last ? "fin" : "nxt") + " cue-ring"; nx.innerHTML = last ? "<i></i>Finish take" : "Next slide";
+    };
+    paint();
+    const clk = screen.querySelector("#clk"), fill = screen.querySelector("#fill");
+    every(() => { S.secs += 1; clk.textContent = mmss(Math.max(0, 180 - S.secs)); fill.style.width = Math.min(100, S.secs / 180 * 100) + "%"; }, 1000);
+    nx.onclick = () => { if (i === sl.length - 1) go("processing"); else { i += 1; paint(); } };
+    bk.onclick = () => { if (i > 0) { i -= 1; paint(); } };
+    screen.querySelector("#rx").onclick = () => {
+      const sc = document.createElement("div"); sc.className = "scrim";
+      sc.innerHTML = `<div class="dlg"><h2>Discard this take?</h2><p>This recording has not been saved.</p><div class="row"><button class="o" type="button" id="keep">Keep recording</button><button class="r" type="button" id="disc">Discard take</button></div></div>`;
+      screen.appendChild(sc);
+      sc.querySelector("#keep").onclick = () => sc.remove();
+      sc.querySelector("#disc").onclick = () => go("request");
+    };
+  };
+
+  // The lens: the walk's first step on the answer.
+  DRAW.walk = () => {
+    screen.innerHTML = `<div class="wk-top"><span class="chev">‹</span><span class="wk-cap">Take ${S.replied ? 2 : 1}</span><span class="chev">›</span><button class="wk-x" type="button" id="wx" aria-label="Close">${ICON.x}</button></div>
+      <div class="wk-thread" id="th"></div><div class="dock" id="dock"></div>`;
+    const th = screen.querySelector("#th"), dock = screen.querySelector("#dock");
+    const fit = () => { th.style.bottom = dock.offsetHeight + "px"; th.scrollTop = th.scrollHeight; };
+    const add = (h) => { th.insertAdjacentHTML("beforeend", h); fit(); };
+    const typing = () => add(`<div class="typing" id="ty"><i></i><i></i><i></i></div>`);
+    const untype = () => { const t = th.querySelector("#ty"); if (t) t.remove(); };
+    add(`<div class="wk-b">Hi Marta, ${S.replied ? "good to see you back!" : "great to meet you!"}</div>`);
+    typing();
+    later(() => { untype(); add(`<div class="wk-cap-c">Slide 1</div><div class="wk-clip"><span class="said">“For the next three weeks I would wash every second day with the Calm Scalp Shampoo.”</span>${player(6, 11, "w", 28)}</div>`); typing(); }, 900);
+    later(() => { untype(); add(`<div class="wk-b"><span>This was your most confident moment.</span></div>`); typing(); }, 2000);
+    later(() => { untype(); add(`<div class="wk-b"><span>When you said <span class="qt">“every second day”</span>, your voice came down on the last word and stayed there.</span><span>That's the sound of someone who knows what she is recommending.</span></div>`);
+      dock.innerHTML = `<button class="pill cue-ring" type="button" id="nx">Next</button>`; fit();
+      dock.querySelector("#nx").onclick = () => { toast("The walk goes on: helper words, a practise moment, other speakers, the summary. Then the Ideal Text."); later(() => go("ideal"), 1600); };
+    }, 3300);
+    screen.querySelector("#wx").onclick = () => go("chat2");
+    fit();
+  };
+
+  // The Ideal Text page, unchanged: one paragraph per slide, the request and her picks as the slides.
+  DRAW.ideal = () => {
+    const n = takeNo(), sl = slides();
+    screen.innerHTML = `<div class="it">
+      <div class="ithead"><span class="itt"><b>Ola · itchy scalp</b><small>AI-generated text · Take ${n}</small></span><span class="hb"><span class="more">⋯</span><button class="it-x" type="button" id="ix" aria-label="Close">${ICON.x}</button></span></div>
+      <div class="itbody">${sl.map((s, k) => `<span class="scap">Slide ${k + 1} of ${sl.length}</span>${slideHtml(s, "reqslide")}<p class="para">${esc(ANSWER[k] || ANSWER[ANSWER.length - 1])}</p>`).join("")}</div>
+      <div class="itfoot"><button class="pill" type="button" id="rt"><span class="rdot"></span>Record Take ${n + 1}</button><button class="link cue-ring" type="button" id="cl">Close</button></div>
+    </div>`;
+    screen.querySelector("#cl").onclick = () => go("chat2");
+    screen.querySelector("#ix").onclick = () => go("chat2");
+    screen.querySelector("#rt").onclick = () => { toast("Take 2 re-records the answer over the same slides; the Ideal Text follows the newest Take."); };
+  };
+
+  // Back in the Lounge: the pair, then the ask to send; then the closing message.
+  DRAW.chat2 = () => {
+    const n = S.replied ? 2 : 1;
+    const take = `<div class="lg-day">Tuesday 27 October</div><div class="lg-b">${nw("Ola, a customer of Mila Hair Studio, asks for your advice.")}</div><div class="lg-b lg-me">Answer</div>
+      <div class="lg-rec-b"><span class="rl">${ICON.mic}<span>Your Recording <small>· Take ${n}</small></span></span>${player(ansSecs(), 7)}<span class="shr">Only me</span></div>
+      <div class="pair-w"><button class="fw" type="button" id="fw"><span>Feedback walk</span><span class="fmeta">Oct 27, 2026</span></button><button class="itcard" type="button" id="ic"><span class="tile"><span style="width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#D9B8A5,#B98B74)"></span></span><b>Ola · itchy scalp</b><span class="ver">${n}.0</span></button></div>`;
+    if (S.answered) {
+      screen.innerHTML = loungeBase(`${earlier()}${take}<div class="lg-b">${nw("Send this answer to Ola on WhatsApp?")}</div><div class="lg-b lg-me">${nw("Send to Ola")}</div><div class="lg-day">${nw("Sent to Ola on WhatsApp · 14:12")}</div><div class="lg-b">Look, practice makes perfect. If you're ready, let's go with the next take. 💪<button class="lg-rec" type="button" id="r2"><span class="rdot"></span>Record Take ${n + 1}</button></div>`, true);
+      screen.querySelector("#r2").onclick = () => toast("Take 2 re-records the answer; Ola's link always opens the latest shared Take.");
+    } else {
+      screen.innerHTML = loungeBase(`${earlier()}${take}<div class="lg-b" id="lead">${nw("Send this answer to Ola on WhatsApp?")}</div>`, true)
+        + `<div class="lg-dock" id="dock"><div class="pair"><button class="close" type="button" id="not">${nw("Not yet")}</button><button class="act cue-ring" type="button" id="act">${nw("Send to Ola")}</button></div></div>`;
+      const lg = screen.querySelector("#lg"), dock = screen.querySelector("#dock");
+      const fit = () => { lg.style.height = (811 - dock.offsetHeight - 73) + "px"; lg.scrollTop = lg.scrollHeight; };
+      fit();
+      screen.querySelector("#act").onclick = () => {
+        dock.remove(); lg.style.height = "672px";
+        lg.insertAdjacentHTML("beforeend", `<div class="lg-b lg-me">${nw("Send to Ola")}</div><div class="typing" id="ty"><i></i><i></i><i></i></div>`); lg.scrollTop = lg.scrollHeight;
+        later(() => { lg.querySelector("#ty").remove(); lg.insertAdjacentHTML("beforeend", `<div class="lg-day">${nw("Sent to Ola on WhatsApp · 14:12")}</div><div class="lg-b">Look, practice makes perfect. If you're ready, let's go with the next take. 💪<button class="lg-rec" type="button" id="r2"><span class="rdot"></span>Record Take ${n + 1}</button></div>`); lg.scrollTop = lg.scrollHeight; S.answered = true;
+          screen.querySelector("#r2").onclick = () => toast("Take 2 re-records the answer; Ola's link always opens the latest shared Take.");
+          later(() => { go("wa"); toast("Now you are Ola, on her phone."); }, 1800);
+        }, 900);
+      };
+      screen.querySelector("#not").onclick = () => { dock.remove(); lg.style.height = "672px"; lg.insertAdjacentHTML("beforeend", `<div class="lg-b lg-me">${nw("Not yet")}</div><div class="lg-b">Look, practice makes perfect. If you're ready, let's go with the next take. 💪<button class="lg-rec" type="button" id="r2"><span class="rdot"></span>Record Take ${n + 1}</button></div>`); lg.scrollTop = lg.scrollHeight; screen.querySelector("#r2").onclick = () => go("pick"); };
+    }
+    screen.querySelector("#fw").onclick = () => go("walk");
+    screen.querySelector("#ic").onclick = () => go("ideal");
+  };
+
+  DRAW.wa = () => {
+    screen.innerHTML = `<div class="msgs">
+      <div class="mh"><span class="av">M</span><span><b>Mila Hair Studio</b><small>Business account</small></span></div>
+      <div class="mt"><span class="day">Today</span>
+        <div class="m">${nw("Hi Ola, Marta has answered you with a short video. Watch it here:")}<br><a href="#answer" id="lnk" class="cue-ring">mila.willpowerlab.com/a/7f3k</a><span class="tm">14:12</span></div>
+      </div>
+      <div class="mc"><span class="fld">Message</span></div>
+    </div>`;
+    screen.querySelector("#lnk").onclick = (e) => { e.preventDefault(); go("answer"); };
+  };
+  DRAW.answer = () => {
+    const added = S.cart.includes("Calm Scalp Shampoo");
+    screen.innerHTML = `<div class="ans">
+      <div class="ah"><span style="font-size:15px;font-weight:700;letter-spacing:0.06em;color:#1D4F3F">MILA HAIR STUDIO</span><span class="pby" style="margin:0">${nw("powered by WillpowerLab")}</span></div>
+      <div class="ab" id="ab">
+        <div class="who"><span class="av"></span><span><h2>${nw("Marta answered you")}</h2><small>${nw("Trichologist at Mila · this afternoon")}</small></span></div>
+        <div class="deck"><div class="dslide" id="ds">${slideHtml(slides()[0], "reqslide")}</div><div class="dctl"><button class="play k cue-ring" type="button" id="aplay" aria-label="Listen to Marta">${ICON.play("#FFFFFF")}</button><div class="bars gbars" id="abars">${bars(32, 9, 20)}</div><span class="t" style="color:#737373">${mmss(ansSecs())}</span></div><div class="dots" id="dots">${slides().map((_, k) => `<i class="${k === 0 ? "on" : ""}"></i>`).join("")}</div></div>
+        <div class="kick" style="margin-top:-6px">${nw("Listen to Marta. The slides turn as she speaks.")}</div>
+        <div class="sec"><span class="kick">${nw("Your routine for the next three weeks")}</span>
+          <ul class="steps"><li>Wash every second day, not every day</li><li>Lukewarm water, never hot</li><li>Leave the foam on for one minute, then rinse</li><li>Nothing for density yet: let the scalp settle first</li></ul></div>
+        <div class="pcard" id="pcard"><div class="prow"><div class="pimg"></div><div class="pt"><b>Calm Scalp Shampoo</b><small>${nw("Marta's pick for a dry, irritated scalp")}</small><span class="price">[PRICE]</span></div></div>
+          <button class="gbtn${added ? " done" : " cue-ring"}" type="button" id="cart" ${added ? "disabled" : ""}>${added ? nw("Added to your cart · code MARTA10 applied") : nw("Add to cart")}</button></div>
+        <div class="pcard" id="visit"></div>
+        <details class="said"><summary>${nw("Read what Marta said")}</summary><div class="txt">${ANSWER.map(esc).join("<br><br>")}</div></details>
+        <div class="reply" id="reply"><span class="kick">${nw("Ask Marta one more thing")}</span><textarea id="rtx" rows="2" placeholder="Your question">Thank you! Should I stop the daily washing right away, or slowly?</textarea><button class="gbtn" type="button" id="rsend">${nw("Send")}</button></div>
+        <div class="pby">${nw("Marta checks in with you in three weeks.")}</div>
+      </div>
+      <div class="bar" id="bar" ${added ? "hidden" : ""}><span><b>Calm Scalp Shampoo</b><small>[PRICE] · code MARTA10</small></span><button class="gbtn" type="button" id="cart2" style="width:auto;padding:0 18px;height:44px">${nw("Add to cart")}</button></div>
+    </div>`;
+    screen.querySelector("#aplay").onclick = () => {
+      const sl = slides(), bs = [...screen.querySelectorAll("#abars i")], dots = [...screen.querySelectorAll("#dots i")];
+      let k = 0, j = 0; const per = Math.ceil(bs.length / sl.length);
+      bs.forEach((b) => b.classList.remove("on"));
+      const t = every(() => {
+        if (j >= bs.length) { clearInterval(t); later(() => { bs.forEach((b) => b.classList.remove("on")); }, 400); return; }
+        bs[j].classList.add("on"); j += 1;
+        const nk = Math.min(sl.length - 1, Math.floor(j / per));
+        if (nk !== k) { k = nk; screen.querySelector("#ds").innerHTML = slideHtml(sl[k], "reqslide"); dots.forEach((d, x) => d.classList.toggle("on", x === k)); }
+      }, 160);
+    };
+    const addCart = () => {
+      if (!S.cart.includes("Calm Scalp Shampoo")) S.cart.push("Calm Scalp Shampoo");
+      const b = screen.querySelector("#cart"); b.disabled = true; b.classList.remove("cue-ring"); b.classList.add("done"); b.innerHTML = nw("Added to your cart · code MARTA10 applied");
+      screen.querySelector("#bar").hidden = true;
+      toast("In the app this opens Mila's cart with the code in the link.");
+    };
+    screen.querySelector("#cart").onclick = addCart;
+    screen.querySelector("#cart2").onclick = addCart;
+    // The visit: where first, then the day. The postcode is asked only here, the first time, and remembered on Ola's identity.
+    const visit = screen.querySelector("#visit");
+    let day = S.booked ? S.booked.day : null;
+    const paintVisit = () => {
+      const head = `<div class="prow"><div class="pimg" style="background:#E3E8DF"></div><div class="pt"><b>Head spa visit with Marta</b><small>${nw("If it is still itchy after three weeks, she looks at it properly.")}</small><span class="price">45 min · [PRICE]</span></div></div>`;
+      if (S.booked) {
+        visit.innerHTML = head + `<button class="gbtn o done" type="button" disabled>${nw("Booked: " + S.booked.day + ", 10:00 · " + S.booked.salon.name)}</button><div class="where"><span>${esc(S.booked.salon.street)} · ${S.booked.salon.km} from you</span><a href="https://maps.google.com" target="_blank" rel="noopener">${nw("Directions")}</a></div>`;
+        return;
+      }
+      if (!S.zip) {
+        visit.innerHTML = head + `<label class="zipl">${nw("Where should we book you? Your postcode")}<div class="ziprow"><input class="zip" id="zip" type="text" inputmode="numeric" placeholder="02-566" aria-label="Your postcode"><button class="gbtn" type="button" id="zipgo" style="width:auto;padding:0 16px;height:44px">${nw("Find")}</button></div></label><button class="loc" type="button" id="loc">${nw("Use my location instead")}</button>`;
+        const zi = visit.querySelector("#zip"), zg = visit.querySelector("#zipgo");
+        zi.classList.add("cue-ring");
+        const find = () => { const v = zi.value.trim(); if (!/^\d{2}-?\d{3}$/.test(v)) { toast("A Polish postcode looks like 02-566."); return; } S.zip = v; S.salon = SALONS[0]; day = null; paintVisit(); };
+        zg.onclick = find; zi.onkeydown = (e) => { if (e.key === "Enter") find(); };
+        visit.querySelector("#loc").onclick = () => { S.zip = "02-566"; S.salon = SALONS[0]; day = null; paintVisit(); toast("In the app the browser asks once; the postcode field stays as the fallback."); };
+        return;
+      }
+      const sal = S.salon || SALONS[0];
+      visit.innerHTML = head
+        + `<div class="near"><span class="kick">${nw("Near " + S.zip)}</span><button class="loc" type="button" id="zipx">${nw("Change")}</button></div>`
+        + `<div class="salons">${SALONS.map((x) => `<button class="salon" type="button" data-s="${x.id}" aria-pressed="${x.id === sal.id}"><span class="sn"><b>${esc(x.name)}</b><small>${esc(x.street)} · ${nw(x.marta)}</small></span><span class="km">${x.km}</span></button>`).join("")}</div>`
+        + `<div class="days" id="days">${sal.days.map((d) => `<button class="dchip" type="button" data-d="${d}" aria-pressed="${day === d}">${d}</button>`).join("")}</div>`
+        + `<button class="gbtn o${day ? " cue-ring" : ""}" type="button" id="book">${nw(day ? "Book " + day + ", 10:00 at " + sal.name : "Pick a day at " + sal.name)}</button>`;
+      visit.querySelector("#zipx").onclick = () => { S.zip = ""; S.salon = null; day = null; paintVisit(); };
+      visit.querySelectorAll("[data-s]").forEach((b) => b.onclick = () => { S.salon = SALONS.find((x) => x.id === b.dataset.s); day = null; paintVisit(); });
+      visit.querySelectorAll("[data-d]").forEach((c) => c.onclick = () => { day = c.dataset.d; paintVisit(); });
+      visit.querySelector("#book").onclick = () => { if (!day) { toast("Pick a day first."); return; } S.booked = { day, salon: sal }; paintVisit(); toast("In the app this is Mila's own booking page for that salon, opened with the request's code."); };
+      if (!day) { const first = visit.querySelector("[data-d]"); if (first) first.classList.add("cue-ring"); }
+    };
+    paintVisit();
+    screen.querySelector("#rsend").onclick = () => {
+      const r = screen.querySelector("#reply"); r.innerHTML = `<div class="replied">${nw("Thanks, Ola. Marta has your question.")}</div>`;
+      S.replied = true; later(() => { go("chat3"); toast("Back to Marta's phone."); }, 1500);
+    };
+  };
+  // A customer's follow-up: typed in the card (N226 item 4), or a Take.
+  DRAW.chat3 = () => {
+    screen.innerHTML = loungeBase(`${earlier()}<div class="lg-day">Tuesday 27 October</div><div class="lg-b">${nw("Ola replied to your answer.")}</div>`, true)
+      + `<div class="lg-dock" id="dock">${reqCard("Thank you! Should I stop the daily washing right away, or slowly?", nw("Replied 2 hours ago"))}<input class="wa-in cue-ring" id="ty" type="text" aria-label="Your answer" value="Right away. Skip tomorrow, and from then on every second day."><div class="pair"><button class="close" type="button" id="recx">${nw("Record instead")}</button><button class="act" type="button" id="snd">${nw("Send")}</button></div></div>`;
+    const lg = screen.querySelector("#lg"), dock = screen.querySelector("#dock");
+    const fit = () => { lg.style.height = (811 - dock.offsetHeight - 73) + "px"; lg.scrollTop = lg.scrollHeight; };
+    fit();
+    screen.querySelector("#recx").onclick = () => go("pick");
+    screen.querySelector("#snd").onclick = () => {
+      const t = screen.querySelector("#ty").value.trim(); if (!t) { toast("Type an answer, or Record instead."); return; }
+      dock.remove(); lg.style.height = "672px";
+      lg.insertAdjacentHTML("beforeend", `<div class="lg-b lg-me">${esc(t)}</div><div class="lg-day">${nw("Sent to Ola on WhatsApp · 16:30")}</div>`); lg.scrollTop = lg.scrollHeight;
+      toast("A typed follow-up: no Take, no walk; the pair is still recorded.");
+    };
+  };
+
+  DRAW.admin = () => {
+    screen.innerHTML = `<div class="adm">
+      <div class="ah">${ICON.logo}<b style="font-size:15px">WillpowerLab</b><span class="chip">Admin</span></div>
+      <div class="ab">
+        <span class="back">← ${nw("Workspaces")}</span>
+        <h1>Mila Hair Studio</h1>
+        <div class="tiles"><div class="tile"><small>Requests</small><b>14</b></div><div class="tile"><small>Answered</small><b>12</b></div><div class="tile"><small>${nw("Bought")}</small><b>${7 + (S.cart.length ? 1 : 0)}</b></div><div class="tile"><small>${nw("Booked")}</small><b>${3 + (S.booked ? 1 : 0)}</b></div></div>
+        <div><h2>Requests</h2><div class="box">
+          <div class="row"><span>Ola · 27 Oct</span><span>${nw(S.cart.length && S.booked ? "Outcome: bought Calm Scalp Shampoo, booked " + S.booked.salon.name + " " + S.booked.day : S.cart.length ? "Outcome: bought Calm Scalp Shampoo" : S.booked ? "Outcome: booked " + S.booked.salon.name + " " + S.booked.day : S.answered ? "Outcome: not yet" : "Waiting for Marta · 12 minutes")}</span></div>
+          <div class="row"><span>Kasia · 26 Oct</span><span>${nw("Outcome: bought Oil Balance Wash")}</span></div>
+          <div class="row"><span>Tomek · 25 Oct</span><span>${nw("Outcome: not yet")} · a follow-up answered</span></div>
+          <div class="row"><span>Anna · 24 Oct</span><span>${nw("Outcome: booked the head spa 3 Nov")}</span></div>
+        </div></div>
+        <div><h2>${nw("Weekly note to Mila")}</h2><div class="box"><div class="row"><span>Sent Mondays</span><span>Requests, answers, bought, booked, the three most asked problems. In words, to the owner.</span></div></div></div>
+        <div><h2>The client</h2><div class="box">
+          <div class="row"><span>Answerer</span><span>Marta Kowalska · marta@milahair.example</span></div>
+          <div class="row"><span>Name shown</span><span>Mila Hair Studio</span></div>
+          <div class="row"><span>Colour</span><span><span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:#1D4F3F;vertical-align:-2px"></span> #1D4F3F</span></div>
+          <div class="row"><span>WhatsApp sender</span><span>+48 ••• ••• 210 · template approved</span></div>
+          <div class="row"><span>${nw("Data processing agreement")}</span><span class="sw">Signed 3 Nov 2026</span></div>
+          <div class="row"><span>${nw("Salons")}</span><span>3 · Mokotów (Marta Thu, Fri), Wola (Mon), Praga (Wed). The nearest is offered first by the customer's postcode.</span></div>
+          <div class="row"><span>Billing</span><span>${nw("Free for testers")}</span></div>
+        </div></div>
+        <div><h2>${nw("Script tag")}</h2><div class="box"><div class="row" style="grid-template-columns:1fr"><code>&lt;script src="https://willpowerlab.com/w.js" data-key="ws_7f3k…"&gt;&lt;/script&gt;</code></div></div></div>
+        <div><h2>The client's data</h2><div class="box">
+          <div class="row"><span>Documents</span><span>3 · product sheets, the scalp protocol</span></div>
+          <div class="row"><span>Photos</span><span>11 · deleted 30 days after the answer</span></div>
+        </div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="abtn" type="button" id="exp">${nw("Export pairs (JSONL)")}</button><button class="abtn o" type="button">Edit</button></div>
+      </div></div>`;
+    screen.querySelector("#exp").onclick = () => toast("A JSONL file: one line per pair (request, schema, final answer, transcript, outcome), plus the documents and the golden set.");
+  };
+
+  // ---------- Notes and rail ----------
+  const KIND = { real: ["Real app", ""], mixed: ["Real app, new parts", "mixed"], new: ["New", "new"] };
+  function paintNote(sc) {
+    const n = sc.note, [label, cls] = KIND[sc.kind];
+    document.getElementById("note").innerHTML = `
+      <span class="badge ${cls}">${label}</span>
+      <h2>${sc.name}</h2>
+      <p>${n.what}</p>
+      ${n.changes && n.changes.length ? `<h3>What changes</h3><ul>${n.changes.map((c) => `<li>${c}</li>`).join("")}</ul>` : `<h3>What changes</h3><p class="refs">Nothing.</p>`}
+      ${n.pending ? `<h3>New words waiting for your OK</h3><ul class="words">${n.pending.map((w) => `<li>${w}</li>`).join("")}</ul>` : ""}
+      ${n.refs ? `<p class="refs">${n.refs}</p>` : ""}
+      ${n.tip ? `<p class="refs">${n.tip}</p>` : ""}`;
+    const i = ORDER.indexOf(cur);
+    document.getElementById("where").textContent = i >= 0 ? `${i + 1} of ${ORDER.length}` : "side screen";
+  }
+  function paintRail() {
+    const host = document.getElementById("steps");
+    const chs = [...new Set(SCREENS.map((s) => s.ch))];
+    host.innerHTML = chs.map((c) => `<div class="chap"><p class="chap-h">${c}</p>${SCREENS.filter((s) => s.ch === c).map((s) =>
+      `<button type="button" class="step${s.side ? " side" : ""}" data-to="${s.id}" ${s.id === cur ? 'aria-current="step"' : ""}><i class="dot ${s.kind === "real" ? "" : s.kind}"></i>${s.name}</button>`).join("")}</div>`).join("");
+    document.getElementById("jumpto").innerHTML = SCREENS.map((s) => `<option value="${s.id}" ${s.id === cur ? "selected" : ""}>${s.ch} · ${s.name}</option>`).join("");
+  }
+  document.getElementById("steps").addEventListener("click", (e) => { const b = e.target.closest("[data-to]"); if (b) go(b.dataset.to); });
+  document.getElementById("jumpto").addEventListener("change", (e) => go(e.target.value));
+  document.getElementById("back").onclick = back;
+  document.getElementById("next").onclick = () => { const i = ORDER.indexOf(cur); go(ORDER[Math.min(ORDER.length - 1, i + 1)] || ORDER[0]); };
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("select, input, textarea")) return;
+    if (e.key === "ArrowRight") document.getElementById("next").click();
+    if (e.key === "ArrowLeft") back();
+  });
+  const app = document.getElementById("app");
+  const tgHot = document.getElementById("tgHot"), tgNew = document.getElementById("tgNew");
+  const syncT = () => { app.classList.toggle("show-hot", tgHot.checked); app.classList.toggle("mark-new", tgNew.checked); };
+  tgHot.onchange = syncT; tgNew.onchange = syncT; syncT();
+
+  // ---------- Fit the phone ----------
+  const device = document.getElementById("device"), bezel = document.getElementById("bezel"), stage = document.getElementById("stage");
+  function fitPhone() {
+    const narrow = innerWidth <= 520;
+    const W = narrow ? 390 : 410, H = narrow ? 844 : 864;
+    const availW = stage.clientWidth, availH = narrow ? Infinity : Math.max(520, innerHeight - 150);
+    const k = Math.min(1, availW / W, availH / H);
+    bezel.style.transform = `scale(${k})`; bezel.style.width = W + "px"; bezel.style.height = H + "px";
+    device.style.width = W * k + "px"; device.style.height = H * k + "px";
+  }
+  new ResizeObserver(fitPhone).observe(stage); addEventListener("resize", fitPhone); fitPhone();
+  try { const h = location.hash.slice(1); if (BY[h]) cur = h; } catch (e) {}
+  render();
+})();
+</script>
+</body></html>

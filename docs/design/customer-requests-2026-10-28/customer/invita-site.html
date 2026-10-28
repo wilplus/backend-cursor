@@ -1,0 +1,61 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Invita Site With Widget</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: a one-line strip on top is ours. Under it, invitaheadspa.com's own home page as it was on 28 October 2026 (a screenshot, so its links do not work). The widget and the popup are added by the one script tag at the end of the file. */
+:root { --bg: #FBF8F3; --ink: #17130F; --strip: #17130F; --strip-ink: #FBF8F3; --line: rgba(251,248,243,.25); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0F0E0D; --ink: #EDEBE7; --strip: #0F0E0D; --strip-ink: #EDEBE7; --line: rgba(237,235,231,.2); color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #0F0E0D; --ink: #EDEBE7; --strip: #0F0E0D; --strip-ink: #EDEBE7; --line: rgba(237,235,231,.2); color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font-family: Manrope, ui-sans-serif, system-ui, sans-serif; margin: 0; }
+button { font: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid #1D6FE0; outline-offset: 2px; }
+.strip { background: var(--strip); color: var(--strip-ink); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 8px; font-size: 12px; letter-spacing: .04em; }
+.strip .in { max-width: 1280px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.strip b { font-weight: 600; }
+.strip .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.strip button { border: 1px solid var(--line); background: transparent; color: var(--strip-ink); border-radius: 999px; padding: 5px 12px; font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; }
+.panel { background: var(--bg); color: var(--ink); border-bottom: 1px solid rgba(23,19,15,.12); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px 20px; font-size: 14px; }
+.panel .in { max-width: 1280px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+.panel h2 { margin: 0 0 6px; font-size: 15px; }
+.panel pre { margin: 0 0 8px; background: #17130F; color: #FBF8F3; padding: 10px 12px; font: 12px/1.5 ui-monospace, Menlo, monospace; overflow-x: auto; border-radius: 4px; }
+.panel ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; color: rgba(23,19,15,.75); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .panel ul { color: rgba(237,235,231,.75); } }
+:root[data-theme="dark"] .panel ul { color: rgba(237,235,231,.75); }
+@media (max-width: 760px) { .panel .in { grid-template-columns: minmax(0, 1fr); } }
+.site { display: block; width: 100%; max-width: 1280px; margin: 0 auto; }
+.site img { display: block; width: 100%; height: auto; max-width: 100%; }
+.site .d { display: block; } .site .p { display: none; }
+@media (max-width: 640px) { .site .d { display: none; } .site .p { display: block; } }
+</style>
+
+<div class="strip" aria-label="Demo controls"><div class="in">
+  <span><b>Demo</b> · invitaheadspa.com's home page (a screenshot from 28 Oct 2026, so its own links do nothing) with the WillpowerLab widget installed by one script tag. The popup comes by itself after two seconds; the pill stays at the bottom right. One typeface, white and grey.</span>
+  <span class="acts"><button type="button" id="again">Show the popup again</button><button type="button" id="how" aria-expanded="false" aria-controls="panel">Install</button></span>
+</div></div>
+<div class="panel" id="panel" hidden><div class="in">
+  <div>
+    <h2>One line before <code>&lt;/body&gt;</code>, on the pages they choose</h2>
+    <pre>&lt;script src="https://willpowerlab.com/w.js" data-key="ws_invita…" async&gt;&lt;/script&gt;</pre>
+    <ul><li>The workspace decides what shows: the pill always, the popup once per visitor after a delay, on the home and treatment pages. Not now keeps the popup away for 30 days.</li><li>Both use the system's typeface, white and grey, so they sit quietly on any page. The words come from the workspace.</li></ul>
+  </div>
+  <div>
+    <h2>What stays off Invita's page</h2>
+    <ul><li>The form is an iframe to our domain in production: the photo, the number and the consent never pass through Invita's page or its other scripts.</li><li>Send posts to our public requests route; Invita's page learns only that a request was sent, for its own analytics.</li><li>The answer comes by text with a link to the answer page in Invita's name: the trichologist's voice over slides, the treatment, the nearest of the four locations with a date.</li></ul>
+  </div>
+</div></div>
+
+<div class="site" aria-label="invitaheadspa.com, as it was">
+  <img class="d" src="desk-bg.webp" alt="The invitaheadspa.com home page on a desktop screen">
+  <img class="p" src="phone-bg.webp" alt="The invitaheadspa.com home page on a phone">
+</div>
+
+<script>
+(function () {
+  var how = document.getElementById("how"), panel = document.getElementById("panel");
+  how.onclick = function () { panel.hidden = !panel.hidden; how.setAttribute("aria-expanded", String(!panel.hidden)); how.textContent = panel.hidden ? "Install" : "Hide"; };
+  document.getElementById("again").onclick = function () { window.dispatchEvent(new CustomEvent("wpl:popup")); };
+})();
+</script>
+<!-- Invita's template ends here. The one line the client adds: -->
+<script src="w.js" data-key="ws_invita_demo" async></script>
+</body></html>

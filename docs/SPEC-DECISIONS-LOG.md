@@ -5586,3 +5586,237 @@ sign-in is emptied by the completion run instead, as everyone's is (N218).
 under a key of its own, so a second Delete no longer returns the cancelled
 one.
 No rules page: the admin console has none. No migration.
+
+**N223 · Customer requests: a widget on a client's site, answered in the
+chat as a Take (founder, the Claude Code chat, 27 October 2026: "we rather
+want to do what we do and already think about another feature and about
+testing that hypothesis").** A hypothesis to test beside the speaker loop,
+not a pivot: a client (the first testers sell shampoo and run head spas)
+puts a widget on their website; a customer fills a short form; the request
+reaches the client in our chat; the client records a short video answer; the
+customer gets it; every answered request is a pair the client owns. The
+founder's answers to engineering's sixteen questions:
+1. The answerer is a normal WillpowerLab user. The request is a card in
+their chat; the answer is recorded on the recording screen and goes through
+the Take pipeline, so they get the transcript and the feedback on how they
+communicated it. No new role, no new panel.
+2. One backend, one database: a `workspaces` table owned by the client's
+account, row-level security by workspace, the widget a static file on
+Vercel. No service or deployment per client. A workspace is metadata on a
+project, never a fork in the loop (the rule `services/domains.py` already
+keeps for domains).
+3. Inside the app, each request opens one project named by the customer's
+ask; the answer is its first Take; a re-record is Take 2, and the Ideal Text
+stays what they said in their latest Take (Never 5). The customer gets the
+latest shared Take.
+4. The AI does nothing visible in the first version. It collects pairs:
+request, photo, the final answer and its transcript. No draft, no automatic
+answer, so Never 2 is not yet in question; when a draft comes, the
+founder decides whether the answerer answers first.
+5. The client's IP is their pairs and their uploaded documents, exported as
+JSONL. No model is trained in the MVP; a per-client surface in the existing
+fine-tune pipeline (`services/model_training.py`) opens later, per client,
+by the founder's word.
+6. The customer receives the answer by WhatsApp: a link to an answer page
+with the video, the transcript, the recommendation in words, and one reply
+box. The reply lands back in the client's chat and is the second pair.
+7. The form is fixed for the MVP: the need in the customer's words, an
+optional photo (hair, scalp), the WhatsApp number, one consent tick. Fields
+per client come later, from the pairs.
+8. The client is the data controller; WillpowerLab is the processor. Hair
+and scalp advice is health data (GDPR Article 9): a data processing
+agreement per client, and the consent line in the widget is given in the
+client's name. Counsel reads the DPA and the widget's words before the
+first client goes live.
+9. The photo is stored in a private bucket under the workspace, read by
+signed URL only, and deleted by the retention cleaner 30 days after the
+answer. The pair keeps the text, not the photo.
+10. An unanswered request alarms after 24 hours: one email per overdue
+request to the founder and to the client, the same pattern as
+`coach_moments_queue.reach_alarm`. The promise: every request reaches
+someone.
+11. The customer sees the client's name and one accent colour, with a
+"powered by WillpowerLab" line. Two settings on the workspace; no custom
+domain in the MVP.
+12. Free for testers, a flag on the workspace. Later each answered request
+costs tokens from the client's token account.
+13. The founder creates a workspace in admin (name, colour, WhatsApp
+sender) and the admin page shows the script tag; the client pastes it. No
+self-serve screen in the MVP.
+14. The client sees only their delivery feedback on the answer. The pairs
+and the corpus accumulate unseen; the founder reads the counts in admin.
+15. Build order, each slice proving one thing: (a) workspace, widget,
+request card in the chat, WhatsApp link to a plain answer page; (b) the
+answer as a Take with the walk; (c) the reply box and the second pair;
+(d) photo retention, the 24-hour alarm, the JSONL export. The build plan
+lives in that pull request's description, not in a new file.
+16. The widget, the answer page and the request card are new words on
+screen; their texts come to the founder for OK before they are built
+(Never 4). The request card sits in the chat's footer slot, the one
+`person_asks` uses, one at a time, never between a Take and its Ideal Text
+(Never 3).
+No rules page: a rules page for this flow (frontend
+`docs/flows/customer-requests.md`) waits for the founder's `Founder-Approved:`
+line; until then this entry is the only text in force. No migration in this
+entry.
+
+**N224 · Customer requests: how the client's own model is built (founder, the
+Claude Code chat, 27 October 2026, four answers to engineering's questions on
+the learning side of N223).** The machine stays the one that exists: pairs per
+surface, a fine-tune at 200 pairs, the sealed golden set, the evaluation, the
+regurgitation check and promotion by the founder's word
+(`services/feedback_pairs.py`, `model_training.py`, `golden_set.py`,
+`golden_evaluation.py`, `model_promotion.py`). A client's model is a surface
+named for its workspace in that pipeline, never a separate infrastructure.
+1. **The answer schema.** Every answer a trichologist (or any client's
+answerer) records is also stored in a structured shape read from the
+transcript against the client's catalogue and documents: what was observed,
+which products, what routine, when to come in, which signs mean a doctor. The
+AI extracts it after each Take; the answerer sees nothing new; the founder
+reads and corrects it on the admin page, as Will's note is corrected today
+(`SpeakerMemory.tsx`). A pair is the request, the schema and the final answer
+with its transcript. No new step in the answerer's loop (Never 3).
+2. **Never 2 holds for the answerer.** When the AI starts drafting (from
+about a hundred pairs), the answerer records first and sees the draft after.
+The pair is their own judgement against the machine's, by the rule that
+exists: recorded only when a draft was shown and the final differs.
+3. **Who opens autonomy.** A client's model answers customers alone only
+after its golden evaluation passes, scored on the schema (same products, same
+routine, same red flags), never on token overlap alone. The founder opens the
+door per workspace, as the promotion doors today; the client turns it on per
+request type they trust; a health red flag always goes to a person. The
+answerer reviews a sample and every correction is a pair.
+4. **Retrieval.** Per workspace, embeddings in Supabase with pgvector: one
+table with a workspace column, the embedding call through the
+processing-authorization path, exportable as rows. One migration, idempotent,
+reviewed outside before merging. The client's export (N223 item 5) gains the
+schema and the golden set: JSONL of pairs, the documents, the evaluation set.
+The order of build: collect (no AI, the schema extracted and checked), draft
+(retrieval, blind), fine-tune at 200 pairs with the schema score, alone with
+the gate. A client whose answers are open-ended (a marketing specialist
+advising on campaigns) runs the same loop with a weaker schema and far more
+pairs: it drafts early and runs alone much later.
+No rules page: the flow page for customer requests waits for the founder's
+`Founder-Approved:` line (N223); the learning rules land on
+[`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) in the same PR as the
+first code. No migration in this entry.
+
+**N225 · Customer requests are a sales tool first (founder, the Claude Code
+chat, 27 October 2026: "it is the sales tool; that if automatised will
+become a support tool (the instant smart answers); before the AI gets smart
+it is a sales tool only because it answers asynchronously").** For N223 and
+N224:
+1. The widget is judged by purchases and bookings, not by answer time. While
+a person answers, the wait is hours, so the answer is a recommendation to
+buy, never live support.
+2. The answer page carries the sale: each recommended product with the
+client's "Add to cart" link, and "Book" with a date when the answerer says
+"come in". The link carries the client's code, so a purchase is attributable
+to the request.
+3. A pair keeps its outcome: whether the customer bought or booked, read from
+the client's link, in words on the admin page and never shown to a customer
+or an answerer as a score. The model learns what worked, not only what was
+said.
+4. The form is the client's product finder: a photo or a few words, the
+WhatsApp number, one tick. Words optional when there is a photo.
+5. Support comes with autonomy (N224 item 3): once a client's model answers
+alone, the same widget answers at once, and the asynchronous loop stays for
+what the model hands to a person. Nothing is built for instant answers
+before that door opens.
+No rules page: the flow page for customer requests waits for the founder's
+`Founder-Approved:` line (N223). No migration in this entry.
+
+**N226 · The answer is a Take: her voice over slides she picks, camera off;
+typed answers for follow-ups only (founder, the Claude Code chat, 27 October
+2026: "she does not want to show herself, she just wants to record like
+slide by slide, or just her voice, or just a text").** For N223 item 1, which
+said "a short video answer" and now reads: a Take, the answerer's voice over
+slides. Nothing in the loop needs a camera.
+1. Before the recording, the answerer taps what they recommend from the
+client's catalogue. Each pick is a slide: the customer's request and photo
+first, then each product, in the order picked. The recording screen stays the
+locked one; the picker is the same kind of tap list as the helper words.
+2. The picks fill the answer schema (N224 item 1) before a word is spoken;
+the transcript adds the routine and the reasons. One paragraph per slide is
+the Ideal Text.
+3. The customer hears the voice over the slides, the slides turning as the
+answer goes, with the product cards and the booking under it (N225 item 2).
+No video is sent or stored unless the answerer adds one, as a coach may.
+4. A typed answer is allowed only for a customer's follow-up: typed in the
+card, no Take, the pair still recorded, sent the same way. The first answer
+to a request is always a Take, because the walk on it is half of what the
+client buys.
+No rules page: the flow page for customer requests waits for the founder's
+`Founder-Approved:` line (N223). No migration in this entry.
+
+**N227 · The nearest salon: the customer's postcode is asked at the booking,
+once, and remembered (founder, the Claude Code chat, 27 October 2026: "we
+want them to at least enter the zip code during the sign up or later on in
+the process, so we can display head spa near them, the closest to them";
+then "At the booking only, remembered after").** For N225 item 2:
+1. The widget form stays three fields (N225 item 4). The postcode is asked on
+the answer page the first time the customer taps to book a visit: a postcode
+field, or "Use my location" with the postcode as the fallback. The guest
+identity keeps it, so it is asked once.
+2. A workspace has its salons: name, street, coordinates, and the days each
+answerer is there. The page lists them nearest first by the customer's
+postcode, with the distance and the answerer's days; the nearest is
+preselected, then the day, then Book, which opens the client's booking page
+for that salon with the request's code. The booked card shows the salon, the
+street and a directions link.
+3. The outcome on the pair (N225 item 3) names the salon. Distance is a fact
+about a place, never a number about a person.
+4. Geocoding a postcode is a provider call and goes through the
+processing-authorization path; a client's salon coordinates are entered once
+in admin.
+No rules page: the flow page for customer requests waits for the founder's
+`Founder-Approved:` line (N223). No migration in this entry; the salons table
+comes with the first code.
+
+**N228 · Four ways a customer meets the answer, in order; built now: the web
+app with WhatsApp carrying the link (founder, the Claude Code chat, 28
+October 2026: "there are like a couple of layers how it can be done. Yeah,
+let's lock it like that").** For N223 item 6, N225 and N226. The customer's
+side of a request is the same chat (what they asked, the answerer's bubbles,
+the one thing to do in the dock, each answer landing as their own bubble);
+only where it runs changes. The gradation, from the most to the least:
+1. **The client's own app.** The WillpowerLab chat in the client's name,
+installed by the customer, the client's own model answering inside it. The
+max version; not built now.
+2. **The web app**, on the client's subdomain of willpowerlab.com, opened
+from a link. No install, no account: the guest identity. **Built now.**
+3. **WhatsApp**, the conversation itself in WhatsApp once a model answers
+alone (N224 item 3, N225 item 5). Not built now. **Built now:** WhatsApp
+carries the link to the web app and verifies the customer's number.
+4. **SMS**, the same link where WhatsApp is not the norm or not delivered:
+the country code of the number decides, one line on the form switches, a
+failed WhatsApp delivery falls back to SMS, never both.
+Every message the customer's chat shows keeps a shape WhatsApp can carry
+(text, voice, photo, buttons, a list), so moving a client from 2 to 3 is a
+change of transport, not of design. The answerer's side never changes: a
+request is a Take in the app (N226).
+No rules page: the flow page for customer requests waits for the founder's
+`Founder-Approved:` line (N223). No migration in this entry.
+
+**N229 · Customer requests get their own flow page, and their prototypes are
+kept in the repo as files (founder, the Claude Code chat, 28 October 2026:
+"Approve as drafted", to the page; then "what if I stop using claude? this
+links are gone! so make them pdfs so any model can access them").** For N223
+to N228:
+1. The rules for customer requests are one page in the frontend repo,
+   `docs/flows/customer-requests.md`, of the same shape as the plan's page:
+   the rules as decided (§1), in flight, still open, where it lives, the
+   prototypes and one line per change. A later decision about customer
+   requests is folded into it, never a new file.
+2. Every prototype the page names is kept in this repo, in
+   `docs/design/customer-requests-2026-10-28/`: the prototype's own HTML, which
+   runs in any browser, and a PDF of every step, so the design survives
+   without the tool it was drawn in. A claude.ai link is a convenience beside
+   the files, never the only copy. New prototypes for this flow are kept the
+   same way.
+3. These six entries were decided in the chat on 27 and 28 October 2026 as
+   N218 to N223; other entries took those numbers on main the same day, so
+   they are written here as N223 to N228, unchanged otherwise.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
+No migration in this entry.

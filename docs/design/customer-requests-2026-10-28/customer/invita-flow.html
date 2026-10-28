@@ -1,0 +1,250 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Invita Customer Flow</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: the steps on the left, one phone in the middle, a short note on the right. Inside the phone: invitaheadspa.com on a phone with the real widget script mounted in it, then the screens that follow a request: the text message, the answer page, the nearest location, the booking, the reply. White and grey, one typeface. */
+:root { --ground: #ECEAE6; --panel: #FFFFFF; --ink: #171615; --muted: #67635D; --line: #DAD6CF; --mark: #171615; --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ground: #151413; --panel: #1F1E1C; --ink: #EDEBE7; --muted: #A39F98; --line: #36332F; --mark: #EDEBE7; color-scheme: dark } }
+:root[data-theme="dark"] { --ground: #151413; --panel: #1F1E1C; --ink: #EDEBE7; --muted: #A39F98; --line: #36332F; --mark: #EDEBE7; color-scheme: dark }
+html, body { height: 100%; }
+body { background: var(--ground); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.5; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid #1D6FE0; outline-offset: 2px; }
+.app { display: grid; grid-template-columns: 220px minmax(0, 1fr) 300px; gap: 24px; max-width: 1200px; margin: 0 auto; padding-block: 20px 28px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); box-sizing: border-box; }
+.rail { position: sticky; top: 20px; align-self: start; display: flex; flex-direction: column; gap: 14px; }
+.rail h1 { font-size: 19px; line-height: 1.2; margin: 0; }
+.rail p { margin: 0; color: var(--muted); font-size: 13px; }
+.steps { display: flex; flex-direction: column; gap: 2px; }
+.step { display: flex; align-items: center; gap: 10px; text-align: left; border: 0; background: transparent; padding: 7px 8px; border-radius: 8px; font-size: 14px; color: var(--ink); }
+.step:hover { background: rgba(0,0,0,0.05); }
+.step[aria-current="step"] { background: var(--panel); box-shadow: 0 0 0 1px var(--line); font-weight: 600; }
+.step i { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; font-size: 11px; font-style: normal; color: var(--muted); flex: none; }
+.step[aria-current="step"] i { background: var(--mark); color: var(--panel); border-color: var(--mark); }
+.centre { display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: 0; }
+.stage { width: 100%; display: flex; justify-content: center; }
+.device { position: relative; }
+.bezel { position: absolute; left: 0; top: 0; width: 410px; height: 864px; transform-origin: 0 0; border-radius: 52px; background: #0D0D0D; padding: 10px; box-sizing: border-box; box-shadow: 0 30px 60px -30px rgba(20, 15, 10, 0.45); }
+.screen { position: relative; width: 390px; height: 844px; border-radius: 42px; overflow: hidden; background: #FFFFFF; color: #1a1a1a; isolation: isolate; font-family: var(--font); }
+@media (max-width: 520px) { .bezel { background: transparent; box-shadow: none; padding: 0; border-radius: 0; } .screen { border-radius: 18px; box-shadow: 0 0 0 1px var(--line); } }
+.controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 7px 14px; font-size: 14px; }
+.notes { position: sticky; top: 20px; align-self: start; display: flex; flex-direction: column; gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.card h2 { margin: 0; font-size: 16px; }
+.card p { margin: 0; color: var(--muted); }
+.card ul { margin: 0; padding-left: 18px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+@media (max-width: 1000px) { .app { grid-template-columns: minmax(0, 1fr) 280px; } .rail { display: none; } }
+@media (max-width: 720px) { .app { grid-template-columns: minmax(0, 1fr); } .notes { position: static; } }
+
+/* inside the phone */
+.scr { position: absolute; inset: 0; background: #FFFFFF; display: flex; flex-direction: column; }
+.scr[hidden] { display: none; }
+#site { overflow: hidden; }
+#site .scroll { position: absolute; inset: 0; overflow-y: auto; scrollbar-width: none; }
+#site .scroll::-webkit-scrollbar { display: none; }
+#site img { display: block; width: 390px; height: auto; }
+.cue { outline: 2px dashed rgba(26,26,26,0.5); outline-offset: 2px; animation: cue 1.6s ease-in-out infinite; }
+@keyframes cue { 50% { outline-color: rgba(26,26,26,0.12); } }
+.toast { position: absolute; left: 50%; bottom: 90px; transform: translateX(-50%); background: #1a1a1a; color: #fff; font-size: 13px; padding: 8px 14px; border-radius: 10px; z-index: 50; max-width: 300px; text-align: center; animation: toast 2.6s ease forwards; pointer-events: none; }
+@keyframes toast { 0% { opacity: 0; } 10%, 85% { opacity: 1; } 100% { opacity: 0; } }
+/* the text message */
+.sms { background: #F6F6F6; }
+.sms .h { padding: 54px 16px 10px; background: #FFFFFF; border-bottom: 1px solid #E6E6E6; display: flex; align-items: center; gap: 10px; }
+.sms .h .av { width: 36px; height: 36px; border-radius: 50%; background: #1a1a1a; color: #fff; display: grid; place-items: center; font-weight: 600; font-size: 14px; }
+.sms .h b { display: block; font-size: 15px; } .sms .h small { display: block; font-size: 12px; color: #6b6b6b; }
+.sms .t { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 8px; justify-content: flex-end; }
+.sms .day { align-self: center; font-size: 12px; color: #6b6b6b; }
+.sms .m { align-self: flex-start; max-width: 86%; background: #FFFFFF; border-radius: 16px; padding: 10px 12px; font-size: 15px; line-height: 1.4; border: 1px solid #E6E6E6; }
+.sms .m a { color: #1a1a1a; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; word-break: break-all; }
+.sms .c { padding: 10px 16px 30px; background: #FFFFFF; border-top: 1px solid #E6E6E6; }
+.sms .c .f { height: 40px; border-radius: 20px; border: 1px solid #E6E6E6; padding: 0 14px; display: flex; align-items: center; font-size: 14px; color: #9a9a9a; }
+/* the answer as a chat: Invita's cream and ink, the app's bubble sizes (15px, 16px corners) and dock */
+.ans { background: #FBF8F3; }
+.ch { position: absolute; inset: 0; display: flex; flex-direction: column; background: #FBF8F3; color: #17130F; }
+.ch .top { flex: none; display: flex; align-items: center; gap: 12px; padding: 54px 16px 12px; border-bottom: 1px solid #EDE6DA; background: #FBF8F3; }
+.ch .top .av { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; flex: none; display: block; } .ch .top .av svg { display: block; width: 44px; height: 44px; }
+.ch .top b { display: block; font-size: 16px; } .ch .top small { display: block; font-size: 12.5px; color: #7A726A; }
+.ch .thread { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 14px; scrollbar-width: none; }
+.ch .thread::-webkit-scrollbar { display: none; }
+.ch .thread > :first-child { margin-top: auto; }
+.ch .it { display: flex; flex: none; animation: land .3s ease both; }
+.ch .it.l { justify-content: flex-start; } .ch .it.r { justify-content: flex-end; } .ch .it.c { justify-content: center; }
+@keyframes land { from { opacity: 0; transform: translateY(8px); } }
+.ch .meta { font-size: 11.5px; color: #7A726A; padding: 4px 0; }
+.ch .lb { position: relative; max-width: 86%; border-radius: 16px; padding: 9px 12px; font-size: 15px; line-height: 1.45; display: flex; flex-direction: column; gap: 6px; white-space: pre-wrap; }
+.ch .lb.them { background: #F0E9DF; color: #17130F; border-bottom-left-radius: 4px; }
+.ch .lb.them::before { content: ""; position: absolute; left: -7px; bottom: 0; width: 10px; height: 14px; background: #F0E9DF; clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+.ch .lb.me { background: #17130F; color: #FBF8F3; border-bottom-right-radius: 4px; }
+.ch .lb.me::before { content: ""; position: absolute; right: -7px; bottom: 0; width: 10px; height: 14px; background: #17130F; clip-path: polygon(0 0, 0 100%, 100% 100%); }
+.ch .lb.wide { width: 86%; }
+.ch .lb .cap { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; opacity: 0.6; }
+.ch .lb .sub { font-size: 13px; color: #7A726A; }
+.ch .ask { display: flex; gap: 10px; align-items: center; } .ch .ask .ph { width: 44px; height: 44px; border-radius: 8px; flex: none; background: linear-gradient(135deg, #D9B8A5, #B98B74); }
+.ch .list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.ch .list li { display: flex; gap: 9px; align-items: flex-start; }
+.ch .list li::before { content: ""; width: 16px; height: 16px; border-radius: 50%; flex: none; margin-top: 3px; background: #FBF8F3 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239B7557' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6L9 17l-5-5'/%3E%3C/svg%3E") center/10px no-repeat; }
+.ch .pl { display: flex; align-items: center; gap: 9px; } .ch .play { width: 30px; height: 30px; border-radius: 50%; border: 0; background: #17130F; display: grid; place-items: center; flex: none; padding: 0; }
+.ch .bars { flex: 1; display: flex; align-items: center; gap: 2px; height: 20px; } .ch .bars i { flex: 1; min-width: 2px; border-radius: 2px; background: #C9BEAF; } .ch .bars i.on { background: #17130F; }
+.ch .tm { font-size: 12px; color: #7A726A; font-variant-numeric: tabular-nums; }
+.ch .full { font-size: 15px; }
+.ch .card { display: flex; align-items: center; gap: 10px; background: #FBF8F3; border: 1px solid #E6DDD0; border-radius: 12px; padding: 10px; }
+.ch .card .img { width: 52px; height: 40px; border-radius: 6px; background: #E6DDD0; flex: none; } .ch .card b { display: block; font-size: 15px; } .ch .card small { display: block; font-size: 12.5px; color: #7A726A; }
+.ch .lb a { color: #17130F; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; align-self: flex-start; }
+.ch .dots { flex-direction: row; gap: 5px; padding: 12px 14px; } .ch .dots i { width: 7px; height: 7px; border-radius: 50%; background: #9B7557; opacity: 0.5; animation: blink 1s infinite; } .ch .dots i:nth-child(2) { animation-delay: .15s; } .ch .dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes blink { 50% { opacity: 1; } }
+.ch .dock { flex: none; padding: 8px 16px 28px; display: flex; flex-direction: column; gap: 6px; background: #FBF8F3; position: relative; min-height: 28px; }
+.ch .dock::before { content: ""; position: absolute; left: 0; right: 0; top: -18px; height: 18px; background: linear-gradient(to bottom, rgba(251,248,243,0), #FBF8F3); pointer-events: none; }
+.ch .pill { height: 54px; border-radius: 999px; background: #17130F; color: #FBF8F3; border: 0; font-size: 16px; font-weight: 600; width: 100%; }
+.ch .lnk { height: 40px; border: 0; background: none; color: #7A726A; font-size: 16px; width: 100%; }
+.ch .fld { width: 100%; height: 50px; border: 1px solid #D9CFC1; border-radius: 14px; padding: 0 14px; font: inherit; font-size: 17px; color: #17130F; background: #FFFFFF; box-sizing: border-box; }
+.ch .fld:focus { outline: none; border-color: #17130F; }
+.ch .faces { display: flex; flex-direction: column; gap: 8px; }
+.ch .faces button { min-height: 58px; border: 1.5px solid #D9CFC1; border-radius: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; background: #FFFFFF; text-align: left; }
+.ch .faces b { display: block; font-size: 16px; font-weight: 600; } .ch .faces small { display: block; font-size: 12.5px; color: #7A726A; }
+.ch .faces .km { font-size: 13px; font-weight: 600; flex: none; font-variant-numeric: tabular-nums; color: #9B7557; }
+.ch .faces button.on { background: #17130F; color: #FBF8F3; border-color: #17130F; } .ch .faces button.on small, .ch .faces button.on .km { color: rgba(251,248,243,0.75); }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="app">
+  <nav class="rail" aria-label="Steps">
+    <div><h1>Invita: from the popup to the booking</h1><p>On a phone. Tap inside it; the steps follow.</p></div>
+    <div class="steps" id="steps"></div>
+  </nav>
+  <main class="centre">
+    <div class="stage" id="stage"><div class="device" id="device"><div class="bezel" id="bezel"><div class="screen" id="screen">
+      <div class="scr" id="site"><div class="scroll"><img src="phone-bg.webp" alt="invitaheadspa.com on a phone"></div></div>
+      <div class="scr sms" id="sms" hidden></div>
+      <div class="scr ans" id="answer" hidden></div>
+    </div></div></div></div>
+    <div class="controls"><button class="btn" id="back" type="button">‹ Back</button><button class="btn" id="again" type="button">Start again</button><button class="btn" id="next" type="button">Next ›</button></div>
+  </main>
+  <aside class="notes"><div class="card" id="note"></div><div class="card"><p>The site is a screenshot of invitaheadspa.com from 28 October 2026. The widget on it is the real script, mounted inside the phone. The text message and the answer page are drawn. White and grey, one typeface. Every word waits for your OK.</p></div></aside>
+</div>
+
+<script>
+(() => {
+  const STEPS = [
+    { id: "popup", name: "The popup", screen: "site", note: ["Once per visitor, after two seconds", "Four lines. Ask opens the form; Not now keeps it away for 30 days. The pill at the bottom right stays."] },
+    { id: "form", name: "The form", screen: "site", note: ["Three things", "A photo, a number, a tick. A few words are optional. Send is grey until all three are there."] },
+    { id: "sent", name: "Sent", screen: "site", note: ["Nothing else on the site", "The request is now in the trichologist's chat in the app. Done takes the customer back to the page; the prototype jumps to later that day."] },
+    { id: "sms", name: "The text message", screen: "sms", note: ["From Invita's number", "One line and a link. The audio is never sent as a file: the link always opens the latest answer."] },
+    { id: "answer", name: "The answer, as a chat", screen: "answer", note: ["The same shape as the app's chat", "What you asked, as your bubble. Then Ariel: the routine, her full answer with her voice, the treatment as a card. The one thing to do sits where the message box would be: Book, or Skip."] },
+    { id: "near", name: "Where, which spa, which day", screen: "answer", note: ["One question at a time, in the thread", "Each answer lands as your bubble, as in the app's walk: ZIP or location, the nearest spa with Ariel's days, the day. Nothing else on screen."] },
+    { id: "booked", name: "Booked", screen: "answer", note: ["The last bubble", "Day, time, spa, street, directions. Done. In the app this last step is Invita's own booking page, opened with the request's code."] },
+  ];
+  const S = { step: "popup", zip: "", spa: null, booked: null };
+  const AVATAR = `<svg viewBox="0 0 64 64" width="56" height="56" role="img" aria-label="Ariel, your trichologist"><defs><clipPath id="c"><circle cx="32" cy="32" r="32"/></clipPath></defs><g clip-path="url(#c)"><rect width="64" height="64" fill="#E9E6E1"/><path d="M14 64c0-14 8-22 18-22s18 8 18 22z" fill="#8C8580"/><circle cx="32" cy="26" r="11" fill="#D9CDBF"/><path d="M20 27c0-10 5-15 12-15s12 5 12 15c-2-6-6-8-12-8s-10 2-12 8z" fill="#4A4542"/><path d="M20 27c-1 8 0 14 3 18-4-3-5-10-3-18zM44 27c1 8 0 14-3 18 4-3 5-10 3-18z" fill="#4A4542"/></g></svg>`;
+  const SPAS = [
+    { id: "lv", name: "Las Vegas", street: "Sahara Ave", km: "2.1 mi", who: "Trichologist here Thu, Fri", days: ["Thu 12 Nov", "Fri 13 Nov", "Thu 19 Nov"] },
+    { id: "vi", name: "Vista, San Diego", street: "S Santa Fe Ave", km: "240 mi", who: "Trichologist here Mon", days: ["Mon 16 Nov", "Mon 23 Nov"] },
+    { id: "cm", name: "Costa Mesa", street: "Bristol St", km: "265 mi", who: "Trichologist here Wed", days: ["Wed 18 Nov"] },
+    { id: "fl", name: "Fort Lauderdale", street: "Las Olas Blvd", km: "2,400 mi", who: "Trichologist here Tue", days: ["Tue 17 Nov"] },
+  ];
+  const SAID = ["Thank you for the photo. What I see on the crown is a dry, irritated scalp, and washing every day with a strong shampoo is most likely what keeps it that way.", "For the next three weeks, wash every second day with lukewarm water and leave the foam on for one minute.", "The thinner feeling at the top usually follows the irritation. Let the scalp settle first; if it is still itchy after three weeks, come in for the Deep Scalp Treatment and I will look at it properly."];
+  const screen = document.getElementById("screen");
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const bars = (n, seed) => { let s = seed, o = ""; for (let i = 0; i < n; i++) { s = (s * 9301 + 49297) % 233280; o += `<i style="height:${Math.round((0.25 + (s / 233280) * 0.75) * 20)}px"></i>`; } return o; };
+  let timers = [];
+  const later = (fn, ms) => { const t = setTimeout(fn, ms); timers.push(t); return t; };
+  const every = (fn, ms) => { const t = setInterval(fn, ms); timers.push(t); return t; };
+  const clearAll = () => { timers.forEach((t) => { clearTimeout(t); clearInterval(t); }); timers = []; };
+  const toast = (m) => { const t = document.createElement("div"); t.className = "toast"; t.textContent = m; screen.appendChild(t); later(() => t.remove(), 2700); };
+  const BY = Object.fromEntries(STEPS.map((s) => [s.id, s]));
+
+  function show(id) {
+    S.step = id; const st = BY[id];
+    ["site", "sms", "answer"].forEach((k) => { document.getElementById(k).hidden = k !== st.screen; });
+    if (st.screen === "sms") drawSms();
+    if (st.screen === "answer") drawAnswer();
+    if (st.screen === "site" && id === "popup") window.dispatchEvent(new CustomEvent("wpl:popup"));
+    paint();
+  }
+  function paint() {
+    document.getElementById("steps").innerHTML = STEPS.map((s, i) => `<button type="button" class="step" data-s="${s.id}" ${s.id === S.step ? 'aria-current="step"' : ""}><i>${i + 1}</i>${s.name}</button>`).join("");
+    const n = BY[S.step].note;
+    document.getElementById("note").innerHTML = `<h2>${n[0]}</h2><p>${n[1]}</p>`;
+  }
+  document.getElementById("steps").addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (b) go(b.dataset.s); });
+  function go(id) { clearAll(); if (BY[id].screen === "site" && id !== "popup") { show("popup"); return; } show(id); }
+  document.getElementById("next").onclick = () => { const i = STEPS.findIndex((s) => s.id === S.step); const nx = STEPS[Math.min(STEPS.length - 1, i + 1)]; if (nx.screen === "site") { show("popup"); } else { if (nx.id === "near" && !S.zip) { S.zip = "89109"; S.spa = SPAS[0]; } if (nx.id === "booked" && !S.booked) { S.zip = S.zip || "89109"; S.spa = S.spa || SPAS[0]; S.booked = { day: S.spa.days[0], spa: S.spa }; } show(nx.id); } };
+  document.getElementById("back").onclick = () => { const i = STEPS.findIndex((s) => s.id === S.step); const pv = STEPS[Math.max(0, i - 1)]; if (pv.screen === "site") show("popup"); else show(pv.id); };
+  document.getElementById("again").onclick = () => { try { localStorage.removeItem("wpl-popup-ws_invita_demo"); } catch (e) {} Object.assign(S, { zip: "", spa: null, booked: null }); show("popup"); };
+
+  // the widget tells the rail where it is
+  window.addEventListener("wpl:step", (e) => { const s = e.detail.step; if (BY[s]) { S.step = s; paint(); } });
+  window.addEventListener("wpl:ready", () => { if (S.step === "popup") window.dispatchEvent(new CustomEvent("wpl:popup")); });
+  window.addEventListener("wpl:done", () => { later(() => { show("sms"); toast("Later that day, on the customer's phone."); }, 300); });
+
+  function drawSms() {
+    const el = document.getElementById("sms");
+    el.innerHTML = `<div class="h"><span class="av">I</span><span><b>Invita Head Spa</b><small>+1 702 555 0199</small></span></div>
+      <div class="t"><span class="day">Today 4:12 PM</span><div class="m">Your trichologist answered you. Listen here:<br><a href="#answer" id="lnk" class="cue">invita.willpowerlab.com/a/7f3k</a></div></div>
+      <div class="c"><div class="f">Text message</div></div>`;
+    el.querySelector("#lnk").onclick = (e) => { e.preventDefault(); show("answer"); };
+  }
+
+  // The answer as a chat, the way the lens draws a walk: the thread grows by taps, the step's own buttons sit where the message box would be.
+  function drawAnswer() {
+    const el = document.getElementById("answer");
+    el.innerHTML = `<div class="ch">
+      <div class="top"><span class="av">${AVATAR}</span><div><b>Ariel answered you</b><small>Your trichologist at Invita</small></div></div>
+      <div class="thread" id="th"></div>
+      <div class="dock" id="dock"></div>
+    </div>`;
+    const th = el.querySelector("#th"), dock = el.querySelector("#dock");
+    const fit = () => { th.scrollTop = th.scrollHeight; };
+    const add = (h, cls = "") => { th.insertAdjacentHTML("beforeend", `<div class="it ${cls}">${h}</div>`); fit(); };
+    const them = (inner, extra = "") => add(`<div class="lb them ${extra}">${inner}</div>`, "l");
+    const me = (inner) => add(`<div class="lb me">${inner}</div>`, "r");
+    const sep = (t) => add(`<div class="meta">${t}</div>`, "c");
+    const typing = () => add(`<div class="lb them dots" id="ty"><i></i><i></i><i></i></div>`, "l");
+    const untype = () => { const t = th.querySelector("#ty"); if (t) t.remove(); };
+    const setDock = (html) => { dock.innerHTML = html; fit(); };
+    const player = `<div class="pl"><button class="play" type="button" id="play" aria-label="Play Ariel's answer"><svg width="12" height="13" viewBox="0 0 12 13" aria-hidden="true"><path d="M2 1.2v10.6L11 6.5z" fill="#fff"/></svg></button><div class="bars" id="abars">${bars(30, 9)}</div><span class="tm">0:42</span></div>`;
+
+    // what was said, in order
+    sep("Today, 4:12 PM");
+    me(`<span class="cap">You asked</span><div class="ask"><span class="ph"></span><span>Itchy for two months, thinning at the top…</span></div>`);
+    them(`<span class="cap">For the next three weeks</span><ul class="list"><li>Wash every second day, not every day</li><li>Lukewarm water</li><li>Leave the foam on for one minute</li><li>Nothing for thinning yet. Let the scalp settle first</li></ul>`);
+    them(`${player}<span class="full">${SAID.map(esc).join("<br><br>")}</span>`);
+    them(`<div class="card"><div class="img"></div><div><b>Deep Scalp Treatment</b><small>60 min · [PRICE]</small></div></div><span>What I recommend for a dry, irritated scalp.</span>`, "wide");
+    el.querySelector("#play").onclick = () => { const bs = [...el.querySelectorAll("#abars i")]; let j = 0; bs.forEach((b) => b.classList.remove("on")); const t = every(() => { if (j >= bs.length) { clearInterval(t); later(() => bs.forEach((b) => b.classList.remove("on")), 400); return; } bs[j++].classList.add("on"); }, 130); };
+
+    // the one thing to do: Book, or Skip. Then one question at a time, each answer landing as the customer's bubble.
+    const ask = (q, dockHtml, wire) => { typing(); later(() => { untype(); them(q); setDock(dockHtml); wire(); }, 700); };
+    const stepWhere = () => ask("Where are you? So I book you at the Invita nearest to you.",
+      `<input class="fld" id="zip" type="text" inputmode="numeric" placeholder="ZIP code" aria-label="ZIP code"><button class="pill" type="button" id="zgo">Continue</button><button class="lnk" type="button" id="loc">Use my location instead</button>`,
+      () => { const zi = dock.querySelector("#zip"); zi.focus(); const go = (v) => { S.zip = v; S.spa = SPAS[0]; S.step = "near"; paint(); me(esc(v)); setDock(""); stepSpa(); };
+        const find = () => { const v = zi.value.trim(); if (!/^\d{5}$/.test(v)) { toast("A ZIP code has five digits, like 89109."); return; } go(v); };
+        dock.querySelector("#zgo").onclick = find; zi.onkeydown = (e) => { if (e.key === "Enter") find(); };
+        dock.querySelector("#loc").onclick = () => go("89109"); });
+    const stepSpa = () => ask(`Nearest to ${esc(S.zip)}. I am at each on these days.`,
+      `<div class="faces">${SPAS.map((s, i) => `<button type="button" data-s="${s.id}"><span><b>${s.name}</b><small>${s.street} · ${s.who.replace("Trichologist here ", "")}</small></span><span class="km">${s.km}</span></button>`).join("")}</div>`,
+      () => { dock.querySelectorAll("[data-s]").forEach((b) => b.onclick = () => { b.classList.add("on"); S.spa = SPAS.find((s) => s.id === b.dataset.s); later(() => { me(S.spa.name); setDock(""); stepDay(); }, 220); }); });
+    const stepDay = () => ask(`Which day in ${S.spa.name}?`,
+      `<div class="faces">${S.spa.days.map((d) => `<button type="button" data-d="${d}"><span><b>${d}</b><small>10:00</small></span></button>`).join("")}</div><button class="lnk" type="button" id="sback">Another spa</button>`,
+      () => { dock.querySelectorAll("[data-d]").forEach((c) => c.onclick = () => { c.classList.add("on"); later(() => { S.booked = { day: c.dataset.d, spa: S.spa }; S.step = "booked"; paint(); me(c.dataset.d + ", 10:00"); setDock(""); booked(); }, 220); });
+        dock.querySelector("#sback").onclick = () => { me("Another spa"); setDock(""); stepSpa(); }; });
+    const booked = () => { typing(); later(() => { untype(); them(`<span class="cap">Booked</span><b>${S.booked.day}, 10:00</b><span>${S.booked.spa.name}, ${S.booked.spa.street}</span><a href="https://maps.google.com" target="_blank" rel="noopener">Directions</a><span class="sub">See you there. Reply to the text if anything changes.</span>`); setDock(`<button class="pill" type="button" id="done">Done</button>`); dock.querySelector("#done").onclick = () => { setDock(""); toast("In the app this last step is Invita's booking page, opened with the request's code."); }; }, 800); };
+
+    const start = () => {
+      setDock(`<button class="pill" type="button" id="book">Book the Deep Scalp Treatment</button><button class="lnk" type="button" id="skip">Skip</button>`);
+      dock.querySelector("#book").onclick = () => { me("Book the Deep Scalp Treatment"); setDock(""); stepWhere(); };
+      dock.querySelector("#skip").onclick = () => { me("Skip"); setDock(""); typing(); later(() => { untype(); them("No problem. Reply to the text whenever you want to come in."); }, 600); };
+    };
+    if (S.booked) { me("Book the Deep Scalp Treatment"); me(S.zip || "89109"); me(S.booked.spa.name); me(S.booked.day + ", 10:00"); booked(); }
+    else if (S.step === "near") { me("Book the Deep Scalp Treatment"); stepWhere(); }
+    else start();
+  }
+  // fit the phone
+  const device = document.getElementById("device"), bezel = document.getElementById("bezel"), stage = document.getElementById("stage");
+  function fit() { const narrow = innerWidth <= 520; const W = narrow ? 390 : 410, H = narrow ? 844 : 864; const k = Math.min(1, stage.clientWidth / W, (narrow ? Infinity : Math.max(520, innerHeight - 120)) / H); bezel.style.transform = `scale(${k})`; bezel.style.width = W + "px"; bezel.style.height = H + "px"; device.style.width = W * k + "px"; device.style.height = H * k + "px"; }
+  new ResizeObserver(fit).observe(stage); addEventListener("resize", fit); fit();
+  try { localStorage.removeItem("wpl-popup-ws_invita_demo"); } catch (e) {}
+  show("popup");
+})();
+</script>
+<!-- the one line the client adds, here mounted inside the phone: -->
+<script src="w.js" data-key="ws_invita_demo" data-mount="#site" data-popup-delay="-1"></script>
+</body></html>
