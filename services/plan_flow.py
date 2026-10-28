@@ -36,7 +36,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import date, datetime, timezone
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from services import plan as P
@@ -235,7 +235,7 @@ def view(database: Any, user_id: str, plan: dict) -> dict:
         "next_day": (P.next_day_text(today, deadline, days, every_day) if deadline else None),
         "topic": facts.get("topic") or facts.get("event"),
         "waiting": bool(facts.get("wait_take")),
-        "onboarding": _onboarding(plan, lambda: done),
+        "onboarding": _onboarding(plan, done),
     }
 
 
@@ -265,14 +265,14 @@ def _need_step(plan: dict, *steps: str) -> None:
 
 # ── onboarding, which the principles wait for (N243) ───────────────────────
 
-def _onboarding(plan: dict, done: Callable[[], int]) -> bool:
+def _onboarding(plan: dict, done: int) -> bool:
     """Any plan while its questions are asked (A2, A3), but not one waiting
     for the next Take; a new speaker's first plan until its first Take."""
     facts = _facts(plan)
     if plan.get("status") == "asking":
         return not facts.get("wait_take")
-    return (plan.get("status") == "active" and facts.get("mode") == "new"
-            and not facts.get("again") and done() == 0)
+    first_plan = facts.get("mode") == "new" and not facts.get("again")
+    return plan.get("status") == "active" and first_plan and done == 0
 
 
 def onboarding(database: Any, user_id: Any) -> bool:
@@ -284,7 +284,10 @@ def onboarding(database: Any, user_id: Any) -> bool:
         if not enabled(database, user_id):
             return False
         plan = database.get_open_plan(str(user_id))
-        return bool(plan) and _onboarding(plan, lambda: _done(plan, _takes(database, user_id)))
+        if not plan:
+            return False
+        done = _done(plan, _takes(database, user_id)) if plan.get("status") == "active" else 0
+        return _onboarding(plan, done)
     except Exception as error:  # noqa: BLE001 -- an unread plan holds nothing back
         logger.warning("plan: onboarding not read user=%s: %s", user_id, error)
         return False
