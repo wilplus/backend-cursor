@@ -1,0 +1,152 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Customer Requests Value Canvas</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: a verdict band first, then three value proposition canvases (one per party), each as two columns: the customer profile and the value map, with a fit line between them. */
+:root {
+  --bg: #F3F1EC; --panel: #FFFFFF; --ink: #171615; --muted: #67635D; --line: #D9D4CB;
+  --accent: #FF640A; --accent-soft: #FFE9DA; --accent-ink: #A83E00;
+  --sev-high: #B23A2E; --sev-mid: #B9770B; --sev-low: #4E7A5B;
+  --font: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #161513; --panel: #1F1E1C; --ink: #EDEBE7; --muted: #A39F98; --line: #35322E;
+  --accent: #FF7A2B; --accent-soft: #3A2414; --accent-ink: #FFB487;
+  --sev-high: #F08A7E; --sev-mid: #E8B454; --sev-low: #8CC19B; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #161513; --panel: #1F1E1C; --ink: #EDEBE7; --muted: #A39F98; --line: #35322E;
+  --accent: #FF7A2B; --accent-soft: #3A2414; --accent-ink: #FFB487;
+  --sev-high: #F08A7E; --sev-mid: #E8B454; --sev-low: #8CC19B; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.5; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 56px; }
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+h1 { font-size: 30px; line-height: 1.15; margin: 0; letter-spacing: -0.015em; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); max-width: 70ch; font-size: 15.5px; }
+.eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.verdict { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 22px; }
+.verdict h2 { margin: 0 0 8px; font-size: 20px; line-height: 1.25; text-wrap: balance; }
+.verdict p { margin: 0 0 10px; }
+.verdict p:last-child { margin-bottom: 0; }
+.sev { display: flex; flex-direction: column; gap: 10px; }
+.sev-row { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 12px; border-radius: 10px; background: var(--bg); }
+.sev-row b { font-size: 14px; }
+.sev-row span { font-size: 13.5px; color: var(--muted); }
+.pill { display: inline-block; font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; border: 1px solid currentColor; margin-bottom: 4px; }
+.high { color: var(--sev-high); } .mid { color: var(--sev-mid); } .low { color: var(--sev-low); }
+.canvas { display: flex; flex-direction: column; gap: 12px; }
+.canvas-h { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.canvas-h h2 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+.canvas-h .who { color: var(--muted); font-size: 14px; }
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 14px; align-items: stretch; }
+.side { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.side h3 { margin: 0; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.block h4 { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
+.block ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14.5px; }
+.block li b { font-weight: 600; }
+.fit { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; width: 110px; text-align: center; }
+.fit .arrow { width: 44px; height: 44px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); display: grid; place-items: center; font-weight: 700; }
+.fit small { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
+.tag { align-self: flex-start; background: var(--accent-soft); color: var(--accent-ink); border-radius: 8px; padding: 3px 8px; font-size: 12.5px; font-weight: 600; }
+.test { background: var(--panel); border: 1px dashed var(--line); border-radius: 16px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
+.test h2 { margin: 0; font-size: 19px; }
+.test ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14.5px; }
+.foot { font-size: 13px; color: var(--muted); }
+@media (max-width: 860px) { .verdict { grid-template-columns: minmax(0, 1fr); } .cols { grid-template-columns: minmax(0, 1fr); } .fit { width: auto; flex-direction: row; justify-content: flex-start; } .sev-row { grid-template-columns: minmax(0, 1fr); } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">WillpowerLab · Customer requests · 27 October 2026</span>
+    <h1>Who gets what, and how badly they need it</h1>
+    <p class="lede">Three value proposition canvases, one per party: the customer on the shop's site, the head spa, and WillpowerLab. Then the honest part: whether the pain is severe enough to be a business, and the one test that settles it.</p>
+  </header>
+
+  <section class="verdict" aria-label="The verdict">
+    <div>
+      <h2>Verdict: a real revenue problem for the shop, a mild one for its customer, and a strategic one for us. Severe only where the sale depends on advice and the expert's time is the bottleneck.</h2>
+      <p>For Ola, not knowing which shampoo to buy is an everyday irritation with money attached, not a crisis. She will use a free expert if it is one tap away; she would not pay for it, and she would not wait two days for it twice.</p>
+      <p>For Mila the pain is conversion. They pay for traffic, the visitor cannot decide, the cart is abandoned, and the one person who could close the sale, the trichologist, is in the salon with a client. That is a revenue leak the owner feels in slow months. It is severe for a premium brand whose margin is expertise, and mild for a shop that competes on price.</p>
+      <p>For WillpowerLab it is the first use of the loop with a money outcome on every pair. The speaker product cannot tell us whether a Take "worked"; a shampoo answer can, by whether she bought. That outcome signal is what makes a client's model trainable toward results, not words.</p>
+    </div>
+    <div class="sev">
+      <div class="sev-row"><div><span class="pill low">Low</span><br><b>Ola, the customer</b></div><span>Frequent, cheap to solve, no willingness to pay. The product is a convenience she will love and not miss.</span></div>
+      <div class="sev-row"><div><span class="pill mid">Moderate</span><br><b>Mila, the head spa</b></div><span>Measurable in money. Severe for premium, advice-led brands with one expert; weak for discount shops. Pays when attributable revenue per answer beats the expert's ten minutes.</span></div>
+      <div class="sev-row"><div><span class="pill high">High, for us</span><br><b>WillpowerLab</b></div><span>Not a pain we have, a position we want: the loop plus an outcome signal plus per-client IP. The risk is distraction from the speaker loop and the health-data burden.</span></div>
+    </div>
+  </section>
+
+  <section class="canvas" aria-label="Canvas: the customer">
+    <div class="canvas-h"><h2>1 · Ola, the customer on the shop's site</h2><span class="who">A visitor with a hair or scalp problem and a cart she does not trust</span></div>
+    <div class="cols">
+      <div class="side">
+        <h3>Customer profile</h3>
+        <div class="block"><h4>Jobs</h4><ul><li>Stop the itch, the thinning, the oil, whatever brought her here.</li><li>Pick the right product without buying three wrong ones first.</li><li>Know whether this needs a professional or just a different shampoo.</li></ul></div>
+        <div class="block"><h4>Pains</h4><ul><li><b>Uncertainty with money attached:</b> every product page says it is for her.</li><li>Embarrassment: she will not post a scalp photo in a public forum.</li><li>Generic answers: quizzes and chatbots that recommend the bestseller to everyone.</li><li>The salon is far, booking is a phone call, and she is not sure it is worth a visit.</li></ul></div>
+        <div class="block"><h4>Gains</h4><ul><li>A named person who looked at <em>her</em> scalp and said what to do.</li><li>One product, one routine, a date to check again.</li><li>No account, no app, no waiting on hold.</li></ul></div>
+      </div>
+      <div class="fit"><span class="arrow">→</span><small>Fit is strong on pains, weak on urgency</small></div>
+      <div class="side">
+        <h3>Value map</h3>
+        <div class="block"><h4>What she gets</h4><ul><li>The widget: a photo and three fields, no sign-up.</li><li>Marta's voice over slides about her, within a day, on WhatsApp.</li><li>The routine as a checklist, one product with the code, the nearest salon with Marta's days.</li></ul></div>
+        <div class="block"><h4>Pain relievers</h4><ul><li>Private by design: one expert sees the photo, deleted 30 days after the answer.</li><li>Specific, not generic: the answer names what she wrote and what the photo shows.</li><li>The decision is made for her, with the reason in her ears.</li></ul></div>
+        <div class="block"><h4>Gain creators</h4><ul><li>"Marta checks in with you in three weeks": a relationship, not a transaction.</li><li>The follow-up question answered by the same person.</li><li>Later: an instant answer at night, once the model answers alone.</li></ul></div>
+        <span class="tag">Severity: low. The gap we fill is trust, not pain.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="canvas" aria-label="Canvas: the head spa">
+    <div class="canvas-h"><h2>2 · Mila, the head spa and shop</h2><span class="who">A premium brand with one trichologist, three salons and paid traffic</span></div>
+    <div class="cols">
+      <div class="side">
+        <h3>Customer profile</h3>
+        <div class="block"><h4>Jobs</h4><ul><li>Turn visitors into buyers and buyers into salon clients.</li><li>Fill the trichologist's calendar with the right clients, not walk-ins who need a shampoo.</li><li>Stand apart from drugstores and marketplaces that sell the same bottles cheaper.</li><li>Keep customers coming back after the first bottle.</li></ul></div>
+        <div class="block"><h4>Pains</h4><ul><li><b>Paid traffic that does not convert</b> because nobody helps the visitor choose.</li><li>The expert is the bottleneck: her advice sells, and she is with one client at a time.</li><li>No record of what she recommends and whether it worked; the knowledge leaves when she does.</li><li>Empty slots on some days, and no way to send the right people to the right salon.</li><li>Live chat tools need someone online; chatbots embarrass a premium brand.</li></ul></div>
+        <div class="block"><h4>Gains</h4><ul><li>Revenue they can attribute to advice.</li><li>The expert's judgement captured as an asset they own.</li><li>A marketing claim no competitor has: "our trichologist answers you personally".</li></ul></div>
+      </div>
+      <div class="fit"><span class="arrow">→</span><small>Fit is strong where advice sells and the expert is scarce</small></div>
+      <div class="side">
+        <h3>Value map</h3>
+        <div class="block"><h4>What they get</h4><ul><li>One script tag, their name and colour, "powered by" us.</li><li>Every request answered as a Take: ten minutes of the expert's voice, asynchronously, between clients.</li><li>The answer page that carries the sale: cart with their code, the nearest salon with the expert's days.</li><li>A weekly note: requests, answers, bought, booked, the three most asked problems.</li><li>The export: their pairs, their schema, their documents. Their IP.</li></ul></div>
+        <div class="block"><h4>Pain relievers</h4><ul><li>Converts traffic they already pay for; the cost is the expert's minutes, not ad spend.</li><li>Asynchronous, so no one has to be online; a 24-hour alarm so nothing is lost.</li><li>The expert's communication improves with every answer, through the walk.</li><li>Bookings routed to the salon where she actually is.</li></ul></div>
+        <div class="block"><h4>Gain creators</h4><ul><li>Attribution per answer: the first time advice has a number next to it.</li><li>The model that answers alone at night, trained on her, owned by them.</li><li>Later: the best answers as public pages, each a search landing page.</li></ul></div>
+        <span class="tag">Severity: moderate, and the one we should price on.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="canvas" aria-label="Canvas: WillpowerLab">
+    <div class="canvas-h"><h2>3 · WillpowerLab</h2><span class="who">The platform: one loop, two uses, a flywheel per client</span></div>
+    <div class="cols">
+      <div class="side">
+        <h3>Our profile</h3>
+        <div class="block"><h4>Jobs</h4><ul><li>Prove the loop (record, process, Ideal Text, feedback, record again) is worth paying for.</li><li>Get a signal that feedback changes outcomes, not only words.</li><li>Find revenue that does not depend on individual speakers paying for practice.</li><li>Keep the speaker loop fast and untouched.</li></ul></div>
+        <div class="block"><h4>Pains</h4><ul><li>No speakers yet; no money outcome on a Take; the learning pipeline waits for pairs.</li><li>Every new surface competes for the same engineering week.</li><li>Health data on customers we do not own; a DPA per client; consent counsel reads.</li><li>A client's result depends on one answerer's discipline.</li></ul></div>
+        <div class="block"><h4>Gains</h4><ul><li>A second customer type with a business budget, not a personal one.</li><li>Pairs with outcomes: the training data the speaker side cannot produce.</li><li>Per-client models as a product line with a clear export, hence a clear price.</li></ul></div>
+      </div>
+      <div class="fit"><span class="arrow">→</span><small>Fit is strategic: the same code, a new signal, a new buyer</small></div>
+      <div class="side">
+        <h3>Value map</h3>
+        <div class="block"><h4>What we get</h4><ul><li>A workspaces table, a widget, one new ask in the chat, an answer page. No new infrastructure.</li><li>Every answer runs the speaker pipeline, so the trichologist is also a speaker who improves.</li><li>The outcome on the pair: bought, booked, or not yet.</li></ul></div>
+        <div class="block"><h4>Pain relievers</h4><ul><li>Revenue share on attributable sales, from the first client, before any model exists.</li><li>The learning machine gets real pairs at a rate speakers alone would not give it.</li><li>The locked screens stay locked; the request rides the ask slot that exists.</li></ul></div>
+        <div class="block"><h4>Gain creators</h4><ul><li>"Your own expert model" as the upsell at two hundred pairs, with the export as proof.</li><li>The same widget for any advice-led sale: skincare, supplements, eyewear, a bookshop, a campaign brief.</li><li>Autonomy turns the sales tool into a support tool at zero marginal cost.</li></ul></div>
+        <span class="tag">Severity for us: high as a position, zero as a pain. Treat it as a bet with a kill criterion.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="test" aria-label="The test">
+    <h2>The one test, and what kills it</h2>
+    <ol>
+      <li><b>The number:</b> attributable revenue per answered request, against the expert's ten minutes at her hourly cost. Above it with one tester for four weeks, the shop pays. Below it, the widget is a nice feature and not a business.</li>
+      <li><b>The second number:</b> share of requests answered within 24 hours. Under 80 percent, the asynchronous promise fails and the customer does not come back.</li>
+      <li><b>The kill criterion:</b> if after two testers neither number holds, stop before the pgvector migration. Nothing built before it is wasted: the workspaces, the widget, the ask and the answer page are cheap and reusable.</li>
+      <li><b>What would make it severe:</b> a client where the sale cannot happen without advice at all. A scalp clinic, a hearing-aid shop, a supplements brand with a nutritionist. Pick the second tester there.</li>
+    </ol>
+    <p class="foot">Decisions behind this page: N223 to N227 in the backend decisions log. Marta, Ola and Mila are examples; the money numbers come from the first tester.</p>
+  </section>
+</div>
+</body></html>

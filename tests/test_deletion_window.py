@@ -148,7 +148,9 @@ class RunTests(unittest.TestCase):
         report = dc.run_due_deletions(database, execute=False, now=NOW)
         self.assertEqual(report["mode"], "dry_run")
         self.assertEqual([o["result"] for o in report["outcomes"]], ["would_start"])
-        self.assertEqual(database.client.calls, [])
+        # Only the read of sign-ins left to erase (0497); nothing written.
+        self.assertEqual([c[0] for c in database.client.calls],
+                         ["account_sign_ins_left_v1"])
 
 
     def _run(self, database, final_state):
@@ -170,7 +172,8 @@ class RunTests(unittest.TestCase):
         names = [c[0] for c in database.client.calls]
         self.assertLess(names.index("start_due_account_deletion_v1"),
                         names.index("complete_phase1_account_deletion_v1"))
-        self.assertEqual(names[-1], "release_deletion_completion_lease_v1")
+        writes = [n for n in names if n != "account_sign_ins_left_v1"]
+        self.assertEqual(writes[-1], "release_deletion_completion_lease_v1")
 
     def test_a_purge_that_stops_is_left_for_a_person_with_its_reasons(self):
         database = self._db(

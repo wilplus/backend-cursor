@@ -132,6 +132,10 @@ psql -q -d "$DB" -v ON_ERROR_STOP=1 \
         raw_user_meta_data jsonb DEFAULT '{}'::jsonb,
         created_at timestamptz DEFAULT now())" \
   -c "ALTER DATABASE $DB SET search_path=public,extensions" >>"$log" 2>&1
+# The rest of Supabase Auth's tables and columns that 0497 erases a deleted
+# account's sign-in from: a narrow copy, completing the stub above.
+psql -q -d "$DB" -v ON_ERROR_STOP=1 -X -f tests/integration/supabase_auth_prerequisites.sql >>"$log" 2>&1 \
+  || { echo "  FAILED  supabase_auth_prerequisites.sql" >&2; grep -m2 'ERROR:' "$log" >&2; exit 1; }
 for role in anon authenticated service_role; do
   psql -q -d "$DB" -c "DO \$\$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='$role') THEN CREATE ROLE $role NOLOGIN; END IF; END \$\$" >>"$log" 2>&1
 done
@@ -894,6 +898,15 @@ hard migrations/a_legacy_take_takes_its_owner_from_its_account.sql
 # tests/test_a_confidence_event_without_a_clip_is_given_up_postgres.py.
 hard migrations/a_confidence_event_without_a_clip_is_given_up.sql
 hard migrations/a_confidence_event_without_a_clip_is_given_up.sql
+
+# 0497 (Privacy 3.8 sections 7 and 9; N95): a deleted account keeps no way
+# to sign in. Three functions over Supabase Auth's tables (completed above
+# from tests/integration/supabase_auth_prerequisites.sql) and 0422's
+# complete_phase1_account_deletion_v1 re-issued to call the erasure; both
+# lanes, after 0487, as in the manifest. Twice: apply/reapply idempotency.
+# Its cases are in tests/test_a_deletion_completes_after_seven_days_postgres.py.
+hard migrations/a_deleted_account_keeps_no_way_to_sign_in.sql
+hard migrations/a_deleted_account_keeps_no_way_to_sign_in.sql
 
 # 0489 (N86, 2026-10-22): the shadow writer accepts frame v7. Re-issues
 # 0441's record_take_feedback_policy_v3_shadow_v3 with the frame schema check

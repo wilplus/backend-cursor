@@ -5468,8 +5468,126 @@ The rules: frontend
 (the line on the tap's screen) and
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 D4 and D5, each with its build. No migration in this entry.
+- **Counsel** (founder, the Claude Code chat, 27 October 2026, after sending
+counsel the sign-off page: "counsel agrees"): counsel agrees with Terms 3.8
+and Privacy 3.9 as signed, the answers to questions 1 and 2 and the WhatsApp
+messages' consent included.
+- **Dated** (founder, the Claude Code chat, 28 October 2026, after Meta made
+`login_code` active: "28/10/2026"): Terms 3.8 and Privacy 3.9 read "Effective
+28 October 2026", the only change to the signed texts; they are
+`copy/terms-3.8.txt` and `copy/privacy-3.9.txt`, published by
+`PUBLISH-3.9-2026-10-28.sql` (the founder's step), which also deletes the
+feelings given before 3.9 (question 2 A).
 
-**N218 · Customer requests: a widget on a client's site, answered in the
+**N218 · A deleted account's sign-in record is emptied in SQL, not soft-deleted
+(founder, the Claude Code chat, 27 October 2026, asked which of the two fixes
+for N217 item 4 should stay: "This PR replaces #1425").** For N217 item 4 and
+N95:
+1. When an account deletion is marked done, the person's Supabase sign-in
+record keeps its id and nothing else that signs in or names them: email and
+phone are NULL, not Supabase's soft-delete hash `sha256(user id + email)`,
+which anyone holding the email can check. Password, tokens, sign-in profile
+and linked sign-ins are cleared, sessions ended, refresh tokens revoked, and
+it is banned. How the account signed up stays, for the sign-up count.
+2. This replaces #1425's soft delete through Supabase's admin API (merged
+earlier the same day). Backend #1423 (migration 0497) does it in the
+transaction that marks the request done; an erasure that fails leaves the
+request for the next run. Accounts deleted before it are erased by the
+completion run.
+3. Not in this decision: Supabase Auth's own audit log, which names the
+email, and purges an operator runs by hand (service termination, lawful
+deletion).
+No rules page: the deletion runbook, `docs/PHASE1-PROCESSING-RUNBOOK.md`,
+says how it works. Migration 0497, in #1423.
+
+**N219 · Users: delete people from the list, several at once, and they leave
+the list at once (founder, the Claude Code chat, 27 October 2026, after the
+clickable prototype <https://claude.ai/artifact/Gbi8PZmdL2hCitQsycvurw>:
+"yes, build the delete and hide").** For N95:
+1. On the admin Users list each row has ⋮ on its left, with "Select" and
+"Delete user". "Select" puts a tick box on every row, with a bar: "N
+selected", "Select all shown", "Cancel" and "Delete N users"; one
+confirmation deletes them all. Admins have no ⋮ and are never selected.
+2. A deletion here is the one "Delete user" on the profile already makes:
+the account stops now, the data is deleted after seven days, and it can be
+cancelled until then. The person leaves the list at once and waits under a
+second tab, "Being deleted", with "Deletion asked", "Data deleted after"
+and "Cancel deletion". The first tab is "Active". A finished deletion is in
+neither tab.
+3. The confirmation reads "Delete <email>?" or "Delete N users?" with the
+emails, then "Their account stops now. They leave this list now. Their data
+is deleted after <day>. You can cancel until then." After it, "Deleted. Data
+goes after <day>." with "Undo".
+4. The list shows no counts: "N shown" goes, and "Being deleted" carries no
+number ("you don't need to show how many were deleted, how many are active").
+No rules page: the admin console has none. No migration.
+
+**N220 · A correction that ends on a Good job offers its helper words
+(founder, the Claude Code chat, 27 October 2026, asked why the helper words
+were often missing: "if you improved, you can make it your habit words",
+"the correction that ends on the good job and above offers helper words",
+then, of the three options, "B").** For N113 and the lock of 2026-10-12,
+section 2.5:
+1. A corrected moment whose practise ends on a Good job (a try the machine
+reads as better) offers "Choose your helper words" on its paragraph right
+after the Good job, before the walk goes on, as after a praise. Until now
+helper words came only from a voice that was confident in the Take itself
+(a praise, or N113's Clearer version), and a correction's Good job went on
+with none, so a Take whose two shown moments were both under the floor
+ended with no helper words.
+2. A practise that ends on the third try without a Good job, or is skipped,
+offers none, as before. A moment that already has its helper words step (a
+praise, N113) gets it once.
+3. No new words on screen: the step is C3's, word for word. The server is
+unchanged: it already saves helper words on any paragraph.
+The rules: frontend flow page C3 and C7
+([`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). No migration.
+
+**N221 · Users: the list hides people instead of deleting them (founder,
+the Claude Code chat, 27 October 2026, after "Can not delete the selected
+users nor a single user": "Just hide them cause they are deleted through
+other workflow inside the app", then, of the options, "Gone from the list",
+"Yes, use these" and "Drop it").** For N219:
+1. On the admin Users list, ⋮ has "Select" and "Hide"; the bar while
+choosing reads "N selected", "Select all shown", "Cancel" and "Hide N users"
+("Hide user" for one). Hiding asks nothing first: the person leaves the list
+at once and "Hidden." shows at the bottom with "Undo". If it fails, "Could
+not do that. Try again." shows, as before. Admins have no ⋮, as before.
+2. Hiding changes only the list. The account, its sign-in and its data stay
+as they are. People are deleted elsewhere: "Delete user" on their profile,
+or their own "Delete my account". The list no longer deletes anyone, so
+N219 items 2 and 3 (its seven-day deletion and its confirmation) end here.
+3. A hidden person leaves the list for good: no tab lists them, and only
+the "Undo" right after brings them back. The "Being deleted" tab goes too
+(N219 item 2); the list is one list. Someone whose account is being deleted,
+or is deleted, still leaves it on their own.
+4. Hiding is kept on the account row's own "hidden from lists" flag
+(`v2_student_details.is_archived`), so it needs no new table.
+No rules page: the admin console has none. No migration.
+
+**N222 · Users: Delete on the list really deletes, and every account takes
+the seven-day road (founder, the Claude Code chat, 28 October 2026: "but
+those that are hidden should get deleted", then, told that hidden people
+are not deleted, "Make Delete really delete"; the 500 that the profile's
+"Delete user" gave for an account from May found why deleting failed).** For
+N219 and N221:
+1. The Users list's ⋮ "Delete user" and the bar's "Delete N users" delete
+again, with N219's words: the confirmation, then "Deleted. Data goes after
+<day>." with "Undo", which cancels. N221's hiding ends. Its one list stays:
+the "Being deleted" tab does not come back. The people hidden under N221 are
+back in the list, to be deleted from it.
+2. Every account the admin deletes takes the seven-day road (N48.4 Q14 A),
+including one that never agreed to processing: it is given an owner
+principal first. Such an account's sign-in record used to be deleted outright
+at once (founder 2026-10-14), and Supabase refused that for anyone with a
+Take, because the records kept as history refuse to be deleted with it. Its
+sign-in is emptied by the completion run instead, as everyone's is (N218).
+3. A Delete after a cancel is a new deletion: each admin deletion is kept
+under a key of its own, so a second Delete no longer returns the cancelled
+one.
+No rules page: the admin console has none. No migration.
+
+**N223 · Customer requests: a widget on a client's site, answered in the
 chat as a Take (founder, the Claude Code chat, 27 October 2026: "we rather
 want to do what we do and already think about another feature and about
 testing that hypothesis").** A hypothesis to test beside the speaker loop,
@@ -5542,9 +5660,9 @@ No rules page: a rules page for this flow (frontend
 line; until then this entry is the only text in force. No migration in this
 entry.
 
-**N219 · Customer requests: how the client's own model is built (founder, the
+**N224 · Customer requests: how the client's own model is built (founder, the
 Claude Code chat, 27 October 2026, four answers to engineering's questions on
-the learning side of N218).** The machine stays the one that exists: pairs per
+the learning side of N223).** The machine stays the one that exists: pairs per
 surface, a fine-tune at 200 pairs, the sealed golden set, the evaluation, the
 regurgitation check and promotion by the founder's word
 (`services/feedback_pairs.py`, `model_training.py`, `golden_set.py`,
@@ -5571,7 +5689,7 @@ answerer reviews a sample and every correction is a pair.
 4. **Retrieval.** Per workspace, embeddings in Supabase with pgvector: one
 table with a workspace column, the embedding call through the
 processing-authorization path, exportable as rows. One migration, idempotent,
-reviewed outside before merging. The client's export (N218 item 5) gains the
+reviewed outside before merging. The client's export (N223 item 5) gains the
 schema and the golden set: JSONL of pairs, the documents, the evaluation set.
 The order of build: collect (no AI, the schema extracted and checked), draft
 (retrieval, blind), fine-tune at 200 pairs with the schema score, alone with
@@ -5579,15 +5697,15 @@ the gate. A client whose answers are open-ended (a marketing specialist
 advising on campaigns) runs the same loop with a weaker schema and far more
 pairs: it drafts early and runs alone much later.
 No rules page: the flow page for customer requests waits for the founder's
-`Founder-Approved:` line (N218); the learning rules land on
+`Founder-Approved:` line (N223); the learning rules land on
 [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) in the same PR as the
 first code. No migration in this entry.
 
-**N220 · Customer requests are a sales tool first (founder, the Claude Code
+**N225 · Customer requests are a sales tool first (founder, the Claude Code
 chat, 27 October 2026: "it is the sales tool; that if automatised will
 become a support tool (the instant smart answers); before the AI gets smart
-it is a sales tool only because it answers asynchronously").** For N218 and
-N219:
+it is a sales tool only because it answers asynchronously").** For N223 and
+N224:
 1. The widget is judged by purchases and bookings, not by answer time. While
 a person answers, the wait is hours, so the answer is a recommendation to
 buy, never live support.
@@ -5601,42 +5719,42 @@ or an answerer as a score. The model learns what worked, not only what was
 said.
 4. The form is the client's product finder: a photo or a few words, the
 WhatsApp number, one tick. Words optional when there is a photo.
-5. Support comes with autonomy (N219 item 3): once a client's model answers
+5. Support comes with autonomy (N224 item 3): once a client's model answers
 alone, the same widget answers at once, and the asynchronous loop stays for
 what the model hands to a person. Nothing is built for instant answers
 before that door opens.
 No rules page: the flow page for customer requests waits for the founder's
-`Founder-Approved:` line (N218). No migration in this entry.
+`Founder-Approved:` line (N223). No migration in this entry.
 
-**N221 · The answer is a Take: her voice over slides she picks, camera off;
+**N226 · The answer is a Take: her voice over slides she picks, camera off;
 typed answers for follow-ups only (founder, the Claude Code chat, 27 October
 2026: "she does not want to show herself, she just wants to record like
-slide by slide, or just her voice, or just a text").** For N218 item 1, which
+slide by slide, or just her voice, or just a text").** For N223 item 1, which
 said "a short video answer" and now reads: a Take, the answerer's voice over
 slides. Nothing in the loop needs a camera.
 1. Before the recording, the answerer taps what they recommend from the
 client's catalogue. Each pick is a slide: the customer's request and photo
 first, then each product, in the order picked. The recording screen stays the
 locked one; the picker is the same kind of tap list as the helper words.
-2. The picks fill the answer schema (N219 item 1) before a word is spoken;
+2. The picks fill the answer schema (N224 item 1) before a word is spoken;
 the transcript adds the routine and the reasons. One paragraph per slide is
 the Ideal Text.
 3. The customer hears the voice over the slides, the slides turning as the
-answer goes, with the product cards and the booking under it (N220 item 2).
+answer goes, with the product cards and the booking under it (N225 item 2).
 No video is sent or stored unless the answerer adds one, as a coach may.
 4. A typed answer is allowed only for a customer's follow-up: typed in the
 card, no Take, the pair still recorded, sent the same way. The first answer
 to a request is always a Take, because the walk on it is half of what the
 client buys.
 No rules page: the flow page for customer requests waits for the founder's
-`Founder-Approved:` line (N218). No migration in this entry.
+`Founder-Approved:` line (N223). No migration in this entry.
 
-**N222 · The nearest salon: the customer's postcode is asked at the booking,
+**N227 · The nearest salon: the customer's postcode is asked at the booking,
 once, and remembered (founder, the Claude Code chat, 27 October 2026: "we
 want them to at least enter the zip code during the sign up or later on in
 the process, so we can display head spa near them, the closest to them";
-then "At the booking only, remembered after").** For N220 item 2:
-1. The widget form stays three fields (N220 item 4). The postcode is asked on
+then "At the booking only, remembered after").** For N225 item 2:
+1. The widget form stays three fields (N225 item 4). The postcode is asked on
 the answer page the first time the customer taps to book a visit: a postcode
 field, or "Use my location" with the postcode as the fallback. The guest
 identity keeps it, so it is asked once.
@@ -5646,19 +5764,19 @@ postcode, with the distance and the answerer's days; the nearest is
 preselected, then the day, then Book, which opens the client's booking page
 for that salon with the request's code. The booked card shows the salon, the
 street and a directions link.
-3. The outcome on the pair (N220 item 3) names the salon. Distance is a fact
+3. The outcome on the pair (N225 item 3) names the salon. Distance is a fact
 about a place, never a number about a person.
 4. Geocoding a postcode is a provider call and goes through the
 processing-authorization path; a client's salon coordinates are entered once
 in admin.
 No rules page: the flow page for customer requests waits for the founder's
-`Founder-Approved:` line (N218). No migration in this entry; the salons table
+`Founder-Approved:` line (N223). No migration in this entry; the salons table
 comes with the first code.
 
-**N223 · Four ways a customer meets the answer, in order; built now: the web
+**N228 · Four ways a customer meets the answer, in order; built now: the web
 app with WhatsApp carrying the link (founder, the Claude Code chat, 28
 October 2026: "there are like a couple of layers how it can be done. Yeah,
-let's lock it like that").** For N218 item 6, N220 and N221. The customer's
+let's lock it like that").** For N223 item 6, N225 and N226. The customer's
 side of a request is the same chat (what they asked, the answerer's bubbles,
 the one thing to do in the dock, each answer landing as their own bubble);
 only where it runs changes. The gradation, from the most to the least:
@@ -5668,7 +5786,7 @@ max version; not built now.
 2. **The web app**, on the client's subdomain of willpowerlab.com, opened
 from a link. No install, no account: the guest identity. **Built now.**
 3. **WhatsApp**, the conversation itself in WhatsApp once a model answers
-alone (N219 item 3, N220 item 5). Not built now. **Built now:** WhatsApp
+alone (N224 item 3, N225 item 5). Not built now. **Built now:** WhatsApp
 carries the link to the web app and verifies the customer's number.
 4. **SMS**, the same link where WhatsApp is not the norm or not delivered:
 the country code of the number decides, one line on the form switches, a
@@ -5676,6 +5794,29 @@ failed WhatsApp delivery falls back to SMS, never both.
 Every message the customer's chat shows keeps a shape WhatsApp can carry
 (text, voice, photo, buttons, a list), so moving a client from 2 to 3 is a
 change of transport, not of design. The answerer's side never changes: a
-request is a Take in the app (N221).
+request is a Take in the app (N226).
 No rules page: the flow page for customer requests waits for the founder's
-`Founder-Approved:` line (N218). No migration in this entry.
+`Founder-Approved:` line (N223). No migration in this entry.
+
+**N229 · Customer requests get their own flow page, and their prototypes are
+kept in the repo as files (founder, the Claude Code chat, 28 October 2026:
+"Approve as drafted", to the page; then "what if I stop using claude? this
+links are gone! so make them pdfs so any model can access them").** For N223
+to N228:
+1. The rules for customer requests are one page in the frontend repo,
+   `docs/flows/customer-requests.md`, of the same shape as the plan's page:
+   the rules as decided (§1), in flight, still open, where it lives, the
+   prototypes and one line per change. A later decision about customer
+   requests is folded into it, never a new file.
+2. Every prototype the page names is kept in this repo, in
+   `docs/design/customer-requests-2026-10-28/`: the prototype's own HTML, which
+   runs in any browser, and a PDF of every step, so the design survives
+   without the tool it was drawn in. A claude.ai link is a convenience beside
+   the files, never the only copy. New prototypes for this flow are kept the
+   same way.
+3. These six entries were decided in the chat on 27 and 28 October 2026 as
+   N218 to N223; other entries took those numbers on main the same day, so
+   they are written here as N223 to N228, unchanged otherwise.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
+No migration in this entry.

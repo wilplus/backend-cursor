@@ -9,10 +9,14 @@ days have passed, oldest first:
     purge request and the permanent block), its purge is run by the
     existing orchestrator (freeze -> resolve -> finalize), and a purge that
     finalized 'done' marks the request done on verified terminal evidence
-    (``complete_phase1_account_deletion_v1``);
+    (``complete_phase1_account_deletion_v1``), which in the same transaction
+    closes the person's sign-in record (THE SIGN-IN RECORD, below);
   * a project deletion is confirmed by the system
     (``start_due_project_deletion_v1``) and its one-project purge is run;
-    the project orchestrator marks the project request done itself.
+    the project orchestrator marks the project request done itself;
+  * an account deletion that was done before 0497 and still has its sign-in
+    (``account_sign_ins_left_v1``) has it erased
+    (``erase_deleted_account_sign_in_v1``, action ``erase_sign_in``).
 
 A purge that stops on rows no rule decides finalizes 'review_required'. The
 orchestrator deletes nothing when any target is unknown, so nothing is ever
@@ -29,6 +33,18 @@ ONE RUN AT A TIME (``deletion_completion_lease``). Safe to repeat: a started
 request resumes, a finished purge is never run again (its finalize would
 write a second 'completed' event), and a request left for a person is not
 retried.
+
+THE SIGN-IN RECORD (founder 2026-10-27, N217; Privacy 3.8 sections 7 and 9;
+migration 0497). In the transaction that marks an account request done,
+``erase_deleted_account_sign_in_v1`` empties the person's Supabase sign-in
+record: no email, phone, password, sign-in profile or linked sign-in left
+(NULL, not Supabase's soft-delete hash, which anyone holding the email can
+check), its sessions ended and its refresh tokens revoked, and it is banned.
+The row itself stays, because what must survive a deletion (the deletion and
+consent evidence, ``owner_principals`` among it) points at its id; a hard
+delete would cascade into that evidence or be refused by it. An erasure that
+fails leaves the request started, so the next run tries again before it
+marks it done. A guest has no sign-in record, and none is erased.
 
 THE RELEASED COPIES (0456). An erasure request voids every pair release
 holding one of its pairs at once. A run that executes ends by sweeping the
@@ -57,17 +73,20 @@ MAX_LIMIT = 20
 RUNNABLE = ("requested", "in_progress")
 #: Fresh starts first, then bookkeeping, then resumptions: a request that
 #: fails on every run cannot hold back one whose seven days just ended.
-_ORDER = {"start": 0, "complete": 1, "resume": 2, "review": 3}
+_ORDER = {"start": 0, "complete": 1, "erase_sign_in": 1, "resume": 2,
+          "review": 3}
 _REASONS_SHOWN = 50
 _ACCOUNT_COLUMNS = "id,state,completes_after,purge_request_id"
 _PROJECT_COLUMNS = "id,project_id,state,due_at,purge_request_id"
+#: A database without 0497 has no sign-ins to list yet.
+_MISSING_FUNCTION = ("42883", "PGRST202")
 
 
 @dataclass(frozen=True)
 class Work:
     kind: str                 # "account" | "project"
     request_id: str
-    action: str               # "start" | "resume" | "complete" | "review"
+    action: str               # "start" | "resume" | "complete" | "erase_sign_in" | "review"
     due_at: str
     purge_request_id: Optional[str] = None
     project_id: Optional[str] = None
@@ -133,6 +152,22 @@ def _due(rows: list[dict], key: str, now: datetime) -> list[dict]:
     return out
 
 
+def _sign_ins_left(client: Any) -> list[Work]:
+    """Account deletions done before 0497 whose sign-in is still there. A
+    read that fails is logged and lists none: catching up on old accounts
+    never stops a run from finishing the new ones."""
+    try:
+        rows = client.rpc("account_sign_ins_left_v1", {}).execute().data or []
+    except Exception as error:  # noqa: BLE001 -- logged; the next run reads again
+        if not any(code in f"{getattr(error, 'code', '')} {error}"
+                   for code in _MISSING_FUNCTION):
+            logger.warning("sign-ins left unreadable: %s", error, exc_info=True)
+        return []
+    return [Work("account", str(row["request_id"]), "erase_sign_in",
+                 str(row.get("completes_after") or ""))
+            for row in rows if isinstance(row, dict) and row.get("request_id")]
+
+
 def _after_start(kind: str, row: dict, state: str, key: str,
                  now: datetime) -> Optional[Work]:
     """A started (account) or confirmed (project) request, by its purge.
@@ -154,8 +189,9 @@ def _after_start(kind: str, row: dict, state: str, key: str,
 
 def collect(database: Any, now: Optional[datetime] = None) -> list[Work]:
     """Everything due, oldest first: requests past their seven days to
-    start, started ones to resume or mark done, and the ones a person must
-    look at (action 'review'). Reads only."""
+    start, started ones to resume or mark done, done ones whose sign-in is
+    still there, and the ones a person must look at (action 'review').
+    Reads only."""
     client = database.client
     moment = now or datetime.now(timezone.utc)
     work: list[Work] = []
@@ -180,6 +216,7 @@ def collect(database: Any, now: Optional[datetime] = None) -> list[Work]:
             item = _after_start(kind, row, state, key, moment)
             if item is not None:
                 work.append(item)
+    work.extend(_sign_ins_left(client))
     work.sort(key=lambda item: (_ORDER[item.action], item.due_at, item.kind,
                                 item.request_id))
     return work
@@ -241,6 +278,10 @@ def _finish(database: Any, work: Work) -> None:
 def _execute(database: Any, work: Work) -> dict:
     from services.data_purge_project_scope import orchestrator_for
 
+    if work.action == "erase_sign_in":
+        database.client.rpc("erase_deleted_account_sign_in_v1", {
+            "p_request_id": work.request_id}).execute()
+        return {"result": "sign_in_erased"}
     purge = work.purge_request_id
     state = "done" if work.action == "complete" else ""
     if work.action == "start":

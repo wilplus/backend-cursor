@@ -1163,6 +1163,7 @@ class DatabaseService:
                     "created_at": u.get("created_at"),
                     "last_sign_in_at": u.get("last_sign_in_at"),
                     "email_confirmed_at": u.get("email_confirmed_at"),
+                    "deleted_at": u.get("deleted_at"),
                 })
             return out
         except Exception:

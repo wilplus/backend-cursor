@@ -3,13 +3,14 @@
 **SIGNED by the founder, 27 October 2026** (the sign-off page
 <https://claude.ai/artifact/HbNkdtWhYgKmXy312wL4sC>, which showed every change
 word for word, then in chat: "I sign as drafted, question 1 A, question 2 A";
-decisions log N217). Counsel has not seen this text: counsel reads it before
-it is published, as for 3.8. Not published yet.
+decisions log N217). Since then **counsel has seen it and agrees** (the
+founder, in chat, 27 October 2026: "counsel agrees"; N217). Not published yet.
 
     documents:   Terms 3.8 and Privacy 3.9, word for word in sections 4 and 5 below
     replaces:    copy/terms-3.7.txt, copy/privacy-3.8.txt
     unchanged:   copy/ai-notice-3.2.txt, copy/agreement-3.1.txt
-    publish as:  phase1-<publication date>-3.9, by a PUBLISH-3.9 script made on that day
+    publish as:  phase1-2026-10-28-3.9 (PUBLISH-3.9-2026-10-28.sql, the founder's step);
+                 the founder set the date: "28/10/2026" (chat, 28 October 2026)
     asked by:    the founder, 2026-10-27: N211 item 3, N215 and N216 (one version)
     question 1:  A, for a speaker without a plan, answering "How do you feel?" is
                  their explicit consent for that one answer; the tap's screen gets
@@ -57,7 +58,7 @@ feel?"; §14 the personal answers as sensitive personal information.
 
 ## 3. Before it is published
 
-1. Counsel reads it.
+1. Counsel reads it: done, counsel agrees (N217).
 2. Built: "How do you feel?" behind the yes for a speaker who has a plan; the
    line "Your coach sees your answer." on the tap's screen (question 1); the
    deletion of the feelings given before 3.9, run at publication (question 2);

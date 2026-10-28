@@ -17,6 +17,7 @@ recordings, the Ideal Text or feedback.
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
@@ -252,27 +253,50 @@ def deletion(user_id: str, principal: Optional[str]) -> Optional[dict]:
     return deletion_view(AccountDeletionService(db).live_for_principal(principal))
 
 
+#: The key an admin's deletion is recorded under: this prefix, the user id,
+#: then a part of its own, so a deletion asked again after a cancel is a new
+#: request rather than the cancelled one. The Users list reads the user id
+#: back to leave the person out (services/admin_user_directory.py).
+ADMIN_DELETE_KEY = "admin-delete:"
+
+
+def admin_delete_user(key: str) -> Optional[str]:
+    """The user id an admin deletion's key names, or None for another key."""
+    if not key.startswith(ADMIN_DELETE_KEY):
+        return None
+    return key[len(ADMIN_DELETE_KEY):].split(":", 1)[0] or None
+
+
 def request_deletion(user_id: str, admin_id: str) -> dict:
-    """The admin deletes this account (founder 2026-10-14). The same road as
-    the person's own "Delete my account": processing stops now, the AI voice
-    goes now, and everything else is purged after the seven-day window, in
-    which the deletion can still be cancelled. An account that never agreed
-    to processing holds no recordings, so its login is removed at once."""
+    """The admin deletes this account (founder 2026-10-14, N222). The same
+    road as the person's own "Delete my account": processing stops now, the
+    AI voice goes now, and everything else is purged after the seven-day
+    window, in which the deletion can still be cancelled; the completion run
+    then empties the sign-in record (N218).
+
+    Every account takes that road. An account with no owner principal yet
+    (one from before the sign-up hook made them) is given one first. Its
+    sign-in record used to be deleted outright instead, and Supabase refused
+    that for anyone with a Take: the records that are kept as history refuse
+    to be deleted with it, so the admin's delete failed (founder 2026-10-28)."""
+    from services.processing_authorization import (
+        ProcessingAuthorizationError, ProcessingAuthorizationService,
+    )
     principal = _principal(user_id)
+    if not principal and db.create_user_owner_principal(str(user_id)):
+        principal = _principal(user_id)
     if not principal:
-        resp = httpx.delete(_auth_url(user_id), headers=_auth_headers(), timeout=10)
-        resp.raise_for_status()
-        logger.info("admin %s removed login without data user=%s", admin_id, user_id)
-        return {"state": "done", "kind": "login_only"}
+        raise ProcessingAuthorizationError(
+            "PROCESSING_PRINCIPAL_UNRESOLVED", "The account could not be found.", 503)
     from services.ai_voice_clone import erase_on_termination
-    from services.processing_authorization import ProcessingAuthorizationService
     erase_on_termination(db, user_id, principal)
     from services.coach_answer_video import erase_for_user
     erase_for_user(user_id)
     from services.booking import erase_for_user as erase_bookings
     erase_bookings(user_id)
     row = ProcessingAuthorizationService(db).request_account_deletion(
-        principal, idempotency_key=f"admin-delete:{user_id}", reason_code="ADMIN_DELETION")
+        principal, idempotency_key=f"{ADMIN_DELETE_KEY}{user_id}:{uuid.uuid4().hex[:12]}",
+        reason_code="ADMIN_DELETION")
     logger.info("admin %s requested account deletion user=%s", admin_id, user_id)
     return row
 

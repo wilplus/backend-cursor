@@ -112,6 +112,29 @@ done on verified evidence. A purge that meets rows no rule decides stops at
 `review_required`, deletes nothing past the refusal, and waits for a person:
 `GET /v2/admin/deletions` lists it with the targets that stopped it.
 
+The sign-in goes with the account (0497; Privacy 3.8 sections 7 and 9, N95).
+In the same transaction that marks an account request done,
+`complete_phase1_account_deletion_v1` calls
+`erase_deleted_account_sign_in_v1`. The Supabase auth user is scrubbed, never
+deleted: its id stays, because `owner_principals` and the older terms records
+point at it with `ON DELETE CASCADE` and the records that survive point at
+`owner_principals`. Its email, phone, pending changes, password hash, tokens
+and sign-in profile are cleared, and it is banned until 2099-12-31 and marked
+`deleted_at`. Its identities lose the data a provider brought and the
+provider's id for the person, so no Google, LinkedIn or WhatsApp sign-in finds
+it again. Its sessions end, with device and IP cleared, every refresh token is
+revoked, its one-time codes no longer name an address, and its second factors
+lose their phone. Every step is an UPDATE; Supabase Auth's own clean-up later
+deletes the ended sessions, revoked tokens and unverified factors.
+`raw_app_meta_data` keeps only `provider` and `providers`, which the sign-up
+count reads. If the erasure cannot finish it raises: the request stays
+`started`, and the next run tries again and reports the error code. Accounts
+already done before 0497 are listed by `account_sign_ins_left_v1` and erased
+by the same run (action `erase_sign_in`; a dry run reports
+`would_erase_sign_in`). Not covered: `auth.audit_log_entries` (Supabase
+Auth's own log), and purges an operator runs by hand (service termination,
+lawful deletion).
+
 Setup (CONFIG-FIRST: the web service first):
 
 1. Web service: `DELETION_COMPLETION_SECRET` (without it the route answers

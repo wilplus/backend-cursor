@@ -83,10 +83,20 @@ O2  I can cancel inside the seven days and the block lifts; asking again
 later starts a new request.
 O3  After the seven days the run erases my data, marks the request done
 with proof, and never does it twice.
-O4  A dry run only reports what is due and writes nothing.","O1 -> test_a_request_blocks_at_once_deletes_nothing_and_waits_seven_days
+O4  A dry run only reports what is due and writes nothing.
+O5  Once it is done, my sign-in is gone: no email, no phone, no password,
+no linked sign-in, no live session, and I cannot sign in; what the
+policy says survives (the proof of my agreement, my training choice) is
+still there, and nobody else's sign-in is touched. If my sign-in cannot
+be erased, the deletion is not marked done and the next run finishes
+it. An account deleted before this was fixed loses its sign-in on the
+next run.","O1 -> test_a_request_blocks_at_once_deletes_nothing_and_waits_seven_days
 O2 -> test_the_requester_cancels_inside_the_window_and_the_block_lifts
 O3 -> test_the_run_completes_a_due_deletion_on_verified_evidence
-O4 -> test_a_dry_run_reads_what_is_due_and_writes_nothing","Founder 2026-10-05, N48.4 Q14 A, Q17 A, Q19 A (migration 0422)."
+O4 -> test_a_dry_run_reads_what_is_due_and_writes_nothing
+O5 -> test_a_completed_deletion_leaves_no_way_to_sign_in_and_keeps_what_survives
+test_a_deletion_whose_sign_in_cannot_be_erased_is_not_marked_done
+test_an_account_deleted_before_the_fix_loses_its_sign_in_on_the_next_run","Founder 2026-10-05, N48.4 Q14 A, Q17 A, Q19 A (migration 0422); Privacy 3.8 sections 7 and 9, N217 item 4 and N95 (migration 0497)."
 tests/test_a_failed_export_voids_its_release_postgres.py,Story,"As a speaker who withdrew my training ""yes"", I want a half-finished export that held my pair voided and cleaned up, so that my data never leaves in a broken release.","O1  When an export's last step is refused because a pair is no longer
 allowed, the release is voided as ""export_failed"" and queued for
 file cleanup.
@@ -230,6 +240,12 @@ O3 -> test_the_link_changes_the_email_once_and_only_the_newest
 O4 -> test_a_password_change_checks_the_current_one_and_signs_out_the_rest
 O5 -> test_a_google_account_sets_its_first_password_with_a_link
 O6 -> test_an_email_that_didnt_go_is_not_reported_as_sent","WIL-95 (founder 2026-10-26, N190: ""approved, implement it""; rules in the frontend's docs/flows/consent-screens.md §1)."
+tests/test_admin_delete_user.py,Story,"As the founder, I want ""Delete"" on the Users list and on a profile to delete any account, an old one that never agreed to processing included, and to delete again after an Undo, so that the people I delete are really deleted.","O1  An account with no owner principal is given one and gets the same
+pending seven-day deletion as everyone else; its sign-in record is
+never deleted outright. The person then leaves the Users list.
+O2  Deleting again after a cancel records a new pending deletion, not the
+cancelled one.","O1 -> AdminDeleteUserTest::test_an_account_without_a_principal_takes_the_seven_day_road
+O2 -> AdminDeleteUserTest::test_a_delete_after_a_cancel_is_a_new_deletion","Founder 2026-10-28 (N222): the list's Delete failed with a 500 for an account from May; Supabase refuses to delete a sign-in record whose Takes are kept as history. ""Make Delete really delete""."
 tests/test_admin_speaker_permit.py,Story,"As a speaker, I want any AI call an admin makes about me to run under my own processing permit, and be refused when I have none, so that my words never reach a provider without my authority (processing authorization on the critical path).","O1  Directive suggestions: with my authority the model call runs inside
 the protected scope bound to MY principal; a refused permit answers
 403 before any provider client exists.
@@ -250,6 +266,12 @@ O3 -> test_the_export_releases_full_text_with_the_yes_and_skips_hidden_projects"
 tests/test_admin_takes_willfidence.py,Story,"As the founder, I want each Take on a person's admin page to show its willfidence, so I can read how a speaker's Takes are going.","O1  A Take row carries `willfidence`: the mean of its pieces' willfidence in
 whole percent, counting only pieces with a sound read; none when no piece
 has one (never the middle of the scale made up).",O1 -> test_a_take_row_carries_its_willfidence_in_percent,"Founder 2026-10-21 (N105): ""add the willfidence column here (in the ceo panel but only here)""."
+tests/test_admin_users_being_deleted.py,Story,"As the founder, I want a person whose account is being deleted to leave the Users list at once, though their data is deleted only after seven days, so that the list shows only the people who are still here.","O1  The list leaves out everyone whose account is being deleted, whether
+the founder deleted it or the person did, and the next page starts
+where this one ended. A finished deletion is left out too.",O1 -> AdminUsersBeingDeletedTest::test_the_list_leaves_out_who_is_being_deleted,"Founder 2026-10-27 (N219; N221 drops the ""Being deleted"" view)."
+tests/test_admin_users_leave_out_deleted_accounts.py,Story,"As the founder, I want a finished deletion gone from the Users list, so that the list never shows an emptied account with no email and no name.","O1  Every auth user whose deleted_at is set is left out of the paged list
+and of the search; one without it stays. A page shortened by a deleted
+account still says there is more, so the list does not end early.",O1 -> AdminUsersLeaveOutDeletedAccountsTest::test_a_deleted_account_is_in_neither_the_page_nor_the_search,"N219: a finished deletion is in neither tab. N218: its auth record stays, emptied, with deleted_at set."
 tests/test_after_take.py,Story,"As a speaker, after a Take I want one thing to do at a time: the Take's card and its summary, then each ask on its own with Will's words leading into it, and only then ""practice makes perfect"" with ""Record Take N"", so that nothing competes with the walk or with recording again (founder 2026-10-20, N89).","O1  One ask after each Take, the first that waits (founder 2026-10-26,
 N189; was two, N94). After Take 1 that is WhatsApp when I left no
 number (N171), else Will's question when he has one, else ""Did this
@@ -1874,6 +1896,13 @@ terms' and privacy fingerprints (hashes) are checked by the script.
 O2  It publishes version 3.8 over 3.7, keeps the United States, and does
 not replace the training wording.","O1 -> test_the_copy_is_the_legal_pack_byte_for_byte_and_its_hash_is_checked
 O2 -> test_it_publishes_3_8_over_3_7_and_leaves_the_training_wording_alone","Founder 2026-10-27, N208 (signed ""as drafted, question 1 A, question 2 A"")."
+tests/test_phase1_policy_3_9.py,Story,"As a speaker, I want the 3.9 terms I accept to be the texts the founder signed, word for word, with the training wording left alone, and the feelings I gave before them deleted, so that I can later prove what I agreed to.","O1  The terms (3.8), privacy (3.9), AI notice and agreement text in the
+publish script equal the legal pack's files byte for byte; those files
+are the signed record's texts with only the date filled in; and the
+terms' and privacy fingerprints (hashes) are checked by the script.
+O2  It publishes version 3.9 over 3.8, keeps the United States, does not
+replace the training wording, and deletes the feelings given before it.","O1 -> test_the_copy_is_the_signed_text_byte_for_byte_and_its_hash_is_checked
+O2 -> test_it_publishes_3_9_over_3_8_and_deletes_the_feelings_before_it","Founder 2026-10-27, N217 (signed ""as drafted, question 1 A, question 2 A""; counsel agrees); dated 28 October 2026."
 tests/test_phase1_policy_unbundled.py,Story,"As a speaker, I want every policy I may have accepted to carry exactly the signed copy and never make an optional purpose a condition of the service, so that refusing an optional purpose never blocks me and I can later prove what I agreed to.","O1  In every publish since the unbundling (3.1 to the live 3.7), every
 required purpose is on contract ...
 O2  ... and every consent purpose is optional; neither check passes alone.
