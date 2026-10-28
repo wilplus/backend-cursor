@@ -5986,3 +5986,42 @@ The rules: frontend
 (E1, the WhatsApp ask) and
 [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
 (the number field). No migration in this entry.
+
+**N236 · Customer requests: the answerer's side, in her own Lounge; send
+first, the walk after; the link stays as sent; an optional first name; the
+answerer told on WhatsApp (founder, the Claude Code chat, 28 October 2026,
+on the two clickable prototypes: "Her Lounge, as decided", then "Send first,
+walk after", "Stays as sent", "Optional first name" and "WhatsApp").** For
+N223 items 1 to 3, N226 and the page's §1 B6, C1, D5 and E2:
+1. The answerer answers in her own Lounge, as any speaker: the request is
+the Lounge's one ask, Answer opens the picker of the client's treatments and
+products, and the Take is her voice over the request and her picks, camera
+off, on today's recording screen.
+2. Send first: once the Take is processed, its Ideal Text card lands in the
+thread marked new, and Will asks at once "Send this answer to {name} on
+WhatsApp?", Not yet | Send, with a grey card listing what the customer gets
+(her voice, the text, each pick with its price). The walk waits on the card
+and opens from it, as after any Take. Was (§1 D5): the send ask after the
+walk and the Ideal Text.
+3. A Take 2 after sending does not change what the customer has: Will asks
+again, and only a second Send replaces it. Was (§1 E2): the link always
+opens the latest shared Take.
+4. The widget's form gets one optional field, the customer's first name,
+between the words and the number. The answerer's chat uses it ("Sarah, a
+customer of Invita Head Spa, asks for your advice."); without it, "A
+customer". Its words wait for the founder's OK with the rest (Never 4).
+5. The answerer is told of each request on WhatsApp: one message from
+WillpowerLab's number with a link to her Lounge.
+6. Still open, on the page's §3: how fast she must answer and what follows
+when she does not; many requests at once; the photos (how many, kept how
+long, who sees them); who keeps the catalogue and its prices; the price by
+spa; the longest answer and whether it uses tokens; fixing a word before
+sending; a check by the client before sending; the WhatsApp sender, Meta's
+template approval and the US SMS fallback; one inbox for several answerers;
+the calendar, Stripe fees, cancellations and shipping (N234); the answerer's
+account; the DPA and consent; what the client pays.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 B6, C1, D5, E2 and K, §3, §5. The prototype, kept as N229 says:
+`docs/design/customer-requests-2026-10-28/ariel/ariel-lounge.html` and
+`6-answerer-side-in-her-lounge.pdf`. No migration in this entry.
