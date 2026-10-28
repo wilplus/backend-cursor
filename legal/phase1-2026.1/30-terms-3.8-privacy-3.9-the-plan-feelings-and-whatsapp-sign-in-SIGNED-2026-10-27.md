@@ -9,7 +9,8 @@ founder, in chat, 27 October 2026: "counsel agrees"; N217). Not published yet.
     documents:   Terms 3.8 and Privacy 3.9, word for word in sections 4 and 5 below
     replaces:    copy/terms-3.7.txt, copy/privacy-3.8.txt
     unchanged:   copy/ai-notice-3.2.txt, copy/agreement-3.1.txt
-    publish as:  phase1-<publication date>-3.9, by a PUBLISH-3.9 script made on that day
+    publish as:  phase1-2026-10-28-3.9 (PUBLISH-3.9-2026-10-28.sql, the founder's step);
+                 the founder set the date: "28/10/2026" (chat, 28 October 2026)
     asked by:    the founder, 2026-10-27: N211 item 3, N215 and N216 (one version)
     question 1:  A, for a speaker without a plan, answering "How do you feel?" is
                  their explicit consent for that one answer; the tap's screen gets

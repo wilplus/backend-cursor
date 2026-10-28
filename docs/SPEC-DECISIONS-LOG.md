@@ -5472,6 +5472,12 @@ D4 and D5, each with its build. No migration in this entry.
 counsel the sign-off page: "counsel agrees"): counsel agrees with Terms 3.8
 and Privacy 3.9 as signed, the answers to questions 1 and 2 and the WhatsApp
 messages' consent included.
+- **Dated** (founder, the Claude Code chat, 28 October 2026, after Meta made
+`login_code` active: "28/10/2026"): Terms 3.8 and Privacy 3.9 read "Effective
+28 October 2026", the only change to the signed texts; they are
+`copy/terms-3.8.txt` and `copy/privacy-3.9.txt`, published by
+`PUBLISH-3.9-2026-10-28.sql` (the founder's step), which also deletes the
+feelings given before 3.9 (question 2 A).
 
 **N218 · A deleted account's sign-in record is emptied in SQL, not soft-deleted
 (founder, the Claude Code chat, 27 October 2026, asked which of the two fixes
