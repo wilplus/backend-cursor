@@ -41,6 +41,9 @@ if config.SENTRY_DSN:
         # no request bodies, no headers, no user PII in the event payload.
         send_default_pii=False,
         max_request_body_size="never",
+        # sentry-sdk 2.61 stopped cutting long strings; an exception message
+        # can carry a speaker's words, so keep the 1024 cut 2.19 had.
+        max_value_length=1024,
     )
 
 # Secret configuration audit (P2 ops sweep 2026-08-03). Runs before the
