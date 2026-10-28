@@ -18,6 +18,8 @@ message never fails the coach's save (LIVE LOOP).
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import logging
 import re
 from datetime import datetime, timezone
@@ -136,6 +138,57 @@ def chat_turn(database: Any, user_id: Optional[str], question: str) -> Optional[
                 "row_metadata": {"whatsapp": "invalid"}}
     return {"answer": CHECK, "offer": "whatsapp",
             "row_metadata": {"whatsapp": "check", "phone": phone}}
+
+
+#: The answer to STOP (founder, N174 item 5; signed, Never 4).
+STOPPED = "Done. We've stopped the WhatsApp messages and deleted your number."
+_STOP = re.compile(r"^\s*stop[\s.!]*$", re.IGNORECASE)
+
+
+def signed_by_meta(secret: str, body: bytes, header: str) -> bool:
+    """Meta signs every webhook delivery: X-Hub-Signature-256 is "sha256="
+    and the HMAC-SHA256 of the raw body with the app's secret."""
+    expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, (header or "").strip())
+
+
+def handle_replies(database: Any, payload: Any, *, config: Any = None) -> dict:
+    """Meta's webhook payload (N237): each reply that says STOP turns the
+    sender's WhatsApp messages off; any other reply is not read."""
+    out = {"stopped": 0}
+    entries = payload.get("entry") if isinstance(payload, dict) else None
+    for entry in entries or []:
+        for change in (entry or {}).get("changes") or []:
+            for msg in ((change or {}).get("value") or {}).get("messages") or []:
+                msg = msg if isinstance(msg, dict) else {}
+                text = (msg.get("text") or {}).get("body") or ""
+                if msg.get("type") != "text" or not _STOP.match(str(text)):
+                    continue
+                try:
+                    phone = normalize_phone("+" + str(msg.get("from") or "").lstrip("+"))
+                except WhatsAppRefusal:
+                    continue
+                stop_messages(database, phone, config=config)
+                out["stopped"] += 1
+    return out
+
+
+def stop_messages(database: Any, phone: str, *, config: Any = None) -> None:
+    """STOP from ``phone`` (N237): every account that gets WhatsApp messages
+    at it stops, as Remove does (the number it signs in with stays, N235
+    item 3); a booking that carries it forgets it (N233); then the signed
+    answer, which WhatsApp delivers within 24 hours of the person's message."""
+    rows = (_settings(database).select("user_id").eq("whatsapp_phone", phone)
+            .execute().data) or []
+    for row in rows:
+        remove_phone(database, str(row["user_id"]))
+    database.client.table("bookings").update({"guest_whatsapp": None}) \
+        .eq("guest_whatsapp", phone).execute()
+    _log.info("whatsapp: STOP turned the messages off accounts=%d", len(rows))
+    try:
+        send_template(phone, template="", params=[], text=STOPPED, config=config)
+    except Exception as e:  # noqa: BLE001 -- the messages are off either way
+        _log.warning("whatsapp: STOP's answer failed: %s", type(e).__name__)
 
 
 def remove_phone(database: Any, user_id: str) -> dict:
