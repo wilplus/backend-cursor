@@ -6212,7 +6212,76 @@ The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §1 H1 and I2. No migration in this entry.
 
-**N245 · Two best moments on every Take, the next best in place of a
+**N243 · The principles wait while a speaker is onboarded (founder, the
+Claude Code chat, 28 October 2026: "I feel that principals are interfering
+with the onboarding here", then, asked which onboarding and what the
+principles should do then, "Speaker's first steps" and "Wait for first
+Take").** Amends N182 and N212, for N129, N136 and N178:
+1. While a speaker is onboarded, nothing of the principles shows: not the
+voice notebook's mic, not "Keep a voice notebook?", not the life goals ask,
+the Sunday note or the quarter's ask; and Will's chat does not answer as the
+notebook, the Sunday note or life goals.
+2. A new speaker is onboarded from the plan's first question until their
+first Take is recorded. A speaker who already has Takes, only while the
+plan's questions are asked (the deadline after their next Take, A2; a new
+event's questions, A3).
+3. Then everything in N182, N212 and N241 stands. Nothing that waited is
+lost: an ask that was due comes the next time it may.
+4. Only where the plan reaches (its ring row, N204); with no plan, the
+principles are as before. No new words on screen.
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 A6 and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 A5. No migration in this entry.
+
+**N244 · No next Take in the chat from the moment one is recorded until its
+walk reaches its summary (founder, the Claude Code chat, 28 October 2026: "I
+can see two bubbles interfering, like bubble flows interfering, one for the
+new take and one the summary of the take I just took. So maybe disable the
+new event while the processing is happening, so that it is only possible
+once it's finished", then "Record Take N" and "Walk's summary seen").** For
+N89, N167 and N192:
+1. Once the next Take is recorded, the last Take's closing message ("Look,
+practice makes perfect…") keeps its words and gives "Record Take N" up, and
+so does a practice day's one thing (N167). The chat offers no Take while the
+new Take processes and while its walk runs; its own closing message, written
+with the walk's summary, brings "Record Take N" back. Until now the button
+was held only while the Take processed: the moment processing ended it came
+back, naming the Take just recorded, beside the new Take's walk.
+2. The "+" and the Ideal Text page's own "Record Take N" are as before. No
+new words on screen, nothing changes on the server.
+The rules: frontend flow page D4
+([`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md))
+and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+G6. No migration.
+
+**N245 · The Sniper guides the tries: a try that lands moves on (founder,
+the Claude Code chat, 28 October 2026: "it also keeps asking me during the
+sniper practice to practice again and again"; "If it was really better, you
+let me go to the next step. If it was just slightly better, you're like coach
+that sees the potential and you ask, like, give it a try once more"; "you ask
+up to three times"; then, asked, "Long and green", "That landed. 🎯" and
+"You're close. 💪").** For N166 item 3 and N179, the tempo step (N181):
+1. Will decides when the game ends, not the speaker. "See how it went" goes;
+the Skip stays at the start and during each try (N178 item 3).
+2. A try lands when it runs at least 20 seconds from the first word and the
+ball is in the green four fifths of that time. The stretch spent at least a
+quarter of its time outside the green (`tempo_stretch.MIN_OUTSIDE`), so a
+landed try is always clearly better than the Take. Will says "That landed. 🎯
+Really better. Let's move on." and Next goes on with the walk, on any try.
+3. A try that came closer (the ball in the green more than half the time, not
+enough to land) gets "Better. You let it breathe." and, while a try is left,
+"You're close. 💪 Give it one more try.", then Practise again. Otherwise the
+try's comment as signed (N179), then Practise again.
+4. Up to three tries; after the third without a landing, the closing line
+comes by itself (N179). The bar is never shown (Never 1). Both new lines are
+signed. Will's note keeps a landed try as better and the game as ended
+dynamic.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§1 K and T. No migration.
+
+**N246 · Two best moments on every Take, the next best in place of a
 sentence that holds the helper words, and on a plan the two best and the
 level's moment (founder, the Claude Code chat, 28 October 2026: "the moment
 that's already with the helper word, it's not being chosen as the confident
@@ -6258,6 +6327,6 @@ paragraph saved with helper words in this Take still hides every other
 moment and note.
 No new words on screen (Never 4). The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
-C2 and H1, and
+C2, C3 and H1, and
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §1 G7. No migration in this entry.

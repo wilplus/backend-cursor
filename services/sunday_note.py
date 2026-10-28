@@ -311,7 +311,7 @@ def sweep_due(database: Any = None, now: Optional[datetime] = None) -> int:
     """Each minute, from the worker's sweep: enqueue Sunday's look for whoever
     said Yes to the notebook and whose Sunday 6 pm has come. Cheap: one read
     of a table of a few rows; the job itself claims the week."""
-    from services import job_queue
+    from services import job_queue, plan_flow
     if database is None:
         from services.db import db as database
     moment = now or datetime.now(timezone.utc)
@@ -320,6 +320,8 @@ def sweep_due(database: Any = None, now: Optional[datetime] = None) -> int:
         week = due_week(moment, row.get("time_zone"))
         if not week or database.get_sunday_note_for_week(str(row["user_id"]), week.isoformat()):
             continue
+        if plan_flow.onboarding(database, str(row["user_id"])):
+            continue  # it waits while the person is onboarded (N243)
         if job_queue.enqueue("services.sunday_note.run_sunday", str(row["user_id"]),
                              moment.isoformat(),
                              rq_job_id=f"sunday-note-{row['user_id']}-{week.isoformat()}"):
@@ -367,6 +369,9 @@ def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:
     if not voice_notebook.enabled(database, user_id) or not voice_notebook.consented(
             database, user_id):
         return None
+    from services import plan_flow
+    if plan_flow.onboarding(database, user_id):
+        return None  # the principles wait while the person is onboarded (N243)
     if not _asks(text, user_id):
         return None
     consent = database.get_voice_notebook_consent(str(user_id)) or {}

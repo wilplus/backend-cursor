@@ -1978,7 +1978,9 @@ nothing measured it is ""Make it yours"", never a guess.
 O4  The key line is always the first follow-up, and never more than three;
 a fact already said is not asked again, a named worry still is.
 O5  The AI's question is kept only in its signed template's shape;
-anything else falls back to the plain template.
+anything else falls back to the plain template, and a slot the AI
+left unfilled (""{who they will speak to}"") never reaches the speaker:
+not in the question, not in the facts, not on the plan card.
 O6  The dates read as the chat writes them (""14 November"", ""Sat 14 Nov"",
 ""Tuesday 27 October, 10:00"").
 O7  A Take reaches its level when the check that picked it no longer
@@ -2067,7 +2069,11 @@ out gives way at the next open, and that day's hello names the new
 level. Nothing about it is said in the chat.
 O10 A Take's walk reads the level the plan had when the Take was
 recorded, so it reads the same on every opening; off a plan, or on
-""Make it yours"", the walk is as today.","O1 -> test_without_the_ring_nothing_happens
+""Make it yours"", the walk is as today.
+O11 While a speaker is onboarded (the questions; a new speaker's plan
+until the first Take), the principles show nothing and Will's chat
+does not answer as them; after the first Take they are back; a plan
+waiting for the next Take holds nothing back (N243).","O1 -> test_without_the_ring_nothing_happens
 O2 -> test_a_new_speaker_is_asked_once
 O3 -> test_no_date_gives_two_months_then_the_voice_message
 O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
@@ -2077,7 +2083,8 @@ O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
 O8 -> test_moving_the_deadline_keeps_the_practices_done
 O9 -> test_the_level_moves_on_after_two_takes_that_reach_it
 test_a_level_whose_time_ran_out_gives_way
-O10 -> test_a_walk_reads_the_level_of_its_takes_time","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the rules are frontend docs/flows/the-plan.md §1."
+O10 -> test_a_walk_reads_the_level_of_its_takes_time
+O11 -> test_the_principles_wait_while_the_speaker_is_onboarded","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the principles waiting for the onboarding, N243; the rules are frontend docs/flows/the-plan.md §1."
 tests/test_playback_copy.py,Story,"As a speaker on iPhone or Safari, I want my recordings to play back, and the playback copy deleted with the recording, so that I can hear myself and deletion leaves nothing. (Record -> next Take: hearing the Take; and deletion.)","O1  A stored short recording gets its Safari-safe copy (.playback.m4a,
 audio/mp4) beside it at upload; the original is untouched.
 O2  The player is handed the original until the copy exists, and the copy
