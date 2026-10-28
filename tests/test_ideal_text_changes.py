@@ -16,6 +16,8 @@ OUTCOME
       leaves the server with it.
   O6  The block equals the frozen block, each row read once, and the live
       read is served before the dark frame is written.
+  O7  The served frame reads this week's level from the database the block
+      reads, as the dark frame does (N246 item 4).
 PROVES   O1 -> test_the_span_check_serving_none_is_a_named_fallback
          O2 -> test_a_failure_on_the_way_to_v3_serves_no_v2_rows
          O3 -> test_a_served_confident_voice_row_carries_its_recording
@@ -23,6 +25,7 @@ PROVES   O1 -> test_the_span_check_serving_none_is_a_named_fallback
          O5 -> test_every_served_v3_row_carries_its_learning_handles
          O6 -> test_the_block_is_the_same_block_and_no_row_is_read_twice
                test_the_live_read_serves_the_block_before_the_dark_frame_is_written
+         O7 -> test_the_served_walk_reads_the_plan_s_level
 WHY      services.ideal_text_changes (audit Q-C1). O3: founder 2026-09-20
          "there is no playback on the overlay". O4 and O5 drive stages of
          _ChangesRun directly; the rest go through build_changes_block.
@@ -362,6 +365,33 @@ def test_a_served_confident_voice_row_carries_its_recording():
               if row.get("feedback_family") == "confident_voice"]
     assert [row["id"] for row in served] == [f"cand:{S1}"]
     assert served[0]["snippet_audio_ref"] == "takes/clip-1.webm"
+
+
+def test_the_served_walk_reads_the_plan_s_level():
+    """Founder 2026-10-28 (N246 item 4): the serve path asked its own store,
+    which cannot read a plan, so the walk the speaker saw never had the
+    level's moment."""
+    class PlanDB(FakeDB):
+        def get_open_plan(self, user_id):
+            return {"level": "key_line"}
+
+    seen: dict = {}
+
+    def walk_inputs(database, user_id, take):
+        return {"plan_level": database.get_open_plan(user_id)["level"]}
+
+    def prepare(**kwargs):
+        seen.update(kwargs)
+        return []
+
+    db = PlanDB(sugs=_replace_sug_db().sugs)
+    with patch("services.plan_walk.walk_inputs", side_effect=walk_inputs), \
+            patch("services.mlc3_first_client_feedback.prepare_first_client_feedback",
+                  side_effect=prepare), \
+            patch("services.ideal_text_parts.bind_pieces_to_parts",
+                  side_effect=lambda doc, **_k: doc):
+        _v3_block(db, deps=_deps(db, first_client_repository=object()))
+    assert seen["walk"]["plan_level"] == "key_line"
 
 
 def test_a_failure_on_the_way_to_v3_serves_no_v2_rows():

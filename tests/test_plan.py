@@ -13,7 +13,9 @@ OUTCOME
   O4  The key line is always the first follow-up, and never more than three;
       a fact already said is not asked again, a named worry still is.
   O5  The AI's question is kept only in its signed template's shape;
-      anything else falls back to the plain template.
+      anything else falls back to the plain template, and a slot the AI
+      left unfilled ("{who they will speak to}") never reaches the speaker:
+      not in the question, not in the facts, not on the plan card.
   O6  The dates read as the chat writes them ("14 November", "Sat 14 Nov",
       "Tuesday 27 October, 10:00").
   O7  A Take reaches its level when the check that picked it no longer
@@ -94,6 +96,13 @@ def test_the_ai_question_must_keep_its_template():
     assert plan.fitted_ack("Thank you. On 14 November you'll ask the board for two more hires.")
     assert plan.fitted_ack("Great job!") is None
     assert plan.fitted_ack("Thank you. You scored 7/10.") is None
+    unfilled = {"bank": "key", "question": "If {who they will speak to} remembers one sentence "
+                "from you, what is it? Say it the way you'll say it.", "opener": None}
+    assert plan.fitted_question(unfilled, []) is None  # the plain template is said instead
+    assert plan.who_from_key_question(unfilled["question"]) is None
+    assert "who" not in plan.clean_facts({"who": "{who they will speak to}"})
+    assert plan.why_line("key_line", "{who they will speak to}").startswith(
+        "It's the sentence you want them to remember")
 
 
 def test_dates_read_as_the_chat_writes_them():

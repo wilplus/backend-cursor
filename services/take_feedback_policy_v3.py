@@ -368,13 +368,16 @@ def _partition_exception(pack: list[dict], run: list[dict]) -> Optional[str]:
 # clips fell in one block the second best was never shown. The cut between
 # that block and its neighbour on the same Slide now moves to a persisted
 # piece boundary between the two clips, and a Take of one block is split in
-# two there; each side keeps 40 to 120 words. No such cut, no change.
+# two there; each side keeps 40 to 120 words. When no such cut exists and no
+# other block has a clip that can be played, the block itself is cut between
+# the two clips at its most even boundary (founder 2026-10-28, N246 item 1:
+# a short Take showed one moment).
 
 
 def _split_for_moments(
     blocks: list[dict], *, snippet_map: dict, take_id: str, recording_id: str,
     servability: Optional[_Servability], served_text: Any,
-    frozen_candidate_ids: Any,
+    frozen_candidate_ids: Any, held_words: Any = None,
 ) -> list[dict]:
     """``blocks`` with the cut moved between the Take's two best clips when
     they fall in one block; ``blocks`` itself when they do not or no cut
@@ -395,7 +398,7 @@ def _split_for_moments(
     pair = _frozen_pair(blocks, frozen) if frozen else _best_pair(
         blocks, snippet_map=snippet_map, take_id=take_id,
         recording_id=recording_id, servability=servability,
-        served_text=served_text)
+        served_text=served_text, held_words=held_words)
     cut = _moment_cut(blocks, *pair) if pair else None
     if cut is None:
         return blocks
@@ -410,9 +413,10 @@ def _split_for_moments(
 
 
 def _frozen_pair(blocks: list[dict],
-                 frozen: frozenset) -> Optional[tuple[int, int, int]]:
-    """(block, first clip, second clip) of the one block holding two frozen
-    clips, or None (`_split_for_moments`)."""
+                 frozen: frozenset) -> Optional[tuple[int, int, int, bool]]:
+    """(block, first clip, second clip, alone) of the one block holding two
+    frozen clips, or None (`_split_for_moments`). Such a block was cut when
+    the Take was frozen, so it may be cut again by itself (``alone``)."""
     shared = []
     for at, block in enumerate(blocks):
         held = [index for index, piece in enumerate(block["pieces"])
@@ -420,16 +424,19 @@ def _frozen_pair(blocks: list[dict],
         if len(held) > 2:
             return None
         if len(held) == 2:
-            shared.append((at, held[0], held[1]))
+            shared.append((at, held[0], held[1], True))
     return shared[0] if len(shared) == 1 else None
 
 
 def _best_pair(
     blocks: list[dict], *, snippet_map: dict, take_id: str, recording_id: str,
     servability: Optional[_Servability], served_text: Any,
-) -> Optional[tuple[int, int, int]]:
-    """(block, first clip, second clip) when the Take's two best clips share
-    a block, else None (`_split_for_moments`)."""
+    held_words: Any = None,
+) -> Optional[tuple[int, int, int, bool]]:
+    """(block, first clip, second clip, alone) when the Take's two best clips
+    share a block, else None (`_split_for_moments`); ``alone``: no other
+    block has a clip it may show, so without a cut the Take shows one moment
+    (N246 item 1)."""
     from services import moment_pick
 
     reads = []
@@ -445,16 +452,17 @@ def _best_pair(
                 continue
             reads.append({**_moment_read(
                 candidate, block, snippet_map,
-                {candidate["candidate_id"]: piece}, served_text),
+                {candidate["candidate_id"]: piece}, served_text, held_words),
                 "at": (at, index)})
     best = sorted(row["at"] for row in moment_pick.best_two(reads))
     if len(best) < 2 or best[0][0] != best[1][0]:
         return None
-    return best[0][0], best[0][1], best[1][1]
+    alone = all(row["at"][0] == best[0][0] for row in reads)
+    return best[0][0], best[0][1], best[1][1], alone
 
 
-def _moment_cut(blocks: list[dict], at: int, first: int,
-                second: int) -> Optional[tuple[int, int, list, list]]:
+def _moment_cut(blocks: list[dict], at: int, first: int, second: int,
+                alone: bool) -> Optional[tuple[int, int, list, list]]:
     """Where the cut between clips ``first`` < ``second`` of block ``at``
     goes: (first block replaced, how many, the two new blocks' pieces), or
     None when no cut fits.
@@ -465,7 +473,14 @@ def _moment_cut(blocks: list[dict], at: int, first: int,
     has ``moment_pick.MIN_WORDS``. The cut is a piece boundary between the
     two clips and each side keeps 40 to 120 words. Of the cuts that fit, the
     one whose two sides are closest to 75 words each, then the earliest,
-    then the one with the block before."""
+    then the one with the block before.
+
+    When none fits and the block is ``alone`` (no other block has a clip it
+    may show), the block itself is cut at the boundary between the two
+    clips whose sides are closest in words, then the earliest, each clip
+    with ``moment_pick.MIN_WORDS`` (founder 2026-10-28, N246 item 1: the
+    blocks used to stay as they were, and the Take showed one moment). With
+    another block to show, they stay as they were: the Take shows two."""
     from services import moment_pick
 
     pieces = blocks[at]["pieces"]
@@ -490,7 +505,17 @@ def _moment_cut(blocks: list[dict], at: int, first: int,
                    for value in words):
                 fitting.append((sum(abs(value - TARGET_WORDS) for value in words),
                                 len(fitting), (replaced, count, left, right)))
-    return min(fitting)[2] if fitting else None
+    if fitting:
+        return min(fitting)[2]
+    if not alone or min(pieces[first]["word_count"],
+                        pieces[second]["word_count"]) < moment_pick.MIN_WORDS:
+        return None
+
+    def gap(boundary: int) -> int:
+        return abs(sum(int(piece["word_count"]) for piece in pieces[:boundary])
+                   - sum(int(piece["word_count"]) for piece in pieces[boundary:]))
+    even = min(range(first + 1, second + 1), key=lambda boundary: (gap(boundary), boundary))
+    return at, 1, pieces[:even], pieces[even:]
 
 
 def _run_positions(blocks: list[dict]) -> list[tuple[int, int]]:
@@ -694,7 +719,8 @@ def _gate_clearer(block: dict, ranked: list[dict],
 
 def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
                   servability: Optional[_Servability], selections: list[dict],
-                  served_text: Any, plan: tuple = (None, None)) -> dict:
+                  served_text: Any, plan: tuple = (None, None),
+                  held_words: Any = None) -> dict:
     """The Take's two shown moments, each its block's best clip (founder
     2026-10-23, N118 and N122, flow page C2 and H1; `services.moment_pick`).
 
@@ -709,15 +735,18 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
     bookmark and its routing name the same clip. Run before coverage and
     routing read the selection.
 
-    On a plan (``plan``, the level and the key line; G7, N209 item 2) the
-    second is where this week's level shows most (`_level_pick`).
+    A clip holding the helper words its slide had when the Take was
+    recorded (``held_words``) gives its place to the next best (N246 item
+    2). On a plan (``plan``, the level and the key line; G7, N246 item 3)
+    the moment where this week's level shows most is practised as well
+    (`_level_pick`).
 
     Returns ``{"shown": [...], "values": {block_id: willfidence}}``."""
     from services import moment_pick
 
     showable = [(block, candidate) for block in blocks
                 for candidate in _showable(block, clips, servability)]
-    reads = [_moment_read(candidate, block, snippet_map, clips, served_text)
+    reads = [_moment_read(candidate, block, snippet_map, clips, served_text, held_words)
              for block, candidate in showable]
     picked = _level_pick(reads, showable, snippet_map, clips, served_text, plan) \
         or moment_pick.pick(reads)
@@ -737,18 +766,23 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
 
 def _level_pick(reads: list[dict], showable: list[tuple], snippet_map: dict,
                 clips: dict, served_text: Any, plan: tuple) -> Optional[dict]:
-    """The best moment and the level's (`moment_pick.pick_with_level`), or
-    None when there is no level or no clip shows it: the two best, as
-    today (N134 item 2)."""
+    """The two best moments and the level's (`moment_pick.pick_with_level`),
+    or None when there is no level or no clip shows it: the two best, as
+    off a plan (N246 item 3). The level is read on the two best clips and on
+    the clips of every other block, so its moment is one of the two or has
+    a block of its own."""
     level, key_line = plan
     if not level:
         return None
     from services import moment_pick, plan_walk
+    shown = {moment["block_id"]: moment["candidate_id"]
+             for moment in moment_pick.pick(reads)["shown"]}
     rows = [{"candidate_id": candidate["candidate_id"],
              "word_count": candidate.get("word_count") or 0,
              "snippet": snippet_map.get(str(candidate["snippet_id"]), {}),
              "text": _shown_words(candidate, clips, served_text)}
-            for _block, candidate in showable]
+            for block, candidate in showable
+            if shown.get(block["block_id"], candidate["candidate_id"]) == candidate["candidate_id"]]
     try:
         at = plan_walk.level_moment(level, rows, list(snippet_map.values()), key_line=key_line)
     except Exception as error:  # noqa: BLE001 -- the walk as today
@@ -760,20 +794,26 @@ def _level_pick(reads: list[dict], showable: list[tuple], snippet_map: dict,
 
 
 def _moment_read(candidate: dict, block: dict, snippet_map: dict, clips: dict,
-                 served_text: Any) -> dict:
-    """One clip's row for `moment_pick`, with its willfidence read."""
+                 served_text: Any, held_words: Any = None) -> dict:
+    """One clip's row for `moment_pick`, with its willfidence read and
+    whether its words hold the helper words its slide had when the Take
+    was recorded (``held_words``, ``{slide_index: [phrase, ...]}``; N246
+    item 2)."""
     from services import moment_pick
+    from services.slide_helper_words import holds
 
     snippet = snippet_map.get(str(candidate["snippet_id"]), {})
+    shown = _shown_words(candidate, clips, served_text)
+    held = held_words.get(block.get("slide_index")) if isinstance(held_words, dict) else None
     return {
         "block_id": block["block_id"],
         "candidate_id": candidate["candidate_id"],
         "slide_index": block.get("slide_index"),
         "word_count": candidate.get("word_count") or 0,
+        "held": holds(shown, held),
         "read": moment_pick.read(
             candidate.get("machine_score"), snippet.get("transcript"),
-            snippet.get("metrics"),
-            shown=_shown_words(candidate, clips, served_text)),
+            snippet.get("metrics"), shown=shown),
     }
 
 
@@ -1618,15 +1658,21 @@ def build_shadow_frame(
     select_servable: bool = False,
     plan_level: Optional[str] = None,
     key_line: Any = None,
+    held_words: Any = None,
 ) -> Optional[dict]:
     """Build the complete v3 frame; return None for an unusable Take.
 
     ``plan_level`` is this week's level when the Take was recorded, for a
-    speaker on a plan (`services.plan_walk.walk_inputs`): one of the two
-    shown moments is then where that level shows most, practised with the
-    level's own intervention (G7, N134 item 2, N209 item 2); ``key_line``
-    the speaker's key line, which that level's moment prefers. Without it,
-    the walk is as today.
+    speaker on a plan (`services.plan_walk.walk_inputs`): beside the two
+    best moments, the moment where that level shows most is practised with
+    the level's own intervention (G7, N246 item 3); ``key_line`` the
+    speaker's key line, which that level's moment prefers. Without it, the
+    walk is as off a plan.
+
+    ``held_words``, ``{slide_index: [phrase, ...]}``, are the helper words
+    each slide had when the Take was recorded
+    (`services.slide_helper_words.held_at_take`): a clip that holds them
+    gives its place among the two best to the next (N246 item 2).
 
     ``served_text`` is the Ideal Text the verbal rows' spans address. Without
     it no verbal row can be proven to sit in this Take's words, so every one
@@ -1677,7 +1723,8 @@ def build_shadow_frame(
     blocks = _split_for_moments(
         blocks, snippet_map=snippet_map, take_id=take_id,
         recording_id=recording_id, servability=servability,
-        served_text=served_text, frozen_candidate_ids=frozen_candidate_ids)
+        served_text=served_text, frozen_candidate_ids=frozen_candidate_ids,
+        held_words=held_words)
     clips: dict = {}
     confidence_selections = _select_confidence(
         blocks, exclusions, snippet_map=snippet_map,
@@ -1686,7 +1733,7 @@ def build_shadow_frame(
     )
     picked = _pick_moments(blocks, snippet_map, clips, servability,
                            confidence_selections, served_text,
-                           plan=(plan_level, key_line))
+                           plan=(plan_level, key_line), held_words=held_words)
 
     # THE ONLY PLACE THE REASON LAYER IS OBSERVABLE (24j). Everything else it
     # does is internal ordering that leaves no trace: the failure it can have

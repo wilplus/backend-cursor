@@ -6146,3 +6146,209 @@ The rules: frontend
 §1 D1 and H, §3; the learning rules land on
 [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) with the first code.
 No migration in this entry.
+
+**N241 · The principles' three companions: strengths, what is in your
+control, and the sales framing (founder, the Claude Code chat, 28 October
+2026, to Linear's WIL-112, WIL-113 and WIL-114: "Life Panel, by principles",
+"Will drafts, you decide", "When notes show it twice", "Yes, as one note",
+"Will links notes to it", "Before a talk", "Plan's date and their notes",
+"Never; the speaker retires it", "How Will talks", "When it hears a worry",
+"Sort it, end on one action", "I draft, you sign", "Will's framing, no
+charts", "From their own notes", "Both, note and week", "Steps replace bugs",
+"One thing they control", "Ring 5, own switches", "Clickable prototype
+first").** For N182 and N212:
+1. Strengths (WIL-112) are kept in the Life Panel beside the principles and
+life goals. Will suggests one only when a positive trait shows in # notes on
+two different days (the life goals answer "What fits your nature and
+strengths?" counts as one note), once, in the Lounge, quoting both notes;
+the speaker accepts, edits or says Not now (propose, never commit, as the
+Sunday note's principle). Will never invents a strength and never says one
+did not show; only the speaker archives one, and it stays in the history.
+2. A later # note that shows a kept strength at work: Will says so once and
+keeps the note under that strength, so each strength gathers its own
+examples from daily life.
+3. Before a talk: in the Lounge, the day before a talk date (the plan's
+deadline, or a date a # note names), Will brings back one kept strength,
+quoting the note it came from. With no date, no reminder. Never on the
+recording screens.
+4. What is in your control (WIL-113, constants and variables) is how Will
+talks, not a screen. When a # note or a chat message worries about
+something out of the speaker's hands (the hotel, the audience, the slot),
+Will, once per worry, names what is out of their hands, names what is
+theirs, and ends on one thing they control now. Will's guide (the Stoic
+grounding, the hotel example, the tips) is drafted for the founder as a
+Claude Doc and goes into Will's instructions word for word once signed.
+5. The sales framing (WIL-114) is Will's framing too, with no charts (Never
+1). Will knows someone sells from their own notes (calls, deals, clients, a
+lost sale); no setup question. On a sales note, Will asks which step it
+stalled at (the opening, discovery, the offer, the follow-up) and names one
+change to that step, never the person. On Sunday, when the week's pattern
+is a sales one, the Sunday note offers the sale's steps in place of the four
+bugs (L4), then the reflection and a principle about the process.
+6. What a speaker leaves a chat with Will holding: one thing they control.
+7. Each of the three has its own row on the rings page, set to ring 5, the
+founder's to widen (as N212). Like the principles (N182): apart from the
+speaking coach, private, never shown to a coach.
+8. The words on screen are signed on a clickable prototype drawn on the real
+Lounge and Life Panel screens before the build (Never 4); the Sunday note's
+change to L4 is drawn there too, as the Sunday note is locked (N158).
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 N, O and P, §2. No migration in this entry.
+
+**N242 · "I have a new event" waits while a Take is processing (founder, the
+Claude Code chat, 28 October 2026: "When I click that I have a new event while
+processing the recording it doesn't know what to do", then "Hide it while
+processing").** For N140 and N178:
+1. While a Take is still processing (its analysis or its Ideal Text has not
+landed yet), "I have a new event" is not shown: not in Change your plan (H1),
+and not beside "Keep practising" under "What's next?" at the plan's end (I2).
+It comes back as soon as the Take has landed, the moment "Record Take N" comes
+back.
+2. Nothing else changes: a tap once the Take has landed starts a new event as
+N140 and N178 say, its questions after the next Take. No new words on screen
+(Never 4).
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 H1 and I2. No migration in this entry.
+
+**N243 · The principles wait while a speaker is onboarded (founder, the
+Claude Code chat, 28 October 2026: "I feel that principals are interfering
+with the onboarding here", then, asked which onboarding and what the
+principles should do then, "Speaker's first steps" and "Wait for first
+Take").** Amends N182 and N212, for N129, N136 and N178:
+1. While a speaker is onboarded, nothing of the principles shows: not the
+voice notebook's mic, not "Keep a voice notebook?", not the life goals ask,
+the Sunday note or the quarter's ask; and Will's chat does not answer as the
+notebook, the Sunday note or life goals.
+2. A new speaker is onboarded from the plan's first question until their
+first Take is recorded. A speaker who already has Takes, only while the
+plan's questions are asked (the deadline after their next Take, A2; a new
+event's questions, A3).
+3. Then everything in N182, N212 and N241 stands. Nothing that waited is
+lost: an ask that was due comes the next time it may.
+4. Only where the plan reaches (its ring row, N204); with no plan, the
+principles are as before. No new words on screen.
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 A6 and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 A5. No migration in this entry.
+
+**N244 · No next Take in the chat from the moment one is recorded until its
+walk reaches its summary (founder, the Claude Code chat, 28 October 2026: "I
+can see two bubbles interfering, like bubble flows interfering, one for the
+new take and one the summary of the take I just took. So maybe disable the
+new event while the processing is happening, so that it is only possible
+once it's finished", then "Record Take N" and "Walk's summary seen").** For
+N89, N167 and N192:
+1. Once the next Take is recorded, the last Take's closing message ("Look,
+practice makes perfect…") keeps its words and gives "Record Take N" up, and
+so does a practice day's one thing (N167). The chat offers no Take while the
+new Take processes and while its walk runs; its own closing message, written
+with the walk's summary, brings "Record Take N" back. Until now the button
+was held only while the Take processed: the moment processing ended it came
+back, naming the Take just recorded, beside the new Take's walk.
+2. The "+" and the Ideal Text page's own "Record Take N" are as before. No
+new words on screen, nothing changes on the server.
+The rules: frontend flow page D4
+([`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md))
+and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+G6. No migration.
+
+**N245 · The Sniper guides the tries: a try that lands moves on (founder,
+the Claude Code chat, 28 October 2026: "it also keeps asking me during the
+sniper practice to practice again and again"; "If it was really better, you
+let me go to the next step. If it was just slightly better, you're like coach
+that sees the potential and you ask, like, give it a try once more"; "you ask
+up to three times"; then, asked, "Long and green", "That landed. 🎯" and
+"You're close. 💪").** For N166 item 3 and N179, the tempo step (N181):
+1. Will decides when the game ends, not the speaker. "See how it went" goes;
+the Skip stays at the start and during each try (N178 item 3).
+2. A try lands when it runs at least 20 seconds from the first word and the
+ball is in the green four fifths of that time. The stretch spent at least a
+quarter of its time outside the green (`tempo_stretch.MIN_OUTSIDE`), so a
+landed try is always clearly better than the Take. Will says "That landed. 🎯
+Really better. Let's move on." and Next goes on with the walk, on any try.
+3. A try that came closer (the ball in the green more than half the time, not
+enough to land) gets "Better. You let it breathe." and, while a try is left,
+"You're close. 💪 Give it one more try.", then Practise again. Otherwise the
+try's comment as signed (N179), then Practise again.
+4. Up to three tries; after the third without a landing, the closing line
+comes by itself (N179). The bar is never shown (Never 1). Both new lines are
+signed. Will's note keeps a landed try as better and the game as ended
+dynamic.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§1 K and T. No migration.
+
+**N246 · Two best moments on every Take, the next best in place of a
+sentence that holds the helper words, and on a plan the two best and the
+level's moment (founder, the Claude Code chat, 28 October 2026: "the moment
+that's already with the helper word, it's not being chosen as the confident
+moment again ... if there is already a confident moment and helper words, go
+for the next confident moment"; "I've seen only one confident moment on this
+feedback round ... there should be at least two confident moments, like the
+highest confidence moments from the whole recording"; then, asked, "Nothing
+at all" was shown in place of the second, "Two best + level" and "Second
+stays").** For N118, N128, N134 item 2, N209 item 2 and D8 of the helper
+words lock of 2026-09-30:
+1. Found: when the Take's two best clips shared a block and no cut kept 40
+to 120 words a side, the blocks stayed as they were (contract 24a), so a
+short Take of one block, or one whose only block with a clip that can be
+played held both, showed one moment, against N118's "fewer than two only
+when it has fewer than two clips that can be played". Now, when no such cut
+exists and no other block has a clip to show, the block itself is cut
+between the two clips at its most even piece boundary, each side keeping its
+clip, when each clip has 5 words or more. With another block to show, the
+blocks stay as they were and the Take shows two, as before, so no short
+paragraph is made where it is not needed. Contract 24a is amended.
+2. A clip whose words hold the helper words its slide had when the Take was
+recorded (every piece of them, in order) ranks after the clips that do not,
+so the next best moment is shown in its place; it is still shown when the
+Take has nothing else to show. Helper words picked during this Take's walk
+do not change its moments.
+3. On a plan, the walk shows the two best moments, as N118 does for every
+speaker, and the moment where this week's level shows most is practised as
+well, with the level's own practice under "This week's level: {level}.
+Here's where it shows:": as a third moment when it is another sentence, or on
+one of the two when the level shows most there. The level is read only on the
+two best and on clips in other blocks, so it never shares a block with one of
+them. This replaces N134 item 2 and N209 item 2 ("the best moment and the
+moment where this week's level shows most").
+4. Found: the walk the speaker sees never read the plan's level. The serve
+path asked for it from a store that cannot read plans, which failed closed
+without a word, so only the dark frame had the level's moment. It now reads
+the level as the dark frame does.
+5. Found: the two best moments may share a slide, which is one paragraph of
+the Ideal Text, and helper words saved at the first made that paragraph
+"done" (D8: its open moments are not served), so the second left the walk.
+Now a moment the pick chose stays, with its notes, until it is answered; a
+paragraph saved with helper words in this Take still hides every other
+moment and note.
+No new words on screen (Never 4). The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2, C3 and H1, and
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 G7. No migration in this entry.
+
+**N247 · A reopened Feedback walk shows everything the speaker went through
+(founder, the Claude Code chat, 28 October 2026: "It should open the whole
+feedback walk with all the things that are there that we went through, the
+judgment time, the sniper, whatever intervention was included in the
+feedback", then, asked, "Both, read only").** Amends the frontend's C8 ("no
+read-only replay", 2026-10-13), for N89, N166 and N192:
+1. A Take's walk opened again from its Feedback walk, once it is done, holds
+every step as it went, read only: the coach's word, the moments and their
+practise, the helper words (still editable on the latest Take, C3), the
+tempo step, the judging of other speakers, and the summary at its end.
+2. Other speakers: the moments the speaker judged in that walk, each with
+the answer they gave, and Next, as the walk reopened shows them since
+2026-10-18. Nothing is asked again or sent. With none judged, the step is
+left out.
+3. The tempo step (the Sniper): as the chat kept it, Will's opening lines,
+each "Try N" with its comment, and the closing line or the Skip. No scale, no
+microphone, nothing recorded. A Take that had no tempo step has none.
+4. No new words on screen (Never 4); nothing changes on the server.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§1 B10, C8 and T. No migration.
