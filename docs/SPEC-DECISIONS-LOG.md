@@ -5478,6 +5478,13 @@ messages' consent included.
 `copy/terms-3.8.txt` and `copy/privacy-3.9.txt`, published by
 `PUBLISH-3.9-2026-10-28.sql` (the founder's step), which also deletes the
 feelings given before 3.9 (question 2 A).
+- **Published** (founder, 28 October 2026, 11:44:20 UTC):
+`PUBLISH-3.9-2026-10-28.sql` run in Supabase. `phase1-2026-10-28-3.9` is in
+force with the signed bytes and the United States, five purposes, all
+required; training-only-v4 is unchanged and the two people with a training
+yes keep it; no "How do you feel?" answer from before 3.9 is left
+(`feelings_left` 0, `takes_with_a_feeling` 0). Next: `PLAN_CONSENT_ENABLED=true`
+on Railway, web and worker.
 
 **N218 · A deleted account's sign-in record is emptied in SQL, not soft-deleted
 (founder, the Claude Code chat, 27 October 2026, asked which of the two fixes
