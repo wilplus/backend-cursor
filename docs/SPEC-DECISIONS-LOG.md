@@ -6254,3 +6254,29 @@ The rules: frontend flow page D4
 ([`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md))
 and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 G6. No migration.
+
+**N245 · The Sniper guides the tries: a try that lands moves on (founder,
+the Claude Code chat, 28 October 2026: "it also keeps asking me during the
+sniper practice to practice again and again"; "If it was really better, you
+let me go to the next step. If it was just slightly better, you're like coach
+that sees the potential and you ask, like, give it a try once more"; "you ask
+up to three times"; then, asked, "Long and green", "That landed. 🎯" and
+"You're close. 💪").** For N166 item 3 and N179, the tempo step (N181):
+1. Will decides when the game ends, not the speaker. "See how it went" goes;
+the Skip stays at the start and during each try (N178 item 3).
+2. A try lands when it runs at least 20 seconds from the first word and the
+ball is in the green four fifths of that time. The stretch spent at least a
+quarter of its time outside the green (`tempo_stretch.MIN_OUTSIDE`), so a
+landed try is always clearly better than the Take. Will says "That landed. 🎯
+Really better. Let's move on." and Next goes on with the walk, on any try.
+3. A try that came closer (the ball in the green more than half the time, not
+enough to land) gets "Better. You let it breathe." and, while a try is left,
+"You're close. 💪 Give it one more try.", then Practise again. Otherwise the
+try's comment as signed (N179), then Practise again.
+4. Up to three tries; after the third without a landing, the closing line
+comes by itself (N179). The bar is never shown (Never 1). Both new lines are
+signed. Will's note keeps a landed try as better and the game as ended
+dynamic.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§1 K and T. No migration.
