@@ -1153,14 +1153,16 @@ the speaker accepted, with the exact span, text and note.","O1 -> test_only_verd
 O2 -> test_the_exact_change_and_the_order",
 tests/test_feedback_window.py,Story,"As a speaker, I want my page to show only the moments that matter, so that it stays focused.","O1  Confident moments, the exercise and items I already answered are shown;
 other open moments are not, a paragraph I saved in this Take gets no
-more moments, and no score fields reach the page.
+moments but the picked ones still open, and no score fields reach the
+page.
 O2  A Take with nothing picked still shows two moments; one whose picked
 moments I answered shows no others in their place.
 O3  A paragraph I saved in an earlier Take gets its moments again in later
 Takes.","O1 -> test_green_moments_and_the_exercise_show_nothing_else_open_does
 O2 -> test_a_take_with_nothing_picked_still_shows_two_moments,
 test_answered_moments_leave_no_place_for_others
-O3 -> test_a_paragraph_saved_in_an_earlier_take_gets_its_moments_again","Founder lock 2026-10-12; project ""S"" 2026-10-13; Never-rule 1."
+O3 -> test_a_paragraph_saved_in_an_earlier_take_gets_its_moments_again
+O1 -> test_the_second_best_moment_stays_after_helper_words_on_its_paragraph","Founder lock 2026-10-12; project ""S"" 2026-10-13; Never-rule 1; 2026-10-28 (N246 item 5, ""Second stays"")."
 tests/test_first_client_snapshot_gate.py,Story,"As a speaker, I want a Take whose feedback can't be proven against the frozen bundle to show no V3 feedback rather than unrecorded feedback, so that what I see is always what was recorded.","O1  A source snapshot that does not match the served text declines with
 its named reason BEFORE the exposure bundle is recorded (D20 order),
 and hands back no learning bundle.
@@ -1244,13 +1246,16 @@ O4  An answered row stays, with its decision as its status.
 O5  Every served V3 row carries its learning handles and nothing else
 leaves the server with it.
 O6  The block equals the frozen block, each row read once, and the live
-read is served before the dark frame is written.","O1 -> test_the_span_check_serving_none_is_a_named_fallback
+read is served before the dark frame is written.
+O7  The served frame reads this week's level from the database the block
+reads, as the dark frame does (N246 item 4).","O1 -> test_the_span_check_serving_none_is_a_named_fallback
 O2 -> test_a_failure_on_the_way_to_v3_serves_no_v2_rows
 O3 -> test_a_served_confident_voice_row_carries_its_recording
 O4 -> test_a_yes_on_the_legacy_route_marks_the_row_approved_and_keeps_it
 O5 -> test_every_served_v3_row_carries_its_learning_handles
 O6 -> test_the_block_is_the_same_block_and_no_row_is_read_twice
-test_the_live_read_serves_the_block_before_the_dark_frame_is_written","services.ideal_text_changes (audit Q-C1). O3: founder 2026-09-20 ""there is no playback on the overlay"". O4 and O5 drive stages of _ChangesRun directly; the rest go through build_changes_block."
+test_the_live_read_serves_the_block_before_the_dark_frame_is_written
+O7 -> test_the_served_walk_reads_the_plan_s_level","services.ideal_text_changes (audit Q-C1). O3: founder 2026-09-20 ""there is no playback on the overlay"". O4 and O5 drive stages of _ChangesRun directly; the rest go through build_changes_block."
 tests/test_ideal_text_cold_open.py,Story,"As a speaker, I want opening my Ideal Text never to show it as missing when the read failed, and never to serve an out-of-date snapshot, so that the loop never breaks quietly.","O1  A failed cold-open read answers 503 IDEAL_TEXT_READ_FAILED, retryable,
 never the ""pending"" 404 that would show an existing Ideal Text as
 missing.
@@ -1724,10 +1729,13 @@ its willfidence is the lower.
 O3  The voice decides each: at the floor praised (the Clearer version
 when the words need help), under it corrected.
 O4  With no sound read the words order the clips, and both are
-corrected.","O1 -> test_the_two_best_by_willfidence_are_shown_from_any_slide
+corrected.
+O5  A clip holding the slide's helper words ranks after the others, and
+is still shown when nothing else can be.","O1 -> test_the_two_best_by_willfidence_are_shown_from_any_slide
 O2 -> test_the_stronger_voice_of_the_two_is_the_most_confident
 O3 -> test_a_voice_at_the_floor_is_praised_and_only_a_voice_under_it_practises
-O4 -> test_with_no_sound_read_the_words_order_the_clips_and_both_are_corrected","Founder 2026-10-23 (N118 ""minimum 2, best two""; N122 ""S×W picks, voice names top""); 2026-10-21 (N108, ""the voice decides"")."
+O4 -> test_with_no_sound_read_the_words_order_the_clips_and_both_are_corrected
+O5 -> test_a_clip_holding_its_helper_words_ranks_after_the_others","Founder 2026-10-23 (N118 ""minimum 2, best two""; N122 ""S×W picks, voice names top""); 2026-10-21 (N108, ""the voice decides""); 2026-10-28 (N246, ""go for the next confident moment"")."
 tests/test_moment_suggestions.py,Story,"As a speaker, I want my Ideal Text read to carry no star or suggestion outside the gated changes lane and no scores, so that I see only words and the latest text.","O1  Whatever lane a stored moment suggestion came from (replace,
 emphasize, structure), the GET serves the moment with its anchor and
 playback identity but no star and no suggestion.
@@ -2831,7 +2839,9 @@ tests/test_take_feedback_policy_v3.py,Story,"As a speaker, I want one whole Take
 fall in one block, the boundary between them moves (40 to 120 words,
 never across a slide, never cutting a clip); a one-block Take whose
 two clips have 5 or more words each becomes two blocks; with no cut
-possible, nothing changes; each such block names its typed exception.
+in range and no other block to show, the block itself is cut between
+the two at its most even boundary (N246); each such block names its
+typed exception.
 O2  The two highest blocks are shown and the score decides each: one at
 or above the floor is praised (the highest is marked), one below it
 gets the practice prompt; praise is anchored inside a praised block.
@@ -2853,14 +2863,18 @@ the Clearer version: with the undermining opener for an approval tag
 or a playing-down ""just"", with the plain opener for a restart.
 O8  In a shown block the moment is its highest-willfidence clip that can
 be served; a block already frozen keeps its clip.
-O9  On a plan, the walk shows the best moment and the moment where this
-week's level shows most, practised with the level's own practice
+O9  On a plan, the walk shows the two best moments and the moment where
+this week's level shows most, practised with the level's own practice
 (the AI voice for pace) and marked with the level's key, even when
-its voice cleared the floor; with no clip showing the level, the two
-best, as today (G7, N134 item 2, N209).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
+its voice cleared the floor: a third moment, or one of the two when
+the level shows most there; with no clip showing the level, the two
+best (G7, N246 item 3).
+O10 A clip holding the helper words its slide had when the Take was
+recorded gives its place among the two best to the next; words picked
+after the Take began change nothing (N246 item 2).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O1 -> test_two_best_clips_in_one_block_get_a_block_each
 O1 -> test_a_one_block_take_is_split_for_two_moments
-O1 -> test_no_possible_cut_leaves_the_blocks_as_they_were
+O1 -> test_with_no_cut_in_range_a_lone_block_is_cut_between_the_two
 O1 -> test_a_frozen_take_keeps_its_blocks
 O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
@@ -2869,7 +2883,8 @@ O5 -> test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version
 O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version
 O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version
 O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen
-O9 -> test_on_a_plan_one_moment_is_where_the_level_shows","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment)."
+O9 -> test_on_a_plan_the_two_best_and_the_level_s_moment
+O10 -> test_a_moment_holding_its_helper_words_gives_its_place_to_the_next","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level"")."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name
