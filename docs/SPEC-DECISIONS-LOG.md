@@ -6440,3 +6440,27 @@ any work starts.
 The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 §1 H and I, §3. No migration in this entry.
+
+**N251 · One record button in the chat, the newest Take's, whatever the
+project (founder, the Claude Code chat, 28 October 2026, from a decision
+page after N244: "the other project's 'Record Take N' goes too while the
+new Take processes and its walk runs (any project)", "the other project's
+button does not come back. One record button in the chat, the newest
+Take's; other projects through the '+'", "Tidy the wording: yes").** For
+N244, N89 and N167:
+1. N244 held only inside one project: a Take recorded in another project
+left that project's closing message with its "Record Take N" beside the new
+walk. Now a Take recorded in any project takes the button from every
+closing message and practice-day bubble before it, while the new Take
+processes and while its walk runs.
+2. The button does not come back on them once the new walk reaches its
+summary: the chat has one record button, under the newest Take's closing
+message (or in a practice day's bubble after it, N167). Another project is
+reached through the "+". Was: each project's last closing message kept its
+own button, so two projects could show two.
+3. The "+" and the Ideal Text page's own "Record Take N" are as before. No
+new words on screen, nothing changes on the server.
+The rules: frontend flow page D4
+([`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md))
+and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+G6. No migration.
