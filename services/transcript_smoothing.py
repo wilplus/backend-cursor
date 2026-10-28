@@ -11,7 +11,11 @@ said, and the ONLY things that may change silently are
                     by punctuation is EXPRESSIVE ("no, no, no") and is
                     never touched;
   3. PUNCTUATION + CASING — sentence-initial capitalisation and ONE
-                    terminal mark, applied to the FINISHED DOCUMENT only.
+                    terminal mark, applied to the FINISHED DOCUMENT only;
+  4. A FULL STOP AT A SEAM (N126, founder 2026-10-23) — between two
+                    pieces, only where the first ends with no closing
+                    mark, the next begins with a capital, and the speaker
+                    paused clearly there (``seam_stop``).
 
 Everything else — false starts, rephrasings, the compose LLM's
 smoothing, a coach's wording change — is a VISIBLE, approvable change.
@@ -74,6 +78,39 @@ _REPEAT_RE = re.compile(r"(?<![\w'-])([\w']+)(\s+)(\1)(?![\w'-])",
 # A sentence boundary candidate: terminal punctuation (optionally with a
 # closing quote/bracket) + whitespace + a lowercase letter.
 _BOUNDARY_RE = re.compile(r"([.!?][\"'’”\)\]]?)(\s+)([a-zà-ÿ])")
+
+
+#: The silence at a seam, in milliseconds, that counts as the clear pause a
+#: sentence ends on (N126): the app's own line for a silence that ends a
+#: stretch of speech (``audio_metrics.SEGMENT_GAP_SEC``, 0.6 s).
+SEAM_PAUSE_MS = 600
+
+# The pronoun "I" is a capital in English wherever it stands, so it says
+# nothing about a sentence beginning ("and then | I said").
+_PRONOUN_I_RE = re.compile(r"^I(?:['’](?:m|ll|ve|d|s))?(?![\w])")
+
+
+def seam_stop(left: Any, right: Any, pause_ms: Any,
+              language: Optional[str] = None) -> bool:
+    """Does a full stop go in silently between two pieces (N126)? Only when
+    ``left`` ends on a word with no closing mark (a comma or a colon says
+    the sentence goes on: never touched), ``right`` begins with a capital,
+    and the silence between them is at least ``SEAM_PAUSE_MS``. Never in
+    German, where every noun begins with a capital; never before the
+    pronoun "I". A pause that cannot be measured is no pause. Pure."""
+    if not isinstance(left, str) or not isinstance(right, str):
+        return False
+    body, head = left.rstrip(), right.lstrip().lstrip("\"'“‘(")
+    if not body or not head or not body[-1].isalnum() or not head[0].isupper():
+        return False
+    from services.rater_languages import normalize_provider_language
+    code = normalize_provider_language(language) or ""
+    if code == "de" or (code in ("", "en") and _PRONOUN_I_RE.match(head)):
+        return False
+    try:
+        return float(pause_ms) >= SEAM_PAUSE_MS
+    except (TypeError, ValueError):
+        return False
 
 
 def hesitations_for(language: Optional[str]) -> tuple:

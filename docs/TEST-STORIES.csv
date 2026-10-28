@@ -1530,7 +1530,9 @@ speech order, each piece's span slicing exactly its words; the flag
 no longer swaps in a shorter best-of text (Never-5).
 O2  Only hesitations, immediate repeats and punctuation/casing change
 silently; false starts, expressive repeats and real words stay
-(Never-5: no word silently changed).
+(Never-5: no word silently changed). A full stop goes in between two
+pieces only where the speaker paused clearly and the next begins a
+sentence with a capital (N126).
 O3  Every change is anchored on an exact substring of the served text
 or dropped; a bold that cannot narrow is dropped, not widened.
 O4  A piece is never lost when its words change after a bake or a lock:
@@ -1538,7 +1540,8 @@ it keeps its order and falls back to its paragraph.
 O5  What reaches the speaker carries no internal vocabulary, no score
 and no cue key the screen has no signed words for (Never-1, Never-4).","O1 -> test_document_is_the_full_latest_take_in_speech_order,
 test_flag_on_and_off_persist_the_same_full_transcript
-O2 -> test_only_fillers_repeats_and_punctuation_change_silently
+O2 -> test_only_fillers_repeats_and_punctuation_change_silently,
+test_a_full_stop_goes_in_only_where_the_speaker_paused
 O3 -> test_key_phrases_from_say_it_stronger_extraction,
 test_delivery_and_structural_are_advice_with_device,
 test_the_confident_voice_card_obeys_the_same_rule,

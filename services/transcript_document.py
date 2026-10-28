@@ -219,6 +219,22 @@ def _close(text: str) -> tuple:
     return trimmed, "."
 
 
+def _paused_sentence_end(left: dict, left_text: str, right: dict,
+                         right_text: str) -> bool:
+    """A full stop at the seam between two pieces of a paragraph (N126):
+    where the speaker paused clearly between a piece with no closing mark
+    and one that begins with a capital. The pause is the silence between
+    the left piece's last word and the right piece's first (piece spans are
+    exact word spans). The mark goes OUTSIDE the left piece's span, as
+    `_close`'s does, so no key or anchor moves."""
+    from services.transcript_smoothing import seam_stop
+    times = [left.get("start_offset_ms"), left.get("duration_ms"), right.get("start_offset_ms")]
+    ms = [float(t) for t in times if isinstance(t, (int, float)) and not isinstance(t, bool)]
+    if len(ms) != 3:
+        return False  # a pause that cannot be measured is no pause
+    return seam_stop(left_text, right_text, ms[2] - (ms[0] + ms[1]), left.get("language"))
+
+
 def _document_take(database, arc_id: Any,
                    session_id: Any) -> Optional[tuple]:
     """``(session_id, take_index)`` of the take to build, or None.
@@ -329,6 +345,8 @@ def _lay_out(rows: list, sid: str, take_index: Any) -> tuple:
                     # splits mid-run exactly as slides split mid-talk,
                     # and `_close`'s own reasoning applies unchanged.
                     text, mark = _close(text)
+                elif _paused_sentence_end(s, text, *pack[i + 1]):
+                    mark = "."
                 start = cursor
                 cursor += len(text)
                 out.append(text)
