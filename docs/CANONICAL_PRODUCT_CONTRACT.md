@@ -183,7 +183,7 @@ with this contract, this contract wins.
     such cut exists and no other block has a clip to show, the block itself is
     cut between the two clips at its most even persisted boundary, each side
     keeping its clip, when each clip has 5 words or more; with another block
-    to show, the blocks stay as partitioned *(amended 2026-10-28, N245; until
+    to show, the blocks stay as partitioned *(amended 2026-10-28, N246; until
     then a Take whose clips all sat in one block showed one moment)*. A block
     made this way is
     a new block with a new id and carries the typed partition exception

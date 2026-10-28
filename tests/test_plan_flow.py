@@ -31,6 +31,10 @@ OUTCOME
   O10 A Take's walk reads the level the plan had when the Take was
       recorded, so it reads the same on every opening; off a plan, or on
       "Make it yours", the walk is as today.
+  O11 While a speaker is onboarded (the questions; a new speaker's plan
+      until the first Take), the principles show nothing and Will's chat
+      does not answer as them; after the first Take they are back; a plan
+      waiting for the next Take holds nothing back (N243).
 PROVES   O1 -> test_without_the_ring_nothing_happens
          O2 -> test_a_new_speaker_is_asked_once
          O3 -> test_no_date_gives_two_months_then_the_voice_message
@@ -42,8 +46,10 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
          O9 -> test_the_level_moves_on_after_two_takes_that_reach_it
                test_a_level_whose_time_ran_out_gives_way
          O10 -> test_a_walk_reads_the_level_of_its_takes_time
+         O11 -> test_the_principles_wait_while_the_speaker_is_onboarded
 WHY      The plan, built one to one with the prototype (founder 2026-10-26,
-         N203, N204); a level moving on, N134 items 3 and 4, N209; the rules
+         N203, N204); a level moving on, N134 items 3 and 4, N209; the
+         principles waiting for the onboarding, N243; the rules
          are frontend docs/flows/the-plan.md §1.
 """
 import uuid
@@ -377,3 +383,40 @@ def test_a_walk_reads_the_level_of_its_takes_time(db, monkeypatch):
     assert plan_walk.walk_inputs(db, USER, later)["plan_level"] == "say_once"
     monkeypatch.setattr("services.rings.feature_is_on_for_user", lambda *a, **k: False)
     assert plan_walk.walk_inputs(db, USER, later) == {}
+
+
+def test_the_principles_wait_while_the_speaker_is_onboarded(db, monkeypatch):
+    from services import life_goals, sunday_note, voice_notebook
+    consent = {"decision": "yes"}
+    db.get_voice_notebook_consent = lambda user: consent
+    db.list_voice_notebook_consents = lambda: [{"user_id": USER, "time_zone": "UTC"}]
+    db.get_sunday_note_for_week = lambda user, week: None
+    monkeypatch.setattr("services.job_queue.enqueue", lambda path, *a, **k: True)
+    monkeypatch.setattr("services.life_store.list_goals", lambda *a, **k: [])
+    sunday_evening = datetime(2026, 10, 25, 18, 5, tzinfo=timezone.utc)
+
+    def silent():
+        return (voice_notebook.chat_turn(db, USER, "# the hotel was loud") is None
+                and sunday_note.chat_turn(db, USER, "sunday note") is None
+                and life_goals.chat_turn(db, USER, "#goals") is None
+                and life_goals.after_note(db, USER) == []
+                and life_goals.quarter_due(db, USER) == []
+                and sunday_note.sweep_due(db, sunday_evening) == 0)
+
+    assert F.state(db, USER, tz="UTC", first_name="Artur")["plan"]["onboarding"]
+    assert silent()  # the questions
+    plan = _active(db)
+    assert F.state(db, USER, tz="UTC")["plan"]["onboarding"] and silent()  # before the first Take
+
+    took = datetime.fromisoformat(plan["started_at"]) + timedelta(minutes=5)
+    db.takes.rows = [{"created_at": took.isoformat(), "arc_id": "arc-1", "take_index": 1}]
+    assert not F.state(db, USER, tz="UTC")["plan"]["onboarding"]
+    assert sunday_note.sweep_due(db, sunday_evening) == 1  # back after the first Take
+    consent = None
+    assert voice_notebook.chat_turn(db, USER, "# the hotel was loud")["answer"] == voice_notebook.COPY["ask"]
+
+    F.new_event(db, USER, tz="UTC")
+    assert not F.onboarding(db, USER)  # a new event's questions wait for the next Take
+    F.after_take(db, USER)
+    consent = {"decision": "yes"}
+    assert F.onboarding(db, USER) and silent()  # and while they are asked
