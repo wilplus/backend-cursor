@@ -282,8 +282,8 @@ def _will_question(user_id, question, _context, _history=None) -> Optional[tuple
 
 
 def _whatsapp_number(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
-    """A number typed under the WhatsApp ask (founder 2026-10-20): saved as
-    the form saves it, before any voice reads it as something else."""
+    """A number typed under the WhatsApp ask (founder 2026-10-20): the form
+    opens on its code (N235), before any voice reads it as something else."""
     from services.db import db
     from services.whatsapp_notify import chat_turn
     turn = chat_turn(db, user_id, question)
