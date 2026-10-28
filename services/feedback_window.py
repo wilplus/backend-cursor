@@ -14,9 +14,12 @@ all answered is not one: no other moment takes their place (founder
 walked through them").
 
 WHAT LEAVES ENTIRELY. A paragraph saved with helper words is done: its open
-moments are not served, and its notes ride the locked screen. Everything
-already answered stays: history is never withheld. A praise or a rewrite
-rides its own paragraph's open moment and is withheld with it.
+moments are not served, and its notes ride the locked screen; except a
+moment the Manager picked, which stays with its notes until it is answered
+(founder 2026-10-28, N246 item 5: the two best moments may share a slide's
+paragraph, and the helper words saved at the first took the second away).
+Everything already answered stays: history is never withheld. A praise or a
+rewrite rides its own paragraph's open moment and is withheld with it.
 
 AC-9: no score or band is read or served here.
 """
@@ -61,7 +64,7 @@ def window_rows(
     open_moments = [
         row for row in rows
         if _is_moment(row) and _open(row)
-        and paragraph_of(row) not in saved_paragraphs]
+        and (_picked(row) or paragraph_of(row) not in saved_paragraphs)]
     read = any(_is_moment(row) and _picked(row) for row in rows)
     chosen = choose_open_moments(open_moments, read=read)
     chosen_ids = {id(row) for row in chosen}
@@ -71,7 +74,7 @@ def window_rows(
     out: list[dict] = []
     for row in rows:
         paragraph = paragraph_of(row)
-        if paragraph in saved_paragraphs and _open(row):
+        if paragraph in saved_paragraphs and _open(row) and paragraph not in kept_paragraphs:
             continue
         if _is_moment(row):
             if _open(row) and id(row) not in chosen_ids:
