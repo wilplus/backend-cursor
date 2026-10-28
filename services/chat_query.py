@@ -322,14 +322,13 @@ def _life_goals(user_id, question, _context, _history=None) -> Optional[tuple[di
                   debug={"intent": "life_goals"}), "life_goals"
 
 
-def _voice_notebook(user_id, question, _context, _history=None,
-                    *, life_on: bool = False) -> Optional[tuple[dict, str]]:
+def _voice_notebook(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
     """A typed "#" note in the founder's voice notebook (Will learning plan,
     step 1): kept and answered "Noted.", or the question before the first
     note. Not a notebook user, or not a note: None, the chat as before."""
     from services.db import db
     from services.voice_notebook import chat_turn
-    turn = chat_turn(db, user_id, question, life_on=life_on)
+    turn = chat_turn(db, user_id, question)
     if not turn:
         return None
     return _reply(turn["answer"], row_metadata=turn["row_metadata"],
@@ -391,8 +390,7 @@ def _intercepts(user_id, app_config) -> list[tuple[str, Callable]]:
         chain.append(("whatsapp-number intercept failed user=%s: %s", _whatsapp_number))
         chain.append(("sunday-note intercept failed user=%s: %s", _sunday_note))
         chain.append(("life-goals intercept failed user=%s: %s", _life_goals))
-        chain.append(("voice-notebook intercept failed user=%s: %s",
-                      functools.partial(_voice_notebook, life_on=life_on)))
+        chain.append(("voice-notebook intercept failed user=%s: %s", _voice_notebook))
     if life_on:
         chain.append(("life-panel intercept failed user=%s: %s", _life_panel))
     if user_id:

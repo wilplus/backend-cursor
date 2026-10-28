@@ -110,8 +110,8 @@ def founder(monkeypatch):
                         lambda feature, user, database=None: user == "u")
 
 
-def _type(db, text, life_on=False):
-    turn = nb.chat_turn(db, "u", text, life_on=life_on)
+def _type(db, text):
+    turn = nb.chat_turn(db, "u", text)
     if turn:  # what persist_chat_turn writes for the turn
         db.insert_lounge_messages("u", [
             {"client_id": f"me-{text}", "role": "user", "body": text, "metadata": None},
@@ -183,11 +183,15 @@ def test_will_reads_the_notes_only_after_yes(founder):
     assert "I rush the close" in nb.prompt_block(db, "u")
 
 
-def test_a_life_panel_tag_is_kept_and_left_to_the_life_panel(founder):
+def test_every_typed_hash_is_one_note_as_the_mic(founder):
+    """N251: "#" is one note; the Life Panel's old tags are notes too, and
+    the message box's "# note" is read as "#"."""
     db = _Db()
     db.consent["u"] = {"decision": "yes"}
-    assert nb.chat_turn(db, "u", "#mistake I skipped the pause", life_on=True) is None
-    assert db.notes[0]["text_clean"] == "#mistake I skipped the pause"
+    assert _type(db, "#mistake I skipped the pause")["answer"] == "Noted."
+    assert _type(db, "#note The close needs a story")["answer"] == "Noted."
+    assert [n["text_clean"] for n in db.notes] == [
+        "#mistake I skipped the pause", "# The close needs a story"]
 
 
 def _note(db, adapter, key=None):
