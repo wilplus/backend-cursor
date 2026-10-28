@@ -51,7 +51,7 @@ class AdminUsersBeingDeletedTest(unittest.TestCase):
                 {"id": "req-a", "acquisition_principal_id": "66666666-6666-4666-8666-666666666666",
                  "state": "pending", "requested_at": "2026-10-27T10:00:00+00:00",
                  "completes_after": "2099-11-03T10:00:00+00:00",
-                 "idempotency_key": f"admin-delete:{DELETED_BY_FOUNDER}"},
+                 "idempotency_key": f"admin-delete:{DELETED_BY_FOUNDER}:3f2a9c1b7e04"},
                 {"id": "req-b", "acquisition_principal_id": THEIR_PRINCIPAL,
                  "state": "pending", "requested_at": "2026-10-26T09:00:00+00:00",
                  "completes_after": "2099-11-02T09:00:00+00:00",

@@ -240,6 +240,12 @@ O3 -> test_the_link_changes_the_email_once_and_only_the_newest
 O4 -> test_a_password_change_checks_the_current_one_and_signs_out_the_rest
 O5 -> test_a_google_account_sets_its_first_password_with_a_link
 O6 -> test_an_email_that_didnt_go_is_not_reported_as_sent","WIL-95 (founder 2026-10-26, N190: ""approved, implement it""; rules in the frontend's docs/flows/consent-screens.md §1)."
+tests/test_admin_delete_user.py,Story,"As the founder, I want ""Delete"" on the Users list and on a profile to delete any account, an old one that never agreed to processing included, and to delete again after an Undo, so that the people I delete are really deleted.","O1  An account with no owner principal is given one and gets the same
+pending seven-day deletion as everyone else; its sign-in record is
+never deleted outright. The person then leaves the Users list.
+O2  Deleting again after a cancel records a new pending deletion, not the
+cancelled one.","O1 -> AdminDeleteUserTest::test_an_account_without_a_principal_takes_the_seven_day_road
+O2 -> AdminDeleteUserTest::test_a_delete_after_a_cancel_is_a_new_deletion","Founder 2026-10-28 (N222): the list's Delete failed with a 500 for an account from May; Supabase refuses to delete a sign-in record whose Takes are kept as history. ""Make Delete really delete""."
 tests/test_admin_speaker_permit.py,Story,"As a speaker, I want any AI call an admin makes about me to run under my own processing permit, and be refused when I have none, so that my words never reach a provider without my authority (processing authorization on the critical path).","O1  Directive suggestions: with my authority the model call runs inside
 the protected scope bound to MY principal; a refused permit answers
 403 before any provider client exists.
@@ -263,11 +269,6 @@ has one (never the middle of the scale made up).",O1 -> test_a_take_row_carries_
 tests/test_admin_users_being_deleted.py,Story,"As the founder, I want a person whose account is being deleted to leave the Users list at once, though their data is deleted only after seven days, so that the list shows only the people who are still here.","O1  The list leaves out everyone whose account is being deleted, whether
 the founder deleted it or the person did, and the next page starts
 where this one ended. A finished deletion is left out too.",O1 -> AdminUsersBeingDeletedTest::test_the_list_leaves_out_who_is_being_deleted,"Founder 2026-10-27 (N219; N221 drops the ""Being deleted"" view)."
-tests/test_admin_users_hide.py,Story,"As the founder, I want to hide people from the Users list, and undo it, so that the list shows only the people I still need, without touching anyone's account.","O1  A person I hide leaves the list at once, in the page and in the
-search; Undo brings them back.
-O2  Hiding changes only the list: no deletion is recorded and nothing is
-asked of the person's sign-in.","O1 -> AdminUsersHideTest::test_a_hidden_person_leaves_the_list_until_undo
-O2 -> AdminUsersHideTest::test_hiding_touches_no_account","Founder 2026-10-27 (N221): ""Just hide them cause they are deleted through other workflow inside the app""."
 tests/test_admin_users_leave_out_deleted_accounts.py,Story,"As the founder, I want a finished deletion gone from the Users list, so that the list never shows an emptied account with no email and no name.","O1  Every auth user whose deleted_at is set is left out of the paged list
 and of the search; one without it stays. A page shortened by a deleted
 account still says there is more, so the list does not end early.",O1 -> AdminUsersLeaveOutDeletedAccountsTest::test_a_deleted_account_is_in_neither_the_page_nor_the_search,"N219: a finished deletion is in neither tab. N218: its auth record stays, emptied, with deleted_at set."
