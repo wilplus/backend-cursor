@@ -6025,3 +6025,48 @@ The rules: frontend
 §1 B6, C1, D5, E2 and K, §3, §5. The prototype, kept as N229 says:
 `docs/design/customer-requests-2026-10-28/ariel/ariel-lounge.html` and
 `6-answerer-side-in-her-lounge.pdf`. No migration in this entry.
+
+**N237 · Replying STOP to a WhatsApp message turns the messages off (founder,
+the Claude Code chat, 28 October 2026: "Fox 1 and 2 GO!", to building STOP;
+the other fix was N235).** For N171 item 6, N174 item 5, N189 item 5, N233
+and N235:
+1. Meta sends each reply to our WhatsApp number to the backend
+(`/v2/whatsapp/webhook`), which reads a reply only when Meta signed it with
+the app's secret.
+2. A reply that says STOP (any capitals, with or without a full stop) turns
+WhatsApp messages off for every account that gets them at that number, as
+Remove on the WhatsApp card does: the number leaves the messages, and the
+number the account signs in with stays (N235 item 3). A booking that carries
+the number forgets it (N233).
+3. WhatsApp's answer, sent within the 24 hours WhatsApp allows after the
+person's message: "Done. We've stopped the WhatsApp messages and deleted your
+number." (signed, N174 item 5). Its "deleted your number" goes with N235 item
+3's open words for Remove: for an account that signs in with WhatsApp, the
+number stays for signing in.
+4. Any other reply is not read yet. N171 item 6 still holds: forwarding
+such a reply to the founder by email is to be built.
+5. It stays off until two keys are on Railway's web service
+(`WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`) and the webhook is
+set in Meta (its address and the "messages" field).
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§2, the line for N171. No migration.
+
+**N238 · The sign-up page says nothing of its own about the messages; the
+Terms and the Privacy Policy say what the number is for (founder, the Claude
+Code chat, 28 October 2026: "Oh, the new sign-up page. Don't use it, don't
+change it, because we're gonna just do general things", then "Yes" to "the
+general Terms and Privacy explain the messaging").** For N171, N207 item 3,
+N214 and N232:
+1. The sign-up page stays as N232 draws it. It gets no line of its own on
+what the WhatsApp number is for. "We will only use it to let you know your
+coach texted you, or that your call starts soon." (N207 item 3) stays on the
+Lounge's WhatsApp form only.
+2. The Terms of Service and the Privacy Policy say it instead: the WhatsApp
+number someone signs up or signs in with is also the number we message, when
+the coach's feedback is in (N171) and before a booked call (N207). Their
+words are written with the next privacy version, the one N207 item 3 and
+N214 already wait for. No words on any screen change.
+The rules: frontend
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+("the sign-up and sign-in pages open on the number"). No migration.
