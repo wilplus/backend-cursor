@@ -6464,3 +6464,52 @@ The rules: frontend flow page D4
 ([`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md))
 and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 G6. No migration.
+
+**N252 · The launchpad as a business: one request shape, coaching first and
+the AI after, templates per trade, a price per answered request (founder, the
+Claude Code chat, 28 October 2026, on Claude's suggested answers to eight
+questions: "Yes, please log it").** For N223, N224, N225, N240 and N250:
+1. **One shape.** Every client's service is the same three parts: the request
+(the customer's words and/or photos, an optional first name, the number, the
+consent tick), the answer (what the expert sees from the client's label list
+and scale, the red flags, her picks from the client's catalogue, her voice
+Take) and the outcome (booked, bought, replied or not yet, with its amount,
+matched by the request's code). A red flag counts as a pick ("see a doctor").
+2. **Per client, data only:** the label list and scale, the red flags, the
+catalogue rows (id, name, type, price, link), connectors from a fixed list,
+the name and one colour, the languages, words from the signed word set. We
+refuse custom fields, custom steps, live chat, an answer with no pick, an
+outcome we cannot read from a link, and code for one client (N250 item 8).
+Two clients asking the same thing goes into the template for all.
+3. **The export is always free.** The client's data is never held back behind
+the AI tier; the AI tier sells speed and instant answers.
+4. **Coaching first, the AI offered by milestones:** about 100 answered
+requests, drafts run unseen; the golden evaluation passes, a 30-day free
+trial of drafts is offered; one request type passes, "alone" is offered for
+it. The client's owner may read how the machine does, in a monthly note in
+words and numbers about the machine; the answerer sees none of it, and no one
+sees a score about a person (Never 1).
+5. **Templates per trade** (the label list, the red flags, the catalogue's
+mapping, the connectors, the signed words, the call sheet, what the golden
+evaluation checks, the starting instructions), versioned; a client stays on
+its version until it chooses. The contract says: "Improvements to the setup
+are ours; your answers, photos and outcomes are yours." Learning across
+clients is off by default; a client who opts in gets the shared starting
+model and 20% off the AI tier. Never for health photos until counsel answers
+N240 item 5.
+6. **An answered request** is the first Send. A re-send and typed follow-ups
+within 7 days are free; a new request after counts again; an unanswered
+request costs nothing.
+7. **Prices to test, estimates, reviewed after three clients:** self-serve
+$4 an answered request; assisted (health, finance, legal) $8 and a $1,500
+setup with the enterprise pack (N250 item 5); two answerer seats with
+coaching included, more on today's packages; the AI tier $400 a month with
+drafts, then $1 an answer the AI sends alone and $4 one it hands to a person.
+Invita stays free as the tester (N223 item 12). If the next three spas all
+sign at $4 without pushing back, the fourth is quoted higher.
+8. **One currency:** the client pays in tokens, 100 to the dollar (N198), 400
+an answered request, from the same wallet; its invoice reads in dollars.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 H and I; its lines come in their own frontend PR. No migration in this
+entry.
