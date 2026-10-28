@@ -6146,3 +6146,52 @@ The rules: frontend
 §1 D1 and H, §3; the learning rules land on
 [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) with the first code.
 No migration in this entry.
+
+**N241 · The principles' three companions: strengths, what is in your
+control, and the sales framing (founder, the Claude Code chat, 28 October
+2026, to Linear's WIL-112, WIL-113 and WIL-114: "Life Panel, by principles",
+"Will drafts, you decide", "When notes show it twice", "Yes, as one note",
+"Will links notes to it", "Before a talk", "Plan's date and their notes",
+"Never; the speaker retires it", "How Will talks", "When it hears a worry",
+"Sort it, end on one action", "I draft, you sign", "Will's framing, no
+charts", "From their own notes", "Both, note and week", "Steps replace bugs",
+"One thing they control", "Ring 5, own switches", "Clickable prototype
+first").** For N182 and N212:
+1. Strengths (WIL-112) are kept in the Life Panel beside the principles and
+life goals. Will suggests one only when a positive trait shows in # notes on
+two different days (the life goals answer "What fits your nature and
+strengths?" counts as one note), once, in the Lounge, quoting both notes;
+the speaker accepts, edits or says Not now (propose, never commit, as the
+Sunday note's principle). Will never invents a strength and never says one
+did not show; only the speaker archives one, and it stays in the history.
+2. A later # note that shows a kept strength at work: Will says so once and
+keeps the note under that strength, so each strength gathers its own
+examples from daily life.
+3. Before a talk: in the Lounge, the day before a talk date (the plan's
+deadline, or a date a # note names), Will brings back one kept strength,
+quoting the note it came from. With no date, no reminder. Never on the
+recording screens.
+4. What is in your control (WIL-113, constants and variables) is how Will
+talks, not a screen. When a # note or a chat message worries about
+something out of the speaker's hands (the hotel, the audience, the slot),
+Will, once per worry, names what is out of their hands, names what is
+theirs, and ends on one thing they control now. Will's guide (the Stoic
+grounding, the hotel example, the tips) is drafted for the founder as a
+Claude Doc and goes into Will's instructions word for word once signed.
+5. The sales framing (WIL-114) is Will's framing too, with no charts (Never
+1). Will knows someone sells from their own notes (calls, deals, clients, a
+lost sale); no setup question. On a sales note, Will asks which step it
+stalled at (the opening, discovery, the offer, the follow-up) and names one
+change to that step, never the person. On Sunday, when the week's pattern
+is a sales one, the Sunday note offers the sale's steps in place of the four
+bugs (L4), then the reflection and a principle about the process.
+6. What a speaker leaves a chat with Will holding: one thing they control.
+7. Each of the three has its own row on the rings page, set to ring 5, the
+founder's to widen (as N212). Like the principles (N182): apart from the
+speaking coach, private, never shown to a coach.
+8. The words on screen are signed on a clickable prototype drawn on the real
+Lounge and Life Panel screens before the build (Never 4); the Sunday note's
+change to L4 is drawn there too, as the Sunday note is locked (N158).
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 N, O and P, §2. No migration in this entry.
