@@ -5964,3 +5964,25 @@ The rules: frontend
 §1 E, G and I. The prototype, kept as N229 says:
 `docs/design/customer-requests-2026-10-28/customer/invita-flow.html` and its
 PDF. No migration in this entry.
+
+**N235 · A number typed in the chat waits for its code too; a number another
+account has is refused in words (founder, the Claude Code chat, 28 October
+2026, to the questions left after N230: "Yes cause it will be eligible to use
+for sign in too" and "Ok").** For N230 items 1 and 5:
+1. A WhatsApp number typed in the Lounge's chat under the WhatsApp ask is not
+saved at once (founder 2026-10-20) any more. The chat answers "Enter the code
+we sent you on WhatsApp" (N214 item 6) and opens the ask's form on its code
+step for that number; once the code is typed, the number gets the messages
+and signs in, as N230 item 1 says for the form. A number without its country
+code still opens the form with it, as before.
+2. A number another account already signs in with is refused with "That
+number already has an account." (signed, Never 4), in the Lounge's ask and in
+Settings' WhatsApp row. This replaces N230 item 5's stand-in.
+3. Still open: the words of the WhatsApp card's Remove in Settings, which
+stops the messages but leaves the number the account signs in with; the
+founder asked for a proposal ("Ok suggest new").
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+(E1, the WhatsApp ask) and
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+(the number field). No migration in this entry.
