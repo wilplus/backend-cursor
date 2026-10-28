@@ -5935,3 +5935,32 @@ untouched. STOP to a WhatsApp message (N171 item 6, N174 item 5, N189 item 5),
 which removes the account's number too, is not built yet: it needs Meta's
 webhook and its keys on Railway, and is its own build. No rules page. No
 migration.
+
+**N234 · Customer requests: the treatment and the product are paid in the
+chat, into the client's own Stripe account (founder, the Claude Code chat,
+28 October 2026: "what happens if I click the deep scalp treatment? Can I
+buy it from here, from the chat? Please design this", then, on the
+prototype, "In the chat, into the client's own Stripe account" and "Yes,
+the same pay sheet").** For N225 item 2, N231 items 2 to 4, which said the
+booking and the cart open the client's own pages:
+1. Tapping the treatment card opens a sheet over the chat: what it is, the
+answerer's one line on why, what is included (from the client's own page),
+the length and the price by spa, and one button, Book · from {price}.
+2. The booking's summary asks Change | Pay {price}. Pay opens one sheet: the
+line, the total, Apple Pay first, Pay with card under it, and one line on
+who is paid. Then the customer's bubble says Paid {price}, and the
+answerer's says Booked and paid, with the address, directions, the receipt
+and Add to calendar.
+3. The product at home is bought the same way: Not now | Buy · {price}, the
+same sheet with where to send it, then Paid, on its way, with the receipt.
+4. The money goes straight to the client: each client connects its own
+Stripe account once in admin (Stripe Connect); WillpowerLab never holds it.
+The receipt is the client's. The booking is written into the client's
+calendar by us; how, per client, is open.
+5. The cancellation policy, shipping and the product's price are the
+client's; each client gives them before going live.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 E, G and I. The prototype, kept as N229 says:
+`docs/design/customer-requests-2026-10-28/customer/invita-flow.html` and its
+PDF. No migration in this entry.
