@@ -1014,15 +1014,28 @@ def send_whatsapp_reminders(now: Optional[datetime] = None) -> dict:
         if not claimed:
             continue
         try:
-            if whatsapp_notify.send_template(
-                    to, config=config,
-                    template=config.WHATSAPP_BOOKING_REMINDER_TEMPLATE, params=[row["meet_url"]],
-                    text=WHATSAPP_REMINDER.format(meet=row["meet_url"])):
-                out["sent"] += 1
-                if row.get("guest_whatsapp"):
-                    # Its one message has gone: the booking forgets the number (N233).
-                    db.client.table("bookings").update({"guest_whatsapp": None}).eq("id", row["id"]).execute()
+            sent = whatsapp_notify.send_template(
+                to, config=config,
+                template=config.WHATSAPP_BOOKING_REMINDER_TEMPLATE, params=[row["meet_url"]],
+                text=WHATSAPP_REMINDER.format(meet=row["meet_url"]))
         except Exception as e:  # noqa: BLE001 -- given back; the next run tries again
             db.client.table("bookings").update({"whatsapp_reminder_sent_at": None}).eq("id", row["id"]).execute()
             logger.warning("booking: WhatsApp reminder failed booking=%s: %s", row["id"], type(e).__name__)
+            continue
+        if sent:
+            out["sent"] += 1
+            _forget_number(row)
     return out
+
+
+def _forget_number(row: dict) -> None:
+    """Its one message has gone: the booking forgets the number it carries
+    (N233). Outside the send's try, so a failed write never gives the
+    reminder back to be sent twice; forget_past_booking_numbers clears it
+    an hour after the start anyway."""
+    if not row.get("guest_whatsapp"):
+        return
+    try:
+        db.client.table("bookings").update({"guest_whatsapp": None}).eq("id", row["id"]).execute()
+    except Exception as e:  # noqa: BLE001 -- the past-booking sweep clears it later
+        logger.warning("booking: could not clear the number booking=%s: %s", row["id"], type(e).__name__)
