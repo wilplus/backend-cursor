@@ -37,6 +37,16 @@ Also set on both inits: `send_default_pii=False` and
 `max_request_body_size="never"`, so Sentry can't become the leak §2 of the
 audit was closing.
 
+**AI dashboard (2026-10-28):** `sentry-sdk` 2.72.0 sends each sampled
+OpenAI chat call as a `gen_ai.chat` span (model, tokens, time), which
+Sentry's AI Agents dashboard reads; it is free on every Sentry plan and
+the spans count against the same tracing quota. No prompt or answer text
+is sent while `send_default_pii=False`. Both inits also set
+`max_value_length=1024`, the string cut 2.19.0 had, because 2.61 removed
+it and an exception message can carry a speaker's words. Never set
+`send_default_pii=True` or a `data_collection` dict: either would send
+transcripts, and the privacy policy lists Sentry for error reports only.
+
 **Nothing to run.** Optionally set `SENTRY_TRACES_SAMPLE_RATE=0.02` if 5%
 is still noisy at current volume — check the quota graph after a week.
 

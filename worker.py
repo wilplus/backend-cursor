@@ -163,6 +163,8 @@ def _init_sentry() -> None:
                 release=cfg.RELEASE_SHA or None,
                 send_default_pii=False,
                 max_request_body_size="never",
+                # Same string cut as app.py (sentry-sdk 2.61 removed it).
+                max_value_length=1024,
             )
             logger.info("sentry initialized (env=%s traces=%.3f)",
                         cfg.ENV, cfg.SENTRY_TRACES_SAMPLE_RATE)
