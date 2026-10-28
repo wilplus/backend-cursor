@@ -6196,7 +6196,45 @@ The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 §1 N, O and P, §2. No migration in this entry.
 
-**N243 · The Sniper guides the tries: a try that lands moves on (founder,
+**N242 · "I have a new event" waits while a Take is processing (founder, the
+Claude Code chat, 28 October 2026: "When I click that I have a new event while
+processing the recording it doesn't know what to do", then "Hide it while
+processing").** For N140 and N178:
+1. While a Take is still processing (its analysis or its Ideal Text has not
+landed yet), "I have a new event" is not shown: not in Change your plan (H1),
+and not beside "Keep practising" under "What's next?" at the plan's end (I2).
+It comes back as soon as the Take has landed, the moment "Record Take N" comes
+back.
+2. Nothing else changes: a tap once the Take has landed starts a new event as
+N140 and N178 say, its questions after the next Take. No new words on screen
+(Never 4).
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 H1 and I2. No migration in this entry.
+
+**N243 · The principles wait while a speaker is onboarded (founder, the
+Claude Code chat, 28 October 2026: "I feel that principals are interfering
+with the onboarding here", then, asked which onboarding and what the
+principles should do then, "Speaker's first steps" and "Wait for first
+Take").** Amends N182 and N212, for N129, N136 and N178:
+1. While a speaker is onboarded, nothing of the principles shows: not the
+voice notebook's mic, not "Keep a voice notebook?", not the life goals ask,
+the Sunday note or the quarter's ask; and Will's chat does not answer as the
+notebook, the Sunday note or life goals.
+2. A new speaker is onboarded from the plan's first question until their
+first Take is recorded. A speaker who already has Takes, only while the
+plan's questions are asked (the deadline after their next Take, A2; a new
+event's questions, A3).
+3. Then everything in N182, N212 and N241 stands. Nothing that waited is
+lost: an ask that was due comes the next time it may.
+4. Only where the plan reaches (its ring row, N204); with no plan, the
+principles are as before. No new words on screen.
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 A6 and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 A5. No migration in this entry.
+
+**N245 · The Sniper guides the tries: a try that lands moves on (founder,
 the Claude Code chat, 28 October 2026: "it also keeps asking me during the
 sniper practice to practice again and again"; "If it was really better, you
 let me go to the next step. If it was just slightly better, you're like coach
