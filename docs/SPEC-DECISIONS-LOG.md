@@ -5922,7 +5922,21 @@ The rules: frontend
 [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
 ("WhatsApp as a way in"). No migration in this entry.
 
-**N233 · Customer requests: the treatment and the product are paid in the
+**N233 · A booking's WhatsApp number is cleared once its reminder has gone
+(founder, the Claude Code chat, 28 October 2026: "do the code fixes", to
+"clear the WhatsApp number after the reminder", from the docs audit's
+finding D2).** For N144 and N207: a booking made before N207 carries the
+number it was given (`bookings.guest_whatsapp`), and N207 item 2 replaced
+N144 item 3 ("for these two messages only") without saying how long that
+number stays. Now the booking's number is cleared as soon as its reminder has
+been sent, and on any booking whose start is more than an hour past, reminded
+or not. The number saved on the account (the Lounge's ask, Settings) is
+untouched. STOP to a WhatsApp message (N171 item 6, N174 item 5, N189 item 5),
+which removes the account's number too, is not built yet: it needs Meta's
+webhook and its keys on Railway, and is its own build. No rules page. No
+migration.
+
+**N234 · Customer requests: the treatment and the product are paid in the
 chat, into the client's own Stripe account (founder, the Claude Code chat,
 28 October 2026: "what happens if I click the deep scalp treatment? Can I
 buy it from here, from the chat? Please design this", then, on the
