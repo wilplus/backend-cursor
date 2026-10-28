@@ -90,7 +90,7 @@ COPY = {
     # The plan's own yes (founder 2026-10-27, N211: "approved as drawn", on
     # the prototype https://claude.ai/artifact/3GtUo7eVdf9SAhZQCDsTR7): asked
     # once, before the personal questions. Will's words, then the two taps.
-    # "Settings", the page's name since N196 (founder 2026-10-28, N248).
+    # "Settings", the page's name since N196 (founder 2026-10-28, N249).
     "consent_ask": ("A few of my questions are personal: how stressed and how ready you feel, "
                     "what worries you, and how you feel before each Take. I only ask with your "
                     "yes. Your coach and I use your answers to shape your plan. You can turn "
