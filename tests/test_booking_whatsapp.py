@@ -8,11 +8,14 @@ OUTCOME
       number gets nothing.
   O2  A booking that carries no number reminds the number saved on the
       account, once the switch is on; with it off, nothing goes there.
+  O3  A booking forgets the number it carries once its reminder has gone,
+      and any booking more than an hour past its start forgets it too.
 PROVES   O1 -> test_the_reminder_goes_once_10_minutes_before
          O2 -> test_the_reminder_goes_to_the_accounts_number
+         O3 -> test_a_booking_forgets_its_number_after_the_reminder
 WHY      Founder 2026-10-25, N144; 10 minutes before, N165; the WhatsApp
          confirmation gone, N189; the words, N200; the account's number and
-         no number on the booking form, N207.
+         no number on the booking form, N207; the number forgotten, N233.
 """
 from __future__ import annotations
 
@@ -66,10 +69,15 @@ class _Bookings:
 
     def __init__(self, rows, settings=()):
         self.tables = {"bookings": rows, "user_settings": list(settings)}
-        self.rows, self._filters, self._values = rows, [], None
+        self.rows, self._filters, self._values, self._not = rows, [], None, False
 
     def table(self, name):
-        self.rows, self._filters, self._values = self.tables[name], [], None
+        self.rows, self._filters, self._values, self._not = self.tables[name], [], None, False
+        return self
+
+    @property
+    def not_(self):
+        self._not = True
         return self
 
     def limit(self, _n):
@@ -91,7 +99,12 @@ class _Bookings:
         return self
 
     def is_(self, column, _null):
-        self._filters.append(lambda r: r.get(column) is None)
+        negate, self._not = self._not, False
+        self._filters.append(lambda r: (r.get(column) is None) != negate)
+        return self
+
+    def lt(self, column, value):
+        self._filters.append(lambda r: booking._dt(r[column]) < booking._dt(value))
         return self
 
     def gt(self, column, value):
@@ -141,3 +154,21 @@ def test_the_reminder_goes_to_the_accounts_number(sent):
         with patch.object(booking.config, "BOOKING_WHATSAPP_TO_ACCOUNT", True, create=True):
             assert booking.send_whatsapp_reminders(now) == {"due": 1, "sent": 1}
     assert [m["to"] for m in sent] == ["48600100200"]
+
+
+def test_a_booking_forgets_its_number_after_the_reminder(sent):
+    now = datetime(2030, 1, 7, 5, 2, tzinfo=timezone.utc)
+
+    def row(id_, minutes):
+        return {"id": id_, "status": "confirmed", "guest_whatsapp": "+48600100200",
+                "meet_url": MEET, "whatsapp_reminder_sent_at": None,
+                "start_at": (now + timedelta(minutes=minutes)).isoformat()}
+
+    rows = [row("due", 8), row("tomorrow", 60 * 24), row("long-past", -61), row("just-past", -30)]
+    table = _Bookings(rows)
+    with patch.object(booking, "db", table):
+        assert booking.send_whatsapp_reminders(now) == {"due": 1, "sent": 1}
+        assert booking.forget_past_booking_numbers(now) == 1
+    kept = {r["id"]: r["guest_whatsapp"] for r in rows}
+    assert kept == {"due": None, "tomorrow": "+48600100200", "long-past": None,
+                    "just-past": "+48600100200"}

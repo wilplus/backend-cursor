@@ -31,7 +31,7 @@
         {"id": "n79", "title": "New coach tools", "why": "They wait behind the fixes for speakers.", "prs": [{"repo": "backend", "number": 1133}, {"repo": "backend", "number": 1134}, {"repo": "backend", "number": 1136}, {"repo": "backend", "number": 1137}, {"repo": "backend", "number": 1138}]},
         {"id": "oldvideos", "title": "Approve old coach videos one by one", "why": "Each old video is shared only once approved.", "wil": ["WIL-86"]},
         {"id": "wp4", "title": "A fence: individuals only", "why": "Keeps the app for single people, not companies.", "keywords": ["WP4", "B2C fence"]},
-        {"id": "booking", "title": "Lesson reminder in the calendar", "why": "10 minutes before, instead of a WhatsApp message.", "keywords": ["lesson reminder", "calendar alarm"]}
+        {"id": "booking", "title": "Lesson reminders", "why": "The calendar invite rings 1 hour before; WhatsApp brings the join link 10 minutes before (N165, N189).", "keywords": ["lesson reminder", "calendar alarm"], "prs": [{"repo": "backend", "number": 1393}]}
       ]
     },
     {

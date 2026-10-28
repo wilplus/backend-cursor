@@ -462,8 +462,11 @@ tests/test_booking_whatsapp.py,Story,"As someone booking a session, I want the j
 second run sends nothing, and a booking further away or without a
 number gets nothing.
 O2  A booking that carries no number reminds the number saved on the
-account, once the switch is on; with it off, nothing goes there.","O1 -> test_the_reminder_goes_once_10_minutes_before
-O2 -> test_the_reminder_goes_to_the_accounts_number","Founder 2026-10-25, N144; 10 minutes before, N165; the WhatsApp confirmation gone, N189; the words, N200; the account's number and no number on the booking form, N207."
+account, once the switch is on; with it off, nothing goes there.
+O3  A booking forgets the number it carries once its reminder has gone,
+and any booking more than an hour past its start forgets it too.","O1 -> test_the_reminder_goes_once_10_minutes_before
+O2 -> test_the_reminder_goes_to_the_accounts_number
+O3 -> test_a_booking_forgets_its_number_after_the_reminder","Founder 2026-10-25, N144; 10 minutes before, N165; the WhatsApp confirmation gone, N189; the words, N200; the account's number and no number on the booking form, N207; the number forgotten, N233."
 tests/test_bundled_era_erasure_postgres.py,Story,"As the founder, I want the one-time erasure of the old corpus to run only with my sign-off, counsel's sign-off and an exact snapshot, so that we delete exactly what was approved and keep consent records.","O1  Apply refuses, deleting nothing, on a wrong hash or a missing founder,
 counsel or external-copies record.
 O2  Apply refuses, deleting nothing, while any listed stored object has
