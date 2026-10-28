@@ -184,7 +184,7 @@ def test_will_reads_the_notes_only_after_yes(founder):
 
 
 def test_every_typed_hash_is_one_note_as_the_mic(founder):
-    """N252: "#" is one note; the Life Panel's old tags are notes too, and
+    """N253: "#" is one note; the Life Panel's old tags are notes too, and
     the message box's "# note" is read as "#"."""
     db = _Db()
     db.consent["u"] = {"decision": "yes"}

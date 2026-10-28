@@ -259,14 +259,14 @@ def fix_note(database: Any, user_id: str, client_id: str, text: str) -> dict:
     return fixed
 
 
-#: A leading "#note" is read as "#" (N252): the message box offers "# note".
+#: A leading "#note" is read as "#" (N253): the message box offers "# note".
 _NOTE_TAG = re.compile(r"^#note(?=\s|$)\s*", re.IGNORECASE)
 
 
 def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:
     """The chat's intercept for a typed "#" note: ``{"answer",
     "row_metadata"}``, or None when this is not a note. Every typed "#" is
-    one note, as the small mic's (N252): the Life Panel's old tags
+    one note, as the small mic's (N253): the Life Panel's old tags
     (#mistake, #win, ...) are notes too."""
     text = _NOTE_TAG.sub("# ", (question or "").strip())
     if not user_id or not text.startswith("#") or not text.lstrip("#").strip():
