@@ -140,6 +140,10 @@ class _Adapter:
 
 @pytest.fixture
 def db(monkeypatch):
+    # The plan's own yes is tests/test_plan_consent.py; here the plan asks as
+    # it does once the yes is given, which is the switch off.
+    from config import Config
+    monkeypatch.setattr(Config, "PLAN_CONSENT_ENABLED", False)
     monkeypatch.setattr("services.rings.feature_is_on_for_user", lambda *a, **k: True)
     monkeypatch.setattr("services.speaker_memory.record", lambda *a, **k: None)
     monkeypatch.setattr(F, "_readings", lambda *a, **k: {})

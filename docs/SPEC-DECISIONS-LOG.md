@@ -5483,8 +5483,11 @@ feelings given before 3.9 (question 2 A).
 force with the signed bytes and the United States, five purposes, all
 required; training-only-v4 is unchanged and the two people with a training
 yes keep it; no "How do you feel?" answer from before 3.9 is left
-(`feelings_left` 0, `takes_with_a_feeling` 0). Next: `PLAN_CONSENT_ENABLED=true`
-on Railway, web and worker.
+(`feelings_left` 0, `takes_with_a_feeling` 0).
+- **On** (founder, the Claude Code chat, 28 October 2026, asked to set
+`PLAN_CONSENT_ENABLED=true` on Railway: "or you can add it in the code?"): the
+plan's own yes is on in the code, as WhatsApp sign-in is; nothing is set on
+Railway, and `PLAN_CONSENT_ENABLED=false` turns it off.
 
 **N218 · A deleted account's sign-in record is emptied in SQL, not soft-deleted
 (founder, the Claude Code chat, 27 October 2026, asked which of the two fixes
