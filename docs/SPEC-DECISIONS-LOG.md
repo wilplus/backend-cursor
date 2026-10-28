@@ -6211,6 +6211,7 @@ N140 and N178 say, its questions after the next Take. No new words on screen
 The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §1 H1 and I2. No migration in this entry.
+
 **N244 · No next Take in the chat from the moment one is recorded until its
 walk reaches its summary (founder, the Claude Code chat, 28 October 2026: "I
 can see two bubbles interfering, like bubble flows interfering, one for the
