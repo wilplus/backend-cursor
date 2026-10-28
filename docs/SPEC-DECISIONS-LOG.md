@@ -5857,3 +5857,36 @@ The rules: frontend
 (Settings and the number field) and
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 (the Lounge's ask). No migration in this entry.
+
+**N231 · Customer requests: the customer can always answer back; the
+treatment is a card with its price; Skip offers the product at home (founder,
+the Claude Code chat, 28 October 2026: "make it like a real form there so
+that I can answer that I want this or I want that ... after I click skip ...
+I cannot reply anymore. So please make it like in Willpower Lab how you would
+reply ... for the deep scalp treatment, CTA, so that person can actually
+click it. Or afterwards, after they click skip the visit at the salon, that
+maybe they want a remote treatment, which is they want to buy a product").**
+For N225 item 2, N227 and N228:
+1. The customer's chat uses the Lounge's own parts, in the client's colours:
+an ask's two equal buttons in the footer, a grey footer card for a field,
+tall options for a pick, and the message box (+, Type here, the mic) whenever
+nothing is asked. The customer can always write, add a photo or record a
+voice message.
+2. The recommended treatment is a card in the thread, tappable like the Ideal
+Text card, with its length and the client's real price (for Invita, the Deep
+Scalp Treatment, 75 minutes, $138 to $148 by spa). Tapping it, or Book in the
+footer, starts the booking.
+3. Booking ends on a summary (the treatment, the day and time, the spa, its
+price) with Change | Confirm; then the message box comes back.
+4. Skip is not the end: the answerer offers what she uses in the treatment
+for home, as a card, with Not now | Add to cart. Add to cart opens the
+client's own checkout with the request's code (N225 item 2). Then the message
+box.
+5. What the customer writes reaches the answerer's chat in the app as a
+follow-up (N226 item 4); the answer comes back in the same thread, later. No
+instant answer until a model answers alone (N225 item 5, N228).
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 E and F. The prototype, kept as N229 says:
+`docs/design/customer-requests-2026-10-28/customer/invita-flow.html` and its
+PDF. No migration in this entry.
