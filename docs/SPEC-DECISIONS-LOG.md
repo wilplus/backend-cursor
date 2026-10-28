@@ -6513,3 +6513,26 @@ The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 §1 H and I; its lines come in their own frontend PR. No migration in this
 entry.
+
+**N253 · "#" is one note, the same as the small mic (founder, the Claude Code
+chat, 28 October 2026: "when I tap and want to enter the words in the type
+form ... and I start with a hash, there are a series of thoughts, observations
+and stuff like that. We don't use it anymore. It's just one text that we
+save ... just leave one hash and note ... it's the note, the same that the
+small microphone uses. It's an old pattern from the code that needs
+fixation.").** For N182 and N194:
+1. Typing "#" in the Lounge's message box offers one option, "# note". Tapped,
+the box keeps "# " to write on. The old list (#mistake, #observation, #win,
+#add, #edit) is gone from the box.
+2. Every typed message that starts with "#" is one note in the voice
+notebook, kept and answered "Noted.", as a note said with the small mic. A
+leading "#note" is read as "#".
+3. What stops: from the chat, the Life Panel's tags no longer route
+(#mistake to a case, #observation to the strategy check, #win to the wins,
+#add to the phrase wall, #edit to today's card); for a notebook user each is
+now a note. The Sunday note is how a principle comes from the notes (N158).
+The Life Panel's first-run guide still teaches those tags; its new words wait
+for the founder.
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 B8. No migration.
