@@ -6211,3 +6211,25 @@ N140 and N178 say, its questions after the next Take. No new words on screen
 The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §1 H1 and I2. No migration in this entry.
+
+**N243 · The principles wait while a speaker is onboarded (founder, the
+Claude Code chat, 28 October 2026: "I feel that principals are interfering
+with the onboarding here", then, asked which onboarding and what the
+principles should do then, "Speaker's first steps" and "Wait for first
+Take").** Amends N182 and N212, for N129, N136 and N178:
+1. While a speaker is onboarded, nothing of the principles shows: not the
+voice notebook's mic, not "Keep a voice notebook?", not the life goals ask,
+the Sunday note or the quarter's ask; and Will's chat does not answer as the
+notebook, the Sunday note or life goals.
+2. A new speaker is onboarded from the plan's first question until their
+first Take is recorded. A speaker who already has Takes, only while the
+plan's questions are asked (the deadline after their next Take, A2; a new
+event's questions, A3).
+3. Then everything in N182, N212 and N241 stands. Nothing that waited is
+lost: an ask that was due comes the next time it may.
+4. Only where the plan reaches (its ring row, N204); with no plan, the
+principles are as before. No new words on screen.
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 A6 and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 A5. No migration in this entry.
