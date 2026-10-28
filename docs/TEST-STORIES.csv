@@ -514,9 +514,10 @@ read from the speaker's own thread; the signed fallback is marked as
 the fixed message, so Will knows the specifics are missing.
 O7  When the app sends what is on my screen, Will reads my bubbles in
 the order I see them, cards included, not the stored thread.
-O8  A number I type under the WhatsApp ask is saved as the form saves it
-and answered with the signed line; one without its country code gets
-the form's own words and the form, and the ask is not asked twice.","O1 -> test_both_transports_carry_the_same_turn_to_the_answer
+O8  A number I type under the WhatsApp ask opens the form on its code and
+is not saved until the code is typed (N235); one without its country
+code gets the form's own words and the form, and the ask is not asked
+twice.","O1 -> test_both_transports_carry_the_same_turn_to_the_answer
 O2 -> test_a_visitor_gets_two_answers_then_the_signup_line
 O3 -> test_the_whatsapp_form_opens_to_add_or_change_a_number
 O4 -> test_a_feature_with_a_page_comes_with_its_link

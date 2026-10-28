@@ -18,9 +18,10 @@ OUTCOME
       the fixed message, so Will knows the specifics are missing.
   O7  When the app sends what is on my screen, Will reads my bubbles in
       the order I see them, cards included, not the stored thread.
-  O8  A number I type under the WhatsApp ask is saved as the form saves it
-      and answered with the signed line; one without its country code gets
-      the form's own words and the form, and the ask is not asked twice.
+  O8  A number I type under the WhatsApp ask opens the form on its code and
+      is not saved until the code is typed (N235); one without its country
+      code gets the form's own words and the form, and the ask is not asked
+      twice.
 PROVES   O1 -> test_both_transports_carry_the_same_turn_to_the_answer
          O2 -> test_a_visitor_gets_two_answers_then_the_signup_line
          O3 -> test_the_whatsapp_form_opens_to_add_or_change_a_number
@@ -146,7 +147,7 @@ class ChatAnswersTests(ChatRouteHarness):
     def test_a_number_typed_under_the_whatsapp_ask_answers_it(self):
         from services.chat_app_context import OFFER_PROMPTS
         from services.db import db
-        from services.whatsapp_notify import SAVED
+        from services.whatsapp_notify import CHECK
         supabase = FakeSupabaseClient()
         p = patch.object(db, "client", supabase)
         p.start()
@@ -163,9 +164,9 @@ class ChatAnswersTests(ChatRouteHarness):
         self.assertEqual(bare["offer"], "whatsapp")  # the form opens
         self.assertEqual([r["role"] for r in self.rows[-1][1]], ["user", "bot"])
         self.assertNotIn("user_settings", supabase.tables)
-        saved = self.post({"question": "+44 7700 900123", "persist": True}).get_json()
-        self.assertEqual(saved["answer"], SAVED.format(phone="+447700900123"))
-        self.assertNotIn("offer", saved)
-        self.assertEqual(supabase.tables["user_settings"].payload["whatsapp_phone"],
-                         "+447700900123")
+        full = self.post({"question": "+44 7700 900123", "persist": True}).get_json()
+        self.assertEqual(full["answer"], CHECK)
+        self.assertEqual(full["offer"], "whatsapp")  # the form, on the code step
+        self.assertEqual(full["row_metadata"], {"whatsapp": "check", "phone": "+447700900123"})
+        self.assertNotIn("user_settings", supabase.tables)  # nothing saved before the code
         self.assertEqual(self.histories, [])  # no model call for either
