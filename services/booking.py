@@ -56,6 +56,9 @@ CURRENCIES = ("usd", "eur", "pln", "gbp")
 # a late or missed sweep still sends the link, once.
 REMINDER_BEFORE = timedelta(minutes=10)
 REMINDER_WINDOW = timedelta(minutes=8)
+#: A booking's own number is kept until its reminder has gone, and never past
+#: an hour after its start (N233).
+NUMBER_KEPT_AFTER_START = timedelta(hours=1)
 DAYS = ("0", "1", "2", "3", "4", "5", "6")  # Sunday=0, JS getDay() order
 
 SETTINGS_FIELDS = (
@@ -973,6 +976,19 @@ def _reminder_number(row: dict) -> Optional[str]:
     return whatsapp_notify.whatsapp_state(db, str(row["user_id"])).get("phone")
 
 
+def forget_past_booking_numbers(now: Optional[datetime] = None) -> int:
+    """Clear the number a booking carries (made before N207) once its start is
+    more than an hour past, reminded or not, so no booking keeps a number it
+    no longer needs (N233). The account's own number is not touched. Runs in
+    the worker's minute sweep whether WhatsApp is on or off."""
+    now = now or datetime.now(timezone.utc)
+    cleared = (db.client.table("bookings").update({"guest_whatsapp": None})
+               .not_.is_("guest_whatsapp", "null")
+               .lt("start_at", (now - NUMBER_KEPT_AFTER_START).isoformat())
+               .execute().data) or []
+    return len(cleared)
+
+
 def send_whatsapp_reminders(now: Optional[datetime] = None) -> dict:
     """The reminder 10 minutes before, on WhatsApp, with the join link, for
     every confirmed booking with a number (``_reminder_number``), from the
@@ -998,12 +1014,28 @@ def send_whatsapp_reminders(now: Optional[datetime] = None) -> dict:
         if not claimed:
             continue
         try:
-            if whatsapp_notify.send_template(
-                    to, config=config,
-                    template=config.WHATSAPP_BOOKING_REMINDER_TEMPLATE, params=[row["meet_url"]],
-                    text=WHATSAPP_REMINDER.format(meet=row["meet_url"])):
-                out["sent"] += 1
+            sent = whatsapp_notify.send_template(
+                to, config=config,
+                template=config.WHATSAPP_BOOKING_REMINDER_TEMPLATE, params=[row["meet_url"]],
+                text=WHATSAPP_REMINDER.format(meet=row["meet_url"]))
         except Exception as e:  # noqa: BLE001 -- given back; the next run tries again
             db.client.table("bookings").update({"whatsapp_reminder_sent_at": None}).eq("id", row["id"]).execute()
             logger.warning("booking: WhatsApp reminder failed booking=%s: %s", row["id"], type(e).__name__)
+            continue
+        if sent:
+            out["sent"] += 1
+            _forget_number(row)
     return out
+
+
+def _forget_number(row: dict) -> None:
+    """Its one message has gone: the booking forgets the number it carries
+    (N233). Outside the send's try, so a failed write never gives the
+    reminder back to be sent twice; forget_past_booking_numbers clears it
+    an hour after the start anyway."""
+    if not row.get("guest_whatsapp"):
+        return
+    try:
+        db.client.table("bookings").update({"guest_whatsapp": None}).eq("id", row["id"]).execute()
+    except Exception as e:  # noqa: BLE001 -- the past-booking sweep clears it later
+        logger.warning("booking: could not clear the number booking=%s: %s", row["id"], type(e).__name__)

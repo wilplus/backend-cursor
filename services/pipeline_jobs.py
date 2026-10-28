@@ -1394,9 +1394,11 @@ def run_sweep_loop(chain_id: Optional[str] = None) -> None:
                            homework_error, exc_info=True)
         try:
             # A booking's WhatsApp join link, 10 minutes before (N165, N189):
-            # one indexed read a minute, and only while WhatsApp is on.
-            from services.booking import send_whatsapp_reminders
+            # one indexed read a minute, and only while WhatsApp is on. Then
+            # a past booking forgets the number it carried (N233).
+            from services.booking import forget_past_booking_numbers, send_whatsapp_reminders
             reminded = send_whatsapp_reminders()
+            forget_past_booking_numbers()
             if reminded.get("due"):
                 logger.info("pipeline_jobs: booking reminders %s", reminded)
         except Exception as booking_error:
