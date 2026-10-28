@@ -5893,3 +5893,31 @@ The rules: frontend
 §1 E and F. The prototype, kept as N229 says:
 `docs/design/customer-requests-2026-10-28/customer/invita-flow.html` and its
 PDF. No migration in this entry.
+
+**N232 · The sign-up and sign-in pages lead with the WhatsApp number (founder,
+the Claude Code chat, 28 October 2026: "go, build both pages", on the
+clickable prototype <https://claude.ai/artifact/AsGCCSUvSDXQ8JiXzVGw8a>, after
+"looks perfect", "make all the logos … black and white" and "the sign up with
+WhatsApp should have just a … WhatsApp logo").** For N214 items 1 and 5 and
+N230:
+1. Both pages open on the number: the logo, then the number field (N230),
+then one orange button, "Sign up with WhatsApp" or "Sign in with WhatsApp",
+with the WhatsApp logo in white on it. No tagline under the logo and no title
+over the field; there is no separate WhatsApp button to press first.
+2. Under "or", three small buttons of one size: Email, LinkedIn, Google, with
+their logos in black and white (light in dark mode). The only colour on the
+page is the app's orange.
+3. Sign-up: the code, then "What should we call you?" with "Will and your
+coach use it." under it, then in; the terms line stays under everything.
+Email opens "Sign up with email" (name, email, password, as today).
+4. Sign-in: the code, then in, with no name step and no terms line; Email
+opens "Sign in with email" (email and password, Forgot password?). A number
+with no account gets N214 item 5's line, whose link opens the sign-up page.
+"Don't have an account? Sign up" and "Already have an account? Sign in" link
+the two pages.
+5. The words, signed (Never 4): "Will and your coach use it.", "Sign in with
+email", and the three buttons' "Email", "LinkedIn", "Google". The other words
+were signed in N214 and N230.
+The rules: frontend
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+("WhatsApp as a way in"). No migration in this entry.
