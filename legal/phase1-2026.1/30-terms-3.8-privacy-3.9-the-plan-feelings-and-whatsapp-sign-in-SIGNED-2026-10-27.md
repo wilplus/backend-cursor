@@ -4,7 +4,9 @@
 <https://claude.ai/artifact/HbNkdtWhYgKmXy312wL4sC>, which showed every change
 word for word, then in chat: "I sign as drafted, question 1 A, question 2 A";
 decisions log N217). Since then **counsel has seen it and agrees** (the
-founder, in chat, 27 October 2026: "counsel agrees"; N217). Not published yet.
+founder, in chat, 27 October 2026: "counsel agrees"; N217). Published
+2026-10-28 11:44:20 UTC by the founder (`PUBLISH-3.9-2026-10-28.sql`,
+`phase1-2026-10-28-3.9`).
 
     documents:   Terms 3.8 and Privacy 3.9, word for word in sections 4 and 5 below
     replaces:    copy/terms-3.7.txt, copy/privacy-3.8.txt

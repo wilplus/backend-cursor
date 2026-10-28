@@ -5478,6 +5478,13 @@ messages' consent included.
 `copy/terms-3.8.txt` and `copy/privacy-3.9.txt`, published by
 `PUBLISH-3.9-2026-10-28.sql` (the founder's step), which also deletes the
 feelings given before 3.9 (question 2 A).
+- **Published** (founder, 28 October 2026, 11:44:20 UTC):
+`PUBLISH-3.9-2026-10-28.sql` run in Supabase. `phase1-2026-10-28-3.9` is in
+force with the signed bytes and the United States, five purposes, all
+required; training-only-v4 is unchanged and the two people with a training
+yes keep it; no "How do you feel?" answer from before 3.9 is left
+(`feelings_left` 0, `takes_with_a_feeling` 0). Next: `PLAN_CONSENT_ENABLED=true`
+on Railway, web and worker.
 
 **N218 · A deleted account's sign-in record is emptied in SQL, not soft-deleted
 (founder, the Claude Code chat, 27 October 2026, asked which of the two fixes
@@ -5820,3 +5827,33 @@ to N228:
 The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
 No migration in this entry.
+
+**N230 · One WhatsApp number for everything, checked once with a code; the
+country by its flag (founder, the Claude Code chat, 28 October 2026: "You
+have a green light for both. The design is great too. Please implement it.",
+on the clickable prototype <https://claude.ai/artifact/W9JkYyK3pkwcurNd4itZwR>,
+after "put poland first then US and then alphabetically" and "show not the
+UK … but Poland").** For N184 item 1, N207 and N214:
+1. One number per account: the number that gets the WhatsApp messages is the
+number that signs in with WhatsApp. Wherever a number is first given (the
+sign-up, the Lounge's ask after Take 1, Settings), a 6-digit code on
+WhatsApp proves it once, in the WhatsApp sign-up's words; after the code it
+gets the messages and signs in. This replaces N184 item 1 ("no code") for
+every place a number is saved.
+2. Why the code: a number saved without it, once it also signs in, could
+open someone else's account to whoever holds that phone.
+3. The number field, as the prototype draws it: the flag and the code first,
+Poland chosen at the start for everyone; one tap opens the list: Poland, then
+the United States, then every country A to Z, searched by name ("pol"), code
+("+44" or "44") or short name ("uk", "usa"). A full number pasted with + picks
+its country; a leading 0 is dropped; spaces appear as you type; Send code
+lights up only when the number is long enough for its country.
+4. The words, signed (Never 4): "Search country or code", "No country matches
+“{text}”." and "That's too long for {country}. Check the country."
+5. A number another account already signs in with is refused; until its
+words are signed it shows the page's "Couldn’t save that. Try again."
+The rules: frontend
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+(Settings and the number field) and
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+(the Lounge's ask). No migration in this entry.
