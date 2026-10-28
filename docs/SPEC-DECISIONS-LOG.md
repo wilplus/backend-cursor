@@ -6196,6 +6196,21 @@ The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 §1 N, O and P, §2. No migration in this entry.
 
+**N242 · "I have a new event" waits while a Take is processing (founder, the
+Claude Code chat, 28 October 2026: "When I click that I have a new event while
+processing the recording it doesn't know what to do", then "Hide it while
+processing").** For N140 and N178:
+1. While a Take is still processing (its analysis or its Ideal Text has not
+landed yet), "I have a new event" is not shown: not in Change your plan (H1),
+and not beside "Keep practising" under "What's next?" at the plan's end (I2).
+It comes back as soon as the Take has landed, the moment "Record Take N" comes
+back.
+2. Nothing else changes: a tap once the Take has landed starts a new event as
+N140 and N178 say, its questions after the next Take. No new words on screen
+(Never 4).
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 H1 and I2. No migration in this entry.
 **N244 · No next Take in the chat from the moment one is recorded until its
 walk reaches its summary (founder, the Claude Code chat, 28 October 2026: "I
 can see two bubbles interfering, like bubble flows interfering, one for the
