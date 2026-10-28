@@ -5654,3 +5654,28 @@ in admin.
 No rules page: the flow page for customer requests waits for the founder's
 `Founder-Approved:` line (N218). No migration in this entry; the salons table
 comes with the first code.
+
+**N223 · Four ways a customer meets the answer, in order; built now: the web
+app with WhatsApp carrying the link (founder, the Claude Code chat, 28
+October 2026: "there are like a couple of layers how it can be done. Yeah,
+let's lock it like that").** For N218 item 6, N220 and N221. The customer's
+side of a request is the same chat (what they asked, the answerer's bubbles,
+the one thing to do in the dock, each answer landing as their own bubble);
+only where it runs changes. The gradation, from the most to the least:
+1. **The client's own app.** The WillpowerLab chat in the client's name,
+installed by the customer, the client's own model answering inside it. The
+max version; not built now.
+2. **The web app**, on the client's subdomain of willpowerlab.com, opened
+from a link. No install, no account: the guest identity. **Built now.**
+3. **WhatsApp**, the conversation itself in WhatsApp once a model answers
+alone (N219 item 3, N220 item 5). Not built now. **Built now:** WhatsApp
+carries the link to the web app and verifies the customer's number.
+4. **SMS**, the same link where WhatsApp is not the norm or not delivered:
+the country code of the number decides, one line on the form switches, a
+failed WhatsApp delivery falls back to SMS, never both.
+Every message the customer's chat shows keeps a shape WhatsApp can carry
+(text, voice, photo, buttons, a list), so moving a client from 2 to 3 is a
+change of transport, not of design. The answerer's side never changes: a
+request is a Take in the app (N221).
+No rules page: the flow page for customer requests waits for the founder's
+`Founder-Approved:` line (N218). No migration in this entry.
