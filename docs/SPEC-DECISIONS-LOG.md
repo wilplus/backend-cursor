@@ -6070,3 +6070,79 @@ N214 already wait for. No words on any screen change.
 The rules: frontend
 [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
 ("the sign-up and sign-in pages open on the number"). No migration.
+
+**N239 · Customer requests at Invita: booking in Fresha, products through
+Shopify, Invita's WhatsApp sender, Ariel alone sends, and the words approved
+(founder, the Claude Code chat, 28 October 2026, to the questions left on the
+two prototypes: "they use fresha but are open to the new booking system", "we
+would need to add an integration to their ecommerce", "it is Ariel who checks
+the send", "it is Invita sender", "whatever the length of the answer is - is
+good", "OK for 11", "12 = OK", then "Fresha's booking" and "Shopify
+checkout").** For N231 items 2 to 4, N234 and N236 item 6:
+1. Booking stays in the client's own booking system. For Invita, Fresha:
+Book opens Fresha's booking for that treatment at the nearest spa, and the
+customer pays there. The answerer's days at each spa come from Fresha, so no
+new screen for her. Whether Fresha gives the booking back to us, as the
+request's outcome, is checked before the build; Invita may move to another
+booking system later. Was (N234 items 1, 2 and 4): the booking paid in our
+chat into the client's Stripe.
+2. Products are bought in the client's own shop. For Invita, Shopify: Buy
+puts the product in Invita's Shopify cart and opens its checkout, so stock,
+shipping, taxes and refunds stay Invita's. The order comes back to us as the
+outcome. Was (N234 item 3): our pay sheet. Stripe Connect is no longer
+needed for Invita.
+3. The answerer alone decides to send; no one at the client checks first.
+4. The WhatsApp messages to Invita's customers come from Invita's own sender.
+5. An answer has no longest length.
+6. Counsel reads the data processing agreement and the consent wording
+before the first real customer, and what the client pays is settled before
+going live ("OK for 11").
+7. The words on screen in the page's §1 K are approved as the prototypes
+draw them ("12 = OK", Never 4).
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 D, E, I and K, §3. No migration in this entry.
+
+**N240 · Customer requests: what the client's AI learns, three models on one
+platform (founder, the Claude Code chat, 28 October 2026: "how we will fine
+tune their chat? ... it should be learning from their answers", the image
+recognition "for the types of scalp problems and hair problems, say few first
+easy ones like dandruff, receding hairline, dry scalp; main one is the linear
+regression for the balding patterns", "can we act here as a launchpad for
+their own AI", then "Taps on the picker" and "One platform").** For N224:
+1. One Take teaches three models: the eyes (the photo to what is seen: dry
+scalp, dandruff, oily, irritated, receding hairline, and the hair-loss stage
+on its fixed scale, Norwood 1 to 7 or Ludwig I to III, read the way the
+confidence model reads its 1 to 5), the plan (what is seen and the
+customer's words to the treatment and the product: the answerer's picks), and
+the words (the plan to the answer in her voice: her Ideal Text, N224's
+pairs). The reward is the outcome (booked, bought, not yet) and a follow-up
+photo after three weeks.
+2. The answerer says what she sees with taps on the picker screen, above
+"What do you recommend?": the condition chips and the stage, about two taps.
+A second trichologist labels a sample blind for the frozen test set; two
+humans settle a label, as `services/label_quorum.py` does today. Was (N224
+item 1): what was observed read from the transcript only.
+3. One platform: the client's models are learning surfaces in the
+pipeline that exists (labels, quorum, the split by person, here the
+customer, the sealed golden set, promotion by the founder, drift), with
+each client's data and weights kept apart and exported to the client. New:
+training on photos (training is text only today), a vision training
+provider through the processing-authorization path, and scoring the stage
+on its scale in the golden evaluation.
+4. The order of N224 holds: no AI shown first; drafts in the background,
+blind, from about a hundred requests; drafts shown after the golden set
+passes; alone only per request type, by the founder's door and the client's
+switch, a health red flag always to a person.
+5. Before any photo trains a model: the customer's own yes to training, its
+retention, and counsel on whether naming a condition makes it a medical
+device in the US. Until then the eyes stay advisory and are seen only by the
+answerer.
+6. This is the launchpad: the client's experts answer in their own voice,
+WillpowerLab trains them as speakers (the walk) and trains the client's AI
+from their answers. The loop of record, Ideal Text and feedback stays first.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 D1 and H, §3; the learning rules land on
+[`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) with the first code.
+No migration in this entry.
