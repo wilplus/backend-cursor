@@ -6383,3 +6383,15 @@ The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §1 F. Drawn on the prototype <https://claude.ai/artifact/Gfnp8Fg8G2uXcqbCSNycgf>.
 No migration.
+
+**N249 · The plan's ask for the yes says "Settings" (founder, the Claude
+Code chat, 28 October 2026, asked "Should the personal-questions message say
+'Settings' instead of 'Data & consent', to match the menu?": "yes").**
+Amends N211's signed words, for N196:
+1. Will's ask before the personal questions ends "You can turn this off in
+Settings.", the name the ☰ menu and the page have carried since N196. The
+rest of the ask, its Read more and its two taps are unchanged.
+2. An ask already in a speaker's thread keeps the words it was sent with.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 D5 and K. No migration in this entry.
