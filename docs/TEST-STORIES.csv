@@ -1978,7 +1978,9 @@ nothing measured it is ""Make it yours"", never a guess.
 O4  The key line is always the first follow-up, and never more than three;
 a fact already said is not asked again, a named worry still is.
 O5  The AI's question is kept only in its signed template's shape;
-anything else falls back to the plain template.
+anything else falls back to the plain template, and a slot the AI
+left unfilled (""{who they will speak to}"") never reaches the speaker:
+not in the question, not in the facts, not on the plan card.
 O6  The dates read as the chat writes them (""14 November"", ""Sat 14 Nov"",
 ""Tuesday 27 October, 10:00"").
 O7  A Take reaches its level when the check that picked it no longer
