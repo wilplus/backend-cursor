@@ -6352,3 +6352,48 @@ microphone, nothing recorded. A Take that had no tempo step has none.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §1 B10, C8 and T. No migration.
+
+**N248 · WillpowerLab as a launchpad for its clients' AI: a frontier model
+first, the client's data as its asset, one kit per client, and an enterprise
+pack (founder, the Claude Code chat, 28 October 2026, after the review of
+customer requests from the side of an enterprise AI build: "yes, add section
+E and log the decision").** For N224 items 3 and 4 and N240 item 3:
+1. A client's AI starts on a frontier model (vision and language) through
+the processing-authorization path, with the client's catalogue and documents
+as its retrieval and the expert in the loop. A fine-tune comes only when the
+golden evaluation shows the frontier model with retrieval stops improving.
+The pairs are collected from the first request, as before. Was (N224): a
+fine-tune at 200 pairs.
+2. What WillpowerLab promises the client is the client's data: the labelled
+pairs, the outcomes, the label list, the red flags and the golden set,
+exported to the client (N223 item 5). They outlive each model generation;
+model weights are added only where a fine-tune was made.
+3. One kit, configured per client, with no code written for one client:
+the catalogue, the label list, the red flags, the channels, the connectors
+(Fresha and Shopify for a spa; a CMS or a CRM for a publisher) and the
+brand. The client's onboarding form is the strategic-call sheet.
+4. Each client's data and models are kept apart by default. Learning across
+clients, anonymised, only where the client's contract says yes.
+5. Before the first enterprise client, an enterprise pack: a template DPA
+and DPIA, a one-page model card for each client surface, an audit log of
+every AI answer (the model version, the inputs, who approved it), a stated
+data region, and an "AI-assisted" label where the EU AI Act asks for one.
+WillpowerLab holds no SOC 2 or ISO 27001 of its own today
+([`docs/VENDOR_DPA_REGISTER.md`](VENDOR_DPA_REGISTER.md) lists only the
+vendors'); whether to get one is open.
+6. Before a client's AI is scoped, the client answers: the success metric
+and today's baseline; the data it already keeps (past consultations, photos,
+forms, close-up images from its own equipment); its own way of grading; the
+red flags; who owns the photos, the answers and the model, and whether
+WillpowerLab may learn from them anonymised; the languages; the volume.
+For Invita these are the call sheet's section E.
+7. Narrow enterprise cases fit the same shape (a request, an expert's picks
+from a catalogue, an outcome): for a media publisher, ad sales answering
+advertisers' briefs; expert reader columns only with red flags and the AI
+label from the first day. None is built.
+8. The record → Ideal Text → feedback loop stays first (CLAUDE.md). A client
+that needs code beyond the kit's configuration goes to the founder before
+any work starts.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 H and I, §3. No migration in this entry.
