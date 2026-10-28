@@ -390,7 +390,8 @@ def today_one(level: Optional[str]) -> str:
 
 def why_line(level: Optional[str], who: Optional[str]) -> str:
     template = WHY_LINE.get(level or "", WHY_LINE["other"])
-    return template.format(who=(who or "them").strip() or "them")
+    who = (who or "").strip()
+    return template.format(who="them" if not who or _SLOT.search(who) else who)
 
 
 # ── the questions (N138, N139, N145, N150) ─────────────────────────────────
@@ -425,14 +426,16 @@ def next_plain_bank(asked: Sequence[str], facts: Mapping[str, Any],
     return None
 
 
-_BAD = re.compile(r"[!%]|\d+\s*/\s*10")
+_BAD = re.compile(r"[!%{}]|\d+\s*/\s*10")
+#: A template's slot the AI left unfilled ("{who they will speak to}").
+_SLOT = re.compile(r"[{}]")
 
 
 def fitted_question(nx: Any, asked: Sequence[str], skip: Sequence[str] = ()) -> Optional[dict]:
     """The AI's next question, kept only when it matches its signed
     template: a known bank not asked yet, the key line first, its anchor
-    words kept, short, no "!" or "%". Otherwise None, and Will says the
-    plain template."""
+    words kept, short, no "!" or "%", and no slot left unfilled ("{…}").
+    Otherwise None, and Will says the plain template."""
     if not isinstance(nx, Mapping):
         return None
     bank, question = nx.get("bank"), nx.get("question")
@@ -468,7 +471,7 @@ def clean_facts(raw: Any, known: Optional[Mapping[str, Any]] = None) -> dict:
     if isinstance(raw, Mapping):
         for k in FACT_KEYS:
             v = raw.get(k)
-            if isinstance(v, str) and v.strip():
+            if isinstance(v, str) and v.strip() and not _SLOT.search(v):
                 out[k] = v.strip()[:300]
     return out
 
@@ -479,7 +482,7 @@ def who_from_key_question(question: str) -> Optional[str]:
     if not m:
         return None
     who = m.group(1).strip()
-    return None if who.lower() == "your audience" else who
+    return None if who.lower() == "your audience" or _SLOT.search(who) else who
 
 
 def question_text(q: Mapping[str, Any]) -> str:
