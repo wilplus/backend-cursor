@@ -5558,3 +5558,25 @@ or is deleted, still leaves it on their own.
 4. Hiding is kept on the account row's own "hidden from lists" flag
 (`v2_student_details.is_archived`), so it needs no new table.
 No rules page: the admin console has none. No migration.
+
+**N222 · Users: Delete on the list really deletes, and every account takes
+the seven-day road (founder, the Claude Code chat, 28 October 2026: "but
+those that are hidden should get deleted", then, told that hidden people
+are not deleted, "Make Delete really delete"; the 500 that the profile's
+"Delete user" gave for an account from May found why deleting failed).** For
+N219 and N221:
+1. The Users list's ⋮ "Delete user" and the bar's "Delete N users" delete
+again, with N219's words: the confirmation, then "Deleted. Data goes after
+<day>." with "Undo", which cancels. N221's hiding ends. Its one list stays:
+the "Being deleted" tab does not come back. The people hidden under N221 are
+back in the list, to be deleted from it.
+2. Every account the admin deletes takes the seven-day road (N48.4 Q14 A),
+including one that never agreed to processing: it is given an owner
+principal first. Such an account's sign-in record used to be deleted outright
+at once (founder 2026-10-14), and Supabase refused that for anyone with a
+Take, because the records kept as history refuse to be deleted with it. Its
+sign-in is emptied by the completion run instead, as everyone's is (N218).
+3. A Delete after a cancel is a new deletion: each admin deletion is kept
+under a key of its own, so a second Delete no longer returns the cancelled
+one.
+No rules page: the admin console has none. No migration.
