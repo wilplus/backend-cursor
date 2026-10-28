@@ -6352,3 +6352,34 @@ microphone, nothing recorded. A Take that had no tempo step has none.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §1 B10, C8 and T. No migration.
+
+**N248 · The calls' calendar opens full screen, and it swipes (founder, the
+Claude Code chat, 28 October 2026: "Can you make it a big screen and the
+calendar I can swipe through? So it's really minimalistic", then, on the
+prototype, "Green light, build it").** For N157, N161 and N168:
+1. When Will asks for a call (the kickoff, the summary call, or a call's
+"Book" in the plan's list), the calendar opens full screen over the chat
+instead of in the footer: "Skip" at the top left, "{n} of 2 booked" at the
+top right, the call's name as the title, then the month, the days, "Your
+deadline: {date}" with "Edit", and one button at the bottom, "Book" ("Book
+now" for the summary call).
+2. The month is big and swipes left and right; the arrows stay. Only the days
+with an open time are dark. It runs over the months the call can be booked
+in.
+3. A day picked folds the month into its week, which swipes week to week; the
+day's times show under it in four even columns. A tap on the month's name
+opens the whole month again.
+4. "Book" stays pale until a time is picked. After it, a tick, the calendar
+slides away and Will's "Booked: …" is in the chat; the next call's calendar
+comes up once Will has asked for it.
+5. "Edit" turns the same screen into the deadline's: "Your deadline" as the
+title, "Back" at the top left, "Save" at the bottom (N168). Will's "Done. Your
+plan now runs to {date}." is written in the chat behind it and read when the
+calendar closes.
+6. No new words on screen (Never 4): only where they sit changes. Was: the
+calendar in the footer under the chat, with "Skip" and "Book" side by side
+under it.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 F. Drawn on the prototype <https://claude.ai/artifact/Gfnp8Fg8G2uXcqbCSNycgf>.
+No migration.
