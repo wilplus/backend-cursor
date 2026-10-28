@@ -58,6 +58,34 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .sms .m a { color: #1a1a1a; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; word-break: break-all; }
 .sms .c { padding: 10px 16px 30px; background: #FFFFFF; border-top: 1px solid #E6E6E6; }
 .sms .c .f { height: 40px; border-radius: 20px; border: 1px solid #E6E6E6; padding: 0 14px; display: flex; align-items: center; font-size: 14px; color: #9a9a9a; }
+.ch .it.still { animation: none; }
+.ch .tcard { position: relative; display: flex; align-items: center; gap: 10px; width: 80%; max-width: 300px; border: 1px solid #E6DDD0; border-radius: 18px; background: #FFFFFF; padding: 10px 28px 10px 10px; text-align: left; color: #17130F; font: inherit; cursor: pointer; }
+.ch .tcard::after { content: "›"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 20px; color: #7A726A; }
+.ch .tcard:active { transform: scale(.98); }
+.ch .tcard .img { width: 72px; aspect-ratio: 16/9; border-radius: 6px; background: linear-gradient(135deg, #E6DDD0, #D2C2AE); flex: none; }
+.ch .tcard .tx { display: flex; flex-direction: column; min-width: 0; } .ch .tcard b { font-size: 15px; } .ch .tcard small { font-size: 12.5px; color: #7A726A; }
+.ch .foot { flex: none; padding: 8px 16px 26px; display: flex; flex-direction: column; gap: 8px; background: #FBF8F3; position: relative; min-height: 20px; }
+.ch .foot::before { content: ""; position: absolute; left: 0; right: 0; top: -18px; height: 18px; background: linear-gradient(to bottom, rgba(251,248,243,0), #FBF8F3); pointer-events: none; }
+.ch .pair { display: flex; gap: 12px; }
+.ch .pair button { flex: 1; height: 44px; border-radius: 999px; font-size: 15px; display: flex; align-items: center; justify-content: center; }
+.ch .pair .o { border: 1px solid #D9CFC1; background: #FFFFFF; color: #17130F; }
+.ch .pair .f { border: 0; background: #17130F; color: #FBF8F3; font-weight: 500; }
+.ch .gcard { background: #F0E9DF; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.ch .gt { font-size: 13px; font-weight: 500; }
+.ch .gin { height: 40px; width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid #E6DDD0; background: #FFFFFF; padding: 0 12px; font: inherit; font-size: 16px; color: #17130F; }
+.ch .gin:focus { outline: none; border-color: #17130F; }
+.ch .opts { display: flex; flex-direction: column; gap: 8px; }
+.ch .opts button { min-height: 56px; border: 1.5px solid #D9CFC1; border-radius: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; background: #FFFFFF; text-align: left; color: #17130F; font: inherit; }
+.ch .opts b { display: block; font-size: 15.5px; font-weight: 600; } .ch .opts small { display: block; font-size: 12.5px; color: #7A726A; }
+.ch .opts .km { font-size: 13px; font-weight: 600; flex: none; color: #9B7557; font-variant-numeric: tabular-nums; }
+.ch .cmp { display: flex; align-items: flex-end; gap: 4px; }
+.ch .cmp .ic { width: 40px; height: 40px; border-radius: 50%; border: 0; background: none; display: grid; place-items: center; flex: none; color: #17130F; }
+.ch .cmp .ic svg, .ch .cmp .snd svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ch .cmp .box { position: relative; flex: 1; min-width: 0; }
+.ch .cmp textarea { display: block; width: 100%; box-sizing: border-box; min-height: 40px; max-height: 120px; resize: none; border: 1px solid #D9CFC1; border-radius: 24px; background: #FFFFFF; padding: 9px 44px 9px 14px; font: inherit; font-size: 15px; line-height: 1.4; color: #17130F; }
+.ch .cmp textarea:focus { outline: none; border-color: #17130F; }
+.ch .cmp .snd { position: absolute; right: 4px; bottom: 4px; width: 32px; height: 32px; border-radius: 50%; border: 0; background: #17130F; color: #FBF8F3; display: grid; place-items: center; }
+.ch .cmp .snd[hidden] { display: none; }
 /* the answer as a chat: Invita's cream and ink, the app's bubble sizes (15px, 16px corners) and dock */
 .ans { background: #FBF8F3; }
 .ch { position: absolute; inset: 0; display: flex; flex-direction: column; background: #FBF8F3; color: #17130F; }
@@ -129,19 +157,21 @@ button { font: inherit; color: inherit; cursor: pointer; }
     { id: "form", name: "The form", screen: "site", note: ["Three things", "A photo, a number, a tick. A few words are optional. Send is grey until all three are there."] },
     { id: "sent", name: "Sent", screen: "site", note: ["Nothing else on the site", "The request is now in the trichologist's chat in the app. Done takes the customer back to the page; the prototype jumps to later that day."] },
     { id: "sms", name: "The text message", screen: "sms", note: ["From Invita's number", "One line and a link. The audio is never sent as a file: the link always opens the latest answer."] },
-    { id: "answer", name: "The answer, as a chat", screen: "answer", note: ["The same shape as the app's chat", "What you asked, as your bubble. Then Ariel: the routine, her full answer with her voice, the treatment as a card. The one thing to do sits where the message box would be: Book, or Skip."] },
-    { id: "near", name: "Where, which spa, which day", screen: "answer", note: ["One question at a time, in the thread", "Each answer lands as your bubble, as in the app's walk: ZIP or location, the nearest spa with Ariel's days, the day. Nothing else on screen."] },
-    { id: "booked", name: "Booked", screen: "answer", note: ["The last bubble", "Day, time, spa, street, directions. Done. In the app this last step is Invita's own booking page, opened with the request's code."] },
+    { id: "answer", name: "The answer, as a chat", screen: "answer", note: ["The app's chat, in Invita's colours", "What you asked, as your bubble. Then Ariel: the routine, her voice and full answer, why the treatment, and the treatment as a card you can tap, with its real price. Her ask sits in the footer as the app's two equal buttons: Skip, Book."] },
+    { id: "near", name: "Book: where, which spa, which day", screen: "answer", note: ["One question at a time, in the thread", "ZIP in a grey card in the footer, or Use my location. The four spas nearest first, with Ariel's days and each spa's price. The day. Then a summary to Confirm or Change. Every answer lands as your bubble."] },
+    { id: "booked", name: "Booked", screen: "answer", note: ["Then the message box comes back", "Booked, with the address and directions. Nothing more is asked: the footer turns back into the app's message box, so you can always write to Ariel."] },
+    { id: "home", name: "Skip: start at home", screen: "answer", note: ["The other way to buy", "After Skip, Ariel offers what she uses in the treatment, for home. Not now or Add to cart, then the message box. The card can be tapped too."] },
+    { id: "write", name: "Write to Ariel", screen: "answer", note: ["Always open", "Type, add a photo, or record a voice message. It reaches Ariel's chat in the app; she answers here later, typed or as a Take. No instant answers until a model answers alone (N225, N228)."] },
   ];
-  const S = { step: "popup", zip: "", spa: null, booked: null };
+  const S = { step: "popup", zip: "", spa: null, booked: null, cart: false };
   const AVATAR = `<svg viewBox="0 0 64 64" width="56" height="56" role="img" aria-label="Ariel, your trichologist"><defs><clipPath id="c"><circle cx="32" cy="32" r="32"/></clipPath></defs><g clip-path="url(#c)"><rect width="64" height="64" fill="#E9E6E1"/><path d="M14 64c0-14 8-22 18-22s18 8 18 22z" fill="#8C8580"/><circle cx="32" cy="26" r="11" fill="#D9CDBF"/><path d="M20 27c0-10 5-15 12-15s12 5 12 15c-2-6-6-8-12-8s-10 2-12 8z" fill="#4A4542"/><path d="M20 27c-1 8 0 14 3 18-4-3-5-10-3-18zM44 27c1 8 0 14-3 18 4-3 5-10 3-18z" fill="#4A4542"/></g></svg>`;
   const SPAS = [
-    { id: "lv", name: "Las Vegas", street: "Sahara Ave", km: "2.1 mi", who: "Trichologist here Thu, Fri", days: ["Thu 12 Nov", "Fri 13 Nov", "Thu 19 Nov"] },
-    { id: "vi", name: "Vista, San Diego", street: "S Santa Fe Ave", km: "240 mi", who: "Trichologist here Mon", days: ["Mon 16 Nov", "Mon 23 Nov"] },
-    { id: "cm", name: "Costa Mesa", street: "Bristol St", km: "265 mi", who: "Trichologist here Wed", days: ["Wed 18 Nov"] },
-    { id: "fl", name: "Fort Lauderdale", street: "Las Olas Blvd", km: "2,400 mi", who: "Trichologist here Tue", days: ["Tue 17 Nov"] },
+    { id: "lv", name: "Las Vegas", street: "Sahara Ave", km: "2.1 mi", price: "$138", who: "Trichologist here Thu, Fri", days: ["Thu 12 Nov", "Fri 13 Nov", "Thu 19 Nov"] },
+    { id: "vi", name: "Vista, San Diego", street: "S Santa Fe Ave", km: "240 mi", price: "$148", who: "Trichologist here Mon", days: ["Mon 16 Nov", "Mon 23 Nov"] },
+    { id: "cm", name: "Costa Mesa", street: "Bristol St", km: "265 mi", price: "$148", who: "Trichologist here Wed", days: ["Wed 18 Nov"] },
+    { id: "fl", name: "Fort Lauderdale", street: "Las Olas Blvd", km: "2,400 mi", price: "$138", who: "Trichologist here Tue", days: ["Tue 17 Nov"] },
   ];
-  const SAID = ["Thank you for the photo. What I see on the crown is a dry, irritated scalp, and washing every day with a strong shampoo is most likely what keeps it that way.", "For the next three weeks, wash every second day with lukewarm water and leave the foam on for one minute.", "The thinner feeling at the top usually follows the irritation. Let the scalp settle first; if it is still itchy after three weeks, come in for the Deep Scalp Treatment and I will look at it properly."];
+  const SAID = ["Thank you for the photo. What I see on the crown is a dry, irritated scalp, and washing every day with a strong shampoo is most likely what keeps it that way.", "For the next three weeks, wash every second day with lukewarm water and leave the foam on for one minute.", "The thinner feeling at the top usually follows the irritation. Let the scalp settle first. I would also do one Deep Scalp Treatment now: it clears the buildup and calms the scalp much faster than washing alone."];
   const screen = document.getElementById("screen");
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const bars = (n, seed) => { let s = seed, o = ""; for (let i = 0; i < n; i++) { s = (s * 9301 + 49297) % 233280; o += `<i style="height:${Math.round((0.25 + (s / 233280) * 0.75) * 20)}px"></i>`; } return o; };
@@ -156,7 +186,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
     S.step = id; const st = BY[id];
     ["site", "sms", "answer"].forEach((k) => { document.getElementById(k).hidden = k !== st.screen; });
     if (st.screen === "sms") drawSms();
-    if (st.screen === "answer") drawAnswer();
+    if (st.screen === "answer") drawAnswer(id);
     if (st.screen === "site" && id === "popup") window.dispatchEvent(new CustomEvent("wpl:popup"));
     paint();
   }
@@ -167,9 +197,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
   }
   document.getElementById("steps").addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (b) go(b.dataset.s); });
   function go(id) { clearAll(); if (BY[id].screen === "site" && id !== "popup") { show("popup"); return; } show(id); }
-  document.getElementById("next").onclick = () => { const i = STEPS.findIndex((s) => s.id === S.step); const nx = STEPS[Math.min(STEPS.length - 1, i + 1)]; if (nx.screen === "site") { show("popup"); } else { if (nx.id === "near" && !S.zip) { S.zip = "89109"; S.spa = SPAS[0]; } if (nx.id === "booked" && !S.booked) { S.zip = S.zip || "89109"; S.spa = S.spa || SPAS[0]; S.booked = { day: S.spa.days[0], spa: S.spa }; } show(nx.id); } };
+  document.getElementById("next").onclick = () => { const i = STEPS.findIndex((s) => s.id === S.step); const nx = STEPS[Math.min(STEPS.length - 1, i + 1)]; if (nx.screen === "site") { show("popup"); } else { if (nx.id === "booked") { S.zip = S.zip || "89109"; S.spa = S.spa || SPAS[0]; } show(nx.id); } };
   document.getElementById("back").onclick = () => { const i = STEPS.findIndex((s) => s.id === S.step); const pv = STEPS[Math.max(0, i - 1)]; if (pv.screen === "site") show("popup"); else show(pv.id); };
-  document.getElementById("again").onclick = () => { try { localStorage.removeItem("wpl-popup-ws_invita_demo"); } catch (e) {} Object.assign(S, { zip: "", spa: null, booked: null }); show("popup"); };
+  document.getElementById("again").onclick = () => { try { localStorage.removeItem("wpl-popup-ws_invita_demo"); } catch (e) {} Object.assign(S, { zip: "", spa: null, booked: null, cart: false }); show("popup"); };
 
   // the widget tells the rail where it is
   window.addEventListener("wpl:step", (e) => { const s = e.detail.step; if (BY[s]) { S.step = s; paint(); } });
@@ -185,57 +215,109 @@ button { font: inherit; color: inherit; cursor: pointer; }
   }
 
   // The answer as a chat, the way the lens draws a walk: the thread grows by taps, the step's own buttons sit where the message box would be.
-  function drawAnswer() {
+  // The answer as the app's chat (the Lounge, lens off), in Invita's colours. The footer is the Lounge's: an ask's two equal buttons, a grey card
+  // for a field, tall options for a pick, and the message box whenever nothing is asked, so the customer can always write to Ariel.
+  const TREAT = { name: "Deep Scalp Treatment", mins: "75 min", price: "$138–$148", why: "For a dry, irritated scalp: buildup removal and Milbon hydration." };
+  const PROD = { name: "Milbon scalp shampoo", line: "What I use in the treatment, for every second day at home.", price: "$[PRICE]" };
+  function drawAnswer(mode) {
     const el = document.getElementById("answer");
     el.innerHTML = `<div class="ch">
-      <div class="top"><span class="av">${AVATAR}</span><div><b>Ariel answered you</b><small>Your trichologist at Invita</small></div></div>
+      <div class="top"><span class="av">${AVATAR}</span><div><b>Ariel</b><small>Your trichologist at Invita</small></div></div>
       <div class="thread" id="th"></div>
-      <div class="dock" id="dock"></div>
+      <div class="foot" id="foot"></div>
     </div>`;
-    const th = el.querySelector("#th"), dock = el.querySelector("#dock");
+    const th = el.querySelector("#th"), foot = el.querySelector("#foot");
+    let instant = false;
     const fit = () => { th.scrollTop = th.scrollHeight; };
-    const add = (h, cls = "") => { th.insertAdjacentHTML("beforeend", `<div class="it ${cls}">${h}</div>`); fit(); };
-    const them = (inner, extra = "") => add(`<div class="lb them ${extra}">${inner}</div>`, "l");
+    const add = (h, cls) => { th.insertAdjacentHTML("beforeend", `<div class="it ${cls}${instant ? " still" : ""}">${h}</div>`); fit(); return th.lastElementChild; };
+    const them = (inner) => add(`<div class="lb them">${inner}</div>`, "l");
     const me = (inner) => add(`<div class="lb me">${inner}</div>`, "r");
-    const sep = (t) => add(`<div class="meta">${t}</div>`, "c");
+    const meta = (t) => add(`<div class="meta">${t}</div>`, "c");
+    const card = (o, act) => add(`<button type="button" class="tcard" data-card="${act}"><span class="img"></span><span class="tx"><b>${o.name}</b><small>${o.mins ? o.mins + " · " : ""}${o.price}</small></span></button>`, "l");
     const typing = () => add(`<div class="lb them dots" id="ty"><i></i><i></i><i></i></div>`, "l");
     const untype = () => { const t = th.querySelector("#ty"); if (t) t.remove(); };
-    const setDock = (html) => { dock.innerHTML = html; fit(); };
-    const player = `<div class="pl"><button class="play" type="button" id="play" aria-label="Play Ariel's answer"><svg width="12" height="13" viewBox="0 0 12 13" aria-hidden="true"><path d="M2 1.2v10.6L11 6.5z" fill="#fff"/></svg></button><div class="bars" id="abars">${bars(30, 9)}</div><span class="tm">0:42</span></div>`;
+    const say = (fn, ms = 700) => { if (instant) { fn(); return; } typing(); setFoot(""); later(() => { untype(); fn(); }, ms); };
+    const setFoot = (h) => { foot.innerHTML = h; fit(); };
+    const pair = (l, r, onL, onR) => { setFoot(`<div class="pair"><button class="o" type="button" id="pl">${l}</button><button class="f" type="button" id="pr">${r}</button></div>`); foot.querySelector("#pl").onclick = onL; foot.querySelector("#pr").onclick = onR; };
+    const answerMe = (t, next) => { me(esc(t)); setFoot(""); next(); };
 
-    // what was said, in order
-    sep("Today, 4:12 PM");
-    me(`<span class="cap">You asked</span><div class="ask"><span class="ph"></span><span>Itchy for two months, thinning at the top…</span></div>`);
-    them(`<span class="cap">For the next three weeks</span><ul class="list"><li>Wash every second day, not every day</li><li>Lukewarm water</li><li>Leave the foam on for one minute</li><li>Nothing for thinning yet. Let the scalp settle first</li></ul>`);
-    them(`${player}<span class="full">${SAID.map(esc).join("<br><br>")}</span>`);
-    them(`<div class="card"><div class="img"></div><div><b>Deep Scalp Treatment</b><small>60 min · [PRICE]</small></div></div><span>What I recommend for a dry, irritated scalp.</span>`, "wide");
-    el.querySelector("#play").onclick = () => { const bs = [...el.querySelectorAll("#abars i")]; let j = 0; bs.forEach((b) => b.classList.remove("on")); const t = every(() => { if (j >= bs.length) { clearInterval(t); later(() => bs.forEach((b) => b.classList.remove("on")), 400); return; } bs[j++].classList.add("on"); }, 130); };
-
-    // the one thing to do: Book, or Skip. Then one question at a time, each answer landing as the customer's bubble.
-    const ask = (q, dockHtml, wire) => { typing(); later(() => { untype(); them(q); setDock(dockHtml); wire(); }, 700); };
-    const stepWhere = () => ask("Where are you? So I book you at the Invita nearest to you.",
-      `<input class="fld" id="zip" type="text" inputmode="numeric" placeholder="ZIP code" aria-label="ZIP code"><button class="pill" type="button" id="zgo">Continue</button><button class="lnk" type="button" id="loc">Use my location instead</button>`,
-      () => { const zi = dock.querySelector("#zip"); zi.focus(); const go = (v) => { S.zip = v; S.spa = SPAS[0]; S.step = "near"; paint(); me(esc(v)); setDock(""); stepSpa(); };
-        const find = () => { const v = zi.value.trim(); if (!/^\d{5}$/.test(v)) { toast("A ZIP code has five digits, like 89109."); return; } go(v); };
-        dock.querySelector("#zgo").onclick = find; zi.onkeydown = (e) => { if (e.key === "Enter") find(); };
-        dock.querySelector("#loc").onclick = () => go("89109"); });
-    const stepSpa = () => ask(`Nearest to ${esc(S.zip)}. I am at each on these days.`,
-      `<div class="faces">${SPAS.map((s, i) => `<button type="button" data-s="${s.id}"><span><b>${s.name}</b><small>${s.street} · ${s.who.replace("Trichologist here ", "")}</small></span><span class="km">${s.km}</span></button>`).join("")}</div>`,
-      () => { dock.querySelectorAll("[data-s]").forEach((b) => b.onclick = () => { b.classList.add("on"); S.spa = SPAS.find((s) => s.id === b.dataset.s); later(() => { me(S.spa.name); setDock(""); stepDay(); }, 220); }); });
-    const stepDay = () => ask(`Which day in ${S.spa.name}?`,
-      `<div class="faces">${S.spa.days.map((d) => `<button type="button" data-d="${d}"><span><b>${d}</b><small>10:00</small></span></button>`).join("")}</div><button class="lnk" type="button" id="sback">Another spa</button>`,
-      () => { dock.querySelectorAll("[data-d]").forEach((c) => c.onclick = () => { c.classList.add("on"); later(() => { S.booked = { day: c.dataset.d, spa: S.spa }; S.step = "booked"; paint(); me(c.dataset.d + ", 10:00"); setDock(""); booked(); }, 220); });
-        dock.querySelector("#sback").onclick = () => { me("Another spa"); setDock(""); stepSpa(); }; });
-    const booked = () => { typing(); later(() => { untype(); them(`<span class="cap">Booked</span><b>${S.booked.day}, 10:00</b><span>${S.booked.spa.name}, ${S.booked.spa.street}</span><a href="https://maps.google.com" target="_blank" rel="noopener">Directions</a><span class="sub">See you there. Reply to the text if anything changes.</span>`); setDock(`<button class="pill" type="button" id="done">Done</button>`); dock.querySelector("#done").onclick = () => { setDock(""); toast("In the app this last step is Invita's booking page, opened with the request's code."); }; }, 800); };
-
-    const start = () => {
-      setDock(`<button class="pill" type="button" id="book">Book the Deep Scalp Treatment</button><button class="lnk" type="button" id="skip">Skip</button>`);
-      dock.querySelector("#book").onclick = () => { me("Book the Deep Scalp Treatment"); setDock(""); stepWhere(); };
-      dock.querySelector("#skip").onclick = () => { me("Skip"); setDock(""); typing(); later(() => { untype(); them("No problem. Reply to the text whenever you want to come in."); }, 600); };
+    // the message box, as the Lounge's: +, Type here, the mic; Send shows once there is text
+    const composer = () => {
+      setFoot(`<div class="cmp"><button class="ic" type="button" id="plus" aria-label="Add a photo"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button><div class="box"><textarea id="msg" rows="1" placeholder="Type here" aria-label="Message Ariel"></textarea><button class="snd" type="button" id="snd" aria-label="Send" hidden><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div><button class="ic" type="button" id="mic" aria-label="Voice message"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button></div>`);
+      const msg = foot.querySelector("#msg"), snd = foot.querySelector("#snd");
+      msg.oninput = () => { snd.hidden = !msg.value.trim(); };
+      const send = () => { const v = msg.value.trim(); if (!v) return; me(esc(v)); msg.value = ""; snd.hidden = true; written(v); };
+      snd.onclick = send; msg.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
+      foot.querySelector("#plus").onclick = () => toast("Adds another photo for Ariel.");
+      foot.querySelector("#mic").onclick = () => toast("Records a voice message for Ariel.");
     };
-    if (S.booked) { me("Book the Deep Scalp Treatment"); me(S.zip || "89109"); me(S.booked.spa.name); me(S.booked.day + ", 10:00"); booked(); }
-    else if (S.step === "near") { me("Book the Deep Scalp Treatment"); stepWhere(); }
-    else start();
+    // what the customer writes reaches Ariel's chat in the app; she answers here, later, as a Take or typed (no instant answers yet)
+    const written = (v) => {
+      S.step = "write"; paint();
+      meta("Sent to Ariel. She answers here, usually the same day.");
+      if (!instant) later(() => { meta("Later today"); say(() => { them("Yes, stop the daily washing from today. Every second day, lukewarm, and one minute with the foam on. You'll feel the difference in a week."); composer(); }, 900); }, 2600);
+    };
+
+    // the thread so far
+    meta("Today, 4:12 PM");
+    me(`<span class="cap">You asked</span><span class="ask"><span class="ph"></span><span>Itchy for two months, thinning at the top…</span></span>`);
+    them(`<span class="cap">For the next three weeks</span><ul class="list"><li>Wash every second day, not every day</li><li>Lukewarm water</li><li>Leave the foam on for one minute</li><li>Nothing for thinning yet. Let the scalp settle first</li></ul>`);
+    them(`<div class="pl"><button class="play" type="button" id="play" aria-label="Play Ariel's answer"><svg width="12" height="13" viewBox="0 0 12 13" aria-hidden="true"><path d="M2 1.2v10.6L11 6.5z" fill="#fff"/></svg></button><div class="bars" id="abars">${bars(30, 9)}</div><span class="tm">0:42</span></div><span>${SAID.map(esc).join("<br><br>")}</span>`);
+    them(esc(TREAT.why));
+    card(TREAT, "book");
+    el.querySelector("#play").onclick = () => { const bs = [...el.querySelectorAll("#abars i")]; let j = 0; bs.forEach((b) => b.classList.remove("on")); const t = every(() => { if (j >= bs.length) { clearInterval(t); later(() => bs.forEach((b) => b.classList.remove("on")), 400); return; } bs[j++].classList.add("on"); }, 130); };
+    th.addEventListener("click", (e) => { const c = e.target.closest("[data-card]"); if (!c) return; if (c.dataset.card === "book" && !S.booked) { me("Book"); setFoot(""); where(); } if (c.dataset.card === "cart") addCart(); });
+
+    // the ask: Book or Skip
+    const ask = () => say(() => { them(`Would you like to book it? ${TREAT.mins}, ${TREAT.price} depending on the spa.`); pair("Skip", "Book", () => answerMe("Skip", home), () => answerMe("Book", where)); });
+    // booking, one question at a time
+    const where = () => { S.step = "near"; paint(); say(() => {
+      them("Where are you? So I book you at the Invita nearest to you.");
+      setFoot(`<div class="gcard"><span class="gt">Your ZIP code</span><input class="gin" id="zip" type="text" inputmode="numeric" placeholder="89109" aria-label="Your ZIP code"></div><div class="pair"><button class="o" type="button" id="loc">Use my location</button><button class="f" type="button" id="zgo">Continue</button></div>`);
+      const zi = foot.querySelector("#zip"); if (!instant) zi.focus();
+      const go = (v) => { S.zip = v; answerMe(v, spa); };
+      foot.querySelector("#zgo").onclick = () => { const v = zi.value.trim() || zi.placeholder; if (!/^\d{5}$/.test(v)) { toast("A ZIP code has five digits, like 89109."); return; } go(v); };
+      zi.onkeydown = (e) => { if (e.key === "Enter") foot.querySelector("#zgo").click(); };
+      foot.querySelector("#loc").onclick = () => go("89109");
+    }); };
+    const spa = () => say(() => {
+      them(`Nearest to ${esc(S.zip)}. I'm at each on these days.`);
+      setFoot(`<div class="opts">${SPAS.map((s) => `<button type="button" data-s="${s.id}"><span><b>${s.name}</b><small>${s.street} · ${s.who.replace("Trichologist here ", "")} · ${s.price}</small></span><span class="km">${s.km}</span></button>`).join("")}</div>`);
+      foot.querySelectorAll("[data-s]").forEach((b) => b.onclick = () => { S.spa = SPAS.find((s) => s.id === b.dataset.s); answerMe(S.spa.name, day); });
+    });
+    const day = () => say(() => {
+      them(`Which day in ${S.spa.name}?`);
+      setFoot(`<div class="opts">${S.spa.days.map((d) => `<button type="button" data-d="${d}"><span><b>${d}</b><small>10:00 · ${TREAT.mins}</small></span></button>`).join("")}</div>`);
+      foot.querySelectorAll("[data-d]").forEach((b) => b.onclick = () => { const d = b.dataset.d; answerMe(d + ", 10:00", () => confirm(d)); });
+    });
+    const confirm = (d) => say(() => {
+      them(`<span class="cap">Your booking</span><b>${TREAT.name}</b><span>${d}, 10:00 · ${TREAT.mins}</span><span>${S.spa.name}, ${S.spa.street}</span><span><b>${S.spa.price}</b> at this spa</span>`);
+      pair("Change", "Confirm", () => answerMe("Change", spa), () => { S.booked = { day: d, spa: S.spa }; S.step = "booked"; paint(); answerMe("Confirm", booked); });
+    });
+    const booked = () => say(() => {
+      them(`<span class="cap">Booked</span><b>${S.booked.day}, 10:00</b><span>${S.booked.spa.name}, ${S.booked.spa.street}</span><a href="https://maps.google.com" target="_blank" rel="noopener">Directions</a>`);
+      them("See you there. Write to me here if anything changes.");
+      composer();
+    }, 900);
+    // skip the visit: start at home with the product instead
+    const home = () => { S.step = "home"; paint(); say(() => {
+      them("No problem. If coming in isn't easy, you can start at home:");
+      add(`<button type="button" class="tcard" data-card="cart"><span class="img"></span><span class="tx"><b>${PROD.name}</b><small>${PROD.line}</small><small>${PROD.price}</small></span></button>`, "l");
+      pair("Not now", "Add to cart", () => answerMe("Not now", () => say(() => { them("Of course. Write to me here whenever you like."); composer(); })), addCart);
+    }); };
+    const addCart = () => { if (S.cart) return; S.cart = true; me("Add to cart"); setFoot(""); say(() => {
+      them(`<span class="cap">In your cart</span><b>${PROD.name}</b><span>${PROD.price} · from Invita's shop</span><a href="#" id="checkout">Go to checkout</a>`);
+      them("Write to me here once you've tried it, or whenever you like.");
+      const co = th.querySelector("#checkout"); if (co) co.onclick = (e) => { e.preventDefault(); toast("Opens Invita's own checkout with the shampoo in the cart and the request's code."); };
+      composer();
+    }); };
+
+    // where the prototype starts, for the step list
+    if (mode === "near") { instant = true; me("Book"); instant = false; where(); }
+    else if (mode === "booked") { instant = true; S.zip = S.zip || "89109"; S.spa = S.spa || SPAS[0]; them(`Would you like to book it? ${TREAT.mins}, ${TREAT.price} depending on the spa.`); me("Book"); me(S.zip); me(S.spa.name); const d = (S.booked && S.booked.day) || S.spa.days[0]; me(d + ", 10:00"); me("Confirm"); S.booked = { day: d, spa: S.spa }; booked(); instant = false; }
+    else if (mode === "home") { instant = true; them(`Would you like to book it? ${TREAT.mins}, ${TREAT.price} depending on the spa.`); me("Skip"); instant = false; home(); }
+    else if (mode === "write") { instant = true; them(`Would you like to book it? ${TREAT.mins}, ${TREAT.price} depending on the spa.`); me("Skip"); S.cart = false; home(); instant = false; th.querySelectorAll("[data-card]").length; me("Not now"); them("Of course. Write to me here whenever you like."); composer(); const m = foot.querySelector("#msg"); if (m) { m.value = "Should I stop washing every day right away, or slowly?"; foot.querySelector("#snd").hidden = false; m.focus(); } }
+    else ask();
   }
   // fit the phone
   const device = document.getElementById("device"), bezel = document.getElementById("bezel"), stage = document.getElementById("stage");
