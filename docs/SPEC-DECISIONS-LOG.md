@@ -6234,6 +6234,27 @@ The rules: frontend
 §1 A6 and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §1 A5. No migration in this entry.
 
+**N244 · No next Take in the chat from the moment one is recorded until its
+walk reaches its summary (founder, the Claude Code chat, 28 October 2026: "I
+can see two bubbles interfering, like bubble flows interfering, one for the
+new take and one the summary of the take I just took. So maybe disable the
+new event while the processing is happening, so that it is only possible
+once it's finished", then "Record Take N" and "Walk's summary seen").** For
+N89, N167 and N192:
+1. Once the next Take is recorded, the last Take's closing message ("Look,
+practice makes perfect…") keeps its words and gives "Record Take N" up, and
+so does a practice day's one thing (N167). The chat offers no Take while the
+new Take processes and while its walk runs; its own closing message, written
+with the walk's summary, brings "Record Take N" back. Until now the button
+was held only while the Take processed: the moment processing ended it came
+back, naming the Take just recorded, beside the new Take's walk.
+2. The "+" and the Ideal Text page's own "Record Take N" are as before. No
+new words on screen, nothing changes on the server.
+The rules: frontend flow page D4
+([`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md))
+and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+G6. No migration.
+
 **N245 · The Sniper guides the tries: a try that lands moves on (founder,
 the Claude Code chat, 28 October 2026: "it also keeps asking me during the
 sniper practice to practice again and again"; "If it was really better, you
