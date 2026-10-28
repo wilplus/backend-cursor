@@ -6330,3 +6330,25 @@ No new words on screen (Never 4). The rules: frontend
 C2, C3 and H1, and
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §1 G7. No migration in this entry.
+
+**N247 · A reopened Feedback walk shows everything the speaker went through
+(founder, the Claude Code chat, 28 October 2026: "It should open the whole
+feedback walk with all the things that are there that we went through, the
+judgment time, the sniper, whatever intervention was included in the
+feedback", then, asked, "Both, read only").** Amends the frontend's C8 ("no
+read-only replay", 2026-10-13), for N89, N166 and N192:
+1. A Take's walk opened again from its Feedback walk, once it is done, holds
+every step as it went, read only: the coach's word, the moments and their
+practise, the helper words (still editable on the latest Take, C3), the
+tempo step, the judging of other speakers, and the summary at its end.
+2. Other speakers: the moments the speaker judged in that walk, each with
+the answer they gave, and Next, as the walk reopened shows them since
+2026-10-18. Nothing is asked again or sent. With none judged, the step is
+left out.
+3. The tempo step (the Sniper): as the chat kept it, Will's opening lines,
+each "Try N" with its comment, and the closing line or the Skip. No scale, no
+microphone, nothing recorded. A Take that had no tempo step has none.
+4. No new words on screen (Never 4); nothing changes on the server.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§1 B10, C8 and T. No migration.
