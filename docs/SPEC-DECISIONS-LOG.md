@@ -6211,3 +6211,44 @@ N140 and N178 say, its questions after the next Take. No new words on screen
 The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §1 H1 and I2. No migration in this entry.
+
+**N245 · Two best moments on every Take, the next best in place of a
+sentence that holds the helper words, and on a plan the two best and the
+level's moment (founder, the Claude Code chat, 28 October 2026: "the moment
+that's already with the helper word, it's not being chosen as the confident
+moment again ... if there is already a confident moment and helper words, go
+for the next confident moment"; "I've seen only one confident moment on this
+feedback round ... there should be at least two confident moments, like the
+highest confidence moments from the whole recording"; then, asked, "Nothing
+at all" was shown in place of the second, and "Two best + level").** For
+N118, N128, N134 item 2 and N209 item 2:
+1. Found: when the Take's two best clips shared a block and no cut kept 40
+to 120 words a side, the blocks stayed as they were (contract 24a), so a
+short Take of one block, or a slide whose one block held both clips, showed
+one moment, against N118's "fewer than two only when it has fewer than two
+clips that can be played". Now, when no such cut exists, the block itself is
+cut between the two clips at its most even piece boundary, each side keeping
+its clip, when each clip has 5 words or more; the 40-to-120 cut stays the
+first choice. Contract 24a is amended.
+2. A clip whose words hold the helper words its slide had when the Take was
+recorded (every piece of them, in order) ranks after the clips that do not,
+so the next best moment is shown in its place; it is still shown when the
+Take has nothing else to show. Helper words picked during this Take's walk
+do not change its moments.
+3. On a plan, the walk shows the two best moments, as N118 does for every
+speaker, and the moment where this week's level shows most is practised as
+well, with the level's own practice under "This week's level: {level}.
+Here's where it shows:": as a third moment when it is another sentence, or on
+one of the two when the level shows most there. The level is read only on the
+two best and on clips in other blocks, so it never shares a block with one of
+them. This replaces N134 item 2 and N209 item 2 ("the best moment and the
+moment where this week's level shows most").
+4. Found: the walk the speaker sees never read the plan's level. The serve
+path asked for it from a store that cannot read plans, which failed closed
+without a word, so only the dark frame had the level's moment. It now reads
+the level as the dark frame does.
+No new words on screen (Never 4). The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2 and H1, and
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 G7. No migration in this entry.

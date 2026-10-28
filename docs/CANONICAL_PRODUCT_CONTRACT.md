@@ -180,7 +180,10 @@ with this contract, this contract wins.
     between the two clips so each gets a block of its own, each 40 to 120
     words, never across a Slide and never cutting a clip; a Take of one block
     is split in two the same way when each clip has 5 words or more. When no
-    such cut exists, the blocks stay as partitioned. A block made this way is
+    such cut exists, the block itself is cut between the two clips at its most
+    even persisted boundary, each side keeping its clip, when each clip has 5
+    words or more *(amended 2026-10-28, N245; until then the blocks stayed as
+    partitioned and the Take showed one moment)*. A block made this way is
     a new block with a new id and carries the typed partition exception
     `moment_split`. A Take whose blocks are frozen keeps them.
 24b. **(REPLACED 2026-09-18 — founder. Prior text retained at 24b-prior.)** V3
