@@ -441,10 +441,11 @@ class Config:
     # (made before N207) gets it.
     BOOKING_WHATSAPP_TO_ACCOUNT = os.getenv("BOOKING_WHATSAPP_TO_ACCOUNT", "false").lower() == "true"
     # The plan's own yes (founder 2026-10-27, N211): the worry question, the
-    # two ratings and "How did it go?" are asked only after a yes to a question
-    # of its own (the feelings check follows it in a later change). Off until
-    # Privacy 3.9, which names it, is published; off, the plan asks as it did.
-    PLAN_CONSENT_ENABLED = os.getenv("PLAN_CONSENT_ENABLED", "false").lower() == "true"
+    # two ratings, "How did it go?" and the feelings check are asked only after
+    # a yes to a question of its own. On since Privacy 3.9, which names it, was
+    # published (2026-10-28, N217); PLAN_CONSENT_ENABLED=false turns it off,
+    # and off, the plan asks as it did before.
+    PLAN_CONSENT_ENABLED = os.getenv("PLAN_CONSENT_ENABLED", "true").lower() != "false"
 
     # Current published Terms / Privacy Policy version. Must match the
     # "Last updated" date in the live legal docs (e.g. "1.0" = Terms

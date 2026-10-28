@@ -11,8 +11,8 @@ turning it off deletes the personal answers given so far.
     answer(...)     the speaker's yes or "Not now" to Will's ask
     withdraw(...)   the card's Turn off: deletes the answers, then records it
 
-THE SWITCH. ``PLAN_CONSENT_ENABLED`` is off until Privacy 3.9, which names
-the yes, is published. Off, ``state`` says "granted" for everyone: the plan
+THE SWITCH. ``PLAN_CONSENT_ENABLED`` is on since Privacy 3.9, which names
+the yes, was published (2026-10-28). Off, ``state`` says "granted" for everyone: the plan
 asks as it did before and nothing here is written. On, an answer read as
 failed counts as "declined": nothing personal is asked on a doubt.
 
