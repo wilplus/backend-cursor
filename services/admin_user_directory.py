@@ -5,14 +5,12 @@ accounts and open the existing token top-up tool: identity, access class, and
 account timestamps. Token grants remain behind the separate idempotent grant
 endpoint.
 
-One list (founder 2026-10-27, N221): everyone still here. Three kinds of
+One list (founder 2026-10-27, N221): everyone still here. Two kinds of
 people are left out. Someone whose account deletion is recorded and not
 cancelled leaves it at once, though their data is deleted only after the
 seven-day window. Once the deletion is done the sign-in record stays, emptied
 (N218): that record and Supabase's own soft delete both carry ``deleted_at``,
-which the Auth admin API returns, so neither is ever listed. And someone the
-founder hides from the list (``admin_person.set_hidden``) leaves it, with
-their account untouched.
+which the Auth admin API returns, so neither is ever listed.
 """
 from __future__ import annotations
 
@@ -66,7 +64,7 @@ def _being_deleted() -> set[str]:
     If this cannot be read, nobody is left out for it: the list shows
     everyone, as it did before."""
     from services.account_deletion import LIVE_STATES
-    from services.admin_person import ADMIN_DELETE_KEY
+    from services.admin_person import admin_delete_user
     try:
         rows = (db.client.table("account_deletion_requests")
                 .select("acquisition_principal_id,idempotency_key")
@@ -82,26 +80,11 @@ def _being_deleted() -> set[str]:
     user_of = {str(o["id"]): str(o["user_id"]) for o in owners if o.get("user_id")}
     found: set[str] = set()
     for row in rows:
-        key = str(row.get("idempotency_key") or "")
-        user_id = (key[len(ADMIN_DELETE_KEY):] if key.startswith(ADMIN_DELETE_KEY)
-                   else user_of.get(str(row.get("acquisition_principal_id"))))
+        user_id = (admin_delete_user(str(row.get("idempotency_key") or ""))
+                   or user_of.get(str(row.get("acquisition_principal_id"))))
         if user_id:
             found.add(user_id)
     return found
-
-
-def _hidden() -> set[str]:
-    """The user ids the founder hid from the list. If this cannot be read,
-    nobody is left out for it."""
-    from services.admin_person import HIDDEN_FLAG, HIDDEN_TABLE
-    try:
-        rows = (db.client.table(HIDDEN_TABLE).select("user_id")
-                .eq(HIDDEN_FLAG, True)
-                .limit(MAX_SEARCH_USERS).execute().data or [])
-    except Exception as exc:  # noqa: BLE001 -- the list still loads
-        logger.warning("admin/users: hidden people not read: %s", type(exc).__name__)
-        return set()
-    return {str(row["user_id"]) for row in rows if row.get("user_id")}
 
 
 def _matches(user: dict, search: str) -> bool:
@@ -133,7 +116,7 @@ def list_users(*, limit: int = 50, offset: int = 0, search: str = "") -> dict:
     clean_limit = max(1, min(int(limit), MAX_PAGE_SIZE))
     clean_offset = max(0, int(offset))
     clean_search = str(search or "").strip().lower()[:200]
-    left_out = _being_deleted() | _hidden()
+    left_out = _being_deleted()
 
     def in_view(user: dict) -> bool:
         if _is_deleted(user):

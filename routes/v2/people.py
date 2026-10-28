@@ -32,10 +32,6 @@ Takes and acoustic data (services/admin_takes.py, admin only):
 Deleting an account (the person's own deletion road, seven-day window):
   POST   /v2/admin/people/<user_id>/delete              request it
   POST   /v2/admin/people/<user_id>/delete/<id>/cancel  cancel it inside the window
-
-Hiding a person from the Users list (N221; the account is untouched):
-  PUT    /v2/admin/people/<user_id>/hidden   hide them
-  DELETE /v2/admin/people/<user_id>/hidden   show them again (Undo)
 """
 from __future__ import annotations
 
@@ -219,22 +215,6 @@ def cancel_delete_person(user_id: str, request_id: str):
         return _reply({"deletion": admin_person.cancel_deletion(user_id, request_id)})
     except ProcessingAuthorizationError as e:
         return _reply({"code": e.code, "error": e.message}, e.status)
-
-
-@people_bp.route("/v2/admin/people/<user_id>/hidden", methods=["PUT", "DELETE"])
-@require_admin
-def hide_person(user_id: str):
-    from services.account_deletion import is_uuid
-    if not is_uuid(user_id):
-        return _reply({"code": "NOT_FOUND", "error": "No such user."}, 404)
-    hidden = request.method == "PUT"
-    try:
-        admin_person.set_hidden(user_id, hidden)
-    except Exception:
-        logger.warning("admin users list: hide failed user=%s hidden=%s",
-                       user_id, hidden, exc_info=True)
-        return _reply({"code": "HIDE_FAILED", "error": "The list could not be changed."}, 503)
-    return _reply({"hidden": hidden})
 
 
 @people_bp.route("/v2/admin/people/<user_id>/takes", methods=["GET"])
