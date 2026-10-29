@@ -534,3 +534,4 @@
 0496	the_plan_asks_before_it_gets_personal.sql
 0497	a_deleted_account_keeps_no_way_to_sign_in.sql
 0498	your_why_and_strengths_are_kept.sql
+0499	will_answers_worries_and_sales_at_ring_five.sql
