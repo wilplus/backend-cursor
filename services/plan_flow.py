@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -213,8 +213,10 @@ def view(database: Any, user_id: str, plan: dict) -> dict:
     days = _days(plan)
     every_day = bool(plan.get("every_day"))
     today = today_in(plan.get("time_zone"))
-    done = _done(plan, _takes(database, user_id))
+    takes = _takes(database, user_id)
+    done = _done(plan, takes)
     level = plan.get("level")
+    first_asking = plan.get("status") == "asking" and _first_plan(plan)
     return {
         "id": plan["id"], "status": plan["status"],
         "step": "consent" if facts.get("awaiting") == "consent" else plan["step"],
@@ -234,7 +236,12 @@ def view(database: Any, user_id: str, plan: dict) -> dict:
         "first_take_done": done > 0,
         "next_day": (P.next_day_text(today, deadline, days, every_day) if deadline else None),
         "topic": facts.get("topic") or facts.get("event"),
-        "waiting": bool(facts.get("wait_take")),
+        # A new event's questions wait for the next Take (A3); a new
+        # speaker's wait, after a Take recorded first, for that Take's walk,
+        # where they come back (N262 item 1).
+        "waiting": bool(facts.get("wait_take")) or (first_asking and _walk_due(plan, takes)),
+        # "Start your first recording" under "Record your answer" (N262).
+        "record_now": first_asking and not takes,
         "onboarding": _onboarding(plan, done),
     }
 
@@ -263,6 +270,30 @@ def _need_step(plan: dict, *steps: str) -> None:
         raise PlanError("NOT_NOW", "Not now.", 409)
 
 
+def _first_plan(plan: dict) -> bool:
+    """A new speaker's first plan: begun with no Take (A1)."""
+    facts = _facts(plan)
+    return facts.get("mode") == "new" and not facts.get("again")
+
+
+def _takes_seen(plan: dict) -> int:
+    """The Takes a new speaker's questions came back after (N262 item 1)."""
+    try:
+        return int(_facts(plan).get("takes_seen") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+#: How long a new speaker's questions wait for a Take's walk: a Take whose
+#: walk never comes (its processing failed) doesn't hold them for good.
+WALK_WAIT = timedelta(days=1)
+
+
+def _walk_due(plan: dict, takes: list[datetime]) -> bool:
+    """A Take recorded during the questions, its walk not yet come (N262)."""
+    return len(takes) > _takes_seen(plan) and _now() - takes[-1] < WALK_WAIT
+
+
 # ── onboarding, which the principles wait for (N243) ───────────────────────
 
 def _onboarding(plan: dict, done: int) -> bool:
@@ -271,8 +302,7 @@ def _onboarding(plan: dict, done: int) -> bool:
     facts = _facts(plan)
     if plan.get("status") == "asking":
         return not facts.get("wait_take")
-    first_plan = facts.get("mode") == "new" and not facts.get("again")
-    return plan.get("status") == "active" and first_plan and done == 0
+    return plan.get("status") == "active" and _first_plan(plan) and done == 0
 
 
 def onboarding(database: Any, user_id: Any) -> bool:
@@ -335,7 +365,7 @@ def begin(database: Any, user_id: str, *, tz: Optional[str], first_name: Optiona
 
 
 def _opening(plan: dict, first_name: Optional[str]) -> list[tuple]:
-    first = _facts(plan).get("mode") == "new" and not _facts(plan).get("again")
+    first = _first_plan(plan)
     rows = [_bot(f"{_hi(first_name)} {P.COPY['hello_first']}", "hello")] if first else []
     return rows + [_bot(P.COPY["deadline_q"], "deadline_q", plan_ask="deadline")]
 
@@ -438,15 +468,26 @@ def answer_voice(database: Any, user_id: str, adapter: Any, audio: bytes, *,
         raise PlanError("EMPTY_AUDIO", "No audio.")
     if len(audio) > MAX_BYTES or (duration_ms or 0) > (MAX_SECONDS + 5) * 1000:
         raise PlanError("TOO_LONG", "Up to five minutes.", 413)
+    if not _heard(audio):
+        return _not_heard(database, user_id, plan)
     result = adapter.transcribe_audio(
         audio, filename, usage_surface="plan_answer", usage_user_id=str(user_id),
         usage_session_id=str(plan["id"])) or {}
     raw = (result.get("text") or "").strip()
     if not raw:
-        raise PlanError("NO_WORDS", "No words heard.", 422)
+        return _not_heard(database, user_id, plan)
     kind, question = _answering(plan)
     duration = duration_ms or int(float(result.get("duration") or 0) * 1000) or None
     readings = _readings(audio, raw, duration, result.get("language"))
+    turn: Optional[dict] = None
+    correction: Optional[dict] = None
+    if plan["step"] in ("why", "followup"):
+        asked = [str(a.get("bank")) for a in plan.get("asked") or []]
+        turn = _turn(database, user_id, plan, asked, answering=(question, raw))
+        if plan["step"] == "followup":
+            correction = P.fitted_correction((turn or {}).get("correction"), ["why", *asked[:-1]])
+    if correction:  # kept as an answer to what it corrects, so it takes its place
+        kind = correction["of"]
     answer = database.insert_plan_answer({
         "plan_id": plan["id"], "user_id": str(user_id), "kind": kind,
         "question": question, "transcript": raw[:20000], "duration_ms": duration,
@@ -466,9 +507,58 @@ def answer_voice(database: Any, user_id: str, adapter: Any, audio: bytes, *,
     rows = [_me(raw, f"answer:{answer['id']}", plan_voice=answer["id"], duration_ms=duration)]
     if plan["step"] == "how_it_went":
         plan, more = _after_how_it_went(database, user_id, plan)
+    elif correction:
+        plan, more = _put_right(database, user_id, plan, answer, raw, turn, correction)
     else:
-        plan, more = _next_question(database, user_id, plan, answer, raw)
+        plan, more = _next_question(database, user_id, plan, answer, raw, turn)
     return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows + more)}
+
+
+#: Voiced audio a voice answer needs to count as heard (N262 item 2), read
+#: as a Take is read (services/min_content_gate.py) with a floor for a short
+#: answer: "Five people." is under a second.
+MIN_VOICED_SEC = 0.5
+
+
+def _heard(audio: bytes) -> bool:
+    """Is there speech in it? Audio that can't be read counts as heard, and
+    the transcriber decides."""
+    try:
+        from services.min_content_gate import evaluate_min_content_bytes
+        gate = evaluate_min_content_bytes(audio)
+    except Exception as error:  # noqa: BLE001 -- unread is heard; the transcriber decides
+        logger.warning("plan: speech not read: %s", error)
+        return True
+    if gate.get("reason") == "no_audio":
+        return True
+    return float(gate.get("voiced_sec") or 0.0) >= MIN_VOICED_SEC
+
+
+def _not_heard(database: Any, user_id: str, plan: dict) -> dict:
+    """Nothing kept and nothing sent on: Will asks for it again, and the same
+    question stays (N262 item 2)."""
+    rows = [_bot(P.COPY["not_heard"], f"not_heard:{_now().isoformat()}")]
+    return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
+
+
+def _put_right(database: Any, user_id: str, plan: dict, answer: dict, said: str,
+               turn: Optional[dict], correction: dict) -> tuple[dict, list[tuple]]:
+    """A correction (N262 item 3): Will agrees, says back what he now has,
+    and asks the same question again; it is not an answer to that question."""
+    facts = _facts(plan)
+    if correction["of"] == "key":
+        facts.update({"key_line": said[:300], "key_answer_id": answer["id"]})
+    facts = {**facts, **P.clean_facts((turn or {}).get("facts"), facts)}
+    if C.state(database, user_id) != C.GRANTED:
+        facts.pop("worry", None)  # a worry the speaker did not agree to share is not kept
+    back = correction["said_back"]
+    facts["will_said"] = {**dict(facts.get("will_said") or {}), str(answer["id"]): back}
+    plan = _save(database, user_id, plan, {"facts": facts})
+    asked = list(plan.get("asked") or [])
+    last = asked[-1] if asked else {"bank": "key", "text": P.BANK["key"][0]}
+    return plan, [_bot(f"{P.COPY['put_right']} {back}", f"put_right:{answer['id']}"),
+                  _bot(str(last.get("text") or ""), f"q:{last.get('bank')}:again:{answer['id']}",
+                       plan_ask="voice")]
 
 
 def _answering(plan: dict) -> tuple[str, str]:
@@ -512,28 +602,39 @@ def _readings(audio: bytes, transcript: str, duration_ms: Optional[int],
     return out
 
 
-def _transcript(database: Any, user_id: str, plan: dict) -> list[tuple[str, str]]:
+def _transcript(database: Any, user_id: str, plan: dict,
+                answering: Optional[tuple[str, str]] = None) -> list[tuple[str, str]]:
+    """What was asked and said so far, with what Will said back (so a
+    correction of it can be heard, N262), and ``answering``: the question
+    and the answer being given now."""
     deadline = _deadline(plan)
     said = ("No date yet" if plan.get("deadline_given") else
             P.fmt_day(deadline) if deadline else "No date yet")
     lines = [("Will", P.COPY["deadline_q"]), ("Speaker", said)]
     if plan.get("deadline_given") and deadline:
         lines.append(("Will", P.COPY["two_months"].format(date=P.fmt_day(deadline))))
+    back = dict(_facts(plan).get("will_said") or {})
     for a in database.list_plan_answers(str(user_id), plan["id"]):
         if a.get("transcript"):
             lines += [("Will", str(a.get("question") or "")),
                       ("Speaker (voice message)", str(a["transcript"]))]
+            if back.get(str(a.get("id"))):
+                lines.append(("Will", str(back[str(a["id"])])))
+    if answering:
+        lines += [("Will", answering[0]), ("Speaker (voice message)", answering[1])]
     return lines
 
 
-def _turn(database: Any, user_id: str, plan: dict, asked: list[str]) -> Optional[dict]:
+def _turn(database: Any, user_id: str, plan: dict, asked: list[str],
+          answering: Optional[tuple[str, str]] = None) -> Optional[dict]:
     """The AI's reading of what was said and Will's next question, within
-    the N150 rules; None when it failed (Will then says the plain words)."""
+    the N150 rules, or a correction (N262); None when it failed (Will then
+    says the plain words). ``answering``: the answer being given now."""
     from services.llm import chat_complete
     from services.llm_config import SPEC_PLAN_TURN
     from services.processing_authorization import rethrow_processing_authorization
     prompt = P.turn_prompt(deadline=_deadline(plan), deadline_given=bool(plan.get("deadline_given")),
-                           transcript=_transcript(database, user_id, plan), asked=asked)
+                           transcript=_transcript(database, user_id, plan, answering), asked=asked)
     try:
         result = chat_complete(spec=SPEC_PLAN_TURN, system=prompt,
                                user="Write Will's next message now, as the JSON asked for.",
@@ -567,13 +668,12 @@ def _choose(turn: Optional[dict], asked: list[str], facts: dict, plan: dict,
 
 
 def _next_question(database: Any, user_id: str, plan: dict, answer: dict,
-                   said: str) -> tuple[dict, list[tuple]]:
+                   said: str, turn: Optional[dict]) -> tuple[dict, list[tuple]]:
     asked_rows = list(plan.get("asked") or [])
     asked = [str(a.get("bank")) for a in asked_rows]
     facts = _facts(plan)
     if answer["kind"] == "key":
         facts.update({"key_line": said[:300], "key_answer_id": answer["id"]})
-    turn = _turn(database, user_id, plan, asked)
     # The AI's facts over what was known; the plan's own (the key line's
     # recording, the mode, the language) are kept, not the AI's to drop.
     facts = {**facts, **P.clean_facts((turn or {}).get("facts"), facts)}
@@ -584,6 +684,7 @@ def _next_question(database: Any, user_id: str, plan: dict, answer: dict,
     if plan["step"] == "why":
         ack = P.fitted_ack((turn or {}).get("ack")) or P.COPY["plain_ack"]
         rows += [_bot(f"{ack} {P.COPY['heard']}", "ack"), _bot(P.COPY["draft"], "draft")]
+        facts["will_said"] = {str(answer["id"]): ack}  # what a correction may put right
     q = _choose(turn, asked, facts, plan,
                 skip=C.PERSONAL_BANKS if consent == C.DECLINED else ())
     if consent == C.UNANSWERED and (plan["step"] == "why" or q is None
@@ -758,7 +859,10 @@ def _diagnose(database: Any, user_id: str, plan: dict) -> Optional[str]:
     """The level from the voice message and the key line's answer."""
     answers = database.list_plan_answers(str(user_id), plan["id"])
     why = next((a.get("readings") or {} for a in answers if a.get("kind") == "why"), {})
-    key = next((a.get("readings") or {} for a in answers if a.get("kind") == "key"), {})
+    # The key line as the plan keeps it: a correction's, if it was put right (N262).
+    said = str(_facts(plan).get("key_answer_id") or "")
+    key = next((a.get("readings") or {} for a in answers if str(a.get("id")) == said),
+               next((a.get("readings") or {} for a in answers if a.get("kind") == "key"), {}))
     readings = dict(why)
     if key.get("wpm"):
         readings["key_wpm"] = key["wpm"]
@@ -1029,8 +1133,11 @@ def _all_set(database: Any, user_id: str, plan: dict) -> tuple[dict, list[tuple]
     today = today_in(plan.get("time_zone"))
     deadline = _deadline(plan) or P.given_deadline(today)
     j = P.journey(today, deadline)
+    # A new speaker's first plan began with no Take, so a Take recorded
+    # while its questions were asked is its first practice (N262 item 1).
+    began = plan.get("created_at") if _first_plan(plan) and plan.get("created_at") else None
     plan = _save(database, user_id, plan, {
-        "status": "active", "step": "done", "started_at": _now().isoformat(),
+        "status": "active", "step": "done", "started_at": began or _now().isoformat(),
         "total": j.total, "every_day": j.every_day})
     return plan, [_bot(P.COPY["all_set"], "all_set"), _bot("", "card", plan_card=True)]
 
@@ -1113,11 +1220,42 @@ def after_take(database: Any, user_id: str, *, first_name: Optional[str] = None)
         if plan.get("status") == "asking" and _facts(plan).get("wait_take"):
             plan = _save(database, user_id, plan, {"facts": {**_facts(plan), "wait_take": False}})
             return _write(database, user_id, plan["id"], _opening(plan, first_name))
+        if plan.get("status") == "asking" and _first_plan(plan):
+            return _ask_again(database, user_id, plan)
         if plan.get("status") == "active":
             return _after_active_take(database, user_id, plan)
     except Exception as error:  # noqa: BLE001 -- the Take and its walk stand either way
         logger.warning("plan: after the Take not written user=%s: %s", user_id, error, exc_info=True)
     return []
+
+
+def _ask_again(database: Any, user_id: str, plan: dict) -> list[dict]:
+    """A new speaker who recorded before answering (N262 item 1): after the
+    Take's walk, Will asks again what he was waiting for, where it was."""
+    n = len(_takes(database, user_id))
+    plan = _save(database, user_id, plan, {"facts": {**_facts(plan), "takes_seen": n}})
+    facts, step = _facts(plan), plan.get("step")
+    if _awaiting(plan):
+        rows = _ask_rows(str(facts.get("ask_key") or _ask_key(plan)))
+    elif step == "deadline":
+        rows = [_bot(P.COPY["deadline_q"], "deadline_q", plan_ask="deadline")]
+    elif step == "why":
+        rows = [_bot(P.COPY["why_1"], "why_1"), _bot(P.COPY["why_2"], "why_2", plan_ask="voice")]
+    elif step == "followup":
+        asked = list(plan.get("asked") or [])
+        last = asked[-1] if asked else {"bank": "key", "text": P.BANK["key"][0]}
+        rows = [_bot(str(last.get("text") or ""), f"q:{last.get('bank')}", plan_ask="voice")]
+    elif step in ("stress", "ready"):
+        rows = [_scale_row(str(step), str(facts.get("rating_moment") or "first"))]
+    elif step == "kickoff":
+        rows = _kickoff_rows(plan)
+    elif step == "summary":
+        rows = _summary_rows(plan)
+    else:
+        rows = []
+    # Each row again under its own key, so the thread keeps both.
+    return _write(database, user_id, plan["id"],
+                  [(role, body, meta, f"{key}:again:{n}") for role, body, meta, key in rows])
 
 
 def _after_active_take(database: Any, user_id: str, plan: dict) -> list[dict]:
