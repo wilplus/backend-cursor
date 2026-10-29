@@ -57,6 +57,9 @@ class Rebuild:
     # The Slide of each Paragraph of the OLD document, in its order.
     old_slides: list[Optional[int]] = field(default_factory=list)
     rebuilt_slides: set = field(default_factory=set)
+    # (old titles, new titles) when this Take is the first on new slides
+    # (N257): its helper words move by title after the write.
+    new_deck: Optional[tuple[list[str], list[str]]] = None
 
 
 def _slide(p: Any) -> Optional[int]:
@@ -210,7 +213,8 @@ def follow_the_take(old_text: str, old_doc: Any, new_text: str,
                     new_doc: Mapping) -> Optional[Rebuild]:
     """The whole text rewritten from the latest Take (N29 answer 3).
 
-    Used only when `merge_by_slide` cannot prove the Slides. Every Paragraph
+    Used when `merge_by_slide` cannot prove the Slides, and for the first
+    Take on new slides (N257, with no old document: every Paragraph fresh). Every Paragraph
     is the new Take's, in its order, with its own Slide where it has one. The
     old Paragraphs' Slides are kept when the old document tiles, so a
     rebuilt Slide can still reuse that Slide's old Paragraph ids and carry
@@ -296,6 +300,20 @@ def plan_rebuild(database: Any, arc_id: str, take_session_id: str,
             str(arc_id), database=database, session_id=str(take_session_id))
         if not isinstance(new, Mapping) or not str(new.get("text") or "").strip():
             return None
+        # THE FIRST TAKE ON NEW SLIDES (N257): the old Slide indexes belong
+        # to the old deck, so a merge by index would put old words on
+        # unrelated slides. The Take writes the whole text, every Paragraph
+        # with a fresh id; the old text stays in ideal_text_versions.
+        from services.slide_deck_update import deck_changed_for_take
+        new_deck = deck_changed_for_take(database, arc_id, take_session_id,
+                                         old_doc)
+        if new_deck is not None:
+            fresh = follow_the_take(old_text, None, str(new["text"]), new)
+            if fresh is not None:
+                fresh.new_deck = new_deck
+            logger.info("take_rebuild_new_deck arc=%s take=%s planned=%s",
+                        arc_id, take_session_id, fresh is not None)
+            return fresh
         merged = None
         if isinstance(old_doc, Mapping):
             merged = merge_by_slide(
@@ -505,6 +523,10 @@ class Plan:
             database, arc_id, user_id, self.old_text, self.old_rows,
             self.rebuild, take_session_id=self.take_session_id,
             review_version=self.take_index)
+        if self.rebuild.new_deck is not None:
+            from services.slide_deck_update import move_helper_words_by_title
+            move_helper_words_by_title(database, arc_id, user_id,
+                                       *self.rebuild.new_deck)
         return True
 
 

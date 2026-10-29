@@ -172,35 +172,6 @@ def reserve_take(
     return int(take_index)
 
 
-def ensure_project_presentation_unchanged(
-    context: TakeProjectContext,
-    session_context: dict,
-    *,
-    database: Any,
-) -> None:
-    """Protect the slide structure after the first completed project take."""
-    sessions = ProjectRepository(database).project_takes(context.project_id)
-    spoken_sessions = [
-        session
-        for session in sessions
-        if isinstance(session, dict)
-        and session.get("recording_kind") != "read"
-        and not session.get("paired_session_id")
-    ]
-    if not spoken_sessions:
-        return
-    from services.presentation_change_intent import deck_matches_recorded_project
-
-    if deck_matches_recorded_project(spoken_sessions, session_context):
-        return
-    raise CreateTakeError(
-        "PRESENTATION_LOCKED",
-        "Your current roadmap is connected to these slides. "
-        "Create a new project for the updated deck.",
-        409,
-    )
-
-
 def attach_recording_to_project(
     context: TakeProjectContext,
     *,

@@ -74,7 +74,6 @@ class RecordingLaneRouteTests(unittest.TestCase):
                  return_value=auth)
             fake("services.processing_authorization."
                  "ProcessingAuthorizationService", return_value=auth)
-            fake("routes.v2.lab_recording.ensure_project_presentation_unchanged")
             fake("routes.v2.lab_recording._is_data_foundation_canary_owner",
                  return_value=False)
             fake("routes.v2.lab_recording.require_analyzable_recording",
