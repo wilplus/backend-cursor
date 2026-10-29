@@ -2691,6 +2691,17 @@ O2 -> test_a_row_is_served_only_when_its_surface_is_promoted,
 test_chat_model_ignores_runtime_config_when_promotion_disabled",R-13 / LEGACY-1 (Job 1 review 2026-09-22): runtime_config is service-role writable with no RLS.
 tests/test_runtime_config_model_guard_postgres.py,Story,"As the founder, I want the database itself to refuse an unapproved model setting, so that even someone with the service key cannot change the model behind a speaker's Ideal Text.","O1  Writing any of the gated model settings straight into the database
 is refused with ""model promotion not permitted"".",O1 -> TestTheDirectWriteIsRefused::test_a_direct_insert_of_a_model_key_raises,"Audit 2026-09-22 (LEGACY-1, R-13): one INSERT could change the Ideal Text model within a minute."
+tests/test_sales_framing.py,Story,"As a salesperson, I want a lost deal I note down to point me at the step that stalled and one change to it, never at me, so that the next call goes better and the note does not feel like a verdict.","O1  A note about a sale that stalled gets ""Which step did it stall at?""
+once, under its ""Noted."", with the sale's four steps to tap (N241 P2).
+O2  A tap on a step gets that step as my bubble and one change to that
+step from Will's guide; even when the model cannot answer, the guide's
+own change for that step; a second tap changes nothing.
+O3  A sales note gets the step question, never also the worry answer; a
+note that is not a sale goes on to the worry answer.
+O4  Without the ring row, or for a crisis note, nothing is asked.","O1 -> test_a_stalled_sale_asks_which_step_once
+O2 -> test_a_step_gets_one_change_and_only_once
+O3 -> test_a_sale_is_never_also_sorted_as_a_worry
+O4 -> test_no_ring_or_a_crisis_asks_nothing",Linear WIL-114; Will's guide signed 2026-10-29 (N258).
 tests/test_say_it_stronger.py,Story,"As a speaker, I want ""Say It Stronger"" cards compared only with my own past and never with numbers, and delivered even when the job ends, so that I get words I can act on, not scores.","O1  The job can wait for the cards, so they land before the worker exits.
 O2  Never-1: a card's coaching copy with a digit (""3 times better"") or an
 internal term is dropped; the speaker's rewrites and plain-word copy
