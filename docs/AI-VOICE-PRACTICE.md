@@ -40,7 +40,9 @@ The lock (flow, words, rules) is
    on its way starts it again. A voice that will not come (the clone row is
    `none`, `failed` or off: a Take too short or too noisy to copy) is not
    waited for: the clip is `unavailable` at once, so the walk shows the
-   locked Exercise rather than the dots.
+   locked Exercise rather than the dots. A speaker whose voice is turned
+   off (the card's Delete, or `enabled` false on their row) is never
+   offered a clip: the ask opens no cycle and answers with no clip.
 4. The clip is shown in the video's place (no exact-fit video for the same
    problem), and after a try that isn't better yet, at most 3 times. It never
    plays by itself.

@@ -124,7 +124,8 @@ def ensure(database: Any, practice: dict, *, user_id: str, principal_id: str,
     ``queue`` is the lane the job rides (the pipeline's unless told other);
     a job already started by the prewarm is found, never started again."""
     from services.ai_voice_clone import available_to
-    if not available_to(user_id) or not in_voice_lane(practice):
+    if not available_to(user_id) or not in_voice_lane(practice) \
+            or _voice_turned_off(database, str(user_id)):
         return {"demo": "video" if _has_video(practice) else "none", "clip": None}
     cycle, created = store.create_cycle(database, {
         "practice_id": str(practice["id"]), "owner_user_id": str(user_id),
@@ -510,6 +511,13 @@ def _wait_for_voice(job: _Job, selection: dict) -> str:
     _log.info("ai voice: no voice after %d waits cycle=%s; the next ask retries",
               waited, job.cycle_id)
     return _no_voice(job)
+
+
+def _voice_turned_off(database: Any, user_id: str) -> bool:
+    """The speaker's own off (the card's Delete, or ``enabled`` false on
+    their row): no clip is asked for, so the walk never shows its place."""
+    row = store.get_clone(database, user_id)
+    return row is not None and not row.get("enabled", True)
 
 
 def _no_voice_coming(database: Any, user_id: str) -> bool:

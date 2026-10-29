@@ -902,6 +902,21 @@ def test_a_voice_that_will_not_come_is_not_waited_for(monkeypatch):
         assert voices.spoken == 0 and queued == []
 
 
+def test_a_speaker_whose_voice_is_turned_off_is_never_offered_a_clip():
+    """Off for one speaker (their row's `enabled` false): the walk's ask
+    gets no clip and no cycle is opened, so the dots never show; everyone
+    else is unaffected."""
+    with _on():
+        db = _Db(_practice(), _snip(150, pause_ratio=0.02), TAKE)
+        db.client.tables.setdefault("ai_voice_clones", []).append(
+            {"owner_user_id": OWNER, "status": "none", "enabled": False,
+             "created_at": "2026-10-11T00:00:00+00:00"})
+        voices = _Voices()
+        out = _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
+        assert out["clip"] is None and out["demo"] != "ai_voice"
+        assert not db.client.tables.get("ai_voice_cycles") and voices.spoken == 0
+
+
 def test_a_spoken_takes_upload_starts_the_voice_and_a_read_take_or_guest_does_not():
     """N84 (founder 2026-10-20, "start the voice copy at upload"): the voice
     is asked for as the Take is stored, with the stored audio and the
