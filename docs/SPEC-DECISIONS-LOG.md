@@ -6963,3 +6963,41 @@ the lab right now. Give it another try in a moment."
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §6, the line for N270. No migration.
+
+**N271 · Counting where a first visit leaves; the wait without its tips;
+two proposals dropped (founder, the Claude Code chat, 29 October 2026, on the
+review of the path from the landing page to the first feedback: "The wait
+says 'Usually about a minute.' yes and hide the slider with the suggestions
+the advices"; "introduce the counting where the people leave!"; "for the how
+do you feel - we do it somewhere else"; "don't change the slides; the slider
+back btn stays as is!!!!! you can not finish the take until you reach the end
+of the list of your slides").**
+1. **Where a first visit leaves is counted.** For a visitor without an
+account, each step counts once per browser tab: saw the landing page, tapped
+Enter the lab, agreed, started recording, finished the Take, result ready,
+and, after sign-up, opened the walk. A number a day per step and nothing
+else: no account, no IP address, no device. With the sign-up screen and the
+accounts made (N207 item 6) the founder reads the whole path, in all and by
+day, on the admin Users page, in the card that replaces the sign-up count.
+No speaker sees it.
+2. **The wait loses its tips.** "While you wait" and its slider of advice go
+from the processing screen; under the bar, "Usually about a minute."
+(signed). Its look waits for the founder's OK on the prototype
+<https://claude.ai/artifact/S66ZsrqTQZ4se74caoCj2J>.
+3. **Not changed.** Finish take stays on the last slide only, with Back and
+Next slide as locked (N70). "How do you feel?" is not part of this work.
+4. **Waiting for the founder's OK, each on its own prototype:** the landing
+that says what you get, with an example
+<https://claude.ai/artifact/VqrCoZ3ddRkkiSayMfnTJp>; Will's hello in a new
+visitor's empty Lounge <https://claude.ai/artifact/H2CwSoSWXF7wttNEXsPMYb>;
+one line on why the microphone is asked
+<https://claude.ai/artifact/6AVcGS1ksx86KzvUPyKEes>; a guest reads the walk
+and the account is asked at the first thing kept (N30, N32 item 5)
+<https://claude.ai/artifact/ARjGbALXWsqaWLJxpenc6f>, or, if the account
+stays first, one real moment on the wall
+<https://claude.ai/artifact/LyE1Xa7M5D2FWXDxFzPKtT>. Nothing in this item is
+decided.
+No rules page for the count (`services/first_visit.py`, the frontend's
+`FirstVisitCounts.tsx`); the wait lands on the frontend's recording screens
+page when it is built. Its migration gets its outside review before it is
+merged.
