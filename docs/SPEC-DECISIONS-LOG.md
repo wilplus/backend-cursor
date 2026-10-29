@@ -6281,50 +6281,32 @@ The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §1 K and T. No migration.
 
-**N246 · Two best moments on every Take, the next best in place of a
-sentence that holds the helper words, and on a plan the two best and the
-level's moment (founder, the Claude Code chat, 28 October 2026: "the moment
-that's already with the helper word, it's not being chosen as the confident
-moment again ... if there is already a confident moment and helper words, go
-for the next confident moment"; "I've seen only one confident moment on this
-feedback round ... there should be at least two confident moments, like the
-highest confidence moments from the whole recording"; then, asked, "Nothing
-at all" was shown in place of the second, "Two best + level" and "Second
+**N246 · Two confident moments on every Take; the next one in place of a
+sentence that already has its helper words; on a plan, the level as well
+(founder, the Claude Code chat, 28 October 2026: "the moment that's already
+with the helper word, it's not being chosen as the confident moment again
+... if there is already a confident moment and helper words, go for the next
+confident moment"; "I've seen only one confident moment on this feedback
+round ... there should be at least two confident moments, like the highest
+confidence moments from the whole recording"; then, asked, "Nothing at all"
+was shown in place of the second, "Two best + level" and "Second
 stays").** For N118, N128, N134 item 2, N209 item 2 and D8 of the helper
 words lock of 2026-09-30:
-1. Found: when the Take's two best clips shared a block and no cut kept 40
-to 120 words a side, the blocks stayed as they were (contract 24a), so a
-short Take of one block, or one whose only block with a clip that can be
-played held both, showed one moment, against N118's "fewer than two only
-when it has fewer than two clips that can be played". Now, when no such cut
-exists and no other block has a clip to show, the block itself is cut
-between the two clips at its most even piece boundary, each side keeping its
-clip, when each clip has 5 words or more. With another block to show, the
-blocks stay as they were and the Take shows two, as before, so no short
-paragraph is made where it is not needed. Contract 24a is amended.
-2. A clip whose words hold the helper words its slide had when the Take was
-recorded (every piece of them, in order) ranks after the clips that do not,
-so the next best moment is shown in its place; it is still shown when the
-Take has nothing else to show. Helper words picked during this Take's walk
-do not change its moments.
-3. On a plan, the walk shows the two best moments, as N118 does for every
-speaker, and the moment where this week's level shows most is practised as
-well, with the level's own practice under "This week's level: {level}.
-Here's where it shows:": as a third moment when it is another sentence, or on
-one of the two when the level shows most there. The level is read only on the
-two best and on clips in other blocks, so it never shares a block with one of
-them. This replaces N134 item 2 and N209 item 2 ("the best moment and the
-moment where this week's level shows most").
-4. Found: the walk the speaker sees never read the plan's level. The serve
-path asked for it from a store that cannot read plans, which failed closed
-without a word, so only the dark frame had the level's moment. It now reads
-the level as the dark frame does.
-5. Found: the two best moments may share a slide, which is one paragraph of
-the Ideal Text, and helper words saved at the first made that paragraph
-"done" (D8: its open moments are not served), so the second left the walk.
-Now a moment the pick chose stays, with its notes, until it is answered; a
-paragraph saved with helper words in this Take still hides every other
-moment and note.
+1. Every Take shows two moments. A short Take showed one: its two best
+sentences sat in the same block of about 75 words, and the rule that each
+side of a split keeps 40 words stopped the split. When nothing else could be
+shown, that block is now split between the two. Contract 24a is amended.
+2. When both moments sit on one slide, helper words picked at the first no
+longer hide the second: it stays until it is walked. Until now the slide's
+paragraph counted as done (D8) and the second moment left the walk.
+3. A sentence that already has its slide's helper words, as they stood when
+the Take was recorded, gives its place to the next best moment; it is shown
+only when there is nothing else.
+4. On a plan, the walk shows the two best moments and this week's level as
+well: as a third moment, or on one of the two when the level shows there.
+This replaces N134 item 2 and N209 item 2 (the best moment and the level's).
+Found on the way: the walk the speaker sees never had the level, only the
+hidden copy the server keeps for comparison did. It now has it.
 No new words on screen (Never 4). The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C2, C3 and H1, and
@@ -6440,3 +6422,133 @@ any work starts.
 The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 §1 H and I, §3. No migration in this entry.
+
+**N251 · One record button in the chat, the newest Take's, whatever the
+project (founder, the Claude Code chat, 28 October 2026, from a decision
+page after N244: "the other project's 'Record Take N' goes too while the
+new Take processes and its walk runs (any project)", "the other project's
+button does not come back. One record button in the chat, the newest
+Take's; other projects through the '+'", "Tidy the wording: yes").** For
+N244, N89 and N167:
+1. N244 held only inside one project: a Take recorded in another project
+left that project's closing message with its "Record Take N" beside the new
+walk. Now a Take recorded in any project takes the button from every
+closing message and practice-day bubble before it, while the new Take
+processes and while its walk runs.
+2. The button does not come back on them once the new walk reaches its
+summary: the chat has one record button, under the newest Take's closing
+message (or in a practice day's bubble after it, N167). Another project is
+reached through the "+". Was: each project's last closing message kept its
+own button, so two projects could show two.
+3. The "+" and the Ideal Text page's own "Record Take N" are as before. No
+new words on screen, nothing changes on the server.
+The rules: frontend flow page D4
+([`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md))
+and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+G6. No migration.
+
+**N252 · The launchpad as a business: one request shape, coaching first and
+the AI after, templates per trade, a price per answered request (founder, the
+Claude Code chat, 28 October 2026, on Claude's suggested answers to eight
+questions: "Yes, please log it").** For N223, N224, N225, N240 and N250:
+1. **One shape.** Every client's service is the same three parts: the request
+(the customer's words and/or photos, an optional first name, the number, the
+consent tick), the answer (what the expert sees from the client's label list
+and scale, the red flags, her picks from the client's catalogue, her voice
+Take) and the outcome (booked, bought, replied or not yet, with its amount,
+matched by the request's code). A red flag counts as a pick ("see a doctor").
+2. **Per client, data only:** the label list and scale, the red flags, the
+catalogue rows (id, name, type, price, link), connectors from a fixed list,
+the name and one colour, the languages, words from the signed word set. We
+refuse custom fields, custom steps, live chat, an answer with no pick, an
+outcome we cannot read from a link, and code for one client (N250 item 8).
+Two clients asking the same thing goes into the template for all.
+3. **The export is always free.** The client's data is never held back behind
+the AI tier; the AI tier sells speed and instant answers.
+4. **Coaching first, the AI offered by milestones:** about 100 answered
+requests, drafts run unseen; the golden evaluation passes, a 30-day free
+trial of drafts is offered; one request type passes, "alone" is offered for
+it. The client's owner may read how the machine does, in a monthly note in
+words and numbers about the machine; the answerer sees none of it, and no one
+sees a score about a person (Never 1).
+5. **Templates per trade** (the label list, the red flags, the catalogue's
+mapping, the connectors, the signed words, the call sheet, what the golden
+evaluation checks, the starting instructions), versioned; a client stays on
+its version until it chooses. The contract says: "Improvements to the setup
+are ours; your answers, photos and outcomes are yours." Learning across
+clients is off by default; a client who opts in gets the shared starting
+model and 20% off the AI tier. Never for health photos until counsel answers
+N240 item 5.
+6. **An answered request** is the first Send. A re-send and typed follow-ups
+within 7 days are free; a new request after counts again; an unanswered
+request costs nothing.
+7. **Prices to test, estimates, reviewed after three clients:** self-serve
+$4 an answered request; assisted (health, finance, legal) $8 and a $1,500
+setup with the enterprise pack (N250 item 5); two answerer seats with
+coaching included, more on today's packages; the AI tier $400 a month with
+drafts, then $1 an answer the AI sends alone and $4 one it hands to a person.
+Invita stays free as the tester (N223 item 12). If the next three spas all
+sign at $4 without pushing back, the fourth is quoted higher.
+8. **One currency:** the client pays in tokens, 100 to the dollar (N198), 400
+an answered request, from the same wallet; its invoice reads in dollars.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 H and I; its lines come in their own frontend PR. No migration in this
+entry.
+
+**N253 · "#" is one note, the same as the small mic (founder, the Claude Code
+chat, 28 October 2026: "when I tap and want to enter the words in the type
+form ... and I start with a hash, there are a series of thoughts, observations
+and stuff like that. We don't use it anymore. It's just one text that we
+save ... just leave one hash and note ... it's the note, the same that the
+small microphone uses. It's an old pattern from the code that needs
+fixation.").** For N182 and N194:
+1. Typing "#" in the Lounge's message box offers one option, "# note". Tapped,
+the box keeps "# " to write on. The old list (#mistake, #observation, #win,
+#add, #edit) is gone from the box.
+2. Every typed message that starts with "#" is one note in the voice
+notebook, kept and answered "Noted.", as a note said with the small mic. A
+leading "#note" is read as "#".
+3. What stops: from the chat, the Life Panel's tags no longer route
+(#mistake to a case, #observation to the strategy check, #win to the wins,
+#add to the phrase wall, #edit to today's card); for a notebook user each is
+now a note. The Sunday note is how a principle comes from the notes (N158).
+The Life Panel's first-run guide still teaches those tags; its new words wait
+for the founder.
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 B8. No migration.
+
+**N254 · One project at a time (founder, the Claude Code chat, 28 and 29
+October 2026: "we want the user to have one presentation at a time, so they
+cannot be doing more than one presentation. So if they start a new one, it
+means, do you want to discard their current progress, something like that,
+one at a time. That's the rule", then four answers on a decision page).**
+For N14, N244 and N251:
+1. A speaker works on one project at a time. "Start a new project" first
+asks the question in item 4; Continue archives the current project (N14:
+it leaves the "+" list, nothing is deleted, Data & consent brings it back)
+and the new one starts. The current project is the one with the newest
+Take.
+2. Going back to an archived project is allowed: picking it, or "Record
+Take N" on its Ideal Text page, asks the same question, archives the
+current project and makes the older one current.
+3. Speakers who have several projects today keep them as they are; the
+project with the newest Take is current, and nothing is archived until they
+start a new project or switch.
+4. The question's words, signed: "One project at a time" · "“{current}”
+will be archived. Its Takes and Ideal Text stay safe, and you can bring it
+back from Data & consent." · "Continue" · "Cancel".
+5. The next Take of the current project never asks anything (Never 3). A
+coach's link and a coach's late word on an archived project still open,
+and Will keeps what he learned from it.
+6. Updating a project's deck (a project started without one, or a new
+version of it) stays in the same project and is designed next, at the
+founder's ask the same day; it lands in its own entry.
+The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+(the "+" and its question) and
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
+(its "Record Take N"), with the first code. Unarchive in Data & consent
+asks nothing: it puts the project back on the "+" list, where picking it
+asks. No migration in this entry.

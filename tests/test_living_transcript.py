@@ -8,7 +8,9 @@ OUTCOME
       no longer swaps in a shorter best-of text (Never-5).
   O2  Only hesitations, immediate repeats and punctuation/casing change
       silently; false starts, expressive repeats and real words stay
-      (Never-5: no word silently changed).
+      (Never-5: no word silently changed). A full stop goes in between two
+      pieces only where the speaker paused clearly and the next begins a
+      sentence with a capital (N126).
   O3  Every change is anchored on an exact substring of the served text
       or dropped; a bold that cannot narrow is dropped, not widened.
   O4  A piece is never lost when its words change after a bake or a lock:
@@ -17,7 +19,8 @@ OUTCOME
       and no cue key the screen has no signed words for (Never-1, Never-4).
 PROVES   O1 -> test_document_is_the_full_latest_take_in_speech_order,
                test_flag_on_and_off_persist_the_same_full_transcript
-         O2 -> test_only_fillers_repeats_and_punctuation_change_silently
+         O2 -> test_only_fillers_repeats_and_punctuation_change_silently,
+               test_a_full_stop_goes_in_only_where_the_speaker_paused
          O3 -> test_key_phrases_from_say_it_stronger_extraction,
                test_delivery_and_structural_are_advice_with_device,
                test_the_confident_voice_card_obeys_the_same_rule,
@@ -115,6 +118,36 @@ class DocumentBuildTests(unittest.TestCase):
             doc["text"],
             "So we started smal- small, no, no, no, like basically "
             "from scratch.")
+
+    def test_a_full_stop_goes_in_only_where_the_speaker_paused(self):
+        def doc(second: str, start_ms: int, language: str = "en") -> str:
+            snips = [
+                {"id": S1, "start_offset_ms": 0, "duration_ms": 2000,
+                 "language": language, "transcript": "Startup is just a job"},
+                {"id": S2, "start_offset_ms": start_ms, "duration_ms": 2000,
+                 "language": language, "transcript": second},
+            ]
+            built = build_transcript_document(ARC, database=self._Db(snips))
+            for p in built["pieces"]:  # the mark sits outside every span
+                self.assertEqual(built["text"][p["start"]:p["end"]], p["text"])
+            self.assertEqual(built["pieces"][0]["text"], "Startup is just a job")
+            return built["text"]
+
+        # The founder's Take 4: a clear pause, then a capital.
+        self.assertEqual(doc("It's a job we love", 2800),
+                         "Startup is just a job. It's a job we love.")
+        # No clear pause, a lowercase word, the pronoun I, German nouns,
+        # or a pause that cannot be measured: nothing goes in.
+        self.assertEqual(doc("It's a job we love", 2200),
+                         "Startup is just a job It's a job we love.")
+        self.assertEqual(doc("and we love it", 2800),
+                         "Startup is just a job and we love it.")
+        self.assertEqual(doc("I love it", 2800),
+                         "Startup is just a job I love it.")
+        self.assertEqual(doc("Arbeit ist alles", 2800, "de"),
+                         "Startup is just a job Arbeit ist alles.")
+        self.assertEqual(doc("It's a job we love", None),  # type: ignore[arg-type]
+                         "Startup is just a job It's a job we love.")
 
 
 class TrackedChangeTests(unittest.TestCase):

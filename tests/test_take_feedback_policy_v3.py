@@ -6,10 +6,10 @@ OUTCOME
   O1  The Take is cut into blocks of the right size; when the two best clips
       fall in one block, the boundary between them moves (40 to 120 words,
       never across a slide, never cutting a clip); a one-block Take whose
-      two clips have 5 or more words each becomes two blocks; with no cut
-      in range and no other block to show, the block itself is cut between
-      the two at its most even boundary (N246); each such block names its
-      typed exception.
+      two clips have 5 or more words each becomes two blocks; and a short
+      Take still shows me two moments: when no cut keeps 40 words a side and
+      nothing else could be shown, the block is split between the two
+      (N246); each such block names its typed exception.
   O2  The two highest blocks are shown and the score decides each: one at
       or above the floor is praised (the highest is marked), one below it
       gets the practice prompt; praise is anchored inside a praised block.
@@ -31,19 +31,18 @@ OUTCOME
       or a playing-down "just", with the plain opener for a restart.
   O8  In a shown block the moment is its highest-willfidence clip that can
       be served; a block already frozen keeps its clip.
-  O9  On a plan, the walk shows the two best moments and the moment where
-      this week's level shows most, practised with the level's own practice
-      (the AI voice for pace) and marked with the level's key, even when
-      its voice cleared the floor: a third moment, or one of the two when
-      the level shows most there; with no clip showing the level, the two
-      best (G7, N246 item 3).
-  O10 A clip holding the helper words its slide had when the Take was
-      recorded gives its place among the two best to the next; words picked
-      after the Take began change nothing (N246 item 2).
+  O9  On a plan, I get my two best moments and also the moment where this
+      week's level shows most, practised with the level's own practice (the
+      AI voice for pace), even when its voice was confident: a third
+      moment, or one of the two when the level shows there; with nothing
+      showing the level, just the two best (G7, N246).
+  O10 A sentence that already has the helper words I had when I recorded
+      gives its place to my next best moment; helper words I pick during the
+      walk don't move my moments (N246).
 PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O1 -> test_two_best_clips_in_one_block_get_a_block_each
          O1 -> test_a_one_block_take_is_split_for_two_moments
-         O1 -> test_with_no_cut_in_range_a_lone_block_is_cut_between_the_two
+         O1 -> test_a_short_take_still_shows_two_moments
          O1 -> test_a_frozen_take_keeps_its_blocks
          O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
@@ -52,8 +51,8 @@ PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version
          O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version
          O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen
-         O9 -> test_on_a_plan_the_two_best_and_the_level_s_moment
-         O10 -> test_a_moment_holding_its_helper_words_gives_its_place_to_the_next
+         O9 -> test_on_a_plan_i_get_my_two_best_and_my_level
+         O10 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
 WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
          2026-10-18 ("words first, then voice"), 2026-10-21 (N108, "the
          voice decides"; N112, "There was no single rewrite in the take"), 2026-10-22 (N113, "After the
@@ -567,7 +566,7 @@ def test_a_one_block_take_is_split_for_two_moments():
     assert _cut(_clips_frame(short)) == [(0, 94, "closest_outside_range")]
 
 
-def test_with_no_cut_in_range_a_lone_block_is_cut_between_the_two():
+def test_a_short_take_still_shows_two_moments():
     """Founder 2026-10-28 (N246 item 1: "I've seen only one confident
     moment"): with no cut keeping 40 to 120 words a side, the blocks stayed
     as they were, and a Take whose clips all sat in one block showed one
@@ -713,7 +712,7 @@ def _walk(frame):
             for b in frame["blocks"] if b["most_confident"] or b["carries_exercise"]]
 
 
-def test_on_a_plan_the_two_best_and_the_level_s_moment():
+def test_on_a_plan_i_get_my_two_best_and_my_level():
     rushed = (140, 140, 140, 200)  # p3 is said far faster than the speaker's own usual
     assert _walk(_paced_frame(rushed)) == [("p0", True, None, None), ("p1", True, None, None)]
     # The level shows on p3: the two best, and p3 practised as well (N246 item 3).
@@ -730,7 +729,7 @@ def test_on_a_plan_the_two_best_and_the_level_s_moment():
         ("p0", True, None, None), ("p1", True, None, None)]
 
 
-def test_a_moment_holding_its_helper_words_gives_its_place_to_the_next():
+def test_a_sentence_with_my_helper_words_gives_way_to_the_next():
     """Founder 2026-10-28 (N246 item 2): "if there is already a confident
     moment and helper words, go for the next confident moment"."""
     from services.slide_helper_words import held_at_take
