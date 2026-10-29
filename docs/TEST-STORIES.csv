@@ -2825,12 +2825,16 @@ Skip), then Will's new principle; only Accept or my edited wording
 adds it to my Life Panel; every step is a row of the one thread, a
 repeat tap writes nothing, and the lens reopens where it stands.
 O5  Not now under the case lands as my bubble, then ""Noted."".
-O6  Will reads my last case in the chat.","O1 -> test_sunday_brings_a_case_only_when_my_notes_show_one
+O6  Will reads my last case in the chat.
+O7  A week whose notes show sales stalling asks ""Which step was it?"" with
+the sale's four steps (or my own) in place of the bugs, only where the
+sales framing is on; without it, the bugs as before (N241 P3).","O1 -> test_sunday_brings_a_case_only_when_my_notes_show_one
 O2 -> test_only_my_notes_of_the_last_seven_days_are_read
 O3 -> test_asked_in_my_own_words
 O4 -> test_the_lens_walks_me_through_it_and_adds_only_on_my_yes
 O5 -> test_not_now_under_the_case
-O6 -> test_will_reads_my_last_case","Will learning plan, step 2: the Sunday note as a lens (locked 2026-10-26, N158, N170; rules in the frontend's principles.md §1 L)."
+O6 -> test_will_reads_my_last_case
+O7 -> test_a_sales_week_asks_the_step_not_the_bug","Will learning plan, step 2: the Sunday note as a lens (locked 2026-10-26, N158, N170; rules in the frontend's principles.md §1 L)."
 tests/test_take_comparison.py,Story,"As a speaker, I never want to see my pitch, pace or pauses as numbers, so that feedback stays in words (Never rule 1).","O1  The retired take comparison (GET /v2/explore/arc/<id>/take-comparison,
 founder 2026-10-19) answers 410 GONE, reads nothing, sends no
 measurement number, and logs retired_route_called so any caller left

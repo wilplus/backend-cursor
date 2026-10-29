@@ -409,7 +409,7 @@
     "sunday_note.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "e720ab3137e3298f4c844bbc64f1ee0a6601cde951169f28709c15c48ea027e1"
+      "sha256": "e6e3996fabf29f6ccfa964504cb69d747ff5dee294ad45e30ea7e9f86160a3c6"
     },
     "swap_continuity.system": {
       "kind": "builder",

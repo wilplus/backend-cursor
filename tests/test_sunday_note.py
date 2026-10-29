@@ -20,12 +20,16 @@ OUTCOME
       repeat tap writes nothing, and the lens reopens where it stands.
   O5  Not now under the case lands as my bubble, then "Noted.".
   O6  Will reads my last case in the chat.
+  O7  A week whose notes show sales stalling asks "Which step was it?" with
+      the sale's four steps (or my own) in place of the bugs, only where the
+      sales framing is on; without it, the bugs as before (N241 P3).
 PROVES   O1 -> test_sunday_brings_a_case_only_when_my_notes_show_one
          O2 -> test_only_my_notes_of_the_last_seven_days_are_read
          O3 -> test_asked_in_my_own_words
          O4 -> test_the_lens_walks_me_through_it_and_adds_only_on_my_yes
          O5 -> test_not_now_under_the_case
          O6 -> test_will_reads_my_last_case
+         O7 -> test_a_sales_week_asks_the_step_not_the_bug
 WHY      Will learning plan, step 2: the Sunday note as a lens (locked
          2026-10-26, N158, N170; rules in the frontend's principles.md §1 L).
 """
@@ -248,3 +252,28 @@ def test_will_reads_my_last_case(founder):
     sn.answer(db, "u", str(note["id"]), "bug", "hubris")
     block = voice_notebook.prompt_block(db, "u")
     assert CASE["case"] in block and "They named it hubris." in block
+
+
+def test_a_sales_week_asks_the_step_not_the_bug(founder, monkeypatch):
+    founder["case"] = {**CASE, "kind": "sales",
+                       "case": "Your deals went quiet after the proposal: Acme, Nordic and Bauer.",
+                       "new_principle": "Book the next call before you send the proposal."}
+    db = _Db()
+    nid = str(_asked(db)["id"])
+    sn.answer(db, "u", nid, "open")
+    shown = sn.answer(db, "u", nid, "bug", "follow_up")
+    assert shown["kind"] == "sales"
+    assert [r["body"] for r in shown["rows"]] == [
+        sn.COPY["which_step"], "📨 The follow-up", sn.COPY["applied"]]
+    assert db.notes[nid].get("pattern") is None  # a step is not a bug
+
+    other = str(_asked(db)["id"])
+    sn.answer(db, "u", other, "open")
+    assert sn.answer(db, "u", other, "bug", "Pricing")["rows"][1]["body"] == "Pricing"
+
+    monkeypatch.setattr("services.rings.feature_is_on_for_user",
+                        lambda feature, user, database=None: user == "u" and feature != "sales_framing")
+    plain = str(_asked(db)["id"])
+    sn.answer(db, "u", plain, "open")
+    shown = sn.answer(db, "u", plain, "bug", "hubris")
+    assert shown["kind"] == "self" and shown["rows"][0]["body"] == sn.COPY["which"]
