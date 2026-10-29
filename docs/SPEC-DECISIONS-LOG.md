@@ -6889,6 +6889,7 @@ countries it ships in.
 the app's name and splash) are shown to the founder before they ship
 (Never 4).
 No rules page. No migration in this entry.
+
 **N268 · After a good try, Will may quote the speaker's own notebook in the
 walk, and "Keep my words" gets its own line (founder, the Claude Code chat,
 29 October 2026, on the prototype
