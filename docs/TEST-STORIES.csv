@@ -2748,6 +2748,8 @@ nothing kept about the person.
 O2  The founder reads, per day and in all, how many opened the screen and
 how many made an account, by way; nobody else can read it.","O1 -> SignupCountTest::test_opening_the_screen_counts_without_an_account
 O2 -> SignupCountTest::test_the_founder_reads_seen_and_made_by_way","Founder 2026-10-26, N207 item 6 (N174 item 6)."
+tests/test_signup_email_in_use.py,Story,"As a person who already has an account and fills in the sign-up form again, I want to be told my email is registered and sent to sign in.","O1  A sign-up with a registered email is answered 409 EMAIL_IN_USE.
+O2  That answer is not reported to Sentry as a server error.","O1, O2 -> test_a_registered_email_is_told_to_sign_in","Sentry 2026-10-29: ""AuthApiError v2.v2_auth_signup — A user with this email address has already been registered"" raised as an error on every repeat sign-up."
 tests/test_single_deliverable.py,Story,"As a speaker, I want my Ideal Text free in both states, never the coach's unfinished edit, with the only paid item being key-moment explanations, so that I get my text without a paywall and pay only for extras.","O1  The Ideal Text GET never shows the coach's in-progress edit.
 O2  Never-1: the Ideal Text GET carries the text and no scores or
 internal reads; the stored suggestions snapshot drops internal
