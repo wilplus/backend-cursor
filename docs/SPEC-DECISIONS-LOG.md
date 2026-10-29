@@ -7034,3 +7034,30 @@ The rules: frontend
 §6, the line for N272, and
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §1 D4. No migration.
+
+**N273 · A voice answer shows the words Will heard; the transcriber's stock
+lines are nothing heard (founder, the Claude Code chat, 29 October 2026, on
+a screenshot of the plan's questions where Will answered two voice answers
+with "Got it, thank you for putting me right. You thanked me for watching."
+and asked the same question again: "it does not record my answer. It's
+looped here"; "for these short answers, I'd like to see it like it's a
+microphone recording, you know, like this loading and then words appear so
+that I can see exactly what my message was").** For N135, N150 and N262:
+1. **The words under the voice.** A voice answer's orange bubble shows the
+moment it is sent, playing from the phone, with the typing dots under the
+voice while it is heard; then the words Will heard take the dots' place.
+Every voice answer keeps its words under it, as a phone writes out a voice
+message. They are the speaker's own words, so no new words.
+2. **The transcriber's stock lines are nothing heard.** A clip with no
+words in it can come back from the transcriber as a stock line from the
+videos it learnt on ("Thanks for watching", "Thank you", "Subtitles by the
+Amara.org community"). A voice answer that is only such lines is treated
+as N262 item 2's nothing heard: not kept, and Will says "Sorry, I didn't
+quite catch that. Could you say it again?". Inside a longer answer they
+are the speaker's own words.
+3. **A correction only when sure.** The AI that writes Will's turn takes an
+answer as a correction (N262 item 3) only when it is sure; in doubt, it is
+an answer.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 B3 and B8, §6. No migration.
