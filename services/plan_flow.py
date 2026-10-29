@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -239,7 +239,7 @@ def view(database: Any, user_id: str, plan: dict) -> dict:
         # A new event's questions wait for the next Take (A3); a new
         # speaker's wait, after a Take recorded first, for that Take's walk,
         # where they come back (N262 item 1).
-        "waiting": bool(facts.get("wait_take")) or (first_asking and len(takes) > _takes_seen(plan)),
+        "waiting": bool(facts.get("wait_take")) or (first_asking and _walk_due(plan, takes)),
         # "Start your first recording" under "Record your answer" (N262).
         "record_now": first_asking and not takes,
         "onboarding": _onboarding(plan, done),
@@ -282,6 +282,16 @@ def _takes_seen(plan: dict) -> int:
         return int(_facts(plan).get("takes_seen") or 0)
     except (TypeError, ValueError):
         return 0
+
+
+#: How long a new speaker's questions wait for a Take's walk: a Take whose
+#: walk never comes (its processing failed) doesn't hold them for good.
+WALK_WAIT = timedelta(days=1)
+
+
+def _walk_due(plan: dict, takes: list[datetime]) -> bool:
+    """A Take recorded during the questions, its walk not yet come (N262)."""
+    return len(takes) > _takes_seen(plan) and _now() - takes[-1] < WALK_WAIT
 
 
 # ── onboarding, which the principles wait for (N243) ───────────────────────
@@ -849,7 +859,10 @@ def _diagnose(database: Any, user_id: str, plan: dict) -> Optional[str]:
     """The level from the voice message and the key line's answer."""
     answers = database.list_plan_answers(str(user_id), plan["id"])
     why = next((a.get("readings") or {} for a in answers if a.get("kind") == "why"), {})
-    key = next((a.get("readings") or {} for a in answers if a.get("kind") == "key"), {})
+    # The key line as the plan keeps it: a correction's, if it was put right (N262).
+    said = str(_facts(plan).get("key_answer_id") or "")
+    key = next((a.get("readings") or {} for a in answers if str(a.get("id")) == said),
+               next((a.get("readings") or {} for a in answers if a.get("kind") == "key"), {}))
     readings = dict(why)
     if key.get("wpm"):
         readings["key_wpm"] = key["wpm"]

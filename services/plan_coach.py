@@ -212,8 +212,10 @@ def blind(database: Any, plan: dict, kind: Optional[str], *, pseudonym: str) -> 
                     "take_session_id": str(take) if take else None})
         return out
     answers = _answers(database, plan)
+    # The voice message itself: a correction of it (N262) is kept as a "why"
+    # too, but it is a few words, not the voice to pick a level from.
     why = [a for a in answers if a.get("kind") == "why"]
-    out.update({"why": _voice(why[-1] if why else None), "key_line": _key_line(plan, answers),
+    out.update({"why": _voice(why[0] if why else None), "key_line": _key_line(plan, answers),
                 "levels": [{"key": k, "name": name} for k, name in P.LEVELS.items()]})
     return out
 
