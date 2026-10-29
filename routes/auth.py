@@ -199,14 +199,15 @@ def signup():
         }), 201
 
     except Exception as e:
-        sentry_sdk.capture_exception(e)
-        # Surface duplicate-email errors clearly.
-        msg = str(e)
-        if "already registered" in msg.lower() or "already been registered" in msg.lower():
+        # A duplicate email is an expected answer (409, the form sends the
+        # person to sign in), not a server fault: don't report it to Sentry.
+        msg = str(e).lower()
+        if "already registered" in msg or "already been registered" in msg:
             return jsonify({
                 "code": "EMAIL_IN_USE",
                 "error": "An account with this email already exists.",
             }), 409
+        sentry_sdk.capture_exception(e)
         return jsonify({"code": "SIGNUP_ERROR", "error": "Registration failed. Please try again."}), 500
 
 @auth_bp.route("/login", methods=["POST"])
