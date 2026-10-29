@@ -6704,3 +6704,26 @@ it is opened again.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §1 B9, B10 and C3. No migration.
+
+**N260 · One project at a time in the chat too, and "Settings" in its
+question (founder, the Claude Code chat, 29 October 2026, on the prototype
+https://claude.ai/artifact/Ta5hMGw8EbA6ewUssUugMK: "not to bring it back
+from data and consent but Settings tab in the (hamburger menu icon)", then
+"ok it's good; you have my GO!").** For N254, N196 and N257:
+1. The question's sentence ends "you can bring it back from Settings."
+in place of "from Data & consent": the ☰ menu's Settings page (renamed
+from Data & consent, N196) is where the project list and Unarchive are.
+Everything else in N254 item 4 stands. Signed.
+2. Will's "Create new project" button in the chat asks the same question
+before a new project starts, when there is a current project. In the chat
+it takes the message box's place, as the WhatsApp ask and N257's slides
+upload do: a grey card with the title and the sentence, then "Cancel" |
+"Continue". Continue archives the current project and opens the new
+project's setup as before; Cancel brings the message box back and leaves
+the button under Will's reply. With no current project the button starts
+the project at once, as today.
+3. Updating the slides from the chat (N257) is as drawn on the same
+prototype; nothing changes there.
+The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md),
+with the code. No migration in this entry.
