@@ -845,7 +845,8 @@ def test_prewarm_opens_the_practice_and_the_clip_and_skips_without_a_voice(allow
 def test_a_voice_still_being_made_is_waited_for_a_bounded_number_of_times(monkeypatch):
     """Asked for before the clone is ready: the cycle waits (`no_voice`),
     the walk already sees the clip's place, one delayed retry is queued per
-    wait, and after the last wait only the next ask retries."""
+    wait, and after the last wait the clip is unavailable (the walk stops
+    showing the dots) until a later ask finds the voice."""
     from services import job_queue
     queued: list = []
     monkeypatch.setattr(job_queue, "enqueue",
@@ -874,11 +875,46 @@ def test_a_voice_still_being_made_is_waited_for_a_bounded_number_of_times(monkey
             ai_voice_clip.generate(cycle["id"], "", database=db, provider=voices)
         assert cycle["generation_metadata"] == {"no_voice_waits": ai_voice_clip.NO_VOICE_MAX_WAITS}
         assert len(queued) == ai_voice_clip.NO_VOICE_MAX_WAITS
+        assert ai_voice_clip.state(db, db.practice, cycle)["clip"]["state"] == "unavailable"
         # The voice arrives: the next ask makes the clip as before.
         db.client.tables["ai_voice_clones"][0].update(
             {"status": "ready", "provider_voice_id": "voice-abc"})
         done = _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
         assert done["clip"]["state"] == "ready" and voices.spoken == 1
+
+
+def test_a_voice_that_will_not_come_is_not_waited_for(monkeypatch):
+    """A new speaker whose Take made no voice (too short, failed, or off):
+    the clip is unavailable at once, so the walk shows the locked Exercise
+    instead of the dots for minutes."""
+    from services import job_queue
+    queued: list = []
+    monkeypatch.setattr(job_queue, "enqueue",
+                        lambda path, *a, **k: (queued.append((path, a, k)), True)[1])
+    with _on():
+        db = _Db(_practice(), _snip(150, pause_ratio=0.02), TAKE)
+        db.client.tables.setdefault("ai_voice_clones", []).append(
+            {"owner_user_id": OWNER, "status": "none", "failure_kind": "too_short",
+             "enabled": True, "created_at": "2026-10-11T00:00:00+00:00"})
+        voices = _Voices()
+        out = _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
+        assert out["clip"]["state"] == "unavailable" and out["demo"] != "ai_voice"
+        assert voices.spoken == 0 and queued == []
+
+
+def test_a_speaker_whose_voice_is_turned_off_is_never_offered_a_clip():
+    """Off for one speaker (their row's `enabled` false): the walk's ask
+    gets no clip and no cycle is opened, so the dots never show; everyone
+    else is unaffected."""
+    with _on():
+        db = _Db(_practice(), _snip(150, pause_ratio=0.02), TAKE)
+        db.client.tables.setdefault("ai_voice_clones", []).append(
+            {"owner_user_id": OWNER, "status": "none", "enabled": False,
+             "created_at": "2026-10-11T00:00:00+00:00"})
+        voices = _Voices()
+        out = _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
+        assert out["clip"] is None and out["demo"] != "ai_voice"
+        assert not db.client.tables.get("ai_voice_cycles") and voices.spoken == 0
 
 
 def test_a_spoken_takes_upload_starts_the_voice_and_a_read_take_or_guest_does_not():
