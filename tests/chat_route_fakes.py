@@ -14,9 +14,10 @@ from unittest.mock import patch
 USER = "9f4e75b8-268b-468d-9111-000000000077"
 CHIP = {"intent": "library_recall", "answer": "Tap the button below.",
         "show_record_ui": False, "suggested_action": "trainings"}
-CHOICE = {"intent": "replace_pre_take_deck",
-          "answer": "Choose what happens next.",
-          "suggested_actions": ["replace_pdf", "create_new_project"]}
+CHOICE = {"intent": "update_slides",
+          "answer": "You can update the slides in this project. "
+                    "Your next Take uses them.",
+          "suggested_actions": ["update_slides"]}
 
 
 class ChatRouteHarness(unittest.TestCase):

@@ -14,8 +14,8 @@ OUTCOME
       chat's safety reply; before the question is answered it is never asked
       instead of that reply.
   O5  Will reads the notes, only once the person said Yes.
-  O6  A tag the Life Panel owns is kept as a note, then left to the Life
-      Panel to answer.
+  O6  Every typed "#" is one note, as the small mic's: the Life Panel's old
+      tags are notes too, and "#note" is read as "#" (N253).
   O7  While a note is said, its words so far come back, hesitations and
       all, and nothing is kept (N194).
   O8  A note the app sends twice under one key (the app closed mid-send)
@@ -28,7 +28,7 @@ PROVES   O1 -> test_without_the_notebook_the_chat_is_unchanged
          O3 -> test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash
          O4 -> test_a_crisis_note_gets_the_safety_reply
          O5 -> test_will_reads_the_notes_only_after_yes
-         O6 -> test_a_life_panel_tag_is_kept_and_left_to_the_life_panel
+         O6 -> test_every_typed_hash_is_one_note_as_the_mic
          O7 -> test_the_live_words_come_back_and_nothing_is_kept
          O8 -> test_a_note_sent_twice_is_kept_once
          O9 -> test_a_voice_note_is_fixed_in_the_notebook_and_the_thread

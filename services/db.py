@@ -1028,6 +1028,37 @@ class DatabaseService:
                            project_id, e)
             return None
 
+    def get_project_row(self, project_id: str) -> Optional[dict]:
+        """The project's setup and archive state by id, for a caller that
+        has already proven ownership (N257: the next deck; N14: archived).
+        None when missing or erased; raises on a failed read."""
+        result = (self.client.table("projects")
+                  .select("id,owner_principal_id,setup,archived_at,"
+                          "tombstoned_at")
+                  .eq("id", str(project_id)).limit(1).execute())
+        row = result.data[0] if result.data else None
+        if row and row.get("tombstoned_at"):
+            return None
+        return row
+
+    def update_project_setup(
+        self, project_id: str, owner_principal_id: str, setup: dict,
+    ) -> Optional[dict]:
+        """Replace an owned, unerased project's setup JSON (the caller
+        merges). The updated row, or None."""
+        try:
+            rows = (self.client.table("projects")
+                    .update({"setup": dict(setup)})
+                    .eq("id", str(project_id))
+                    .eq("owner_principal_id", str(owner_principal_id))
+                    .is_("tombstoned_at", "null")
+                    .execute().data or [])
+            return rows[0] if isinstance(rows, list) and rows else None
+        except Exception as e:
+            logger.warning("update_project_setup failed project=%s: %s",
+                           project_id, e, exc_info=True)
+            return None
+
     def bind_take_to_project(
         self,
         take_id: str,

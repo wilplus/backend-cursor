@@ -142,6 +142,39 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .itcard .tile { width: 72px; aspect-ratio: 16/9; flex: none; border-radius: 6px; overflow: hidden; }
 .itcard b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 15px; font-weight: 600; }
 .itcard .ver { flex: none; border-radius: 999px; background: #F5F5F5; padding: 2px 10px; font-size: 12px; font-weight: 600; }
+/* The list of chats and a chat's header (N251), in the app's own parts */
+.lst { position: absolute; left: 0; right: 0; top: 73px; bottom: 33px; background: #FFFFFF; overflow-y: auto; z-index: 2; scrollbar-width: none; }
+.lst::-webkit-scrollbar { display: none; }
+.lst .lh { padding: 14px 16px 2px; } .lst .lh b { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.flt { display: flex; gap: 8px; padding: 10px 16px 8px; }
+.flt button { height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; font: 400 14px var(--font-app); color: #121212; }
+.flt button[aria-pressed="true"] { background: #121212; color: #FFFFFF; border-color: #121212; }
+.crow { display: flex; align-items: flex-start; gap: 12px; width: 100%; border: 0; background: #FFFFFF; padding: 10px 16px 0; text-align: left; font-family: var(--font-app); color: #121212; }
+.crow .av { width: 52px; height: 52px; margin-bottom: 10px; }
+.crow .mid { flex: 1; min-width: 0; border-bottom: 1px solid #F0F0F0; padding: 3px 0 12px; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.crow .mid b { display: block; max-width: 100%; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crow .pv { display: block; max-width: 100%; font-size: 14px; color: #737373; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crow .rt { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; padding-top: 4px; }
+.crow .tm { font-size: 12px; color: #737373; } .crow .tm.on { color: #FF640A; font-weight: 600; }
+.crow .ub { min-width: 20px; height: 20px; border-radius: 999px; background: #FF640A; color: #FFFFFF; font-size: 12px; font-weight: 600; display: grid; place-items: center; padding: 0 6px; box-sizing: border-box; }
+.crow .pin { font-size: 11px; font-weight: 400; color: #A3A3A3; margin-left: 4px; }
+.st { margin-top: 3px; font-size: 11.5px; color: #737373; border: 1px solid #EBEBEB; border-radius: 999px; padding: 1px 8px; }
+.st.w { color: #A83E00; border-color: #FFD2B5; background: #FFF4EC; }
+.av { width: 36px; height: 36px; border-radius: 50%; flex: none; display: block; }
+.av.will { background: #F5F5F5; display: flex; align-items: center; justify-content: center; gap: 3px; }
+.av.will i { width: 5px; height: 5px; border-radius: 50%; background: #121212; } .av.will i:nth-child(2) { width: 7px; height: 7px; }
+.av.c2 { background: radial-gradient(ellipse at 40% 40%, #F0D9C0 0 25%, #C9A27E 50%, #5B4030 100%); }
+.av.c3 { background: radial-gradient(ellipse at 55% 45%, #EADFD3 0 25%, #B9A08A 55%, #4A3A30 100%); }
+.chd { position: absolute; left: 0; right: 0; top: 73px; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 4px; border-bottom: 1px solid #EBEBEB; background: #FFFFFF; z-index: 3; box-sizing: border-box; }
+.chd .bk { width: 34px; height: 44px; border: 0; background: none; font-size: 28px; line-height: 1; color: #121212; padding: 0; }
+.chd .nm { min-width: 0; } .chd .nm b { display: block; font-size: 15.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chd .nm small { display: block; font-size: 12.5px; color: #737373; }
+.lg-area.sub { top: 129px; height: 616px; }
+.lg-b.them .quote { margin-top: 0; padding: 0; background: transparent; }
+.ans-b { display: flex; flex-direction: column; gap: 6px; width: 78%; }
+.ans-b .al { font-weight: 600; } .ans-b .al small { font-weight: 400; font-size: 12.5px; opacity: 0.9; }
+.ans-b .play { background: #FFFFFF; } .ans-b .play svg path { fill: #FF640A; } .ans-b .bars i { background: rgba(255,255,255,0.55); } .ans-b .t { color: #FFFFFF; }
+.evt { align-self: center; max-width: 86%; text-align: center; font-size: 13.5px; line-height: 1.4; color: #121212; background: #F5F5F5; border-radius: 12px; padding: 8px 12px; animation: up 0.28s ease both; }
 /* The ask's footer: the grey card and the pair (WillabWhatsAppPrompt, SymmetricPair) */
 .lg-dock { position: absolute; left: 0; right: 0; bottom: 33px; background: #FFFFFF; padding: 8px 16px 10px; display: flex; flex-direction: column; gap: 8px; z-index: 4; }
 .wa-card { background: #F5F5F5; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -294,7 +327,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   <nav class="rail" aria-label="Screens">
     <div>
       <h1>Ariel's Lounge</h1>
-      <p class="lede">A customer of Invita Head Spa asks on the site. Ariel answers in her own WillpowerLab Lounge, as a Take. Tap inside the phone. The customer's side is <a href="https://claude.ai/artifact/1u6UrevnTpo9jRZdfa9w83">prototype 1</a>.</p>
+      <p class="lede">A customer of Invita Head Spa asks on the site. Ariel answers in WillpowerLab: one chat per customer, and Will's chat for her feedback (N251). Tap inside the phone. The customer's side is <a href="https://claude.ai/artifact/1u6UrevnTpo9jRZdfa9w83">prototype 1</a>.</p>
     </div>
     <div class="legend" aria-hidden="true">
       <span><i class="dot"></i>Real app</span>
@@ -357,7 +390,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   // What she sees: the labels the client's photo model learns from (N240 item 2)
   const SEEN = [["dry", "Dry scalp"], ["dandruff", "Dandruff"], ["oily", "Oily"], ["irritated", "Irritated"], ["receding", "Receding hairline"]];
   const STAGES = { Ludwig: ["None", "I", "II", "III"], Norwood: ["None", "1", "2", "3", "4", "5", "6", "7"] };
-  const S = { seen: ["dry", "irritated"], scale: "Ludwig", stage: "I", picks: ["scrubber", "deep"], take: 1, sent: false, replied: false, secs: 0 };
+  const S = { phase: "new", seen: ["dry", "irritated"], scale: "Ludwig", stage: "I", picks: ["scrubber", "deep"], take: 1, sent: false, replied: false, secs: 0 };
   const nw = (s) => `<span class="nw">${s}</span>`;
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const ICON = {
@@ -389,36 +422,40 @@ button { font: inherit; color: inherit; cursor: pointer; }
   // ---------- Screens ----------
   const SCREENS = [
     { id: "ping", ch: "A request comes in", name: "WhatsApp tells her", kind: "new",
-      note: { h: "A WhatsApp message brings her to the Lounge", real: ["WhatsApp is already how we reach speakers (the WhatsApp offer in the Lounge)."], changes: ["One message per request, from WillpowerLab's number, with a link that opens her Lounge."], pending: ["Sarah, a customer of Invita, asks for your advice.", "Open your Lounge"], decided: ["d-notify"], asks: ["q-sla"] } },
-    { id: "request", ch: "A request comes in", name: "The request is her ask", kind: "mixed",
-      note: { h: "The request is the Lounge's one ask (E1, D4)", real: ["The Lounge, its header and the message box.", "The ask's footer: the grey card and the pair, Not now and the black button (SymmetricPair)."], changes: ["Will's bubble quotes the customer: the photo, the words, the last digits of the number. With no first name: \"A customer of Invita Head Spa asks…\"", "Answer opens the picker. Not now leaves it in the thread for later."], pending: ["Sarah, a customer of Invita Head Spa, asks for your advice.", "Gets your answer on WhatsApp", "Answer"], decided: ["d-name"], asks: ["q-many", "q-photo"] } },
+      note: { h: "A WhatsApp message brings her to her chats", real: ["WhatsApp is already how we reach speakers (the WhatsApp offer in the Lounge)."], changes: ["One message per request, from WillpowerLab's number, with a link that opens her list of chats."], pending: ["Sarah, a customer of Invita, asks for your advice.", "Open your Lounge"], decided: ["d-notify"], asks: ["q-sla"] } },
+    { id: "list", ch: "A request comes in", name: "Her chats", kind: "new",
+      note: { h: "One chat per customer, Will pinned on top (N251)", real: ["The app's header and footer, today's (screenshot)."], changes: ["Her Lounge opens on a list, as WhatsApp does: Will first, then one chat per customer with the photo as the avatar, the first name and the question, the last message, the unread count and a status.", "Waiting for you comes first. Filters: All, Waiting, Sent, Done.", "A speaker without customer requests never sees the list: the Lounge opens as today."], pending: ["Chats", "All", "Waiting", "Sent", "Done", "Waiting for you", "Sent", "Booked", "Your Takes and feedback"], decided: ["d-chats"], asks: ["q-many"] } },
+    { id: "sarah", ch: "A request comes in", name: "Sarah's chat", kind: "mixed",
+      note: { h: "Everything about Sarah, in Sarah's chat", real: ["The Lounge's bubbles, the message box, and the ask's footer: the grey card and the pair (SymmetricPair)."], changes: ["Sarah's request is her bubble, with the photo and the last digits of her number. The ask in the footer: Not now | Answer.", "No Will bubble here: Will's asks sit in the footer, and what happened is a line in the middle, as WhatsApp's own notes are."], pending: ["Sarah · itchy scalp", "Sarah asks for your advice.", "Gets your answer on WhatsApp", "Not now", "Answer"], decided: ["d-chats", "d-name"], asks: ["q-photo"] } },
     { id: "photo", ch: "A request comes in", name: "The photo, full screen", kind: "new", side: true,
       note: { h: "Tap the photo to see it big", changes: ["The customer's photo, full screen, with their words under it."], pending: [], asks: ["q-photo"] } },
-    { id: "pick", ch: "She answers with a Take", name: "What she sees and recommends", kind: "new",
+    { id: "pick", ch: "She answers, in Sarah's chat", name: "What she sees and recommends", kind: "new",
       note: { h: "Two taps of what she sees, then her picks", real: ["Drawn in the shape of \"Choose your helper words\": the title, the line under it, the box, the black button and the grey link."], changes: ["On top, what she sees in the photo: the condition chips and the hair-loss stage on its scale (Ludwig for women, Norwood for men). These are the labels Invita's photo model learns from (N240).", "Under it, Invita's five treatments with their real prices, and the Scalp Scrubber from Invita's shop. Her picks become the slides she talks over, the request always first."], pending: ["What do you see?", "Dry scalp", "Dandruff", "Oily", "Irritated", "Receding hairline", "Hair loss", "What do you recommend?", "Each one you pick is a slide while you talk. Sarah can book or buy it from your answer.", "Record over 3 slides", "Just the request"], decided: ["d-see"], asks: ["q-catalogue", "q-second", "q-volume"] } },
-    { id: "rec", ch: "She answers with a Take", name: "Recording, camera off", kind: "mixed",
+    { id: "rec", ch: "She answers, in Sarah's chat", name: "Recording, camera off", kind: "mixed",
       note: { h: "Today's recording screen, her picks as the slides", real: ["Take 1 · Slide 1 of 3, the slide card, the strip with the clock, Back and Next slide, the red Finish take on the last slide, the discard dialog."], changes: ["The slides are the customer's photo and question, then her picks. Camera off: her voice only (N226).", "No helper words on a first Take."], pending: ["The question", "At home", "At Invita"], asks: ["q-length"] } },
-    { id: "processing", ch: "She answers with a Take", name: "Processing", kind: "real", img: "processing", auto: 3200, hot: [[318, 8, 56, 56, "send", true]],
+    { id: "processing", ch: "She answers, in Sarah's chat", name: "Processing", kind: "real", img: "processing", auto: 3200, hot: [[318, 8, 56, 56, "send", true]],
       note: { h: "Today's processing wait", real: ["Unchanged. It closes by itself when the Ideal Text is ready."], changes: [], asks: [] } },
-    { id: "send", ch: "She answers with a Take", name: "Send it, then the walk", kind: "mixed",
-      note: { h: "Will asks to send as soon as the Take is ready (decided)", real: ["The Take lands in the thread: the Ideal Text card, orange outline and the new tag (D-FW-19).", "The ask's footer: the grey card and the pair."], changes: ["Will asks to send before the walk, so Sarah gets the answer sooner. The grey card lists what she gets. Not yet keeps the ask.", "After sending, the card keeps its new tag: the walk waits there, as after any Take."], pending: ["Send this answer to Sarah on WhatsApp?", "She gets your voice, the text, and what you picked:", "Not yet", "Send", "Sent on WhatsApp · 4:12 PM"], decided: ["d-send", "d-retake", "d-sender"], asks: ["q-wa"] } },
-    { id: "walk", ch: "Her feedback, after", name: "The walk: good job", kind: "real",
+    { id: "send", ch: "She answers, in Sarah's chat", name: "Send it to Sarah", kind: "mixed",
+      note: { h: "Her answer lands in Sarah's chat; she sends it there", real: ["The orange recording bubble and the Ideal Text card; the ask's footer: the grey card and the pair."], changes: ["Her answer is her bubble in Sarah's chat, with her voice and the Ideal Text card under it. A Take recorded in Sarah's chat can only go to Sarah.", "Send first, walk after: Send sends the WhatsApp link; her feedback waits in Will's chat."], pending: ["Your answer", "Send this answer to Sarah on WhatsApp?", "She gets your voice, the text, and what you picked:", "Not yet", "Send", "Sent on WhatsApp · 4:12 PM"], decided: ["d-chats", "d-send", "d-retake", "d-sender"], asks: ["q-wa"] } },
+    { id: "will", ch: "Her feedback, in Will's chat", name: "Will's chat", kind: "mixed",
+      note: { h: "Will's chat is the Lounge as it is today", real: ["Today's Lounge: Will's bubbles, the Ideal Text card with the orange outline and the new tag, the pair after the walk, Record Take 2."], changes: ["Will tells her the answer went and the feedback is ready. The card opens the walk, as after any Take. Her own Takes and practice stay here too."], pending: ["Your answer to Sarah is sent. Your feedback is ready."], decided: ["d-chats", "d-send"], asks: [] } },
+    { id: "walk", ch: "Her feedback, in Will's chat", name: "The walk: good job", kind: "real",
       note: { h: "Today's walk, on her answer", real: ["Slide 3 · moment 1 of 2, the title, her clip, Will's words, Next. The same walk every speaker gets."], changes: ["Nothing in the walk. The words are about her delivery, never about the advice. It opens from the card, after the answer is sent."], pending: [], decided: ["d-send"], asks: [] } },
-    { id: "clearer", ch: "Her feedback, after", name: "The walk: clearer version", kind: "real",
+    { id: "clearer", ch: "Her feedback, in Will's chat", name: "The walk: clearer version", kind: "real",
       note: { h: "A clearer version, for her next Take", real: ["The clearer version, Accept and practise, Keep my words. Accepting changes her helper words, never what Sarah got: the answer is only what she said (rule 5)."], changes: [], pending: [], asks: [] } },
-    { id: "end", ch: "Her feedback, after", name: "The walk ends", kind: "real",
+    { id: "end", ch: "Her feedback, in Will's chat", name: "The walk ends", kind: "real",
       note: { h: "The end of the walk", real: ["The sheet over the page: Record Take 2 or Back to the text."], changes: [], decided: ["d-retake"], asks: [] } },
-    { id: "ideal", ch: "Her feedback, after", name: "The Ideal Text", kind: "mixed",
+    { id: "ideal", ch: "Her feedback, in Will's chat", name: "The Ideal Text", kind: "mixed",
       note: { h: "The Ideal Text is the answer", real: ["Today's page: the title, AI-generated text · Take 1, each slide with its paragraph, Record Take 2, Close."], changes: ["The slides are the request and her picks. This text, her voice and the picks are what Sarah got.", "Record Take 2 re-records it; Sarah keeps what was sent until Ariel sends again (decided)."], pending: [], decided: ["d-retake"], asks: ["q-edit"] } },
-    { id: "reply", ch: "After", name: "Sarah writes back", kind: "new",
-      note: { h: "A reply from the customer lands in her thread", real: ["The message box: +, Type here, send."], changes: ["Will quotes the customer. Reply puts a chip over the message box, so what she types goes to the customer, not to Will.", "Typed answers only for follow-ups; a new question can be a Take again (N226)."], pending: ["Sarah wrote back:", "Reply", "To Sarah", "Sent to Sarah"], asks: ["q-reply"] } },
+    { id: "reply", ch: "After", name: "Sarah writes back", kind: "mixed",
+      note: { h: "Sarah's reply lands in Sarah's chat", real: ["The message box: +, Type here, send."], changes: ["Her reply is a bubble in Sarah's chat, and what Ariel types there goes straight to Sarah: no chip, no way to write to the wrong person.", "Typed answers only for follow-ups; a new question can be a Take again (N226)."], pending: ["Sent to Sarah"], decided: ["d-chats"], asks: ["q-reply"] } },
     { id: "outcome", ch: "After", name: "Bought and booked", kind: "new",
-      note: { h: "She learns what her answer did", real: [], changes: ["Shopify tells us of the order; Fresha, if it gives the booking back. Will tells her in the thread, and the outcome is kept with the pair: the reward Invita's model learns from (N240)."], pending: ["Sarah bought the Scalp Scrubber.", "Sarah booked the Deep Scalp Treatment at Invita Las Vegas, Thu 12 Nov."], decided: ["d-fresha", "d-shopify"], asks: ["q-fresha"] } },
+      note: { h: "What her answer did, in Sarah's chat and the list", real: [], changes: ["The purchase from Shopify and the booking from Fresha (if Fresha gives it back) are lines in Sarah's chat; the list shows Booked. The outcome is kept with the pair: the reward Invita's model learns from (N240)."], pending: ["Sarah bought the Scalp Scrubber.", "Sarah booked the Deep Scalp Treatment at Invita Las Vegas, Thu 12 Nov."], decided: ["d-fresha", "d-shopify"], asks: ["q-fresha"] } },
   ];
   // What we still need to know before real life (shown per screen and all together).
   const QUESTIONS = {
     "q-sla": "How fast must she answer (the widget promises \"within a day\")? What happens when she doesn't: a reminder, another trichologist, a note to Invita?",
-    "q-many": "Ten requests waiting: one ask at a time in the thread (as drawn), or a list she picks from?",
+    "q-many": "Many requests at once: is sorting \"Waiting for you\" first enough, or does Invita want a daily limit or a reminder?",
     "q-photo": "Photos: one or several? Kept how long after the answer (30 days was proposed)? Who at Invita may see them?",
     "q-catalogue": "Invita's list: who enters the treatments and products and keeps the prices right (Invita, or us from their site)? Their Shopify sells only the Scalp Scrubber: are the Milbon products sold online, or only at the spa?",
     "q-second": "Who is the second trichologist who labels a sample of photos blind, for the test set?",
@@ -428,12 +465,13 @@ button { font: inherit; color: inherit; cursor: pointer; }
     "q-length": "Does an answer use her tokens, or is it free for the client's people?",
     "q-edit": "Can she fix a word in the text before sending (a misheard product name), or only by recording again?",
     "q-wa": "Invita's WhatsApp sender: Meta's template approval, and the US SMS fallback (which provider)?",
-    "q-reply": "Her typed replies: from her Lounge only, or does Invita want one shared inbox for several trichologists?",
+    "q-reply": "When Invita has several trichologists: who may open a customer's chat, and who assigns it?",
     "q-accounts": "Ariel's account: does Invita invite her, or do we? Her photo and her name as the customer sees them?",
     "q-photo-train": "Before any photo trains a model: the customer's yes to training, how long photos are kept, and counsel on the US medical-device question.",
   };
   // Decided by the founder, 28 October 2026, after the first version of this prototype.
   const DECIDED = {
+    "d-chats": "Her Lounge becomes a list of chats: Will pinned, one chat per customer; no group chat; a team later as a shared queue (N251).",
     "d-see": "What she sees: condition chips and the hair-loss stage on the picker, about two taps (N240).",
     "d-fresha": "Booking stays in Fresha: Book opens the spa's Fresha page; Ariel's days come from Fresha (N239).",
     "d-shopify": "Products are bought in Invita's Shopify checkout (N239).",
@@ -494,17 +532,24 @@ button { font: inherit; color: inherit; cursor: pointer; }
   DRAW.ping = () => {
     screen.innerHTML = `<div class="lock"><span class="d">Wednesday 28 October</span><span class="tm">1:52</span>
       <button class="ntf cue-ring" type="button" id="n"><span class="ic">${ICON.wa}</span><span class="b"><b>WillpowerLab <small>now</small></b>${nw(`${NAME}, a customer of Invita, asks for your advice.`)} ${nw("Open your Lounge")}: willpowerlab.com/l</span></button></div>`;
-    screen.querySelector("#n").onclick = () => go("request");
+    screen.querySelector("#n").onclick = () => go("list");
   };
 
-  // The Lounge: today's header and message box (screenshot) with the thread drawn over it.
-  const loungeBase = (inner) => `<img class="shot" src="img/lounge.webp" alt="The Lounge, the real app screen"><div class="lg-area" id="lg">${inner}</div>`;
+  // The Lounge (today's header, message box and footer, as a screenshot) with, over it, the list of chats or one chat (N251).
+  const loungeBase = (inner, head = "") => `<img class="shot" src="img/lounge.webp" alt="The Lounge, the real app screen">${head}<div class="lg-area${head ? " sub" : ""}" id="lg">${inner}</div>`;
+  const WILLAV = `<span class="av will" aria-hidden="true"><i></i><i></i><i></i></span>`;
+  const status = () => ({ new: "Waiting for you", sent: "Sent", walked: "Sent", replied: "Waiting for you", booked: "Booked" })[S.phase];
+  const chatHead = (who) => who === "will"
+    ? `<div class="chd"><button class="bk" type="button" data-list aria-label="Back to chats">‹</button>${WILLAV}<span class="nm"><b>Will</b><small>${nw("Your Takes and feedback")}</small></span></div>`
+    : `<div class="chd"><button class="bk" type="button" data-list aria-label="Back to chats">‹</button><span class="av scalp" aria-hidden="true"></span><span class="nm"><b>${NAME} · ${nw("itchy scalp")}</b><small>${nw(status())}</small></span></div>`;
+  function bindHead() { screen.querySelectorAll("[data-list]").forEach((b) => b.onclick = () => go("list")); }
   const earlier = () => `<div class="lg-day">Monday 26 October</div>
     <div class="lg-b">${nw("Welcome, Ariel. Invita's customers will ask you here.")}</div>`;
   const quote = (when) => `<div class="quote"><button class="ph scalp" type="button" data-photo aria-label="Open Sarah's photo"></button><span class="qt">${esc(ASK)}<small>${when}</small></span></div>`;
-  const requestBubble = () => `<div class="lg-day">Today 1:52 PM</div><div class="lg-b">${nw(`${NAME}, a customer of Invita Head Spa, asks for your advice.`)}${quote(nw(`${PHONE} · gets your answer on WhatsApp`))}</div>`;
+  // Sarah's request, as her own bubble in her chat
+  const requestBubble = () => `<div class="lg-day">Today 1:52 PM</div><div class="lg-b them">${quote(nw(`${PHONE} · gets your answer on WhatsApp`))}</div>`;
   function bindPhoto() { screen.querySelectorAll("[data-photo]").forEach((b) => b.onclick = () => go("photo")); }
-  function fitThread() { const lg = screen.querySelector("#lg"), dock = screen.querySelector(".lg-dock, .cmp"); if (!lg) return; lg.style.height = (dock ? 811 - dock.offsetHeight - 73 : 672) + "px"; lg.scrollTop = lg.scrollHeight; }
+  function fitThread() { const lg = screen.querySelector("#lg"), dock = screen.querySelector(".lg-dock, .cmp"); if (!lg) return; const top = lg.offsetTop; lg.style.height = (dock ? 811 - dock.offsetHeight - top : 745 - top) + "px"; lg.scrollTop = lg.scrollHeight; }
   function addToThread(h) { const lg = screen.querySelector("#lg"); lg.insertAdjacentHTML("beforeend", h); fitThread(); }
   function dockPair({ card = "", not, act, onNot, onAct }) {
     screen.insertAdjacentHTML("beforeend", `<div class="lg-dock" id="dock">${card}<div class="pair"><button class="close" type="button" id="not">${not}</button><button class="act cue-ring" type="button" id="act">${act}</button></div></div>`);
@@ -514,12 +559,42 @@ button { font: inherit; color: inherit; cursor: pointer; }
   }
   const nextTake = (n) => `<div class="lg-b">Look, practice makes perfect. If you're ready, let's go with the next take. 💪<button class="lg-rec" type="button" data-rec><span class="rdot"></span>Record Take ${n}</button></div>`;
   function bindRec() { screen.querySelectorAll("[data-rec]").forEach((b) => b.onclick = () => toast("Take 2 re-records it. Sarah keeps what you sent until you send again.")); }
+  const note = (t) => `<div class="lg-day">${t}</div>`;
 
-  DRAW.request = () => {
-    screen.innerHTML = loungeBase(earlier() + requestBubble());
-    bindPhoto();
-    dockPair({ not: "Not now", act: nw("Answer"), onAct: () => go("pick"),
-      onNot: () => { addToThread(`<div class="lg-b lg-me">Not now</div><div class="lg-b">Noted. I'll bring it back after your next Take.</div>`); later(() => toast("The request stays in the thread. Tap Next to see Answer."), 400); } });
+  // The list of chats: Will pinned, then one chat per customer, waiting first (N251)
+  const OTHERS = [
+    { id: "maya", name: "Maya · oily scalp", pv: "You: Sent on WhatsApp", tm: "Yesterday", st: "Sent", cls: "c2" },
+    { id: "jen", name: "Jen · dandruff", pv: "Booked the Basic Scalp Treatment", tm: "Mon", st: "Booked", cls: "c3" },
+  ];
+  let filter = "All";
+  DRAW.list = () => {
+    const willPv = S.phase === "sent" ? "Your answer to Sarah is sent. Your feedback is ready." : "Look, practice makes perfect. If you're ready, let's go with the next take.";
+    const sarahPv = { new: esc(ASK), sent: "You: Sent on WhatsApp", walked: "You: Sent on WhatsApp", replied: esc(REPLY), booked: "Booked the Deep Scalp Treatment" }[S.phase];
+    const unread = S.phase === "new" || S.phase === "replied";
+    const rows = [{ id: "sarah", name: `${NAME} · itchy scalp`, pv: sarahPv, tm: { new: "1:52 PM", sent: "4:12 PM", walked: "4:12 PM", replied: "6:03 PM", booked: "7:52 PM" }[S.phase], st: status(), un: unread ? 1 : 0, cls: "scalp" }, ...OTHERS];
+    const want = (st) => filter === "All" || (filter === "Waiting" && st === "Waiting for you") || (filter === "Sent" && st === "Sent") || (filter === "Done" && st === "Booked");
+    rows.sort((a, b) => (b.st === "Waiting for you") - (a.st === "Waiting for you"));
+    screen.innerHTML = `<img class="shot" src="img/lounge.webp" alt="The Lounge, the real app screen"><div class="lst" id="lst">
+      <div class="lh"><b>${nw("Chats")}</b></div>
+      <div class="flt">${["All", "Waiting", "Sent", "Done"].map((f) => `<button type="button" data-f="${f}" aria-pressed="${filter === f}">${nw(f)}</button>`).join("")}</div>
+      <button class="crow" type="button" data-open="will">${WILLAV}<span class="mid"><b>Will <span class="pin">${nw("pinned")}</span></b><span class="pv">${nw(willPv)}</span></span><span class="rt"><span class="tm${S.phase === "sent" ? " on" : ""}">${S.phase === "sent" ? "4:12 PM" : "Mon"}</span>${S.phase === "sent" ? '<span class="ub">1</span>' : ""}</span></button>
+      ${rows.filter((x) => want(x.st)).map((x) => `<button class="crow${x.id === "sarah" ? " cue-ring" : ""}" type="button" data-open="${x.id}"><span class="av ${x.cls}" aria-hidden="true"></span><span class="mid"><b>${x.name}</b><span class="pv">${x.pv}</span><span class="st${x.st === "Waiting for you" ? " w" : ""}">${nw(x.st)}</span></span><span class="rt"><span class="tm${x.un ? " on" : ""}">${x.tm}</span>${x.un ? `<span class="ub">${x.un}</span>` : ""}</span></button>`).join("")}
+    </div>`;
+    screen.querySelectorAll("[data-f]").forEach((b) => b.onclick = () => { filter = b.dataset.f; DRAW.list(); });
+    screen.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => {
+      const o = b.dataset.open;
+      if (o === "will") go(S.phase === "new" ? "will" : "will");
+      else if (o === "sarah") go({ new: "sarah", sent: "send", walked: "send", replied: "reply", booked: "outcome" }[S.phase]);
+      else toast("Another customer's chat, the same way.");
+    });
+  };
+
+  DRAW.sarah = () => {
+    S.phase = "new";
+    screen.innerHTML = loungeBase(requestBubble(), chatHead("sarah"));
+    bindPhoto(); bindHead();
+    dockPair({ card: `<div class="wa-card"><p class="wa-title">${nw(`${NAME} asks for your advice.`)}</p></div>`, not: "Not now", act: nw("Answer"), onAct: () => go("pick"),
+      onNot: () => { addToThread(note(nw("Not now: it waits here, first in your chats."))); } });
   };
   DRAW.photo = () => {
     screen.innerHTML = `<div class="viewer"><div class="vh">${xb("vx")}</div><div class="img scalp"></div><p>${esc(ASK)}</p></div>`;
@@ -558,7 +633,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
     });
     screen.querySelector("#go").onclick = () => go("rec");
     screen.querySelector("#only").onclick = () => { S.picks = []; go("rec"); };
-    screen.querySelector("#px").onclick = () => go("request");
+    screen.querySelector("#px").onclick = () => go("sarah");
   };
 
   DRAW.rec = () => {
@@ -588,13 +663,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
       sc.innerHTML = `<div class="dlg"><h2>Discard this take?</h2><p>This recording has not been saved.</p><div class="row"><button class="o" type="button" id="keep">Keep recording</button><button class="r" type="button" id="disc">Discard take</button></div></div>`;
       screen.appendChild(sc);
       sc.querySelector("#keep").onclick = () => sc.remove();
-      sc.querySelector("#disc").onclick = () => go("request");
+      sc.querySelector("#disc").onclick = () => go("sarah");
     };
   };
 
-  // The Take's thread: the request, her "Answer", then the Take.
+  // Her answer in Sarah's chat: her bubble with her voice, the Ideal Text card under it (N251)
   const tile = () => `<span class="tile scalp" aria-hidden="true"></span>`;
-  const takeThread = () => `${requestBubble()}<div class="lg-b lg-me">${nw("Answer")}</div>`;
+  const answerHtml = (n) => `<div class="lg-b lg-me ans-b"><span class="al">${nw("Your answer")} <small>· Take ${n}</small></span>${player(42, 7)}</div>
+    <div style="align-self:flex-end;width:78%"><button class="itcard solo" type="button" data-ideal>${tile()}<b>${TITLE}</b><span class="ver">${n}.0</span></button></div>`;
   const pairHtml = (n) => `<div class="pair-w"><button class="fw" type="button" data-walk><span>Feedback walk</span><span class="fmeta">Oct 28, 2026</span></button><button class="itcard" type="button" data-ideal>${tile()}<b>${TITLE}</b><span class="ver">${n}.0</span></button></div>`;
   function bindPair() { screen.querySelectorAll("[data-walk]").forEach((b) => b.onclick = () => go("walk")); screen.querySelectorAll("[data-ideal]").forEach((b) => b.onclick = () => go("ideal")); }
 
@@ -639,68 +715,62 @@ button { font: inherit; color: inherit; cursor: pointer; }
   };
   DRAW.ideal = () => {
     screen.innerHTML = idealPage(S.take);
-    screen.querySelector("#cl").onclick = () => go("reply");
-    screen.querySelector("#ix").onclick = () => go("reply");
+    screen.querySelector("#cl").onclick = () => { S.phase = "walked"; go("will"); };
+    screen.querySelector("#ix").onclick = () => { S.phase = "walked"; go("will"); };
     screen.querySelector("#rt").onclick = () => toast("Take 2 re-records it. Sarah keeps what you sent until you send again.");
     screen.querySelector("#more").onclick = () => toast("Today's menu: the history of Takes, rename, delete.");
   };
 
-  // Send first (decided): the Take lands as its card, marked new, and Will asks to send at once; the walk waits on the card.
-  const sentLine = () => `<div class="lg-day">${nw("Sent on WhatsApp · 4:12 PM")}</div>`;
-  const freshCard = (n) => `<div style="align-self:flex-start;width:80%;position:relative;margin-top:12px"><button class="itcard solo fresh" type="button" data-fresh>${tile()}<b>${TITLE}</b><span class="ver">${n}.0</span><span class="tag">new</span></button></div>`;
-  const sendAsk = () => `<div class="lg-b">${nw(`Send this answer to ${NAME} on WhatsApp?`)}</div>`;
+  // Send first (N236): in Sarah's chat, Will asks in the footer; then a line in the middle. Her feedback waits in Will's chat.
+  const sentLine = () => note(nw("Sent on WhatsApp · 4:12 PM"));
+  const REPLY = "Thank you! Do I use the scrubber every time I wash?";
+  const MYREPLY = "Yes, every second day when you wash. Gently, small circles, while the foam sits for its minute.";
+  const sarahSoFar = () => requestBubble() + answerHtml(S.take) + sentLine();
   DRAW.send = () => {
     const picks = S.picks.map((id) => `<li>${esc(ITEM[id].name)} · ${esc(ITEM[id].meta.split(" · ").find((x) => x.includes("$")))}</li>`).join("");
-    const base = earlier() + takeThread() + freshCard(S.take) + sendAsk();
-    const bindFresh = () => screen.querySelectorAll("[data-fresh]").forEach((b) => b.onclick = () => go("walk"));
-    if (S.sent) {
-      screen.innerHTML = loungeBase(base + `<div class="lg-b lg-me">${nw("Send")}</div>${sentLine()}`);
-      bindPhoto(); bindFresh(); fitThread();
-      screen.querySelector("[data-fresh]").classList.add("cue-ring");
-      return;
+    if (S.phase !== "new") {
+      screen.innerHTML = loungeBase(sarahSoFar(), chatHead("sarah"));
+      bindPhoto(); bindHead(); bindPair(); fitThread(); return;
     }
-    screen.innerHTML = loungeBase(base);
-    bindPhoto(); bindFresh();
+    screen.innerHTML = loungeBase(requestBubble() + answerHtml(S.take), chatHead("sarah"));
+    bindPhoto(); bindHead(); bindPair();
     dockPair({
-      card: `<div class="wa-card"><p class="wa-title">${nw("She gets your voice, the text, and what you picked:")}</p><ul class="gets">${picks || `<li>${nw("Nothing picked: your words only")}</li>`}</ul></div>`,
+      card: `<div class="wa-card"><p class="wa-title">${nw(`Send this answer to ${NAME} on WhatsApp?`)}</p><p class="wa-sub">${nw("She gets your voice, the text, and what you picked:")}</p><ul class="gets">${picks || `<li>${nw("Nothing picked: your words only")}</li>`}</ul></div>`,
       not: nw("Not yet"), act: nw("Send"),
-      onAct: () => { addToThread(`<div class="lg-b lg-me">${nw("Send")}</div><div class="typing" id="ty"><i></i><i></i><i></i></div>`);
-        later(() => { const ty = screen.querySelector("#ty"); if (ty) ty.remove(); S.sent = true; addToThread(sentLine()); screen.querySelector("[data-fresh]").classList.add("cue-ring");
-          later(() => toast("Sarah has the link (prototype 1). Your walk waits on the card."), 500); }, 900); },
-      onNot: () => { addToThread(`<div class="lg-b lg-me">${nw("Not yet")}</div><div class="lg-b">${nw("Fine. It waits here until you send it.")}</div>`); },
+      onAct: () => { S.phase = "sent"; addToThread(sentLine()); screen.querySelector(".chd small").innerHTML = nw("Sent"); later(() => toast("Sent. Your feedback waits in Will's chat."), 400); },
+      onNot: () => { addToThread(note(nw("Not yet: it waits here until you send it."))); },
     });
   };
-
-  // After: the customer's reply and her typed answer (the chip sends it to the customer, not to Will).
-  const REPLY = "Thank you! Do I use the scrubber every time I wash?";
-  const sentThread = () => earlier() + takeThread() + pairHtml(S.take) + sendAsk() + `<div class="lg-b lg-me">${nw("Send")}</div>` + sentLine();
-  const replyBubble = () => `<div class="lg-day">Today 6:03 PM</div><div class="lg-b">${nw(`${NAME} wrote back:`)}<div class="quote"><span class="qt">${esc(REPLY)}</span></div></div>`;
-  function composer({ chip, value, onSend }) {
-    screen.insertAdjacentHTML("beforeend", `<div class="cmp" id="cmp">${chip ? `<span class="chip">${nw(`To ${NAME}`)}<button type="button" id="unchip" aria-label="Talk to Will instead">${ICON.xs}</button></span>` : ""}
-      <div class="row"><button class="plus" type="button" aria-label="Add">${ICON.plus}</button><div class="fieldw"><textarea id="msg" rows="1" placeholder="Type here" aria-label="Message">${esc(value || "")}</textarea><button class="snd cue-ring" type="button" id="snd" aria-label="Send">${ICON.send}</button></div></div></div>`);
+  DRAW.will = () => {
+    const walked = S.phase !== "new" && S.phase !== "sent";
+    if (S.phase === "new") S.phase = "sent";
+    const body = earlier() + `<div class="lg-b">Look, practice makes perfect. If you're ready, let's go with the next take. 💪</div>` + note("Today 4:12 PM")
+      + `<div class="lg-b">${nw(`Your answer to ${NAME} is sent. Your feedback is ready.`)}</div>`
+      + (walked ? pairHtml(S.take) + nextTake(S.take + 1)
+        : `<div style="align-self:flex-start;width:80%;position:relative;margin-top:12px"><button class="itcard solo fresh cue-ring" type="button" data-walk>${tile()}<b>${TITLE}</b><span class="ver">${S.take}.0</span><span class="tag">new</span></button></div>`);
+    screen.innerHTML = loungeBase(body, chatHead("will"));
+    bindHead(); bindPair(); bindRec(); fitThread();
+  };
+  function composer({ value, onSend }) {
+    screen.insertAdjacentHTML("beforeend", `<div class="cmp" id="cmp"><div class="row"><button class="plus" type="button" aria-label="Add">${ICON.plus}</button><div class="fieldw"><textarea id="msg" rows="1" placeholder="Type here" aria-label="Message to ${NAME}">${esc(value || "")}</textarea><button class="snd cue-ring" type="button" id="snd" aria-label="Send">${ICON.send}</button></div></div></div>`);
     const msg = screen.querySelector("#msg"), snd = screen.querySelector("#snd");
     const sync = () => { snd.disabled = !msg.value.trim(); };
     msg.oninput = sync; sync(); fitThread();
     snd.onclick = () => { const v = msg.value.trim(); if (!v) return; onSend(v); };
-    const un = screen.querySelector("#unchip");
-    if (un) un.onclick = () => { screen.querySelector("#cmp").remove(); composer({ chip: false, value: msg.value, onSend: () => toast("Without the chip, this goes to Will, as today.") }); };
   }
+  const replyBubble = () => note("Today 6:03 PM") + `<div class="lg-b them">${esc(REPLY)}</div>`;
   DRAW.reply = () => {
-    screen.innerHTML = loungeBase(sentThread() + replyBubble());
-    bindPhoto(); bindPair();
-    dockPair({ not: "Not now", act: nw("Reply"),
-      onNot: () => addToThread(`<div class="lg-b lg-me">Not now</div><div class="lg-b">${nw("It waits here.")}</div>`),
-      onAct: () => {
-        composer({ chip: true, value: "Yes, every second day when you wash. Gently, small circles, while the foam sits for its minute.",
-          onSend: (v) => { screen.querySelector("#cmp").remove(); addToThread(`<div class="lg-b lg-me">${esc(v)}</div><div class="lg-day">${nw(`Sent to ${NAME}`)} · 6:05 PM</div>`); S.replied = true; later(() => toast("She gets a WhatsApp message with the link to the chat."), 300); } });
-        screen.querySelector("#msg").focus();
-      } });
+    S.phase = "replied";
+    screen.innerHTML = loungeBase(sarahSoFar() + replyBubble(), chatHead("sarah"));
+    bindPhoto(); bindHead(); bindPair();
+    composer({ value: MYREPLY, onSend: (v) => { screen.querySelector("#cmp").remove(); addToThread(`<div class="lg-b lg-me">${esc(v)}</div>` + note(`${nw(`Sent to ${NAME}`)} · 6:05 PM`)); later(() => toast("She gets a WhatsApp message with the link to the chat."), 300); } });
   };
   DRAW.outcome = () => {
-    screen.innerHTML = loungeBase(sentThread() + replyBubble() + `<div class="lg-b lg-me">Yes, every second day when you wash. Gently, small circles, while the foam sits for its minute.</div><div class="lg-day">${nw(`Sent to ${NAME}`)} · 6:05 PM</div>
-      <div class="lg-day">Today 7:40 PM</div><div class="lg-b">${nw(`${NAME} bought the Scalp Scrubber.`)}</div>
-      <div class="lg-day">Today 7:52 PM</div><div class="lg-b cue-ring">${nw(`${NAME} booked the Deep Scalp Treatment at Invita Las Vegas, Thu 12 Nov.`)}</div>`);
-    bindPhoto(); bindPair(); fitThread();
+    S.phase = "booked";
+    screen.innerHTML = loungeBase(sarahSoFar() + replyBubble() + `<div class="lg-b lg-me">${esc(MYREPLY)}</div>` + note(`${nw(`Sent to ${NAME}`)} · 6:05 PM`)
+      + note("Today 7:40 PM") + `<div class="evt">${nw(`${NAME} bought the Scalp Scrubber.`)}</div>`
+      + note("Today 7:52 PM") + `<div class="evt cue-ring">${nw(`${NAME} booked the Deep Scalp Treatment at Invita Las Vegas, Thu 12 Nov.`)}</div>`, chatHead("sarah"));
+    bindPhoto(); bindHead(); bindPair(); fitThread();
   };
 
   // ---------- Notes ----------

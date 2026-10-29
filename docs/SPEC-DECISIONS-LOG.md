@@ -6583,7 +6583,110 @@ The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 §1 Q, §2. No migration in this entry.
 
-**N258 · A finished walk opened again is a scroll, with no buttons (founder,
+**N256 · Customer requests: the answerer's Lounge becomes a list of chats,
+one chat per customer, and Will's chat for her own Takes and feedback
+(founder, the Claude Code chat, 29 October 2026: "Ariel ... she might be
+confused getting in one chat messages from different people. So maybe there
+should be a tab, a separate chat for the improvements. And there should be a
+group chat", then, on the proposal, "Yes, log it").** For N236 items 1 and 2
+and the page's §1 C1 and F:
+1. An answerer with customer requests opens her Lounge on a list of chats,
+as WhatsApp does: Will pinned on top, then one chat per customer, with the
+customer's photo as the avatar, the first name and the question, the last
+message, the unread count and a status (Waiting for you, Sent, Booked).
+Waiting for you comes first; filters All, Waiting, Sent, Done.
+2. A customer's chat holds everything about that customer: the request as
+the customer's bubble with Not now | Answer in the footer, the picker and the
+recording, her answer as her bubble with the Ideal Text card, the send ask in
+the footer, the customer's replies, her typed replies and the outcomes
+(bought, booked) as lines. What she types there goes to that customer only;
+the "To {customer}" chip is gone. A Take recorded in a customer's chat
+belongs to that customer, so no answer can reach the wrong person. Will's
+asks sit in the footer and what happened is a line in the middle; no Will
+bubble in a customer's chat.
+3. Will's chat is the Lounge as it is today: her own Takes, each answer's
+Feedback walk ("Your answer to {customer} is sent. Your feedback is
+ready."), the Ideal Text card with its new tag, helper words and practice.
+Send first, walk after (N236 item 2) holds: she sends in the customer's chat
+and is coached in Will's.
+4. No group chat. A team comes later as a shared queue: Assign to {name} on a
+customer's chat and a Team filter. A second trichologist's blind labels stay
+their own queue (N240 item 2).
+5. A speaker without customer requests never sees the list: the Lounge opens
+as today, and the record → Ideal Text → feedback loop is unchanged (Never 3).
+6. The Lounge is a locked screen: this entry is the founder's OK for the list
+and the customer chats. Their new words wait for the founder's OK (Never 4).
+The walk page's E1 gets its line when it is built.
+Was (N236 item 1, §1 C1): the request as the one ask in the answerer's
+Lounge, every customer in one thread.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 C, D5, F and K, §3, §5. The prototype, kept as N229 says:
+`docs/design/customer-requests-2026-10-28/ariel/ariel-lounge.html` and
+`6-answerer-side-in-her-lounge.pdf`. No migration in this entry.
+
+**N257 · Updating a project's deck, inside the project (founder, the
+Claude Code chat, 29 October 2026: "what happens if I want to update the
+pitch? I'm starting without the pitch deck and then I want to add the pitch
+deck to that. Or I want to change the pitch deck", then three answers on a
+decision page, and "show it to me based on real screens from the
+application on a clickable prototype").** For N254 item 6, N48.2 Q4 and
+contract clause 4:
+1. A speaker adds a deck to a project that has none, or replaces its deck,
+inside the same project: the Take count, the coach's history and the plan
+carry on (N149). Contract clause 4's "a changed deck starts a new Project"
+and the server's refusal of a Take with a changed deck (409
+PRESENTATION_LOCKED) give way to this.
+2. The new deck is used from the next Take. That Take writes the whole
+Ideal Text fresh on the new slides; the previous text stays in the history
+(rule 5). Helper words move to a new slide with the same title; the others
+wait in the history until the speaker picks new ones.
+3. Where: the Ideal Text page's ⋯ menu, "Add slides" when the project has
+no deck and "Update slides" when it has one; and in the chat, the same in
+place of "Create project from updated deck".
+4. The words, signed: "Add slides" · "Update slides" · "Upload the new PDF.
+Your next Take uses it." · "Upload PDF" · "Cancel" · "New slides ready for
+Take {n}."
+5. The prototype on the real screens, signed the same day ("OK", then
+"button"): https://claude.ai/artifact/8heRv4BC6fGg7EzuzuTo4A. In the chat,
+Will answers "You can update the slides in this project. Your next Take
+uses them." and the upload takes the message box's place as the WhatsApp
+ask does ("the button should be like the button for whatsapp number
+update"): a grey card with "Update slides" and item 4's sentence, then
+"Cancel" | "Upload PDF". On the first Take with new slides the mic screen
+says "New slides" in place of "Same presentation as Take 1". Both lines
+signed.
+The rules: frontend
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md),
+with the first code; contract clause 4 is amended in the same pull request
+as that code. No migration in this entry.
+
+**N258 · The companions and your why are signed, Will's guide is signed, and
+the Life Panel's first-run page says "# note" (founder, the Claude Code chat,
+29 October 2026: "yes" to removing the first-run page's paragraph on the old
+tags or replacing it with a line about "# note", and "YES AND YES for the
+sign offs").** For N241, N253 and N255:
+1. The prototype "Principles Companions" (version 3,
+<https://claude.ai/artifact/1hfLf8mCif8pgC1X1Z6caJ>) is the design: its words
+are signed as drawn (Never 4), and its open choices as drawn: Strengths is a
+pill of its own, right after Principles; 💪 marks a strength; the talk
+reminder comes the first time the Lounge opens on the day before the talk;
+the sales steps are marked 🚪 🔍 🎁 📨; your why's lines are marked 🔥 🔭 🤝 and
+sit at the top of the Life Panel's Goals screen, above Life goals.
+2. Will's guide "what is in your control" (the Claude Doc
+<https://claude.ai/artifact/EL8NpV6kPKdcEb2rjYc9Fj>, as of 28 October) is
+signed and goes into Will's instructions word for word; Will's replies are
+its own words, from the guide.
+3. The Life Panel's first-run page drops its two paragraphs on the old tags
+(#mistake, #observation, #win, #add) and says instead: "The way in is the
+chat you already use. Start a message with # note, or tap the small mic, and
+it is kept as a note for you and Will. On Sunday, when your notes show a
+pattern, Will asks what you take from it and suggests a principle."
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 K, §2, §5. No migration in this entry.
+
+**N259 · A finished walk opened again is a scroll, with no buttons (founder,
 the Claude Code chat, 29 October 2026: "on the reopened walk there is only a
 scroll there should be no buttons!", then, asked, "Buttons only after a tap"
 and, on the Sniper's Skip, "Keep it").** Amends N247, for N89 and N91:

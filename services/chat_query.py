@@ -160,6 +160,17 @@ def persist_chat_turn(
         return None
 
 
+def _control_after_note(database, user_id) -> bool:
+    """Under a note: the sales question for a sale that stalled, else Will's
+    answer to a worry (N241 O1, P2); never in the way of the note."""
+    try:
+        from services.sales_framing import answers_after_note
+        return bool(answers_after_note(database, str(user_id)))
+    except Exception as e:  # noqa: BLE001 -- the note is kept either way
+        logger.warning("chat/query: worry answer failed user=%s: %s", user_id, e)
+        return False
+
+
 def _goals_after_note(database, user_id) -> bool:
     try:
         from services.life_goals import after_note
@@ -209,6 +220,12 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
         if (bot_cid and intent == "voice_notebook"
                 and (resp.get("row_metadata") or {}).get("voice_note")
                 and _goals_after_note(database, user_id)):
+            resp["after_take"] = True
+        # Under a # note's "Noted.", the sales question or Will's answer to
+        # a worry (N241 O1, P2); the same flag reads the thread again.
+        if (bot_cid and intent == "voice_notebook"
+                and (resp.get("row_metadata") or {}).get("voice_note")
+                and _control_after_note(database, user_id)):
             resp["after_take"] = True
     # Charge after answering, never before. Chat is repeatable, so it has no
     # idempotency ref; billing failure must never replace the answer.

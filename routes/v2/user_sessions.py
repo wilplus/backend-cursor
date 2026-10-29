@@ -856,7 +856,8 @@ def v2_user_list_trainings():
     (the coach's explicit arc publish landed), and `ideal_ready` (the
     ideal-presentation button can open). AC-9: no scores anywhere.
 
-    Response 200 { trainings: [ { arc_id, topic, created_at, take_count,
+    Response 200 { trainings: [ { arc_id, topic, created_at, last_take_at,
+        take_count,
         takes_target, takes:[{session_id, take_index, created_at, has_slides,
         coach_reviewed}], batch_verified, delivered_at, ideal_ready } ] }
     """

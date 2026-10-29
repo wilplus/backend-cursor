@@ -35,6 +35,16 @@ with this contract, this contract wins.
    deck inside an existing Project is retired: a new deck is a new setup,
    and so a new Project. The replacement allowed before the first completed
    Take above is no longer offered.
+   **Amended 2026-10-29 (founder, decisions log N257):** a speaker adds a
+   deck to a Project that has none, or replaces its deck, inside the same
+   Project; the Take count, the coach's history and the plan carry on. The
+   new deck is used from the next Take, which writes the whole Ideal Text
+   fresh on the new slides (the previous text stays in history, clause 16);
+   helper words move to a new slide with the same title, and the others stay
+   only in history. "A changed deck starts a new Project" and the refusal of
+   a Take on a changed deck (409 PRESENTATION_LOCKED) are retired. The
+   Project's slide structure (clause 3) is its current deck: the one stored
+   for the next Take, else the latest Take's.
 5. A Recording Attempt is the preserved submitted audio. A Take exists and
    counts only after processing succeeds. Retrying processing reuses the same
    Recording Attempt and never increments the Take count.
