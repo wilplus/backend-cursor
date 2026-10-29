@@ -473,7 +473,7 @@ def answer_voice(database: Any, user_id: str, adapter: Any, audio: bytes, *,
     result = adapter.transcribe_audio(
         audio, filename, usage_surface="plan_answer", usage_user_id=str(user_id),
         usage_session_id=str(plan["id"])) or {}
-    raw = (result.get("text") or "").strip()
+    raw = _words(result)
     if not raw:
         return _not_heard(database, user_id, plan)
     kind, question = _answering(plan)
@@ -532,6 +532,13 @@ def _heard(audio: bytes) -> bool:
     if gate.get("reason") == "no_audio":
         return True
     return float(gate.get("voiced_sec") or 0.0) >= MIN_VOICED_SEC
+
+
+def _words(result: dict) -> str:
+    """The transcript, or "" when it is only the transcriber's stock lines
+    for a clip with no words in it (N273)."""
+    raw = (result.get("text") or "").strip()
+    return "" if P.heard_nothing(raw) else raw
 
 
 def _not_heard(database: Any, user_id: str, plan: dict) -> dict:

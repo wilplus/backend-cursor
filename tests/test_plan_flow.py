@@ -463,6 +463,9 @@ def test_an_answer_with_nothing_heard_is_asked_again(db, monkeypatch):
     _say(db, "")  # heard, but no words
     assert bodies(db)[-1] == "Sorry, I didn't quite catch that. Could you say it again?"
     assert db.get_open_plan(USER)["step"] == "why" and db.answers == []
+    _say(db, "Thanks for watching!")  # the transcriber's stock line for no words (N273)
+    assert bodies(db)[-1] == "Sorry, I didn't quite catch that. Could you say it again?"
+    assert db.answers == []
     _say(db, "Five people.")  # a short answer is heard
     assert len(db.answers) == 1
 
