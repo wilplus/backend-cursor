@@ -6583,6 +6583,48 @@ The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 §1 Q, §2. No migration in this entry.
 
+**N256 · Customer requests: the answerer's Lounge becomes a list of chats,
+one chat per customer, and Will's chat for her own Takes and feedback
+(founder, the Claude Code chat, 29 October 2026: "Ariel ... she might be
+confused getting in one chat messages from different people. So maybe there
+should be a tab, a separate chat for the improvements. And there should be a
+group chat", then, on the proposal, "Yes, log it").** For N236 items 1 and 2
+and the page's §1 C1 and F:
+1. An answerer with customer requests opens her Lounge on a list of chats,
+as WhatsApp does: Will pinned on top, then one chat per customer, with the
+customer's photo as the avatar, the first name and the question, the last
+message, the unread count and a status (Waiting for you, Sent, Booked).
+Waiting for you comes first; filters All, Waiting, Sent, Done.
+2. A customer's chat holds everything about that customer: the request as
+the customer's bubble with Not now | Answer in the footer, the picker and the
+recording, her answer as her bubble with the Ideal Text card, the send ask in
+the footer, the customer's replies, her typed replies and the outcomes
+(bought, booked) as lines. What she types there goes to that customer only;
+the "To {customer}" chip is gone. A Take recorded in a customer's chat
+belongs to that customer, so no answer can reach the wrong person. Will's
+asks sit in the footer and what happened is a line in the middle; no Will
+bubble in a customer's chat.
+3. Will's chat is the Lounge as it is today: her own Takes, each answer's
+Feedback walk ("Your answer to {customer} is sent. Your feedback is
+ready."), the Ideal Text card with its new tag, helper words and practice.
+Send first, walk after (N236 item 2) holds: she sends in the customer's chat
+and is coached in Will's.
+4. No group chat. A team comes later as a shared queue: Assign to {name} on a
+customer's chat and a Team filter. A second trichologist's blind labels stay
+their own queue (N240 item 2).
+5. A speaker without customer requests never sees the list: the Lounge opens
+as today, and the record → Ideal Text → feedback loop is unchanged (Never 3).
+6. The Lounge is a locked screen: this entry is the founder's OK for the list
+and the customer chats. Their new words wait for the founder's OK (Never 4).
+The walk page's E1 gets its line when it is built.
+Was (N236 item 1, §1 C1): the request as the one ask in the answerer's
+Lounge, every customer in one thread.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 C, D5, F and K, §3, §5. The prototype, kept as N229 says:
+`docs/design/customer-requests-2026-10-28/ariel/ariel-lounge.html` and
+`6-answerer-side-in-her-lounge.pdf`. No migration in this entry.
+
 **N257 · Updating a project's deck, inside the project (founder, the
 Claude Code chat, 29 October 2026: "what happens if I want to update the
 pitch? I'm starting without the pitch deck and then I want to add the pitch
