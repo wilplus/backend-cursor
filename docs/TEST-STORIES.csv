@@ -3495,14 +3495,18 @@ CoachFeedbackMessageTest::test_an_image_header_template_carries_its_image,
 CoachFeedbackMessageTest::test_editing_a_shared_word_sends_nothing_more,
 CoachFeedbackMessageTest::test_nothing_is_sent_while_switched_off
 O4 -> CoachFeedbackMessageTest::test_a_refusal_logs_metas_reason","Founder 2026-10-12, ""Add Phone Input for WhatsApp Notifications""."
-tests/test_whatsapp_stop.py,Story,"As someone who gets our WhatsApp messages, I want to reply STOP and have them stop, so that I am never messaged again against my wish.","O1  Meta's check when the webhook is set is answered only with the right
+tests/test_whatsapp_stop.py,Story,"As someone who gets our WhatsApp messages, I want to reply STOP and have them stop, and have any other reply reach a person, so that I am never messaged against my wish and an answer is never lost.","O1  Meta's check when the webhook is set is answered only with the right
 verify token; with either key unset the door is shut (503).
 O2  A delivery Meta did not sign changes nothing (401).
 O3  STOP turns the messages off for the account at that number and the
 booking that carries it, and answers with the signed words; other
-accounts and other replies are left as they were.","O1 -> test_metas_check_needs_the_verify_token
+accounts and other replies are left as they were.
+O4  Once forwarding is on, any other reply reaches the founder by email
+with the number, the account's admin page and the reply's words, or
+what kind of message it was; while it is off nothing is emailed.","O1 -> test_metas_check_needs_the_verify_token
 O2 -> test_an_unsigned_delivery_changes_nothing
-O3 -> test_stop_turns_the_messages_off","Founder 2026-10-28, N237."
+O3 -> test_stop_turns_the_messages_off
+O4 -> test_other_replies_reach_the_founder","Founder 2026-10-28, N237; 2026-10-29, N265."
 tests/test_will_looks_up_history.py,Story,"Before Will answers in the chat, he looks up the speaker's own history (their Takes' transcripts, what their coach sent them, what they told him before) and reads the few pieces that best match the question as a private block (founder 2026-10-20, step 1).","O1  only this speaker's rows can reach Will, never another speaker's,
 never Will's own replies, never an answer to ""Did this help?""
 O2  a coach's unsent word or draft never reaches Will; what they sent does
