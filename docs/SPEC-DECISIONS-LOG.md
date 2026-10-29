@@ -6685,3 +6685,22 @@ pattern, Will asks what you take from it and suggests a principle."
 The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 §1 K, §2, §5. No migration in this entry.
+
+**N259 · A finished walk opened again is a scroll, with no buttons (founder,
+the Claude Code chat, 29 October 2026: "on the reopened walk there is only a
+scroll there should be no buttons!", then, asked, "Buttons only after a tap"
+and, on the Sniper's Skip, "Keep it").** Amends N247, for N89 and N91:
+1. A Take's walk opened again once it is done (from its Feedback walk,
+"Review feedback", a paragraph or its orange helper words) is a scroll. No
+buttons under the thread and no Next, on any step. The bar's ✕ and ‹ › stay,
+and clips still play.
+2. Helper words stay editable on the latest Take (C3): a tap on one brings
+"Edit the helper words" and "Keep these" under the thread for those words.
+Once chosen, they go again.
+3. A walk not yet done keeps the buttons of what still waits (B10).
+4. The Sniper's "Skip" stays the speaker's own bubble, in the walk and when
+it is opened again.
+5. No new words on screen; nothing changes on the server.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§1 B9, B10 and C3. No migration.
