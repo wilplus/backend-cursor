@@ -3,9 +3,9 @@ STORY    As a speaker, I want my page to show only the moments that matter, so
          that it stays focused.
 OUTCOME
   O1  Confident moments, the exercise and items I already answered are shown;
-      other open moments are not, a paragraph I saved in this Take gets no
-      moments but the picked ones still open, and no score fields reach the
-      page.
+      other open moments are not; a paragraph I saved in this Take shows
+      nothing new, except a moment picked for me there, which stays until I
+      walk it; and no score fields reach the page.
   O2  A Take with nothing picked still shows two moments; one whose picked
       moments I answered shows no others in their place.
   O3  A paragraph I saved in an earlier Take gets its moments again in later
