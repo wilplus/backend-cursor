@@ -7034,3 +7034,47 @@ The rules: frontend
 §6, the line for N272, and
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §1 D4. No migration.
+
+**N273 · A first visit's screens: the landing and its example, Will's hello,
+the calm wait, the microphone line and one moment on the account wall; the
+guest's walk is not opened before the account (founder, the Claude Code
+chat, 29 October 2026, on the prototypes of N271 item 4 and item 2: "the
+landing page, just the landing page is fine ... and how it opens the
+example, that's okay"; "we'll say hello first in the empty lounge. So
+exactly how it should be. This is good."; of the guest's walk, "do not
+introduce that change"; "Okay, rest is good.").** For N30, N32 item 5,
+N110, N270 and N271:
+1. **The landing says what you get.** Under "WillpowerLab", "Record your
+talk. You get the ideal text of your presentation and see which moments
+landed best." (the page's own description), and under Enter the lab, "See an
+example" (signed). It opens one example: what was said, the Ideal Text it
+becomes and the walk's line for it, under "An example", "What they said",
+"The Ideal Text" and "The feedback", with "Try it with your talk" (signed),
+which goes where Enter the lab goes. Nothing after the landing changes.
+Prototype <https://claude.ai/artifact/VqrCoZ3ddRkkiSayMfnTJp>.
+2. **Will says hello first.** A visitor's empty Lounge opens with N270's
+line, "Hi, I'm Will. 👋 Record your first take, and I will help you with
+your presentation.", with "Start your first recording" under it and, under
+that, "About 2 minutes to record. Your feedback comes about a minute later."
+(signed). Prototype <https://claude.ai/artifact/H2CwSoSWXF7wttNEXsPMYb>.
+3. **The calm wait.** N271 item 2 as drawn: one narrow column, the breathing
+mark a little larger, the stage and its percent, a rounded bar and "Usually
+about a minute." under it; no tips. Prototype
+<https://claude.ai/artifact/S66ZsrqTQZ4se74caoCj2J>.
+4. **Why the microphone.** On Take 1, under "Getting your mic ready", in the
+same small grey as the presentation line: "WillpowerLab uses the microphone
+to record your Takes." (N269). No new screen. Prototype
+<https://claude.ai/artifact/6AVcGS1ksx86KzvUPyKEes>.
+5. **The account stays before the walk.** A guest's processed Take still
+lands on "Done" and the account ask, as built on 16 October (until now only
+in the code). This replaces N30's and N32 item 5's "a guest reads the whole
+Feedback". The wall now carries one real piece of the result: the clip of
+the Take's most confident moment and "This was your most confident
+moment." Prototype <https://claude.ai/artifact/LyE1Xa7M5D2FWXDxFzPKtT>.
+The rules: frontend
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+(the landing),
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+(Will's hello, the wall) and
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+(the wait, the microphone line), each with its line for N273. No migration.
