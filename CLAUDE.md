@@ -18,7 +18,7 @@ This repo: **backend** (Flask, Railway, Supabase). The frontend is
 
 1. **No scores, numbers or verdicts shown to speakers.** Feedback is in words. A processing-progress percentage and a token price are not about the speaker and are allowed (founder, 2026-10-19), and so is a count of where the speaker is in their plan ("Practice 2 of 9"); their own 1 to 10 answers are never shown back (N178).
 2. **No coach sees the machine's guess before answering.** Coach judgements stay blind.
-3. **Never break record → process → Ideal Text → next Take.** Coaches and exercises are never in the way; the plan's questions come once, before the first Take, and never stop the speaker from recording it; before any other Take, only the feelings check, one tap (N136, N140, N178, N262, N271).
+3. **Never break record → process → Ideal Text → next Take.** Coaches and exercises are never in the way; the plan's questions come once, before the first Take, and never stop the speaker from recording it; before any other Take, only the feelings check, with a Skip (N136, N140, N178, N262).
 4. **No new words on screen without the founder's OK.**
 5. **The Ideal Text is only what the speaker said in their latest Take.** Their helper words stay until they pick new ones. Every old version stays in the history.
 

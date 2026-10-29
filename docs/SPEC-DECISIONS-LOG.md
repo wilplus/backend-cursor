@@ -6964,33 +6964,32 @@ The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §6, the line for N270. No migration.
 
-**N271 · "How do you feel?" takes the set-up's look, with no Skip, no coach
-line and no reply (founder, the Claude Code chat, 29 October 2026, to the
-prototype <https://claude.ai/artifact/CiCCZEE4rp7TfeVjfdnj1A>: "ok, great
-build it!"; then "the user knows that coach can see their answer from the
-entering the lab by that you already agree the terms and services so it is
-ok; and delte the skiip btn"; asked again with Privacy 3.9 §4e's sentence on
-skipping quoted: "remove the skip; like i said the user acepts the polocy and
-terms even as a firs time user no worries!").** For N211 and N217:
+**N271 · "How do you feel?" takes the set-up's look, is asked only of a
+signed-in speaker, and drops its reply and its coach line (founder, the
+Claude Code chat, 29 October 2026, to the prototype
+<https://claude.ai/artifact/CiCCZEE4rp7TfeVjfdnj1A>: "ok, great build it!";
+"for the consented users, they alreay know that they are being watched for
+emotions; So no grey text; and for the new users entirely not consented - not
+logged in - just skip this emoitns"; then, after being told that a check with
+no Skip would contradict Privacy 3.9 §4e, "add the same type of table, but
+with an opactiy or transparency under calm and the text should be grey; with
+Skip" and "build skip under calm").** For N211 and N217:
 1. **The set-up's look.** The screen takes the set-up's top bar: its step
 marks, with "How do you feel?" as the first step when the set-up follows it
 (the topic is then the second), and the ✕ in the bar. On a Take whose set-up
 is restored, the bar has the ✕ and no marks. The question is the set-up's
 heading, with its mic; "Before you step on stage" under it; the four
-feelings in a two-by-two grid.
-2. **No reply.** The pick shows, then the set-up opens. The four reply lines
+feelings two by two.
+2. **Skip stays**, under Calm, in the feelings' own pill, faded, with grey
+words. Skipping keeps nothing (N211 unchanged).
+3. **No reply.** The pick shows, then the set-up opens. The four reply lines
 are retired.
-3. **No Skip.** Replaces N211 item 2's "with a Skip every time" and item 3's
-Skip for a new project. Never 3 in both CLAUDE.md files drops "with a Skip".
-The plan's own yes (N211 item 1) is unchanged: without it the check is
-passed by at once and keeps nothing.
 4. **No "Your coach sees your answer."** Replaces N217 item 2's line. The
-founder's reason: the speaker accepts the Terms and Privacy before entering
-the Lab, and Privacy 3.9 §5 says the coach sees the answer.
-5. **Not changed here.** Privacy 3.9 §4e still tells a speaker without a plan
-"you can skip it every time" and "skipping costs you nothing", and relies on
-the answer as explicit consent (Article 9(2)(a) GDPR). The screen no longer
-matches that text; its wording is the founder's and counsel's to change.
+founder's reason: a signed-in speaker has accepted the Terms and Privacy,
+and Privacy 3.9 §4e and §5 say the coach sees the answer.
+5. **Only a signed-in speaker is asked.** A guest who is not signed in never
+sees the check; the Take goes on as after a Skip, keeping nothing. On a plan
+the plan's own yes still comes first (N211 item 1).
 No new words.
 The rules: frontend
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)

@@ -23,7 +23,7 @@ The founder's direction in one place (N129, N178). Where a rule below says more,
 - **The loop is the product.** Record a Take, get the Ideal Text and evidence-backed feedback, record the next Take.
 - **The plan serves the loop.** Every speaker is diagnosed and gets a plan up to their deadline (N136). The plan
   chooses what each Feedback walk practises (N129). When the plan and the loop compete, the loop wins: before any
-  Take but the first, the only thing shown is the feelings check, one tap (N178, N271).
+  Take but the first, the only thing shown is the feelings check, with a Skip (N178).
 - **Second priority**, never slowing the loop: coach review, Confident Voice and practice.
 - **Built:** the loop and the Feedback walk, the coach panel, and the tempo step for the speakers a ring lets in.
   **Decided and held:** the plan's diagnosis, practice days, calls and reminders; the founder holds their build (N147).
