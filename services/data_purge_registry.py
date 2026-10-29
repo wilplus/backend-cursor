@@ -302,6 +302,19 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "database_row", 60),
     PurgeDependency("life_goal_asks", "life_goal_asks", "user_id", "user",
                     "delete", "database_row", 60),
+    # Your why and strengths (N255, N241, signed N258): a line's dated
+    # versions and a strength's notes before what they point at, then the
+    # talk dates a note named.
+    PurgeDependency("your_why_versions", "your_why_versions", "user_id",
+                    "user", "delete", "database_row", 59),
+    PurgeDependency("your_why", "your_why", "user_id", "user", "delete",
+                    "database_row", 60),
+    PurgeDependency("strength_notes", "strength_notes", "user_id", "user",
+                    "delete", "database_row", 59),
+    PurgeDependency("strengths", "strengths", "user_id", "user", "delete",
+                    "database_row", 60),
+    PurgeDependency("talk_dates", "talk_dates", "user_id", "user", "delete",
+                    "database_row", 60),
     # Email and password on Data & consent (WIL-95, N190, migration 0493):
     # the person's own security log goes with the account.
     PurgeDependency("account_security_events", "account_security_events",
@@ -1618,6 +1631,7 @@ DYNAMIC_RUNTIME_RELATIONS: frozenset[str] = frozenset({
     "life_weeks", "life_period_reviews", "life_setup_documents",
     "life_push_subscriptions", "life_reminder_settings", "life_reminder_log",
     "life_user_copy", "life_goals", "life_goal_versions", "life_goal_asks",
+    "your_why", "your_why_versions", "strengths", "strength_notes", "talk_dates",
     "dev_bugs", "dev_tasks", "account_security_events",
     # The scheduled clean-up (services/retention_cleaner.py) removes rows
     # from the relations its reviewed lists name: the four logs, the

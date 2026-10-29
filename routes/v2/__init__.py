@@ -26,7 +26,7 @@ DOMAIN_MODULES = (
     "coach_bubbles",
     "admin", "coaching", "canonical_publish", "auth_alias", "lab_recording",
     "projects", "learning_exposures", "user_sessions", "rings",
-    "learning_admin", "research", "ai_voice", "voice_notebook", "life_goals", "plan",
+    "learning_admin", "research", "ai_voice", "voice_notebook", "life_goals", "your_why", "strengths", "plan",
     "account_security", "signup_count", "login_code", "whatsapp_webhook",
     "roadmap_admin",
 )
