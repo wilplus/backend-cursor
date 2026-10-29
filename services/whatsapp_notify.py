@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import html
 import logging
 import re
 from datetime import datetime, timezone
@@ -140,9 +141,13 @@ def chat_turn(database: Any, user_id: Optional[str], question: str) -> Optional[
             "row_metadata": {"whatsapp": "check", "phone": phone}}
 
 
-#: The answer to STOP (founder, N174 item 5; signed, Never 4).
-STOPPED = "Done. We've stopped the WhatsApp messages and deleted your number."
+#: The answer to STOP (founder, N265; signed, Never 4).
+STOPPED = "Done. We've stopped the WhatsApp messages."
 _STOP = re.compile(r"^\s*stop[\s.!]*$", re.IGNORECASE)
+#: What a reply that is not text was, in the founder's email (N265 item 2).
+_KINDS = {"image": "a photo", "audio": "a voice message", "video": "a video",
+          "document": "a document", "sticker": "a sticker", "location": "a location",
+          "contacts": "a contact card", "reaction": "a reaction"}
 
 
 def signed_by_meta(secret: str, body: bytes, header: str) -> bool:
@@ -152,32 +157,79 @@ def signed_by_meta(secret: str, body: bytes, header: str) -> bool:
     return hmac.compare_digest(expected, (header or "").strip())
 
 
-def handle_replies(database: Any, payload: Any, *, config: Any = None) -> dict:
-    """Meta's webhook payload (N237): each reply that says STOP turns the
-    sender's WhatsApp messages off; any other reply is not read."""
-    out = {"stopped": 0}
+def _messages(payload: Any):
     entries = payload.get("entry") if isinstance(payload, dict) else None
     for entry in entries or []:
         for change in (entry or {}).get("changes") or []:
             for msg in ((change or {}).get("value") or {}).get("messages") or []:
-                msg = msg if isinstance(msg, dict) else {}
-                text = (msg.get("text") or {}).get("body") or ""
-                if msg.get("type") != "text" or not _STOP.match(str(text)):
-                    continue
-                try:
-                    phone = normalize_phone("+" + str(msg.get("from") or "").lstrip("+"))
-                except WhatsAppRefusal:
-                    continue
-                stop_messages(database, phone, config=config)
-                out["stopped"] += 1
+                if isinstance(msg, dict):
+                    yield msg
+
+
+def _text_of(msg: dict) -> str:
+    """A reply's words: a text's body, or a template button's label."""
+    kind = msg.get("type")
+    if kind == "text":
+        return str((msg.get("text") or {}).get("body") or "")
+    if kind == "button":
+        return str((msg.get("button") or {}).get("text") or "")
+    return ""
+
+
+def handle_replies(database: Any, payload: Any, *, config: Any = None) -> dict:
+    """Meta's webhook payload: each reply that says STOP turns the sender's
+    WhatsApp messages off (N237); any other reply is emailed to the founder
+    while WHATSAPP_FORWARD_REPLIES is on (N265), and is not read otherwise."""
+    cfg = config or Config()
+    out = {"stopped": 0, "forwarded": 0}
+    for msg in _messages(payload):
+        try:
+            phone = normalize_phone("+" + str(msg.get("from") or "").lstrip("+"))
+        except WhatsAppRefusal:
+            continue
+        if msg.get("type") == "text" and _STOP.match(_text_of(msg)):
+            stop_messages(database, phone, config=cfg)
+            out["stopped"] += 1
+        elif cfg.WHATSAPP_FORWARD_REPLIES:
+            forward_reply(database, phone, msg, config=cfg)
+            out["forwarded"] += 1
     return out
+
+
+def forward_reply(database: Any, phone: str, msg: dict, *, config: Any = None) -> None:
+    """A reply other than STOP (N265 item 2, N171 item 6), emailed to the
+    founder: the number, the admin page of each account at it, and the
+    reply's words or what kind of message it was. Never raises: a 500 would
+    make Meta send the whole delivery again, STOP's answer with it."""
+    cfg = config or Config()
+    e = html.escape
+    try:
+        from services.email_service import send_email_resend
+        rows = (_settings(database).select("user_id").eq("whatsapp_phone", phone)
+                .execute().data) or []
+        base = (cfg.FRONTEND_URL or "").rstrip("/")
+        pages = [f"{base}/admin/users/{quote(str(r['user_id']))}" for r in rows]
+        words = _text_of(msg)
+        kind = str(msg.get("type") or "")
+        said = (f"<blockquote>{e(words).replace(chr(10), '<br>')}</blockquote>" if words
+                else f"<p>It was {e(_KINDS.get(kind, f'a {kind} message'))}, so there are no words to show.</p>")
+        who = ("".join(f'<p><a href="{e(u)}">{e(u)}</a></p>' for u in pages) if pages
+               else "<p>No account gets WhatsApp messages at this number.</p>")
+        send_email_resend(
+            to=(cfg.ADMIN_EMAIL or "").strip(),
+            subject=f"WhatsApp reply from {phone}",
+            html=f"<p>A reply to our WhatsApp number from <strong>{e(phone)}</strong>:</p>{said}{who}",
+        )
+    except Exception as err:  # noqa: BLE001 -- STOP and the other replies go on
+        _log.warning("whatsapp: a reply was not forwarded: %s", type(err).__name__)
 
 
 def stop_messages(database: Any, phone: str, *, config: Any = None) -> None:
     """STOP from ``phone`` (N237): every account that gets WhatsApp messages
     at it stops, as Remove does (the number it signs in with stays, N235
     item 3); a booking that carries it forgets it (N233); then the signed
-    answer, which WhatsApp delivers within 24 hours of the person's message."""
+    answer (N265), which WhatsApp delivers within 24 hours of the person's
+    message."""
     rows = (_settings(database).select("user_id").eq("whatsapp_phone", phone)
             .execute().data) or []
     for row in rows:
