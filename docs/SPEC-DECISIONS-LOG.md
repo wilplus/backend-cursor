@@ -6519,6 +6519,40 @@ The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 §1 B8. No migration.
 
+**N254 · One project at a time (founder, the Claude Code chat, 28 and 29
+October 2026: "we want the user to have one presentation at a time, so they
+cannot be doing more than one presentation. So if they start a new one, it
+means, do you want to discard their current progress, something like that,
+one at a time. That's the rule", then four answers on a decision page).**
+For N14, N244 and N251:
+1. A speaker works on one project at a time. "Start a new project" first
+asks the question in item 4; Continue archives the current project (N14:
+it leaves the "+" list, nothing is deleted, Data & consent brings it back)
+and the new one starts. The current project is the one with the newest
+Take.
+2. Going back to an archived project is allowed: picking it, or "Record
+Take N" on its Ideal Text page, asks the same question, archives the
+current project and makes the older one current.
+3. Speakers who have several projects today keep them as they are; the
+project with the newest Take is current, and nothing is archived until they
+start a new project or switch.
+4. The question's words, signed: "One project at a time" · "“{current}”
+will be archived. Its Takes and Ideal Text stay safe, and you can bring it
+back from Data & consent." · "Continue" · "Cancel".
+5. The next Take of the current project never asks anything (Never 3). A
+coach's link and a coach's late word on an archived project still open,
+and Will keeps what he learned from it.
+6. Updating a project's deck (a project started without one, or a new
+version of it) stays in the same project and is designed next, at the
+founder's ask the same day; it lands in its own entry.
+The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+(the "+" and its question) and
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
+(its "Record Take N"), with the first code. Unarchive in Data & consent
+asks nothing: it puts the project back on the "+" list, where picking it
+asks. No migration in this entry.
+
 **N255 · A finished walk opened again is a scroll, with no buttons (founder,
 the Claude Code chat, 29 October 2026: "on the reopened walk there is only a
 scroll there should be no buttons!", then, asked, "Buttons only after a tap"

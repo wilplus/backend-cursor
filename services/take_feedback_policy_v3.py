@@ -380,8 +380,8 @@ def _split_for_moments(
     frozen_candidate_ids: Any, held_words: Any = None,
 ) -> list[dict]:
     """``blocks`` with the cut moved between the Take's two best clips when
-    they fall in one block; ``blocks`` itself when they do not or no cut
-    fits (`_moment_cut`).
+    they fall in one block (`_moment_cut`, else `_cut_in_half`); ``blocks``
+    itself when they do not or no cut fits.
 
     The two best are ranked as `_pick_moments` ranks them, from any block
     (`moment_pick.best_two`), over the clips a block may show: lineage
@@ -399,7 +399,9 @@ def _split_for_moments(
         blocks, snippet_map=snippet_map, take_id=take_id,
         recording_id=recording_id, servability=servability,
         served_text=served_text, held_words=held_words)
-    cut = _moment_cut(blocks, *pair) if pair else None
+    cut = None
+    if pair:
+        cut = _moment_cut(blocks, pair) or (_cut_in_half(blocks, pair) if pair.alone else None)
     if cut is None:
         return blocks
     first, count, left, right = cut
@@ -412,11 +414,20 @@ def _split_for_moments(
     return [*blocks[:first], *made, *blocks[first + count:]]
 
 
-def _frozen_pair(blocks: list[dict],
-                 frozen: frozenset) -> Optional[tuple[int, int, int, bool]]:
-    """(block, first clip, second clip, alone) of the one block holding two
-    frozen clips, or None (`_split_for_moments`). Such a block was cut when
-    the Take was frozen, so it may be cut again by itself (``alone``)."""
+class _Pair(NamedTuple):
+    """The Take's two best clips when they share a block: the block, the
+    two clips' places in it, and whether no other block has a clip to show
+    (``alone``: without a cut, the Take would show one moment)."""
+    block: int
+    first: int
+    second: int
+    alone: bool
+
+
+def _frozen_pair(blocks: list[dict], frozen: frozenset) -> Optional[_Pair]:
+    """The one block holding two frozen clips, or None
+    (`_split_for_moments`). It was cut when the Take was frozen, so it may
+    be cut again by itself (``alone``)."""
     shared = []
     for at, block in enumerate(blocks):
         held = [index for index, piece in enumerate(block["pieces"])
@@ -424,7 +435,7 @@ def _frozen_pair(blocks: list[dict],
         if len(held) > 2:
             return None
         if len(held) == 2:
-            shared.append((at, held[0], held[1], True))
+            shared.append(_Pair(at, held[0], held[1], alone=True))
     return shared[0] if len(shared) == 1 else None
 
 
@@ -432,11 +443,9 @@ def _best_pair(
     blocks: list[dict], *, snippet_map: dict, take_id: str, recording_id: str,
     servability: Optional[_Servability], served_text: Any,
     held_words: Any = None,
-) -> Optional[tuple[int, int, int, bool]]:
-    """(block, first clip, second clip, alone) when the Take's two best clips
-    share a block, else None (`_split_for_moments`); ``alone``: no other
-    block has a clip it may show, so without a cut the Take shows one moment
-    (N246 item 1)."""
+) -> Optional[_Pair]:
+    """The Take's two best clips when they share a block, else None
+    (`_split_for_moments`)."""
     from services import moment_pick
 
     reads = []
@@ -458,14 +467,13 @@ def _best_pair(
     if len(best) < 2 or best[0][0] != best[1][0]:
         return None
     alone = all(row["at"][0] == best[0][0] for row in reads)
-    return best[0][0], best[0][1], best[1][1], alone
+    return _Pair(best[0][0], best[0][1], best[1][1], alone)
 
 
-def _moment_cut(blocks: list[dict], at: int, first: int, second: int,
-                alone: bool) -> Optional[tuple[int, int, list, list]]:
-    """Where the cut between clips ``first`` < ``second`` of block ``at``
-    goes: (first block replaced, how many, the two new blocks' pieces), or
-    None when no cut fits.
+def _moment_cut(blocks: list[dict], pair: _Pair) -> Optional[tuple[int, int, list, list]]:
+    """Where the cut between the pair's two clips goes: (first block
+    replaced, how many, the two new blocks' pieces), or None when no cut
+    fits.
 
     In a Take of more than one block the cut that moves is the block's own
     with its neighbour on the same Slide, the one before or the one after,
@@ -473,16 +481,10 @@ def _moment_cut(blocks: list[dict], at: int, first: int, second: int,
     has ``moment_pick.MIN_WORDS``. The cut is a piece boundary between the
     two clips and each side keeps 40 to 120 words. Of the cuts that fit, the
     one whose two sides are closest to 75 words each, then the earliest,
-    then the one with the block before.
-
-    When none fits and the block is ``alone`` (no other block has a clip it
-    may show), the block itself is cut at the boundary between the two
-    clips whose sides are closest in words, then the earliest, each clip
-    with ``moment_pick.MIN_WORDS`` (founder 2026-10-28, N246 item 1: the
-    blocks used to stay as they were, and the Take showed one moment). With
-    another block to show, they stay as they were: the Take shows two."""
+    then the one with the block before."""
     from services import moment_pick
 
+    at, first, second = pair.block, pair.first, pair.second
     pieces = blocks[at]["pieces"]
     slide = blocks[at]["slide_index"]
     sides: list[tuple[int, int, list, list]] = []
@@ -505,17 +507,25 @@ def _moment_cut(blocks: list[dict], at: int, first: int, second: int,
                    for value in words):
                 fitting.append((sum(abs(value - TARGET_WORDS) for value in words),
                                 len(fitting), (replaced, count, left, right)))
-    if fitting:
-        return min(fitting)[2]
-    if not alone or min(pieces[first]["word_count"],
-                        pieces[second]["word_count"]) < moment_pick.MIN_WORDS:
-        return None
+    return min(fitting)[2] if fitting else None
 
-    def gap(boundary: int) -> int:
-        return abs(sum(int(piece["word_count"]) for piece in pieces[:boundary])
-                   - sum(int(piece["word_count"]) for piece in pieces[boundary:]))
-    even = min(range(first + 1, second + 1), key=lambda boundary: (gap(boundary), boundary))
-    return at, 1, pieces[:even], pieces[even:]
+
+def _cut_in_half(blocks: list[dict], pair: _Pair) -> Optional[tuple[int, int, list, list]]:
+    """The pair's own block cut in two between its clips, where the two
+    sides are closest in words (then the earliest), when no cut in range
+    fits and no other block has a clip to show; each clip needs
+    ``moment_pick.MIN_WORDS``. Founder 2026-10-28, N246 item 1: such a Take
+    showed one moment."""
+    from services import moment_pick
+
+    pieces = blocks[pair.block]["pieces"]
+    if min(pieces[pair.first]["word_count"],
+           pieces[pair.second]["word_count"]) < moment_pick.MIN_WORDS:
+        return None
+    words = [int(piece["word_count"]) for piece in pieces]
+    even = min(range(pair.first + 1, pair.second + 1),
+               key=lambda cut: (abs(sum(words[:cut]) - sum(words[cut:])), cut))
+    return pair.block, 1, pieces[:even], pieces[even:]
 
 
 def _run_positions(blocks: list[dict]) -> list[tuple[int, int]]:
@@ -775,14 +785,19 @@ def _level_pick(reads: list[dict], showable: list[tuple], snippet_map: dict,
     if not level:
         return None
     from services import moment_pick, plan_walk
-    shown = {moment["block_id"]: moment["candidate_id"]
-             for moment in moment_pick.pick(reads)["shown"]}
+    shown_clip = {moment["block_id"]: moment["candidate_id"]
+                  for moment in moment_pick.pick(reads)["shown"]}
+
+    def readable(block: dict, candidate: dict) -> bool:
+        # A shown block offers only its shown clip.
+        clip = shown_clip.get(block["block_id"])
+        return clip is None or clip == candidate["candidate_id"]
+
     rows = [{"candidate_id": candidate["candidate_id"],
              "word_count": candidate.get("word_count") or 0,
              "snippet": snippet_map.get(str(candidate["snippet_id"]), {}),
              "text": _shown_words(candidate, clips, served_text)}
-            for block, candidate in showable
-            if shown.get(block["block_id"], candidate["candidate_id"]) == candidate["candidate_id"]]
+            for block, candidate in showable if readable(block, candidate)]
     try:
         at = plan_walk.level_moment(level, rows, list(snippet_map.values()), key_line=key_line)
     except Exception as error:  # noqa: BLE001 -- the walk as today
