@@ -6764,3 +6764,45 @@ The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 §1 E and I; its lines come in their own frontend PR. No migration in this
 entry.
+
+**N262 · The plan's questions: record first, Will asks again when he hears
+nothing, and takes a correction (founder, the Claude Code chat, 29 October
+2026, going through the questions themselves: "these questions are being
+forced on me. I just wanted to start a new take, but I cannot", "when I'm
+silent, the system still takes that. And it shouldn't. It should tell me,
+oh, I didn't quite get what you mean", "if it was something wrong and the
+user says like, oh, it's not what I meant, the chat actually agrees and
+re-registers that answer", "I cannot play back my answers even"; then,
+asked, "Record now, rest after", "Will: didn't quite catch it", "Will hears
+it and agrees" and "Safari on a Mac").** Amends N136 and N146 (the questions
+can't be skipped) and Never 3's wording, for N139, N140 and N150:
+1. **Record first.** While a new speaker's voice questions are asked before
+their first Take, "Start your first recording" (signed, N161) sits under
+"Record your answer" and opens the recording at once. A question not
+answered yet comes back after that Take's walk, as a new event's questions
+come after a Take (A3); nothing asked is lost, and the plan's practices
+count that Take. The questions never stand between a speaker and their
+first Take. Never 3 in both CLAUDE.md files reads "the plan's questions
+come once, before the first Take, and never stop the speaker from
+recording it" in place of "the plan's questions come once, before the
+first Take".
+2. **Nothing heard.** A voice answer is checked for speech before it is
+transcribed, as a Take is (`services/min_content_gate.py`). One with no
+speech, or that gives no words, is not kept and not sent to a provider,
+and Will says "Sorry, I didn't quite catch that. Could you say it again?";
+the same question stays. Signed.
+3. **A correction.** When the speaker's answer puts Will right ("No,
+that's not what I meant …") instead of answering his question, Will
+agrees, "Got it, thank you for putting me right.", says back in one
+sentence what he now has, in their words and under N150's rules, and asks
+the same question again. The correction takes the old answer's place in
+the plan; the old answer stays in the history. The AI that writes Will's
+turn tells a correction from an answer; when it fails, the answer counts
+as an answer, as today. Signed.
+4. **A voice answer plays in Safari.** The app answers the byte-range
+requests Safari makes before it plays audio, for the speaker's voice
+bubbles, "How you said it" and the coach's player. No new words.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 A1, B3, B8, B9 and K, with the code; Never 3 in this repo's
+CLAUDE.md in this entry's pull request. No migration in this entry.
