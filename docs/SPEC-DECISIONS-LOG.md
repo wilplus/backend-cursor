@@ -6727,3 +6727,40 @@ prototype; nothing changes there.
 The rules: frontend
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md),
 with the code. No migration in this entry.
+
+**N261 · Customer requests: WillpowerLab is the client's shop and calendar
+by default, at no cut, with fair default rules the client can change
+(founder, the Claude Code chat, 29 October 2026, on the onboarding prototype
+<https://claude.ai/artifact/SymprqggVVrFkJjJt7iEP7>: "make it as a default
+option. But also, if you don't want you can add them too", then "we don't
+take a cut of that", "they can have their own calendar or they can use a
+WillpowerLab calendar", and on the proposed rules "You have my okay").** For
+N225 item 2, N234, N236 item 6, N239 and N252:
+1. **Sell and book here by default.** A client adds its treatments and
+products in WillpowerLab, the customer pays in the answer chat (one pay
+sheet for products and the booking) and the booking lands in a WillpowerLab
+calendar. Shopify and Fresha stay as options from the fixed list (N252 item
+2), connected instead by a client that already runs them. Was (N239): the
+client's own Fresha and Shopify.
+2. **No cut.** WillpowerLab takes nothing from a sale or a booking. The money
+goes to the client's own Stripe account; the client pays the card fee. The
+client pays only per answered request (N252 items 6 and 7).
+3. **The calendar is the client's choice:** the WillpowerLab calendar,
+pre-selected, or its own Google or Outlook calendar kept in sync both ways,
+so nothing is booked twice.
+4. **Default rules, the same for every client, each one changeable by the
+client:** a booking is paid when booked; free to cancel or move up to 24
+hours before; later than that, half is refunded; a no-show is not refunded;
+products are collected in the salon free or shipped at a price the client
+sets; unopened products come back within 14 days for a full refund.
+5. **Rules no client can change:** when the client cancels, the customer gets
+everything back; a faulty product is refunded or replaced; a refund goes
+back to the card within 5 working days; no rule is set below the law's
+minimum (the 14-day return right for online sales in the EU).
+6. Onboarding asks this in two screens: where customers buy and book (with
+the calendar), and the rules. Their words wait for the founder's OK with the
+rest (Never 4).
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 E and I; its lines come in their own frontend PR. No migration in this
+entry.
