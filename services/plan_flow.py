@@ -485,7 +485,7 @@ def answer_voice(database: Any, user_id: str, adapter: Any, audio: bytes, *,
         asked = [str(a.get("bank")) for a in plan.get("asked") or []]
         turn = _turn(database, user_id, plan, asked, answering=(question, raw))
         if plan["step"] == "followup":
-            correction = P.fitted_correction((turn or {}).get("correction"), ["why", *asked[:-1]])
+            correction = _correction(plan, turn, asked)
     if correction:  # kept as an answer to what it corrects, so it takes its place
         kind = correction["of"]
     answer = database.insert_plan_answer({
@@ -548,6 +548,15 @@ def _not_heard(database: Any, user_id: str, plan: dict) -> dict:
     return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
 
 
+def _correction(plan: dict, turn: Optional[dict], asked: list[str]) -> Optional[dict]:
+    """A correction the AI heard, at most one per question (N273): once Will
+    was put right on this question, the next answer to it is an answer, so
+    a correction misheard can't come round again and again."""
+    if _facts(plan).get("put_right_at") == len(asked):
+        return None
+    return P.fitted_correction((turn or {}).get("correction"), ["why", *asked[:-1]])
+
+
 def _put_right(database: Any, user_id: str, plan: dict, answer: dict, said: str,
                turn: Optional[dict], correction: dict) -> tuple[dict, list[tuple]]:
     """A correction (N262 item 3): Will agrees, says back what he now has,
@@ -560,6 +569,7 @@ def _put_right(database: Any, user_id: str, plan: dict, answer: dict, said: str,
         facts.pop("worry", None)  # a worry the speaker did not agree to share is not kept
     back = correction["said_back"]
     facts["will_said"] = {**dict(facts.get("will_said") or {}), str(answer["id"]): back}
+    facts["put_right_at"] = len(plan.get("asked") or [])  # one per question (N273)
     plan = _save(database, user_id, plan, {"facts": facts})
     asked = list(plan.get("asked") or [])
     last = asked[-1] if asked else {"bank": "key", "text": P.BANK["key"][0]}

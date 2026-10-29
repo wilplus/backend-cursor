@@ -496,6 +496,10 @@ def test_a_correction_is_taken_and_the_question_asked_again(db, monkeypatch):
     assert plan["facts"]["event"] == "a board pitch for funding"
     assert [a["kind"] for a in db.answers] == ["why", "why"]  # takes its place; the old stays
     assert "key_line" not in plan["facts"]
+    # One correction per question (N273): the next answer to it is an answer,
+    # whatever the AI reads, so a misheard correction can't loop.
+    _say(db, "Board members and our CEO.")
+    assert bodies(db)[-1] != key_q and len(db.get_open_plan(USER)["asked"]) == 2
 
 
 def test_a_new_speaker_can_record_before_answering(db, monkeypatch):

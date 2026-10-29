@@ -7058,6 +7058,11 @@ are the speaker's own words.
 3. **A correction only when sure.** The AI that writes Will's turn takes an
 answer as a correction (N262 item 3) only when it is sure; in doubt, it is
 an answer.
+4. **One correction per question.** Once Will was put right on a question,
+the next answer to it is an answer, whatever the AI reads. A correction and
+Will's reply to it go back into what the AI reads, so one misheard
+correction made the next answer look like one too, and the same question
+came round with every answer, a 14-second one too.
 The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
-§1 B3 and B8, §6. No migration.
+§1 B3, B8 and B9, §6. No migration.
