@@ -6625,7 +6625,43 @@ The rules: frontend
 `docs/design/customer-requests-2026-10-28/ariel/ariel-lounge.html` and
 `6-answerer-side-in-her-lounge.pdf`. No migration in this entry.
 
-**N257 · The companions and your why are signed, Will's guide is signed, and
+**N257 · Updating a project's deck, inside the project (founder, the
+Claude Code chat, 29 October 2026: "what happens if I want to update the
+pitch? I'm starting without the pitch deck and then I want to add the pitch
+deck to that. Or I want to change the pitch deck", then three answers on a
+decision page, and "show it to me based on real screens from the
+application on a clickable prototype").** For N254 item 6, N48.2 Q4 and
+contract clause 4:
+1. A speaker adds a deck to a project that has none, or replaces its deck,
+inside the same project: the Take count, the coach's history and the plan
+carry on (N149). Contract clause 4's "a changed deck starts a new Project"
+and the server's refusal of a Take with a changed deck (409
+PRESENTATION_LOCKED) give way to this.
+2. The new deck is used from the next Take. That Take writes the whole
+Ideal Text fresh on the new slides; the previous text stays in the history
+(rule 5). Helper words move to a new slide with the same title; the others
+wait in the history until the speaker picks new ones.
+3. Where: the Ideal Text page's ⋯ menu, "Add slides" when the project has
+no deck and "Update slides" when it has one; and in the chat, the same in
+place of "Create project from updated deck".
+4. The words, signed: "Add slides" · "Update slides" · "Upload the new PDF.
+Your next Take uses it." · "Upload PDF" · "Cancel" · "New slides ready for
+Take {n}."
+5. The prototype on the real screens, signed the same day ("OK", then
+"button"): https://claude.ai/artifact/8heRv4BC6fGg7EzuzuTo4A. In the chat,
+Will answers "You can update the slides in this project. Your next Take
+uses them." and the upload takes the message box's place as the WhatsApp
+ask does ("the button should be like the button for whatsapp number
+update"): a grey card with "Update slides" and item 4's sentence, then
+"Cancel" | "Upload PDF". On the first Take with new slides the mic screen
+says "New slides" in place of "Same presentation as Take 1". Both lines
+signed.
+The rules: frontend
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md),
+with the first code; contract clause 4 is amended in the same pull request
+as that code. No migration in this entry.
+
+**N258 · The companions and your why are signed, Will's guide is signed, and
 the Life Panel's first-run page says "# note" (founder, the Claude Code chat,
 29 October 2026: "yes" to removing the first-run page's paragraph on the old
 tags or replacing it with a line about "# note", and "YES AND YES for the
