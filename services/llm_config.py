@@ -549,6 +549,19 @@ at work in it, a strength shown on two different days, and a talk date the
 note names (services.strengths)."""
 
 
+
+SPEC_WALK_QUOTE = LLMSpec(
+    model=STRONG_MODEL,
+    # A pick only: which of the speaker's own kept words answers the
+    # sentence, or none. No words written, so no room to invent.
+    temperature=0.0,
+    max_tokens=60,
+    response_format={"type": "json_object"},
+)
+"""The walk quotes your notebook (N268): after a good try on a Clearer
+version, a kept strength, the vision or a # note that answers the sentence,
+or none (services.walk_quote)."""
+
 SPEC_LIFE_GOAL_ASK = LLMSpec(
     model=CHEAP_MODEL,
     # Detection only: a life goal asked for, or not.
