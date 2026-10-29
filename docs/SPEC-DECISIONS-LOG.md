@@ -6937,3 +6937,11 @@ The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 §1 A3, R, K, with the code. Its migration gets its outside review before it
 is merged.
+
+**N269 · The iPhone app's permission prompts (founder, the Claude Code chat,
+29 October 2026: "OK", to the two sentences proposed in
+[frontend #1090](https://github.com/wilplus/frontend-cursor/pull/1090)).**
+For N267 item 5: the iPhone asks for the microphone with "WillpowerLab uses
+the microphone to record your Takes." and for the camera with "WillpowerLab
+uses the camera when a coach records video feedback." Signed. No rules page.
+No migration in this entry.
