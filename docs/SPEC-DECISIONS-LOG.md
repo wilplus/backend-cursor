@@ -6828,3 +6828,27 @@ migration gets its outside review before it is merged. No new words.
 The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 §2 R1, §6.
+
+**N265 · STOP's answer drops "deleted your number"; any other WhatsApp reply
+is forwarded to the founder by email (founder, the Claude Code chat, 29
+October 2026: "Do it!", to "STOP reply words: keep the signed ones, or use
+'Done. We've stopped the WhatsApp messages.'" and to "Other replies: your
+rule N171 says any reply that isn't STOP should be forwarded to you by email.
+Nothing does that yet, so say if you want it built").** For N171 item 6, N174
+item 5 and N237 items 3 and 4:
+1. WhatsApp's answer to STOP is "Done. We've stopped the WhatsApp messages."
+(signed, Never 4). It replaces N174 item 5's words and N237 item 3: for an
+account that signs in with WhatsApp the number stays, so "deleted your
+number" was not true for everyone.
+2. Any other reply to our WhatsApp number is emailed to the founder
+(`ADMIN_EMAIL`), as N171 item 6 says. The email gives the sender's number, a
+link to the admin page of each account at that number, and the reply's text,
+or what kind of message it was when it is not text (a photo, a voice
+message). The person gets no answer. This replaces N237 item 4.
+3. It stays off until the privacy version N171 names the replies in is
+published: `WHATSAPP_FORWARD_REPLIES=true` on Railway turns it on (off by
+default), as `BOOKING_WHATSAPP_TO_ACCOUNT` does for N207. Until then other
+replies are not read.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§2, the line for N171. No migration.
