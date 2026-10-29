@@ -35,6 +35,17 @@ OUTCOME
       until the first Take), the principles show nothing and Will's chat
       does not answer as them; after the first Take they are back; a plan
       waiting for the next Take holds nothing back (N243).
+  O12 A voice answer with no speech in it, or no words, is not kept and
+      not sent on: Will says "Sorry, I didn't quite catch that. Could you
+      say it again?" and the same question stays (N262).
+  O13 An answer that puts Will right is not an answer to his question:
+      Will agrees, says back what he now has, and asks the same question
+      again; the correction takes the old answer's place and the old one
+      stays in the history (N262).
+  O14 A new speaker can record before answering: "Start your first
+      recording" is offered while the questions are asked; after that
+      Take's walk Will asks again where he was; the plan, once made, counts
+      that Take as its first practice (N262).
 PROVES   O1 -> test_without_the_ring_nothing_happens
          O2 -> test_a_new_speaker_is_asked_once
          O3 -> test_no_date_gives_two_months_then_the_voice_message
@@ -47,9 +58,13 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
                test_a_level_whose_time_ran_out_gives_way
          O10 -> test_a_walk_reads_the_level_of_its_takes_time
          O11 -> test_the_principles_wait_while_the_speaker_is_onboarded
+         O12 -> test_an_answer_with_nothing_heard_is_asked_again
+         O13 -> test_a_correction_is_taken_and_the_question_asked_again
+         O14 -> test_a_new_speaker_can_record_before_answering
 WHY      The plan, built one to one with the prototype (founder 2026-10-26,
          N203, N204); a level moving on, N134 items 3 and 4, N209; the
-         principles waiting for the onboarding, N243; the rules
+         principles waiting for the onboarding, N243; record first, Will
+         asking again and a correction taken, N262; the rules
          are frontend docs/flows/the-plan.md §1.
 """
 import uuid
@@ -420,3 +435,87 @@ def test_the_principles_wait_while_the_speaker_is_onboarded(db, monkeypatch):
     F.after_take(db, USER)
     consent = {"decision": "yes"}
     assert F.onboarding(db, USER) and silent()  # and while they are asked
+
+
+def _to_why(db):
+    F.state(db, USER, tz="UTC", first_name="Artur")
+    F.answer_deadline(db, USER, None, tz="UTC")
+
+
+def _say(db, said):
+    return F.answer_voice(db, USER, _Adapter(said), b"audio", filename="a.webm",
+                          content_type="audio/webm", duration_ms=4000)
+
+
+def test_an_answer_with_nothing_heard_is_asked_again(db, monkeypatch):
+    _to_why(db)
+    asked = len(db.thread)
+    silence = _Adapter("Thank you.")  # what a transcriber makes of silence
+    monkeypatch.setattr("services.min_content_gate.evaluate_min_content_bytes",
+                        lambda audio: {"ok": False, "reason": "no_speech", "voiced_sec": 0.0})
+    out = F.answer_voice(db, USER, silence, b"audio", filename="a.webm",
+                         content_type="audio/webm", duration_ms=6000)
+    assert silence.calls == 0  # not sent on
+    assert bodies(db)[asked:] == ["Sorry, I didn't quite catch that. Could you say it again?"]
+    assert out["plan"]["step"] == "why" and db.answers == [] and db.audio == {}
+    monkeypatch.setattr("services.min_content_gate.evaluate_min_content_bytes",
+                        lambda audio: {"ok": True, "reason": None, "voiced_sec": 0.8})
+    _say(db, "")  # heard, but no words
+    assert bodies(db)[-1] == "Sorry, I didn't quite catch that. Could you say it again?"
+    assert db.get_open_plan(USER)["step"] == "why" and db.answers == []
+    _say(db, "Five people.")  # a short answer is heard
+    assert len(db.answers) == 1
+
+
+def test_a_correction_is_taken_and_the_question_asked_again(db, monkeypatch):
+    _to_why(db)
+    _say(db, "It's our board pitch for two more hires.")
+    key_q = bodies(db)[-1]
+    seen = []
+
+    def turn(database, user_id, plan, asked, answering=None):
+        seen.append(F._transcript(database, user_id, plan, answering))
+        return {"facts": {"event": "a board pitch for funding"},
+                "correction": {"of": "why", "said_back": "You'll ask the board for funding."}}
+
+    monkeypatch.setattr(F, "_turn", turn)
+    before = len(db.thread)
+    out = _say(db, "No, that's not what I meant. It's about funding, not hires.")
+    ack = ("Will", "Thank you. Now I can hear you talking about your goal and why it matters.")
+    assert seen[0][-3:] == [ack, ("Will", key_q), ("Speaker (voice message)",
+                            "No, that's not what I meant. It's about funding, not hires.")]
+    assert bodies(db)[before:] == [
+        "No, that's not what I meant. It's about funding, not hires.",
+        "Got it, thank you for putting me right. You'll ask the board for funding.",
+        key_q]
+    plan = db.get_open_plan(USER)
+    assert out["plan"]["step"] == "followup" and len(plan["asked"]) == 1  # not an answer to it
+    assert plan["facts"]["event"] == "a board pitch for funding"
+    assert [a["kind"] for a in db.answers] == ["why", "why"]  # takes its place; the old stays
+    assert "key_line" not in plan["facts"]
+
+
+def test_a_new_speaker_can_record_before_answering(db, monkeypatch):
+    out = F.state(db, USER, tz="UTC", first_name="Artur")
+    assert out["plan"]["record_now"] and not out["plan"]["waiting"]
+    F.answer_deadline(db, USER, None, tz="UTC")
+    _say(db, "It's our board pitch for two more hires.")
+    key_q = bodies(db)[-1]
+    plan = db.get_open_plan(USER)
+    took = datetime.now(timezone.utc)
+    db.update_plan(USER, plan["id"], {"created_at": (took - timedelta(minutes=5)).isoformat()})
+    db.takes.rows = [{"created_at": took.isoformat(), "arc_id": "arc-1", "take_index": 1}]
+    out = F.state(db, USER, tz="UTC")
+    assert out["plan"]["waiting"] and not out["plan"]["record_now"]  # the Take's walk first
+    F.after_take(db, USER)
+    assert bodies(db)[-1] == key_q  # asked again, where it was
+    assert not F.state(db, USER, tz="UTC")["plan"]["waiting"]
+    for said in ("The window closes soon.", "Five board members.", "About three minutes."):
+        _say(db, said)
+    F.answer_rating(db, USER, 7)
+    F.answer_rating(db, USER, 4)
+    F.book_call(db, USER, "kickoff", None)
+    out = F.book_call(db, USER, "summary", None)
+    assert out["plan"]["status"] == "active"
+    view = F.view(db, USER, out["plan"])
+    assert view["first_take_done"] and view["done"] == 1  # that Take is the first practice

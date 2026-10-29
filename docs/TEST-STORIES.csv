@@ -2104,7 +2104,18 @@ recorded, so it reads the same on every opening; off a plan, or on
 O11 While a speaker is onboarded (the questions; a new speaker's plan
 until the first Take), the principles show nothing and Will's chat
 does not answer as them; after the first Take they are back; a plan
-waiting for the next Take holds nothing back (N243).","O1 -> test_without_the_ring_nothing_happens
+waiting for the next Take holds nothing back (N243).
+O12 A voice answer with no speech in it, or no words, is not kept and
+not sent on: Will says ""Sorry, I didn't quite catch that. Could you
+say it again?"" and the same question stays (N262).
+O13 An answer that puts Will right is not an answer to his question:
+Will agrees, says back what he now has, and asks the same question
+again; the correction takes the old answer's place and the old one
+stays in the history (N262).
+O14 A new speaker can record before answering: ""Start your first
+recording"" is offered while the questions are asked; after that
+Take's walk Will asks again where he was; the plan, once made, counts
+that Take as its first practice (N262).","O1 -> test_without_the_ring_nothing_happens
 O2 -> test_a_new_speaker_is_asked_once
 O3 -> test_no_date_gives_two_months_then_the_voice_message
 O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
@@ -2115,7 +2126,10 @@ O8 -> test_moving_the_deadline_keeps_the_practices_done
 O9 -> test_the_level_moves_on_after_two_takes_that_reach_it
 test_a_level_whose_time_ran_out_gives_way
 O10 -> test_a_walk_reads_the_level_of_its_takes_time
-O11 -> test_the_principles_wait_while_the_speaker_is_onboarded","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the principles waiting for the onboarding, N243; the rules are frontend docs/flows/the-plan.md §1."
+O11 -> test_the_principles_wait_while_the_speaker_is_onboarded
+O12 -> test_an_answer_with_nothing_heard_is_asked_again
+O13 -> test_a_correction_is_taken_and_the_question_asked_again
+O14 -> test_a_new_speaker_can_record_before_answering","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the principles waiting for the onboarding, N243; record first, Will asking again and a correction taken, N262; the rules are frontend docs/flows/the-plan.md §1."
 tests/test_playback_copy.py,Story,"As a speaker on iPhone or Safari, I want my recordings to play back, and the playback copy deleted with the recording, so that I can hear myself and deletion leaves nothing. (Record -> next Take: hearing the Take; and deletion.)","O1  A stored short recording gets its Safari-safe copy (.playback.m4a,
 audio/mp4) beside it at upload; the original is untouched.
 O2  The player is handed the original until the copy exists, and the copy
