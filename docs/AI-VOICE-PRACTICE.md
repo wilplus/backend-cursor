@@ -35,7 +35,12 @@ The lock (flow, words, rules) is
    `demo` already says `ai_voice` with the clip `pending`, so the walk shows
    the clip's place. A voice not ready yet (the clone from Take 1 still
    being made) is asked for again every 30 s, at most 5 times
-   (`generation_metadata.no_voice_waits`); after that the next ask retries.
+   (`generation_metadata.no_voice_waits`); after that the clip is
+   `unavailable` (cycle `skipped`, `no_voice`) and a later ask with a voice
+   on its way starts it again. A voice that will not come (the clone row is
+   `none`, `failed` or off: a Take too short or too noisy to copy) is not
+   waited for: the clip is `unavailable` at once, so the walk shows the
+   locked Exercise rather than the dots.
 4. The clip is shown in the video's place (no exact-fit video for the same
    problem), and after a try that isn't better yet, at most 3 times. It never
    plays by itself.

@@ -132,8 +132,12 @@ def ensure(database: Any, practice: dict, *, user_id: str, principal_id: str,
         "snippet_id": practice.get("snippet_id"), "status": "pending"})
     if cycle is None:
         return {"demo": "video" if _has_video(practice) else "none", "clip": None}
-    retry_waiting = (cycle.get("status") == "pending"
-                     and cycle.get("failure_kind") == "no_voice")
+    retry_waiting = cycle.get("failure_kind") == "no_voice" and (
+        cycle.get("status") == "pending"
+        or (cycle.get("status") == "skipped" and _voice_on_its_way(database, str(user_id))))
+    if retry_waiting and cycle.get("status") == "skipped":
+        # It stopped waiting; a voice is now ready or being made.
+        store.update_cycle(database, str(cycle["id"]), {"status": "pending"})
     if created or retry_waiting:
         args = (str(cycle["id"]), principal_id, queue)
         if run is not None:
@@ -456,6 +460,10 @@ def _make(job: _Job, selection: dict, context: dict) -> str:
     from services.ai_voice_limits import clip_refusal
     from services.ai_voice_prompt import PromptRejected, build
     voice_id = voice_for(job.db, job.owner)
+    if not voice_id and _no_voice_coming(job.db, job.owner):
+        # Off, failed, or the Take could not make one (too short, too
+        # noisy): no clip is coming, so the walk is not left on the dots.
+        return _no_voice(job)
     if not voice_id:
         # The clone may still be on its way from Take 1: ask again in a
         # little while, a bounded number of times; the walk's next ask
@@ -498,10 +506,25 @@ def _wait_for_voice(job: _Job, selection: dict) -> str:
                delay_seconds=NO_VOICE_RETRY_SECONDS, attempt=waits)
         _log.info("ai voice: no voice yet cycle=%s wait=%d/%d retry_in=%ds",
                   job.cycle_id, waits, NO_VOICE_MAX_WAITS, NO_VOICE_RETRY_SECONDS)
-    else:
-        _log.info("ai voice: no voice after %d waits cycle=%s; the next ask retries",
-                  waited, job.cycle_id)
-    return "pending"
+        return "pending"
+    _log.info("ai voice: no voice after %d waits cycle=%s; the next ask retries",
+              waited, job.cycle_id)
+    return _no_voice(job)
+
+
+def _no_voice_coming(database: Any, user_id: str) -> bool:
+    """A clone row that says no voice will come. No row yet is a clone job
+    still queued from the Take, so it is waited for."""
+    row = store.get_clone(database, user_id)
+    return bool(row) and not _voice_on_its_way(database, user_id)
+
+
+def _no_voice(job: _Job) -> str:
+    """Stopped waiting: the clip reads ``unavailable`` and the walk shows its
+    locked Exercise. A later ask with a voice on its way starts it again."""
+    job.update({"status": "skipped", "failure_kind": "no_voice",
+                "latency_ms": job.end_clock()})
+    return "skipped"
 
 
 def _speak_until_checked(job: _Job, voice_id: str, request: dict, selection: dict,
