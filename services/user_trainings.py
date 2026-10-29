@@ -83,6 +83,10 @@ def _training(aid: str, sess: list, delivered: Optional[dict],
         "best_presentation_arc_id": aid,
         "cover_ref": refreshed_media_url(cover_ref),
         "created_at": sess[0].get("created_at") if sess else None,
+        # The newest spoken Take's time: the project with the newest is the
+        # current one (N254, one project at a time).
+        "last_take_at": max((str(s["created_at"]) for s in sess
+                             if s.get("created_at")), default=None),
         "take_count": len(sess),
         "takes_target": TAKES_TARGET,
         "takes": [_take(s) for s in sess],
