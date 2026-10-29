@@ -6963,3 +6963,37 @@ the lab right now. Give it another try in a moment."
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §6, the line for N270. No migration.
+
+**N271 · "How do you feel?" takes the set-up's look, with no Skip, no coach
+line and no reply (founder, the Claude Code chat, 29 October 2026, to the
+prototype <https://claude.ai/artifact/CiCCZEE4rp7TfeVjfdnj1A>: "ok, great
+build it!"; then "the user knows that coach can see their answer from the
+entering the lab by that you already agree the terms and services so it is
+ok; and delte the skiip btn"; asked again with Privacy 3.9 §4e's sentence on
+skipping quoted: "remove the skip; like i said the user acepts the polocy and
+terms even as a firs time user no worries!").** For N211 and N217:
+1. **The set-up's look.** The screen takes the set-up's top bar: its step
+marks, with "How do you feel?" as the first step when the set-up follows it
+(the topic is then the second), and the ✕ in the bar. On a Take whose set-up
+is restored, the bar has the ✕ and no marks. The question is the set-up's
+heading, with its mic; "Before you step on stage" under it; the four
+feelings in a two-by-two grid.
+2. **No reply.** The pick shows, then the set-up opens. The four reply lines
+are retired.
+3. **No Skip.** Replaces N211 item 2's "with a Skip every time" and item 3's
+Skip for a new project. Never 3 in both CLAUDE.md files drops "with a Skip".
+The plan's own yes (N211 item 1) is unchanged: without it the check is
+passed by at once and keeps nothing.
+4. **No "Your coach sees your answer."** Replaces N217 item 2's line. The
+founder's reason: the speaker accepts the Terms and Privacy before entering
+the Lab, and Privacy 3.9 §5 says the coach sees the answer.
+5. **Not changed here.** Privacy 3.9 §4e still tells a speaker without a plan
+"you can skip it every time" and "skipping costs you nothing", and relies on
+the answer as explicit consent (Article 9(2)(a) GDPR). The screen no longer
+matches that text; its wording is the founder's and counsel's to change.
+No new words.
+The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+§6, the line for N271, and
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 D4. No migration.
