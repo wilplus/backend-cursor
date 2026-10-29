@@ -177,6 +177,14 @@ def _offset(value) -> int:
 # ═════════════════════════════════════════════════════════════════════════
 
 @life_bp.route("/v2/life/state", methods=["GET"])
+def _strengths_on(user_id) -> bool:
+    try:
+        from services import rings
+        return rings.feature_is_on_for_user("strengths", user_id)
+    except Exception:  # noqa: BLE001 - the panel must load without its ring
+        return False
+
+
 @life_route(consent=False)
 def life_state():
     """What the panel shell needs to render itself.
@@ -215,6 +223,10 @@ def life_state():
     if active:
         menu = ["principles", "wins", "phrases", "today", "goals", "timeline",
                 "distractions", "strategy", "notes"]
+        # Strengths: its own pill, right after Principles, for whoever has
+        # its ring row (N241 N1, signed N258). Absent for everyone else.
+        if _strengths_on(user_id):
+            menu.insert(1, "strengths")
         # PRAYER IS NOT SENT, for anyone, allowlisted or not (founder
         # 2026-08-04, superseding the 2026-07-26 allowlisted entry).
         #

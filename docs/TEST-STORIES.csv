@@ -2817,11 +2817,14 @@ newest first; only I archive one, and it stays (N1, N3, N5).
 O4  The first open of the day before a talk (the plan's deadline or a date
 a note named) brings back one kept strength with its note, once; no
 date, nothing (N4).
-O5  Without the ring row, or for a crisis note, nothing is read or shown.","O1 -> test_a_trait_on_two_days_is_suggested_once
+O5  Without the ring row, or for a crisis note, nothing is read or shown.
+O6  The Life Panel's menu has Strengths right after Principles, only with
+the ring row (N1).","O1 -> test_a_trait_on_two_days_is_suggested_once
 O2 -> test_i_keep_it_in_my_words_or_not_at_all
 O3 -> test_a_kept_strength_gathers_its_notes_and_only_i_archive_it
 O4 -> test_the_day_before_my_talk_one_strength_comes_back
-O5 -> test_without_the_ring_or_in_a_crisis_nothing","Linear WIL-112; founder 2026-10-28, N241; words signed N258."
+O5 -> test_without_the_ring_or_in_a_crisis_nothing
+O6 -> test_the_life_panel_shows_strengths_only_with_the_ring","Linear WIL-112; founder 2026-10-28, N241; words signed N258."
 tests/test_suggestion_feedback.py,Story,"As a speaker, I want my Accept/Keep taps on a suggestion in the Ideal Text to be saved, so that my choice sticks and I am never told ""Couldn't save that just now"".","O1  POST suggestion-feedback with document_replace or document_bold
 answers 200 {saved: true} and records the decision with the right kind
 (polish/replace, emphasize).

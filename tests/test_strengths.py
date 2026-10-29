@@ -17,11 +17,14 @@ OUTCOME
       a note named) brings back one kept strength with its note, once; no
       date, nothing (N4).
   O5  Without the ring row, or for a crisis note, nothing is read or shown.
+  O6  The Life Panel's menu has Strengths right after Principles, only with
+      the ring row (N1).
 PROVES   O1 -> test_a_trait_on_two_days_is_suggested_once
          O2 -> test_i_keep_it_in_my_words_or_not_at_all
          O3 -> test_a_kept_strength_gathers_its_notes_and_only_i_archive_it
          O4 -> test_the_day_before_my_talk_one_strength_comes_back
          O5 -> test_without_the_ring_or_in_a_crisis_nothing
+         O6 -> test_the_life_panel_shows_strengths_only_with_the_ring
 WHY      Linear WIL-112; founder 2026-10-28, N241; words signed N258.
 """
 from datetime import datetime, timezone
@@ -226,3 +229,21 @@ def test_without_the_ring_or_in_a_crisis_nothing(me):
     assert not seen
     with pytest.raises(st.StrengthError):
         st.listing(db, "someone")
+
+
+def test_the_life_panel_shows_strengths_only_with_the_ring(me):
+    import inspect
+    from unittest.mock import patch
+    from flask import Flask, request
+    from routes import life_routes as life
+
+    def menu(user):
+        with Flask(__name__).test_request_context("/"), \
+                patch.object(life.chat, "has_consented", return_value=True), \
+                patch.object(life.store, "get_setup", return_value={"completed_at": "2026-10-01"}), \
+                patch.object(life.lp, "tag_suggestions", return_value=[]):
+            request.user_id = user
+            out = inspect.unwrap(life.life_state)()
+            return (out[0] if isinstance(out, tuple) else out).get_json()["menu"]
+    assert menu("u")[:3] == ["principles", "strengths", "wins"]
+    assert "strengths" not in menu("someone")
