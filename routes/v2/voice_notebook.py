@@ -75,14 +75,20 @@ def v2_notebook_consent():
 
 
 def _goals_after_note(user_id: str) -> list:
-    """Under a note's "Noted.", the ask for life goals (N172 M1); never in
-    the way of the note."""
+    """Under a note's "Noted.", the ask for life goals (N172 M1), then Will's
+    answer to a worry (N241 O1); never in the way of the note."""
+    rows: list = []
     try:
         from services.life_goals import after_note
-        return after_note(db, user_id)
+        rows += after_note(db, user_id)
     except Exception as e:  # noqa: BLE001 -- the note is kept either way
         logger.warning("life goals ask failed user=%s: %s", user_id, e)
-        return []
+    try:
+        from services.in_control import after_note as answer_worry
+        rows += answer_worry(db, user_id)
+    except Exception as e:  # noqa: BLE001 -- the note is kept either way
+        logger.warning("worry answer failed user=%s: %s", user_id, e)
+    return rows
 
 
 def _adapter(user_id: str):

@@ -1356,6 +1356,15 @@ O3  After three failed builds the open answers ""pending"" at once, until a
 new Take finishes.","O1 -> test_a_take_without_an_owner_copy_publishes_with_its_slides
 O2 -> test_an_owner_opening_a_project_with_no_head_gets_one_built
 O3 -> test_a_head_that_keeps_failing_to_build_stops_slowing_every_open","Founder 2026-09-28: ""the text was not assigned to the slides ... it was all concatenated into two pages""; 2026-10-18: a 404 took 5.9 s."
+tests/test_in_control.py,Story,"As a speaker who worries before a talk, I want Will to sort the worry once into what is mine and what is not, and end on one thing I can do, so that I spend the evening on what I control.","O1  A note that worries about something out of my hands gets Will's two or
+three lines under its ""Noted."", ending on one thing I control, from
+Will's signed guide (N241 O1, N258).
+O2  The same worry is not sorted twice: Will may ask once whether the one
+thing happened, then says nothing more about it.
+O3  A note that is no worry, a crisis note, or anyone without the ring row
+gets only ""Noted."" (N258 R1).","O1 -> test_a_worry_is_sorted_once_and_ends_on_one_thing
+O2 -> test_the_same_worry_is_not_sorted_twice
+O3 -> test_no_worry_no_ring_or_a_crisis_gets_only_noted",Linear WIL-113; Will's guide signed 2026-10-29 (N258).
 tests/test_intervention_candidates.py,Story,"As a speaker, I want at most the budgeted number of marks on my document, one per span, from known lanes only, and nothing at all if arbitration fails, so that the page stays focused and honest.","O1  The budget holds: more than BUDGET_CEILING changes in, at most
 BUDGET_CEILING served; overlapping changes serve one mark; a
 zero-width insert never takes a slot.
@@ -3377,8 +3386,8 @@ O4  A note that sounds like a crisis is kept and answered at once with the
 chat's safety reply; before the question is answered it is never asked
 instead of that reply.
 O5  Will reads the notes, only once the person said Yes.
-O6  A tag the Life Panel owns is kept as a note, then left to the Life
-Panel to answer.
+O6  Every typed ""#"" is one note, as the small mic's: the Life Panel's old
+tags are notes too, and ""#note"" is read as ""#"" (N253).
 O7  While a note is said, its words so far come back, hesitations and
 all, and nothing is kept (N194).
 O8  A note the app sends twice under one key (the app closed mid-send)
@@ -3390,7 +3399,7 @@ O2 -> test_the_first_note_asks_and_yes_keeps_it
 O3 -> test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash
 O4 -> test_a_crisis_note_gets_the_safety_reply
 O5 -> test_will_reads_the_notes_only_after_yes
-O6 -> test_a_life_panel_tag_is_kept_and_left_to_the_life_panel
+O6 -> test_every_typed_hash_is_one_note_as_the_mic
 O7 -> test_the_live_words_come_back_and_nothing_is_kept
 O8 -> test_a_note_sent_twice_is_kept_once
 O9 -> test_a_voice_note_is_fixed_in_the_notebook_and_the_thread","Will learning plan, step 1 (founder 2026-10-20, ""approved, start step 1""; words signed the same day)."
