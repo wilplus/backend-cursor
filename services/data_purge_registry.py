@@ -315,6 +315,12 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "database_row", 60),
     PurgeDependency("talk_dates", "talk_dates", "user_id", "user", "delete",
                     "database_row", 60),
+    # The walk quotes your notebook (N268, migration 0501): the Take's quote
+    # and the person's "Not here".
+    PurgeDependency("walk_quotes", "walk_quotes", "user_id", "user", "delete",
+                    "database_row", 60),
+    PurgeDependency("walk_quote_settings", "walk_quote_settings", "user_id",
+                    "user", "delete", "database_row", 60),
     # Email and password on Data & consent (WIL-95, N190, migration 0493):
     # the person's own security log goes with the account.
     PurgeDependency("account_security_events", "account_security_events",
@@ -1632,6 +1638,7 @@ DYNAMIC_RUNTIME_RELATIONS: frozenset[str] = frozenset({
     "life_push_subscriptions", "life_reminder_settings", "life_reminder_log",
     "life_user_copy", "life_goals", "life_goal_versions", "life_goal_asks",
     "your_why", "your_why_versions", "strengths", "strength_notes", "talk_dates",
+    "walk_quotes", "walk_quote_settings",
     "dev_bugs", "dev_tasks", "account_security_events",
     # The scheduled clean-up (services/retention_cleaner.py) removes rows
     # from the relations its reviewed lists name: the four logs, the

@@ -536,3 +536,4 @@
 0498	your_why_and_strengths_are_kept.sql
 0499	will_answers_worries_and_sales_at_ring_five.sql
 0500	the_label_view_counts_what_the_ledger_counts.sql
+0501	the_walk_may_quote_your_notebook.sql
