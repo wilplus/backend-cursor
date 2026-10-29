@@ -6,8 +6,10 @@ OUTCOME
   O1  The Take is cut into blocks of the right size; when the two best clips
       fall in one block, the boundary between them moves (40 to 120 words,
       never across a slide, never cutting a clip); a one-block Take whose
-      two clips have 5 or more words each becomes two blocks; with no cut
-      possible, nothing changes; each such block names its typed exception.
+      two clips have 5 or more words each becomes two blocks; and a short
+      Take still shows me two moments: when no cut keeps 40 words a side and
+      nothing else could be shown, the block is split between the two
+      (N246); each such block names its typed exception.
   O2  The two highest blocks are shown and the score decides each: one at
       or above the floor is praised (the highest is marked), one below it
       gets the practice prompt; praise is anchored inside a praised block.
@@ -29,15 +31,18 @@ OUTCOME
       or a playing-down "just", with the plain opener for a restart.
   O8  In a shown block the moment is its highest-willfidence clip that can
       be served; a block already frozen keeps its clip.
-  O9  On a plan, the walk shows the best moment and the moment where this
-      week's level shows most, practised with the level's own practice
-      (the AI voice for pace) and marked with the level's key, even when
-      its voice cleared the floor; with no clip showing the level, the two
-      best, as today (G7, N134 item 2, N209).
+  O9  On a plan, I get my two best moments and also the moment where this
+      week's level shows most, practised with the level's own practice (the
+      AI voice for pace), even when its voice was confident: a third
+      moment, or one of the two when the level shows there; with nothing
+      showing the level, just the two best (G7, N246).
+  O10 A sentence that already has the helper words I had when I recorded
+      gives its place to my next best moment; helper words I pick during the
+      walk don't move my moments (N246).
 PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O1 -> test_two_best_clips_in_one_block_get_a_block_each
          O1 -> test_a_one_block_take_is_split_for_two_moments
-         O1 -> test_no_possible_cut_leaves_the_blocks_as_they_were
+         O1 -> test_a_short_take_still_shows_two_moments
          O1 -> test_a_frozen_take_keeps_its_blocks
          O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
@@ -46,13 +51,16 @@ PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version
          O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version
          O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen
-         O9 -> test_on_a_plan_one_moment_is_where_the_level_shows
+         O9 -> test_on_a_plan_i_get_my_two_best_and_my_level
+         O10 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
 WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
          2026-10-18 ("words first, then voice"), 2026-10-21 (N108, "the
          voice decides"; N112, "There was no single rewrite in the take"), 2026-10-22 (N113, "After the
          rewording"), 2026-10-23 (N124, "Let's do 1-4"; N118 and N122, "S×W
          picks, voice names top"), 2026-10-24 (N128; N118); 2026-10-27
-         (N209, the level's moment).
+         (N209, the level's moment); 2026-10-28 (N246: "at least two
+         confident moments"; "go for the next confident moment"; "Two best
+         + level").
 """
 from pathlib import Path
 
@@ -558,22 +566,39 @@ def test_a_one_block_take_is_split_for_two_moments():
     assert _cut(_clips_frame(short)) == [(0, 94, "closest_outside_range")]
 
 
-def test_no_possible_cut_leaves_the_blocks_as_they_were():
-    """Founder 2026-10-24 (N128): the cut moves only where both sides keep
-    40 to 120 words and no slide is crossed; otherwise nothing changes."""
+def test_a_short_take_still_shows_two_moments():
+    """Founder 2026-10-28 (N246 item 1: "I've seen only one confident
+    moment"): with no cut keeping 40 to 120 words a side, the blocks stayed
+    as they were, and a Take whose clips all sat in one block showed one
+    moment. With another block to show, they still stay: the Take shows
+    two (N128)."""
     # f3 and f4 share slide 0's second block, and only 30 words follow f3.
     tight = _clips(("f0", 0, 25, -0.6), ("f1", 0, 25, -0.6), ("f2", 0, 25, -0.6),
                    ("f3", 0, 45, 0.9), ("f4", 0, 30, 0.8))
     # g1 and g2 are slide 1's one block; the cut before it is a slide's.
     across = _clips(("g0", 0, 75, -0.6), ("g1", 1, 30, 0.9), ("g2", 1, 45, 0.8))
-    # h0 and h1 are a one-block Take of 60 words: no half reaches 40.
-    halves = _clips(("h0", 0, 30, 0.9), ("h1", 0, 30, 0.8))
     for take, plain in ((tight, _rescored(tight, f0=0.9, f3=-0.6)),
-                        (across, _rescored(across, g0=0.9, g1=-0.6)),
-                        (halves, _rescored(halves, h1=None))):
+                        (across, _rescored(across, g0=0.9, g1=-0.6))):
         frame, before = _clips_frame(take), _clips_frame(plain)
         assert (_cut(frame), _ids(frame)) == (_cut(before), _ids(before)), take
-    # Ten more words after f3, or g0 on slide 1, and the cut moves.
+        assert len(_moments(frame)) == 2
+    # The only block with a clip that can be played: it is cut between the
+    # two, at its most even boundary, the same way every time.
+    alone = _rescored(across, g0=None)
+    # h0 and h1 are a one-block Take of 60 words: no half reaches 40.
+    halves = _clips(("h0", 0, 30, 0.9), ("h1", 0, 30, 0.8))
+    apart = _clips(("i0", 0, 10, 0.9), ("i1", 0, 20, -0.6), ("i2", 0, 15, -0.6),
+                   ("i3", 0, 10, 0.8))
+    for take, cut, best in (
+            (alone, [(0, 75, None), (1, 30, "moment_split"), (1, 45, "moment_split")], "g1 g2"),
+            (halves, [(0, 30, "moment_split"), (0, 30, "moment_split")], "h0 h1"),
+            (apart, [(0, 30, "moment_split"), (0, 25, "moment_split")], "i0 i3")):
+        frame = _clips_frame(take)
+        assert _cut(frame) == cut, take
+        assert [clip for clip, _ in _moments(frame)] == [_clip(sid) for sid in best.split()]
+        assert _clips_frame(take)["blocks"] == frame["blocks"]
+    # The cut in range stays the first choice: ten more words after f3, or
+    # g0 on slide 1, and the neighbour's cut moves.
     roomier = tight[:4] + _clips(("f4", 0, 40, 0.8))
     assert _cut(_clips_frame(roomier)) == [(0, 120, "moment_split"), (0, 40, "moment_split")]
     one_slide = _clips(("g0", 1, 75, -0.6)) + across[1:]
@@ -687,12 +712,52 @@ def _walk(frame):
             for b in frame["blocks"] if b["most_confident"] or b["carries_exercise"]]
 
 
-def test_on_a_plan_one_moment_is_where_the_level_shows():
+def test_on_a_plan_i_get_my_two_best_and_my_level():
     rushed = (140, 140, 140, 200)  # p3 is said far faster than the speaker's own usual
     assert _walk(_paced_frame(rushed)) == [("p0", True, None, None), ("p1", True, None, None)]
+    # The level shows on p3: the two best, and p3 practised as well (N246 item 3).
     assert _walk(_paced_frame(rushed, plan_level="key_line")) == [
-        ("p0", True, None, None), ("p3", False, "voice", "key_line")]
-    # No clip shows the level: the two best, as today.
+        ("p0", True, None, None), ("p1", True, None, None),
+        ("p3", False, "voice", "key_line")]
+    # The level shows most on one of the two: that one is practised with
+    # the level's own practice, and there is no third.
+    assert _walk(_paced_frame((140, 200, 140, 140), plan_level="key_line")) == [
+        ("p0", True, None, None), ("p1", False, "voice", "key_line")]
+    # No clip shows the level: the two best.
     even = (140, 141, 139, 140)
     assert _walk(_paced_frame(even, plan_level="key_line")) == [
         ("p0", True, None, None), ("p1", True, None, None)]
+
+
+def test_a_sentence_with_my_helper_words_gives_way_to_the_next():
+    """Founder 2026-10-28 (N246 item 2): "if there is already a confident
+    moment and helper words, go for the next confident moment"."""
+    from services.slide_helper_words import held_at_take
+
+    take = _clips(("q0", 0, 75, 0.95), ("q1", 1, 75, 0.8), ("q2", 2, 75, 0.5))
+
+    def shown(**options):
+        return [clip for clip, _ in _moments(_clips_frame(take, **options))]
+
+    assert shown() == [_clip("q0"), _clip("q1")]
+
+    class Log:
+        """Slide 0's locked sets: one from before the Take, one picked in
+        its walk."""
+        def list_slide_helper_words_log_for_slides(self, arc_id, user_id, slides):
+            return {0: [{"phrases": ["Q0x3 q0x4 · q0x10,"], "created_at": "2026-10-28T09:00:00Z"},
+                        {"phrases": ["q0x60"], "created_at": "2026-10-28T10:30:00Z"}],
+                    1: [], 2: []}
+
+    held = held_at_take(Log(), "arc", "user", {"created_at": "2026-10-28T10:00:00+00:00"},
+                        {0, 1, 2})
+    assert held == {0: ["Q0x3 q0x4 · q0x10,"]}
+    # q0 says slide 0's helper words: the next two are shown.
+    assert shown(held_words=held) == [_clip("q1"), _clip("q2")]
+    # The same words on another slide, or words it does not say in order,
+    # change nothing.
+    assert shown(held_words={1: ["q0x3 q0x4"]}) == [_clip("q0"), _clip("q1")]
+    assert shown(held_words={0: ["q0x10 · q0x3"]}) == [_clip("q0"), _clip("q1")]
+    # Still shown when the Take has nothing else.
+    assert [clip for clip, _ in _moments(_clips_frame(take[:2], held_words=held))] == [
+        _clip("q0"), _clip("q1")]

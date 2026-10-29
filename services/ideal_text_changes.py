@@ -272,6 +272,7 @@ class _ChangesRun:
         # kept, so a failed read is tried again by the next stage as before.
         self._sessions: dict[str, dict] = {}
         self._snippets: dict[str, list] = {}
+        self._walks: dict[str, dict] = {}
 
     def _session_row(self, session_id: Any) -> dict:
         sid = str(session_id or "")
@@ -817,7 +818,6 @@ class _ChangesRun:
                          _user_sugs: Any, _changes: list) -> None:
         """The dark frame and what follows it (the V4 draw, the paragraph
         map, the willfidence read), as `_v3_shadow` wrote them inline."""
-        from services.plan_walk import walk_inputs
         from services.take_feedback_policy_v3 import (
             POLICY_VERSION as V3_POLICY_VERSION,
             build_shadow_frame,
@@ -838,7 +838,7 @@ class _ChangesRun:
             take_index=_v3_take_index,
             expected_recording_id=_v3_session.get("recording_id"),
             served_text=self.served_text,
-            **walk_inputs(db, self.user_id, _v3_session),
+            **self._walk_inputs(_v3_session, _v3_doc),
         )
         if _v3_frame is None:
             return
@@ -1638,7 +1638,28 @@ class _ChangesRun:
             learning=self.v3_learning,
             declined_rewrites=declined,
             frozen_candidate_ids=frozen_ids,
+            walk=self._walk_inputs(_service_session, _service_doc),
         )
+
+    def _walk_inputs(self, session: Any, doc: Any) -> dict:
+        """What the frame reads beyond the Take: this week's level and the
+        key line on a plan (`plan_walk.walk_inputs`), and the helper words
+        each slide had when the Take was recorded (N246 items 2 and 3). Read
+        here, from the database, for the dark frame and the served one
+        alike: the serve path's own store cannot read a plan, so the walk
+        the speaker saw never had the level's moment (N246 item 4). Read
+        once per Take per run."""
+        from services.plan_walk import walk_inputs
+        from services.slide_helper_words import held_at_take
+        key = str((session.get("id") if isinstance(session, dict) else None)
+                  or self.arm_sid or "")
+        if key not in self._walks:
+            pieces = doc.get("pieces") if isinstance(doc, dict) else None
+            slides = {piece.get("slide_index") for piece in pieces or [] if isinstance(piece, dict)}
+            self._walks[key] = {
+                **walk_inputs(self.db, self.user_id, session),
+                "held_words": held_at_take(self.db, self.arc_id, self.user_id, session, slides)}
+        return self._walks[key]
 
     def _declined_rewrites(self, session: Any, parts: Any
                            ) -> tuple[frozenset, frozenset]:

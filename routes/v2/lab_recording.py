@@ -50,7 +50,6 @@ from services.create_take import (
     TakeCoordinates,
     TakeProjectContext,
     attach_recording_to_project,
-    ensure_project_presentation_unchanged,
     session_owned_by_principal,
     resolve_take_project,
 )
@@ -355,9 +354,6 @@ def _prepare_lab_upload(
         if isinstance(error, IntakeContextError):
             raise _intake_error(error) from error
         raise
-    ensure_project_presentation_unchanged(
-        project, session_context, database=db,
-    )
     _seed_domain_vocabulary(session_context, user_id)
     gate = require_analyzable_recording(
         recording_upload.audio_bytes,
@@ -468,6 +464,14 @@ def _persist_lab_take(
         database=db,
     )
     _persist_context_document(upload)
+    if upload.recording_kind != "read":
+        # N257: the first Take on a deck updated inside the project spends
+        # the stored next deck. Best-effort; never fails the Take.
+        from services.slide_deck_update import clear_next_deck_after_take
+        clear_next_deck_after_take(
+            db, getattr(upload.project, "project", None),
+            upload.project.principal.id,
+            upload.session_context, coordinates.take_index)
     recording_row = persist_recording_row(
         form=upload.form,
         session_id=stored.session_id,

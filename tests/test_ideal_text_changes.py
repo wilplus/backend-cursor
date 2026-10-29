@@ -16,6 +16,8 @@ OUTCOME
       leaves the server with it.
   O6  The block equals the frozen block, each row read once, and the live
       read is served before the dark frame is written.
+  O7  On a plan, the walk I see knows this week's level, and which helper
+      words I had when I recorded (N246).
 PROVES   O1 -> test_the_span_check_serving_none_is_a_named_fallback
          O2 -> test_a_failure_on_the_way_to_v3_serves_no_v2_rows
          O3 -> test_a_served_confident_voice_row_carries_its_recording
@@ -23,6 +25,7 @@ PROVES   O1 -> test_the_span_check_serving_none_is_a_named_fallback
          O5 -> test_every_served_v3_row_carries_its_learning_handles
          O6 -> test_the_block_is_the_same_block_and_no_row_is_read_twice
                test_the_live_read_serves_the_block_before_the_dark_frame_is_written
+         O7 -> test_on_a_plan_the_walk_i_see_knows_my_level
 WHY      services.ideal_text_changes (audit Q-C1). O3: founder 2026-09-20
          "there is no playback on the overlay". O4 and O5 drive stages of
          _ChangesRun directly; the rest go through build_changes_block.
@@ -362,6 +365,28 @@ def test_a_served_confident_voice_row_carries_its_recording():
               if row.get("feedback_family") == "confident_voice"]
     assert [row["id"] for row in served] == [f"cand:{S1}"]
     assert served[0]["snippet_audio_ref"] == "takes/clip-1.webm"
+
+
+def test_on_a_plan_the_walk_i_see_knows_my_level():
+    """Founder 2026-10-28 (N246): the walk the speaker saw never had this
+    week's level; the server asked a store that cannot read a plan."""
+    class PlanDB(FakeDB):
+        def get_open_plan(self, user_id):
+            return {"id": "plan-1", "status": "active", "level": "key_line",
+                    "started_at": "2026-10-27T09:00:00Z"}
+
+        def list_plan_level_events(self, user_id, plan_id):
+            return []
+
+        def list_slide_helper_words_log_for_slides(self, arc_id, user_id, slides):
+            return {0: [{"phrases": ["shipped it"], "created_at": "2026-10-28T09:00:00Z"}]}
+
+    run = _run_for_playback(_deps(PlanDB()))
+    take = {"id": T1, "created_at": "2026-10-28T10:00:00Z"}
+    with patch("services.plan_flow.enabled", return_value=True):   # the plan is on for me
+        walk = run._walk_inputs(take, {"pieces": [{"slide_index": 0}]})
+    assert walk["plan_level"] == "key_line"
+    assert walk["held_words"] == {0: ["shipped it"]}
 
 
 def test_a_failure_on_the_way_to_v3_serves_no_v2_rows():

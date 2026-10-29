@@ -1,10 +1,12 @@
 """The plan in the Feedback walk (G7; N134 items 1 and 2, N209 item 2;
 frontend docs/flows/the-plan.md §1 G7).
 
-A walk on a plan shows the Take's best moment and the moment where this
-week's level shows most; when no moment shows it (the speaker already does
-it well), the two best, as today. The level's moment is practised with the
-level's own intervention, the treatment picker's row (N134):
+A walk on a plan shows the Take's two best moments and the moment where
+this week's level shows most, on its own or on one of the two (N246 item 3,
+in place of N134 item 2 and N209 item 2's best moment and the level's); when
+no moment shows it (the speaker already does it well), the two best alone.
+The level's moment is practised with the level's own intervention, the
+treatment picker's row (N134):
 
   "Let your key line land"     the AI version of the voice, its pace tip
   "Pauses that hold the room"  the AI version of the voice, its pause tip

@@ -1,7 +1,7 @@
 /* WillpowerLab customer-requests widget · w.js (prototype, Invita Head Spa workspace, minimal)
    One tag before </body>:  <script src="https://willpowerlab.com/w.js" data-key="ws_…" async></script>
    One typeface (the system's), white and grey only. A pill at the bottom right, a popup once per visitor,
-   a form of three things: a photo, a number, a tick. Mounted in one shadow root; the host page's CSS and ours never touch.
+   a form of a photo, a few words, an optional first name, a number and a tick. Mounted in one shadow root; the host page's CSS and ours never touch.
    In production the form is an <iframe> to willpowerlab.com/w/<key>/ask; this prototype draws it inline. */
 (function () {
   "use strict";
@@ -60,7 +60,7 @@
 
   var $ = function (s) { return root.querySelector(s); };
   var scrim = $("#scrim"), pop = $("#pop");
-  var state = { photo: null, text: "", phone: "", consent: false };
+  var state = { photo: null, text: "", name: "", phone: "", consent: false };
   var esc = function (t) { return String(t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   var xBtn = '<button class="x" type="button" id="close" aria-label="Close"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>';
   var cam = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b6b6b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
@@ -89,12 +89,13 @@
       '<label class="photo' + (state.photo ? " on" : "") + '" for="file" tabindex="0">' + (state.photo ? '<img src="' + state.photo + '" alt="">' : '<span class="ic">' + cam + '</span>') +
         '<span><b>' + (state.photo ? "Photo added" : "Add a photo") + '</b><small>' + (state.photo ? "Tap to change" : "Your scalp or hair. Only our trichologist sees it.") + '</small></span><input id="file" type="file" accept="image/*" capture="environment" hidden></label>' +
       '<textarea class="fld" id="text" rows="2" placeholder="A few words, optional" aria-label="A few words, optional">' + esc(state.text) + '</textarea>' +
+      '<input class="fld" id="name" type="text" autocomplete="given-name" placeholder="Your first name, optional" aria-label="Your first name, optional" value="' + esc(state.name) + '">' +
       '<input class="fld" id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Mobile number, for the answer" aria-label="Mobile number, for the answer" value="' + esc(state.phone) + '">' +
       '<label class="ck" for="ck"><input id="ck" type="checkbox"' + (state.consent ? " checked" : "") + '><span>' + cfg.consent + ' <u>Privacy</u></span></label>' +
       '<button class="go" type="button" id="send" disabled>Send</button><span class="by">WillpowerLab</span>';
-    var file = $("#file"), text = $("#text"), phone = $("#phone"), ck = $("#ck"), send = $("#send");
-    var sync = function () { state.text = text.value; state.phone = phone.value; state.consent = ck.checked; send.disabled = !(ck.checked && (state.photo || text.value.trim()) && /^\+?[\d\s\-().]{8,}$/.test(phone.value)); };
-    text.oninput = sync; phone.oninput = sync; ck.onchange = sync; sync();
+    var file = $("#file"), text = $("#text"), name = $("#name"), phone = $("#phone"), ck = $("#ck"), send = $("#send");
+    var sync = function () { state.text = text.value; state.name = name.value; state.phone = phone.value; state.consent = ck.checked; send.disabled = !(ck.checked && (state.photo || text.value.trim()) && /^\+?[\d\s\-().]{8,}$/.test(phone.value)); };
+    text.oninput = sync; name.oninput = sync; phone.oninput = sync; ck.onchange = sync; sync();
     file.onchange = function () { var f = file.files && file.files[0]; if (!f) return; var r = new FileReader(); r.onload = function () { state.photo = r.result; form(); }; r.readAsDataURL(f); };
     $("#close").onclick = close;
     send.onclick = function () { send.disabled = true; send.textContent = "Sending…"; setTimeout(sent, 700); };
@@ -108,7 +109,7 @@
       '<h2 style="padding:0">Sent</h2><p>Our trichologist answers you by text within a day.</p>' +
       '<button class="go" type="button" id="back">Done</button><span class="by">WillpowerLab</span>';
     $("#close").onclick = function () { close(); done(); };
-    $("#back").onclick = function () { close(); state = { photo: null, text: "", phone: "", consent: false }; done(); };
+    $("#back").onclick = function () { close(); state = { photo: null, text: "", name: "", phone: "", consent: false }; done(); };
     try { window.dispatchEvent(new CustomEvent("wpl:sent", { detail: { key: key } })); } catch (e) {}
   }
   $("#open").onclick = form;

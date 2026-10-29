@@ -1,4 +1,4 @@
--- 0498 · The label view counts what the ledger counts (founder 2026-10-21,
+-- 0500 · The label view counts what the ledger counts (founder 2026-10-21,
 -- decisions log N111, LEARNING-AND-QUORUM.md §3 B1 and C1).
 --
 -- The view `snippet_label_quorum` (last written by 0289,
@@ -152,7 +152,7 @@ SELECT k.snippet_id,
          ON vn.snippet_id = k.snippet_id AND vn.state_id = k.state_id;
 
 COMMENT ON VIEW public.snippet_label_quorum IS
-    'Confidence label ledger v2 (0498, N111). yes/in_between/no are '
+    'Confidence label ledger v2 (0500, N111). yes/in_between/no are '
     'perceptual positions; two matching independent blind perceptual '
     'ratings settle. not_sure and one legacy v1 neutral route a third but '
     'never settle; two legacy v1 neutrals close the artifact as '

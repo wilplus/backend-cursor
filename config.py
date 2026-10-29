@@ -440,6 +440,13 @@ class Config:
     # version names the reminder; off, only a booking that carries a number
     # (made before N207) gets it.
     BOOKING_WHATSAPP_TO_ACCOUNT = os.getenv("BOOKING_WHATSAPP_TO_ACCOUNT", "false").lower() == "true"
+    # Replies to our WhatsApp number reach /v2/whatsapp/webhook (founder
+    # 2026-10-28, N237): STOP turns the messages off. The verify token is any
+    # string, typed in both here and Meta's webhook settings; the app secret
+    # is the Meta app's, which signs every delivery. Both unset, the door is
+    # shut (503).
+    WHATSAPP_WEBHOOK_VERIFY_TOKEN = (os.getenv("WHATSAPP_WEBHOOK_VERIFY_TOKEN") or "").strip()
+    WHATSAPP_APP_SECRET = (os.getenv("WHATSAPP_APP_SECRET") or "").strip()
     # The plan's own yes (founder 2026-10-27, N211): the worry question, the
     # two ratings, "How did it go?" and the feelings check are asked only after
     # a yes to a question of its own. On since Privacy 3.9, which names it, was

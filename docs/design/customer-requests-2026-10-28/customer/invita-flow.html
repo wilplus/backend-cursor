@@ -90,6 +90,17 @@ button { font: inherit; color: inherit; cursor: pointer; }
 @keyframes fadein { from { opacity: 0; } }
 .ch .sh { position: relative; width: 100%; max-height: 88%; overflow-y: auto; background: #FBF8F3; border-radius: 20px 20px 0 0; padding: 10px 18px 28px; display: flex; flex-direction: column; gap: 12px; animation: rise .26s ease both; scrollbar-width: none; }
 .ch .sh::-webkit-scrollbar { display: none; }
+.ch .brw { position: absolute; inset: 0; z-index: 30; background: #FFFFFF; display: flex; flex-direction: column; animation: rise .26s ease both; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1a1a1a; }
+.ch .brw .bar { display: grid; grid-template-columns: 64px 1fr 64px; align-items: center; padding: 52px 10px 10px; border-bottom: 1px solid #E6E6E6; background: #F7F7F7; }
+.ch .brw .bar button { border: 0; background: none; color: #0A66D8; font: 600 16px inherit; font-family: inherit; text-align: left; padding: 6px; }
+.ch .brw .adr { justify-self: center; display: flex; align-items: center; gap: 5px; font-size: 14px; color: #1a1a1a; }
+.ch .brw .adr svg { width: 12px; height: 12px; fill: none; stroke: #6b6b6b; stroke-width: 2.2; }
+.ch .brw .pg { flex: 1; overflow-y: auto; padding: 22px 20px; display: flex; flex-direction: column; gap: 12px; background: repeating-linear-gradient(135deg, #FAFAFA 0 12px, #F3F3F3 12px 24px); }
+.ch .brw .ph { height: 140px; border-radius: 12px; background: #E9E9E9; }
+.ch .brw .lead { margin: 0; font-size: 19px; font-weight: 600; }
+.ch .brw ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; color: #444; }
+.ch .brw a { color: #0A66D8; font-size: 15px; font-weight: 500; }
+.ch .brw .proto { margin: 0; font-size: 12.5px; color: #8a8a8a; }
 .ch .grab { width: 38px; height: 4px; border-radius: 4px; background: #D9CFC1; align-self: center; }
 .ch .sx { position: absolute; top: 14px; right: 14px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: #F0E9DF; display: grid; place-items: center; color: #7A726A; }
 .ch .sx svg { width: 13px; height: 13px; }
@@ -184,25 +195,27 @@ button { font: inherit; color: inherit; cursor: pointer; }
 (() => {
   const STEPS = [
     { id: "popup", name: "The popup", screen: "site", note: ["Once per visitor, after two seconds", "Four lines. Ask opens the form; Not now keeps it away for 30 days. The pill at the bottom right stays."] },
-    { id: "form", name: "The form", screen: "site", note: ["Three things", "A photo, a number, a tick. A few words are optional. Send is grey until all three are there."] },
+    { id: "form", name: "The form", screen: "site", note: ["Three things", "A photo, a number, a tick. A few words and the first name are optional; the name lets Ariel greet them. Send is grey until all three are there."] },
     { id: "sent", name: "Sent", screen: "site", note: ["Nothing else on the site", "The request is now in the trichologist's chat in the app. Done takes the customer back to the page; the prototype jumps to later that day."] },
-    { id: "sms", name: "The text message", screen: "sms", note: ["From Invita's number", "One line and a link. The audio is never sent as a file: the link always opens the latest answer."] },
+    { id: "sms", name: "The text message", screen: "sms", note: ["From Invita's number", "One line and a link. The audio is never sent as a file: the link opens the answer Ariel sent, and changes only when she sends a new one."] },
     { id: "answer", name: "The answer, as a chat", screen: "answer", note: ["The app's chat, in Invita's colours", "What you asked, as your bubble. Then Ariel: the routine, her voice and full answer, why the treatment, and the treatment as a card you can tap, with its real price. Her ask sits in the footer as the app's two equal buttons: Skip, Book."] },
     { id: "treatment", name: "Tap the treatment", screen: "answer", note: ["The treatment, then one button", "Tapping the card opens a sheet over the chat: what it is, Ariel's one line on why, what's included (from Invita's own page), the length and the real price by spa. One button: Book · from $138. Swipe it away or ✕ to go back."] },
-    { id: "near", name: "Book: where, which spa, which day", screen: "answer", note: ["One question at a time, in the thread", "ZIP in a grey card in the footer, or Use my location. The four spas nearest first, with Ariel's days and each spa's price. The day. Then a summary to Confirm or Change. Every answer lands as your bubble."] },
-    { id: "pay", name: "Pay in the chat", screen: "answer", note: ["Paid without leaving the chat", "The summary's button reads Pay $138. A sheet: the line, the total, Apple Pay first, Pay with card under it. The money goes to Invita's own account through Stripe. In the prototype the card is a test number and nothing is charged."] },
-    { id: "booked", name: "Booked and paid", screen: "answer", note: ["Booked and paid, then the message box", "Your bubble says Paid $138; Ariel's says Booked and paid, with the address, directions, the receipt and Add to calendar. Then the footer turns back into the message box."] },
+    { id: "near", name: "Book: the nearest spa", screen: "answer", note: ["Where, then the spa", "ZIP in a grey card in the footer, or Use my location. Invita's four spas nearest first, each with its price. Tapping one opens that spa's booking in Fresha, as \"Choose your spa\" does on invitaheadspa.com (N239)."] },
+    { id: "fresha", name: "Fresha opens", screen: "answer", note: ["Booked in Fresha, as on Invita's site", "The spa's own Fresha page opens over the chat: the treatment, the day and time, Ariel's days and the payment are all Fresha's. Done comes back to the chat. The link to the real page is Invita's own."] },
+    { id: "booked", name: "Back in the chat", screen: "answer", note: ["Then the message box", "Ariel's line and the message box. Whether the chat can say \"Booked\" depends on Fresha giving the booking back to us: checked before the build (N239)."] },
     { id: "home", name: "Skip: start at home", screen: "answer", note: ["The other way to buy", "After Skip, Ariel offers what she uses in the treatment, for home, as a card. Not now or Buy · price."] },
-    { id: "buy", name: "Buy it in the chat", screen: "answer", note: ["The same pay sheet", "Buy · price opens the same sheet as the treatment, with where to send it. Apple Pay, paid to Invita through Stripe, sent by Invita. Then Paid, on its way, the receipt, and the message box."] },
+    { id: "buy", name: "Buy: Invita's shop", screen: "answer", note: ["Bought in Invita's Shopify checkout", "Buy · $20 opens Invita's Shopify checkout with the Scalp Scrubber in the cart: payment, address, shipping and taxes are Shopify's, and the order comes back to us as the outcome (N239). The Scalp Scrubber is the one care product in Invita's shop today."] },
     { id: "write", name: "Write to Ariel", screen: "answer", note: ["Always open", "Type, add a photo, or record a voice message. It reaches Ariel's chat in the app; she answers here later, typed or as a Take. No instant answers until a model answers alone (N225, N228)."] },
   ];
   const S = { step: "popup", zip: "", spa: null, booked: null, cart: false };
   const AVATAR = `<svg viewBox="0 0 64 64" width="56" height="56" role="img" aria-label="Ariel, your trichologist"><defs><clipPath id="c"><circle cx="32" cy="32" r="32"/></clipPath></defs><g clip-path="url(#c)"><rect width="64" height="64" fill="#E9E6E1"/><path d="M14 64c0-14 8-22 18-22s18 8 18 22z" fill="#8C8580"/><circle cx="32" cy="26" r="11" fill="#D9CDBF"/><path d="M20 27c0-10 5-15 12-15s12 5 12 15c-2-6-6-8-12-8s-10 2-12 8z" fill="#4A4542"/><path d="M20 27c-1 8 0 14 3 18-4-3-5-10-3-18zM44 27c1 8 0 14-3 18 4-3 5-10 3-18z" fill="#4A4542"/></g></svg>`;
+  // Invita's spas and each one's own Fresha page, as linked from "Choose your spa" on invitaheadspa.com (28 October 2026)
+  const FRESHA = "https://www.fresha.com/book-now/";
   const SPAS = [
-    { id: "lv", name: "Las Vegas", street: "Sahara Ave", km: "2.1 mi", price: "$138", who: "Trichologist here Thu, Fri", days: ["Thu 12 Nov", "Fri 13 Nov", "Thu 19 Nov"] },
-    { id: "vi", name: "Vista, San Diego", street: "S Santa Fe Ave", km: "240 mi", price: "$148", who: "Trichologist here Mon", days: ["Mon 16 Nov", "Mon 23 Nov"] },
-    { id: "cm", name: "Costa Mesa", street: "Bristol St", km: "265 mi", price: "$148", who: "Trichologist here Wed", days: ["Wed 18 Nov"] },
-    { id: "fl", name: "Fort Lauderdale", street: "Las Olas Blvd", km: "2,400 mi", price: "$138", who: "Trichologist here Tue", days: ["Tue 17 Nov"] },
+    { id: "lv", name: "Las Vegas", street: "Sahara Ave", km: "2.1 mi", price: "$138", url: FRESHA + "tea-spa-t8bw3l4o/all-offer?id=1365674&share=true&pId=1015190" },
+    { id: "vi", name: "Vista, San Diego", street: "S Santa Fe Ave", km: "240 mi", price: "$148", url: FRESHA + "tea-spa-t8bw3l4o/all-offer?id=1386924&share=true&pId=1015190" },
+    { id: "cm", name: "Costa Mesa", street: "Bristol St", km: "265 mi", price: "$148", url: FRESHA + "tea-spa-t8bw3l4o/all-offer?id=2923780&share=true&pId=1015190" },
+    { id: "fl", name: "Fort Lauderdale", street: "Las Olas Blvd", km: "2,400 mi", price: "$138", url: FRESHA + "invita-head-spa-glwb2c4u/all-offer?share=true&pId=2820980" },
   ];
   const SAID = ["Thank you for the photo. What I see on the crown is a dry, irritated scalp, and washing every day with a strong shampoo is most likely what keeps it that way.", "For the next three weeks, wash every second day with lukewarm water and leave the foam on for one minute.", "The thinner feeling at the top usually follows the irritation. Let the scalp settle first. I would also do one Deep Scalp Treatment now: it clears the buildup and calms the scalp much faster than washing alone."];
   const screen = document.getElementById("screen");
@@ -230,7 +243,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   }
   document.getElementById("steps").addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (b) go(b.dataset.s); });
   function go(id) { clearAll(); if (BY[id].screen === "site" && id !== "popup") { show("popup"); return; } show(id); }
-  document.getElementById("next").onclick = () => { const i = STEPS.findIndex((s) => s.id === S.step); const nx = STEPS[Math.min(STEPS.length - 1, i + 1)]; if (nx.screen === "site") { show("popup"); } else { if (nx.id === "booked") { S.zip = S.zip || "89109"; S.spa = S.spa || SPAS[0]; } show(nx.id); } };
+  document.getElementById("next").onclick = () => { const i = STEPS.findIndex((s) => s.id === S.step); const nx = STEPS[Math.min(STEPS.length - 1, i + 1)]; if (nx.screen === "site") { show("popup"); } else { if (nx.id === "booked" || nx.id === "fresha") { S.zip = S.zip || "89109"; S.spa = S.spa || SPAS[0]; } show(nx.id); } };
   document.getElementById("back").onclick = () => { const i = STEPS.findIndex((s) => s.id === S.step); const pv = STEPS[Math.max(0, i - 1)]; if (pv.screen === "site") show("popup"); else show(pv.id); };
   document.getElementById("again").onclick = () => { try { localStorage.removeItem("wpl-popup-ws_invita_demo"); } catch (e) {} Object.assign(S, { zip: "", spa: null, booked: null, cart: false }); show("popup"); };
 
@@ -252,7 +265,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
   // for a field, tall options for a pick, and the message box whenever nothing is asked, so the customer can always write to Ariel.
   const ICONX = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>`;
   const TREAT = { name: "Deep Scalp Treatment", mins: "75 min", price: "$138–$148", why: "For a dry, irritated scalp: buildup removal and Milbon hydration." };
-  const PROD = { name: "Milbon scalp shampoo", line: "What I use in the treatment, for every second day at home.", price: "$[PRICE]" };
+  // the one care product in Invita's Shopify shop (invitaheadspa.com/products.json, 28 October 2026)
+  const PROD = { name: "Scalp Scrubber", line: "What I use in the treatment, to work the shampoo in at home.", price: "$20", cart: "https://invitaheadspa.com/cart/43882775806038:1" };
   function drawAnswer(mode) {
     const el = document.getElementById("answer");
     el.innerHTML = `<div class="ch">
@@ -305,6 +319,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
     // the treatment, opened from its card: what it is, why Ariel picked it, what's included, the price, one button
     const sheet = (html) => { closeSheet(); const w = document.createElement("div"); w.className = "shw"; w.id = "shw"; w.innerHTML = `<div class="sh">${html}</div>`; el.querySelector(".ch").appendChild(w); w.addEventListener("click", (e) => { if (e.target === w) closeSheet(); }); const x = w.querySelector("[data-x]"); if (x) x.onclick = closeSheet; return w; };
     const closeSheet = () => { const w = el.querySelector("#shw"); if (w) w.remove(); };
+    // the client's own page, opened over the chat as the phone's in-app browser: Fresha to book, Shopify to buy (N239)
+    const browser = (host, url, lines, onDone) => { closeSheet(); const w = document.createElement("div"); w.className = "brw"; w.id = "shw";
+      w.innerHTML = `<div class="bar"><button type="button" id="bdone">Done</button><span class="adr"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>${host}</span><span></span></div>
+        <div class="pg"><div class="ph"></div><p class="lead">${lines[0]}</p><ul>${lines.slice(1).map((l) => `<li>${l}</li>`).join("")}</ul><a href="${url}" target="_blank" rel="noopener">Open Invita's real page ↗</a><p class="proto">Prototype: the real page is drawn here as a placeholder.</p></div>`;
+      el.querySelector(".ch").appendChild(w); w.querySelector("#bdone").onclick = () => { w.remove(); onDone(); }; };
     const treatSheet = () => { S.step = "treatment"; paint(); const w = sheet(`<span class="grab"></span><button class="sx" type="button" data-x aria-label="Close">${ICONX}</button>
         <div class="hero"></div>
         <h3>${TREAT.name}</h3><div class="sub">${TREAT.mins} · ${TREAT.price}, by spa</div>
@@ -313,19 +332,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
         <ul class="list"><li>A look at your scalp first, so the care follows what it needs</li><li>Buildup removal and double cleansing</li><li>Steam, hot towels and a slow scalp massage</li><li>Milbon hydration to finish</li></ul>
         <button class="pill" type="button" id="sbook">Book · from $138</button>`);
       w.querySelector("#sbook").onclick = () => { closeSheet(); me("Book"); setFoot(""); where(); };
-    };
-    // paying in the chat: one sheet, the client's own payment account, Apple Pay first
-    const paySheet = (d) => { S.step = "pay"; paint(); const w = sheet(`<span class="grab"></span><button class="sx" type="button" data-x aria-label="Close">${ICONX}</button>
-        <h3>Pay Invita Head Spa</h3>
-        <div class="rcpt"><div><span>${TREAT.name}</span><span>${S.spa.price}</span></div><small>${d}, 10:00 · ${S.spa.name}, ${S.spa.street}</small><div class="tot"><span>Total</span><span>${S.spa.price}</span></div></div>
-        <button class="apay" type="button" id="apay"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.6-1-2.6-3.9zM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z" fill="#fff"/></svg>Pay</button>
-        <button class="lnk" type="button" id="card">Pay with card</button>
-        <div class="cardbox" id="cardbox" hidden><div class="cf"><span>Card</span><b>4242 4242 4242 4242</b></div><div class="cf2"><div class="cf"><span>Expiry</span><b>12 / 28</b></div><div class="cf"><span>CVC</span><b>•••</b></div></div><div class="proto">Prototype: these are test numbers and nothing is charged.</div><button class="pill" type="button" id="cpay">Pay ${S.spa.price}</button></div>
-        <div class="fine">Paid to Invita Head Spa through Stripe. [Invita's cancellation policy]</div>`);
-      const done = (how) => { const b = w.querySelector(how === "apple" ? "#apay" : "#cpay"); b.disabled = true; b.textContent = "Paying…"; later(() => { closeSheet(); S.booked = { day: d, spa: S.spa, paid: true }; S.step = "booked"; paint(); me(`Paid ${S.spa.price}`); setFoot(""); booked(); }, 900); };
-      w.querySelector("#apay").onclick = () => done("apple");
-      w.querySelector("#card").onclick = () => { w.querySelector("#cardbox").hidden = false; w.querySelector("#card").hidden = true; };
-      w.querySelector("#cpay").onclick = () => done("card");
     };
     // the ask: Book or Skip
     const ask = () => say(() => { them(`Would you like to book it? ${TREAT.mins}, ${TREAT.price} depending on the spa.`); pair("Skip", "Book", () => answerMe("Skip", home), () => answerMe("Book", where)); });
@@ -340,53 +346,29 @@ button { font: inherit; color: inherit; cursor: pointer; }
       foot.querySelector("#loc").onclick = () => go("89109");
     }); };
     const spa = () => say(() => {
-      them(`Nearest to ${esc(S.zip)}. I'm at each on these days.`);
-      setFoot(`<div class="opts">${SPAS.map((s) => `<button type="button" data-s="${s.id}"><span><b>${s.name}</b><small>${s.street} · ${s.who.replace("Trichologist here ", "")} · ${s.price}</small></span><span class="km">${s.km}</span></button>`).join("")}</div>`);
-      foot.querySelectorAll("[data-s]").forEach((b) => b.onclick = () => { S.spa = SPAS.find((s) => s.id === b.dataset.s); answerMe(S.spa.name, day); });
+      them(`Nearest to ${esc(S.zip)}:`);
+      setFoot(`<div class="opts">${SPAS.map((s) => `<button type="button" data-s="${s.id}"><span><b>${s.name}</b><small>${s.street} · ${s.price}</small></span><span class="km">${s.km}</span></button>`).join("")}</div>`);
+      foot.querySelectorAll("[data-s]").forEach((b) => b.onclick = () => { S.spa = SPAS.find((s) => s.id === b.dataset.s); me(esc(S.spa.name)); setFoot(""); fresha(); });
     });
-    const day = () => say(() => {
-      them(`Which day in ${S.spa.name}?`);
-      setFoot(`<div class="opts">${S.spa.days.map((d) => `<button type="button" data-d="${d}"><span><b>${d}</b><small>10:00 · ${TREAT.mins}</small></span></button>`).join("")}</div>`);
-      foot.querySelectorAll("[data-d]").forEach((b) => b.onclick = () => { const d = b.dataset.d; answerMe(d + ", 10:00", () => confirm(d)); });
-    });
-    const confirm = (d) => say(() => {
-      them(`<span class="cap">Your booking</span><b>${TREAT.name}</b><span>${d}, 10:00 · ${TREAT.mins}</span><span>${S.spa.name}, ${S.spa.street}</span><span><b>${S.spa.price}</b></span>`);
-      pair("Change", `Pay ${S.spa.price}`, () => answerMe("Change", spa), () => paySheet(d));
-    });
-    const booked = () => say(() => {
-      them(`<span class="cap">Booked and paid</span><b>${TREAT.name}</b><span>${S.booked.day}, 10:00 · ${TREAT.mins}</span><span>${S.booked.spa.name}, ${S.booked.spa.street}</span><span>${S.booked.spa.price} paid</span><span class="lnks"><a href="https://maps.google.com" target="_blank" rel="noopener">Directions</a><a href="#" data-rcpt>Receipt</a><a href="#" data-cal>Add to calendar</a></span>`);
-      th.querySelectorAll("[data-rcpt],[data-cal]").forEach((a) => a.onclick = (e) => { e.preventDefault(); toast(a.dataset.rcpt !== undefined ? "Invita's receipt, also sent by text." : "Adds the visit to the phone's calendar."); });
-      them("See you there. Write to me here if anything changes.");
-      composer();
-    }, 900);
+    const fresha = () => { S.step = "fresha"; paint(); browser("fresha.com", S.spa.url, [`Invita ${esc(S.spa.name)}, on Fresha`, `${TREAT.name}, ${S.spa.price}`, "The day and time, with Ariel's days", "Payment and the confirmation, from Fresha"], booked); };
+    const booked = () => { S.step = "booked"; paint(); say(() => { them("See you there. Write to me here if anything changes."); composer(); }, 600); };
     // skip the visit: start at home with the product instead
     const home = () => { S.step = "home"; paint(); say(() => {
       them("No problem. If coming in isn't easy, you can start at home:");
       add(`<button type="button" class="tcard" data-card="cart"><span class="img"></span><span class="tx"><b>${PROD.name}</b><small>${PROD.line}</small><small>${PROD.price}</small></span></button>`, "l");
       pair("Not now", `Buy · ${PROD.price}`, () => answerMe("Not now", () => say(() => { them("Of course. Write to me here whenever you like."); composer(); })), addCart);
     }); };
-    // buying the product in the chat: the same pay sheet, with where to send it
-    const addCart = () => { if (S.cart) return; S.step = "buy"; paint(); const w = sheet(`<span class="grab"></span><button class="sx" type="button" data-x aria-label="Close">${ICONX}</button>
-        <h3>Pay Invita Head Spa</h3>
-        <div class="rcpt"><div><span>${PROD.name}</span><span>${PROD.price}</span></div><small>Sent to you</small><div><span>Shipping</span><span>[SHIPPING]</span></div><div class="tot"><span>Total</span><span>${PROD.price}</span></div></div>
-        <div class="cf"><span>Send to</span><b>[Your name], 2400 Sahara Ave, Las Vegas, NV 89109</b></div>
-        <button class="apay" type="button" id="apay"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.6-1-2.6-3.9zM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z" fill="#fff"/></svg>Pay</button>
-        <div class="proto">Prototype: the address is an example and nothing is charged.</div>
-        <div class="fine">Paid to Invita Head Spa through Stripe. Sent by Invita.</div>`);
-      w.querySelector("#apay").onclick = () => { const btn = w.querySelector("#apay"); btn.disabled = true; btn.textContent = "Paying…"; later(() => { closeSheet(); S.cart = true; me(`Paid ${PROD.price}`); setFoot(""); say(() => {
-        them(`<span class="cap">Paid, on its way</span><b>${PROD.name}</b><span>Sent by Invita to 2400 Sahara Ave</span><span class="lnks"><a href="#" data-rcpt>Receipt</a></span>`);
-        th.querySelectorAll("[data-rcpt]").forEach((x) => x.onclick = (e) => { e.preventDefault(); toast("Invita's receipt, also sent by text."); });
-        them("Every second day, one minute with the foam on. Write to me here once you've tried it.");
-        composer();
-      }); }, 900); };
-    };
+    // buying the product: Invita's own Shopify checkout, the product already in the cart
+    const addCart = () => { if (S.cart) return; S.step = "buy"; paint(); me(`Buy · ${PROD.price}`); setFoot("");
+      browser("invitaheadspa.com", PROD.cart, ["Invita's checkout, on Shopify", `${PROD.name}, ${PROD.price}, in the cart`, "Shop Pay, Apple Pay or a card", "The address, shipping and taxes, from Invita's shop"],
+        () => { S.cart = true; say(() => { them("Write to me here once you've tried it, or whenever you like."); composer(); }); }); };
 
     // where the prototype starts, for the step list
     if (mode === "buy") { instant = true; them(`Would you like to book it? ${TREAT.mins}, ${TREAT.price} depending on the spa.`); me("Skip"); S.cart = false; home(); instant = false; later(addCart, 500); return; }
     if (mode === "treatment") { ask(); later(treatSheet, 900); return; }
-    if (mode === "pay") { instant = true; S.zip = S.zip || "89109"; S.spa = S.spa || SPAS[0]; them(`Would you like to book it? ${TREAT.mins}, ${TREAT.price} depending on the spa.`); me("Book"); me(S.zip); me(S.spa.name); const d = S.spa.days[0]; me(d + ", 10:00"); S.booked = null; confirm(d); instant = false; later(() => paySheet(d), 500); return; }
+    if (mode === "fresha") { instant = true; S.zip = S.zip || "89109"; S.spa = S.spa || SPAS[0]; them(`Would you like to book it? ${TREAT.mins}, ${TREAT.price} depending on the spa.`); me("Book"); me(S.zip); me(S.spa.name); instant = false; fresha(); return; }
     if (mode === "near") { instant = true; me("Book"); instant = false; where(); }
-    else if (mode === "booked") { instant = true; S.zip = S.zip || "89109"; S.spa = S.spa || SPAS[0]; them(`Would you like to book it? ${TREAT.mins}, ${TREAT.price} depending on the spa.`); me("Book"); me(S.zip); me(S.spa.name); const d = (S.booked && S.booked.day) || S.spa.days[0]; me(d + ", 10:00"); me(`Paid ${S.spa.price}`); S.booked = { day: d, spa: S.spa, paid: true }; booked(); instant = false; }
+    else if (mode === "booked") { instant = true; S.zip = S.zip || "89109"; S.spa = S.spa || SPAS[0]; them(`Would you like to book it? ${TREAT.mins}, ${TREAT.price} depending on the spa.`); me("Book"); me(S.zip); me(S.spa.name); booked(); instant = false; }
     else if (mode === "home") { instant = true; them(`Would you like to book it? ${TREAT.mins}, ${TREAT.price} depending on the spa.`); me("Skip"); instant = false; home(); }
     else if (mode === "write") { instant = true; them(`Would you like to book it? ${TREAT.mins}, ${TREAT.price} depending on the spa.`); me("Skip"); S.cart = false; home(); instant = false; th.querySelectorAll("[data-card]").length; me("Not now"); them("Of course. Write to me here whenever you like."); composer(); const m = foot.querySelector("#msg"); if (m) { m.value = "Should I stop washing every day right away, or slowly?"; foot.querySelector("#snd").hidden = false; m.focus(); } }
     else ask();

@@ -315,6 +315,36 @@ def v2_restore_project(project_id: str):
     return _archive(project_id, False)
 
 
+@v2_bp.route("/projects/<project_id>/deck", methods=["PUT"])
+@require_auth
+def v2_update_project_deck(project_id: str):
+    """Add or replace the project's deck, inside the project (N257). Body
+    {slides: [{title, body}], presentation_ref: str|null}, validated as a
+    Take's intake context. Stored for the next Take; no Take changes.
+    200 {project_id, next_take} · 400 INVALID_INPUT · 404 PROJECT_NOT_FOUND."""
+    from services.intake_context import IntakeContextError
+    from services.slide_deck_update import DeckUpdateError, store_next_deck
+    principal, failure = _deletion_owner(project_id)
+    if failure:
+        return failure
+    try:
+        stored = store_next_deck(db, project_id, principal.id,
+                                 request.get_json(silent=True))
+    except IntakeContextError as error:
+        return jsonify({"code": "INVALID_INPUT", "error": str(error)}), 400
+    except DeckUpdateError as error:
+        return jsonify({"code": error.code, "error": error.message}), error.status
+    except Exception as error:
+        logger.error("project deck update failed project=%s: %s",
+                     project_id, error, exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not update the slides"}), 500
+    logger.info("project deck stored project=%s next_take=%s",
+                project_id, stored["next_take"])
+    return jsonify(stored), 200
+
+
 @v2_bp.route("/projects/<project_id>/deletion-request", methods=["DELETE"])
 @require_auth
 def v2_cancel_project_deletion(project_id: str):

@@ -16,7 +16,6 @@ import uuid
 
 from services.coach_guidance_delivery import principal_is_allowlisted
 from services.feedback_data_contract import build_feedback_exposure_bundle
-from services.plan_walk import walk_inputs
 from services.take_feedback_policy_v3 import build_service_candidate_frame
 from services.take_feedback_policy_v3_service import prepare_v3_service_inventory
 
@@ -647,6 +646,7 @@ def prepare_first_client_feedback(
     learning: Optional[dict] = None,
     declined_rewrites: Any = frozenset(),
     frozen_candidate_ids: Any = frozenset(),
+    walk: Optional[dict] = None,
 ) -> list[dict] | V3Unavailable | None:
     """Rows, a typed failure, or ``None`` when V3 does not apply here.
 
@@ -662,6 +662,11 @@ def prepare_first_client_feedback(
     ``declined_rewrites`` / ``frozen_candidate_ids``: the standing "Keep my
     words" keys and this Take's frozen selection, handed to the frame
     (N48.2, Q3 A; `services.rewrite_declines`).
+
+    ``walk``: what the frame reads beyond the Take, from the caller's
+    database (``plan_level``, ``key_line``, ``held_words``;
+    `IdealTextChanges._walk_inputs`, N246). Read there because this
+    module's ``database`` cannot read a plan; {} off a plan.
     """
     take = session if isinstance(session, dict) else {}
     principal_id = str(take.get("owner_principal_id") or "")
@@ -701,9 +706,9 @@ def prepare_first_client_feedback(
         served_text=served_text,
         declined_rewrites=declined_rewrites,
         frozen_candidate_ids=frozen_candidate_ids,
-        # On a plan, one moment is where this week's level shows most (G7,
-        # N209); {} off a plan, and the walk is as today.
-        **walk_inputs(database, owner_user_id, take),
+        # On a plan, the moment where this week's level shows most beside
+        # the two best, and the helper words each slide had (N246).
+        **(walk or {}),
     )
     _log_coverage(take_id, take.get("take_index"), frame)
     inventory_detail: list[str] = []
