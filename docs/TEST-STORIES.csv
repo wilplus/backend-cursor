@@ -883,6 +883,16 @@ test_the_keep_warm_ping_comes_before_the_pool_drops_an_idle_connection
 a constant comparison (ping interval < keepalive expiry)
 test_the_keep_warm_ping_warms_one_connection_per_lane
 one ping per gunicorn thread, sent in parallel","If removed: Boot requests queue behind the slowest one again (founder 2026-10-16: fast calls took 4.00 s on the socket, 0.07 s on the pool) and nobody notices until speakers do."
+tests/test_deck_update_inside_project.py,Story,"As a speaker, I want to add slides to my project, or update them, inside the same project, so that my next Take uses them and my Take count, my coach's history and my plan carry on. (N257)","O1  Updating the slides stores them for the next Take and tells which
+Take that is; the recording screen's setup then serves them and says
+the next Take is the first on new slides. Someone else's project is
+not found, and an empty deck is refused.
+O2  A Take recorded on the new slides is accepted (no 409
+PRESENTATION_LOCKED any more) and spends the stored slides.
+O3  In the chat, a new or updated deck gets Will's signed answer and one
+""update_slides"" action, however many Takes are done.","O1 -> test_updated_slides_set_up_the_next_take
+O2 -> test_a_take_on_the_new_slides_is_accepted_and_spends_them
+O3 -> test_the_chat_offers_to_update_the_slides_in_this_project",N257 (founder 2026-10-29). The rewrite of the Ideal Text on that Take is proven in tests/test_take_review.py (O4).
 tests/test_deletion_window.py,Story,"As a speaker who deletes my account, I want it to complete by itself after seven days unless I cancel, so that my data really goes.","O1  The daily run finishes a due deletion: started, purged, then marked
 done; a dry run only reports what it would do and writes nothing.
 O2  A purge that cannot finish is left for a person, with its reasons, and
@@ -1152,15 +1162,17 @@ O2  A released verdict becomes a coach_revision change against the words
 the speaker accepted, with the exact span, text and note.","O1 -> test_only_verdicts_on_published_takes_are_released
 O2 -> test_the_exact_change_and_the_order",
 tests/test_feedback_window.py,Story,"As a speaker, I want my page to show only the moments that matter, so that it stays focused.","O1  Confident moments, the exercise and items I already answered are shown;
-other open moments are not, a paragraph I saved in this Take gets no
-more moments, and no score fields reach the page.
+other open moments are not; a paragraph I saved in this Take shows
+nothing new, except a moment picked for me there, which stays until I
+walk it; and no score fields reach the page.
 O2  A Take with nothing picked still shows two moments; one whose picked
 moments I answered shows no others in their place.
 O3  A paragraph I saved in an earlier Take gets its moments again in later
 Takes.","O1 -> test_green_moments_and_the_exercise_show_nothing_else_open_does
 O2 -> test_a_take_with_nothing_picked_still_shows_two_moments,
 test_answered_moments_leave_no_place_for_others
-O3 -> test_a_paragraph_saved_in_an_earlier_take_gets_its_moments_again","Founder lock 2026-10-12; project ""S"" 2026-10-13; Never-rule 1."
+O3 -> test_a_paragraph_saved_in_an_earlier_take_gets_its_moments_again
+O1 -> test_the_second_best_moment_stays_after_helper_words_on_its_paragraph","Founder lock 2026-10-12; project ""S"" 2026-10-13; Never-rule 1; 2026-10-28 (N246 item 5, ""Second stays"")."
 tests/test_first_client_snapshot_gate.py,Story,"As a speaker, I want a Take whose feedback can't be proven against the frozen bundle to show no V3 feedback rather than unrecorded feedback, so that what I see is always what was recorded.","O1  A source snapshot that does not match the served text declines with
 its named reason BEFORE the exposure bundle is recorded (D20 order),
 and hands back no learning bundle.
@@ -1244,13 +1256,16 @@ O4  An answered row stays, with its decision as its status.
 O5  Every served V3 row carries its learning handles and nothing else
 leaves the server with it.
 O6  The block equals the frozen block, each row read once, and the live
-read is served before the dark frame is written.","O1 -> test_the_span_check_serving_none_is_a_named_fallback
+read is served before the dark frame is written.
+O7  On a plan, the walk I see knows this week's level, and which helper
+words I had when I recorded (N246).","O1 -> test_the_span_check_serving_none_is_a_named_fallback
 O2 -> test_a_failure_on_the_way_to_v3_serves_no_v2_rows
 O3 -> test_a_served_confident_voice_row_carries_its_recording
 O4 -> test_a_yes_on_the_legacy_route_marks_the_row_approved_and_keeps_it
 O5 -> test_every_served_v3_row_carries_its_learning_handles
 O6 -> test_the_block_is_the_same_block_and_no_row_is_read_twice
-test_the_live_read_serves_the_block_before_the_dark_frame_is_written","services.ideal_text_changes (audit Q-C1). O3: founder 2026-09-20 ""there is no playback on the overlay"". O4 and O5 drive stages of _ChangesRun directly; the rest go through build_changes_block."
+test_the_live_read_serves_the_block_before_the_dark_frame_is_written
+O7 -> test_on_a_plan_the_walk_i_see_knows_my_level","services.ideal_text_changes (audit Q-C1). O3: founder 2026-09-20 ""there is no playback on the overlay"". O4 and O5 drive stages of _ChangesRun directly; the rest go through build_changes_block."
 tests/test_ideal_text_cold_open.py,Story,"As a speaker, I want opening my Ideal Text never to show it as missing when the read failed, and never to serve an out-of-date snapshot, so that the loop never breaks quietly.","O1  A failed cold-open read answers 503 IDEAL_TEXT_READ_FAILED, retryable,
 never the ""pending"" 404 that would show an existing Ideal Text as
 missing.
@@ -1351,6 +1366,15 @@ O3  After three failed builds the open answers ""pending"" at once, until a
 new Take finishes.","O1 -> test_a_take_without_an_owner_copy_publishes_with_its_slides
 O2 -> test_an_owner_opening_a_project_with_no_head_gets_one_built
 O3 -> test_a_head_that_keeps_failing_to_build_stops_slowing_every_open","Founder 2026-09-28: ""the text was not assigned to the slides ... it was all concatenated into two pages""; 2026-10-18: a 404 took 5.9 s."
+tests/test_in_control.py,Story,"As a speaker who worries before a talk, I want Will to sort the worry once into what is mine and what is not, and end on one thing I can do, so that I spend the evening on what I control.","O1  A note that worries about something out of my hands gets Will's two or
+three lines under its ""Noted."", ending on one thing I control, from
+Will's signed guide (N241 O1, N258).
+O2  The same worry is not sorted twice: Will may ask once whether the one
+thing happened, then says nothing more about it.
+O3  A note that is no worry, a crisis note, or anyone without the ring row
+gets only ""Noted."" (N258 R1).","O1 -> test_a_worry_is_sorted_once_and_ends_on_one_thing
+O2 -> test_the_same_worry_is_not_sorted_twice
+O3 -> test_no_worry_no_ring_or_a_crisis_gets_only_noted",Linear WIL-113; Will's guide signed 2026-10-29 (N258).
 tests/test_intervention_candidates.py,Story,"As a speaker, I want at most the budgeted number of marks on my document, one per span, from known lanes only, and nothing at all if arbitration fails, so that the page stays focused and honest.","O1  The budget holds: more than BUDGET_CEILING changes in, at most
 BUDGET_CEILING served; overlapping changes serve one mark; a
 zero-width insert never takes a slot.
@@ -1525,7 +1549,9 @@ speech order, each piece's span slicing exactly its words; the flag
 no longer swaps in a shorter best-of text (Never-5).
 O2  Only hesitations, immediate repeats and punctuation/casing change
 silently; false starts, expressive repeats and real words stay
-(Never-5: no word silently changed).
+(Never-5: no word silently changed). A full stop goes in between two
+pieces only where the speaker paused clearly and the next begins a
+sentence with a capital (N126).
 O3  Every change is anchored on an exact substring of the served text
 or dropped; a bold that cannot narrow is dropped, not widened.
 O4  A piece is never lost when its words change after a bake or a lock:
@@ -1533,7 +1559,8 @@ it keeps its order and falls back to its paragraph.
 O5  What reaches the speaker carries no internal vocabulary, no score
 and no cue key the screen has no signed words for (Never-1, Never-4).","O1 -> test_document_is_the_full_latest_take_in_speech_order,
 test_flag_on_and_off_persist_the_same_full_transcript
-O2 -> test_only_fillers_repeats_and_punctuation_change_silently
+O2 -> test_only_fillers_repeats_and_punctuation_change_silently,
+test_a_full_stop_goes_in_only_where_the_speaker_paused
 O3 -> test_key_phrases_from_say_it_stronger_extraction,
 test_delivery_and_structural_are_advice_with_device,
 test_the_confident_voice_card_obeys_the_same_rule,
@@ -1724,10 +1751,14 @@ its willfidence is the lower.
 O3  The voice decides each: at the floor praised (the Clearer version
 when the words need help), under it corrected.
 O4  With no sound read the words order the clips, and both are
-corrected.","O1 -> test_the_two_best_by_willfidence_are_shown_from_any_slide
+corrected.
+O5  A sentence that already has my helper words is not picked again: I
+get the next best one, and it comes back only when nothing else can
+be shown.","O1 -> test_the_two_best_by_willfidence_are_shown_from_any_slide
 O2 -> test_the_stronger_voice_of_the_two_is_the_most_confident
 O3 -> test_a_voice_at_the_floor_is_praised_and_only_a_voice_under_it_practises
-O4 -> test_with_no_sound_read_the_words_order_the_clips_and_both_are_corrected","Founder 2026-10-23 (N118 ""minimum 2, best two""; N122 ""S×W picks, voice names top""); 2026-10-21 (N108, ""the voice decides"")."
+O4 -> test_with_no_sound_read_the_words_order_the_clips_and_both_are_corrected
+O5 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next","Founder 2026-10-23 (N118 ""minimum 2, best two""; N122 ""S×W picks, voice names top""); 2026-10-21 (N108, ""the voice decides""); 2026-10-28 (N246, ""go for the next confident moment"")."
 tests/test_moment_suggestions.py,Story,"As a speaker, I want my Ideal Text read to carry no star or suggestion outside the gated changes lane and no scores, so that I see only words and the latest text.","O1  Whatever lane a stored moment suggestion came from (replace,
 emphasize, structure), the GET serves the moment with its anchor and
 playback identity but no star and no suggestion.
@@ -1978,7 +2009,9 @@ nothing measured it is ""Make it yours"", never a guess.
 O4  The key line is always the first follow-up, and never more than three;
 a fact already said is not asked again, a named worry still is.
 O5  The AI's question is kept only in its signed template's shape;
-anything else falls back to the plain template.
+anything else falls back to the plain template, and a slot the AI
+left unfilled (""{who they will speak to}"") never reaches the speaker:
+not in the question, not in the facts, not on the plan card.
 O6  The dates read as the chat writes them (""14 November"", ""Sat 14 Nov"",
 ""Tuesday 27 October, 10:00"").
 O7  A Take reaches its level when the check that picked it no longer
@@ -2067,7 +2100,22 @@ out gives way at the next open, and that day's hello names the new
 level. Nothing about it is said in the chat.
 O10 A Take's walk reads the level the plan had when the Take was
 recorded, so it reads the same on every opening; off a plan, or on
-""Make it yours"", the walk is as today.","O1 -> test_without_the_ring_nothing_happens
+""Make it yours"", the walk is as today.
+O11 While a speaker is onboarded (the questions; a new speaker's plan
+until the first Take), the principles show nothing and Will's chat
+does not answer as them; after the first Take they are back; a plan
+waiting for the next Take holds nothing back (N243).
+O12 A voice answer with no speech in it, or no words, is not kept and
+not sent on: Will says ""Sorry, I didn't quite catch that. Could you
+say it again?"" and the same question stays (N262).
+O13 An answer that puts Will right is not an answer to his question:
+Will agrees, says back what he now has, and asks the same question
+again; the correction takes the old answer's place and the old one
+stays in the history (N262).
+O14 A new speaker can record before answering: ""Start your first
+recording"" is offered while the questions are asked; after that
+Take's walk Will asks again where he was; the plan, once made, counts
+that Take as its first practice (N262).","O1 -> test_without_the_ring_nothing_happens
 O2 -> test_a_new_speaker_is_asked_once
 O3 -> test_no_date_gives_two_months_then_the_voice_message
 O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
@@ -2077,7 +2125,11 @@ O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
 O8 -> test_moving_the_deadline_keeps_the_practices_done
 O9 -> test_the_level_moves_on_after_two_takes_that_reach_it
 test_a_level_whose_time_ran_out_gives_way
-O10 -> test_a_walk_reads_the_level_of_its_takes_time","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the rules are frontend docs/flows/the-plan.md §1."
+O10 -> test_a_walk_reads_the_level_of_its_takes_time
+O11 -> test_the_principles_wait_while_the_speaker_is_onboarded
+O12 -> test_an_answer_with_nothing_heard_is_asked_again
+O13 -> test_a_correction_is_taken_and_the_question_asked_again
+O14 -> test_a_new_speaker_can_record_before_answering","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the principles waiting for the onboarding, N243; record first, Will asking again and a correction taken, N262; the rules are frontend docs/flows/the-plan.md §1."
 tests/test_playback_copy.py,Story,"As a speaker on iPhone or Safari, I want my recordings to play back, and the playback copy deleted with the recording, so that I can hear myself and deletion leaves nothing. (Record -> next Take: hearing the Take; and deletion.)","O1  A stored short recording gets its Safari-safe copy (.playback.m4a,
 audio/mp4) beside it at upload; the original is untouched.
 O2  The player is handed the original until the copy exists, and the copy
@@ -2339,14 +2391,15 @@ own orchestrator.","O1 -> test_every_placement_names_an_account_keyed_entry_once
 O2 -> test_a_project_purge_counts_its_project_and_stops_on_the_unplaced
 O3 -> test_neither_orchestrator_runs_the_others_request
 O4 -> test_a_project_purge_finishes_for_a_speaker_will_knows","P1-B, decisions log N8/N12: the project graph lists no principal or user, so an unplaced account-keyed table would reach no row at all. O4: found 2026-10-20, the WIL-74 tables (speaker_memory and its events, feedback checks, goal history, the coach's goal card) were never placed, so a project purge for any speaker with a note stopped for review with PROJECT_SCOPE_UNRESOLVED. Python orchestrator only, over the in-memory `PurgeDb` of tests/test_purge_user_locators.py; the real project purge runs on the released lane in tests/test_project_purge_postgres.py. Whether each re-pointed column exists in the schema is not checked here: that purge would fail on a missing column there."
-tests/test_project_setup.py,Story,"As a speaker recording Take 2, I want the recording screen set up from my project: the words from my latest spoken Take and the presentation from my first Take that had a deck, so that every Take is said against the same slides. (Critical path: next Take.)","O1  The slides and presentation come from the first spoken Take that
-carried a deck; the words (topic, audience) from the latest spoken
-Take; a read-aloud Take never counts.
+tests/test_project_setup.py,Story,"As a speaker recording my next Take, I want the recording screen set up from my project: the words from my latest spoken Take and the project's current slides, so that I never re-enter my setup. (Critical path: next Take.)","O1  The slides and presentation come from the latest spoken Take that
+carried a deck, with the Take they were first used on; the words
+(topic, audience) from the latest spoken Take; a read-aloud Take never
+counts.
 O2  The setup is only the setup fields: no score, count, Take number or
 session id reaches the speaker (Never-1), and the setup itself is there.
-O3  Someone else's project answers 404 and shows nothing of it.","O1 -> test_take_ones_deck_and_the_latest_words_set_up_the_next_take
+O3  Someone else's project answers 404 and shows nothing of it.","O1 -> test_the_latest_deck_and_the_latest_words_set_up_the_next_take
 O2 -> test_the_setup_is_only_the_setup_fields
-O3 -> test_someone_elses_project_is_not_found",#1144 (founder 2026-10-16): Take 1's presentation serves every Take.
+O3 -> test_someone_elses_project_is_not_found","#1144 (founder 2026-10-16), then N257 (2026-10-29): the deck is the project's current one, updated inside the project."
 tests/test_project_tenant_isolation.py,Story,"As a speaker, I want my Take found only when the Take, the project and the owner all match, so that no one can read my Take by guessing ids.","O1  Looking up my Take with the right project but someone else as owner
 returns nothing, because all three ids are checked together.",O1 -> test_take_lookup_requires_take_project_and_owner_coordinates_together,
 tests/test_prompt_registry.py,Guard,"Every LLM prompt in services/prompts/ is hashed into prompts.lock.json, and the code matches the lockfile.","A prompt (or its builder logic) edited without regenerating the
@@ -2663,6 +2716,17 @@ O2 -> test_a_row_is_served_only_when_its_surface_is_promoted,
 test_chat_model_ignores_runtime_config_when_promotion_disabled",R-13 / LEGACY-1 (Job 1 review 2026-09-22): runtime_config is service-role writable with no RLS.
 tests/test_runtime_config_model_guard_postgres.py,Story,"As the founder, I want the database itself to refuse an unapproved model setting, so that even someone with the service key cannot change the model behind a speaker's Ideal Text.","O1  Writing any of the gated model settings straight into the database
 is refused with ""model promotion not permitted"".",O1 -> TestTheDirectWriteIsRefused::test_a_direct_insert_of_a_model_key_raises,"Audit 2026-09-22 (LEGACY-1, R-13): one INSERT could change the Ideal Text model within a minute."
+tests/test_sales_framing.py,Story,"As a salesperson, I want a lost deal I note down to point me at the step that stalled and one change to it, never at me, so that the next call goes better and the note does not feel like a verdict.","O1  A note about a sale that stalled gets ""Which step did it stall at?""
+once, under its ""Noted."", with the sale's four steps to tap (N241 P2).
+O2  A tap on a step gets that step as my bubble and one change to that
+step from Will's guide; even when the model cannot answer, the guide's
+own change for that step; a second tap changes nothing.
+O3  A sales note gets the step question, never also the worry answer; a
+note that is not a sale goes on to the worry answer.
+O4  Without the ring row, or for a crisis note, nothing is asked.","O1 -> test_a_stalled_sale_asks_which_step_once
+O2 -> test_a_step_gets_one_change_and_only_once
+O3 -> test_a_sale_is_never_also_sorted_as_a_worry
+O4 -> test_no_ring_or_a_crisis_asks_nothing",Linear WIL-114; Will's guide signed 2026-10-29 (N258).
 tests/test_say_it_stronger.py,Story,"As a speaker, I want ""Say It Stronger"" cards compared only with my own past and never with numbers, and delivered even when the job ends, so that I get words I can act on, not scores.","O1  The job can wait for the cards, so they land before the worker exits.
 O2  Never-1: a card's coaching copy with a digit (""3 times better"") or an
 internal term is dropped; the speaker's rewrites and plain-word copy
@@ -2755,6 +2819,26 @@ O4 -> test_lane_comes_from_provenance
 O5 -> test_bootstrap_and_unclear_rows_stay_out_of_the_label
 O6 -> test_panel_size_outweighs_agreement",
 tests/test_stories_csv.py,Guard,"docs/TEST-STORIES.csv lists every backend test file's story, and every test file has one.","C1  a new or edited test whose STORY/GUARD header is missing, or not copied into the CSV",C1 -> test_every_test_file_has_a_story_and_the_csv_is_current,If removed: the founder reviews a stories file that silently stops matching the tests.
+tests/test_strengths.py,Story,"As a speaker, I want Will to notice a strength that shows in my notes on two different days, let me keep it in my own words, gather the notes that show it, and bring one back the day before my talk, so that I go on stage remembering what I am good at.","O1  A trait in my newest note and on another day (or in my life goals
+answer) is suggested once: ""We spotted a strength!"" with Not now |
+Look; never from one day alone, never one I keep, one at a time (N2).
+O2  In the lens I see the notes it came from with their days; Accept or my
+own words keep it (""Noted. Added to your strengths.""); Not now keeps
+nothing and it is not suggested again (N2).
+O3  A later note that shows a kept strength gets ""That's your 💪 … again.""
+once, and the note is kept under it; the Life Panel lists every note,
+newest first; only I archive one, and it stays (N1, N3, N5).
+O4  The first open of the day before a talk (the plan's deadline or a date
+a note named) brings back one kept strength with its note, once; no
+date, nothing (N4).
+O5  Without the ring row, or for a crisis note, nothing is read or shown.
+O6  The Life Panel's menu has Strengths right after Principles, only with
+the ring row (N1).","O1 -> test_a_trait_on_two_days_is_suggested_once
+O2 -> test_i_keep_it_in_my_words_or_not_at_all
+O3 -> test_a_kept_strength_gathers_its_notes_and_only_i_archive_it
+O4 -> test_the_day_before_my_talk_one_strength_comes_back
+O5 -> test_without_the_ring_or_in_a_crisis_nothing
+O6 -> test_the_life_panel_shows_strengths_only_with_the_ring","Linear WIL-112; founder 2026-10-28, N241; words signed N258."
 tests/test_suggestion_feedback.py,Story,"As a speaker, I want my Accept/Keep taps on a suggestion in the Ideal Text to be saved, so that my choice sticks and I am never told ""Couldn't save that just now"".","O1  POST suggestion-feedback with document_replace or document_bold
 answers 200 {saved: true} and records the decision with the right kind
 (polish/replace, emphasize).
@@ -2775,12 +2859,16 @@ Skip), then Will's new principle; only Accept or my edited wording
 adds it to my Life Panel; every step is a row of the one thread, a
 repeat tap writes nothing, and the lens reopens where it stands.
 O5  Not now under the case lands as my bubble, then ""Noted."".
-O6  Will reads my last case in the chat.","O1 -> test_sunday_brings_a_case_only_when_my_notes_show_one
+O6  Will reads my last case in the chat.
+O7  A week whose notes show sales stalling asks ""Which step was it?"" with
+the sale's four steps (or my own) in place of the bugs, only where the
+sales framing is on; without it, the bugs as before (N241 P3).","O1 -> test_sunday_brings_a_case_only_when_my_notes_show_one
 O2 -> test_only_my_notes_of_the_last_seven_days_are_read
 O3 -> test_asked_in_my_own_words
 O4 -> test_the_lens_walks_me_through_it_and_adds_only_on_my_yes
 O5 -> test_not_now_under_the_case
-O6 -> test_will_reads_my_last_case","Will learning plan, step 2: the Sunday note as a lens (locked 2026-10-26, N158, N170; rules in the frontend's principles.md §1 L)."
+O6 -> test_will_reads_my_last_case
+O7 -> test_a_sales_week_asks_the_step_not_the_bug","Will learning plan, step 2: the Sunday note as a lens (locked 2026-10-26, N158, N170; rules in the frontend's principles.md §1 L)."
 tests/test_take_comparison.py,Story,"As a speaker, I never want to see my pitch, pace or pauses as numbers, so that feedback stays in words (Never rule 1).","O1  The retired take comparison (GET /v2/explore/arc/<id>/take-comparison,
 founder 2026-10-19) answers 410 GONE, reads nothing, sends no
 measurement number, and logs retired_route_called so any caller left
@@ -2823,8 +2911,10 @@ kept even when an older focus rule points at one Paragraph.",O1 -> test_mvp_cont
 tests/test_take_feedback_policy_v3.py,Story,"As a speaker, I want one whole Take turned into my two best moments, each praised or corrected by how it sounded, and honest coverage of my slides, so that the feedback is fair and evidence-backed.","O1  The Take is cut into blocks of the right size; when the two best clips
 fall in one block, the boundary between them moves (40 to 120 words,
 never across a slide, never cutting a clip); a one-block Take whose
-two clips have 5 or more words each becomes two blocks; with no cut
-possible, nothing changes; each such block names its typed exception.
+two clips have 5 or more words each becomes two blocks; and a short
+Take still shows me two moments: when no cut keeps 40 words a side and
+nothing else could be shown, the block is split between the two
+(N246); each such block names its typed exception.
 O2  The two highest blocks are shown and the score decides each: one at
 or above the floor is praised (the highest is marked), one below it
 gets the practice prompt; praise is anchored inside a praised block.
@@ -2846,14 +2936,17 @@ the Clearer version: with the undermining opener for an approval tag
 or a playing-down ""just"", with the plain opener for a restart.
 O8  In a shown block the moment is its highest-willfidence clip that can
 be served; a block already frozen keeps its clip.
-O9  On a plan, the walk shows the best moment and the moment where this
-week's level shows most, practised with the level's own practice
-(the AI voice for pace) and marked with the level's key, even when
-its voice cleared the floor; with no clip showing the level, the two
-best, as today (G7, N134 item 2, N209).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
+O9  On a plan, I get my two best moments and also the moment where this
+week's level shows most, practised with the level's own practice (the
+AI voice for pace), even when its voice was confident: a third
+moment, or one of the two when the level shows there; with nothing
+showing the level, just the two best (G7, N246).
+O10 A sentence that already has the helper words I had when I recorded
+gives its place to my next best moment; helper words I pick during the
+walk don't move my moments (N246).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O1 -> test_two_best_clips_in_one_block_get_a_block_each
 O1 -> test_a_one_block_take_is_split_for_two_moments
-O1 -> test_no_possible_cut_leaves_the_blocks_as_they_were
+O1 -> test_a_short_take_still_shows_two_moments
 O1 -> test_a_frozen_take_keeps_its_blocks
 O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
@@ -2862,7 +2955,8 @@ O5 -> test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version
 O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version
 O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version
 O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen
-O9 -> test_on_a_plan_one_moment_is_where_the_level_shows","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment)."
+O9 -> test_on_a_plan_i_get_my_two_best_and_my_level
+O10 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level"")."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name
@@ -2886,9 +2980,13 @@ tests/test_take_review.py,Story,"As a speaker, I want Take 2 to rewrite only the
 did not speak keeps its words.
 O2  My earlier edit is not carried over; it stays at its own version.
 O3  Each Paragraph keeps its id, and my locked helper words move to their
-slide.","O1 -> EveryTakeRewritesTheSlidesItSpoke::test_the_spoken_slide_is_rebuilt_and_the_other_is_kept
+slide.
+O4  The first Take on new slides (N257) writes the whole Ideal Text fresh
+from what I said, and my helper words move to the new slide with the
+same title; the others leave the page.","O1 -> EveryTakeRewritesTheSlidesItSpoke::test_the_spoken_slide_is_rebuilt_and_the_other_is_kept
 O2 -> EveryTakeRewritesTheSlidesItSpoke::test_the_spoken_slide_is_rebuilt_and_the_other_is_kept
-O3 -> EveryTakeRewritesTheSlidesItSpoke::test_the_spoken_slide_is_rebuilt_and_the_other_is_kept",Never-rule 5; founder 2026-09-25 (contracts 8-9).
+O3 -> EveryTakeRewritesTheSlidesItSpoke::test_the_spoken_slide_is_rebuilt_and_the_other_is_kept
+O4 -> TheFirstTakeOnNewSlides::test_the_whole_text_is_fresh_and_helper_words_follow_the_title",Never-rule 5; founder 2026-09-25 (contracts 8-9); N257.
 tests/test_take_summary.py,Story,"As a speaker, I want one short summary of my Take in words, about my own talk, so that I know what went well without a number or verdict.","O1  Each Take gets one stored summary, written from its real progress and
 about my talk (its title, slides, my most confident moment).
 O2  The summary is only a cheeky sum-up of the Take: one or two short
@@ -3352,8 +3450,8 @@ O4  A note that sounds like a crisis is kept and answered at once with the
 chat's safety reply; before the question is answered it is never asked
 instead of that reply.
 O5  Will reads the notes, only once the person said Yes.
-O6  A tag the Life Panel owns is kept as a note, then left to the Life
-Panel to answer.
+O6  Every typed ""#"" is one note, as the small mic's: the Life Panel's old
+tags are notes too, and ""#note"" is read as ""#"" (N253).
 O7  While a note is said, its words so far come back, hesitations and
 all, and nothing is kept (N194).
 O8  A note the app sends twice under one key (the app closed mid-send)
@@ -3365,7 +3463,7 @@ O2 -> test_the_first_note_asks_and_yes_keeps_it
 O3 -> test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash
 O4 -> test_a_crisis_note_gets_the_safety_reply
 O5 -> test_will_reads_the_notes_only_after_yes
-O6 -> test_a_life_panel_tag_is_kept_and_left_to_the_life_panel
+O6 -> test_every_typed_hash_is_one_note_as_the_mic
 O7 -> test_the_live_words_come_back_and_nothing_is_kept
 O8 -> test_a_note_sent_twice_is_kept_once
 O9 -> test_a_voice_note_is_fixed_in_the_notebook_and_the_thread","Will learning plan, step 1 (founder 2026-10-20, ""approved, start step 1""; words signed the same day)."
@@ -3480,3 +3578,18 @@ no run trained on: the withdrawn speaker's pairs stay out.","O1 -> test_a_withdr
 O2 -> test_an_unreadable_freshness_refuses_the_promotion
 O3 -> test_a_regurgitating_candidate_is_failed_and_never_promoted
 O4 -> test_the_retraining_is_the_next_run_on_never_trained_pairs","Counsel 2026-10-01; audit DOOR-4-WITHDRAWN and DOOR-3-RETRAIN. Python seam (services/model_training.py, services/model_promotion.py) over the shared fake in tests/doors_fakes.py."
+tests/test_your_why.py,Story,"As a speaker with a goal, I want my why, my vision and how I want to treat people kept in my own words, and my why waiting for me once each day, so that I remember what I am doing this for.","O1  After my first life goal, the next open of the Lounge asks once for my
+why with Not now | Start; a second Not now and it waits for me to ask
+(""#why"" or my own words) (N255 Q3).
+O2  Will drafts each line only from my answers and quotes them; a skipped
+question gets no line; all three skipped, nothing is drafted (Q2).
+O3  Kept, the Lounge says ""Noted. Your why is set."" and each day, the
+first time it opens, my why waits in my words with ""Where will it show
+today?"", once that day (Q4).
+O4  A changed line keeps the earlier words, dated; Will reads all three
+before it chats (Q5, Q6).
+O5  Without the ring row, or while onboarded, nothing of it appears.","O1 -> test_the_ask_comes_after_the_first_goal_twice_at_most
+O2 -> test_will_drafts_only_from_my_words
+O3 -> test_my_why_waits_once_a_day
+O4 -> test_a_changed_line_keeps_its_history_and_will_reads_all_three
+O5 -> test_without_the_ring_nothing_appears","Founder 2026-10-29 (""what about the reminder daily reminder about my goals? Like raison d'être""), N255; words signed N258."

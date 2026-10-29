@@ -35,6 +35,16 @@ with this contract, this contract wins.
    deck inside an existing Project is retired: a new deck is a new setup,
    and so a new Project. The replacement allowed before the first completed
    Take above is no longer offered.
+   **Amended 2026-10-29 (founder, decisions log N257):** a speaker adds a
+   deck to a Project that has none, or replaces its deck, inside the same
+   Project; the Take count, the coach's history and the plan carry on. The
+   new deck is used from the next Take, which writes the whole Ideal Text
+   fresh on the new slides (the previous text stays in history, clause 16);
+   helper words move to a new slide with the same title, and the others stay
+   only in history. "A changed deck starts a new Project" and the refusal of
+   a Take on a changed deck (409 PRESENTATION_LOCKED) are retired. The
+   Project's slide structure (clause 3) is its current deck: the one stored
+   for the next Take, else the latest Take's.
 5. A Recording Attempt is the preserved submitted audio. A Take exists and
    counts only after processing succeeds. Retrying processing reuses the same
    Recording Attempt and never increments the Take count.
@@ -180,7 +190,12 @@ with this contract, this contract wins.
     between the two clips so each gets a block of its own, each 40 to 120
     words, never across a Slide and never cutting a clip; a Take of one block
     is split in two the same way when each clip has 5 words or more. When no
-    such cut exists, the blocks stay as partitioned. A block made this way is
+    such cut exists and no other block has a clip to show, the block itself is
+    cut between the two clips at its most even persisted boundary, each side
+    keeping its clip, when each clip has 5 words or more; with another block
+    to show, the blocks stay as partitioned *(amended 2026-10-28, N246; until
+    then a Take whose clips all sat in one block showed one moment)*. A block
+    made this way is
     a new block with a new id and carries the typed partition exception
     `moment_split`. A Take whose blocks are frozen keeps them.
 24b. **(REPLACED 2026-09-18 — founder. Prior text retained at 24b-prior.)** V3

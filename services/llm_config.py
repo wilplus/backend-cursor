@@ -479,6 +479,76 @@ founder's own answers in the lens, with the words it came from. Founder only
 (services.life_goals)."""
 
 
+SPEC_IN_CONTROL = LLMSpec(
+    model=STRONG_MODEL,
+    # Will's answer to a worry: two or three short lines from its guide.
+    temperature=0.3,
+    max_tokens=300,
+    response_format={"type": "json_object"},
+)
+"""What is in your control (N241 O1, N258): is a # note a worry about
+something out of the person's hands, and Will's answer from its signed
+guide, once per worry (services.in_control)."""
+
+
+SPEC_SALES_NOTE = LLMSpec(
+    model=CHEAP_MODEL,
+    # Detection only: a sale that stalled or was lost, or not.
+    temperature=0.0,
+    max_tokens=40,
+    response_format={"type": "json_object"},
+)
+"""The sales framing (N241 P2): is a # note about a sale of theirs that
+stalled or was lost? (services.sales_framing)."""
+
+
+SPEC_SALES_CHANGE = LLMSpec(
+    model=STRONG_MODEL,
+    # One or two short lines from Will's guide: one change to one step.
+    temperature=0.3,
+    max_tokens=200,
+    response_format={"type": "json_object"},
+)
+"""The sales framing (N241 P2, N258): one change to the step the sale
+stalled at, from Will's signed guide (services.sales_framing)."""
+
+
+SPEC_YOUR_WHY_DRAFT = LLMSpec(
+    model=STRONG_MODEL,
+    # Their own words in three short lines; no room to invent.
+    temperature=0.2,
+    max_tokens=400,
+    response_format={"type": "json_object"},
+)
+"""Your why (N255 Q2): the why, the vision and how they treat people, each
+drafted only from their own answers, with the words it came from
+(services.your_why)."""
+
+
+SPEC_YOUR_WHY_ASK = LLMSpec(
+    model=CHEAP_MODEL,
+    # Detection only: an ask for their why, or not.
+    temperature=0.0,
+    max_tokens=40,
+    response_format={"type": "json_object"},
+)
+"""Your why (N255 Q3): does a chat message ask to set, see or change their
+why? Runs only after a keyword pre-gate (services.your_why)."""
+
+
+SPEC_STRENGTHS_READ = LLMSpec(
+    model=STRONG_MODEL,
+    # One read of a note: a kept strength at work, a trait on two days, a
+    # talk's date. Their words only; no room to invent.
+    temperature=0.1,
+    max_tokens=300,
+    response_format={"type": "json_object"},
+)
+"""Strengths (N241 N2 to N4, signed N258): under a # note, a kept strength
+at work in it, a strength shown on two different days, and a talk date the
+note names (services.strengths)."""
+
+
 SPEC_LIFE_GOAL_ASK = LLMSpec(
     model=CHEAP_MODEL,
     # Detection only: a life goal asked for, or not.

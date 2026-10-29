@@ -171,6 +171,7 @@ def v2_explore_get_ideal_text_core(arc_id):
         payload["presentation_ref"] = refreshed_media_url(
             payload.get("presentation_ref")) or None
         _serve_is_saved(payload, arc_id)
+        _serve_deck_flags(payload, arc_id)
         response = jsonify(payload)
     elapsed = (perf_counter() - started) * 1000
     response.headers["Cache-Control"] = "private, no-store"
@@ -355,7 +356,8 @@ def v2_explore_get_ideal_text(arc_id):
           can_record_take, text, user_edited,
           prior_edit?, key_moments, moments_unlocked,
           explanations_available, price_credits,
-          notes_text } — free in both states, never 402s. The
+          notes_text, has_deck, project_archived } — free in both
+    states, never 402s. The
     crucial-bubble fields (founder 2026-07-20): `title` = latest take's
     topic.
 
@@ -393,6 +395,7 @@ def v2_explore_get_ideal_text(arc_id):
             deps=_notebook_deps())
         if status == 200 and not payload.get("historical"):
             _serve_is_saved(payload, arc_id)
+            _serve_deck_flags(payload, arc_id)
         return jsonify(payload), status
     except Exception as e:
         logger.error("explore ideal-text GET failed arc=%s: %s", arc_id, e,
@@ -725,6 +728,15 @@ def _serve_is_saved(payload, arc_id) -> None:
     saved = db.ideal_text.ideal_text_saved(str(arc_id), version)
     if isinstance(saved, bool):
         payload["is_saved"] = saved
+
+
+def _serve_deck_flags(payload, arc_id) -> None:
+    """`has_deck` (the current deck has a PDF: "Update slides", else "Add
+    slides", N257) and `project_archived` (N14, N254) on a live read. Read
+    at serve time, never baked into the immutable snapshot: both change
+    without a new Take."""
+    from services.slide_deck_update import deck_flags
+    payload.update(deck_flags(db, arc_id, payload.get("presentation_ref")))
 
 
 def _generated_text(arc_id, user_id) -> "str | None":

@@ -14,11 +14,16 @@ Every clip gets its willfidence, S x W, from 0 to 1:
 Shown: the Take's two highest willfidence clips, however low, at most one
 per block and from any slide, so both can be on one long slide (N118); a
 block's best clip stands for it, and clips with enough words (``MIN_WORDS``)
-rank before short ones. Fewer than two only when the Take has fewer than two
-clips. When the two best clips share a block, the V3 policy first moves the
-boundary between them, so each has a block of its own (``best_two``; N128).
-Of the two, the stronger voice is "your most confident moment", even
-when its willfidence is the lower (N122, "S×W picks, voice names top").
+rank before short ones. A clip that holds the helper words its slide had
+when the Take was recorded (``held``) ranks after the clips that do not, so
+the next best confident moment is shown in its place (founder 2026-10-28,
+N246 item 2). Fewer than two only when the Take has fewer than two clips.
+When the two best clips share a block, the V3 policy first moves the
+boundary between them, or cuts the block itself, so each has a block of its
+own (``best_two``; N128, N246 item 1). Of the two, the stronger voice is
+"your most confident moment", even when its willfidence is the lower (N122,
+"S×W picks, voice names top"). On a plan, the moment where this week's level
+shows most is practised as well (``pick_with_level``, N246 item 3).
 
 The voice decides each (N108). A shown moment whose voice reaches ``FLOOR``
 with at least ``MIN_WORDS`` words is PRAISED, unless its words need help
@@ -98,8 +103,8 @@ def read(score: Any, text: Any, metrics: Any, shown: Any = None) -> dict:
 
 def pick(reads: list[dict]) -> dict:
     """``reads``: one row per clip with ``block_id``, ``slide_index``,
-    ``word_count``, ``candidate_id`` and ``read`` (from :func:`read`, or
-    None).
+    ``word_count``, ``candidate_id``, ``read`` (from :func:`read`, or
+    None) and ``held`` (its words hold the slide's helper words; N246).
 
     Returns ``{"shown": [{"block_id", "candidate_id", "praise", "kind",
     "highest", "voice_clears"}, ...]}``: the two highest willfidence clips,
@@ -136,19 +141,26 @@ def _entry(row: dict, top: Optional[dict]) -> dict:
 
 
 def pick_with_level(reads: list[dict], candidate_id: Any, level: str, kind: str) -> dict:
-    """A Take on a plan (N134 item 2, N209 item 2): the Take's best moment,
-    as :func:`pick` reads it, then the moment where this week's level shows
-    most, ``candidate_id``, always practised with the level's own
-    ``kind`` and marked ``plan_level``. When that clip has no read or
-    shares the best moment's block, :func:`pick`, as today."""
-    rows = [row for row in reads if row.get("read")]
-    level_row = next((row for row in rows if row.get("candidate_id") == candidate_id), None)
-    best = min(rows, key=_rank) if rows else None
-    if level_row is None or best is None or best["block_id"] == level_row["block_id"]:
-        return pick(reads)
-    top = min((best, level_row), key=_voice_rank)
-    return {"shown": [_entry(best, top),
-                      {**_entry(level_row, top), "praise": False, "kind": kind, "plan_level": level}]}
+    """A Take on a plan (founder 2026-10-28, N246 item 3, in place of N134
+    item 2 and N209 item 2's best moment and the level's): the two best
+    moments, as :func:`pick` reads them, and the moment where this week's
+    level shows most, ``candidate_id``, always practised with the level's
+    own ``kind`` and marked ``plan_level``: on its own shown moment when it
+    is one of the two, else as a third, never the most confident. When that
+    clip has no read, or another clip of its block is shown, :func:`pick`
+    alone."""
+    picked = pick(reads)
+    shown = picked["shown"]
+    marks = {"praise": False, "kind": kind, "plan_level": level}
+    for at, moment in enumerate(shown):
+        if moment["candidate_id"] == candidate_id:
+            shown[at] = {**moment, **marks}
+            return picked
+    row = next((row for row in reads
+                if row.get("read") and row.get("candidate_id") == candidate_id), None)
+    if row is not None and all(moment["block_id"] != row["block_id"] for moment in shown):
+        shown.append({**_entry(row, None), **marks})
+    return picked
 
 
 def best_two(reads: list[dict]) -> list[dict]:
@@ -161,9 +173,11 @@ def best_two(reads: list[dict]) -> list[dict]:
 
 def _rank(row: dict) -> tuple:
     """Clips with enough words first, whatever their voice (a three-word
-    fragment is shown only when a Take has nothing longer), then the
+    fragment is shown only when a Take has nothing longer), then those that
+    do not hold the slide's helper words (N246 item 2), then the
     willfidence, then the voice (N118)."""
-    return not _worded(row), -row["read"]["value"], -row["read"]["s"]
+    return (not _worded(row), bool(row.get("held")), -row["read"]["value"],
+            -row["read"]["s"])
 
 
 def _voice_rank(row: dict) -> tuple:

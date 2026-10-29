@@ -90,12 +90,18 @@ COPY = {
     # The plan's own yes (founder 2026-10-27, N211: "approved as drawn", on
     # the prototype https://claude.ai/artifact/3GtUo7eVdf9SAhZQCDsTR7): asked
     # once, before the personal questions. Will's words, then the two taps.
+    # "Settings", the page's name since N196 (founder 2026-10-28, N249).
     "consent_ask": ("A few of my questions are personal: how stressed and how ready you feel, "
                     "what worries you, and how you feel before each Take. I only ask with your "
                     "yes. Your coach and I use your answers to shape your plan. You can turn "
-                    "this off in Data & consent."),
+                    "this off in Settings."),
     "consent_yes": "Yes, ask me",
     "consent_no": "Not now",
+    # A voice answer with no speech in it, and a correction taken (founder
+    # 2026-10-29, N262 items 2 and 3: "Will: didn't quite catch it", "Will
+    # hears it and agrees").
+    "not_heard": "Sorry, I didn't quite catch that. Could you say it again?",
+    "put_right": "Got it, thank you for putting me right.",
 }
 
 #: Why this line (N154): the sentence under "Why this line?", by level.
@@ -390,7 +396,8 @@ def today_one(level: Optional[str]) -> str:
 
 def why_line(level: Optional[str], who: Optional[str]) -> str:
     template = WHY_LINE.get(level or "", WHY_LINE["other"])
-    return template.format(who=(who or "them").strip() or "them")
+    who = (who or "").strip()
+    return template.format(who="them" if not who or _SLOT.search(who) else who)
 
 
 # ── the questions (N138, N139, N145, N150) ─────────────────────────────────
@@ -425,14 +432,16 @@ def next_plain_bank(asked: Sequence[str], facts: Mapping[str, Any],
     return None
 
 
-_BAD = re.compile(r"[!%]|\d+\s*/\s*10")
+_BAD = re.compile(r"[!%{}]|\d+\s*/\s*10")
+#: A template's slot the AI left unfilled ("{who they will speak to}").
+_SLOT = re.compile(r"[{}]")
 
 
 def fitted_question(nx: Any, asked: Sequence[str], skip: Sequence[str] = ()) -> Optional[dict]:
     """The AI's next question, kept only when it matches its signed
     template: a known bank not asked yet, the key line first, its anchor
-    words kept, short, no "!" or "%". Otherwise None, and Will says the
-    plain template."""
+    words kept, short, no "!" or "%", and no slot left unfilled ("{…}").
+    Otherwise None, and Will says the plain template."""
     if not isinstance(nx, Mapping):
         return None
     bank, question = nx.get("bank"), nx.get("question")
@@ -462,13 +471,29 @@ def fitted_ack(ack: Any) -> Optional[str]:
     return None
 
 
+def fitted_correction(raw: Any, answered: Sequence[str]) -> Optional[dict]:
+    """A correction the AI heard (N262 item 3): what it corrects, one of the
+    answers already given, and Will's one sentence saying back what he now
+    has, kept only within N150's rules; else None, and the answer counts as
+    an answer."""
+    if not isinstance(raw, Mapping):
+        return None
+    of, back = raw.get("of"), raw.get("said_back")
+    if of not in answered or not isinstance(back, str):
+        return None
+    b = back.strip()
+    if not b or len(b) > 260 or _BAD.search(b) or b.startswith("Thank you"):
+        return None
+    return {"of": str(of), "said_back": b}
+
+
 def clean_facts(raw: Any, known: Optional[Mapping[str, Any]] = None) -> dict:
     """The facts the AI read, short strings or nothing, over what was known."""
     out = {k: v for k, v in dict(known or {}).items() if k in FACT_KEYS and v}
     if isinstance(raw, Mapping):
         for k in FACT_KEYS:
             v = raw.get(k)
-            if isinstance(v, str) and v.strip():
+            if isinstance(v, str) and v.strip() and not _SLOT.search(v):
                 out[k] = v.strip()[:300]
     return out
 
@@ -479,7 +504,7 @@ def who_from_key_question(question: str) -> Optional[str]:
     if not m:
         return None
     who = m.group(1).strip()
-    return None if who.lower() == "your audience" else who
+    return None if who.lower() == "your audience" or _SLOT.search(who) else who
 
 
 def question_text(q: Mapping[str, Any]) -> str:
@@ -490,7 +515,9 @@ def question_text(q: Mapping[str, Any]) -> str:
 def turn_prompt(*, deadline: Optional[date], deadline_given: bool,
                 transcript: Sequence[tuple[str, str]], asked: Sequence[str]) -> str:
     """The AI's brief for Will's next message (N150): the prototype's rules,
-    word for word. ``transcript`` is (who, text) pairs in order."""
+    word for word. ``transcript`` is (who, text) pairs in order. Once Will
+    has asked a follow-up, the speaker's last message may be a correction
+    instead of an answer (N262 item 3)."""
     n = len(asked)
     lines = [f"{who}: {text}" for who, text in transcript]
     date_bit = (f", its date ({fmt_day(deadline)})" if deadline and not deadline_given else "")
@@ -541,6 +568,18 @@ def turn_prompt(*, deadline: Optional[date], deadline_given: bool,
          + ("" if date_bit else " They have no event date, so leave the date out.")
          + " If they gave no reason, name the event only.")
         if n == 0 else "Leave \"ack\" out.",
+        *([] if n == 0 else [
+            "",
+            "A correction: the speaker's last voice message may not answer Will's last question "
+            "but put Will right about something said before (\"No, that's not what I meant\", "
+            "\"I said it wrong\", a fact said again differently). Then \"correction\" is "
+            "{\"of\": what it corrects, \"said_back\": one sentence}. \"of\" is \"why\" for "
+            "their event and why it matters, else the bank of the question whose answer it "
+            f"corrects, one of: {', '.join(['why', *asked[:-1]])}. \"said_back\" says back what "
+            "Will now has, in their words, speaking to them as \"you\", under the fixed rules; "
+            "it does not start \"Thank you\". The facts then follow the correction. When the last "
+            "message answers the question, even partly, \"correction\" is null.",
+        ]),
         "",
         "Transcript:",
         *lines,
@@ -548,7 +587,9 @@ def turn_prompt(*, deadline: Optional[date], deadline_given: bool,
         "Reply with only this JSON: {\"ack\": string|null, \"facts\": {\"event\", \"why\", "
         "\"topic\", \"audience\", \"length\", \"slides\", \"key_line\", \"worry\", "
         "\"experience\", \"success\", \"opening\", \"who\": string|null}, \"next\": {\"bank\": "
-        "string, \"opener\": string|null, \"question\": string} | null}",
+        "string, \"opener\": string|null, \"question\": string} | null"
+        + ("" if n == 0 else ", \"correction\": {\"of\": string, \"said_back\": string} | null")
+        + "}",
         "facts are what the speaker has said so far, short and in their words; null when not "
         "said. \"who\" is who they will speak to, as the key question names them (\"the "
         "board\", \"your sister\").",

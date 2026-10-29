@@ -3,8 +3,9 @@ STORY    As a speaker, I want my page to show only the moments that matter, so
          that it stays focused.
 OUTCOME
   O1  Confident moments, the exercise and items I already answered are shown;
-      other open moments are not, a paragraph I saved in this Take gets no
-      more moments, and no score fields reach the page.
+      other open moments are not; a paragraph I saved in this Take shows
+      nothing new, except a moment picked for me there, which stays until I
+      walk it; and no score fields reach the page.
   O2  A Take with nothing picked still shows two moments; one whose picked
       moments I answered shows no others in their place.
   O3  A paragraph I saved in an earlier Take gets its moments again in later
@@ -13,7 +14,9 @@ PROVES   O1 -> test_green_moments_and_the_exercise_show_nothing_else_open_does
          O2 -> test_a_take_with_nothing_picked_still_shows_two_moments,
                test_answered_moments_leave_no_place_for_others
          O3 -> test_a_paragraph_saved_in_an_earlier_take_gets_its_moments_again
-WHY      Founder lock 2026-10-12; project "S" 2026-10-13; Never-rule 1.
+         O1 -> test_the_second_best_moment_stays_after_helper_words_on_its_paragraph
+WHY      Founder lock 2026-10-12; project "S" 2026-10-13; Never-rule 1;
+         2026-10-28 (N246 item 5, "Second stays").
 """
 from services.feedback_window import window_rows
 
@@ -32,7 +35,7 @@ def _para(row):
 def test_green_moments_and_the_exercise_show_nothing_else_open_does():
     rows = [_m("g1", 0, "confident"), _m("plain", 1), _m("g2", 2, "confident"),
             _m("ex", 3, practise=True), _m("done", 4, status="approved"),
-            _m("g3", 5, "confident")]
+            _m("other", 5)]
     out = window_rows(rows, paragraph_of=_para, saved_paragraphs={5})
     assert [r["id"] for r in out] == ["g1", "g2", "ex", "done"]
     assert all("candidate_score" not in r and "delivery_band" not in r for r in out)
@@ -45,13 +48,14 @@ def test_a_take_with_nothing_picked_still_shows_two_moments():
 
 
 def test_answered_moments_leave_no_place_for_others():
-    """Founder 2026-10-21: walked through, the black lines stayed. Answered
-    or saved, the picked moments stand; the other moments stay unshown."""
+    """Founder 2026-10-21: walked through, the black lines stayed. Answered,
+    the picked moments stand; the other moments stay unshown, also on a
+    paragraph saved in this Take."""
     rows = [_m("g1", 0, "confident", status="dismissed"), _m("plain", 1),
             _m("ex", 2, practise=True, status="approved"), _m("other", 3),
-            _m("g2", 4, "confident")]
+            _m("g2", 4, "confident", status="approved"), _m("after", 4)]
     out = window_rows(rows, paragraph_of=_para, saved_paragraphs={4})
-    assert [r["id"] for r in out] == ["g1", "ex"]
+    assert [r["id"] for r in out] == ["g1", "ex", "g2"]
 
 
 def test_a_paragraph_saved_in_an_earlier_take_gets_its_moments_again():
@@ -74,6 +78,22 @@ def test_a_paragraph_saved_in_an_earlier_take_gets_its_moments_again():
     saved = saved_paragraphs(parts, {"p3"}, take_2_started)
     assert saved == {2, 3}
     rows = [_m("a", 0, "confident"), _m("b", 1, "confident"),
-            _m("c", 2, "confident")]
+            _m("c", 2, "confident", status="approved"), _m("d", 2)]
     out = window_rows(rows, paragraph_of=_para, saved_paragraphs=saved)
-    assert [r["id"] for r in out] == ["a", "b"]
+    assert [r["id"] for r in out] == ["a", "b", "c"]
+
+
+def test_the_second_best_moment_stays_after_helper_words_on_its_paragraph():
+    """Founder 2026-10-28 (N246 item 5): both best moments on one slide's
+    paragraph; the helper words saved at the first took the second, and its
+    clearer version, off the walk."""
+    note = {"id": "note", "feedback_family": "rewrite_clarity",
+            "span": {"start": 150}, "status": None}
+    rows = [_m("first", 1, "confident", status="approved"),
+            _m("second", 1, practise=True), note, _m("plain", 1)]
+    out = window_rows(rows, paragraph_of=_para, saved_paragraphs={1})
+    assert [r["id"] for r in out] == ["first", "second", "note"]
+    # Once it is answered, the paragraph is done: its other notes leave.
+    rows[1] = _m("second", 1, practise=True, status="dismissed")
+    out = window_rows(rows, paragraph_of=_para, saved_paragraphs={1})
+    assert [r["id"] for r in out] == ["first", "second"]

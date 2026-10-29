@@ -105,6 +105,12 @@ def enabled(database: Any, user_id: Any) -> bool:
     return bool(user_id) and rings.feature_is_on_for_user(FEATURE, user_id, database=database)
 
 
+def _waits(database: Any, user_id: Any) -> bool:
+    """Nothing of life goals while the person is onboarded (N243)."""
+    from services import plan_flow
+    return plan_flow.onboarding(database, user_id)
+
+
 def _row(key: str, role: str, body: str, meta: dict, at: str) -> dict:
     return {"client_id": str(uuid.uuid5(_NAMESPACE, key)), "role": role,
             "kind": "text", "body": body, "metadata": meta, "client_created_at": at}
@@ -123,7 +129,7 @@ def after_note(database: Any, user_id: str) -> list[dict]:
     the ask was answered Start, or it was asked twice."""
     from services import life_store
     from services.lounge_messages import stamp_after, thread_stamp
-    if not enabled(database, user_id):
+    if not enabled(database, user_id) or _waits(database, user_id):
         return []
     goals = life_store.list_goals(str(user_id))
     if goals:
@@ -569,7 +575,7 @@ def quarter_due(database: Any, user_id: str, today: Optional[date] = None) -> li
     move?" with Not now | Start. Once per goal and quarter."""
     from services import life_store
     from services.lounge_messages import stamp_after, thread_stamp
-    if not enabled(database, user_id):
+    if not enabled(database, user_id) or _waits(database, user_id):
         return []
     today = today or datetime.now(timezone.utc).date()
     rows: list[dict] = []
@@ -932,7 +938,7 @@ def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:
     show = bool(_SHOW.match(text))
     if not text or (not show and (text.startswith("#") or not _ASK_HINT.search(text))):
         return None
-    if not enabled(database, user_id):
+    if not enabled(database, user_id) or _waits(database, user_id):
         return None
     has_goals = bool(life_store.list_goals(str(user_id)))
     if show:

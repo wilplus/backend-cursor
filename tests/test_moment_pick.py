@@ -13,12 +13,17 @@ OUTCOME
       when the words need help), under it corrected.
   O4  With no sound read the words order the clips, and both are
       corrected.
+  O5  A sentence that already has my helper words is not picked again: I
+      get the next best one, and it comes back only when nothing else can
+      be shown.
 PROVES   O1 -> test_the_two_best_by_willfidence_are_shown_from_any_slide
          O2 -> test_the_stronger_voice_of_the_two_is_the_most_confident
          O3 -> test_a_voice_at_the_floor_is_praised_and_only_a_voice_under_it_practises
          O4 -> test_with_no_sound_read_the_words_order_the_clips_and_both_are_corrected
+         O5 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
 WHY      Founder 2026-10-23 (N118 "minimum 2, best two"; N122 "S×W picks,
-         voice names top"); 2026-10-21 (N108, "the voice decides").
+         voice names top"); 2026-10-21 (N108, "the voice decides");
+         2026-10-28 (N246, "go for the next confident moment").
 """
 from services.moment_pick import pick, read
 
@@ -97,3 +102,11 @@ def test_with_no_sound_read_the_words_order_the_clips_and_both_are_corrected():
                    {"block_id": "b", "slide_index": 1, "word_count": 11, "read": clean}])
     assert [(m["block_id"], m["praise"]) for m in picked["shown"]] == [("b", False), ("a", False)]
     assert picked["shown"][0]["highest"] and picked["shown"][1]["kind"] == "clearer"
+
+
+def test_a_sentence_with_my_helper_words_gives_way_to_the_next():
+    held = {**_row("a", 0, 0.9), "held": True}
+    assert _blocks(pick([held, _row("b", 1, 0.7), _row("c", 2, 0.6)])) == ["b", "c"]
+    # Still shown when the Take has nothing else, and still the stronger voice.
+    assert _shown(pick([held, _row("b", 1, 0.7)])) == [
+        ("b", True, None, False), ("a", True, None, True)]
