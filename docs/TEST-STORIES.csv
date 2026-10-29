@@ -3467,6 +3467,19 @@ O6 -> test_every_typed_hash_is_one_note_as_the_mic
 O7 -> test_the_live_words_come_back_and_nothing_is_kept
 O8 -> test_a_note_sent_twice_is_kept_once
 O9 -> test_a_voice_note_is_fixed_in_the_notebook_and_the_thread","Will learning plan, step 1 (founder 2026-10-20, ""approved, start step 1""; words signed the same day)."
+tests/test_walk_quote.py,Story,"As a speaker who just said a better try of a sentence that doubted me, I want Will to show me my own words that prove otherwise, so that the better sentence feels true, and I want to be able to say ""Not here"".","O1  A sentence that doubted me gets one quote: the signed line and my own
+kept words, word for word with their date; the same sentence gets the
+same quote again, and any other sentence in that Take gets none (N268
+items 1, 2, 4).
+O2  When Will finds nothing that fits, or names something I don't keep,
+there is no quote: never invented.
+O3  ""Not here"" keeps the notebook out of every later walk until the Life
+Panel's switch turns it back on (N268 item 5).
+O4  Without the ring row or the notebook there is no quote and no switch;
+a Take that is not mine is refused (N268 item 3).","O1 -> test_a_doubt_gets_one_quote_of_my_own_words_per_take
+O2 -> test_nothing_that_fits_means_no_quote
+O3 -> test_not_here_lasts_until_the_switch_turns_it_on
+O4 -> test_no_ring_no_notebook_or_not_my_take","Founder 2026-10-29, the Claude Code chat (N268)."
 tests/test_webm_remux.py,Story,"As a speaker, I want my recording made seekable without changing its timing, and kept as-is if that fails, so that playback works everywhere and my Take is never lost. (Critical path: record.)","O1  The remuxed file carries a seek index and exactly the same packets and
 timestamps as the recording (even one not starting at zero), so no
 stored offset moves.

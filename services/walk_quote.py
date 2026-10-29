@@ -79,7 +79,7 @@ def available(database: Any, user_id: Any) -> bool:
         return (rings.feature_is_on_for_user(FEATURE, user_id, database=database)
                 and voice_notebook.consented(database, str(user_id)))
     except Exception as e:
-        logger.warning("walk_quote: available failed user=%s: %s", user_id, e)
+        logger.warning("walk_quote: available failed user=%s: %s", user_id, e, exc_info=True)
         return False
 
 
@@ -108,7 +108,8 @@ def set_on(database: Any, user_id: str, on: Any) -> dict:
 def _owned(database: Any, user_id: str, session_id: str) -> bool:
     try:
         session = database.v2_get_session_by_id(str(session_id))
-    except Exception:
+    except Exception as e:
+        logger.warning("walk_quote: session read failed id=%s: %s", session_id, e, exc_info=True)
         return False
     return bool(session) and str(session.get("user_id") or "") == str(user_id)
 
