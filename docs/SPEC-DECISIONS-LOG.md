@@ -7001,3 +7001,36 @@ No rules page for the count (`services/first_visit.py`, the frontend's
 `FirstVisitCounts.tsx`); the wait lands on the frontend's recording screens
 page when it is built. Its migration gets its outside review before it is
 merged.
+
+**N272 · "How do you feel?" takes the set-up's look, is asked only of a
+signed-in speaker, and drops its reply and its coach line (founder, the
+Claude Code chat, 29 October 2026, to the prototype
+<https://claude.ai/artifact/CiCCZEE4rp7TfeVjfdnj1A>: "ok, great build it!";
+"for the consented users, they alreay know that they are being watched for
+emotions; So no grey text; and for the new users entirely not consented - not
+logged in - just skip this emoitns"; then, after being told that a check with
+no Skip would contradict Privacy 3.9 §4e, "add the same type of table, but
+with an opactiy or transparency under calm and the text should be grey; with
+Skip" and "build skip under calm").** For N211 and N217:
+1. **The set-up's look.** The screen takes the set-up's top bar: its step
+marks, with "How do you feel?" as the first step when the set-up follows it
+(the topic is then the second), and the ✕ in the bar. On a Take whose set-up
+is restored, the bar has the ✕ and no marks. The question is the set-up's
+heading, with its mic; "Before you step on stage" under it; the four
+feelings two by two.
+2. **Skip stays**, under Calm, in the feelings' own pill, faded, with grey
+words. Skipping keeps nothing (N211 unchanged).
+3. **No reply.** The pick shows, then the set-up opens. The four reply lines
+are retired.
+4. **No "Your coach sees your answer."** Replaces N217 item 2's line. The
+founder's reason: a signed-in speaker has accepted the Terms and Privacy,
+and Privacy 3.9 §4e and §5 say the coach sees the answer.
+5. **Only a signed-in speaker is asked.** A guest who is not signed in never
+sees the check; the Take goes on as after a Skip, keeping nothing. On a plan
+the plan's own yes still comes first (N211 item 1).
+No new words.
+The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+§6, the line for N272, and
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 D4. No migration.
