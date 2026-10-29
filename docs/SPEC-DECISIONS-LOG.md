@@ -6552,3 +6552,33 @@ The rules: frontend
 (its "Record Take N"), with the first code. Unarchive in Data & consent
 asks nothing: it puts the project back on the "+" list, where picking it
 asks. No migration in this entry.
+
+**N255 · Your why, every day (founder, the Claude Code chat, 29 October 2026:
+"what about the reminder daily reminder about my goals? Like raison d'être,
+why I'm doing this? My vision. And how I want to treat others.", then "A
+short sitting, your words", "Lounge, first open", "one of them everyday -
+your why", "Read it, one question", "Why daily, others kept", "After the
+first goal is set", "As a goal's step").** For N172 and N182:
+1. Three lines of the person's own: their why (why they do this), their
+vision (what they see when it works) and how they want to treat others. A
+short sitting in the Lounge's lens, as life goals: three open questions,
+said with the small mic or typed, each with Skip; Will drafts each line only
+from their words, quoting them, and they Accept or Edit. Never invented.
+2. Offered once, the next time the Lounge opens after the first life goal's
+"That's the base", with Not now | Start in place of the message box (as M1).
+A second Not now and it waits for them to ask, in any words.
+3. Every day, the first time the Lounge opens that day, the why waits as a
+grey bubble in their own words, with one question under it about where it
+will show today. No clock, nothing counts the days, nothing waits for an
+answer; they answer with a # note or not at all.
+4. The vision and how they treat others are kept beside the why in the Life
+Panel, open any time; Will reads all three before it chats.
+5. Changing one is as a goal's step (M11): the line in the Life Panel or the
+› on the daily bubble, "Now: …", a field, Keep the change; dated, the earlier
+words kept in its history.
+6. Ring 5, its own row on the rings page (as N241 item 7). Private, apart
+from the speaking coach, never shown to a coach (N182). Its words are signed
+on the prototype first (Never 4).
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 Q, §2. No migration in this entry.
