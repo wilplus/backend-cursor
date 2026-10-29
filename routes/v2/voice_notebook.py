@@ -74,21 +74,38 @@ def v2_notebook_consent():
         return jsonify({"code": "V2_ERROR", "error": "Failed to save the answer"}), 500
 
 
+@v2_bp.route("/notebook/sales-step", methods=["POST"])
+@phase1_provider_route
+@llm_limit
+@require_auth
+def v2_notebook_sales_step():
+    """A tap on one of the sale's four steps (N241 P2): the step, then Will's
+    one change to it."""
+    from services.sales_framing import SalesError, answer
+    body = request.get_json(silent=True) or {}
+    try:
+        messages = answer(db, str(request.user_id), body.get("note"), body.get("step"))
+        return jsonify({"messages": messages}), 200
+    except SalesError as e:
+        return _error(e)
+    except Exception as e:
+        logger.error("sales step failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to save the answer"}), 500
+
+
 def _goals_after_note(user_id: str) -> list:
-    """Under a note's "Noted.", the ask for life goals (N172 M1), then Will's
-    answer to a worry (N241 O1); never in the way of the note."""
+    """Under a note's "Noted.", the ask for life goals (N172 M1), then the
+    sales question or Will's answer to a worry (N241 O1, P2); never in the
+    way of the note."""
     rows: list = []
     try:
         from services.life_goals import after_note
         rows += after_note(db, user_id)
     except Exception as e:  # noqa: BLE001 -- the note is kept either way
         logger.warning("life goals ask failed user=%s: %s", user_id, e)
-    try:
-        from services.in_control import after_note as answer_worry
-        rows += answer_worry(db, user_id)
-    except Exception as e:  # noqa: BLE001 -- the note is kept either way
-        logger.warning("worry answer failed user=%s: %s", user_id, e)
-    return rows
+    from services.sales_framing import answers_after_note
+    return rows + answers_after_note(db, user_id)
 
 
 def _adapter(user_id: str):
