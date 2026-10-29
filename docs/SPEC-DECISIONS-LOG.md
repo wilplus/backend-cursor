@@ -6945,3 +6945,21 @@ For N267 item 5: the iPhone asks for the microphone with "WillpowerLab uses
 the microphone to record your Takes." and for the camera with "WillpowerLab
 uses the camera when a coach records video feedback." Signed. No rules page.
 No migration in this entry.
+
+**N270 · Will's hello to a visitor before their first Take, and a guest who
+accepted chats with Will (founder, the Claude Code chat, 29 October 2026:
+"make it answer something intelligible, but then push the user to actually
+record the first recording"; "but they were consented!"; then, for the line,
+"and I will help you with your presentation, rewrite it to this").**
+1. **A guest who accepted chats with Will.** The acceptance stays on the
+guest's identity until they sign up; every Lounge chat turn carries it, so
+the processing gate lets the turn through and the general bot answers.
+2. **Before any acceptance**, the gate refuses the turn and nothing goes to
+the AI. A signed-out visitor with no project then gets one fixed line from
+Will, "Hi, I'm Will. 👋 Record your first take, and I will help you with your
+presentation." (signed), and under it "Start your first recording", the
+empty Lounge's own button. Everyone else keeps "I'm having trouble reaching
+the lab right now. Give it another try in a moment."
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§6, the line for N270. No migration.
