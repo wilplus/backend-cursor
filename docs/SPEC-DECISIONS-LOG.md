@@ -6852,3 +6852,15 @@ replies are not read.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §2, the line for N171. No migration.
+
+**N266 · 0500, the label view, merges without the outside review (founder,
+the Claude Code chat, 29 October 2026: "Skip it", to "Database change #1445:
+it still needs your outside review, or a 'skip it'").** Migration 0500
+(`the_label_view_counts_what_the_ledger_counts.sql`,
+[#1445](https://github.com/wilplus/backend-cursor/pull/1445), drafted as
+0498, a number another migration took first) merges on green checks without
+the GPT or Grok review CLAUDE.md asks of a new migration. It is one
+`CREATE OR REPLACE VIEW` of `snippet_label_quorum` that counts what the
+ledger counts (N111 B1 and C1); it drops nothing and needs no environment
+variable. As for N115, the waiver is for this one migration. No rules page.
+No migration in this entry.
