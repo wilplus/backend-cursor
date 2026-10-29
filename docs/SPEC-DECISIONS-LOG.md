@@ -6605,8 +6605,15 @@ place of "Create project from updated deck".
 4. The words, signed: "Add slides" · "Update slides" · "Upload the new PDF.
 Your next Take uses it." · "Upload PDF" · "Cancel" · "New slides ready for
 Take {n}."
-5. Built only after the founder signs a clickable prototype on the real
-screens (the Ideal Text page is locked).
+5. The prototype on the real screens, signed the same day ("OK", then
+"button"): https://claude.ai/artifact/8heRv4BC6fGg7EzuzuTo4A. In the chat,
+Will answers "You can update the slides in this project. Your next Take
+uses them." and the upload takes the message box's place as the WhatsApp
+ask does ("the button should be like the button for whatsapp number
+update"): a grey card with "Update slides" and item 4's sentence, then
+"Cancel" | "Upload PDF". On the first Take with new slides the mic screen
+says "New slides" in place of "Same presentation as Take 1". Both lines
+signed.
 The rules: frontend
 [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md),
 with the first code; contract clause 4 is amended in the same pull request
