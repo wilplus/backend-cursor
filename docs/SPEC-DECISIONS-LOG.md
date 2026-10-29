@@ -6864,3 +6864,28 @@ the GPT or Grok review CLAUDE.md asks of a new migration. It is one
 ledger counts (N111 B1 and C1); it drops nothing and needs no environment
 variable. As for N115, the waiver is for this one migration. No rules page.
 No migration in this entry.
+
+**N267 · An iPhone app wraps the web app, for the founder's own testing
+first (founder, the Claude Code chat, 29 October 2026, Linear WIL-107: "I
+would treat it just like you're saying, as a secondary thing, this
+application, something for testing for me right now", "you're just being
+redirected to the web app if you want to adjust your payment", and "ok
+let's go with it, small steps first step by step").** For WIL-107:
+1. **The web app stays the product.** Most traffic goes to the PWA; the app
+never slows the loop (record → Ideal Text → feedback → next Take) down, and
+app-only bugs wait behind it.
+2. **Capacitor, loading the live site.** The iPhone app is a Capacitor shell
+that opens willpowerlab.com, so every web deploy reaches it with no new
+build and no store review. No second design of any screen: a locked screen
+looks in the app as it does on the web.
+3. **iPhone first, private.** It runs on the founder's iPhone from Xcode,
+then through TestFlight. No public App Store listing and no Android until
+the founder decides.
+4. **Payments stay on the web.** Nothing is sold inside the app; buying
+sends the speaker to the web app, as Claude and ChatGPT do. Before any
+public listing, Apple's rule on linking out to pay is checked for the
+countries it ships in.
+5. **New words.** The words the app adds (the microphone permission text,
+the app's name and splash) are shown to the founder before they ship
+(Never 4).
+No rules page. No migration in this entry.
