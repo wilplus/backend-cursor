@@ -6889,3 +6889,51 @@ countries it ships in.
 the app's name and splash) are shown to the founder before they ship
 (Never 4).
 No rules page. No migration in this entry.
+
+**N268 · After a good try, Will may quote the speaker's own notebook in the
+walk, and "Keep my words" gets its own line (founder, the Claude Code chat,
+29 October 2026, on the prototype
+<https://claude.ai/artifact/Jt2XrfdifpU2A41rbZed8D>, version 2: "let's go
+with your recommendation B"; "Not here" a lasting setting with a switch in the
+Life Panel; "Your words it is. Now say them like you mean every one."; then
+"ok, go!").** Amends N182 (frontend `principles.md` §1 A3: the walk never
+reads or shows the principles) for this one place, and Line A after "Keep my
+words" (the walk's C5); for N85, N112, N241, N255 and N258:
+1. **When.** On a corrected moment's Clearer version, after a try that is a
+Good job (the praise line), Will may add one line, under the praise line,
+that quotes the speaker's own words: a kept 💪 strength with a note it
+gathered (N), the 🔭 vision line of Your why (Q1), or a # note that names
+what is theirs to control (O). Only when the sentence doubted the speaker,
+played the idea down or hedged, and the quote answers it; at most one per
+Take; else nothing. Never before the rewrite, never between the offer and
+its question, never on the Ideal Text (rule 5). The rewrite rules (H3) do
+not change.
+2. **Never invented.** The model only picks which of the speaker's kept
+words fits, or none; the quote is shown word for word with its date. It is
+asked while the speaker practises and shown only when ready, so the walk
+never waits.
+3. **Who.** Ring 5 and up, its own ring row `walk_quotes`, set at ring 5 by
+its migration (as N264), and only with the notebook and the source's own
+feature on. Private: never shown to a coach, never in the coach's queue or
+the coach panel (N182, Never 2).
+4. **Words (signed):** "That's your 💪 {strength} again." (N258); "That's the
+voice of your 🔭 vision."; "You talked about the part that's yours. That's
+where your effort goes."; the first time only, "From your notebook. Only you
+and Will see this." and "Not here"; after Not here, "Noted. Your notebook
+stays out of the walk."
+5. **Not here is a setting.** It keeps the notebook out of every later walk
+until the speaker turns it back on: the Life Panel's Your data page, "Your
+notebook in the Feedback walk", "After a good try, Will may quote one of
+your notes. Only you and Will see it.", a switch, and under it "Off since you
+tapped "Not here". Your walks stay as they are today. Turn it on to see
+Will's quotes again after a good try." or "On. Will may quote one note after
+a good try, at most once per Take." (signed).
+6. **"Keep my words".** After it Will says "Your words it is. Now say them
+like you mean every one." (signed) in place of Line A, "Say this one like
+your confident moment.", which stays wherever else it is said.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§1 C5, K and
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 A3, R, K, with the code. Its migration gets its outside review before it
+is merged.
