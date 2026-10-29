@@ -105,7 +105,13 @@ def _goals_after_note(user_id: str) -> list:
     except Exception as e:  # noqa: BLE001 -- the note is kept either way
         logger.warning("life goals ask failed user=%s: %s", user_id, e)
     from services.sales_framing import answers_after_note
-    return rows + answers_after_note(db, user_id)
+    rows += answers_after_note(db, user_id)
+    try:
+        from services.strengths import after_note as strengths_after_note
+        rows += strengths_after_note(db, user_id)
+    except Exception as e:  # noqa: BLE001 -- the note is kept either way
+        logger.warning("strengths read failed user=%s: %s", user_id, e)
+    return rows
 
 
 def _adapter(user_id: str):

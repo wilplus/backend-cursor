@@ -2805,6 +2805,26 @@ O4 -> test_lane_comes_from_provenance
 O5 -> test_bootstrap_and_unclear_rows_stay_out_of_the_label
 O6 -> test_panel_size_outweighs_agreement",
 tests/test_stories_csv.py,Guard,"docs/TEST-STORIES.csv lists every backend test file's story, and every test file has one.","C1  a new or edited test whose STORY/GUARD header is missing, or not copied into the CSV",C1 -> test_every_test_file_has_a_story_and_the_csv_is_current,If removed: the founder reviews a stories file that silently stops matching the tests.
+tests/test_strengths.py,Story,"As a speaker, I want Will to notice a strength that shows in my notes on two different days, let me keep it in my own words, gather the notes that show it, and bring one back the day before my talk, so that I go on stage remembering what I am good at.","O1  A trait in my newest note and on another day (or in my life goals
+answer) is suggested once: ""We spotted a strength!"" with Not now |
+Look; never from one day alone, never one I keep, one at a time (N2).
+O2  In the lens I see the notes it came from with their days; Accept or my
+own words keep it (""Noted. Added to your strengths.""); Not now keeps
+nothing and it is not suggested again (N2).
+O3  A later note that shows a kept strength gets ""That's your 💪 … again.""
+once, and the note is kept under it; the Life Panel lists every note,
+newest first; only I archive one, and it stays (N1, N3, N5).
+O4  The first open of the day before a talk (the plan's deadline or a date
+a note named) brings back one kept strength with its note, once; no
+date, nothing (N4).
+O5  Without the ring row, or for a crisis note, nothing is read or shown.
+O6  The Life Panel's menu has Strengths right after Principles, only with
+the ring row (N1).","O1 -> test_a_trait_on_two_days_is_suggested_once
+O2 -> test_i_keep_it_in_my_words_or_not_at_all
+O3 -> test_a_kept_strength_gathers_its_notes_and_only_i_archive_it
+O4 -> test_the_day_before_my_talk_one_strength_comes_back
+O5 -> test_without_the_ring_or_in_a_crisis_nothing
+O6 -> test_the_life_panel_shows_strengths_only_with_the_ring","Linear WIL-112; founder 2026-10-28, N241; words signed N258."
 tests/test_suggestion_feedback.py,Story,"As a speaker, I want my Accept/Keep taps on a suggestion in the Ideal Text to be saved, so that my choice sticks and I am never told ""Couldn't save that just now"".","O1  POST suggestion-feedback with document_replace or document_bold
 answers 200 {saved: true} and records the decision with the right kind
 (polish/replace, emphasize).
@@ -3544,3 +3564,18 @@ no run trained on: the withdrawn speaker's pairs stay out.","O1 -> test_a_withdr
 O2 -> test_an_unreadable_freshness_refuses_the_promotion
 O3 -> test_a_regurgitating_candidate_is_failed_and_never_promoted
 O4 -> test_the_retraining_is_the_next_run_on_never_trained_pairs","Counsel 2026-10-01; audit DOOR-4-WITHDRAWN and DOOR-3-RETRAIN. Python seam (services/model_training.py, services/model_promotion.py) over the shared fake in tests/doors_fakes.py."
+tests/test_your_why.py,Story,"As a speaker with a goal, I want my why, my vision and how I want to treat people kept in my own words, and my why waiting for me once each day, so that I remember what I am doing this for.","O1  After my first life goal, the next open of the Lounge asks once for my
+why with Not now | Start; a second Not now and it waits for me to ask
+(""#why"" or my own words) (N255 Q3).
+O2  Will drafts each line only from my answers and quotes them; a skipped
+question gets no line; all three skipped, nothing is drafted (Q2).
+O3  Kept, the Lounge says ""Noted. Your why is set."" and each day, the
+first time it opens, my why waits in my words with ""Where will it show
+today?"", once that day (Q4).
+O4  A changed line keeps the earlier words, dated; Will reads all three
+before it chats (Q5, Q6).
+O5  Without the ring row, or while onboarded, nothing of it appears.","O1 -> test_the_ask_comes_after_the_first_goal_twice_at_most
+O2 -> test_will_drafts_only_from_my_words
+O3 -> test_my_why_waits_once_a_day
+O4 -> test_a_changed_line_keeps_its_history_and_will_reads_all_three
+O5 -> test_without_the_ring_nothing_appears","Founder 2026-10-29 (""what about the reminder daily reminder about my goals? Like raison d'être""), N255; words signed N258."
