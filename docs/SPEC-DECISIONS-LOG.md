@@ -6552,3 +6552,32 @@ The rules: frontend
 (its "Record Take N"), with the first code. Unarchive in Data & consent
 asks nothing: it puts the project back on the "+" list, where picking it
 asks. No migration in this entry.
+
+**N255 · Updating a project's deck, inside the project (founder, the
+Claude Code chat, 29 October 2026: "what happens if I want to update the
+pitch? I'm starting without the pitch deck and then I want to add the pitch
+deck to that. Or I want to change the pitch deck", then three answers on a
+decision page, and "show it to me based on real screens from the
+application on a clickable prototype").** For N254 item 6, N48.2 Q4 and
+contract clause 4:
+1. A speaker adds a deck to a project that has none, or replaces its deck,
+inside the same project: the Take count, the coach's history and the plan
+carry on (N149). Contract clause 4's "a changed deck starts a new Project"
+and the server's refusal of a Take with a changed deck (409
+PRESENTATION_LOCKED) give way to this.
+2. The new deck is used from the next Take. That Take writes the whole
+Ideal Text fresh on the new slides; the previous text stays in the history
+(rule 5). Helper words move to a new slide with the same title; the others
+wait in the history until the speaker picks new ones.
+3. Where: the Ideal Text page's ⋯ menu, "Add slides" when the project has
+no deck and "Update slides" when it has one; and in the chat, the same in
+place of "Create project from updated deck".
+4. The words, signed: "Add slides" · "Update slides" · "Upload the new PDF.
+Your next Take uses it." · "Upload PDF" · "Cancel" · "New slides ready for
+Take {n}."
+5. Built only after the founder signs a clickable prototype on the real
+screens (the Ideal Text page is locked).
+The rules: frontend
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md),
+with the first code; contract clause 4 is amended in the same pull request
+as that code. No migration in this entry.
