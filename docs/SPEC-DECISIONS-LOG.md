@@ -6806,3 +6806,25 @@ The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §1 A1, B3, B8, B9 and K, with the code; Never 3 in this repo's
 CLAUDE.md in this entry's pull request. No migration in this entry.
+
+**N263 · The empty Principles page drops "#mistake" (founder, the Claude Code
+chat, 29 October 2026: "take that out").** For N253 and N258: the Life
+Panel's Principles page, while it has no principle, said "No principles yet.
+The first one arrives when you send a case with #mistake." Since N253 a "#"
+message is one note and #mistake no longer sends a case, so the second
+sentence goes; the page says "No principles yet." No new words.
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 K, §6. No migration in this entry.
+
+**N264 · The rows `in_control` and `sales_framing` are set at ring 5 by a
+migration (founder, the Claude Code chat, 29 October 2026: "Set the rings
+yourself.").** For N241 and N258: the founder was to make these two rows on
+the CEO panel's rings page; instead a migration seeds both at ring 5, with
+their first audit entries, as 0498 did for `your_why` and `strengths`. A
+row the founder made in the meantime stays as it is. With them, Will's
+answer to a worry (O) and the sales steps (P) are on at ring 5. The
+migration gets its outside review before it is merged. No new words.
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§2 R1, §6.
