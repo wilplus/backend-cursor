@@ -6660,3 +6660,28 @@ The rules: frontend
 [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md),
 with the first code; contract clause 4 is amended in the same pull request
 as that code. No migration in this entry.
+
+**N258 · The companions and your why are signed, Will's guide is signed, and
+the Life Panel's first-run page says "# note" (founder, the Claude Code chat,
+29 October 2026: "yes" to removing the first-run page's paragraph on the old
+tags or replacing it with a line about "# note", and "YES AND YES for the
+sign offs").** For N241, N253 and N255:
+1. The prototype "Principles Companions" (version 3,
+<https://claude.ai/artifact/1hfLf8mCif8pgC1X1Z6caJ>) is the design: its words
+are signed as drawn (Never 4), and its open choices as drawn: Strengths is a
+pill of its own, right after Principles; 💪 marks a strength; the talk
+reminder comes the first time the Lounge opens on the day before the talk;
+the sales steps are marked 🚪 🔍 🎁 📨; your why's lines are marked 🔥 🔭 🤝 and
+sit at the top of the Life Panel's Goals screen, above Life goals.
+2. Will's guide "what is in your control" (the Claude Doc
+<https://claude.ai/artifact/EL8NpV6kPKdcEb2rjYc9Fj>, as of 28 October) is
+signed and goes into Will's instructions word for word; Will's replies are
+its own words, from the guide.
+3. The Life Panel's first-run page drops its two paragraphs on the old tags
+(#mistake, #observation, #win, #add) and says instead: "The way in is the
+chat you already use. Start a message with # note, or tap the small mic, and
+it is kept as a note for you and Will. On Sunday, when your notes show a
+pattern, Will asks what you take from it and suggests a principle."
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 K, §2, §5. No migration in this entry.
