@@ -264,20 +264,20 @@ def test_a_whole_take_is_partitioned_read_marked_noted_and_covered():
         (8, 75, None),
     ]
 
-    # The two highest moments are shown (slides 0 and 1) and the score
-    # decides each (founder 2026-10-20): both reach the floor, so both are
-    # praised and nothing is corrected; the highest is marked. Every other
-    # block is written False.
+    # The three highest moments are shown (N284) and the voice decides each
+    # (founder 2026-10-20): all reach the floor, so all are praised and
+    # nothing is corrected; the highest is marked. Every other block is
+    # written False.
     assert [b["most_confident"] for b in blocks] == [
-        True, True, False, False, False, False, False, False, False, False]
+        True, True, False, False, False, False, False, True, False, False]
     assert [b["highest_moment"] for b in blocks] == [
         True, False, False, False, False, False, False, False, False, False]
     assert not any(b["carries_exercise"] for b in blocks)
     assert sum(b["practice_prompt"] for b in blocks) == 0
 
     # Praise anchors only on praised moments, from inside the block; the
-    # praised slide 1 has no note inside it, and says so (the walk's line
-    # bank covers it). Nothing is corrected, so no rewrite anchors.
+    # praised slide 1 and the third moment have no note inside them, and
+    # say so (the walk's line bank covers it). Nothing is corrected, so no rewrite anchors.
     lanes = frame["verbal_lanes"]
     rewrite, praise = lanes["rewrite_clarity"], lanes["great_formulation"]
     assert rewrite["selected_candidate_ids"] == []
@@ -286,7 +286,8 @@ def test_a_whole_take_is_partitioned_read_marked_noted_and_covered():
     assert praise["anchors"] == [
         {"block_id": by_slide[0][0]["block_id"], "candidate_id": "p-best"}]
     assert praise["blocks_without_note"] == [
-        {"block_id": by_slide[1][0]["block_id"], "reason": "no_defensible_candidate"}]
+        {"block_id": by_slide[1][0]["block_id"], "reason": "no_defensible_candidate"},
+        {"block_id": blocks[7]["block_id"], "reason": "no_defensible_candidate"}]
 
     # 24c: the denominator is Slides with a block. Slide 7 is covered by its
     # one selected block; slide 8 formed a block but has no clip, and says so.
@@ -355,14 +356,14 @@ def _practise_frame(rewrite, scores=(0.9, -0.2, -0.6), shown=_SHOWN_HEDGED):
 def test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate():
     frame = _practise_frame({})
     routed = [(b["slide_index"], b["exercise_kind"]) for b in frame["blocks"] if b["carries_exercise"]]
-    assert routed == [(1, "clearer")]
+    assert routed == [(1, "clearer"), (2, "voice")]
     assert frame["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"] == ["r-clip"]
 
     # The tentative fallback never opens it: the same moment, the voice Exercise.
     fallback = _practise_frame({"tentative": True,
                                 "_manager_evidence": {"specificity": 5, "fallback": True}})
     routed = [(b["slide_index"], b["exercise_kind"]) for b in fallback["blocks"] if b["carries_exercise"]]
-    assert routed == [(1, "voice")]
+    assert routed == [(1, "voice"), (2, "voice")]
     assert fallback["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"] == []
 
     # A voice that cleared the floor is never sent to the voice exercise
@@ -370,7 +371,8 @@ def test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate():
     strong = _practise_frame({"tentative": True,
                               "_manager_evidence": {"specificity": 5, "fallback": True}},
                              scores=(0.9, 0.5, -0.6))
-    assert [b["slide_index"] for b in strong["blocks"] if b["carries_exercise"]] == []
+    # Only the third, whose voice is under the floor, is corrected.
+    assert [b["slide_index"] for b in strong["blocks"] if b["carries_exercise"]] == [2]
     assert sorted(b["slide_index"] for b in strong["blocks"] if b["most_confident"]) == [0, 1]
 
     # Ums only the transcript heard (N121): the words on screen are clean,
@@ -378,7 +380,7 @@ def test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate():
     clean = "We cut onboarding from three weeks to four days for all"
     unseen = _practise_frame({"quote": clean, "proposed_text": clean + "."}, shown=clean)
     assert [(b["slide_index"], b["exercise_kind"]) for b in unseen["blocks"]
-            if b["carries_exercise"]] == [(1, "voice")]
+            if b["carries_exercise"]] == [(1, "voice"), (2, "voice")]
     assert unseen["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"] == []
 
 
@@ -425,7 +427,7 @@ def test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version():
     ):
         frame, rows = _one_said_frame(said)
         assert [(b["slide_index"], b["exercise_kind"]) for b in frame["blocks"]
-                if b["carries_exercise"]] == [(1, "clearer")], said
+                if b["carries_exercise"]] == [(1, "clearer"), (2, "voice")], said
         (chosen,) = frame["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"]
         (row,) = [r for r in rows if r["id"] == chosen]
         assert (row["quote"], row["proposed_text"], row.get("rewrite_reason")) == (
@@ -544,8 +546,8 @@ def test_two_best_clips_in_one_block_get_a_block_each():
     assert _cut(frame) == [(0, 75, None), (1, 100, "moment_split"), (1, 50, "moment_split")]
     assert [b["snippet_ids"] for b in frame["blocks"]] == [
         ["a0"], ["b0", "b1", "b2", "b3"], ["b4", "b5"]]
-    # Both are shown, each in a block of its own.
-    assert _moments(frame) == [(_clip("b3"), True), (_clip("b5"), False)]
+    # Both are shown, each in a block of its own, and slide 0 as the third.
+    assert _moments(frame) == [(_clip("a0"), False), (_clip("b3"), True), (_clip("b5"), False)]
     # The moved blocks are new blocks with new ids, the others keep theirs,
     # and the same Take is cut the same way every time.
     assert _ids(frame)[0] == _ids(plain)[0]
@@ -612,7 +614,7 @@ def test_a_frozen_take_keeps_its_blocks():
     N128)."""
     served = _clips_frame(_SHARED, select_servable=True)
     assert _ids(served) == _ids(_clips_frame(_SHARED))     # the serve path cuts alike
-    assert _moments(served) == [(_clip("b3"), True), (_clip("b5"), False)]
+    assert _moments(served) == [(_clip("a0"), False), (_clip("b3"), True), (_clip("b5"), False)]
 
     plain = _clips_frame(_rescored(_SHARED, b0=0.9, b3=-0.6), select_servable=True)
     before = _clips_frame(_SHARED, select_servable=True, frozen_candidate_ids={
@@ -653,7 +655,7 @@ def test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version():
         take_index=2, expected_recording_id="recording-1", served_text=served)
 
     assert [(b["slide_index"], b["exercise_kind"]) for b in frame["blocks"]
-            if b["carries_exercise"]] == [(1, "clearer")]
+            if b["carries_exercise"]] == [(1, "clearer"), (2, "voice")]
     (chosen,) = frame["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"]
     (row,) = [r for r in rows if r["id"] == chosen]
     assert (row["quote"], row["proposed_text"]) == (
@@ -676,7 +678,7 @@ def test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_versio
     assert [b["slide_index"] for b in weak["blocks"] if b["helper_words_prompt"]] == [0]
     # A praised moment is practised too (N122); a corrected one is not marked.
     assert [(b["slide_index"], b["confident_practice"]) for b in strong["blocks"]
-            if b["most_confident"] or b["carries_exercise"]] == [(0, True), (1, False)]
+            if b["most_confident"] or b["carries_exercise"]] == [(0, True), (1, False), (2, False)]
     assert not any(b["confident_practice"] for b in strong["blocks"] if not b["most_confident"])
 
 
@@ -684,7 +686,7 @@ def test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_versio
 
 def _paced_frame(wpms, **options):
     """Four slides, one clip each: p0 the best by far, p1 the second best,
-    p2 and p3 under the floor; each clip said at its own pace."""
+    p3 the third, p2 the last; each clip said at its own pace."""
     scores = (0.95, 0.8, -0.2, 0.3)
     pieces, snippets, at = [], [], 0
     for index, (score, wpm) in enumerate(zip(scores, wpms)):
@@ -712,21 +714,23 @@ def _walk(frame):
             for b in frame["blocks"] if b["most_confident"] or b["carries_exercise"]]
 
 
-def test_on_a_plan_i_get_my_two_best_and_my_level():
+def test_on_a_plan_i_get_my_three_best_and_my_level():
     rushed = (140, 140, 140, 200)  # p3 is said far faster than the speaker's own usual
-    assert _walk(_paced_frame(rushed)) == [("p0", True, None, None), ("p1", True, None, None)]
-    # The level shows on p3: the two best, and p3 practised as well (N246 item 3).
+    best = [("p0", True, None, None), ("p1", True, None, None), ("p3", True, None, None)]
+    assert _walk(_paced_frame(rushed)) == best
+    # The level shows most on one of the three: that one is practised with
+    # the level's own practice, and there is no fourth.
     assert _walk(_paced_frame(rushed, plan_level="key_line")) == [
-        ("p0", True, None, None), ("p1", True, None, None),
-        ("p3", False, "voice", "key_line")]
-    # The level shows most on one of the two: that one is practised with
-    # the level's own practice, and there is no third.
+        *best[:2], ("p3", False, "voice", "key_line")]
     assert _walk(_paced_frame((140, 200, 140, 140), plan_level="key_line")) == [
-        ("p0", True, None, None), ("p1", False, "voice", "key_line")]
-    # No clip shows the level: the two best.
+        ("p0", True, None, None), ("p1", False, "voice", "key_line"), ("p3", True, None, None)]
+    # The level shows on p2: the three best, and p2 practised as well (N246
+    # item 3, N284).
+    assert _walk(_paced_frame((140, 140, 200, 140), plan_level="key_line")) == [
+        *best[:2], ("p2", False, "voice", "key_line"), best[2]]
+    # No clip shows the level: the three best.
     even = (140, 141, 139, 140)
-    assert _walk(_paced_frame(even, plan_level="key_line")) == [
-        ("p0", True, None, None), ("p1", True, None, None)]
+    assert _walk(_paced_frame(even, plan_level="key_line")) == best
 
 
 def test_a_sentence_with_my_helper_words_gives_way_to_the_next():
@@ -734,12 +738,13 @@ def test_a_sentence_with_my_helper_words_gives_way_to_the_next():
     moment and helper words, go for the next confident moment"."""
     from services.slide_helper_words import held_at_take
 
-    take = _clips(("q0", 0, 75, 0.95), ("q1", 1, 75, 0.8), ("q2", 2, 75, 0.5))
+    take = _clips(("q0", 0, 75, 0.95), ("q1", 1, 75, 0.8), ("q2", 2, 75, 0.5),
+                  ("q3", 3, 75, 0.3))
 
     def shown(**options):
         return [clip for clip, _ in _moments(_clips_frame(take, **options))]
 
-    assert shown() == [_clip("q0"), _clip("q1")]
+    assert shown() == [_clip("q0"), _clip("q1"), _clip("q2")]
 
     class Log:
         """Slide 0's locked sets: one from before the Take, one picked in
@@ -752,12 +757,12 @@ def test_a_sentence_with_my_helper_words_gives_way_to_the_next():
     held = held_at_take(Log(), "arc", "user", {"created_at": "2026-10-28T10:00:00+00:00"},
                         {0, 1, 2})
     assert held == {0: ["Q0x3 q0x4 · q0x10,"]}
-    # q0 says slide 0's helper words: the next two are shown.
-    assert shown(held_words=held) == [_clip("q1"), _clip("q2")]
+    # q0 says slide 0's helper words: the next three are shown.
+    assert shown(held_words=held) == [_clip("q1"), _clip("q2"), _clip("q3")]
     # The same words on another slide, or words it does not say in order,
     # change nothing.
-    assert shown(held_words={1: ["q0x3 q0x4"]}) == [_clip("q0"), _clip("q1")]
-    assert shown(held_words={0: ["q0x10 · q0x3"]}) == [_clip("q0"), _clip("q1")]
+    assert shown(held_words={1: ["q0x3 q0x4"]}) == [_clip("q0"), _clip("q1"), _clip("q2")]
+    assert shown(held_words={0: ["q0x10 · q0x3"]}) == [_clip("q0"), _clip("q1"), _clip("q2")]
     # Still shown when the Take has nothing else.
     assert [clip for clip, _ in _moments(_clips_frame(take[:2], held_words=held))] == [
         _clip("q0"), _clip("q1")]

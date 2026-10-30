@@ -11,16 +11,18 @@ Every clip gets its willfidence, S x W, from 0 to 1:
      slide (``willfidence.filler`` / ``hedging`` / ``slide_fit``), read on
      the clip's own transcript.
 
-Shown: the Take's two highest willfidence clips, however low, at most one
-per block and from any slide, so both can be on one long slide (N118); a
+Shown: the Take's three highest willfidence clips, however low, at most one
+per block and from any slide, so they can be on one long slide (founder
+2026-10-30, N284: "we need more moments at least 2"; two since N118); a
 block's best clip stands for it, and clips with enough words (``MIN_WORDS``)
 rank before short ones. A clip that holds the helper words its slide had
 when the Take was recorded (``held``) ranks after the clips that do not, so
 the next best confident moment is shown in its place (founder 2026-10-28,
-N246 item 2). Fewer than two only when the Take has fewer than two clips.
+N246 item 2). Fewer than three only when the Take has fewer clips, and
+never fewer than two when it has two.
 When the two best clips share a block, the V3 policy first moves the
 boundary between them, or cuts the block itself, so each has a block of its
-own (``best_two``; N128, N246 item 1). Of the two, the stronger voice is
+own (``best_two``; N128, N246 item 1). Of those shown, the stronger voice is
 "your most confident moment", even when its willfidence is the lower (N122,
 "S×W picks, voice names top"). On a plan, the moment where this week's level
 shows most is practised as well (``pick_with_level``, N246 item 3).
@@ -61,9 +63,12 @@ from services import willfidence
 #: that about 7 in 10 blind judges say Yes to green moments.
 FLOOR = 0.6
 MIN_WORDS = 5
-#: The Take shows its two highest moments (founder 2026-10-14, 2026-10-17);
-#: each is praised or corrected by its own voice (founder 2026-10-21, N108).
-SHOWN_LIMIT = 2
+#: The Take shows its three highest moments (founder 2026-10-30, N284; two
+#: since 2026-10-14, N118); each is praised or corrected by its own voice
+#: (founder 2026-10-21, N108).
+SHOWN_LIMIT = 3
+#: The two best, which the V3 policy gives a block each (N128, N246 item 1).
+PAIR = 2
 
 EXERCISE_CLEARER = "clearer"
 EXERCISE_VOICE = "voice"
@@ -71,7 +76,7 @@ EXERCISE_VOICE = "voice"
 
 #: S when a clip has no sound read (founder 2026-10-17): the middle of the
 #: scale, so the words alone order the clips and the Take still shows its
-#: two highest moments until the sound read is back. Never a number anyone
+#: highest moments until the sound read is back. Never a number anyone
 #: sees.
 NEUTRAL_SOUND = 0.5
 
@@ -107,11 +112,12 @@ def pick(reads: list[dict]) -> dict:
     None) and ``held`` (its words hold the slide's helper words; N246).
 
     Returns ``{"shown": [{"block_id", "candidate_id", "praise", "kind",
-    "highest", "voice_clears"}, ...]}``: the two highest willfidence clips,
+    "highest", "voice_clears"}, ...]}``: the three highest willfidence clips
+    (N284),
     one per block, in rank order; ``praise`` True when the voice reaches
     the floor with enough words and the words need no help, else ``kind``
     "clearer" (the words need help) or "voice" (the voice is under the
-    floor); ``highest`` marks the stronger voice of the two (N122);
+    floor); ``highest`` marks the stronger voice of those shown (N122);
     ``voice_clears`` says the voice reached the floor (N108)."""
     best_per_block: dict[Any, dict] = {}
     for row in reads:
@@ -143,10 +149,11 @@ def _entry(row: dict, top: Optional[dict]) -> dict:
 def pick_with_level(reads: list[dict], candidate_id: Any, level: str, kind: str) -> dict:
     """A Take on a plan (founder 2026-10-28, N246 item 3, in place of N134
     item 2 and N209 item 2's best moment and the level's): the two best
-    moments, as :func:`pick` reads them, and the moment where this week's
-    level shows most, ``candidate_id``, always practised with the level's
-    own ``kind`` and marked ``plan_level``: on its own shown moment when it
-    is one of the two, else as a third, never the most confident. When that
+    moments, as :func:`pick` reads them (three since N284), and the moment
+    where this week's level shows most, ``candidate_id``, always practised
+    with the level's own ``kind`` and marked ``plan_level``: on its own
+    shown moment when it is one of them, else as one more, never the most
+    confident. When that
     clip has no read, or another clip of its block is shown, :func:`pick`
     alone."""
     picked = pick(reads)
@@ -168,7 +175,7 @@ def best_two(reads: list[dict]) -> list[dict]:
     :func:`pick` uses (rows as it takes them). When both sit in one block,
     the V3 policy moves the block's boundary between them first, so
     :func:`pick` then shows both (founder 2026-10-24, N128)."""
-    return sorted((row for row in reads if row.get("read")), key=_rank)[:SHOWN_LIMIT]
+    return sorted((row for row in reads if row.get("read")), key=_rank)[:PAIR]
 
 
 def _rank(row: dict) -> tuple:
