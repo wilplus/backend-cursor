@@ -104,7 +104,7 @@ COPY = {
     "put_right": "Got it, thank you for putting me right.",
 }
 
-#: What the transcriber writes when it hears no words in a clip (N273): its
+#: What the transcriber writes when it hears no words in a clip (N274): its
 #: stock lines, from the videos it learnt on. A voice answer that is only
 #: these is "not heard"; inside a longer answer they are the speaker's own.
 NOT_WORDS = frozenset({
@@ -117,7 +117,7 @@ NOT_WORDS = frozenset({
 
 
 def heard_nothing(text: str) -> bool:
-    """Is the transcript only the transcriber's stock lines (N273)?"""
+    """Is the transcript only the transcriber's stock lines (N274)?"""
     t = text.lower()
     if "amara.org" in t:  # "Subtitles by the Amara.org community", in any language
         return True
