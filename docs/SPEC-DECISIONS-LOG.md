@@ -7519,7 +7519,15 @@ again inside the weakest, before its AI clip; and "Last Take we worked on
 this part. Listen to you now.", for when the walk plays back a paragraph
 that rose since it was last worked on (the feature itself is not decided).
 "This one's ready to go further." was the other choice, not taken.
-Open: on a plan, where this week's level goes (N246 item 4).
+8. **On a plan, this week's level takes the slot whose tool fits it**
+(founder, the same chat: "let's do as you recommend"), never a fourth
+moment: "Say it once, and it lands", "Let your key line land" and "Pauses
+that hold the room" take the one between (the Clearer version for the
+first, the Sniper for the other two); "A voice that moves" takes the weakest
+(the AI clip's stress tip). The slot keeps its place in the order and opens
+with "This week's level: {level}. Here's where it shows:" (N209). With
+"Make it yours", or when no moment shows the level, the walk is as above.
+Replaces N246 item 4.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C2, C4, H1 and T, rewritten when built. Not built yet. No migration.
