@@ -72,6 +72,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+from services import plan as P
 from services import plan_flow as F
 
 USER = "11111111-1111-1111-1111-111111111111"
@@ -463,9 +464,13 @@ def test_an_answer_with_nothing_heard_is_asked_again(db, monkeypatch):
     _say(db, "")  # heard, but no words
     assert bodies(db)[-1] == "Sorry, I didn't quite catch that. Could you say it again?"
     assert db.get_open_plan(USER)["step"] == "why" and db.answers == []
-    _say(db, "Thanks for watching!")  # the transcriber's stock line for no words (N275)
-    assert bodies(db)[-1] == "Sorry, I didn't quite catch that. Could you say it again?"
-    assert db.answers == []
+    # Asked again twice, Will moves on (N276): the third time nothing is heard
+    # (here the transcriber's stock line, N275), he asks the next question in
+    # its plain words, with no ack, for nothing was heard to name.
+    before = len(db.thread)
+    _say(db, "Thanks for watching!")
+    assert bodies(db)[before:] == [P.BANK["key"][0]]
+    assert db.get_open_plan(USER)["step"] == "followup" and db.answers == []
     _say(db, "Five people.")  # a short answer is heard
     assert len(db.answers) == 1
 
