@@ -7356,22 +7356,79 @@ prototype, kept as N229 says:
 `docs/design/customer-requests-2026-10-28/business/willpowerlab-for-business.html`
 and `8-willpowerlab-for-business.pdf`. No migration in this entry.
 
-**N283 · Coaches go by their real names; every speaker has a personal coach
-(founder, the Claude Code chat, 30 October 2026, answering "Do coaches show
-their real names to speakers, or pseudonyms?" and "Does each speaker get a
-personal coach, or can any coach answer?": "Real names, please. Personal
-coach.").** For N274 items 2, 4 and 7:
-1. A speaker sees their coach's real name, in Will's chat and in any other
-coach's chat. No pseudonyms for coaches. How a speaker's own name reaches a
-coach is unchanged (0b).
-2. Every speaker has one personal speaking coach: the human coach inside
-Will's chat (N274 item 2), who writes the coach's notes (N274 item 4). It is
-the same person from Take to Take. Was: any coach could answer.
-3. Unchanged: the coach moments queue, its blind judging (Never 2), its
-quorum of two human labels and its reach alarm. Those coaches judge
-moments; the personal coach writes to the speaker.
-4. Open, for the founder: who pairs a new speaker with their personal coach,
-and what happens when that coach is away or full (N274 item 7, "a coach
-with many speakers").
-No rules page yet: it lands with the chats' rules page (N274 item 6). No
-migration in this entry.
+**N283 · One bubble never says the same thing twice (founder, the Claude
+Code chat, 30 October 2026, on a phone screenshot of the Feedback walk's
+praise for the Take's highest moment: "This was your most confident moment.
+Wow, great job. That really landed! 🔥 It was your confident moment."; "This
+text is repeated ... Please fix that and make sure that this kind of things
+don't happen again").** A grey bubble is stacked from lines each signed on
+its own; stacked, a sentence that says what an earlier one in the same
+bubble already said is dropped. The first one stays; nothing is reworded and
+no word is added.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md),
+section K and its line for N283. No migration.
+
+**N284 · Three moments on every Take, and none skipped (founder, the Claude
+Code chat, 30 October 2026: "there is just one confident moment and the
+rule is that there should be at least two ... choose more moments for
+practice cause if smth is already good it's ok to just lock the helper
+words and hear it with AI voice ... we need more moments at least 2 and
+more interventions"; then, asked, "Best three" and "Treat as good").** For
+N108, N118, N122 and N246:
+1. Every Take shows its three highest willfidence moments, one per block,
+from any slide; at least two on a short Take, as N246 says; fewer only
+when the Take has fewer clips. The cut that gives the two best a block each
+(N128, N246 item 1) is unchanged. On a plan, this week's level is on one of
+the three or a fourth (N246 item 3).
+2. Each moment is still praised or corrected by its own voice (N108); the
+most confident is still the strongest voice of those shown (N122).
+3. A shown moment is never skipped. A corrected moment with nothing to
+practise (no Clearer version, no exercise, no AI clip) is walked as a good
+one: its helper words, as after a praise. Was: the walk moved past it
+(N108, "Skip that moment"), so a Take could show one moment.
+4. No intervention is forced: a rewrite comes only when the words need help
+(H3) and the Sniper only from Take 2 with a stretch outside the green
+(N181). More moments give them more chances.
+No new words on screen (Never 4). The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2, C4 and H1. No migration in this entry.
+
+**N285 · A line between the walk's moments, and one after the last
+(founder, the Claude Code chat, 30 October 2026, on a phone screenshot of a
+Take 1 walk that went from one moment straight to other speakers: "it
+should be something more like, okay, thank you for that, let's look at your
+next key moment we spotted. And if it's the end of the moments it should
+say These were some real good moments of yours, thanks for that practice -
+we are really moving forward"; then, asked, the end line "After last
+moment, keep summary").** For N120 and N284:
+1. Each moment after the first opens with one grey bubble, "Okay, thank you
+for that, let's look at your next key moment we spotted."
+2. The first step after the last moment (the tempo step, other speakers or
+the summary) opens with "These were some real good moments of yours,
+thanks for that practice – we are really moving forward." The closing
+summary (D) stays where it is and as it is.
+3. Both are told to the chat once, like the hello, and drawn again in a
+walk opened again; never in the coach's own walk.
+Signed (Never 4): the two lines above, the founder's own words. Which
+moments are shown, and that none is skipped, is N284's; neither changes the
+other.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C7a and K. No migration.
+
+**N286 · The bubbles take Messenger's shape (founder, the Claude Code chat,
+30 October 2026, on a Messenger screenshot: "Can you make all the bubbles on
+our app finish like this? On the left side, it's aligned and nicely. I'm
+talking only about the shape on the right side of the bubble"; then, on the
+preview <https://claude.ai/artifact/HjKX9XgJZFnnfZt3QQFGX9>, "Yes, go
+ahead").** Every chat bubble, in the Lounge and in the walk, has no tail.
+Its open side (the right of a grey bubble, the left of an orange one) is
+round at both corners, always; on the side the bubbles line up on, the
+corner where a bubble meets the next one of the same side is drawn in, and
+the top of a run and its bottom stay round. Was: every corner round and a
+small WhatsApp-like tail on the last bubble of a run (2026-10-14). The pair
+of N202 keeps its drawn-in corners. No new words on screen (Never 4).
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+J6. No migration.
