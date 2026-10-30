@@ -124,6 +124,24 @@ def _segments_and_duration(transcript_response) -> tuple:
     return duration, segments
 
 
+def _said(transcript_response, segments: list, words: list) -> tuple:
+    """``(text, segments, words)`` without what the transcriber wrote that
+    nobody said (N276, ``services/transcript_guard.py``): its stock lines
+    and the segments it calls silence. Untouched when nothing is dropped;
+    the duration stays the recording's."""
+    from services.transcript_guard import unspoken
+    raw = list(getattr(transcript_response, "segments", None) or [])
+    gone = [seg for seg, out in zip(raw, segments) if unspoken(seg, out["text"])]
+    if not gone:
+        return transcript_response.text, segments, words
+    dropped = [(float(getattr(g, "start", 0.0) or 0.0), float(getattr(g, "end", 0.0) or 0.0)) for g in gone]
+    kept = [out for seg, out in zip(raw, segments) if not unspoken(seg, out["text"])]
+    logger.info("transcribe_audio: %d segment(s) nobody said were dropped", len(gone))
+    return (" ".join(k["text"] for k in kept if k["text"]),
+            kept,
+            [w for w in words if not any(a <= w["start"] < b for a, b in dropped)])
+
+
 def _word_field(w, name: str):
     """A word's field, whether the SDK returned an object or a dict."""
     value = getattr(w, name, None)
@@ -283,6 +301,7 @@ class OpenAIService:
             transcript_response = _create_transcription(_tclient, create_kwargs)
             duration, segments = _segments_and_duration(transcript_response)
             words = _word_timestamps(transcript_response)
+            text, segments, words = _said(transcript_response, segments, words)
 
             # Whisper verbose_json includes `language` (ISO 639-1). Surface it so
             # callers can persist transcription_language on the recording row for
@@ -298,7 +317,7 @@ class OpenAIService:
             )
 
             return {
-                "text": transcript_response.text,
+                "text": text,
                 "duration": duration,
                 "language": detected_language,
                 "segments": segments,
