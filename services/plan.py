@@ -471,11 +471,28 @@ def fitted_ack(ack: Any) -> Optional[str]:
     return None
 
 
-def fitted_correction(raw: Any, answered: Sequence[str]) -> Optional[dict]:
+#: Words a sentence said back may have without the speaker saying them.
+_PLAIN_WORDS = frozenset(
+    "you your yours you'll you're you've i i'm i'll me my we our it it's its the a an and or "
+    "but not no yes so to of in on at for with from by about as is are was were be been will "
+    "would can could do did does have has had that this then than there their them they what "
+    "who how when which just now more one".split())
+
+
+def _gist(text: str) -> set[str]:
+    """The words that carry a sentence, cut to their stem's first letters
+    ("speaking" and "speak" are one word)."""
+    words = re.findall(r"[a-z0-9']+", text.lower())
+    return {w[:5] for w in words if w not in _PLAIN_WORDS and len(w) > 1}
+
+
+def fitted_correction(raw: Any, answered: Sequence[str], said: str = "") -> Optional[dict]:
     """A correction the AI heard (N262 item 3): what it corrects, one of the
     answers already given, and Will's one sentence saying back what he now
     has, kept only within N150's rules; else None, and the answer counts as
-    an answer."""
+    an answer. What Will says back must come from ``said``, the message that
+    corrects him (N150 rule 1): a sentence with none of its words in it is
+    the AI's, not the speaker's, and the answer counts as an answer."""
     if not isinstance(raw, Mapping):
         return None
     of, back = raw.get("of"), raw.get("said_back")
@@ -483,6 +500,8 @@ def fitted_correction(raw: Any, answered: Sequence[str]) -> Optional[dict]:
         return None
     b = back.strip()
     if not b or len(b) > 260 or _BAD.search(b) or b.startswith("Thank you"):
+        return None
+    if said and not (_gist(b) & _gist(said)):
         return None
     return {"of": str(of), "said_back": b}
 
