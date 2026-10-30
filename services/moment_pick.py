@@ -1,7 +1,7 @@
-"""Which moments a Take shows, and whether each is praised or corrected
-(founder 2026-10-23, N118 and N122, flow page C2 and H1: "minimum 2; best
-two; highest willfidence moments of the take"; 2026-10-21, N108: "the voice
-decides"; founder lock 2026-10-12 section 6 for the read itself).
+"""Which moments a Take shows, and what each one is for (founder
+2026-10-30, N289: "the praise clips just get the praise ... the moments
+that need to be improved, get the AI [clip]"; the read itself, founder lock
+2026-10-12 section 6).
 
 Every clip gets its willfidence, S x W, from 0 to 1:
 
@@ -11,47 +11,47 @@ Every clip gets its willfidence, S x W, from 0 to 1:
      slide (``willfidence.filler`` / ``hedging`` / ``slide_fit``), read on
      the clip's own transcript.
 
-Shown: the Take's three highest willfidence clips, however low, at most one
-per block and from any slide, so they can be on one long slide (founder
-2026-10-30, N284: "we need more moments at least 2"; two since N118); a
-block's best clip stands for it, and clips with enough words (``MIN_WORDS``)
-rank before short ones. A clip that holds the helper words its slide had
-when the Take was recorded (``held``) ranks after the clips that do not, so
-the next best confident moment is shown in its place (founder 2026-10-28,
-N246 item 2). Fewer than three only when the Take has fewer clips, and
-never fewer than two when it has two.
-When the two best clips share a block, the V3 policy first moves the
-boundary between them, or cuts the block itself, so each has a block of its
-own (``best_two``; N128, N246 item 1). Of those shown, the stronger voice is
-"your most confident moment", even when its willfidence is the lower (N122,
-"S×W picks, voice names top"). On a plan, the moment where this week's level
-shows most is practised as well (``pick_with_level``, N246 item 3).
+Three moments, one per block, each with its own job (N289):
 
-The voice decides each (N108). A shown moment whose voice reaches ``FLOOR``
-with at least ``MIN_WORDS`` words is PRAISED, unless its words need help
-(``services.rewrite_gate``, read on the words the speaker sees, N121), when
-it is CORRECTED with the clearer version; a moment whose voice is under the
-floor is CORRECTED, with the clearer version when its words need help
-("words first, then voice", founder 2026-10-18), otherwise the voice
-exercise. So the voice exercise is only ever for a voice under the floor.
-The V3 policy keeps the clearer version only when a rewrite passes the
-gate's second half; a moment whose voice cleared the floor and whose rewrite
-does not pass is praised (``voice_clears``), never sent to the voice
-exercise.
+  strongest  the Take's highest willfidence clip, a block's best clip
+             standing for it; clips with enough words (``MIN_WORDS``) rank
+             before short ones, and a clip that holds the helper words its
+             slide had when the Take was recorded (``held``) after the
+             others (N246 item 2). Always PRAISED, whatever its voice, and
+             "your most confident moment" (``highest``). No AI clip.
+  weakest    from a block left, the lowest willfidence clip with at least
+             ``STRETCH_WORDS`` words and a sound read: room to grow the
+             machine actually heard. CORRECTED with the voice (``voice``):
+             the AI clip, practised.
+  between    from another block, the clip whose words need help the most
+             (``services.rewrite_gate``, read on the words the speaker sees,
+             N121): CORRECTED with the clearer version (``clearer``). The
+             policy keeps it only when a rewrite passes the gate's second
+             half; else it is praised as a next best. Picked before the
+             weakest, so a Take of two blocks gets the precise fix. Rushing
+             is the tempo step's (N181, N289 item 6), which follows the
+             moments.
+
+A slot nothing fills gives its place to the next best block, praised as the
+strongest is (``next``; N289 item 5), so a Take still shows three when it
+has three blocks (N284), and never skips one. The walk's order is the
+client's: strongest, weakest, the next best, then between.
+
+On a plan (N289 item 8), this week's level takes the slot whose tool fits
+it (``pick(reads, level=...)``): "Say it once" the between, "A voice that
+moves" the weakest; never the strongest's block, never a fourth moment.
 
 A clip with no sound read is not dropped (founder 2026-10-17): its S is
-neutral and its words order it; such a clip is below the floor by
-construction, so it is corrected.
+neutral and its words order it. It can be the strongest, never the weakest.
 
-Until 2026-10-23 the Take showed its two strongest voices, at most one per
-slide (N108), so a Take of one slide showed one moment and the second best
-moment of a long slide was never shown. Until 2026-10-21 S x W decided both
-the rank and the praise (N86). Willfidence also gives the praise's level,
-the coach's read (N104) and the Take's column (N105).
+Until 2026-10-30 the Take showed its three highest clips, each praised or
+corrected by its own voice (N108, N284), and every praise was practised
+with the AI clip (N122); before that, its two highest (N118) or its two
+strongest voices (N108).
 
 Internal only (AC-9): the numbers order the moments and never leave the
-frame. What crosses to the client is a tier name, one flag and one routing
-word.
+frame. What crosses to the client is a tier name, one flag, one routing
+word and the slot's name.
 """
 from __future__ import annotations
 
@@ -63,15 +63,21 @@ from services import willfidence
 #: that about 7 in 10 blind judges say Yes to green moments.
 FLOOR = 0.6
 MIN_WORDS = 5
-#: The Take shows its three highest moments (founder 2026-10-30, N284; two
-#: since 2026-10-14, N118); each is praised or corrected by its own voice
-#: (founder 2026-10-21, N108).
+#: Three moments a Take (N284), one per block.
 SHOWN_LIMIT = 3
+#: The weakest is a whole thought, never a fragment (N289 item 2).
+STRETCH_WORDS = 8
 #: The two best, which the V3 policy gives a block each (N128, N246 item 1).
 PAIR = 2
 
 EXERCISE_CLEARER = "clearer"
 EXERCISE_VOICE = "voice"
+
+#: The slots (N289), as the client reads them: a word, never a rank.
+SLOT_STRONGEST = "strongest"
+SLOT_WEAKEST = "weakest"
+SLOT_BETWEEN = "between"
+SLOT_NEXT = "next"
 
 
 #: S when a clip has no sound read (founder 2026-10-17): the middle of the
@@ -106,91 +112,115 @@ def read(score: Any, text: Any, metrics: Any, shown: Any = None) -> dict:
             "words_help": words_need_help(text if shown is None else shown, fit)}
 
 
-def pick(reads: list[dict]) -> dict:
+def pick(reads: list[dict], level: Optional[dict] = None) -> dict:
     """``reads``: one row per clip with ``block_id``, ``slide_index``,
     ``word_count``, ``candidate_id``, ``read`` (from :func:`read`, or
     None) and ``held`` (its words hold the slide's helper words; N246).
 
+    ``level``, on a plan (N289 item 8): ``{"candidate_id", "slot", "kind",
+    "plan_level"}``, the clip where this week's level shows most and the
+    slot it takes; ignored when that clip has no read or sits in the
+    strongest's block.
+
     Returns ``{"shown": [{"block_id", "candidate_id", "praise", "kind",
-    "highest", "voice_clears"}, ...]}``: the three highest willfidence clips
-    (N284),
-    one per block, in rank order; ``praise`` True when the voice reaches
-    the floor with enough words and the words need no help, else ``kind``
-    "clearer" (the words need help) or "voice" (the voice is under the
-    floor); ``highest`` marks the stronger voice of those shown (N122);
-    ``voice_clears`` says the voice reached the floor (N108)."""
+    "highest", "voice_clears", "slot"}, ...]}``, at most one per block:
+    the strongest (praised, ``highest``), the weakest (``kind`` "voice"),
+    the between (``kind`` "clearer"), each slot nothing fills taken by the
+    next best block (``slot`` "next", praised); ``plan_level`` on the
+    level's moment. ``voice_clears`` says the voice reached the floor
+    (N113)."""
+    readable = [row for row in reads if row.get("read")]
     best_per_block: dict[Any, dict] = {}
-    for row in reads:
-        if not row.get("read"):
-            continue
+    for row in readable:
         held = best_per_block.get(row["block_id"])
         if held is None or _rank(row) < _rank(held):
             best_per_block[row["block_id"]] = row
-    ranked = sorted(best_per_block.values(), key=_rank)[:SHOWN_LIMIT]
-    top = min(ranked, key=_voice_rank) if ranked else None
-    return {"shown": [_entry(row, top) for row in ranked]}
+    ranked = sorted(best_per_block.values(), key=_rank)
+    if not ranked:
+        return {"shown": []}
+    strongest = ranked[0]
+    used = {strongest["block_id"]}
+    forced = _level_row(readable, level, strongest)
+    shown = [_entry(strongest, SLOT_STRONGEST, praise=True, highest=True)]
+    # The precise fix first: on a Take of two blocks, words that need help
+    # get their clearer version before the AI clip gets the weakest.
+    for slot, find, kind in ((SLOT_BETWEEN, _between, EXERCISE_CLEARER),
+                             (SLOT_WEAKEST, _weakest, EXERCISE_VOICE)):
+        if forced and forced[1]["slot"] == slot:
+            found: Optional[dict] = forced[0]
+            marks = {"kind": forced[1]["kind"], "plan_level": forced[1]["plan_level"]}
+        else:
+            found = find([r for r in readable if r["block_id"] not in used
+                          and not (forced and r["block_id"] == forced[0]["block_id"])])
+            marks = {"kind": kind}
+        if found is not None:
+            used.add(found["block_id"])
+            shown.append({**_entry(found, slot, kind=marks.pop("kind")), **marks})
+    for row in ranked[1:]:
+        if len(shown) >= SHOWN_LIMIT:
+            break
+        if row["block_id"] not in used:
+            used.add(row["block_id"])
+            shown.append(_entry(row, SLOT_NEXT, praise=True))
+    return {"shown": shown}
 
 
-def _entry(row: dict, top: Optional[dict]) -> dict:
-    clears = _voice_clears(row)
-    words_help = bool(row["read"].get("words_help"))
-    praise = clears and not words_help
+def _entry(row: dict, slot: str, *, praise: bool = False, highest: bool = False,
+           kind: Optional[str] = None) -> dict:
     return {
         "block_id": row["block_id"],
         "candidate_id": row.get("candidate_id"),
         "praise": praise,
-        "kind": None if praise else (
-            EXERCISE_CLEARER if words_help else EXERCISE_VOICE),
-        "highest": row is top,
-        "voice_clears": clears,
+        "kind": None if praise else kind,
+        "highest": highest,
+        "voice_clears": _voice_clears(row),
+        "slot": slot,
     }
 
 
-def pick_with_level(reads: list[dict], candidate_id: Any, level: str, kind: str) -> dict:
-    """A Take on a plan (founder 2026-10-28, N246 item 3, in place of N134
-    item 2 and N209 item 2's best moment and the level's): the two best
-    moments, as :func:`pick` reads them (three since N284), and the moment
-    where this week's level shows most, ``candidate_id``, always practised
-    with the level's own ``kind`` and marked ``plan_level``: on its own
-    shown moment when it is one of them, else as one more, never the most
-    confident. When that
-    clip has no read, or another clip of its block is shown, :func:`pick`
-    alone."""
-    picked = pick(reads)
-    shown = picked["shown"]
-    marks = {"praise": False, "kind": kind, "plan_level": level}
-    for at, moment in enumerate(shown):
-        if moment["candidate_id"] == candidate_id:
-            shown[at] = {**moment, **marks}
-            return picked
-    row = next((row for row in reads
-                if row.get("read") and row.get("candidate_id") == candidate_id), None)
-    if row is not None and all(moment["block_id"] != row["block_id"] for moment in shown):
-        shown.append({**_entry(row, None), **marks})
-    return picked
+def _weakest(rows: list[dict]) -> Optional[dict]:
+    """The lowest willfidence clip with a whole thought and a sound read;
+    never one that already holds its slide's helper words (N246 item 2:
+    it was worked on), which comes back only as a next best."""
+    heard = [row for row in rows if (row.get("word_count") or 0) >= STRETCH_WORDS
+             and row["read"].get("sound", True) and not row.get("held")]
+    return min(heard, key=lambda row: (row["read"]["value"], row["read"]["s"]), default=None)
+
+
+def _between(rows: list[dict]) -> Optional[dict]:
+    """The clip whose words need help the most: the lowest W, then the
+    lowest willfidence; never one that holds its slide's helper words."""
+    worded = [row for row in rows if _worded(row) and row["read"].get("words_help")
+              and not row.get("held")]
+    return min(worded, key=lambda row: (row["read"]["w"], row["read"]["value"]), default=None)
+
+
+def _level_row(rows: list[dict], level: Optional[dict],
+               strongest: dict) -> Optional[tuple[dict, dict]]:
+    if not level or level.get("slot") not in (SLOT_WEAKEST, SLOT_BETWEEN):
+        return None
+    row = next((r for r in rows if r.get("candidate_id") == level.get("candidate_id")), None)
+    if row is None or row["block_id"] == strongest["block_id"]:
+        return None
+    return row, level
 
 
 def best_two(reads: list[dict]) -> list[dict]:
     """The Take's two highest willfidence clips from any block, by the rank
     :func:`pick` uses (rows as it takes them). When both sit in one block,
-    the V3 policy moves the block's boundary between them first, so
-    :func:`pick` then shows both (founder 2026-10-24, N128)."""
+    the V3 policy moves the block's boundary between them first, so the
+    Take has more blocks to show its moments from (founder 2026-10-24,
+    N128)."""
     return sorted((row for row in reads if row.get("read")), key=_rank)[:PAIR]
 
 
 def _rank(row: dict) -> tuple:
-    """Clips with enough words first, whatever their voice (a three-word
-    fragment is shown only when a Take has nothing longer), then those that
-    do not hold the slide's helper words (N246 item 2), then the
-    willfidence, then the voice (N118)."""
+    """The strongest's rank: clips with enough words first, whatever their
+    voice (a three-word fragment is shown only when a Take has nothing
+    longer), then those that do not hold the slide's helper words (N246
+    item 2), then the willfidence, then the voice (N118)."""
     return (not _worded(row), bool(row.get("held")), -row["read"]["value"],
             -row["read"]["s"])
-
-
-def _voice_rank(row: dict) -> tuple:
-    """The stronger voice: a clip with enough words first, then the voice,
-    then the willfidence (N122)."""
-    return not _worded(row), -row["read"]["s"], -row["read"]["value"]
 
 
 def _voice_clears(row: dict) -> bool:

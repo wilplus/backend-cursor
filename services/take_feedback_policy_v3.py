@@ -731,24 +731,24 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
                   servability: Optional[_Servability], selections: list[dict],
                   served_text: Any, plan: tuple = (None, None),
                   held_words: Any = None) -> dict:
-    """The Take's shown moments (three, N284), each its block's best clip (founder
-    2026-10-23, N118 and N122, flow page C2 and H1; `services.moment_pick`).
+    """The Take's shown moments (three, N284): the strongest, the weakest and
+    the between, one per block (founder 2026-10-30, N289, flow page C2 and
+    H1; `services.moment_pick`).
 
     Every clip a block may show is read: its eligible clips the serve path
     can prove (`unservable`; all of them on the dark frame, which selects by
     rank alone), or, on a Take whose selection is frozen, only the clip it
-    was frozen with (a frozen Take does not grow, `_winner`). The three
-    highest willfidence clips are shown, one per block (the cut has already
-    moved so the two best have a block each where it can, N128,
-    `_split_for_moments`); a shown block whose
+    was frozen with (a frozen Take does not grow, `_winner`). The cut has
+    already moved so the two best have a block each where it can (N128,
+    `_split_for_moments`), which gives the slots more blocks; a shown block whose
     selection was another clip takes the shown one, so the moment, its
     bookmark and its routing name the same clip. Run before coverage and
     routing read the selection.
 
     A clip holding the helper words its slide had when the Take was
     recorded (``held_words``) gives its place to the next best (N246 item
-    2). On a plan (``plan``, the level and the key line; G7, N246 item 3)
-    the moment where this week's level shows most is practised as well
+    2). On a plan (``plan``, the level and the key line; G7, N289 item 8)
+    the moment where this week's level shows most takes its slot
     (`_level_pick`).
 
     Returns ``{"shown": [...], "values": {block_id: willfidence}}``."""
@@ -776,36 +776,35 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
 
 def _level_pick(reads: list[dict], showable: list[tuple], snippet_map: dict,
                 clips: dict, served_text: Any, plan: tuple) -> Optional[dict]:
-    """The two best moments and the level's (`moment_pick.pick_with_level`),
-    or None when there is no level or no clip shows it: the two best, as
-    off a plan (N246 item 3). The level is read on the two best clips and on
-    the clips of every other block, so its moment is one of the two or has
-    a block of its own."""
+    """On a plan, this week's level in the slot whose tool fits it
+    (`plan_walk.level_slot`; founder 2026-10-30, N289 item 8): the pick with
+    the clip where the level shows most as the between or the weakest; None
+    when there is no level, the level has no slot (the tempo step carries
+    "Let your key line land" and "Pauses that hold the room"), or no clip
+    shows it: the pick as off a plan. Never on the strongest's block."""
     level, key_line = plan
     if not level:
         return None
     from services import moment_pick, plan_walk
-    shown_clip = {moment["block_id"]: moment["candidate_id"]
-                  for moment in moment_pick.pick(reads)["shown"]}
-
-    def readable(block: dict, candidate: dict) -> bool:
-        # A shown block offers only its shown clip.
-        clip = shown_clip.get(block["block_id"])
-        return clip is None or clip == candidate["candidate_id"]
-
+    slot = plan_walk.level_slot(level)
+    if slot is None:
+        return None
+    shown = moment_pick.pick(reads)["shown"]
+    strongest = shown[0]["block_id"] if shown else None
     rows = [{"candidate_id": candidate["candidate_id"],
              "word_count": candidate.get("word_count") or 0,
              "snippet": snippet_map.get(str(candidate["snippet_id"]), {}),
              "text": _shown_words(candidate, clips, served_text)}
-            for block, candidate in showable if readable(block, candidate)]
+            for block, candidate in showable if block["block_id"] != strongest]
     try:
         at = plan_walk.level_moment(level, rows, list(snippet_map.values()), key_line=key_line)
-    except Exception as error:  # noqa: BLE001 -- the walk as today
+    except Exception as error:  # noqa: BLE001 -- the walk as off a plan
         logger.warning("plan walk: the level's moment not read level=%s: %s", level, error)
         return None
     if at is None:
         return None
-    return moment_pick.pick_with_level(reads, at, level, plan_walk.practice_kind(level))
+    return moment_pick.pick(reads, level={"candidate_id": at, "slot": slot, "plan_level": level,
+                                          "kind": plan_walk.practice_kind(level)})
 
 
 def _moment_read(candidate: dict, block: dict, snippet_map: dict, clips: dict,
@@ -878,22 +877,26 @@ def _mark_moments(blocks: list[dict], picked: dict,
                   rewrite_ranked: Optional[list[dict]] = None,
                   rewrite_rows: Optional[list] = None,
                   ) -> tuple[list[dict], list[dict], list[dict]]:
-    """Each shown moment praised or corrected by its own voice (founder
-    2026-10-21, N108, flow page C2 and C4; `services.moment_pick`), from the
-    pick `_pick_moments` made.
+    """Each shown moment marked for its job in the walk (founder
+    2026-10-30, N289, flow page C2 and C4; `services.moment_pick`), from
+    the pick `_pick_moments` made.
 
     Every block is written, so a re-run cannot leave a stale mark:
-    `most_confident` (praised), `highest_moment` (the stronger voice of the
-    two, praised or not, N122), `level_key` (the praised moment's opening
-    line), `practice_prompt` / `carries_exercise` / `exercise_kind` on each
-    corrected block, `helper_words_prompt` on each shown block whose voice
-    reached the floor (N113), and `confident_practice` on each praised block
-    (N122).
+    `most_confident` (praised: the strongest and any next best),
+    `highest_moment` (the strongest), `level_key` (the praised moment's
+    opening line), `practice_prompt` / `carries_exercise` / `exercise_kind`
+    on each corrected block (the weakest, the between), `helper_words_prompt`
+    on each shown block whose voice reached the floor (N113), `walk_slot`
+    on each shown block (N289), and `confident_practice` always off: a
+    praise has no AI clip (N289 item 1, amending N122).
+
+    A between whose rewrite does not pass the gate is praised as a next best
+    (N289 item 5); the weakest keeps its voice practise whatever its voice.
 
     Returns the praised blocks (praise anchors there), the blocks a rewrite
-    may anchor to (each corrected block whose words need help and whose
-    rewrite passes the gate, founder 2026-10-18), both in document order,
-    and the rewrite ranking to anchor from (only those that passed).
+    may anchor to (the between, when its rewrite passes the gate, founder
+    2026-10-18), both in document order, and the rewrite ranking to anchor
+    from (only those that passed).
     """
     from services import moment_pick
 
@@ -902,16 +905,16 @@ def _mark_moments(blocks: list[dict], picked: dict,
     for block in blocks:
         _mark_shown(block, shown.get(block["block_id"]), value_of.get(block["block_id"]))
     pool = _gate_exercise(blocks, rewrite_ranked, rewrite_rows)
-    # The level's moment is practised whatever its voice (G7, N209 item 2).
-    clears = {s["block_id"] for s in picked["shown"]
-              if s["voice_clears"] and not s.get("plan_level")}
+    # A between whose rewrite did not pass the gate has nothing precise to
+    # offer: it is walked as a next best, praised (N289 item 5). The
+    # level's moment is practised whatever passed (G7, N209 item 2).
     for block in blocks:
-        # The voice exercise is only for a voice under the floor (founder
-        # 2026-10-21, N108): a voice that cleared it whose rewrite did not
-        # pass the gate is praised.
-        if block["block_id"] in clears and block["exercise_kind"] == moment_pick.EXERCISE_VOICE:
-            _mark_shown(block, {"praise": True, "highest": block["highest_moment"],
-                                "voice_clears": True},
+        moment = shown.get(block["block_id"])
+        if (moment and moment["slot"] == moment_pick.SLOT_BETWEEN
+                and not moment.get("plan_level")
+                and block["exercise_kind"] == moment_pick.EXERCISE_VOICE):
+            _mark_shown(block, {**moment, "praise": True, "kind": None,
+                                "slot": moment_pick.SLOT_NEXT},
                         value_of.get(block["block_id"]))
     rewrite_blocks = [
         block for block in blocks
@@ -937,9 +940,11 @@ def _mark_shown(block: dict, moment: Optional[dict], value: Any) -> None:
     # words are offered, after the praise or after the Clearer version. A
     # flag, never the score.
     block["helper_words_prompt"] = bool(moment and moment.get("voice_clears"))
-    # A praised moment is practised too, with the AI clip of its own words
-    # (founder 2026-10-23, N122). A flag, never the score.
-    block["confident_practice"] = praised
+    # A praise is praise only, no AI clip (founder 2026-10-30, N289 item 1;
+    # from 2026-10-23 every praise was practised with one, N122).
+    block["confident_practice"] = False
+    # The moment's job in the walk (N289): a word the walk orders by.
+    block["walk_slot"] = moment.get("slot") if moment else None
     # The moment where this week's level shows most (G7, N209 item 2): the
     # level's key, a word. Only on that block, so a walk off a plan keeps
     # its frame as it was.
