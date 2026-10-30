@@ -63,10 +63,9 @@ COPY = {
     "stress_hi": "Very stressed",
     "ready_lo": "Not ready",
     "ready_hi": "Fully ready",
-    "kickoff_ask": ("Before I show you your plan, pick a time for a 15-minute call with "
-                    "your coach. It's your kickoff call."),
-    "summary_ask": ("Would you also like to book your summary call? It's after your "
-                    "deadline, to look back and plan what's next."),
+    "kickoff_ask": "Every plan starts with a kickoff session with your coach. Would you like to book it now?",
+    "summary_ask": ("Every learning cycle also finishes with a summary session after your deadline. "
+                    "Would you like to choose it now?"),
     "booked": "Booked: {when}.",
     "all_set": "You're all set. Here's your plan.",
     "runs_to": "Done. Your plan now runs to {date}.",

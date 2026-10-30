@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>WillpowerLab for Invita</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
 <style>
@@ -424,6 +424,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 </style><style>
 /* The story: any business. Customer, expert, coach, the AI, the value; the business's answers inline (saved). */
 .qcard { border: 1.5px solid var(--accent); }
+.qcard[hidden] { display: none !important; }
 .qcard .qk { align-self: flex-start; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; padding: 3px 8px; border-radius: 999px; background: var(--accent); color: #FFFFFF; }
 .qcard h2 { margin: 0; font-size: 18px; line-height: 1.3; }
 .qcard .why2 { margin: 0; color: var(--muted); font-size: 13.5px; }
@@ -503,6 +504,18 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .val .row3 b { display: block; font-size: 17px; } .val .row3 small { display: block; font-size: 13px; color: #737373; margin-top: 2px; }
 .val .est { font-size: 12px; color: #A3A3A3; }
 .form2 { display: flex; flex-direction: column; gap: 14px; }
+.roles { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.roles span { font-size: 13px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); }
+.roles span.on { background: var(--ink); color: var(--panel); border-color: var(--ink); font-weight: 600; }
+.chk { align-self: stretch; border: 1px solid #EBEBEB; border-radius: 16px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; background: #FFFFFF; animation: up .28s ease both; }
+.chk .k2 { font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #737373; }
+.chk .tx2 { font-size: 15px; line-height: 1.45; }
+.chk .ph3 { display: flex; gap: 8px; align-items: center; font-size: 13.5px; color: #3D3A35; }
+.chk .ph3 i { width: 40px; height: 40px; border-radius: 8px; flex: none; }
+.cmpr { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cmpr div { border: 1px solid #EBEBEB; border-radius: 14px; padding: 10px; font-size: 14px; line-height: 1.4; }
+.cmpr div b { display: block; font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; color: #737373; margin-bottom: 4px; }
+.cmpr div.sr { border-color: #121212; }
 .form2 label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 600; }
 .form2 select, .form2 input { font: inherit; font-weight: 400; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); }
 /* Invita (customer side only): cream, ink, bubble, bronze; the widget white and grey in the system font */
@@ -525,6 +538,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   </nav>
   <main class="centre">
     <div class="jump"><h1>WillpowerLab, for Invita Head Spa</h1><select id="jumpto" aria-label="Jump to a step"></select></div>
+    <div class="roles" id="roles" aria-label="Whose phone"></div>
     <div class="stage" id="stage"><div class="device" id="device"><div class="bezel" id="bezel"><div class="screen" id="screen" aria-live="polite"></div></div></div></div>
     <div class="controls">
       <button class="btn" id="back" type="button">‹ Back</button>
@@ -554,9 +568,17 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
   // ---------- Any business: one dictionary per kind ----------
   const BIZ = {
-    invita: { label: "Invita Head Spa", hint: "invitaheadspa.com · Las Vegas, Vista San Diego, Costa Mesa, Fort Lauderdale", site: "Invita Head Spa", hero: "Japanese head spa for a healthy scalp.", heroBg: "linear-gradient(135deg,#B99A82,#6E5444)", cust: "Sarah", ask: "Itchy for two months, thinning at the top. I wash every day with a supermarket shampoo. What should I do?", photo: "radial-gradient(ellipse at 45% 40%,#E7C9B4 0 22%,#C79C83 40%,#6E4E3E 72%,#3A2A22)", expert: "Ariel", role: "trichologist", sees: ["Dry", "Irritated", "Oily", "Dandruff", "Receding hairline"], stages: { Ludwig: ["None", "I", "II", "III"], Norwood: ["None", "1", "2", "3", "4", "5", "6", "7"] }, service: "Deep Scalp Treatment", svcMeta: "75 min", price: 138, priceLabel: "$138–$148 by spa", product: "Scalp Scrubber", prodPrice: 20, said: "What I see is a dry, irritated scalp; washing every day with a supermarket shampoo keeps it that way. Wash every second day, lukewarm, and leave the foam on for one minute. And I would also do one Deep Scalp Treatment now: it calms the scalp much faster.", routine: ["Every second day, not every day", "Lukewarm water", "One minute with the foam on"], praise: "You named the treatment and let it land. That is someone who knows what she recommends." },
+    invita: { label: "Invita Head Spa", hint: "invitaheadspa.com · Las Vegas, Vista San Diego, Costa Mesa, Fort Lauderdale", site: "Invita Head Spa", hero: "Japanese head spa for a healthy scalp.", heroBg: "linear-gradient(135deg,#B99A82,#6E5444)", cust: "Sarah", ask: "Itchy for two months, thinning at the top. I wash every day with a supermarket shampoo. What should I do?", photo: "radial-gradient(ellipse at 45% 40%,#E7C9B4 0 22%,#C79C83 40%,#6E4E3E 72%,#3A2A22)", expert: "Ariel", role: "trichologist", owner: "Invita", sees: ["Dry", "Irritated", "Oily", "Dandruff", "Receding hairline"], stages: { Ludwig: ["None", "I", "II", "III"], Norwood: ["None", "1", "2", "3", "4", "5", "6", "7"] }, service: "Deep Scalp Treatment", svcMeta: "75 min", price: 138, priceLabel: "$138–$148 by spa", product: "Scalp Scrubber", prodPrice: 20, said: "What I see is a dry, irritated scalp; washing every day with a supermarket shampoo keeps it that way. Wash every second day, lukewarm, and leave the foam on for one minute. And I would also do one Deep Scalp Treatment now: it calms the scalp much faster.", routine: ["Every second day, not every day", "Lukewarm water", "One minute with the foam on"], praise: "You named the treatment and let it land. That is someone who knows what she recommends." },
   };
-  const S = { biz: "invita", answers: {}, recSlide: 0, scale: "Ludwig", stage: "I" };
+  // The team, per kind of business: a junior who answers, a senior who checks and teaches, the owner; the speaking coach is Marta
+  const TEAM = {
+    spa: { junior: "Maya", jrole: "junior trichologist", owner: "Dana", internalQ: "Can I use the scrubber on a client with psoriasis?", internalA: "Not with psoriasis. She should see a dermatologist first.", approvalQ: "Can I offer Sarah 10% off the Scalp Scrubber? She booked the treatment.", draft: "A gentle shampoo every day should calm it down.", correction: "Every second day, not every day. And name the Deep Scalp Treatment: it calms the scalp much faster.", hardCust: "Lily", hardAsk: "My scalp has red patches that bleed sometimes. What should I use?", hardAnswer: "Bleeding patches need a doctor first: please see a dermatologist this week. Once it has settled, come in and we will look after your scalp together.", practiceQ: "Oily roots, dry ends. I wash every day. What should I change?", practiceMine: "Use a lighter shampoo.", practiceSenior: "Every second day, shampoo on the roots only, and a Basic Scalp Treatment to reset the oil." },
+    optic: { junior: "Kasia", jrole: "junior optometrist", owner: "Dana", internalQ: "Can I fit blue-light lenses on a prescription older than two years?", internalA: "No. Test first, then fit.", approvalQ: "Can I give Tom last season's frames at 20% off?", draft: "Blue-light lenses will fix the headaches.", correction: "Don't promise a fix. Say the prescription may have drifted, and book the eye test first.", hardCust: "Ola", hardAsk: "One eye went blurry since yesterday. Do I need new glasses?", hardAnswer: "Sudden blur in one eye is a doctor's question, not glasses: please see an eye doctor today. We will do your eye test once they have checked it.", practiceQ: "I read a lot at night and my eyes burn. What helps?", practiceMine: "Try eye drops.", practiceSenior: "Better light, a break every 20 minutes, and an eye test: burning at night is often an old prescription." },
+    home: { junior: "Jan", jrole: "junior advisor", owner: "Dana", internalQ: "Can we quote a heat pump without a survey?", internalA: "Never. Survey first, then the quote.", approvalQ: "Can I promise Mark installation before Christmas?", draft: "A heat pump will definitely work in your house.", correction: "Don't say definitely. Say the radiators look right, and the survey checks the insulation.", hardCust: "Eva", hardAsk: "I smell gas near the boiler. Should I switch to a heat pump?", hardAnswer: "Please call the gas emergency line now and open the windows. Once it is safe, we will talk about the heat pump.", practiceQ: "Our bills doubled this winter. Where do we start?", practiceMine: "Get a heat pump.", practiceSenior: "A home survey first: it shows where the heat goes, and the cheapest fix is often insulation." },
+    other: { junior: "Jo", jrole: "junior specialist", owner: "Dana", internalQ: "Can I promise a result by Friday?", internalA: "No. Promise the next step, not the result.", approvalQ: "Can I waive the consultation fee for Sam?", draft: "This will be fixed in a day.", correction: "Don't promise a day. Say what you see and the next step.", hardCust: "Lee", hardAsk: "It got worse overnight and it hurts. What now?", hardAnswer: "Pain that grows overnight needs a person today: please call us now, and we will see you first thing.", practiceQ: "How long does this usually take to sort out?", practiceMine: "About a week.", practiceSenior: "It depends on what the photo shows: most cases settle in two weeks with the kit; if not, a consultation." },
+  };
+  Object.keys(TEAM).filter((k) => BIZ[k]).forEach((k) => Object.assign(BIZ[k], TEAM[k]));
+  const S = { biz: "invita", answers: {}, recSlide: 0, scale: "Ludwig", stage: "I", answerer: "senior" };
   const B = () => BIZ[S.biz];
   const money = (n) => (n ? "$" + n : "free");
   const svcPrice = () => B().priceLabel || money(B().price);
@@ -611,7 +633,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
       const snap = await mineRef.get();
       if (snap.exists) { const d = snap.data() || {}; S.answers = Object.assign({}, d.answers || {}); if (d.biz && BIZ[d.biz]) S.biz = d.biz; render(); }
       sayLine("Your answers save as you go. WillpowerLab reads them before we talk.", true);
-      if (userCap.isOwner && userCap.isOwner()) { STEPS.push({ id: "results", ch: "Only WillpowerLab", name: "Everyone's answers", who: "WillpowerLab", draw: drawResults, note: ["Everyone at Invita who clicked through, and what they answered. Only you see this."] }); paintRail(); }
+      if (userCap.isOwner && userCap.isOwner()) { STEPS.push({ id: "results", ch: "Only WillpowerLab", name: "Everyone's answers", role: "You", draw: drawResults, note: ["Everyone at Invita who clicked through, and what they answered. Only you see this."] }); paintRail(); }
     } catch (e) { db = null; sayLine("Your answers stay on this screen; download them at the end."); }
   })();
   function save() {
@@ -625,25 +647,26 @@ button { font: inherit; color: inherit; cursor: pointer; }
   function answer(id, v) { S.answers[id] = v; save(); }
 
   // ---------- Steps ----------
+  // role: whose phone the step shows (the strip above the phone)
   const STEPS = [
-    { id: "site", ch: "1 · Sarah asks", name: "On invitaheadspa.com", who: "Sarah, a customer", draw: drawSite, note: ["One line on invitaheadspa.com adds this button and a quiet popup. Nothing else on the site changes."] },
-    { id: "form", ch: "1 · Sarah asks", name: "Photo, a few words, a number", who: "Sarah, a customer", draw: drawForm, note: ["Three things: a photo, a few words, a mobile number and a tick for consent. The first name is optional."] },
-    { id: "sent", ch: "1 · Sarah asks", name: "Sent", who: "Sarah, a customer", draw: drawSent, q: "speed", note: ["Sarah's question is now in Ariel's chats."] },
-    { id: "ping", ch: "2 · Ariel answers", name: "A message to Ariel", who: "Ariel, trichologist", draw: drawPing, note: ["Ariel gets a WhatsApp message with a link to WillpowerLab."] },
-    { id: "chats", ch: "2 · Ariel answers", name: "Her chats", who: "Ariel, trichologist", draw: drawChats, note: ["One chat per person, like WhatsApp: customers, colleagues, coaches. Waiting for you comes first."] },
-    { id: "req", ch: "2 · Ariel answers", name: "Sarah's question", who: "Ariel, trichologist", draw: drawReq, note: ["The photo and the words, in Sarah's own chat. One tap: Answer."] },
-    { id: "pick", ch: "2 · Ariel answers", name: "What she sees and recommends", who: "Ariel, trichologist", draw: drawPick, q: "milbon", note: ["Two taps for what she sees and the hair-loss stage (Ludwig for women, Norwood for men): these become the labels Invita's photo model learns from. Then the treatment and the Scalp Scrubber. Each pick becomes a slide."] },
-    { id: "rec", ch: "2 · Ariel answers", name: "Her voice over the slides", who: "Ariel, trichologist", draw: drawRec, note: ["Camera off. Ariel talks over the photo and her picks, as she would to Sarah at the spa. A minute or two."] },
-    { id: "send", ch: "2 · Ariel answers", name: "Send", who: "Ariel, trichologist", draw: drawSend, q: "wa", note: ["WillpowerLab writes the text from what she said. Ariel alone decides to send; one tap sends it to Sarah."] },
-    { id: "cwa", ch: "3 · Sarah decides", name: "The answer arrives", who: "Sarah, a customer", draw: drawCwa, note: ["A WhatsApp message from Invita's own number, with a link. No app to install."] },
-    { id: "cchat", ch: "3 · Sarah decides", name: "Ariel's answer", who: "Sarah, a customer", draw: drawCchat, note: ["Ariel's voice, what to do, why, and what she recommends, with the price. Sarah can always write back."] },
-    { id: "book", ch: "3 · Sarah decides", name: "Book or buy", who: "Sarah, a customer", draw: drawBook, q: "fresha", note: ["Book opens the treatment on Fresha at the spa Sarah picks; Buy puts the Scalp Scrubber in Invita's Shopify cart. The money never passes through us."] },
-    { id: "walk", ch: "4 · Ariel gets better", name: "Feedback on how they said it", who: "Coach", draw: drawWalk, note: ["Will, the AI speaking coach, gives Ariel a short feedback walk on how she said it. Never on what she advised."] },
-    { id: "coach", ch: "4 · Ariel gets better", name: "Her speaking coach", who: "Coach", draw: drawCoach, note: ["A human speaking coach listens too, and sends a short voice note. Ariel answers with one tap."] },
-    { id: "learn", ch: "5 · Invita's AI learns", name: "What one answer taught it", who: "Invita", draw: drawLearn, q: "volume", note: ["Every answer becomes one example for Invita's own AI: what was seen, what was recommended, the words, and what Sarah did. It is Invita's to keep."] },
-    { id: "rules", ch: "5 · Invita's AI learns", name: "The rules it must keep", who: "Invita", draw: drawRules, q: "red", note: ["Invita's rules are tested on every draft. The AI drafts in the background first; Ariel stays in charge until the tests pass."] },
-    { id: "value", ch: "6 · The value for Invita", name: "Invita's estimate", who: "Invita", draw: drawValue, q: "metric", note: ["An estimate from Invita's answers and real prices. We check it with you on the first month's real numbers."] },
-    { id: "more", ch: "6 · The value for Invita", name: "A few more questions", who: "Invita", draw: drawMore, note: ["Optional, a few minutes. Everything here helps us set it up for Invita."] },
+    { id: "site", ch: "1 · Sarah asks", name: "On invitaheadspa.com", role: "Customer", draw: drawSite, note: ["One line on invitaheadspa.com adds this button and a quiet popup. Nothing else on the site changes."] },
+    { id: "form", ch: "1 · Sarah asks", name: "Photo, a few words, a number", role: "Customer", draw: drawForm, note: ["Three things: a photo, a few words, a mobile number and a tick for consent. The first name is optional."] },
+    { id: "sent", ch: "1 · Sarah asks", name: "Sent", role: "Customer", draw: drawSent, q: "speed", note: ["Sarah's question is now in Ariel's chats."] },
+    { id: "ping", ch: "2 · Ariel answers", name: "A message to Ariel", role: "Senior", draw: drawPing, note: ["Ariel gets a WhatsApp message with a link to WillpowerLab."] },
+    { id: "chats", ch: "2 · Ariel answers", name: "Her chats", role: "Senior", draw: drawChats, note: ["One chat per person, like WhatsApp: customers, colleagues, coaches. Waiting for you comes first."] },
+    { id: "req", ch: "2 · Ariel answers", name: "Sarah's question", role: "Senior", draw: drawReq, note: ["The photo and the words, in Sarah's own chat. One tap: Answer."] },
+    { id: "pick", ch: "2 · Ariel answers", name: "What she sees and recommends", role: "Senior", draw: drawPick, q: "milbon", note: ["Two taps for what she sees and the hair-loss stage (Ludwig for women, Norwood for men): these become the labels Invita's photo model learns from. Then the treatment and the Scalp Scrubber. Each pick becomes a slide."] },
+    { id: "rec", ch: "2 · Ariel answers", name: "Her voice over the slides", role: "Senior", draw: drawRec, note: ["Camera off. Ariel talks over the photo and her picks, as she would to Sarah at the spa. A minute or two."] },
+    { id: "send", ch: "2 · Ariel answers", name: "Send", role: "Senior", draw: drawSend, q: "wa", note: ["WillpowerLab writes the text from what she said. Ariel alone decides to send; one tap sends it to Sarah."] },
+    { id: "cwa", ch: "3 · Sarah decides", name: "The answer arrives", role: "Customer", draw: drawCwa, note: ["A WhatsApp message from Invita's own number, with a link. No app to install."] },
+    { id: "cchat", ch: "3 · Sarah decides", name: "Ariel's answer", role: "Customer", draw: drawCchat, note: ["Ariel's voice, what to do, why, and what she recommends, with the price. Sarah can always write back."] },
+    { id: "book", ch: "3 · Sarah decides", name: "Book or buy", role: "Customer", draw: drawBook, q: "fresha", note: ["Book opens the treatment on Fresha at the spa Sarah picks; Buy puts the Scalp Scrubber in Invita's Shopify cart. The money never passes through us."] },
+    { id: "walk", ch: "4 · Ariel gets better", name: "Feedback on how she said it", role: "Senior", draw: drawWalk, note: ["Will, the AI speaking coach, gives Ariel a short feedback walk on how she said it. Never on what she advised."] },
+    { id: "coach", ch: "4 · Ariel gets better", name: "Her speaking coach", role: "Senior", draw: drawCoach, note: ["Marta, a human speaking coach, listens too, and sends a short voice note. Ariel answers with one tap."] },
+    { id: "learn", ch: "5 · Invita's AI learns", name: "What one answer taught it", role: "Owner", draw: drawLearn, q: "volume", note: ["Every answer becomes one example for Invita's own AI: what was seen, what was recommended, the words, and what Sarah did. It is Invita's to keep."] },
+    { id: "rules", ch: "5 · Invita's AI learns", name: "The rules it must keep", role: "Owner", draw: drawRules, q: "red", note: ["Invita's rules are tested on every draft. The AI drafts in the background first; Ariel stays in charge until the tests pass."] },
+    { id: "value", ch: "6 · The value for Invita", name: "Invita's estimate", role: "Owner", draw: drawValue, q: "metric", note: ["An estimate from Invita's answers and real prices. We check it with you on the first month's real numbers."] },
+    { id: "more", ch: "6 · The value for Invita", name: "A few more questions", role: "Owner", draw: drawMore, note: ["Optional, a few minutes. Everything here helps us set it up for Invita."] },
   ];
   const BY = () => Object.fromEntries(STEPS.map((s) => [s.id, s]));
   const screen = document.getElementById("screen");
@@ -656,7 +679,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
   function render() {
     timers.forEach(clearTimeout); timers = [];
     const st = BY()[cur]; screen.innerHTML = ""; paintQ(st); st.draw();
-    document.getElementById("note").innerHTML = `<span class="who-tag">${esc(st.who)}</span><h2>${esc(st.name)}</h2>${st.note.map((n) => `<p>${esc(n)}</p>`).join("")}`;
+    const ROLE = { You: "You", Customer: `${B().cust} · customer`, Junior: `${B().junior} · ${B().jrole}`, Senior: `${B().expert} · senior ${B().role === "your expert" ? "specialist" : B().role}`, Coach: "Marta · speaking coach", Owner: `${B().owner} · owner` };
+    document.getElementById("roles").innerHTML = ["Customer", "Senior", "Coach", "Owner"].map((r) => `<span class="${st.role === r ? "on" : ""}">${esc(ROLE[r])}</span>`).join("");
+    document.getElementById("note").innerHTML = `<span class="who-tag">${esc(ROLE[st.role] || st.role)}</span><h2>${esc(st.name)}</h2>${st.note.map((n) => `<p>${esc(n)}</p>`).join("")}`;
     paintRail();
     document.getElementById("where").textContent = `${idx() + 1} of ${STEPS.length}`;
     try { history.replaceState(null, "", "#" + cur); } catch (e) {}
@@ -777,7 +802,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
     screen.innerHTML = `<div class="wa2"><span style="font-size:16px;opacity:.9">Thursday</span><span class="tm">9:58</span><button class="ntf${cue()}" type="button" id="n"><span class="ic"></span><span style="flex:1"><b>${esc(B().site)} <small>now</small></b>${esc(B().expert)} answered you. Listen here: answer.${esc(B().site.toLowerCase().replace(/\s/g, ""))}.com/a/7f3k</span></button></div>`;
     screen.querySelector("#n").onclick = next;
   }
-  const cTop = () => `<div class="top"><span class="av" style="width:44px;height:44px;background:radial-gradient(circle at 50% 38%,#E8CDB8 0 30%,#6E5444 31% 62%,#3B2E26 63%)"></span><div><b>${esc(B().expert)}</b><small>Your ${esc(B().role === "your expert" ? "expert" : B().role)} at ${esc(B().site)}</small></div></div>`;
+  const cTop = () => `<div class="top"><span class="av" style="width:44px;height:44px;background:${S.answerer === "senior" ? "radial-gradient(circle at 50% 38%,#E8CDB8 0 30%,#6E5444 31% 62%,#3B2E26 63%)" : "linear-gradient(135deg,#DCE9E1,#9FC1AE)"}"></span><div><b>${esc(S.answerer === "senior" ? B().expert : B().junior)}</b><small>Your ${esc(B().role === "your expert" ? "expert" : B().role)} at ${esc(B().site)}</small></div></div>`;
   const cThread = () => `<div class="b me"><span class="cap2" style="color:#D8C7B3">You asked</span>${esc(B().ask)}</div>
     <div class="b"><span class="cap2">What to do now</span><ul>${B().routine.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></div>
     <div class="b">${player(48, 9)}${esc(B().said)}</div>
@@ -869,6 +894,120 @@ button { font: inherit; color: inherit; cursor: pointer; }
     } catch (e) { qc.querySelector("#res").textContent = "Could not read the answers just now."; }
   }
 
+
+  // ---------- The team: junior, senior, coach, owner ----------
+  const AVJ = "linear-gradient(135deg,#DCE9E1,#9FC1AE)", AVS = "radial-gradient(circle at 50% 38%,#E8CDB8 0 30%,#6E5444 31% 62%,#3B2E26 63%)", AVK = "linear-gradient(135deg,#F3E3D2,#D8B08A)", AVO = "linear-gradient(135deg,#DDE5F0,#9AAFCB)";
+  const theirs = (bg, inner) => `<div class="from"><span class="av sm" style="background:${bg}"></span><div class="lg-b them">${inner}</div></div>`;
+  const mine = (inner) => `<div class="lg-b lg-me">${inner}<span class="ticks read">✓✓</span></div>`;
+  const day = (t) => `<div class="lg-day">${t}</div>`;
+  function chatShell(bg, name, sub, thread) { screen.innerHTML = `<div class="bg"></div>${chd(bg, name, sub)}<div class="lg-area sub" id="lg">${thread}</div>`; }
+  function fit() { const lg = screen.querySelector("#lg"); if (!lg) return; const b = screen.querySelector(".lg-dock") || screen.querySelector(".cmp"); lg.style.height = (844 - 64 - (b ? b.offsetHeight : 0)) + "px"; lg.scrollTop = lg.scrollHeight; }
+  function dockIt(html) { const d = screen.querySelector(".lg-dock, .cmp"); if (d) d.remove(); screen.insertAdjacentHTML("beforeend", `<div class="lg-dock">${html}</div>`); fit(); return screen.querySelector(".lg-dock"); }
+  function undockIt() { const d = screen.querySelector(".lg-dock, .cmp"); if (d) d.remove(); fit(); }
+  function addLg(h) { screen.querySelector("#lg").insertAdjacentHTML("beforeend", h); fit(); }
+  // the least-effort box (N278): an emoji reacts at once; a phrase fills the box; the mic comes back crafted
+  function quick({ suggest, crafted, onSend }) {
+    screen.insertAdjacentHTML("beforeend", `<div class="cmp"><div class="emo">${["👍", "✅", "🙏", "👀"].map((e) => `<button type="button" data-e="${e}">${e}</button>`).join("")}</div><div class="sug"><span class="by">Will suggests</span>${suggest.map((x) => `<button type="button" data-s="${esc(x)}">${esc(x)}</button>`).join("")}</div><div class="row"><button class="plus" type="button" aria-label="Add">${ICON.plus}</button><div class="fieldw"><textarea id="msg" rows="2" placeholder="Type here" aria-label="Message"></textarea><button class="snd" type="button" id="snd" aria-label="Send">${ICON.send}</button></div><button class="mic cue-ring" type="button" id="mic" aria-label="Answer by voice">${ICON.mic}</button></div></div>`);
+    fit();
+    const msg = screen.querySelector("#msg");
+    screen.querySelectorAll("[data-s]").forEach((b) => b.onclick = () => { msg.value = b.dataset.s; screen.querySelector("#snd").classList.add("cue-ring"); });
+    screen.querySelectorAll("[data-e]").forEach((b) => b.onclick = () => { const last = [...screen.querySelectorAll(".from .lg-b")].pop(); if (last) last.insertAdjacentHTML("beforeend", `<span class="react">${b.dataset.e}</span>`); undockIt(); onSend(null); });
+    screen.querySelector("#snd").onclick = () => { const v = msg.value.trim(); if (!v) return; undockIt(); addLg(mine(esc(v))); onSend(v); };
+    screen.querySelector("#mic").onclick = () => {
+      dockIt(`<div class="lis"><span class="sdot"></span>Listening…<span class="bars">${bars(28, 5, 18)}</span><span class="t">0:09</span></div>`);
+      later(() => { const d = dockIt(`<div class="cv"><p class="wa-title">Will wrote it from your voice</p><span class="now">${esc(crafted)}</span></div><div class="pair"><button class="close" type="button" id="ed">Edit</button><button class="act cue-ring" type="button" id="vs">Send</button></div>`);
+        d.querySelector("#vs").onclick = () => { undockIt(); addLg(mine(esc(crafted))); onSend(crafted); };
+        d.querySelector("#ed").onclick = () => { undockIt(); quick({ suggest, crafted, onSend }); screen.querySelector("#msg").value = crafted; }; }, 1300);
+    };
+  }
+  const answerCard = (who, text, label) => `<div class="chk"><span class="k2">${esc(label)}</span><span class="ph3"><i style="background:${B().photo}"></i>${esc(B().ask)}</span>${player(46, 7)}<span class="tx2">“${esc(text)}”</span><span style="font-size:12.5px;color:#737373">${esc(who)} · ${esc(B().service)} · ${esc(B().product)}</span></div>`;
+
+  function drawJChats() {
+    screen.innerHTML = `<div class="bg"></div><div class="lst"><div class="lh"><b>Chats</b></div>
+      <button class="crow" type="button"><span class="av will" style="width:52px;height:52px"><i></i><i></i><i></i></span><span class="mid"><b>Will</b><span class="pv">Your speaking coach</span></span></button>
+      <p class="sec">Waiting for you</p>
+      <button class="crow cue-ring" type="button" id="c">${av(B().photo)}<span class="mid"><b>${esc(B().cust)}</b><span class="pv">${esc(B().ask)}</span></span><span class="rt"><span class="tm on">9:41</span><span class="ub">1</span></span></button>
+      <p class="sec">Everyone else</p>
+      <button class="crow" type="button">${av(AVS)}<span class="mid"><b>${esc(B().expert)}</b><span class="pv">Senior · checks your answers</span></span></button>
+      <button class="crow" type="button">${av(AVK)}<span class="mid"><b>Marta</b><span class="pv">Your speaking coach</span></span></button></div>`;
+    screen.querySelector("#c").onclick = next;
+  }
+  function drawJReq() {
+    chatShell(B().photo, B().cust, "Customer · waiting for you", reqBubble());
+    dockIt(`<div class="wa-card"><p class="wa-title">${esc(B().cust)} asks for your advice.</p></div><div class="pair"><button class="close" type="button" id="ask">Ask a senior</button><button class="act cue-ring" type="button" id="a">Answer</button></div>`);
+    screen.querySelector("#a").onclick = next; screen.querySelector("#ask").onclick = () => go("j-hard");
+  }
+  function drawJWait() {
+    chatShell(B().photo, B().cust, "Customer · waiting for the check", reqBubble() + `<div class="lg-b lg-me" style="width:78%"><b>Your answer · Take 1</b>${player(46, 7)}</div>` + day(`Sent to ${esc(B().expert)} to check · 9:52`));
+    screen.querySelectorAll(".lg-me .play").forEach((p) => { p.style.background = "#fff"; p.querySelector("path").setAttribute("fill", "#FF640A"); });
+    fit(); later(next, 1800);
+  }
+  function drawSCheck() {
+    chatShell(AVJ, B().junior, B().jrole, day("Today 9:52") + theirs(AVJ, `Can you check my answer to ${esc(B().cust)}?`) + answerCard(B().junior, B().draft, "Check before it goes"));
+    const d = dockIt(`<div class="pair"><button class="close" type="button" id="cor">Correct by voice</button><button class="act" type="button" id="ok">👍 Approve</button></div>`);
+    d.querySelector("#cor").classList.add("cue-ring");
+    d.querySelector("#ok").onclick = () => { undockIt(); addLg(day(`Approved · sent to ${esc(B().cust)}`)); };
+    d.querySelector("#cor").onclick = () => {
+      dockIt(`<div class="lis"><span class="sdot"></span>Listening…<span class="bars">${bars(28, 3, 18)}</span><span class="t">0:11</span></div>`);
+      later(() => { const d2 = dockIt(`<div class="cv"><p class="wa-title">Will wrote it from your voice</p><span class="now">${esc(B().correction)}</span></div><div class="pair"><button class="close" type="button">Edit</button><button class="act cue-ring" type="button" id="vs">Send to ${esc(B().junior)}</button></div>`);
+        d2.querySelector("#vs").onclick = () => { undockIt(); addLg(mine(`${player(11, 3)}${esc(B().correction)}`)); later(next, 1300); }; }, 1300);
+    };
+  }
+  function drawJFix() {
+    S.answerer = "junior";
+    chatShell(AVS, B().expert, "Senior · checks your answers", day("Today 9:58") + theirs(AVS, `${player(11, 3)}${esc(B().correction)}`));
+    const d = dockIt(`<div class="pair"><button class="close" type="button">Ask why</button><button class="act cue-ring" type="button" id="re">Record Take 2</button></div>`);
+    d.querySelector("#re").onclick = () => { undockIt(); addLg(mine(`<b>Take 2 · ${esc(B().cust)}</b>`) + day(`${esc(B().expert)} 👍 · sent to ${esc(B().cust)} on WhatsApp · 10:04`)); later(next, 1600); };
+  }
+  function drawCAnswer() {
+    S.answerer = "junior"; drawCchat();
+    screen.querySelector("#bk2").onclick = drawBook;
+    screen.querySelector("#sk").onclick = () => toast(`Opens your own checkout with the ${B().product} in the cart.`);
+  }
+  function drawJHard() {
+    chatShell(B().photo, B().hardCust, "Customer · waiting for you", day("Today 11:10") + `<div class="from"><span class="av sm" style="background:${B().photo}"></span><div class="lg-b them">${esc(B().hardAsk)}</div></div>`);
+    const d = dockIt(`<div class="wa-card"><p class="wa-title">${esc(B().hardCust)} asks for your advice.</p></div><div class="pair"><button class="close cue-ring" type="button" id="ask">Ask a senior</button><button class="act" type="button">Answer</button></div>`);
+    d.querySelector("#ask").onclick = () => { undockIt(); addLg(day(`Sent to ${esc(B().expert)} · ${esc(B().hardCust)} will hear from a senior`)); later(next, 1500); };
+  }
+  function drawSHard() {
+    S.answerer = "senior";
+    chatShell(AVJ, B().junior, B().jrole, day("Today 11:11") + theirs(AVJ, `Can you take this one?`) + `<div class="chk"><span class="k2">${esc(B().hardCust)} · customer</span><span class="ph3"><i style="background:${B().photo}"></i>${esc(B().hardAsk)}</span></div>`);
+    const d = dockIt(`<div class="pair"><button class="close" type="button" id="tell">Tell ${esc(B().junior)} what to say</button><button class="act cue-ring" type="button" id="me2">Answer ${esc(B().hardCust)} myself</button></div>`);
+    const go2 = () => { dockIt(`<div class="lis"><span class="sdot"></span>Recording your answer…<span class="bars">${bars(28, 8, 18)}</span><span class="t">0:24</span></div>`);
+      later(() => { undockIt(); addLg(mine(`<b>Your answer to ${esc(B().hardCust)}</b>${player(24, 8)}“${esc(B().hardAnswer)}”`) + day(`Sent to ${esc(B().hardCust)} on WhatsApp · ${esc(B().junior)} sees it here`)); }, 1500); };
+    d.querySelector("#me2").onclick = go2; d.querySelector("#tell").onclick = go2;
+  }
+  function drawSInternal() {
+    chatShell(AVJ, B().junior, B().jrole, day("Today 14:02") + theirs(AVJ, esc(B().internalQ)));
+    quick({ suggest: [B().internalA.split(". ")[0] + ".", "Let me check.", "Call me."], crafted: B().internalA, onSend: () => { addLg(day("Kept in your team's know-how")); } });
+  }
+  function drawJPractice() {
+    chatShell(`#F5F5F5`, "Will", "Your speaking coach", day("Today 17:30") + `<div class="lg-b">Practice: a real question from last month. Answer it as you would, then see what ${esc(B().expert)} said.</div>` + `<div class="chk"><span class="k2">The question</span><span class="ph3"><i style="background:${B().photo}"></i>${esc(B().practiceQ)}</span></div>`);
+    screen.querySelector(".chd .av").outerHTML = `<span class="av will"><i></i><i></i><i></i></span>`;
+    const d = dockIt(`<div class="pair"><button class="close" type="button">Later</button><button class="act cue-ring" type="button" id="p">Record my answer</button></div>`);
+    d.querySelector("#p").onclick = () => { dockIt(`<div class="lis"><span class="sdot"></span>Recording…<span class="bars">${bars(28, 12, 18)}</span><span class="t">0:15</span></div>`);
+      later(() => { undockIt(); addLg(mine(`<b>Your answer</b>${player(15, 12)}`) + `<div class="cmpr"><div><b>You</b>${esc(B().practiceMine)}</div><div class="sr"><b>${esc(B().expert)}</b>${esc(B().practiceSenior)}</div></div>` + `<div class="lg-b">Shown only after you answered. ${esc(B().expert)} named the next step; try that in your next answer.</div>`); }, 1500); };
+  }
+  function drawKWork() {
+    screen.innerHTML = `<div class="bg"></div><div class="lst"><div class="lh"><b>Chats</b></div>
+      <button class="crow" type="button"><span class="av will" style="width:52px;height:52px"><i></i><i></i><i></i></span><span class="mid"><b>Will</b><span class="pv">Your speaking coach</span></span></button>
+      <button class="crow cue-ring" type="button" id="w"><span class="av door" style="width:52px;height:52px">▦</span><span class="mid"><b>Your work</b><span class="pv">3 reviews · ${esc(B().junior)}, ${esc(B().expert)}, and one more</span></span><span class="rt"><span class="ub">3</span></span></button>
+      <p class="sec">Waiting for you</p>
+      <button class="crow" type="button">${av(AVJ)}<span class="mid"><b>${esc(B().junior)}</b><span class="pv">Sent you Take 2 · ${esc(B().cust)}</span></span><span class="rt"><span class="st w">Review</span></span></button>
+      <button class="crow" type="button">${av(AVS)}<span class="mid"><b>${esc(B().expert)}</b><span class="pv">Sent you the answer to ${esc(B().hardCust)}</span></span><span class="rt"><span class="st w">Review</span></span></button></div>`;
+    screen.querySelector("#w").onclick = next;
+  }
+  function drawKReview() {
+    screen.innerHTML = `<div class="rv"><div class="top"><button class="chev" type="button">‹</button><span class="cap">${esc(B().junior)} · part 1 of 2</span><span class="priv">Only you see this</span></div><p class="stp">Judge</p><div class="au">${player(6, 9)}</div><p class="jq2">Does the speaker sound confident here?</p>
+      <div class="bigs"><button type="button" class="cue-ring" data-j>👍 Yes</button><button type="button" data-j>😐 In-between</button><button type="button" data-j>👎 No</button></div></div>`;
+    screen.querySelectorAll("[data-j]").forEach((b) => b.onclick = () => { b.classList.add("on");
+      later(() => { screen.innerHTML = `<div class="rv"><div class="top"><button class="chev" type="button">‹</button><span class="cap">${esc(B().junior)} · your words</span><span class="priv">Only you see this</span></div><p class="stp">Your words to ${esc(B().junior)}</p><p class="hint">Only this goes to ${esc(B().junior)}.</p><div class="au"><textarea rows="5" aria-label="Your words">Lovely and calm. Next time, slow down on the name of what you recommend: it is what ${esc(B().cust)} has to remember.</textarea></div><div class="grow"></div><button class="pill cue-ring" type="button" id="s">Send to ${esc(B().junior)}</button></div>`;
+        screen.querySelector("#s").onclick = next; }, 350); });
+  }
+  function drawOApprove() {
+    chatShell(AVJ, B().junior, B().jrole, day("Today 10:05") + theirs(AVJ, esc(B().approvalQ)));
+    quick({ suggest: ["Yes, go ahead.", "Not this time."], crafted: "Yes, go ahead this once. Next time, ask before you offer a discount.", onSend: (v) => { if (!v) addLg(day("You answered 👍")); } });
+  }
   // ---------- Fit the phone ----------
   const device = document.getElementById("device"), bezel = document.getElementById("bezel"), stage = document.getElementById("stage");
   function fitPhone() { const narrow = innerWidth <= 520; const W = narrow ? 390 : 410, H = narrow ? 844 : 864; const k = Math.min(1, stage.clientWidth / W, (narrow ? Infinity : Math.max(520, innerHeight - 150)) / H); bezel.style.transform = `scale(${k})`; bezel.style.width = W + "px"; bezel.style.height = H + "px"; device.style.width = W * k + "px"; device.style.height = H * k + "px"; }
@@ -877,4 +1016,5 @@ button { font: inherit; color: inherit; cursor: pointer; }
   render();
 })();
 </script>
+
 </body></html>
