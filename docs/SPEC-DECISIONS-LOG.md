@@ -7220,3 +7220,37 @@ feedback" leave the example: their text was a stand-in sentence.
 The rules: frontend
 [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md),
 the welcome's amendment and its line for N277. No migration.
+
+**N278 · The communicator: limited collaborative prompting, no naming
+emotions, and the experts' tacit knowledge made the company's IP (founder,
+the Claude Code chat, 30 October 2026: "The whole idea behind it is the NECP,
+so naming emotions collaborative prompting. Naming emotions we can drop ...
+for corporate environments, this is a fragile topic ... So we'd rather go
+with the collaborative prompting, but it should be limited ... suggested
+answers or some longer speech-to-text forms or some text forms, but
+carefully crafted ... as a manager, for example, you are not being given
+many options ... short phrases, to unclutch you, to decrease the cognitive
+load, to answer with an emoji. It's different kind of communicator,
+workplace communicator, that is just simpler, easier to use, and coaches you
+along the way", then "coaches you along the way, but also learns from you
+and turns the implicit knowledge into tacit knowledge and creates an IP for
+the company").** For N250 and N274 item 3:
+1. Collaborative prompting, without naming emotions: in the communicator
+(the chats between people), Will never names, asks for or reads anyone's
+feelings. Its coaching is about what is said and how it is delivered
+(clarity, length, pace). The Take's feelings check and the confidence model
+stay as they are; this entry does not change them.
+2. Answers in order of least effort: an emoji; one of at most three short
+phrases Will suggests; a voice answer, which Will turns into a short,
+carefully crafted message or form; typed words, with a clearer version
+offered. A suggestion fills the message box and the person sends it.
+3. The busier the role, the fewer the options: a manager gets an emoji and
+two short phrases, to unblock and to lower the load.
+4. Will coaches along the way, one nudge at a time, and never stops a
+message from going.
+5. It learns from every exchange: the taps, the picks, the edits to Will's
+suggestions and the outcomes turn the experts' tacit knowledge into
+explicit, structured knowledge, the company's IP (N250 item 2), kept per
+company.
+No rules page yet: the communicator's rules page comes with the founder's
+approval of the chats prototype (N274 item 6). No migration in this entry.
