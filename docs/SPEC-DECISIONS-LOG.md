@@ -6963,3 +6963,118 @@ the lab right now. Give it another try in a moment."
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §6, the line for N270. No migration.
+
+**N271 · Counting where a first visit leaves; the wait without its tips;
+two proposals dropped (founder, the Claude Code chat, 29 October 2026, on the
+review of the path from the landing page to the first feedback: "The wait
+says 'Usually about a minute.' yes and hide the slider with the suggestions
+the advices"; "introduce the counting where the people leave!"; "for the how
+do you feel - we do it somewhere else"; "don't change the slides; the slider
+back btn stays as is!!!!! you can not finish the take until you reach the end
+of the list of your slides").**
+1. **Where a first visit leaves is counted.** For a visitor without an
+account, each step counts once per browser tab: saw the landing page, tapped
+Enter the lab, agreed, started recording, finished the Take, result ready,
+and, after sign-up, opened the walk. A number a day per step and nothing
+else: no account, no IP address, no device. With the sign-up screen and the
+accounts made (N207 item 6) the founder reads the whole path, in all and by
+day, on the admin Users page, in the card that replaces the sign-up count.
+No speaker sees it.
+2. **The wait loses its tips.** "While you wait" and its slider of advice go
+from the processing screen; under the bar, "Usually about a minute."
+(signed). Its look waits for the founder's OK on the prototype
+<https://claude.ai/artifact/S66ZsrqTQZ4se74caoCj2J>.
+3. **Not changed.** Finish take stays on the last slide only, with Back and
+Next slide as locked (N70). "How do you feel?" is not part of this work.
+4. **Waiting for the founder's OK, each on its own prototype:** the landing
+that says what you get, with an example
+<https://claude.ai/artifact/VqrCoZ3ddRkkiSayMfnTJp>; Will's hello in a new
+visitor's empty Lounge <https://claude.ai/artifact/H2CwSoSWXF7wttNEXsPMYb>;
+one line on why the microphone is asked
+<https://claude.ai/artifact/6AVcGS1ksx86KzvUPyKEes>; a guest reads the walk
+and the account is asked at the first thing kept (N30, N32 item 5)
+<https://claude.ai/artifact/ARjGbALXWsqaWLJxpenc6f>, or, if the account
+stays first, one real moment on the wall
+<https://claude.ai/artifact/LyE1Xa7M5D2FWXDxFzPKtT>. Nothing in this item is
+decided.
+No rules page for the count (`services/first_visit.py`, the frontend's
+`FirstVisitCounts.tsx`); the wait lands on the frontend's recording screens
+page when it is built. Its migration gets its outside review before it is
+merged.
+
+**N272 · "How do you feel?" takes the set-up's look, is asked only of a
+signed-in speaker, and drops its reply and its coach line (founder, the
+Claude Code chat, 29 October 2026, to the prototype
+<https://claude.ai/artifact/CiCCZEE4rp7TfeVjfdnj1A>: "ok, great build it!";
+"for the consented users, they alreay know that they are being watched for
+emotions; So no grey text; and for the new users entirely not consented - not
+logged in - just skip this emoitns"; then, after being told that a check with
+no Skip would contradict Privacy 3.9 §4e, "add the same type of table, but
+with an opactiy or transparency under calm and the text should be grey; with
+Skip" and "build skip under calm").** For N211 and N217:
+1. **The set-up's look.** The screen takes the set-up's top bar: its step
+marks, with "How do you feel?" as the first step when the set-up follows it
+(the topic is then the second), and the ✕ in the bar. On a Take whose set-up
+is restored, the bar has the ✕ and no marks. The question is the set-up's
+heading, with its mic; "Before you step on stage" under it; the four
+feelings two by two.
+2. **Skip stays**, under Calm, in the feelings' own pill, faded, with grey
+words. Skipping keeps nothing (N211 unchanged).
+3. **No reply.** The pick shows, then the set-up opens. The four reply lines
+are retired.
+4. **No "Your coach sees your answer."** Replaces N217 item 2's line. The
+founder's reason: a signed-in speaker has accepted the Terms and Privacy,
+and Privacy 3.9 §4e and §5 say the coach sees the answer.
+5. **Only a signed-in speaker is asked.** A guest who is not signed in never
+sees the check; the Take goes on as after a Skip, keeping nothing. On a plan
+the plan's own yes still comes first (N211 item 1).
+No new words.
+The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+§6, the line for N272, and
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 D4. No migration.
+
+**N273 · A first visit's screens: the landing and its example, Will's hello,
+the calm wait, the microphone line and one moment on the account wall; the
+guest's walk is not opened before the account (founder, the Claude Code
+chat, 29 October 2026, on the prototypes of N271 item 4 and item 2: "the
+landing page, just the landing page is fine ... and how it opens the
+example, that's okay"; "we'll say hello first in the empty lounge. So
+exactly how it should be. This is good."; of the guest's walk, "do not
+introduce that change"; "Okay, rest is good.").** For N30, N32 item 5,
+N110, N270 and N271:
+1. **The landing says what you get.** Under "WillpowerLab", "Record your
+talk. You get the ideal text of your presentation and see which moments
+landed best." (the page's own description), and under Enter the lab, "See an
+example" (signed). It opens one example: what was said, the Ideal Text it
+becomes and the walk's line for it, under "An example", "What they said",
+"The Ideal Text" and "The feedback", with "Try it with your talk" (signed),
+which goes where Enter the lab goes. Nothing after the landing changes.
+Prototype <https://claude.ai/artifact/VqrCoZ3ddRkkiSayMfnTJp>.
+2. **Will says hello first.** A visitor's empty Lounge opens with N270's
+line, "Hi, I'm Will. 👋 Record your first take, and I will help you with
+your presentation.", with "Start your first recording" under it and, under
+that, "About 2 minutes to record. Your feedback comes about a minute later."
+(signed). Prototype <https://claude.ai/artifact/H2CwSoSWXF7wttNEXsPMYb>.
+3. **The calm wait.** N271 item 2 as drawn: one narrow column, the breathing
+mark a little larger, the stage and its percent, a rounded bar and "Usually
+about a minute." under it; no tips. Prototype
+<https://claude.ai/artifact/S66ZsrqTQZ4se74caoCj2J>.
+4. **Why the microphone.** On Take 1, under "Getting your mic ready", in the
+same small grey as the presentation line: "WillpowerLab uses the microphone
+to record your Takes." (N269). No new screen. Prototype
+<https://claude.ai/artifact/6AVcGS1ksx86KzvUPyKEes>.
+5. **The account stays before the walk.** A guest's processed Take still
+lands on "Done" and the account ask, as built on 16 October (until now only
+in the code). This replaces N30's and N32 item 5's "a guest reads the whole
+Feedback". The wall now carries one real piece of the result: the clip of
+the Take's most confident moment and "This was your most confident
+moment." Prototype <https://claude.ai/artifact/LyE1Xa7M5D2FWXDxFzPKtT>.
+The rules: frontend
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+(the landing),
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+(Will's hello, the wall) and
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+(the wait, the microphone line), each with its line for N273. No migration.
