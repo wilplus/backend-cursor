@@ -7486,23 +7486,30 @@ picked today. Praise only: "This was your most confident moment.", the
 level line and the cue line that says why it was confident (B01 to B09),
 then its helper words. No AI clip and no practise. Amends N122 ("a praised
 moment is practised too").
-2. **The weakest.** From a paragraph not shown, the moment with the most
-room to grow that can be helped: at least 8 words, a voice read the machine
-is sure of, and an AI clip that can be made; ranked by the paragraph's
-importance × (1 − S × W) × sureness, the dark V4 picker's own rank
-(`services/v4_picker.py`). Line A, then the AI clip with its one tip, up
-to three tries. The AI clip is for this moment only.
-3. **The one between.** Of the paragraphs left, the moment where a words
-error (the rewrite gate's: undermining words, hedges, off the slide, a
-broken sentence; H3) or rushing (the pace scale's stretch) shows: words get
-the Clearer version, rushing gets the Sniper, both get the Clearer version
-first and then the Sniper. The notebook's quote after a Good job on a
+2. **The weakest.** From a paragraph not shown, the clip with the lowest
+willfidence that has at least 8 words and a voice read (a clip with no
+sound read is never the weakest), and not one that already holds its
+slide's helper words. The dark V4 picker's importance and sureness
+(`services/v4_picker.py`) are read after the walk is made, so they join
+this rank only once they are read before it. "Here's one with more in it."
+(item 7), the clip, Line A, the strongest moment's clip played again, then
+the AI clip with its one tip, up to three tries. The AI clip is for this
+moment only.
+3. **The one between.** From another paragraph, the clip whose words need
+help the most (the rewrite gate's: undermining words, hedges, off the
+slide, a broken sentence; H3): the Clearer version, kept only when a
+rewrite passes the gate. It is picked before the weakest, so a Take of two
+paragraphs gets the precise fix. Rushing gets the Sniper (the tempo step),
+which comes right after the moments, so a Take with both has the Clearer
+version first and then the Sniper. The notebook's quote after a Good job on a
 Clearer version stays as N268 says, and nowhere else in the walk (N182).
-4. **The order** is strongest, weakest, then the one between, so the walk
-ends on a precise fix the speaker can land. Replaces C2's "praise first and
+4. **The order** is strongest, weakest, any next best, then the one
+between, then the Sniper, so the walk ends on a precise fix the speaker can
+land. Replaces C2's "praise first and
 then the corrections".
-5. **Nothing found.** No moment for 3: the next best moment, walked as 1.
-No moment for 2: the next best. A shown moment is never skipped (N284).
+5. **Nothing found.** No moment for 3, or a rewrite that does not pass the
+gate: the next best moment, praised as 1. No moment for 2: the next best. A
+shown moment is never skipped (N284).
 Three moments as N284 says; one confident moment, amending N246's two.
 6. **The Sniper on any Take.** The tempo step comes whenever the pace scale
 finds a stretch (a clip at least a quarter outside the green), Take 1
