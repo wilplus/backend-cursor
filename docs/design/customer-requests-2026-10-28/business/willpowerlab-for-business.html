@@ -636,9 +636,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
   function next() { const i = idx(); if (i < STEPS.length - 1) go(STEPS[i + 1].id); }
   function render() {
     timers.forEach(clearTimeout); timers = [];
-    const st = BY()[cur]; screen.innerHTML = ""; st.draw();
+    const st = BY()[cur]; screen.innerHTML = ""; paintQ(st); st.draw();
     document.getElementById("note").innerHTML = `<span class="who-tag">${esc(st.who)}</span><h2>${esc(st.name)}</h2>${st.note.map((n) => `<p>${esc(n)}</p>`).join("")}`;
-    paintQ(st); paintRail();
+    paintRail();
     document.getElementById("where").textContent = `${idx() + 1} of ${STEPS.length}`;
     try { history.replaceState(null, "", "#" + cur); } catch (e) {}
   }
