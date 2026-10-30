@@ -7290,39 +7290,31 @@ The rules: frontend
 [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md),
 its line for N280. No migration.
 
-**N281 · WillpowerLab for business: five roles and seven scenarios
-(founder, the Claude Code chat, 30 October 2026: "make this one really only
-for the businesses. You have three types of people inside the app ... the
-coach speaking coach, ... the specialist, and ... the customer ... or the
-customer is the junior specialist, and the specialist is the senior
-specialist ... show to me first all these scenarios", then "I want all the
-scenarios" and "Yes, the customer starts it").** For N250, N256, N274 and
-N278:
-1. Five roles in one business: the customer (outside); the junior
-specialist, who answers customers and is learning; the senior specialist,
-who checks, corrects, takes over and teaches; the speaking coach with Will,
-who coach how everyone speaks, never what they advise; the owner, who
-approves the few things only the owner can and sees the value. The senior
-judges the content, the coach and Will the delivery; the business's AI
-learns from both.
-2. S1: a junior answers, and the answer goes to the senior before the
-customer: Approve with one tap, or Correct by voice (Will writes the note);
-the junior records Take 2 and the senior's approval sends it.
-3. S2 and S3: the junior taps Ask a senior (red flags always do); the
-senior answers the customer directly, by voice, and the junior sees it.
-4. S4: a question inside the team, no customer: the junior asks the senior;
-the senior answers with a tap, a phrase or voice; it becomes the team's
-written know-how.
-5. S5: the junior practises on a real past question; the senior's answer
-is shown only after the junior has answered, side by side.
-6. S6: everyone is coached after every answer: Will's walk, and the
-speaking coach's private review with only her words reaching the person.
-7. S7: the owner answers approvals (a discount, a refund) with an emoji,
-two phrases or voice, and sees the value: answers, bookings and sales from
-answers, the team's progress in words, the AI's progress.
-8. The customer starts the story. A customer only ever sees "your
-{specialist}", never "junior" or "senior".
-No rules page yet: it lands with the chats' rules page (N274 item 6). The
-prototype, kept as N229 says:
-`docs/design/customer-requests-2026-10-28/business/willpowerlab-for-business.html`
-and `8-willpowerlab-for-business.pdf`. No migration in this entry.
+**N281 · The calls are asked for first, and a booking shows at once
+(founder, the Claude Code chat, 30 October 2026: "before giving me options
+to choose my kickoff and summary sessions. Ask me, do I want to do it?
+Don't do it right away. Don't open it right away. And then once I choose
+it, actually right away, hide the calendar and show me the bubbles";
+then, on the prototype <https://claude.ai/artifact/Gfnp8Fg8G2uXcqbCSNycgf>,
+the words below and "ok, build it").** Amends N161 and N248:
+1. After the last question, Will asks "Every plan starts with a kickoff
+session with your coach. Would you like to book it now?" with "Skip" and
+"Book now" under it. The calendar does not open by itself; "Book now"
+opens it (full screen, as N248 says).
+2. A day, a time, then "Book": the calendar closes at once and "Booked:
+{when}." is in the chat straight away, with no typing first, while the
+booking is saved.
+3. Then Will asks "Every learning cycle also finishes with a summary
+session after your deadline. Would you like to choose it now?", with
+"Skip" and "Book now", and the same calendar and bubble. Then "You're all
+set. Here's your plan."
+4. "Skip", under Will's question or at the top of the calendar, moves on to
+the next step. A call's "Book" in the plan's list still opens the calendar
+at once.
+Signed (Never 4): the two asks above. Was: "Before I show you your plan,
+pick a time for a 15-minute call with your coach. It's your kickoff call."
+and "Would you also like to book your summary call? It's after your
+deadline, to look back and plan what's next.", each with the calendar
+opening by itself. The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 F. No migration.
