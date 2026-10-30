@@ -477,7 +477,8 @@ def test_an_answer_with_nothing_heard_is_asked_again(db, monkeypatch):
 
 def test_a_correction_is_taken_and_the_question_asked_again(db, monkeypatch):
     _to_why(db)
-    _say(db, "It's our board pitch for two more hires.")
+    # Kept before N276, with the transcriber's stock line still in it.
+    _say(db, "It's our board pitch for two more hires. Thank you for watching.")
     key_q = bodies(db)[-1]
     seen = []
 
@@ -492,6 +493,7 @@ def test_a_correction_is_taken_and_the_question_asked_again(db, monkeypatch):
     ack = ("Will", "Thank you. Now I can hear you talking about your goal and why it matters.")
     assert seen[0][-3:] == [ack, ("Will", key_q), ("Speaker (voice message)",
                             "No, that's not what I meant. It's about funding, not hires.")]
+    assert ("Speaker (voice message)", "It's our board pitch for two more hires.") in seen[0]
     assert bodies(db)[before:] == [
         "No, that's not what I meant. It's about funding, not hires.",
         "Got it, thank you for putting me right. You'll ask the board for funding.",
@@ -505,6 +507,12 @@ def test_a_correction_is_taken_and_the_question_asked_again(db, monkeypatch):
     # whatever the AI reads, so a misheard correction can't loop.
     _say(db, "Board members and our CEO.")
     assert bodies(db)[-1] != key_q and len(db.get_open_plan(USER)["asked"]) == 2
+    # What Will says back comes from what the speaker just said (N150 rule 1):
+    # a correction with none of their words in it is the AI's, and the
+    # answer counts as an answer.
+    _say(db, "About five minutes, with slides.")
+    assert not any("putting me right" in b for b in bodies(db)[-3:])
+    assert len(db.get_open_plan(USER)["asked"]) == 3
 
 
 def test_a_new_speaker_can_record_before_answering(db, monkeypatch):

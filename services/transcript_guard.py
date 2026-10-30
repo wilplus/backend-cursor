@@ -64,6 +64,13 @@ def heard_nothing(text: str) -> bool:
     return _only(text, VIDEO_LINES | PLAIN_LINES)
 
 
+def without_video_lines(text: str) -> str:
+    """A transcript kept before these rules, without the videos' stock lines
+    in it ("... five minutes. Thank you for watching." → "... five minutes.")."""
+    parts = re.findall(r"[^.!?,\n]+[.!?,\n]*", text)
+    return " ".join(" ".join(p for p in parts if _sentences(p) and not _only(p, VIDEO_LINES)).split())
+
+
 def _num(seg: Any, name: str) -> Optional[float]:
     value = getattr(seg, name, None)
     if value is None and isinstance(seg, dict):

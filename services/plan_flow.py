@@ -485,7 +485,7 @@ def answer_voice(database: Any, user_id: str, adapter: Any, audio: bytes, *,
         asked = [str(a.get("bank")) for a in plan.get("asked") or []]
         turn = _turn(database, user_id, plan, asked, answering=(question, raw))
         if plan["step"] == "followup":
-            correction = _correction(plan, turn, asked)
+            correction = _correction(plan, turn, asked, raw)
     if correction:  # kept as an answer to what it corrects, so it takes its place
         kind = correction["of"]
     answer = database.insert_plan_answer({
@@ -576,13 +576,14 @@ def _move_on(database: Any, user_id: str, plan: dict) -> tuple[dict, list[tuple]
     return _next_question(database, user_id, {**plan, "step": "followup"}, nothing, "", None)
 
 
-def _correction(plan: dict, turn: Optional[dict], asked: list[str]) -> Optional[dict]:
+def _correction(plan: dict, turn: Optional[dict], asked: list[str], said: str) -> Optional[dict]:
     """A correction the AI heard, at most one per question (N275): once Will
     was put right on this question, the next answer to it is an answer, so
-    a correction misheard can't come round again and again."""
+    a correction misheard can't come round again and again. What Will says
+    back must come from what the speaker just said."""
     if _facts(plan).get("put_right_at") == len(asked) or _again(plan)[1] >= MAX_AGAIN:
         return None
-    return P.fitted_correction((turn or {}).get("correction"), ["why", *asked[:-1]])
+    return P.fitted_correction((turn or {}).get("correction"), ["why", *asked[:-1]], said)
 
 
 def _put_right(database: Any, user_id: str, plan: dict, answer: dict, said: str,
@@ -660,11 +661,15 @@ def _transcript(database: Any, user_id: str, plan: dict,
     lines = [("Will", P.COPY["deadline_q"]), ("Speaker", said)]
     if plan.get("deadline_given") and deadline:
         lines.append(("Will", P.COPY["two_months"].format(date=P.fmt_day(deadline))))
+    from services.transcript_guard import without_video_lines
     back = dict(_facts(plan).get("will_said") or {})
     for a in database.list_plan_answers(str(user_id), plan["id"]):
-        if a.get("transcript"):
+        # An answer kept before N276 may still hold the transcriber's stock
+        # line ("Thank you for watching."): the AI must not read it as said.
+        said_then = without_video_lines(str(a.get("transcript") or ""))
+        if said_then:
             lines += [("Will", str(a.get("question") or "")),
-                      ("Speaker (voice message)", str(a["transcript"]))]
+                      ("Speaker (voice message)", said_then)]
             if back.get(str(a.get("id"))):
                 lines.append(("Will", str(back[str(a["id"])])))
     if answering:
