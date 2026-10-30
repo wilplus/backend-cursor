@@ -19,6 +19,12 @@ among the Life Panel's active principles (propose, never commit). Every
 question and answer is a row of the one Lounge thread (L8), so the lens and
 the Lounge show the same rows and the lens reopens where it stands.
 
+A sales pattern (N241 P3, signed N258): when the week's notes show sales
+stalling and the person has the ring row ``sales_framing``, the case is
+marked ``kind: "sales"`` and the lens asks "Which step was it?" with the
+sale's four steps (or their own new one) in place of the four bugs; then the
+principle held, the reflection, and a principle about the process.
+
 Founder only: the notebook's ring row and its Yes (``voice_notebook``). The
 model call runs under the founder's processing authorization, in the chat's
 request or, on Sunday, from the worker's sweep
@@ -42,12 +48,20 @@ PATTERNS = {
     "hubris": "👾 Hubris",
     "wishful_thinking": "👾 Wishful thinking",
 }
+#: The sale's four steps, for a sales pattern (N241 P3, signed N258).
+SALES_STEPS = {
+    "opening": "🚪 The opening",
+    "discovery": "🔍 Discovery",
+    "offer": "🎁 The offer",
+    "follow_up": "📨 The follow-up",
+}
 #: The signed words (N158, N170). No new words without the founder's OK.
 COPY = {
     "head": "We spotted a pattern!",
     "no_notes": "There are no # notes from the last seven days yet.",
     "nothing": "Nothing stands out in your notes from the last seven days yet.",
     "which": "What one of those was it?",
+    "which_step": "Which step was it?",
     "applied": "Did you have a principle in place already?",
     "none_yet": "None yet",
     "reflections": "Reflections: what do you take from this?",
@@ -91,6 +105,10 @@ _SYSTEM = (
     "to apply to this case, most likely first; [] when none fits.\n"
     "  new_principle: one short principle in their voice that the case "
     "teaches, or \"\" when it repeats one they hold.\n"
+    "  kind: \"sales\" when the pattern is sales of theirs stalling or being "
+    "lost (calls, deals, clients, proposals), else \"self\". For a sales "
+    "pattern, the case and the principle are about the sale's process (the "
+    "opening, discovery, the offer, the follow-up), never about the person.\n"
     "Plain words. No numbers or digits, no scores, percentages or verdicts. "
     "No names of other people."
 )
@@ -260,7 +278,18 @@ def compose(database: Any, user_id: str, *, source: str, now: datetime,
     fields = {"status": "written", "body": case, "updated_at": _now(),
               "new_principle": _clean(parsed.get("new_principle"), 300) or None}
     database.update_sunday_note(claim["id"], fields)
-    return "case", {**claim, **fields, "likely": _likely(parsed, held)}
+    return "case", {**claim, **fields, "likely": _likely(parsed, held),
+                    "kind": _kind(database, user_id, parsed)}
+
+
+def _kind(database: Any, user_id: str, parsed: dict) -> str:
+    """"sales" for a sales pattern, only with the ring row ``sales_framing``
+    (N241 P3); "self" otherwise, the four bugs as before."""
+    if parsed.get("kind") != "sales":
+        return "self"
+    from services import rings
+    on = rings.feature_is_on_for_user("sales_framing", user_id, database=database)
+    return "sales" if on else "self"
 
 
 def _head_meta(note: dict) -> dict:
@@ -269,9 +298,11 @@ def _head_meta(note: dict) -> dict:
 
 def case_row(user_id: str, note: dict, at: str) -> dict:
     """The case in one sentence, with Not now | Investigate (L2)."""
-    return _row(f"{note['id']}:case", "bot", note["body"],
-                {"offer": OFFER, "sunday_note_id": str(note["id"]), "sunday_step": "case",
-                 "likely": note.get("likely") or []}, at)
+    meta = {"offer": OFFER, "sunday_note_id": str(note["id"]), "sunday_step": "case",
+            "likely": note.get("likely") or []}
+    if note.get("kind") == "sales":
+        meta["kind"] = "sales"
+    return _row(f"{note['id']}:case", "bot", note["body"], meta, at)
 
 
 def run_sunday(user_id: str, now_iso: str) -> None:
@@ -420,13 +451,14 @@ def state(database: Any, user_id: str, note_id: str) -> dict:
     done = _answered(rows)
     case = next((r for r in rows if (r.get("metadata") or {}).get("sunday_step") == "case"), {})
     likely = (case.get("metadata") or {}).get("likely") or []
+    kind = "sales" if (case.get("metadata") or {}).get("kind") == "sales" else "self"
     if "dismiss" in done:
         step = "closed"
     else:
         step = next((s for s in STEPS if s not in done), "done")
         if step == "principle" and not note.get("new_principle"):
             step = "done"
-    return {"id": str(note["id"]), "case": note.get("body") or "", "likely": likely,
+    return {"id": str(note["id"]), "case": note.get("body") or "", "likely": likely, "kind": kind,
             "new_principle": note.get("new_principle"), "step": step,
             "rows": [{"role": r["role"], "body": r["body"],
                       "step": (r.get("metadata") or {}).get("sunday_step")}
@@ -439,13 +471,17 @@ def _say(note_id: str, step: str, role: str, body: str, at: str) -> dict:
                 {"sunday_note_id": str(note_id), "sunday_step": step}, at)
 
 
-def _bug_words(value: str) -> tuple[str, Optional[str]]:
-    if value in PATTERNS:
+def _bug_words(value: str, kind: str = "self") -> tuple[str, Optional[str]]:
+    """The answer's words, and the bug's key to keep (none for a sale's step
+    or their own name)."""
+    if kind == "sales" and value in SALES_STEPS:
+        return SALES_STEPS[value], None
+    if kind != "sales" and value in PATTERNS:
         return PATTERNS[value], value
     name = " ".join(value.split())[:80]
     if not name:
         raise SundayError("EMPTY", "No words.")
-    return f"👾 {name}", None
+    return (name if kind == "sales" else f"👾 {name}"), None
 
 
 def answer(database: Any, user_id: str, note_id: str, step: str, value: Any = None) -> dict:
@@ -468,9 +504,10 @@ def answer(database: Any, user_id: str, note_id: str, step: str, value: Any = No
         rows = [_say(note_id, "dismiss", "user", COPY["not_now"], at),
                 _say(note_id, "dismiss", "bot", COPY["noted"], stamp_after(at))]
     elif step == "open":
-        rows = [_say(note_id, "open", "bot", COPY["which"], at)]
+        rows = [_say(note_id, "open", "bot",
+                     COPY["which_step" if now["kind"] == "sales" else "which"], at)]
     elif step == "bug":
-        words, key = _bug_words(text)
+        words, key = _bug_words(text, now["kind"])
         if key:
             database.update_sunday_note(note_id, {"pattern": key, "updated_at": _now()})
         rows = [_say(note_id, "bug", "user", words, at),

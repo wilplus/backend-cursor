@@ -6624,3 +6624,457 @@ The rules: frontend
 §1 C, D5, F and K, §3, §5. The prototype, kept as N229 says:
 `docs/design/customer-requests-2026-10-28/ariel/ariel-lounge.html` and
 `6-answerer-side-in-her-lounge.pdf`. No migration in this entry.
+
+**N257 · Updating a project's deck, inside the project (founder, the
+Claude Code chat, 29 October 2026: "what happens if I want to update the
+pitch? I'm starting without the pitch deck and then I want to add the pitch
+deck to that. Or I want to change the pitch deck", then three answers on a
+decision page, and "show it to me based on real screens from the
+application on a clickable prototype").** For N254 item 6, N48.2 Q4 and
+contract clause 4:
+1. A speaker adds a deck to a project that has none, or replaces its deck,
+inside the same project: the Take count, the coach's history and the plan
+carry on (N149). Contract clause 4's "a changed deck starts a new Project"
+and the server's refusal of a Take with a changed deck (409
+PRESENTATION_LOCKED) give way to this.
+2. The new deck is used from the next Take. That Take writes the whole
+Ideal Text fresh on the new slides; the previous text stays in the history
+(rule 5). Helper words move to a new slide with the same title; the others
+wait in the history until the speaker picks new ones.
+3. Where: the Ideal Text page's ⋯ menu, "Add slides" when the project has
+no deck and "Update slides" when it has one; and in the chat, the same in
+place of "Create project from updated deck".
+4. The words, signed: "Add slides" · "Update slides" · "Upload the new PDF.
+Your next Take uses it." · "Upload PDF" · "Cancel" · "New slides ready for
+Take {n}."
+5. The prototype on the real screens, signed the same day ("OK", then
+"button"): https://claude.ai/artifact/8heRv4BC6fGg7EzuzuTo4A. In the chat,
+Will answers "You can update the slides in this project. Your next Take
+uses them." and the upload takes the message box's place as the WhatsApp
+ask does ("the button should be like the button for whatsapp number
+update"): a grey card with "Update slides" and item 4's sentence, then
+"Cancel" | "Upload PDF". On the first Take with new slides the mic screen
+says "New slides" in place of "Same presentation as Take 1". Both lines
+signed.
+The rules: frontend
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md),
+with the first code; contract clause 4 is amended in the same pull request
+as that code. No migration in this entry.
+
+**N258 · The companions and your why are signed, Will's guide is signed, and
+the Life Panel's first-run page says "# note" (founder, the Claude Code chat,
+29 October 2026: "yes" to removing the first-run page's paragraph on the old
+tags or replacing it with a line about "# note", and "YES AND YES for the
+sign offs").** For N241, N253 and N255:
+1. The prototype "Principles Companions" (version 3,
+<https://claude.ai/artifact/1hfLf8mCif8pgC1X1Z6caJ>) is the design: its words
+are signed as drawn (Never 4), and its open choices as drawn: Strengths is a
+pill of its own, right after Principles; 💪 marks a strength; the talk
+reminder comes the first time the Lounge opens on the day before the talk;
+the sales steps are marked 🚪 🔍 🎁 📨; your why's lines are marked 🔥 🔭 🤝 and
+sit at the top of the Life Panel's Goals screen, above Life goals.
+2. Will's guide "what is in your control" (the Claude Doc
+<https://claude.ai/artifact/EL8NpV6kPKdcEb2rjYc9Fj>, as of 28 October) is
+signed and goes into Will's instructions word for word; Will's replies are
+its own words, from the guide.
+3. The Life Panel's first-run page drops its two paragraphs on the old tags
+(#mistake, #observation, #win, #add) and says instead: "The way in is the
+chat you already use. Start a message with # note, or tap the small mic, and
+it is kept as a note for you and Will. On Sunday, when your notes show a
+pattern, Will asks what you take from it and suggests a principle."
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 K, §2, §5. No migration in this entry.
+
+**N259 · A finished walk opened again is a scroll, with no buttons (founder,
+the Claude Code chat, 29 October 2026: "on the reopened walk there is only a
+scroll there should be no buttons!", then, asked, "Buttons only after a tap"
+and, on the Sniper's Skip, "Keep it").** Amends N247, for N89 and N91:
+1. A Take's walk opened again once it is done (from its Feedback walk,
+"Review feedback", a paragraph or its orange helper words) is a scroll. No
+buttons under the thread and no Next, on any step. The bar's ✕ and ‹ › stay,
+and clips still play.
+2. Helper words stay editable on the latest Take (C3): a tap on one brings
+"Edit the helper words" and "Keep these" under the thread for those words.
+Once chosen, they go again.
+3. A walk not yet done keeps the buttons of what still waits (B10).
+4. The Sniper's "Skip" stays the speaker's own bubble, in the walk and when
+it is opened again.
+5. No new words on screen; nothing changes on the server.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§1 B9, B10 and C3. No migration.
+
+**N260 · One project at a time in the chat too, and "Settings" in its
+question (founder, the Claude Code chat, 29 October 2026, on the prototype
+https://claude.ai/artifact/Ta5hMGw8EbA6ewUssUugMK: "not to bring it back
+from data and consent but Settings tab in the (hamburger menu icon)", then
+"ok it's good; you have my GO!").** For N254, N196 and N257:
+1. The question's sentence ends "you can bring it back from Settings."
+in place of "from Data & consent": the ☰ menu's Settings page (renamed
+from Data & consent, N196) is where the project list and Unarchive are.
+Everything else in N254 item 4 stands. Signed.
+2. Will's "Create new project" button in the chat asks the same question
+before a new project starts, when there is a current project. In the chat
+it takes the message box's place, as the WhatsApp ask and N257's slides
+upload do: a grey card with the title and the sentence, then "Cancel" |
+"Continue". Continue archives the current project and opens the new
+project's setup as before; Cancel brings the message box back and leaves
+the button under Will's reply. With no current project the button starts
+the project at once, as today.
+3. Updating the slides from the chat (N257) is as drawn on the same
+prototype; nothing changes there.
+The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md),
+with the code. No migration in this entry.
+
+**N261 · Customer requests: WillpowerLab is the client's shop and calendar
+by default, at no cut, with fair default rules the client can change
+(founder, the Claude Code chat, 29 October 2026, on the onboarding prototype
+<https://claude.ai/artifact/SymprqggVVrFkJjJt7iEP7>: "make it as a default
+option. But also, if you don't want you can add them too", then "we don't
+take a cut of that", "they can have their own calendar or they can use a
+WillpowerLab calendar", and on the proposed rules "You have my okay").** For
+N225 item 2, N234, N236 item 6, N239 and N252:
+1. **Sell and book here by default.** A client adds its treatments and
+products in WillpowerLab, the customer pays in the answer chat (one pay
+sheet for products and the booking) and the booking lands in a WillpowerLab
+calendar. Shopify and Fresha stay as options from the fixed list (N252 item
+2), connected instead by a client that already runs them. Was (N239): the
+client's own Fresha and Shopify.
+2. **No cut.** WillpowerLab takes nothing from a sale or a booking. The money
+goes to the client's own Stripe account; the client pays the card fee. The
+client pays only per answered request (N252 items 6 and 7).
+3. **The calendar is the client's choice:** the WillpowerLab calendar,
+pre-selected, or its own Google or Outlook calendar kept in sync both ways,
+so nothing is booked twice.
+4. **Default rules, the same for every client, each one changeable by the
+client:** a booking is paid when booked; free to cancel or move up to 24
+hours before; later than that, half is refunded; a no-show is not refunded;
+products are collected in the salon free or shipped at a price the client
+sets; unopened products come back within 14 days for a full refund.
+5. **Rules no client can change:** when the client cancels, the customer gets
+everything back; a faulty product is refunded or replaced; a refund goes
+back to the card within 5 working days; no rule is set below the law's
+minimum (the 14-day return right for online sales in the EU).
+6. Onboarding asks this in two screens: where customers buy and book (with
+the calendar), and the rules. Their words wait for the founder's OK with the
+rest (Never 4).
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 E and I; its lines come in their own frontend PR. No migration in this
+entry.
+
+**N262 · The plan's questions: record first, Will asks again when he hears
+nothing, and takes a correction (founder, the Claude Code chat, 29 October
+2026, going through the questions themselves: "these questions are being
+forced on me. I just wanted to start a new take, but I cannot", "when I'm
+silent, the system still takes that. And it shouldn't. It should tell me,
+oh, I didn't quite get what you mean", "if it was something wrong and the
+user says like, oh, it's not what I meant, the chat actually agrees and
+re-registers that answer", "I cannot play back my answers even"; then,
+asked, "Record now, rest after", "Will: didn't quite catch it", "Will hears
+it and agrees" and "Safari on a Mac").** Amends N136 and N146 (the questions
+can't be skipped) and Never 3's wording, for N139, N140 and N150:
+1. **Record first.** While a new speaker's voice questions are asked before
+their first Take, "Start your first recording" (signed, N161) sits under
+"Record your answer" and opens the recording at once. A question not
+answered yet comes back after that Take's walk, as a new event's questions
+come after a Take (A3); nothing asked is lost, and the plan's practices
+count that Take. The questions never stand between a speaker and their
+first Take. Never 3 in both CLAUDE.md files reads "the plan's questions
+come once, before the first Take, and never stop the speaker from
+recording it" in place of "the plan's questions come once, before the
+first Take".
+2. **Nothing heard.** A voice answer is checked for speech before it is
+transcribed, as a Take is (`services/min_content_gate.py`). One with no
+speech, or that gives no words, is not kept and not sent to a provider,
+and Will says "Sorry, I didn't quite catch that. Could you say it again?";
+the same question stays. Signed.
+3. **A correction.** When the speaker's answer puts Will right ("No,
+that's not what I meant …") instead of answering his question, Will
+agrees, "Got it, thank you for putting me right.", says back in one
+sentence what he now has, in their words and under N150's rules, and asks
+the same question again. The correction takes the old answer's place in
+the plan; the old answer stays in the history. The AI that writes Will's
+turn tells a correction from an answer; when it fails, the answer counts
+as an answer, as today. Signed.
+4. **A voice answer plays in Safari.** The app answers the byte-range
+requests Safari makes before it plays audio, for the speaker's voice
+bubbles, "How you said it" and the coach's player. No new words.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 A1, B3, B8, B9 and K, with the code; Never 3 in this repo's
+CLAUDE.md in this entry's pull request. No migration in this entry.
+
+**N263 · The empty Principles page drops "#mistake" (founder, the Claude Code
+chat, 29 October 2026: "take that out").** For N253 and N258: the Life
+Panel's Principles page, while it has no principle, said "No principles yet.
+The first one arrives when you send a case with #mistake." Since N253 a "#"
+message is one note and #mistake no longer sends a case, so the second
+sentence goes; the page says "No principles yet." No new words.
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 K, §6. No migration in this entry.
+
+**N264 · The rows `in_control` and `sales_framing` are set at ring 5 by a
+migration (founder, the Claude Code chat, 29 October 2026: "Set the rings
+yourself.").** For N241 and N258: the founder was to make these two rows on
+the CEO panel's rings page; instead a migration seeds both at ring 5, with
+their first audit entries, as 0498 did for `your_why` and `strengths`. A
+row the founder made in the meantime stays as it is. With them, Will's
+answer to a worry (O) and the sales steps (P) are on at ring 5. The
+migration gets its outside review before it is merged. No new words.
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§2 R1, §6.
+
+**N265 · STOP's answer drops "deleted your number"; any other WhatsApp reply
+is forwarded to the founder by email (founder, the Claude Code chat, 29
+October 2026: "Do it!", to "STOP reply words: keep the signed ones, or use
+'Done. We've stopped the WhatsApp messages.'" and to "Other replies: your
+rule N171 says any reply that isn't STOP should be forwarded to you by email.
+Nothing does that yet, so say if you want it built").** For N171 item 6, N174
+item 5 and N237 items 3 and 4:
+1. WhatsApp's answer to STOP is "Done. We've stopped the WhatsApp messages."
+(signed, Never 4). It replaces N174 item 5's words and N237 item 3: for an
+account that signs in with WhatsApp the number stays, so "deleted your
+number" was not true for everyone.
+2. Any other reply to our WhatsApp number is emailed to the founder
+(`ADMIN_EMAIL`), as N171 item 6 says. The email gives the sender's number, a
+link to the admin page of each account at that number, and the reply's text,
+or what kind of message it was when it is not text (a photo, a voice
+message). The person gets no answer. This replaces N237 item 4.
+3. It stays off until the privacy version N171 names the replies in is
+published: `WHATSAPP_FORWARD_REPLIES=true` on Railway turns it on (off by
+default), as `BOOKING_WHATSAPP_TO_ACCOUNT` does for N207. Until then other
+replies are not read.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§2, the line for N171. No migration.
+
+**N266 · 0500, the label view, merges without the outside review (founder,
+the Claude Code chat, 29 October 2026: "Skip it", to "Database change #1445:
+it still needs your outside review, or a 'skip it'").** Migration 0500
+(`the_label_view_counts_what_the_ledger_counts.sql`,
+[#1445](https://github.com/wilplus/backend-cursor/pull/1445), drafted as
+0498, a number another migration took first) merges on green checks without
+the GPT or Grok review CLAUDE.md asks of a new migration. It is one
+`CREATE OR REPLACE VIEW` of `snippet_label_quorum` that counts what the
+ledger counts (N111 B1 and C1); it drops nothing and needs no environment
+variable. As for N115, the waiver is for this one migration. No rules page.
+No migration in this entry.
+
+**N267 · An iPhone app wraps the web app, for the founder's own testing
+first (founder, the Claude Code chat, 29 October 2026, Linear WIL-107: "I
+would treat it just like you're saying, as a secondary thing, this
+application, something for testing for me right now", "you're just being
+redirected to the web app if you want to adjust your payment", and "ok
+let's go with it, small steps first step by step").** For WIL-107:
+1. **The web app stays the product.** Most traffic goes to the PWA; the app
+never slows the loop (record → Ideal Text → feedback → next Take) down, and
+app-only bugs wait behind it.
+2. **Capacitor, loading the live site.** The iPhone app is a Capacitor shell
+that opens willpowerlab.com, so every web deploy reaches it with no new
+build and no store review. No second design of any screen: a locked screen
+looks in the app as it does on the web.
+3. **iPhone first, private.** It runs on the founder's iPhone from Xcode,
+then through TestFlight. No public App Store listing and no Android until
+the founder decides.
+4. **Payments stay on the web.** Nothing is sold inside the app; buying
+sends the speaker to the web app, as Claude and ChatGPT do. Before any
+public listing, Apple's rule on linking out to pay is checked for the
+countries it ships in.
+5. **New words.** The words the app adds (the microphone permission text,
+the app's name and splash) are shown to the founder before they ship
+(Never 4).
+No rules page. No migration in this entry.
+
+**N268 · After a good try, Will may quote the speaker's own notebook in the
+walk, and "Keep my words" gets its own line (founder, the Claude Code chat,
+29 October 2026, on the prototype
+<https://claude.ai/artifact/Jt2XrfdifpU2A41rbZed8D>, version 2: "let's go
+with your recommendation B"; "Not here" a lasting setting with a switch in the
+Life Panel; "Your words it is. Now say them like you mean every one."; then
+"ok, go!").** Amends N182 (frontend `principles.md` §1 A3: the walk never
+reads or shows the principles) for this one place, and Line A after "Keep my
+words" (the walk's C5); for N85, N112, N241, N255 and N258:
+1. **When.** On a corrected moment's Clearer version, after a try that is a
+Good job (the praise line), Will may add one line, under the praise line,
+that quotes the speaker's own words: a kept 💪 strength with a note it
+gathered (N), the 🔭 vision line of Your why (Q1), or a # note that names
+what is theirs to control (O). Only when the sentence doubted the speaker,
+played the idea down or hedged, and the quote answers it; at most one per
+Take; else nothing. Never before the rewrite, never between the offer and
+its question, never on the Ideal Text (rule 5). The rewrite rules (H3) do
+not change.
+2. **Never invented.** The model only picks which of the speaker's kept
+words fits, or none; the quote is shown word for word with its date. It is
+asked while the speaker practises and shown only when ready, so the walk
+never waits.
+3. **Who.** Ring 5 and up, its own ring row `walk_quotes`, set at ring 5 by
+its migration (as N264), and only with the notebook and the source's own
+feature on. Private: never shown to a coach, never in the coach's queue or
+the coach panel (N182, Never 2).
+4. **Words (signed):** "That's your 💪 {strength} again." (N258); "That's the
+voice of your 🔭 vision."; "You talked about the part that's yours. That's
+where your effort goes."; the first time only, "From your notebook. Only you
+and Will see this." and "Not here"; after Not here, "Noted. Your notebook
+stays out of the walk."
+5. **Not here is a setting.** It keeps the notebook out of every later walk
+until the speaker turns it back on: the Life Panel's Your data page, "Your
+notebook in the Feedback walk", "After a good try, Will may quote one of
+your notes. Only you and Will see it.", a switch, and under it "Off since you
+tapped "Not here". Your walks stay as they are today. Turn it on to see
+Will's quotes again after a good try." or "On. Will may quote one note after
+a good try, at most once per Take." (signed).
+6. **"Keep my words".** After it Will says "Your words it is. Now say them
+like you mean every one." (signed) in place of Line A, "Say this one like
+your confident moment.", which stays wherever else it is said.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§1 C5, K and
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 A3, R, K, with the code. Its migration gets its outside review before it
+is merged.
+
+**N269 · The iPhone app's permission prompts (founder, the Claude Code chat,
+29 October 2026: "OK", to the two sentences proposed in
+[frontend #1090](https://github.com/wilplus/frontend-cursor/pull/1090)).**
+For N267 item 5: the iPhone asks for the microphone with "WillpowerLab uses
+the microphone to record your Takes." and for the camera with "WillpowerLab
+uses the camera when a coach records video feedback." Signed. No rules page.
+No migration in this entry.
+
+**N270 · Will's hello to a visitor before their first Take, and a guest who
+accepted chats with Will (founder, the Claude Code chat, 29 October 2026:
+"make it answer something intelligible, but then push the user to actually
+record the first recording"; "but they were consented!"; then, for the line,
+"and I will help you with your presentation, rewrite it to this").**
+1. **A guest who accepted chats with Will.** The acceptance stays on the
+guest's identity until they sign up; every Lounge chat turn carries it, so
+the processing gate lets the turn through and the general bot answers.
+2. **Before any acceptance**, the gate refuses the turn and nothing goes to
+the AI. A signed-out visitor with no project then gets one fixed line from
+Will, "Hi, I'm Will. 👋 Record your first take, and I will help you with your
+presentation." (signed), and under it "Start your first recording", the
+empty Lounge's own button. Everyone else keeps "I'm having trouble reaching
+the lab right now. Give it another try in a moment."
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§6, the line for N270. No migration.
+
+**N271 · Counting where a first visit leaves; the wait without its tips;
+two proposals dropped (founder, the Claude Code chat, 29 October 2026, on the
+review of the path from the landing page to the first feedback: "The wait
+says 'Usually about a minute.' yes and hide the slider with the suggestions
+the advices"; "introduce the counting where the people leave!"; "for the how
+do you feel - we do it somewhere else"; "don't change the slides; the slider
+back btn stays as is!!!!! you can not finish the take until you reach the end
+of the list of your slides").**
+1. **Where a first visit leaves is counted.** For a visitor without an
+account, each step counts once per browser tab: saw the landing page, tapped
+Enter the lab, agreed, started recording, finished the Take, result ready,
+and, after sign-up, opened the walk. A number a day per step and nothing
+else: no account, no IP address, no device. With the sign-up screen and the
+accounts made (N207 item 6) the founder reads the whole path, in all and by
+day, on the admin Users page, in the card that replaces the sign-up count.
+No speaker sees it.
+2. **The wait loses its tips.** "While you wait" and its slider of advice go
+from the processing screen; under the bar, "Usually about a minute."
+(signed). Its look waits for the founder's OK on the prototype
+<https://claude.ai/artifact/S66ZsrqTQZ4se74caoCj2J>.
+3. **Not changed.** Finish take stays on the last slide only, with Back and
+Next slide as locked (N70). "How do you feel?" is not part of this work.
+4. **Waiting for the founder's OK, each on its own prototype:** the landing
+that says what you get, with an example
+<https://claude.ai/artifact/VqrCoZ3ddRkkiSayMfnTJp>; Will's hello in a new
+visitor's empty Lounge <https://claude.ai/artifact/H2CwSoSWXF7wttNEXsPMYb>;
+one line on why the microphone is asked
+<https://claude.ai/artifact/6AVcGS1ksx86KzvUPyKEes>; a guest reads the walk
+and the account is asked at the first thing kept (N30, N32 item 5)
+<https://claude.ai/artifact/ARjGbALXWsqaWLJxpenc6f>, or, if the account
+stays first, one real moment on the wall
+<https://claude.ai/artifact/LyE1Xa7M5D2FWXDxFzPKtT>. Nothing in this item is
+decided.
+No rules page for the count (`services/first_visit.py`, the frontend's
+`FirstVisitCounts.tsx`); the wait lands on the frontend's recording screens
+page when it is built. Its migration gets its outside review before it is
+merged.
+
+**N272 · "How do you feel?" takes the set-up's look, is asked only of a
+signed-in speaker, and drops its reply and its coach line (founder, the
+Claude Code chat, 29 October 2026, to the prototype
+<https://claude.ai/artifact/CiCCZEE4rp7TfeVjfdnj1A>: "ok, great build it!";
+"for the consented users, they alreay know that they are being watched for
+emotions; So no grey text; and for the new users entirely not consented - not
+logged in - just skip this emoitns"; then, after being told that a check with
+no Skip would contradict Privacy 3.9 §4e, "add the same type of table, but
+with an opactiy or transparency under calm and the text should be grey; with
+Skip" and "build skip under calm").** For N211 and N217:
+1. **The set-up's look.** The screen takes the set-up's top bar: its step
+marks, with "How do you feel?" as the first step when the set-up follows it
+(the topic is then the second), and the ✕ in the bar. On a Take whose set-up
+is restored, the bar has the ✕ and no marks. The question is the set-up's
+heading, with its mic; "Before you step on stage" under it; the four
+feelings two by two.
+2. **Skip stays**, under Calm, in the feelings' own pill, faded, with grey
+words. Skipping keeps nothing (N211 unchanged).
+3. **No reply.** The pick shows, then the set-up opens. The four reply lines
+are retired.
+4. **No "Your coach sees your answer."** Replaces N217 item 2's line. The
+founder's reason: a signed-in speaker has accepted the Terms and Privacy,
+and Privacy 3.9 §4e and §5 say the coach sees the answer.
+5. **Only a signed-in speaker is asked.** A guest who is not signed in never
+sees the check; the Take goes on as after a Skip, keeping nothing. On a plan
+the plan's own yes still comes first (N211 item 1).
+No new words.
+The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+§6, the line for N272, and
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 D4. No migration.
+
+**N273 · A first visit's screens: the landing and its example, Will's hello,
+the calm wait, the microphone line and one moment on the account wall; the
+guest's walk is not opened before the account (founder, the Claude Code
+chat, 29 October 2026, on the prototypes of N271 item 4 and item 2: "the
+landing page, just the landing page is fine ... and how it opens the
+example, that's okay"; "we'll say hello first in the empty lounge. So
+exactly how it should be. This is good."; of the guest's walk, "do not
+introduce that change"; "Okay, rest is good.").** For N30, N32 item 5,
+N110, N270 and N271:
+1. **The landing says what you get.** Under "WillpowerLab", "Record your
+talk. You get the ideal text of your presentation and see which moments
+landed best." (the page's own description), and under Enter the lab, "See an
+example" (signed). It opens one example: what was said, the Ideal Text it
+becomes and the walk's line for it, under "An example", "What they said",
+"The Ideal Text" and "The feedback", with "Try it with your talk" (signed),
+which goes where Enter the lab goes. Nothing after the landing changes.
+Prototype <https://claude.ai/artifact/VqrCoZ3ddRkkiSayMfnTJp>.
+2. **Will says hello first.** A visitor's empty Lounge opens with N270's
+line, "Hi, I'm Will. 👋 Record your first take, and I will help you with
+your presentation.", with "Start your first recording" under it and, under
+that, "About 2 minutes to record. Your feedback comes about a minute later."
+(signed). Prototype <https://claude.ai/artifact/H2CwSoSWXF7wttNEXsPMYb>.
+3. **The calm wait.** N271 item 2 as drawn: one narrow column, the breathing
+mark a little larger, the stage and its percent, a rounded bar and "Usually
+about a minute." under it; no tips. Prototype
+<https://claude.ai/artifact/S66ZsrqTQZ4se74caoCj2J>.
+4. **Why the microphone.** On Take 1, under "Getting your mic ready", in the
+same small grey as the presentation line: "WillpowerLab uses the microphone
+to record your Takes." (N269). No new screen. Prototype
+<https://claude.ai/artifact/6AVcGS1ksx86KzvUPyKEes>.
+5. **The account stays before the walk.** A guest's processed Take still
+lands on "Done" and the account ask, as built on 16 October (until now only
+in the code). This replaces N30's and N32 item 5's "a guest reads the whole
+Feedback". The wall now carries one real piece of the result: the clip of
+the Take's most confident moment and "This was your most confident
+moment." Prototype <https://claude.ai/artifact/LyE1Xa7M5D2FWXDxFzPKtT>.
+The rules: frontend
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+(the landing),
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+(Will's hello, the wall) and
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+(the wait, the microphone line), each with its line for N273. No migration.

@@ -1482,17 +1482,6 @@ def v2_explore_arc_feedback(arc_id):
         }), 500
 
 
-def first_take_deck(spoken):
-    """The deck of the project's first spoken take that carried one (its
-    slides and/or served PDF), as a dict, or None when no take did. Pure;
-    ``spoken`` is sorted by take_index ascending by the caller."""
-    for s in spoken:
-        c = s.get("intake_context") if isinstance(s, dict) else None
-        if isinstance(c, dict) and (c.get("slides") or c.get("presentation_ref")):
-            return c
-    return None
-
-
 @v2_bp.route("/explore/arc/<arc_id>/setup", methods=["GET"])
 @require_owner_or_guest
 def v2_explore_arc_setup(arc_id):
@@ -1502,18 +1491,24 @@ def v2_explore_arc_setup(arc_id):
     Deliberately MINIMAL — only what the setup screen would otherwise
     ask for, read from the arc's SPOKEN takes' intake_context: the words
     (topic, audience, strategic context, length) from the latest take,
-    the deck (slides, presentation_ref) from the FIRST take that carried
-    one, so every later Take is said against Take 1's presentation
-    (founder 2026-10-16):
+    the deck (slides, presentation_ref) is the project's CURRENT deck
+    (N257): the next deck stored by PUT /v2/projects/<id>/deck when there
+    is one, else the deck of the LATEST spoken take that carried one:
 
       200 { arc_id, topic, audience, strategic_context,
-            target_length_seconds, slides, presentation_ref }
+            target_length_seconds, slides, presentation_ref,
+            deck_changed, deck_since_take }
+
+    `deck_changed` is true when the next Take is the first on new slides
+    (the mic screen says "New slides"); `deck_since_take` is the Take the
+    current deck was first used on, null when deck_changed.
 
     `topic` is load-bearing (the record POST rejects a take without
     one); `slides`/`presentation_ref` are load-bearing for a DECKED
     project — the master-document skeleton is keyed on slide index, so
     continuing a decked talk without its deck would produce unmappable
-    takes. No scores, no take data, no counts (AC-9).
+    takes. No scores, no take data, no counts (AC-9); `deck_since_take`
+    says only where the speaker is, as Never 1 allows.
 
     Global recording constants deliberately do NOT live here (2026-07-27):
     `long_take_caution_sec` and the min-content floor are properties of the
@@ -1546,13 +1541,18 @@ def v2_explore_arc_setup(arc_id):
         if not ctx:
             _last = spoken[-1].get("intake_context")
             ctx = _last if isinstance(_last, dict) else {}
-        # THE PRESENTATION IS TAKE ONE'S (founder 2026-10-16, "Second take
-        # falls back to the first take's presentation"). Every Take of a
-        # project is said against the same slides: the file the speaker
-        # uploaded for Take 1, or the stand-in deck Take 1 used. The deck
-        # read here used to follow the latest take, so one Take recorded
-        # against a different deck carried that deck into every Take after it.
-        deck = first_take_deck(spoken) or ctx
+        # THE CURRENT DECK (N257, replacing "Take 1's presentation", founder
+        # 2026-10-16). A deck updated inside the project is stored for the
+        # next Take; otherwise the latest Take's deck carries on.
+        from services.slide_deck_update import setup_deck
+        try:
+            project = db.get_project_row(arc_id)
+        except Exception as error:
+            logger.warning("arc setup: project unreadable arc=%s: %s",
+                           arc_id, error, exc_info=True)
+            project = None
+        deck, deck_changed, deck_since = setup_deck(project, spoken)
+        deck = deck or ctx
         return jsonify({
             "arc_id": arc_id,
             "topic": ctx.get("topic"),
@@ -1562,6 +1562,8 @@ def v2_explore_arc_setup(arc_id):
             "slides": deck.get("slides") or [],
             "presentation_ref": refreshed_media_url(
                 deck.get("presentation_ref")),
+            "deck_changed": deck_changed,
+            "deck_since_take": deck_since,
         }), 200
     except Exception as e:
         logger.error("arc setup failed arc=%s: %s", arc_id, e,

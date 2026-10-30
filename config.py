@@ -447,6 +447,9 @@ class Config:
     # shut (503).
     WHATSAPP_WEBHOOK_VERIFY_TOKEN = (os.getenv("WHATSAPP_WEBHOOK_VERIFY_TOKEN") or "").strip()
     WHATSAPP_APP_SECRET = (os.getenv("WHATSAPP_APP_SECRET") or "").strip()
+    # Any other reply is emailed to ADMIN_EMAIL (N265, N171 item 6). Off until
+    # the privacy version that names the replies is published.
+    WHATSAPP_FORWARD_REPLIES = os.getenv("WHATSAPP_FORWARD_REPLIES", "false").lower() == "true"
     # The plan's own yes (founder 2026-10-27, N211): the worry question, the
     # two ratings, "How did it go?" and the feelings check are asked only after
     # a yes to a question of its own. On since Privacy 3.9, which names it, was

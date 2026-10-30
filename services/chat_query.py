@@ -160,6 +160,24 @@ def persist_chat_turn(
         return None
 
 
+def _control_after_note(database, user_id) -> bool:
+    """Under a note: the sales question for a sale that stalled, else Will's
+    answer to a worry (N241 O1, P2), then what the note says of a strength
+    (N2, N3); never in the way of the note."""
+    try:
+        from services.sales_framing import answers_after_note
+        from services.strengths import after_note as strengths_after_note
+        rows = answers_after_note(database, str(user_id))
+        try:
+            rows = rows + strengths_after_note(database, str(user_id))
+        except Exception as e:  # noqa: BLE001 -- the note is kept either way
+            logger.warning("chat/query: strengths read failed user=%s: %s", user_id, e)
+        return bool(rows)
+    except Exception as e:  # noqa: BLE001 -- the note is kept either way
+        logger.warning("chat/query: worry answer failed user=%s: %s", user_id, e)
+        return False
+
+
 def _goals_after_note(database, user_id) -> bool:
     try:
         from services.life_goals import after_note
@@ -209,6 +227,12 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
         if (bot_cid and intent == "voice_notebook"
                 and (resp.get("row_metadata") or {}).get("voice_note")
                 and _goals_after_note(database, user_id)):
+            resp["after_take"] = True
+        # Under a # note's "Noted.", the sales question or Will's answer to
+        # a worry (N241 O1, P2); the same flag reads the thread again.
+        if (bot_cid and intent == "voice_notebook"
+                and (resp.get("row_metadata") or {}).get("voice_note")
+                and _control_after_note(database, user_id)):
             resp["after_take"] = True
     # Charge after answering, never before. Chat is repeatable, so it has no
     # idempotency ref; billing failure must never replace the answer.
@@ -322,6 +346,18 @@ def _life_goals(user_id, question, _context, _history=None) -> Optional[tuple[di
                   debug={"intent": "life_goals"}), "life_goals"
 
 
+def _your_why(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
+    """Their why asked for in their own words (N255 Q3): the lens opens,
+    because they asked."""
+    from services.db import db
+    from services.your_why import chat_turn
+    turn = chat_turn(db, user_id, question)
+    if not turn:
+        return None
+    return _reply(turn["answer"], row_metadata=turn["row_metadata"],
+                  debug={"intent": "your_why"}), "your_why"
+
+
 def _voice_notebook(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
     """A typed "#" note in the founder's voice notebook (Will learning plan,
     step 1): kept and answered "Noted.", or the question before the first
@@ -390,6 +426,7 @@ def _intercepts(user_id, app_config) -> list[tuple[str, Callable]]:
         chain.append(("whatsapp-number intercept failed user=%s: %s", _whatsapp_number))
         chain.append(("sunday-note intercept failed user=%s: %s", _sunday_note))
         chain.append(("life-goals intercept failed user=%s: %s", _life_goals))
+        chain.append(("your-why intercept failed user=%s: %s", _your_why))
         chain.append(("voice-notebook intercept failed user=%s: %s", _voice_notebook))
     if life_on:
         chain.append(("life-panel intercept failed user=%s: %s", _life_panel))

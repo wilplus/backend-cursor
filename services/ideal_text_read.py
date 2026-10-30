@@ -358,19 +358,10 @@ def _project_title(spoken_rows: list[Mapping[str, Any]]) -> str | None:
 def _deck_identity(
     spoken_rows: list[Mapping[str, Any]],
 ) -> tuple[Any, list[str]]:
-    """``(presentation_ref, slide_titles)``: the first Take's deck ref, and
-    the titles of the longest slide list (a later Take wins a tie)."""
-    presentation_ref = None
-    slide_titles: list[str] = []
-    for session in spoken_rows:
-        context = _intake_context(session)
-        slides = context.get("slides")
-        if isinstance(slides, list) and len(slides) >= len(slide_titles):
-            slide_titles = [
-                ((slide.get("title") or "").strip()
-                 if isinstance(slide, dict) else "")
-                for slide in slides
-            ]
-        if presentation_ref is None and context.get("presentation_ref"):
-            presentation_ref = context.get("presentation_ref")
-    return presentation_ref, slide_titles
+    """``(presentation_ref, slide_titles)`` of the CURRENT deck: the latest
+    spoken Take that carried one (N257: a deck updated inside the project
+    is used from its next Take on). Until N257 this was Take 1's ref and the
+    longest slide list across Takes."""
+    from services.slide_deck_update import latest_deck
+
+    return latest_deck(list(spoken_rows))

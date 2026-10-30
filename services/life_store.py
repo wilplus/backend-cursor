@@ -42,13 +42,16 @@ LIFE_TABLES: tuple[str, ...] = (
     "life_consent", "life_setup", "life_notes", "life_cases", "life_items",
     "life_strategy", "life_proposals", "life_applications", "life_days",
     "life_weeks", "life_period_reviews", "life_goals", "life_goal_versions",
-    "life_goal_asks",
+    "life_goal_asks", "your_why", "your_why_versions", "strengths",
+    "strength_notes", "talk_dates", "walk_quotes", "walk_quote_settings",
 )
 
 # Deleted in this order so a partial failure never strands a child row whose
 # parent is gone: leaves first, then the roots, consent last (it is the record
 # that the rest was ever allowed to exist).
 _DELETE_ORDER: tuple[str, ...] = (
+    "walk_quotes", "walk_quote_settings",
+    "your_why_versions", "your_why", "strength_notes", "strengths", "talk_dates",
     "life_goal_versions", "life_goals", "life_goal_asks",
     "life_applications", "life_proposals", "life_items", "life_cases",
     "life_days", "life_weeks", "life_period_reviews", "life_strategy",
@@ -484,6 +487,185 @@ def save_goal_asks(user_id: str, *, asked: int, answer: Optional[str]) -> bool:
         logger.error("life: save_goal_asks failed user=%s: %s", user_id, e, exc_info=True)
         return False
 
+
+# ═════════════════════════════════════════════════════════════════════════
+# Your why (N255, N258) — services/your_why.py
+# ═════════════════════════════════════════════════════════════════════════
+
+def get_why(user_id: str) -> dict:
+    """The person's row: why, vision, treat, the sitting's draft; {} when none."""
+    try:
+        return _one(_t("your_why").select("*").eq("user_id", user_id).limit(1).execute()) or {}
+    except Exception as e:
+        logger.warning("life: get_why failed user=%s: %s", user_id, e, exc_info=True)
+        return {}
+
+
+def save_why(user_id: str, fields: dict) -> Optional[dict]:
+    try:
+        return _one(_t("your_why").upsert(
+            {"user_id": user_id, **fields, "updated_at": _now()},
+            on_conflict="user_id").execute())
+    except Exception as e:
+        logger.error("life: save_why failed user=%s: %s", user_id, e, exc_info=True)
+        return None
+
+
+def insert_why_version(user_id: str, *, line: str, before: Optional[str],
+                       after: Optional[str]) -> Optional[dict]:
+    """A changed line, dated; never overwritten (Q6)."""
+    try:
+        return _one(_t("your_why_versions").insert({
+            "user_id": user_id, "line": line, "before_text": before,
+            "after_text": after}).execute())
+    except Exception as e:
+        logger.error("life: insert_why_version failed user=%s: %s", user_id, e, exc_info=True)
+        return None
+
+
+def why_versions(user_id: str) -> list[dict]:
+    try:
+        return _rows(_t("your_why_versions").select("*").eq("user_id", user_id)
+                     .order("created_at", desc=False).limit(500).execute())
+    except Exception as e:
+        logger.warning("life: why_versions failed user=%s: %s", user_id, e, exc_info=True)
+        return []
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Strengths (N241, N258) — services/strengths.py
+# ═════════════════════════════════════════════════════════════════════════
+
+def insert_strength(user_id: str, fields: dict) -> Optional[dict]:
+    try:
+        return _one(_t("strengths").insert({"user_id": user_id, **fields}).execute())
+    except Exception as e:
+        logger.error("life: insert_strength failed user=%s: %s", user_id, e, exc_info=True)
+        return None
+
+
+def update_strength(user_id: str, strength_id: str, fields: dict) -> Optional[dict]:
+    try:
+        return _one(_t("strengths").update({**fields, "updated_at": _now()})
+                    .eq("id", strength_id).eq("user_id", user_id).execute())
+    except Exception as e:
+        logger.error("life: update_strength failed id=%s: %s", strength_id, e, exc_info=True)
+        return None
+
+
+def list_strengths(user_id: str) -> list[dict]:
+    """Every strength of every state, oldest first."""
+    try:
+        return _rows(_t("strengths").select("*").eq("user_id", user_id)
+                     .order("created_at", desc=False).limit(200).execute())
+    except Exception as e:
+        logger.warning("life: list_strengths failed user=%s: %s", user_id, e, exc_info=True)
+        return []
+
+
+def insert_strength_note(user_id: str, strength_id: str, fields: dict) -> Optional[dict]:
+    try:
+        return _one(_t("strength_notes").insert(
+            {"user_id": user_id, "strength_id": strength_id, **fields}).execute())
+    except Exception as e:
+        logger.error("life: insert_strength_note failed id=%s: %s", strength_id, e, exc_info=True)
+        return None
+
+
+def strength_notes(user_id: str) -> list[dict]:
+    """Every note every strength gathered, oldest first."""
+    try:
+        return _rows(_t("strength_notes").select("*").eq("user_id", user_id)
+                     .order("noted_on", desc=False).limit(2000).execute())
+    except Exception as e:
+        logger.warning("life: strength_notes failed user=%s: %s", user_id, e, exc_info=True)
+        return []
+
+
+def save_talk_date(user_id: str, talk_on: str, note_id: Optional[str]) -> Optional[dict]:
+    """A talk date a note named (N4); one row per day."""
+    try:
+        return _one(_t("talk_dates").upsert(
+            {"user_id": user_id, "talk_on": talk_on, "note_id": note_id},
+            on_conflict="user_id,talk_on", ignore_duplicates=True).execute())
+    except Exception as e:
+        logger.error("life: save_talk_date failed user=%s: %s", user_id, e, exc_info=True)
+        return None
+
+
+def talk_dates(user_id: str) -> list[dict]:
+    try:
+        return _rows(_t("talk_dates").select("*").eq("user_id", user_id)
+                     .order("talk_on", desc=False).limit(200).execute())
+    except Exception as e:
+        logger.warning("life: talk_dates failed user=%s: %s", user_id, e, exc_info=True)
+        return []
+
+
+def mark_talk_reminded(user_id: str, talk_on: str) -> bool:
+    try:
+        _t("talk_dates").upsert(
+            {"user_id": user_id, "talk_on": talk_on, "reminded_at": _now()},
+            on_conflict="user_id,talk_on").execute()
+        return True
+    except Exception as e:
+        logger.error("life: mark_talk_reminded failed user=%s: %s", user_id, e, exc_info=True)
+        return False
+
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# The walk quotes your notebook (N268) — services/walk_quote.py
+# ═════════════════════════════════════════════════════════════════════════
+
+def get_walk_quote(user_id: str, session_id: str) -> dict:
+    """The Take's one quote; {} when none."""
+    try:
+        return _one(_t("walk_quotes").select("*").eq("user_id", user_id)
+                    .eq("session_id", session_id).limit(1).execute()) or {}
+    except Exception as e:
+        logger.warning("life: get_walk_quote failed user=%s: %s", user_id, e, exc_info=True)
+        return {}
+
+
+def insert_walk_quote(user_id: str, session_id: str, fields: dict) -> Optional[dict]:
+    """One per Take: a second one for the same Take is not kept."""
+    try:
+        return _one(_t("walk_quotes").upsert(
+            {"user_id": user_id, "session_id": session_id, **fields},
+            on_conflict="user_id,session_id", ignore_duplicates=True).execute())
+    except Exception as e:
+        logger.error("life: insert_walk_quote failed user=%s: %s", user_id, e, exc_info=True)
+        return None
+
+
+def mark_walk_quote_shown(user_id: str, session_id: str) -> bool:
+    try:
+        _t("walk_quotes").update({"shown_at": _now()}).eq("user_id", user_id) \
+            .eq("session_id", session_id).is_("shown_at", "null").execute()
+        return True
+    except Exception as e:
+        logger.error("life: mark_walk_quote_shown failed user=%s: %s", user_id, e, exc_info=True)
+        return False
+
+
+def get_walk_quote_settings(user_id: str) -> dict:
+    try:
+        return _one(_t("walk_quote_settings").select("*").eq("user_id", user_id)
+                    .limit(1).execute()) or {}
+    except Exception as e:
+        logger.warning("life: get_walk_quote_settings failed user=%s: %s", user_id, e, exc_info=True)
+        return {}
+
+
+def save_walk_quote_settings(user_id: str, fields: dict) -> bool:
+    try:
+        _t("walk_quote_settings").upsert({"user_id": user_id, **fields},
+                                         on_conflict="user_id").execute()
+        return True
+    except Exception as e:
+        logger.error("life: save_walk_quote_settings failed user=%s: %s", user_id, e, exc_info=True)
+        return False
 
 def items_for_case(user_id: str, case_id: str) -> list[dict]:
     try:

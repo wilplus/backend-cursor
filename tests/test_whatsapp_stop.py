@@ -1,6 +1,7 @@
 """
 STORY    As someone who gets our WhatsApp messages, I want to reply STOP and
-         have them stop, so that I am never messaged again against my wish.
+         have them stop, and have any other reply reach a person, so that I
+         am never messaged against my wish and an answer is never lost.
 OUTCOME
   O1  Meta's check when the webhook is set is answered only with the right
       verify token; with either key unset the door is shut (503).
@@ -8,10 +9,14 @@ OUTCOME
   O3  STOP turns the messages off for the account at that number and the
       booking that carries it, and answers with the signed words; other
       accounts and other replies are left as they were.
+  O4  Once forwarding is on, any other reply reaches the founder by email
+      with the number, the account's admin page and the reply's words, or
+      what kind of message it was; while it is off nothing is emailed.
 PROVES   O1 -> test_metas_check_needs_the_verify_token
          O2 -> test_an_unsigned_delivery_changes_nothing
          O3 -> test_stop_turns_the_messages_off
-WHY      Founder 2026-10-28, N237.
+         O4 -> test_other_replies_reach_the_founder
+WHY      Founder 2026-10-28, N237; 2026-10-29, N265.
 """
 from __future__ import annotations
 
@@ -95,6 +100,8 @@ def door():
         for name, value in {"WHATSAPP_NOTIFICATIONS": True, "WHATSAPP_ACCESS_TOKEN": "tok",
                             "WHATSAPP_PHONE_NUMBER_ID": "1055", "WHATSAPP_REDIRECT_TO": "",
                             "WHATSAPP_WEBHOOK_VERIFY_TOKEN": "verify-me",
+                            "WHATSAPP_FORWARD_REPLIES": False, "ADMIN_EMAIL": "founder@example.com",
+                            "FRONTEND_URL": "https://app.example",
                             "WHATSAPP_APP_SECRET": SECRET}.items():
             stack.enter_context(patch.object(Config, name, value, create=True))
         stack.enter_context(patch.object(wn.httpx, "post", _post))
@@ -138,4 +145,27 @@ def test_stop_turns_the_messages_off(door):
     assert other["whatsapp_phone"] == "+48600100200"
     assert tables["bookings"].rows[0]["guest_whatsapp"] is None
     assert sent == [{"messaging_product": "whatsapp", "to": "447700900123",
-                     "type": "text", "text": {"body": wn.STOPPED}}]
+                     "type": "text", "text": {"body": "Done. We've stopped the WhatsApp messages."}}]
+
+
+def test_other_replies_reach_the_founder(door):
+    client, tables, sent = door
+    mails: list[dict] = []
+    photo = {"entry": [{"changes": [{"value": {"messages": [
+        {"from": "15550001111", "type": "image", "image": {"id": "m1"}}]}}]}]}
+    with patch("services.email_service.send_email_resend", lambda **kw: mails.append(kw)):
+        raw, headers = _signed(_reply("Can we <move> the call?"))
+        assert client.post(DOOR, data=raw, headers=headers).status_code == 200
+        assert mails == []
+        with patch.object(Config, "WHATSAPP_FORWARD_REPLIES", True):
+            for payload in (_reply("Can we <move> the call?"), photo, _reply("STOP")):
+                raw, headers = _signed(payload)
+                assert client.post(DOOR, data=raw, headers=headers).status_code == 200
+    assert [m["to"] for m in mails] == ["founder@example.com"] * 2
+    reply, picture = mails
+    assert reply["subject"] == "WhatsApp reply from +447700900123"
+    assert "Can we &lt;move&gt; the call?" in reply["html"]
+    assert "https://app.example/admin/users/u1" in reply["html"]
+    assert "a photo" in picture["html"] and "No account gets WhatsApp messages" in picture["html"]
+    assert tables["user_settings"].rows[0]["whatsapp_phone"] is None
+    assert len(sent) == 1

@@ -1,5 +1,7 @@
-"""Replies to our WhatsApp number (founder 2026-10-28, N237): STOP turns the
-messages off. Logic in services/whatsapp_notify.py.
+"""Replies to our WhatsApp number: STOP turns the messages off (founder
+2026-10-28, N237); any other reply is emailed to the founder while
+WHATSAPP_FORWARD_REPLIES is on (2026-10-29, N265). Logic in
+services/whatsapp_notify.py.
 
   GET  /v2/whatsapp/webhook   Meta's check when the webhook is set: answers
                               hub.challenge when hub.verify_token matches

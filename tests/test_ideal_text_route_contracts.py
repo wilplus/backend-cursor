@@ -131,6 +131,7 @@ def test_the_notebook_read_composes_locks_and_prepares_the_exposure():
         "explanations_available": False, "journey_next_steps_seen": False,
         "key_moments": [], "latest_take_session_id": TAKE,
         "learning_exposure": {"handle": "h-1"}, "moments_unlocked": True,
+        "has_deck": False, "project_archived": False,
         "notes": "my notes", "notes_text": "my notes", "user_notes": "my notes",
         "parts": parts,
         "pieces": [piece(0, "Para one new."), piece(1, "My typed two."),
