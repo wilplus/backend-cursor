@@ -7416,3 +7416,19 @@ other.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C7a and K. No migration.
+
+**N286 · The bubbles take Messenger's shape (founder, the Claude Code chat,
+30 October 2026, on a Messenger screenshot: "Can you make all the bubbles on
+our app finish like this? On the left side, it's aligned and nicely. I'm
+talking only about the shape on the right side of the bubble"; then, on the
+preview <https://claude.ai/artifact/HjKX9XgJZFnnfZt3QQFGX9>, "Yes, go
+ahead").** Every chat bubble, in the Lounge and in the walk, has no tail.
+Its open side (the right of a grey bubble, the left of an orange one) is
+round at both corners, always; on the side the bubbles line up on, the
+corner where a bubble meets the next one of the same side is drawn in, and
+the top of a run and its bottom stay round. Was: every corner round and a
+small WhatsApp-like tail on the last bubble of a run (2026-10-14). The pair
+of N202 keeps its drawn-in corners. No new words on screen (Never 4).
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+J6. No migration.
