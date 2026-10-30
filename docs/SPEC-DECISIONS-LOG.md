@@ -7368,3 +7368,28 @@ no word is added.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md),
 section K and its line for N283. No migration.
+
+**N284 · Three moments on every Take, and none skipped (founder, the Claude
+Code chat, 30 October 2026: "there is just one confident moment and the
+rule is that there should be at least two ... choose more moments for
+practice cause if smth is already good it's ok to just lock the helper
+words and hear it with AI voice ... we need more moments at least 2 and
+more interventions"; then, asked, "Best three" and "Treat as good").** For
+N108, N118, N122 and N246:
+1. Every Take shows its three highest willfidence moments, one per block,
+from any slide; at least two on a short Take, as N246 says; fewer only
+when the Take has fewer clips. The cut that gives the two best a block each
+(N128, N246 item 1) is unchanged. On a plan, this week's level is on one of
+the three or a fourth (N246 item 3).
+2. Each moment is still praised or corrected by its own voice (N108); the
+most confident is still the strongest voice of those shown (N122).
+3. A shown moment is never skipped. A corrected moment with nothing to
+practise (no Clearer version, no exercise, no AI clip) is walked as a good
+one: its helper words, as after a praise. Was: the walk moved past it
+(N108, "Skip that moment"), so a Take could show one moment.
+4. No intervention is forced: a rewrite comes only when the words need help
+(H3) and the Sniper only from Take 2 with a stretch outside the green
+(N181). More moments give them more chances.
+No new words on screen (Never 4). The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2, C4 and H1. No migration in this entry.
