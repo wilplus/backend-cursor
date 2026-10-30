@@ -7254,3 +7254,27 @@ explicit, structured knowledge, the company's IP (N250 item 2), kept per
 company.
 No rules page yet: the communicator's rules page comes with the founder's
 approval of the chats prototype (N274 item 6). No migration in this entry.
+
+**N279 · The example on the landing: the slow tempo line, the line without
+its emoji, and the clips before the Sniper (founder, the Claude Code chat,
+30 October 2026, on the prototype
+<https://claude.ai/artifact/MVyWmdoWUqisttfkW8qb8D>: "change it to that part
+went little slow; show to me the too slow message"; "cut it: 😏 end with: .";
+"when you open the example, you immediately see the sniper moving. So I feel
+like everything is artificial there. But recordings are not ... user
+doesn't know that"; then "The sniper waits dimmed until the AI clip ends.
+All perfect ... You have my okay").** For N277:
+1. **The tempo line** in the example is the walk's slow one, "That part
+slowed down, with long pauses. 🐢 Let's try a little game.", in place of
+"That part went fast. 🏃 …"; the Sniper's set pace leans slow, then settles
+in the green. The walk's own lines do not change.
+2. **Under the name**, the second paragraph ends "We’ll help you sound brave
+until you are." (signed), without the 😏.
+3. **The clips come first.** When the example opens, only the founder's play
+button moves: a ring breathes out of it and its waveform ripples once.
+Playing it moves the ring to the AI clip's button. The Sniper rests, dimmed,
+until the AI clip ends, then wakes and plays; a tap on it wakes it too. No
+new words.
+The rules: frontend
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md),
+the welcome's amendment and its line for N279. No migration.
