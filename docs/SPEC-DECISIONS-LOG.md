@@ -7355,3 +7355,16 @@ No rules page yet: it lands with the chats' rules page (N274 item 6). The
 prototype, kept as N229 says:
 `docs/design/customer-requests-2026-10-28/business/willpowerlab-for-business.html`
 and `8-willpowerlab-for-business.pdf`. No migration in this entry.
+
+**N283 · One bubble never says the same thing twice (founder, the Claude
+Code chat, 30 October 2026, on a phone screenshot of the Feedback walk's
+praise for the Take's highest moment: "This was your most confident moment.
+Wow, great job. That really landed! 🔥 It was your confident moment."; "This
+text is repeated ... Please fix that and make sure that this kind of things
+don't happen again").** A grey bubble is stacked from lines each signed on
+its own; stacked, a sentence that says what an earlier one in the same
+bubble already said is dropped. The first one stays; nothing is reworded and
+no word is added.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md),
+section K and its line for N283. No migration.
