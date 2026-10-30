@@ -7355,3 +7355,23 @@ No rules page yet: it lands with the chats' rules page (N274 item 6). The
 prototype, kept as N229 says:
 `docs/design/customer-requests-2026-10-28/business/willpowerlab-for-business.html`
 and `8-willpowerlab-for-business.pdf`. No migration in this entry.
+
+**N283 · Coaches go by their real names; every speaker has a personal coach
+(founder, the Claude Code chat, 30 October 2026, answering "Do coaches show
+their real names to speakers, or pseudonyms?" and "Does each speaker get a
+personal coach, or can any coach answer?": "Real names, please. Personal
+coach.").** For N274 items 2, 4 and 7:
+1. A speaker sees their coach's real name, in Will's chat and in any other
+coach's chat. No pseudonyms for coaches. How a speaker's own name reaches a
+coach is unchanged (0b).
+2. Every speaker has one personal speaking coach: the human coach inside
+Will's chat (N274 item 2), who writes the coach's notes (N274 item 4). It is
+the same person from Take to Take. Was: any coach could answer.
+3. Unchanged: the coach moments queue, its blind judging (Never 2), its
+quorum of two human labels and its reach alarm. Those coaches judge
+moments; the personal coach writes to the speaker.
+4. Open, for the founder: who pairs a new speaker with their personal coach,
+and what happens when that coach is away or full (N274 item 7, "a coach
+with many speakers").
+No rules page yet: it lands with the chats' rules page (N274 item 6). No
+migration in this entry.
