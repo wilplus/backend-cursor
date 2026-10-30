@@ -24,11 +24,16 @@ OUTCOME
   O5  After a distressed message the chat's safety reply comes and the asks
       wait: nothing lands under it until I write again (founder 2026-10-21,
       N94).
+  O6  The plan's lines after a practice day's Take ("That's your 15
+      minutes for today.") wait for the ask: the ask stays the newest
+      bubble, so its answers stay; after my answer come the lines, then
+      the closing message with "Record Take N", last (founder 2026-10-30).
 PROVES   O1 -> test_after_take_one_the_whatsapp_ask_else_will_else_the_question
          O2 -> test_from_take_two_one_ask_ceo_ask_whatsapp_home_screen_will_the_question
          O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_closing_message
          O4 -> test_an_older_waiting_message_shows_where_it_stands
          O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
+         O6 -> test_the_plans_lines_wait_for_the_ask
 WHY      Founder 2026-10-20: "one action at a time", then, after checking the
          app: the summary without the CTA, Will's liaison before each ask,
          "Look, practice makes perfect…" and the CTA last.
@@ -191,6 +196,18 @@ def test_each_ask_comes_under_what_closed_the_one_before_then_the_closing_messag
     _world(monkeypatch, phone="+447700900461", admin=None)
     rows = after_take.release(skipped, "u")
     assert [r["body"] for r in rows] == [after_take.NEXT_TAKE]
+
+
+def test_the_plans_lines_wait_for_the_ask(monkeypatch):
+    fifteen = "That's your 15 minutes for today."
+    monkeypatch.setattr("services.plan_flow.after_take", lambda db, u: db.insert_lounge_messages(u, [
+        {"client_id": "fifteen", "role": "bot", "kind": "text", "body": fifteen, "metadata": {}}]))
+    db = _Db()
+    _waiting(db, "take-1", ["feedback_check"])
+    assert db.drawn() == [SUMMARY, feedback_check.COPY["ask"]]
+
+    feedback_check.answer(db, user_id="u", arc_id="arc", take_session_id="take-1", choice="yes")
+    assert db.drawn()[-2:] == [fifteen, after_take.NEXT_TAKE]
 
 
 def test_an_older_waiting_message_shows_where_it_stands():
