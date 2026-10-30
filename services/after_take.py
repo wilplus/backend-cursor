@@ -57,11 +57,11 @@ Advancing (``release``), always under the rows that closed the ask:
     now, See prices): POST /v2/user/lounge/after-take;
   - a newer Take's summary: an older held message is let go where it stands.
 An ask that no longer applies when its turn comes (a number saved since) is
-skipped. When the chain is empty the plan's lines after the Take are written
-(``plan_flow.after_take``, "That's your 15 minutes for today."), then the
-closing message is let go under the newest row, and the Lounge puts "Record
-Take N" under it. Written with the summary, the plan's lines landed over
-Will's question: its answers went and the closing message came at once.
+skipped. When the chain is empty the closing message is let go under the
+newest row, and the Lounge puts "Record Take N" under it; then come the
+plan's lines after the Take (``plan_flow.after_take``, "That's your 15
+minutes for today."), as on a Take with no ask. They wait for the chain:
+written over an ask, they hid its answers and let the closing message go.
 
 Nothing here blocks the next Take: one tap on each ask (Not now, Skip, No)
 brings the next, and the closing message after the last; the Ideal Text
@@ -248,8 +248,8 @@ def closing_row(*, user_id: str, arc_id: str, take_index: int, take: str, at: st
     """The closing message's row, held back behind the chain when there is
     one: ``held_for`` the ask in front of the speaker, ``chain`` the rest,
     ``lead_ins`` Will's words for the asks still to come, ``queued``
-    rows already put together for them (Will's question) and ``plan_after``:
-    the plan's lines after the Take wait for the chain too. Pure."""
+    rows already put together for them (Will's question), and ``plan_after``
+    (the plan's lines come when the chain is done). Pure."""
     meta: dict[str, Any] = {"next_take": True, "arc_id": str(arc_id),
                             "take_index": take_index, "take_session_id": str(take)}
     if asks:
@@ -362,16 +362,10 @@ def release(database: Any, user_id: str, *, take: Optional[str] = None,
             if rows:
                 return database.insert_lounge_messages(str(user_id), rows) or []
             return [kept] if kept else []
-        # The plan's lines after the Take ("That's your 15 minutes for
-        # today.") come once the asks are answered, never over one: written
-        # over Will's question they hid its answers and let this go early.
-        plan_rows: list[dict] = []
-        if meta.get("plan_after"):
-            from services.plan_flow import after_take as plan_after_take
-            plan_rows = plan_after_take(database, user_id)
-            at = thread_stamp(database, user_id) if plan_rows else at
         gone = _let_go(database, user_id, row, glad=glad, at=at)
-        return plan_rows + ([gone] if gone else [])
+        from services.plan_flow import after_take as plan_after_take
+        plan_rows = plan_after_take(database, user_id) if meta.get("plan_after") else []
+        return ([gone] if gone else []) + plan_rows
     except Exception as error:  # noqa: BLE001 -- the Lounge advances it on its next close
         logger.warning("after take: not advanced user=%s: %s", user_id, error, exc_info=True)
         return []
