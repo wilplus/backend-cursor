@@ -104,6 +104,28 @@ COPY = {
     "put_right": "Got it, thank you for putting me right.",
 }
 
+#: What the transcriber writes when it hears no words in a clip (N275): its
+#: stock lines, from the videos it learnt on. A voice answer that is only
+#: these is "not heard"; inside a longer answer they are the speaker's own.
+NOT_WORDS = frozenset({
+    "you", "bye", "bye bye", "thank you", "thanks", "thank you very much",
+    "thank you so much", "thank you for watching", "thanks for watching",
+    "thank you so much for watching", "thank you for listening",
+    "thanks for listening", "please subscribe", "like and subscribe",
+    "subscribe to my channel", "see you next time", "see you in the next video",
+})
+
+
+def heard_nothing(text: str) -> bool:
+    """Is the transcript only the transcriber's stock lines (N275)?"""
+    t = text.lower()
+    if "amara.org" in t:  # "Subtitles by the Amara.org community", in any language
+        return True
+    parts = [" ".join(re.sub(r"[^\w' ]+", " ", p).split()) for p in re.split(r"[.!?,\n]+", t)]
+    parts = [p for p in parts if p]
+    return bool(parts) and all(p in NOT_WORDS for p in parts)
+
+
 #: Why this line (N154): the sentence under "Why this line?", by level.
 WHY_LINE = {
     "key_line": ("It's the sentence you want {who} to remember, and you said it a little "
@@ -578,7 +600,7 @@ def turn_prompt(*, deadline: Optional[date], deadline_given: bool,
             f"corrects, one of: {', '.join(['why', *asked[:-1]])}. \"said_back\" says back what "
             "Will now has, in their words, speaking to them as \"you\", under the fixed rules; "
             "it does not start \"Thank you\". The facts then follow the correction. When the last "
-            "message answers the question, even partly, \"correction\" is null.",
+            "message answers the question, even partly, or you are not sure, \"correction\" is null.",
         ]),
         "",
         "Transcript:",
