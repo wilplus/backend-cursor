@@ -7289,3 +7289,32 @@ change, and the phone keeps its own home-bar strip.
 The rules: frontend
 [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md),
 its line for N280. No migration.
+
+**N281 · The calls are asked for first, and a booking shows at once
+(founder, the Claude Code chat, 30 October 2026: "before giving me options
+to choose my kickoff and summary sessions. Ask me, do I want to do it?
+Don't do it right away. Don't open it right away. And then once I choose
+it, actually right away, hide the calendar and show me the bubbles";
+then, on the prototype <https://claude.ai/artifact/Gfnp8Fg8G2uXcqbCSNycgf>,
+the words below and "ok, build it").** Amends N161 and N248:
+1. After the last question, Will asks "Every plan starts with a kickoff
+session with your coach. Would you like to book it now?" with "Skip" and
+"Book now" under it. The calendar does not open by itself; "Book now"
+opens it (full screen, as N248 says).
+2. A day, a time, then "Book": the calendar closes at once and "Booked:
+{when}." is in the chat straight away, with no typing first, while the
+booking is saved.
+3. Then Will asks "Every learning cycle also finishes with a summary
+session after your deadline. Would you like to choose it now?", with
+"Skip" and "Book now", and the same calendar and bubble. Then "You're all
+set. Here's your plan."
+4. "Skip", under Will's question or at the top of the calendar, moves on to
+the next step. A call's "Book" in the plan's list still opens the calendar
+at once.
+Signed (Never 4): the two asks above. Was: "Before I show you your plan,
+pick a time for a 15-minute call with your coach. It's your kickoff call."
+and "Would you also like to book your summary call? It's after your
+deadline, to look back and plan what's next.", each with the calendar
+opening by itself. The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§1 F. No migration.
