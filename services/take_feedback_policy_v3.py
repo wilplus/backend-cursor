@@ -731,13 +731,13 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
                   servability: Optional[_Servability], selections: list[dict],
                   served_text: Any, plan: tuple = (None, None),
                   held_words: Any = None) -> dict:
-    """The Take's two shown moments, each its block's best clip (founder
+    """The Take's shown moments (three, N284), each its block's best clip (founder
     2026-10-23, N118 and N122, flow page C2 and H1; `services.moment_pick`).
 
     Every clip a block may show is read: its eligible clips the serve path
     can prove (`unservable`; all of them on the dark frame, which selects by
     rank alone), or, on a Take whose selection is frozen, only the clip it
-    was frozen with (a frozen Take does not grow, `_winner`). The two
+    was frozen with (a frozen Take does not grow, `_winner`). The three
     highest willfidence clips are shown, one per block (the cut has already
     moved so the two best have a block each where it can, N128,
     `_split_for_moments`); a shown block whose

@@ -1748,10 +1748,10 @@ re-apply as a no-op.","O1 -> test_permissions_rls_and_learning_boundaries_are_cl
 O2 -> test_the_candidate_set_writer_repairs_land_on_the_d4_body","Production 42702, 2026-09-21: the writer had never been called. O2 reads the function definition from the catalog; it does not call the writer with a bundle (that needs the full V3 inventory harness)."
 tests/test_mlc3_n1_source_pattern_postgres.py,Story,"As a speaker who asks for deletion, I want every practice-pattern row about me found under my identity, so that erasure misses nothing.","O1  The deletion list finds every row of each practice-pattern table (N1)
 under my identity, in the expected numbers.",O1 -> test_deletion_inventory_attributes_every_n1_row_to_acquisition_principal,Rehearsal database only; the N1 pattern feature is disabled.
-tests/test_moment_pick.py,Story,"As a speaker, I want each Take to show my two best moments by willfidence, from any slide, and the stronger voice of the two called my most confident, so that I always get my two best moments and a confident voice is never asked to sound confident.","O1  The two highest willfidence clips are shown, however low, one per
-block, two on one slide allowed; a clip with enough words comes
-before a short one; fewer than two only with fewer than two clips.
-O2  Of the two, the stronger voice is marked most confident, even when
+tests/test_moment_pick.py,Story,"As a speaker, I want each Take to show my three best moments by willfidence, from any slide, and the stronger voice of them called my most confident, so that I always get at least two moments to practise and a confident voice is never asked to sound confident.","O1  The three highest willfidence clips are shown, however low, one per
+block, several on one slide allowed; a clip with enough words comes
+before a short one; fewer only with fewer clips.
+O2  Of those shown, the stronger voice is marked most confident, even when
 its willfidence is the lower.
 O3  The voice decides each: at the floor praised (the Clearer version
 when the words need help), under it corrected.
@@ -1759,11 +1759,11 @@ O4  With no sound read the words order the clips, and both are
 corrected.
 O5  A sentence that already has my helper words is not picked again: I
 get the next best one, and it comes back only when nothing else can
-be shown.","O1 -> test_the_two_best_by_willfidence_are_shown_from_any_slide
-O2 -> test_the_stronger_voice_of_the_two_is_the_most_confident
+be shown.","O1 -> test_the_three_best_by_willfidence_are_shown_from_any_slide
+O2 -> test_the_stronger_voice_shown_is_the_most_confident
 O3 -> test_a_voice_at_the_floor_is_praised_and_only_a_voice_under_it_practises
 O4 -> test_with_no_sound_read_the_words_order_the_clips_and_both_are_corrected
-O5 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next","Founder 2026-10-23 (N118 ""minimum 2, best two""; N122 ""S×W picks, voice names top""); 2026-10-21 (N108, ""the voice decides""); 2026-10-28 (N246, ""go for the next confident moment"")."
+O5 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next","Founder 2026-10-23 (N118 ""minimum 2, best two""; N122 ""S×W picks, voice names top""); 2026-10-21 (N108, ""the voice decides""); 2026-10-28 (N246, ""go for the next confident moment""); 2026-10-30 (N284, ""we need more moments at least 2"", ""Best three"")."
 tests/test_moment_suggestions.py,Story,"As a speaker, I want my Ideal Text read to carry no star or suggestion outside the gated changes lane and no scores, so that I see only words and the latest text.","O1  Whatever lane a stored moment suggestion came from (replace,
 emphasize, structure), the GET serves the moment with its anchor and
 playback identity but no star and no suggestion.
