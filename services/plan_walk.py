@@ -56,6 +56,21 @@ def _when(raw: Any) -> Optional[datetime]:
     return at if at.tzinfo else at.replace(tzinfo=timezone.utc)
 
 
+#: The walk's slot each level takes (founder 2026-10-30, N289 item 8): the
+#: one whose tool fits it. "Let your key line land" and "Pauses that hold
+#: the room" go with the tempo step instead; "Make it yours" has none.
+LEVEL_SLOT = {"say_once": "between", "voice_moves": "weakest"}
+
+
+def level_slot(level: Any) -> Optional[str]:
+    """The slot this week's level takes in the walk, or None."""
+    return LEVEL_SLOT.get(level) if isinstance(level, str) else None
+
+
+#: The levels the tempo step practises (N289 item 8).
+TEMPO_LEVELS = ("key_line", "pauses")
+
+
 def practice_kind(level: str) -> str:
     """The walk's routing word for the level's moment (moment_pick)."""
     from services.moment_pick import EXERCISE_CLEARER, EXERCISE_VOICE

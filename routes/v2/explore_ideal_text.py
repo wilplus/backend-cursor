@@ -469,11 +469,25 @@ def _tempo_on() -> bool:
     return tempo_is_on(getattr(request, "user_id", None), founder=is_founder_email(_token_email()))
 
 
+def _tempo_level(take: str):
+    """On a plan, this week's level when the tempo step practises it ("Let
+    your key line land", "Pauses that hold the room"; founder 2026-10-30,
+    N289 item 8): its key, a word, for the step's "This week's level" line;
+    else None. Never raises."""
+    from services import plan_walk
+    try:
+        level = plan_walk.level_for_take(db, getattr(request, "user_id", None),
+                                         db.v2_get_session_by_id(take) or {})
+    except Exception:  # noqa: BLE001 -- the step without the level's line
+        return None
+    return level if level in plan_walk.TEMPO_LEVELS else None
+
+
 @v2_bp.route("/explore/arc/<arc_id>/review/tempo/<take_session_id>", methods=["GET"])
 @require_auth
 def v2_explore_arc_review_tempo(arc_id, take_session_id):
     """The tempo step's stretch for one Take (founder 2026-10-26, N162,
-    N166). 200 {tempo: {reading, topic, said} | null}
+    N166). 200 {tempo: {reading, topic, said, plan_level} | null}
     · 403 a denied permit · 404 · 500"""
     from services.processing_authorization import ProcessingAuthorizationError
     from services.tempo_stretch import tempo_for_take
@@ -485,6 +499,8 @@ def v2_explore_arc_review_tempo(arc_id, take_session_id):
         if not _tempo_on():
             return jsonify({"tempo": None}), 200
         tempo = tempo_for_take(db, take=take, user_id=str(request.user_id), arc_id=str(arc_id))
+        if tempo:
+            tempo = {**tempo, "plan_level": _tempo_level(take)}
         return jsonify({"tempo": tempo}), 200
     except ProcessingAuthorizationError:
         return jsonify({"code": "NOT_AUTHORIZED", "error": "processing not authorized"}), 403
