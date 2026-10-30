@@ -7512,9 +7512,14 @@ Found on the way: the code never had the Take 2 gate
 "20 s or more" is how long a try must be to land, not a limit on the
 stretch, and does not change. Who has the step stays the rings panel's
 `tempo_step` row; the founder widens it there.
-Open: on a plan, where this week's level goes (N246 item 4); the stretch's
-first line and the replay of the strongest moment inside the weakest, both
-new words (Never 4). No new words on screen in this entry.
+7. **Signed (Never 4),** the founder, the same chat ("I sign the words"):
+"Here's one with more in it." opens the weakest moment, before Line A;
+"Your confident moment", the label on the strongest moment's clip played
+again inside the weakest, before its AI clip; and "Last Take we worked on
+this part. Listen to you now.", for when the walk plays back a paragraph
+that rose since it was last worked on (the feature itself is not decided).
+"This one's ready to go further." was the other choice, not taken.
+Open: on a plan, where this week's level goes (N246 item 4).
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C2, C4, H1 and T, rewritten when built. Not built yet. No migration.
