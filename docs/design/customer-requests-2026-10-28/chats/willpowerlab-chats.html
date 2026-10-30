@@ -1,0 +1,718 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>WillpowerLab Chats</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Ariel answers a customer of Invita Head Spa in her own WillpowerLab Lounge (N223, N226, N229).
+   Left: the steps. Middle: the phone (the Lounge and the processing wait are screenshots of today's app;
+   the recording screen, the walk and the Ideal Text page are drawn from their real screens at 390 x 844).
+   Right: what is real, what is new, and what we still need to know before building it. */
+:root {
+  --ground: #ECEAE6; --panel: #FFFFFF; --ink: #171615; --muted: #67635D; --line: #DAD6CF;
+  --accent: #FF640A; --accent-soft: #FFE9DA; --accent-ink: #A83E00; --real: #E3E0DA; --real-ink: #3D3A35; --focus: #1D6FE0;
+  --ask: #FFF6D6; --ask-ink: #6B4E00;
+  --font-ui: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --font-app: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --ground: #151413; --panel: #1F1E1C; --ink: #EDEBE7; --muted: #A39F98; --line: #36332F;
+  --accent: #FF7A2B; --accent-soft: #3A2414; --accent-ink: #FFB487; --real: #2C2A27; --real-ink: #D7D3CC; --focus: #6AA5FF;
+  --ask: #33290F; --ask-ink: #F2D27A; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --ground: #151413; --panel: #1F1E1C; --ink: #EDEBE7; --muted: #A39F98; --line: #36332F;
+  --accent: #FF7A2B; --accent-soft: #3A2414; --accent-ink: #FFB487; --real: #2C2A27; --real-ink: #D7D3CC; --focus: #6AA5FF;
+  --ask: #33290F; --ask-ink: #F2D27A; color-scheme: dark }
+html, body { height: 100%; margin: 0; }
+body { background: var(--ground); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.app { display: grid; grid-template-columns: 236px minmax(0, 1fr) 340px; gap: 28px; max-width: 1380px; margin: 0 auto;
+  padding-block: 20px 28px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); box-sizing: border-box; }
+.rail { position: sticky; top: 20px; align-self: start; max-height: calc(100vh - 40px); overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding-right: 4px; }
+.rail h1 { font-size: 21px; line-height: 1.2; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.rail .lede { margin: 6px 0 0; color: var(--muted); font-size: 13.5px; }
+.rail a { color: var(--accent-ink); }
+.chap { display: flex; flex-direction: column; gap: 2px; }
+.chap-h { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; }
+.step { display: flex; align-items: center; gap: 8px; text-align: left; border: 0; background: transparent; padding: 6px 8px; border-radius: 8px; font-size: 14px; color: var(--ink); }
+.step:hover { background: var(--real); }
+.step[aria-current="step"] { background: var(--panel); box-shadow: 0 0 0 1px var(--line); font-weight: 600; }
+.step.side { padding-left: 22px; font-size: 13px; color: var(--muted); }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--real-ink); opacity: 0.35; }
+.dot.new { background: var(--accent); opacity: 1; }
+.dot.mixed { background: linear-gradient(90deg, var(--accent) 50%, var(--real-ink) 50%); opacity: 1; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.legend span { display: flex; gap: 6px; align-items: center; }
+.centre { display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 0; }
+.jump { display: none; width: 100%; gap: 10px; align-items: center; flex-wrap: wrap; }
+.jump h1 { font-size: 19px; margin: 0; flex: 1 1 180px; }
+.jump select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); max-width: 100%; }
+.stage { width: 100%; display: flex; justify-content: center; }
+.device { position: relative; }
+.bezel { position: absolute; left: 0; top: 0; width: 410px; height: 864px; transform-origin: 0 0; border-radius: 52px; background: #0D0D0D; padding: 10px; box-sizing: border-box; box-shadow: 0 30px 60px -30px rgba(20, 15, 10, 0.45); }
+.screen { position: relative; width: 390px; height: 844px; border-radius: 42px; overflow: hidden; background: #FFFFFF; color: #121212; font-family: var(--font-app); isolation: isolate; }
+@media (max-width: 520px) { .bezel { background: transparent; box-shadow: none; padding: 0; border-radius: 0; } .screen { border-radius: 18px; box-shadow: 0 0 0 1px var(--line); } }
+.controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 8px 16px; font-weight: 500; }
+.btn:hover { border-color: var(--muted); }
+.where { font-family: var(--font-mono); font-size: 12px; color: var(--muted); min-width: 92px; text-align: center; font-variant-numeric: tabular-nums; }
+.toggles { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; font-size: 13px; color: var(--muted); }
+.toggles label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.toggles input { accent-color: var(--accent); }
+.notes { position: sticky; top: 20px; align-self: start; display: flex; flex-direction: column; gap: 14px; max-height: calc(100vh - 40px); overflow-y: auto; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.badge { align-self: flex-start; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; padding: 3px 8px; border-radius: 999px; background: var(--real); color: var(--real-ink); }
+.badge.new { background: var(--accent); color: #FFFFFF; }
+.badge.mixed { background: var(--accent-soft); color: var(--accent-ink); }
+.notes h2 { margin: 0; font-size: 19px; line-height: 1.25; text-wrap: balance; }
+.notes p { margin: 0; }
+.notes h3 { margin: 4px 0 0; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.notes ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.words { list-style: none; padding: 0 !important; }
+.words li { background: var(--accent-soft); color: var(--accent-ink); border-radius: 8px; padding: 5px 9px; font-size: 14px; }
+.asks { list-style: none; padding: 0 !important; }
+.asks li { background: var(--ask); color: var(--ask-ink); border-radius: 8px; padding: 6px 9px; font-size: 14px; }
+.asks li b { font-family: var(--font-mono); font-size: 11.5px; margin-right: 4px; }
+.refs { font-size: 13px; color: var(--muted); }
+.all { border-style: dashed; }
+.all ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+.all ol li::marker { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+.all summary { cursor: pointer; font-weight: 600; }
+@media (max-width: 1120px) { .app { grid-template-columns: minmax(0, 1fr) 320px; } .rail { display: none; } .jump { display: flex; } }
+@media (max-width: 780px) { .app { grid-template-columns: minmax(0, 1fr); gap: 20px; } .notes { position: static; max-height: none; overflow: visible; } }
+
+/* ---------- Inside the phone: the app's own look (always light, like the app) ---------- */
+.screen img.shot { position: absolute; inset: 0; width: 390px; height: 844px; display: block; user-select: none; -webkit-user-drag: none; }
+.hot { position: absolute; border: 0; background: transparent; border-radius: 14px; padding: 0; z-index: 5; }
+.show-hot .hot.cue, .show-hot .screen .cue-ring { outline: 2px dashed rgba(255, 100, 10, 0.9); outline-offset: 2px; animation: cue 1.8s ease-in-out infinite; }
+@keyframes cue { 0%, 100% { outline-color: rgba(255, 100, 10, 0.9); } 50% { outline-color: rgba(255, 100, 10, 0.25); } }
+.mark-new .nw { text-decoration: underline dotted #FF640A 2px; text-underline-offset: 4px; }
+.toast { position: absolute; left: 50%; bottom: 110px; transform: translateX(-50%); background: #121212; color: #FFFFFF; font-size: 13.5px; padding: 9px 14px; border-radius: 12px; z-index: 30; width: max-content; max-width: 300px; text-align: center; animation: toast 3s ease forwards; pointer-events: none; }
+@keyframes toast { 0% { opacity: 0; transform: translate(-50%, 6px); } 10%, 85% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
+@keyframes up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes blink { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+@keyframes pulse { 50% { opacity: 0.5; } }
+@keyframes rise { from { transform: translateY(40px); opacity: 0; } }
+
+/* Ariel's phone, locked: the WhatsApp message that brings her in */
+.lock { position: absolute; inset: 0; background: linear-gradient(160deg, #3B342E, #17130F 70%); color: #FFFFFF; display: flex; flex-direction: column; align-items: center; padding-top: 86px; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", var(--font-app); }
+.lock .d { font-size: 17px; font-weight: 500; opacity: 0.9; }
+.lock .tm { font-size: 84px; font-weight: 600; line-height: 1; letter-spacing: -0.02em; margin-top: 4px; }
+.lock .ntf { margin-top: 44px; width: calc(100% - 24px); border: 0; text-align: left; border-radius: 22px; background: rgba(245, 245, 245, 0.78); backdrop-filter: blur(20px); color: #121212; padding: 12px 14px; display: flex; gap: 10px; animation: up 0.4s ease both; }
+.lock .ntf .ic { width: 38px; height: 38px; border-radius: 9px; background: #25D366; display: grid; place-items: center; flex: none; }
+.lock .ntf .b { flex: 1; min-width: 0; font-size: 14.5px; line-height: 1.35; }
+.lock .ntf .b b { display: flex; justify-content: space-between; font-size: 14.5px; }
+.lock .ntf .b b small { font-weight: 400; color: #5E5E5E; font-size: 13px; }
+
+/* The Lounge, drawn over the real Lounge's header and composer (lounge.webp) */
+.lg-area { position: absolute; left: 0; right: 0; top: 73px; height: 672px; background: #FFFFFF; display: flex; flex-direction: column; gap: 8px; padding: 16px 16px 14px; box-sizing: border-box; overflow-y: auto; scrollbar-width: none; }
+.lg-area::-webkit-scrollbar { display: none; }
+.lg-area > * { flex-shrink: 0; }
+.lg-area > :first-child { margin-top: auto; }
+.lg-b { position: relative; align-self: flex-start; max-width: 85%; background: #F5F5F5; border-radius: 16px; padding: 8px 12px; font-size: 15px; line-height: 1.45; animation: up 0.28s ease both; white-space: pre-wrap; box-sizing: border-box; }
+.lg-b::after { content: ""; position: absolute; left: -7px; bottom: 0; width: 10px; height: 14px; background: inherit; clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+.lg-me { align-self: flex-end; background: #FF640A; color: #FFFFFF; }
+.lg-me::after { left: auto; right: -7px; clip-path: polygon(0 0, 0 100%, 100% 100%); }
+.lg-day { align-self: center; font-size: 12px; color: #737373; padding: 6px 0 2px; text-align: center; max-width: 90%; }
+.lg-rec { display: flex; width: fit-content; align-items: center; gap: 6px; height: 32px; margin: 10px 0 4px; padding: 0 14px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; color: #121212; font: 600 14px var(--font-app); }
+.rdot { width: 8px; height: 8px; border-radius: 50%; background: #E63C2D; flex: none; }
+.typing { align-self: flex-start; background: #F5F5F5; border-radius: 16px; padding: 12px 14px; display: flex; gap: 5px; }
+.typing i { width: 7px; height: 7px; border-radius: 50%; background: #A3A3A3; animation: blink 1s infinite; }
+.typing i:nth-child(2) { animation-delay: 0.15s; } .typing i:nth-child(3) { animation-delay: 0.3s; }
+/* The customer's words in the thread: quoted inside Will's grey bubble */
+.quote { display: flex; gap: 10px; align-items: flex-start; margin-top: 6px; padding: 8px; border-radius: 12px; background: #FFFFFF; }
+.quote .ph { width: 52px; height: 52px; border-radius: 8px; flex: none; border: 0; padding: 0; }
+.quote .qt { font-size: 14px; line-height: 1.4; color: #121212; white-space: normal; }
+.quote .qt small { display: block; font-size: 12px; color: #737373; margin-top: 3px; }
+.scalp { background: radial-gradient(ellipse at 45% 40%, #E7C9B4 0 22%, #C79C83 40%, #6E4E3E 72%, #3A2A22 100%); position: relative; overflow: hidden; }
+.scalp::before { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(115deg, rgba(40, 25, 18, 0.55) 0 1px, transparent 1px 5px); mask: radial-gradient(ellipse at 45% 40%, transparent 0 28%, #000 55%); -webkit-mask: radial-gradient(ellipse at 45% 40%, transparent 0 28%, #000 55%); }
+/* The Take's pair in the thread: the Feedback walk + the Ideal Text card (N192, N202) */
+.pair-w { align-self: flex-start; width: 80%; max-width: 384px; display: flex; flex-direction: column; gap: 3px; animation: up 0.28s ease both; }
+.fw { position: relative; background: #F5F5F5; border-radius: 16px; border-bottom-left-radius: 6px; padding: 8px 30px 8px 12px; font-size: 15px; line-height: 1.45; text-align: left; border: 0; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; }
+.fw::after { content: "›"; position: absolute; right: 11px; top: 50%; transform: translateY(-50%); font-size: 20px; color: #737373; }
+.fw .fmeta { font-size: 11.5px; color: #737373; margin-top: 2px; }
+.itcard { position: relative; display: flex; align-items: center; gap: 10px; border: 1px solid #EBEBEB; border-radius: 18px; border-top-left-radius: 6px; padding: 10px 28px 10px 10px; background: #FFFFFF; text-align: left; width: 100%; box-sizing: border-box; }
+.itcard.solo { border-radius: 18px; }
+.itcard::after { content: "›"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 20px; color: #737373; }
+.itcard.fresh { border: 2px solid #FF640A; }
+.itcard .tag { position: absolute; top: -10px; right: -2px; background: #FF640A; color: #FFFFFF; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 1px 9px; }
+.itcard .tile { width: 72px; aspect-ratio: 16/9; flex: none; border-radius: 6px; overflow: hidden; }
+.itcard b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 15px; font-weight: 600; }
+.itcard .ver { flex: none; border-radius: 999px; background: #F5F5F5; padding: 2px 10px; font-size: 12px; font-weight: 600; }
+/* The list of chats and a chat's header (N251), in the app's own parts */
+.lst { position: absolute; left: 0; right: 0; top: 73px; bottom: 33px; background: #FFFFFF; overflow-y: auto; z-index: 2; scrollbar-width: none; }
+.lst::-webkit-scrollbar { display: none; }
+.lst .lh { padding: 14px 16px 2px; } .lst .lh b { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.flt { display: flex; gap: 8px; padding: 10px 16px 8px; }
+.flt button { height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; font: 400 14px var(--font-app); color: #121212; }
+.flt button[aria-pressed="true"] { background: #121212; color: #FFFFFF; border-color: #121212; }
+.crow { display: flex; align-items: flex-start; gap: 12px; width: 100%; border: 0; background: #FFFFFF; padding: 10px 16px 0; text-align: left; font-family: var(--font-app); color: #121212; }
+.crow .av { width: 52px; height: 52px; margin-bottom: 10px; }
+.crow .mid { flex: 1; min-width: 0; border-bottom: 1px solid #F0F0F0; padding: 3px 0 12px; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.crow .mid b { display: block; max-width: 100%; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crow .pv { display: block; max-width: 100%; font-size: 14px; color: #737373; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crow .rt { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; padding-top: 4px; }
+.crow .tm { font-size: 12px; color: #737373; } .crow .tm.on { color: #FF640A; font-weight: 600; }
+.crow .ub { min-width: 20px; height: 20px; border-radius: 999px; background: #FF640A; color: #FFFFFF; font-size: 12px; font-weight: 600; display: grid; place-items: center; padding: 0 6px; box-sizing: border-box; }
+.crow .pin { font-size: 11px; font-weight: 400; color: #A3A3A3; margin-left: 4px; }
+.st { margin-top: 3px; font-size: 11.5px; color: #737373; border: 1px solid #EBEBEB; border-radius: 999px; padding: 1px 8px; }
+.st.w { color: #A83E00; border-color: #FFD2B5; background: #FFF4EC; }
+.av { width: 36px; height: 36px; border-radius: 50%; flex: none; display: block; }
+.av.will { background: #F5F5F5; display: flex; align-items: center; justify-content: center; gap: 3px; }
+.av.will i { width: 5px; height: 5px; border-radius: 50%; background: #121212; } .av.will i:nth-child(2) { width: 7px; height: 7px; }
+.av.c2 { background: radial-gradient(ellipse at 40% 40%, #F0D9C0 0 25%, #C9A27E 50%, #5B4030 100%); }
+.av.c3 { background: radial-gradient(ellipse at 55% 45%, #EADFD3 0 25%, #B9A08A 55%, #4A3A30 100%); }
+.chd { position: absolute; left: 0; right: 0; top: 73px; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 4px; border-bottom: 1px solid #EBEBEB; background: #FFFFFF; z-index: 3; box-sizing: border-box; }
+.chd .bk { width: 34px; height: 44px; border: 0; background: none; font-size: 28px; line-height: 1; color: #121212; padding: 0; }
+.chd .nm { min-width: 0; } .chd .nm b { display: block; font-size: 15.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chd .nm small { display: block; font-size: 12.5px; color: #737373; }
+.lg-area.sub { top: 129px; height: 616px; }
+.lg-b.them .quote { margin-top: 0; padding: 0; background: transparent; }
+.ans-b { display: flex; flex-direction: column; gap: 6px; width: 78%; }
+.ans-b .al { font-weight: 600; } .ans-b .al small { font-weight: 400; font-size: 12.5px; opacity: 0.9; }
+.ans-b .play { background: #FFFFFF; } .ans-b .play svg path { fill: #FF640A; } .ans-b .bars i { background: rgba(255,255,255,0.55); } .ans-b .t { color: #FFFFFF; }
+.evt { align-self: center; max-width: 86%; text-align: center; font-size: 13.5px; line-height: 1.4; color: #121212; background: #F5F5F5; border-radius: 12px; padding: 8px 12px; animation: up 0.28s ease both; }
+/* The ask's footer: the grey card and the pair (WillabWhatsAppPrompt, SymmetricPair) */
+.lg-dock { position: absolute; left: 0; right: 0; bottom: 33px; background: #FFFFFF; padding: 8px 16px 10px; display: flex; flex-direction: column; gap: 8px; z-index: 4; }
+.wa-card { background: #F5F5F5; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.wa-title { font-size: 13px; font-weight: 500; color: #121212; line-height: 1.35; margin: 0; }
+.wa-sub { font-size: 13px; color: #737373; line-height: 1.4; margin: 0; }
+.gets { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #121212; }
+.gets li { display: flex; gap: 8px; }
+.gets li::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #A3A3A3; margin-top: 7px; flex: none; }
+.pair { display: flex; gap: 12px; }
+.pair button { height: 44px; flex: 1; border-radius: 999px; font: 400 15px var(--font-app); display: flex; align-items: center; justify-content: center; }
+.pair .close { border: 1px solid #EBEBEB; background: #FFFFFF; color: #121212; }
+.pair .act { border: 0; background: #121212; color: #FFFFFF; font-weight: 500; }
+/* The composer, live over the screenshot's composer, with the reply chip (new) */
+.cmp { position: absolute; left: 0; right: 0; bottom: 33px; background: #FFFFFF; padding: 6px 16px 10px 12px; z-index: 4; display: flex; flex-direction: column; gap: 6px; }
+.cmp .chip { align-self: flex-start; margin-left: 48px; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #121212; background: #F5F5F5; border-radius: 999px; padding: 4px 6px 4px 10px; }
+.cmp .chip button { width: 20px; height: 20px; border-radius: 50%; border: 0; background: #E5E5E5; display: grid; place-items: center; padding: 0; color: #737373; }
+.cmp .row { display: flex; align-items: flex-end; gap: 4px; }
+.cmp .plus { width: 40px; height: 40px; border: 0; background: transparent; border-radius: 50%; display: grid; place-items: center; color: #121212; flex: none; }
+.cmp .fieldw { position: relative; flex: 1; }
+.cmp textarea { display: block; width: 100%; box-sizing: border-box; min-height: 40px; max-height: 120px; resize: none; border-radius: 24px; border: 1px solid #EBEBEB; padding: 9px 40px 9px 14px; font: 400 15px/1.35 var(--font-app); color: #121212; outline: none; background: #FFFFFF; }
+.cmp textarea:focus { border-color: #FF640A; }
+.cmp .snd { position: absolute; right: 4px; bottom: 4px; width: 32px; height: 32px; border-radius: 50%; border: 0; background: transparent; display: grid; place-items: center; color: #121212; }
+.cmp .snd:disabled { color: #BDBDBD; }
+
+/* The recording screen (locked, N70), drawn from today's screen */
+.rs { position: absolute; inset: 0; display: flex; flex-direction: column; background: #FFFFFF; }
+.rs .h { height: 48px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; margin-top: 0; }
+.rs .whr { margin: 0; font-size: 13px; font-weight: 600; color: #737373; font-variant-numeric: tabular-nums; }
+.xb { width: 28px; height: 28px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; display: grid; place-items: center; padding: 0; color: #737373; flex: none; }
+.rs .band { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 16px 16px; }
+.rs .slide { width: 100%; aspect-ratio: 16/9; border-radius: 16px; border: 1px solid #EBEBEB; overflow: hidden; box-sizing: border-box; flex: none; }
+.rs .road { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 22px; padding: 0 2px; }
+.rs .road p { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.3; color: #FF6A0A; }
+.rs .road .hint { font-size: 14px; font-weight: 400; color: #A3A3A3; text-align: center; }
+.strip { display: flex; align-items: center; gap: 12px; border-radius: 16px; background: #F5F5F5; padding: 12px 16px; }
+.strip .sdot { width: 10px; height: 10px; border-radius: 50%; background: rgba(224,69,58,0.5); flex: none; animation: pulse 2s ease-in-out infinite; }
+.strip .clock { font: 700 17px ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; color: #121212; }
+.strip .sbar { flex: 1; height: 4px; border-radius: 999px; background: #EBEBEB; overflow: hidden; }
+.strip .sbar b { display: block; height: 100%; width: 2%; border-radius: 999px; background: #FF6A0A; transition: width 1s linear; }
+.rs .pr { display: flex; gap: 10px; margin-top: 10px; }
+.rs .pr button { flex: 1; height: 48px; border-radius: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; font: 600 15px var(--font-app); }
+.rs .back { border: 1.5px solid #EBEBEB; background: #FFFFFF; color: #121212; }
+.rs .back:disabled { color: #BDBDBD; }
+.rs .nxt { border: 0; background: #121212; color: #FFFFFF; }
+.rs .fin { border: 0; background: #E0453A; color: #FFFFFF; }
+.rs .fin i { width: 12px; height: 12px; border-radius: 2px; background: currentColor; }
+.scrim { position: absolute; inset: 0; background: rgba(18,18,18,0.35); z-index: 20; display: flex; align-items: flex-end; justify-content: center; padding: 16px; box-sizing: border-box; }
+.dlg { width: 100%; max-width: 24rem; border-radius: 24px; background: #FFFFFF; padding: 20px; box-sizing: border-box; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+.dlg h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.dlg p { margin: 8px 0 0; font-size: 14px; color: #737373; }
+.dlg .row { margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dlg .row button { height: 40px; border-radius: 999px; font: 500 14px var(--font-app); }
+.dlg .o { border: 1px solid #EBEBEB; background: #FFFFFF; color: #121212; }
+.dlg .r { border: 0; background: #E0453A; color: #FFFFFF; }
+
+/* Slides made from the request and her picks (N226): Invita's cream and bronze */
+.sl { width: 100%; height: 100%; display: flex; gap: 14px; padding: 16px; box-sizing: border-box; background: #FBF8F3; color: #17130F; align-items: center; }
+.sl .ph { width: 38%; height: 100%; border-radius: 10px; flex: none; }
+.sl .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.sl .k { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #9B7557; }
+.sl .n { font-size: 17px; font-weight: 600; line-height: 1.2; }
+.sl .m { font-size: 12.5px; color: #5F554C; line-height: 1.35; }
+.sl .bottle { width: 30%; height: 100%; flex: none; border-radius: 10px; background: #EFE7DC; display: grid; place-items: center; }
+.sl .bottle i { width: 34%; height: 70%; border-radius: 10px 10px 6px 6px; background: linear-gradient(#2C2C2C 0 14%, #E9E4DC 14% 100%); box-shadow: inset 0 0 0 1px #D7CFC3; }
+.sl .bowl { width: 30%; height: 100%; flex: none; border-radius: 10px; background: #F0E9DF; display: grid; place-items: center; }
+.sl .bowl i { width: 58%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #FFFFFF 0 30%, #E3D6C6 31% 60%, #CDB9A4 61%); }
+.sm .sl { padding: 9px; gap: 8px; }
+.sm .sl .n { font-size: 11px; } .sm .sl .k { font-size: 7px; } .sm .sl .m { font-size: 8px !important; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* The picker: drawn in the shape of "Choose your helper words" */
+.pk { position: absolute; inset: 0; background: #FFFFFF; display: flex; flex-direction: column; padding: 12px 20px 26px; box-sizing: border-box; }
+.pk .top { display: flex; justify-content: flex-end; height: 28px; margin-top: 0; }
+.pk h1 { margin: 14px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; }
+.pk .sub { margin: 10px 0 0; font-size: 14px; color: #737373; }
+.pk .box { margin-top: 18px; flex: 1; min-height: 0; border: 1px solid #EBEBEB; border-radius: 24px; padding: 16px 16px 8px; display: flex; flex-direction: column; overflow-y: auto; scrollbar-width: none; }
+.pk .box::-webkit-scrollbar { display: none; }
+.pk .cnt { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #737373; margin: 0 0 6px; }
+.pk .grp { font-size: 12px; font-weight: 600; color: #121212; margin: 12px 0 2px; }
+.opt { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 0; border-bottom: 1px solid #F0F0F0; background: transparent; padding: 11px 0; font: 400 16px var(--font-app); color: #121212; }
+.opt:last-child { border-bottom: 0; }
+.opt .ck { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #D4D4D4; flex: none; display: grid; place-items: center; }
+.opt[aria-pressed="true"] .ck { background: #FF640A; border-color: #FF640A; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.chipb { height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; font: 400 15px var(--font-app); color: #121212; }
+.chipb[aria-pressed="true"] { background: #121212; border-color: #121212; color: #FFFFFF; }
+.stg { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.stg .sl2 { font-size: 14px; color: #737373; flex: none; }
+.seg { display: flex; flex: 1; min-width: 0; border: 1px solid #EBEBEB; border-radius: 999px; padding: 2px; overflow-x: auto; scrollbar-width: none; }
+.seg button { flex: 1; min-width: 30px; height: 30px; border: 0; border-radius: 999px; background: transparent; font: 500 13.5px var(--font-app); color: #121212; padding: 0 6px; }
+.seg button[aria-pressed="true"] { background: #FF640A; color: #FFFFFF; }
+.scl { border: 0; background: none; font: 400 12.5px var(--font-app); color: #737373; flex: none; padding: 4px 0; }
+.pk .h2 { margin: 18px 0 0; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+.opt .on { flex: 1; min-width: 0; }
+.opt small { display: block; font-size: 13px; color: #737373; }
+.pill { height: 54px; border-radius: 999px; border: 0; background: #121212; color: #FFFFFF; font: 600 16px var(--font-app); display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; flex: none; }
+.pill .rdot { width: 10px; height: 10px; }
+.link { border: 0; background: transparent; color: #737373; font: 400 16px var(--font-app); height: 40px; width: 100%; flex: none; }
+
+/* The walk's screens, as today's (praise, clearer version, the end sheet) */
+.wk { position: absolute; inset: 0; background: #FFFFFF; display: flex; flex-direction: column; padding: 12px 20px 26px; box-sizing: border-box; }
+.wk .top { display: flex; align-items: center; height: 28px; }
+.wk .chev { width: 28px; height: 28px; display: grid; place-items: center; color: #737373; font-size: 22px; border: 0; background: none; padding: 0; }
+.wk .chev:disabled { color: #D4D4D4; }
+.wk .cap { font-size: 14px; font-weight: 600; padding: 0 6px; }
+.wk .top .xb { margin-left: auto; }
+.wk h1 { margin: 26px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.au { margin-top: 20px; border: 1px solid #EBEBEB; border-radius: 24px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.au .said { font-size: 16.5px; line-height: 1.55; color: #121212; }
+.au .said s { color: #737373; text-decoration-thickness: 1px; }
+.player { display: flex; align-items: center; gap: 12px; }
+.play { width: 32px; height: 32px; border-radius: 50%; border: 0; display: grid; place-items: center; flex: none; padding: 0; background: #121212; }
+.bars { flex: 1; display: flex; align-items: center; gap: 2px; height: 22px; min-width: 0; }
+.bars i { flex: 1; min-width: 2px; border-radius: 2px; background: #C9C9C9; }
+.bars i.on { background: #121212; }
+.t { font-size: 11.5px; font-variant-numeric: tabular-nums; color: #737373; flex: none; }
+.wb { position: relative; align-self: flex-start; max-width: 88%; margin-top: 16px; background: #F5F5F5; border-radius: 22px; border-bottom-left-radius: 0; padding: 12px 17px; font-size: 18.5px; line-height: 1.45; animation: up 0.28s ease both; box-sizing: border-box; }
+.wb::after { content: ""; position: absolute; left: -7px; bottom: 0; width: 10px; height: 14px; background: #F5F5F5; clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+.wb em { font-style: normal; color: #FF640A; }
+.wk .grow { flex: 1; }
+.endv { position: absolute; inset: 0; }
+.endv .dimp { position: absolute; inset: 0; background: rgba(18,18,18,0.3); }
+.endv .sheet { position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 28px 28px 0 0; padding: 26px 20px 26px; display: flex; flex-direction: column; align-items: center; gap: 14px; animation: rise 0.25s ease both; }
+.endv .ok { width: 56px; height: 56px; border-radius: 50%; background: #E8F2EC; display: grid; place-items: center; }
+
+/* The Ideal Text page, as today's (/dev/deck) */
+.it { position: absolute; inset: 0; display: flex; flex-direction: column; background: #FFFFFF; }
+.ithead { flex: none; height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; border-bottom: 1px solid #EBEBEB; }
+.ithead .itt { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.ithead .itt b { font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ithead .itt small { font-size: 11px; color: #737373; }
+.ithead .hb { display: flex; gap: 8px; align-items: center; }
+.itbody { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; padding: 24px 24px 24px; }
+.itbody::-webkit-scrollbar { display: none; }
+.srow { display: flex; align-items: center; gap: 13px; margin: 0 0 14px; }
+.srow .thumb { width: 170px; aspect-ratio: 16/9; border-radius: 8px; border: 1px solid #EBEBEB; overflow: hidden; flex: none; }
+.srow .scap { font-size: 11px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #737373; }
+.para { margin: 0 0 26px; font-size: 18px; line-height: 1.55; color: #121212; }
+.itfoot { flex: none; padding: 10px 16px 18px; display: flex; flex-direction: column; gap: 2px; }
+
+/* A photo, opened from the thread */
+.viewer { position: absolute; inset: 0; background: #0B0B0B; z-index: 25; display: flex; flex-direction: column; }
+.viewer .vh { display: flex; justify-content: flex-end; padding: 16px; }
+.viewer .vh .xb { background: rgba(255,255,255,0.12); border-color: transparent; color: #FFFFFF; }
+.viewer .img { flex: 1; margin: 0 0 80px; }
+.viewer p { position: absolute; left: 20px; right: 20px; bottom: 28px; margin: 0; color: #D4D4D4; font-size: 14px; line-height: 1.45; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition: none !important; } }
+
+/* Chats for everyone (N257 draft): kinds, coach notes, tap answers, Will's clearer version, the coach panel as a chat */
+.kind { font-size: 11px; font-weight: 500; color: #737373; border: 1px solid #EBEBEB; border-radius: 999px; padding: 0 7px; margin-left: 6px; vertical-align: 1px; }
+.lg-b .who { display: block; font-size: 12px; font-weight: 600; color: #737373; margin-bottom: 2px; }
+.lg-b .player { margin: 4px 0 2px; }
+.qr { display: flex; flex-wrap: wrap; gap: 6px; align-self: flex-start; max-width: 92%; animation: up 0.28s ease both; }
+.qr button { height: 34px; padding: 0 13px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; font: 400 14px var(--font-app); color: #121212; }
+.qr .by { width: 100%; font-size: 11.5px; color: #A3A3A3; margin-bottom: 1px; }
+.cv { background: #F5F5F5; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.cv .wa-title { margin: 0; }
+.cv .was { font-size: 13.5px; color: #737373; text-decoration: line-through; }
+.cv .now { font-size: 15px; color: #121212; line-height: 1.4; } .cv .now em { font-style: normal; color: #FF640A; }
+.jg { display: flex; flex-direction: column; gap: 8px; }
+.jg .jq { font-size: 15px; font-weight: 600; margin: 2px 0 0; }
+.jg .cap { font-size: 12.5px; color: #737373; }
+.jg .ans { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.jg .ans button { height: 56px; border-radius: 16px; border: 1px solid #EBEBEB; background: #FFFFFF; font: 500 15px var(--font-app); color: #121212; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
+.jg .ans button span { font-size: 19px; line-height: 1; }
+.jg .small { border: 0; background: none; color: #737373; font: 400 13.5px var(--font-app); height: 26px; }
+.jg .aup { border: 1px solid #EBEBEB; border-radius: 16px; padding: 8px 12px; }
+.cards { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
+.cards button { min-height: 46px; border-radius: 14px; border: 1px solid #EBEBEB; background: #FFFFFF; font: 400 15px var(--font-app); color: #121212; text-align: left; padding: 8px 14px; display: flex; flex-direction: column; justify-content: center; }
+.cards button small { font-size: 12px; color: #121212; font-weight: 600; }
+.cards button.alt { background: #F5F5F5; border-color: #F5F5F5; }
+.wh { display: flex; flex-direction: column; gap: 4px; }
+.wh .row2 { display: grid; grid-template-columns: 7.6rem 1fr; gap: 6px; font-size: 13.5px; } .wh .row2 span:first-child { color: #737373; }
+.tk { align-self: flex-start; width: 80%; border: 1px solid #EBEBEB; border-radius: 18px; background: #FFFFFF; padding: 10px 12px; display: flex; align-items: center; gap: 10px; text-align: left; font-family: var(--font-app); }
+.tk .dot2 { width: 8px; height: 8px; border-radius: 50%; background: #FF640A; flex: none; }
+.tk b { display: block; font-size: 15px; } .tk small { display: block; font-size: 12.5px; color: #737373; }
+.gd { background: linear-gradient(135deg, #E7E2F3, #B9B0D8); } .gm { background: linear-gradient(135deg, #DCE9E1, #9FC1AE); } .gt { background: linear-gradient(135deg, #F3E3D2, #D8B08A); } .gb { background: linear-gradient(135deg, #DDE5F0, #9AAFCB); }
+.av.door { background: #F5F5F5; display: grid; place-items: center; font-size: 20px; }
+.crow .sub2 { font-size: 12px; color: #A3A3A3; }
+.persona { display: flex; gap: 8px; }
+.persona button { flex: 1; border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 8px; font-size: 13px; }
+</style>
+
+<div class="app" id="app">
+  <nav class="rail" aria-label="Screens">
+    <div>
+      <h1>WillpowerLab chats</h1>
+      <p class="lede">Everyone gets a list of chats: Will (their speaking coach), their other coaches, colleagues and customers. Every message is a tap answer or coached by Will. Two people, the same week: Ariel (speaker, answerer) and Marta (her speaking coach). Tap inside the phone.</p>
+    </div>
+    <div class="legend" aria-hidden="true">
+      <span><i class="dot"></i>Real app</span>
+      <span><i class="dot mixed"></i>Real, with new parts</span>
+      <span><i class="dot new"></i>New</span>
+    </div>
+    <div id="steps" style="display:flex;flex-direction:column;gap:16px"></div>
+  </nav>
+  <main class="centre">
+    <div class="jump">
+      <h1>WillpowerLab chats</h1>
+      <label for="jumpto" class="where" style="min-width:0">Screen</label>
+      <select id="jumpto" aria-label="Jump to a screen"></select>
+    </div>
+    <div class="stage" id="stage">
+      <div class="device" id="device">
+        <div class="bezel" id="bezel"><div class="screen" id="screen" aria-live="polite"></div></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="btn" id="back" type="button">‹ Back</button>
+      <span class="where" id="where">1 of 10</span>
+      <button class="btn" id="next" type="button">Next ›</button>
+    </div>
+    <div class="toggles">
+      <label for="tgHot"><input type="checkbox" id="tgHot" checked> Show what to tap</label>
+      <label for="tgNew"><input type="checkbox" id="tgNew"> Underline new words</label>
+    </div>
+  </main>
+  <aside class="notes" aria-label="About this screen">
+    <div class="card" id="note"></div>
+    <details class="card all" id="all"><summary>Before we build it: <span id="allN"></span> questions</summary><ol id="allQ"></ol></details>
+    <p class="refs" style="margin:0 4px">The app's header, message box and footer are a screenshot of today's Lounge; everything in between is drawn in the Lounge's own parts (its bubbles, the ask's footer, the Ideal Text card, the message box). Today's coach panel (blind Judge, what happened, the diagnosis, the cure, the coach's words) is redrawn as a chat; its rules (Never 2, the coach's one number) are kept. People and words are made up.</p>
+  </aside>
+</div>
+<script>
+(() => {
+  const ICON = {
+    play: `<svg width="12" height="13" viewBox="0 0 12 13" aria-hidden="true"><path d="M2 1.2v10.6L11 6.5z" fill="#FFFFFF"/></svg>`,
+    x: `<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+    xs: `<svg width="10" height="10" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+    tick: `<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`,
+    ok: `<svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#2F7D4F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`,
+    wa: `<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="#FFFFFF"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 2a8 8 0 1 1-4.1 14.9l-.3-.2-3 .8.8-2.9-.2-.3A8 8 0 0 1 12 4zm-3.2 4c-.2 0-.5 0-.7.3-.3.3-1 .9-1 2.3s1 2.7 1.2 2.9c.1.2 2 3.1 4.9 4.3 2.4.9 2.9.8 3.4.7.5 0 1.7-.7 1.9-1.4.2-.7.2-1.2.2-1.4l-.5-.3-1.8-.9c-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.6 6.6 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.5l-.8-2c-.2-.5-.4-.4-.6-.4z"/></svg>`,
+    plus: `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+    send: `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>`,
+  };
+  function bars(n, seed, h = 22) { let s = seed, out = ""; for (let i = 0; i < n; i++) { s = (s * 9301 + 49297) % 233280; out += `<i style="height:${Math.round((0.2 + (s / 233280) * 0.8) * h)}px"></i>`; } return out; }
+  const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const player = (secs, seed) => `<div class="player"><button class="play" type="button" data-play="${secs}" aria-label="Play">${ICON.play}</button><div class="bars">${bars(40, seed)}</div><span class="t">${mmss(secs)}</span></div>`;
+  const xb = (id, label = "Close") => `<button class="xb" type="button" id="${id}" aria-label="${label}">${ICON.x}</button>`;
+  const DRAW = {};
+  // ---------- Content ----------
+  const nw = (s) => `<span class="nw">${s}</span>`;
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const S = { thanked: false, mayaSent: false, judge: null, err: null, cure: null, words: false };
+
+  const SCREENS = [
+    { id: "a-list", ch: "Ariel: everyone in one list", name: "Ariel's chats", kind: "new",
+      note: { h: "One list for everyone she talks to", real: ["The app's header, message box and footer (screenshot)."], changes: ["Will pinned: her speaking coach, with Marta, her human coach, inside it, as today.", "Then everyone else, newest first: customers (Sarah, Jen), her team (Maya, a junior she teaches), her other coaches (Tom teaches her Shopify).", "Each row says what kind of contact it is; filters All, Waiting, Customers, Team, Coaches."], pending: ["Chats", "All", "Waiting", "Customers", "Team", "Coaches", "Customer", "Coach", "Your speaking coach"], decided: ["d-everyone", "d-coaches"], asks: ["q-add", "q-start"] } },
+    { id: "a-will", ch: "Ariel: everyone in one list", name: "Will's chat, with Marta", kind: "mixed",
+      note: { h: "Will's chat is today's Lounge, with her coach inside it", real: ["Today's Lounge: Will's bubbles, the coach's words and voice."], changes: ["Marta's note on her answer to Sarah arrives here, with her voice and her words.", "Ariel answers with taps Will offers; no free chat with her coach (coach's notes only)."], pending: ["Marta listened to your answer to Sarah.", "Marta · your coach", "Thank you!", "Show me how", "Record Take 2", "Marta gets it."], decided: ["d-notes"], asks: [] } },
+    { id: "a-maya", ch: "Ariel: everyone in one list", name: "A coached message to Maya", kind: "new",
+      note: { h: "Will coaches what she writes to a colleague", real: ["The Lounge's bubbles and message box; the ask's footer (the grey card and the pair)."], changes: ["Maya's question comes with tap answers Will suggests, so the quick answer is one tap.", "When Ariel types, Will offers a clearer version before it goes, the way the walk's Clearer version does: Keep my words or Use it.", "Every question and answer is kept with its outcome: what Invita's own assistant learns from, once people are trained."], pending: ["Will suggests", "Answer by voice", "A clearer version?", "Keep my words", "Use it", "Kept for Invita's assistant"], decided: ["d-facilitated"], asks: ["q-team-consent", "q-suggest"] } },
+    { id: "a-tom", ch: "Ariel: everyone in one list", name: "Another coach: Tom", kind: "new",
+      note: { h: "A coach for another skill, chosen by Ariel", real: ["The Lounge's bubbles."], changes: ["Tom is a person, not Will. His notes arrive in his own chat; Ariel answers with taps.", "The same chat works for any skill a person teaches someone else."], pending: ["Done", "Not yet", "Tom · your Shopify coach"], decided: ["d-coaches", "d-notes"], asks: ["q-pay"] } },
+    { id: "m-list", ch: "Marta: the coach panel as a chat", name: "Marta's chats", kind: "new",
+      note: { h: "The coach's list: her own coach, her doors, her speakers", real: ["The app's header and footer (screenshot)."], changes: ["Will pinned: Marta's own speaking coach.", "Pinned doors, as chats: Blind · Do you hear it? and the Training corpus (and for the founder only, Will's questions).", "Then one chat per speaker, the one with moments waiting on top, an orange dot as today (panel B2)."], pending: ["Blind · Do you hear it?", "Training corpus", "{n} moments waiting", "All answered"], decided: ["d-pinned", "d-coachchat"], asks: ["q-many-speakers"] } },
+    { id: "m-judge", ch: "Marta: the coach panel as a chat", name: "Judge, blind", kind: "new",
+      note: { h: "The blind Judge, in the footer", real: ["The panel's question and answers, as today (D1): the player, Does the speaker sound confident here?, Yes, In-between, No, Audio unclear."], changes: ["It sits in the chat's footer, as an ask. Nothing about the moment shows until she answers: no passage, no machine read (Never 2).", "Her answer lands as her bubble; then the chat goes on."], pending: [], decided: ["d-coachchat"], asks: [] } },
+    { id: "m-what", ch: "Marta: the coach panel as a chat", name: "What happened, the diagnosis", kind: "new",
+      note: { h: "What happened, then the diagnosis", real: ["What happened as today (E1): the passage with its player, You, Ariel, The machine heard, and Willfidence, the coach's only number.", "The diagnosis cards as today (E2): the machine's errors first, marked; Something else; I don't hear an error."], changes: ["What happened is Will's bubble; the diagnosis is the footer's cards. One step at a time, each answer her bubble."], pending: [], decided: ["d-coachchat"], asks: [] } },
+    { id: "m-cure", ch: "Marta: the coach panel as a chat", name: "The cure and her words", kind: "new",
+      note: { h: "The cure, then her words to Ariel", real: ["The cure as today (E3): Keep it, Swap it, Make a new one, Nothing to add.", "The coach's words and video."], changes: ["Her words go from the message box of Ariel's chat, typed or by voice. They reach Ariel in Will's chat (screen 2).", "Then the next moment, or the Summary."], pending: ["Ariel gets it in Will's chat."], decided: ["d-coachchat", "d-notes"], asks: [] } },
+    { id: "m-summary", ch: "Marta: the coach panel as a chat", name: "The Summary", kind: "new",
+      note: { h: "The Summary and a word for this Take", real: ["The Summary and A word for this Take as today (G2): Optional · it opens first in Ariel's feedback; Send; Send without a video."], changes: ["The Summary is Will's bubble; the word for the Take is the footer's ask. Ariel's next Take opens a new round in the same chat."], pending: ["2 moments answered · one exercise: {exercise}."], decided: ["d-coachchat"], asks: [] } },
+    { id: "m-blind", ch: "Marta: the coach panel as a chat", name: "A pinned door: Blind", kind: "new",
+      note: { h: "The blind lists as a pinned chat", real: ["Do you hear it? as today (B3): a clip and a yes or no, nothing else."], changes: ["Opened from the pinned row; each clip is an ask in the footer, one after another."], pending: [], decided: ["d-pinned"], asks: [] } },
+  ];
+  const DECIDED = {
+    "d-everyone": "Everyone gets the list of chats: Will pinned, then customers, colleagues, juniors and coaches, each a chat (founder, 30 October 2026).",
+    "d-coaches": "Will is the speaking coach, with the human speaking coach inside Will's chat as today; anyone may add other coaches, for other skills, each in their own chat.",
+    "d-facilitated": "Messages are tap answers or coached by Will before they go, so every interaction is real and the system learns to automate it.",
+    "d-notes": "Between a coach and a speaker: the coach's notes only; the speaker answers with taps.",
+    "d-pinned": "The coach's other doors are pinned chats: Blind, the Training corpus, and the founder's Will's questions.",
+    "d-coachchat": "The coach panel as a chat: to be judged on this prototype before it replaces the locked panel.",
+  };
+  const QUESTIONS = {
+    "q-add": "Who adds a contact: the person, their company's admin, or both? Can Ariel add Maya, or does Invita?",
+    "q-start": "Can a speaker write first to a coach, or only answer the coach's notes?",
+    "q-team-consent": "Colleagues' messages training the company's assistant: each person's yes, the company's, or both?",
+    "q-suggest": "May Will suggest tap answers from what it learnt in other chats of the same company?",
+    "q-pay": "A coach for another skill (Tom): does he use WillpowerLab for free, pay, or does Ariel pay him through it?",
+    "q-many-speakers": "A coach with 40 speakers: is the list enough, or does she also want today's queue view?",
+  };
+
+  // ---------- The Lounge parts ----------
+  const loungeBase = (inner, head = "") => `<img class="shot" src="img/lounge.webp" alt="The Lounge, the real app screen">${head}<div class="lg-area${head ? " sub" : ""}" id="lg">${inner}</div>`;
+  const WILLAV = `<span class="av will" aria-hidden="true"><i></i><i></i><i></i></span>`;
+  const head = (av, name, sub, back) => `<div class="chd"><button class="bk" type="button" data-back="${back}" aria-label="Back to chats">‹</button>${av}<span class="nm"><b>${name}</b><small>${sub}</small></span></div>`;
+  function bindBack() { screen.querySelectorAll("[data-back]").forEach((b) => b.onclick = () => go(b.dataset.back)); }
+  const note = (t) => `<div class="lg-day">${t}</div>`;
+  function fitThread() { const lg = screen.querySelector("#lg"), dock = screen.querySelector(".lg-dock, .cmp"); if (!lg) return; const top = lg.offsetTop; lg.style.height = (dock ? 811 - dock.offsetHeight - top : 745 - top) + "px"; lg.scrollTop = lg.scrollHeight; }
+  function add(h) { const lg = screen.querySelector("#lg"); lg.insertAdjacentHTML("beforeend", h); fitThread(); }
+  function dock(html) { const d = screen.querySelector("#dock"); if (d) d.remove(); screen.insertAdjacentHTML("beforeend", `<div class="lg-dock" id="dock">${html}</div>`); fitThread(); return screen.querySelector("#dock"); }
+  function undock() { const d = screen.querySelector("#dock"); if (d) d.remove(); fitThread(); }
+  const typing = () => add(`<div class="typing" id="ty"><i></i><i></i><i></i></div>`);
+  const untype = () => { const t = screen.querySelector("#ty"); if (t) t.remove(); };
+  const list = (rows, filters, title = "Chats") => `<img class="shot" src="img/lounge.webp" alt="The Lounge, the real app screen"><div class="lst">
+    <div class="lh"><b>${nw(title)}</b></div>
+    <div class="flt">${filters.map((f, i) => `<button type="button" aria-pressed="${i === 0}">${nw(f)}</button>`).join("")}</div>
+    ${rows.map((x) => `<button class="crow${x.cue ? " cue-ring" : ""}" type="button" data-open="${x.to || ""}"><span class="av ${x.cls}" aria-hidden="true">${x.icon || ""}</span><span class="mid"><b>${x.name}${x.kind ? `<span class="kind">${nw(x.kind)}</span>` : ""}${x.pin ? ` <span class="pin">${nw("pinned")}</span>` : ""}</b><span class="pv">${x.pv}</span>${x.st ? `<span class="st${x.w ? " w" : ""}">${nw(x.st)}</span>` : ""}</span><span class="rt"><span class="tm${x.un ? " on" : ""}">${x.tm || ""}</span>${x.un ? `<span class="ub">${x.un}</span>` : ""}</span></button>`).join("")}
+  </div>`;
+  function bindOpen() { screen.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => { if (b.dataset.open) go(b.dataset.open); else toast("The same kind of chat, for another person."); }); }
+
+  // ---------- Ariel ----------
+  DRAW["a-list"] = () => {
+    screen.innerHTML = list([
+      { cls: "will", icon: "<i></i><i></i><i></i>", name: "Will", pin: true, pv: nw(S.thanked ? "You: Thank you!" : "Marta: Lovely pause after “every second day”…"), tm: "9:14 AM", un: S.thanked ? 0 : 1, to: "a-will", cue: !S.thanked },
+      { cls: "gm", name: "Maya", kind: "Team", pv: S.mayaSent ? "You: Not with psoriasis. She should see a dermatologist first." : "Can I use the scrubber on a client with psoriasis?", tm: "9:02 AM", un: S.mayaSent ? 0 : 1, to: "a-maya", cue: S.thanked && !S.mayaSent },
+      { cls: "scalp", name: "Sarah · itchy scalp", kind: "Customer", pv: "Booked the Deep Scalp Treatment", tm: "Yesterday", st: "Booked" },
+      { cls: "gt", name: "Tom", kind: "Coach", pv: nw("Lesson 3: your product pages"), tm: "Mon", to: "a-tom" },
+      { cls: "c3", name: "Jen · dandruff", kind: "Customer", pv: "You: Sent on WhatsApp", tm: "Mon", st: "Sent" },
+    ], ["All", "Waiting", "Customers", "Team", "Coaches"]);
+    screen.querySelector(".crow .av.will").innerHTML = "<i></i><i></i><i></i>";
+    bindOpen();
+  };
+  DRAW["a-will"] = () => {
+    screen.innerHTML = loungeBase(note("Yesterday 4:12 PM") + `<div class="lg-b">${nw("Your answer to Sarah is sent. Your feedback is ready.")}</div>`
+      + `<div class="pair-w"><button class="fw" type="button"><span>Feedback walk</span><span class="fmeta">Oct 29, 2026</span></button></div>`
+      + note("Today 9:14 AM") + `<div class="lg-b">${nw("Marta listened to your answer to Sarah.")}</div>`
+      + `<div class="lg-b"><span class="who">${nw("Marta · your coach")}</span>${player(18, 4)}Lovely pause after “every second day”. Next time, slow down on the treatment's name: it is what Sarah has to remember.</div>`
+      + (S.thanked ? `<div class="lg-b lg-me">${nw("Thank you!")}</div>${note(nw("Marta gets it."))}` : `<div class="qr" id="qr"><span class="by">${nw("Answer Marta")}</span><button type="button" data-q="Thank you!" class="cue-ring">${nw("Thank you!")}</button><button type="button" data-q="Show me how">${nw("Show me how")}</button><button type="button" data-q="rec">${nw("Record Take 2")}</button></div>`),
+      head(WILLAV, "Will", nw("Your speaking coach · with Marta"), "a-list"));
+    screen.querySelector(".lg-b .player .play").style.background = "#121212";
+    bindBack(); fitThread();
+    screen.querySelectorAll("[data-q]").forEach((b) => b.onclick = () => {
+      if (b.dataset.q === "rec") { toast("Opens the recording screen, as Record Take 2 does today."); return; }
+      screen.querySelector("#qr").remove(); S.thanked = true; add(`<div class="lg-b lg-me">${nw(esc(b.dataset.q))}</div>` + note(nw("Marta gets it.")));
+    });
+  };
+  const MAYA_Q = "Can I use the scrubber on a client with psoriasis? She asked me today.";
+  const MINE = "no you cant do that its psoriasis she needs to see dermatologist first";
+  const BETTER = `<em>Not with psoriasis.</em> She should see a dermatologist first.`;
+  DRAW["a-maya"] = () => {
+    const base = note("Today 9:02 AM") + `<div class="lg-b them">${esc(MAYA_Q)}</div>`;
+    if (S.mayaSent) {
+      screen.innerHTML = loungeBase(base + `<div class="lg-b lg-me">Not with psoriasis. She should see a dermatologist first.</div>` + note(nw("Kept for Invita's assistant")), head(`<span class="av gm"></span>`, "Maya", nw("Team · junior trichologist"), "a-list"));
+      bindBack(); fitThread(); return;
+    }
+    screen.innerHTML = loungeBase(base + `<div class="qr" id="qr"><span class="by">${nw("Will suggests")}</span><button type="button" data-q="Not with psoriasis.">${nw("Not with psoriasis.")}</button><button type="button" data-q="Yes, gently.">${nw("Yes, gently.")}</button><button type="button" data-v>${nw("Answer by voice")}</button></div>`,
+      head(`<span class="av gm"></span>`, "Maya", nw("Team · junior trichologist"), "a-list"));
+    bindBack();
+    const sendMine = (txt) => { const q = screen.querySelector("#qr"); if (q) q.remove(); undock(); add(`<div class="lg-b lg-me">${txt}</div>` + note(nw("Kept for Invita's assistant"))); S.mayaSent = true; };
+    screen.querySelectorAll("[data-q]").forEach((b) => b.onclick = () => sendMine(esc(b.dataset.q)));
+    screen.querySelector("[data-v]").onclick = () => toast("Records a voice answer; Will gives her feedback on it after, as on a Take.");
+    // the message box, with Will's clearer version before it goes
+    screen.insertAdjacentHTML("beforeend", `<div class="cmp" id="cmp"><div class="row"><button class="plus" type="button" aria-label="Add">${ICON.plus}</button><div class="fieldw"><textarea id="msg" rows="2" aria-label="Message to Maya">${esc(MINE)}</textarea><button class="snd cue-ring" type="button" id="snd" aria-label="Send">${ICON.send}</button></div></div></div>`);
+    fitThread();
+    screen.querySelector("#snd").onclick = () => {
+      const v = screen.querySelector("#msg").value.trim(); if (!v) return;
+      screen.querySelector("#cmp").remove();
+      const d = dock(`<div class="cv"><p class="wa-title">${nw("A clearer version?")}</p><span class="was">${esc(v)}</span><span class="now">${BETTER}</span></div><div class="pair"><button class="close" type="button" id="keep">${nw("Keep my words")}</button><button class="act cue-ring" type="button" id="use">${nw("Use it")}</button></div>`);
+      d.querySelector("#keep").onclick = () => sendMine(esc(v));
+      d.querySelector("#use").onclick = () => sendMine("Not with psoriasis. She should see a dermatologist first.");
+    };
+  };
+  DRAW["a-tom"] = () => {
+    screen.innerHTML = loungeBase(note("Monday 10:30 AM") + `<div class="lg-b"><span class="who">${nw("Tom · your Shopify coach")}</span>Lesson 3: your product pages. Add the Scalp Scrubber's photo and one line on when to use it. Show me by Friday.</div>`
+      + `<div class="qr" id="qr"><span class="by">${nw("Answer Tom")}</span><button type="button" data-q="Done">${nw("Done")}</button><button type="button" data-q="Not yet">${nw("Not yet")}</button></div>`,
+      head(`<span class="av gt"></span>`, "Tom", nw("Coach · Shopify"), "a-list"));
+    bindBack(); fitThread();
+    screen.querySelectorAll("[data-q]").forEach((b) => b.onclick = () => { screen.querySelector("#qr").remove(); add(`<div class="lg-b lg-me">${nw(b.dataset.q)}</div>` + note(nw("Tom gets it."))); });
+  };
+
+  // ---------- Marta: the coach panel as a chat ----------
+  DRAW["m-list"] = () => {
+    screen.innerHTML = list([
+      { cls: "will", name: "Will", pin: true, pv: nw("Your speaking coach"), tm: "Mon" },
+      { cls: "door", icon: "◐", name: nw("Blind · Do you hear it?"), pin: true, pv: nw("3 clips waiting"), tm: "", un: 3, to: "m-blind" },
+      { cls: "door", icon: "▤", name: nw("Training corpus"), pin: true, pv: nw("Your labelled moments"), tm: "" },
+      { cls: "scalp", name: "Ariel", pv: nw("Take 3 · 2 moments waiting"), tm: "4:15 PM", un: 2, to: "m-judge", cue: true },
+      { cls: "gb", name: "Ola", pv: nw("Take 1 · 1 moment waiting"), tm: "2:40 PM", un: 1 },
+      { cls: "gd", name: "Ben", pv: nw("All answered"), tm: "Tue" },
+    ], ["All", "Waiting", "Answered"]);
+    screen.querySelector(".crow .av.will").innerHTML = "<i></i><i></i><i></i>";
+    bindOpen();
+  };
+  const ARIEL_HEAD = () => head(`<span class="av scalp"></span>`, "Ariel", nw("Take 3 · moment 1 of 2"), "m-list");
+  const takeCard = `<div class="tk"><span class="dot2"></span><span><b>${nw("Take 3 · Answer to Sarah")}</b><small>${nw("2 of 2 moments waiting")}</small></span></div>`;
+  const judgeBubble = () => `<div class="lg-b lg-me">${S.judge}</div>`;
+  const what = () => `<div class="lg-b"><span class="who">What happened</span><span class="wh">${player(6, 9)}<span>“…I would also do one <b>Deep Scalp Treatment</b> now…”</span>
+    <span class="row2"><span>You</span><span>${S.judge ? esc(S.judge.replace(/^\S+\s/, "")) : ""}</span></span><span class="row2"><span>Ariel</span><span>Not sure</span></span><span class="row2"><span>The machine heard</span><span>Too fast</span></span><span class="row2"><span>Willfidence</span><span>62%</span></span></span></div>`;
+  function judgeDock() {
+    const d = dock(`<div class="jg"><span class="cap">Ariel · moment 1 of 2</span><div class="aup">${player(6, 9)}</div><p class="jq">Does the speaker sound confident here?</p>
+      <div class="ans"><button type="button" class="cue-ring" data-j="👍 Yes"><span>👍</span>Yes</button><button type="button" data-j="😐 In-between"><span>😐</span>In-between</button><button type="button" data-j="👎 No"><span>👎</span>No</button></div>
+      <button class="small" type="button" data-j="Audio unclear">Audio unclear</button></div>`);
+    d.querySelector(".play").style.background = "#121212";
+    d.querySelectorAll("[data-j]").forEach((b) => b.onclick = () => { S.judge = b.dataset.j; undock(); add(judgeBubble()); typing(); later(() => { untype(); add(what()); diagnosisDock(); }, 700); });
+  }
+  function diagnosisDock() {
+    const d = dock(`<p class="wa-title" style="margin:0">What kind of error is it?</p><div class="cards">
+      <button type="button" class="cue-ring" data-e="Too fast"><small>The machine heard this</small>Too fast</button>
+      <button type="button" data-e="Trailing off">Trailing off</button>
+      <button type="button" class="alt" data-e="Something else">Something else · Name a new error</button>
+      <button type="button" class="alt" data-e="I don't hear an error">I don't hear an error</button></div>`);
+    d.querySelectorAll("[data-e]").forEach((b) => b.onclick = () => { S.err = b.dataset.e; undock(); add(`<div class="lg-b lg-me">${esc(S.err)}</div>`); cureDock(); });
+  }
+  function cureDock() {
+    const d = dock(`<p class="wa-title" style="margin:0">Choose exercise</p><div class="cards">
+      <button type="button" class="cue-ring" data-c="Keep it · Slow on the name">Keep it · Slow on the name</button>
+      <button type="button" data-c="Swap it">Swap it</button>
+      <button type="button" data-c="Make a new one">Make a new one</button>
+      <button type="button" class="alt" data-c="Nothing to add">Nothing to add</button></div>`);
+    d.querySelectorAll("[data-c]").forEach((b) => b.onclick = () => { S.cure = b.dataset.c; undock(); add(`<div class="lg-b lg-me">${esc(S.cure)}</div>`); wordsBox(); });
+  }
+  function wordsBox() {
+    screen.insertAdjacentHTML("beforeend", `<div class="cmp" id="cmp"><div class="row"><button class="plus" type="button" aria-label="Add a video">${ICON.plus}</button><div class="fieldw"><textarea id="msg" rows="2" aria-label="Your words to Ariel">Lovely pause after “every second day”. Next time, slow down on the treatment's name: it is what Sarah has to remember.</textarea><button class="snd cue-ring" type="button" id="snd" aria-label="Send">${ICON.send}</button></div></div></div>`);
+    fitThread();
+    screen.querySelector("#snd").onclick = () => { const v = screen.querySelector("#msg").value.trim(); screen.querySelector("#cmp").remove(); S.words = true; add(`<div class="lg-b lg-me">${esc(v)}</div>` + note(nw("Ariel gets it in Will's chat."))); later(() => toast("Next: moment 2 of 2, the same way. Then the Summary."), 400); };
+  }
+  DRAW["m-judge"] = () => {
+    S.judge = null;
+    screen.innerHTML = loungeBase(note("Today 4:15 PM") + takeCard, ARIEL_HEAD());
+    bindBack(); judgeDock();
+  };
+  DRAW["m-what"] = () => {
+    S.judge = S.judge || "😐 In-between";
+    screen.innerHTML = loungeBase(note("Today 4:15 PM") + takeCard + judgeBubble() + what(), ARIEL_HEAD());
+    bindBack(); diagnosisDock();
+  };
+  DRAW["m-cure"] = () => {
+    S.judge = S.judge || "😐 In-between"; S.err = S.err || "Too fast";
+    screen.innerHTML = loungeBase(note("Today 4:15 PM") + takeCard + judgeBubble() + what() + `<div class="lg-b lg-me">${esc(S.err)}</div>`, ARIEL_HEAD());
+    bindBack(); cureDock();
+  };
+  DRAW["m-summary"] = () => {
+    screen.innerHTML = loungeBase(note("Today 4:15 PM") + `<div class="tk"><span><b>${nw("Take 3 · Answer to Sarah")}</b><small>${nw("All moments answered")}</small></span></div>`
+      + note("Today 4:31 PM") + `<div class="lg-b"><span class="who">Summary</span>${nw("2 moments answered · one exercise: Slow on the name.")}</div>`,
+      head(`<span class="av scalp"></span>`, "Ariel", nw("All answered"), "m-list"));
+    bindBack();
+    const d = dock(`<div class="wa-card"><p class="wa-title">A word for this Take</p><p class="wa-sub">Optional · it opens first in Ariel's feedback</p></div><div class="pair"><button class="close" type="button" id="nov">Send without a video</button><button class="act cue-ring" type="button" id="snd2">Send</button></div>`);
+    const done = (how) => { undock(); add(`<div class="lg-b lg-me">You sound like you mean it now. Keep that.</div>` + note(nw(`Ariel gets it in Will's chat${how}.`))); };
+    d.querySelector("#nov").onclick = () => done("");
+    d.querySelector("#snd2").onclick = () => done(nw(", with your video"));
+  };
+  DRAW["m-blind"] = () => {
+    screen.innerHTML = loungeBase(note("Today") + `<div class="lg-b">${nw("Three clips from speakers you don't coach. Only your ear: nothing else is shown.")}</div>`, head(`<span class="av door">◐</span>`, nw("Blind · Do you hear it?"), nw("3 clips waiting"), "m-list"));
+    bindBack();
+    let n = 1;
+    const ask = () => { const d = dock(`<div class="jg"><span class="cap">Clip ${n} of 3</span><div class="aup">${player(5, 3 + n)}</div><p class="jq">Do you hear it?</p><div class="ans" style="grid-template-columns:1fr 1fr"><button type="button" class="cue-ring" data-b="Yes">Yes</button><button type="button" data-b="No">No</button></div></div>`);
+      d.querySelector(".play").style.background = "#121212";
+      d.querySelectorAll("[data-b]").forEach((b) => b.onclick = () => { undock(); add(`<div class="lg-b lg-me">Clip ${n} · ${b.dataset.b}</div>`); n += 1; if (n <= 3) ask(); else add(note("All clips answered. Thank you.")); }); };
+    ask();
+  };
+  const BY = Object.fromEntries(SCREENS.map((s) => [s.id, s]));
+  const ORDER = SCREENS.filter((s) => !s.side).map((s) => s.id);
+  // ---------- Engine ----------
+  const screen = document.getElementById("screen");
+  let cur = "a-list", hist = [], timers = [];
+  const later = (fn, ms) => { const t = setTimeout(fn, ms); timers.push(t); return t; };
+  const every = (fn, ms) => { const t = setInterval(fn, ms); timers.push(t); return t; };
+  function clearAll() { timers.forEach((t) => { clearTimeout(t); clearInterval(t); }); timers = []; }
+  function toast(msg) { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; screen.appendChild(t); setTimeout(() => t.remove(), 3100); }
+  function go(id, push = true) {
+    if (id === "<") { back(); return; }
+    if (!BY[id]) return;
+    if (push && cur !== id) hist.push(cur);
+    cur = id; render();
+  }
+  function back() { const p = hist.pop(); if (p) { cur = p; render(); } else { const i = ORDER.indexOf(cur); if (i > 0) { cur = ORDER[i - 1]; render(); } } }
+  function render() {
+    clearAll();
+    screen.innerHTML = "";
+    const sc = BY[cur];
+    if (sc.img) {
+      screen.innerHTML = `<img class="shot" src="img/${sc.img}.webp" alt="${sc.name}, the real app screen">`;
+      (sc.hot || []).forEach(([x, y, w, h, to, cue]) => {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "hot" + (cue ? " cue" : "");
+        Object.assign(b.style, { left: x + "px", top: y + "px", width: w + "px", height: h + "px" });
+        b.setAttribute("aria-label", "Go to " + (BY[to] ? BY[to].name : "back"));
+        b.addEventListener("click", (e) => { e.stopPropagation(); go(to); });
+        screen.appendChild(b);
+      });
+      if (sc.auto) later(() => go(sc.hot[0][4]), sc.auto);
+    }
+    (DRAW[cur] || (() => {}))();
+    paintNote(sc); paintRail();
+    try { history.replaceState(null, "", "#" + cur); } catch (e) {}
+  }
+  screen.addEventListener("click", (e) => { const p = e.target.closest("[data-play]"); if (p) playBars(p); });
+  function playBars(btn) {
+    const bs = [...btn.parentElement.querySelectorAll(".bars i")];
+    if (!bs.length) return;
+    bs.forEach((b) => b.classList.remove("on"));
+    let i = 0;
+    const t = every(() => { if (i >= bs.length) { clearInterval(t); later(() => bs.forEach((b) => b.classList.remove("on")), 400); return; } bs[i++].classList.add("on"); }, 3000 / bs.length);
+  }
+
+  // ---------- Notes ----------
+  function paintNote(sc) {
+    const n = sc.note || {};
+    const kind = sc.kind === "real" ? "Real app" : sc.kind === "mixed" ? "Real, with new parts" : "New";
+    document.getElementById("note").innerHTML = `<span class="badge ${sc.kind === "real" ? "" : sc.kind}">${kind}</span><h2>${n.h || sc.name}</h2>
+      ${n.real && n.real.length ? `<h3>As today</h3><ul>${n.real.map((c) => `<li>${c}</li>`).join("")}</ul>` : ""}
+      <h3>What's new</h3>${n.changes && n.changes.length ? `<ul>${n.changes.map((c) => `<li>${c}</li>`).join("")}</ul>` : `<p class="refs">Nothing.</p>`}
+      ${n.pending && n.pending.length ? `<h3>New words, waiting for your OK</h3><ul class="words">${n.pending.map((w) => `<li>${w}</li>`).join("")}</ul>` : ""}
+      ${n.decided && n.decided.length ? `<h3>Decided</h3><ul>${n.decided.map((d) => `<li>${DECIDED[d]}</li>`).join("")}</ul>` : ""}
+      ${n.asks && n.asks.length ? `<h3>To decide before building</h3><ul class="asks">${n.asks.map((q) => `<li><b>${qNo(q)}</b>${QUESTIONS[q]}</li>`).join("")}</ul>` : ""}`;
+    const i = ORDER.indexOf(cur);
+    document.getElementById("where").textContent = i >= 0 ? `${i + 1} of ${ORDER.length}` : "side screen";
+  }
+  const QIDS = Object.keys(QUESTIONS);
+  const qNo = (q) => "Q" + (QIDS.indexOf(q) + 1);
+  document.getElementById("allN").textContent = QIDS.length;
+  document.getElementById("allQ").innerHTML = QIDS.map((q) => `<li>${QUESTIONS[q]}</li>`).join("");
+  function paintRail() {
+    const host = document.getElementById("steps");
+    const chs = [...new Set(SCREENS.map((s) => s.ch))];
+    host.innerHTML = chs.map((c) => `<div class="chap"><p class="chap-h">${c}</p>${SCREENS.filter((s) => s.ch === c).map((s) =>
+      `<button type="button" class="step${s.side ? " side" : ""}" data-to="${s.id}" ${s.id === cur ? 'aria-current="step"' : ""}><i class="dot ${s.kind === "real" ? "" : s.kind}"></i>${s.name}</button>`).join("")}</div>`).join("");
+    document.getElementById("jumpto").innerHTML = SCREENS.map((s) => `<option value="${s.id}" ${s.id === cur ? "selected" : ""}>${s.ch} · ${s.name}</option>`).join("");
+  }
+  document.getElementById("steps").addEventListener("click", (e) => { const b = e.target.closest("[data-to]"); if (b) go(b.dataset.to); });
+  document.getElementById("jumpto").addEventListener("change", (e) => go(e.target.value));
+  document.getElementById("back").onclick = back;
+  document.getElementById("next").onclick = () => { const i = ORDER.indexOf(cur); go(ORDER[Math.min(ORDER.length - 1, i + 1)] || ORDER[0]); };
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("select, input, textarea")) return;
+    if (e.key === "ArrowRight") document.getElementById("next").click();
+    if (e.key === "ArrowLeft") back();
+  });
+  const app = document.getElementById("app");
+  const tgHot = document.getElementById("tgHot"), tgNew = document.getElementById("tgNew");
+  const syncT = () => { app.classList.toggle("show-hot", tgHot.checked); app.classList.toggle("mark-new", tgNew.checked); };
+  tgHot.onchange = syncT; tgNew.onchange = syncT; syncT();
+
+  // ---------- Fit the phone ----------
+  const device = document.getElementById("device"), bezel = document.getElementById("bezel"), stage = document.getElementById("stage");
+  function fitPhone() {
+    const narrow = innerWidth <= 520;
+    const W = narrow ? 390 : 410, H = narrow ? 844 : 864;
+    const availW = stage.clientWidth, availH = narrow ? Infinity : Math.max(520, innerHeight - 150);
+    const k = Math.min(1, availW / W, availH / H);
+    bezel.style.transform = `scale(${k})`; bezel.style.width = W + "px"; bezel.style.height = H + "px";
+    device.style.width = W * k + "px"; device.style.height = H * k + "px";
+  }
+  new ResizeObserver(fitPhone).observe(stage); addEventListener("resize", fitPhone); fitPhone();
+  try { const h = location.hash.slice(1); if (BY[h]) cur = h; } catch (e) {}
+  render();
+})();
+</script>
+</body></html>

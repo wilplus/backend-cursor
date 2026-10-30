@@ -1185,6 +1185,11 @@ O3 -> test_a_provable_take_serves_rows_and_hands_back_the_recorded_bundle
 NOTE     O2 empties the bundle index through the private `_canonical_index`:
 no real inventory can produce a row the bundle lacks, so this is the
 one seam that reaches the refusal.",
+tests/test_first_visit.py,Story,"As the founder, I want to see how many visitors without an account reach each step from the landing page to their first feedback, so that I can fix the step where most of them leave.","O1  A visitor reaching a known step counts once, with no account needed
+and nothing kept about them; an unknown step is refused.
+O2  The founder reads the whole path in order, the sign-up screen and the
+accounts made included, in all and per day; nobody else can read it.","O1 -> FirstVisitTest::test_a_step_counts_without_an_account
+O2 -> FirstVisitTest::test_the_founder_reads_the_whole_path","Founder 2026-10-29, N271."
 tests/test_founder_clears_a_blind_line.py,Story,"As the founder, I want to clear what waits on a blind list of the coach queue, so that it stays empty until next week's items come.","O1  A cleared item is never shown again.
 O2  A line cleared this week does not refill before next week, on each of
 the four lines.","O1 -> FounderClearsABlindLineTests::test_a_cleared_item_is_never_shown_again

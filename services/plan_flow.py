@@ -536,7 +536,7 @@ def _heard(audio: bytes) -> bool:
 
 def _words(result: dict) -> str:
     """The transcript, or "" when it is only the transcriber's stock lines
-    for a clip with no words in it (N274)."""
+    for a clip with no words in it (N275)."""
     raw = (result.get("text") or "").strip()
     return "" if P.heard_nothing(raw) else raw
 
@@ -549,7 +549,7 @@ def _not_heard(database: Any, user_id: str, plan: dict) -> dict:
 
 
 def _correction(plan: dict, turn: Optional[dict], asked: list[str]) -> Optional[dict]:
-    """A correction the AI heard, at most one per question (N274): once Will
+    """A correction the AI heard, at most one per question (N275): once Will
     was put right on this question, the next answer to it is an answer, so
     a correction misheard can't come round again and again."""
     if _facts(plan).get("put_right_at") == len(asked):
@@ -569,7 +569,7 @@ def _put_right(database: Any, user_id: str, plan: dict, answer: dict, said: str,
         facts.pop("worry", None)  # a worry the speaker did not agree to share is not kept
     back = correction["said_back"]
     facts["will_said"] = {**dict(facts.get("will_said") or {}), str(answer["id"]): back}
-    facts["put_right_at"] = len(plan.get("asked") or [])  # one per question (N274)
+    facts["put_right_at"] = len(plan.get("asked") or [])  # one per question (N275)
     plan = _save(database, user_id, plan, {"facts": facts})
     asked = list(plan.get("asked") or [])
     last = asked[-1] if asked else {"bank": "key", "text": P.BANK["key"][0]}
