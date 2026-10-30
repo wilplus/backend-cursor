@@ -7205,11 +7205,12 @@ deliverable; this replaces the honest-positioning rule of 2026-07-17
 ("promise the deliverable, never a feeling") for the landing.
 2. **"Read blog posts" goes** from the landing. The blog covers stay.
 3. **"See an example" opens over the whole page**, the covers and the
-footer included; ✕ closes it.
+footer included; ✕ closes it. "An example" is its first line, level with
+the ✕; there is no "What they said".
 4. **The example is the founder's own Take** (his movie talk, Slide 2),
-with his consent to publish his voice and the AI version of it: under "What
-they said", his clip and its words, "All around actors, their costumes, all
-that was really great."; then the walk's "That was good. But what if you
+with his consent to publish his voice and the AI version of it: his clip
+and its words, "All around actors, their costumes, all that was really
+great."; then the walk's "That was good. But what if you
 said it more like this?" with "AI version of your voice" and its clip; then
 the tempo step's "That part went fast. 🏃 Let's try a little game." and
 "Tell me more about the actors, and keep the ball in the green.", and the
