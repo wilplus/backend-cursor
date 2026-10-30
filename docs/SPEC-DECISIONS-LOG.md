@@ -7184,3 +7184,39 @@ The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §1 B8 and B9, §6; item 1 has no rules page (`services/transcript_guard.py`).
 No migration.
+
+**N277 · The landing's new words, no "Read blog posts", and its example with
+the founder's own voice and the Sniper (founder, the Claude Code chat, 30
+October 2026, on the prototype
+<https://claude.ai/artifact/MVyWmdoWUqisttfkW8qb8D>: "Please open the overlay
+over the whole page. And add from my account the improved AI audio ...
+Extract a bubble with my first recording and AI enhanced how I could have
+sounded"; "also delete the button to read the blog posts"; "add the sniper
+and suggestion to work on your tempo here ... animate it"; then the words,
+and "OK").** For N273 item 1:
+1. **Under the name** (the landing and the in-app welcome, one
+composition), in two short paragraphs with these line breaks: "Great
+presentations aren’t about slides. / They’re about a dream and the guts to
+deliver it." and "You bring the dream. / We’ll help you sound brave until
+you are 😏" (signed). They replace N273 item 1's "Record your talk. You get
+the ideal text of your presentation and see which moments landed best."
+The founder chose words that speak to the speaker's courage, not only the
+deliverable; this replaces the honest-positioning rule of 2026-07-17
+("promise the deliverable, never a feeling") for the landing.
+2. **"Read blog posts" goes** from the landing. The blog covers stay.
+3. **"See an example" opens over the whole page**, the covers and the
+footer included; ✕ closes it. "An example" is its first line, level with
+the ✕; there is no "What they said".
+4. **The example is the founder's own Take** (his movie talk, Slide 2),
+with his consent to publish his voice and the AI version of it: his clip
+and its words, "All around actors, their costumes, all that was really
+great."; then the walk's "That was good. But what if you
+said it more like this?" with "AI version of your voice" and its clip; then
+the tempo step's "That part went fast. 🏃 Let's try a little game." and
+"Tell me more about the actors, and keep the ball in the green.", and the
+Sniper (the pace scale) moving on a set pace, since the page has no
+microphone; then "Try it with your talk". "The Ideal Text" and "The
+feedback" leave the example: their text was a stand-in sentence.
+The rules: frontend
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md),
+the welcome's amendment and its line for N277. No migration.
