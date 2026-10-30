@@ -7078,3 +7078,49 @@ The rules: frontend
 (Will's hello, the wall) and
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 (the wait, the microphone line), each with its line for N273. No migration.
+
+**N274 · Chats for everyone: Will pinned, then every contact a chat; other
+coaches by skill; every message a tap answer or coached by Will; the coach
+panel drawn as a chat, for the founder to judge (founder, the Claude Code
+chat, 30 October 2026: "it will apply to everyone ... the users who are
+involved with a customer or junior specialists have them on the list of
+contacts just like a chat with someone; they also have a conversation with
+Will where their coach is ... a speaking coach should have their own coach
+... can have a programming coach from someone else ... their communication
+should be direct clickable button answers or speaking / communication coach
+facilitated", then "The whole panel as a chat ... but I would need to see
+this on the prototype!", "Coach's notes only" and "Pinned chats").** For
+N250 and N256:
+1. Everyone's Lounge becomes N256's list of chats, no longer only an
+answerer's: Will pinned on top, then customers, colleagues, juniors and
+coaches, each in its own chat, each row saying what kind of contact it is
+(Customer, Team, Coach). A person whose only chat is Will's opens on Will's
+chat, as the Lounge does today (Never 3). Was (N256 item 5): only answerers
+saw the list.
+2. Will's chat is the speaking coach, with the person's human speaking coach
+inside it as today. A person may add other coaches for other skills (for
+example a Shopify coach), each in their own chat. Coaches have coaches too:
+a speaking coach's own speaking coach is Will.
+3. Messages between people are tap answers Will suggests, or coached by Will
+before they go: a clearer version, Keep my words | Use it, as the walk's
+Clearer version does; a voice answer gets its feedback after, as a Take
+does. Every exchange is kept with its outcome, so the company's own assistant
+can learn it once people are trained (N250), with consent.
+4. Between a coach and a speaker: the coach's notes only. The speaker answers
+with taps; nobody writes to their coach first.
+5. The coach's other doors become pinned chats: Blind · Do you hear it?, the
+Training corpus, and for the founder only, Will's questions.
+6. The coach panel as a chat (each speaker a chat; the blind Judge, what
+happened, the diagnosis, the cure, the coach's words and the Summary as
+bubbles and footer asks) is drawn for the founder to judge. Until the
+founder approves it, the locked panel stays as it is. Never 2 and the
+coach's one number (Willfidence) hold either way.
+7. Open, on the prototype: who adds a contact; consent for colleagues'
+messages to train the company's assistant; whether Will suggests answers
+learnt in other chats of the same company; how other coaches are paid; a
+coach with many speakers.
+No rules page yet: the Lounge's page (frontend
+`docs/flows/feedback-walk-and-chat.md` E1) and the coach panel's page change
+when the founder approves the prototype, kept as N229 says at
+`docs/design/customer-requests-2026-10-28/chats/willpowerlab-chats.html` and
+`7-chats-for-everyone.pdf`. No migration in this entry.
