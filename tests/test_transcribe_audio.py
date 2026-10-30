@@ -10,10 +10,14 @@ OUTCOME
       the transcript.
   O3  Non-English audio drops the English prompt and keeps only my words.
   O4  A provider failure is wrapped and reported, never returned as text.
+  O5  What the transcriber wrote that nobody said (a stretch it calls
+      silence, a video's "Thanks for watching") is not in my transcript,
+      its segments or its words; my own "Thank you." stays (N276).
 PROVES   O1 -> test_the_request_and_the_transcript_it_returns
          O2 -> test_without_word_timestamps_the_transcript_still_arrives
          O3 -> test_non_english_language_drops_the_english_prompt_and_keeps_vocabulary
          O4 -> test_provider_failure_is_wrapped_and_reported_to_sentry
+         O5 -> test_what_nobody_said_is_not_in_the_transcript
 WHY      2026-07-29: an English prompt on Polish audio gave an empty transcript.
 
 A fake client records the request; no network, no prompt text asserted
@@ -31,8 +35,9 @@ import services.openai_service as osvc
 
 
 class _Seg:
-    def __init__(self, start, end, text):
+    def __init__(self, start, end, text, no_speech_prob=None, avg_logprob=None):
         self.start, self.end, self.text = start, end, text
+        self.no_speech_prob, self.avg_logprob = no_speech_prob, avg_logprob
 
 
 class _Word:
@@ -131,3 +136,19 @@ def test_provider_failure_is_wrapped_and_reported_to_sentry():
             _service(_FakeClient([RuntimeError("whisper down"), RuntimeError("whisper down")])) \
                 .transcribe_audio(BytesIO(b"x"), "take.webm")
     assert len(captured) == 1 and str(captured[0]) == "whisper down"
+
+
+def test_what_nobody_said_is_not_in_the_transcript():
+    reply = types.SimpleNamespace(
+        text="Thank you. Thanks for watching! Subscribe.", language="en",
+        segments=[_Seg(0.0, 2.0, " Thank you.", 0.05, -0.2),            # said
+                  _Seg(2.0, 6.0, " Thanks for watching!", 0.4, -0.5),   # a video's line
+                  _Seg(6.0, 9.0, " Subscribe.", 0.9, -1.4)],            # silence, by Whisper's rule
+        words=[_Word("Thank", 0.0, 0.5), _Word("you", 0.5, 1.0),
+               _Word("Thanks", 2.1, 2.6), _Word("Subscribe", 6.2, 7.0)],
+    )
+    out = _service(_FakeClient([reply])).transcribe_audio(BytesIO(b"audio"), "take.webm")
+    assert out["text"] == "Thank you."
+    assert [s["text"] for s in out["segments"]] == ["Thank you."]
+    assert [w["word"] for w in out["words"]] == ["Thank", "you"]
+    assert out["duration"] == 9.0  # the recording's length, for the cost ledger

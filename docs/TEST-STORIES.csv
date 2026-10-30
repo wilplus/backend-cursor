@@ -3301,10 +3301,14 @@ segments and words (absolute seconds; a malformed word dropped).
 O2  Where word timestamps are refused, a segments-only call still returns
 the transcript.
 O3  Non-English audio drops the English prompt and keeps only my words.
-O4  A provider failure is wrapped and reported, never returned as text.","O1 -> test_the_request_and_the_transcript_it_returns
+O4  A provider failure is wrapped and reported, never returned as text.
+O5  What the transcriber wrote that nobody said (a stretch it calls
+silence, a video's ""Thanks for watching"") is not in my transcript,
+its segments or its words; my own ""Thank you."" stays (N276).","O1 -> test_the_request_and_the_transcript_it_returns
 O2 -> test_without_word_timestamps_the_transcript_still_arrives
 O3 -> test_non_english_language_drops_the_english_prompt_and_keeps_vocabulary
-O4 -> test_provider_failure_is_wrapped_and_reported_to_sentry","2026-07-29: an English prompt on Polish audio gave an empty transcript. A fake client records the request; no network, no prompt text asserted verbatim (the prompt registry owns it)."
+O4 -> test_provider_failure_is_wrapped_and_reported_to_sentry
+O5 -> test_what_nobody_said_is_not_in_the_transcript","2026-07-29: an English prompt on Polish audio gave an empty transcript. A fake client records the request; no network, no prompt text asserted verbatim (the prompt registry owns it)."
 tests/test_transcript_document_build.py,Story,"As a speaker, I want my transcript built into one paragraph per slide, so that my Ideal Text starts from what I said. (Critical path: process -> Ideal Text; Never-5: only my latest Take.)","O1  The document is built from my LATEST spoken Take only; an earlier Take
 or a read-aloud never supplies its words.
 O2  One paragraph per slide, in spoken order, and the coach's slide fix

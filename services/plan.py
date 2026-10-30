@@ -578,7 +578,7 @@ def turn_prompt(*, deadline: Optional[date], deadline_given: bool,
             f"corrects, one of: {', '.join(['why', *asked[:-1]])}. \"said_back\" says back what "
             "Will now has, in their words, speaking to them as \"you\", under the fixed rules; "
             "it does not start \"Thank you\". The facts then follow the correction. When the last "
-            "message answers the question, even partly, \"correction\" is null.",
+            "message answers the question, even partly, or you are not sure, \"correction\" is null.",
         ]),
         "",
         "Transcript:",

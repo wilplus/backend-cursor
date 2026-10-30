@@ -473,7 +473,7 @@ def answer_voice(database: Any, user_id: str, adapter: Any, audio: bytes, *,
     result = adapter.transcribe_audio(
         audio, filename, usage_surface="plan_answer", usage_user_id=str(user_id),
         usage_session_id=str(plan["id"])) or {}
-    raw = (result.get("text") or "").strip()
+    raw = _words(result)
     if not raw:
         return _not_heard(database, user_id, plan)
     kind, question = _answering(plan)
@@ -485,7 +485,7 @@ def answer_voice(database: Any, user_id: str, adapter: Any, audio: bytes, *,
         asked = [str(a.get("bank")) for a in plan.get("asked") or []]
         turn = _turn(database, user_id, plan, asked, answering=(question, raw))
         if plan["step"] == "followup":
-            correction = P.fitted_correction((turn or {}).get("correction"), ["why", *asked[:-1]])
+            correction = _correction(plan, turn, asked)
     if correction:  # kept as an answer to what it corrects, so it takes its place
         kind = correction["of"]
     answer = database.insert_plan_answer({
@@ -534,11 +534,55 @@ def _heard(audio: bytes) -> bool:
     return float(gate.get("voiced_sec") or 0.0) >= MIN_VOICED_SEC
 
 
+def _words(result: dict) -> str:
+    """The transcript, or "" when it is only the transcriber's stock lines
+    for a clip with no words in it (N275)."""
+    from services.transcript_guard import heard_nothing
+    raw = (result.get("text") or "").strip()
+    return "" if heard_nothing(raw) else raw
+
+
+#: How often Will asks the same question again, when he heard nothing or
+#: was put right (N276): twice, then he moves on, so no question loops.
+MAX_AGAIN = 2
+
+
+def _again(plan: dict) -> tuple[str, int]:
+    """The question Will is on, and how often he asked it again."""
+    at = f"{plan.get('step')}:{len(plan.get('asked') or [])}"
+    seen = dict(_facts(plan).get("again") or {})
+    return at, int(seen.get("n") or 0) if seen.get("at") == at else 0
+
+
 def _not_heard(database: Any, user_id: str, plan: dict) -> dict:
     """Nothing kept and nothing sent on: Will asks for it again, and the same
-    question stays (N262 item 2)."""
+    question stays (N262 item 2); after twice, he moves on (N276)."""
+    at, n = _again(plan)
+    if n >= MAX_AGAIN:
+        plan, rows = _move_on(database, user_id, plan)
+        return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
+    plan = _save(database, user_id, plan, {"facts": {**_facts(plan), "again": {"at": at, "n": n + 1}}})
     rows = [_bot(P.COPY["not_heard"], f"not_heard:{_now().isoformat()}")]
     return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
+
+
+def _move_on(database: Any, user_id: str, plan: dict) -> tuple[dict, list[tuple]]:
+    """The question asked three times without an answer is left (N276): Will
+    asks the next one in its plain words, or goes on to what follows them.
+    The voice message's ack is not said: nothing was heard to name."""
+    if plan["step"] == "how_it_went":
+        return _after_how_it_went(database, user_id, plan, told=False)
+    nothing = {"kind": "", "id": ""}
+    return _next_question(database, user_id, {**plan, "step": "followup"}, nothing, "", None)
+
+
+def _correction(plan: dict, turn: Optional[dict], asked: list[str]) -> Optional[dict]:
+    """A correction the AI heard, at most one per question (N275): once Will
+    was put right on this question, the next answer to it is an answer, so
+    a correction misheard can't come round again and again."""
+    if _facts(plan).get("put_right_at") == len(asked) or _again(plan)[1] >= MAX_AGAIN:
+        return None
+    return P.fitted_correction((turn or {}).get("correction"), ["why", *asked[:-1]])
 
 
 def _put_right(database: Any, user_id: str, plan: dict, answer: dict, said: str,
@@ -553,6 +597,9 @@ def _put_right(database: Any, user_id: str, plan: dict, answer: dict, said: str,
         facts.pop("worry", None)  # a worry the speaker did not agree to share is not kept
     back = correction["said_back"]
     facts["will_said"] = {**dict(facts.get("will_said") or {}), str(answer["id"]): back}
+    facts["put_right_at"] = len(plan.get("asked") or [])  # one per question (N275)
+    at, n = _again(plan)
+    facts["again"] = {"at": at, "n": n + 1}  # asked again, as when nothing is heard (N276)
     plan = _save(database, user_id, plan, {"facts": facts})
     asked = list(plan.get("asked") or [])
     last = asked[-1] if asked else {"bank": "key", "text": P.BANK["key"][0]}

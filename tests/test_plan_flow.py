@@ -72,6 +72,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+from services import plan as P
 from services import plan_flow as F
 
 USER = "11111111-1111-1111-1111-111111111111"
@@ -463,6 +464,13 @@ def test_an_answer_with_nothing_heard_is_asked_again(db, monkeypatch):
     _say(db, "")  # heard, but no words
     assert bodies(db)[-1] == "Sorry, I didn't quite catch that. Could you say it again?"
     assert db.get_open_plan(USER)["step"] == "why" and db.answers == []
+    # Asked again twice, Will moves on (N276): the third time nothing is heard
+    # (here the transcriber's stock line, N275), he asks the next question in
+    # its plain words, with no ack, for nothing was heard to name.
+    before = len(db.thread)
+    _say(db, "Thanks for watching!")
+    assert bodies(db)[before:] == [P.BANK["key"][0]]
+    assert db.get_open_plan(USER)["step"] == "followup" and db.answers == []
     _say(db, "Five people.")  # a short answer is heard
     assert len(db.answers) == 1
 
@@ -493,6 +501,10 @@ def test_a_correction_is_taken_and_the_question_asked_again(db, monkeypatch):
     assert plan["facts"]["event"] == "a board pitch for funding"
     assert [a["kind"] for a in db.answers] == ["why", "why"]  # takes its place; the old stays
     assert "key_line" not in plan["facts"]
+    # One correction per question (N275): the next answer to it is an answer,
+    # whatever the AI reads, so a misheard correction can't loop.
+    _say(db, "Board members and our CEO.")
+    assert bodies(db)[-1] != key_q and len(db.get_open_plan(USER)["asked"]) == 2
 
 
 def test_a_new_speaker_can_record_before_answering(db, monkeypatch):
