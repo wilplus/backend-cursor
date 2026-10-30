@@ -26,8 +26,8 @@ OUTCOME
       N94).
   O6  The plan's lines after a practice day's Take ("That's your 15
       minutes for today.") wait for the ask: the ask stays the newest
-      bubble, so its answers stay, and the lines come after the closing
-      message, as on a Take with no ask.
+      bubble, so its answers stay; after my answer come the lines, then
+      the closing message with "Record Take N", last (founder 2026-10-30).
 PROVES   O1 -> test_after_take_one_the_whatsapp_ask_else_will_else_the_question
          O2 -> test_from_take_two_one_ask_ceo_ask_whatsapp_home_screen_will_the_question
          O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_closing_message
@@ -207,7 +207,7 @@ def test_the_plans_lines_wait_for_the_ask(monkeypatch):
     assert db.drawn() == [SUMMARY, feedback_check.COPY["ask"]]
 
     feedback_check.answer(db, user_id="u", arc_id="arc", take_session_id="take-1", choice="yes")
-    assert db.drawn()[-2:] == [after_take.NEXT_TAKE, fifteen]
+    assert db.drawn()[-2:] == [fifteen, after_take.NEXT_TAKE]
 
 
 def test_an_older_waiting_message_shows_where_it_stands():
