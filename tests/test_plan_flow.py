@@ -246,13 +246,13 @@ def test_ratings_are_kept_quietly_and_the_calls_lead_to_the_plan(db):
     new = bodies(db)[before:]
     assert "7" not in new and "4" not in new
     assert new == ["How ready do you feel for it right now?",
-                   "Before I show you your plan, pick a time for a 15-minute call with your "
-                   "coach. It's your kickoff call."]
+                   "Every plan starts with a kickoff session with your coach. Would you like "
+                   "to book it now?"]
     F.book_call(db, USER, "kickoff", None)
     F.book_call(db, USER, "summary", None)
     assert bodies(db)[-3:] == [
-        "Would you also like to book your summary call? It's after your deadline, to look "
-        "back and plan what's next.", "You're all set. Here's your plan.", ""]
+        "Every learning cycle also finishes with a summary session after your deadline. "
+        "Would you like to choose it now?", "You're all set. Here's your plan.", ""]
     assert db.thread[-1]["metadata"]["plan_card"] is True
     plan = db.get_open_plan(USER)
     assert plan["status"] == "active" and plan["total"] == 9 and plan["level"]
