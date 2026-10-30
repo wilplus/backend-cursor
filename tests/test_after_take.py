@@ -24,11 +24,16 @@ OUTCOME
   O5  After a distressed message the chat's safety reply comes and the asks
       wait: nothing lands under it until I write again (founder 2026-10-21,
       N94).
+  O6  The plan's lines after a practice day's Take ("That's your 15
+      minutes for today.") wait for the ask: Will's question stays the
+      newest bubble, with its answers, and the lines come after my answer,
+      just before the closing message.
 PROVES   O1 -> test_after_take_one_the_whatsapp_ask_else_will_else_the_question
          O2 -> test_from_take_two_one_ask_ceo_ask_whatsapp_home_screen_will_the_question
          O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_closing_message
          O4 -> test_an_older_waiting_message_shows_where_it_stands
          O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
+         O6 -> test_the_plans_lines_wait_for_the_ask_then_come_before_the_closing_message
 WHY      Founder 2026-10-20: "one action at a time", then, after checking the
          app: the summary without the CTA, Will's liaison before each ask,
          "Look, practice makes perfect…" and the CTA last.
@@ -191,6 +196,25 @@ def test_each_ask_comes_under_what_closed_the_one_before_then_the_closing_messag
     _world(monkeypatch, phone="+447700900461", admin=None)
     rows = after_take.release(skipped, "u")
     assert [r["body"] for r in rows] == [after_take.NEXT_TAKE]
+
+
+def test_the_plans_lines_wait_for_the_ask_then_come_before_the_closing_message(monkeypatch):
+    db = _Db()
+    fifteen = ["That's your 15 minutes for today.", "Now go and live it, away from the phone."]
+
+    def plan_lines(database, user_id, **_):
+        return database.insert_lounge_messages(user_id, [
+            {"client_id": f"plan-{i}", "role": "bot", "kind": "text", "body": b, "metadata": {},
+             "client_created_at": f"2026-10-20T10:05:00.00{i}000+00:00"} for i, b in enumerate(fifteen)])
+
+    monkeypatch.setattr("services.plan_flow.after_take", plan_lines)
+    _waiting(db, "take-1", ["feedback_check"])
+    # The ask is the newest bubble: nothing of the plan's lands over it.
+    assert db.drawn() == [SUMMARY, feedback_check.COPY["ask"]]
+    rows = feedback_check.answer(db, user_id="u", arc_id="arc", take_session_id="take-1", choice="yes")
+    assert [r["body"] for r in rows][-3:] == [*fifteen, after_take.NEXT_TAKE]
+    assert db.drawn()[-3:] == [*fifteen, after_take.NEXT_TAKE]
+    assert "plan_after" not in db.thread[after_take.next_take_client_id("u", "arc", 1)]["metadata"]
 
 
 def test_an_older_waiting_message_shows_where_it_stands():

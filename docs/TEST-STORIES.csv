@@ -290,11 +290,16 @@ O4  A message still waiting when a newer Take is written shows where it
 stands.
 O5  After a distressed message the chat's safety reply comes and the asks
 wait: nothing lands under it until I write again (founder 2026-10-21,
-N94).","O1 -> test_after_take_one_the_whatsapp_ask_else_will_else_the_question
+N94).
+O6  The plan's lines after a practice day's Take (""That's your 15
+minutes for today."") wait for the ask: Will's question stays the
+newest bubble, with its answers, and the lines come after my answer,
+just before the closing message.","O1 -> test_after_take_one_the_whatsapp_ask_else_will_else_the_question
 O2 -> test_from_take_two_one_ask_ceo_ask_whatsapp_home_screen_will_the_question
 O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_closing_message
 O4 -> test_an_older_waiting_message_shows_where_it_stands
-O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again","Founder 2026-10-20: ""one action at a time"", then, after checking the app: the summary without the CTA, Will's liaison before each ask, ""Look, practice makes perfect…"" and the CTA last."
+O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
+O6 -> test_the_plans_lines_wait_for_the_ask_then_come_before_the_closing_message","Founder 2026-10-20: ""one action at a time"", then, after checking the app: the summary without the CTA, Will's liaison before each ask, ""Look, practice makes perfect…"" and the CTA last."
 tests/test_ai_voice.py,Story,"As a speaker practising, I want an AI clip of my own voice saying my own words with one improvement, never shown if it fails its check, and fully deleted when I ask, so that I hear a believable better version and keep control of my voice.","O1  One problem is picked against my own usual (or the default), and the
 sentence under the clip names it in words, with no numbers.
 O2  The clip says my own words (or the clearer version I accepted, with
