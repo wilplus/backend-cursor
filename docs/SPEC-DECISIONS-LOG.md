@@ -7393,3 +7393,26 @@ one: its helper words, as after a praise. Was: the walk moved past it
 No new words on screen (Never 4). The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C2, C4 and H1. No migration in this entry.
+
+**N285 · A line between the walk's moments, and one after the last
+(founder, the Claude Code chat, 30 October 2026, on a phone screenshot of a
+Take 1 walk that went from one moment straight to other speakers: "it
+should be something more like, okay, thank you for that, let's look at your
+next key moment we spotted. And if it's the end of the moments it should
+say These were some real good moments of yours, thanks for that practice -
+we are really moving forward"; then, asked, the end line "After last
+moment, keep summary").** For N120 and N284:
+1. Each moment after the first opens with one grey bubble, "Okay, thank you
+for that, let's look at your next key moment we spotted."
+2. The first step after the last moment (the tempo step, other speakers or
+the summary) opens with "These were some real good moments of yours,
+thanks for that practice – we are really moving forward." The closing
+summary (D) stays where it is and as it is.
+3. Both are told to the chat once, like the hello, and drawn again in a
+walk opened again; never in the coach's own walk.
+Signed (Never 4): the two lines above, the founder's own words. Which
+moments are shown, and that none is skipped, is N284's; neither changes the
+other.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C7a and K. No migration.
