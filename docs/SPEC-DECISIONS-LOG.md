@@ -7278,3 +7278,14 @@ new words.
 The rules: frontend
 [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md),
 the welcome's amendment and its line for N279. No migration.
+
+**N280 · The Ideal Text page: no space under "Close" (founder, the Claude
+Code chat, 30 October 2026, on a phone screenshot of the page and the
+mock-up <https://claude.ai/artifact/Cc5rZ9j3XYu5exRFznvfVL>: "the spacing
+is too big not the buttons"; the space "Under Close"; "Make it zero
+margin").** The bottom bar's own padding under "Close" goes to zero.
+"Record Take N", "Close", their sizes and the gap between them do not
+change, and the phone keeps its own home-bar strip.
+The rules: frontend
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md),
+its line for N280. No migration.
