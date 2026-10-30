@@ -7468,3 +7468,53 @@ No new words on screen (Never 4).
 The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 G13. No migration.
+
+**N289 · Three moments, three jobs: the strongest praised, the weakest
+with the AI clip, the one between with the Clearer version or the Sniper;
+the Sniper on any Take (founder, the Claude Code chat, 30 October 2026,
+on the prototype <https://claude.ai/artifact/RkSC2uBKfgBZGC961Ufnhc>: "Why
+the praise moments get an AI [clip]? Should be the other way around. The
+praise clips just get the praise ... the moments that need to be improved,
+get the AI [clip]"; "a negative [word] has been spotted, or it was too
+fast, that's the second moment ... the rewrite or the sniper, or the
+rewrite and the sniper"; "the third moment, the weakest one, is where we
+display the AI audio"; "do it a sandwich way. First, show the strongest,
+then the weakest, and then the average"; on the Sniper, "it doesn't have
+to start from take two").** For N108, N118, N122, N181, N246 and N284:
+1. **The strongest.** The Take's highest willfidence moment (S × W), as
+picked today. Praise only: "This was your most confident moment.", the
+level line and the cue line that says why it was confident (B01 to B09),
+then its helper words. No AI clip and no practise. Amends N122 ("a praised
+moment is practised too").
+2. **The weakest.** From a paragraph not shown, the moment with the most
+room to grow that can be helped: at least 8 words, a voice read the machine
+is sure of, and an AI clip that can be made; ranked by the paragraph's
+importance × (1 − S × W) × sureness, the dark V4 picker's own rank
+(`services/v4_picker.py`). Line A, then the AI clip with its one tip, up
+to three tries. The AI clip is for this moment only.
+3. **The one between.** Of the paragraphs left, the moment where a words
+error (the rewrite gate's: undermining words, hedges, off the slide, a
+broken sentence; H3) or rushing (the pace scale's stretch) shows: words get
+the Clearer version, rushing gets the Sniper, both get the Clearer version
+first and then the Sniper. The notebook's quote after a Good job on a
+Clearer version stays as N268 says, and nowhere else in the walk (N182).
+4. **The order** is strongest, weakest, then the one between, so the walk
+ends on a precise fix the speaker can land. Replaces C2's "praise first and
+then the corrections".
+5. **Nothing found.** No moment for 3: the next best moment, walked as 1.
+No moment for 2: the next best. A shown moment is never skipped (N284).
+Three moments as N284 says; one confident moment, amending N246's two.
+6. **The Sniper on any Take.** The tempo step comes whenever the pace scale
+finds a stretch (a clip at least a quarter outside the green), Take 1
+included, with or without a plan; replaces N181 item 2's "from Take 2".
+Found on the way: the code never had the Take 2 gate
+(`services/tempo_stretch.tempo_for_take`); only the rule said it. N245's
+"20 s or more" is how long a try must be to land, not a limit on the
+stretch, and does not change. Who has the step stays the rings panel's
+`tempo_step` row; the founder widens it there.
+Open: on a plan, where this week's level goes (N246 item 4); the stretch's
+first line and the replay of the strongest moment inside the weakest, both
+new words (Never 4). No new words on screen in this entry.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2, C4, H1 and T, rewritten when built. Not built yet. No migration.
