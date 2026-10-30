@@ -273,7 +273,7 @@ def _need_step(plan: dict, *steps: str) -> None:
 def _first_plan(plan: dict) -> bool:
     """A new speaker's first plan: begun with no Take (A1)."""
     facts = _facts(plan)
-    return facts.get("mode") == "new" and not facts.get("again")
+    return facts.get("mode") == "new" and facts.get("again") is not True
 
 
 def _takes_seen(plan: dict) -> int:
@@ -548,9 +548,12 @@ MAX_AGAIN = 2
 
 
 def _again(plan: dict) -> tuple[str, int]:
-    """The question Will is on, and how often he asked it again."""
+    """The question Will is on, and how often he asked it again. Its own
+    key: ``again`` is a plan begun again (N178), and a plan begun again
+    has the same questions."""
     at = f"{plan.get('step')}:{len(plan.get('asked') or [])}"
-    seen = dict(_facts(plan).get("again") or {})
+    seen = _facts(plan).get("asked_again")
+    seen = seen if isinstance(seen, dict) else {}
     return at, int(seen.get("n") or 0) if seen.get("at") == at else 0
 
 
@@ -561,7 +564,7 @@ def _not_heard(database: Any, user_id: str, plan: dict) -> dict:
     if n >= MAX_AGAIN:
         plan, rows = _move_on(database, user_id, plan)
         return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
-    plan = _save(database, user_id, plan, {"facts": {**_facts(plan), "again": {"at": at, "n": n + 1}}})
+    plan = _save(database, user_id, plan, {"facts": {**_facts(plan), "asked_again": {"at": at, "n": n + 1}}})
     rows = [_bot(P.COPY["not_heard"], f"not_heard:{_now().isoformat()}")]
     return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
 
@@ -600,7 +603,7 @@ def _put_right(database: Any, user_id: str, plan: dict, answer: dict, said: str,
     facts["will_said"] = {**dict(facts.get("will_said") or {}), str(answer["id"]): back}
     facts["put_right_at"] = len(plan.get("asked") or [])  # one per question (N275)
     at, n = _again(plan)
-    facts["again"] = {"at": at, "n": n + 1}  # asked again, as when nothing is heard (N276)
+    facts["asked_again"] = {"at": at, "n": n + 1}  # asked again, as when nothing is heard (N276)
     plan = _save(database, user_id, plan, {"facts": facts})
     asked = list(plan.get("asked") or [])
     last = asked[-1] if asked else {"bank": "key", "text": P.BANK["key"][0]}

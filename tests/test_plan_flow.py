@@ -312,6 +312,11 @@ def test_a_new_project_asks_whether_it_is_for_the_same_event(db, monkeypatch):
     assert bodies(db)[-2:] == ["No", "When is your deadline?"]
     assert out["plan"]["status"] == "asking"
     assert [p["status"] for p in db.plans] == ["replaced", "asking"]
+    # The new plan's questions take their answers like a first plan's (N276).
+    F.answer_deadline(db, USER, None, tz="UTC")
+    _say(db, "It's our board pitch for two more hires.")
+    _say(db, "We need the hires before spring.")
+    assert len(db.get_open_plan(USER)["asked"]) == 2
 
 
 def test_moving_the_deadline_keeps_the_practices_done(db, monkeypatch):
