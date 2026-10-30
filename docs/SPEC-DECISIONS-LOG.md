@@ -7452,3 +7452,19 @@ and what happens when that coach is away or full (N274 item 7, "a coach
 with many speakers").
 No rules page yet: it lands with the chats' rules page (N274 item 6). No
 migration in this entry.
+
+**N288 · After a Take's ask, the 15 minutes come before "Record Take N"
+(founder, the Claude Code chat, 30 October 2026, on Take 1's chat where
+Will's question had no answers to tap and the ending came at once: "Like,
+come on, something's wrong here"; then, on the prototype
+<https://claude.ai/artifact/XeK5YMTsMnkC3wKLLxVJta>, choosing "B").**
+1. The plan's lines after a practice day's Take ("That's your 15 minutes
+for today." and "Now go and live it, away from the phone.", G13) never land
+over the Take's ask: they wait until it is answered (N89, one action at a
+time).
+2. Then they come, and then the closing message ("Look, practice makes
+perfect…") with "Record Take N", the last thing in the chat.
+No new words on screen (Never 4).
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+G13. No migration.
