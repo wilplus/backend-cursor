@@ -8263,3 +8263,50 @@ answer then teaches Will who answers such questions (N303 item 2).
 No rules page yet: it lands with the chats' rules page (N274 item 6) and the
 customer requests page (frontend `docs/flows/customer-requests.md`). No
 migration in this entry.
+
+**N317 · The vision: a knowledge-dissemination platform built around the
+speaking coaching loop (founder, the Claude Code chat, 31 October 2026, with
+a hand-drawn sketch of the loop, kept at
+`docs/design/customer-requests-2026-10-28/10-the-loop-founder-sketch.jpg`:
+"We are a knowledge dissemination platform it turns out; the goal is that we
+facilitate the communication through the speaking training, and as a result
+of that the model is being trained creating IP for the company, and is
+implementable in whatever the process is in the organization ... I am sharing
+this here just for the context so that it is noted somewhere").** For N250,
+N278, N292 to N297 and N298 to N316:
+1. **The loop at the centre** (the sketch): before the walk, the person's
+onboarding and the company's setup; in the walk, the willfidence algorithm
+(the verbal cues) finds the moment and the picker algorithm the
+intervention; the output (the Ideal Text, a response, guidance, an offer of
+a product, shaped by the company's setup); after the walk, willfidence
+(verbal) again, and the vocal cues from the output, feed the next moment.
+2. **The only "emotion" read is willfidence,** from the vocal and verbal
+cues in context (collaborative prompting without naming emotions, N278).
+External context: the demands of the position, the requests of customers and
+managers, the products and services on offer. Internal context: the
+principles a person has stated and shared in the chat, their strengths, and
+their variables-and-constants approach to life.
+3. **Profiles for matching:** people are profiled, for now into two groups,
+slow learners and fast learners. The profile is used only for behavioural
+matching in the chats: slow with slow to keep the same rhythm; opposite
+profiles on more complex problems, to exchange knowledge and learn each
+other's communication style. It plugs in where Will suggests who to ask
+(N303) and who gets what comes through the business's link (N313, N316).
+4. **The limited chat:** voice and emoji only, between the app's users
+(N298 to N313); Will's chat is the one place to type.
+5. **Seamless:** it fits whatever processes a company already has (links,
+email, N308, N312), and must not add cognitive load or feel like one more
+app people avoid.
+6. **The result:** better communication skills, more empathy and team
+building for the people, and for the company its own AI trained on real
+people's real interactions, as clear, structured data: its IP (N250). Aimed
+at large organisations (Fortune 500), as an alternative to the usual
+knowledge base.
+7. **Kept in view** (Claude's note in the same chat): in the EU, AI that
+infers emotions in the workplace is prohibited (AI Act, Article 5(1)(f)) and
+AI that evaluates workers' behaviour is high-risk; so willfidence and the
+profiles stay voluntary self-coaching with consent, the profile is never
+shown to anyone (Never 1) and never reaches an employer's evaluation of a
+person.
+No rules page: this is the vision the rules pages serve; the matching gets
+its rules when it is designed. No migration in this entry.
