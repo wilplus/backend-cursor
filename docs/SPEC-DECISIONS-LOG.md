@@ -7804,3 +7804,29 @@ bubble looks. Changes come in small steps that fit the code and the docs.
 No rules page yet for the chats (N274 item 6); the picture rule lands on
 frontend `docs/flows/feedback-walk-and-chat.md` with the code change. No
 migration in this entry.
+
+**N298 · No group chats; everyone has the same tools: a recording, an
+emoji, and passing it to anyone (founder, the Claude Code chat, 31 October
+2026: "No group chats. It doesn't matter if someone is a junior or senior.
+Their communication is independent. They have the same features to answer.
+They are no different. They have the same set of tools. They can either
+record something or send an emoji, and that's all. And they can refer it to
+whoever they want. So we just need to design this. How do we send someone
+something to someone? ... How does he choose that person?").** For N256,
+N274, N282 and N294:
+1. No group chats. Every chat is between two people, or a person and Will.
+This settles N294 item 8 and N292's open question.
+2. Everyone has the same tools, whatever their role: outside Will's chat
+they answer with a recording (a Take for a customer, a voice note to a
+colleague) or an emoji, and that is all. Was (N294 item 6): the boss
+answered only with a big emoji or a voice note, and (N282 items 1 to 5) the
+junior and the senior had different tools.
+3. Anyone can pass anything to anyone they choose: a customer's question,
+their own Take, a question of their own. Nothing waits for a senior unless
+the person chooses to ask. This settles N282 item 2 and N294 item 8.
+4. Open: how the person chooses who (a proposal is in the prototype: Will
+suggests the one who has answered things like it before, from the company's
+chats; Someone else lists the people in their chats; Someone new adds anyone
+by email or WhatsApp number), and the words on screen (Never 4).
+No rules page yet: it lands with the chats' rules page (N274 item 6). The
+prototype is the Ember & Air one kept with N294. No migration in this entry.
