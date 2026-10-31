@@ -629,6 +629,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .rstrip .rtrack i { display: block; height: 100%; width: 100%; border-radius: 999px; background: rgba(115,115,115,.4); animation: lr-pulse 2s cubic-bezier(.4,0,.6,1) infinite; }
 .rstrip .rstop { height: 40px; flex: none; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 999px; background: #E0453A; color: #FFFFFF; padding: 0 16px; font: 600 13px var(--font-app); }
 .rstrip .rstop i { width: 14px; height: 14px; border-radius: 3px; background: currentColor; }
+.lrec .pslide { background: #E7E1D7; }
+.lrec .pslide .pimg { position: absolute; inset: 0; }
+.lrec .pslide .pimg svg { display: block; width: 100%; height: 100%; }
+.lrec .pslide .pcap { position: absolute; left: 12px; bottom: 12px; right: 40px; font-size: 13px; font-weight: 600; color: #FFFFFF; background: rgba(0,0,0,.45); border-radius: 999px; padding: 5px 11px; width: fit-content; }
+.lrec .pslide .pg { color: rgba(0,0,0,.45); }
+.lg-b.them .quote .qt { margin-top: 8px; }
 </style>
 
 <div class="app" id="app">
@@ -740,12 +746,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
     { id: "form", ch: "Mark asks", name: "The customer asks", role: "Customer", draw: drawForm, note: ["On your website: a photo, a few words, a number, a tick. Each question becomes its own chat (N294 item 3)."] },
     { id: "sent", ch: "Mark asks", name: "Sent", role: "Customer", draw: drawSent, q: "speed", note: ["The question lands with the juniors."] },
     { id: "j-chats", ch: "Mark asks", name: "Your chats", role: "Junior", draw: drawJChats, note: ["Your chats: Will first, then Mark (a customer, waiting), then Piotr (your colleague)."] },
-    { id: "j-req", ch: "Mark asks", name: "Mark\'s question", role: "Junior", draw: drawJReq, note: ["Mark's chat. Everyone has the same three tools here: pass it to someone (the arrow), an emoji, or record (N298). For a customer, recording is a Take."] },
-    { id: "j-rec", ch: "Mark asks", name: "Your Take", role: "Junior", draw: drawRec, note: ["The locked recording screens: Getting your mic ready, then the Take over the question and the picks, Back and Next slide, Finish take on the last slide, then processing. On Take 1 the slide fills the page, so it is easy to read (N299)."] },
+    { id: "j-req", ch: "Mark asks", name: "Mark\'s question", role: "Junior", draw: drawJReq, note: ["Mark's chat: his question and his two photos, and the conversation with him, nothing else. Everyone has the same three tools here: pass it to someone (the arrow), an emoji, or record (N298). For a customer, recording is a Take."] },
+    { id: "j-rec", ch: "Mark asks", name: "Your Take", role: "Junior", draw: drawRec, note: ["The locked recording screens. On Take 1 every slide fills the page (N299): Mark's question, his two photos, then what you recommend. Then processing."] },
     { id: "walk", ch: "Mark asks", name: "Will\'s feedback walk", role: "Junior", draw: drawWalk, note: ["The locked walk: Will's feedback on one moment, the highest-leverage one; the answer the junior sends is the practised Take (N292 item 4). Then other speakers (C8): three moments from the company, judged in the walk, voice only. Judging happens in the walk, nowhere else."] },
-    { id: "j-send", ch: "Mark asks", name: "Send, or ask someone first", role: "Junior", draw: drawJSend, note: ["Send the Take to Mark, or ask someone first. Will suggests who: Piotr, who has answered questions about the grant before (N299)."] },
+    { id: "j-send", ch: "Mark asks", name: "Will asks: send it to whom?", role: "Junior", draw: drawJSend, note: ["Back in Will's chat after the walk: the Feedback walk, with the Take's Ideal Text under it, and Will's ask: send Take 1 to Mark, or ask someone first. Every ask about a Take is here, where it is clear which Take it means; the chat with Mark holds only the conversation. Will suggests who to ask: Piotr, who has answered questions about the grant before (N299)."] },
     { id: "s-check", ch: "Mark asks", name: "Piotr answers", role: "Senior", draw: drawSCheck, note: ["Piotr's phone. Your Take arrives in his chat with you. Piotr has the same tools as you: an emoji or a voice note; his words appear under it."] },
-    { id: "j-fix", ch: "Mark asks", name: "Take 2", role: "Junior", draw: drawJFix, q: "wa", note: ["Back on your phone, in your chat with Piotr: his answer. You record Take 2 and send it to Mark."] },
+    { id: "j-fix", ch: "Mark asks", name: "Piotr\'s answer, then Take 2", role: "Junior", draw: drawJFix, q: "wa", note: ["Piotr's answer comes into your chat with Will (N294 item 1), under the Take it is about. Will asks: record Take 2? Then: send Take 2 to Mark? It goes to Mark on WhatsApp."] },
     { id: "c-answer", ch: "Mark asks", name: "The customer books", role: "Customer", draw: drawCAnswer, q: "booking", note: ["Mark's phone: he hears your answer and books, in Ember & Air's own systems."] },
     { id: "coach", ch: "Your chat with Will", name: "Your feedback, in Will's chat", role: "Junior", draw: drawCoach, note: ["Your chat with Will holds what your training made, as the app shows it today: the Feedback walk, with the Take's Ideal Text under it; and Marta's note, as your coach (N296, N287). You answer her with a tap."] },
     { id: "learn", ch: "For the owner", name: "What your AI learned", role: "Owner", draw: drawLearn, q: "volume", note: ["Every answer, check, correction and question becomes an example for your own AI. Yours to keep."] },
@@ -810,7 +816,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   function drawSite() { screen.innerHTML = siteBase(); screen.querySelector("#pill").onclick = next; }
   function drawForm() {
     screen.innerHTML = siteBase() + `<div class="wsc"><div class="wpop"><h3>Ask our ${esc(B().role === "your expert" ? "expert" : B().role)}</h3>
-      <div class="ph2"><span class="im" style="background:${B().photo}"></span><span><b>Photo added</b><br><small style="color:#6b6b6b">Only our ${esc(B().role === "your expert" ? "expert" : B().role)} sees it.</small></span></div>
+      <div class="ph2"><span style="display:flex;gap:4px">${thumbs(40)}</span><span><b>2 photos added</b><br><small style="color:#6b6b6b">Only our ${esc(B().role === "your expert" ? "expert" : B().role)} sees it.</small></span></div>
       <div class="fld2">${esc(B().ask)}</div><div class="fld2">${esc(B().cust)}</div><div class="fld2">+44 7700 900142</div>
       <div class="ck2"><i>✓</i><span>${esc(B().site)} may use my photo and words to advise me, and text me the answer.</span></div>
       <button class="go2${cue()}" type="button" id="send">Send</button><span class="by2">WillpowerLab</span></div></div>`;
@@ -837,7 +843,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
     screen.querySelector("#c").onclick = next;
   }
   const chd = (bg, name, sub) => `<div class="chd"><button class="bk" type="button" aria-label="Back">‹</button><span class="av" style="background:${bg}"></span><span class="nm"><b>${esc(name)}</b><small>${esc(sub)}</small></span></div>`;
-  const reqBubble = () => `<div class="lg-day">Today 9:41</div><div class="from"><span class="av sm" style="background:${B().photo}"></span><div class="lg-b them"><div class="quote" style="margin:0;padding:0;background:transparent"><span class="ph" style="width:56px;height:56px;border-radius:8px;flex:none;background:${B().photo}"></span><span class="qt">${esc(B().ask)}<small>··· 0142 · gets your answer on WhatsApp</small></span></div></div></div>`;
+  // Mark's two photos (drawn: the prototype has no real photos)
+  const PH_BOILER = `<svg viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice" width="100%" height="100%"><rect width="300" height="400" fill="#E7E1D7"/><g stroke="#D6CEC1" stroke-width="2">${[0,1,2,3,4,5,6,7].map((k) => `<line x1="0" y1="${50 * k}" x2="300" y2="${50 * k}"/>`).join("")}${[0,1,2,3,4,5,6].map((k) => `<line x1="${50 * k}" y1="0" x2="${50 * k}" y2="400"/>`).join("")}</g><rect x="88" y="70" width="124" height="190" rx="10" fill="#FBFBF8" stroke="#C9C3B8" stroke-width="2"/><rect x="118" y="186" width="64" height="30" rx="4" fill="#20262B"/><text x="150" y="207" text-anchor="middle" font-family="monospace" font-size="16" fill="#7CE38B">55°</text><circle cx="118" cy="236" r="6" fill="#C9C3B8"/><circle cx="182" cy="236" r="6" fill="#C9C3B8"/><g stroke="#B87333" stroke-width="7" stroke-linecap="round"><line x1="112" y1="262" x2="112" y2="400"/><line x1="134" y1="262" x2="134" y2="400"/><line x1="166" y1="262" x2="166" y2="400"/><line x1="188" y1="262" x2="188" y2="400"/></g><rect x="100" y="300" width="100" height="8" rx="3" fill="#8F8A82"/></svg>`;
+  const PH_RAD = `<svg viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice" width="100%" height="100%"><rect width="300" height="400" fill="#EFE9DF"/><rect y="320" width="300" height="80" fill="#B99B78"/><rect y="316" width="300" height="8" fill="#F7F3EC"/><rect x="40" y="170" width="220" height="130" rx="8" fill="#FBFBF8" stroke="#CFC9BE" stroke-width="2"/>${[0,1,2,3,4,5,6,7,8,9].map((k) => `<rect x="${52 + 21 * k}" y="180" width="12" height="110" rx="5" fill="#ECE8E1"/>`).join("")}<rect x="244" y="296" width="14" height="22" rx="4" fill="#C9C3B8"/><circle cx="251" cy="292" r="9" fill="#FBFBF8" stroke="#BDB6AA" stroke-width="2"/><rect x="44" y="296" width="12" height="22" rx="3" fill="#C9C3B8"/></svg>`;
+  const PHOTOS = () => [{ svg: PH_BOILER, cap: "the boiler" }, { svg: PH_RAD, cap: "a radiator" }];
+  const thumbs = (sz = 56) => PHOTOS().map((p) => `<span class="ph" style="width:${sz}px;height:${sz}px;border-radius:8px;flex:none;overflow:hidden;display:block">${p.svg}</span>`).join("");
+  const reqBubble = () => `<div class="lg-day">Today 9:41</div><div class="from"><span class="av sm" style="background:${B().photo}"></span><div class="lg-b them"><div class="quote" style="margin:0;padding:0;background:transparent;flex-direction:column"><span style="display:flex;gap:6px">${thumbs(72)}</span><span class="qt">${esc(B().ask)}<small>··· 0142 · gets your answer on WhatsApp</small></span></div></div></div>`;
   function drawReq() {
     screen.innerHTML = `<div class="bg"></div>${chd(B().photo, B().cust, "Waiting for you")}<div class="lg-area sub" id="lg" style="height:${844 - 64 - 150}px">${reqBubble()}</div>
       <div class="lg-dock"><div class="wa-card"><p class="wa-title">${esc(B().cust)} asks for your advice.</p></div><div class="pair"><button class="close" type="button">Not now</button><button class="act${cue()}" type="button" id="a">Answer</button></div></div>`;
@@ -967,17 +978,20 @@ button { font: inherit; color: inherit; cursor: pointer; }
   const voiceMark = (size) => { const i1 = Math.max(1, Math.round(size * .094)), i2 = Math.max(2, Math.round(size * .1875)), w = Math.round(size * .42); return `<div class="vm" style="width:${size}px;height:${size}px"><span class="r" style="inset:0"></span><span class="r" style="inset:${i1}px;border-color:rgba(18,18,18,.15);animation-delay:.6s"></span><span class="r" style="inset:${i2}px;border-color:rgba(255,106,10,.3);animation-delay:1.2s"></span><svg width="${w}" height="${w}" viewBox="0 0 56 56"><circle cx="12" cy="28" r="4" fill="#121212"/><circle cx="28" cy="28" r="6" fill="#121212"/><circle cx="44" cy="28" r="4" fill="#121212"/></svg></div>`; };
   const RSL = () => [
     { title: `${B().cust}'s question`, line: B().ask, bg: "#0F4A33", mark: "#F26B21" },
+    ...PHOTOS().map((p, k) => ({ photo: p, cap: `${B().cust}'s photo ${k + 1} of ${PHOTOS().length} · ${p.cap}` })),
     { title: B().service, line: `${B().svcMeta} · ${money(B().price)}`, bg: "#0B2350", mark: "#F26B21" },
     { title: B().product, line: `${money(B().prodPrice)} · for home`, bg: "#E2621B", mark: "#FFFFFF" },
   ];
-  const lslide = (i) => { const x = RSL()[i]; return `<div class="slide" style="background:${x.bg};--mark:${x.mark}"><span class="orb"></span><div class="txt"><span class="bar"></span><h3>${esc(x.title)}</h3><p>${esc(x.line)}</p></div><span class="pg">${i + 1}</span></div>`; };
+  const lslide = (i) => { const x = RSL()[i];
+    if (x.photo) return `<div class="slide pslide"><div class="pimg">${x.photo.svg}</div><span class="pcap">${esc(x.cap)}</span><span class="pg">${i + 1}</span></div>`;
+    return `<div class="slide" style="background:${x.bg};--mark:${x.mark}"><span class="orb"></span><div class="txt"><span class="bar"></span><h3>${esc(x.title)}</h3><p>${esc(x.line)}</p></div><span class="pg">${i + 1}</span></div>`; };
   // helper words on Take 2, as the locked screen shows them (picked after Take 1)
-  const ROOTS2 = [["no “definitely”", "the radiators look right"], ["the survey checks the grant", "one hour, free"], ["cuts the gas bill now"]];
+  const ROOTS2 = [["no “definitely”"], ["your boiler"], ["the radiators look right", "two may need to be bigger"], ["the survey checks the grant", "one hour, free"], ["cuts the gas bill now"]];
   function lrecMic(then) { screen.innerHTML = `<div class="lrec"><header class="h"><span class="kicker"></span><button class="x" type="button" aria-label="Close">${ICON_X}</button></header><div class="band"><div class="center">${voiceMark(64)}<p class="lbl">Getting your mic ready</p></div></div></div>`; later(then, 1200); }
   function lrecTake(take, onFinish) {
     let i = 0, t = 0;
-    const paint = () => { const last = i === 2;
-      screen.innerHTML = `<div class="lrec"><header class="h"><p class="where">Take ${take} · Slide ${i + 1} of 3</p><button class="x" type="button" aria-label="Close">${ICON_X}</button></header>
+    const N = RSL().length; const paint = () => { const last = i === N - 1;
+      screen.innerHTML = `<div class="lrec"><header class="h"><p class="where">Take ${take} · Slide ${i + 1} of ${N}</p><button class="x" type="button" aria-label="Close">${ICON_X}</button></header>
         <div class="band rec${take === 1 ? " full" : ""}"><div class="col"><div class="stage"><div class="mv"><div class="slidebox">${lslide(i)}</div><div class="road"><div class="roots">${take === 2 ? ROOTS2[i].map((r) => `<p class="root">${esc(r)}</p>`).join("") : ""}</div></div></div></div>
         <div class="dock"><div class="strip"><span class="dot pulse"></span><span class="clock" id="clk">${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}</span><div class="track"><div class="fill" id="fill" style="width:${Math.min(100, t / 0.6)}%"></div></div></div>
         <div class="pair"><button class="back" type="button" id="bk" ${i ? "" : "disabled"}>Back</button><button class="next${last ? " end" : ""} cue-ring" type="button" id="nx">${last ? "<i></i>Finish take" : "Next slide"}</button></div></div></div></div></div>`;
@@ -1101,12 +1115,13 @@ button { font: inherit; color: inherit; cursor: pointer; }
     chatShell(B().photo, B().cust, "Customer", reqBubble());
     tools({ cue: "mic", onMic: next, onFwd: () => sendTo({ what: `${B().cust}'s question`, why: `${B().expert} has answered questions about the grant before.`, onSent: () => {} }) });
   }
+  // the asks live in Will's chat, where it is clear which Take they mean; the chat with Mark only holds the conversation
   function drawJSend() {
-    chatShell(B().photo, B().cust, "Customer", reqBubble() + takeMine("Your answer · Take 1", 46, 7));
-    meOrange();
-    dockIt(ask(`Send your Take to ${esc(B().cust)}?`, "Or ask someone first.", "Ask someone", "Send", true));
-    screen.querySelector("#l").onclick = () => sendTo({ what: `your Take for ${B().cust}`, why: `${B().expert} has answered questions about the grant before.`, onSent: () => later(next, 1400) });
-    screen.querySelector("#r").onclick = () => { undockIt(); addLg(day(`Sent to ${esc(B().cust)} on WhatsApp · 9:52`)); };
+    chatShell("#F5F5F5", "Will", "Your speaking coach", day("Today 9:51") + walkPair(`Answer to ${B().cust}`, 1, "Today"));
+    screen.querySelector(".chd .av").outerHTML = `<span class="av will"><i></i><i></i><i></i></span>`;
+    dockIt(ask(`Send Take 1 to ${esc(B().cust)}?`, "Or ask someone first.", "Ask someone", `Send to ${B().cust}`, true));
+    screen.querySelector("#l").onclick = () => sendTo({ what: `Take 1, for ${B().cust}`, why: `${B().expert} has answered questions about the grant before.`, onSent: () => later(next, 1400) });
+    screen.querySelector("#r").onclick = () => { undockIt(); addLg(day(`Take 1 sent to ${esc(B().cust)} on WhatsApp · 9:52`)); };
   }
   function drawSCheck() {
     chatShell(AVJ, B().junior, "Your colleague", day("Today 9:52") + theirs(AVJ, `<span class="fwd">Is this good? For ${esc(B().cust)}, a customer</span>${player(46, 7)}“${esc(B().draft)}”`));
@@ -1114,18 +1129,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
   }
   function drawJFix() {
     S.answerer = "junior";
-    chatShell(AVS, B().expert, "Your colleague", day("Today 9:52") + takeMine(`Is this good? For ${B().cust}`, 46, 7) + day("Today 9:57") + theirs(AVS, `${player(11, 3)}${esc(B().correction)}`));
-    meOrange();
+    chatShell("#F5F5F5", "Will", "Your speaking coach", day("Today 9:51") + walkPair(`Answer to ${B().cust}`, 1, "Today") + day(`↪ Take 1 sent to ${esc(B().expert)} · 9:52`) + theirs(AVS, `<span class="fwd">${esc(B().expert)}, about Take 1 for ${esc(B().cust)}</span>${player(11, 3)}${esc(B().correction)}`));
+    screen.querySelector(".chd .av").outerHTML = `<span class="av will"><i></i><i></i><i></i></span>`;
     dockIt(ask(`Record Take 2 for ${esc(B().cust)}?`, "", "Not now", "Record Take 2"));
-    screen.querySelector("#r").onclick = () => lrecMic(() => lrecTake(2, () => {
-      chatShell(B().photo, B().cust, "Customer", reqBubble() + takeMine("Your answer · Take 2", 44, 5));
-      meOrange();
-      dockIt(ask(`Send Take 2 to ${esc(B().cust)}?`, "", "Ask someone", "Send"));
-      screen.querySelector("#r").onclick = () => { undockIt(); addLg(day(`Sent to ${esc(B().cust)} on WhatsApp · 10:04`)); later(next, 1500); };
-    }));
+    screen.querySelector("#r").onclick = () => lrecMic(() => lrecTake(2, () => lrecProc(() => {
+      chatShell("#F5F5F5", "Will", "Your speaking coach", day("Today 10:03") + walkPair(`Answer to ${B().cust}`, 2, "Today"));
+      screen.querySelector(".chd .av").outerHTML = `<span class="av will"><i></i><i></i><i></i></span>`;
+      dockIt(ask(`Send Take 2 to ${esc(B().cust)}?`, "Or ask someone first.", "Ask someone", `Send to ${B().cust}`));
+      screen.querySelector("#r").onclick = () => { undockIt(); addLg(day(`Take 2 sent to ${esc(B().cust)} on WhatsApp · 10:04`)); later(next, 1500); };
+    })));
   }
-  // ---------- Fit the phone ----------
-  const device = document.getElementById("device"), bezel = document.getElementById("bezel"), stage = document.getElementById("stage");
   function fitPhone() { const narrow = innerWidth <= 520; const W = narrow ? 390 : 410, H = narrow ? 844 : 864; const k = Math.min(1, stage.clientWidth / W, (narrow ? Infinity : Math.max(520, innerHeight - 150)) / H); bezel.style.transform = `scale(${k})`; bezel.style.width = W + "px"; bezel.style.height = H + "px"; device.style.width = W * k + "px"; device.style.height = H * k + "px"; }
   new ResizeObserver(fitPhone).observe(stage); addEventListener("resize", fitPhone); fitPhone();
   try { const h = location.hash.slice(1); if (BY()[h]) cur = h; } catch (e) {}

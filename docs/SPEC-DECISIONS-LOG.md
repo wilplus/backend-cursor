@@ -7875,3 +7875,22 @@ Lounge's voice note bar (the time in a white pill and a black send button,
 the same.
 No rules page yet: it lands with the chats' rules page (N274 item 6). The
 prototype is the Ember & Air one kept with N294. No migration in this entry.
+
+**N301 · Asks about a Take live in Will's chat; a chat with someone holds
+only the conversation (founder, the Claude Code chat, 31 October 2026, on a
+screenshot of Mark's chat asking "Send your Take to Mark? Or ask someone
+first.": "but which take? it should be asked on the willpowerlab chat to
+send it to mark and if it asks me here when I am on mark - i dont know which
+take do you mean; when I am on the chat with him don't ask me those things;
+when I am on willpower lab you can ask me to send it to whom").** For N294,
+N298 and N299:
+1. Every ask about a Take (send it to the customer, ask someone first,
+record the next Take) comes in Will's chat, under that Take's Feedback walk
+and Ideal Text, where it is clear which Take it means.
+2. A chat with a customer or a colleague shows only the conversation: what
+they sent and what was sent to them. It never asks.
+3. An answer about a Take (a colleague's voice note) comes into Will's chat
+under the Take it is about (N294 item 1).
+No rules page yet: it lands with the chats' rules page (N274 item 6). The
+prototype is the Ember & Air one kept with N294; it also shows a customer's
+photos, each a full-page slide on Take 1 (N299). No migration in this entry.
