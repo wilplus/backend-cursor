@@ -41,6 +41,12 @@ On a plan (N289 item 8), this week's level takes the slot whose tool fits
 it (``pick(reads, level=...)``): "Say it once" the between, "A voice that
 moves" the weakest; never the strongest's block, never a fourth moment.
 
+The Take's context counts too (N293, ``services.take_context``): a clip that
+carries the key line or the call to action reads a little higher for the
+strongest and a little lower for the fix slots (``RELEVANCE_LIFT``), so the
+praise and the fix land where the talk needs them. Nothing known, nothing
+changes.
+
 A clip with no sound read is not dropped (founder 2026-10-17): its S is
 neutral and its words order it. It can be the strongest, never the weakest.
 
@@ -67,6 +73,10 @@ MIN_WORDS = 5
 SHOWN_LIMIT = 3
 #: The weakest is a whole thought, never a fragment (N289 item 2).
 STRETCH_WORDS = 8
+#: How much a sentence that carries the key line or the call to action
+#: counts for more (N293, ``services.take_context.relevance``): it lifts the
+#: strongest's rank and makes the fix likelier to land on it.
+RELEVANCE_LIFT = 0.25
 #: The two best, which the V3 policy gives a block each (N128, N246 item 1).
 PAIR = 2
 
@@ -87,13 +97,15 @@ SLOT_NEXT = "next"
 NEUTRAL_SOUND = 0.5
 
 
-def read(score: Any, text: Any, metrics: Any, shown: Any = None) -> dict:
+def read(score: Any, text: Any, metrics: Any, shown: Any = None,
+         relevance: float = 0.0) -> dict:
     """S, W and their product for one clip.
 
     ``text`` is the clip's own transcript, which W reads; ``shown`` the
     words the speaker sees for it (the Ideal Text's, after the silent
     smoothing), which the words check reads (N121), the transcript when
-    not given.
+    not given; ``relevance`` how much it serves the talk, 0 to 1, from the
+    Take's context (N293), 0 when nothing is known.
 
     With no sound read (the clip was never stamped: no baseline yet, the
     measure off, or it failed) S is ``NEUTRAL_SOUND`` and ``sound`` is
@@ -109,7 +121,8 @@ def read(score: Any, text: Any, metrics: Any, shown: Any = None) -> dict:
     w = willfidence.partial_w(willfidence.filler(text), willfidence.hedging(text), fit)
     w = 1.0 if w is None else w
     return {"s": s, "w": w, "value": s * w, "sound": sound,
-            "words_help": words_need_help(text if shown is None else shown, fit)}
+            "words_help": words_need_help(text if shown is None else shown, fit),
+            "relevance": max(0.0, min(1.0, float(relevance or 0.0)))}
 
 
 def pick(reads: list[dict], level: Optional[dict] = None) -> dict:
@@ -184,7 +197,8 @@ def _weakest(rows: list[dict]) -> Optional[dict]:
     it was worked on), which comes back only as a next best."""
     heard = [row for row in rows if (row.get("word_count") or 0) >= STRETCH_WORDS
              and row["read"].get("sound", True) and not row.get("held")]
-    return min(heard, key=lambda row: (row["read"]["value"], row["read"]["s"]), default=None)
+    return min(heard, key=lambda row: (row["read"]["value"] * _damp(row), row["read"]["s"]),
+               default=None)
 
 
 def _between(rows: list[dict]) -> Optional[dict]:
@@ -192,7 +206,8 @@ def _between(rows: list[dict]) -> Optional[dict]:
     lowest willfidence; never one that holds its slide's helper words."""
     worded = [row for row in rows if _worded(row) and row["read"].get("words_help")
               and not row.get("held")]
-    return min(worded, key=lambda row: (row["read"]["w"], row["read"]["value"]), default=None)
+    return min(worded, key=lambda row: (row["read"]["w"] * _damp(row), row["read"]["value"]),
+               default=None)
 
 
 def _level_row(rows: list[dict], level: Optional[dict],
@@ -218,9 +233,20 @@ def _rank(row: dict) -> tuple:
     """The strongest's rank: clips with enough words first, whatever their
     voice (a three-word fragment is shown only when a Take has nothing
     longer), then those that do not hold the slide's helper words (N246
-    item 2), then the willfidence, then the voice (N118)."""
-    return (not _worded(row), bool(row.get("held")), -row["read"]["value"],
-            -row["read"]["s"])
+    item 2), then the willfidence, lifted by relevance (N293), then the
+    voice (N118)."""
+    return (not _worded(row), bool(row.get("held")),
+            -row["read"]["value"] * (1 + RELEVANCE_LIFT * _relevance(row)), -row["read"]["s"])
+
+
+def _relevance(row: dict) -> float:
+    return float(row["read"].get("relevance") or 0.0)
+
+
+def _damp(row: dict) -> float:
+    """A relevant sentence reads a little lower for the fix slots, so the
+    fix lands where it matters most to the talk (N293)."""
+    return 1 - RELEVANCE_LIFT * _relevance(row)
 
 
 def _voice_clears(row: dict) -> bool:
