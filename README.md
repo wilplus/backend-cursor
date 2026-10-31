@@ -28,6 +28,10 @@ The founder's direction in one place (N129, N178). Where a rule below says more,
 - **Built:** the loop and the Feedback walk, the coach panel, and the tempo step for the speakers a ring lets in.
   **Decided and held:** the plan's diagnosis, practice days, calls and reminders; the founder holds their build (N147).
 - **Next builds:** not named yet (N178).
+- **Hidden, not removed** (built; switched off until the founder turns it on, so it can come back without a rebuild):
+  the plan's coach calls, their asks, calendar and plan-card lines (ring row `plan_calls`, N315); the Life Panel
+  (`LIFE_PANEL_ENABLED`); self-judging a practice try (off for launch, frontend flow page §3). The rings panel
+  (`/admin/rings`) shows each ring row and its kill switch; `config.py` holds the environment switches.
 
 ## 1. The rules (In force)
 

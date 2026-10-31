@@ -8230,13 +8230,25 @@ The rules: frontend
 B and E1, [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 B, when built. No migration.
 
-**N315 · A question nobody has answered before goes to the owner, or to whom
-the owner picks at setup (founder, the Claude Code chat, 31 October 2026, on
-N313 item 3: "Ok").** For N313:
-1. When something comes through the business's link and nobody in the
-company has answered anything like it yet, it goes to the owner, or to the
-person the owner picked for this at setup. They can pass it on (N302); the
-answer then teaches Will who answers such questions (N303 item 2).
-No rules page yet: it lands with the chats' rules page (N274 item 6) and the
-customer requests page (frontend `docs/flows/customer-requests.md`). No
-migration in this entry.
+**N315 · The plan's coach calls are hidden, not removed (founder, the
+Claude Code chat, 31 October 2026, on the prototype
+<https://claude.ai/artifact/X4gDmGfHH7ivuoRZ9ufiy9>: "Should I offer the
+calendar? Maybe just hide it for now don't remove it just hide it and add to
+the docs with hidden features").** For N157, N161, N248 and N281:
+1. **Hidden:** the two asks ("Every plan starts with a kickoff session with
+your coach. Would you like to book it now?" and "Every learning cycle also
+finishes with a summary session after your deadline. Would you like to
+choose it now?"), their Skip / Book now, the full-screen call calendar, and
+the plan card's two lines ("Kickoff call with your coach", "Summary call
+with your coach"). The plan goes from its last question straight to "You're
+all set. Here's your plan.".
+2. **How:** behind a ring row, `plan_calls`, read by the backend (the plan's
+call steps) and the frontend (the card's call lines). With no row it is off
+for everyone, the founder included; the founder turns it on in the rings
+panel (the tempo step's precedent, N289 item 6). The code and the words stay.
+The deadline's Edit stays.
+3. **Listed** with the other hidden features in [`README.md`](README.md)
+§0, "Hidden, not removed".
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+F, when built. No migration.
