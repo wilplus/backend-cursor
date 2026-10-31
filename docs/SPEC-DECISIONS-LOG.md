@@ -7733,3 +7733,26 @@ seems you enjoy using WillpowerLab."
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 E1, when built. No migration.
+
+**N296 · The bottom of the chat: one design from the app's own pieces, and
+no Skip under Will's questions (founder, 2026-10-31, on the prototype
+<https://claude.ai/artifact/X4gDmGfHH7ivuoRZ9ufiy9>: "or maybe we should not
+give them the option to skip; let's try that", then "the rest is good").**
+Pieces keep their shape in code; they only come or go.
+1. **Nothing asked:** the Lounge's bar as it is: "+", "Type here", the mic.
+2. **Will waits for an answer:** the same bar; the mic fills orange (colour
+only). No Skip: the grey Skip chip in the reply row goes. Tap answers, when a
+question has them, stay orange on the right of the thread. Not answering is
+still allowed: the speaker closes the app, or "+" opens their projects to
+record, so the next Take never waits on Will (Never 3). Replaces N294 items 3
+and 4 on Skip ("a Skip ends them" becomes: not answering ends them).
+3. **Recording:** the walk's recording strip (dot, clock, bar, red Stop)
+with the voice note's trash on its left; the WhatsApp-style bar goes
+(N294 item 9).
+4. **The next Take offered:** the plan's black button with the red dot
+("Start your first recording"'s shape), carrying "Record Take N", alone: no
+bar under it, no button inside a bubble (N294 item 7).
+The plan's footer (PlanDock) is left as it is. No new words.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E1, E2 and B, when built. No migration.
