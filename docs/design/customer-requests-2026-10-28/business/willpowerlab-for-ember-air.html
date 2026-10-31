@@ -578,6 +578,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .lg-b.big-e { background: transparent !important; font-size: 56px; line-height: 1.1; padding: 0 4px; }
 .lg-b.big-e::after { display: none; }
 .cmp .row.only-mic { justify-content: flex-end; }
+.obtn { height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid #DADADA; background: #FFFFFF; font: 500 14px var(--font-app); color: #121212; }
+.wk .bigs button.on { border: 2px solid #121212; font-weight: 600; }
+.wk .aul { align-self: center; margin-top: 10px; border: 0; background: none; font: 400 13px var(--font-app); color: #737373; text-decoration: underline; }
 </style>
 
 <div class="app" id="app">
@@ -691,7 +694,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
     { id: "j-chats", ch: "S1 · A junior answers, and may ask the boss", name: "The junior's chats", role: "Junior", draw: drawJChats, note: ["Three kinds of chat (N295): Will's on top, the customers, the team."] },
     { id: "j-req", ch: "S1 · A junior answers, and may ask the boss", name: "Answer, or ask the boss", role: "Junior", draw: drawJReq, note: ["The junior answers the customer themselves. Asking the boss for help is always there (N294 item 5)."] },
     { id: "j-rec", ch: "S1 · A junior answers, and may ask the boss", name: "The Take", role: "Junior", draw: drawRec, note: ["The locked recording screens: Getting your mic ready, then the Take over the question and the picks, Back and Next slide, Finish take on the last slide, then processing."] },
-    { id: "walk", ch: "S1 · A junior answers, and may ask the boss", name: "Will's feedback", role: "Junior", draw: drawWalk, note: ["The locked walk: one moment, the highest-leverage feedback. The answer the junior sends is the practised Take (N292 item 4).", "Will chose the moment from the chats' context (N293, N295): a new customer from the website, a first answer to a money question, and what the junior's last Takes showed. Will judges how it is said, never what is advised; that is the boss's job."] },
+    { id: "walk", ch: "S1 · A junior answers, and may ask the boss", name: "Will\'s feedback walk", role: "Junior", draw: drawWalk, note: ["The locked walk: Will's feedback on one moment, the highest-leverage one; the answer the junior sends is the practised Take (N292 item 4). Then other speakers (C8): three moments from the company, judged in the walk, voice only. Judging happens in the walk, nowhere else."] },
     { id: "j-send", ch: "S1 · A junior answers, and may ask the boss", name: "Send, or ask: is this good?", role: "Junior", draw: drawJSend, note: ["Send the Take to the customer, or first ask the boss: is this good? (N294 item 5). Whether a junior's first answers must wait for the boss (N282 item 2) is still open."] },
     { id: "s-check", ch: "S1 · A junior answers, and may ask the boss", name: "The boss answers", role: "Senior", draw: drawSCheck, note: ["The boss answers only with a big emoji or a voice note, which Will writes out (N294 item 6). Here, a short correction by voice."] },
     { id: "j-fix", ch: "S1 · A junior answers, and may ask the boss", name: "Take 2", role: "Junior", draw: drawJFix, q: "wa", note: ["The boss's voice note, written out. The junior records Take 2 and sends it to the customer."] },
@@ -701,9 +704,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
     { id: "s-internal", ch: "S4 · The team asks the boss", name: "A question inside the team", role: "Senior", draw: drawSInternal, q: "red", note: ["No customer: the junior asks the boss. A big emoji or a voice note. The team's know-how, written down for the first time (N292 item 2)."] },
     { id: "learn", ch: "S4 · The team asks the boss", name: "What your AI learned", role: "Owner", draw: drawLearn, q: "volume", note: ["Every answer, check, correction and question becomes an example for your own AI. Yours to keep."] },
     { id: "j-practice", ch: "S5 · The junior practises", name: "Practice on a real question", role: "Junior", draw: drawJPractice, note: ["In Will's chat, the one chat where the junior can type. A real past question; the boss's answer is shown only after the junior has answered."] },
-    { id: "k-work", ch: "S6 · Everyone is coached", name: "The speaking coach's work", role: "Coach", draw: drawKWork, note: ["Marta, by her real name, is the personal coach of the people she coaches (N287)."] },
-    { id: "k-review", ch: "S6 · Everyone is coached", name: "Blind first, then her words", role: "Coach", draw: drawKReview, note: ["The locked coach panel: the blind Judge, then her words to the junior. The machine's guess never shows (Never 2)."] },
-    { id: "coach", ch: "S6 · Everyone is coached", name: "The coach's note, in Will's chat", role: "Junior", draw: drawCoach, note: ["The personal coach is inside Will's chat (N274 item 2); the junior answers with a tap (N274 item 4)."] },
+    { id: "k-work", ch: "S6 · Everyone is coached", name: "The coach\'s own chat with Will", role: "Coach", draw: drawKWork, note: ["Marta's own chat is Will's chat, \"Your speaking coach\": the outputs of her own training (her feedback walks, her Ideal Texts) and the reviews that wait for her. No separate \"Your work\"."] },
+    { id: "k-review", ch: "S6 · Everyone is coached", name: "The review, as a walk", role: "Coach", draw: drawKReview, note: ["The review opens from Will's chat as a walk: the locked coach panel's blind Judge, then her words to the junior. The machine's guess never shows (Never 2)."] },
+    { id: "coach", ch: "S6 · Everyone is coached", name: "The coach's note, in Will's chat", role: "Junior", draw: drawCoach, note: ["The junior's Will chat holds the outputs of their training: each Take's feedback walk and Ideal Text, and the personal coach's notes (N274 item 2, N287). The junior answers with a tap."] },
     { id: "o-approve", ch: "S7 · The owner", name: "An approval", role: "Owner", draw: drawOApprove, note: ["The owner answers like every boss: a big emoji or a voice note (N294 item 6)."] },
     { id: "value", ch: "S7 · The owner", name: "The value", role: "Owner", draw: drawValue, q: "metric", note: ["An estimate from your answers, and how the team is doing, in words."] },
     { id: "more", ch: "S7 · The owner", name: "A few more questions", role: "Owner", draw: drawMore, note: ["Optional, a minute. Everything here helps us set it up for you."] },
@@ -838,11 +841,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
     screen.querySelector("#dn").onclick = () => { screen.querySelector(".brw2").remove(); const th = screen.querySelector("#th"); th.insertAdjacentHTML("beforeend", `<div class="b">See you there. Write to me here if anything changes.</div>`); th.scrollTop = th.scrollHeight; };
     screen.querySelector("#buy").onclick = () => toast(`Opens your own checkout with the ${B().product} in the cart.`);
   }
-  function drawWalk() {
-    screen.innerHTML = `<div class="wk"><div class="top"><button class="chev" type="button" disabled>‹</button><span class="cap">Slide 2 · moment 1 of 2</span><button class="chev" type="button">›</button></div>
-      <h1>Good job</h1><div class="au">${player(9, 11)}</div><div class="wb">${esc(B().praise)} Keep that.</div><div class="grow"></div><button class="pill${cue()}" type="button" id="nx">Next</button></div>`;
-    screen.querySelector("#nx").onclick = next;
-  }
   function drawLearn() {
     const v = { "Under 20": 15, "20 to 50": 35, "50 to 150": 100, "More than 150": 200 }[S.answers.volume] || 0;
     const months = v ? Math.max(1, Math.round(100 / v)) : null;
@@ -922,15 +920,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
     S.answerer = "junior"; drawCchat();
     screen.querySelector("#bk2").onclick = drawBook;
     screen.querySelector("#sk").onclick = () => toast(`Opens your own checkout with the ${B().product} in the cart.`);
-  }
-  function drawKWork() {
-    screen.innerHTML = `<div class="bg"></div><div class="lst"><div class="lh"><b>Chats</b></div>
-      <button class="crow" type="button"><span class="av will" style="width:52px;height:52px"><i></i><i></i><i></i></span><span class="mid"><b>Will</b><span class="pv">Your speaking coach</span></span></button>
-      <button class="crow cue-ring" type="button" id="w"><span class="av door" style="width:52px;height:52px">▦</span><span class="mid"><b>Your work</b><span class="pv">3 reviews · ${esc(B().junior)}, ${esc(B().expert)}, and one more</span></span><span class="rt"><span class="ub">3</span></span></button>
-      <p class="sec">Waiting for you</p>
-      <button class="crow" type="button">${av(AVJ)}<span class="mid"><b>${esc(B().junior)}</b><span class="pv">Sent you Take 2 · ${esc(B().cust)}</span></span><span class="rt"><span class="st w">Review</span></span></button>
-      <button class="crow" type="button">${av(AVS)}<span class="mid"><b>${esc(B().expert)}</b><span class="pv">Sent you the answer to ${esc(B().hardCust)}</span></span><span class="rt"><span class="st w">Review</span></span></button></div>`;
-    screen.querySelector("#w").onclick = next;
   }
   function drawKReview() {
     screen.innerHTML = `<div class="rv"><div class="top"><button class="chev" type="button">‹</button><span class="cap">${esc(B().junior)} · part 1 of 2</span><span class="priv">Only you see this</span></div><p class="stp">Judge</p><div class="au">${player(6, 9)}</div><p class="jq2">Does the speaker sound confident here?</p>
@@ -1051,13 +1040,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
     screen.querySelector("#mic").onclick = () => { dockIt(`<div class="lis"><span class="sdot"></span>Recording…<span class="bars">${bars(28, 12, 18)}</span><span class="t">0:15</span></div>`);
       later(() => { undockIt(); addLg(mine(`<b>Your answer</b>${player(15, 12)}`) + `<div class="cmpr"><div><b>You</b>${esc(B().practiceMine)}</div><div class="sr"><b>${esc(B().expert)}</b>${esc(B().practiceSenior)}</div></div>` + `<div class="lg-b">Shown only after you answered. ${esc(B().expert)} named the next step; try that in your next answer.</div>`); meOrange(); }, 1500); };
   }
-  function drawCoach() {
-    const done = S.coachDone;
-    chatShell("#F5F5F5", "Will", "Your speaking coach", `<div class="lg-day">Today 11:20</div><div class="from"><span class="av sm" style="background:${AVK}"></span><div class="lg-b them"><span class="who">Marta · your coach</span><span class="about"><span class="tile" style="background:${B().photo}"></span>Your answer to ${esc(B().cust)} · Take 2</span>${player(18, 4)}Lovely and calm. Next time, slow down on the name of what you recommend: it is what ${esc(B().cust)} has to remember.${done ? '<span class="react">🙏</span>' : ""}</div></div>`);
-    screen.querySelector(".chd .av").outerHTML = `<span class="av will"><i></i><i></i><i></i></span>`;
-    if (!done) { screen.insertAdjacentHTML("beforeend", `<div class="cmp"><div class="emo">${["👍", "✅", "🙏", "👀"].map((e) => `<button type="button" data-e="${e}" class="${e === "🙏" ? "cue-ring" : ""}">${e}</button>`).join("")}</div><div class="sug"><span class="by">Will suggests</span><button type="button">Thank you!</button><button type="button">Show me how</button></div><div class="row"><button class="plus" type="button" aria-label="Add">${ICON.plus}</button><div class="fieldw"><textarea rows="1" placeholder="Type here" aria-label="Message"></textarea><button class="snd" type="button" aria-label="Send">${ICON.send}</button></div><button class="mic" type="button" aria-label="Voice">${ICON.mic}</button></div></div>`); fit();
-      screen.querySelectorAll("[data-e]").forEach((b) => b.onclick = () => { S.coachDone = true; drawCoach(); later(next, 1000); }); }
-  }
   function drawOApprove() {
     chatShell(AVJ, B().junior, B().jrole, day("Today 10:05") + theirs(AVJ, esc(B().approvalQ)));
     bossBar({ cueE: "👍", words: "Yes, go ahead this once. Next time, ask before you offer it.", secs: 7, onEmoji: () => addLg(day(`${esc(B().junior)} sees your 👍`)) });
@@ -1081,6 +1063,36 @@ button { font: inherit; color: inherit; cursor: pointer; }
       dockIt(ask("Ola asks for your advice.", "Your answer goes back to Ola by email, as a link.", `Ask ${B().expert}`, "Answer"));
       screen.querySelector("#r").onclick = () => toast("The Take, Will's feedback, then Send: as in S1.");
     };
+  }
+  // ---------- Will's chat holds the outputs of your training; judging is in the walk ----------
+  const outBubble = (title, sub, cue) => `<div class="from"><span class="av will sm"><i></i><i></i><i></i></span><div class="lg-b them"><span class="about"><span class="tile" style="background:${B().photo}"></span>${esc(title)}</span>${esc(sub)}<span style="display:flex;gap:8px;margin-top:8px"><button type="button" class="obtn${cue ? " cue-ring" : ""}" data-o="walk">Review feedback</button><button type="button" class="obtn" data-o="text">Ideal Text</button></span></div></div>`;
+  // the locked walk, short: a praised moment, then other speakers (C8), judged in the walk
+  function drawWalk() {
+    let k = 0;
+    const paint = () => {
+      if (k === 0) { screen.innerHTML = `<div class="wk"><div class="top"><button class="chev" type="button" disabled>‹</button><span class="cap">Slide 2 · moment 1 of 3</span><button class="chev" type="button">›</button></div>
+        <h1>Good job</h1><div class="au">${player(9, 11)}</div><div class="wb">${esc(B().praise)} Keep that.</div><div class="grow"></div><button class="pill cue-ring" type="button" id="nx">Next</button></div>`;
+        screen.querySelector("#nx").onclick = () => { k = 1; paint(); }; return; }
+      screen.innerHTML = `<div class="wk"><div class="top"><button class="chev" type="button">‹</button><span class="cap">${esc(B().site)} · 1 of 3</span><button class="chev" type="button" disabled>›</button></div>
+        <div class="wb">Now one moment from ${esc(B().site)}.<div class="au" style="margin:8px 0">${player(7, 21)}</div>Does this sound confident to you?</div><div class="grow"></div>
+        <div class="bigs"><button type="button" class="cue-ring" data-j>👍 Yes</button><button type="button" data-j>😐 In-between</button><button type="button" data-j>👎 No</button></div><button type="button" class="aul">Audio unclear</button></div>`;
+      screen.querySelectorAll("[data-j]").forEach((b) => b.onclick = () => { screen.querySelectorAll("[data-j]").forEach((x) => { x.classList.remove("cue-ring"); x.disabled = true; }); b.classList.add("on"); later(next, 700); });
+    };
+    paint();
+  }
+  // the coach's Will chat: her own outputs, and the review that waits for her
+  function drawKWork() {
+    chatShell("#F5F5F5", "Will", "Your speaking coach", day("Yesterday") + outBubble("Take 4 · Team update", "Your feedback walk and your Ideal Text.") + day("Today 11:20") + `<div class="from"><span class="av will sm"><i></i><i></i><i></i></span><div class="lg-b them"><span class="about"><span class="tile" style="background:${B().photo}"></span>${esc(B().junior)} · Take 2 for ${esc(B().cust)}</span>${esc(B().junior)} sent you a Take to review.<span style="display:flex;gap:8px;margin-top:8px"><button type="button" class="obtn cue-ring" id="rv">Review</button></span></div></div>`);
+    screen.querySelector(".chd .av").outerHTML = `<span class="av will"><i></i><i></i><i></i></span>`;
+    screen.querySelector("#rv").onclick = next;
+  }
+  function drawCoach() {
+    const done = S.coachDone;
+    chatShell("#F5F5F5", "Will", "Your speaking coach", day("Today 10:06") + outBubble(`Take 2 · for ${B().cust}`, "Your feedback walk and your Ideal Text.") + `<div class="lg-day">Today 11:20</div><div class="from"><span class="av sm" style="background:${AVK}"></span><div class="lg-b them"><span class="who">Marta · your coach</span><span class="about"><span class="tile" style="background:${B().photo}"></span>Your answer to ${esc(B().cust)} · Take 2</span>${player(18, 4)}Lovely and calm. Next time, slow down on the name of what you recommend: it is what ${esc(B().cust)} has to remember.${done ? '<span class="react">🙏</span>' : ""}</div></div>`);
+    screen.querySelector(".chd .av").outerHTML = `<span class="av will"><i></i><i></i><i></i></span>`;
+    if (!done) { screen.insertAdjacentHTML("beforeend", `<div class="cmp"><div class="emo">${["👍", "✅", "🙏", "👀"].map((e) => `<button type="button" data-e="${e}" class="${e === "🙏" ? "cue-ring" : ""}">${e}</button>`).join("")}</div><div class="sug"><span class="by">Will suggests</span><button type="button">Thank you!</button><button type="button">Show me how</button></div><div class="row"><button class="plus" type="button" aria-label="Add">${ICON.plus}</button><div class="fieldw"><textarea rows="1" placeholder="Type here" aria-label="Message"></textarea><button class="snd" type="button" aria-label="Send">${ICON.send}</button></div><button class="mic" type="button" aria-label="Voice">${ICON.mic}</button></div></div>`); fit();
+      screen.querySelectorAll("[data-e]").forEach((b) => b.onclick = () => { S.coachDone = true; drawCoach(); later(next, 1000); }); }
+    screen.querySelectorAll("[data-o]").forEach((b) => b.onclick = () => go(b.dataset.o === "walk" ? "walk" : "coach"));
   }
   // ---------- Fit the phone ----------
   const device = document.getElementById("device"), bezel = document.getElementById("bezel"), stage = document.getElementById("stage");

@@ -7757,3 +7757,24 @@ context picks the moment and the intervention.
 No rules page yet: it lands with the chats' rules page (N274 item 6), and
 the moment and intervention rules with the walk's page when they are
 decided. No migration in this entry.
+
+**N296 · Judging is in the walk; there is no "Your work"; Will's chat holds
+the outputs of your training (founder, the Claude Code chat, 31 October
+2026, on the Ember & Air prototype: "judgment should be in the walk. So if
+it is in the walk, it should not be displayed in the your work, something
+like your work. It's not here. It's actually in the your speaking coach.
+Where you can also have your feedback walks. And ideal texts. So like the
+outputs of your training.").** For N274 and N294:
+1. Judging is in the walk: the other speakers' moments (frontend
+`docs/flows/feedback-walk-and-chat.md` C8), and a coach's review opens as a
+walk. It is not a separate chat or door. Was (N274 item 5): "Blind · Do you
+hear it?" as a pinned chat.
+2. There is no "Your work" chat (the pinned row the chats prototype gave a
+coach).
+3. Will's chat, "Your speaking coach", holds the outputs of a person's
+training: each Take's feedback walk and Ideal Text, the personal coach's
+notes (N287), and, for a coach, the reviews that wait for them.
+4. Open: the training corpus and Will's questions, the coach's and the
+founder's other doors (N274 item 5).
+No rules page yet: it lands with the chats' rules page (N274 item 6). The
+prototype is the Ember & Air one kept with N294. No migration in this entry.
