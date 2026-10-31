@@ -8143,3 +8143,47 @@ my link", "Invite by email", "{Name} asks you to join them on WillpowerLab",
 4. Open: whether a customer can be invited by a link too (N308 item 4).
 No rules page yet: it lands with the chats' rules page (N274 item 6). The
 prototype is the Ember & Air one kept with N298. No migration in this entry.
+
+**N311 · Three emoji with one meaning each; help slide by slide; the helper
+hears how it ended (founder, the Claude Code chat, 31 October 2026, on the
+Ember & Air prototype's three fixes from the audit of the chats between
+users: "ok").** For N302, N305 and N310:
+1. **Three emoji, one meaning each, everywhere:** 👍 it's good (on a Take,
+it also says it can go), 👀 seen, I'll answer, 🙏 thanks. A sent emoji shows
+its meaning under it. Each tap is a clean label the company's AI can learn
+from. Was (N306 item 2): 👍 ✅ 🙏 👀 with no fixed meaning.
+2. **Help slide by slide:** a Take sent to a colleague arrives as its
+slides, each with its stretch of voice and its words. The colleague taps 👍
+on a slide that is fine, or holds the mic on one that is not; the answer
+lands on that slide, in the chat and in the asker's chat with Will (N305).
+3. **The helper hears how it ended:** when the customer books or buys, the
+helper's chat with the asker says so. It rewards the helper and teaches Will
+whose advice works, for its suggestion of who to ask (N303).
+4. Signed (Never 4): "It's good", "Seen, I'll answer", "Thanks", "On slide
+{N}", "Is this good? Take {N} for {customer}, a customer", "{Customer}
+booked the {item}, after Take {N}.".
+No rules page yet: it lands with the chats' rules page (N274 item 6). The
+prototype is the Ember & Air one kept with N298. No migration in this entry.
+
+**N312 · Customers come in by a link too: the ask link (founder, the Claude
+Code chat, 31 October 2026, on whether a customer can be invited by a link:
+"i guess both but you decide as the best product adoption specialist in the
+world").** For N236, N298, N308 and N310 item 4:
+1. Customers come both ways: the website's pop-up, and an ask link. The ask
+link opens a small page (a question, photos, a number and the tick, as the
+pop-up has), with no account and no app; what is sent becomes a customer's
+chat.
+2. Each person has their own ask link (to them), to paste into quote
+emails, invoices, an email signature or a WhatsApp reply; the business has
+one (to its team). The website's pop-up is the business's ask link, built in.
+3. Two links, so nobody has to choose: the join link (N308) brings a
+colleague into the app; the ask link brings a customer to a question.
+4. Why (the decision Claude was asked to make): the link works on day one
+for any business without touching its website, travels in the emails it
+already sends, and keeps a customer with the advisor who earned their
+trust.
+5. Open: the words of the ask page, and who answers what comes through the
+business's link (N295 item 3, Will's suggestion).
+No rules page yet: it lands with the chats' rules page (N274 item 6) and the
+customer requests page (frontend `docs/flows/customer-requests.md`). The
+prototype shows both links in the add sheet. No migration in this entry.
