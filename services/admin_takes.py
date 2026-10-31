@@ -8,8 +8,11 @@ Admin only. These numbers never reach a speaker (CLAUDE.md, never #1).
                           measures plus averages of its pieces' acoustic
                           blobs, its AI clip (the problem practised and the
                           next try's outcome; for fillers, hesitations per
-                          100 words before and after), and the person's
-                          current acoustic baseline
+                          100 words before and after), its anchored
+                          willfidence and the fixes it gave with whether
+                          each came back on the next Take
+                          (``services.take_progress``, N291), and the
+                          person's current acoustic baseline
   pieces(user_id, sid)    one Take's pieces, each with every measure stored
   transcripts_export(uid) every Take's full transcript, ONLY while the person
                           holds the training yes (founder 2026-10-26, WIL-110;
@@ -28,6 +31,9 @@ from services.db import db
 logger = logging.getLogger(__name__)
 
 MAX_TAKES = 200
+#: The newest Takes whose fixes are checked against the next Take (two
+#: frame reads each).
+MAX_FIX_TAKES = 40
 
 #: The most characters of a Take's transcript on its row (one line).
 PREVIEW_CHARS = 160
@@ -116,9 +122,36 @@ def _ai_clips(user_id: str) -> dict[str, dict]:
     return out
 
 
+def _anchored(pieces: list[dict], reference: Optional[dict]) -> Optional[int]:
+    """The Take's anchored willfidence in whole percent (N291 item 2)."""
+    from services.take_progress import anchored_willfidence
+    value = anchored_willfidence(pieces, reference)
+    return round(100 * value) if value is not None else None
+
+
+def _next_takes(sessions: list[dict]) -> dict[str, str]:
+    """Each Take's next Take of the same talk, by id."""
+    by_arc: dict[str, list[dict]] = {}
+    for s in sessions:
+        if s.get("arc_id"):
+            by_arc.setdefault(str(s["arc_id"]), []).append(s)
+    out: dict[str, str] = {}
+    for takes_ in by_arc.values():
+        ordered = sorted(takes_, key=lambda s: (s.get("take_index") or 0, str(s.get("created_at") or "")))
+        for here, after in zip(ordered, ordered[1:]):
+            out[str(here["id"])] = str(after["id"])
+    return out
+
+
 def takes(user_id: str) -> dict:
+    from services.take_progress import fix_outcomes, frozen_reference
     sessions = db.takes.list_sessions_for_user_admin(user_id)[:MAX_TAKES]
     pieces = db.get_snippets_by_sessions([s["id"] for s in sessions])
+    oldest = sorted(sessions, key=lambda s: str(s.get("created_at") or ""))
+    reference = frozen_reference([[p.get("metrics") for p in pieces.get(str(s["id"])) or []]
+                                  for s in oldest if pieces.get(str(s["id"]))])
+    next_of = _next_takes(sessions)
+    fix_ids = {str(s["id"]) for s in sessions[:MAX_FIX_TAKES]}
     clips = _ai_clips(user_id)
     try:
         names = _projects({str(s["project_id"]) for s in sessions if s.get("project_id")})
@@ -147,6 +180,9 @@ def takes(user_id: str) -> dict:
             "transcript": _preview(_slide_texts(s, own)),
             "piece_means": _piece_means(own),
             "willfidence": _willfidence(own),
+            "willfidence_anchored": _anchored(own, reference),
+            "fixes": (fix_outcomes(db, s["id"], next_of.get(str(s["id"])))
+                      if str(s["id"]) in fix_ids else []),
             "ai_clip": clips.get(str(s["id"])),
         })
     baseline = None

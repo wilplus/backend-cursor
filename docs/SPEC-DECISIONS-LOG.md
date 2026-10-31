@@ -7675,222 +7675,51 @@ The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 H1. No migration.
 
-**N294 · The chat, voice-led and simple: everyone starts with Will, adds
-people by email or WhatsApp number, answers with a button or a practised
-Take, may ask the boss "is this good?", and the boss answers with a big
-emoji or a voice note (founder, the Claude Code chat, 31 October 2026: "if
-you get the answer from the manager or from the client in the chat it gets
-automatically included to your own chat"; "the messages (inquiries) are
-coming ... as the separate messages just like on whatsapp"; "we should let
-them type too ... just nudge them that speaking works much faster", then
-"so everyone at the beginning has just one chat - this is the chat with
-Will; and then you can add the other user you want to chat with by typing
-their email or whatsapp number; and that person receives a link to join
-willpowerlab; and your chat is basically a controlled environment for
-learning; and when that's the inquiry from the customer you just participate
-in the chat and you have an option to ask the boss for the help and you can
-send like did that what I send was good? and the boss can answer only with a
-big emoji or a voice message that is transcribed", then "it is like a slack
-but with built in buttons and interaction that are not typing the main idea
-it is guided through AI - voice led and no typing - it is NOT flexible it is
-focused on the implicit knowledge dissemination; it must be super stupid
-simple to use").** For N256, N274, N278, N282 and N292:
-1. On day one everyone has one chat, Will's: their own chat, a controlled
-place to learn, and the one chat where they can type (N292 item 3). An
-answer meant for them, from a boss or a customer in any other chat, is also
-copied there, with a link back to where it was said.
-2. A person adds someone to chat with by typing that person's email or
-WhatsApp number; the person gets a link to join WillpowerLab. This answers
-"who adds a contact" (N274 item 7): anyone.
-3. Each inquiry from the business's website pop-up arrives as its own chat,
-as a new message does on WhatsApp (as N256 item 1).
-4. Outside Will's chat there is no typing: a button Will offers, or a
-practised Take (record, Will's feedback in words, record again if they like,
-then send the Take they choose). The founder first allowed typing with a
-nudge to speak, then took it back the same morning. Was (N278 item 2): typed
-words with a clearer version, and a voice answer that Will turned into a
-message.
-5. In a customer's chat the person answers the customer themselves. Two
-options are always there: ask the boss for help, and ask the boss "is this
-good?" about an answer, before or after sending it.
-6. The boss (a senior, the owner) answers only with a big emoji or a voice
-note, which Will writes out. Was (N278 item 3): an emoji and two short
-phrases.
-7. It is not flexible on purpose: few buttons, voice first, built to pass on
-the experts' implicit knowledge (N292 item 2). Every screen must be simple
-enough to use without being taught.
-8. Open: whether a junior's answer still waits for the senior before it
-reaches the customer (N282 item 2), or "is this good?" is now always the
-junior's choice (the prototype shows it as the junior's choice); and group
-chats (N256 says none).
-No rules page yet: it lands with the chats' rules page (N274 item 6). The
-prototype, kept as N229 says:
-`docs/design/customer-requests-2026-10-28/business/willpowerlab-for-ember-air.html`
-and `9-ember-and-air.pdf` (an invented heat pump installer). No migration in
-this entry.
-
-**N295 · Three kinds of chat, and outside people come in the company's own
-way (founder, the Claude Code chat, 31 October 2026: "this is the feature
-for the collaborative feature that influences the key loop; please design it
-as such; there are 3 types of chats: Will Coach, internal members of the
-team, and external such as customers; the internal and external are added in
-different ways external come whatever way the company chooses through an
-email or contact form or popup or else being simply redirected ... to the
-chat (sort of like willpowerlab is added to the conversation) actually I am
-not sure how to grasp it? that is my main concern how do we integrate the
-WillpowerLab in whatever the process is").** For N292, N293 and N294:
-1. Three kinds of chat: Will's (the coach; everyone's own chat, N294 item
-1); internal (members of the team, invited by email or WhatsApp number, N294
-item 2); external (customers and other outside people).
-2. Each kind gives the loop (N292 item 6) its own context: Will's chat the
-person's state and needs; internal chats the boss's answers and the
-questions the person asks; external chats who was asked what, the stakes,
-and what happened after. That context chooses which moment matters and which
-kind of intervention fits; the chats plug in as sources of each Take's
-context (N293 item 2).
-3. External people come the way the company already works (an email, a
-contact form, a pop-up, a redirect); WillpowerLab joins that conversation
-rather than replacing it.
-4. Open, for the founder: how WillpowerLab joins those conversations (a
-proposal is in the chat of 31 October 2026), and the rules for how chat
-context picks the moment and the intervention.
-No rules page yet: it lands with the chats' rules page (N274 item 6), and
-the moment and intervention rules with the walk's page when they are
-decided. No migration in this entry.
-
-**N296 · Judging is in the walk; there is no "Your work"; Will's chat holds
-the outputs of your training (founder, the Claude Code chat, 31 October
-2026, on the Ember & Air prototype: "judgment should be in the walk. So if
-it is in the walk, it should not be displayed in the your work, something
-like your work. It's not here. It's actually in the your speaking coach.
-Where you can also have your feedback walks. And ideal texts. So like the
-outputs of your training.").** For N274 and N294:
-1. Judging is in the walk: the other speakers' moments (frontend
-`docs/flows/feedback-walk-and-chat.md` C8), and a coach's review opens as a
-walk. It is not a separate chat or door. Was (N274 item 5): "Blind · Do you
-hear it?" as a pinned chat.
-2. There is no "Your work" chat (the pinned row the chats prototype gave a
-coach).
-3. Will's chat, "Your speaking coach", holds the outputs of a person's
-training: each Take's feedback walk and Ideal Text, the personal coach's
-notes (N287), and, for a coach, the reviews that wait for them.
-4. Open: the training corpus and Will's questions, the coach's and the
-founder's other doors (N274 item 5).
-No rules page yet: it lands with the chats' rules page (N274 item 6). The
-prototype is the Ember & Air one kept with N294. No migration in this entry.
-
-**N297 · No sender picture beside a bubble, anywhere; the chats reuse the
-chat design in the code (founder, the Claude Code chat, 31 October 2026, on
-a screenshot of the Ember & Air prototype with a picture beside Will's and
-the coach's bubbles: "remove those and lock it for this repository that
-bubbles are without the pic of a sender; or look for it in the code how it
-looks for example on the feedback walk, the same without the image of the
-sender or a receiver should be here; please make sure the design generally
-here is just like the one locked in the code; what I want from you is to
-build ON that ... change the structure of the flow of the conversation but
-use the already existing design of the chat that is in the code ... I want
-incremental changes not revolutions in the code").** For the locks of
-2026-10-12 and the founder's of 2026-10-14:
-1. No bubble shows a picture of its sender or receiver: not the app's (gone
-since 2026-10-14), and now not the coach's either. Who wrote a bubble shows
-in its words (as the walk's "Your coach:"), never in a picture. In the code
-this retires the coach's grey-blue silhouette in the Lounge (`ChatAvatar`)
-and in the walk and the coach panel (`WalkAvatar`). Was (lock of 2026-10-12,
-founder 2026-10-14): only the coach kept the picture.
-2. The chats of N274 and N292 to N296 are built on the chat design in the
-code as it stands (the Lounge's bubbles, asks and composer, the walk, the
-recording screens): they change how the conversation flows, never how a
-bubble looks. Changes come in small steps that fit the code and the docs.
-No rules page yet for the chats (N274 item 6); the picture rule lands on
-frontend `docs/flows/feedback-walk-and-chat.md` with the code change. No
-migration in this entry.
-
-**N298 · No group chats; everyone has the same tools: a recording, an
-emoji, and passing it to anyone (founder, the Claude Code chat, 31 October
-2026: "No group chats. It doesn't matter if someone is a junior or senior.
-Their communication is independent. They have the same features to answer.
-They are no different. They have the same set of tools. They can either
-record something or send an emoji, and that's all. And they can refer it to
-whoever they want. So we just need to design this. How do we send someone
-something to someone? ... How does he choose that person?").** For N256,
-N274, N282 and N294:
-1. No group chats. Every chat is between two people, or a person and Will.
-This settles N294 item 8 and N292's open question.
-2. Everyone has the same tools, whatever their role: outside Will's chat
-they answer with a recording (a Take for a customer, a voice note to a
-colleague) or an emoji, and that is all. Was (N294 item 6): the boss
-answered only with a big emoji or a voice note, and (N282 items 1 to 5) the
-junior and the senior had different tools.
-3. Anyone can pass anything to anyone they choose: a customer's question,
-their own Take, a question of their own. Nothing waits for a senior unless
-the person chooses to ask. This settles N282 item 2 and N294 item 8.
-4. Open: how the person chooses who (a proposal is in the prototype: Will
-suggests the one who has answered things like it before, from the company's
-chats; Someone else lists the people in their chats; Someone new adds anyone
-by email or WhatsApp number), and the words on screen (Never 4).
-No rules page yet: it lands with the chats' rules page (N274 item 6). The
-prototype is the Ember & Air one kept with N294. No migration in this entry.
-
-**N299 · On Take 1 the slide fills the page; Will suggests who to send to;
-the words for sending approved (founder, the Claude Code chat, 31 October
-2026, on a screenshot of Take 1's recording screen with a small slide and an
-empty page under it: "ok, on the first take make it full page slides so they
-are easy to read", then "apply what you suggested you have my green light
-for those!").** For N70, N298 and Never 4:
-1. On Take 1, when no helper words sit under the slide, the slide fills the
-page between the "Take · Slide" line and the recording strip, its words
-larger, so it is easy to read while speaking. Take 2 keeps the 16:9 slide
-with its helper words under it, as locked. A change to the locked recording
-screens, approved here (N70). Open: how a picture slide from a speaker's own
-deck fills the page.
-2. Choosing who to send something to (N298 item 4): Will suggests one
-person, the one who has answered things like it before in the company's
-chats (N295); one tap asks them. Someone else lists the people in the
-person's chats, and Someone new adds anyone by email or WhatsApp number
-(N294 item 2). The answer comes back to the one who asked, in the chat it
-was about and in their chat with Will (N294 item 1).
-3. The words are approved (Never 4): "Ask {name}?", "{Name} has answered
-questions about {topic} before.", "Someone else", "Ask {name}", "Send it
-to", "Someone new", "Their email or WhatsApp number", "Ask someone", "Or ask
-someone first.", "Send {name}'s answer to {customer}? Or record your own.",
-"Record my own".
-No rules page yet: the chats' rules page comes with N274 item 6; Take 1's
-slide lands on frontend `docs/flows/recording-screens.md` with the code
-change. The prototype is the Ember & Air one kept with N294. No migration in
-this entry.
-
-**N300 · One recording bar everywhere: the code's recording strip (founder,
-the Claude Code chat, 31 October 2026, on a screenshot of the trash, the
-dot, the time, the track and the red Stop: "unify the recording pls just
-like it is here").** For N294, N298 and N299:
-1. Every short recording in the chats (a voice note to a colleague, an
-answer by voice) uses the recording strip the walk's practice, the tempo
-step and the plan already use (frontend
-`src/components/willab/walk/RecordingStrip.tsx`): the trash on the left,
-then the grey strip with the pulsing dot, the time, the track and the red
-Stop. Stop sends it; the words heard appear under the voice (N275). Was: the
-Lounge's voice note bar (the time in a white pill and a black send button,
-`VoiceNoteBar`, founder 2026-10-20), which this replaces in the chats.
-2. A Take keeps the locked recording screens (N70, N299), whose strip is
-the same.
-No rules page yet: it lands with the chats' rules page (N274 item 6). The
-prototype is the Ember & Air one kept with N294. No migration in this entry.
-
-**N301 · Asks about a Take live in Will's chat; a chat with someone holds
-only the conversation (founder, the Claude Code chat, 31 October 2026, on a
-screenshot of Mark's chat asking "Send your Take to Mark? Or ask someone
-first.": "but which take? it should be asked on the willpowerlab chat to
-send it to mark and if it asks me here when I am on mark - i dont know which
-take do you mean; when I am on the chat with him don't ask me those things;
-when I am on willpower lab you can ask me to send it to whom").** For N294,
-N298 and N299:
-1. Every ask about a Take (send it to the customer, ask someone first,
-record the next Take) comes in Will's chat, under that Take's Feedback walk
-and Ideal Text, where it is clear which Take it means.
-2. A chat with a customer or a colleague shows only the conversation: what
-they sent and what was sent to them. It never asks.
-3. An answer about a Take (a colleague's voice note) comes into Will's chat
-under the Take it is about (N294 item 1).
-No rules page yet: it lands with the chats' rules page (N274 item 6). The
-prototype is the Ember & Air one kept with N294; it also shows a customer's
-photos, each a full-page slide on Take 1 (N299). No migration in this entry.
+**N294 · After the walk: Will asks about the moment, the speaker answers in
+their own words, nothing pushes the next Take, and settings wait for the next
+visit (founder, the Claude Code chat, 31 October 2026, on the prototype
+<https://claude.ai/artifact/X4gDmGfHH7ivuoRZ9ufiy9>: "let your north star be
+to get as much context as possible so the next moment is chosen correctly;
+and make the conversation flow"; "these questions, they should be related to
+the moment that has been asked"; "I signed the new lines"; "No call to
+action means that there is no push"; "they can be only one at a time. Only
+once you answer"; "the next time you come and open the app ask the settings
+questions").** For E1, E2, N82, N89, N94, N171, N189 and N293:
+1. **Will's question is about the moment** the walk just worked on, as close
+as possible: it quotes the speaker's words ("When you said "…", …", "We just
+worked on "…". …"), and its tap answers come from that moment first.
+2. **The key line is recorded.** Will asks the plan's signed question ("If
+your audience remembers one sentence from you, what is it? Say it the way
+you'll say it.") and the speaker answers with a voice message; no answer is
+offered to tap.
+3. **A follow-up is answered in the speaker's own words,** typed or recorded;
+no tap answers. While Will waits for an answer, the microphone is the main
+way to answer (orange, larger) and typing stays; Skip is quiet grey text on
+the left of the message box, never in the reply spot on the right where the
+speaker's own messages go, so it never reads as the default (style only, no
+new words). Tap answers, when a question has them, stay on the right.
+4. **One at a time.** One question or ask is on screen at a time; the next
+comes only once the one before is answered. A second context question may
+follow an answered first one; a Skip ends them.
+5. **Will says back who the talk is for:** "{who}. I'll keep them in mind."
+(signed). Other answers keep "Got it, thanks 🙏".
+6. **No push to the next Take.** The closing message ("Look, practice makes
+perfect…", N89) goes. The walk's chat ends on "Good job. See you next time."
+(signed) with "I want to continue my practice" (signed); tapping it, or
+typing that they want to practise, brings "Record Take N". The speaker may
+simply close the app.
+7. **"Record Take N" is a button under the chat,** full width, like
+"Continue review"; no bubble carries a button. While it shows, the message
+box and the microphone are gone: the button stands alone.
+8. **Settings asks wait for the next visit.** WhatsApp and the home screen
+are never asked after a Take: they come the next time the speaker opens the
+app, one at a time, and never before their second Take (WhatsApp first, the
+home screen last). Consent is not a settings ask and stays where it is.
+Replaces N171's WhatsApp ask from Take 1 and E1's asks after a Take.
+9. **One recording design.** The chat's microphone takes the Take's own
+recording strip (the pulsing dot, the clock, the bar, the red Stop), as the
+walk's practice already does; the WhatsApp-style bar goes. "Stop" is signed.
+Signed (Never 4): the lines in items 1, 5 and 6.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E1, E2 and B, when built. No migration.
