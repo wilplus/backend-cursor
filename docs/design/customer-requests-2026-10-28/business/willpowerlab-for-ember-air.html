@@ -612,6 +612,34 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .mail .mbar button { flex: 1; height: 44px; border-radius: 999px; border: 1px solid #DADADA; background: #FFFFFF; font: 500 15px var(--font-app); color: #121212; }
 .mail .mbar .snd2 { background: #121212; color: #FFFFFF; border-color: #121212; }
 .cv .bars i.hl { background: #FFB27F; } .cv .bars i.hl.on { background: #FF640A; }
+.holdb { width: 100%; height: 54px; border-radius: 999px; border: 0; background: #FF640A; color: #FFFFFF; display: flex; align-items: center; justify-content: center; gap: 10px; font: 600 16.5px var(--font-app); }
+.holdb.on { background: #E0453A; }
+.lg-b.priv { background: #FFF4EC; }
+.lg-dock .actbig { width: 100%; height: 52px; border-radius: 999px; border: 0; background: #121212; color: #FFFFFF; font: 600 16px var(--font-app); }
+.lg-dock .links { display: flex; justify-content: center; gap: 18px; }
+.lg-dock .links button { border: 0; background: none; color: #A83E00; font: 500 14.5px var(--font-app); padding: 6px 4px; }
+.cv .why3 { font-size: 12.5px; color: #737373; }
+.cv .bars i.fx { background: #2F7D4F; }
+.rs2 { position: absolute; inset: 0; background: #FFFFFF; padding: 26px 16px 28px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; font-family: var(--font-app); }
+.rs2 .k3 { margin: 0; font-size: 12.5px; color: #737373; }
+.chips3 { display: flex; flex-wrap: wrap; gap: 6px; } .chips3 span { font-size: 13px; padding: 5px 10px; border-radius: 999px; border: 1px solid #EBEBEB; } .chips3 span.r { border-color: #FFD2B5; background: #FFF4EC; color: #A83E00; }
+.slide3 { width: 100%; aspect-ratio: 16/9; border-radius: 16px; border: 1px solid #EBEBEB; overflow: hidden; }
+.dots3 { display: flex; justify-content: center; gap: 6px; } .dots3 i { width: 7px; height: 7px; border-radius: 50%; background: #E0E0E0; } .dots3 i.on { background: #FF640A; }
+.rs2 .moved { margin: 0; text-align: center; font-size: 12.5px; color: #A83E00; min-height: 16px; }
+.rs2 .heard { margin: 0; font-size: 17px; line-height: 1.4; color: #121212; min-height: 48px; }
+.rs2 .grow { flex: 1; }
+.q3 { position: absolute; left: 0; right: 0; top: 64px; bottom: 100px; padding: 18px 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; font-family: var(--font-app); }
+.q3 .k3 { margin: 0; font-size: 12.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #737373; }
+.q3 .qq { display: flex; gap: 10px; font-size: 14px; color: #3D3D3D; background: #F5F5F5; border-radius: 12px; padding: 10px; } .q3 .qq i { width: 44px; height: 44px; border-radius: 8px; flex: none; }
+.q3 .pl3 { display: flex; align-items: center; gap: 8px; } .q3 .pl3 .player { flex: 1; } .q3 .spd { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: #121212; color: #FFFFFF; }
+.q3 .w3 { margin: 0; font-size: 17px; line-height: 1.45; }
+.q3 .sent3 { margin: 0; font-size: 14.5px; color: #2F7D4F; display: flex; flex-direction: column; gap: 6px; animation: up .25s ease both; } .q3 .sent3 small { color: #737373; }
+.q3 .bigE { font-size: 44px; line-height: 1; }
+.q3 .alld { margin: auto; font-size: 20px; font-weight: 600; }
+.cp { position: relative; border: 1px solid #EBEBEB; border-radius: 16px; padding: 12px 84px 12px 14px; display: flex; flex-direction: column; gap: 3px; }
+.cp .k { font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #737373; } .cp b { font-size: 13.5px; overflow-wrap: anywhere; } .cp small { font-size: 13px; color: #737373; }
+.cp button { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #121212; background: #FFFFFF; font: 500 14px var(--font-app); }
+.biz .later3 { margin: 4px 2px 0; font-size: 13px; color: #737373; }
 </style>
 
 <div class="app" id="app">
@@ -720,17 +748,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
   const STEPS = [
     { id: "biz", ch: "Start", name: "Ember & Air", role: "You", draw: drawBiz, note: ["Ember & Air is an example company: a heat pump installer with about 40 people and three crews. Every question is a lead worth thousands, and the know-how sits in a few senior heads. Five people take part: a customer, a junior who answers, a senior who checks and teaches, the speaking coach (with Will, the AI coach), and the owner."] },
     { id: "j-start", ch: "Start", name: "Everyone starts with Will", role: "Junior", draw: drawJStart, note: ["On day one, everyone has one chat: Will, their own chat and a controlled place to learn. They add the people they work with by email or WhatsApp number; each gets a link to join WillpowerLab."] },
-    { id: "in-ways", ch: "How questions arrive", name: "Three ways in", role: "Owner", draw: drawInWays, q: "ways", note: ["WillpowerLab joins the way you already work; it replaces nothing. Like a Calendly or a Loom link, it is a link that works in any channel.", "Whichever way a question comes in, it becomes a chat with a customer, and the answer goes back the same way: a link to the advisor's voice, the words, and Book or Buy."] },
-    { id: "in-fwd", ch: "How questions arrive", name: "An email becomes a chat", role: "Junior", draw: drawInFwd, note: ["Forward: nothing to set up. Any email or WhatsApp message forwarded to your WillpowerLab address becomes a customer's chat, marked with where it came from.", "The customer gets the answer by email, as a link; they install nothing and join nothing."] },
+    { id: "in-ways", ch: "How questions arrive", name: "Three ways in", role: "Owner", draw: drawInWays, q: "ways", note: ["Two things to copy, no choice to make: an address to forward any email or WhatsApp message to, and a link for the site, the contact form or an email signature. Connecting the inbox comes later, when the volume makes it pay."] },
+    { id: "in-fwd", ch: "How questions arrive", name: "An email becomes a chat", role: "Junior", draw: drawInFwd, note: ["An email forwarded to the address becomes the customer's chat, marked with where it came from. The senior's answer to a question like it is already there, for the junior's ears only. Hold to answer, one card, Send. The customer gets the answer by email, as a link."] },
     { id: "form", ch: "S1 · A junior answers, and may ask the senior", name: "The customer asks", role: "Customer", draw: drawForm, note: ["On your website: a photo, a few words, a number, a tick."] },
     { id: "sent", ch: "S1 · A junior answers, and may ask the senior", name: "Sent", role: "Customer", draw: drawSent, q: "speed", note: ["The question lands with your juniors first."] },
-    { id: "j-chats", ch: "S1 · A junior answers, and may ask the senior", name: "The junior's chats", role: "Junior", draw: drawJChats, note: ["Like WhatsApp, simpler: Will and the team's know-how pinned on top, then every chat by its latest message."] },
-    { id: "j-req", ch: "S1 · A junior answers, and may ask the senior", name: "Answer, or ask a senior", role: "Junior", draw: drawJReq, note: ["The inquiry is its own chat. The junior answers with a practised Take or a tap; nothing to type. Two options are always there: ask the senior for help, or after recording, ask: is this good?"] },
-    { id: "j-rec", ch: "S1 · A junior answers, and may ask the senior", name: "The junior's answer", role: "Junior", draw: drawRec, note: ["Their voice over the photo and the picks, camera off."] },
-    { id: "moment", ch: "S1 · A junior answers, and may ask the senior", name: "Will picks one moment", role: "Junior", draw: drawMoment, note: ["The loop: spot the right moment, then give the one piece of feedback with the most leverage. The junior sees one line; this is what Will read to choose it:", "· The chat: a customer, new, from the website.", "· The stakes: a first answer to a money question, the grant.", "· Josh's last Takes: he rushes the words that matter most.", "· His plan this week: pace.", "So, one moment (the grant, at 0:12) and one intervention, before he sends: a single line. Will judges how it is said, never what is advised; that is the senior's job.", "After: Mark's reply, or his booking, tells Will whether it worked."] },
-    { id: "j-wait", ch: "S1 · A junior answers, and may ask the senior", name: "Sent for a check", role: "Junior", draw: drawJWait, note: ["Take 1, with Will's feedback. The junior chooses: send it to the customer, or first ask the senior: is this good?"] },
-    { id: "s-check", ch: "S1 · A junior answers, and may ask the senior", name: "The senior checks", role: "Senior", draw: drawSCheck, note: ["The senior answers only with a big emoji or a voice note, which Will writes out. A 👍 tells the junior to send it; here, a short correction by voice."] },
-    { id: "j-fix", ch: "S1 · A junior answers, and may ask the senior", name: "The junior fixes it", role: "Junior", draw: drawJFix, q: "wa", note: ["The senior's voice note, written out. The junior records Take 2, practises it with Will, and sends it to the customer."] },
+    { id: "j-chats", ch: "S1 · A junior answers, and may ask the senior", name: "The question comes to you", role: "Junior", draw: drawJChats, note: ["The work comes to you: the notification opens the customer's chat with the answer button ready, and when one answer is sent the next waiting chat opens. The list is for browsing, not for work."] },
+    { id: "j-req", ch: "S1 · A junior answers, and may ask the senior", name: "Answer, or ask a senior", role: "Junior", draw: drawJReq, note: ["One big button: hold to answer. The senior's answer to a question like this sits in the chat, for the junior's ears only: nothing to open, nothing to dismiss."] },
+    { id: "j-rec", ch: "S1 · A junior answers, and may ask the senior", name: "The junior's answer", role: "Junior", draw: drawRec, note: ["Hold and talk. Will filled in what is seen and what is recommended from the photo and the know-how; the slides move on by themselves when the junior names the service. The recording screens are locked: this one needs the founder's OK before it reaches the app."] },
+    { id: "moment", ch: "S1 · A junior answers, and may ask the senior", name: "One card before sending", role: "Junior", draw: drawMoment, note: ["One card: the answer, the one moment Will picked, one big button. The button follows the risk: in a junior's first month, on a red flag, or when the answer promises something, it is Send when Piotr 👍, and his 👍 sends it by itself; otherwise it is Send. Try that line again re-records only the 5 seconds Will marked (the recording screens are locked: this needs the founder's OK).", "The loop: spot the right moment, then give the one piece of feedback with the most leverage. The junior sees one line; this is what Will read to choose it:", "· The chat: a customer, new, from the website.", "· The stakes: a first answer to a money question, the grant.", "· Josh's last Takes: he rushes the words that matter most.", "· His plan this week: pace.", "So, one moment (the grant, at 0:12) and one intervention, before he sends: a single line. Will judges how it is said, never what is advised; that is the senior's job.", "After: Mark's reply, or his booking, tells Will whether it worked."] },
+    { id: "s-check", ch: "S1 · A junior answers, and may ask the senior", name: "The senior checks", role: "Senior", draw: drawSCheck, note: ["The senior's queue: every answer waiting for a check, playing at 1.5× with its words. 👍 sends it to the customer and the next one opens; holding the mic sends a correction back to the junior. One tap each."] },
+    { id: "j-fix", ch: "S1 · A junior answers, and may ask the senior", name: "The junior fixes it", role: "Junior", draw: drawJFix, q: "wa", note: ["The senior's correction arrives as a voice note, written out. The junior holds to answer again; the senior's 👍 sends it to the customer by itself, so nobody has to come back."] },
     { id: "c-answer", ch: "S1 · A junior answers, and may ask the senior", name: "The customer books", role: "Customer", draw: drawCAnswer, q: "booking", note: ["The customer's own question on the right, the answer on the left, and the business's buttons under the message, as WhatsApp Business does. Book and Buy open your own systems."] },
     { id: "j-hard", ch: "S2 + S3 · Ask a senior", name: "A question the junior can't answer", role: "Junior", draw: drawJHard, note: ["Red flags go to a senior: one tap, Ask for help."] },
     { id: "s-hard", ch: "S2 + S3 · Ask a senior", name: "The senior answers the customer", role: "Senior", draw: drawSHard, note: ["Like every boss, the senior answers with a big emoji or a voice note. The senior replies to the customer directly, by voice. Then the senior stars that answer: it becomes a pinned safety rule in the team's know-how."] },
@@ -852,17 +879,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
   }
   const slide = (k) => k === 0 ? `<div class="sl"><div class="ph" style="background:${B().photo}"></div><div class="tx"><span class="k">The question</span><span class="m" style="font-size:13px;color:#17130F">${esc(B().ask)}</span></div></div>`
     : `<div class="sl"><div class="bowl"><i></i></div><div class="tx"><span class="k">${k === 1 ? "Recommended" : "At home"}</span><span class="n">${esc(k === 1 ? B().service : B().product)}</span><span class="m">${esc(k === 1 ? `${B().svcMeta} · ${money(B().price)}` : money(B().prodPrice))}</span></div></div>`;
-  function drawRec() {
-    let i = 0;
-    const paint = () => {
-      screen.innerHTML = `<div class="rs"><div class="h" style="margin-top:4px"><p class="whr">Take 1 · Slide ${i + 1} of 3</p></div><div class="band"><div class="slide">${slide(i)}</div><div class="road"><p class="hint">Camera off · your voice only</p></div>
-        <div class="strip"><span class="sdot"></span><span class="clock">0:${String(14 + i * 21).padStart(2, "0")}</span><span class="sbar"><b style="width:${20 + i * 30}%"></b></span></div>
-        <div class="pr"><button class="back" type="button" ${i ? "" : "disabled"} id="bk">Back</button><button class="${i === 2 ? "fin" : "nxt"}${cue()}" type="button" id="nx">${i === 2 ? "<i></i>Finish take" : "Next slide"}</button></div></div></div>`;
-      screen.querySelector("#nx").onclick = () => { if (i === 2) next(); else { i++; paint(); } };
-      screen.querySelector("#bk").onclick = () => { if (i) { i--; paint(); } };
-    };
-    paint();
-  }
   function drawSend() {
     const sent = S.sentDone;
     screen.innerHTML = `<div class="bg"></div>${chd(B().photo, B().cust, sent ? "Sent" : "Waiting for you")}<div class="lg-area sub" id="lg">${reqBubble()}
@@ -1021,10 +1037,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
     return c;
   }
   // a practised Take: record, Will's feedback in words, record again if you like, then send the one you choose
-  function takeFlow({ label, secs, words, tip, again = "Slower on the name. That helps.", sendLabel = "Send this Take", onSend }) {
+  function takeFlow({ label, secs, words, tip, again = "Slower on the name. That helps.", sendLabel = "Send", onSend }) {
     let n = 1;
     const rec = () => recording(`${label} · Take ${n}`, secs, () => {
-      const d = dockIt(`<div class="cv"><p class="wa-title">Take ${n}</p>${player(secs, secs + n)}${words ? `<span class="now">${esc(words)}</span>` : ""}<span class="tip"><b>Will</b>${esc(n === 1 ? tip : again)}</span></div><div class="pair"><button class="close${n === 1 ? " cue-ring" : ""}" type="button" id="ag">Record again</button><button class="act${n > 1 ? " cue-ring" : ""}" type="button" id="go">${esc(sendLabel)}</button></div>`);
+      const d = dockIt(`<div class="cv"><p class="wa-title">Your answer${n > 1 ? `, try ${n}` : ""}</p>${player(secs, secs + n)}${words ? `<span class="now">${esc(words)}</span>` : ""}<span class="tip"><b>Will</b>${esc(n === 1 ? tip : again)}</span></div><div class="pair"><button class="close${n === 1 ? " cue-ring" : ""}" type="button" id="ag">Try again</button><button class="act${n > 1 ? " cue-ring" : ""}" type="button" id="go">${esc(sendLabel)}</button></div>`);
       d.querySelector("#ag").onclick = () => { n++; rec(); };
       d.querySelector("#go").onclick = () => { undockIt(); onSend(n); };
     });
@@ -1045,16 +1061,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
     screen.appendChild(s); s.querySelector("#fp").onclick = () => { s.remove(); onPick(); };
   }
 
-  function drawJChats() {
-    listShell(crow2({ a: WILL52, name: "Will", pv: "Your speaking coach", pin: true })
-      + crow2({ a: KNOW52, name: "Know-how", pv: `★ ${esc(B().expert)}: ${esc(B().internalA)}`, pin: true })
-      + crow2({ a: av(B().photo), name: B().cust, pv: `🌐 Website · ${esc(B().ask)}`, tm: "9:41", on: true, ub: 1, id: "c", c: true })
-      + crow2({ a: av("linear-gradient(135deg,#E9DCEF,#B79CC8)"), name: "Ola Brown", pv: `<i class="tk2">✓✓</i>✉️ Email · answered`, tm: "8:20" })
-      + crow2({ a: av(AVS), name: B().expert, pv: `<i class="tk2">✓✓</i>Thanks, will do`, tm: "Yesterday" })
-      + crow2({ a: av(AVK), name: "Marta", pv: "🎤 Voice message (0:18)", tm: "Mon" })
-      + crow2({ a: av(AVO), name: B().owner, pv: "👍", tm: "Mon" }), 1);
-    screen.querySelector("#c").onclick = next;
-  }
   const CCMP = `<div class="ccmp"><span class="f">Message</span><span class="m">${ICON.mic}</span></div>`;
   const cThread2 = (cueBook = true) => `<div class="b me"><span class="cph" style="background:${B().photo}"></span>${esc(B().ask)}<span class="mt">9:41 ✓✓</span></div>
     <div class="b">${player(44, 9)}${esc(B().said)}<span class="mt">10:04</span></div>
@@ -1151,32 +1157,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
         later(() => { const r = [...screen.querySelectorAll(".crow")].pop(); r.querySelector(".pv").textContent = "Joined · say hello"; later(next, 1300); }, 1200); };
     };
   }
-  function drawJReq() {
-    chatShell(B().photo, B().cust, "Customer", reqBubble());
-    const comp = () => composer({ know: { title: B().knowTitle, cue: true, onOpen: () => {
-      const d = dockIt(`<div class="cv"><p class="wa-title">★ ${esc(B().expert)} · only you hear this</p>${player(21, 6)}<span class="now">${esc(B().knowText)}</span></div><div class="pair"><button class="act" type="button" id="ok">Got it</button></div>`);
-      d.querySelector("#ok").onclick = () => composer({ chips: ["I'll answer you today.", `Ask ${B().expert} for help`], onPick: pick, onMic: next }); } }, cueMic: false, chips: ["I'll answer you today.", `Ask ${B().expert} for help`], onPick: pick, onMic: next });
-    const pick = (x) => { if (x.startsWith("Ask ")) { const m = lastMine(); if (m) m.remove(); addLg(day(`↪ Sent to ${esc(B().expert)}: can you help with this one?`)); later(() => go("s-hard"), 1300); } };
-    comp();
-  }
-  function drawJWait() {
-    chatShell(B().photo, B().cust, "Customer", reqBubble());
-    const d = dockIt(`<div class="cv"><p class="wa-title">Take 1 · your answer to ${esc(B().cust)}</p>${player(46, 7)}<span class="now">“${esc(B().draft)}”</span><span class="tip"><b>Will</b>Clear and warm. Name the next step before the grant.</span></div><div class="pair"><button class="close cue-ring" type="button" id="ask">Ask ${esc(B().expert)}: is this good?</button><button class="act" type="button" id="snd2">Send to ${esc(B().cust)}</button></div>`);
-    d.querySelector("#ask").onclick = () => { undockIt(); addLg(day(`Sent to ${esc(B().expert)}: is this good? · 9:52`)); composer({ cueMic: false }); later(next, 1500); };
-    d.querySelector("#snd2").onclick = () => { undockIt(); addLg(mine(`${player(46, 7)}`, "9:52") + day(`Sent to ${esc(B().cust)}. You can still ask ${esc(B().expert)}: was this good?`)); composer({ cueMic: false, chips: [`Ask ${B().expert}: was this good?`] }); };
-  }
-  function drawSCheck() {
-    chatShell(AVJ, B().junior, B().jrole, day("Today 9:52") + theirs(AVJ, `Is this good?<span class="rq"><b>${esc(B().cust)}</b>${esc(B().ask)}</span>${player(46, 7)}“${esc(B().draft)}”`, "9:52"));
-    bossBar({ cueMic: true, words: B().correction, secs: 11, t: "9:57", onEmoji: (e) => addLg(day(`${esc(B().junior)} sends it to ${esc(B().cust)}`)), onVoice: () => later(next, 1500) });
-  }
-  function drawJFix() {
-    S.answerer = "junior";
-    chatShell(AVS, B().expert, "Senior " + B().role, day("Today 9:52") + `<div class="lg-b lg-me">Is this good?${player(46, 7)}<span class="mt">9:52 ✓✓</span></div>` + day("Today 9:57") + theirs(AVS, `${player(11, 3)}${esc(B().correction)}`, "9:57"));
-    composer({ chips: ["👍", "Why?"], onMic: () => takeFlow({ label: `Your answer to ${B().cust}`, secs: 44, words: B().said, tip: "Calm. You answered the worry first.", again: "Slower on the survey. That helps.", sendLabel: `Send to ${B().cust}`, onSend: () => {
-      addLg(day(`Take 2 sent to ${esc(B().cust)} on WhatsApp · 10:04`)); later(next, 1500); } }) });
-  }
   function drawJHard() {
-    chatShell(B().photo, B().hardCust, "Customer", day("Today 11:10") + theirs(B().photo, esc(B().hardAsk), "11:10"));
+    chatShell(B().photo, B().hardCust, "🌐 Website", day("Today 11:10") + theirs(B().photo, esc(B().hardAsk), "11:10"));
     composer({ cueMic: false, chips: [`Ask ${B().expert} for help`], cueChip: `Ask ${B().expert} for help`, onPick: () => { const m = lastMine(); if (m) m.remove(); addLg(day(`↪ Sent to ${esc(B().expert)} · ${esc(B().hardCust)} hears from a senior`)); later(next, 1500); } });
   }
   function drawSInternal() {
@@ -1189,40 +1171,100 @@ button { font: inherit; color: inherit; cursor: pointer; }
     bossBar({ cueE: "👍", words: "Yes, go ahead this once. Next time, ask before you offer it.", secs: 7, t: "10:06" });
   }
   // ---------- How questions arrive (N294), and Will picks one moment (N292 item 6) ----------
+  // ---------- v6: fewer taps. The work comes to you; hold to answer; one card before sending; the risk sets the button; the boss's queue ----------
+  const AVOLA = "linear-gradient(135deg,#E9DCEF,#B79CC8)";
+  const privKnow = (text, secs) => `<div class="from"><span class="av sm" style="background:${AVS}"></span><div class="lg-b them priv"><span class="fwd">★ ${esc(B().expert)}, from your team's know-how · only you hear this</span>${player(secs, 6)}${esc(text)}</div></div>`;
+  function answerBar({ label = "Hold to answer", chips = [], onPick = () => {}, onHold }) {
+    undockIt();
+    screen.insertAdjacentHTML("beforeend", `<div class="cmp">${chips.length ? `<div class="opts" style="margin-bottom:8px">${chips.map((x) => `<button type="button" data-s="${esc(x)}">${esc(x)}</button>`).join("")}</div>` : ""}<button class="holdb cue-ring" type="button" id="hold">${ICON.mic}<span>${esc(label)}</span></button></div>`);
+    fit();
+    const c = screen.querySelector(".cmp");
+    c.querySelectorAll("[data-s]").forEach((b) => b.onclick = () => { const x = b.dataset.s; undockIt(); if (isEmoji(x)) { const t = lastFrom(); if (t) addReact(t, x); } else addLg(mine(esc(x))); onPick(x); answerBar({ label, chips, onPick, onHold }); });
+    c.querySelector("#hold").onclick = onHold;
+  }
+  // one card before sending: the answer, the one moment Will picked, one big button; the risk sets the button
+  function sendCard({ to, secs, words, line = null, at = [9, 15], tip, better = "Better. That line lands now.", risk = null, onSent }) {
+    let fixed = false;
+    const paint = () => {
+      const d = dockIt(`<div class="cv"><p class="wa-title">Your answer to ${esc(to)}</p>${player(secs, secs + 1)}${words ? `<span class="now">“${esc(words)}”</span>` : ""}<span class="tip"><b>Will</b>${esc(fixed ? better : tip)}</span>${risk ? `<span class="why3">${esc(B().expert)} checks first: ${esc(risk)}.</span>` : ""}</div>
+        <button class="actbig${!line || fixed ? " cue-ring" : ""}" type="button" id="go">${risk ? `Send when ${esc(B().expert)} 👍` : "Send"}</button>
+        <div class="links">${line && !fixed ? `<button type="button" class="cue-ring" id="line">Try that line again</button>` : ""}${risk ? `<button type="button" id="now">Send now</button>` : `<button type="button" id="ask">Ask ${esc(B().expert)} first</button>`}</div>`);
+      if (line) [...d.querySelectorAll(".bars i")].slice(at[0], at[1]).forEach((b) => b.classList.add(fixed ? "fx" : "hl"));
+      const ln = d.querySelector("#line"); if (ln) ln.onclick = () => recording(`Just the line: “${line}”`, 5, () => { fixed = true; paint(); });
+      d.querySelector("#go").onclick = () => { undockIt(); onSent(risk ? "check" : "sent"); };
+      const nw = d.querySelector("#now"); if (nw) nw.onclick = () => { undockIt(); onSent("sent"); };
+      const ak = d.querySelector("#ask"); if (ak) ak.onclick = () => { undockIt(); onSent("check"); };
+    };
+    paint();
+  }
+  function drawJChats() {
+    screen.innerHTML = `<div class="wa2"><span style="font-size:16px;opacity:.9">Thursday</span><span class="tm">9:41</span><button class="ntf cue-ring" type="button" id="n"><span class="ic" style="background:#FF640A"></span><span style="flex:1"><b>WillpowerLab <small>now</small></b>${esc(B().cust)} asks: ${esc(B().ask.split("?")[0])}? Tap to answer.</span></button></div>`;
+    screen.querySelector("#n").onclick = next;
+  }
+  function drawJReq() {
+    chatShell(B().photo, B().cust, "🌐 Website", reqBubble() + privKnow(B().knowText, 21));
+    answerBar({ chips: ["I'll answer you today.", `Ask ${B().expert}`], onPick: (x) => { if (x.startsWith("Ask ")) { const m = lastMine(); if (m) m.remove(); addLg(day(`Sent to ${esc(B().expert)}: can you help with this one?`)); } }, onHold: next });
+  }
+  function drawRec() {
+    screen.innerHTML = `<div class="rs2"><p class="k3">Will filled these in from the photo · tap one to change it</p><div class="chips3">${B().sees.slice(0, 2).map((x) => `<span>${esc(x)}</span>`).join("")}<span class="r">${esc(B().service)}</span><span class="r">${esc(B().product)}</span></div>
+      <div class="slide3" id="sl">${slide(0)}</div><div class="dots3">${[0, 1, 2].map((i) => `<i class="${i === 0 ? "on" : ""}"></i>`).join("")}</div><p class="moved" id="mv">&nbsp;</p><p class="heard" id="hd"></p>
+      <div class="grow"></div><div class="lis"><span class="sdot"></span>Recording · keep holding<span class="bars">${bars(28, 7, 18)}</span><span class="t" id="tt">0:00</span></div><button class="holdb on" type="button" id="rel">${ICON.mic}<span>Release to finish</span></button></div>`;
+    const W = [["“A heat pump will definitely work in your house…”", 0, ""], ["“…let's book the home heat survey…”", 1, `Moved on when you said “${B().service.toLowerCase()}”`], ["“…and a smart thermostat meanwhile.”", 2, `Moved on when you said “${B().product.toLowerCase()}”`]];
+    let k = 0;
+    const step = () => { if (k >= W.length) { screen.querySelector("#rel").classList.add("cue-ring"); return; } const [w, i, m] = W[k];
+      screen.querySelector("#hd").textContent = w; screen.querySelector("#sl").innerHTML = slide(i); screen.querySelector("#mv").textContent = m || " ";
+      screen.querySelectorAll(".dots3 i").forEach((d, j) => d.classList.toggle("on", j === i)); screen.querySelector("#tt").textContent = `0:${String(12 + k * 16).padStart(2, "0")}`; k++; later(step, 1300); };
+    step();
+    screen.querySelector("#rel").onclick = next;
+  }
+  function drawMoment() {
+    chatShell(B().photo, B().cust, "🌐 Website", reqBubble());
+    sendCard({ to: B().cust, secs: 46, words: B().draft, line: "the grant", tip: `One thing: slow down on “the grant”. It is what ${B().cust} asked about.`, better: "Better. “The grant” lands now.", risk: "your first month, and the answer makes a promise",
+      onSent: (k) => { addLg(mine(player(46, 7), k === "check" ? "9:52 🕓" : "9:52") + day(k === "check" ? `Waiting for ${esc(B().expert)}'s 👍. Then it goes to ${esc(B().cust)} by itself.` : `Sent to ${esc(B().cust)}`)); later(next, 1700); } });
+  }
+  function drawSCheck() {
+    const items = [{ to: B().cust, q: B().ask, words: B().draft, secs: 46 }, { to: "Sam", q: B().practiceQ, words: "A home heat survey first: it shows where the heat goes, and the cheapest fix is often insulation.", secs: 28 }];
+    let i = 0;
+    const paint = () => { const it = items[i];
+      screen.innerHTML = `<div class="bg"></div><div class="chd"><button class="bk" type="button" aria-label="Back">‹</button><span class="av door">✓</span><span class="nm"><b>To check</b><small>${items.length - i} waiting · one tap each</small></span></div>
+        <div class="q3"><p class="k3">${esc(B().junior)} → ${esc(it.to)}</p><div class="qq"><i style="background:${B().photo}"></i>${esc(it.q)}</div><div class="pl3">${player(it.secs, it.secs)}<span class="spd">1.5×</span></div><p class="w3">“${esc(it.words)}”</p></div>
+        <div class="cmp boss"><div class="row"><div class="bige">${BIGE.map((e) => `<button type="button" data-e="${e}" class="${i === 1 && e === "👍" ? "cue-ring" : ""}">${e}</button>`).join("")}</div><button class="micb${i === 0 ? " cue-ring" : ""}" type="button" id="mic" aria-label="Voice note">${ICON.mic}</button></div></div>`;
+      const done = (msg) => { screen.querySelector(".q3").insertAdjacentHTML("beforeend", `<p class="sent3">${msg}</p>`); later(() => { i++; if (i < items.length) paint(); else { screen.querySelector(".q3").innerHTML = `<p class="alld">All checked.</p>`; screen.querySelector(".cmp") && screen.querySelector(".cmp").remove(); later(next, 1400); } }, 1300); };
+      screen.querySelectorAll("[data-e]").forEach((b) => b.onclick = () => { screen.querySelector(".cmp").remove(); done(`<span class="bigE">${b.dataset.e}</span>Sent to ${esc(it.to)}`); });
+      screen.querySelector("#mic").onclick = () => recording("Recording…", 11, () => { undockIt(); done(`${player(11, 3)}“${esc(B().correction)}”<br><small>Sent back to ${esc(B().junior)}</small>`); });
+    };
+    paint();
+  }
+  function drawJFix() {
+    S.answerer = "junior";
+    chatShell(AVS, B().expert, "Senior " + B().role, day("Today 9:57") + theirs(AVS, `<span class="rq"><b>Your answer to ${esc(B().cust)}</b>🎤 0:46</span>${player(11, 3)}${esc(B().correction)}`, "9:57"));
+    answerBar({ label: `Hold to answer ${B().cust} again`, chips: ["👍", "Why?"], onHold: () => recording(`Your answer to ${B().cust}…`, 44, () => sendCard({ to: B().cust, secs: 44, words: B().said, tip: "Calm. You answered the worry first.", risk: "your first month",
+      onSent: () => { addLg(mine(`<span class="fwd">To ${esc(B().cust)}</span>${player(44, 5)}`, "10:03 🕓")); later(() => { addReact(lastMine(), "👍"); addLg(day(`${esc(B().expert)} 👍 · sent to ${esc(B().cust)} by itself · 10:04`)); later(next, 1600); }, 1000); } })) });
+  }
   function drawInWays() {
-    const W = [["Forward", "Forward any email or WhatsApp message to ask@emberandair.willpowerlab.com. It arrives as a chat. Nothing to set up."], ["Link", "Put “Ask our advisor” on your site, your contact form or your email signature. The customer lands in the chat."], ["Connect", "Later, if it pays: connect your inbox or WhatsApp Business, and questions arrive by themselves."]];
-    screen.innerHTML = `<div class="biz"><h3>Three ways in</h3><p>Questions come the way they come today. The answer goes back the same way, as a link.</p>
-      ${W.map(([t, d], i) => `<button type="button" data-w="${i}" aria-pressed="${i === 0}">${esc(t)}<small>${esc(d)}</small></button>`).join("")}
-      <div style="flex:1"></div><button type="button" class="pill cue-ring" id="go" style="text-align:center;align-items:center">Show me Forward</button></div>`;
-    screen.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => { screen.querySelectorAll("[data-w]").forEach((x) => x.setAttribute("aria-pressed", "false")); b.setAttribute("aria-pressed", "true"); });
+    screen.innerHTML = `<div class="biz"><h3>Your answers start here</h3><p>Two things to copy. Questions keep coming the way they come today; the answer goes back the same way, as a link.</p>
+      <div class="cp"><span class="k">Your address</span><b>ask@emberandair.willpowerlab.com</b><small>Forward any email or WhatsApp message here.</small><button type="button" class="cue-ring" id="c1">Copy</button></div>
+      <div class="cp"><span class="k">Your link</span><b>willpowerlab.com/ask/emberandair</b><small>Put it on your site, your contact form, your email signature.</small><button type="button" id="c2">Copy</button></div>
+      <p class="later3">Later, when your volume makes it pay: connect your inbox or WhatsApp Business, and questions arrive by themselves.</p>
+      <div style="flex:1"></div><button type="button" class="pill" id="go" style="text-align:center;align-items:center">Show me</button></div>`;
+    const cp = (b) => { b.textContent = "Copied"; b.classList.remove("cue-ring"); screen.querySelector("#go").classList.add("cue-ring"); };
+    screen.querySelector("#c1").onclick = (e) => cp(e.target); screen.querySelector("#c2").onclick = (e) => cp(e.target);
     screen.querySelector("#go").onclick = next;
   }
   function drawInFwd() {
     const mail = (fw) => `<div class="mail"><div class="mtop"><button type="button" class="bk">‹</button><span>Inbox</span></div>
-      <div class="mh"><b>Will the outdoor unit be noisy?</b><span class="mf"><span class="av" style="width:36px;height:36px;background:linear-gradient(135deg,#E9DCEF,#B79CC8)"></span><span><b>Ola Brown</b><small>to hello@emberandair.co.uk · 8:12</small></span></span></div>
+      <div class="mh"><b>Will the outdoor unit be noisy?</b><span class="mf"><span class="av" style="width:36px;height:36px;background:${AVOLA}"></span><span><b>Ola Brown</b><small>to hello@emberandair.co.uk · 8:12</small></span></span></div>
       <div class="mb">Hi, we're semi-detached and the only wall for the outdoor unit faces next door. Will it be noisy for the neighbours?<br><br>Thanks, Ola</div>
       ${fw ? `<div class="mfw"><span class="k">To</span><span class="v">ask@emberandair.willpowerlab.com</span></div>` : ""}
       <div class="mbar"><button type="button">Reply</button><button type="button" id="fw" class="${fw ? "" : "cue-ring"}">Forward</button></div></div>`;
     screen.innerHTML = mail(false);
     screen.querySelector("#fw").onclick = () => { screen.innerHTML = mail(true); screen.querySelector(".mbar").innerHTML = `<button type="button" class="snd2 cue-ring" id="sd">Send</button>`;
       screen.querySelector("#sd").onclick = () => {
-        listShell(crow2({ a: WILL52, name: "Will", pv: "Your speaking coach", pin: true })
-          + crow2({ a: av("linear-gradient(135deg,#E9DCEF,#B79CC8)"), name: "Ola Brown", pv: `✉️ Email · Will the outdoor unit be noisy?`, tm: "now", on: true, ub: 1, c: true, id: "ola" })
-          + crow2({ a: av(AVS), name: B().expert, pv: "Senior " + esc(B().role), tm: "Yesterday" }), 1);
-        screen.querySelector("#ola").onclick = () => {
-          chatShell("linear-gradient(135deg,#E9DCEF,#B79CC8)", "Ola Brown", "Customer · from email", day("Today 8:12") + theirs("linear-gradient(135deg,#E9DCEF,#B79CC8)", `<span class="fwd">✉️ From email</span>Hi, we're semi-detached and the only wall for the outdoor unit faces next door. Will it be noisy for the neighbours?`, "8:12"));
-          composer({ know: { title: "Piotr on noise", onOpen: () => toast(B().noiseA) }, chips: ["I'll answer you today."], onMic: () => takeFlow({ label: "Your answer to Ola", secs: 31, words: B().noiseA, tip: "Calm. Say the reassurance first, then the survey.", again: "Better: the reassurance came first.", sendLabel: "Send to Ola", onSend: () => {
-            addLg(mine(`${player(31, 6)}${esc(B().noiseA)}`, "8:20") + day("Sent to Ola by email, as a link"));
-            later(() => { screen.innerHTML = `<div class="mail"><div class="mtop"><button type="button" class="bk">‹</button><span>Ola's inbox</span></div><div class="mh"><b>Re: Will the outdoor unit be noisy?</b><span class="mf"><span class="av" style="width:36px;height:36px;background:${AVJ}"></span><span><b>${esc(B().junior)} at ${esc(B().site)}</b><small>to Ola · 8:20</small></span></span></div><div class="mb">Hi Ola, I've answered you by voice:<br><br><span class="mlink">▶ Listen to ${esc(B().junior)}'s answer (0:31)</span><br><br>The words, and a button to book a free home survey, are on the same page.</div></div>`; later(next, 2200); }, 1400); } }) });
-        };
+        chatShell(AVOLA, "Ola Brown", "✉️ Email", day("Today 8:12") + theirs(AVOLA, `Hi, we're semi-detached and the only wall for the outdoor unit faces next door. Will it be noisy for the neighbours?`, "8:12") + privKnow(B().noiseA, 31));
+        answerBar({ chips: ["I'll answer you today."], onHold: () => recording("Your answer to Ola…", 31, () => sendCard({ to: "Ola", secs: 31, words: B().noiseA, tip: "Calm. The reassurance came first.",
+          onSent: () => { addLg(mine(player(31, 6), "8:20") + day("Sent to Ola by email, as a link"));
+            later(() => { screen.innerHTML = `<div class="mail"><div class="mtop"><button type="button" class="bk">‹</button><span>Ola's inbox</span></div><div class="mh"><b>Re: Will the outdoor unit be noisy?</b><span class="mf"><span class="av" style="width:36px;height:36px;background:${AVJ}"></span><span><b>${esc(B().junior)} at ${esc(B().site)}</b><small>to Ola · 8:20</small></span></span></div><div class="mb">Hi Ola, I've answered you by voice:<br><br><span class="mlink">▶ Listen to ${esc(B().junior)}'s answer (0:31)</span><br><br>The words, and a button to book a free home survey, are on the same page.</div></div>`; later(next, 2200); }, 1400); } })) });
       }; };
-  }
-  function drawMoment() {
-    chatShell(B().photo, B().cust, "Customer", reqBubble());
-    const d = dockIt(`<div class="cv"><p class="wa-title">Take 1 · your answer to ${esc(B().cust)}</p>${player(46, 7)}<span class="tip"><b>Will</b>One thing, at 0:12: slow down on “the grant”. It is what ${esc(B().cust)} asked about.</span></div><div class="pair"><button class="close cue-ring" type="button" id="hear">Hear that moment</button><button class="act" type="button" id="ok">Got it</button></div>`);
-    const bs = [...d.querySelectorAll(".bars i")]; bs.slice(9, 15).forEach((b) => b.classList.add("hl"));
-    d.querySelector("#hear").onclick = () => { d.querySelector("#hear").classList.remove("cue-ring"); d.querySelector("#ok").classList.add("cue-ring"); let k = 9; const t = setInterval(() => { if (k >= 15) { clearInterval(t); return; } bs[k++].classList.add("on"); }, 120); timers.push(t); };
-    d.querySelector("#ok").onclick = next;
   }
   // ---------- Fit the phone ----------
   const device = document.getElementById("device"), bezel = document.getElementById("bezel"), stage = document.getElementById("stage");
