@@ -8206,3 +8206,14 @@ company's chats (as N303 item 2). Anyone can pass it on (N302).
 No rules page yet: it lands with the chats' rules page (N274 item 6) and the
 customer requests page (frontend `docs/flows/customer-requests.md`). No
 migration in this entry.
+
+**N314 · A question nobody has answered before goes to the owner, or to whom
+the owner picks at setup (founder, the Claude Code chat, 31 October 2026, on
+N313 item 3: "Ok").** For N313:
+1. When something comes through the business's link and nobody in the
+company has answered anything like it yet, it goes to the owner, or to the
+person the owner picked for this at setup. They can pass it on (N302); the
+answer then teaches Will who answers such questions (N303 item 2).
+No rules page yet: it lands with the chats' rules page (N274 item 6) and the
+customer requests page (frontend `docs/flows/customer-requests.md`). No
+migration in this entry.
