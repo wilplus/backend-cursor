@@ -2892,6 +2892,17 @@ tests/test_take_comparison.py,Story,"As a speaker, I never want to see my pitch,
 founder 2026-10-19) answers 410 GONE, reads nothing, sends no
 measurement number, and logs retired_route_called so any caller left
 shows up.",O1 -> test_the_retired_comparison_answers_410_with_no_numbers,"It sent raw Hz, wpm and pause milliseconds to the speaker, and no frontend called it. services/take_comparison.py has no caller left; deleting it is a follow-up."
+tests/test_take_context.py,Story,"As a speaker, I want the walk to know who my talk is for and what I want them to do, from what I already told Will or my plan, so that the moment it praises and the one it fixes are the ones my talk needs, and nothing changes when it knows nothing.","O1  What I told Will (the talk's setup) comes first, then my plan's
+answers, then a guess read from my Take; a guess never replaces
+something I said.
+O2  A sentence that carries my key line or my call to action counts in
+full when I said it, at half weight when it was only a guess, and not
+at all when nothing is known.
+O3  The walk picks that sentence as my strongest when it is close to the
+top, and its fix lands there first; with no context the pick is as
+before.","O1 -> test_what_i_said_comes_before_the_plan_and_a_guess
+O2 -> test_my_key_line_counts_in_full_and_a_guess_at_half
+O3 -> test_the_strongest_and_the_fix_follow_what_my_talk_needs","Founder 2026-10-31 (N293: ""ok, it is good"", ""ok, build it""; N290: ""spot the correct moments that yield the most for the user confidence and serve the intervention that is the most relevant"")."
 tests/test_take_delete_lineage.py,Story,"As a speaker, I want deleting a Take to either really delete it or tell me it cannot, so that the app never claims a delete that did not happen. (Critical path: deletion.)","O1  Deleting my own Take answers 200 and the row is gone.
 O2  A Take the database refuses to delete (its lineage still points at it)
 answers 409 TAKE_HAS_LINEAGE, and the row is left exactly as it was,

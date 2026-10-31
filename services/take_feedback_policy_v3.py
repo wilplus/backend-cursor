@@ -730,7 +730,7 @@ def _gate_clearer(block: dict, ranked: list[dict],
 def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
                   servability: Optional[_Servability], selections: list[dict],
                   served_text: Any, plan: tuple = (None, None),
-                  held_words: Any = None) -> dict:
+                  held_words: Any = None, context: Any = None) -> dict:
     """The Take's shown moments (three, N284): the strongest, the weakest and
     the between, one per block (founder 2026-10-30, N289, flow page C2 and
     H1; `services.moment_pick`).
@@ -756,7 +756,7 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
 
     showable = [(block, candidate) for block in blocks
                 for candidate in _showable(block, clips, servability)]
-    reads = [_moment_read(candidate, block, snippet_map, clips, served_text, held_words)
+    reads = [_moment_read(candidate, block, snippet_map, clips, served_text, held_words, context)
              for block, candidate in showable]
     picked = _level_pick(reads, showable, snippet_map, clips, served_text, plan) \
         or moment_pick.pick(reads)
@@ -808,12 +808,12 @@ def _level_pick(reads: list[dict], showable: list[tuple], snippet_map: dict,
 
 
 def _moment_read(candidate: dict, block: dict, snippet_map: dict, clips: dict,
-                 served_text: Any, held_words: Any = None) -> dict:
+                 served_text: Any, held_words: Any = None, context: Any = None) -> dict:
     """One clip's row for `moment_pick`, with its willfidence read and
     whether its words hold the helper words its slide had when the Take
     was recorded (``held_words``, ``{slide_index: [phrase, ...]}``; N246
     item 2)."""
-    from services import moment_pick
+    from services import moment_pick, take_context
     from services.slide_helper_words import holds
 
     snippet = snippet_map.get(str(candidate["snippet_id"]), {})
@@ -827,7 +827,8 @@ def _moment_read(candidate: dict, block: dict, snippet_map: dict, clips: dict,
         "held": holds(shown, held),
         "read": moment_pick.read(
             candidate.get("machine_score"), snippet.get("transcript"),
-            snippet.get("metrics"), shown=shown),
+            snippet.get("metrics"), shown=shown,
+            relevance=take_context.relevance(shown, context)),
     }
 
 
@@ -1679,8 +1680,13 @@ def build_shadow_frame(
     plan_level: Optional[str] = None,
     key_line: Any = None,
     held_words: Any = None,
+    context: Any = None,
 ) -> Optional[dict]:
     """Build the complete v3 frame; return None for an unusable Take.
+
+    ``context`` is what the Take is for (`services.take_context.for_take`,
+    N293): a clip that carries its key line or call to action counts for
+    more in the pick. None leaves the pick as it was.
 
     ``plan_level`` is this week's level when the Take was recorded, for a
     speaker on a plan (`services.plan_walk.walk_inputs`): beside the two
@@ -1753,7 +1759,8 @@ def build_shadow_frame(
     )
     picked = _pick_moments(blocks, snippet_map, clips, servability,
                            confidence_selections, served_text,
-                           plan=(plan_level, key_line), held_words=held_words)
+                           plan=(plan_level, key_line), held_words=held_words,
+                           context=context)
 
     # THE ONLY PLACE THE REASON LAYER IS OBSERVABLE (24j). Everything else it
     # does is internal ordering that leaves no trace: the failure it can have

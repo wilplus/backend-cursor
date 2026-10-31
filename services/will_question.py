@@ -244,11 +244,29 @@ def start_heard(database: Any, *, user_id: str, arc_id: str, take: str, title: s
     def collect() -> dict:
         try:
             got = future.result(timeout=_HEARD_BUDGET)
-            return got if isinstance(got, dict) else nothing
         except Exception as error:  # noqa: BLE001 -- too slow or failed: ask openly
             logger.warning("will question: nothing heard take=%s: %r", take, error)
             return nothing
+        if not isinstance(got, dict):
+            return nothing
+        _keep_heard(database, take, got)
+        return got
     return collect
+
+
+def _keep_heard(database: Any, take: str, got: dict) -> None:
+    """What the Take was heard to be for and to ask, kept in its setup under
+    ``heard``: a guess the picker reads until the speaker says it (N293,
+    ``services.take_context``). A merge; never raises."""
+    found = {k: str(got[k])[:200] for k in ("audience", "ask") if got.get(k)}
+    if not found:
+        return
+    try:
+        ctx = dict(database.takes.get_session_intake_context(take) or {})
+        ctx["heard"] = found
+        database.takes.set_session_intake_context(take, ctx)
+    except Exception as error:  # noqa: BLE001 -- Will asks either way
+        logger.warning("will question: heard not kept take=%s: %s", take, error)
 
 
 # ------------------------------------------------------------------ varied
