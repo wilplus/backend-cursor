@@ -648,6 +648,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .chip4 { border: 1.5px solid #FF640A; color: #FF640A; border-radius: 99px; padding: 6px 12px; font: 600 14.5px var(--font-app); background: #FFFFFF; }
 .cont2 { height: 48px; width: 100%; border: 0; border-radius: 99px; background: #121212; color: #FFFFFF; font: 500 15px var(--font-app); display: flex; align-items: center; justify-content: center; gap: 8px; }
 .cont2 i { width: 10px; height: 10px; border-radius: 99px; background: #E2463A; }
+.mail { position: absolute; inset: 0; background: #FFFFFF; display: flex; flex-direction: column; font-family: -apple-system, BlinkMacSystemFont, var(--font-app); color: #121212; }
+.mail .mtop { display: flex; align-items: center; gap: 6px; padding: 18px 12px 8px; color: #0A66D8; font-size: 16px; }
+.mail .mtop .bk { border: 0; background: none; font-size: 26px; color: #0A66D8; padding: 0 4px; }
+.mail .mh { padding: 8px 18px 12px; border-bottom: 1px solid #EEEEEE; display: flex; flex-direction: column; gap: 12px; }
+.mail .mh > b { font-size: 20px; line-height: 1.25; }
+.mail .mf { display: flex; gap: 10px; align-items: center; } .mail .mf b { display: block; font-size: 15px; } .mail .mf small { color: #8A8A8A; font-size: 13px; }
+.mail .mb { padding: 20px 18px; font-size: 16px; line-height: 1.5; }
+.mail .mbtn { height: 46px; padding: 0 22px; border: 0; border-radius: 99px; background: #121212; color: #FFFFFF; font: 600 15px var(--font-app); }
+.av.wlav { background: #F5F5F5; display: flex; align-items: center; justify-content: center; gap: 2px; } .av.wlav i { width: 4px; height: 4px; border-radius: 50%; background: #121212; } .av.wlav i:nth-child(2) { width: 6px; height: 6px; }
 </style>
 
 <div class="app" id="app">
@@ -755,16 +764,20 @@ button { font: inherit; color: inherit; cursor: pointer; }
   // role: whose phone the step shows (the strip above the phone)
   const STEPS = [
     { id: "biz", ch: "Start", name: "Ember & Air", role: "You", draw: drawBiz, note: ["Who is who. You are Josh, a heating advisor at Ember & Air (an example company). Mark is a customer: he asks a question on the website. Piotr is your colleague. Marta is your speaking coach. Dana owns the company.", "The story: Mark asks; you answer with a Take; Will gives you feedback; you ask Piotr first; you send your better Take to Mark; Mark books. Built only from the designs in the code, plus what the founder agreed."] },
-    { id: "j-start", ch: "Start", name: "Everyone starts with Will", role: "Junior", draw: drawJStart, note: ["Day one: one chat, Will's. It is the person's own chat and the only one where they can type (N292, N298).", "They add the people they work with by email or WhatsApp number; each gets a link to join WillpowerLab (N298 item 2)."] },
+    { id: "j-start", ch: "Start", name: "Everyone starts with Will", role: "Junior", draw: drawJStart, note: ["Day one: one chat, Will\'s. It is the person\'s own chat and the only one where they can type (N292, N298).", "They add the people they work with by email or WhatsApp number (the + at the top); each gets a link to join (N298 item 2)."] },
+    { id: "n-invite", ch: "Start", name: "Piotr gets an invite", role: "Senior", draw: drawNInvite, note: ["An email with a link to join. Once he joins, Josh is in his chats, and he has his own chat with Will (N298 item 2)."] },
     { id: "form", ch: "Mark asks", name: "The customer asks", role: "Customer", draw: drawForm, note: ["On your website: a photo, a few words, a number, a tick. Each question becomes its own chat (N298 item 3)."] },
     { id: "sent", ch: "Mark asks", name: "Sent", role: "Customer", draw: drawSent, q: "speed", note: ["The question lands with the juniors."] },
-    { id: "j-chats", ch: "Mark asks", name: "Your chats", role: "Junior", draw: drawJChats, note: ["Your chats: Will first, then Mark (a customer, waiting), then Piotr (your colleague)."] },
+    { id: "n-mark", ch: "Mark asks", name: "Josh gets a notice", role: "Junior", draw: drawNMark, note: ["One notice per message, the same for everyone: who sent it, never what. By email, or by WhatsApp if the person gave their number; the path the coach's reply uses today. The link opens that chat."] },
     { id: "j-req", ch: "Mark asks", name: "Mark\'s question", role: "Junior", draw: drawJReq, note: ["Mark's chat: his question and his two photos, nothing else. The bar is the locked one (N296, N297), with the emoji where \"Type here\" sits, because only Will's chat takes typing (N306); pass it on sits in the \"+\" place. For a customer, recording is a Take."] },
     { id: "j-rec", ch: "Mark asks", name: "Your Take", role: "Junior", draw: drawRec, note: ["The locked recording screens. On Take 1 every slide fills the page (N303): Mark's question, his two photos, then what you recommend. Then processing."] },
     { id: "walk", ch: "Mark asks", name: "Will\'s feedback walk", role: "Junior", draw: drawWalk, note: ["The locked walk: Will's feedback on one moment, the highest-leverage one; the answer the junior sends is the practised Take (N292 item 4). Then other speakers (C8): three moments from the company, judged in the walk, voice only. Judging happens in the walk, nowhere else."] },
     { id: "j-send", ch: "Mark asks", name: "Will asks: send it to whom?", role: "Junior", draw: drawJSend, note: ["Back in Will's chat: the Feedback walk with the Take's Ideal Text under it, and Will's ask. The answers are orange taps on the right; the mic turns orange while Will waits (N296). Will suggests who to ask (N303)."] },
+    { id: "n-piotr", ch: "Mark asks", name: "Piotr gets a notice", role: "Senior", draw: drawNPiotr, note: ["The same notice: Josh sent you a message. The link opens Piotr's chat with Josh."] },
     { id: "s-check", ch: "Mark asks", name: "Piotr answers", role: "Senior", draw: drawSCheck, note: ["Piotr's phone. Your Take arrives in his chat with you. Piotr has the same tools as you: an emoji or a voice note; his words appear under it."] },
+    { id: "n-josh", ch: "Mark asks", name: "Josh gets a notice", role: "Junior", draw: drawNJosh, note: ["Piotr answered: the same notice. The link opens Josh's chat with Will, where the answer sits under the Take it is about (N305)."] },
     { id: "j-fix", ch: "Mark asks", name: "Piotr\'s answer, then Take 2", role: "Junior", draw: drawJFix, q: "wa", note: ["Piotr's answer comes into Will's chat under the Take it is about (N305). Nothing pushes the next Take (N294): you tap Record Take 2, then the plan's button, alone, starts it (N296 item 4). Then: send Take 2 to Mark?"] },
+    { id: "n-cust", ch: "Mark asks", name: "Mark gets the answer", role: "Customer", draw: drawNCust, note: ["A customer has no account: the answer reaches him by WhatsApp from the company's own number, with a link (N239)."] },
     { id: "c-answer", ch: "Mark asks", name: "The customer books", role: "Customer", draw: drawCAnswer, q: "booking", note: ["Mark's phone: he hears your answer and books, in Ember & Air's own systems."] },
     { id: "coach", ch: "Your chat with Will", name: "Your feedback, in Will's chat", role: "Junior", draw: drawCoach, note: ["Your chat with Will holds what your training made, as the app shows it today: the Feedback walk, with the Take's Ideal Text under it; and Marta's note, as your coach (N300, N287). You answer her with a tap."] },
     { id: "learn", ch: "For the owner", name: "What your AI learned", role: "Owner", draw: drawLearn, q: "volume", note: ["Every answer, check, correction and question becomes an example for your own AI. Yours to keep."] },
@@ -1168,6 +1181,35 @@ button { font: inherit; color: inherit; cursor: pointer; }
     const r = [...screen.querySelectorAll("#lg .chips4")].pop();
     r.querySelectorAll("[data-c]").forEach((b) => b.onclick = () => { r.remove(); addLg(mine(esc(b.dataset.c))); willBar(false); later(next, 1100); });
     screen.querySelectorAll("[data-o]").forEach((b) => b.onclick = () => go(b.dataset.o === "walk" ? "walk" : "coach"));
+  }
+  // ---------- The notices: one per message, the same for everyone; who, never what; the link opens that chat ----------
+  const inbox = (to, from, avBg, subject, body, btn) => `<div class="mail"><div class="mtop"><button type="button" class="bk">‹</button><span>${esc(to)}'s inbox</span></div>
+    <div class="mh"><b>${esc(subject)}</b><span class="mf"><span class="av wlav" style="width:36px;height:36px"><i></i><i></i><i></i></span><span><b>WillpowerLab</b><small>to ${esc(to)} · now</small></span></span></div>
+    <div class="mb"><span class="av" style="width:44px;height:44px;background:${avBg};display:block;margin-bottom:12px"></span>${body}<br><br><button type="button" class="mbtn cue-ring" id="open">${esc(btn)}</button></div></div>`;
+  function drawNInvite() {
+    screen.innerHTML = inbox(B().expert, B().junior, AVJ, `${B().junior} invited you to WillpowerLab`, `${esc(B().junior)} at ${esc(B().site)} wants to chat with you on WillpowerLab.`, "Join");
+    screen.querySelector("#open").onclick = () => {
+      screen.innerHTML = `<div class="bg"></div><div class="lst"><div class="lh"><b>Chats</b><button class="menu" type="button" aria-label="Add someone">${ICON.plus}</button></div>
+        <button class="crow" type="button">${WILL52}<span class="mid"><b>Will</b><span class="pv">Your speaking coach</span></span></button>
+        <button class="crow cue-ring" type="button">${av(AVJ)}<span class="mid"><b>${esc(B().junior)}</b><span class="pv">Your colleague</span></span></button></div>`;
+      later(next, 1800);
+    };
+  }
+  function drawNMark() {
+    screen.innerHTML = inbox(B().junior, B().cust, B().photo, `${B().cust} sent you a message`, `${esc(B().cust)} sent you a message on WillpowerLab.`, "Open the chat");
+    screen.querySelector("#open").onclick = next;
+  }
+  function drawNPiotr() {
+    screen.innerHTML = inbox(B().expert, B().junior, AVJ, `${B().junior} sent you a message`, `${esc(B().junior)} sent you a message on WillpowerLab.`, "Open the chat");
+    screen.querySelector("#open").onclick = next;
+  }
+  function drawNJosh() {
+    screen.innerHTML = inbox(B().junior, B().expert, AVS, `${B().expert} sent you a message`, `${esc(B().expert)} sent you a message on WillpowerLab.`, "Open the chat");
+    screen.querySelector("#open").onclick = next;
+  }
+  function drawNCust() {
+    screen.innerHTML = `<div class="wa2"><span style="font-size:16px;opacity:.9">Thursday</span><span class="tm">10:04</span><button class="ntf cue-ring" type="button" id="n"><span class="ic"></span><span style="flex:1"><b>${esc(B().site)} <small>now</small></b>${esc(B().junior)} answered you. Listen here: answer.emberandair.com/a/7f3k</span></button></div>`;
+    screen.querySelector("#n").onclick = next;
   }
   // ---------- Fit the phone ----------
   const device = document.getElementById("device"), bezel = document.getElementById("bezel"), stage = document.getElementById("stage");
