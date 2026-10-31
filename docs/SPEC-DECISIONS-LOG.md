@@ -7708,8 +7708,9 @@ perfect…", N89) goes. The walk's chat ends on "Good job. See you next time."
 (signed) with "I want to continue my practice" (signed); tapping it, or
 typing that they want to practise, brings "Record Take N". The speaker may
 simply close the app.
-7. **"Record Take N" is a button under the chat,** full width above the
-message box like "Continue review"; no bubble carries a button.
+7. **"Record Take N" is a button under the chat,** full width, like
+"Continue review"; no bubble carries a button. While it shows, the message
+box and the microphone are gone: the button stands alone.
 8. **Settings asks wait for the next visit.** WhatsApp and the home screen
 are never asked after a Take: they come the next time the speaker opens the
 app, one at a time, and never before their second Take (WhatsApp first, the
