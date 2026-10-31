@@ -7643,5 +7643,46 @@ separate one); whether group chats are now allowed (N256 says none).
 No rules page yet: it lands with the chats' rules page (N274 item 6). The
 prototype, kept as N229 says:
 `docs/design/customer-requests-2026-10-28/business/willpowerlab-for-ember-air.html`
-and `9-ember-and-air.pdf` (an invented heat pump installer). No migration in
+and `9-ember-and-air.pdf` (an invented heat pump installer; updated with N293). No migration in
+this entry.
+
+**N293 · Voice-led, no typing, deliberately simple: everyone starts with
+Will's chat, adds people by email or WhatsApp number, may ask the boss "is
+this good?", and the boss answers with a big emoji or a voice note (founder,
+the Claude Code chat, 31 October 2026: "so everyone at the beginning has just
+one chat - this is the chat with Will; and then you can add the other user
+you want to chat with by typing their email or whatsapp number; and that
+person receives a link to join willpowerlab; and your chat is basically a
+controlled environment for learning; and when that's the inquiry from the
+customer you just participate in the chat and you have an option to ask the
+boss for the help and you can send like did that what I send was good? and
+the boss can answer only with a big emoji or a voice message that is
+transcribed", then "it is like a slack but with built in buttons and
+interaction that are not typing the main idea it is guided through AI - voice
+led and no typing - it is NOT flexible it is focused on the implicit
+knowledge dissemination; it must be super stupid simple to use").** For N274,
+N278, N282 and N292:
+1. On day one everyone has one chat, Will's. It is their own chat (N292
+item 6), a controlled place to learn.
+2. A person adds someone to chat with by typing that person's email or
+WhatsApp number; the person gets a link to join WillpowerLab. This answers
+"who adds a contact" (N274 item 7): anyone.
+3. No typing. A person answers with a button Will offers or with a practised
+Take (N292 item 4). Was (N292 item 5): typing with a nudge to speak; and
+(N278 item 2): typed words with a clearer version.
+4. In a customer's chat the person answers the customer themselves. Two
+options are always there: ask the boss for help, and ask the boss "is this
+good?" about an answer, before or after sending it.
+5. The boss (a senior, the owner) answers only with a big emoji or a voice
+note, which Will writes out. Was (N278 item 3): an emoji and two short
+phrases.
+6. It is not flexible on purpose: few buttons, voice first, built to pass on
+the experts' implicit knowledge. Every screen must be simple enough to use
+without being taught.
+7. Open: whether a junior's answer still waits for the senior before it
+reaches the customer (N282 item 2), or the "is this good?" check is now
+always the junior's choice. The prototype shows it as the junior's choice.
+Group chats are still open (N292 item 6).
+No rules page yet: it lands with the chats' rules page (N274 item 6). The
+prototype is the Ember & Air one kept with N292, updated. No migration in
 this entry.
