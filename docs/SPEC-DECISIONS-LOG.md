@@ -7624,9 +7624,24 @@ only one where the speaker can type, to ask about specific things.
 walk coaches it, and the practised Take is what they send. The message is
 the Take's question, so the picker can read whether the answer answers it
 (N290 item 4).
-Not built. The other people's agreement to have their messages read, the
+5. **Now and later** (founder, the same chat: "right now we are just
+building the chat with the coach where you can type normally; I needed to
+give you the broader vision ... so that you know where to source the
+external context for choosing the moment"). Being built now: the coach's
+chat, where the speaker types. The other chats are the vision; the context
+model is built so they plug in when they come. Until then the external
+context comes from the coach's chat, the plan's answers and the Take itself.
+6. **Why it exists** (founder, the same chat: "moment recognition ----
+relevant feedback intervention (THIS IS THE KEY AND REASON FOR EXISTANCE FOR
+ALL ELSE: ALL WE WANT TO DO IS SPOT THE RIGHT MOMENT FOR YOUR CURRENT STATE
+AND NEEDS AND THEN GIVE YOU THE HIGHEST POSSIBLE LEVERAGE FEEDBACK) SO THAT
+YOU CAN BECOME A BETTER SPEAKER, FIND YOUR INNER VOICE AND SOUND CONFIDENT
+UNTIL YOU ARE!"). Recognising the right moment for the speaker's current
+state and needs, then giving the highest-leverage feedback on it, is the
+reason for everything else; every context source serves it (N290 item 1).
+The other people's agreement to have their messages read, the
 processing-authorization path for every message, and the coach staying blind
-(Never 2) are designed with it.
+(Never 2) are designed with the other chats.
 No rules page yet: the rules land on frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 when built. No migration.
