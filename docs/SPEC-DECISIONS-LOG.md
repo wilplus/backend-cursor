@@ -7756,3 +7756,32 @@ The plan's footer (PlanDock) is left as it is. No new words.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 E1, E2 and B, when built. No migration.
+
+**N297 · Locked: Will works out where the speaker is coming from on every
+Take, Take 1 included, and the bottom of the chat is one design across the
+app (founder, 2026-10-31, on the prototype
+<https://claude.ai/artifact/X4gDmGfHH7ivuoRZ9ufiy9> version 12: "ok, it looks
+good can you lock this? ... so that it can become a general lock for the
+app").**
+1. **Every Take is read for context, Take 1 included.** The transcript per
+slide; the verbal part of willfidence per sentence (fillers, hedges, slide
+fit, W their mean; willfidence S × W); the heard read of who the talk is for
+and what it asks, copied word for word and checked (`will_question.verbatim`),
+kept as a guess (N293); the picker lifts a sentence that carries the guessed
+ask at half weight on that same Take.
+2. **Will's question carries suggested answers, from the recording first:**
+what the speaker's own words said (the heard read), then their earlier
+answers, then the signed answers for their field (`AUDIENCE_BY_FIELD`,
+`GOAL_CHIPS`); orange taps on the right. Tapping, saying or typing one makes
+it sure. A question with nothing heard still shows the field's answers.
+3. **The bottom of every chat in the app is N296's design** (nothing asked;
+Will waits, mic orange, no Skip; recording with the walk's strip; the next
+Take's button alone), built from the code's own pieces, which keep their
+shape. A new chat, ask or screen with a message bar uses it; the plan's
+footer joins it when the founder says.
+4. **Locked:** listed in [`docs/LOCKS.md`](LOCKS.md). A change needs the
+founder's OK with a prototype.
+The numbers on the prototype are the founder's view only (Never 1).
+No new words. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E1, E2, B and H1, when built. No migration.
