@@ -90,10 +90,10 @@ def _block_presentation(block: dict, block_id: str) -> dict:
         # helper words, also after its Clearer version. A flag, never the
         # score.
         presentation["helper_words_prompt"] = True
-    if block.get("confident_practice"):
-        # A praised moment is practised with its AI clip (N122). A flag,
-        # never the score.
-        presentation["confident_practice"] = True
+    if block.get("walk_slot"):
+        # The moment's job in the walk (N289): the walk orders its moments
+        # by it, strongest, weakest, next, between. A word, never a rank.
+        presentation["walk_slot"] = block["walk_slot"]
     if block.get("plan_level"):
         # The moment where this week's level shows most (G7, N209): the
         # level's key, from which the walk says "This week's level:

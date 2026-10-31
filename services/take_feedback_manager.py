@@ -447,9 +447,13 @@ CLIENT_READ_ROW_FIELDS = frozenset({
     # N113): the walk offers its helper words, after the praise or after
     # its Clearer version. A flag, never the score.
     "helper_words_prompt",
-    # A praised moment the walk practises with its AI clip (founder
-    # 2026-10-23, N122). A flag, never the score.
+    # A praised moment the walk practised with its AI clip (founder
+    # 2026-10-23, N122): kept for Takes baked before N289, which praises
+    # without one. A flag, never the score.
     "confident_practice",
+    # The moment's job in the walk (founder 2026-10-30, N289): "strongest",
+    # "weakest", "between" or "next". A word, never a score or a rank.
+    "walk_slot",
     # The moment where this week's level shows most, on a plan (G7, N209):
     # the level's key, a word, never a score.
     "plan_level",

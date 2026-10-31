@@ -7452,3 +7452,153 @@ and what happens when that coach is away or full (N274 item 7, "a coach
 with many speakers").
 No rules page yet: it lands with the chats' rules page (N274 item 6). No
 migration in this entry.
+
+**N288 · After a Take's ask, the 15 minutes come before "Record Take N"
+(founder, the Claude Code chat, 30 October 2026, on Take 1's chat where
+Will's question had no answers to tap and the ending came at once: "Like,
+come on, something's wrong here"; then, on the prototype
+<https://claude.ai/artifact/XeK5YMTsMnkC3wKLLxVJta>, choosing "B").**
+1. The plan's lines after a practice day's Take ("That's your 15 minutes
+for today." and "Now go and live it, away from the phone.", G13) never land
+over the Take's ask: they wait until it is answered (N89, one action at a
+time).
+2. Then they come, and then the closing message ("Look, practice makes
+perfect…") with "Record Take N", the last thing in the chat.
+No new words on screen (Never 4).
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+G13. No migration.
+
+**N289 · Three moments, three jobs: the strongest praised, the weakest
+with the AI clip, the one between with the Clearer version or the Sniper;
+the Sniper on any Take (founder, the Claude Code chat, 30 October 2026,
+on the prototype <https://claude.ai/artifact/RkSC2uBKfgBZGC961Ufnhc>: "Why
+the praise moments get an AI [clip]? Should be the other way around. The
+praise clips just get the praise ... the moments that need to be improved,
+get the AI [clip]"; "a negative [word] has been spotted, or it was too
+fast, that's the second moment ... the rewrite or the sniper, or the
+rewrite and the sniper"; "the third moment, the weakest one, is where we
+display the AI audio"; "do it a sandwich way. First, show the strongest,
+then the weakest, and then the average"; on the Sniper, "it doesn't have
+to start from take two").** For N108, N118, N122, N181, N246 and N284:
+1. **The strongest.** The Take's highest willfidence moment (S × W), as
+picked today. Praise only: "This was your most confident moment.", the
+level line and the cue line that says why it was confident (B01 to B09),
+then its helper words. No AI clip and no practise. Amends N122 ("a praised
+moment is practised too").
+2. **The weakest.** From a paragraph not shown, the clip with the lowest
+willfidence that has at least 8 words and a voice read (a clip with no
+sound read is never the weakest), and not one that already holds its
+slide's helper words. The dark V4 picker's importance and sureness
+(`services/v4_picker.py`) are read after the walk is made, so they join
+this rank only once they are read before it. "Here's one with more in it."
+(item 7), the clip, Line A, the strongest moment's clip played again, then
+the AI clip with its one tip, up to three tries. The AI clip is for this
+moment only.
+3. **The one between.** From another paragraph, the clip whose words need
+help the most (the rewrite gate's: undermining words, hedges, off the
+slide, a broken sentence; H3): the Clearer version, kept only when a
+rewrite passes the gate. It is picked before the weakest, so a Take of two
+paragraphs gets the precise fix. Rushing gets the Sniper (the tempo step),
+which comes right after the moments, so a Take with both has the Clearer
+version first and then the Sniper. The notebook's quote after a Good job on a
+Clearer version stays as N268 says, and nowhere else in the walk (N182).
+4. **The order** is strongest, weakest, any next best, then the one
+between, then the Sniper, so the walk ends on a precise fix the speaker can
+land. Replaces C2's "praise first and
+then the corrections".
+5. **Nothing found.** No moment for 3, or a rewrite that does not pass the
+gate: the next best moment, praised as 1. No moment for 2: the next best. A
+shown moment is never skipped (N284).
+Three moments as N284 says; one confident moment, amending N246's two.
+6. **The Sniper on any Take.** The tempo step comes whenever the pace scale
+finds a stretch (a clip at least a quarter outside the green), Take 1
+included, with or without a plan; replaces N181 item 2's "from Take 2".
+Found on the way: the code never had the Take 2 gate
+(`services/tempo_stretch.tempo_for_take`); only the rule said it. N245's
+"20 s or more" is how long a try must be to land, not a limit on the
+stretch, and does not change. Who has the step stays the rings panel's
+`tempo_step` row; the founder widens it there.
+7. **Signed (Never 4),** the founder, the same chat ("I sign the words"):
+"Here's one with more in it." opens the weakest moment, before Line A;
+"Your confident moment", the label on the strongest moment's clip played
+again inside the weakest, before its AI clip; and "Last Take we worked on
+this part. Listen to you now.", for when the walk plays back a paragraph
+that rose since it was last worked on (the feature itself is not decided).
+"This one's ready to go further." was the other choice, not taken.
+8. **On a plan, this week's level takes the slot whose tool fits it**
+(founder, the same chat: "let's do as you recommend"), never a fourth
+moment: "Say it once, and it lands", "Let your key line land" and "Pauses
+that hold the room" take the one between (the Clearer version for the
+first, the Sniper for the other two); "A voice that moves" takes the weakest
+(the AI clip's stress tip). The slot keeps its place in the order and opens
+with "This week's level: {level}. Here's where it shows:" (N209). With
+"Make it yours", or when no moment shows the level, the walk is as above.
+Replaces N246 item 4.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2, C4, H1 and T, rewritten when built. Not built yet. No migration.
+
+**N290 · The picker reads the whole network: the external and the internal
+context, the words and the voice; its goal (founder, the Claude Code chat,
+31 October 2026: "you can lock what I have written here"; "our main goal is
+to spot the correct moments that yield the most for the user confidence and
+serve the intervention that is the most relevant (lock that)").** For N129,
+N182, N268 and N289:
+1. **The goal.** The picker spots the moments that yield the most for the
+speaker's confidence and serves the intervention that is the most relevant.
+2. **The external context** comes from the speaker's interaction with the
+outside world: a comment from their manager, a message from a customer,
+anything that holds a contextual meaning. The speaker drafts their answer to
+it by recording the Take; the moments are chosen in that answer.
+3. **The internal context** is the speaker's principles, strengths,
+variables and constants, life goals and smaller notes, all noted through the
+chat.
+4. **Both contexts are the basis of the verbal read** of what the speaker
+answers: self-deprecating language; not answering the question that was
+asked; negative thinking patterns; gaps in the thinking; a sentence whose
+structure is odd; manipulation in the message; a breach of non-violent
+communication (NVC); or simply no clear main point. The intervention for
+these is the rewrite.
+5. **The vocal read** is how they said it: too fast or too slow, the Sniper;
+flat or monotone, the AI voice.
+6. **The picker balances the moments it chooses across all of that,** and
+the next time it chooses, it takes into account what the speaker answered.
+7. **The context is collected before the walk** (the onboarding) **and after
+it** (the chat and the principles), and it matters most.
+This amends N182 (the walk now reads the internal context, as the basis of
+the verbal read; still never shown to a coach, Never 2) and widens N289's
+words (item 3) to the reads above. The design comes next; nothing is built.
+No rules page yet: the rules land on frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+H1 and [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+when built. No migration.
+
+**N291 · How the picker learns, and where the external context comes from
+(founder, the Claude Code chat, 31 October 2026, answering four questions on
+N290: "yes"; "ok go with the proposal"; "no"; "by the external I mean in
+general some added context comes in from the manager in a separate chat and
+you get that calculated into the context automatically"; "no pasting").**
+For N290:
+1. **A fix worked** when the same issue does not come back on the next Take,
+on the same slide. That is the picker's main measure, checked against the
+coaches' blind answers and the feelings check's trend.
+2. **Two willfidence scores, neither ever shown.** Rolling willfidence
+(today's: the voice against the speaker's recent Takes) picks the moments
+inside a Take. Anchored willfidence (the same formula, the voice against a
+frozen baseline of the speaker's first Takes, and a reference from all
+speakers while those are too few) measures progress over time and whether a
+fix worked. The rolling baseline rises with the speaker, so on its own it
+hides their progress.
+3. **No separate gate** for rewrites of a manipulation or a breach of
+non-violent communication: the rewrite gate (H3) applies as it does to
+every rewrite.
+4. **The external context comes in on its own,** from the speaker's manager
+in a separate chat: what the manager writes there is added to the speaker's
+context automatically. The speaker never pastes anything. The manager's chat
+does not exist yet; who the manager is, how they are invited, what the
+speaker agrees to and what the manager may see are designed next (a coach
+never sees the machine's read, Never 2).
+No rules page yet: the rules land on frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+H1 when built. No migration.

@@ -290,11 +290,16 @@ O4  A message still waiting when a newer Take is written shows where it
 stands.
 O5  After a distressed message the chat's safety reply comes and the asks
 wait: nothing lands under it until I write again (founder 2026-10-21,
-N94).","O1 -> test_after_take_one_the_whatsapp_ask_else_will_else_the_question
+N94).
+O6  The plan's lines after a practice day's Take (""That's your 15
+minutes for today."") wait for the ask: the ask stays the newest
+bubble, so its answers stay; after my answer come the lines, then
+the closing message with ""Record Take N"", last (founder 2026-10-30).","O1 -> test_after_take_one_the_whatsapp_ask_else_will_else_the_question
 O2 -> test_from_take_two_one_ask_ceo_ask_whatsapp_home_screen_will_the_question
 O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_closing_message
 O4 -> test_an_older_waiting_message_shows_where_it_stands
-O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again","Founder 2026-10-20: ""one action at a time"", then, after checking the app: the summary without the CTA, Will's liaison before each ask, ""Look, practice makes perfect…"" and the CTA last."
+O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
+O6 -> test_the_plans_lines_wait_for_the_ask","Founder 2026-10-20: ""one action at a time"", then, after checking the app: the summary without the CTA, Will's liaison before each ask, ""Look, practice makes perfect…"" and the CTA last."
 tests/test_ai_voice.py,Story,"As a speaker practising, I want an AI clip of my own voice saying my own words with one improvement, never shown if it fails its check, and fully deleted when I ask, so that I hear a believable better version and keep control of my voice.","O1  One problem is picked against my own usual (or the default), and the
 sentence under the clip names it in words, with no numbers.
 O2  The clip says my own words (or the clearer version I accepted, with
@@ -1748,22 +1753,29 @@ re-apply as a no-op.","O1 -> test_permissions_rls_and_learning_boundaries_are_cl
 O2 -> test_the_candidate_set_writer_repairs_land_on_the_d4_body","Production 42702, 2026-09-21: the writer had never been called. O2 reads the function definition from the catalog; it does not call the writer with a bundle (that needs the full V3 inventory harness)."
 tests/test_mlc3_n1_source_pattern_postgres.py,Story,"As a speaker who asks for deletion, I want every practice-pattern row about me found under my identity, so that erasure misses nothing.","O1  The deletion list finds every row of each practice-pattern table (N1)
 under my identity, in the expected numbers.",O1 -> test_deletion_inventory_attributes_every_n1_row_to_acquisition_principal,Rehearsal database only; the N1 pattern feature is disabled.
-tests/test_moment_pick.py,Story,"As a speaker, I want each Take to show my three best moments by willfidence, from any slide, and the stronger voice of them called my most confident, so that I always get at least two moments to practise and a confident voice is never asked to sound confident.","O1  The three highest willfidence clips are shown, however low, one per
-block, several on one slide allowed; a clip with enough words comes
-before a short one; fewer only with fewer clips.
-O2  Of those shown, the stronger voice is marked most confident, even when
-its willfidence is the lower.
-O3  The voice decides each: at the floor praised (the Clearer version
-when the words need help), under it corrected.
-O4  With no sound read the words order the clips, and both are
-corrected.
-O5  A sentence that already has my helper words is not picked again: I
-get the next best one, and it comes back only when nothing else can
-be shown.","O1 -> test_the_three_best_by_willfidence_are_shown_from_any_slide
-O2 -> test_the_stronger_voice_shown_is_the_most_confident
-O3 -> test_a_voice_at_the_floor_is_praised_and_only_a_voice_under_it_practises
-O4 -> test_with_no_sound_read_the_words_order_the_clips_and_both_are_corrected
-O5 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next","Founder 2026-10-23 (N118 ""minimum 2, best two""; N122 ""S×W picks, voice names top""); 2026-10-21 (N108, ""the voice decides""); 2026-10-28 (N246, ""go for the next confident moment""); 2026-10-30 (N284, ""we need more moments at least 2"", ""Best three"")."
+tests/test_moment_pick.py,Story,"As a speaker, I want each Take to show my strongest moment, praised, my weakest, practised with the AI voice, and the one whose words need help, with a clearer version, so that I know what to keep and get the one fix each moment needs.","O1  The strongest is the Take's highest willfidence clip, a block's best
+clip standing for it and a clip with enough words before a short
+one; it is praised whatever its voice and called my most confident.
+O2  The weakest is, from another block, the lowest willfidence clip with
+a whole thought and a sound read; it is practised with the voice.
+O3  The between is the clip whose words need help the most; it gets the
+clearer version, and it is picked before the weakest, so a Take of
+two blocks gets the precise fix.
+O4  A slot nothing fills goes to the next best block, praised: three
+moments when the Take has three blocks, one per block, never fewer
+than two with two.
+O5  A clip with no sound read can be the strongest, never the weakest.
+O6  A sentence that already has my helper words is not the strongest
+again: the next best is, and it comes back only when nothing else can
+be shown.
+O7  On a plan, my level takes the slot it is given, never the
+strongest's block, never as a fourth moment.","O1 -> test_the_strongest_is_praised_whatever_its_voice
+O2 -> test_the_weakest_is_the_lowest_whole_thought_i_was_heard_saying
+O3 -> test_words_that_need_help_get_the_between_first
+O4 -> test_an_empty_slot_goes_to_the_next_best
+O5 -> test_a_clip_with_no_sound_read_is_never_the_weakest
+O6 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
+O7 -> test_my_level_takes_its_slot_never_the_strongest","Founder 2026-10-30 (N289: ""the praise clips just get the praise"", ""a negative [word] has been spotted, or it was too fast, that's the second moment"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-28 (N246, ""go for the next confident moment""); 2026-10-30 (N284, three moments)."
 tests/test_moment_suggestions.py,Story,"As a speaker, I want my Ideal Text read to carry no star or suggestion outside the gated changes lane and no scores, so that I see only words and the latest text.","O1  Whatever lane a stored moment suggestion came from (replace,
 emphasize, structure), the GET serves the moment with its anchor and
 playback identity but no star and no suggestion.
@@ -2915,39 +2927,37 @@ O4 -> test_a_take_frozen_under_v2_refuses_a_v3_item
 O5 -> test_the_exposure_record_takes_a_v3_selection",#597: the founder's red bar under the Confident Voice question; no lane installed either function until then. Runs on the freeze lane of scripts/rehearsal_tier.sh against the real claim_ideal_text_feedback_set_v1 and record_take_feedback_response_v1. The target must be a disposable local database whose name starts with ``willab_freeze_``.
 tests/test_take_feedback_manager.py,Story,"As a speaker, I want every required kind of feedback (Confident Voice, a Clearer version, praise) to reach me, so that an old focus rule cannot silently drop one.","O1  With the current feedback contract, all three required kinds are
 kept even when an older focus rule points at one Paragraph.",O1 -> test_mvp_contract_does_not_let_old_focus_gate_drop_a_required_lane,
-tests/test_take_feedback_policy_v3.py,Story,"As a speaker, I want one whole Take turned into my two best moments, each praised or corrected by how it sounded, and honest coverage of my slides, so that the feedback is fair and evidence-backed.","O1  The Take is cut into blocks of the right size; when the two best clips
+tests/test_take_feedback_policy_v3.py,Story,"As a speaker, I want one whole Take turned into my strongest moment, praised, my weakest, practised with the AI voice, and one whose words need help, with a clearer version, and honest coverage of my slides, so that the feedback is fair and evidence-backed.","O1  The Take is cut into blocks of the right size; when the two best clips
 fall in one block, the boundary between them moves (40 to 120 words,
 never across a slide, never cutting a clip); a one-block Take whose
 two clips have 5 or more words each becomes two blocks; and a short
 Take still shows me two moments: when no cut keeps 40 words a side and
 nothing else could be shown, the block is split between the two
 (N246); each such block names its typed exception.
-O2  The two highest blocks are shown and the score decides each: one at
-or above the floor is praised (the highest is marked), one below it
-gets the practice prompt; praise is anchored inside a praised block.
+O2  Three moments, three jobs (N289): the strongest is praised and
+marked; the weakest heard clip gets the practice prompt with the
+voice; the clip whose words need help gets the Clearer version; a
+slot nothing fills goes to the next best, praised; praise is anchored
+inside a praised block.
 O3  Coverage is counted per slide, a slide without a clip says why, and
 the bar is higher from Take 3.
-O4  A corrected moment opens on a Clearer version only when the rewrite
-passes the gate; a weak fallback opens the voice exercise instead, and
-only for a voice under the floor: a voice that cleared it is praised.
+O4  The between opens on a Clearer version only when the rewrite passes
+the gate; with a weak fallback it is walked as a next best, praised.
 Hesitations only its transcript heard never open one (N121).
 O5  A shown moment whose own words hedge opens on a Clearer version with
 its hedges left out, nothing added, even when its voice cleared the
 floor; a hedge's words that are not a hedge where they stand stay.
 O6  A shown moment whose voice reached the floor offers its helper words,
 praised or corrected with its Clearer version; a voice under the
-floor does not (N113). A praised one also carries a practice
-(`confident_practice`, N122).
+floor does not (N113). A praise has no AI clip (N289).
 O7  A shown moment whose sentence restarts or asks for approval opens on
 the Clearer version: with the undermining opener for an approval tag
 or a playing-down ""just"", with the plain opener for a restart.
 O8  In a shown block the moment is its highest-willfidence clip that can
 be served; a block already frozen keeps its clip.
-O9  On a plan, I get my two best moments and also the moment where this
-week's level shows most, practised with the level's own practice (the
-AI voice for pace), even when its voice was confident: a third
-moment, or one of the two when the level shows there; with nothing
-showing the level, just the two best (G7, N246).
+O9  On a plan, this week's level takes the slot whose tool fits it: ""Say
+it once"" the between with its Clearer version; never the strongest,
+never a fourth moment; the pace levels go with the tempo step (N289).
 O10 A sentence that already has the helper words I had when I recorded
 gives its place to my next best moment; helper words I pick during the
 walk don't move my moments (N246).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
@@ -2962,8 +2972,8 @@ O5 -> test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version
 O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version
 O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version
 O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen
-O9 -> test_on_a_plan_i_get_my_two_best_and_my_level
-O10 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level"")."
+O9 -> test_on_a_plan_my_level_takes_the_slot_whose_tool_fits_it
+O10 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level""); 2026-10-30 (N289: ""the praise clips just get the praise"", ""the third moment, the weakest one, is where we display the AI audio"")."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name

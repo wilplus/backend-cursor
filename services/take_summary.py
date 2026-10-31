@@ -656,9 +656,11 @@ def _first_written(database: Any, user_id: str, client_id: str, text: str, meta:
     from services.feedback_digest import post_later
     post_later(database)
     # The plan's lines after a practice (frontend the-plan.md G13, D1, A2);
-    # best-effort, never in the way of the summary.
-    from services.plan_flow import after_take as plan_after_take
-    plan_after_take(database, user_id)
+    # best-effort, never in the way of the summary. With an ask in front of
+    # the speaker they wait for the chain (``after_take.release``).
+    if not asks:
+        from services.plan_flow import after_take as plan_after_take
+        plan_after_take(database, user_id)
     return persisted[0] if persisted else None
 
 
