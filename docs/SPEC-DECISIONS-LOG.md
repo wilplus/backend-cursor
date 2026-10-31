@@ -8039,3 +8039,24 @@ on WillpowerLab.", "Open the chat", "{Name} invited you to WillpowerLab",
 "{Name} at {company} wants to chat with you on WillpowerLab.", "Join".
 No rules page yet: it lands with the chats' rules page (N274 item 6). The
 prototype is the Ember & Air one kept with N298. No migration in this entry.
+
+**N308 · WillpowerLab joins existing processes through links: everyone has
+their own link to join them in a chat (founder, the Claude Code chat, 31
+October 2026: "i want the willpowerlab to integrate within the existing
+processes through links to join on email if you send it to someones email;
+it is like you can just send a link to someone to join you on the chat; like
+a junior to join you sends the link to the senior and vice versa
+possible").** For N298, N299 and N307:
+1. Every person has their own link to join them in a chat. They can paste it
+into anything they already send (an email, a message); whoever opens it
+joins WillpowerLab and gets a chat with them, and their own chat with Will.
+2. It works both ways and for anyone: a junior sends it to a senior, a
+senior to a junior. Typing someone's email or WhatsApp number still sends
+the invite of N307.
+3. This is how WillpowerLab fits a company's existing processes: through
+links people already pass around, with nothing to connect (N299 item 4,
+for the people in a team).
+4. Open: the words of the add sheet and of the join page (Never 4), and
+whether a customer can be invited by a link too.
+No rules page yet: it lands with the chats' rules page (N274 item 6). The
+prototype is the Ember & Air one kept with N298. No migration in this entry.

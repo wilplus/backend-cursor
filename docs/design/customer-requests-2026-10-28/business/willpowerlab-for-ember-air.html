@@ -663,6 +663,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .srow .stx b { display: block; font-size: 14.5px; font-weight: 600; } .srow .stx small { display: block; font-size: 12px; color: #737373; line-height: 1.35; }
 .cc .card2.pc { width: 92%; }
 .cc .vb { flex: none; height: 34px; padding: 0 14px; border-radius: 99px; border: 0; background: #17130F; color: #FBF8F3; font: 600 14px var(--font-app); }
+.wa-card .lnk { margin: 2px 0; padding: 10px 12px; border: 1px solid #121212; border-radius: 10px; background: #FFFFFF; font: 500 14px var(--font-app); color: #121212; overflow-wrap: anywhere; }
 </style>
 
 <div class="app" id="app">
@@ -771,8 +772,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
   const STEPS = [
     { id: "biz", ch: "Start", name: "Ember & Air", role: "You", draw: drawBiz, note: ["Who is who. You are Josh, a heating advisor at Ember & Air (an example company). Mark is a customer: he asks a question on the website. Piotr is your colleague. Marta is your speaking coach. Dana owns the company.", "The story: Mark asks; you answer with a Take; Will gives you feedback; you ask Piotr first; you send your better Take to Mark; Mark books. Built only from the designs in the code, plus what the founder agreed."] },
     { id: "o-shelf", ch: "Start", name: "The shelf", role: "Owner", draw: drawOShelf, q: "shop", note: ["Set up once: what the business can point to in an answer, brought in from its shop and its booking system. One shape for everything: a name, a link, a type, maybe a price or a picture. The type only sets the customer's button: Book, Buy, Watch, Open, Get a quote.", "A quote never shows a price (the install is priced after the survey). It grows by pasting a link in Will's chat."] },
-    { id: "j-start", ch: "Start", name: "Everyone starts with Will", role: "Junior", draw: drawJStart, note: ["Day one: one chat, Will\'s. It is the person\'s own chat and the only one where they can type (N292, N298).", "They add the people they work with by email or WhatsApp number (the + at the top); each gets a link to join (N298 item 2)."] },
-    { id: "n-invite", ch: "Start", name: "Piotr gets an invite", role: "Senior", draw: drawNInvite, note: ["An email with a link to join. Once he joins, Josh is in his chats, and he has his own chat with Will (N298 item 2)."] },
+    { id: "j-start", ch: "Start", name: "Everyone starts with Will", role: "Junior", draw: drawJStart, note: ["Day one: one chat, Will\'s. It is the person\'s own chat and the only one where they can type (N292, N298).", "Everyone has their own link to join them in a chat (N308). They paste it into any email or message they already send, or type someone\'s email or WhatsApp number and WillpowerLab sends it (N307). A junior sends it to a senior, a senior to a junior: it works both ways."] },
+    { id: "n-invite", ch: "Start", name: "Josh sends his link", role: "Junior", draw: drawNInvite, note: ["WillpowerLab joins the way people already work: Josh pastes his link into an email he writes anyway, in his own mail app. Piotr opens it, joins, and Josh is in his chats, with his own chat with Will too (N308)."] },
     { id: "form", ch: "Mark asks", name: "The customer asks", role: "Customer", draw: drawForm, note: ["On your website: a photo, a few words, a number, a tick. Each question becomes its own chat (N298 item 3)."] },
     { id: "sent", ch: "Mark asks", name: "Sent", role: "Customer", draw: drawSent, q: "speed", note: ["The question lands with the juniors."] },
     { id: "n-mark", ch: "Mark asks", name: "Josh gets a notice", role: "Junior", draw: drawNMark, note: ["One notice per message, the same for everyone: who sent it, never what. By email, or by WhatsApp if the person gave their number; the path the coach's reply uses today. The link opens that chat."] },
@@ -1043,14 +1044,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
   const ask = (title, sub, l, r, cueL = false) => `<div class="wa-card"><p class="wa-title">${title}</p>${sub ? `<p class="wa-sub">${sub}</p>` : ""}</div><div class="pair"><button class="close${cueL ? " cue-ring" : ""}" type="button" id="l">${esc(l)}</button><button class="act${cueL ? "" : " cue-ring"}" type="button" id="r">${esc(r)}</button></div>`;
   const takeMine = (label, secs, seed, t, extra = "") => `<div class="lg-b lg-me" style="width:78%"><b>${esc(label)}</b>${player(secs, seed)}${extra}<span class="ticks read">✓✓</span></div>`;
   function meOrange() { screen.querySelectorAll(".lg-me .play").forEach((p) => { p.style.background = "#fff"; p.querySelector("path").setAttribute("fill", "#FF640A"); }); screen.querySelectorAll(".lg-me .bars i").forEach((x) => x.style.background = "rgba(255,255,255,.55)"); screen.querySelectorAll(".lg-me .t").forEach((x) => x.style.color = "#fff"); }
-  function drawJStart() {
-    screen.innerHTML = `<div class="bg"></div><div class="lst"><div class="lh"><b>Chats</b><button class="menu cue-ring" type="button" id="add" aria-label="Add someone">${ICON.plus}</button></div>
-      <button class="crow" type="button">${WILL52}<span class="mid"><b>Will</b><span class="pv">Your speaking coach</span></span></button></div>`;
-    screen.querySelector("#add").onclick = () => {
-      screen.insertAdjacentHTML("beforeend", `<div class="lg-dock">${ask("Add someone to chat with", `Their email or WhatsApp number. They get a link to join WillpowerLab.</p><p class="wa-sub" style="border:1px solid #121212;border-radius:10px;padding:10px 12px;color:#121212;background:#fff">+44 7700 900318`, "Not now", "Invite")}</div>`);
-      screen.querySelector("#r").onclick = () => { screen.querySelector(".lg-dock").remove(); screen.querySelector(".lst").insertAdjacentHTML("beforeend", `<button class="crow" type="button">${av(AVS)}<span class="mid"><b>${esc(B().expert)}</b><span class="pv">Invited · a link to join is on its way</span></span></button>`); later(next, 1600); };
-    };
-  }
   const WILL52 = `<span class="av will" style="width:52px;height:52px"><i></i><i></i><i></i></span>`;
   function drawJChats() {
     screen.innerHTML = `<div class="bg"></div><div class="lst"><div class="lh"><b>Chats</b><button class="menu" type="button" aria-label="Add someone">${ICON.plus}</button></div>
@@ -1189,15 +1182,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
   const inbox = (to, from, avBg, subject, body, btn) => `<div class="mail"><div class="mtop"><button type="button" class="bk">‹</button><span>${esc(to)}'s inbox</span></div>
     <div class="mh"><b>${esc(subject)}</b><span class="mf"><span class="av wlav" style="width:36px;height:36px"><i></i><i></i><i></i></span><span><b>WillpowerLab</b><small>to ${esc(to)} · now</small></span></span></div>
     <div class="mb"><span class="av" style="width:44px;height:44px;background:${avBg};display:block;margin-bottom:12px"></span>${body}<br><br><button type="button" class="mbtn cue-ring" id="open">${esc(btn)}</button></div></div>`;
-  function drawNInvite() {
-    screen.innerHTML = inbox(B().expert, B().junior, AVJ, `${B().junior} invited you to WillpowerLab`, `${esc(B().junior)} at ${esc(B().site)} wants to chat with you on WillpowerLab.`, "Join");
-    screen.querySelector("#open").onclick = () => {
-      screen.innerHTML = `<div class="bg"></div><div class="lst"><div class="lh"><b>Chats</b><button class="menu" type="button" aria-label="Add someone">${ICON.plus}</button></div>
-        <button class="crow" type="button">${WILL52}<span class="mid"><b>Will</b><span class="pv">Your speaking coach</span></span></button>
-        <button class="crow cue-ring" type="button">${av(AVJ)}<span class="mid"><b>${esc(B().junior)}</b><span class="pv">Your colleague</span></span></button></div>`;
-      later(next, 1800);
-    };
-  }
   function drawNMark() {
     screen.innerHTML = inbox(B().junior, B().cust, B().photo, `${B().cust} sent you a message`, `${esc(B().cust)} sent you a message on WillpowerLab.`, "Open the chat");
     screen.querySelector("#open").onclick = next;
@@ -1271,6 +1255,37 @@ button { font: inherit; color: inherit; cursor: pointer; }
       });
     };
     paint(false);
+  }
+  // ---------- N308: your own link to join you in a chat; send it anywhere (an email you already write, a message); it works both ways ----------
+  const MYLINK = () => `willpowerlab.com/c/${B().junior.toLowerCase()}-emberandair`;
+  function drawJStart() {
+    screen.innerHTML = `<div class="bg"></div><div class="lst"><div class="lh"><b>Chats</b><button class="menu cue-ring" type="button" id="add" aria-label="Add someone">${ICON.plus}</button></div>
+      <button class="crow" type="button">${WILL52}<span class="mid"><b>Will</b><span class="pv">Your speaking coach</span></span></button></div>`;
+    screen.querySelector("#add").onclick = () => {
+      screen.insertAdjacentHTML("beforeend", `<div class="lg-dock"><div class="wa-card"><p class="wa-title">Add someone to chat with</p><p class="wa-sub">Send them your link, in any email or message. Whoever opens it joins you here.</p><p class="lnk">${esc(MYLINK())}</p><p class="wa-sub">Or type their email or WhatsApp number, and WillpowerLab sends them the link.</p></div><div class="pair"><button class="close" type="button" id="l">Invite by email</button><button class="act cue-ring" type="button" id="r">Copy my link</button></div></div>`);
+      screen.querySelector("#r").onclick = () => { screen.querySelector("#r").textContent = "Copied"; later(next, 900); };
+      screen.querySelector("#l").onclick = () => toast("Their email or WhatsApp number: WillpowerLab sends the invite (N307).");
+    };
+  }
+  // Josh pastes his link into an email he writes anyway, in his own mail app; Piotr opens it and joins
+  function drawNInvite() {
+    const compose = (sent) => `<div class="mail"><div class="mtop"><button type="button" class="bk">‹</button><span>${sent ? `${esc(B().expert)}'s inbox` : "New message"}</span></div>
+      <div class="mh"><b>${sent ? "Mark's boiler" : "To: piotr@emberandair.co.uk"}</b><span class="mf"><span class="av" style="width:36px;height:36px;background:${AVJ}"></span><span><b>${esc(B().junior)}</b><small>${sent ? `to ${esc(B().expert)} · 9:30` : "Subject: Mark's boiler"}</small></span></span></div>
+      <div class="mb">Hi ${esc(B().expert)}, the photos of Mark's boiler are in. Can you join me here so I can ask you about my answers?<br><br><span class="mlink" id="lk">${esc(MYLINK())}</span><br><br>${esc(B().junior)}<br><br>${sent ? "" : `<button type="button" class="mbtn cue-ring" id="send">Send</button>`}</div></div>`;
+    screen.innerHTML = compose(false);
+    screen.querySelector("#send").onclick = () => {
+      screen.innerHTML = compose(true);
+      const lk = screen.querySelector("#lk"); lk.classList.add("cue-ring"); lk.style.cursor = "pointer";
+      lk.onclick = () => {
+        screen.innerHTML = `<div class="biz"><span class="av" style="width:64px;height:64px;background:${AVJ}"></span><h3>${esc(B().junior)} asks you to join them on WillpowerLab</h3><p>${esc(B().junior)} at ${esc(B().site)}. You'll have a chat with ${esc(B().junior)}, and your own chat with Will.</p><div style="flex:1"></div><button type="button" class="pill cue-ring" id="j" style="text-align:center;align-items:center">Join</button></div>`;
+        screen.querySelector("#j").onclick = () => {
+          screen.innerHTML = `<div class="bg"></div><div class="lst"><div class="lh"><b>Chats</b><button class="menu" type="button" aria-label="Add someone">${ICON.plus}</button></div>
+            <button class="crow" type="button">${WILL52}<span class="mid"><b>Will</b><span class="pv">Your speaking coach</span></span></button>
+            <button class="crow cue-ring" type="button">${av(AVJ)}<span class="mid"><b>${esc(B().junior)}</b><span class="pv">Your colleague</span></span></button></div>`;
+          later(next, 1800);
+        };
+      };
+    };
   }
   // ---------- Fit the phone ----------
   const device = document.getElementById("device"), bezel = document.getElementById("bezel"), stage = document.getElementById("stage");
