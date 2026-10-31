@@ -7538,3 +7538,38 @@ Replaces N246 item 4.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C2, C4, H1 and T, rewritten when built. Not built yet. No migration.
+
+**N290 · The picker reads the whole network: the external and the internal
+context, the words and the voice; its goal (founder, the Claude Code chat,
+31 October 2026: "you can lock what I have written here"; "our main goal is
+to spot the correct moments that yield the most for the user confidence and
+serve the intervention that is the most relevant (lock that)").** For N129,
+N182, N268 and N289:
+1. **The goal.** The picker spots the moments that yield the most for the
+speaker's confidence and serves the intervention that is the most relevant.
+2. **The external context** comes from the speaker's interaction with the
+outside world: a comment from their manager, a message from a customer,
+anything that holds a contextual meaning. The speaker drafts their answer to
+it by recording the Take; the moments are chosen in that answer.
+3. **The internal context** is the speaker's principles, strengths,
+variables and constants, life goals and smaller notes, all noted through the
+chat.
+4. **Both contexts are the basis of the verbal read** of what the speaker
+answers: self-deprecating language; not answering the question that was
+asked; negative thinking patterns; gaps in the thinking; a sentence whose
+structure is odd; manipulation in the message; a breach of non-violent
+communication (NVC); or simply no clear main point. The intervention for
+these is the rewrite.
+5. **The vocal read** is how they said it: too fast or too slow, the Sniper;
+flat or monotone, the AI voice.
+6. **The picker balances the moments it chooses across all of that,** and
+the next time it chooses, it takes into account what the speaker answered.
+7. **The context is collected before the walk** (the onboarding) **and after
+it** (the chat and the principles), and it matters most.
+This amends N182 (the walk now reads the internal context, as the basis of
+the verbal read; still never shown to a coach, Never 2) and widens N289's
+words (item 3) to the reads above. The design comes next; nothing is built.
+No rules page yet: the rules land on frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+H1 and [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+when built. No migration.
