@@ -7693,8 +7693,11 @@ your audience remembers one sentence from you, what is it? Say it the way
 you'll say it.") and the speaker answers with a voice message; no answer is
 offered to tap.
 3. **A follow-up is answered in the speaker's own words,** typed or recorded;
-no tap answers. Skip is an outlined choice, never drawn like a message the
-speaker sent (style only).
+no tap answers. While Will waits for an answer, the microphone is the main
+way to answer (orange, larger) and typing stays; Skip is quiet grey text on
+the left of the message box, never in the reply spot on the right where the
+speaker's own messages go, so it never reads as the default (style only, no
+new words). Tap answers, when a question has them, stay on the right.
 4. **One at a time.** One question or ask is on screen at a time; the next
 comes only once the one before is answered. A second context question may
 follow an answered first one; a Skip ends them.
