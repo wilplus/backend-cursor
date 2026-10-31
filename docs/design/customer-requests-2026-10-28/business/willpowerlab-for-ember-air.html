@@ -1,0 +1,1180 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>WillpowerLab for Ember & Air</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Ariel answers a customer of Invita Head Spa in her own WillpowerLab Lounge (N223, N226, N229).
+   Left: the steps. Middle: the phone (the Lounge and the processing wait are screenshots of today's app;
+   the recording screen, the walk and the Ideal Text page are drawn from their real screens at 390 x 844).
+   Right: what is real, what is new, and what we still need to know before building it. */
+:root {
+  --ground: #ECEAE6; --panel: #FFFFFF; --ink: #171615; --muted: #67635D; --line: #DAD6CF;
+  --accent: #FF640A; --accent-soft: #FFE9DA; --accent-ink: #A83E00; --real: #E3E0DA; --real-ink: #3D3A35; --focus: #1D6FE0;
+  --ask: #FFF6D6; --ask-ink: #6B4E00;
+  --font-ui: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --font-app: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --ground: #151413; --panel: #1F1E1C; --ink: #EDEBE7; --muted: #A39F98; --line: #36332F;
+  --accent: #FF7A2B; --accent-soft: #3A2414; --accent-ink: #FFB487; --real: #2C2A27; --real-ink: #D7D3CC; --focus: #6AA5FF;
+  --ask: #33290F; --ask-ink: #F2D27A; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --ground: #151413; --panel: #1F1E1C; --ink: #EDEBE7; --muted: #A39F98; --line: #36332F;
+  --accent: #FF7A2B; --accent-soft: #3A2414; --accent-ink: #FFB487; --real: #2C2A27; --real-ink: #D7D3CC; --focus: #6AA5FF;
+  --ask: #33290F; --ask-ink: #F2D27A; color-scheme: dark }
+html, body { height: 100%; margin: 0; }
+body { background: var(--ground); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.app { display: grid; grid-template-columns: 236px minmax(0, 1fr) 340px; gap: 28px; max-width: 1380px; margin: 0 auto;
+  padding-block: 20px 28px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); box-sizing: border-box; }
+.rail { position: sticky; top: 20px; align-self: start; max-height: calc(100vh - 40px); overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding-right: 4px; }
+.rail h1 { font-size: 21px; line-height: 1.2; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.rail .lede { margin: 6px 0 0; color: var(--muted); font-size: 13.5px; }
+.rail a { color: var(--accent-ink); }
+.chap { display: flex; flex-direction: column; gap: 2px; }
+.chap-h { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; }
+.step { display: flex; align-items: center; gap: 8px; text-align: left; border: 0; background: transparent; padding: 6px 8px; border-radius: 8px; font-size: 14px; color: var(--ink); }
+.step:hover { background: var(--real); }
+.step[aria-current="step"] { background: var(--panel); box-shadow: 0 0 0 1px var(--line); font-weight: 600; }
+.step.side { padding-left: 22px; font-size: 13px; color: var(--muted); }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--real-ink); opacity: 0.35; }
+.dot.new { background: var(--accent); opacity: 1; }
+.dot.mixed { background: linear-gradient(90deg, var(--accent) 50%, var(--real-ink) 50%); opacity: 1; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.legend span { display: flex; gap: 6px; align-items: center; }
+.centre { display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 0; }
+.jump { display: none; width: 100%; gap: 10px; align-items: center; flex-wrap: wrap; }
+.jump h1 { font-size: 19px; margin: 0; flex: 1 1 180px; }
+.jump select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); max-width: 100%; }
+.stage { width: 100%; display: flex; justify-content: center; }
+.device { position: relative; }
+.bezel { position: absolute; left: 0; top: 0; width: 410px; height: 864px; transform-origin: 0 0; border-radius: 52px; background: #0D0D0D; padding: 10px; box-sizing: border-box; box-shadow: 0 30px 60px -30px rgba(20, 15, 10, 0.45); }
+.screen { position: relative; width: 390px; height: 844px; border-radius: 42px; overflow: hidden; background: #FFFFFF; color: #121212; font-family: var(--font-app); isolation: isolate; }
+@media (max-width: 520px) { .bezel { background: transparent; box-shadow: none; padding: 0; border-radius: 0; } .screen { border-radius: 18px; box-shadow: 0 0 0 1px var(--line); } }
+.controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 8px 16px; font-weight: 500; }
+.btn:hover { border-color: var(--muted); }
+.where { font-family: var(--font-mono); font-size: 12px; color: var(--muted); min-width: 92px; text-align: center; font-variant-numeric: tabular-nums; }
+.toggles { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; font-size: 13px; color: var(--muted); }
+.toggles label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.toggles input { accent-color: var(--accent); }
+.notes { position: sticky; top: 20px; align-self: start; display: flex; flex-direction: column; gap: 14px; max-height: calc(100vh - 40px); overflow-y: auto; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.badge { align-self: flex-start; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; padding: 3px 8px; border-radius: 999px; background: var(--real); color: var(--real-ink); }
+.badge.new { background: var(--accent); color: #FFFFFF; }
+.badge.mixed { background: var(--accent-soft); color: var(--accent-ink); }
+.notes h2 { margin: 0; font-size: 19px; line-height: 1.25; text-wrap: balance; }
+.notes p { margin: 0; }
+.notes h3 { margin: 4px 0 0; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.notes ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.words { list-style: none; padding: 0 !important; }
+.words li { background: var(--accent-soft); color: var(--accent-ink); border-radius: 8px; padding: 5px 9px; font-size: 14px; }
+.asks { list-style: none; padding: 0 !important; }
+.asks li { background: var(--ask); color: var(--ask-ink); border-radius: 8px; padding: 6px 9px; font-size: 14px; }
+.asks li b { font-family: var(--font-mono); font-size: 11.5px; margin-right: 4px; }
+.refs { font-size: 13px; color: var(--muted); }
+.all { border-style: dashed; }
+.all ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+.all ol li::marker { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+.all summary { cursor: pointer; font-weight: 600; }
+@media (max-width: 1120px) { .app { grid-template-columns: minmax(0, 1fr) 320px; } .rail { display: none; } .jump { display: flex; } }
+@media (max-width: 780px) { .app { grid-template-columns: minmax(0, 1fr); gap: 20px; } .notes { position: static; max-height: none; overflow: visible; } }
+
+/* ---------- Inside the phone: the app's own look (always light, like the app) ---------- */
+.screen img.shot { position: absolute; inset: 0; width: 390px; height: 844px; display: block; user-select: none; -webkit-user-drag: none; }
+.hot { position: absolute; border: 0; background: transparent; border-radius: 14px; padding: 0; z-index: 5; }
+.show-hot .hot.cue, .show-hot .screen .cue-ring { outline: 2px dashed rgba(255, 100, 10, 0.9); outline-offset: 2px; animation: cue 1.8s ease-in-out infinite; }
+@keyframes cue { 0%, 100% { outline-color: rgba(255, 100, 10, 0.9); } 50% { outline-color: rgba(255, 100, 10, 0.25); } }
+.mark-new .nw { text-decoration: underline dotted #FF640A 2px; text-underline-offset: 4px; }
+.toast { position: absolute; left: 50%; bottom: 110px; transform: translateX(-50%); background: #121212; color: #FFFFFF; font-size: 13.5px; padding: 9px 14px; border-radius: 12px; z-index: 30; width: max-content; max-width: 300px; text-align: center; animation: toast 3s ease forwards; pointer-events: none; }
+@keyframes toast { 0% { opacity: 0; transform: translate(-50%, 6px); } 10%, 85% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
+@keyframes up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes blink { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+@keyframes pulse { 50% { opacity: 0.5; } }
+@keyframes rise { from { transform: translateY(40px); opacity: 0; } }
+
+/* Ariel's phone, locked: the WhatsApp message that brings her in */
+.lock { position: absolute; inset: 0; background: linear-gradient(160deg, #3B342E, #17130F 70%); color: #FFFFFF; display: flex; flex-direction: column; align-items: center; padding-top: 86px; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", var(--font-app); }
+.lock .d { font-size: 17px; font-weight: 500; opacity: 0.9; }
+.lock .tm { font-size: 84px; font-weight: 600; line-height: 1; letter-spacing: -0.02em; margin-top: 4px; }
+.lock .ntf { margin-top: 44px; width: calc(100% - 24px); border: 0; text-align: left; border-radius: 22px; background: rgba(245, 245, 245, 0.78); backdrop-filter: blur(20px); color: #121212; padding: 12px 14px; display: flex; gap: 10px; animation: up 0.4s ease both; }
+.lock .ntf .ic { width: 38px; height: 38px; border-radius: 9px; background: #25D366; display: grid; place-items: center; flex: none; }
+.lock .ntf .b { flex: 1; min-width: 0; font-size: 14.5px; line-height: 1.35; }
+.lock .ntf .b b { display: flex; justify-content: space-between; font-size: 14.5px; }
+.lock .ntf .b b small { font-weight: 400; color: #5E5E5E; font-size: 13px; }
+
+/* The Lounge, drawn over the real Lounge's header and composer (lounge.webp) */
+.lg-area { position: absolute; left: 0; right: 0; top: 73px; height: 672px; background: #FFFFFF; display: flex; flex-direction: column; gap: 8px; padding: 16px 16px 14px; box-sizing: border-box; overflow-y: auto; scrollbar-width: none; }
+.lg-area::-webkit-scrollbar { display: none; }
+.lg-area > * { flex-shrink: 0; }
+.lg-area > :first-child { margin-top: auto; }
+.lg-b { position: relative; align-self: flex-start; max-width: 85%; background: #F5F5F5; border-radius: 16px; padding: 8px 12px; font-size: 15px; line-height: 1.45; animation: up 0.28s ease both; white-space: pre-wrap; box-sizing: border-box; }
+.lg-b::after { content: ""; position: absolute; left: -7px; bottom: 0; width: 10px; height: 14px; background: inherit; clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+.lg-me { align-self: flex-end; background: #FF640A; color: #FFFFFF; }
+.lg-me::after { left: auto; right: -7px; clip-path: polygon(0 0, 0 100%, 100% 100%); }
+.lg-day { align-self: center; font-size: 12px; color: #737373; padding: 6px 0 2px; text-align: center; max-width: 90%; }
+.lg-rec { display: flex; width: fit-content; align-items: center; gap: 6px; height: 32px; margin: 10px 0 4px; padding: 0 14px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; color: #121212; font: 600 14px var(--font-app); }
+.rdot { width: 8px; height: 8px; border-radius: 50%; background: #E63C2D; flex: none; }
+.typing { align-self: flex-start; background: #F5F5F5; border-radius: 16px; padding: 12px 14px; display: flex; gap: 5px; }
+.typing i { width: 7px; height: 7px; border-radius: 50%; background: #A3A3A3; animation: blink 1s infinite; }
+.typing i:nth-child(2) { animation-delay: 0.15s; } .typing i:nth-child(3) { animation-delay: 0.3s; }
+/* The customer's words in the thread: quoted inside Will's grey bubble */
+.quote { display: flex; gap: 10px; align-items: flex-start; margin-top: 6px; padding: 8px; border-radius: 12px; background: #FFFFFF; }
+.quote .ph { width: 52px; height: 52px; border-radius: 8px; flex: none; border: 0; padding: 0; }
+.quote .qt { font-size: 14px; line-height: 1.4; color: #121212; white-space: normal; }
+.quote .qt small { display: block; font-size: 12px; color: #737373; margin-top: 3px; }
+.scalp { background: radial-gradient(ellipse at 45% 40%, #E7C9B4 0 22%, #C79C83 40%, #6E4E3E 72%, #3A2A22 100%); position: relative; overflow: hidden; }
+.scalp::before { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(115deg, rgba(40, 25, 18, 0.55) 0 1px, transparent 1px 5px); mask: radial-gradient(ellipse at 45% 40%, transparent 0 28%, #000 55%); -webkit-mask: radial-gradient(ellipse at 45% 40%, transparent 0 28%, #000 55%); }
+/* The Take's pair in the thread: the Feedback walk + the Ideal Text card (N192, N202) */
+.pair-w { align-self: flex-start; width: 80%; max-width: 384px; display: flex; flex-direction: column; gap: 3px; animation: up 0.28s ease both; }
+.fw { position: relative; background: #F5F5F5; border-radius: 16px; border-bottom-left-radius: 6px; padding: 8px 30px 8px 12px; font-size: 15px; line-height: 1.45; text-align: left; border: 0; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; }
+.fw::after { content: "›"; position: absolute; right: 11px; top: 50%; transform: translateY(-50%); font-size: 20px; color: #737373; }
+.fw .fmeta { font-size: 11.5px; color: #737373; margin-top: 2px; }
+.itcard { position: relative; display: flex; align-items: center; gap: 10px; border: 1px solid #EBEBEB; border-radius: 18px; border-top-left-radius: 6px; padding: 10px 28px 10px 10px; background: #FFFFFF; text-align: left; width: 100%; box-sizing: border-box; }
+.itcard.solo { border-radius: 18px; }
+.itcard::after { content: "›"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 20px; color: #737373; }
+.itcard.fresh { border: 2px solid #FF640A; }
+.itcard .tag { position: absolute; top: -10px; right: -2px; background: #FF640A; color: #FFFFFF; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 1px 9px; }
+.itcard .tile { width: 72px; aspect-ratio: 16/9; flex: none; border-radius: 6px; overflow: hidden; }
+.itcard b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 15px; font-weight: 600; }
+.itcard .ver { flex: none; border-radius: 999px; background: #F5F5F5; padding: 2px 10px; font-size: 12px; font-weight: 600; }
+/* The list of chats and a chat's header (N251), in the app's own parts */
+.lst { position: absolute; left: 0; right: 0; top: 73px; bottom: 33px; background: #FFFFFF; overflow-y: auto; z-index: 2; scrollbar-width: none; }
+.lst::-webkit-scrollbar { display: none; }
+.lst .lh { padding: 14px 16px 2px; } .lst .lh b { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.flt { display: flex; gap: 8px; padding: 10px 16px 8px; }
+.flt button { height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; font: 400 14px var(--font-app); color: #121212; }
+.flt button[aria-pressed="true"] { background: #121212; color: #FFFFFF; border-color: #121212; }
+.crow { display: flex; align-items: flex-start; gap: 12px; width: 100%; border: 0; background: #FFFFFF; padding: 10px 16px 0; text-align: left; font-family: var(--font-app); color: #121212; }
+.crow .av { width: 52px; height: 52px; margin-bottom: 10px; }
+.crow .mid { flex: 1; min-width: 0; border-bottom: 1px solid #F0F0F0; padding: 3px 0 12px; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.crow .mid b { display: block; max-width: 100%; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crow .pv { display: block; max-width: 100%; font-size: 14px; color: #737373; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crow .rt { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; padding-top: 4px; }
+.crow .tm { font-size: 12px; color: #737373; } .crow .tm.on { color: #FF640A; font-weight: 600; }
+.crow .ub { min-width: 20px; height: 20px; border-radius: 999px; background: #FF640A; color: #FFFFFF; font-size: 12px; font-weight: 600; display: grid; place-items: center; padding: 0 6px; box-sizing: border-box; }
+.crow .pin { font-size: 11px; font-weight: 400; color: #A3A3A3; margin-left: 4px; }
+.st { margin-top: 3px; font-size: 11.5px; color: #737373; border: 1px solid #EBEBEB; border-radius: 999px; padding: 1px 8px; }
+.st.w { color: #A83E00; border-color: #FFD2B5; background: #FFF4EC; }
+.av { width: 36px; height: 36px; border-radius: 50%; flex: none; display: block; }
+.av.will { background: #F5F5F5; display: flex; align-items: center; justify-content: center; gap: 3px; }
+.av.will i { width: 5px; height: 5px; border-radius: 50%; background: #121212; } .av.will i:nth-child(2) { width: 7px; height: 7px; }
+.av.c2 { background: radial-gradient(ellipse at 40% 40%, #F0D9C0 0 25%, #C9A27E 50%, #5B4030 100%); }
+.av.c3 { background: radial-gradient(ellipse at 55% 45%, #EADFD3 0 25%, #B9A08A 55%, #4A3A30 100%); }
+.chd { position: absolute; left: 0; right: 0; top: 73px; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 4px; border-bottom: 1px solid #EBEBEB; background: #FFFFFF; z-index: 3; box-sizing: border-box; }
+.chd .bk { width: 34px; height: 44px; border: 0; background: none; font-size: 28px; line-height: 1; color: #121212; padding: 0; }
+.chd .nm { min-width: 0; } .chd .nm b { display: block; font-size: 15.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chd .nm small { display: block; font-size: 12.5px; color: #737373; }
+.lg-area.sub { top: 129px; height: 616px; }
+.lg-b.them .quote { margin-top: 0; padding: 0; background: transparent; }
+.ans-b { display: flex; flex-direction: column; gap: 6px; width: 78%; }
+.ans-b .al { font-weight: 600; } .ans-b .al small { font-weight: 400; font-size: 12.5px; opacity: 0.9; }
+.ans-b .play { background: #FFFFFF; } .ans-b .play svg path { fill: #FF640A; } .ans-b .bars i { background: rgba(255,255,255,0.55); } .ans-b .t { color: #FFFFFF; }
+.evt { align-self: center; max-width: 86%; text-align: center; font-size: 13.5px; line-height: 1.4; color: #121212; background: #F5F5F5; border-radius: 12px; padding: 8px 12px; animation: up 0.28s ease both; }
+/* The ask's footer: the grey card and the pair (WillabWhatsAppPrompt, SymmetricPair) */
+.lg-dock { position: absolute; left: 0; right: 0; bottom: 33px; background: #FFFFFF; padding: 8px 16px 10px; display: flex; flex-direction: column; gap: 8px; z-index: 4; }
+.wa-card { background: #F5F5F5; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.wa-title { font-size: 13px; font-weight: 500; color: #121212; line-height: 1.35; margin: 0; }
+.wa-sub { font-size: 13px; color: #737373; line-height: 1.4; margin: 0; }
+.gets { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #121212; }
+.gets li { display: flex; gap: 8px; }
+.gets li::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #A3A3A3; margin-top: 7px; flex: none; }
+.pair { display: flex; gap: 12px; }
+.pair button { height: 44px; flex: 1; border-radius: 999px; font: 400 15px var(--font-app); display: flex; align-items: center; justify-content: center; }
+.pair .close { border: 1px solid #EBEBEB; background: #FFFFFF; color: #121212; }
+.pair .act { border: 0; background: #121212; color: #FFFFFF; font-weight: 500; }
+/* The composer, live over the screenshot's composer, with the reply chip (new) */
+.cmp { position: absolute; left: 0; right: 0; bottom: 33px; background: #FFFFFF; padding: 6px 16px 10px 12px; z-index: 4; display: flex; flex-direction: column; gap: 6px; }
+.cmp .chip { align-self: flex-start; margin-left: 48px; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #121212; background: #F5F5F5; border-radius: 999px; padding: 4px 6px 4px 10px; }
+.cmp .chip button { width: 20px; height: 20px; border-radius: 50%; border: 0; background: #E5E5E5; display: grid; place-items: center; padding: 0; color: #737373; }
+.cmp .row { display: flex; align-items: flex-end; gap: 4px; }
+.cmp .plus { width: 40px; height: 40px; border: 0; background: transparent; border-radius: 50%; display: grid; place-items: center; color: #121212; flex: none; }
+.cmp .fieldw { position: relative; flex: 1; }
+.cmp textarea { display: block; width: 100%; box-sizing: border-box; min-height: 40px; max-height: 120px; resize: none; border-radius: 24px; border: 1px solid #EBEBEB; padding: 9px 40px 9px 14px; font: 400 15px/1.35 var(--font-app); color: #121212; outline: none; background: #FFFFFF; }
+.cmp textarea:focus { border-color: #FF640A; }
+.cmp .snd { position: absolute; right: 4px; bottom: 4px; width: 32px; height: 32px; border-radius: 50%; border: 0; background: transparent; display: grid; place-items: center; color: #121212; }
+.cmp .snd:disabled { color: #BDBDBD; }
+
+/* The recording screen (locked, N70), drawn from today's screen */
+.rs { position: absolute; inset: 0; display: flex; flex-direction: column; background: #FFFFFF; }
+.rs .h { height: 48px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; margin-top: 0; }
+.rs .whr { margin: 0; font-size: 13px; font-weight: 600; color: #737373; font-variant-numeric: tabular-nums; }
+.xb { width: 28px; height: 28px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; display: grid; place-items: center; padding: 0; color: #737373; flex: none; }
+.rs .band { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 16px 16px; }
+.rs .slide { width: 100%; aspect-ratio: 16/9; border-radius: 16px; border: 1px solid #EBEBEB; overflow: hidden; box-sizing: border-box; flex: none; }
+.rs .road { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 22px; padding: 0 2px; }
+.rs .road p { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.3; color: #FF6A0A; }
+.rs .road .hint { font-size: 14px; font-weight: 400; color: #A3A3A3; text-align: center; }
+.strip { display: flex; align-items: center; gap: 12px; border-radius: 16px; background: #F5F5F5; padding: 12px 16px; }
+.strip .sdot { width: 10px; height: 10px; border-radius: 50%; background: rgba(224,69,58,0.5); flex: none; animation: pulse 2s ease-in-out infinite; }
+.strip .clock { font: 700 17px ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; color: #121212; }
+.strip .sbar { flex: 1; height: 4px; border-radius: 999px; background: #EBEBEB; overflow: hidden; }
+.strip .sbar b { display: block; height: 100%; width: 2%; border-radius: 999px; background: #FF6A0A; transition: width 1s linear; }
+.rs .pr { display: flex; gap: 10px; margin-top: 10px; }
+.rs .pr button { flex: 1; height: 48px; border-radius: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; font: 600 15px var(--font-app); }
+.rs .back { border: 1.5px solid #EBEBEB; background: #FFFFFF; color: #121212; }
+.rs .back:disabled { color: #BDBDBD; }
+.rs .nxt { border: 0; background: #121212; color: #FFFFFF; }
+.rs .fin { border: 0; background: #E0453A; color: #FFFFFF; }
+.rs .fin i { width: 12px; height: 12px; border-radius: 2px; background: currentColor; }
+.scrim { position: absolute; inset: 0; background: rgba(18,18,18,0.35); z-index: 20; display: flex; align-items: flex-end; justify-content: center; padding: 16px; box-sizing: border-box; }
+.dlg { width: 100%; max-width: 24rem; border-radius: 24px; background: #FFFFFF; padding: 20px; box-sizing: border-box; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+.dlg h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.dlg p { margin: 8px 0 0; font-size: 14px; color: #737373; }
+.dlg .row { margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dlg .row button { height: 40px; border-radius: 999px; font: 500 14px var(--font-app); }
+.dlg .o { border: 1px solid #EBEBEB; background: #FFFFFF; color: #121212; }
+.dlg .r { border: 0; background: #E0453A; color: #FFFFFF; }
+
+/* Slides made from the request and her picks (N226): Invita's cream and bronze */
+.sl { width: 100%; height: 100%; display: flex; gap: 14px; padding: 16px; box-sizing: border-box; background: #FBF8F3; color: #17130F; align-items: center; }
+.sl .ph { width: 38%; height: 100%; border-radius: 10px; flex: none; }
+.sl .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.sl .k { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #9B7557; }
+.sl .n { font-size: 17px; font-weight: 600; line-height: 1.2; }
+.sl .m { font-size: 12.5px; color: #5F554C; line-height: 1.35; }
+.sl .bottle { width: 30%; height: 100%; flex: none; border-radius: 10px; background: #EFE7DC; display: grid; place-items: center; }
+.sl .bottle i { width: 34%; height: 70%; border-radius: 10px 10px 6px 6px; background: linear-gradient(#2C2C2C 0 14%, #E9E4DC 14% 100%); box-shadow: inset 0 0 0 1px #D7CFC3; }
+.sl .bowl { width: 30%; height: 100%; flex: none; border-radius: 10px; background: #F0E9DF; display: grid; place-items: center; }
+.sl .bowl i { width: 58%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #FFFFFF 0 30%, #E3D6C6 31% 60%, #CDB9A4 61%); }
+.sm .sl { padding: 9px; gap: 8px; }
+.sm .sl .n { font-size: 11px; } .sm .sl .k { font-size: 7px; } .sm .sl .m { font-size: 8px !important; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* The picker: drawn in the shape of "Choose your helper words" */
+.pk { position: absolute; inset: 0; background: #FFFFFF; display: flex; flex-direction: column; padding: 12px 20px 26px; box-sizing: border-box; }
+.pk .top { display: flex; justify-content: flex-end; height: 28px; margin-top: 0; }
+.pk h1 { margin: 14px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; }
+.pk .sub { margin: 10px 0 0; font-size: 14px; color: #737373; }
+.pk .box { margin-top: 18px; flex: 1; min-height: 0; border: 1px solid #EBEBEB; border-radius: 24px; padding: 16px 16px 8px; display: flex; flex-direction: column; overflow-y: auto; scrollbar-width: none; }
+.pk .box::-webkit-scrollbar { display: none; }
+.pk .cnt { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #737373; margin: 0 0 6px; }
+.pk .grp { font-size: 12px; font-weight: 600; color: #121212; margin: 12px 0 2px; }
+.opt { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 0; border-bottom: 1px solid #F0F0F0; background: transparent; padding: 11px 0; font: 400 16px var(--font-app); color: #121212; }
+.opt:last-child { border-bottom: 0; }
+.opt .ck { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #D4D4D4; flex: none; display: grid; place-items: center; }
+.opt[aria-pressed="true"] .ck { background: #FF640A; border-color: #FF640A; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.chipb { height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; font: 400 15px var(--font-app); color: #121212; }
+.chipb[aria-pressed="true"] { background: #121212; border-color: #121212; color: #FFFFFF; }
+.stg { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.stg .sl2 { font-size: 14px; color: #737373; flex: none; }
+.seg { display: flex; flex: 1; min-width: 0; border: 1px solid #EBEBEB; border-radius: 999px; padding: 2px; overflow-x: auto; scrollbar-width: none; }
+.seg button { flex: 1; min-width: 30px; height: 30px; border: 0; border-radius: 999px; background: transparent; font: 500 13.5px var(--font-app); color: #121212; padding: 0 6px; }
+.seg button[aria-pressed="true"] { background: #FF640A; color: #FFFFFF; }
+.scl { border: 0; background: none; font: 400 12.5px var(--font-app); color: #737373; flex: none; padding: 4px 0; }
+.pk .h2 { margin: 18px 0 0; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+.opt .on { flex: 1; min-width: 0; }
+.opt small { display: block; font-size: 13px; color: #737373; }
+.pill { height: 54px; border-radius: 999px; border: 0; background: #121212; color: #FFFFFF; font: 600 16px var(--font-app); display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; flex: none; }
+.pill .rdot { width: 10px; height: 10px; }
+.link { border: 0; background: transparent; color: #737373; font: 400 16px var(--font-app); height: 40px; width: 100%; flex: none; }
+
+/* The walk's screens, as today's (praise, clearer version, the end sheet) */
+.wk { position: absolute; inset: 0; background: #FFFFFF; display: flex; flex-direction: column; padding: 12px 20px 26px; box-sizing: border-box; }
+.wk .top { display: flex; align-items: center; height: 28px; }
+.wk .chev { width: 28px; height: 28px; display: grid; place-items: center; color: #737373; font-size: 22px; border: 0; background: none; padding: 0; }
+.wk .chev:disabled { color: #D4D4D4; }
+.wk .cap { font-size: 14px; font-weight: 600; padding: 0 6px; }
+.wk .top .xb { margin-left: auto; }
+.wk h1 { margin: 26px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.au { margin-top: 20px; border: 1px solid #EBEBEB; border-radius: 24px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.au .said { font-size: 16.5px; line-height: 1.55; color: #121212; }
+.au .said s { color: #737373; text-decoration-thickness: 1px; }
+.player { display: flex; align-items: center; gap: 12px; }
+.play { width: 32px; height: 32px; border-radius: 50%; border: 0; display: grid; place-items: center; flex: none; padding: 0; background: #121212; }
+.bars { flex: 1; display: flex; align-items: center; gap: 2px; height: 22px; min-width: 0; }
+.bars i { flex: 1; min-width: 2px; border-radius: 2px; background: #C9C9C9; }
+.bars i.on { background: #121212; }
+.t { font-size: 11.5px; font-variant-numeric: tabular-nums; color: #737373; flex: none; }
+.wb { position: relative; align-self: flex-start; max-width: 88%; margin-top: 16px; background: #F5F5F5; border-radius: 22px; border-bottom-left-radius: 0; padding: 12px 17px; font-size: 18.5px; line-height: 1.45; animation: up 0.28s ease both; box-sizing: border-box; }
+.wb::after { content: ""; position: absolute; left: -7px; bottom: 0; width: 10px; height: 14px; background: #F5F5F5; clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+.wb em { font-style: normal; color: #FF640A; }
+.wk .grow { flex: 1; }
+.endv { position: absolute; inset: 0; }
+.endv .dimp { position: absolute; inset: 0; background: rgba(18,18,18,0.3); }
+.endv .sheet { position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 28px 28px 0 0; padding: 26px 20px 26px; display: flex; flex-direction: column; align-items: center; gap: 14px; animation: rise 0.25s ease both; }
+.endv .ok { width: 56px; height: 56px; border-radius: 50%; background: #E8F2EC; display: grid; place-items: center; }
+
+/* The Ideal Text page, as today's (/dev/deck) */
+.it { position: absolute; inset: 0; display: flex; flex-direction: column; background: #FFFFFF; }
+.ithead { flex: none; height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; border-bottom: 1px solid #EBEBEB; }
+.ithead .itt { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.ithead .itt b { font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ithead .itt small { font-size: 11px; color: #737373; }
+.ithead .hb { display: flex; gap: 8px; align-items: center; }
+.itbody { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; padding: 24px 24px 24px; }
+.itbody::-webkit-scrollbar { display: none; }
+.srow { display: flex; align-items: center; gap: 13px; margin: 0 0 14px; }
+.srow .thumb { width: 170px; aspect-ratio: 16/9; border-radius: 8px; border: 1px solid #EBEBEB; overflow: hidden; flex: none; }
+.srow .scap { font-size: 11px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #737373; }
+.para { margin: 0 0 26px; font-size: 18px; line-height: 1.55; color: #121212; }
+.itfoot { flex: none; padding: 10px 16px 18px; display: flex; flex-direction: column; gap: 2px; }
+
+/* A photo, opened from the thread */
+.viewer { position: absolute; inset: 0; background: #0B0B0B; z-index: 25; display: flex; flex-direction: column; }
+.viewer .vh { display: flex; justify-content: flex-end; padding: 16px; }
+.viewer .vh .xb { background: rgba(255,255,255,0.12); border-color: transparent; color: #FFFFFF; }
+.viewer .img { flex: 1; margin: 0 0 80px; }
+.viewer p { position: absolute; left: 20px; right: 20px; bottom: 28px; margin: 0; color: #D4D4D4; font-size: 14px; line-height: 1.45; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition: none !important; } }
+
+/* Chats for everyone (N257 draft): kinds, coach notes, tap answers, Will's clearer version, the coach panel as a chat */
+.kind { font-size: 11px; font-weight: 500; color: #737373; border: 1px solid #EBEBEB; border-radius: 999px; padding: 0 7px; margin-left: 6px; vertical-align: 1px; }
+.lg-b .who { display: block; font-size: 12px; font-weight: 600; color: #737373; margin-bottom: 2px; }
+.lg-b .player { margin: 4px 0 2px; }
+.qr { display: flex; flex-wrap: wrap; gap: 6px; align-self: flex-start; max-width: 92%; animation: up 0.28s ease both; }
+.qr button { height: 34px; padding: 0 13px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; font: 400 14px var(--font-app); color: #121212; }
+.qr .by { width: 100%; font-size: 11.5px; color: #A3A3A3; margin-bottom: 1px; }
+.cv { background: #F5F5F5; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.cv .wa-title { margin: 0; }
+.cv .was { font-size: 13.5px; color: #737373; text-decoration: line-through; }
+.cv .now { font-size: 15px; color: #121212; line-height: 1.4; } .cv .now em { font-style: normal; color: #FF640A; }
+.jg { display: flex; flex-direction: column; gap: 8px; }
+.jg .jq { font-size: 15px; font-weight: 600; margin: 2px 0 0; }
+.jg .cap { font-size: 12.5px; color: #737373; }
+.jg .ans { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.jg .ans button { height: 56px; border-radius: 16px; border: 1px solid #EBEBEB; background: #FFFFFF; font: 500 15px var(--font-app); color: #121212; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
+.jg .ans button span { font-size: 19px; line-height: 1; }
+.jg .small { border: 0; background: none; color: #737373; font: 400 13.5px var(--font-app); height: 26px; }
+.jg .aup { border: 1px solid #EBEBEB; border-radius: 16px; padding: 8px 12px; }
+.cards { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
+.cards button { min-height: 46px; border-radius: 14px; border: 1px solid #EBEBEB; background: #FFFFFF; font: 400 15px var(--font-app); color: #121212; text-align: left; padding: 8px 14px; display: flex; flex-direction: column; justify-content: center; }
+.cards button small { font-size: 12px; color: #121212; font-weight: 600; }
+.cards button.alt { background: #F5F5F5; border-color: #F5F5F5; }
+.wh { display: flex; flex-direction: column; gap: 4px; }
+.wh .row2 { display: grid; grid-template-columns: 7.6rem 1fr; gap: 6px; font-size: 13.5px; } .wh .row2 span:first-child { color: #737373; }
+.tk { align-self: flex-start; width: 80%; border: 1px solid #EBEBEB; border-radius: 18px; background: #FFFFFF; padding: 10px 12px; display: flex; align-items: center; gap: 10px; text-align: left; font-family: var(--font-app); }
+.tk .dot2 { width: 8px; height: 8px; border-radius: 50%; background: #FF640A; flex: none; }
+.tk b { display: block; font-size: 15px; } .tk small { display: block; font-size: 12.5px; color: #737373; }
+.gd { background: linear-gradient(135deg, #E7E2F3, #B9B0D8); } .gm { background: linear-gradient(135deg, #DCE9E1, #9FC1AE); } .gt { background: linear-gradient(135deg, #F3E3D2, #D8B08A); } .gb { background: linear-gradient(135deg, #DDE5F0, #9AAFCB); }
+.av.door { background: #F5F5F5; display: grid; place-items: center; font-size: 20px; }
+.crow .sub2 { font-size: 12px; color: #A3A3A3; }
+.persona { display: flex; gap: 8px; }
+.persona button { flex: 1; border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 8px; font-size: 13px; }
+
+/* The audit's five rules (30 October 2026) */
+.from { display: flex; align-items: flex-end; gap: 6px; align-self: flex-start; max-width: 88%; animation: up 0.28s ease both; }
+.from .lg-b { max-width: 100%; }
+.av.sm { width: 26px; height: 26px; }
+.gm2 { background: radial-gradient(circle at 50% 38%, #E8CDB8 0 30%, #6E5444 31% 62%, #3B2E26 63%); }
+.ticks { display: inline-block; margin-left: 8px; font-size: 11px; letter-spacing: -2px; color: rgba(255,255,255,0.7); vertical-align: 1px; }
+.ticks.read { color: #FFFFFF; font-weight: 700; }
+.about { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.75); border-radius: 10px; padding: 5px 8px 5px 5px; font-size: 12.5px; font-weight: 500; color: #121212; margin-bottom: 6px; }
+.lg-me .about { background: rgba(255,255,255,0.22); color: #FFFFFF; }
+.about .tile { width: 34px; height: 22px; border-radius: 4px; flex: none; }
+.lg-b.them { background: #F5F5F5; }
+.sug { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 6px 48px; }
+.sug .by { width: 100%; font-size: 11.5px; color: #A3A3A3; }
+.sug button { height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; font: 400 14px var(--font-app); color: #121212; }
+.lst .sec { margin: 12px 16px 2px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #737373; }
+.lst.wk2 { top: 129px; }
+.priv { display: inline-block; font-size: 11.5px; font-weight: 600; color: #3D3A35; background: #EDE9E3; border-radius: 999px; padding: 1px 8px; }
+.tkc { align-self: stretch; display: flex; align-items: center; gap: 10px; border: 1px solid #EBEBEB; border-radius: 16px; padding: 10px; background: #FFFFFF; animation: up 0.28s ease both; }
+.tkc .tile { width: 56px; height: 34px; border-radius: 6px; flex: none; }
+.tkc .tx { flex: 1; min-width: 0; } .tkc .tx b { display: block; font-size: 14px; } .tkc .tx small { display: block; font-size: 12px; color: #737373; }
+.tkc .rvb { flex: none; height: 34px; padding: 0 12px; border-radius: 999px; border: 0; background: #121212; color: #FFFFFF; font: 500 13.5px var(--font-app); }
+.rv { position: absolute; inset: 0; background: #FFFFFF; display: flex; flex-direction: column; padding: 12px 20px 26px; box-sizing: border-box; overflow-y: auto; }
+.rv .top { display: flex; align-items: center; gap: 6px; height: 32px; }
+.rv .chev { width: 28px; height: 28px; border: 0; background: none; font-size: 24px; color: #737373; padding: 0; }
+.rv .cap { font-size: 14px; font-weight: 600; flex: 1; }
+.rv .stp { margin: 18px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.rv .au { margin-top: 16px; }
+.rv .au textarea { width: 100%; box-sizing: border-box; border: 0; resize: none; font: 400 16px/1.5 var(--font-app); color: #121212; outline: none; }
+.rv .jq2 { margin: 18px 0 8px; font-size: 16px; font-weight: 600; }
+.rv .hint { margin: 12px 0 0; font-size: 13.5px; color: #737373; }
+.rv .grow { flex: 1; min-height: 16px; }
+.bigs { display: flex; flex-direction: column; gap: 10px; }
+.bigs.two { flex-direction: row; } .bigs.two button { flex: 1; }
+.bigs button, .cards2 button { min-height: 54px; border-radius: 16px; border: 1px solid #EBEBEB; background: #FFFFFF; font: 500 17px var(--font-app); color: #121212; text-align: left; padding: 8px 16px; display: flex; flex-direction: column; justify-content: center; }
+.cards2 { display: flex; flex-direction: column; gap: 8px; }
+.cards2 button { font-size: 15.5px; font-weight: 400; min-height: 48px; }
+.cards2 button small { font-size: 12px; font-weight: 600; color: #121212; }
+.cards2 button.alt { background: #F5F5F5; border-color: #F5F5F5; }
+.bigs button.on, .cards2 button.on { border: 2px solid #121212; }
+.pick { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 14px; color: #3D3A35; background: #F5F5F5; border-radius: 12px; padding: 8px 12px; align-self: flex-start; }
+.pick .ok2 { width: 18px; height: 18px; border-radius: 50%; background: #121212; color: #FFFFFF; font-size: 11px; display: grid; place-items: center; }
+.whb { margin-top: 14px; border: 1px solid #EBEBEB; border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.whb .psg { margin: 6px 0 6px; font-size: 16px; line-height: 1.45; }
+.whb .row2 { display: grid; grid-template-columns: 8rem 1fr; gap: 6px; font-size: 14px; } .whb .row2 span:first-child { color: #737373; }
+
+/* No app header, no website footer (30 October 2026): one header per screen */
+.bg { position: absolute; inset: 0; background: #FFFFFF; }
+.chd { top: 0 !important; height: 64px !important; padding-top: 8px !important; }
+.lg-area.sub { top: 64px !important; }
+.lst { top: 0 !important; bottom: 0 !important; padding-top: 10px; }
+.lst.wk2 { top: 64px !important; padding-top: 0; }
+.lst .lh { display: flex; align-items: center; justify-content: space-between; padding: 14px 12px 4px 16px !important; }
+.lst .lh b { font-size: 26px !important; }
+.lst .menu { width: 40px; height: 40px; border-radius: 10px; border: 1px solid #EBEBEB; background: #FFFFFF; display: grid; place-items: center; color: #121212; }
+.lg-dock { bottom: 0 !important; padding-bottom: 24px !important; }
+.cmp { bottom: 0 !important; padding-bottom: 24px !important; }
+.cmp[hidden] { display: none !important; }
+#cmp0 textarea { cursor: default; }
+
+/* Least effort first (N278): emoji row, mic, voice crafted by Will */
+.emo { display: flex; gap: 6px; padding: 0 0 6px 48px; }
+.emo button { width: 38px; height: 34px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; font-size: 17px; line-height: 1; padding: 0; }
+.cmp .mic { width: 40px; height: 40px; border: 0; background: transparent; border-radius: 50%; display: grid; place-items: center; color: #121212; flex: none; }
+.react { position: absolute; right: -6px; bottom: -12px; background: #FFFFFF; border: 1px solid #EBEBEB; border-radius: 999px; font-size: 14px; padding: 1px 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+.lg-b { overflow: visible; }
+.lis { display: flex; align-items: center; gap: 10px; background: #F5F5F5; border-radius: 16px; padding: 12px 14px; font-size: 14px; color: #121212; }
+.lis .sdot { width: 10px; height: 10px; border-radius: 50%; background: #E0453A; animation: pulse 1.2s ease-in-out infinite; flex: none; }
+.lis .bars { flex: 1; height: 18px; } .lis .bars i { background: #C9C9C9; } .lis .t { font-size: 12px; color: #737373; }
+</style><style>
+/* The story: Ember & Air, an example heat pump installer, built on the any-business base. Customer, expert, coach, the AI, the value; the business's answers inline (saved). */
+.qcard { border: 1.5px solid var(--accent); }
+.qcard[hidden] { display: none !important; }
+.qcard .qk { align-self: flex-start; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; padding: 3px 8px; border-radius: 999px; background: var(--accent); color: #FFFFFF; }
+.qcard h2 { margin: 0; font-size: 18px; line-height: 1.3; }
+.qcard .why2 { margin: 0; color: var(--muted); font-size: 13.5px; }
+.qopts { display: flex; flex-direction: column; gap: 8px; }
+.qopts button { text-align: left; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 12px; padding: 10px 12px; font-size: 14.5px; }
+.qopts button[aria-pressed="true"] { border: 2px solid var(--ink); font-weight: 600; }
+.qcard textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font: inherit; font-size: 14.5px; background: var(--panel); color: var(--ink); resize: vertical; min-height: 70px; }
+.qsaved { font-size: 12.5px; color: var(--muted); }
+.qsaved.ok { color: #2F7D4F; }
+.ans-list { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+.ans-list div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.ans-list span:first-child { color: var(--muted); }
+.who-tag { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+/* inside the phone: the business's site and widget, the customer's chat */
+.site2 { position: absolute; inset: 0; background: #F7F4EF; color: #1a1a1a; font-family: var(--font-app); }
+.site2 .nav { display: flex; justify-content: space-between; align-items: center; padding: 22px 20px 14px; font-size: 15px; font-weight: 700; letter-spacing: 0.04em; }
+.site2 .nav span { font-weight: 400; font-size: 13px; color: #666; letter-spacing: 0; }
+.site2 .hero { margin: 4px 16px; height: 230px; border-radius: 18px; display: flex; align-items: flex-end; padding: 18px; box-sizing: border-box; color: #FFFFFF; font-size: 26px; font-weight: 600; line-height: 1.15; }
+.site2 .rows { padding: 18px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.site2 .rows div { height: 120px; border-radius: 14px; background: #ECE6DD; }
+.site2 .pill2 { position: absolute; right: 16px; bottom: 22px; height: 44px; padding: 0 18px; border-radius: 999px; background: #FFFFFF; border: 1px solid #D9D9D9; box-shadow: 0 2px 12px rgba(0,0,0,0.08); font: 500 14px var(--font-app); }
+.wsc { position: absolute; inset: 0; background: rgba(0,0,0,0.3); display: flex; align-items: flex-end; z-index: 10; }
+.wpop { background: #FFFFFF; width: 100%; border-radius: 16px 16px 0 0; padding: 22px 20px 26px; display: flex; flex-direction: column; gap: 12px; box-sizing: border-box; animation: rise .24s ease both; font-family: var(--font-app); color: #1a1a1a; }
+.wpop h3 { margin: 0; font-size: 20px; font-weight: 600; }
+.wpop p { margin: 0; color: #6b6b6b; font-size: 14.5px; }
+.wpop .ph2 { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid #1a1a1a; border-radius: 12px; }
+.wpop .ph2 .im { width: 44px; height: 44px; border-radius: 8px; flex: none; }
+.wpop .fld2 { border: 1px solid #d9d9d9; border-radius: 12px; padding: 12px 14px; font-size: 15px; color: #1a1a1a; }
+.wpop .ck2 { display: flex; gap: 10px; font-size: 13px; color: #6b6b6b; align-items: flex-start; }
+.wpop .ck2 i { width: 18px; height: 18px; border-radius: 4px; background: #1a1a1a; flex: none; margin-top: 1px; display: grid; place-items: center; color: #fff; font-style: normal; font-size: 11px; }
+.wpop .go2 { height: 48px; border-radius: 12px; background: #1a1a1a; color: #fff; border: 0; font: 600 15px var(--font-app); }
+.wpop .by2 { text-align: center; font-size: 12px; color: #9a9a9a; }
+.cc { position: absolute; inset: 0; background: #FBF8F3; display: flex; flex-direction: column; font-family: var(--font-app); color: #17130F; }
+.cc .top { display: flex; align-items: center; gap: 10px; padding: 18px 16px 12px; border-bottom: 1px solid #EDE6DB; background: #FBF8F3; }
+.cc .top b { display: block; font-size: 16px; } .cc .top small { display: block; font-size: 12.5px; color: #7A726A; }
+.cc .th { flex: 1; overflow-y: auto; padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 8px; scrollbar-width: none; }
+.cc .th::-webkit-scrollbar { display: none; }
+.cc .b { align-self: flex-start; max-width: 86%; background: #F0E9DF; border-radius: 16px; padding: 9px 12px; font-size: 15px; line-height: 1.45; animation: up .28s ease both; }
+.cc .b.me { align-self: flex-end; background: #17130F; color: #FBF8F3; }
+.cc .b .cap2 { display: block; font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #9B7557; margin-bottom: 4px; }
+.cc .b ul { margin: 0; padding-left: 18px; }
+.cc .card2 { align-self: flex-start; width: 82%; display: flex; gap: 10px; align-items: center; border: 1px solid #E6DDD0; border-radius: 18px; background: #FFFFFF; padding: 10px; text-align: left; font: inherit; color: inherit; }
+.cc .card2 .im { width: 64px; height: 40px; border-radius: 6px; flex: none; }
+.cc .card2 b { display: block; font-size: 15px; } .cc .card2 small { display: block; font-size: 12.5px; color: #7A726A; }
+.cc .foot2 { padding: 10px 14px 24px; display: flex; gap: 10px; background: #FBF8F3; }
+.cc .foot2 button { flex: 1; height: 44px; border-radius: 999px; font: 500 15px var(--font-app); border: 1px solid #DCCFBE; background: #FFFFFF; color: #17130F; }
+.cc .foot2 button.f { background: #17130F; color: #FBF8F3; border-color: #17130F; }
+.cc .player .play { background: #17130F; }
+.brw2 { position: absolute; inset: 0; z-index: 20; background: #FFFFFF; display: flex; flex-direction: column; animation: rise .26s ease both; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.brw2 .bar { display: grid; grid-template-columns: 64px 1fr 64px; align-items: center; padding: 16px 10px 10px; border-bottom: 1px solid #E6E6E6; background: #F7F7F7; }
+.brw2 .bar button { border: 0; background: none; color: #0A66D8; font-weight: 600; font-size: 16px; text-align: left; }
+.brw2 .bar span { justify-self: center; font-size: 14px; }
+.brw2 .pg { flex: 1; padding: 22px 20px; display: flex; flex-direction: column; gap: 12px; background: repeating-linear-gradient(135deg, #FAFAFA 0 12px, #F3F3F3 12px 24px); }
+.brw2 .pg b { font-size: 19px; } .brw2 .pg li { font-size: 15px; color: #444; } .brw2 .pg small { color: #8a8a8a; }
+.wa2 { position: absolute; inset: 0; background: linear-gradient(160deg, #3B342E, #17130F 70%); color: #FFFFFF; display: flex; flex-direction: column; align-items: center; padding-top: 80px; font-family: -apple-system, BlinkMacSystemFont, var(--font-app); }
+.wa2 .tm { font-size: 80px; font-weight: 600; line-height: 1; }
+.wa2 .ntf { margin-top: 40px; width: calc(100% - 24px); border: 0; text-align: left; border-radius: 22px; background: rgba(245,245,245,0.82); color: #121212; padding: 12px 14px; display: flex; gap: 10px; animation: up .4s ease both; font: inherit; }
+.wa2 .ntf .ic { width: 38px; height: 38px; border-radius: 9px; background: #25D366; flex: none; }
+.wa2 .ntf b { display: flex; justify-content: space-between; font-size: 14.5px; } .wa2 .ntf small { font-weight: 400; color: #5E5E5E; }
+.learn { position: absolute; inset: 0; background: #FFFFFF; padding: 24px 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; font-family: var(--font-app); }
+.learn h3 { margin: 0; font-size: 22px; font-weight: 700; }
+.learn .row3 { border: 1px solid #EBEBEB; border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.learn .row3 .k { font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #737373; }
+.learn .row3 .v { font-size: 15px; }
+.learn .bar2 { height: 8px; border-radius: 999px; background: #F0F0F0; overflow: hidden; } .learn .bar2 b { display: block; height: 100%; width: 1%; background: #FF640A; }
+.learn .chipr { display: flex; flex-wrap: wrap; gap: 6px; } .learn .chipr span { font-size: 13px; border: 1px solid #EBEBEB; border-radius: 999px; padding: 3px 10px; }
+.biz { position: absolute; inset: 0; background: #FFFFFF; padding: 30px 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; font-family: var(--font-app); }
+.biz h3 { margin: 0 0 6px; font-size: 24px; font-weight: 700; line-height: 1.2; }
+.biz p { margin: 0 0 10px; color: #737373; font-size: 15px; }
+.biz button { text-align: left; min-height: 58px; border-radius: 16px; border: 1px solid #EBEBEB; background: #FFFFFF; padding: 10px 16px; font: 500 16px var(--font-app); color: #121212; display: flex; flex-direction: column; justify-content: center; }
+.biz button small { font-weight: 400; font-size: 13px; color: #737373; }
+.biz button[aria-pressed="true"] { border: 2px solid #121212; }
+.val { position: absolute; inset: 0; background: #FFFFFF; padding: 26px 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; font-family: var(--font-app); }
+.val h3 { margin: 0; font-size: 22px; font-weight: 700; }
+.val .big2 { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; }
+.val .row3 { border: 1px solid #EBEBEB; border-radius: 16px; padding: 12px 14px; }
+.val .row3 b { display: block; font-size: 17px; } .val .row3 small { display: block; font-size: 13px; color: #737373; margin-top: 2px; }
+.val .est { font-size: 12px; color: #A3A3A3; }
+.form2 { display: flex; flex-direction: column; gap: 14px; }
+.roles { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.roles span { font-size: 13px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); }
+.roles span.on { background: var(--ink); color: var(--panel); border-color: var(--ink); font-weight: 600; }
+.chk { align-self: stretch; border: 1px solid #EBEBEB; border-radius: 16px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; background: #FFFFFF; animation: up .28s ease both; }
+.chk .k2 { font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #737373; }
+.chk .tx2 { font-size: 15px; line-height: 1.45; }
+.chk .ph3 { display: flex; gap: 8px; align-items: center; font-size: 13.5px; color: #3D3A35; }
+.chk .ph3 i { width: 40px; height: 40px; border-radius: 8px; flex: none; }
+.cmpr { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cmpr div { border: 1px solid #EBEBEB; border-radius: 14px; padding: 10px; font-size: 14px; line-height: 1.4; }
+.cmpr div b { display: block; font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; color: #737373; margin-bottom: 4px; }
+.cmpr div.sr { border-color: #121212; }
+.form2 label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 600; }
+.form2 select, .form2 input { font: inherit; font-weight: 400; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); }
+/* The locked recording screens (v10, LOCKED 2026-10-12, N70), copied exactly and scoped to .lrec */
+.lrec { --bg:#ffffff; --fg:#121212; --muted:#f5f5f5; --muted-fg:#737373; --border:#ebebeb; --primary:#ff6a0a; --record:#e0453a; --record-fg:#fff; --st:26px; --sl:12.5px; --sb:10px;
+  position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); padding-top: 44px; color: var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; z-index: 6; }
+.lrec * { box-sizing: border-box; }
+.lrec button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.lrec header.h { height: 48px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+.lrec .kicker { font-size: 11px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; color: var(--muted-fg); }
+.lrec .x { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 999px; margin-right: -8px; }
+.lrec .x svg { width: 20px; height: 20px; }
+.lrec .band { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: 42rem; margin: 0 auto; padding: 24px 16px 20px; overflow: hidden; }
+.lrec .band.rec { padding-top: 0; }
+.lrec .col { display: flex; flex-direction: column; min-height: 0; flex: 1; width: 100%; max-width: 36rem; margin: 0 auto; }
+.lrec .where { margin: 0; font-family: inherit; letter-spacing: normal; text-transform: none; font-size: 13px; font-weight: 600; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
+.lrec .stage { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.lrec .mv { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.lrec .slidebox { flex: none; padding-bottom: 16px; }
+.lrec .slide { position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 16px; border: 1px solid var(--border); overflow: hidden; background: #061a3a; background-size: cover; background-position: center; }
+.lrec .slide .orb { position: absolute; right: -12%; top: -30%; width: 62%; aspect-ratio: 1; border-radius: 999px; background: rgba(255,255,255,.08); }
+.lrec .slide .pg { position: absolute; right: 5%; bottom: 7%; font-size: var(--sb,9.5px); font-weight: 600; color: rgba(255,255,255,.7); font-variant-numeric: tabular-nums; }
+.lrec .slide .txt { position: absolute; top: 0; bottom: 0; left: 0; width: 78%; display: flex; flex-direction: column; justify-content: center; padding: 5% 6%; color: #fff; }
+.lrec .slide .bar { height: 4px; width: 12%; border-radius: 999px; background: var(--mark,var(--primary)); margin-bottom: 5%; }
+.lrec .slide h3 { margin: 0; font-weight: 600; line-height: 1.05; letter-spacing: -.025em; font-size: var(--st,22px); }
+.lrec .slide p { margin: 5% 0 0; font-size: var(--sl,12px); line-height: 1.35; color: rgba(255,255,255,.92); text-wrap: balance; }
+.lrec .road { position: relative; flex: 1; min-height: 0; }
+.lrec .dock { flex: none; position: relative; z-index: 10; margin: 0 -4px; padding: 16px 4px 0; background: var(--bg); }
+.lrec .strip { display: flex; align-items: center; gap: 12px; border-radius: 16px; background: var(--muted); padding: 12px 16px; }
+.lrec .dot { width: 10px; height: 10px; flex: none; border-radius: 999px; background: rgba(224,69,58,.5); }
+.lrec .pulse { animation: lr-pulse 2s cubic-bezier(.4,0,.6,1) infinite; }
+@keyframes lr-pulse { 50% { opacity: .5; } }
+.lrec .clock { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lrec .track { flex: 1; height: 4px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.lrec .fill { height: 100%; border-radius: 999px; background: var(--primary); transition: width .2s; }
+.lrec .pair { display: flex; gap: 10px; margin-top: 10px; }
+.lrec .pair button { flex: 1; height: 48px; border-radius: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 15px; font-weight: 600; }
+.lrec .pair .back { border: 1.5px solid var(--border); background: var(--bg); color: var(--fg); }
+.lrec .pair .back:disabled { opacity: .35; cursor: default; }
+.lrec .pair .next { background: var(--fg); color: #fff; }
+.lrec .pair .next.end { background: var(--record); color: var(--record-fg); }
+.lrec .pair .next i { width: 12px; height: 12px; border-radius: 2px; background: currentColor; }
+.lrec .center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; }
+.lrec .lbl { font-size: 15px; color: var(--muted-fg); }
+.lrec .vm { position: relative; display: flex; align-items: center; justify-content: center; }
+.lrec .vm .r { position: absolute; border-radius: 999px; border: 1px solid rgba(18,18,18,.1); animation: lr-breath 3.6s ease-in-out infinite; }
+.lrec .vm circle { transform-box: fill-box; transform-origin: center; animation: lr-vdot 1.4s ease-in-out infinite; }
+.lrec .vm circle:nth-child(2) { animation-delay: .15s; } .lrec .vm circle:nth-child(3) { animation-delay: .3s; }
+@keyframes lr-breath { 0% { transform: scale(.92); opacity: 0; } 50% { opacity: 1; } 100% { transform: scale(1.04); opacity: 0; } }
+@keyframes lr-vdot { 0%, 60%, 100% { transform: scaleY(.5); opacity: .6; } 30% { transform: scaleY(1); opacity: 1; } }
+.lrec .proc { flex: 1; display: flex; flex-direction: column; justify-content: center; padding-bottom: 12vh; width: 100%; max-width: 34rem; margin: 0 auto; }
+.lrec .proc .vmw { display: flex; justify-content: center; margin-bottom: 40px; }
+.lrec .plab { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; font-size: 15px; font-weight: 500; }
+.lrec .plab span:last-child { font-family: ui-monospace, Menlo, monospace; color: var(--muted-fg); }
+.lrec .ptrack { height: 3px; background: var(--border); overflow: hidden; margin-bottom: 56px; }
+.lrec .ptrack div { height: 100%; background: var(--primary); transition: width .7s ease-out; }
+.lrec .wyw { font-size: 11px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: var(--muted-fg); margin: 0 0 24px; }
+.lrec .tipsc p { margin: 0; font-size: 1.6rem; font-weight: 500; line-height: 1.28; letter-spacing: -.015em; text-wrap: balance; }
+.lrec .discard { margin-top: -16px; min-height: 44px; padding: 0 16px; font-size: 13px; font-weight: 500; color: var(--muted-fg); text-decoration: underline; text-underline-offset: 4px; align-self: center; }
+/* a big emoji (N298 item 6, N302) */
+.lg-b.big-e { background: transparent !important; font-size: 56px; line-height: 1.1; padding: 0 4px; }
+.lg-b.big-e::after { display: none; }
+.cmp .row.only-mic { justify-content: flex-end; }
+.obtn { height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid #DADADA; background: #FFFFFF; font: 500 14px var(--font-app); color: #121212; }
+.wk .bigs button.on { border: 2px solid #121212; font-weight: 600; }
+.wk .aul { align-self: center; margin-top: 10px; border: 0; background: none; font: 400 13px var(--font-app); color: #737373; text-decoration: underline; }
+/* As in the code (frontend Lounge.tsx and walk/WalkMessage.tsx): no sender picture beside a bubble (N301), no tails; the chat's bubbles 16px corners and 15px text, the walk's 22px and 18.5px */
+.from > .av { display: none !important; }
+.from { gap: 0 !important; }
+.lg-b::after, .lg-me::after, .wb::after { display: none !important; }
+.lg-b { border-radius: 16px; line-height: 1.45; padding: 8px 12px; font-size: 15px; }
+.lg-b.lg-me { max-width: 85%; }
+.wb { border-radius: 22px !important; font-size: 18.5px; line-height: 1.45; padding: 13px 17px; max-width: 94%; }
+.lg-b .fwd { display: block; font-size: 12.5px; color: #737373; margin-bottom: 4px; }
+.cmp.tools .row { display: flex; align-items: center; gap: 6px; }
+.emo2 { flex: 1; display: flex; justify-content: center; gap: 6px; }
+.emo2 button { width: 44px; height: 40px; border-radius: 999px; border: 1px solid #EBEBEB; background: #FFFFFF; font-size: 20px; line-height: 1; padding: 0; }
+.vnb { display: flex; align-items: center; gap: 4px; }
+.vnb .vt { width: 40px; height: 40px; border: 0; background: none; border-radius: 50%; display: grid; place-items: center; color: #737373; }
+.vnb .vc { flex: 1; height: 40px; display: flex; align-items: center; gap: 8px; border: 1px solid #EBEBEB; border-radius: 24px; padding: 0 14px; font: 400 15px var(--font-app); font-variant-numeric: tabular-nums; }
+.vnb .vd { width: 10px; height: 10px; border-radius: 50%; background: #E0453A; animation: lr-pulse 1.2s ease-in-out infinite; }
+.vnb .vs { width: 40px; height: 40px; border: 0; border-radius: 50%; background: #121212; color: #FFFFFF; display: grid; place-items: center; }
+.prow { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; padding: 6px 0; text-align: left; font-family: var(--font-app); }
+.prow b { display: block; font-size: 15px; } .prow small { display: block; font-size: 12.5px; color: #737373; }
+.av.plusav { background: #FFFFFF; border: 1px solid #DADADA; display: grid; place-items: center; color: #121212; }
+.lrec .roots { display: flex; flex-direction: column; justify-content: center; min-height: 100%; padding: 24px 0; }
+.lrec .root { margin: 0; font-size: 24px; line-height: 1.35; font-weight: 600; color: var(--primary); }
+.lrec .root + .root { margin-top: 24px; }
+/* N303: on Take 1 the slide fills the page, so it is easy to read */
+.lrec .full .slidebox { flex: 1; min-height: 0; padding-bottom: 0; display: flex; }
+.lrec .full .slide { aspect-ratio: auto; height: 100%; }
+.lrec .full .slide .txt { width: 88%; padding: 0 8%; justify-content: center; }
+.lrec .full .slide .bar { width: 48px; margin-bottom: 24px; }
+.lrec .full .slide h3 { font-size: 34px; line-height: 1.1; }
+.lrec .full .slide p { font-size: 21px; line-height: 1.4; margin-top: 18px; }
+.lrec .full .slide .pg { font-size: 13px; }
+.lrec .full .road { display: none; }
+.wkt { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+.wme { align-self: flex-end; max-width: 88%; background: #FF640A; border-radius: 22px; padding: 13px 17px; }
+.wkt .wb { margin-top: 0; }
+.wpair { display: flex; flex-direction: column; gap: 3px; align-self: flex-start; width: 80%; max-width: 384px; }
+.fwb { position: relative; display: flex; flex-direction: column; border: 0; border-radius: 16px; background: #F5F5F5; padding: 8px 30px 8px 12px; text-align: left; font: 400 15px/1.45 var(--font-app); color: #121212; }
+.fwb .fwd2 { margin-top: 2px; align-self: flex-end; font-size: 11.5px; line-height: 1.3; color: #737373; }
+.fwb .chv { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); font-size: 20px; color: #737373; }
+.itc { display: flex; flex-direction: column; border: 0; border-radius: 16px; background: #F5F5F5; padding: 12px 16px; text-align: left; font-family: var(--font-app); color: #121212; }
+.itc .t1 { display: flex; justify-content: space-between; gap: 12px; font-size: 15px; line-height: 1.6; } .itc .v { font-size: 12.5px; color: #737373; }
+.itc .t2 { margin-top: 2px; font-size: 14px; color: #737373; }
+.rstrip { flex: 1; display: flex; align-items: center; gap: 12px; border-radius: 16px; background: #F5F5F5; padding: 12px 16px; }
+.rstrip .rdot { width: 10px; height: 10px; flex: none; border-radius: 50%; background: rgba(224,69,58,.5); animation: lr-pulse 2s cubic-bezier(.4,0,.6,1) infinite; }
+.rstrip .rclk { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; color: #121212; }
+.rstrip .rtrack { flex: 1; height: 4px; border-radius: 999px; background: #EBEBEB; overflow: hidden; }
+.rstrip .rtrack i { display: block; height: 100%; width: 100%; border-radius: 999px; background: rgba(115,115,115,.4); animation: lr-pulse 2s cubic-bezier(.4,0,.6,1) infinite; }
+.rstrip .rstop { height: 40px; flex: none; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 999px; background: #E0453A; color: #FFFFFF; padding: 0 16px; font: 600 13px var(--font-app); }
+.rstrip .rstop i { width: 14px; height: 14px; border-radius: 3px; background: currentColor; }
+.lrec .pslide { background: #E7E1D7; }
+.lrec .pslide .pimg { position: absolute; inset: 0; }
+.lrec .pslide .pimg svg { display: block; width: 100%; height: 100%; }
+.lrec .pslide .pcap { position: absolute; left: 12px; bottom: 12px; right: 40px; font-size: 13px; font-weight: 600; color: #FFFFFF; background: rgba(0,0,0,.45); border-radius: 999px; padding: 5px 11px; width: fit-content; }
+.lrec .pslide .pg { color: rgba(0,0,0,.45); }
+.lg-b.them .quote .qt { margin-top: 8px; }
+/* the lock of N299/N300 (prototype X4gDmGfHH7ivuoRZ9ufiy9 v12, the code's Lounge bar, WillQuestion chips, PlanDock button) */
+.cmp.lk { padding-top: 8px; }
+.lbar { display: flex; align-items: flex-end; gap: 4px; }
+.lbar .lplus, .lbar .lmic { width: 40px; height: 40px; flex: none; border-radius: 99px; display: grid; place-items: center; color: #121212; border: 0; background: transparent; padding: 0; }
+.lbar .lplus svg, .lbar .lmic svg { width: 20px; height: 20px; }
+.lbar .lmic.waits { background: #FF640A; color: #FFFFFF; }
+.lbar .lbox { flex: 1; min-width: 0; min-height: 40px; box-sizing: border-box; border: 1px solid #EBEBEB; border-radius: 24px; padding: 8px 14px; font: 400 15px var(--font-app); color: #737373; background: #FFFFFF; }
+.lbar .lbox.emo3 { display: flex; align-items: center; justify-content: space-around; padding: 0 8px; }
+.lbar .lbox.emo3 button { width: 38px; height: 38px; border: 0; background: none; border-radius: 99px; font-size: 21px; line-height: 1; padding: 0; }
+.chips4 { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-left: auto; max-width: 90%; padding-top: 2px; }
+.chip4 { border: 1.5px solid #FF640A; color: #FF640A; border-radius: 99px; padding: 6px 12px; font: 600 14.5px var(--font-app); background: #FFFFFF; }
+.cont2 { height: 48px; width: 100%; border: 0; border-radius: 99px; background: #121212; color: #FFFFFF; font: 500 15px var(--font-app); display: flex; align-items: center; justify-content: center; gap: 8px; }
+.cont2 i { width: 10px; height: 10px; border-radius: 99px; background: #E2463A; }
+</style>
+
+<div class="app" id="app">
+  <nav class="rail" aria-label="Steps">
+    <div>
+      <h1>WillpowerLab, for Ember &amp; Air</h1>
+      <p class="lede">A homeowner asks about a heat pump. Your advisor answers in their own voice. They get better at it, and your own AI learns from every answer. Click through; the questions on the right shape how we set it up for you.</p>
+    </div>
+    <div id="steps" style="display:flex;flex-direction:column;gap:16px"></div>
+  </nav>
+  <main class="centre">
+    <div class="jump"><h1>WillpowerLab, for Ember &amp; Air</h1><select id="jumpto" aria-label="Jump to a step"></select></div>
+    <div class="roles" id="roles" aria-label="Whose phone"></div>
+    <div class="stage" id="stage"><div class="device" id="device"><div class="bezel" id="bezel"><div class="screen" id="screen" aria-live="polite"></div></div></div></div>
+    <div class="controls">
+      <button class="btn" id="back" type="button">‹ Back</button>
+      <span class="where" id="where">1 of 18</span>
+      <button class="btn" id="next" type="button">Next ›</button>
+    </div>
+  </main>
+  <aside class="notes" aria-label="This step">
+    <div class="card" id="note"></div>
+    <div class="card qcard" id="qcard" hidden></div>
+    <p class="refs" id="saveline" style="margin:0 4px"></p>
+  </aside>
+</div>
+
+<script>
+(() => {
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const ICON = {
+    play: `<svg width="12" height="13" viewBox="0 0 12 13" aria-hidden="true"><path d="M2 1.2v10.6L11 6.5z" fill="#FFFFFF"/></svg>`,
+    plus: `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+    send: `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>`,
+    mic: `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>`,
+    x: `<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+  };
+  function bars(n, seed, h = 22) { let s = seed, out = ""; for (let i = 0; i < n; i++) { s = (s * 9301 + 49297) % 233280; out += `<i style="height:${Math.round((0.2 + (s / 233280) * 0.8) * h)}px"></i>`; } return out; }
+  const player = (secs, seed) => `<div class="player"><button class="play" type="button" data-play aria-label="Play">${ICON.play}</button><div class="bars">${bars(36, seed)}</div><span class="t">0:${String(secs).padStart(2, "0")}</span></div>`;
+
+  // ---------- Any business: one dictionary per kind ----------
+  const BIZ = {
+    home: { label: "Ember & Air", hint: "Heat pumps, boilers and solar for homes", site: "Ember & Air", hero: "Warm homes, lower bills.", heroBg: "linear-gradient(135deg,#9FC1AE,#3F6B55)", cust: "Mark", ask: "1990s semi, gas boiler, old radiators. Would a heat pump work for us, and do we get the £7,500 grant? Photos of the boiler and a radiator.", photo: "linear-gradient(135deg,#E3E8DF,#9FB39A)", expert: "Piotr", role: "heating advisor", sees: ["Radiators OK", "Two radiators too small", "Needs loft insulation", "Room for the outdoor unit"], service: "Home heat survey", svcMeta: "60 min at your home", price: 0, product: "Smart thermostat", prodPrice: 149, install: 12500, said: "From the photos most of your radiators can work with a heat pump; two may need to be bigger. A 1990s semi with a gas boiler is the kind of home the grant is for, and the survey confirms it in an hour, at no cost. Meanwhile, a smart thermostat cuts the gas bill right away.", routine: ["Lower the boiler's flow temperature to 55°C", "Bleed the radiators", "Note your monthly gas use"], praise: "You answered the worry first, then the money. That is the order people trust." },
+  };
+  // The team, per kind of business: a junior who answers, a senior who checks and teaches, the owner; the speaking coach is Marta
+  const TEAM = {
+    home: { junior: "Josh", jrole: "heating advisor", owner: "Dana", internalQ: "Can we quote a heat pump without a survey?", internalA: "Never. Survey first, then the quote.", approvalQ: "Can I offer Mark a survey this Saturday? It's overtime for the crew.", draft: "A heat pump will definitely work in your house, and you'll get the grant.", correction: "Don't say definitely. Say the radiators look right, and the survey checks the insulation and the grant.", hardCust: "Eva", hardAsk: "I smell gas near the boiler. Should I switch to a heat pump?", hardAnswer: "Please leave the house now, don't touch any switches, and call the gas emergency line on 0800 111 999. Once it is safe, we will talk about the heat pump.", practiceQ: "Our bills doubled this winter. Where do we start?", practiceMine: "Get a heat pump.", practiceSenior: "A home heat survey first: it shows where the heat goes, and the cheapest fix is often insulation before the heat pump." },
+  };
+  Object.keys(TEAM).forEach((k) => Object.assign(BIZ[k], TEAM[k]));
+  const S = { biz: "home", answers: {}, recSlide: 0 };
+  const B = () => BIZ[S.biz];
+  const money = (n) => (n ? "£" + n.toLocaleString("en-GB") : "free");
+
+  // ---------- The business's questions (7 inline, 8 optional at the end) ----------
+  const Q = {
+    speed: { q: "How soon should a customer get your expert's answer?", why: "The widget promises it to the customer.", opts: ["The same day", "Within 24 hours", "Within 48 hours"] },
+    shop: { q: "Where do customers buy your products online?", why: "Buy opens your own checkout; the money and the receipt stay yours.", opts: ["Shopify", "WooCommerce", "Another shop", "Quotes only, no shop"] },
+    wa: { q: "Do you have a WhatsApp Business number?", why: "The answer reaches the customer from your own number.", opts: ["Yes", "Not yet", "We'd rather use SMS"] },
+    booking: { q: "Which booking system do you use, and can it tell us about a booking?", why: "Without it, your expert never learns which answers led to a booking.", opts: ["Our job software (Jobber, Commusoft, ServiceM8)", "Calendly", "Another system", "We book by phone"] },
+    volume: { q: "How many customer questions do you expect a month?", why: "It sets how soon your own AI has enough answers to learn from.", opts: ["Under 20", "20 to 50", "50 to 150", "More than 150"] },
+    red: { q: "What must an answer never say, and when must your expert send someone elsewhere?", why: "These become fixed rules, and a test your AI must pass every time.", text: true },
+    ways: { q: "How do customers' questions reach you today?", why: "We start with the way you already work.", opts: ["Email", "The contact form on our site", "WhatsApp", "Phone calls", "Instagram or Facebook messages"] },
+    metric: { q: "What would make this worth it for you in three months?", why: "So we can show what changed.", opts: ["More bookings", "More product sales", "Less of my experts' time per answer", "Something else"] },
+  };
+  const OPTIONAL = [
+    { id: "team", q: "How many experts would answer?", opts: ["One", "Two to five", "More than five"] },
+    { id: "away", q: "Who answers when your expert is away?", opts: ["Requests wait", "Someone else on the team"] },
+    { id: "past", q: "What do you already keep from past consultations?", opts: ["Notes", "Photos", "Forms", "Nothing yet"] },
+    { id: "form", q: "Do your experts use a form or checklist to assess a case?", opts: ["Yes, we can share it", "Yes, in their heads", "No"] },
+    { id: "second", q: "Is there a second expert who could check some answers?", opts: ["Yes", "Later", "No"] },
+    { id: "photos", q: "How long should we keep a customer's photo after the answer?", opts: ["30 days", "90 days", "Ask me"] },
+    { id: "owner", q: "May WillpowerLab learn from your answers, anonymised, to improve the service?", opts: ["Yes", "No, keep it only ours", "Decide later"] },
+    { id: "lang", q: "Which languages do your customers write in?", opts: ["English", "Two or more", "Ask me"] },
+  ];
+
+  // ---------- Saving: the page's database, each business its own answers ----------
+  let db = null, me = null, userCap = null, mineRef = null, saveTimer = null;
+  const saveline = document.getElementById("saveline");
+  const sayLine = (t, ok) => { saveline.textContent = t; saveline.style.color = ok ? "#2F7D4F" : ""; };
+  (async () => {
+    try {
+      if (!window.claude || !window.claude.use) { sayLine("Your answers stay on this screen; download them at the end."); return; }
+      userCap = await window.claude.use("user");
+      db = await window.claude.use("db");
+      me = userCap ? await userCap.id() : null;
+      if (!db || !me) { db = null; sayLine("Your answers stay on this screen; download them at the end."); return; }
+      mineRef = db.doc("answers/" + me);
+      const snap = await mineRef.get();
+      if (snap.exists) { const d = snap.data() || {}; S.answers = Object.assign({}, d.answers || {}); if (d.biz && BIZ[d.biz]) S.biz = d.biz; render(); }
+      sayLine("Your answers save as you go. WillpowerLab reads them before we talk.", true);
+      if (userCap.isOwner && userCap.isOwner()) { STEPS.push({ id: "results", ch: "Only WillpowerLab", name: "Everyone's answers", role: "You", draw: drawResults, note: ["Every business that clicked through, and what they answered. Only you see this."] }); paintRail(); }
+    } catch (e) { db = null; sayLine("Your answers stay on this screen; download them at the end."); }
+  })();
+  function save() {
+    if (!db || !mineRef) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      try { await mineRef.set({ biz: S.biz, answers: S.answers, updatedAt: new Date().toISOString() }); sayLine("Saved. WillpowerLab reads your answers before we talk.", true); }
+      catch (e) { sayLine("Not saved this time; your answers stay on this screen."); }
+    }, 600);
+  }
+  function answer(id, v) { S.answers[id] = v; save(); }
+
+  // ---------- Steps ----------
+  // role: whose phone the step shows (the strip above the phone)
+  const STEPS = [
+    { id: "biz", ch: "Start", name: "Ember & Air", role: "You", draw: drawBiz, note: ["Who is who. You are Josh, a heating advisor at Ember & Air (an example company). Mark is a customer: he asks a question on the website. Piotr is your colleague. Marta is your speaking coach. Dana owns the company.", "The story: Mark asks; you answer with a Take; Will gives you feedback; you ask Piotr first; you send your better Take to Mark; Mark books. Built only from the designs in the code, plus what the founder agreed."] },
+    { id: "j-start", ch: "Start", name: "Everyone starts with Will", role: "Junior", draw: drawJStart, note: ["Day one: one chat, Will's. It is the person's own chat and the only one where they can type (N292, N298).", "They add the people they work with by email or WhatsApp number; each gets a link to join WillpowerLab (N298 item 2)."] },
+    { id: "form", ch: "Mark asks", name: "The customer asks", role: "Customer", draw: drawForm, note: ["On your website: a photo, a few words, a number, a tick. Each question becomes its own chat (N298 item 3)."] },
+    { id: "sent", ch: "Mark asks", name: "Sent", role: "Customer", draw: drawSent, q: "speed", note: ["The question lands with the juniors."] },
+    { id: "j-chats", ch: "Mark asks", name: "Your chats", role: "Junior", draw: drawJChats, note: ["Your chats: Will first, then Mark (a customer, waiting), then Piotr (your colleague)."] },
+    { id: "j-req", ch: "Mark asks", name: "Mark\'s question", role: "Junior", draw: drawJReq, note: ["Mark's chat: his question and his two photos, nothing else. The bar is the locked one (N296, N297), with the emoji where \"Type here\" sits, because only Will's chat takes typing (N306); pass it on sits in the \"+\" place. For a customer, recording is a Take."] },
+    { id: "j-rec", ch: "Mark asks", name: "Your Take", role: "Junior", draw: drawRec, note: ["The locked recording screens. On Take 1 every slide fills the page (N303): Mark's question, his two photos, then what you recommend. Then processing."] },
+    { id: "walk", ch: "Mark asks", name: "Will\'s feedback walk", role: "Junior", draw: drawWalk, note: ["The locked walk: Will's feedback on one moment, the highest-leverage one; the answer the junior sends is the practised Take (N292 item 4). Then other speakers (C8): three moments from the company, judged in the walk, voice only. Judging happens in the walk, nowhere else."] },
+    { id: "j-send", ch: "Mark asks", name: "Will asks: send it to whom?", role: "Junior", draw: drawJSend, note: ["Back in Will's chat: the Feedback walk with the Take's Ideal Text under it, and Will's ask. The answers are orange taps on the right; the mic turns orange while Will waits (N296). Will suggests who to ask (N303)."] },
+    { id: "s-check", ch: "Mark asks", name: "Piotr answers", role: "Senior", draw: drawSCheck, note: ["Piotr's phone. Your Take arrives in his chat with you. Piotr has the same tools as you: an emoji or a voice note; his words appear under it."] },
+    { id: "j-fix", ch: "Mark asks", name: "Piotr\'s answer, then Take 2", role: "Junior", draw: drawJFix, q: "wa", note: ["Piotr's answer comes into Will's chat under the Take it is about (N305). Nothing pushes the next Take (N294): you tap Record Take 2, then the plan's button, alone, starts it (N296 item 4). Then: send Take 2 to Mark?"] },
+    { id: "c-answer", ch: "Mark asks", name: "The customer books", role: "Customer", draw: drawCAnswer, q: "booking", note: ["Mark's phone: he hears your answer and books, in Ember & Air's own systems."] },
+    { id: "coach", ch: "Your chat with Will", name: "Your feedback, in Will's chat", role: "Junior", draw: drawCoach, note: ["Your chat with Will holds what your training made, as the app shows it today: the Feedback walk, with the Take's Ideal Text under it; and Marta's note, as your coach (N300, N287). You answer her with a tap."] },
+    { id: "learn", ch: "For the owner", name: "What your AI learned", role: "Owner", draw: drawLearn, q: "volume", note: ["Every answer, check, correction and question becomes an example for your own AI. Yours to keep."] },
+    { id: "value", ch: "For the owner", name: "The value", role: "Owner", draw: drawValue, q: "metric", note: ["An estimate from your answers, and how the team is doing, in words."] },
+    { id: "more", ch: "For the owner", name: "A few more questions", role: "Owner", draw: drawMore, note: ["Optional, a minute. Everything here helps us set it up for you."] },
+    { id: "p-ways", ch: "Proposals, not agreed yet", name: "How questions reach you", role: "Owner", draw: drawPWays, q: "ways", note: ["Proposal (N299 item 4 is open): WillpowerLab joins the way the company already works. Will gives the owner an address to forward any email or WhatsApp message to, and a link for the site or the contact form. Connecting an inbox comes later."] },
+    { id: "p-fwd", ch: "Proposals, not agreed yet", name: "An email becomes a chat", role: "Junior", draw: drawPFwd, note: ["Proposal: a forwarded email becomes the customer's chat; the answer goes back by email, as a link."] },
+  ];
+  const BY = () => Object.fromEntries(STEPS.map((s) => [s.id, s]));
+  const screen = document.getElementById("screen");
+  let cur = "biz", timers = [];
+  const later = (fn, ms) => { const t = setTimeout(fn, ms); timers.push(t); return t; };
+  const toast = (m) => { const t = document.createElement("div"); t.className = "toast"; t.textContent = m; screen.appendChild(t); setTimeout(() => t.remove(), 3000); };
+  function go(id) { if (!BY()[id]) return; cur = id; render(); }
+  const idx = () => STEPS.findIndex((s) => s.id === cur);
+  function next() { const i = idx(); if (i < STEPS.length - 1) go(STEPS[i + 1].id); }
+  function render() {
+    timers.forEach(clearTimeout); timers = [];
+    const st = BY()[cur]; screen.innerHTML = ""; paintQ(st); st.draw();
+    const ROLE = { You: "You", Customer: `${B().cust} · customer`, Junior: `You · ${B().junior}`, Senior: `${B().expert} · your colleague`, Coach: "Marta · speaking coach", Owner: `${B().owner} · owner` };
+    document.getElementById("roles").innerHTML = ["Customer", "Junior", "Senior", "Coach", "Owner"].map((r) => `<span class="${st.role === r ? "on" : ""}">${esc(ROLE[r])}</span>`).join("");
+    document.getElementById("note").innerHTML = `<span class="who-tag">${esc(ROLE[st.role] || st.role)}</span><h2>${esc(st.name)}</h2>${st.note.map((n) => `<p>${esc(n)}</p>`).join("")}`;
+    paintRail();
+    document.getElementById("where").textContent = `${idx() + 1} of ${STEPS.length}`;
+    try { history.replaceState(null, "", "#" + cur); } catch (e) {}
+  }
+  function paintQ(st) {
+    const qc = document.getElementById("qcard");
+    if (!st.q) { qc.hidden = true; return; }
+    const q = Q[st.q]; qc.hidden = false;
+    const v = S.answers[st.q];
+    qc.innerHTML = `<span class="qk">Your turn</span><h2>${esc(q.q)}</h2><p class="why2">${esc(q.why)}</p>` + (q.text
+      ? `<textarea id="qtext" placeholder="For example: never promise a result; send anyone with pain to a doctor.">${esc(v || "")}</textarea>`
+      : `<div class="qopts">${q.opts.map((o) => `<button type="button" data-o="${esc(o)}" aria-pressed="${v === o}">${esc(o)}</button>`).join("")}</div>`) + `<span class="qsaved${v ? " ok" : ""}">${v ? "Answered" : "One tap. You can change it later."}</span>`;
+    const redraw = () => { if (["learn", "rules", "value"].includes(cur)) st.draw(); };
+    qc.querySelectorAll("[data-o]").forEach((b) => b.onclick = () => { answer(st.q, b.dataset.o); paintQ(st); redraw(); });
+    const t = qc.querySelector("#qtext"); if (t) t.oninput = () => { answer(st.q, t.value); qc.querySelector(".qsaved").textContent = "Answered"; qc.querySelector(".qsaved").classList.add("ok"); redraw(); };
+  }
+  function paintRail() {
+    const chs = [...new Set(STEPS.map((s) => s.ch))];
+    document.getElementById("steps").innerHTML = chs.map((c) => `<div class="chap"><p class="chap-h">${esc(c)}</p>${STEPS.filter((s) => s.ch === c).map((s) => `<button type="button" class="step" data-to="${s.id}" ${s.id === cur ? 'aria-current="step"' : ""}><i class="dot ${s.q ? "new" : ""}"></i>${esc(s.name)}</button>`).join("")}</div>`).join("");
+    document.getElementById("jumpto").innerHTML = STEPS.map((s) => `<option value="${s.id}" ${s.id === cur ? "selected" : ""}>${esc(s.ch)} · ${esc(s.name)}</option>`).join("");
+  }
+  document.getElementById("steps").addEventListener("click", (e) => { const b = e.target.closest("[data-to]"); if (b) go(b.dataset.to); });
+  document.getElementById("jumpto").addEventListener("change", (e) => go(e.target.value));
+  document.getElementById("back").onclick = () => { const i = idx(); if (i > 0) go(STEPS[i - 1].id); };
+  document.getElementById("next").onclick = next;
+  screen.addEventListener("click", (e) => { const p = e.target.closest("[data-play]"); if (!p) return; const bs = [...p.parentElement.querySelectorAll(".bars i")]; bs.forEach((b) => b.classList.remove("on")); let i = 0; const t = setInterval(() => { if (i >= bs.length) { clearInterval(t); setTimeout(() => bs.forEach((b) => b.classList.remove("on")), 400); return; } bs[i++].classList.add("on"); }, 70); });
+  document.getElementById("app").classList.add("show-hot");
+
+  // ---------- Screens ----------
+  const cue = (on = true) => (on ? " cue-ring" : "");
+  function drawBiz() {
+    const ppl = [[`You: ${B().junior}`, "a heating advisor"], [B().cust, "a customer"], [B().expert, "your colleague"], ["Marta", "your speaking coach"], [B().owner, "the owner"]];
+    screen.innerHTML = `<div class="biz"><h3>${esc(B().site)}</h3><p>${esc(B().hint)}. An example company: about 40 people, three crews.</p>
+      ${ppl.map(([n, r]) => `<button type="button" aria-pressed="false" tabindex="-1">${esc(n)}<small>${esc(r)}</small></button>`).join("")}
+      <div style="flex:1"></div><button type="button" class="pill${cue()}" id="go" style="text-align:center;align-items:center">Show me</button></div>`;
+    S.answers.biz = S.biz;
+    screen.querySelector("#go").onclick = next;
+  }
+  const siteBase = () => `<div class="site2"><div class="nav">${esc(B().site.toUpperCase())}<span>Services · Shop · Contact</span></div><div class="hero" style="background:${B().heroBg}">${esc(B().hero)}</div><div class="rows"><div></div><div></div><div></div><div></div></div><button class="pill2${cue()}" type="button" id="pill">Ask our ${esc(B().role === "your expert" ? "expert" : B().role)}</button></div>`;
+  function drawSite() { screen.innerHTML = siteBase(); screen.querySelector("#pill").onclick = next; }
+  function drawForm() {
+    screen.innerHTML = siteBase() + `<div class="wsc"><div class="wpop"><h3>Ask our ${esc(B().role === "your expert" ? "expert" : B().role)}</h3>
+      <div class="ph2"><span style="display:flex;gap:4px">${thumbs(40)}</span><span><b>2 photos added</b><br><small style="color:#6b6b6b">Only our ${esc(B().role === "your expert" ? "expert" : B().role)} sees it.</small></span></div>
+      <div class="fld2">${esc(B().ask)}</div><div class="fld2">${esc(B().cust)}</div><div class="fld2">+44 7700 900142</div>
+      <div class="ck2"><i>✓</i><span>${esc(B().site)} may use my photo and words to advise me, and text me the answer.</span></div>
+      <button class="go2${cue()}" type="button" id="send">Send</button><span class="by2">WillpowerLab</span></div></div>`;
+    screen.querySelector("#send").onclick = next;
+  }
+  function drawSent() {
+    screen.innerHTML = siteBase() + `<div class="wsc"><div class="wpop" style="align-items:center;text-align:center"><span style="width:48px;height:48px;border-radius:50%;background:#f2f2f2;display:grid;place-items:center;font-size:20px">✓</span><h3>Sent</h3><p>Our ${esc(B().role === "your expert" ? "expert" : B().role)} answers you by text.</p><button class="go2${cue()}" type="button" id="done" style="width:100%">Done</button></div></div>`;
+    screen.querySelector("#done").onclick = next;
+  }
+  function drawPing() {
+    screen.innerHTML = `<div class="wa2"><span style="font-size:16px;opacity:.9">Thursday</span><span class="tm">9:41</span><button class="ntf${cue()}" type="button" id="n"><span class="ic"></span><span style="flex:1"><b>WillpowerLab <small>now</small></b>${esc(B().cust)} asks for your advice. Open your chats.</span></button></div>`;
+    screen.querySelector("#n").onclick = next;
+  }
+  const av = (bg, sz = 52) => `<span class="av" style="width:${sz}px;height:${sz}px;background:${bg}"></span>`;
+  const WILL = `<span class="av will" aria-hidden="true"><i></i><i></i><i></i></span>`;
+  function drawChats() {
+    screen.innerHTML = `<div class="bg"></div><div class="lst"><div class="lh"><b>Chats</b></div>
+      <button class="crow" type="button">${WILL.replace('class="av will"', 'class="av will" style="width:52px;height:52px"')}<span class="mid"><b>Will</b><span class="pv">Your speaking coach</span></span><span class="rt"><span class="tm">Mon</span></span></button>
+      <p class="sec">Waiting for you</p>
+      <button class="crow${cue()}" type="button" id="c">${av(B().photo)}<span class="mid"><b>${esc(B().cust)}</b><span class="pv">${esc(B().ask)}</span></span><span class="rt"><span class="tm on">9:41</span><span class="ub">1</span></span></button>
+      <p class="sec">Everyone else</p>
+      <button class="crow" type="button">${av("linear-gradient(135deg,#DCE9E1,#9FC1AE)")}<span class="mid"><b>Maya</b><span class="pv">👍</span></span><span class="rt"><span class="tm">Mon</span></span></button>
+      <button class="crow" type="button">${av("radial-gradient(circle at 50% 38%,#E8CDB8 0 30%,#6E5444 31% 62%,#3B2E26 63%)")}<span class="mid"><b>Marta</b><span class="pv">Your speaking coach</span></span><span class="rt"><span class="tm">Sun</span></span></button></div>`;
+    screen.querySelector("#c").onclick = next;
+  }
+  const chd = (bg, name, sub) => `<div class="chd"><button class="bk" type="button" aria-label="Back">‹</button><span class="av" style="background:${bg}"></span><span class="nm"><b>${esc(name)}</b><small>${esc(sub)}</small></span></div>`;
+  // Mark's two photos (drawn: the prototype has no real photos)
+  const PH_BOILER = `<svg viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice" width="100%" height="100%"><rect width="300" height="400" fill="#E7E1D7"/><g stroke="#D6CEC1" stroke-width="2">${[0,1,2,3,4,5,6,7].map((k) => `<line x1="0" y1="${50 * k}" x2="300" y2="${50 * k}"/>`).join("")}${[0,1,2,3,4,5,6].map((k) => `<line x1="${50 * k}" y1="0" x2="${50 * k}" y2="400"/>`).join("")}</g><rect x="88" y="70" width="124" height="190" rx="10" fill="#FBFBF8" stroke="#C9C3B8" stroke-width="2"/><rect x="118" y="186" width="64" height="30" rx="4" fill="#20262B"/><text x="150" y="207" text-anchor="middle" font-family="monospace" font-size="16" fill="#7CE38B">55°</text><circle cx="118" cy="236" r="6" fill="#C9C3B8"/><circle cx="182" cy="236" r="6" fill="#C9C3B8"/><g stroke="#B87333" stroke-width="7" stroke-linecap="round"><line x1="112" y1="262" x2="112" y2="400"/><line x1="134" y1="262" x2="134" y2="400"/><line x1="166" y1="262" x2="166" y2="400"/><line x1="188" y1="262" x2="188" y2="400"/></g><rect x="100" y="300" width="100" height="8" rx="3" fill="#8F8A82"/></svg>`;
+  const PH_RAD = `<svg viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice" width="100%" height="100%"><rect width="300" height="400" fill="#EFE9DF"/><rect y="320" width="300" height="80" fill="#B99B78"/><rect y="316" width="300" height="8" fill="#F7F3EC"/><rect x="40" y="170" width="220" height="130" rx="8" fill="#FBFBF8" stroke="#CFC9BE" stroke-width="2"/>${[0,1,2,3,4,5,6,7,8,9].map((k) => `<rect x="${52 + 21 * k}" y="180" width="12" height="110" rx="5" fill="#ECE8E1"/>`).join("")}<rect x="244" y="296" width="14" height="22" rx="4" fill="#C9C3B8"/><circle cx="251" cy="292" r="9" fill="#FBFBF8" stroke="#BDB6AA" stroke-width="2"/><rect x="44" y="296" width="12" height="22" rx="3" fill="#C9C3B8"/></svg>`;
+  const PHOTOS = () => [{ svg: PH_BOILER, cap: "the boiler" }, { svg: PH_RAD, cap: "a radiator" }];
+  const thumbs = (sz = 56) => PHOTOS().map((p) => `<span class="ph" style="width:${sz}px;height:${sz}px;border-radius:8px;flex:none;overflow:hidden;display:block">${p.svg}</span>`).join("");
+  const reqBubble = () => `<div class="lg-day">Today 9:41</div><div class="from"><span class="av sm" style="background:${B().photo}"></span><div class="lg-b them"><div class="quote" style="margin:0;padding:0;background:transparent;flex-direction:column"><span style="display:flex;gap:6px">${thumbs(72)}</span><span class="qt">${esc(B().ask)}<small>··· 0142 · gets your answer on WhatsApp</small></span></div></div></div>`;
+  function drawReq() {
+    screen.innerHTML = `<div class="bg"></div>${chd(B().photo, B().cust, "Waiting for you")}<div class="lg-area sub" id="lg" style="height:${844 - 64 - 150}px">${reqBubble()}</div>
+      <div class="lg-dock"><div class="wa-card"><p class="wa-title">${esc(B().cust)} asks for your advice.</p></div><div class="pair"><button class="close" type="button">Not now</button><button class="act${cue()}" type="button" id="a">Answer</button></div></div>`;
+    screen.querySelector("#a").onclick = next;
+  }
+  function drawPick() {
+    const seen = new Set([B().sees[0], B().sees[1]]), picks = new Set([B().service, B().product]);
+    const paint = () => {
+      screen.innerHTML = `<div class="pk"><div class="top"></div><h1 style="margin-top:4px">What do you see?</h1>
+        <div class="chips">${B().sees.map((x) => `<button type="button" class="chipb" data-s="${esc(x)}" aria-pressed="${seen.has(x)}">${esc(x)}</button>`).join("")}</div>
+        <h2 class="h2">What do you recommend?</h2><p class="sub" style="margin-top:4px">Each one you pick is a slide while you talk.</p>
+        <div class="box" style="margin-top:12px"><p class="cnt">${picks.size} picked</p>
+          ${[[B().service, `${B().svcMeta} · ${money(B().price)}`], [B().product, money(B().prodPrice)]].map(([n, m]) => `<button class="opt" type="button" data-p="${esc(n)}" aria-pressed="${picks.has(n)}"><span class="ck">✓</span><span class="on">${esc(n)}<small>${esc(m)}</small></span></button>`).join("")}</div>
+        <div style="height:14px"></div><button class="pill${cue()}" type="button" id="go"><span class="rdot"></span>Record over ${picks.size + 1} slides</button><button class="link" type="button">Just the question</button></div>`;
+      screen.querySelectorAll("[data-s]").forEach((b) => b.onclick = () => { const k = b.dataset.s; seen.has(k) ? seen.delete(k) : seen.add(k); paint(); });
+      screen.querySelectorAll("[data-p]").forEach((b) => b.onclick = () => { const k = b.dataset.p; picks.has(k) ? picks.delete(k) : picks.add(k); paint(); });
+      screen.querySelector("#go").onclick = next;
+    };
+    paint();
+  }
+  const slide = (k) => k === 0 ? `<div class="sl"><div class="ph" style="background:${B().photo}"></div><div class="tx"><span class="k">The question</span><span class="m" style="font-size:13px;color:#17130F">${esc(B().ask)}</span></div></div>`
+    : `<div class="sl"><div class="bowl"><i></i></div><div class="tx"><span class="k">${k === 1 ? "Recommended" : "At home"}</span><span class="n">${esc(k === 1 ? B().service : B().product)}</span><span class="m">${esc(k === 1 ? `${B().svcMeta} · ${money(B().price)}` : money(B().prodPrice))}</span></div></div>`;
+  function drawCwa() {
+    screen.innerHTML = `<div class="wa2"><span style="font-size:16px;opacity:.9">Thursday</span><span class="tm">9:58</span><button class="ntf${cue()}" type="button" id="n"><span class="ic"></span><span style="flex:1"><b>${esc(B().site)} <small>now</small></b>${esc(B().expert)} answered you. Listen here: answer.${esc(B().site.toLowerCase().replace(/\s/g, ""))}.com/a/7f3k</span></button></div>`;
+    screen.querySelector("#n").onclick = next;
+  }
+  const cTop = () => `<div class="top"><span class="av" style="width:44px;height:44px;background:${S.answerer === "senior" ? "radial-gradient(circle at 50% 38%,#E8CDB8 0 30%,#6E5444 31% 62%,#3B2E26 63%)" : "linear-gradient(135deg,#DCE9E1,#9FC1AE)"}"></span><div><b>${esc(S.answerer === "senior" ? B().expert : B().junior)}</b><small>Your ${esc(B().role === "your expert" ? "expert" : B().role)} at ${esc(B().site)}</small></div></div>`;
+  const cThread = () => `<div class="b me"><span class="cap2" style="color:#D8C7B3">You asked</span>${esc(B().ask)}</div>
+    <div class="b"><span class="cap2">What to do now</span><ul>${B().routine.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></div>
+    <div class="b">${player(48, 9)}${esc(B().said)}</div>
+    <button class="card2" type="button" data-c="svc"><span class="im" style="background:${B().heroBg}"></span><span><b>${esc(B().service)}</b><small>${esc(B().svcMeta)} · ${money(B().price)}</small></span></button>
+    <button class="card2" type="button" data-c="prod"><span class="im" style="background:#EFE7DC"></span><span><b>${esc(B().product)}</b><small>${money(B().prodPrice)} · for home</small></span></button>`;
+  function drawCchat() {
+    screen.innerHTML = `<div class="cc">${cTop()}<div class="th" id="th">${cThread()}</div><div class="foot2"><button type="button" id="sk">Buy ${esc(B().product)}</button><button class="f${cue()}" type="button" id="bk2">Book</button></div></div>`;
+    const th = screen.querySelector("#th"); th.scrollTop = th.scrollHeight;
+    screen.querySelector("#bk2").onclick = next; screen.querySelector("#sk").onclick = next;
+  }
+  function drawBook() {
+    screen.innerHTML = `<div class="cc">${cTop()}<div class="th" id="th">${cThread()}<div class="b me">Book</div></div><div class="foot2"><button type="button" id="buy">Buy ${esc(B().product)} · ${money(B().prodPrice)}</button></div></div>
+      <div class="brw2"><div class="bar"><button type="button" id="dn">Done</button><span>🔒 ${esc((S.answers.booking && S.answers.booking !== "We book by phone" && S.answers.booking !== "Another system") ? S.answers.booking.toLowerCase() + ".com" : "your booking page")}</span><span></span></div>
+      <div class="pg"><b>${esc(B().site)}, on your booking system</b><ul><li>${esc(B().service)} · ${money(B().price)}</li><li>The day and time</li><li>Payment and the confirmation, from your system</li></ul><small>Prototype: your real booking page opens here.</small></div></div>`;
+    screen.querySelector("#dn").onclick = () => { screen.querySelector(".brw2").remove(); const th = screen.querySelector("#th"); th.insertAdjacentHTML("beforeend", `<div class="b">See you there. Write to me here if anything changes.</div>`); th.scrollTop = th.scrollHeight; };
+    screen.querySelector("#buy").onclick = () => toast(`Opens your own checkout with the ${B().product} in the cart.`);
+  }
+  function drawLearn() {
+    const v = { "Under 20": 15, "20 to 50": 35, "50 to 150": 100, "More than 150": 200 }[S.answers.volume] || 0;
+    const months = v ? Math.max(1, Math.round(100 / v)) : null;
+    screen.innerHTML = `<div class="learn"><h3>What your AI learned from this one answer</h3>
+      <div class="row3"><span class="k">What was seen</span><div class="chipr">${B().sees.slice(0, 2).map((x) => `<span>${esc(x)}</span>`).join("")}</div></div>
+      <div class="row3"><span class="k">What was recommended</span><span class="v">${esc(B().service)} · ${esc(B().product)}</span></div>
+      <div class="row3"><span class="k">The words</span><span class="v">“${esc(B().said.split(". ")[0])}.”</span></div>
+      <div class="row3"><span class="k">What the customer did</span><span class="v">Booked the ${esc(B().service.toLowerCase())}</span></div>
+      <div class="row3"><span class="k">Answers until your AI starts drafting</span><div class="bar2"><b></b></div><span class="v" style="font-size:13.5px;color:#737373">1 of about 100${months ? ` · about ${months} month${months > 1 ? "s" : ""} at your volume` : " · tell us your volume, on the right"}</span></div>
+      <p style="margin:0;font-size:13.5px;color:#737373">All of it is yours: you can export it any time.</p></div>`;
+  }
+  function drawRules() {
+    screen.innerHTML = `<div class="learn"><h3>Later: your AI drafts, your expert decides</h3>
+      <div class="row3"><span class="k">${esc(B().cust)}'s next question</span><span class="v">“Is it OK to start before the appointment?”</span></div>
+      <div class="row3" style="border-color:#FF640A"><span class="k">Draft, after your expert answered</span><span class="v">Yes, start today with the ${esc(B().product.toLowerCase())}. Book in the next two weeks so we can check it properly.</span><span style="font-size:12.5px;color:#737373;margin-top:4px">Your expert sees the draft only after recording their own answer, so the AI learns from them, not the other way round.</span></div>
+      <div class="row3"><span class="k">Your rules, tested on every draft</span><span class="v">${esc(S.answers.red || "Your rules go here (on the right).")}</span></div>
+      <div class="row3"><span class="k">When it may answer alone</span><span class="v">Only after the tests pass, only for the questions you allow, and anything outside your rules always goes to a person.</span></div></div>`;
+  }
+  function drawValue() {
+    const v = { "Under 20": 15, "20 to 50": 35, "50 to 150": 100, "More than 150": 200 }[S.answers.volume] || 35;
+    const surveys = Math.round(v * 0.25), installs = Math.max(1, Math.round(surveys / 3)), buys = Math.round(v * 0.2);
+    const rev = installs * B().install + buys * B().prodPrice;
+    screen.innerHTML = `<div class="val"><h3>Your estimate</h3><span class="est">From your answers${S.answers.volume ? "" : " (a middle volume until you choose yours)"}. We check it on your first month.</span>
+      <div class="row3"><b>${v} questions a month</b><small>${S.answers.volume ? "Your answer" : "Middle estimate"}</small></div>
+      <div class="row3"><b>About ${surveys} surveys booked</b><small>If 1 in 4 who ask book the ${esc(B().service.toLowerCase())}</small></div>
+      <div class="row3"><b>About ${installs} installs · ${money(installs * B().install)}</b><small>If 1 in 3 surveys become an install, about ${money(B().install)} each with the grant</small></div>
+      <div class="row3"><b>About ${buys} sold · ${money(buys * B().prodPrice)}</b><small>If 1 in 5 buy the ${esc(B().product.toLowerCase())}</small></div>
+      <span class="big2">≈ ${money(rev)} a month</span>
+      <div class="row3"><b>About 3 minutes per answer</b><small>Your advisor talks; WillpowerLab writes, sends and follows up</small></div>
+      <div class="row3"><b>Your advisors sound surer every week</b><small>Feedback after every answer, from Will and a speaking coach</small></div>
+      <div class="row3"><b>${esc(B().junior)} answers most questions alone now</b><small>${esc(B().expert)} checks the hard ones; a gas smell or a safety risk always reaches a senior</small></div>
+      <div class="row3"><b>Your own AI, built from your answers</b><small>Every answer, check and correction; yours to keep</small></div></div>`;
+  }
+  function drawMore() {
+    screen.innerHTML = `<div class="val"><h3>Thank you</h3><p style="margin:0;color:#737373;font-size:15px">${db ? "Your answers are saved. WillpowerLab reads them before we talk." : "Download your answers and send them to us."}</p>
+      <div class="row3"><b>Next</b><small>A 30-minute call to set it up on your website, your WhatsApp number and your booking system.</small></div>
+      <button class="pill" type="button" id="dl" style="margin-top:auto">Download my answers</button></div>`;
+    const form = OPTIONAL.map((o) => `<label>${esc(o.q)}<select data-opt="${o.id}"><option value="">Choose</option>${o.opts.map((x) => `<option ${S.answers[o.id] === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label>`).join("");
+    const qc = document.getElementById("qcard"); qc.hidden = false;
+    qc.innerHTML = `<span class="qk">Optional</span><h2>A few more questions</h2><p class="why2">A minute. Every answer helps us set it up.</p><div class="form2">${form}</div>`;
+    qc.querySelectorAll("[data-opt]").forEach((s) => s.onchange = () => answer(s.dataset.opt, s.value));
+    screen.querySelector("#dl").onclick = async () => {
+      const lines = [`Business: ${BIZ[S.biz].label}`].concat(Object.entries(S.answers).filter(([k]) => k !== "biz").map(([k, v]) => `${(Q[k] && Q[k].q) || (OPTIONAL.find((o) => o.id === k) || {}).q || k}: ${v}`)).join("\n");
+      try { const dls = window.claude && window.claude.use ? await window.claude.use("downloads") : null; if (dls) { await dls.save({ filename: "willpowerlab-answers.txt", data: lines }); return; } } catch (e) {}
+      try { await navigator.clipboard.writeText(lines); toast("Copied. Paste it into an email to us."); } catch (e) { toast("Your answers:\n" + lines.slice(0, 120)); }
+    };
+  }
+  async function drawResults() {
+    screen.innerHTML = `<div class="val"><h3>Everyone's answers</h3><p style="margin:0;color:#737373">Loading…</p></div>`;
+    const qc = document.getElementById("qcard"); qc.hidden = false; qc.innerHTML = `<span class="qk">Only you</span><h2>Answers</h2><div id="res">Loading…</div>`;
+    if (!db) { qc.querySelector("#res").textContent = "The database is not available in this view."; return; }
+    try {
+      const snap = await db.collection("answers").get();
+      const ids = snap.docs.map((d) => d.id);
+      const ps = userCap && userCap.profiles ? await userCap.profiles(ids) : {};
+      screen.innerHTML = `<div class="val"><h3>Everyone's answers</h3><span class="big2">${snap.size}</span><small style="color:#737373">businesses answered</small></div>`;
+      qc.querySelector("#res").innerHTML = snap.empty ? "No answers yet." : snap.docs.map((d) => { const x = d.data() || {}; const a = x.answers || {};
+        return `<div style="margin-bottom:14px"><b>${esc((ps[d.id] && ps[d.id].name) || "Someone")}</b> · ${esc((BIZ[x.biz] || {}).label || "")}<div class="ans-list">${Object.entries(a).filter(([k]) => k !== "biz").map(([k, v]) => `<div><span>${esc((Q[k] && Q[k].q) || (OPTIONAL.find((o) => o.id === k) || {}).q || k)}</span><span>${esc(v)}</span></div>`).join("")}</div></div>`; }).join("");
+    } catch (e) { qc.querySelector("#res").textContent = "Could not read the answers just now."; }
+  }
+
+
+  // ---------- The team: junior, senior, coach, owner ----------
+  const AVJ = "linear-gradient(135deg,#DCE9E1,#9FC1AE)", AVS = "radial-gradient(circle at 50% 38%,#E8CDB8 0 30%,#6E5444 31% 62%,#3B2E26 63%)", AVK = "linear-gradient(135deg,#F3E3D2,#D8B08A)", AVO = "linear-gradient(135deg,#DDE5F0,#9AAFCB)";
+  const theirs = (bg, inner) => `<div class="from"><span class="av sm" style="background:${bg}"></span><div class="lg-b them">${inner}</div></div>`;
+  const mine = (inner) => `<div class="lg-b lg-me">${inner}<span class="ticks read">✓✓</span></div>`;
+  const day = (t) => `<div class="lg-day">${t}</div>`;
+  function chatShell(bg, name, sub, thread) { screen.innerHTML = `<div class="bg"></div>${chd(bg, name, sub)}<div class="lg-area sub" id="lg">${thread}</div>`; }
+  function fit() { const lg = screen.querySelector("#lg"); if (!lg) return; const b = screen.querySelector(".lg-dock") || screen.querySelector(".cmp"); lg.style.height = (844 - 64 - (b ? b.offsetHeight : 0)) + "px"; lg.scrollTop = lg.scrollHeight; }
+  function dockIt(html) { const d = screen.querySelector(".lg-dock, .cmp"); if (d) d.remove(); screen.insertAdjacentHTML("beforeend", `<div class="lg-dock">${html}</div>`); fit(); return screen.querySelector(".lg-dock"); }
+  function undockIt() { const d = screen.querySelector(".lg-dock, .cmp"); if (d) d.remove(); fit(); }
+  function addLg(h) { screen.querySelector("#lg").insertAdjacentHTML("beforeend", h); fit(); }
+  // the least-effort box (N278): an emoji reacts at once; a phrase fills the box; the mic comes back crafted
+  const answerCard = (who, text, label) => `<div class="chk"><span class="k2">${esc(label)}</span><span class="ph3"><i style="background:${B().photo}"></i>${esc(B().ask)}</span>${player(46, 7)}<span class="tx2">“${esc(text)}”</span><span style="font-size:12.5px;color:#737373">${esc(who)} · ${esc(B().service)} · ${esc(B().product)}</span></div>`;
+
+  function drawCAnswer() {
+    S.answerer = "junior"; drawCchat();
+    screen.querySelector("#bk2").onclick = drawBook;
+    screen.querySelector("#sk").onclick = () => toast(`Opens your own checkout with the ${B().product} in the cart.`);
+  }
+  // ---------- The locked recording screens (N70), with the customer's question and the picks as the slides ----------
+  const ICON_X = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`;
+  const voiceMark = (size) => { const i1 = Math.max(1, Math.round(size * .094)), i2 = Math.max(2, Math.round(size * .1875)), w = Math.round(size * .42); return `<div class="vm" style="width:${size}px;height:${size}px"><span class="r" style="inset:0"></span><span class="r" style="inset:${i1}px;border-color:rgba(18,18,18,.15);animation-delay:.6s"></span><span class="r" style="inset:${i2}px;border-color:rgba(255,106,10,.3);animation-delay:1.2s"></span><svg width="${w}" height="${w}" viewBox="0 0 56 56"><circle cx="12" cy="28" r="4" fill="#121212"/><circle cx="28" cy="28" r="6" fill="#121212"/><circle cx="44" cy="28" r="4" fill="#121212"/></svg></div>`; };
+  const RSL = () => [
+    { title: `${B().cust}'s question`, line: B().ask, bg: "#0F4A33", mark: "#F26B21" },
+    ...PHOTOS().map((p, k) => ({ photo: p, cap: `${B().cust}'s photo ${k + 1} of ${PHOTOS().length} · ${p.cap}` })),
+    { title: B().service, line: `${B().svcMeta} · ${money(B().price)}`, bg: "#0B2350", mark: "#F26B21" },
+    { title: B().product, line: `${money(B().prodPrice)} · for home`, bg: "#E2621B", mark: "#FFFFFF" },
+  ];
+  const lslide = (i) => { const x = RSL()[i];
+    if (x.photo) return `<div class="slide pslide"><div class="pimg">${x.photo.svg}</div><span class="pcap">${esc(x.cap)}</span><span class="pg">${i + 1}</span></div>`;
+    return `<div class="slide" style="background:${x.bg};--mark:${x.mark}"><span class="orb"></span><div class="txt"><span class="bar"></span><h3>${esc(x.title)}</h3><p>${esc(x.line)}</p></div><span class="pg">${i + 1}</span></div>`; };
+  // helper words on Take 2, as the locked screen shows them (picked after Take 1)
+  const ROOTS2 = [["no “definitely”"], ["your boiler"], ["the radiators look right", "two may need to be bigger"], ["the survey checks the grant", "one hour, free"], ["cuts the gas bill now"]];
+  function lrecMic(then) { screen.innerHTML = `<div class="lrec"><header class="h"><span class="kicker"></span><button class="x" type="button" aria-label="Close">${ICON_X}</button></header><div class="band"><div class="center">${voiceMark(64)}<p class="lbl">Getting your mic ready</p></div></div></div>`; later(then, 1200); }
+  function lrecTake(take, onFinish) {
+    let i = 0, t = 0;
+    const N = RSL().length; const paint = () => { const last = i === N - 1;
+      screen.innerHTML = `<div class="lrec"><header class="h"><p class="where">Take ${take} · Slide ${i + 1} of ${N}</p><button class="x" type="button" aria-label="Close">${ICON_X}</button></header>
+        <div class="band rec${take === 1 ? " full" : ""}"><div class="col"><div class="stage"><div class="mv"><div class="slidebox">${lslide(i)}</div><div class="road"><div class="roots">${take === 2 ? ROOTS2[i].map((r) => `<p class="root">${esc(r)}</p>`).join("") : ""}</div></div></div></div>
+        <div class="dock"><div class="strip"><span class="dot pulse"></span><span class="clock" id="clk">${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}</span><div class="track"><div class="fill" id="fill" style="width:${Math.min(100, t / 0.6)}%"></div></div></div>
+        <div class="pair"><button class="back" type="button" id="bk" ${i ? "" : "disabled"}>Back</button><button class="next${last ? " end" : ""} cue-ring" type="button" id="nx">${last ? "<i></i>Finish take" : "Next slide"}</button></div></div></div></div></div>`;
+      screen.querySelector("#nx").onclick = () => { if (last) onFinish(); else { i++; paint(); } };
+      screen.querySelector("#bk").onclick = () => { if (i) { i--; paint(); } };
+    };
+    paint();
+    const tk = setInterval(() => { t++; const c = screen.querySelector("#clk"), f = screen.querySelector("#fill"); if (c) c.textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; if (f) f.style.width = Math.min(100, t / 0.6) + "%"; }, 1000); timers.push(tk);
+  }
+  function lrecProc(then) {
+    const ST = [["Processing your recording", 5], ["Transcribing your take", 22], ["Building your Ideal Text", 48], ["Finding feedback moments", 71], ["Finding your anchors", 100]];
+    screen.innerHTML = `<div class="lrec"><header class="h"><span class="kicker"></span><button class="x" type="button" aria-label="Close">${ICON_X}</button></header><div class="band" style="align-items:center"><div class="proc"><div class="vmw">${voiceMark(64)}</div><div class="plab"><span id="pl">${ST[0][0]}</span><span id="pp">5%</span></div><div class="ptrack"><div id="pb" style="width:5%"></div></div><p class="wyw">While you wait</p><div class="tipsc"><p>Shrink the room into one conversation. Picture one real person who needs the idea, and speak to them.</p></div></div><button class="discard" type="button">Discard this take</button></div></div>`;
+    ST.forEach(([l, p], k) => later(() => { const a = screen.querySelector("#pl"); if (!a) return; a.textContent = l; screen.querySelector("#pp").textContent = p + "%"; screen.querySelector("#pb").style.width = p + "%"; }, 450 * k));
+    later(then, 450 * ST.length + 300);
+  }
+  function drawRec() { lrecMic(() => lrecTake(1, () => lrecProc(next))); }
+
+  // ---------- The chats (N274, N292 to N299) ----------
+  // the Lounge's ask: a card and two buttons
+  const ask = (title, sub, l, r, cueL = false) => `<div class="wa-card"><p class="wa-title">${title}</p>${sub ? `<p class="wa-sub">${sub}</p>` : ""}</div><div class="pair"><button class="close${cueL ? " cue-ring" : ""}" type="button" id="l">${esc(l)}</button><button class="act${cueL ? "" : " cue-ring"}" type="button" id="r">${esc(r)}</button></div>`;
+  const takeMine = (label, secs, seed, t, extra = "") => `<div class="lg-b lg-me" style="width:78%"><b>${esc(label)}</b>${player(secs, seed)}${extra}<span class="ticks read">✓✓</span></div>`;
+  function meOrange() { screen.querySelectorAll(".lg-me .play").forEach((p) => { p.style.background = "#fff"; p.querySelector("path").setAttribute("fill", "#FF640A"); }); screen.querySelectorAll(".lg-me .bars i").forEach((x) => x.style.background = "rgba(255,255,255,.55)"); screen.querySelectorAll(".lg-me .t").forEach((x) => x.style.color = "#fff"); }
+  function drawJStart() {
+    screen.innerHTML = `<div class="bg"></div><div class="lst"><div class="lh"><b>Chats</b><button class="menu cue-ring" type="button" id="add" aria-label="Add someone">${ICON.plus}</button></div>
+      <button class="crow" type="button">${WILL52}<span class="mid"><b>Will</b><span class="pv">Your speaking coach</span></span></button></div>`;
+    screen.querySelector("#add").onclick = () => {
+      screen.insertAdjacentHTML("beforeend", `<div class="lg-dock">${ask("Add someone to chat with", `Their email or WhatsApp number. They get a link to join WillpowerLab.</p><p class="wa-sub" style="border:1px solid #121212;border-radius:10px;padding:10px 12px;color:#121212;background:#fff">+44 7700 900318`, "Not now", "Invite")}</div>`);
+      screen.querySelector("#r").onclick = () => { screen.querySelector(".lg-dock").remove(); screen.querySelector(".lst").insertAdjacentHTML("beforeend", `<button class="crow" type="button">${av(AVS)}<span class="mid"><b>${esc(B().expert)}</b><span class="pv">Invited · a link to join is on its way</span></span></button>`); later(next, 1600); };
+    };
+  }
+  const WILL52 = `<span class="av will" style="width:52px;height:52px"><i></i><i></i><i></i></span>`;
+  function drawJChats() {
+    screen.innerHTML = `<div class="bg"></div><div class="lst"><div class="lh"><b>Chats</b><button class="menu" type="button" aria-label="Add someone">${ICON.plus}</button></div>
+      <button class="crow" type="button">${WILL52}<span class="mid"><b>Will</b><span class="pv">Your speaking coach</span></span></button>
+      <p class="sec">Waiting for you</p>
+      <button class="crow cue-ring" type="button" id="c">${av(B().photo)}<span class="mid"><b>${esc(B().cust)}</b><span class="pv">${esc(B().ask)}</span></span><span class="rt"><span class="tm on">9:41</span><span class="ub">1</span></span></button>
+      <p class="sec">Everyone else</p>
+      <button class="crow" type="button">${av(AVS)}<span class="mid"><b>${esc(B().expert)}</b><span class="pv">Your colleague</span></span></button></div>`;
+    screen.querySelector("#c").onclick = next;
+  }
+  // ---------- Proposals, not agreed yet (N299 item 4) ----------
+  function drawPWays() {
+    chatShell("#F5F5F5", "Will", "Your speaking coach", day("Today 9:00") + `<div class="lg-b">Questions can reach your team the way they reach you today.</div><div class="lg-b">Forward any email or WhatsApp message to <b>ask@emberandair.willpowerlab.com</b>, and it becomes a customer's chat.</div><div class="lg-b">Or put this link on your site or your contact form: <b>willpowerlab.com/ask/emberandair</b>. The answer always goes back the same way, as a link.</div>`);
+    screen.querySelector(".chd .av").outerHTML = `<span class="av will"><i></i><i></i><i></i></span>`;
+    dockIt(ask("Copy your address?", "", "Later", "Copy"));
+    screen.querySelector("#r").onclick = () => { undockIt(); addLg(day("Copied")); later(next, 1200); };
+  }
+  function drawPFwd() {
+    const AVOLA = "linear-gradient(135deg,#E9DCEF,#B79CC8)", q = "Hi, we're semi-detached and the only wall for the outdoor unit faces next door. Will it be noisy for the neighbours?";
+    screen.innerHTML = `<div class="bg"></div><div class="lst"><div class="lh"><b>Chats</b><button class="menu" type="button" aria-label="Add someone">${ICON.plus}</button></div>
+      <button class="crow" type="button">${WILL52}<span class="mid"><b>Will</b><span class="pv">Your speaking coach</span></span></button>
+      <p class="sec">Waiting for you</p>
+      <button class="crow cue-ring" type="button" id="c">${av(AVOLA)}<span class="mid"><b>Ola Brown</b><span class="pv">Forwarded email · ${esc(q)}</span></span><span class="rt"><span class="tm on">8:12</span><span class="ub">1</span></span></button></div>`;
+    screen.querySelector("#c").onclick = () => {
+      chatShell(AVOLA, "Ola Brown", "Customer · by email", day("Today 8:12") + theirs(AVOLA, esc(q)));
+      dockIt(ask("Ola asks for your advice.", "Your answer goes back to Ola by email, as a link.", `Ask ${B().expert}`, "Answer"));
+      screen.querySelector("#r").onclick = () => toast("The Take, Will's feedback, then Send: as in S1.");
+    };
+  }
+  // ---------- Will's chat holds the outputs of your training; judging is in the walk ----------
+  const walkPair = (topic, take, date, cue) => `<div class="wpair"><button type="button" class="fwb${cue ? " cue-ring" : ""}" data-o="walk"><span>Feedback walk</span><span class="fwd2">${esc(date)}</span><span class="chv">›</span></button><button type="button" class="itc" data-o="text"><span class="t1"><b>${esc(topic)}</b><span class="v">${take}.0</span></span><span class="t2">${esc(date)}</span></button></div>`;
+  const outBubble = (title, sub, cue) => `<div class="from"><span class="av will sm"><i></i><i></i><i></i></span><div class="lg-b them"><span class="about"><span class="tile" style="background:${B().photo}"></span>${esc(title)}</span>${esc(sub)}<span style="display:flex;gap:8px;margin-top:8px"><button type="button" class="obtn${cue ? " cue-ring" : ""}" data-o="walk">Review feedback</button><button type="button" class="obtn" data-o="text">Ideal Text</button></span></div></div>`;
+  // the locked walk, short: a praised moment, then other speakers (C8), judged in the walk
+  function drawWalk() {
+    let k = 0;
+    const paint = () => {
+      if (k === 0) { screen.innerHTML = `<div class="wk"><div class="top"><button class="chev" type="button" disabled>‹</button><span class="cap">Feedback walk · 1 of 3</span><button class="chev" type="button">›</button></div>
+        <div class="wkt"><div class="wme">${player(9, 11)}</div><div class="wb">This was your most confident moment.<br>Good job. ${esc(B().praise)}</div></div><div class="grow"></div><button class="pill cue-ring" type="button" id="nx">Next</button></div>`;
+        screen.querySelectorAll(".wme .play").forEach((p) => { p.style.background = "#fff"; p.querySelector("path").setAttribute("fill", "#FF640A"); }); screen.querySelectorAll(".wme .bars i").forEach((x) => x.style.background = "rgba(255,255,255,.55)"); screen.querySelectorAll(".wme .t").forEach((x) => x.style.color = "#fff");
+        screen.querySelector("#nx").onclick = () => { k = 1; paint(); }; return; }
+      screen.innerHTML = `<div class="wk"><div class="top"><button class="chev" type="button">‹</button><span class="cap">${esc(B().site)} · 1 of 3</span><button class="chev" type="button" disabled>›</button></div>
+        <div class="wkt"><div class="wb">Now one moment from ${esc(B().site)}.<div class="au" style="margin:8px 0">${player(7, 21)}</div>Does this sound confident to you?</div></div><div class="grow"></div>
+        <div class="bigs"><button type="button" class="cue-ring" data-j>👍 Yes</button><button type="button" data-j>😐 In-between</button><button type="button" data-j>👎 No</button></div><button type="button" class="aul">Audio unclear</button></div>`;
+      screen.querySelectorAll("[data-j]").forEach((b) => b.onclick = () => { screen.querySelectorAll("[data-j]").forEach((x) => { x.classList.remove("cue-ring"); x.disabled = true; }); b.classList.add("on"); later(next, 700); });
+    };
+    paint();
+  }
+  // ---------- N302: everyone has the same tools: an emoji, a recording, and passing it to someone ----------
+  const ICON_FWD = `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l6 6-6 6"/><path d="M21 11H10a6 6 0 0 0-6 6v2"/></svg>`;
+  const ICON_TRASH = `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>`;
+  const PEOPLE = () => [
+    { n: B().expert, av: AVS, d: "Your colleague" },
+    { n: "Marta", av: AVK, d: "Your speaking coach" },
+    { n: B().owner, av: AVO, d: "Owner" },
+  ];
+  // the bar for every chat but Will's: pass it on, the emoji, the mic; nothing to type
+  // every recording as the code's RecordingStrip (walk/RecordingStrip.tsx): the trash, the dot, the time, the track, Stop; then the bubble with the words heard (N275)
+  function voiceNote({ secs = 9, words = "", pre = "", then = () => {} }) {
+    dockIt(`<div class="vnb"><button type="button" class="vt" aria-label="Delete">${ICON_TRASH}</button><div class="rstrip"><span class="rdot"></span><span class="rclk" id="vclk">0:00</span><div class="rtrack"><i></i></div><button type="button" class="rstop cue-ring" id="vsend" aria-label="Stop"><i></i>Stop</button></div></div>`);
+    let t = 0; const tk = setInterval(() => { t++; const c = screen.querySelector("#vclk"); if (c) c.textContent = `0:${String(Math.min(t, 59)).padStart(2, "0")}`; }, 300); timers.push(tk);
+    screen.querySelector("#vsend").onclick = () => { clearInterval(tk); undockIt(); addLg(mine(`${pre}${player(secs, secs + 2)}${esc(words)}`)); meOrange(); then(); };
+  }
+  // passing something on: Will suggests who, from who has answered things like it before; any other chat, or someone new
+  // the asks live in Will's chat, where it is clear which Take they mean; the chat with Mark only holds the conversation
+  function drawSCheck() {
+    chatShell(AVJ, B().junior, "Your colleague", day("Today 9:52") + theirs(AVJ, `<span class="fwd">Is this good? For ${esc(B().cust)}, a customer</span>${player(46, 7)}“${esc(B().draft)}”`));
+    tools({ cue: "mic", onEmoji: () => addLg(day(`${esc(B().junior)} sees your answer`)), onMic: () => voiceNote({ secs: 11, words: B().correction, then: () => { addLg(day(`${esc(B().junior)} gets it here, and in their chat with Will`)); later(next, 1600); } }) });
+  }
+  // ---------- The bottom of every chat: the lock of N299 and N300, from the code's own pieces ----------
+  // Will's chat: "+", "Type here", the mic (orange while Will waits for an answer). Tap answers sit on the right of the thread.
+  function willBar(hot = false) {
+    undockIt();
+    screen.insertAdjacentHTML("beforeend", `<div class="cmp lk"><div class="lbar"><span class="lplus" aria-label="Your projects">${ICON.plus}</span><span class="lbox">Type here</span><span class="lmic${hot ? " waits" : ""}" aria-label="Voice note">${ICON.mic}</span></div></div>`);
+    fit();
+  }
+  // every other chat (N306): the same bar, with the emoji in the box where "Type here" sits; pass it on in the "+" place
+  function tools({ cue = "mic", onEmoji = () => {}, onMic = () => {}, onFwd = () => {} } = {}) {
+    undockIt();
+    screen.insertAdjacentHTML("beforeend", `<div class="cmp lk"><div class="lbar"><button type="button" class="lplus${cue === "fwd" ? " cue-ring" : ""}" id="fwd" aria-label="Send to someone">${ICON_FWD}</button><span class="lbox emo3">${["👍", "✅", "🙏", "👀"].map((e) => `<button type="button" data-e="${e}" class="${cue === e ? "cue-ring" : ""}">${e}</button>`).join("")}</span><button type="button" class="lmic${cue === "mic" ? " cue-ring" : ""}" id="mic" aria-label="Voice note">${ICON.mic}</button></div></div>`);
+    fit();
+    screen.querySelectorAll(".lk [data-e]").forEach((b) => b.onclick = () => { undockIt(); addLg(`<div class="lg-b lg-me big-e">${b.dataset.e}</div>`); onEmoji(b.dataset.e); });
+    screen.querySelector(".lk #mic").onclick = onMic;
+    screen.querySelector(".lk #fwd").onclick = onFwd;
+  }
+  // Will asks in his bubble; the answers are orange taps on the right; the bar stays, its mic orange
+  function willAsk(text, labels, cue, onTap) {
+    addLg(`<div class="lg-b">${text}</div><div class="chips4">${labels.map((l) => `<button type="button" class="chip4${l === cue ? " cue-ring" : ""}" data-c="${esc(l)}">${esc(l)}</button>`).join("")}</div>`);
+    willBar(true);
+    const r = [...screen.querySelectorAll("#lg .chips4")].pop();
+    r.querySelectorAll("[data-c]").forEach((b) => b.onclick = () => { r.remove(); addLg(mine(esc(b.dataset.c))); willBar(false); onTap(b.dataset.c); });
+  }
+  // passing something on, asked in Will's chat (N305): Will suggests who (N303)
+  function sendTo({ what, who = B().expert, why, onSent }) {
+    willAsk(`Ask ${esc(who)}? ${esc(why)}`, [`Ask ${who}`, "Someone else"], `Ask ${who}`, (t) => {
+      if (t !== "Someone else") { addLg(day(`↪ Sent to ${esc(who)}: ${esc(what)}`)); onSent(who); return; }
+      willAsk("Send it to", [...PEOPLE().map((p) => p.n), "Someone new"], null, (n) => {
+        if (n === "Someone new") { toast("Their email or WhatsApp number: they get a link to join WillpowerLab."); return; }
+        addLg(day(`↪ Sent to ${esc(n)}: ${esc(what)}`)); onSent(n); });
+    });
+  }
+  const willChat = (thread) => { chatShell("#F5F5F5", "Will", "Your speaking coach", thread); screen.querySelector(".chd .av").outerHTML = `<span class="av will"><i></i><i></i><i></i></span>`; };
+  function drawJReq() {
+    chatShell(B().photo, B().cust, "Customer", reqBubble());
+    tools({ cue: "mic", onMic: next, onFwd: () => toast(`Who to send it to is asked in your chat with Will (N305).`) });
+  }
+  function drawJSend() {
+    willChat(day("Today 9:51") + walkPair(`Answer to ${B().cust}`, 1, "Today"));
+    willAsk(`Send Take 1 to ${esc(B().cust)}? Or ask someone first.`, [`Send to ${B().cust}`, "Ask someone"], "Ask someone", (t) => {
+      if (t === "Ask someone") sendTo({ what: `Take 1, for ${B().cust}`, why: `${B().expert} has answered questions about the grant before.`, onSent: () => later(next, 1400) });
+      else addLg(day(`Take 1 sent to ${esc(B().cust)} on WhatsApp · 9:52`));
+    });
+  }
+  function drawJFix() {
+    S.answerer = "junior";
+    willChat(day("Today 9:51") + walkPair(`Answer to ${B().cust}`, 1, "Today") + day(`↪ Take 1 sent to ${esc(B().expert)} · 9:52`) + theirs(AVS, `<span class="fwd">${esc(B().expert)}, about Take 1 for ${esc(B().cust)}</span>${player(11, 3)}${esc(B().correction)}`));
+    // nothing pushes the next Take (N294): the speaker asks for it with a tap; then the plan's button, alone (N299 item 4)
+    addLg(`<div class="chips4"><button type="button" class="chip4 cue-ring" id="t2">Record Take 2</button></div>`);
+    willBar(false);
+    screen.querySelector("#t2").onclick = () => { screen.querySelector("#t2").parentElement.remove(); addLg(mine("Record Take 2"));
+      undockIt(); screen.insertAdjacentHTML("beforeend", `<div class="cmp lk"><button type="button" class="cont2 cue-ring" id="go2"><i></i>Record Take 2</button></div>`); fit();
+      screen.querySelector("#go2").onclick = () => lrecMic(() => lrecTake(2, () => lrecProc(() => {
+        willChat(day("Today 10:03") + walkPair(`Answer to ${B().cust}`, 2, "Today"));
+        willAsk(`Send Take 2 to ${esc(B().cust)}? Or ask someone first.`, [`Send to ${B().cust}`, "Ask someone"], `Send to ${B().cust}`, (t) => { if (t !== "Ask someone") { addLg(day(`Take 2 sent to ${esc(B().cust)} on WhatsApp · 10:04`)); later(next, 1500); } });
+      })));
+    };
+  }
+  function drawCoach() {
+    willChat(day("Today 10:06") + walkPair(`Answer to ${B().cust}`, 2, "Today") + `<div class="lg-day">Today 11:20</div>` + theirs(AVK, `<span class="who">Marta · your coach</span><span class="about"><span class="tile" style="background:${B().photo}"></span>Your answer to ${esc(B().cust)} · Take 2</span>${player(18, 4)}Lovely and calm. Next time, slow down on the name of what you recommend: it is what ${esc(B().cust)} has to remember.`));
+    addLg(`<div class="chips4">${["🙏", "Thank you!", "Show me how"].map((l) => `<button type="button" class="chip4${l === "🙏" ? " cue-ring" : ""}" data-c="${esc(l)}">${esc(l)}</button>`).join("")}</div>`);
+    willBar(true);
+    const r = [...screen.querySelectorAll("#lg .chips4")].pop();
+    r.querySelectorAll("[data-c]").forEach((b) => b.onclick = () => { r.remove(); addLg(mine(esc(b.dataset.c))); willBar(false); later(next, 1100); });
+    screen.querySelectorAll("[data-o]").forEach((b) => b.onclick = () => go(b.dataset.o === "walk" ? "walk" : "coach"));
+  }
+  // ---------- Fit the phone ----------
+  const device = document.getElementById("device"), bezel = document.getElementById("bezel"), stage = document.getElementById("stage");
+  function fitPhone() { const narrow = innerWidth <= 520; const W = narrow ? 390 : 410, H = narrow ? 844 : 864; const k = Math.min(1, stage.clientWidth / W, (narrow ? Infinity : Math.max(520, innerHeight - 150)) / H); bezel.style.transform = `scale(${k})`; bezel.style.width = W + "px"; bezel.style.height = H + "px"; device.style.width = W * k + "px"; device.style.height = H * k + "px"; }
+  new ResizeObserver(fitPhone).observe(stage); addEventListener("resize", fitPhone); fitPhone();
+  try { const h = location.hash.slice(1); if (BY()[h]) cur = h; } catch (e) {}
+  render();
+})();
+</script>
+</body></html>
