@@ -600,6 +600,18 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .prow { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; padding: 6px 0; text-align: left; font-family: var(--font-app); }
 .prow b { display: block; font-size: 15px; } .prow small { display: block; font-size: 12.5px; color: #737373; }
 .av.plusav { background: #FFFFFF; border: 1px solid #DADADA; display: grid; place-items: center; color: #121212; }
+.lrec .roots { display: flex; flex-direction: column; justify-content: center; min-height: 100%; padding: 24px 0; }
+.lrec .root { margin: 0; font-size: 24px; line-height: 1.35; font-weight: 600; color: var(--primary); }
+.lrec .root + .root { margin-top: 24px; }
+/* N299: on Take 1 the slide fills the page, so it is easy to read */
+.lrec .full .slidebox { flex: 1; min-height: 0; padding-bottom: 0; display: flex; }
+.lrec .full .slide { aspect-ratio: auto; height: 100%; }
+.lrec .full .slide .txt { width: 88%; padding: 0 8%; justify-content: center; }
+.lrec .full .slide .bar { width: 48px; margin-bottom: 24px; }
+.lrec .full .slide h3 { font-size: 34px; line-height: 1.1; }
+.lrec .full .slide p { font-size: 21px; line-height: 1.4; margin-top: 18px; }
+.lrec .full .slide .pg { font-size: 13px; }
+.lrec .full .road { display: none; }
 </style>
 
 <div class="app" id="app">
@@ -712,9 +724,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
     { id: "sent", ch: "S1 · A customer asks", name: "Sent", role: "Customer", draw: drawSent, q: "speed", note: ["The question lands with the juniors."] },
     { id: "j-chats", ch: "S1 · A customer asks", name: "Josh's chats", role: "Junior", draw: drawJChats, note: ["Three kinds of chat (N295): Will's on top, the customers, the team."] },
     { id: "j-req", ch: "S1 · A customer asks", name: "The same tools for everyone", role: "Junior", draw: drawJReq, note: ["Everyone has the same tools, whoever they are (N298): an emoji, a recording, or passing it to someone (the arrow on the left). No typing outside Will's chat (N292). For a customer, the recording is a Take."] },
-    { id: "j-rec", ch: "S1 · A customer asks", name: "The Take", role: "Junior", draw: drawRec, note: ["The locked recording screens: Getting your mic ready, then the Take over the question and the picks, Back and Next slide, Finish take on the last slide, then processing."] },
+    { id: "j-rec", ch: "S1 · A customer asks", name: "The Take", role: "Junior", draw: drawRec, note: ["The locked recording screens: Getting your mic ready, then the Take over the question and the picks, Back and Next slide, Finish take on the last slide, then processing. On Take 1 the slide fills the page, so it is easy to read (N299)."] },
     { id: "walk", ch: "S1 · A customer asks", name: "Will\'s feedback walk", role: "Junior", draw: drawWalk, note: ["The locked walk: Will's feedback on one moment, the highest-leverage one; the answer the junior sends is the practised Take (N292 item 4). Then other speakers (C8): three moments from the company, judged in the walk, voice only. Judging happens in the walk, nowhere else."] },
-    { id: "j-send", ch: "S1 · A customer asks", name: "Send, or ask someone first", role: "Junior", draw: drawJSend, note: ["Send the Take to the customer, or ask someone first. Who? Will suggests the person who has answered questions like this before, from the company's chats (N295); one tap asks them. Someone else lists the people in your chats, and Someone new adds anyone by email or WhatsApp number (N294 item 2)."] },
+    { id: "j-send", ch: "S1 · A customer asks", name: "Send, or ask someone first", role: "Junior", draw: drawJSend, note: ["Send the Take to the customer, or ask someone first. Who? Will suggests (N299) the person who has answered questions like this before, from the company's chats (N295); one tap asks them. Someone else lists the people in your chats, and Someone new adds anyone by email or WhatsApp number (N294 item 2)."] },
     { id: "s-check", ch: "S1 · A customer asks", name: "Someone answers", role: "Senior", draw: drawSCheck, note: ["The same tools: an emoji or a voice note. The voice note is the one in the code: delete, the time, send; then its words appear under it (N275)."] },
     { id: "j-fix", ch: "S1 · A customer asks", name: "The answer comes back", role: "Junior", draw: drawJFix, q: "wa", note: ["The answer comes back into the chat it was about, and into Will's chat (N294 item 1). Take 2, then Send."] },
     { id: "c-answer", ch: "S1 · A customer asks", name: "The customer books", role: "Customer", draw: drawCAnswer, q: "booking", note: ["The customer hears the junior's answer and books or buys in your own systems (N239)."] },
@@ -958,12 +970,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
     { title: B().product, line: `${money(B().prodPrice)} · for home`, bg: "#E2621B", mark: "#FFFFFF" },
   ];
   const lslide = (i) => { const x = RSL()[i]; return `<div class="slide" style="background:${x.bg};--mark:${x.mark}"><span class="orb"></span><div class="txt"><span class="bar"></span><h3>${esc(x.title)}</h3><p>${esc(x.line)}</p></div><span class="pg">${i + 1}</span></div>`; };
+  // helper words on Take 2, as the locked screen shows them (picked after Take 1)
+  const ROOTS2 = [["no “definitely”", "the radiators look right"], ["the survey checks the grant", "one hour, free"], ["cuts the gas bill now"]];
   function lrecMic(then) { screen.innerHTML = `<div class="lrec"><header class="h"><span class="kicker"></span><button class="x" type="button" aria-label="Close">${ICON_X}</button></header><div class="band"><div class="center">${voiceMark(64)}<p class="lbl">Getting your mic ready</p></div></div></div>`; later(then, 1200); }
   function lrecTake(take, onFinish) {
     let i = 0, t = 0;
     const paint = () => { const last = i === 2;
       screen.innerHTML = `<div class="lrec"><header class="h"><p class="where">Take ${take} · Slide ${i + 1} of 3</p><button class="x" type="button" aria-label="Close">${ICON_X}</button></header>
-        <div class="band rec"><div class="col"><div class="stage"><div class="mv"><div class="slidebox">${lslide(i)}</div><div class="road"></div></div></div>
+        <div class="band rec${take === 1 ? " full" : ""}"><div class="col"><div class="stage"><div class="mv"><div class="slidebox">${lslide(i)}</div><div class="road"><div class="roots">${take === 2 ? ROOTS2[i].map((r) => `<p class="root">${esc(r)}</p>`).join("") : ""}</div></div></div></div>
         <div class="dock"><div class="strip"><span class="dot pulse"></span><span class="clock" id="clk">${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}</span><div class="track"><div class="fill" id="fill" style="width:${Math.min(100, t / 0.6)}%"></div></div></div>
         <div class="pair"><button class="back" type="button" id="bk" ${i ? "" : "disabled"}>Back</button><button class="next${last ? " end" : ""} cue-ring" type="button" id="nx">${last ? "<i></i>Finish take" : "Next slide"}</button></div></div></div></div></div>`;
       screen.querySelector("#nx").onclick = () => { if (last) onFinish(); else { i++; paint(); } };

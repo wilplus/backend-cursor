@@ -7830,3 +7830,31 @@ chats; Someone else lists the people in their chats; Someone new adds anyone
 by email or WhatsApp number), and the words on screen (Never 4).
 No rules page yet: it lands with the chats' rules page (N274 item 6). The
 prototype is the Ember & Air one kept with N294. No migration in this entry.
+
+**N299 · On Take 1 the slide fills the page; Will suggests who to send to;
+the words for sending approved (founder, the Claude Code chat, 31 October
+2026, on a screenshot of Take 1's recording screen with a small slide and an
+empty page under it: "ok, on the first take make it full page slides so they
+are easy to read", then "apply what you suggested you have my green light
+for those!").** For N70, N298 and Never 4:
+1. On Take 1, when no helper words sit under the slide, the slide fills the
+page between the "Take · Slide" line and the recording strip, its words
+larger, so it is easy to read while speaking. Take 2 keeps the 16:9 slide
+with its helper words under it, as locked. A change to the locked recording
+screens, approved here (N70). Open: how a picture slide from a speaker's own
+deck fills the page.
+2. Choosing who to send something to (N298 item 4): Will suggests one
+person, the one who has answered things like it before in the company's
+chats (N295); one tap asks them. Someone else lists the people in the
+person's chats, and Someone new adds anyone by email or WhatsApp number
+(N294 item 2). The answer comes back to the one who asked, in the chat it
+was about and in their chat with Will (N294 item 1).
+3. The words are approved (Never 4): "Ask {name}?", "{Name} has answered
+questions about {topic} before.", "Someone else", "Ask {name}", "Send it
+to", "Someone new", "Their email or WhatsApp number", "Ask someone", "Or ask
+someone first.", "Send {name}'s answer to {customer}? Or record your own.",
+"Record my own".
+No rules page yet: the chats' rules page comes with N274 item 6; Take 1's
+slide lands on frontend `docs/flows/recording-screens.md` with the code
+change. The prototype is the Ember & Air one kept with N294. No migration in
+this entry.
