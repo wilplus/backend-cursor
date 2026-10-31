@@ -7602,3 +7602,31 @@ never sees the machine's read, Never 2).
 No rules page yet: the rules land on frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 H1 when built. No migration.
+
+**N292 · The external context comes from a knowledge-dissemination chat,
+not a communicator (founder, the Claude Code chat, 31 October 2026: "any
+chat that appears calculates towards the context and grows it"; "you can
+either answer with a predefined click or your official practised take";
+"the idea is that you don't ask for it all; it is not a communicator - it is
+a knowledge dissemination tool; it is NOT flexible - it is based on the
+quality not quantity of the messages"; "the only chat where you can actually
+type is the coach").** Replaces N291 item 4 (the manager's separate chat):
+1. **Any chat feeds the context.** Every message from a manager, a customer
+or another team member, in any chat in the app, adds to the speaker's
+external context automatically. The app never asks the speaker for it.
+2. **Not a communicator.** It is a knowledge-dissemination tool, built on
+the quality of the messages, not their number. It is not flexible.
+3. **No typing, except to the coach.** To customers and team members, the
+speaker answers only with a button (a predefined answer) or a voice message,
+which is transcribed: their official practised Take. The coach's chat is the
+only one where the speaker can type, to ask about specific things.
+4. **The loop.** A message comes in, the speaker records their answer, the
+walk coaches it, and the practised Take is what they send. The message is
+the Take's question, so the picker can read whether the answer answers it
+(N290 item 4).
+Not built. The other people's agreement to have their messages read, the
+processing-authorization path for every message, and the coach staying blind
+(Never 2) are designed with it.
+No rules page yet: the rules land on frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+when built. No migration.
