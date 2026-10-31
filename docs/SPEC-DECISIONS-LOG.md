@@ -7723,3 +7723,13 @@ Signed (Never 4): the lines in items 1, 5 and 6.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 E1, E2 and B, when built. No migration.
+
+**N295 · The WhatsApp ask opens on "It seems you enjoy using WillpowerLab."
+(founder, 2026-10-31).** On the next visit (N294 item 8) the WhatsApp ask
+reads: "It seems you enjoy using WillpowerLab." then "Want a WhatsApp when
+your coach replies? Add your number." The home-screen ask keeps its own
+opener, "Well, I can see you're doing pretty good." Signed (Never 4): "It
+seems you enjoy using WillpowerLab."
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E1, when built. No migration.
