@@ -581,6 +581,13 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .obtn { height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid #DADADA; background: #FFFFFF; font: 500 14px var(--font-app); color: #121212; }
 .wk .bigs button.on { border: 2px solid #121212; font-weight: 600; }
 .wk .aul { align-self: center; margin-top: 10px; border: 0; background: none; font: 400 13px var(--font-app); color: #737373; text-decoration: underline; }
+/* As in the code (frontend Lounge.tsx and walk/WalkMessage.tsx): no sender picture beside a bubble (N297), no tails; the chat's bubbles 16px corners and 15px text, the walk's 22px and 18.5px */
+.from > .av { display: none !important; }
+.from { gap: 0 !important; }
+.lg-b::after, .lg-me::after, .wb::after { display: none !important; }
+.lg-b { border-radius: 16px; line-height: 1.45; padding: 8px 12px; font-size: 15px; }
+.lg-b.lg-me { max-width: 85%; }
+.wb { border-radius: 22px !important; font-size: 18.5px; line-height: 1.45; padding: 13px 17px; max-width: 94%; }
 </style>
 
 <div class="app" id="app">

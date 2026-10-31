@@ -7778,3 +7778,29 @@ notes (N287), and, for a coach, the reviews that wait for them.
 founder's other doors (N274 item 5).
 No rules page yet: it lands with the chats' rules page (N274 item 6). The
 prototype is the Ember & Air one kept with N294. No migration in this entry.
+
+**N297 · No sender picture beside a bubble, anywhere; the chats reuse the
+chat design in the code (founder, the Claude Code chat, 31 October 2026, on
+a screenshot of the Ember & Air prototype with a picture beside Will's and
+the coach's bubbles: "remove those and lock it for this repository that
+bubbles are without the pic of a sender; or look for it in the code how it
+looks for example on the feedback walk, the same without the image of the
+sender or a receiver should be here; please make sure the design generally
+here is just like the one locked in the code; what I want from you is to
+build ON that ... change the structure of the flow of the conversation but
+use the already existing design of the chat that is in the code ... I want
+incremental changes not revolutions in the code").** For the locks of
+2026-10-12 and the founder's of 2026-10-14:
+1. No bubble shows a picture of its sender or receiver: not the app's (gone
+since 2026-10-14), and now not the coach's either. Who wrote a bubble shows
+in its words (as the walk's "Your coach:"), never in a picture. In the code
+this retires the coach's grey-blue silhouette in the Lounge (`ChatAvatar`)
+and in the walk and the coach panel (`WalkAvatar`). Was (lock of 2026-10-12,
+founder 2026-10-14): only the coach kept the picture.
+2. The chats of N274 and N292 to N296 are built on the chat design in the
+code as it stands (the Lounge's bubbles, asks and composer, the walk, the
+recording screens): they change how the conversation flows, never how a
+bubble looks. Changes come in small steps that fit the code and the docs.
+No rules page yet for the chats (N274 item 6); the picture rule lands on
+frontend `docs/flows/feedback-walk-and-chat.md` with the code change. No
+migration in this entry.
