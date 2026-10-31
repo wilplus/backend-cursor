@@ -574,14 +574,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .lrec .wyw { font-size: 11px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: var(--muted-fg); margin: 0 0 24px; }
 .lrec .tipsc p { margin: 0; font-size: 1.6rem; font-weight: 500; line-height: 1.28; letter-spacing: -.015em; text-wrap: balance; }
 .lrec .discard { margin-top: -16px; min-height: 44px; padding: 0 16px; font-size: 13px; font-weight: 500; color: var(--muted-fg); text-decoration: underline; text-underline-offset: 4px; align-self: center; }
-/* a big emoji (N294 item 6, N298) */
+/* a big emoji (N295 item 6, N299) */
 .lg-b.big-e { background: transparent !important; font-size: 56px; line-height: 1.1; padding: 0 4px; }
 .lg-b.big-e::after { display: none; }
 .cmp .row.only-mic { justify-content: flex-end; }
 .obtn { height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid #DADADA; background: #FFFFFF; font: 500 14px var(--font-app); color: #121212; }
 .wk .bigs button.on { border: 2px solid #121212; font-weight: 600; }
 .wk .aul { align-self: center; margin-top: 10px; border: 0; background: none; font: 400 13px var(--font-app); color: #737373; text-decoration: underline; }
-/* As in the code (frontend Lounge.tsx and walk/WalkMessage.tsx): no sender picture beside a bubble (N297), no tails; the chat's bubbles 16px corners and 15px text, the walk's 22px and 18.5px */
+/* As in the code (frontend Lounge.tsx and walk/WalkMessage.tsx): no sender picture beside a bubble (N298), no tails; the chat's bubbles 16px corners and 15px text, the walk's 22px and 18.5px */
 .from > .av { display: none !important; }
 .from { gap: 0 !important; }
 .lg-b::after, .lg-me::after, .wb::after { display: none !important; }
@@ -603,7 +603,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .lrec .roots { display: flex; flex-direction: column; justify-content: center; min-height: 100%; padding: 24px 0; }
 .lrec .root { margin: 0; font-size: 24px; line-height: 1.35; font-weight: 600; color: var(--primary); }
 .lrec .root + .root { margin-top: 24px; }
-/* N299: on Take 1 the slide fills the page, so it is easy to read */
+/* N300: on Take 1 the slide fills the page, so it is easy to read */
 .lrec .full .slidebox { flex: 1; min-height: 0; padding-bottom: 0; display: flex; }
 .lrec .full .slide { aspect-ratio: auto; height: 100%; }
 .lrec .full .slide .txt { width: 88%; padding: 0 8%; justify-content: center; }
@@ -742,22 +742,22 @@ button { font: inherit; color: inherit; cursor: pointer; }
   // role: whose phone the step shows (the strip above the phone)
   const STEPS = [
     { id: "biz", ch: "Start", name: "Ember & Air", role: "You", draw: drawBiz, note: ["Who is who. You are Josh, a heating advisor at Ember & Air (an example company). Mark is a customer: he asks a question on the website. Piotr is your colleague. Marta is your speaking coach. Dana owns the company.", "The story: Mark asks; you answer with a Take; Will gives you feedback; you ask Piotr first; you send your better Take to Mark; Mark books. Built only from the designs in the code, plus what the founder agreed."] },
-    { id: "j-start", ch: "Start", name: "Everyone starts with Will", role: "Junior", draw: drawJStart, note: ["Day one: one chat, Will's. It is the person's own chat and the only one where they can type (N292, N294).", "They add the people they work with by email or WhatsApp number; each gets a link to join WillpowerLab (N294 item 2)."] },
-    { id: "form", ch: "Mark asks", name: "The customer asks", role: "Customer", draw: drawForm, note: ["On your website: a photo, a few words, a number, a tick. Each question becomes its own chat (N294 item 3)."] },
+    { id: "j-start", ch: "Start", name: "Everyone starts with Will", role: "Junior", draw: drawJStart, note: ["Day one: one chat, Will's. It is the person's own chat and the only one where they can type (N292, N295).", "They add the people they work with by email or WhatsApp number; each gets a link to join WillpowerLab (N295 item 2)."] },
+    { id: "form", ch: "Mark asks", name: "The customer asks", role: "Customer", draw: drawForm, note: ["On your website: a photo, a few words, a number, a tick. Each question becomes its own chat (N295 item 3)."] },
     { id: "sent", ch: "Mark asks", name: "Sent", role: "Customer", draw: drawSent, q: "speed", note: ["The question lands with the juniors."] },
     { id: "j-chats", ch: "Mark asks", name: "Your chats", role: "Junior", draw: drawJChats, note: ["Your chats: Will first, then Mark (a customer, waiting), then Piotr (your colleague)."] },
-    { id: "j-req", ch: "Mark asks", name: "Mark\'s question", role: "Junior", draw: drawJReq, note: ["Mark's chat: his question and his two photos, and the conversation with him, nothing else. Everyone has the same three tools here: pass it to someone (the arrow), an emoji, or record (N298). For a customer, recording is a Take."] },
-    { id: "j-rec", ch: "Mark asks", name: "Your Take", role: "Junior", draw: drawRec, note: ["The locked recording screens. On Take 1 every slide fills the page (N299): Mark's question, his two photos, then what you recommend. Then processing."] },
+    { id: "j-req", ch: "Mark asks", name: "Mark\'s question", role: "Junior", draw: drawJReq, note: ["Mark's chat: his question and his two photos, and the conversation with him, nothing else. Everyone has the same three tools here: pass it to someone (the arrow), an emoji, or record (N299). For a customer, recording is a Take."] },
+    { id: "j-rec", ch: "Mark asks", name: "Your Take", role: "Junior", draw: drawRec, note: ["The locked recording screens. On Take 1 every slide fills the page (N300): Mark's question, his two photos, then what you recommend. Then processing."] },
     { id: "walk", ch: "Mark asks", name: "Will\'s feedback walk", role: "Junior", draw: drawWalk, note: ["The locked walk: Will's feedback on one moment, the highest-leverage one; the answer the junior sends is the practised Take (N292 item 4). Then other speakers (C8): three moments from the company, judged in the walk, voice only. Judging happens in the walk, nowhere else."] },
-    { id: "j-send", ch: "Mark asks", name: "Will asks: send it to whom?", role: "Junior", draw: drawJSend, note: ["Back in Will's chat after the walk: the Feedback walk, with the Take's Ideal Text under it, and Will's ask: send Take 1 to Mark, or ask someone first. Every ask about a Take is here, where it is clear which Take it means; the chat with Mark holds only the conversation. Will suggests who to ask: Piotr, who has answered questions about the grant before (N299)."] },
+    { id: "j-send", ch: "Mark asks", name: "Will asks: send it to whom?", role: "Junior", draw: drawJSend, note: ["Back in Will's chat after the walk: the Feedback walk, with the Take's Ideal Text under it, and Will's ask: send Take 1 to Mark, or ask someone first. Every ask about a Take is here, where it is clear which Take it means; the chat with Mark holds only the conversation. Will suggests who to ask: Piotr, who has answered questions about the grant before (N300)."] },
     { id: "s-check", ch: "Mark asks", name: "Piotr answers", role: "Senior", draw: drawSCheck, note: ["Piotr's phone. Your Take arrives in his chat with you. Piotr has the same tools as you: an emoji or a voice note; his words appear under it."] },
-    { id: "j-fix", ch: "Mark asks", name: "Piotr\'s answer, then Take 2", role: "Junior", draw: drawJFix, q: "wa", note: ["Piotr's answer comes into your chat with Will (N294 item 1), under the Take it is about. Will asks: record Take 2? Then: send Take 2 to Mark? It goes to Mark on WhatsApp."] },
+    { id: "j-fix", ch: "Mark asks", name: "Piotr\'s answer, then Take 2", role: "Junior", draw: drawJFix, q: "wa", note: ["Piotr's answer comes into your chat with Will (N295 item 1), under the Take it is about. Will asks: record Take 2? Then: send Take 2 to Mark? It goes to Mark on WhatsApp."] },
     { id: "c-answer", ch: "Mark asks", name: "The customer books", role: "Customer", draw: drawCAnswer, q: "booking", note: ["Mark's phone: he hears your answer and books, in Ember & Air's own systems."] },
-    { id: "coach", ch: "Your chat with Will", name: "Your feedback, in Will's chat", role: "Junior", draw: drawCoach, note: ["Your chat with Will holds what your training made, as the app shows it today: the Feedback walk, with the Take's Ideal Text under it; and Marta's note, as your coach (N296, N287). You answer her with a tap."] },
+    { id: "coach", ch: "Your chat with Will", name: "Your feedback, in Will's chat", role: "Junior", draw: drawCoach, note: ["Your chat with Will holds what your training made, as the app shows it today: the Feedback walk, with the Take's Ideal Text under it; and Marta's note, as your coach (N297, N287). You answer her with a tap."] },
     { id: "learn", ch: "For the owner", name: "What your AI learned", role: "Owner", draw: drawLearn, q: "volume", note: ["Every answer, check, correction and question becomes an example for your own AI. Yours to keep."] },
     { id: "value", ch: "For the owner", name: "The value", role: "Owner", draw: drawValue, q: "metric", note: ["An estimate from your answers, and how the team is doing, in words."] },
     { id: "more", ch: "For the owner", name: "A few more questions", role: "Owner", draw: drawMore, note: ["Optional, a minute. Everything here helps us set it up for you."] },
-    { id: "p-ways", ch: "Proposals, not agreed yet", name: "How questions reach you", role: "Owner", draw: drawPWays, q: "ways", note: ["Proposal (N295 item 4 is open): WillpowerLab joins the way the company already works. Will gives the owner an address to forward any email or WhatsApp message to, and a link for the site or the contact form. Connecting an inbox comes later."] },
+    { id: "p-ways", ch: "Proposals, not agreed yet", name: "How questions reach you", role: "Owner", draw: drawPWays, q: "ways", note: ["Proposal (N296 item 4 is open): WillpowerLab joins the way the company already works. Will gives the owner an address to forward any email or WhatsApp message to, and a link for the site or the contact form. Connecting an inbox comes later."] },
     { id: "p-fwd", ch: "Proposals, not agreed yet", name: "An email becomes a chat", role: "Junior", draw: drawPFwd, note: ["Proposal: a forwarded email becomes the customer's chat; the answer goes back by email, as a link."] },
   ];
   const BY = () => Object.fromEntries(STEPS.map((s) => [s.id, s]));
@@ -1009,7 +1009,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   }
   function drawRec() { lrecMic(() => lrecTake(1, () => lrecProc(next))); }
 
-  // ---------- The chats (N274, N292 to N295) ----------
+  // ---------- The chats (N274, N292 to N296) ----------
   // the Lounge's ask: a card and two buttons
   const ask = (title, sub, l, r, cueL = false) => `<div class="wa-card"><p class="wa-title">${title}</p>${sub ? `<p class="wa-sub">${sub}</p>` : ""}</div><div class="pair"><button class="close${cueL ? " cue-ring" : ""}" type="button" id="l">${esc(l)}</button><button class="act${cueL ? "" : " cue-ring"}" type="button" id="r">${esc(r)}</button></div>`;
   const takeMine = (label, secs, seed, t, extra = "") => `<div class="lg-b lg-me" style="width:78%"><b>${esc(label)}</b>${player(secs, seed)}${extra}<span class="ticks read">✓✓</span></div>`;
@@ -1032,7 +1032,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
       <button class="crow" type="button">${av(AVS)}<span class="mid"><b>${esc(B().expert)}</b><span class="pv">Your colleague</span></span></button></div>`;
     screen.querySelector("#c").onclick = next;
   }
-  // ---------- Proposals, not agreed yet (N295 item 4) ----------
+  // ---------- Proposals, not agreed yet (N296 item 4) ----------
   function drawPWays() {
     chatShell("#F5F5F5", "Will", "Your speaking coach", day("Today 9:00") + `<div class="lg-b">Questions can reach your team the way they reach you today.</div><div class="lg-b">Forward any email or WhatsApp message to <b>ask@emberandair.willpowerlab.com</b>, and it becomes a customer's chat.</div><div class="lg-b">Or put this link on your site or your contact form: <b>willpowerlab.com/ask/emberandair</b>. The answer always goes back the same way, as a link.</div>`);
     screen.querySelector(".chd .av").outerHTML = `<span class="av will"><i></i><i></i><i></i></span>`;
@@ -1077,7 +1077,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
       screen.querySelectorAll("[data-e]").forEach((b) => b.onclick = () => { S.coachDone = true; drawCoach(); later(next, 1000); }); }
     screen.querySelectorAll("[data-o]").forEach((b) => b.onclick = () => go(b.dataset.o === "walk" ? "walk" : "coach"));
   }
-  // ---------- N298: everyone has the same tools: an emoji, a recording, and passing it to someone ----------
+  // ---------- N299: everyone has the same tools: an emoji, a recording, and passing it to someone ----------
   const ICON_FWD = `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l6 6-6 6"/><path d="M21 11H10a6 6 0 0 0-6 6v2"/></svg>`;
   const ICON_TRASH = `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>`;
   const PEOPLE = () => [
