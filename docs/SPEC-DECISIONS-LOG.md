@@ -7603,125 +7603,45 @@ No rules page yet: the rules land on frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 H1 when built. No migration.
 
-**N292 · Every inquiry its own chat; any chat, every message kept and growing
-the context; answer with a tap, a practised Take, or typing, with a nudge to
-speak (founder, the Claude Code chat, 31 October 2026: "we are now building
-smth like a whatsapp/ slack; so each message in that chat is tracked and if
-you get the answer from the manager or from the client in the chat it gets
-automatically included to your own chat; so there is no single chat with the
-manager; there is any chat out there; any chat that appears calculates
-towards the context and grows it ... you can either answer with a predefined
-click or your official practised take and only then send it as an answer",
-then "if we configure a pop up for the website of the customer ... the
-messages (inquiries) are coming ... as the separate messages just like on
-whatsapp; you can answer by recording an answer or clicking through available
-options but all that is tracked (what words you use)", then "we should let
-them type too; but then most of the people will simply choose to type instead
-of talk and we will not be able to measure their vocal cues - though we
-should give them the liberty of choice so let them type if they want and just
-nudge them that speaking works much faster").** For N256, N274 and N278:
-1. Each inquiry from the business's website pop-up arrives as its own chat,
-as a new message does on WhatsApp (as N256 item 1).
-2. There is no one fixed chat with the manager: people talk in whatever chat
-the conversation is in. An answer meant for a person, from a manager or a
-customer, is also copied into that person's own chat, with a link back to
-where it was said.
-3. Every message is kept: the taps, the Takes and the words in them, the
-typed words, and what happened after. Every chat adds to the context, the
-person's and the company's AI's (N250, N278 item 5, with consent as N274
-item 3).
-4. A person answers in one of three ways: a tap on an option Will offers; a
-practised Take (record, Will's feedback in words, record again if they like,
-then send the Take they choose); or typing. Was (N278 item 2): a voice answer
-became a message Will wrote; now the voice itself goes, as a Take.
-5. Typing is free, but speaking is what lets Will hear the vocal cues, so
-once someone starts typing, Will nudges that speaking is faster. The nudge
-never stops the message (N278 item 4). The nudge's words wait for the
-founder's OK (Never 4).
-6. Open: which chat is a person's own chat (Will's pinned chat, or a
-separate one); whether group chats are now allowed (N256 says none).
-No rules page yet: it lands with the chats' rules page (N274 item 6). The
-prototype, kept as N229 says:
-`docs/design/customer-requests-2026-10-28/business/willpowerlab-for-ember-air.html`
-and `9-ember-and-air.pdf` (an invented heat pump installer; updated with N293). No migration in
-this entry.
-
-**N293 · Voice-led, no typing, deliberately simple: everyone starts with
-Will's chat, adds people by email or WhatsApp number, may ask the boss "is
-this good?", and the boss answers with a big emoji or a voice note (founder,
-the Claude Code chat, 31 October 2026: "so everyone at the beginning has just
-one chat - this is the chat with Will; and then you can add the other user
-you want to chat with by typing their email or whatsapp number; and that
-person receives a link to join willpowerlab; and your chat is basically a
-controlled environment for learning; and when that's the inquiry from the
-customer you just participate in the chat and you have an option to ask the
-boss for the help and you can send like did that what I send was good? and
-the boss can answer only with a big emoji or a voice message that is
-transcribed", then "it is like a slack but with built in buttons and
-interaction that are not typing the main idea it is guided through AI - voice
-led and no typing - it is NOT flexible it is focused on the implicit
-knowledge dissemination; it must be super stupid simple to use").** For N274,
-N278, N282 and N292:
-1. On day one everyone has one chat, Will's. It is their own chat (N292
-item 6), a controlled place to learn.
-2. A person adds someone to chat with by typing that person's email or
-WhatsApp number; the person gets a link to join WillpowerLab. This answers
-"who adds a contact" (N274 item 7): anyone.
-3. No typing. A person answers with a button Will offers or with a practised
-Take (N292 item 4). Was (N292 item 5): typing with a nudge to speak; and
-(N278 item 2): typed words with a clearer version.
-4. In a customer's chat the person answers the customer themselves. Two
-options are always there: ask the boss for help, and ask the boss "is this
-good?" about an answer, before or after sending it.
-5. The boss (a senior, the owner) answers only with a big emoji or a voice
-note, which Will writes out. Was (N278 item 3): an emoji and two short
-phrases.
-6. It is not flexible on purpose: few buttons, voice first, built to pass on
-the experts' implicit knowledge. Every screen must be simple enough to use
-without being taught.
-7. Open: whether a junior's answer still waits for the senior before it
-reaches the customer (N282 item 2), or the "is this good?" check is now
-always the junior's choice. The prototype shows it as the junior's choice.
-Group chats are still open (N292 item 6).
-No rules page yet: it lands with the chats' rules page (N274 item 6). The
-prototype is the Ember & Air one kept with N292, updated. No migration in
-this entry.
-
-**N294 · The chats exist to feed the loop: three kinds of chat, and every
-chat is context for spotting the moment and choosing the feedback (founder,
-the Claude Code chat, 31 October 2026: "this is the feature for the
-collaborative feature that influences the key loop; please design it as
-such; there are 3 types of chats: Will Coach, internal members of the team,
-and external such as customers; the internal and external are added in
-different ways external come whatever way the company chooses through an
-email or contact form or popup or else being simply redirected ... to the
-chat (sort of like willpowerlab is added to the conversation) actually I am
-not sure how to grasp it? ... I needed to give you the broader vision of the
-chats and the knowledge dissemination tool so that you know where to source
-the external context for choosing the moment cause it directly affects the
-intervention type and thus affects our critical loop of moment recognition
----- relevant feedback intervention (THIS IS THE KEY AND REASON FOR
-EXISTENCE FOR ALL ELSE: ALL WE WANT TO DO IS SPOT THE RIGHT MOMENT FOR YOUR
-CURRENT STATE AND NEEDS AND THEN GIVE YOU THE HIGHEST POSSIBLE LEVERAGE
-FEEDBACK) SO THAT YOU CAN BECOME A BETTER SPEAKER, FIND YOUR INNER VOICE AND
-SOUND CONFIDENT UNTIL YOU ARE!").** For N250, N274, N292 and N293:
-1. The critical loop is moment recognition, then the relevant feedback
-intervention: spot the right moment for the person's current state and
-needs, then give the highest-leverage feedback. Everything else, the chats
-included, exists for it.
-2. Three kinds of chat: Will's (the coach; everyone's own chat, N293 item
-1); internal (members of the team, invited by email or WhatsApp number, N293
-item 2); external (customers and other outside people).
-3. The chats are where the loop gets its outside context: who the person
-was speaking to, what they were asked, what the stakes were, how the boss
-answered, and what happened after. That context chooses which moment
-matters and which kind of intervention fits.
-4. External people come the way the company already works (an email, a
-contact form, a pop-up, a redirect); WillpowerLab joins that conversation
-rather than replacing it.
-5. Open, for the founder: how WillpowerLab joins those conversations (a
-proposal is in the chat of 31 October 2026), and the rules for how chat
-context picks the moment and the intervention.
-No rules page yet: it lands with the chats' rules page (N274 item 6), and
-the moment and intervention rules with the walk's page when they are
-decided. No migration in this entry.
+**N292 · The external context comes from a knowledge-dissemination chat,
+not a communicator (founder, the Claude Code chat, 31 October 2026: "any
+chat that appears calculates towards the context and grows it"; "you can
+either answer with a predefined click or your official practised take";
+"the idea is that you don't ask for it all; it is not a communicator - it is
+a knowledge dissemination tool; it is NOT flexible - it is based on the
+quality not quantity of the messages"; "the only chat where you can actually
+type is the coach").** Replaces N291 item 4 (the manager's separate chat):
+1. **Any chat feeds the context.** Every message from a manager, a customer
+or another team member, in any chat in the app, adds to the speaker's
+external context automatically. The app never asks the speaker for it.
+2. **Not a communicator.** It is a knowledge-dissemination tool, built on
+the quality of the messages, not their number. It is not flexible.
+3. **No typing, except to the coach.** To customers and team members, the
+speaker answers only with a button (a predefined answer) or a voice message,
+which is transcribed: their official practised Take. The coach's chat is the
+only one where the speaker can type, to ask about specific things.
+4. **The loop.** A message comes in, the speaker records their answer, the
+walk coaches it, and the practised Take is what they send. The message is
+the Take's question, so the picker can read whether the answer answers it
+(N290 item 4).
+5. **Now and later** (founder, the same chat: "right now we are just
+building the chat with the coach where you can type normally; I needed to
+give you the broader vision ... so that you know where to source the
+external context for choosing the moment"). Being built now: the coach's
+chat, where the speaker types. The other chats are the vision; the context
+model is built so they plug in when they come. Until then the external
+context comes from the coach's chat, the plan's answers and the Take itself.
+6. **Why it exists** (founder, the same chat: "moment recognition ----
+relevant feedback intervention (THIS IS THE KEY AND REASON FOR EXISTANCE FOR
+ALL ELSE: ALL WE WANT TO DO IS SPOT THE RIGHT MOMENT FOR YOUR CURRENT STATE
+AND NEEDS AND THEN GIVE YOU THE HIGHEST POSSIBLE LEVERAGE FEEDBACK) SO THAT
+YOU CAN BECOME A BETTER SPEAKER, FIND YOUR INNER VOICE AND SOUND CONFIDENT
+UNTIL YOU ARE!"). Recognising the right moment for the speaker's current
+state and needs, then giving the highest-leverage feedback on it, is the
+reason for everything else; every context source serves it (N290 item 1).
+The other people's agreement to have their messages read, the
+processing-authorization path for every message, and the coach staying blind
+(Never 2) are designed with the other chats.
+No rules page yet: the rules land on frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+when built. No migration.
