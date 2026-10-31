@@ -7645,3 +7645,32 @@ processing-authorization path for every message, and the coach staying blind
 No rules page yet: the rules land on frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 when built. No migration.
+
+**N293 · Each Take carries its context, and the picker reads it (founder,
+the Claude Code chat, 31 October 2026, on the design and prototype
+<https://claude.ai/artifact/G7d8cLK5b2Vo36yZAtsfYD>: "ok, it is good"; "ok,
+build it").** For N290, N291 and N292:
+1. **Three slots per Take:** who it is for, what it answers, and success
+(what the listener should do or feel). Each holds a value, where it came
+from, and one of three states: sure, guess or missing.
+2. **Where each comes from, best first:** the speaker's answer to Will's
+question, already kept in the talk's setup (`audience`, the setup's "Desired
+call to action:"); the plan's answers (audience, topic, success, key line);
+then a guess read from the Take (Will's existing "heard" read of the
+transcript, now kept on the Take instead of thrown away). The coach's chat
+and the other chats (N292) plug in as sources when they exist. A guess never
+replaces a sure answer.
+3. **The picker reads it.** A sentence that carries the key line or the call
+to action is relevant: in full when the slot is sure, at half weight when it
+is a guess, not at all when it is missing. Relevance lifts a sentence as the
+strongest moment and makes it likelier to be the one fixed. Missing context
+leaves the walk exactly as before. No new model call.
+4. **Will asks as before.** His one question after the walk (E2) already asks
+who the talk is for and what they should do; nothing about the chat changes.
+5. **Not in this build:** the "why it worked" line naming the audience, and
+Will asking what the talk answers; both need new words (Never 4).
+No number about the context reaches the speaker (Never 1); a coach never
+sees why a moment was picked (Never 2).
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+H1. No migration.
