@@ -8060,3 +8060,55 @@ for the people in a team).
 whether a customer can be invited by a link too.
 No rules page yet: it lands with the chats' rules page (N274 item 6). The
 prototype is the Ember & Air one kept with N298. No migration in this entry.
+
+**N309 · Locked: the walk is the One thing walk; one judged moment from
+Take 2; the helper words come on their own; sharing is asked once (founder,
+the Claude Code chat, 31 October 2026, on the prototype
+<https://claude.ai/artifact/X4gDmGfHH7ivuoRZ9ufiy9> version 27, the walk taken
+from <https://claude.ai/artifact/S8zzcsVEqcDYVC7XQ25Ntg>: "apply to it the one
+thing walk but only the walk only untill the moment that lesson done; message
+to close the walk NOT to record next take", "ok, this is good", "ok, this
+finally good", and "the take recording and the walk & after the walk should
+have been locked in in the docs already").** For N289, N220, N294, N296,
+N297, N300 and the flow page's C, C8 and G:
+1. **The walk, in order.** "Hi {name}." Last Take's fix played back first
+when it rose ("Last time: {the tip}. You did."). Their best: the clip,
+"This was your most confident moment." and "Why it worked: {the moment's
+signed cue line}", nothing to practise. "And now, one thing to improve:"
+and one fix, with the tool the low part of willfidence calls for: the
+Clearer version ("Say it straight:" and the sentence), the AI clip after
+their best played again ("Say this one like your confident moment:", the
+tip, "Your turn."), or the Sniper on this week's level. The dock: "Try it"
+with Skip, or Keep mine for the Clearer version. A try that lands: "Yes.
+That's it."; one miss: "Close. Once more."; two: "Good try. Take it with
+you." Steady tone only. Replaces N289's three moments in the walk; the
+picker (N289, N293) still chooses: its strongest is "their best", the fix is
+the slot whose tool fits.
+2. **Judging, from Take 2, one moment a walk** (N300), right after their
+try: "Let's see how you find this voice. It helps us understand you and
+serve you better.", then the clip and "Does this sound confident to you?"
+in one bubble (Line B, "Now one moment from another speaker.", goes), the
+faces (👍 Yes, 😐 In-between, 👎 No, "Audio unclear"), their answer as their
+own reply ("{face} {answer} ✓"), then "Got it." The level rotates high,
+middle, low across Takes. Replaces C8's three moments every walk, Take 1
+included. Each answer is kept as a peer rating (L3).
+3. **The helper words come on their own:** no "Choose your helper words".
+"These are your helper words. They'll appear on screen during your next
+take, to remind you of what you learned here.", then the words alone, in
+bold: the words of their own sentence the fix leans on ("above ninety
+percent"), or the Clearer version's sentence. They show under the slide in
+the next Take and on the Ideal Text (C3). Replaces N220's pick.
+4. **The end:** "Lesson done." and Close, back to the chat (N294 to N297).
+No "Record Take N" in the walk.
+5. **Sharing is asked once,** on the app's own screen ("How big you want
+your audience?"), the first time "Record Take 2" is tapped; the choice is
+remembered and is the small line under each Take's recording, which opens
+the same screen to change it; asked again only when the consent words change
+or a community is added. Each Take is still stamped and revocable (G4).
+Replaces G1's ask before every Take. Open: whether the consent words must
+say the choice covers later Takes (a lawyer's check; Never 4).
+6. **Signed (Never 4):** every line quoted in items 1 to 5.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C, C8, G and K, when built; listed in [`docs/LOCKS.md`](LOCKS.md). No
+migration.
