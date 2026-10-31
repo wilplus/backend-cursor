@@ -7573,3 +7573,32 @@ No rules page yet: the rules land on frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 H1 and [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 when built. No migration.
+
+**N291 · How the picker learns, and where the external context comes from
+(founder, the Claude Code chat, 31 October 2026, answering four questions on
+N290: "yes"; "ok go with the proposal"; "no"; "by the external I mean in
+general some added context comes in from the manager in a separate chat and
+you get that calculated into the context automatically"; "no pasting").**
+For N290:
+1. **A fix worked** when the same issue does not come back on the next Take,
+on the same slide. That is the picker's main measure, checked against the
+coaches' blind answers and the feelings check's trend.
+2. **Two willfidence scores, neither ever shown.** Rolling willfidence
+(today's: the voice against the speaker's recent Takes) picks the moments
+inside a Take. Anchored willfidence (the same formula, the voice against a
+frozen baseline of the speaker's first Takes, and a reference from all
+speakers while those are too few) measures progress over time and whether a
+fix worked. The rolling baseline rises with the speaker, so on its own it
+hides their progress.
+3. **No separate gate** for rewrites of a manipulation or a breach of
+non-violent communication: the rewrite gate (H3) applies as it does to
+every rewrite.
+4. **The external context comes in on its own,** from the speaker's manager
+in a separate chat: what the manager writes there is added to the speaker's
+context automatically. The speaker never pastes anything. The manager's chat
+does not exist yet; who the manager is, how they are invited, what the
+speaker agrees to and what the manager may see are designed next (a coach
+never sees the machine's read, Never 2).
+No rules page yet: the rules land on frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+H1 when built. No migration.
