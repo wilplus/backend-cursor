@@ -8187,3 +8187,22 @@ business's link (N295 item 3, Will's suggestion).
 No rules page yet: it lands with the chats' rules page (N274 item 6) and the
 customer requests page (frontend `docs/flows/customer-requests.md`). The
 prototype shows both links in the add sheet. No migration in this entry.
+
+**N313 · The ask page's words signed; Will routes what comes through the
+business's link (founder, the Claude Code chat, 31 October 2026, on N312
+item 5: "for the first one the wording is okay, and for the second one,
+yeah, it's a good idea").** For N303 and N312:
+1. The ask page reuses the website pop-up's words, signed (Never 4): "Ask
+our {role}", "{N} photos added", "Only our {role} sees it.", the question,
+the name, the number, "{Business} may use my photo and words to advise me,
+and text me the answer.", "Send", "Sent", "Our {role} answers you by text.";
+and in the add sheet: "For customers, your ask link: they send you a
+question and photos, with no account."
+2. A person's ask link goes to that person. What comes through the
+business's link (the website's pop-up included) goes to the person Will
+suggests: the one who has answered questions like it before in the
+company's chats (as N303 item 2). Anyone can pass it on (N302).
+3. Open: who gets it when nobody has answered anything like it yet.
+No rules page yet: it lands with the chats' rules page (N274 item 6) and the
+customer requests page (frontend `docs/flows/customer-requests.md`). No
+migration in this entry.
