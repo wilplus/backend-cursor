@@ -2995,6 +2995,14 @@ O4  Browser roles cannot call the trigger function.","O1 -> test_either_name_fil
 O2 -> test_an_update_or_a_clear_carries_over
 O3 -> test_the_mirror_adds_no_foreign_key
 O4 -> test_browser_roles_cannot_call_the_trigger","Founder 2026-09-26: the retry read `recording_id` from a row that only had `recording_1_id`, so every retry failed under enforce (0383). Runs on the released rehearsal lane against the real trigger."
+tests/test_take_progress.py,Story,"As the founder, I want to see whether a speaker is really getting better and whether each fix the walk gave worked, so that I know the moments and interventions we pick move them forward.","O1  A speaker's progress is read against their own first Takes, frozen:
+a later Take that sounds stronger than those reads higher, even when
+it is no stronger than their recent Takes; with too few first Takes
+it is not measured.
+O2  The fixes a Take gave (the weakest and the one between, and its tempo
+stretch) are each marked came back or gone on the next Take of the
+talk, same slide; not measured when that slide is not in it.","O1 -> test_progress_is_read_against_my_first_takes
+O2 -> test_each_fix_is_marked_came_back_or_gone_on_the_next_take","Founder 2026-10-31 (N291: ""yes""; ""ok go with the proposal""; N290: ""the next time it chooses a moment it should take into account what the user answered"")."
 tests/test_take_promotion_survives_a_dropped_connection.py,Story,"As a speaker, I want a dropped database connection at the last step to be retried, so that my Take is not thrown away and processed again.","O1  When the connection drops while the recording becomes a Take, the
 step is retried once and the Take is returned.",O1 -> PromotionRetryTests::test_a_dropped_connection_is_retried_and_the_take_returned,Founder's Takes of 2026-10-02 and 2026-10-03 were re-run from the start after one dropped call.
 tests/test_take_purge_postgres.py,Story,"As a speaker who deletes my account, I want everything I recorded erased, so that my Take, audio and project content are gone.","O1  The erasure finishes, with nothing left for manual review, and the
