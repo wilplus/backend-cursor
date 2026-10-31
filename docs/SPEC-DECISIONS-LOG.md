@@ -8112,3 +8112,34 @@ The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C, C8, G and K, when built; listed in [`docs/LOCKS.md`](LOCKS.md). No
 migration.
+
+**N310 · The shelf, and the words of the add sheet and the join page
+(founder, the Claude Code chat, 31 October 2026, on the Ember & Air
+prototype: "ok, looks good"; then "here we are only designing the
+interaction between the users of the app; the speaking coach is one
+"special" chat that is designed elsewhere and you can type to it but not
+here; here the rule is minimum typing maximum emojis and talking through the
+slides to the team mates or customers").** For N298, N302, N305 and N308:
+1. **The shelf.** What a business can point to in an answer, set up once
+from its shop and its booking system and grown by pasting a link in Will's
+chat. Every item has one shape: a name, a link, a type, maybe a price or a
+picture; the type only sets the customer's button (Book, Buy, Watch, Open,
+Get a quote). A quote never shows a price. Before the Take, "What do you
+recommend?" lists the shelf with Will's suggestions ticked; each pick is a
+slide while you talk and a button in the customer's answer, opening the
+business's own system (N239).
+2. **Scope.** These chats are the interaction between the app's users
+(colleagues and customers). The chat with Will, the speaking coach, is
+designed elsewhere and is the one place to type; here the speaking coach is
+seen only while recording, slide by slide. Here the rule is the least typing
+and the most emoji, and talking through the slides.
+3. Signed (Never 4): "Is this right?", "Looks right", "Add something", "What
+do you recommend?", "Each one you pick is a slide while you talk, and a
+button for {customer}.", "Will suggests", "Record over {N} slides", "Book",
+"Buy", "Watch", "Open", "Get a quote", "Add someone to chat with", "Send them
+your link, in any email or message. Whoever opens it joins you here.", "Copy
+my link", "Invite by email", "{Name} asks you to join them on WillpowerLab",
+"You'll have a chat with {Name}, and your own chat with Will.".
+4. Open: whether a customer can be invited by a link too (N308 item 4).
+No rules page yet: it lands with the chats' rules page (N274 item 6). The
+prototype is the Ember & Air one kept with N298. No migration in this entry.
