@@ -7674,3 +7674,52 @@ sees why a moment was picked (Never 2).
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 H1. No migration.
+
+**N294 · After the walk: Will asks about the moment, the speaker answers in
+their own words, nothing pushes the next Take, and settings wait for the next
+visit (founder, the Claude Code chat, 31 October 2026, on the prototype
+<https://claude.ai/artifact/X4gDmGfHH7ivuoRZ9ufiy9>: "let your north star be
+to get as much context as possible so the next moment is chosen correctly;
+and make the conversation flow"; "these questions, they should be related to
+the moment that has been asked"; "I signed the new lines"; "No call to
+action means that there is no push"; "they can be only one at a time. Only
+once you answer"; "the next time you come and open the app ask the settings
+questions").** For E1, E2, N82, N89, N94, N171, N189 and N293:
+1. **Will's question is about the moment** the walk just worked on, as close
+as possible: it quotes the speaker's words ("When you said "…", …", "We just
+worked on "…". …"), and its tap answers come from that moment first.
+2. **The key line is recorded.** Will asks the plan's signed question ("If
+your audience remembers one sentence from you, what is it? Say it the way
+you'll say it.") and the speaker answers with a voice message; no answer is
+offered to tap.
+3. **A follow-up is answered in the speaker's own words,** typed or recorded;
+no tap answers. While Will waits for an answer, the microphone is the main
+way to answer (orange, larger) and typing stays; Skip is quiet grey text on
+the left of the message box, never in the reply spot on the right where the
+speaker's own messages go, so it never reads as the default (style only, no
+new words). Tap answers, when a question has them, stay on the right.
+4. **One at a time.** One question or ask is on screen at a time; the next
+comes only once the one before is answered. A second context question may
+follow an answered first one; a Skip ends them.
+5. **Will says back who the talk is for:** "{who}. I'll keep them in mind."
+(signed). Other answers keep "Got it, thanks 🙏".
+6. **No push to the next Take.** The closing message ("Look, practice makes
+perfect…", N89) goes. The walk's chat ends on "Good job. See you next time."
+(signed) with "I want to continue my practice" (signed); tapping it, or
+typing that they want to practise, brings "Record Take N". The speaker may
+simply close the app.
+7. **"Record Take N" is a button under the chat,** full width, like
+"Continue review"; no bubble carries a button. While it shows, the message
+box and the microphone are gone: the button stands alone.
+8. **Settings asks wait for the next visit.** WhatsApp and the home screen
+are never asked after a Take: they come the next time the speaker opens the
+app, one at a time, and never before their second Take (WhatsApp first, the
+home screen last). Consent is not a settings ask and stays where it is.
+Replaces N171's WhatsApp ask from Take 1 and E1's asks after a Take.
+9. **One recording design.** The chat's microphone takes the Take's own
+recording strip (the pulsing dot, the clock, the bar, the red Stop), as the
+walk's practice already does; the WhatsApp-style bar goes. "Stop" is signed.
+Signed (Never 4): the lines in items 1, 5 and 6.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E1, E2 and B, when built. No migration.
