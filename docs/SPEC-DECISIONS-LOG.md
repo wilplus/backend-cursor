@@ -8023,3 +8023,19 @@ Will's chat takes typing (N292 item 3). Passing it on (N302) sits in the
 No rules page yet: it lands with the chats' rules page (N274 item 6) and on
 frontend `docs/flows/feedback-walk-and-chat.md` E1 with the bar. The
 prototype is the Ember & Air one kept with N298. No migration in this entry.
+
+**N307 · The notice and the invite: one notice per message, who sent it,
+never what; the words signed (founder, the Claude Code chat, 31 October
+2026, on the Ember & Air prototype's notices: "you have my OK").** For N298,
+N302 and N305:
+1. Every new message to a person (from a customer, a colleague or their
+coach) sends one notice, by email, or by WhatsApp when they gave their
+number (the path the coach's reply uses today). It names who sent it, never
+what: the words stay in the app. Its link opens that chat.
+2. A customer has no account: the answer reaches them by WhatsApp from the
+company's own number, with a link (N239).
+3. Signed (Never 4): "{Name} sent you a message", "{Name} sent you a message
+on WillpowerLab.", "Open the chat", "{Name} invited you to WillpowerLab",
+"{Name} at {company} wants to chat with you on WillpowerLab.", "Join".
+No rules page yet: it lands with the chats' rules page (N274 item 6). The
+prototype is the Ember & Air one kept with N298. No migration in this entry.
