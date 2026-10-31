@@ -7858,3 +7858,20 @@ No rules page yet: the chats' rules page comes with N274 item 6; Take 1's
 slide lands on frontend `docs/flows/recording-screens.md` with the code
 change. The prototype is the Ember & Air one kept with N294. No migration in
 this entry.
+
+**N300 · One recording bar everywhere: the code's recording strip (founder,
+the Claude Code chat, 31 October 2026, on a screenshot of the trash, the
+dot, the time, the track and the red Stop: "unify the recording pls just
+like it is here").** For N294, N298 and N299:
+1. Every short recording in the chats (a voice note to a colleague, an
+answer by voice) uses the recording strip the walk's practice, the tempo
+step and the plan already use (frontend
+`src/components/willab/walk/RecordingStrip.tsx`): the trash on the left,
+then the grey strip with the pulsing dot, the time, the track and the red
+Stop. Stop sends it; the words heard appear under the voice (N275). Was: the
+Lounge's voice note bar (the time in a white pill and a black send button,
+`VoiceNoteBar`, founder 2026-10-20), which this replaces in the chats.
+2. A Take keeps the locked recording screens (N70, N299), whose strip is
+the same.
+No rules page yet: it lands with the chats' rules page (N274 item 6). The
+prototype is the Ember & Air one kept with N294. No migration in this entry.
