@@ -7686,3 +7686,42 @@ Group chats are still open (N292 item 6).
 No rules page yet: it lands with the chats' rules page (N274 item 6). The
 prototype is the Ember & Air one kept with N292, updated. No migration in
 this entry.
+
+**N294 · The chats exist to feed the loop: three kinds of chat, and every
+chat is context for spotting the moment and choosing the feedback (founder,
+the Claude Code chat, 31 October 2026: "this is the feature for the
+collaborative feature that influences the key loop; please design it as
+such; there are 3 types of chats: Will Coach, internal members of the team,
+and external such as customers; the internal and external are added in
+different ways external come whatever way the company chooses through an
+email or contact form or popup or else being simply redirected ... to the
+chat (sort of like willpowerlab is added to the conversation) actually I am
+not sure how to grasp it? ... I needed to give you the broader vision of the
+chats and the knowledge dissemination tool so that you know where to source
+the external context for choosing the moment cause it directly affects the
+intervention type and thus affects our critical loop of moment recognition
+---- relevant feedback intervention (THIS IS THE KEY AND REASON FOR
+EXISTENCE FOR ALL ELSE: ALL WE WANT TO DO IS SPOT THE RIGHT MOMENT FOR YOUR
+CURRENT STATE AND NEEDS AND THEN GIVE YOU THE HIGHEST POSSIBLE LEVERAGE
+FEEDBACK) SO THAT YOU CAN BECOME A BETTER SPEAKER, FIND YOUR INNER VOICE AND
+SOUND CONFIDENT UNTIL YOU ARE!").** For N250, N274, N292 and N293:
+1. The critical loop is moment recognition, then the relevant feedback
+intervention: spot the right moment for the person's current state and
+needs, then give the highest-leverage feedback. Everything else, the chats
+included, exists for it.
+2. Three kinds of chat: Will's (the coach; everyone's own chat, N293 item
+1); internal (members of the team, invited by email or WhatsApp number, N293
+item 2); external (customers and other outside people).
+3. The chats are where the loop gets its outside context: who the person
+was speaking to, what they were asked, what the stakes were, how the boss
+answered, and what happened after. That context chooses which moment
+matters and which kind of intervention fits.
+4. External people come the way the company already works (an email, a
+contact form, a pop-up, a redirect); WillpowerLab joins that conversation
+rather than replacing it.
+5. Open, for the founder: how WillpowerLab joins those conversations (a
+proposal is in the chat of 31 October 2026), and the rules for how chat
+context picks the moment and the intervention.
+No rules page yet: it lands with the chats' rules page (N274 item 6), and
+the moment and intervention rules with the walk's page when they are
+decided. No migration in this entry.
