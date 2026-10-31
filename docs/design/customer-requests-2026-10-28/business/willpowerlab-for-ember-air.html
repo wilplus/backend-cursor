@@ -657,6 +657,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .mail .mb { padding: 20px 18px; font-size: 16px; line-height: 1.5; }
 .mail .mbtn { height: 46px; padding: 0 22px; border: 0; border-radius: 99px; background: #121212; color: #FFFFFF; font: 600 15px var(--font-app); }
 .av.wlav { background: #F5F5F5; display: flex; align-items: center; justify-content: center; gap: 2px; } .av.wlav i { width: 4px; height: 4px; border-radius: 50%; background: #121212; } .av.wlav i:nth-child(2) { width: 6px; height: 6px; }
+.lg-b.shelf { display: flex; flex-direction: column; gap: 8px; width: 88%; }
+.srow { display: flex; gap: 10px; align-items: center; }
+.srow .sty { flex: none; min-width: 74px; text-align: center; font-size: 12.5px; font-weight: 600; color: #FF640A; border: 1.5px solid #FF640A; border-radius: 99px; padding: 3px 8px; background: #FFFFFF; }
+.srow .stx b { display: block; font-size: 14.5px; font-weight: 600; } .srow .stx small { display: block; font-size: 12px; color: #737373; line-height: 1.35; }
+.cc .card2.pc { width: 92%; }
+.cc .vb { flex: none; height: 34px; padding: 0 14px; border-radius: 99px; border: 0; background: #17130F; color: #FBF8F3; font: 600 14px var(--font-app); }
 </style>
 
 <div class="app" id="app">
@@ -764,12 +770,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
   // role: whose phone the step shows (the strip above the phone)
   const STEPS = [
     { id: "biz", ch: "Start", name: "Ember & Air", role: "You", draw: drawBiz, note: ["Who is who. You are Josh, a heating advisor at Ember & Air (an example company). Mark is a customer: he asks a question on the website. Piotr is your colleague. Marta is your speaking coach. Dana owns the company.", "The story: Mark asks; you answer with a Take; Will gives you feedback; you ask Piotr first; you send your better Take to Mark; Mark books. Built only from the designs in the code, plus what the founder agreed."] },
+    { id: "o-shelf", ch: "Start", name: "The shelf", role: "Owner", draw: drawOShelf, q: "shop", note: ["Set up once: what the business can point to in an answer, brought in from its shop and its booking system. One shape for everything: a name, a link, a type, maybe a price or a picture. The type only sets the customer's button: Book, Buy, Watch, Open, Get a quote.", "A quote never shows a price (the install is priced after the survey). It grows by pasting a link in Will's chat."] },
     { id: "j-start", ch: "Start", name: "Everyone starts with Will", role: "Junior", draw: drawJStart, note: ["Day one: one chat, Will\'s. It is the person\'s own chat and the only one where they can type (N292, N298).", "They add the people they work with by email or WhatsApp number (the + at the top); each gets a link to join (N298 item 2)."] },
     { id: "n-invite", ch: "Start", name: "Piotr gets an invite", role: "Senior", draw: drawNInvite, note: ["An email with a link to join. Once he joins, Josh is in his chats, and he has his own chat with Will (N298 item 2)."] },
     { id: "form", ch: "Mark asks", name: "The customer asks", role: "Customer", draw: drawForm, note: ["On your website: a photo, a few words, a number, a tick. Each question becomes its own chat (N298 item 3)."] },
     { id: "sent", ch: "Mark asks", name: "Sent", role: "Customer", draw: drawSent, q: "speed", note: ["The question lands with the juniors."] },
     { id: "n-mark", ch: "Mark asks", name: "Josh gets a notice", role: "Junior", draw: drawNMark, note: ["One notice per message, the same for everyone: who sent it, never what. By email, or by WhatsApp if the person gave their number; the path the coach's reply uses today. The link opens that chat."] },
     { id: "j-req", ch: "Mark asks", name: "Mark\'s question", role: "Junior", draw: drawJReq, note: ["Mark's chat: his question and his two photos, nothing else. The bar is the locked one (N296, N297), with the emoji where \"Type here\" sits, because only Will's chat takes typing (N306); pass it on sits in the \"+\" place. For a customer, recording is a Take."] },
+    { id: "j-picks", ch: "Mark asks", name: "What you'll point to", role: "Junior", draw: drawPicks, note: ["Before the Take: what you see, and what you'll recommend from the shelf. Will ticks what fits Mark's words, his photos and the team's past answers; one tap keeps or swaps. Each pick is a slide while you talk, and a button for Mark."] },
     { id: "j-rec", ch: "Mark asks", name: "Your Take", role: "Junior", draw: drawRec, note: ["The locked recording screens. On Take 1 every slide fills the page (N303): Mark's question, his two photos, then what you recommend. Then processing."] },
     { id: "walk", ch: "Mark asks", name: "Will\'s feedback walk", role: "Junior", draw: drawWalk, note: ["The locked walk: Will's feedback on one moment, the highest-leverage one; the answer the junior sends is the practised Take (N292 item 4). Then other speakers (C8): three moments from the company, judged in the walk, voice only. Judging happens in the walk, nowhere else."] },
     { id: "j-send", ch: "Mark asks", name: "Will asks: send it to whom?", role: "Junior", draw: drawJSend, note: ["Back in Will's chat: the Feedback walk with the Take's Ideal Text under it, and Will's ask. The answers are orange taps on the right; the mic turns orange while Will waits (N296). Will suggests who to ask (N303)."] },
@@ -778,7 +786,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
     { id: "n-josh", ch: "Mark asks", name: "Josh gets a notice", role: "Junior", draw: drawNJosh, note: ["Piotr answered: the same notice. The link opens Josh's chat with Will, where the answer sits under the Take it is about (N305)."] },
     { id: "j-fix", ch: "Mark asks", name: "Piotr\'s answer, then Take 2", role: "Junior", draw: drawJFix, q: "wa", note: ["Piotr's answer comes into Will's chat under the Take it is about (N305). Nothing pushes the next Take (N294): you tap Record Take 2, then the plan's button, alone, starts it (N296 item 4). Then: send Take 2 to Mark?"] },
     { id: "n-cust", ch: "Mark asks", name: "Mark gets the answer", role: "Customer", draw: drawNCust, note: ["A customer has no account: the answer reaches him by WhatsApp from the company's own number, with a link (N239)."] },
-    { id: "c-answer", ch: "Mark asks", name: "The customer books", role: "Customer", draw: drawCAnswer, q: "booking", note: ["Mark's phone: he hears your answer and books, in Ember & Air's own systems."] },
+    { id: "c-answer", ch: "Mark asks", name: "The customer books", role: "Customer", draw: drawCAnswer, q: "booking", note: ["Mark hears the answer, then one button per pick: Book opens Calendly, Buy opens the Shopify checkout, Watch opens the video. Money and bookings stay in the business\'s own systems (N239)."] },
     { id: "coach", ch: "Your chat with Will", name: "Your feedback, in Will's chat", role: "Junior", draw: drawCoach, note: ["Your chat with Will holds what your training made, as the app shows it today: the Feedback walk, with the Take's Ideal Text under it; and Marta's note, as your coach (N300, N287). You answer her with a tap."] },
     { id: "learn", ch: "For the owner", name: "What your AI learned", role: "Owner", draw: drawLearn, q: "volume", note: ["Every answer, check, correction and question becomes an example for your own AI. Yours to keep."] },
     { id: "value", ch: "For the owner", name: "The value", role: "Owner", draw: drawValue, q: "metric", note: ["An estimate from your answers, and how the team is doing, in words."] },
@@ -994,31 +1002,26 @@ button { font: inherit; color: inherit; cursor: pointer; }
   // the least-effort box (N278): an emoji reacts at once; a phrase fills the box; the mic comes back crafted
   const answerCard = (who, text, label) => `<div class="chk"><span class="k2">${esc(label)}</span><span class="ph3"><i style="background:${B().photo}"></i>${esc(B().ask)}</span>${player(46, 7)}<span class="tx2">“${esc(text)}”</span><span style="font-size:12.5px;color:#737373">${esc(who)} · ${esc(B().service)} · ${esc(B().product)}</span></div>`;
 
-  function drawCAnswer() {
-    S.answerer = "junior"; drawCchat();
-    screen.querySelector("#bk2").onclick = drawBook;
-    screen.querySelector("#sk").onclick = () => toast(`Opens your own checkout with the ${B().product} in the cart.`);
-  }
   // ---------- The locked recording screens (N70), with the customer's question and the picks as the slides ----------
   const ICON_X = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`;
   const voiceMark = (size) => { const i1 = Math.max(1, Math.round(size * .094)), i2 = Math.max(2, Math.round(size * .1875)), w = Math.round(size * .42); return `<div class="vm" style="width:${size}px;height:${size}px"><span class="r" style="inset:0"></span><span class="r" style="inset:${i1}px;border-color:rgba(18,18,18,.15);animation-delay:.6s"></span><span class="r" style="inset:${i2}px;border-color:rgba(255,106,10,.3);animation-delay:1.2s"></span><svg width="${w}" height="${w}" viewBox="0 0 56 56"><circle cx="12" cy="28" r="4" fill="#121212"/><circle cx="28" cy="28" r="6" fill="#121212"/><circle cx="44" cy="28" r="4" fill="#121212"/></svg></div>`; };
   const RSL = () => [
     { title: `${B().cust}'s question`, line: B().ask, bg: "#0F4A33", mark: "#F26B21" },
     ...PHOTOS().map((p, k) => ({ photo: p, cap: `${B().cust}'s photo ${k + 1} of ${PHOTOS().length} · ${p.cap}` })),
-    { title: B().service, line: `${B().svcMeta} · ${money(B().price)}`, bg: "#0B2350", mark: "#F26B21" },
-    { title: B().product, line: `${money(B().prodPrice)} · for home`, bg: "#E2621B", mark: "#FFFFFF" },
+    ...SHELF().filter((x) => (S.picks || []).includes(x.id)).map((x) => ({ title: x.name, line: x.meta, bg: x.bg, mark: "#F26B21", pick: x.id })),
   ];
   const lslide = (i) => { const x = RSL()[i];
     if (x.photo) return `<div class="slide pslide"><div class="pimg">${x.photo.svg}</div><span class="pcap">${esc(x.cap)}</span><span class="pg">${i + 1}</span></div>`;
     return `<div class="slide" style="background:${x.bg};--mark:${x.mark}"><span class="orb"></span><div class="txt"><span class="bar"></span><h3>${esc(x.title)}</h3><p>${esc(x.line)}</p></div><span class="pg">${i + 1}</span></div>`; };
   // helper words on Take 2, as the locked screen shows them (picked after Take 1)
-  const ROOTS2 = [["no “definitely”"], ["your boiler"], ["the radiators look right", "two may need to be bigger"], ["the survey checks the grant", "one hour, free"], ["cuts the gas bill now"]];
+  const ROOTS_BY = { q: ["no “definitely”"], p0: ["your boiler"], p1: ["the radiators look right", "two may need to be bigger"], survey: ["the survey checks the grant", "one hour, free"], thermo: ["cuts the gas bill now"], video: ["bleed them first"], install: ["priced after the survey"], guide: ["the price guide"] };
+  const rootsOf = (i) => { const x = RSL()[i]; return x.pick ? ROOTS_BY[x.pick] || [] : x.photo ? ROOTS_BY["p" + (i - 1)] || [] : ROOTS_BY.q; };
   function lrecMic(then) { screen.innerHTML = `<div class="lrec"><header class="h"><span class="kicker"></span><button class="x" type="button" aria-label="Close">${ICON_X}</button></header><div class="band"><div class="center">${voiceMark(64)}<p class="lbl">Getting your mic ready</p></div></div></div>`; later(then, 1200); }
   function lrecTake(take, onFinish) {
     let i = 0, t = 0;
     const N = RSL().length; const paint = () => { const last = i === N - 1;
       screen.innerHTML = `<div class="lrec"><header class="h"><p class="where">Take ${take} · Slide ${i + 1} of ${N}</p><button class="x" type="button" aria-label="Close">${ICON_X}</button></header>
-        <div class="band rec${take === 1 ? " full" : ""}"><div class="col"><div class="stage"><div class="mv"><div class="slidebox">${lslide(i)}</div><div class="road"><div class="roots">${take === 2 ? ROOTS2[i].map((r) => `<p class="root">${esc(r)}</p>`).join("") : ""}</div></div></div></div>
+        <div class="band rec${take === 1 ? " full" : ""}"><div class="col"><div class="stage"><div class="mv"><div class="slidebox">${lslide(i)}</div><div class="road"><div class="roots">${take === 2 ? rootsOf(i).map((r) => `<p class="root">${esc(r)}</p>`).join("") : ""}</div></div></div></div>
         <div class="dock"><div class="strip"><span class="dot pulse"></span><span class="clock" id="clk">${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}</span><div class="track"><div class="fill" id="fill" style="width:${Math.min(100, t / 0.6)}%"></div></div></div>
         <div class="pair"><button class="back" type="button" id="bk" ${i ? "" : "disabled"}>Back</button><button class="next${last ? " end" : ""} cue-ring" type="button" id="nx">${last ? "<i></i>Finish take" : "Next slide"}</button></div></div></div></div></div>`;
       screen.querySelector("#nx").onclick = () => { if (last) onFinish(); else { i++; paint(); } };
@@ -1210,6 +1213,64 @@ button { font: inherit; color: inherit; cursor: pointer; }
   function drawNCust() {
     screen.innerHTML = `<div class="wa2"><span style="font-size:16px;opacity:.9">Thursday</span><span class="tm">10:04</span><button class="ntf cue-ring" type="button" id="n"><span class="ic"></span><span style="flex:1"><b>${esc(B().site)} <small>now</small></b>${esc(B().junior)} answered you. Listen here: answer.emberandair.com/a/7f3k</span></button></div>`;
     screen.querySelector("#n").onclick = next;
+  }
+  // ---------- The shelf: what a business can point to; one shape for everything; the type only sets the customer's button ----------
+  const SHELF = () => [
+    { id: "survey", type: "Booking", name: B().service, meta: `${B().svcMeta} · free`, from: "Calendly", verb: "Book", bg: "#0B2350" },
+    { id: "thermo", type: "Product", name: B().product, meta: money(B().prodPrice), from: "Shopify", verb: "Buy", bg: "#E2621B" },
+    { id: "video", type: "Video", name: "How to bleed a radiator", meta: "1:40", from: "YouTube", verb: "Watch", bg: "#3B3F8F" },
+    { id: "install", type: "Quote", name: "Heat pump install", meta: "priced after the survey, never before", from: "Your quotes", verb: "Get a quote", bg: "#0F4A33" },
+    { id: "guide", type: "Document", name: "Our price guide", meta: "PDF", from: "Your site", verb: "Open", bg: "#5A5F66" },
+  ];
+  const SUGGEST = ["survey", "thermo", "video"];
+  if (!S.picks) S.picks = SUGGEST.slice();
+  const pickItems = () => SHELF().filter((x) => S.picks.includes(x.id));
+  const shelfRows = () => SHELF().map((x) => `<span class="srow"><span class="sty">${esc(x.verb)}</span><span class="stx"><b>${esc(x.name)}</b><small>${esc(x.type)} · ${esc(x.meta)} · from ${esc(x.from)}</small></span></span>`).join("");
+  function drawOShelf() {
+    willChat(day("Monday 9:00") + `<div class="lg-b">I brought in what ${esc(B().site)} sells and books, from Shopify and Calendly. Anything here can go with an answer, as a button for the customer.</div><div class="lg-b shelf">${shelfRows()}</div>`);
+    willAsk("Is this right?", ["Looks right", "Add something"], "Looks right", (t) => {
+      if (t === "Add something") { addLg(`<div class="lg-b">Paste a link here: a product, a booking page, a video, a document. I'll add it to the shelf.</div>`); willBar(true); return; }
+      addLg(`<div class="lg-b">Done. It grows as you go: paste a link here any time.</div>`); later(next, 1500);
+    });
+  }
+  // before the Take: what you see, and what you'll point to, from the shelf; Will ticks his suggestions
+  function drawPicks() {
+    const seen = new Set([B().sees[0], B().sees[1]]);
+    const paint = () => {
+      const n = 1 + PHOTOS().length + S.picks.length;
+      screen.innerHTML = `<div class="pk"><div class="top"></div><h1 style="margin-top:4px">What do you see?</h1>
+        <div class="chips">${B().sees.map((x) => `<button type="button" class="chipb" data-s="${esc(x)}" aria-pressed="${seen.has(x)}">${esc(x)}</button>`).join("")}</div>
+        <h2 class="h2">What do you recommend?</h2><p class="sub" style="margin-top:4px">Each one you pick is a slide while you talk, and a button for ${esc(B().cust)}.</p>
+        <div class="box" style="margin-top:12px"><p class="cnt">${S.picks.length} picked</p>
+          ${SHELF().map((x) => `<button class="opt" type="button" data-p="${x.id}" aria-pressed="${S.picks.includes(x.id)}"><span class="ck">✓</span><span class="on">${esc(x.name)}<small>${esc(x.verb)} · ${esc(x.meta)}${SUGGEST.includes(x.id) ? " · Will suggests" : ""}</small></span></button>`).join("")}</div>
+        <div style="height:14px"></div><button class="pill cue-ring" type="button" id="go"><span class="rdot"></span>Record over ${n} slides</button></div>`;
+      screen.querySelectorAll("[data-s]").forEach((b) => b.onclick = () => { const k = b.dataset.s; seen.has(k) ? seen.delete(k) : seen.add(k); paint(); });
+      screen.querySelectorAll("[data-p]").forEach((b) => b.onclick = () => { const k = b.dataset.p; S.picks = S.picks.includes(k) ? S.picks.filter((x) => x !== k) : [...S.picks, k]; paint(); });
+      screen.querySelector("#go").onclick = next;
+    };
+    paint();
+  }
+  // the customer's answer: the voice and the words, then one button per pick, each opening the business's own system
+  const cThread2 = (booked) => `<div class="b me"><span class="cap2" style="color:#D8C7B3">You asked</span>${esc(B().ask)}</div>
+    <div class="b"><span class="cap2">What to do now</span><ul>${B().routine.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></div>
+    <div class="b">${player(48, 9)}${esc(B().said)}</div>
+    ${pickItems().map((x) => `<div class="card2 pc"><span class="im" style="background:${x.bg}"></span><span style="flex:1;min-width:0"><b>${esc(x.name)}</b><small>${esc(x.meta)}</small></span><button type="button" class="vb${x.verb === "Book" && !booked ? " cue-ring" : ""}" data-v="${x.id}">${esc(x.verb)}</button></div>`).join("")}`;
+  function drawCAnswer() {
+    S.answerer = "junior";
+    const paint = (booked) => {
+      screen.innerHTML = `<div class="cc">${cTop()}<div class="th" id="th">${cThread2(booked)}${booked ? `<div class="b">See you on Saturday. Write to me here if anything changes.</div>` : ""}</div></div>`;
+      const th = screen.querySelector("#th"); th.scrollTop = th.scrollHeight;
+      screen.querySelectorAll("[data-v]").forEach((b) => b.onclick = () => {
+        const x = SHELF().find((y) => y.id === b.dataset.v);
+        if (x.verb === "Book" || x.verb === "Get a quote") {
+          screen.insertAdjacentHTML("beforeend", `<div class="brw2"><div class="bar"><button type="button" id="dn">Done</button><span>🔒 calendly.com</span><span></span></div><div class="pg"><b>${esc(B().site)}, on Calendly</b><ul><li>${esc(B().service)} · free</li><li>The day and time</li><li>The confirmation, from Calendly</li></ul><small>Prototype: the business's own booking page opens here.</small></div></div>`);
+          screen.querySelector("#dn").onclick = () => paint(true);
+        } else if (x.verb === "Buy") toast(`Opens ${B().site}'s own Shopify checkout with the ${B().product.toLowerCase()} in the cart.`);
+        else if (x.verb === "Watch") toast("Opens the video.");
+        else toast("Opens the document.");
+      });
+    };
+    paint(false);
   }
   // ---------- Fit the phone ----------
   const device = document.getElementById("device"), bezel = document.getElementById("bezel"), stage = document.getElementById("stage");
