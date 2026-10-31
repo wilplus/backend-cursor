@@ -7602,3 +7602,46 @@ never sees the machine's read, Never 2).
 No rules page yet: the rules land on frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 H1 when built. No migration.
+
+**N292 · Every inquiry its own chat; any chat, every message kept and growing
+the context; answer with a tap, a practised Take, or typing, with a nudge to
+speak (founder, the Claude Code chat, 31 October 2026: "we are now building
+smth like a whatsapp/ slack; so each message in that chat is tracked and if
+you get the answer from the manager or from the client in the chat it gets
+automatically included to your own chat; so there is no single chat with the
+manager; there is any chat out there; any chat that appears calculates
+towards the context and grows it ... you can either answer with a predefined
+click or your official practised take and only then send it as an answer",
+then "if we configure a pop up for the website of the customer ... the
+messages (inquiries) are coming ... as the separate messages just like on
+whatsapp; you can answer by recording an answer or clicking through available
+options but all that is tracked (what words you use)", then "we should let
+them type too; but then most of the people will simply choose to type instead
+of talk and we will not be able to measure their vocal cues - though we
+should give them the liberty of choice so let them type if they want and just
+nudge them that speaking works much faster").** For N256, N274 and N278:
+1. Each inquiry from the business's website pop-up arrives as its own chat,
+as a new message does on WhatsApp (as N256 item 1).
+2. There is no one fixed chat with the manager: people talk in whatever chat
+the conversation is in. An answer meant for a person, from a manager or a
+customer, is also copied into that person's own chat, with a link back to
+where it was said.
+3. Every message is kept: the taps, the Takes and the words in them, the
+typed words, and what happened after. Every chat adds to the context, the
+person's and the company's AI's (N250, N278 item 5, with consent as N274
+item 3).
+4. A person answers in one of three ways: a tap on an option Will offers; a
+practised Take (record, Will's feedback in words, record again if they like,
+then send the Take they choose); or typing. Was (N278 item 2): a voice answer
+became a message Will wrote; now the voice itself goes, as a Take.
+5. Typing is free, but speaking is what lets Will hear the vocal cues, so
+once someone starts typing, Will nudges that speaking is faster. The nudge
+never stops the message (N278 item 4). The nudge's words wait for the
+founder's OK (Never 4).
+6. Open: which chat is a person's own chat (Will's pinned chat, or a
+separate one); whether group chats are now allowed (N256 says none).
+No rules page yet: it lands with the chats' rules page (N274 item 6). The
+prototype, kept as N229 says:
+`docs/design/customer-requests-2026-10-28/business/willpowerlab-for-ember-air.html`
+and `9-ember-and-air.pdf` (an invented heat pump installer). No migration in
+this entry.
