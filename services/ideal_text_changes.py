@@ -1643,12 +1643,14 @@ class _ChangesRun:
 
     def _walk_inputs(self, session: Any, doc: Any) -> dict:
         """What the frame reads beyond the Take: this week's level and the
-        key line on a plan (`plan_walk.walk_inputs`), and the helper words
-        each slide had when the Take was recorded (N246 items 2 and 3). Read
+        key line on a plan (`plan_walk.walk_inputs`), the helper words
+        each slide had when the Take was recorded (N246 items 2 and 3), and
+        the Take's context (`take_context.for_take`, N293). Read
         here, from the database, for the dark frame and the served one
         alike: the serve path's own store cannot read a plan, so the walk
         the speaker saw never had the level's moment (N246 item 4). Read
         once per Take per run."""
+        from services import take_context
         from services.plan_walk import walk_inputs
         from services.slide_helper_words import held_at_take
         key = str((session.get("id") if isinstance(session, dict) else None)
@@ -1658,7 +1660,10 @@ class _ChangesRun:
             slides = {piece.get("slide_index") for piece in pieces or [] if isinstance(piece, dict)}
             self._walks[key] = {
                 **walk_inputs(self.db, self.user_id, session),
-                "held_words": held_at_take(self.db, self.arc_id, self.user_id, session, slides)}
+                "held_words": held_at_take(self.db, self.arc_id, self.user_id, session, slides),
+                # What the Take is for: its key line and call to action
+                # count for more in the pick (N293).
+                "context": take_context.for_take(self.db, self.user_id, session)}
         return self._walks[key]
 
     def _declined_rewrites(self, session: Any, parts: Any
