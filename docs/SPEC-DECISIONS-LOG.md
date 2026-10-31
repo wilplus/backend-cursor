@@ -8207,13 +8207,25 @@ No rules page yet: it lands with the chats' rules page (N274 item 6) and the
 customer requests page (frontend `docs/flows/customer-requests.md`). No
 migration in this entry.
 
-**N314 · A question nobody has answered before goes to the owner, or to whom
-the owner picks at setup (founder, the Claude Code chat, 31 October 2026, on
-N313 item 3: "Ok").** For N313:
-1. When something comes through the business's link and nobody in the
-company has answered anything like it yet, it goes to the owner, or to the
-person the owner picked for this at setup. They can pass it on (N302); the
-answer then teaches Will who answers such questions (N303 item 2).
-No rules page yet: it lands with the chats' rules page (N274 item 6) and the
-customer requests page (frontend `docs/flows/customer-requests.md`). No
-migration in this entry.
+**N314 · Locked everywhere: one recording bar, the trash and the walk's
+strip with the red Stop (founder, the Claude Code chat, 31 October 2026, on
+the prototype <https://claude.ai/artifact/X4gDmGfHH7ivuoRZ9ufiy9>, its
+"Recording, the same everywhere" card "The chat's microphone · proposed":
+"Can you make it locked everywhere?").** For N294 item 9, N296 item 3 and
+N304:
+1. **Every short recording in the app** records with one bar: the trash on
+the left, then the grey strip with the pulsing dot, the clock, the track
+and the red Stop inside it (frontend `walk/RecordingStrip.tsx`). Stop sends
+it. That covers the chat's microphone (Will's chat and every other chat),
+an answer to Will's question, the plan's voice answers before Take 1 (which
+today put a large red Stop under the strip), the walk's practice and the
+tempo step. Was: the Lounge's voice note bar (`VoiceNoteBar`, the time in a
+white pill and a black send) and the plan's own Stop button.
+2. **A Take keeps its locked recording screen** (N70, N303): the same strip,
+with Back / Next slide and "Finish take" on the last slide.
+3. **Locked:** listed in [`docs/LOCKS.md`](LOCKS.md); a change needs the
+founder's OK with a prototype. No new words ("Stop" is signed).
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+B and E1, [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+B, when built. No migration.
