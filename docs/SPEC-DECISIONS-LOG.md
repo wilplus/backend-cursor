@@ -7674,3 +7674,86 @@ sees why a moment was picked (Never 2).
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 H1. No migration.
+
+**N294 · The chat, voice-led and simple: everyone starts with Will, adds
+people by email or WhatsApp number, answers with a button or a practised
+Take, may ask the boss "is this good?", and the boss answers with a big
+emoji or a voice note (founder, the Claude Code chat, 31 October 2026: "if
+you get the answer from the manager or from the client in the chat it gets
+automatically included to your own chat"; "the messages (inquiries) are
+coming ... as the separate messages just like on whatsapp"; "we should let
+them type too ... just nudge them that speaking works much faster", then
+"so everyone at the beginning has just one chat - this is the chat with
+Will; and then you can add the other user you want to chat with by typing
+their email or whatsapp number; and that person receives a link to join
+willpowerlab; and your chat is basically a controlled environment for
+learning; and when that's the inquiry from the customer you just participate
+in the chat and you have an option to ask the boss for the help and you can
+send like did that what I send was good? and the boss can answer only with a
+big emoji or a voice message that is transcribed", then "it is like a slack
+but with built in buttons and interaction that are not typing the main idea
+it is guided through AI - voice led and no typing - it is NOT flexible it is
+focused on the implicit knowledge dissemination; it must be super stupid
+simple to use").** For N256, N274, N278, N282 and N292:
+1. On day one everyone has one chat, Will's: their own chat, a controlled
+place to learn, and the one chat where they can type (N292 item 3). An
+answer meant for them, from a boss or a customer in any other chat, is also
+copied there, with a link back to where it was said.
+2. A person adds someone to chat with by typing that person's email or
+WhatsApp number; the person gets a link to join WillpowerLab. This answers
+"who adds a contact" (N274 item 7): anyone.
+3. Each inquiry from the business's website pop-up arrives as its own chat,
+as a new message does on WhatsApp (as N256 item 1).
+4. Outside Will's chat there is no typing: a button Will offers, or a
+practised Take (record, Will's feedback in words, record again if they like,
+then send the Take they choose). The founder first allowed typing with a
+nudge to speak, then took it back the same morning. Was (N278 item 2): typed
+words with a clearer version, and a voice answer that Will turned into a
+message.
+5. In a customer's chat the person answers the customer themselves. Two
+options are always there: ask the boss for help, and ask the boss "is this
+good?" about an answer, before or after sending it.
+6. The boss (a senior, the owner) answers only with a big emoji or a voice
+note, which Will writes out. Was (N278 item 3): an emoji and two short
+phrases.
+7. It is not flexible on purpose: few buttons, voice first, built to pass on
+the experts' implicit knowledge (N292 item 2). Every screen must be simple
+enough to use without being taught.
+8. Open: whether a junior's answer still waits for the senior before it
+reaches the customer (N282 item 2), or "is this good?" is now always the
+junior's choice (the prototype shows it as the junior's choice); and group
+chats (N256 says none).
+No rules page yet: it lands with the chats' rules page (N274 item 6). The
+prototype, kept as N229 says:
+`docs/design/customer-requests-2026-10-28/business/willpowerlab-for-ember-air.html`
+and `9-ember-and-air.pdf` (an invented heat pump installer). No migration in
+this entry.
+
+**N295 · Three kinds of chat, and outside people come in the company's own
+way (founder, the Claude Code chat, 31 October 2026: "this is the feature
+for the collaborative feature that influences the key loop; please design it
+as such; there are 3 types of chats: Will Coach, internal members of the
+team, and external such as customers; the internal and external are added in
+different ways external come whatever way the company chooses through an
+email or contact form or popup or else being simply redirected ... to the
+chat (sort of like willpowerlab is added to the conversation) actually I am
+not sure how to grasp it? that is my main concern how do we integrate the
+WillpowerLab in whatever the process is").** For N292, N293 and N294:
+1. Three kinds of chat: Will's (the coach; everyone's own chat, N294 item
+1); internal (members of the team, invited by email or WhatsApp number, N294
+item 2); external (customers and other outside people).
+2. Each kind gives the loop (N292 item 6) its own context: Will's chat the
+person's state and needs; internal chats the boss's answers and the
+questions the person asks; external chats who was asked what, the stakes,
+and what happened after. That context chooses which moment matters and which
+kind of intervention fits; the chats plug in as sources of each Take's
+context (N293 item 2).
+3. External people come the way the company already works (an email, a
+contact form, a pop-up, a redirect); WillpowerLab joins that conversation
+rather than replacing it.
+4. Open, for the founder: how WillpowerLab joins those conversations (a
+proposal is in the chat of 31 October 2026), and the rules for how chat
+context picks the moment and the intervention.
+No rules page yet: it lands with the chats' rules page (N274 item 6), and
+the moment and intervention rules with the walk's page when they are
+decided. No migration in this entry.
