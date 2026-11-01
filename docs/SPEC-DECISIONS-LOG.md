@@ -8310,3 +8310,13 @@ shown to anyone (Never 1) and never reaches an employer's evaluation of a
 person.
 No rules page: this is the vision the rules pages serve; the matching gets
 its rules when it is designed. No migration in this entry.
+
+**N318 · Willfidence picks the moment from both the verbal and the vocal
+cues, read in context (founder, the Claude Code chat, 1 November 2026: "For
+willfidence it is dependent on the context and uses both verbal and vocal
+cues to pick the moment").** Corrects N317 item 1:
+1. In the walk, willfidence uses both the verbal and the vocal cues to pick
+the moment, and it depends on the context (N317 item 2: the external and the
+internal context). Was (N317 item 1): "the willfidence algorithm (the verbal
+cues) finds the moment", with the vocal cues feeding back from the output.
+No rules page: this corrects the vision entry. No migration in this entry.
