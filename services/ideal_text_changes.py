@@ -1656,14 +1656,15 @@ class _ChangesRun:
         """What the frame reads beyond the Take: this week's level and the
         key line on a plan (`plan_walk.walk_inputs`), the helper words
         each slide had when the Take was recorded (N246 items 2 and 3),
-        the Take's context (`take_context.for_take`, N293), and whether the
+        the Take's context (`take_context.for_take`, N293), whether the
         speaker has the tempo step, asked only when the Sniper would be the
-        One thing walk's fix (N323 item 6). Read
+        One thing walk's fix (N323 item 6), and the Take's verbal read for a
+        speaker it reaches (`verbal_read.for_pick`, N326). Read
         here, from the database, for the dark frame and the served one
         alike: the serve path's own store cannot read a plan, so the walk
         the speaker saw never had the level's moment (N246 item 4). Read
         once per Take per run."""
-        from services import take_context
+        from services import take_context, verbal_read
         from services.plan_walk import walk_inputs
         from services.slide_helper_words import held_at_take
         from services.tempo_stretch import tempo_on_for
@@ -1678,7 +1679,10 @@ class _ChangesRun:
                 # What the Take is for: its key line and call to action
                 # count for more in the pick (N293).
                 "context": take_context.for_take(self.db, self.user_id, session),
-                "tempo_step": _once(lambda: tempo_on_for(self.user_id, database=self.db))}
+                "tempo_step": _once(lambda: tempo_on_for(self.user_id, database=self.db)),
+                # What the speaker noted themselves weighs the between
+                # (N326); nothing when no read reached this Take.
+                "verbal": verbal_read.for_pick(self.db, self.user_id, session)}
         return self._walks[key]
 
     def _declined_rewrites(self, session: Any, parts: Any

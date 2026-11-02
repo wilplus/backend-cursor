@@ -14,7 +14,9 @@ text word for word); the model call goes through ``services.llm`` like every
 provider call. Ring row ``in_control``: off until the founder makes the row
 on the rings page and moves it (N258, §2 R1). Never under a crisis reply,
 never while the person is onboarded (N243), never on the recording screens
-or in the walk, never shown to a coach (N182): only in the Lounge.
+or in the walk, never shown to a coach (N182): only in the Lounge. The walk's
+inner context (N326, services/inner_context.py) reads the # note itself,
+never this answer: the variables and constants are kept nowhere.
 """
 from __future__ import annotations
 

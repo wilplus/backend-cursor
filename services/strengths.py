@@ -23,7 +23,10 @@ prototype https://claude.ai/artifact/1hfLf8mCif8pgC1X1Z6caJ, scenes 1 to 5).
 Kept in the Life Panel's store (services/life_store.py: strengths,
 strength_notes, talk_dates; migration your_why_and_strengths_are_kept).
 Ring row ``strengths``, ring 5. Never under a crisis reply, never while
-onboarded (N243); private, never shown to a coach (N182).
+onboarded (N243); private, never shown to a coach (N182). Since N326 the
+walk's pick and its Clearer version read the kept ones, behind their own
+ring row (services/inner_context.py); still never on a screen of the walk,
+the plan or a coach's.
 """
 from __future__ import annotations
 

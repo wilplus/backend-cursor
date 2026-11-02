@@ -71,10 +71,15 @@ TEMPO_STEP = "tempo_step"
 #: summary call at the plan's end. No row until the founder makes one in the
 #: panel; until then they are off for everyone, the founder included.
 PLAN_CALLS = "plan_calls"
+#: The walk's pick and its Clearer version read what the speaker noted
+#: themselves (founder 2026-11-02, N326 item 4; services/inner_context.py,
+#: services/verbal_read.py). No row until the founder makes one at ring 6;
+#: until then it is off for everyone.
+WALK_INNER_CONTEXT = "walk_inner_context"
 GATED_FEATURES: tuple[str, ...] = (
     CANONICAL_TAKE_ROWS, CONFIDENCE_LEARNING_WRITES, EXERCISE_SERVICE,
     EXERCISE_SERVICE_UI, COACH_INLINE_AUTHORING, CONFIDENT_MOMENT_BUNDLES,
-    ROOTING_COVERAGE, TEMPO_STEP, PLAN_CALLS,
+    ROOTING_COVERAGE, TEMPO_STEP, PLAN_CALLS, WALK_INNER_CONTEXT,
 )
 
 CONSENT_PURPOSES: tuple[str, ...] = (

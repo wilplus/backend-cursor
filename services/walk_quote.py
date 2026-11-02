@@ -23,7 +23,8 @@ Life Panel's switch turns it back on.
 Ring row ``walk_quotes``, ring 5, and only with the notebook kept. The
 model call goes through ``services.llm`` like every provider call. Private:
 the Life Panel's store (services/life_store.py), never read by a coach, the
-coach's queue or the coach panel (N182, Never 2).
+coach's queue or the coach panel (N182, Never 2). Its 60-day window for #
+notes is the one the walk's pick reads too (N326, services/inner_context.py).
 """
 from __future__ import annotations
 
