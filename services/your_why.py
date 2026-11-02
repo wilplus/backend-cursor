@@ -20,7 +20,10 @@ to treat others (Q1).
 Kept in the Life Panel's store (services/life_store.py: your_why,
 your_why_versions; migration your_why_and_strengths_are_kept). Ring row
 ``your_why``, ring 5. Never while the person is onboarded (N243); private,
-never shown to a coach (N182).
+never shown to a coach (N182). Since N326 the walk's pick and its Clearer
+version read the three lines, behind their own ring row
+(services/inner_context.py); still never on a screen of the walk, the plan
+or a coach's.
 """
 from __future__ import annotations
 

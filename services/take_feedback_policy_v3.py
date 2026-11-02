@@ -11,7 +11,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any, Iterable, NamedTuple, Optional
+from typing import Any, Callable, Iterable, NamedTuple, Optional
 
 from services.feedback_data_contract import FEATURE_SCHEMA_VERSION
 from services.reasonable_confidence import selection_summary
@@ -730,7 +730,9 @@ def _gate_clearer(block: dict, ranked: list[dict],
 def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
                   servability: Optional[_Servability], selections: list[dict],
                   served_text: Any, plan: tuple = (None, None),
-                  held_words: Any = None, context: Any = None) -> dict:
+                  held_words: Any = None, context: Any = None,
+                  heard: Optional[dict] = None,
+                  clearer_ok: Optional[Callable[[dict, dict], bool]] = None) -> dict:
     """The Take's shown moments (three, N284): the strongest, the weakest and
     the between, one per block (founder 2026-10-30, N289, flow page C2 and
     H1; `services.moment_pick`).
@@ -751,6 +753,12 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
     the moment where this week's level shows most takes its slot
     (`_level_pick`).
 
+    ``heard``, ``{snippet_id: weight}``: the moments the Take's verbal read
+    weighs for this speaker (N326, `_heard_weights`). Their pick is kept
+    only when it changes nothing or its between opens on a Clearer version
+    that passes the gate (``clearer_ok``); else the pick without them, so
+    the read never costs the speaker a fix.
+
     Returns ``{"shown": [...], "values": {block_id: willfidence}}``."""
     from services import moment_pick
 
@@ -760,6 +768,10 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
              for block, candidate in showable]
     picked = _level_pick(reads, showable, snippet_map, clips, served_text, plan) \
         or moment_pick.pick(reads)
+    picked = _heard_pick(picked, reads, showable, heard, clearer_ok,
+                         lambda rows: _level_pick(rows, showable, snippet_map, clips,
+                                                  served_text, plan)
+                         or moment_pick.pick(rows))
     if reads and not any(r["read"]["sound"] for r in reads):
         # The words alone picked the moments: say so, so the next Take with
         # no sound read is read from the log, not guessed at (2026-10-17).
@@ -772,6 +784,82 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
     values = {r["candidate_id"]: r["read"]["value"] for r in reads}
     return {"shown": picked["shown"],
             "values": {m["block_id"]: values.get(m["candidate_id"]) for m in picked["shown"]}}
+
+
+def _heard_pick(picked: dict, reads: list[dict], showable: list[tuple],
+                heard: Optional[dict], clearer_ok: Optional[Callable[[dict, dict], bool]],
+                pick_from: Callable[[list[dict]], dict]) -> dict:
+    """The pick with the verbal read's weights (N326), or ``picked`` (the
+    pick without them) when there are none, they change nothing, or the
+    between they make does not open on a Clearer version that passes the
+    gate. Never raises: on any failure, ``picked``."""
+    if not heard or clearer_ok is None:
+        return picked
+    from services import moment_pick
+    try:
+        lifted = [{**row, "read": moment_pick.lift(
+            row["read"], heard.get(str(candidate.get("snippet_id") or "")))}
+            for row, (_block, candidate) in zip(reads, showable)]
+        if all(row["read"] is plain["read"] for row, plain in zip(lifted, reads)):
+            return picked
+        heard_pick = pick_from(lifted)
+        between = next((m for m in heard_pick["shown"]
+                        if m["slot"] == moment_pick.SLOT_BETWEEN), None)
+        if heard_pick["shown"] == picked["shown"] or between is None:
+            return picked
+        at = {candidate["candidate_id"]: (block, candidate) for block, candidate in showable}
+        block, candidate = at[between["candidate_id"]]
+        return heard_pick if clearer_ok(block, candidate) else picked
+    except Exception as error:  # noqa: BLE001 -- the pick without the read
+        logger.warning("verbal read: the pick fell back: %s", error)
+        return picked
+
+
+def _heard_weights(verbal: Any, rewrite_ranked: list[dict],
+                   frozen_candidate_ids: Any, blocks: list[dict]) -> dict:
+    """``{snippet_id: weight}`` the pick reads from the verbal read (N326):
+    on a Take whose feedback is not frozen yet, the weights this run's read
+    gave (``verbal["lifts"]``); on a frozen Take, the clip holding the
+    frozen Clearer version, at the full weight, for a speaker the read
+    reaches (``verbal["pin"]()``), so every later read of the Take keeps the
+    walk it froze. {} when there is no read. Never raises."""
+    if not isinstance(verbal, dict):
+        return {}
+    try:
+        frozen = frozenset(str(value) for value in (frozen_candidate_ids or ()))
+        if not frozen:
+            lifts = verbal.get("lifts")
+            return dict(lifts) if isinstance(lifts, dict) else {}
+        pin = verbal.get("pin")
+        if not callable(pin) or not pin():
+            return {}
+        spans = [item.get("document_span") for item in rewrite_ranked
+                 if str(item.get("candidate_id") or "") in frozen]
+        return {str(clip["snippet_id"]): 1.0 for block in blocks
+                for clip in block.get("confidence_candidates") or []
+                if any(_inside(span, clip.get("document_span") or {}) for span in spans)}
+    except Exception as error:  # noqa: BLE001 -- the pick without the read
+        logger.warning("verbal read: weights not read: %s", error)
+        return {}
+
+
+def _clearer_check(rewrite_ranked: list[dict], rewrite_rows: Any
+                   ) -> Callable[[dict, dict], bool]:
+    """Would a block's moment, shown with ``candidate``'s clip, open on a
+    Clearer version that passes the gate? The same check `_gate_clearer`
+    makes once the clip is shown (N326, `_heard_pick`)."""
+    from services.rewrite_gate import rewrite_refusal
+    rows_by_id = {str(r.get("id")): r for r in rewrite_rows or [] if isinstance(r, dict)}
+
+    def passes(block: dict, candidate: dict) -> bool:
+        span = candidate.get("document_span")
+        for item in rewrite_ranked:
+            row = rows_by_id.get(str(item.get("candidate_id") or ""))
+            if row is not None and _inside(item.get("document_span"), block) \
+                    and rewrite_refusal(row, item, span) is None:
+                return True
+        return False
+    return passes
 
 
 def _level_pick(reads: list[dict], showable: list[tuple], snippet_map: dict,
@@ -1774,8 +1862,14 @@ def build_shadow_frame(
     held_words: Any = None,
     context: Any = None,
     tempo_step: Any = False,
+    verbal: Any = None,
 ) -> Optional[dict]:
     """Build the complete v3 frame; return None for an unusable Take.
+
+    ``verbal`` is the Take's verbal read for a speaker it reaches
+    (`services.verbal_read.for_pick`, N326): the moments whose words matter
+    for them weigh in the between (`_heard_weights`, `_heard_pick`). It
+    never adds a key to the frame. None leaves the pick as it was.
 
     ``tempo_step``: the speaker has the walk's tempo step (a bool, or a
     callable read only when the Sniper would be the One thing walk's fix;
@@ -1855,10 +1949,26 @@ def build_shadow_frame(
         suggestion_map=suggestion_map, take_id=take_id,
         recording_id=recording_id, servability=servability, clips=clips,
     )
+    # The verbal rows, read before the pick: they depend on the document
+    # alone, and the verbal read's pick needs to know whether its Clearer
+    # version would pass the gate (N326). Their exclusions join the list
+    # where they always have.
+    feedback_rows = list(feedback_candidates or [])
+    document_map = _document_map(
+        doc, take_id=take_id, document_text=document_text,
+        served_text=served_text, snippet_map=snippet_map,
+    )
+    rewrite_inventory, rewrite_ranked, rewrite_exclusions = _verbal_inventory(
+        feedback_rows, "rewrite_clarity", document_map=document_map,
+        declined=_declined_context(
+            declined_rewrites, frozen_candidate_ids, doc.get("pieces")),
+    )
+    heard = _heard_weights(verbal, rewrite_ranked, frozen_candidate_ids, blocks)
     picked = _pick_moments(blocks, snippet_map, clips, servability,
                            confidence_selections, served_text,
                            plan=(plan_level, key_line), held_words=held_words,
-                           context=context)
+                           context=context, heard=heard,
+                           clearer_ok=_clearer_check(rewrite_ranked, feedback_rows))
 
     # THE ONLY PLACE THE REASON LAYER IS OBSERVABLE (24j). Everything else it
     # does is internal ordering that leaves no trace: the failure it can have
@@ -1870,16 +1980,6 @@ def build_shadow_frame(
     coverage = _slide_coverage(blocks, take_index)
     _practice_routing(blocks)
 
-    feedback_rows = list(feedback_candidates or [])
-    document_map = _document_map(
-        doc, take_id=take_id, document_text=document_text,
-        served_text=served_text, snippet_map=snippet_map,
-    )
-    rewrite_inventory, rewrite_ranked, rewrite_exclusions = _verbal_inventory(
-        feedback_rows, "rewrite_clarity", document_map=document_map,
-        declined=_declined_context(
-            declined_rewrites, frozen_candidate_ids, doc.get("pieces")),
-    )
     praise_inventory, praise_ranked, praise_exclusions = _verbal_inventory(
         feedback_rows, "great_formulation", document_map=document_map,
     )

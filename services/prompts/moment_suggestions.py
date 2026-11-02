@@ -80,6 +80,17 @@ EMPHASIS_SYSTEM = (
     "widen the pick to be helpful.\n"
 )
 
+#: What matters to the speaker (founder 2026-11-02, N326 item 5): appended
+#: to SYSTEM only when the Take's verbal read gave a line, so every other
+#: prompt is the one it always was.
+SPEAKER_FOCUS = (
+    "- When a `speaker_focus` line is given (what matters to this speaker "
+    "in how they say it), let the replacement follow it: for example lead "
+    "with the answer or the main point. Still only their point, in their "
+    "own words: never quote the line, never add a fact, name, number or "
+    "claim the moment does not say.\n"
+)
+
 #: How each cue key is DESCRIBED to the model. Prompt-side wording only — the
 #: student-facing copy for these keys lives in the FE and is founder-signed
 #: (LIVE LOOP). Kept here so it is hash-locked with the prompt that reads it:
@@ -107,6 +118,7 @@ EMPHASIS_CUE_HINTS_TEXT = "\n".join(
 
 REGISTER = {
     "moment_suggestion.system": SYSTEM,
+    "moment_suggestion.speaker_focus": SPEAKER_FOCUS,
     "structural_star.system": STRUCT_SYSTEM,
     "emphasis_phrase.system": EMPHASIS_SYSTEM,
     "emphasis_phrase.cue_hints": EMPHASIS_CUE_HINTS_TEXT,

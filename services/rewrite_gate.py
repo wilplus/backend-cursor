@@ -38,6 +38,13 @@ every failed check falls back to:
 
 Starting values, to calibrate on the golden evaluation set. Internal only
 (AC-9): no signal or verdict here reaches a payload. Pure.
+
+THE NOTES STAY THEIRS (founder 2026-11-02, N326 item 5). When the speaker's
+own notes shaped a Clearer version (``services.verbal_read``), ``leaks``
+refuses it if it carries a phrase from those notes the speaker did not say
+in the Take: ``LEAK_RUN`` content words in a row, read as the notes and the
+Take say them. It is checked where such a rewrite is written, before H3,
+which stays exactly as above.
 """
 from __future__ import annotations
 
@@ -62,6 +69,19 @@ MIN_KEPT = 0.6
 MIN_WORDS = 5
 
 _WORD = re.compile(r"[^\W_]+(?:[’'-][^\W_]+)*", re.UNICODE)
+#: The leak guard (N326 item 5): this many content words in a row, taken
+#: from the speaker's notes and not said in the Take, refuse a rewrite.
+LEAK_RUN = 3
+#: Small words that carry no content of their own; a run of the others is
+#: what a note and a rewrite can share.
+_SMALL = frozenset("""
+a an the and or but so if of to in on at by for with from as is are was were
+be been being am it its this that these those i me my we us our you your he
+him his she her they them their not do does did have has had will would can
+could should may might must just very really too than then there here what
+which who whom when where why how all any some more most much many also about
+into over up out off one get got
+""".split())
 _SENTENCE_START = re.compile(r"(?:^|[.!?]\s+)([^\W\d_][\w’'-]*)", re.UNICODE)
 
 
@@ -192,3 +212,26 @@ def rewrite_refusal(row: Any, item: Any, clip_span: Optional[dict]) -> Optional[
         return "fallback"
     return _words_refusal(str(row.get("quote") or ""),
                           str(row.get("proposed_text") or ""))
+
+
+def _content_words(text: Any) -> list[str]:
+    return [low for low in (word.lower() for word in _words(text))
+            if low not in _SMALL and len(low) > 2]
+
+
+def _runs(text: Any) -> set[tuple[str, ...]]:
+    words = _content_words(text)
+    return {tuple(words[at:at + LEAK_RUN]) for at in range(len(words) - LEAK_RUN + 1)}
+
+
+def leaks(text: Any, noted: Any, said: Any) -> bool:
+    """Does ``text`` carry a phrase from the speaker's notes (``noted``, a
+    list of their own texts) that they did not say in the Take (``said``)?
+    ``LEAK_RUN`` content words in a row count as a phrase. Pure."""
+    new = _runs(text)
+    if not new:
+        return False
+    from_notes: set[tuple[str, ...]] = set()
+    for phrase in noted or ():
+        from_notes |= _runs(phrase)
+    return bool((new & from_notes) - _runs(said))

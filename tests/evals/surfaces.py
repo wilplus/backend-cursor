@@ -71,7 +71,25 @@ def _moment_suggestion(inp: dict) -> Any:
         strategic_context=inp.get("strategic_context"),
         context_document=inp.get("context_document"),
         trigger=inp.get("trigger"),
+        speaker_focus=inp.get("speaker_focus"),
     )
+
+
+def _verbal_read(inp: dict) -> Any:
+    """The Take's verbal read (N326): which moments it flags, as one string
+    of their ids, and its line for the Clearer version. No flag stays None,
+    the read's own "nothing here"."""
+    from services.inner_context import InnerContext
+    from services.verbal_read import read
+    notes = list(inp.get("notes") or [])
+    inner = InnerContext(block="Their own notes, newest last:\n"
+                         + "\n".join(f"- {n}" for n in notes), phrases=tuple(notes))
+    moments = [{"snippet_id": f"m{i}", "slide": i - 1, "text": text}
+               for i, text in enumerate(inp.get("moments") or [], start=1)]
+    found = read(moments, dict(inp.get("outside") or {}), inner)
+    if found is None:
+        return None
+    return {"flagged": ",".join(sorted(found.weights)), "focus": found.focus}
 
 
 def _structural_star(inp: dict) -> Any:
@@ -136,6 +154,7 @@ ADAPTERS: dict[str, Callable[[dict], Any]] = {
     "slide_entailment": _slide_entailment,
     "coach_comment_draft": _coach_comment_draft,
     "moment_suggestion": _moment_suggestion,
+    "verbal_read": _verbal_read,
     "structural_star": _structural_star,
     "emphasis_phrase": _emphasis_phrase,
     "will_question": _will_question,
