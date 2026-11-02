@@ -34,12 +34,16 @@ _admins: tuple[float, list[str]] = (0.0, [])
 
 
 def note(summaries: list[dict], checks: list[dict]) -> str:
-    """The note's words from a week of summary metadata and answers. Pure."""
+    """The note's words from a week of summary metadata and answers. Pure.
+    Empty when there is nothing to count and no one said what would help
+    (founder 2026-11-02: no "0 of 0 Takes" note)."""
     moved = [s for s in summaries if s.get("moved") in ("rose", "held", "dipped")]
     rose = sum(1 for s in moved if s.get("moved") == "rose")
     answered = [c for c in checks if c.get("helped") is not None]
     helped = sum(1 for c in answered if c.get("helped") is True)
     missing = [c["missing"].strip() for c in checks if (c.get("missing") or "").strip()]
+    if not moved and not answered and not missing:
+        return ""
     lines = ["Feedback, the last 7 days",
              f"The voice rose since the last Take in {rose} of {len(moved)} Takes",
              f"Asked \"Did this help?\": {len(answered)} · it helped: {helped}"]
@@ -70,11 +74,10 @@ def post(database: Any, now: datetime | None = None) -> int:
     if not admins:
         return 0
     since = (now - timedelta(days=_DAYS)).isoformat()
-    summaries = database.list_take_summaries_since(since)
-    checks = database.list_feedback_checks_since(since)
-    if not summaries and not checks:
+    body = note(database.list_take_summaries_since(since),
+                database.list_feedback_checks_since(since))
+    if not body:
         return 0
-    body = note(summaries, checks)
     for admin in admins:
         database.insert_lounge_messages(admin, [{
             "client_id": str(uuid.uuid5(_NAMESPACE, f"{admin}:{year}-W{week}")),

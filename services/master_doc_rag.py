@@ -97,8 +97,8 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
                     "all their trainings / past sessions (the Trainings tab); "
                     "null on every other turn. Classify the USER'S intent, "
                     "not your answer. Record-intent has NO button — point the "
-                    "user to the always-present 'Start official recording' "
-                    "button in words (RULE I)."
+                    "user to the always-present + below the chat, in words "
+                    "(RULE I)."
                 ),
             },
             "app_action": {
@@ -333,7 +333,7 @@ _SYSTEM_PROMPT = with_tone(
     "    question is NEVER itself a reason to pivot or decline — answer it "
     "    exactly as you would the English version, in their language. NEVER "
     "    mix languages in one response. The one exception: menu and button "
-    "    names (Voice Album, Trainings, Start official recording) stay in "
+    "    names (Voice Album, Trainings) stay in "
     "    English exactly as written — they are the app's labels, never "
     "    translated.\n"
     "\n"
@@ -359,7 +359,8 @@ _SYSTEM_PROMPT = with_tone(
     "    topic with NO slide deck, they can upload an existing "
     "    recording via the \"Upload a recording\" option; for a talk "
     "    with a deck attached, per-slide timing needs a LIVE take, so "
-    "    point them to \"Start official recording\" instead. In one "
+    "    point them to the + below the chat (their projects) to record "
+    "    it live instead. In one "
     "    or two warm sentences, cover both. Match this energy:\n"
     "      \"You can upload an existing recording for topics without "
     "       a slide deck — tap 'Upload a recording' below. For a "
@@ -417,14 +418,19 @@ _SYSTEM_PROMPT = with_tone(
     "    Out-of-scope but NOT capability-related questions still "
     "    follow RULE B (pivot to a real Master-Document fact).\n"
     "\n"
-    "  RULE I — RECORD-INTENT (point to the official recording button):\n"
+    "  RULE I — RECORD-INTENT (point to the + below the chat):\n"
     "    When the user wants to make a NEW recording — 'record', "
     "    'recording', 'record again', 'start recording' (distinct from "
     "    uploading a file (RULE G), and distinct from 'training(s)', "
     "    which OPENS the Trainings page via RULE K) — point them in one "
-    "    short line to the official recording button, which is ALWAYS "
-    "    on screen BELOW the chat. Match this energy:\n"
-    "      \"Ok — hit the button below to record.\"\n"
+    "    short line to the + next to the message box, BELOW the chat: "
+    "    it opens their projects, where they record their next Take. "
+    "    There is no 'Start official recording' button any more (founder, "
+    "    2 November 2026); never name it, and never send them to the mic "
+    "    (it records a voice note to you, not a Take). Match this "
+    "    energy:\n"
+    "      \"Ok — tap + below, open your project and record your next "
+    "       Take.\"\n"
     "    Trigger phrasings include (non-exhaustive):\n"
     "      • \"can I record here\" / \"how do I record this\"\n"
     "      • \"let me just record it\" / \"I want to record again\"\n"
@@ -432,7 +438,7 @@ _SYSTEM_PROMPT = with_tone(
     "    The word 'training' / 'trainings' is NOT a record trigger — it "
     "    opens the Trainings page (RULE K, suggested_action=trainings).\n"
     "    Do NOT set show_record_ui and do NOT offer a suggested_action "
-    "    button — the official recording button is permanent, so there "
+    "    button — the + is always there, so there "
     "    is no per-turn mic to reveal. Just point to it (keep "
     "    show_record_ui=false).\n"
     "    NEVER decline a record-intent question with a "
@@ -463,8 +469,8 @@ _SYSTEM_PROMPT = with_tone(
     "        ANY 'training(s)' phrasing OPENS the Trainings page —\n"
     "        even singular 'training' (it is NOT a record request).\n"
     "      • null — every other turn (the default). Record-intent\n"
-    "        has NO button — point to the always-present 'Start\n"
-    "        official recording' button in words (RULE I).\n"
+    "        has NO button — point to the always-present + below\n"
+    "        the chat in words (RULE I).\n"
     "    Classify intent, not your answer. Set exactly one value\n"
     "    or null. The app shows the button; you still answer.\n"
     "\n"
@@ -840,7 +846,7 @@ _LANE_BASE = (
     "coaching product (mostly human-led, scaled by AI). Answer in the "
     "user's own language (detect it from their message + history; never "
     "mix languages, except that menu and button names — Voice Album, "
-    "Trainings, Start official recording — stay in English exactly as "
+    "Trainings — stay in English exactly as "
     "written). Be direct and specific, no marketing fluff, no vague "
     "affirmations. Two to three sentences, about 50 words, hard cap. "
     "Ask at most one question. If more is needed, give the one most "
@@ -880,19 +886,23 @@ _LANE_BODIES: dict[str, str] = {
         "The user wants to hand over an EXISTING file. Uploads are LIVE "
         "for topics with NO slide deck — they can pick a file via the "
         "\"Upload a recording\" option. For a talk WITH a deck attached, "
-        "per-slide timing needs a live take, so point them to \"Start "
-        "official recording\" instead. In one or two warm sentences, "
+        "per-slide timing needs a live take, so point them to the + below "
+        "the chat (their projects) to record it live instead. In one or "
+        "two warm sentences, "
         "cover both cases. Never invent a file-format restriction. Keep "
         "show_record_ui=false (they asked to upload, not to record this "
         "turn)."
     ),
     "record_intent": (
         "The user wants to make a NEW recording ('record', 'recording', "
-        "'record again'). Point them in one short line to the official "
-        "recording button, which is ALWAYS on screen BELOW the chat — "
-        "e.g. \"Ok — hit the button below to record.\" Do NOT set "
+        "'record again'). Point them in one short line to the + next to "
+        "the message box, BELOW the chat: it opens their projects, where "
+        "they record their next Take — e.g. \"Ok — tap + below, open your "
+        "project and record your next Take.\" There is no 'Start official "
+        "recording' button any more: never name it, and never send them to "
+        "the mic (it records a voice note to you, not a Take). Do NOT set "
         "show_record_ui (keep it false) and do NOT offer a "
-        "suggested_action button; that recording button is permanent. "
+        "suggested_action button; the + is always there. "
         "Never say you cannot access the microphone."
     ),
     "off_topic": (
@@ -1075,9 +1085,9 @@ def _answer_via_router(
     answer = (parsed.get("answer") or "").strip()
     if not answer:
         return None
-    # Always false: the in-app mic was removed — the "Start official recording"
-    # button is permanently present, so there is no per-turn record affordance
-    # to toggle. The prompt already says "show_record_ui=false ALWAYS"; the model
+    # Always false: a Take is recorded from the "+" next to the message box
+    # (it opens the projects; the old "Start official recording" button is
+    # gone), so there is no per-turn record affordance to toggle. The prompt already says "show_record_ui=false ALWAYS"; the model
     # occasionally disobeys on strong record-intent, so we force it in code (this
     # is the documented intent + kills the MDR-11 probe flake).
     show_record_ui = False
@@ -1261,9 +1271,9 @@ def answer_question(
     # Defensive coercion — strict schema should guarantee bool,
     # but the wire could in theory carry truthy strings on a model
     # regression. Normalise to a real bool.
-    # Always false: the in-app mic was removed — the "Start official recording"
-    # button is permanently present, so there is no per-turn record affordance
-    # to toggle. The prompt already says "show_record_ui=false ALWAYS"; the model
+    # Always false: a Take is recorded from the "+" next to the message box
+    # (it opens the projects; the old "Start official recording" button is
+    # gone), so there is no per-turn record affordance to toggle. The prompt already says "show_record_ui=false ALWAYS"; the model
     # occasionally disobeys on strong record-intent, so we force it in code (this
     # is the documented intent + kills the MDR-11 probe flake).
     show_record_ui = False
