@@ -9089,3 +9089,65 @@ The prototype: <https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>, version
 40. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1. No migration.
+
+**N349 · No coach role: a person says in setup what others can ask them
+(founder, the Claude Code chat, 2 November 2026: "I want to log in the coach
+through the new onboarding, so that the coach panel, everything that is
+there, has to be lovable through the universal set up process"; asked how
+someone becomes a coach: "There is no such a thing like a coach in the new
+setup there is just a user to whom you can ask a questions and that person
+defines during the set up"; and, to three questions, the recommended
+answers).** For N205, N274, N287, N300, N332 and N335:
+1. **No coach role.** Everyone joins the same way (the join link, N335; or
+signing up). A person defines, during setup, what others can ask them: how
+they speak (the reviews the coach panel holds today), their work, or
+nothing. Was: a coach was an email added by hand to `coach_users`.
+2. **The setup is in Will's chat,** one question at a time, as Will's first
+lines (N319, N348).
+3. **The agreement is accepted in the setup.** Before anyone's recordings
+reach a person, Will shows the data processing agreement's summary with a
+link to its full text, and the person taps to accept; it is kept with its
+date. No review opens before that (the DPIA's risk 6).
+4. **Which Takes reach a reviewer: as today,** every Take in a language they
+review, blind first. Pairing a personal coach (N287 item 4) is designed
+later, on its own.
+5. **Open:** the setup's questions and words, shown on a prototype first.
+No rules page yet: it lands on frontend
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+when built. No migration in this entry.
+
+**N350 · Today's work, simplified: "ready" never waits, one rule for a pace
+fix that worked, the "Type here" note wherever the box is faded, Stop once
+the mic is live (founder, the Claude Code chat, 2 November 2026, on the
+review <https://claude.ai/artifact/W1DHw7bfgayNyZKG2w5gDF>: "1. … A, Yes, do
+them all", "2. … A, Move the wait after ready (withdraw N327's exception)",
+"3. … A", "4. … A, Whenever the box is faded", "5. … A, Stop once the mic is
+live, in both", "Go.").** For N323 item 1, N325 item 4, N326, N327, N347
+item 3 and N314:
+1. **The code is simplified with the same behaviour** where the review found
+it could be (one notes reader for the walk and its quotes, one rewrite
+check, one "Record Take N" button in the chat, the mic's early Stop through
+its existing switch-off), and its tests trimmed to the outcomes.
+2. **"Ready" never waits for the verbal read.** The run waits for it, at
+most 5 seconds and only for a speaker it reaches, after the Take is flipped
+ready and before the walk's marks are baked: the Ideal Text never waits, and
+the walk may open up to 5 seconds later. N327's exception to Never 3 is
+withdrawn.
+3. **One rule for "the pace fix worked":** the stretch the pace game fixed
+counts as fixed when every clip on that slide in the next Take stays inside
+the green on that side, the same bar that picks a stretch. It is the rule
+for "Last time: give “{words}” more room. You did." (N347 item 3) and for
+the Takes table's "did the fix work". Was: any drop for the walk, a moved
+stretch for the table.
+4. **The "Type here" notes show wherever the box is faded,** before Take 1
+and after it: "We need to hear this in your voice. Tap the mic." while the
+mic waits, "Tap one of the answers above." while a tap answer waits (N323
+item 1, N325 item 4). Was: before Take 1 only.
+5. **Stop shows once the mic is live,** in the walk's practise as in the
+pace game (N314): while the mic opens, the bar shows the bin and the strip
+without Stop.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C7, H1, T and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+B10, when built. No migration.
