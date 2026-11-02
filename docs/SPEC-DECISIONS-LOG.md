@@ -8788,7 +8788,43 @@ C1, [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend
 (Will's chat) and [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 when built. No migration.
 
-**N335 · An answer is sent when it is recorded, and its receiver gets just
+**N335 · Joining through a link is a new member's onboarding; the "+" in a
+chat with a person; no typing with people, the voice is turned into words
+(founder, the Claude Code chat, 2 November 2026, on N328's open points and
+the RASP ambassadors prototype
+<https://claude.ai/artifact/Qu9N4HNpbpwT7N9Amo6LyL> version 3: "Ok add that
+as the onboarding flow for the new members", "Ok for the +", "Short text not
+allowed you can record a long text through voice to text transcription").**
+For N292, N306, N308, N324, N328 and N331:
+1. **Onboarding is the join flow.** A new member's first steps: the invite
+link (N308) opens the join page (who invites you, and what you get: a chat
+with them, your own chat with Will, nobody else able to reach you); you join
+with your work account, in the browser; the chat with the person who
+invited you opens with one line saying how you are connected, and their
+welcome. The list then holds two chats: Will and that person.
+2. **Signed (Never 4)**, closing N328 item 4: "{Name} asks you to join them
+on WillpowerLab", "A chat with {name}", "Your own chat with Will, your
+speaking coach", "Nobody else can reach you here unless you open their link
+too.", "Join with your {company} account", "Opens in your browser. Nothing
+to install.", "You joined through {name}'s link. Only the two of you are in
+this chat."
+3. **The "+" in a chat with a person.** The left of the bar is a "+", in
+every chat but Will's. Was (N306 item 2): passing it on, in the "+" place.
+It opens a sheet with two choices: a screenshot or photo, which opens a new
+question for that person only and is followed by a voice note saying what
+you need; or someone else, who gets your link and joins first (N328 item 2).
+The bar keeps the three emoji and the mic. The sheet's words wait for the
+founder's OK.
+4. **No typing in a chat with a person**, as N306 and N292 item 3 say:
+anything longer than an emoji is a voice note, turned into words (N324) and
+readable under its player (N331), within N324's 2 minutes. A long,
+considered answer is a Take. Closes N328 item 5.
+No rules page yet: it lands with the chats' rules page (N274 item 6) and on
+frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
+
+**N336 · An answer is sent when it is recorded, and its receiver gets just
 the answer (founder, the Claude Code chat, 2 November 2026, on N329: "Just
 the answer !", then "And also when you record the answer just send it don't
 re take it").** For N329:
