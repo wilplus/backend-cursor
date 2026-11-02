@@ -210,6 +210,47 @@ def tempo_for_take(database: Any, *, take: str, user_id: str, arc_id: str) -> Op
     return result
 
 
+_PICKS: "OrderedDict[tuple, Optional[dict]]" = OrderedDict()
+
+
+def pick_for_take(take: Any, snippets: list[dict]) -> Optional[dict]:
+    """`pick`, remembered per Take per process for the same clips and the
+    same number of timed words in each: the One thing walk's fix reads it on
+    every read of the Take (N323 item 6), and a Take's word timings do not
+    change once its clips are in."""
+    key = (str(take or ""), tuple((str(s.get("id") or ""), len(s.get("words") or []))
+                                  for s in snippets))
+    with _CACHE_LOCK:
+        if key in _PICKS:
+            _PICKS.move_to_end(key)
+            return _PICKS[key]
+    chosen = pick(snippets)
+    with _CACHE_LOCK:
+        _PICKS[key] = chosen
+        while len(_PICKS) > _CACHE_MAX:
+            _PICKS.popitem(last=False)
+    return chosen
+
+
+def tempo_on_for(user_id: Any, *, database: Any = None) -> bool:
+    """`tempo_is_on` for the speaker whose Take's walk is being built, where
+    the founder is known only from the request: the rings panel's
+    ``tempo_step`` row, or the founder reading their own Take. False on any
+    failure (N323 item 6: without the step, the walk's fix stays a moment)."""
+    try:
+        from services import rings
+        if rings.feature_is_on_for_user(rings.TEMPO_STEP, user_id, database=database):
+            return True
+        from flask import has_request_context, request
+        if not has_request_context() or str(getattr(request, "user_id", "") or "") != str(user_id or ""):
+            return False
+        from routes.admin import _token_email, is_founder_email
+        return is_founder_email(_token_email())
+    except Exception as error:  # noqa: BLE001 -- a closed door
+        logger.warning("tempo step: not read user=%s: %s", user_id, type(error).__name__)
+        return False
+
+
 def tempo_is_on(user_id: Any, *, founder: bool) -> bool:
     """Who has the tempo step (N166 step 6): the founder always; anyone
     else when the rings panel's ``tempo_step`` row reaches them. A missing

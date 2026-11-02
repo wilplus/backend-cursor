@@ -36,6 +36,10 @@ OUTCOME
       between; never the strongest; a pace or pause week whose Take has a
       stretch has the Sniper as its fix and shows no moment to fix (N289,
       N309).
+  O11 With or without a plan, when rushing is my Take's biggest issue the
+      Sniper is my one thing to improve and no moment is; rushing that
+      weighs less than what my moment needs, a slow stretch, or no tempo
+      step for me leaves the fix a moment (N323 item 6).
   O10 A sentence that already has the helper words I had when I recorded
       gives its place as my strongest to the next; helper words I pick
       during the walk don't move my moments (N246).
@@ -53,6 +57,7 @@ PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen
          O9 -> test_on_a_plan_my_level_takes_the_slot_whose_tool_fits_it
          O10 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
+         O11 -> test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan
 WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
          2026-10-18 ("words first, then voice"), 2026-10-21 (N108, "the
          voice decides"; N112, "There was no single rewrite in the take"), 2026-10-22 (N113, "After the
@@ -63,7 +68,8 @@ WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
          + level"); 2026-10-30 (N289: "the praise clips just get the
          praise", "the third moment, the weakest one, is where we display
          the AI audio"); 2026-10-31 (N309, the One thing walk: "apply to it
-         the one thing walk").
+         the one thing walk"); 2026-11-02 (N323 item 6: "yes, the pace game
+         for everyone when rushing is the issue").
 """
 from pathlib import Path
 
@@ -766,12 +772,43 @@ def test_on_a_plan_my_level_takes_the_slot_whose_tool_fits_it(monkeypatch):
     # A pause week whose Take has a stretch outside the green: the Sniper is
     # the one fix, so no moment is (N309 item 1); their best stays.
     from services import tempo_stretch
-    monkeypatch.setattr(tempo_stretch, "pick",
-                        lambda rows: {"index": 0, "outside": 0.5, "reading": "rushed"})
-    assert _slots(_paced_frame((140, 140, 140, 200), plan_level="pauses")) == [
+    monkeypatch.setattr(tempo_stretch, "pick_for_take",
+                        lambda take, rows: {"index": 0, "outside": 0.5, "reading": "rushed"})
+    assert _slots(_paced_frame((140, 140, 140, 200), plan_level="pauses",
+                               tempo_step=True)) == [("p0", "strongest", None, None)]
+    # Off a plan, rushing that weighs less than the weakest needs changes
+    # nothing: the fix is a moment (N323 item 6).
+    assert _slots(_paced_frame((140, 140, 140, 200), tempo_step=True)) == plain
+
+
+def test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan(monkeypatch):
+    """Founder 2026-11-02 (N323 item 6): "yes, the pace game for everyone
+    when rushing is the issue". The weakest (p2) falls short of full
+    willfidence by about 0.6; a stretch rushed for 0.9 of its time
+    outweighs it."""
+    from services import tempo_stretch
+    stretch = {"index": 0, "outside": 0.9, "reading": "rushed"}
+    monkeypatch.setattr(tempo_stretch, "pick_for_take", lambda take, rows: stretch)
+    asked = []
+
+    def tempo_on():
+        asked.append(True)
+        return True
+
+    plain = [("p0", "strongest", None, None), ("p2", "weakest", "voice", None)]
+    paced = (140, 140, 140, 200)
+    # No plan, rushing the biggest issue: the Sniper is the one thing, so no
+    # moment is; their best stays.
+    assert _slots(_paced_frame(paced, tempo_step=tempo_on)) == [("p0", "strongest", None, None)]
+    assert asked
+    # On a plan whose level takes a slot, the same: rushing outweighs it.
+    assert _slots(_filler_frame("p1", plan_level="say_once", tempo_step=True)) == [
         ("p0", "strongest", None, None)]
-    # Off a plan the stretch changes nothing: the fix is a moment.
-    assert _slots(_paced_frame((140, 140, 140, 200))) == plain
+    # Without the tempo step there is no Sniper to show: the moment stays.
+    assert _slots(_paced_frame(paced, tempo_step=False)) == plain
+    # A slow stretch is not rushing: the moment stays.
+    stretch["reading"] = "slow"
+    assert _slots(_paced_frame(paced, tempo_step=True)) == plain
 
 
 def test_a_sentence_with_my_helper_words_gives_way_to_the_next():

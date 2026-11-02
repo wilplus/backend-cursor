@@ -161,6 +161,17 @@ _MEMO_READS = frozenset({
 _MEMO_REPOSITORIES = frozenset({"takes", "ideal_text"})
 
 
+def _once(read: Callable[[], Any]) -> Callable[[], Any]:
+    """``read``, asked at most once: later calls give its first answer."""
+    held: list = []
+
+    def answer() -> Any:
+        if not held:
+            held.append(read())
+        return held[0]
+    return answer
+
+
 class _ReadMemo:
     """The database, with this run's repeated reads remembered."""
 
@@ -1644,8 +1655,10 @@ class _ChangesRun:
     def _walk_inputs(self, session: Any, doc: Any) -> dict:
         """What the frame reads beyond the Take: this week's level and the
         key line on a plan (`plan_walk.walk_inputs`), the helper words
-        each slide had when the Take was recorded (N246 items 2 and 3), and
-        the Take's context (`take_context.for_take`, N293). Read
+        each slide had when the Take was recorded (N246 items 2 and 3),
+        the Take's context (`take_context.for_take`, N293), and whether the
+        speaker has the tempo step, asked only when the Sniper would be the
+        One thing walk's fix (N323 item 6). Read
         here, from the database, for the dark frame and the served one
         alike: the serve path's own store cannot read a plan, so the walk
         the speaker saw never had the level's moment (N246 item 4). Read
@@ -1653,6 +1666,7 @@ class _ChangesRun:
         from services import take_context
         from services.plan_walk import walk_inputs
         from services.slide_helper_words import held_at_take
+        from services.tempo_stretch import tempo_on_for
         key = str((session.get("id") if isinstance(session, dict) else None)
                   or self.arm_sid or "")
         if key not in self._walks:
@@ -1663,7 +1677,8 @@ class _ChangesRun:
                 "held_words": held_at_take(self.db, self.arc_id, self.user_id, session, slides),
                 # What the Take is for: its key line and call to action
                 # count for more in the pick (N293).
-                "context": take_context.for_take(self.db, self.user_id, session)}
+                "context": take_context.for_take(self.db, self.user_id, session),
+                "tempo_step": _once(lambda: tempo_on_for(self.user_id, database=self.db))}
         return self._walks[key]
 
     def _declined_rewrites(self, session: Any, parts: Any

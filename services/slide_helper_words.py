@@ -116,7 +116,9 @@ def lock(rows: list[Row], *, take_id: str, part_id: str, locked: bool,
 # Plan Phase 5; six 2026-10-12; eight 2026-10-15). The client stops a ninth
 # tap; before the cap every save route took any length. Words saved before
 # the cap are read as they are. The frontend's HELPER_WORDS_MAX
-# (src/lib/willab/phraseTokens.ts) must match.
+# (src/lib/willab/phraseTokens.ts) must match. A pick by hand only: the One
+# thing walk's own helper words are saved whole (founder 2026-11-02, N323
+# item 2).
 HELPER_WORDS_MAX = 8
 
 # ANY WORDS OF THE PARAGRAPH (founder 2026-10-15). The words need not sit

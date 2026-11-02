@@ -63,25 +63,32 @@ def propose_rooting_phrase(value: Any) -> Optional[dict]:
             "start": first.start(), "end": first.end()}
 
 
-def _scattered(text: str, phrase: str, start: Any, end: Any) -> Optional[dict]:
+def _scattered(text: str, phrase: str, start: Any, end: Any,
+               capped: bool = True) -> Optional[dict]:
     """Words picked apart (founder 2026-10-15): each piece is exact words of
     the paragraph, in the order said, and there is no single span."""
     from services.slide_helper_words import phrase_in_version, within_cap
     if start is not None or end is not None or _MARKER_RE.search(phrase):
         return None
     words = phrase_in_version(phrase, [_alignment_mask(text)])
-    if words is None or not within_cap(words):
+    if words is None or (capped and not within_cap(words)):
         return None
     return {"text": words, "start": None, "end": None}
 
 
 def validate_rooting_phrase(
-    part_text: Any, phrase: Any, start: Any, end: Any,
+    part_text: Any, phrase: Any, start: Any, end: Any, *, capped: bool = True,
 ) -> Optional[dict]:
+    """The helper words as exact words of the paragraph, or None.
+
+    ``capped`` False: the One thing walk's own helper words, which come on
+    their own (their sentence kept, the words an AI clip's tip quotes), are
+    saved whole, whatever their length (founder 2026-11-02, N323 item 2).
+    The cap of eight stays for a pick by hand on the Ideal Text."""
     text = part_text if isinstance(part_text, str) else ""
     from services.slide_helper_words import PIECE_SEP
     if isinstance(phrase, str) and PIECE_SEP in phrase:
-        return _scattered(text, phrase, start, end)
+        return _scattered(text, phrase, start, end, capped)
     if (not isinstance(phrase, str) or not phrase
             or not isinstance(start, int) or isinstance(start, bool)
             or not isinstance(end, int) or isinstance(end, bool)
@@ -89,8 +96,9 @@ def validate_rooting_phrase(
             or text[start:end] != phrase
             or _MARKER_RE.search(phrase)):
         return None
-    # The eight-word cap on the server (B3; F1 Repair Plan Phase 5).
+    # The eight-word cap on the server (B3; F1 Repair Plan Phase 5), on a
+    # pick by hand (N323 item 2).
     from services.slide_helper_words import within_cap
-    if not within_cap(phrase):
+    if capped and not within_cap(phrase):
         return None
     return {"text": phrase, "start": start, "end": end}
