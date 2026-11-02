@@ -1,6 +1,6 @@
 """
 STORY    As a speaker deleting my account, I want rows saved under my user id
-         (coach readings, listener answers, votes) deleted too, so that
+         (coach readings, listener answers, votes, my chats) deleted too, so that
          nothing outlives my account (deletion).
 OUTCOME
   O1  An account erasure whose principal id is not its user id deletes
@@ -41,6 +41,10 @@ USER_KEYED = {
     "error_presence_audit_by_coach": ("error_presence_audit", "coach_id"),
     "coach_block_pick_by_coach": ("coach_block_pick", "coach_id"),
     "coach_clip_exposures": ("coach_clip_exposures", "coach_id"),
+    # The chats between people (0503): my place in each chat, and the demo
+    # chats made for me.
+    "chat_members": ("chat_members", "user_id"),
+    "chat_demo_threads": ("chat_threads", "demo_user_id"),
 }
 
 #: A real account: its owner principal's id is not its user id.

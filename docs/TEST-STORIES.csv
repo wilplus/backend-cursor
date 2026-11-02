@@ -549,6 +549,18 @@ O4     -> test_the_reply_is_saved_under_the_turn_it_answers",Founder #2: bubbles
 tests/test_chat_talk.py,Story,"As a speaker, I want Will to read my whole talk slide by slide, so that his answers refer to what I actually said on each slide.","O1  Each slide lists its bullet points and what I said on it.
 O2  A slide I said nothing on reads ""(nothing yet)"".
 O3  Words not tied to a slide are listed on their own.","O1, O2, O3 -> test_each_slide_carries_its_points_and_what_they_said",Founder 2026-10-15; Privacy 3.7 section 4.
+tests/test_chats.py,Story,"As the founder, I want my own chats with a colleague and a customer, apart from my chat with Will, where I answer with one of three emoji, so that I can see the chats between people working before anyone else is in them.","O1  Without the ring row (chats, ring 6) every route answers 404 and
+nothing is written.
+O2  The demo makes Sarah's customer chat and Ariel's colleague chat once,
+however often it is asked; the list names each chat for the other
+person, with their line and the last thing said.
+O3  In my chat I read what was said, oldest first, mine marked; I send 👍,
+👀 or 🙏 with its meaning kept as a label (N311), and anything else is
+refused.
+O4  Someone not in a chat can neither read it nor send to it.","O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
+O2 -> ChatsTest::test_the_demo_is_made_once_and_listed
+O3 -> ChatsTest::test_a_member_reads_and_sends_one_of_three_emoji
+O4 -> ChatsTest::test_someone_not_in_the_chat_is_refused","The chats between people, first slice (founder 2026-10-31, N298 to N316; the three emoji N311)."
 tests/test_clearer_versions_reach_the_manager.py,Story,"As a speaker, I want the model's clearer rewrites to reach my feedback with their evidence, so that I get a rewrite where my wording was weak.","O1  A clearer version written because a read was weak (unconfident,
 stickiness, profanity) carries the Manager evidence naming that weak
 read, and the generator version; any other trigger carries none (and
@@ -2470,7 +2482,7 @@ tests/test_purge_settles_legacy_take_owners.py,Story,"As a speaker deleting my a
 O2  When they cannot be settled, the erasure still stops for review on
 them, exactly as before (fail-closed).","O1 -> test_older_takes_take_the_accounts_owner_before_the_freeze
 O2 -> test_an_erasure_that_cannot_settle_them_still_stops_for_review","Founder 2026-10-20 (option 1): three test accounts' Takes, and most real speakers' older Takes (348 of 367 had no owner copy on 2026-09-16), stopped every erasure with LEGACY_TAKE_OWNER_PRINCIPAL_UNRESOLVED. The SQL of 0485 is proved on the released lane by tests/test_phase1_deletion_completion_postgres.py (TestALegacyTakeTakesItsOwner); this covers the Python orchestrator, with test_purge_user_locators.PurgeDb."
-tests/test_purge_user_locators.py,Story,"As a speaker deleting my account, I want rows saved under my user id (coach readings, listener answers, votes) deleted too, so that nothing outlives my account (deletion).","O1  An account erasure whose principal id is not its user id deletes
+tests/test_purge_user_locators.py,Story,"As a speaker deleting my account, I want rows saved under my user id (coach readings, listener answers, votes, my chats) deleted too, so that nothing outlives my account (deletion).","O1  An account erasure whose principal id is not its user id deletes
 exactly my rows in each user-keyed table and leaves everyone else's.
 O2  A project erasure leaves those rows: they belong to the account.
 O3  A `principal` locator addresses only a column that holds a principal,
