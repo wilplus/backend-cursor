@@ -8626,3 +8626,30 @@ beside the run's other work and adds nothing.
 2. Late or failed after those 5 seconds: the walk picks as it does today.
 3. For everyone else nothing waits: the read stops at the ring check.
 No rules page. No migration.
+
+**N328 · The intimacy rule: in WillpowerLab you are reached only by people
+you let in (founder, the Claude Code chat, 2 November 2026, on the RASP
+ambassadors prototype <https://claude.ai/artifact/69U522Sp7oA82vo6iFFcNh>
+version 3: "it's supposed to stay fairly intimate. So up to a couple of
+chats that you chat with other people. There are specifically matched with
+you ... Or if you need someone else, you can send it to someone else, but
+first that person needs to join", then "log the intimacy rule in the
+decisions log").** For N298, N306, N308 and N312:
+1. **Nobody can reach you unless you let them in:** you opened their join
+link (N308), they opened yours, or Will matched you to a question that came
+through an ask link (N312). There is no directory of people, no search for
+people, and no message to someone you are not already in a chat with.
+2. **Someone new joins first.** To send something to a person you have no
+chat with, you send them your link; once they join, you have a chat and it
+reaches them.
+3. **A few chats, each with a person matched to you:** a customer or a
+colleague with a question, a learning buddy, a senior who checks, the coach.
+No number is set. The ways to answer stay those of N306 and N321.
+4. **The join page says it,** as a draft for the founder's OK (Never 4):
+"Nobody else can reach you here unless you open their link too."
+5. **Open:** the "+" in a chat with a person (a screenshot or photo opens a
+new question for that person only, then a voice note), shown on the same
+prototype; and whether short text is allowed in chats with people, which
+N306 does not allow today.
+No rules page yet: it lands with the chats' rules page (N274 item 6). No
+migration in this entry.
