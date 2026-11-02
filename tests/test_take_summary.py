@@ -13,10 +13,11 @@ OUTCOME
   O3  A coach note rewrites the summary in place, keeping the first one
       however many notes follow, once per note; a note shared after the
       review is its own bubble, stored once.
-  O4  From Take 2, a speaker without a WhatsApp number is asked for it
-      after the Take's card, and the summary waits under the ask
-      (services/after_take.py).
-  O5  The summary and the ask after it sort under the walk's last step,
+  O4  Nothing is asked after the Take when nothing is off or missing: a
+      speaker without a WhatsApp number is not asked for it (that waits for
+      the next visit, N294 item 8), and the goodbye, "Good job. See you
+      next time.", comes right after the summary (services/after_take.py).
+  O5  The summary and the goodbye after it sort under the walk's last step,
       even when my browser's clock runs ahead of the server's.
   O6  The summary can point back to what I said in an older Take (the same
       project first), never this Take, never a Take whose processing
@@ -24,7 +25,7 @@ OUTCOME
       summary as it was, and a number it brings in still falls back to the
       approved copy (founder 2026-10-20, step 3).
 PROVES   O1 -> test_a_take_gets_one_summary_from_its_real_progress,
-               test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
+               test_the_summary_knows_the_talk_and_no_settings_ask_follows
          O2 -> test_a_reply_with_a_number_falls_back_to_the_signed_copy,
                test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy,
                test_a_reply_that_ends_on_a_question_is_the_signed_copy,
@@ -33,15 +34,15 @@ PROVES   O1 -> test_a_take_gets_one_summary_from_its_real_progress,
          O3 -> test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_first,
                test_a_shared_coach_word_rewrites_a_reviewed_take_once_per_word,
                test_a_coach_word_shared_after_the_review_is_its_own_bubble
-         O4 -> test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
-         O5 -> test_the_summary_and_its_ask_sort_under_the_walk
+         O4 -> test_the_summary_knows_the_talk_and_no_settings_ask_follows
+         O5 -> test_the_summary_and_the_goodbye_sort_under_the_walk
          O6 -> test_the_summary_points_back_to_an_older_take_never_this_one,
                test_a_take_not_in_force_never_reaches_the_summary,
                test_a_failing_or_slow_lookup_leaves_the_summary_as_today,
                test_an_earlier_take_with_a_number_still_falls_back_to_the_signed_copy
 WHY      Never-rule 1; founder lock 2026-10-12 (section 3) and 2026-10-14;
          founder 2026-10-20 (the chat keeps the order it shows; one action
-         at a time).
+         at a time); 2026-10-31 (N294: no push, settings at the next visit).
 """
 from services import take_summary
 from services.journey_messages import _COPY
@@ -185,38 +186,36 @@ def test_a_coach_word_shared_after_the_review_is_its_own_bubble(monkeypatch):
     assert changed["metadata"]["edited"] is True and "edited" not in first["metadata"]
 
 
-def test_the_summary_knows_the_talk_and_asks_for_whatsapp_once(monkeypatch):
+def test_the_summary_knows_the_talk_and_no_settings_ask_follows(monkeypatch):
     """Founder 2026-10-14: the bubble is about their talk (its title, its
-    slides, what they said, their most confident moment), praises only
-    through the signed lines, and a speaker without a WhatsApp number gets
-    the Lounge's WhatsApp offer right after it."""
+    slides, what they said, their most confident moment) and praises only
+    through the signed lines. A speaker without a WhatsApp number is no
+    longer asked for it after the Take (founder 2026-10-31, N294 item 8):
+    with nothing to ask, the goodbye comes at once."""
     db = _Db(phone=None)
     msg, seen = _run(db, monkeypatch, "Churn in Q3, nailed it! Now record take three.")
     facts = " ".join(seen["facts"])
     assert 'called "Churn in Q3"' in facts and "Why churn fell" in facts
     assert 'most confident moment this Take: "Our churn fell because we listened."' in facts
     assert seen["signed"] and all(line in take_summary.line_bank_lines() for line in seen["signed"][:4])
-    offers = [r for r in db.rows.values() if (r.get("metadata") or {}).get("offer") == "whatsapp"]
-    assert msg["metadata"]["summary"] is True and len(offers) == 1
-    # The summary is drawn at once; the closing message waits under the ask
-    # (founder 2026-10-20, N89).
-    assert "held_for" not in msg["metadata"]
+    assert msg["metadata"]["summary"] is True and "held_for" not in msg["metadata"]
+    assert not [r for r in db.rows.values() if (r.get("metadata") or {}).get("offer")]
     closing = next(r for r in db.rows.values() if (r.get("metadata") or {}).get("next_take"))
-    assert closing["metadata"]["held_for"] == "whatsapp" and closing["metadata"]["chain"] == []
+    assert closing["body"] == "Good job. See you next time." and "held_for" not in closing["metadata"]
 
 
-def test_the_summary_and_its_ask_sort_under_the_walk(monkeypatch):
+def test_the_summary_and_the_goodbye_sort_under_the_walk(monkeypatch):
     """The walk's steps carry the browser's time; an hour ahead here."""
     from datetime import datetime, timedelta, timezone
     ahead = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
     db = _Db(phone=None)
-    db.get_lounge_messages_page = lambda user_id, limit, before=None: [
-        {"client_id": "step", "kind": "walk_step", "client_created_at": ahead}]
+    step = {"client_id": "step", "kind": "walk_step", "client_created_at": ahead}
+    db.get_lounge_messages_page = lambda user_id, limit, before=None: sorted(
+        [step, *db.rows.values()], key=lambda r: r["client_created_at"], reverse=True)[:limit]
     msg, _ = _run(db, monkeypatch, "Churn in Q3, nailed it! Now record take three.")
-    ask = next(r for r in db.rows.values() if (r.get("metadata") or {}).get("offer"))
     closing = next(r for r in db.rows.values() if (r.get("metadata") or {}).get("next_take"))
     at = datetime.fromisoformat
-    assert at(ahead) < at(msg["client_created_at"]) < at(closing["client_created_at"]) < at(ask["client_created_at"])
+    assert at(ahead) < at(msg["client_created_at"]) < at(closing["client_created_at"])
 
 
 def test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy():

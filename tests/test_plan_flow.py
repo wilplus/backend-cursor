@@ -16,8 +16,11 @@ OUTCOME
       kickoff call is offered, then the summary call; skipping both still
       gives "You're all set. Here's your plan." and the card.
   O6  On a practice day after the first Take, the first open writes the
-      hello and today's one thing, once; after a Take on a practice day the
-      15 minutes lines come, once.
+      hello and today's one thing, once; after a Take on a practice day
+      "That's your 15 minutes for today." comes, once, and nothing under it
+      (N319 item 4); the chat's goodbye names the plan's next practice day,
+      and the plan's progress comes as one bubble, "1 of 9 practices done."
+      with what its bar draws, once per Take (N319 item 7).
   O7  A new project's first Take asks "Is this for {date}?"; Yes keeps the
       plan, No starts "When is your deadline?" for a new one, the old plan
       kept in the history.
@@ -271,11 +274,19 @@ def test_a_practice_day_hello_and_the_fifteen_minutes(db, monkeypatch):
     today = datetime.now(timezone.utc).date()
     monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: True)
     F.after_take(db, USER)
-    assert bodies(db)[-2:] == ["That's your 15 minutes for today.",
-                               "Now go and live it, away from the phone."]
+    assert bodies(db)[-1] == "That's your 15 minutes for today."
+    assert "Now go and live it, away from the phone." not in bodies(db)
     n = len(db.thread)
     F.after_take(db, USER)
     assert len(db.thread) == n  # once a day
+    # Under the goodbye: the next practice day by its name, then the progress.
+    nxt = P.next_practice_day(today, date.fromisoformat(plan["deadline"]), [1, 3, 5], False)
+    assert F.next_day_name(db, USER) == P.DAYS[nxt.weekday()]
+    progress = F.progress(db, USER)
+    assert [r["body"] for r in progress] == ["1 of 9 practices done."]
+    meta = progress[0]["metadata"]
+    assert (meta["plan_progress"], meta["done"], meta["total"]) == (True, 1, 9)
+    assert F.progress(db, USER) == []  # once per Take
     # The next practice day: the hello and today's one thing, once.
     monkeypatch.setattr(F, "today_in", lambda name: today + timedelta(days=2))
     out = F.state(db, USER, tz="UTC", first_name="Artur")
