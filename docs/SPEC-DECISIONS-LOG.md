@@ -9003,3 +9003,41 @@ the treatment first this time.").
 No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration.
+
+**N345 · Practice stays in Will's chat; a sent answer can be undone for 5
+seconds (founder, the Claude Code chat, 2 November 2026, asked to choose
+between practice in Will's chat and a private layer in the customer's chat:
+"What's the best designer in the world? How would you design? Which one
+would you choose?", on Claude's answer: "log it and show it on the
+prototype").** For N336, N343 and N344:
+1. **Practice stays in Will's chat** (N344): it keeps N343 whole (each chat
+holds only you and that one person), no practice can be mistaken for a
+message the other person sees, and Will's chat stays the one place to get
+better. One tap there ("Practise with Will"), one tap back ("Back to
+{name}"); the practice opens on that person's question.
+2. **A 5-second Undo.** Finish take still sends it (N336); for 5 seconds the
+answer reads "Sending to {name}…" with "Undo", which throws it away before
+the person sees it. Not a review: nothing to decide, and it goes on its own.
+3. Signed (Never 4): "Sending to {name}…", "Undo".
+The prototype: <https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>, version
+39. No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
+
+**N346 · The expert's check moves to the team's answer (founder, the same
+chat, 2 November 2026, on the same answer).** For N330, N333 and N336:
+1. **No check of a customer's answer after it is recorded:** Finish take
+sends it (N336), so there is no moment for one. What to say is checked
+before recording, by "Consult with someone first" (N343).
+2. **The team's answer is checked** (N330): once saved, Will offers "Ask
+{name}? {Name} has answered questions about {topic} before." ("Not now",
+"Ask {name}"). The expert gets it in the chat with the speaker as one message,
+"Is this good? The team's answer: {topic}", with Will's pointer to the one
+risky moment, and answers with 👍 or a voice note placed on its slide (N333).
+A mistake in the team's answer repeats each time it is played; this is where
+the expert's check pays.
+3. Was (N333): the check of a Take for a customer, before it was sent.
+4. Signed (Never 4): "Is this good? The team's answer: {topic}".
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+when built. No migration.
