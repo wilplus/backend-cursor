@@ -27,6 +27,7 @@ remediation decision (C4). Git history keeps ``services/key_points.py``.
 from __future__ import annotations
 
 import copy
+import functools
 import logging
 from time import perf_counter
 from dataclasses import dataclass
@@ -159,17 +160,6 @@ _MEMO_READS = frozenset({
 })
 #: The sub-repositories reached as `db.takes.<read>` / `db.ideal_text.<read>`.
 _MEMO_REPOSITORIES = frozenset({"takes", "ideal_text"})
-
-
-def _once(read: Callable[[], Any]) -> Callable[[], Any]:
-    """``read``, asked at most once: later calls give its first answer."""
-    held: list = []
-
-    def answer() -> Any:
-        if not held:
-            held.append(read())
-        return held[0]
-    return answer
 
 
 class _ReadMemo:
@@ -1679,7 +1669,8 @@ class _ChangesRun:
                 # What the Take is for: its key line and call to action
                 # count for more in the pick (N293).
                 "context": take_context.for_take(self.db, self.user_id, session),
-                "tempo_step": _once(lambda: tempo_on_for(self.user_id, database=self.db)),
+                "tempo_step": functools.cache(
+                    lambda: tempo_on_for(self.user_id, database=self.db)),
                 # What the speaker noted themselves weighs the between
                 # (N326); nothing when no read reached this Take.
                 "verbal": verbal_read.for_pick(self.db, self.user_id, session)}

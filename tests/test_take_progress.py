@@ -7,26 +7,27 @@ OUTCOME
       a later Take that sounds stronger than those reads higher, even when
       it is no stronger than their recent Takes; with too few first Takes
       it is not measured.
-  O2  The fixes a Take gave (the weakest and the one between, and its tempo
-      stretch) are each marked came back or gone on the next Take of the
-      talk, same slide; not measured when that slide is not in it.
+  O2  The fixes a Take gave (the weakest and the one between) are each
+      marked came back or gone on the next Take of the talk, same slide; not
+      measured when that slide is not in it.
   O3  The One thing walk opens with the last Take's fix when it rose
       (N309): its kind and slide, and this Take's best clip there, played
       by a signed link; nothing when it came back or there is no Take
       before.
-  O4  When the last walk's fix was the pace game, it rose when that slide
-      came out slower in this Take, read as the tempo step reads it, and
-      the walk opens with it the same way; nothing when it did not
-      (N347 item 3).
+  O4  The pace game's fix worked when every clip on that slide in the next
+      Take stays inside the green on the side the stretch leaned, the bar
+      that picks a stretch: the Takes table marks it gone and the walk opens
+      with it as the last fix; slower but still outside the green, it came
+      back and nothing is said (N347 item 3, N350 item 3).
 PROVES   O1 -> test_progress_is_read_against_my_first_takes
          O2 -> test_each_fix_is_marked_came_back_or_gone_on_the_next_take
          O3 -> test_last_time_plays_the_fix_that_rose_on_this_take
-         O4 -> test_last_time_after_the_pace_game_when_that_slide_came_out_slower
+         O4 -> test_the_pace_fix_worked_when_that_slide_stays_inside_the_green
 WHY      Founder 2026-10-31 (N291: "yes"; "ok go with the proposal"; N290:
          "the next time it chooses a moment it should take into account
          what the user answered"; N309 item 1: "Last time: {the tip}. You
          did."; N347 item 3: "Every fix gets its Last time, the pace game
-         too").
+         too"; N350 item 3: one rule for "the pace fix worked").
 """
 from unittest.mock import patch
 
@@ -135,7 +136,7 @@ def _spoken(clip_id, start, n, *, word_s, gap_s, slide_words=_WORDS):
     return clip, t
 
 
-def test_last_time_after_the_pace_game_when_that_slide_came_out_slower():
+def test_the_pace_fix_worked_when_that_slide_stays_inside_the_green():
     # The last walk fixed no moment: its fix was the pace game, on slide 2,
     # where thirty seconds ran on without a pause.
     before = _frame({"slide_index": 1, "walk_slot": "strongest", "carries_exercise": False, "snippet_ids": ["a"]},
@@ -144,8 +145,10 @@ def test_last_time_after_the_pace_game_when_that_slide_came_out_slower():
     calm, end = _spoken("a", 0, 8, word_s=0.3, gap_s=0.5)
     rushed, _ = _spoken("b", end + 1, 120, word_s=0.2, gap_s=0.05)
     calm_now, end = _spoken("n1", 0, 8, word_s=0.3, gap_s=0.5)
-    slower, _ = _spoken("n2", end + 1, 60, word_s=0.3, gap_s=0.3)
-    same, _ = _spoken("n2", end + 1, 120, word_s=0.2, gap_s=0.05)
+    inside, _ = _spoken("n2", end + 1, 60, word_s=0.3, gap_s=0.3)
+    still_out, _ = _spoken("n2", end + 1, 90, word_s=0.2, gap_s=0.1)
+    (fix,) = fixes_of(before, [calm, rushed])
+    assert (fix["kind"], fix["slide_index"]) == ("tempo", 2)
 
     class Db:
         def __init__(self, clips):
@@ -159,9 +162,12 @@ def test_last_time_after_the_pace_game_when_that_slide_came_out_slower():
 
     with patch("services.audio_ref_resolver.resolve_playable_ref",
                lambda ref, expires_in=None, **_: f"https://signed.example/{ref}"):
-        # Slide 2 came out slower: the pace game rose, played with this
-        # Take's clip there.
-        last = last_fix(Db([calm_now, slower]), "t2", "t1")
+        # Slide 2 back inside the green: the fix worked, in the Takes table
+        # and in the walk, played with this Take's clip there.
+        assert outcome(fix, now, [calm_now, inside]) == GONE
+        last = last_fix(Db([calm_now, inside]), "t2", "t1")
         assert (last["kind"], last["slide_index"], last["clip"]["snippet_id"]) == ("tempo", 2, "n2")
-        # As rushed as before: nothing is said.
-        assert last_fix(Db([calm_now, same]), "t2", "t1") is None
+        # Slower than before but still past the green: it came back, and
+        # nothing is said.
+        assert outcome(fix, now, [calm_now, still_out]) == CAME_BACK
+        assert last_fix(Db([calm_now, still_out]), "t2", "t1") is None

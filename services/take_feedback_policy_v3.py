@@ -702,25 +702,41 @@ def willfidence_level_key(value) -> str | None:
     return "W1"
 
 
-def _gate_clearer(block: dict, ranked: list[dict],
-                  rows_by_id: dict) -> list[dict]:
-    """The exercise block's rewrite that passes the gate (founder
-    2026-10-18, `services.rewrite_gate`), as a one-row ranking, best first;
-    [] when none does, and the block goes to the voice exercise. The
-    refusals are counted in the log, never served."""
-    from services import moment_pick
+def _rows_by_id(rewrite_rows: Any) -> dict:
+    return {str(r.get("id")): r for r in rewrite_rows or [] if isinstance(r, dict)}
+
+
+def _passing_rewrite(block: dict, ranked: list[dict], rows_by_id: dict, clip_span: Any,
+                     refused: Optional[dict] = None) -> Optional[dict]:
+    """The best-ranked rewrite inside ``block`` that passes the gate with
+    the clip at ``clip_span`` shown (founder 2026-10-18,
+    `services.rewrite_gate`); None when none does. ``refused`` counts the
+    refusals by reason. The one rewrite check: the shown block's
+    (`_gate_clearer`) and the verbal read's pick's (`_clearer_check`)."""
     from services.rewrite_gate import rewrite_refusal
-    chosen = _selected_candidate(block) or {}
-    clip_span = chosen.get("document_span")
-    refused: dict[str, int] = {}
     for item in ranked:
         row = rows_by_id.get(str(item.get("candidate_id") or ""))
-        if row is None:
+        if row is None or not _inside(item.get("document_span"), block):
             continue
         reason = rewrite_refusal(row, item, clip_span)
         if reason is None:
-            return [item]
-        refused[reason] = refused.get(reason, 0) + 1
+            return item
+        if refused is not None:
+            refused[reason] = refused.get(reason, 0) + 1
+    return None
+
+
+def _gate_clearer(block: dict, ranked: list[dict],
+                  rows_by_id: dict) -> list[dict]:
+    """The exercise block's rewrite that passes the gate, as a one-row
+    ranking; [] when none does, and the block goes to the voice exercise.
+    The refusals are counted in the log, never served."""
+    from services import moment_pick
+    refused: dict[str, int] = {}
+    item = _passing_rewrite(block, ranked, rows_by_id,
+                            (_selected_candidate(block) or {}).get("document_span"), refused)
+    if item is not None:
+        return [item]
     block["exercise_kind"] = moment_pick.EXERCISE_VOICE
     logger.info("rewrite gate: no rewrite passed block=%s refused=%s",
                 block.get("block_id"), refused or "none")
@@ -821,8 +837,9 @@ def _heard_weights(verbal: Any, rewrite_ranked: list[dict],
     on a Take whose feedback is not frozen yet, the weights this run's read
     gave (``verbal["lifts"]``); on a frozen Take, the clip holding the
     frozen Clearer version, at the full weight, for a speaker the read
-    reaches (``verbal["pin"]()``), so every later read of the Take keeps the
-    walk it froze. {} when there is no read. Never raises."""
+    reaches (``verbal["pin"]()``, asked only when there is one), so every
+    later read of the Take keeps the walk it froze. {} when there is no
+    read. Never raises."""
     if not isinstance(verbal, dict):
         return {}
     try:
@@ -830,11 +847,11 @@ def _heard_weights(verbal: Any, rewrite_ranked: list[dict],
         if not frozen:
             lifts = verbal.get("lifts")
             return dict(lifts) if isinstance(lifts, dict) else {}
-        pin = verbal.get("pin")
-        if not callable(pin) or not pin():
-            return {}
         spans = [item.get("document_span") for item in rewrite_ranked
                  if str(item.get("candidate_id") or "") in frozen]
+        pin = verbal.get("pin")
+        if not spans or not callable(pin) or not pin():
+            return {}
         return {str(clip["snippet_id"]): 1.0 for block in blocks
                 for clip in block.get("confidence_candidates") or []
                 if any(_inside(span, clip.get("document_span") or {}) for span in spans)}
@@ -848,18 +865,9 @@ def _clearer_check(rewrite_ranked: list[dict], rewrite_rows: Any
     """Would a block's moment, shown with ``candidate``'s clip, open on a
     Clearer version that passes the gate? The same check `_gate_clearer`
     makes once the clip is shown (N326, `_heard_pick`)."""
-    from services.rewrite_gate import rewrite_refusal
-    rows_by_id = {str(r.get("id")): r for r in rewrite_rows or [] if isinstance(r, dict)}
-
-    def passes(block: dict, candidate: dict) -> bool:
-        span = candidate.get("document_span")
-        for item in rewrite_ranked:
-            row = rows_by_id.get(str(item.get("candidate_id") or ""))
-            if row is not None and _inside(item.get("document_span"), block) \
-                    and rewrite_refusal(row, item, span) is None:
-                return True
-        return False
-    return passes
+    rows_by_id = _rows_by_id(rewrite_rows)
+    return lambda block, candidate: _passing_rewrite(
+        block, rewrite_ranked, rows_by_id, candidate.get("document_span")) is not None
 
 
 def _level_pick(reads: list[dict], showable: list[tuple], snippet_map: dict,
@@ -1142,13 +1150,11 @@ def _gate_exercise(blocks: list[dict],
     one rewrite per such block (founder 2026-10-20: two corrections when
     both shown moments are weak)."""
     from services import moment_pick
-    rows_by_id = {str(r.get("id")): r for r in rewrite_rows or [] if isinstance(r, dict)}
+    rows_by_id = _rows_by_id(rewrite_rows)
     pool: list[dict] = []
     for block in blocks:
         if block["carries_exercise"] and block["exercise_kind"] == moment_pick.EXERCISE_CLEARER:
-            pool.extend(_gate_clearer(block, [
-                item for item in rewrite_ranked or []
-                if _inside(item.get("document_span"), block)], rows_by_id))
+            pool.extend(_gate_clearer(block, rewrite_ranked or [], rows_by_id))
     return pool
 
 

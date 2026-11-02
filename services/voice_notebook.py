@@ -36,7 +36,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,39 @@ def _crisis(text: str) -> Optional[str]:
 
 def reply_to(text: str) -> str:
     return _crisis(text) or COPY["noted"]
+
+
+#: The # notes the walk reads, for its quotes (N268) and its pick (N326
+#: item 3): the last 60 days, one window for both.
+WALK_LOOKBACK = timedelta(days=60)
+_WALK_NOTES = 40
+
+
+def _day(raw: Any) -> Optional[str]:
+    try:
+        return date.fromisoformat(str(raw or "")[:10]).isoformat()
+    except ValueError:
+        return None
+
+
+def recent_notes(database: Any, user_id: Any, *, clip: int,
+                 now: Optional[datetime] = None) -> list[dict]:
+    """The # notes the walk may read, oldest first: ``[{"id", "on", "text"}]``
+    from the newest ``_WALK_NOTES``, those of the last ``WALK_LOOKBACK``,
+    each its words clipped to ``clip`` characters without the "#" and its
+    day; a note that sounds like a crisis is left out. The one reader for the
+    walk's pick (``services.inner_context``) and its quotes
+    (``services.walk_quote``). Reads the notes only: the ring row and the
+    consent are each caller's."""
+    since = ((now or datetime.now(timezone.utc)) - WALK_LOOKBACK).date().isoformat()
+    out = []
+    for note in database.list_voice_notes(str(user_id), limit=_WALK_NOTES) or []:
+        raw = note.get("text_clean")
+        text = " ".join(raw.split())[:clip].lstrip("#").strip() if isinstance(raw, str) else ""
+        on = _day(note.get("created_at"))
+        if text and on and on >= since and not _crisis(text):
+            out.append({"id": str(note.get("id") or "") or None, "on": on, "text": text})
+    return out
 
 
 def _save(database: Any, user_id: str, source: str, text: str, *,

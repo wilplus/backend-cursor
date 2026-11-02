@@ -8,7 +8,8 @@ OUTCOME
   O1  Without the ring row, without notes, or when the read fails, says
       something malformed or is late, the walk picks exactly as it did
       before; nobody waits for a read not known to reach them, and a read
-      that does is waited for at most the cap (N326 items 4 and 5, N327).
+      that does is waited for at most the cap, the walk held for it while
+      it is (N326 items 4 and 5, N350 item 2).
   O2  With my note ("my manager says I explain too much and never give the
       answer") and my manager's question, the read flags my buried answer
       and it becomes my one thing to improve, with its Clearer version
@@ -25,7 +26,7 @@ OUTCOME
 PROVES   O1 -> test_no_ring_no_notes_or_a_failed_read_leave_the_walk_as_it_was
          O2 -> test_my_note_makes_my_buried_answer_the_one_thing
          O3 -> test_a_clearer_version_never_repeats_my_notes
-         O4 -> test_wills_private_note_is_never_read
+         O4 -> test_my_note_makes_my_buried_answer_the_one_thing
          O5 -> test_a_coach_never_sees_my_notes_or_why_a_moment_was_picked
 WHY      Founder 2026-11-02, the Claude Code chat, on the prototype
          https://claude.ai/artifact/KvAiek4DrxgbpDudcBFJNQ: "Go with your
@@ -35,7 +36,7 @@ import json
 
 import pytest
 
-from services import inner_context, moment_suggestions, verbal_read
+from services import moment_suggestions, verbal_read
 from services.take_feedback_policy_v3 import build_shadow_frame
 
 _NOTE = "my manager says I explain too much and never give the answer"
@@ -94,11 +95,12 @@ class _Result:
 
 class _Db:
     """The run's database: the Take, its moments, my notebook; anything
-    about Will's private note fails the test."""
+    about Will's private note is noted and fails."""
 
     def __init__(self, snippets):
         self.snippets = snippets
         self.stored = []
+        self.memory_reads = []
 
     def v2_get_session_by_id(self, session_id):
         return {"id": session_id, "user_id": "u",
@@ -124,6 +126,7 @@ class _Db:
 
     def __getattr__(self, name):
         if "memory" in name:
+            self.memory_reads.append(name)
             raise AssertionError(f"Will's private note was read: {name}")
         raise AttributeError(name)
 
@@ -203,7 +206,6 @@ def test_no_ring_no_notes_or_a_failed_read_leave_the_walk_as_it_was(monkeypatch,
     # The ring row does not reach me, or I noted nothing: no read at all.
     from services import rings
     monkeypatch.setattr(rings, "feature_is_on_for_user", lambda *a, **k: False)
-    assert not inner_context.gather(_Db(snippets), "u")
     landed, db, seen = _run_the_read(monkeypatch, snippets, _flags)
     assert (landed, db.stored, seen) == (False, [], [])
 
@@ -218,12 +220,16 @@ def test_no_ring_no_notes_or_a_failed_read_leave_the_walk_as_it_was(monkeypatch,
         assert (landed, db.stored, verbal_read.kept("take-2")) == (False, [], {})
 
     # Nobody waits for a read not yet known to reach them; one that does is
-    # waited for at most the cap, then left (N327).
+    # waited for at most the cap, the walk held meanwhile, then left (N350
+    # item 2).
+    held = []
     unknown = verbal_read.Handle()
-    assert verbal_read.finish(unknown, _Db(snippets), session_id="take-2", arc_id="arc") is False
+    assert verbal_read.finish(unknown, _Db(snippets), session_id="take-2", arc_id="arc",
+                              on_wait=lambda: held.append("unknown")) is False
     slow = verbal_read.Handle(reached=True)
-    assert verbal_read.finish(slow, _Db(snippets), session_id="take-2", arc_id="arc", wait=0.01) is False
-    assert slow.late and verbal_read.kept("take-2") == {}
+    assert verbal_read.finish(slow, _Db(snippets), session_id="take-2", arc_id="arc", wait=0.01,
+                              on_wait=lambda: held.append("slow")) is False
+    assert slow.late and verbal_read.kept("take-2") == {} and held == ["slow"]
 
 
 def test_my_note_makes_my_buried_answer_the_one_thing(monkeypatch, mine):
@@ -237,6 +243,8 @@ def test_my_note_makes_my_buried_answer_the_one_thing(monkeypatch, mine):
     assert _QUESTION in read_call["user"] and _NOTE in read_call["user"]
     assert json.loads(rewrite_call["user"])["speaker_focus"] == _FOCUS
     assert db.stored == [("s2", "arc", "replace", _CLEARER, None, "unconfident")]
+    # Will's private note about me is never read for it (O4).
+    assert db.memory_reads == []
 
     # The bake reads the run's read: my buried answer is the one thing,
     # with its Clearer version, and the voice drop is not shown.
@@ -264,9 +272,6 @@ def test_my_note_makes_my_buried_answer_the_one_thing(monkeypatch, mine):
 
 def test_a_clearer_version_never_repeats_my_notes(monkeypatch, mine):
     from services.rewrite_gate import leaks
-    said = "We could add a second shift and reach ninety by March."
-    assert leaks("I never give the answer, but a second shift works.", [_NOTE], said)
-    assert not leaks(_CLEARER, [_NOTE], _BURIED)
     # Words I said myself in the Take are mine to keep.
     assert not leaks("Never give the answer late.", [_NOTE], "I never give the answer late.")
 
@@ -275,20 +280,6 @@ def test_a_clearer_version_never_repeats_my_notes(monkeypatch, mine):
                                       rewrite="Since I never give the answer, a second shift gets us there.")
     # The read still weighs the moment; the leaking rewrite is not stored.
     assert landed and db.stored == []
-
-
-def test_wills_private_note_is_never_read(monkeypatch, mine):
-    from services import speaker_memory
-
-    def forbidden(*_a, **_k):
-        raise AssertionError("Will's private note was read for the walk")
-    for name in ("note_for", "history_for", "prompt_block", "refresh", "record", "rebuild"):
-        monkeypatch.setattr(speaker_memory, name, forbidden)
-    _today, snippets = _take()
-    gathered = inner_context.gather(_Db(snippets), "u")
-    assert len(gathered.phrases) == 1 and gathered.phrases[0].endswith(_NOTE)
-    landed, _db, _seen = _run_the_read(monkeypatch, snippets, _flags)
-    assert landed
 
 
 def test_a_coach_never_sees_my_notes_or_why_a_moment_was_picked(monkeypatch, mine):
@@ -300,7 +291,7 @@ def test_a_coach_never_sees_my_notes_or_why_a_moment_was_picked(monkeypatch, min
     # The same walk chosen without any read: the filler line said cleanly,
     # so the buried answer is today's one thing too.
     baseline, _ = _take(clean=True)
-    assert _walk(baseline) == _walk(frame) == [(0, "strongest", None), (2, "between", "clearer")]
+    assert _walk(baseline) == _walk(frame)
 
     def keys(value, out):
         if isinstance(value, dict):

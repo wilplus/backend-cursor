@@ -772,6 +772,24 @@ def bake_now(arc_id: Any, actor_id: Any, recording_kind: Any) -> bool:
         return False
 
 
+#: How long a run holds the reader before its own bake (`hold_for_bake`):
+#: the verbal read's wait and the head read, well under a queued bake's.
+BAKE_HOLD_TTL_SECONDS = 15
+
+
+def hold_for_bake(arc_id: Any, actor_id: Any) -> None:
+    """The run bakes this document next, after the verbal read's short wait
+    (N350 item 2): until the bake marks itself running, the reader answers
+    "pending" (the "queued" mark) rather than running the Manager live
+    beside it, without the read. The mark expires on its own after
+    ``BAKE_HOLD_TTL_SECONDS``, so a bake that never starts frees the reader.
+    Never raises."""
+    arc = str(arc_id or "")
+    actor = str(actor_id or "")
+    if arc and actor and _bake_enabled():
+        _mark(_queued_key(arc, actor), BAKE_HOLD_TTL_SECONDS)
+
+
 def bake_after_ready(arc_id: Any, actor_id: Any, recording_kind: Any, *,
                      flipped: bool) -> bool:
     """The one call at the end of the analysis run: the bake in the run when

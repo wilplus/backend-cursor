@@ -25,12 +25,13 @@ speaker's processing authorization like every other provider call there
 (``analysis_worker.run_full_analysis``): ``start`` begins it on a thread
 that keeps the run's context (``parallel.start_scoped_thread``) as the
 feedback moments are found, so it runs beside them, the Ideal Text and the
-KPI fold; ``finish`` waits for it at most ``JOIN_SECONDS`` before the Take
-is flipped ready, then stores its Clearer versions and keeps its weights in
-this process for the run's own bake (``for_pick``). Late or failed: nothing
-is stored and the walk picks as it does today. The wait is the founder's
-exception to "the loop never waits" (N327): at most 5 seconds, and only for a
-speaker the read reaches; for everyone else it stops at the ring check.
+KPI fold; ``finish`` waits for it at most ``JOIN_SECONDS`` after the Take is
+flipped ready and before the walk's bake, then stores its Clearer versions
+and keeps its weights in this process for the run's own bake (``for_pick``).
+Late or failed: nothing is stored and the walk picks as it does today.
+"Ready" never waits for it (N350 item 2): the Ideal Text opens at once, and
+the walk may open up to 5 seconds later, only for a speaker the read
+reaches; for everyone else it stops at the ring check.
 
 WHAT IS KEPT. Nothing new in the database: the weights live in memory for
 the run, and a later read of a frozen Take keeps its walk from the frozen
@@ -40,6 +41,7 @@ coach or a screen (Never 1, Never 2).
 """
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import threading
@@ -58,7 +60,8 @@ _MAX_MOMENTS = 40
 _MAX_TEXT = 400
 _MAX_OUTSIDE = 600
 _MAX_FOCUS = 200
-#: The longest the run waits for the read before the Take is ready.
+#: The longest the run waits for the read, after the Take is ready and
+#: before the walk's bake (N350 item 2).
 JOIN_SECONDS = 5.0
 #: How long this process keeps a read's weights for the run's bake.
 _KEEP_SECONDS = 900.0
@@ -174,7 +177,7 @@ class Handle:
     result: Optional[dict] = None
     late: bool = False
     #: The ring row and the notes reach this speaker: only then may the run
-    #: wait for the read (N327 item 3).
+    #: wait for the read (N350 item 2).
     reached: bool = False
 
 
@@ -228,19 +231,24 @@ def start(database: Any, *, session_id: Any, arc_id: Any, user_id: Any,
 
 
 def finish(handle: Optional[Handle], database: Any, *, session_id: Any, arc_id: Any,
-           wait: float = JOIN_SECONDS) -> bool:
-    """Before the Take is ready: wait at most ``wait`` seconds, then store
-    the read's Clearer versions and keep its weights for the run's bake.
-    False when there was nothing, or it was late (then nothing is kept and
-    the walk picks as it does today). Never raises."""
+           wait: float = JOIN_SECONDS,
+           on_wait: Optional[Callable[[], None]] = None) -> bool:
+    """After the Take is ready, before the walk's bake: wait at most
+    ``wait`` seconds, then store the read's Clearer versions and keep its
+    weights for the run's bake. ``on_wait``, which never raises, is called
+    first, only when the run is about to wait. False when there was nothing,
+    or it was late (then nothing is kept and the walk picks as it does
+    today). Never raises."""
     if handle is None:
         return False
     try:
-        # Nobody waits for a read not yet known to reach the speaker (N327
-        # item 3): a slow ring lookup never holds anyone's "ready".
+        # Nobody waits for a read not yet known to reach the speaker (N350
+        # item 2): a slow ring lookup never holds anyone's walk.
         if not handle.done.is_set() and not handle.reached:
             handle.late = True
             return False
+        if not handle.done.is_set() and wait > 0 and on_wait is not None:
+            on_wait()
         if not handle.done.wait(max(0.0, wait)):
             handle.late = True
             logger.info("verbal read: late take=%s, the walk picks as today", session_id)
@@ -279,25 +287,13 @@ def kept(session_id: Any) -> dict:
 
 def for_pick(database: Any, user_id: Any, session: Any) -> Optional[dict]:
     """What the frame reads (`take_feedback_policy_v3.build_shadow_frame`'s
-    ``verbal``): this run's weights (``lifts``) and, for a frozen Take, a
-    question asked only then, whether the read reaches this speaker
-    (``pin``). None without a Take or a person."""
+    ``verbal``): this run's weights (``lifts``) and, for a frozen Take with a
+    frozen Clearer version, a question asked only then and once, whether the
+    walk's ring row reaches this speaker (``pin``, the ring check alone). None
+    without a Take or a person."""
     take_id = str((session or {}).get("id") or "") if isinstance(session, dict) else ""
     if not take_id or not user_id:
         return None
-    return {"lifts": kept(take_id), "pin": _once(lambda: _reaches(database, user_id))}
-
-
-def _reaches(database: Any, user_id: Any) -> bool:
     from services import inner_context
-    return bool(inner_context.gather(database, user_id))
-
-
-def _once(fn: Callable[[], bool]) -> Callable[[], bool]:
-    box: list = []
-
-    def call() -> bool:
-        if not box:
-            box.append(bool(fn()))
-        return box[0]
-    return call
+    return {"lifts": kept(take_id),
+            "pin": functools.cache(lambda: inner_context.reaches(database, user_id))}

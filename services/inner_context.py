@@ -11,8 +11,9 @@ where its own ring row and consent already reach them:
   * their kept strengths (ring ``strengths``, status ``kept``);
   * their life goals (ring ``life_goals``);
   * Your why (ring ``your_why``);
-  * their # notes from the last 60 days, the window the walk's quotes use
-    (N268), with the notebook's yes (ring ``voice_notebook``).
+  * their # notes from the last 60 days, read as the walk's quotes read
+    them (``voice_notebook.recent_notes``, N268), with the notebook's yes
+    (ring ``voice_notebook``).
 
 Behind the walk's own ring row, ``walk_inner_context`` (N326 item 4: the
 founder first, at ring 6; no row is off for everyone). Never Will's private
@@ -29,13 +30,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-#: The # notes the walk reads: the last 60 days (N326 item 3, as N268).
-LOOKBACK = timedelta(days=60)
 _MAX_NOTES = 12
 _MAX_PRINCIPLES = 8
 _MAX_STRENGTHS = 8
@@ -73,13 +72,6 @@ def reaches(database: Any, user_id: Any) -> bool:
 
 def _clip(value: Any, limit: int = _MAX_LINE) -> str:
     return " ".join(value.split())[:limit] if isinstance(value, str) else ""
-
-
-def _day(raw: Any) -> Optional[str]:
-    try:
-        return date.fromisoformat(str(raw or "")[:10]).isoformat()
-    except ValueError:
-        return None
 
 
 def _principles(user_id: str) -> list[str]:
@@ -131,14 +123,8 @@ def _notes(database: Any, user_id: str, now: datetime) -> list[str]:
     if not (voice_notebook.enabled(database, user_id)
             and voice_notebook.consented(database, user_id)):
         return []
-    since = (now - LOOKBACK).date().isoformat()
-    out = []
-    for note in database.list_voice_notes(user_id, limit=40) or []:
-        text = _clip(note.get("text_clean")).lstrip("#").strip()
-        on = _day(note.get("created_at"))
-        if text and on and on >= since and not voice_notebook._crisis(text):
-            out.append((on, text))
-    return [f"({on}) {text}" for on, text in out[-_MAX_NOTES:]]
+    notes = voice_notebook.recent_notes(database, user_id, clip=_MAX_LINE, now=now)
+    return [f"({note['on']}) {note['text']}" for note in notes[-_MAX_NOTES:]]
 
 
 def _part(label: str, lines: list[str]) -> str:

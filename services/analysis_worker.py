@@ -358,8 +358,9 @@ def _run_full_analysis_impl(
                 # the walk's ring row reaches, one read of the Take against
                 # its set-up and their own notes, beside the moments, the
                 # Ideal Text and the KPI fold, inside this run's
-                # authorization; waited for at most 5 s (N327) before the
-                # ready flip (`_verbal_read_lands`). Nothing for anyone else.
+                # authorization; waited for at most 5 s after the ready
+                # flip, before the walk's bake (N350 item 2,
+                # `_verbal_read_lands`). Nothing for anyone else.
                 _verbal = _verbal_read_starts(session_id, arc_id, user_id)
                 if _moment_suggestions_enabled():
                     def _moment_suggestions() -> None:
@@ -529,11 +530,6 @@ def _run_full_analysis_impl(
                 _deg.note("review_version_card", "card_not_persisted")
         _deg.run("review_version_card", _review_version_card)
 
-    # The verbal read's Clearer versions and weights land before the walk's
-    # bake reads them, or not at all (N326; never raises, waits a few
-    # seconds at most, and only for a speaker the read reaches).
-    _verbal_read_lands(_verbal, session_id, arc_id)
-
     # THE SPEAKER-FACING TERMINAL STATE (founder 2026-10-14, the wait).
     # Everything a read depends on is persisted above this line: the
     # snippets, the session globals the FE's phase gate reads, the coach
@@ -542,6 +538,14 @@ def _run_full_analysis_impl(
     # the Manager's first open reads. Everything below it is work the
     # speaker was never waiting on, so the flip comes first.
     _flip_ready(on_ready, session_id)
+
+    # The verbal read's Clearer versions and weights land after "ready" and
+    # before the walk's bake reads them, or not at all: "ready" never waits
+    # for it, and the walk may open up to 5 s later (N350 item 2). Never
+    # raises; waits only for a speaker the read reaches, and only when this
+    # run flipped ready and bakes the walk itself.
+    _verbal_read_lands(_verbal, session_id, arc_id, user_id,
+                       flipped=on_ready is not None)
 
     # THE BOOKMARKS, IN THE RUN, RIGHT AFTER READY (founder 2026-10-20; flow
     # page A2: "the moment processing finishes, the walk opens, right away,
@@ -597,15 +601,25 @@ def _verbal_read_starts(session_id: str, arc_id: Any, user_id: Any) -> Any:
         return None
 
 
-def _verbal_read_lands(handle: Any, session_id: str, arc_id: Any) -> None:
-    """Wait for the read at most ``verbal_read.JOIN_SECONDS``, then store
-    its Clearer versions and keep its weights for the bake. Late or failed:
-    the walk picks as it does today. Never raises."""
+def _verbal_read_lands(handle: Any, session_id: str, arc_id: Any,
+                       user_id: Any, *, flipped: bool) -> None:
+    """After the ready flip, before the walk's bake (N350 item 2): wait for
+    the read at most ``verbal_read.JOIN_SECONDS``, then store its Clearer
+    versions and keep its weights for the bake. While it waits, the
+    speaker's page is told the bake is on its way, so their walk is the one
+    baked with the read (`ideal_text_feedback_bake.hold_for_bake`; the
+    document's actor is the account, as a read only starts for one).
+    Without the flip (the dispatcher writes "ready" after the return) only a
+    read already done is kept, so "ready" never waits. Late or failed: the
+    walk picks as it does today. Never raises."""
     if handle is None:
         return
     try:
         from services import verbal_read
-        verbal_read.finish(handle, db, session_id=session_id, arc_id=arc_id)
+        from services.ideal_text_feedback_bake import hold_for_bake
+        verbal_read.finish(handle, db, session_id=session_id, arc_id=arc_id,
+                           wait=verbal_read.JOIN_SECONDS if flipped else 0.0,
+                           on_wait=lambda: hold_for_bake(arc_id, user_id))
     except Exception:
         logger.warning("lab: verbal read not landed sid=%s", session_id,
                        exc_info=True)

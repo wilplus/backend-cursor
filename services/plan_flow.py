@@ -17,7 +17,7 @@ kind "text"; the app draws a row by its ``metadata``):
     practice day (G13), the last practice's ratings (D1), a new event's
     questions, and a speaker with Takes but no plan asked "When is your
     deadline?" (A2); then, under the chat's closing message ("Good job. See
-    you tomorrow." or "Good job. See you {weekday}.", ``next_day_name``,
+    you tomorrow." or "Good job. See you {weekday}.", ``next_day_text``,
     N347 item 2), the plan's progress (``progress``, N319 item 7);
   * no row, the level on each Take (G10, N209): the level's own check read
     again on the Take; two in a row that reach it, or its time run out, and
@@ -1342,10 +1342,10 @@ def _active(database: Any, user_id: str) -> Optional[dict]:
     return plan if plan and plan.get("status") == "active" else None
 
 
-def next_day_name(database: Any, user_id: str) -> Optional[str]:
-    """The plan's next practice day after today as a person names it, for
-    "Good job. See you {day}." (N347 item 2): "tomorrow", else its weekday,
-    today in the plan's own time zone; None off a plan or after its last
+def next_day_text(database: Any, user_id: str) -> Optional[str]:
+    """``plan.next_day_text`` for the speaker's running plan, today in the
+    plan's own time zone, for "Good job. See you {day}." (N347 item 2):
+    "tomorrow", else its weekday; None off a plan or after its last
     practice. Best-effort: never raises."""
     try:
         plan = _active(database, user_id)

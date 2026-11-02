@@ -23,13 +23,14 @@ Life Panel's switch turns it back on.
 Ring row ``walk_quotes``, ring 5, and only with the notebook kept. The
 model call goes through ``services.llm`` like every provider call. Private:
 the Life Panel's store (services/life_store.py), never read by a coach, the
-coach's queue or the coach panel (N182, Never 2). Its 60-day window for #
-notes is the one the walk's pick reads too (N326, services/inner_context.py).
+coach's queue or the coach panel (N182, Never 2). Its # notes are those of
+the last 60 days, read as the walk's pick reads them
+(``voice_notebook.recent_notes``, N326).
 """
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -41,10 +42,8 @@ COPY = {
     "vision": "That's the voice of your 🔭 vision.",
     "yours": "You talked about the part that's yours. That's where your effort goes.",
 }
-_LOOKBACK = timedelta(days=60)
 _MAX_SAID = 600
 _MAX_NOTE = 600
-_MAX_NOTES = 40
 
 _PICK = """One speaker just practised a sentence from their talk. You get the
 sentence as they first said it, and words they keep for themselves, each with
@@ -130,7 +129,7 @@ def _day(raw: Any) -> Optional[str]:
 def _candidates(database: Any, user_id: str) -> dict[str, dict]:
     """{id: {kind, source_id, title, quote, said_on}}: only words they keep."""
     from services import life_store
-    from services.voice_notebook import _crisis
+    from services.voice_notebook import recent_notes
     out: dict[str, dict] = {}
     notes_of: dict[str, dict] = {}
     for n in life_store.strength_notes(user_id):
@@ -150,17 +149,9 @@ def _candidates(database: Any, user_id: str) -> dict[str, dict]:
     if vision:
         out["V"] = {"kind": "vision", "source_id": None, "title": None,
                     "quote": vision, "said_on": None}
-    since = (datetime.now(timezone.utc) - _LOOKBACK).date().isoformat()
-    notes = database.list_voice_notes(user_id, limit=_MAX_NOTES) or []
-    i = 0
-    for n in notes:
-        text = _clip(n.get("text_clean"), _MAX_NOTE).lstrip("#").strip()
-        on = _day(n.get("created_at"))
-        if not text or not on or on < since or _crisis(text):
-            continue
-        i += 1
-        out[f"N{i}"] = {"kind": "yours", "source_id": str(n.get("id") or "") or None,
-                        "title": None, "quote": text, "said_on": on}
+    for i, note in enumerate(recent_notes(database, user_id, clip=_MAX_NOTE), start=1):
+        out[f"N{i}"] = {"kind": "yours", "source_id": note["id"],
+                        "title": None, "quote": note["text"], "said_on": note["on"]}
     return out
 
 

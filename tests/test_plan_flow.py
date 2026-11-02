@@ -356,7 +356,7 @@ def test_a_practice_day_hello_and_the_fifteen_minutes(db, monkeypatch):
     for day, said in ((sunday, "Good job. See you tomorrow."),
                       (sunday + timedelta(days=1), "Good job. See you Wednesday.")):
         monkeypatch.setattr(F, "today_in", lambda name, day=day: day)
-        assert after_take.closing_line(F.next_day_name(db, USER)) == said
+        assert after_take.closing_line(F.next_day_text(db, USER)) == said
     # The next practice day: the hello and today's one thing, once.
     monkeypatch.setattr(F, "today_in", lambda name: today + timedelta(days=2))
     out = F.state(db, USER, tz="UTC", first_name="Artur")

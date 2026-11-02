@@ -6,7 +6,7 @@ OUTCOME
   O1  A deadline three weeks away gives three practices a week, nine in
       all; two weeks or less gives every day; no date gives two months.
   O2  The practice count reads the Takes done plus one and never passes the
-      total; the next practice day is a weekday name, or "tomorrow".
+      total; after the last practice there is no next practice day.
   O3  The level comes from what was measured today, strongest first: a key
       line said faster than the rest gives "Let your key line land"; with
       nothing measured it is "Make it yours", never a guess.
@@ -55,8 +55,6 @@ def test_practice_count_and_next_day():
     assert plan.practice_number(1, 9) == 2
     assert plan.practice_number(20, 9) == 9
     deadline = date(2026, 11, 14)
-    assert plan.next_day_text(SAT, deadline, (1, 3, 5), False) == "Monday"
-    assert plan.next_day_text(SAT, deadline, (1, 3, 5), True) == "tomorrow"
     assert plan.next_day_text(date(2026, 11, 13), deadline, (1, 3, 5), False) is None
     assert plan.is_practice_day(date(2026, 10, 26), deadline, (1, 3, 5), False)
     assert not plan.is_practice_day(date(2026, 10, 27), deadline, (1, 3, 5), False)

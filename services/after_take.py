@@ -371,15 +371,6 @@ def _applies(database: Any, user_id: str, ask: str, take: str) -> bool:
     return True
 
 
-def _plan_day(database: Any, user_id: str) -> Optional[str]:
-    try:
-        from services.plan_flow import next_day_name
-        return next_day_name(database, user_id)
-    except Exception as error:  # noqa: BLE001 -- "See you next time."
-        logger.warning("after take: plan day unread user=%s: %s", user_id, error)
-        return None
-
-
 def _plan_progress(database: Any, user_id: str) -> list[dict]:
     try:
         from services.plan_flow import progress
@@ -397,9 +388,9 @@ def end_rows(database: Any, user_id: str, row: dict, *, glad: bool = False,
     progress under it. ``row``: the closing message, let go where it was
     held (``written``) or written now. The rows written."""
     from services.lounge_messages import thread_stamp
-    from services.plan_flow import after_take as plan_after_take
+    from services.plan_flow import after_take as plan_after_take, next_day_text
     plan_rows = plan_after_take(database, user_id) if plan_after else []
-    body = closing_line(_plan_day(database, user_id))
+    body = closing_line(next_day_text(database, user_id))
     at = thread_stamp(database, user_id)
     if written:
         gone = _let_go(database, user_id, row, glad=glad, at=at, body=body)
