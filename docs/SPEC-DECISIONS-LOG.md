@@ -9256,3 +9256,65 @@ sheet with "Copy my link", as the + does. No new words.
 The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 §1 C1. No migration in this entry.
+
+**N355 · The answer page has no "What to do now" summary (founder, the
+Claude Code chat, 2 November 2026: "yes build it, drop what to do now").**
+For N336 item 2 and N333: the page someone opens from the link to an answer
+shows the answer only. Their question is first; then one message from the
+person who answered: the voice, the slides they talked over in a strip that
+follows it, and "Read it" for the words (N331), closed. Then the picks: the
+first as the one black button, the others as quiet rows. Then the bar of
+every chat (the + and three emoji, N341). No "What to do now" summary
+above the voice; it is dropped, not moved. The page looks like the app's
+chats: white, the reader's own messages orange on the right, the
+answerer's grey on the left. No new words are signed here.
+The prototype: <https://claude.ai/artifact/RWT4oazQ5VtLCZkcuuRWWB>, version
+5. No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
+No migration.
+
+**N356 · The chats' words in the ambassador prototype, signed (founder, the
+Claude Code chat, 2 November 2026: "A all, words ok, apply to main
+prototype").** Rewritten plain and short, as N200 was; for N336, N340 to
+N346, N351 and N355. **Signed (Never 4):**
+1. A colleague's question passed on: "↪ {name} asks". A customer's stays
+"↪ {name}'s question, a customer" (N343).
+2. Under a question: "Video · hears back on WhatsApp"; on the ask form's
+"Sent": "You'll hear back on WhatsApp."
+3. Will, on a question that keeps coming (N330): "Three people asked this
+month whether AI can pick quotes."; once saved: "Saved. Whoever gets this
+question next can hear your answer first."
+4. Will's point (N329 item 4): "For your next answer: say what to check,
+then what the tool does."; after Take 2: "This time you led with what to
+check."
+5. Will's pointer on the team's answer (N333, N346): "Slide 2 promises:";
+the consult sheet keeps "Someone else".
+6. The "+" pickers (N351): "Photos and screenshots", "For {name} only.",
+"Send {n}", "Back".
+7. The answer page (N355): "✓ Booked", "Video · 12 min", "Learning
+platform · 20 min"; the phone's notice: "WhatsApp · now".
+The example texts (Kasia's question, the AI quotes) are the prototype's, not
+product words. The prototype:
+<https://claude.ai/artifact/Qu9N4HNpbpwT7N9Amo6LyL>, version 5. No rules page yet: it
+lands with the chats' rules page (N274 item 6) and on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
+No migration.
+
+**N357 · After joining, the list of chats opens, with the inviter's message
+on top (founder, the Claude Code chat, 2 November 2026, on a screenshot of
+a list holding only Will: "actually amend the rule; the person should land
+on the message from the person that invited them from the invite link; as
+the message from them so in the list of chats!").** For N335 and N274:
+1. **Joining by a link opens the list of chats,** not a chat. The chat with
+the person who invited them is the first row, marked new, its last message
+the inviter's (their welcome, else the line "You joined through {name}'s
+link." of N335 item 2). Tapping it opens that chat. Was (N348 item 1):
+joining opened the chat with the link's owner.
+2. **Will's row is in the list too,** under it, his first lines waiting
+until it is opened, as N348 item 2 says. N274 item 1's "a person whose only
+chat is Will's opens on Will's chat" stays for everyone else; someone who
+joined has two chats, so the list shows.
+3. Nothing to sign: no new words.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1. No migration.
