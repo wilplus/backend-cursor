@@ -196,6 +196,13 @@ def _words_refusal(quote: str, proposed: str) -> Optional[str]:
     return None
 
 
+def words_refusal(quote: Any, proposed: Any) -> Optional[str]:
+    """H3's word checks alone (most words the speaker's, nothing invented),
+    for a rewrite checked before it is stored: why it cannot stand, or
+    None."""
+    return _words_refusal(str(quote or ""), str(proposed or ""))
+
+
 def rewrite_refusal(row: Any, item: Any, clip_span: Optional[dict]) -> Optional[str]:
     """Why this rewrite cannot open the moment, or None when it can.
 

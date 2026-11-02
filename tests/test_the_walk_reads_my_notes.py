@@ -5,15 +5,17 @@ STORY    As a speaker who noted what matters to me, I want the walk to pick
          thing I fix is the one that helps me most, and nothing changes
          when the walk has nothing of mine to read.
 OUTCOME
-  O1  Without the ring row, without notes, or when the read fails or says
-      something malformed, the walk picks exactly as it did before (N326
-      items 4 and 5).
+  O1  Without the ring row, without notes, or when the read fails, says
+      something malformed or is late, the walk picks exactly as it did
+      before; nobody waits for a read not known to reach them, and a read
+      that does is waited for at most the cap (N326 items 4 and 5, N327).
   O2  With my note ("my manager says I explain too much and never give the
       answer") and my manager's question, the read flags my buried answer
       and it becomes my one thing to improve, with its Clearer version
       "With a second shift, ninety is possible by March."; a later read of
       the frozen Take keeps that walk; a flagged moment whose Clearer
-      version fails the gate leaves the walk as it was (N326 item 5).
+      version fails the gate leaves the walk as it was, and such a rewrite
+      never replaces the one I had (N326 item 5).
   O3  A Clearer version that repeats a phrase from my notes I did not say
       in the Take is refused (N326 item 5).
   O4  Will's private note about me is never read for the walk (N326 item 2).
@@ -215,6 +217,14 @@ def test_no_ring_no_notes_or_a_failed_read_leave_the_walk_as_it_was(monkeypatch,
         landed, db, _seen = _run_the_read(monkeypatch, snippets, answer)
         assert (landed, db.stored, verbal_read.kept("take-2")) == (False, [], {})
 
+    # Nobody waits for a read not yet known to reach them; one that does is
+    # waited for at most the cap, then left (N327).
+    unknown = verbal_read.Handle()
+    assert verbal_read.finish(unknown, _Db(snippets), session_id="take-2", arc_id="arc") is False
+    slow = verbal_read.Handle(reached=True)
+    assert verbal_read.finish(slow, _Db(snippets), session_id="take-2", arc_id="arc", wait=0.01) is False
+    assert slow.late and verbal_read.kept("take-2") == {}
+
 
 def test_my_note_makes_my_buried_answer_the_one_thing(monkeypatch, mine):
     _today, snippets = _take()
@@ -246,6 +256,10 @@ def test_my_note_makes_my_buried_answer_the_one_thing(monkeypatch, mine):
     failing, _ = _take({"proposed_text": "We should think about adding more shifts later on."},
                        verbal={"lifts": {"s2": 1.0}})
     assert _walk(failing) == [(0, "strongest", None), (3, "weakest", "voice")]
+    # And such a rewrite is never stored over the Clearer version I had.
+    landed, db, _seen = _run_the_read(monkeypatch, snippets, _flags,
+                                      rewrite="We should think about adding more shifts later on.")
+    assert landed and db.stored == []
 
 
 def test_a_clearer_version_never_repeats_my_notes(monkeypatch, mine):
