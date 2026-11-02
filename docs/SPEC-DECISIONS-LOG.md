@@ -9229,3 +9229,30 @@ The prototype: <https://claude.ai/artifact/RWT4oazQ5VtLCZkcuuRWWB>, version
 5. No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
 No migration.
+
+**N354 · The chats' words in the ambassador prototype, signed (founder, the
+Claude Code chat, 2 November 2026: "A all, words ok, apply to main
+prototype").** Rewritten plain and short, as N200 was; for N336, N340 to
+N346, N351 and N353. **Signed (Never 4):**
+1. A colleague's question passed on: "↪ {name} asks". A customer's stays
+"↪ {name}'s question, a customer" (N343).
+2. Under a question: "Video · hears back on WhatsApp"; on the ask form's
+"Sent": "You'll hear back on WhatsApp."
+3. Will, on a question that keeps coming (N330): "Three people asked this
+month whether AI can pick quotes."; once saved: "Saved. Whoever gets this
+question next can hear your answer first."
+4. Will's point (N329 item 4): "For your next answer: say what to check,
+then what the tool does."; after Take 2: "This time you led with what to
+check."
+5. Will's pointer on the team's answer (N333, N346): "Slide 2 promises:";
+the consult sheet keeps "Someone else".
+6. The "+" pickers (N351): "Photos and screenshots", "For {name} only.",
+"Send {n}", "Back".
+7. The answer page (N353): "✓ Booked", "Video · 12 min", "Learning
+platform · 20 min"; the phone's notice: "WhatsApp · now".
+The example texts (Kasia's question, the AI quotes) are the prototype's, not
+product words. The prototype:
+<https://claude.ai/artifact/Qu9N4HNpbpwT7N9Amo6LyL>, version 5. No rules page yet: it
+lands with the chats' rules page (N274 item 6) and on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
+No migration.
