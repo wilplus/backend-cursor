@@ -358,7 +358,7 @@ def _run_full_analysis_impl(
                 # the walk's ring row reaches, one read of the Take against
                 # its set-up and their own notes, beside the moments, the
                 # Ideal Text and the KPI fold, inside this run's
-                # authorization; waited for at most a few seconds before the
+                # authorization; waited for at most 5 s (N327) before the
                 # ready flip (`_verbal_read_lands`). Nothing for anyone else.
                 _verbal = _verbal_read_starts(session_id, arc_id, user_id)
                 if _moment_suggestions_enabled():

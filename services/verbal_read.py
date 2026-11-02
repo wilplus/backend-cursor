@@ -28,8 +28,9 @@ feedback moments are found, so it runs beside them, the Ideal Text and the
 KPI fold; ``finish`` waits for it at most ``JOIN_SECONDS`` before the Take
 is flipped ready, then stores its Clearer versions and keeps its weights in
 this process for the run's own bake (``for_pick``). Late or failed: nothing
-is stored and the walk picks as it does today; the loop never waits longer
-(Never 3).
+is stored and the walk picks as it does today. The wait is the founder's
+exception to "the loop never waits" (N327): at most 5 seconds, and only for a
+speaker the read reaches; for everyone else it stops at the ring check.
 
 WHAT IS KEPT. Nothing new in the database: the weights live in memory for
 the run, and a later read of a frozen Take keeps its walk from the frozen
