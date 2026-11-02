@@ -1471,7 +1471,9 @@ def v2_check_confident_voice_practice_attempt(practice_id, attempt_id):
 @operational_purpose_disabled("personalized_exercise_recommendation")
 @consent_choice_required("personalised_practice")
 def v2_confident_voice_practice_helper_words(practice_id):
-    """Helper words tapped from the judged practice attempt (B6)."""
+    """Helper words tapped from the judged practice attempt (B6); with
+    ``source: "passage"``, the Clearer version's sentence the practice was
+    opened on, the One thing walk's helper words (N309 item 3)."""
     if not _is_valid_uuid(practice_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "practice_id must be a valid UUID"}), 400
@@ -1482,7 +1484,7 @@ def v2_confident_voice_practice_helper_words(practice_id):
     body = request.get_json(silent=True) or {}
     status, result = helper_words_from_practice(
         db, practice, body.get("part_id"), body.get("phrase"),
-        str(request.user_id))
+        str(request.user_id), source=body.get("source"))
     return jsonify(result), status
 
 

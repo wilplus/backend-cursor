@@ -113,6 +113,19 @@ def phrase_in_transcript(phrase: Any, transcript: Any) -> Optional[str]:
     return want if want in have else None
 
 
+def phrase_in_passage(phrase: Any, passage: Any) -> Optional[str]:
+    """The helper words, when they are exact words of the sentence the
+    practice was opened on (the Clearer version's, N309 item 3), as sent:
+    whitespace folded, nothing smoothed."""
+    if not isinstance(phrase, str):
+        return None
+    want = re.sub(r"\s+", " ", phrase).strip()
+    have = re.sub(r"\s+", " ", str(passage or "")).strip()
+    if not want or re.search(r"[*_~`]", want):
+        return None
+    return want if want in have else None
+
+
 def judge_attempt(database: Any, practice: Mapping, attempt_id: str,
                   answer: Any, owner_user_id: str) -> tuple[int, dict]:
     """The five-answer judgement of the latest practice attempt (Q17 A).
@@ -166,27 +179,37 @@ def judge_attempt(database: Any, practice: Mapping, attempt_id: str,
 
 def helper_words_from_practice(database: Any, practice: Mapping,
                                part_id: Any, phrase: Any,
-                               owner_user_id: str) -> tuple[int, dict]:
+                               owner_user_id: str,
+                               source: Any = None) -> tuple[int, dict]:
     """Tap helper words from the judged practice attempt (B6).
 
     The attempt's words are not in the paragraph, so the paragraph-level
     endpoint cannot take them. They are stored on the Slide, unlocked; the
-    lock that follows locks them like any other pick."""
+    lock that follows locks them like any other pick.
+
+    ``source`` "passage": the One thing walk's helper words after a Clearer
+    version (founder 2026-10-31, N309 item 3), the sentence the practice was
+    opened on, whether or not a try was kept: they come on their own, with
+    no pick. Exact words of that sentence, within the same cap."""
     from services.intervention_spend import latest_spoken_take_sid
     from services.slide_helper_words import record_pick
 
     from services.practice_check import machine_closed
-    if practice.get("status") != "completed" or not (
+    passage = source == "passage"
+    if not passage and (practice.get("status") != "completed" or not (
             practice.get("final_user_answer") in DONE_ANSWERS
-            or machine_closed(practice)):
+            or machine_closed(practice))):
         return 409, {"code": "NOT_ADOPTED",
                      "error": "Judge a practice attempt first."}
     if not isinstance(part_id, str) or not part_id:
         return 400, {"code": "INVALID_INPUT", "error": "part_id is required"}
-    attempt = next((r for r in database.list_confident_voice_practice_attempts(
-        str(practice.get("id")))
-        if str(r.get("id")) == str(practice.get("selected_attempt_id"))), None)
-    words = phrase_in_transcript(phrase, (attempt or {}).get("transcript"))
+    if passage:
+        words = phrase_in_passage(phrase, practice.get("exact_passage"))
+    else:
+        attempt = next((r for r in database.list_confident_voice_practice_attempts(
+            str(practice.get("id")))
+            if str(r.get("id")) == str(practice.get("selected_attempt_id"))), None)
+        words = phrase_in_transcript(phrase, (attempt or {}).get("transcript"))
     from services.slide_helper_words import within_cap
     if words is None or not within_cap(words):
         return 400, {"code": "INVALID_ROOT_PHRASE",

@@ -561,15 +561,21 @@ def community_candidates(database: Any, *, listener_id: str, answered: set[str],
 
 
 def queue_for(database: Any, *, listener_id: str,
-              take: Optional[str] = None) -> tuple[int, dict]:
+              take: Optional[str] = None,
+              level: Optional[str] = None) -> tuple[int, dict]:
     """The listener's queue for the walk of one of their Takes (N119):
     three clips, one per level, three speakers, community clips first in
     their level, then the training corpus, fixed for the Take. Served by
-    the Lend your ear engine. Audio only (AC-9)."""
-    from services.lend_your_ear import other_voices
+    the Lend your ear engine. Audio only (AC-9). With ``level`` ("high",
+    "middle" or "low"), the One thing walk's one moment of that level
+    (N309 item 2)."""
+    from services.lend_your_ear import ONE_LEVELS, other_voices
     if take is not None and not _is_uuid(take):
         return 400, {"code": "INVALID_INPUT"}
-    return 200, {"clips": other_voices(database, listener_id=str(listener_id), take=take)}
+    if level is not None and level not in ONE_LEVELS:
+        return 400, {"code": "INVALID_INPUT"}
+    return 200, {"clips": other_voices(database, listener_id=str(listener_id), take=take,
+                                       level=level)}
 
 
 def my_answers(database: Any, *, listener_id: str, limit: int = 3) -> tuple[int, dict]:

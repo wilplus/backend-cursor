@@ -8,10 +8,15 @@ OUTCOME
   O2  The helper-words route returns the helper words currently chosen.
   O3  Helper words picked in an earlier Take still appear, on the slide's
       Paragraph now.
+  O4  After a Clearer version the walk's helper words come on their own
+      (N309): the sentence the practice was opened on goes to the slide,
+      with or without a try; words not in it are refused.
 PROVES   O1 -> test_stale_or_invalid_live_root_fails_closed
          O2 -> test_recording_roots_route_returns_the_live_root
          O3 -> test_helper_words_from_an_earlier_take_stay_on_their_slide
-WHY      Never-rule 5; founder 2026-10-13, project "S".
+         O4 -> test_the_clearer_versions_sentence_becomes_my_helper_words
+WHY      Never-rule 5; founder 2026-10-13, project "S"; founder 2026-10-31
+         (N309 item 3, "the helper words come on their own").
 """
 from __future__ import annotations
 
@@ -130,3 +135,28 @@ def test_helper_words_from_an_earlier_take_stay_on_their_slide(monkeypatch):
         "part_id": "part-1", "slide_index": 1,
         "text": "accepted sentence", "type": "flagship",
     }]
+
+
+def test_the_clearer_versions_sentence_becomes_my_helper_words(monkeypatch):
+    from services import practice_adoption, slide_helper_words
+
+    picked = []
+    monkeypatch.setattr(slide_helper_words, "record_pick",
+                        lambda _db, arc, user, part, take, words: picked.append((arc, part, take, words)))
+    database = Mock()
+    database.takes.get_arc_sessions.return_value = [{"id": "take-3", "take_index": 3}]
+    # Opened on the Clearer version's words; no try was kept yet.
+    practice = {"id": "p-1", "project_id": "arc-1", "status": "open",
+                "exact_passage": "We're already seeing real traction."}
+    status, body = practice_adoption.helper_words_from_practice(
+        database, practice, "part-1", "We're already seeing real traction.", "user-1",
+        source="passage")
+    assert (status, body) == (200, {"saved": True, "phrase": "We're already seeing real traction."})
+    assert picked == [("arc-1", "part-1", "take-3", "We're already seeing real traction.")]
+    # Words that are not the sentence's are refused, and nothing is saved.
+    status, _ = practice_adoption.helper_words_from_practice(
+        database, practice, "part-1", "we are seeing traction", "user-1", source="passage")
+    assert status == 400 and len(picked) == 1
+    # Without the walk's source, an open practice still needs a judged try.
+    assert practice_adoption.helper_words_from_practice(
+        database, practice, "part-1", "real traction", "user-1")[0] == 409

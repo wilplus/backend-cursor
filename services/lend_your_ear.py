@@ -241,7 +241,8 @@ def _serve(database: Any, candidate: dict, *, listener_id: str) -> Optional[dict
 
 
 def other_voices(database: Any, *, listener_id: str,
-                 take: Optional[str] = None) -> list[dict]:
+                 take: Optional[str] = None,
+                 level: Optional[str] = None) -> list[dict]:
     """The walk's other voices (N119): one clip the machine reads high, one
     in the middle and one low, each of another speaker, never the
     listener's own or one they answered, in a blind order fixed for the
@@ -250,7 +251,12 @@ def other_voices(database: Any, *, listener_id: str,
     door ``communities.community_candidates``), then the imported training
     corpus the coaches judge, then the licensed corpus. Fewer only when
     fewer speakers or levels are left, and that is logged. Audio only
-    (AC-9)."""
+    (AC-9).
+
+    ``level`` ("high", "middle" or "low"), the One thing walk's one judged
+    moment (founder 2026-10-31, N309 item 2): the set's clip of that level
+    alone, else of the next level round (high, middle, low), logged; the
+    client rotates the level across Takes and never shows it."""
     from services.communities import answered_clip_ids, community_candidates, hearing_for
     from services.parallel import run_in_parallel
     me = str(listener_id)
@@ -297,7 +303,32 @@ def other_voices(database: Any, *, listener_id: str,
     elif len(picked) < len(LEVELS):
         _log.info("other voices: fewer than three (%d) for listener=%s take=%s (%s)",
                   len(picked), me, take, reasons)
+    if level is not None:
+        return _one_of(picked, served, level, listener=me, take=take)
     return [clip for c in picked if (clip := served[c["clip_id"]]) is not None]
+
+
+#: The walk's names for the levels (N309 item 2), as the client asks them.
+ONE_LEVELS = ("high", "middle", "low")
+
+
+def _one_of(picked: list[dict], served: dict[str, Optional[dict]], level: str,
+            *, listener: str, take: Optional[str]) -> list[dict]:
+    """The set's one clip of ``level``, else of the next level round: the
+    One thing walk judges one moment (N309 item 2). Pure but for the log."""
+    by_name = {_LEVEL_NAMES[c["level"]]: c for c in picked if c.get("level") in _LEVEL_NAMES}
+    start = ONE_LEVELS.index(level)
+    for step in range(len(ONE_LEVELS)):
+        name = ONE_LEVELS[(start + step) % len(ONE_LEVELS)]
+        chosen = by_name.get(name)
+        clip = served.get(chosen["clip_id"]) if chosen else None
+        if clip is None:
+            continue
+        if name != level:
+            _log.info("other voices: no %s clip for listener=%s take=%s; %s instead",
+                      level, listener, take, name)
+        return [clip]
+    return []
 
 
 # ── the peer label ────────────────────────────────────────────────────────

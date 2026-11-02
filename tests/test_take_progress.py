@@ -10,14 +10,22 @@ OUTCOME
   O2  The fixes a Take gave (the weakest and the one between, and its tempo
       stretch) are each marked came back or gone on the next Take of the
       talk, same slide; not measured when that slide is not in it.
+  O3  The One thing walk opens with the last Take's fix when it rose
+      (N309): its kind and slide, and this Take's best clip there, played
+      by a signed link; nothing when it came back or there is no Take
+      before.
 PROVES   O1 -> test_progress_is_read_against_my_first_takes
          O2 -> test_each_fix_is_marked_came_back_or_gone_on_the_next_take
+         O3 -> test_last_time_plays_the_fix_that_rose_on_this_take
 WHY      Founder 2026-10-31 (N291: "yes"; "ok go with the proposal"; N290:
          "the next time it chooses a moment it should take into account
-         what the user answered").
+         what the user answered"; N309 item 1: "Last time: {the tip}. You
+         did.").
 """
+from unittest.mock import patch
+
 from services.take_progress import (CAME_BACK, GONE, NOT_MEASURED, anchored_willfidence,
-                                    fixes_of, frozen_reference, outcome)
+                                    fixes_of, frozen_reference, last_fix, outcome)
 
 _WORDS = "we made our plan clear and we will deliver it on time for everyone"
 
@@ -72,3 +80,39 @@ def test_each_fix_is_marked_came_back_or_gone_on_the_next_take():
     # No next Take, or the slide not in it: not measured.
     assert outcome(fixes[0], None, []) == NOT_MEASURED
     assert outcome({"slide_index": 9, "kind": "voice"}, nxt, [strong, hedged]) == NOT_MEASURED
+
+
+def test_last_time_plays_the_fix_that_rose_on_this_take():
+    before = _frame({"slide_index": 1, "walk_slot": "strongest", "carries_exercise": False, "snippet_ids": ["a"]},
+                    {"slide_index": 2, "walk_slot": "weakest", "carries_exercise": True,
+                     "exercise_kind": "voice", "snippet_ids": ["b"]})
+    now = _frame({"slide_index": 2, "snippet_ids": ["n2", "n2b"]})
+    strong = {**_clip(2, f0_sd=30, dynamic_db=12, score=0.8), "id": "n2",
+              "audio_segment_path": "takes/n2.webm", "start_offset_ms": 4000, "duration_ms": 3000}
+    short = {**_clip(5, f0_sd=30, dynamic_db=12, score=0.9, slide_words="yes we did"), "id": "n2b",
+             "audio_segment_path": "takes/n2b.webm"}
+
+    class Db:
+        def __init__(self, clips):
+            self.clips = clips
+
+        def get_v4_dark_frame(self, take):
+            return {"t1": before, "t2": now}.get(take)
+
+        def get_snippets_by_session(self, take):
+            return self.clips if take == "t2" else []
+
+    with patch("services.audio_ref_resolver.resolve_playable_ref",
+               lambda ref, expires_in=None, **_: f"https://signed.example/{ref}"):
+        # Slide 2's voice now clears the floor: the fix rose, played with
+        # this Take's best clip on that slide (a whole thought first).
+        assert last_fix(Db([strong, short]), "t2", "t1") == {
+            "kind": "voice", "slide_index": 2,
+            "clip": {"snippet_id": "n2", "url": "https://signed.example/takes/n2.webm",
+                     "start_offset_ms": 4000, "duration_ms": 3000}}
+        # Still under the floor: it came back, and nothing is said.
+        weak = {**strong, "metrics": {**strong["metrics"], "voice_confidence": {
+            "version": "voice-confidence-universal-v3", "score": -0.6}}}
+        assert last_fix(Db([weak]), "t2", "t1") is None
+        # The first Take has none before it.
+        assert last_fix(Db([strong]), "t2", None) is None
