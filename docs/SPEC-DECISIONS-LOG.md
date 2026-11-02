@@ -9353,3 +9353,18 @@ on that slide. It picks from everything else as it does today.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C and H1, when built. No migration.
+
+**N360 · Will is always at the top of the list of chats (founder, the Claude
+Code chat, 2 November 2026, asked whether Will moves to the top once someone
+who joined by a link has opened his chat: "yes Will stays always at the
+top!").** For N357, N274 and N322:
+1. **Will is always the first row,** for everyone, at every moment,
+including right after joining by a link. The chat with the person who
+invited them is the row under Will, marked new, with their welcome or "You
+joined through {name}'s link." (N335 item 2). Was (N357 item 1): the
+inviter's chat first, Will's under it.
+2. Joining by a link still opens the list of chats, not a chat (N357 item
+1 stays). Nothing to sign: no new words.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 (Will pinned first, as built). No migration.
