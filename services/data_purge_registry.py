@@ -321,10 +321,13 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "database_row", 60),
     PurgeDependency("walk_quote_settings", "walk_quote_settings", "user_id",
                     "user", "delete", "database_row", 60),
-    # The chats between people (N298 to N316, migration 0503): the demo
-    # chats made for the person, then their place in every other chat. The
-    # messages go with the chat or the member they belong to (chat_messages,
-    # ON DELETE CASCADE).
+    # The chats between people (N298 to N316, migration 0503): the voice
+    # notes the person recorded first (0504, N321 item 2: they point at
+    # their message), then the demo chats made for the person, then their
+    # place in every other chat. The messages go with the chat or the member
+    # they belong to (chat_messages, ON DELETE CASCADE).
+    PurgeDependency("chat_message_audio", "chat_message_audio", "user_id",
+                    "user", "delete", "database_row", 58),
     PurgeDependency("chat_demo_threads", "chat_threads", "demo_user_id",
                     "user", "delete", "database_row", 59),
     PurgeDependency("chat_members", "chat_members", "user_id", "user",
