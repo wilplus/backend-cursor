@@ -8320,3 +8320,67 @@ the moment, and it depends on the context (N317 item 2: the external and the
 internal context). Was (N317 item 1): "the willfidence algorithm (the verbal
 cues) finds the moment", with the vocal cues feeding back from the output.
 No rules page: this corrects the vision entry. No migration in this entry.
+
+**N319 · Locked: before the walk, every question the after-walk way, one
+action a step, the plan simplified, its progress in the chat (founder, the
+Claude Code chat, 1 November 2026, on the prototype
+<https://claude.ai/artifact/X4gDmGfHH7ivuoRZ9ufiy9> version 39, "Tomás · new,
+from the start": "when you ask such a question - please use the same
+structure as on the after walk questions", "I want a single btn design",
+"the text input for the before should be disabled ... with an info if
+clicked that we need to hear it with your voice", "please make it just like
+in the code with the changes that I demanded", "can you even more simplify
+the plan", then "please implement").** For N136, N157, N161, N211, N262,
+N294 to N297, N309, N314 and N315:
+1. **Every question before Take 1 is asked the after-walk way:** Will's
+bubble; tap answers on the right as orange outlined pills ("Pick a date",
+"No date yet"; "Skip", "Book now" while the calls are on, N315); the
+Lounge's bar under it ("+", "Type here", the mic, orange while Will waits);
+an answer by voice records with the one bar (N314) and lands as the
+speaker's voice bubble with the words heard. The plan's own yes: "Yes, ask
+me" orange outlined, "Not now" grey and quieter. The 1 to 10 scale keeps its
+shape, in the thread.
+2. **One action a step.** "Start your first recording" is no longer under
+each voice question; it is the one button after the plan card. Amends N262:
+the plan's questions now come before Take 1 one at a time, in the code's
+order (the deadline, why it matters, the plan's yes, the key line and two
+follow-ups, the two ratings after the yes), and the first Take follows the
+plan card. Never 3's "never stop the speaker from recording it" is to be
+reworded in CLAUDE.md to match, with the founder's OK.
+3. **Typing is disabled before Take 1:** "Type here" stays in the bar,
+faded; a tap shows one short note above the bar. Open (Never 4): its words,
+drafted "We need to hear this in your voice. Tap the mic."
+4. **Gone:** "Let me draft your plan. A few more questions first." and "Now
+go and live it, away from the phone.".
+5. **The plan's own yes is shorter.** Open (a privacy check against Privacy
+Policy section 4e before it is built; Never 4): "Some of my questions are
+personal: how stressed you feel, and how ready. I ask them only to help you
+handle the stress, and only if you say yes. You can turn this off in
+Settings. Read more", or the version that keeps the coach and the plan in
+it. Until then the signed words stay.
+6. **The plan card is the plan only:** "Plan", the plan's bar (one part per
+practice, the code's `PlanBar`), "15 minutes, 3 times a week: {days}" (or
+every day), "Your deadline: {date}", and "Change your plan" (the code's
+sheet: Deadline, Practice days, Your level, I have a new event). Gone from
+the card: "Your next level" and the level, the key line, "How you said it",
+"Why this line?", and the call lines (N315). The level shows where it acts:
+each practice day's greeting, "Today is practice {n} of {total}: {level}.",
+and "See your plan".
+7. **The plan's progress after the walk:** "That's your 15 minutes for
+today.", then one bubble "Good job. See you next {day}." (the plan's next
+practice day; without a plan, "Good job. See you next time."), then one
+bubble with the plan's bar and "{n} of {total} practices done.". Replaces
+the walk's end sheet line on a plan.
+8. **"Someone else"** is a tap answer to "who were you talking to?",
+followed by "Who is it for, then? 👀" in their own words.
+9. **The chat follows the newest bubble:** after the speaker answers, the
+chat moves to the new bubble.
+10. **From the Take straight into the walk:** after the Take's processing
+the walk opens at once; the chat is never shown in between, and is under the
+walk when it closes.
+11. **Locked:** listed in [`docs/LOCKS.md`](LOCKS.md).
+Signed (Never 4): "Good job. See you next {day}.", "{n} of {total}
+practices done.". The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E1 and E2, when built. No migration.
