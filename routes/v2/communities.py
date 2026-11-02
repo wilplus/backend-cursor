@@ -97,10 +97,12 @@ def v2_take_share(take_id):
 def v2_community_queue():
     """The listener's clips for the walk of one of their Takes (``?take=``,
     N119): one per level, three speakers, their communities' first in each
-    level, then the training corpus; fixed for the Take. Audio only."""
+    level, then the training corpus; fixed for the Take. Audio only.
+    ``?level=high|middle|low``: the One thing walk's one moment (N309)."""
     from services.communities import queue_for
     return _run("community queue", lambda: queue_for(
-        db, listener_id=str(request.user_id), take=request.args.get("take") or None))
+        db, listener_id=str(request.user_id), take=request.args.get("take") or None,
+        level=request.args.get("level") or None))
 
 
 @v2_bp.route("/user/communities/answers", methods=["GET"])

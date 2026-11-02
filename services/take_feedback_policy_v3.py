@@ -877,10 +877,15 @@ def _take_clip(block: dict, candidate_id: Any, selections: list[dict]) -> None:
 def _mark_moments(blocks: list[dict], picked: dict,
                   rewrite_ranked: Optional[list[dict]] = None,
                   rewrite_rows: Optional[list] = None,
+                  sniper: bool = False,
                   ) -> tuple[list[dict], list[dict], list[dict]]:
     """Each shown moment marked for its job in the walk (founder
     2026-10-30, N289, flow page C2 and C4; `services.moment_pick`), from
-    the pick `_pick_moments` made.
+    the pick `_pick_moments` made, then cut to the One thing walk's two
+    (founder 2026-10-31, N309 item 1; `_one_thing`): the strongest, and
+    the one fix whose tool fits. ``sniper``: this week's level is the tempo
+    step's and the Take has its stretch, so the Sniper is the fix and no
+    moment is.
 
     Every block is written, so a re-run cannot leave a stale mark:
     `most_confident` (praised: the strongest and any next best),
@@ -917,12 +922,53 @@ def _mark_moments(blocks: list[dict], picked: dict,
             _mark_shown(block, {**moment, "praise": True, "kind": None,
                                 "slot": moment_pick.SLOT_NEXT},
                         value_of.get(block["block_id"]))
+    _one_thing(blocks, sniper)
     rewrite_blocks = [
         block for block in blocks
         if block["carries_exercise"]
         and block["exercise_kind"] == moment_pick.EXERCISE_CLEARER
     ]
     return [b for b in blocks if b["most_confident"]], rewrite_blocks, pool
+
+
+def _one_thing(blocks: list[dict], sniper: bool) -> None:
+    """The One thing walk (founder 2026-10-31, N309 item 1): the picker's
+    strongest stays, "their best", and of its fixes only the one whose tool
+    fits: this week's level's moment (N289 item 8), else the between with
+    its Clearer version (words come first), else the weakest with the AI
+    clip. With ``sniper`` (a pace or pause week whose Take has a stretch)
+    the tempo step is the fix and no moment is. Every other shown block,
+    the next bests included, is written as not shown, so the walk, the
+    Ideal Text's marks and the coach's queue hold the same two."""
+    from services import moment_pick
+
+    fixes = [b for b in blocks if b.get("carries_exercise") and b.get("walk_slot")]
+    level = next((b for b in fixes if b.get("plan_level")), None)
+    clearer = next((b for b in fixes
+                    if b.get("exercise_kind") == moment_pick.EXERCISE_CLEARER), None)
+    weakest = next((b for b in fixes
+                    if b.get("walk_slot") == moment_pick.SLOT_WEAKEST), None)
+    keep = None if sniper else (level or clearer or weakest)
+    for block in blocks:
+        if block.get("walk_slot") and not block.get("highest_moment") and block is not keep:
+            _mark_shown(block, None, None)
+
+
+def _sniper_fix(plan_level: Optional[str], snippets: Any) -> bool:
+    """On a plan, a pace or pause week's one fix is the Sniper, the tempo
+    step (N309 item 1, N289 item 8), when the Take has a stretch outside
+    the green for it (`tempo_stretch.pick`). False on any failure: the fix
+    is then a moment, as off a plan."""
+    from services import plan_walk
+    if plan_level not in plan_walk.TEMPO_LEVELS:
+        return False
+    try:
+        from services import tempo_stretch
+        rows = [s for s in snippets or [] if isinstance(s, dict)]
+        return tempo_stretch.pick(rows) is not None
+    except Exception as error:  # noqa: BLE001 -- the fix is a moment then
+        logger.warning("one thing: the tempo stretch not read level=%s: %s", plan_level, error)
+        return False
 
 
 def _mark_shown(block: dict, moment: Optional[dict], value: Any) -> None:
@@ -1801,7 +1847,8 @@ def build_shadow_frame(
     # candidate sits inside the block. The green mark stays on the top two
     # (24g); it no longer decides where praise goes.
     green_blocks, weak_blocks, rewrite_pool = _mark_moments(
-        blocks, picked, rewrite_ranked, feedback_rows)
+        blocks, picked, rewrite_ranked, feedback_rows,
+        sniper=_sniper_fix(plan_level, snippets))
     rewrite_anchors = _anchored_notes(rewrite_pool, weak_blocks)
     praise_anchors = _anchored_notes(praise_ranked, green_blocks)
     rewrite_selected_ids = [row["candidate_id"] for row in rewrite_anchors]

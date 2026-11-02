@@ -37,6 +37,13 @@ strongest is (``next``; N289 item 5), so a Take still shows three when it
 has three blocks (N284), and never skips one. The walk's order is the
 client's: strongest, weakest, the next best, then between.
 
+Since the One thing walk (founder 2026-10-31, N309 item 1) the policy keeps
+two of the pick (``take_feedback_policy_v3._one_thing``): the strongest,
+"their best", and the one fix whose tool fits (the level's moment, else the
+between with its Clearer version, else the weakest with the AI clip; on a
+pace or pause week with a stretch, the Sniper and no moment). The pick
+itself is unchanged.
+
 On a plan (N289 item 8), this week's level takes the slot whose tool fits
 it (``pick(reads, level=...)``): "Say it once" the between, "A voice that
 moves" the weakest; never the strongest's block, never a fourth moment.
