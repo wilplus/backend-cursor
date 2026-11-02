@@ -9072,3 +9072,20 @@ describes** (document 02 v1.3, N208): fillers, hedges and slide fit.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §1 C, E, H1, K and §3, when built. No migration.
+
+**N348 · After joining, the chat with the person who invited you opens first
+(founder, the Claude Code chat, 2 November 2026, on the Ember & Air
+prototype's chapter "Joining by a link", version 40, asked whether the
+inviter's chat or Will's first questions come first: "Ok").** For N335 item 1:
+1. **Joining opens the chat with the link's owner,** with its line "You
+joined through {name}'s link. Only the two of you are in this chat." (N335
+item 2). Was: /chat opened on the list.
+2. **Will's first lines wait in Will's chat** ("Hi {name}! A few quick
+questions before your first practice.", then the plan's questions, N319)
+until the person opens it; Will's row is in the list with the rest. Nothing
+interrupts the first contact with the person who invited them.
+3. Nothing to sign: no new words.
+The prototype: <https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>, version
+40. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1. No migration.
