@@ -243,8 +243,9 @@ def view(database: Any, user_id: str, plan: dict) -> dict:
         # speaker's wait, after a Take recorded first, for that Take's walk,
         # where they come back (N262 item 1).
         "waiting": bool(facts.get("wait_take")) or (first_asking and _walk_due(plan, takes)),
-        # "Start your first recording" under "Record your answer" (N262).
-        "record_now": first_asking and not takes,
+        # No "record_now": "Start your first recording" is no longer under
+        # each voice question; it is the one button after the plan card
+        # (N319 item 2, which amends N262).
         "onboarding": _onboarding(plan, done),
     }
 

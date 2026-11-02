@@ -533,7 +533,7 @@ def test_a_correction_is_taken_and_the_question_asked_again(db, monkeypatch):
 
 def test_a_new_speaker_can_record_before_answering(db, monkeypatch):
     out = F.state(db, USER, tz="UTC", first_name="Artur")
-    assert out["plan"]["record_now"] and not out["plan"]["waiting"]
+    assert not out["plan"]["waiting"]  # the questions first (N319 item 2)
     F.answer_deadline(db, USER, None, tz="UTC")
     _say(db, "It's our board pitch for two more hires.")
     key_q = bodies(db)[-1]
@@ -542,7 +542,7 @@ def test_a_new_speaker_can_record_before_answering(db, monkeypatch):
     db.update_plan(USER, plan["id"], {"created_at": (took - timedelta(minutes=5)).isoformat()})
     db.takes.rows = [{"created_at": took.isoformat(), "arc_id": "arc-1", "take_index": 1}]
     out = F.state(db, USER, tz="UTC")
-    assert out["plan"]["waiting"] and not out["plan"]["record_now"]  # the Take's walk first
+    assert out["plan"]["waiting"]  # the Take's walk first
     F.after_take(db, USER)
     assert bodies(db)[-1] == key_q  # asked again, where it was
     assert not F.state(db, USER, tz="UTC")["plan"]["waiting"]
