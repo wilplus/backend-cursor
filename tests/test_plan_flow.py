@@ -11,10 +11,15 @@ OUTCOME
   O4  Each voice answer is transcribed under the caller's authorization,
       kept with its recording, kept for Will, and shown as the speaker's
       voice bubble; when the AI fails Will says the plain words, and the key
-      line is always the first follow-up.
-  O5  The two ratings are kept and never shown back as a number; then the
-      kickoff call is offered, then the summary call; skipping both still
-      gives "You're all set. Here's your plan." and the card.
+      line is always the first follow-up, right after Will's reply ("Let me
+      draft your plan. A few more questions first." is gone, N319 item 4).
+  O5  The two ratings are kept and never shown back as a number; then,
+      with the calls hidden (no ring row ``plan_calls``, N315), straight to
+      "You're all set. Here's your plan." and the card, with no call asked.
+  O15 With the calls on, they are asked as before: the kickoff call, then
+      the summary call; skipping both still gives "You're all set. Here's
+      your plan." and the card. A plan left at a call when they are hidden
+      moves on to the plan when the Lounge opens, without a summary ask.
   O6  On a practice day after the first Take, the first open writes the
       hello and today's one thing, once; after a Take on a practice day
       "That's your 15 minutes for today." comes, once, and nothing under it
@@ -53,7 +58,7 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
          O2 -> test_a_new_speaker_is_asked_once
          O3 -> test_no_date_gives_two_months_then_the_voice_message
          O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
-         O5 -> test_ratings_are_kept_quietly_and_the_calls_lead_to_the_plan
+         O5 -> test_ratings_are_kept_quietly_and_the_plan_follows
          O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
          O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
          O8 -> test_moving_the_deadline_keeps_the_practices_done
@@ -64,10 +69,12 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
          O12 -> test_an_answer_with_nothing_heard_is_asked_again
          O13 -> test_a_correction_is_taken_and_the_question_asked_again
          O14 -> test_a_new_speaker_can_record_before_answering
+         O15 -> test_with_the_calls_on_they_are_asked_before_the_plan
 WHY      The plan, built one to one with the prototype (founder 2026-10-26,
          N203, N204); a level moving on, N134 items 3 and 4, N209; the
          principles waiting for the onboarding, N243; record first, Will
-         asking again and a correction taken, N262; the rules
+         asking again and a correction taken, N262; the calls hidden, not
+         removed, N315; the plan simplified, N319; the rules
          are frontend docs/flows/the-plan.md §1.
 """
 import uuid
@@ -163,13 +170,20 @@ class _Adapter:
         return {"text": self.text, "language": "en", "duration": 4.0}
 
 
+def _rings(monkeypatch, *, calls):
+    from services import rings
+    monkeypatch.setattr("services.rings.feature_is_on_for_user",
+                        lambda feature, *a, **k: calls or feature != rings.PLAN_CALLS)
+
+
 @pytest.fixture
 def db(monkeypatch):
     # The plan's own yes is tests/test_plan_consent.py; here the plan asks as
     # it does once the yes is given, which is the switch off.
     from config import Config
     monkeypatch.setattr(Config, "PLAN_CONSENT_ENABLED", False)
-    monkeypatch.setattr("services.rings.feature_is_on_for_user", lambda *a, **k: True)
+    # The plan is on; its calls are hidden, as with no ring row (N315).
+    _rings(monkeypatch, calls=False)
     monkeypatch.setattr("services.speaker_memory.record", lambda *a, **k: None)
     monkeypatch.setattr(F, "_readings", lambda *a, **k: {})
     monkeypatch.setattr(F, "_turn", lambda *a, **k: None)  # the AI fails: plain words
@@ -228,10 +242,11 @@ def test_voice_answers_are_kept_and_the_key_line_comes_first(db):
     assert len(db.audio) == 4
     said = bodies(db)
     ack = "Thank you. Now I can hear you talking about your goal and why it matters. "
-    assert ack + "I can already hear your main vocal cues and verbal habits." in said
+    reply = said.index(ack + "I can already hear your main vocal cues and verbal habits.")
     key = said.index("If your audience remembers one sentence from you, what is it? "
                      "Say it the way you'll say it.")
-    assert key > said.index("Let me draft your plan. A few more questions first.")
+    assert key == reply + 1  # "Let me draft your plan. …" is gone (N319 item 4)
+    assert not any("Let me draft your plan" in b for b in said)
     assert said[-2:] == ["Two quick taps before your plan.", "How stressed do you feel about it right now?"]
     plan = db.get_open_plan(USER)
     assert plan["facts"]["key_line"] == "The window closes soon."
@@ -240,7 +255,13 @@ def test_voice_answers_are_kept_and_the_key_line_comes_first(db):
     assert len(plan["asked"]) == 3
 
 
-def test_ratings_are_kept_quietly_and_the_calls_lead_to_the_plan(db):
+def _no_call_asked(db):
+    said = " ".join(bodies(db))
+    return (P.COPY["kickoff_ask"] not in said and P.COPY["summary_ask"] not in said
+            and not any((r["metadata"] or {}).get("plan_ask") == "book" for r in db.thread))
+
+
+def test_ratings_are_kept_quietly_and_the_plan_follows(db):
     _to_ratings(db)
     before = len(db.thread)
     F.answer_rating(db, USER, 7)
@@ -248,25 +269,60 @@ def test_ratings_are_kept_quietly_and_the_calls_lead_to_the_plan(db):
     assert [a["value"] for a in db.answers if a.get("value")] == [7, 4]
     new = bodies(db)[before:]
     assert "7" not in new and "4" not in new
-    assert new == ["How ready do you feel for it right now?",
-                   "Every plan starts with a kickoff session with your coach. Would you like "
-                   "to book it now?"]
+    # The calls are hidden (N315): from the last answer straight to the plan.
+    assert new == ["How ready do you feel for it right now?", "You're all set. Here's your plan.", ""]
+    assert db.thread[-1]["metadata"]["plan_card"] is True
+    assert _no_call_asked(db)
+    plan = db.get_open_plan(USER)
+    assert plan["status"] == "active" and plan["step"] == "done"
+    assert plan["total"] == 9 and plan["level"]
+    # A speaker with Takes (A2): the deadline, then the plan, no call.
+    db.plans.clear()
+    db.thread.clear()
+    db.takes.rows = [{"created_at": datetime.now(timezone.utc).isoformat(), "arc_id": "arc-1", "take_index": 1}]
+    F.after_take(db, USER)
+    F.answer_deadline(db, USER, None, tz="UTC")
+    assert bodies(db)[-2:] == ["You're all set. Here's your plan.", ""] and _no_call_asked(db)
+    assert db.get_open_plan(USER)["status"] == "active"
+
+
+def test_with_the_calls_on_they_are_asked_before_the_plan(db, monkeypatch):
+    _rings(monkeypatch, calls=True)
+    _to_ratings(db)
+    before = len(db.thread)
+    F.answer_rating(db, USER, 7)
+    F.answer_rating(db, USER, 4)
+    assert bodies(db)[before:] == ["How ready do you feel for it right now?",
+                                   "Every plan starts with a kickoff session with your coach. Would you like "
+                                   "to book it now?"]
     F.book_call(db, USER, "kickoff", None)
     F.book_call(db, USER, "summary", None)
     assert bodies(db)[-3:] == [
         "Every learning cycle also finishes with a summary session after your deadline. "
         "Would you like to choose it now?", "You're all set. Here's your plan.", ""]
     assert db.thread[-1]["metadata"]["plan_card"] is True
-    plan = db.get_open_plan(USER)
-    assert plan["status"] == "active" and plan["total"] == 9 and plan["level"]
+    assert db.get_open_plan(USER)["status"] == "active"
+    # A plan left at the kickoff's ask, then the calls hidden: the Lounge's
+    # next open goes on to the plan, and Skip there asks no summary call.
+    db.plans.clear()
+    db.thread.clear()
+    _to_ratings(db)
+    F.answer_rating(db, USER, 7)
+    F.answer_rating(db, USER, 4)
+    assert db.get_open_plan(USER)["step"] == "kickoff"
+    _rings(monkeypatch, calls=False)
+    out = F.state(db, USER, tz="UTC", first_name="Artur")
+    assert out["wrote"] and out["plan"]["status"] == "active"
+    assert bodies(db)[-2:] == ["You're all set. Here's your plan.", ""]
+    db.update_plan(USER, out["plan"]["id"], {"status": "asking", "step": "kickoff"})
+    F.book_call(db, USER, "kickoff", None)
+    assert P.COPY["summary_ask"] not in bodies(db)
 
 
 def test_a_practice_day_hello_and_the_fifteen_minutes(db, monkeypatch):
     _to_ratings(db)
     F.answer_rating(db, USER, 7)
     F.answer_rating(db, USER, 4)
-    F.book_call(db, USER, "kickoff", None)
-    F.book_call(db, USER, "summary", None)
     plan = db.get_open_plan(USER)
     started = datetime.fromisoformat(plan["started_at"])
     db.takes.rows = [{"created_at": (started + timedelta(minutes=5)).isoformat(),
@@ -303,8 +359,6 @@ def _active(db):
     _to_ratings(db)
     F.answer_rating(db, USER, 7)
     F.answer_rating(db, USER, 4)
-    F.book_call(db, USER, "kickoff", None)
-    F.book_call(db, USER, "summary", None)
     return db.get_open_plan(USER)
 
 
@@ -549,9 +603,7 @@ def test_a_new_speaker_can_record_before_answering(db, monkeypatch):
     for said in ("The window closes soon.", "Five board members.", "About three minutes."):
         _say(db, said)
     F.answer_rating(db, USER, 7)
-    F.answer_rating(db, USER, 4)
-    F.book_call(db, USER, "kickoff", None)
-    out = F.book_call(db, USER, "summary", None)
+    out = F.answer_rating(db, USER, 4)
     assert out["plan"]["status"] == "active"
     view = F.view(db, USER, out["plan"])
     assert view["first_take_done"] and view["done"] == 1  # that Take is the first practice

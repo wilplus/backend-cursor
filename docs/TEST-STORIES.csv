@@ -2093,7 +2093,8 @@ first voice message, and waits; nothing else is taken meanwhile.
 the plan goes on: the worry question, the two ratings.
 O3  ""Not now"" is kept; the worry is never asked or kept, the ratings are
 not asked (then or at any later moment), the plan still reaches the
-calls and its end without ""How did it go?"".
+plan card (its calls hidden, N315) and its end without ""How did it
+go?"" or the summary call.
 O4  The card's Turn off deletes the personal answers: the answers and
 their recordings, their bubbles in the Lounge, the plan's worry,
 Will's memory of them (his note is cleared), the feelings before a
@@ -2125,10 +2126,15 @@ message's two questions.
 O4  Each voice answer is transcribed under the caller's authorization,
 kept with its recording, kept for Will, and shown as the speaker's
 voice bubble; when the AI fails Will says the plain words, and the key
-line is always the first follow-up.
-O5  The two ratings are kept and never shown back as a number; then the
-kickoff call is offered, then the summary call; skipping both still
-gives ""You're all set. Here's your plan."" and the card.
+line is always the first follow-up, right after Will's reply (""Let me
+draft your plan. A few more questions first."" is gone, N319 item 4).
+O5  The two ratings are kept and never shown back as a number; then,
+with the calls hidden (no ring row ``plan_calls``, N315), straight to
+""You're all set. Here's your plan."" and the card, with no call asked.
+O15 With the calls on, they are asked as before: the kickoff call, then
+the summary call; skipping both still gives ""You're all set. Here's
+your plan."" and the card. A plan left at a call when they are hidden
+moves on to the plan when the Lounge opens, without a summary ask.
 O6  On a practice day after the first Take, the first open writes the
 hello and today's one thing, once; after a Take on a practice day
 ""That's your 15 minutes for today."" comes, once, and nothing under it
@@ -2166,7 +2172,7 @@ that Take as its first practice (N262).","O1 -> test_without_the_ring_nothing_ha
 O2 -> test_a_new_speaker_is_asked_once
 O3 -> test_no_date_gives_two_months_then_the_voice_message
 O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
-O5 -> test_ratings_are_kept_quietly_and_the_calls_lead_to_the_plan
+O5 -> test_ratings_are_kept_quietly_and_the_plan_follows
 O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
 O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
 O8 -> test_moving_the_deadline_keeps_the_practices_done
@@ -2176,7 +2182,8 @@ O10 -> test_a_walk_reads_the_level_of_its_takes_time
 O11 -> test_the_principles_wait_while_the_speaker_is_onboarded
 O12 -> test_an_answer_with_nothing_heard_is_asked_again
 O13 -> test_a_correction_is_taken_and_the_question_asked_again
-O14 -> test_a_new_speaker_can_record_before_answering","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the principles waiting for the onboarding, N243; record first, Will asking again and a correction taken, N262; the rules are frontend docs/flows/the-plan.md §1."
+O14 -> test_a_new_speaker_can_record_before_answering
+O15 -> test_with_the_calls_on_they_are_asked_before_the_plan","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the principles waiting for the onboarding, N243; record first, Will asking again and a correction taken, N262; the calls hidden, not removed, N315; the plan simplified, N319; the rules are frontend docs/flows/the-plan.md §1."
 tests/test_playback_copy.py,Story,"As a speaker on iPhone or Safari, I want my recordings to play back, and the playback copy deleted with the recording, so that I can hear myself and deletion leaves nothing. (Record -> next Take: hearing the Take; and deletion.)","O1  A stored short recording gets its Safari-safe copy (.playback.m4a,
 audio/mp4) beside it at upload; the original is untouched.
 O2  The player is handed the original until the copy exists, and the copy

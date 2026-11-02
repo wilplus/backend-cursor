@@ -66,10 +66,15 @@ ROOTING_COVERAGE = "rooting_coverage"
 #: The walk's tempo step (founder 2026-10-26, N166 step 6). No row until the
 #: founder makes one in the panel; until then only the founder has it.
 TEMPO_STEP = "tempo_step"
+#: The plan's two coach calls, hidden, not removed (founder 2026-10-31,
+#: N315): their asks, their calendar, the plan card's call lines and the
+#: summary call at the plan's end. No row until the founder makes one in the
+#: panel; until then they are off for everyone, the founder included.
+PLAN_CALLS = "plan_calls"
 GATED_FEATURES: tuple[str, ...] = (
     CANONICAL_TAKE_ROWS, CONFIDENCE_LEARNING_WRITES, EXERCISE_SERVICE,
     EXERCISE_SERVICE_UI, COACH_INLINE_AUTHORING, CONFIDENT_MOMENT_BUNDLES,
-    ROOTING_COVERAGE, TEMPO_STEP,
+    ROOTING_COVERAGE, TEMPO_STEP, PLAN_CALLS,
 )
 
 CONSENT_PURPOSES: tuple[str, ...] = (
