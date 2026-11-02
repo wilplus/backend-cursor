@@ -9214,7 +9214,7 @@ No rules page yet: it lands on frontend
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 when built. No migration in this entry.
 
-**N352 · The answer page has no "What to do now" summary (founder, the
+**N353 · The answer page has no "What to do now" summary (founder, the
 Claude Code chat, 2 November 2026: "yes build it, drop what to do now").**
 For N336 item 2 and N333: the page someone opens from the link to an answer
 shows the answer only. Their question is first; then one message from the
