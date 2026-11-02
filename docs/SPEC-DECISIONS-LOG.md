@@ -8787,3 +8787,24 @@ No rules page yet: it lands on frontend
 C1, [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 (Will's chat) and [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 when built. No migration.
+
+**N335 · An answer is sent when it is recorded, and its receiver gets just
+the answer (founder, the Claude Code chat, 2 November 2026, on N329: "Just
+the answer !", then "And also when you record the answer just send it don't
+re take it").** For N329:
+1. **Finish take sends it.** No answer waiting at the bottom of the chat, no
+"Record again", no "Send", and no note from Will before sending. Was (N329
+items 1 to 3): the answer waited, with "Send" or "Record again" and Will's
+look first.
+2. **The receiver gets just the answer**, with no Take number. Settles N329
+item 5.
+3. **Ask someone first** moves before the recording: a quiet link under
+"Record an answer", for when the speaker is not sure what to say (N332).
+4. **Open (proposal on the prototype, version 33):** after the answer is
+sent, one tap in that chat, "Practise with Will", opens the speaker's chat
+with Will on that answer: the Feedback walk, the Ideal Text, one point for
+the next answer, and "Record Take 2" as private practice, sent to no one;
+then "Back to {name}". It would change N329 item 4, which has no Take 2.
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
