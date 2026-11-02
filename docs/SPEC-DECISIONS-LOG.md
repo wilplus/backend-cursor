@@ -8884,3 +8884,19 @@ The rules: frontend
 §2, [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
 §3 and [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
 §2. No migration.
+
+**N339 · "Consult with someone", in grey (founder, the Claude Code chat, 2
+November 2026, on the "Ask someone" tap on the Ember & Air prototype:
+"consult with someone;", then "and make it grey").** For N303, N329 and N336:
+1. The words: "Consult with someone" (was "Ask someone"), "Or consult with
+someone first." (was "Or ask someone first."), "Consult with someone first"
+(was "Ask someone first", N329 item 2, N336 item 3) and "Consult with someone
+else" (was "Ask someone else"). Asking one person by name stays "Ask
+{name}?" and "Ask {name}" (N303).
+2. The "Consult with someone" tap is grey, not orange: the answer that goes on
+stays orange, on the right (N334 item 3).
+3. Signed (Never 4): the four wordings of item 1.
+The prototype: version 35 of <https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>.
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+when built. No migration.
