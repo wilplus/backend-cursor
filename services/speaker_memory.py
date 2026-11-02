@@ -101,6 +101,7 @@ _ASKED = {
     "audience_check": "whether the talk is for who it sounded like",
     "audience": "who the talk is for",
     "goal": "what they want the audience to do or feel",
+    "key_line": "the one sentence they want the audience to remember (their key line)",
     "vision": "whether the talk takes them where they want to go",
     "most_you": "which part of the talk is most them",
     "why_matters": "why the talk matters to them",
