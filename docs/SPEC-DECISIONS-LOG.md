@@ -8581,3 +8581,75 @@ with a Skip" (N319 item 2; amends N262 item 1's wording).
 The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 (items 1, 2, 4 and 6), when built. No migration.
+
+**N326 · N290 is built as designed, with the founder's four picks (founder,
+the Claude Code chat, 2 November 2026, on the prototype
+<https://claude.ai/artifact/KvAiek4DrxgbpDudcBFJNQ>: "Go with your picks on
+all four").** For N182, N268, N290, N291 and N325 item 7:
+1. **No line on screen.** The walk's screens and words stay as they are: the
+notes shape which moment is picked and how the Clearer version is written,
+and the speaker is not shown which note did it (no "From your notes:").
+2. **Only what the speaker noted themselves:** their principles (with the
+Life Panel's yes), kept strengths, life goals, Your why and # notes (with
+the notebook's yes), each only where its own ring row and consent already
+reach them. Will's private note (speaker memory) is not read by the walk.
+Variables and constants are not read until something keeps them.
+3. **# notes from the last 60 days,** the window the walk's quotes use
+(N268).
+4. **The founder first:** a new ring row `walk_inner_context`, at ring 6,
+widened later.
+5. **As designed on the prototype.** One verbal read per Take, an AI call
+inside the speaker's processing authorization, reads what was said against
+the outside context (the Take's set-up) and the notes, for the eight kinds
+of N290 item 4. It weighs the moments the picker chooses from, and gives the
+Clearer version a short line on what matters to the speaker. The rewrite
+check (H3) stays, and a new check refuses any phrase from the notes that the
+speaker didn't say in the Take. If the read fails or is late, the walk picks
+as it does today; the loop never waits (Never 3). The coach never sees the
+notes, that they were used, or a reason built from them (Never 2). No score
+is shown (Never 1).
+This amends N182 item 3 for the walk's pick and its Clearer version only:
+the plan, the coach panel and a Take's summary still never read them.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+H1 and [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md),
+when built. No migration.
+
+**N327 · The verbal read may hold a Take's "ready" for at most 5 seconds,
+only for speakers it reaches (founder, the Claude Code chat, 2 November
+2026, asked whether the read may wait up to 5 s or never wait: "Wait up to
+5 s").** Amends N326 item 5 ("the loop never waits"):
+1. For a speaker the ring row `walk_inner_context` reaches (and who noted
+something the walk may read), the Take's analysis waits at most 5 seconds
+for the verbal read before the Take is flipped ready. It usually finishes
+beside the run's other work and adds nothing.
+2. Late or failed after those 5 seconds: the walk picks as it does today.
+3. For everyone else nothing waits: the read stops at the ring check.
+No rules page. No migration.
+
+**N328 · The intimacy rule: in WillpowerLab you are reached only by people
+you let in (founder, the Claude Code chat, 2 November 2026, on the RASP
+ambassadors prototype <https://claude.ai/artifact/69U522Sp7oA82vo6iFFcNh>
+version 3: "it's supposed to stay fairly intimate. So up to a couple of
+chats that you chat with other people. There are specifically matched with
+you ... Or if you need someone else, you can send it to someone else, but
+first that person needs to join", then "log the intimacy rule in the
+decisions log").** For N298, N306, N308 and N312:
+1. **Nobody can reach you unless you let them in:** you opened their join
+link (N308), they opened yours, or Will matched you to a question that came
+through an ask link (N312). There is no directory of people, no search for
+people, and no message to someone you are not already in a chat with.
+2. **Someone new joins first.** To send something to a person you have no
+chat with, you send them your link; once they join, you have a chat and it
+reaches them.
+3. **A few chats, each with a person matched to you:** a customer or a
+colleague with a question, a learning buddy, a senior who checks, the coach.
+No number is set. The ways to answer stay those of N306 and N321.
+4. **The join page says it,** as a draft for the founder's OK (Never 4):
+"Nobody else can reach you here unless you open their link too."
+5. **Open:** the "+" in a chat with a person (a screenshot or photo opens a
+new question for that person only, then a voice note), shown on the same
+prototype; and whether short text is allowed in chats with people, which
+N306 does not allow today.
+No rules page yet: it lands with the chats' rules page (N274 item 6). No
+migration in this entry.

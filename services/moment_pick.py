@@ -55,6 +55,15 @@ strongest and a little lower for the fix slots (``RELEVANCE_LIFT``), so the
 praise and the fix land where the talk needs them. Nothing known, nothing
 changes.
 
+What the speaker noted themselves counts too (founder 2026-11-02, N326;
+``services.verbal_read``): the Take's verbal read, against the Take's
+set-up and their notes, weighs a moment whose words matter for this
+speaker (``lift``); such a moment reads lower for the between, so its
+Clearer version is likelier to be the one fix (``VERBAL_LIFT``). The policy
+keeps that pick only when its Clearer version passes the gate, else the pick
+without it. Never the strongest or the weakest: their best stays theirs.
+No read, no change.
+
 A clip with no sound read is not dropped (founder 2026-10-17): its S is
 neutral and its words order it. It can be the strongest, never the weakest.
 
@@ -85,6 +94,10 @@ STRETCH_WORDS = 8
 #: counts for more (N293, ``services.take_context.relevance``): it lifts the
 #: strongest's rank and makes the fix likelier to land on it.
 RELEVANCE_LIFT = 0.25
+#: How much a moment the verbal read weighs (N326, ``lift``, 0 to 1) counts
+#: for the between: at the full weight its words read half as good, so a
+#: moment whose words matter for this speaker is fixed first.
+VERBAL_LIFT = 0.5
 #: The two best, which the V3 policy gives a block each (N128, N246 item 1).
 PAIR = 2
 
@@ -131,6 +144,18 @@ def read(score: Any, text: Any, metrics: Any, shown: Any = None,
     return {"s": s, "w": w, "value": s * w, "sound": sound,
             "words_help": words_need_help(text if shown is None else shown, fit),
             "relevance": max(0.0, min(1.0, float(relevance or 0.0)))}
+
+
+def lift(read_: dict, weight: Any) -> dict:
+    """``read_`` (from :func:`read`) with how much the Take's verbal read
+    weighs it for this speaker (N326), bounded 0 to 1; ``read_`` itself when
+    the weight is nothing, so a pick with no read is the pick it always
+    was. Pure."""
+    try:
+        bounded = max(0.0, min(1.0, float(weight or 0.0)))
+    except (TypeError, ValueError):
+        bounded = 0.0
+    return {**read_, "verbal": bounded} if bounded > 0 else read_
 
 
 def pick(reads: list[dict], level: Optional[dict] = None) -> dict:
@@ -211,10 +236,12 @@ def _weakest(rows: list[dict]) -> Optional[dict]:
 
 def _between(rows: list[dict]) -> Optional[dict]:
     """The clip whose words need help the most: the lowest W, then the
-    lowest willfidence; never one that holds its slide's helper words."""
+    lowest willfidence; never one that holds its slide's helper words. A
+    moment the verbal read weighs reads lower (N326, ``_heard``)."""
     worded = [row for row in rows if _worded(row) and row["read"].get("words_help")
               and not row.get("held")]
-    return min(worded, key=lambda row: (row["read"]["w"] * _damp(row), row["read"]["value"]),
+    return min(worded, key=lambda row: (row["read"]["w"] * _damp(row) * _heard(row),
+                                        row["read"]["value"]),
                default=None)
 
 
@@ -255,6 +282,12 @@ def _damp(row: dict) -> float:
     """A relevant sentence reads a little lower for the fix slots, so the
     fix lands where it matters most to the talk (N293)."""
     return 1 - RELEVANCE_LIFT * _relevance(row)
+
+
+def _heard(row: dict) -> float:
+    """1 with no verbal read, down to 1 - ``VERBAL_LIFT`` at its full
+    weight (N326)."""
+    return 1 - VERBAL_LIFT * float(row["read"].get("verbal") or 0.0)
 
 
 def _voice_clears(row: dict) -> bool:

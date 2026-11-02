@@ -3261,6 +3261,25 @@ O3  A Library save and a pick of another library exercise make no pair,
 while the request still resolves.","O1 -> test_the_pair_is_stamped_and_releasable_with_the_owner_s_yes
 O2 -> test_without_the_owner_s_yes_it_is_recorded_but_not_releasable
 O3 -> test_a_library_save_and_a_library_pick_make_no_pair","Founder 2026-10-05 (W6): an unstamped pair had no owner, so no consent could ever reach it."
+tests/test_the_walk_reads_my_notes.py,Story,"As a speaker who noted what matters to me, I want the walk to pick the moment where my words matter most for me and to write its Clearer version with that in mind, in my own words, so that the one thing I fix is the one that helps me most, and nothing changes when the walk has nothing of mine to read.","O1  Without the ring row, without notes, or when the read fails or says
+something malformed, the walk picks exactly as it did before (N326
+items 4 and 5).
+O2  With my note (""my manager says I explain too much and never give the
+answer"") and my manager's question, the read flags my buried answer
+and it becomes my one thing to improve, with its Clearer version
+""With a second shift, ninety is possible by March.""; a later read of
+the frozen Take keeps that walk; a flagged moment whose Clearer
+version fails the gate leaves the walk as it was (N326 item 5).
+O3  A Clearer version that repeats a phrase from my notes I did not say
+in the Take is refused (N326 item 5).
+O4  Will's private note about me is never read for the walk (N326 item 2).
+O5  A coach never sees my notes, that they were used, or a reason built
+from them: the frame and the stored rewrite carry only the choice of
+moments and my own words (N326 item 5, Never 2).","O1 -> test_no_ring_no_notes_or_a_failed_read_leave_the_walk_as_it_was
+O2 -> test_my_note_makes_my_buried_answer_the_one_thing
+O3 -> test_a_clearer_version_never_repeats_my_notes
+O4 -> test_wills_private_note_is_never_read
+O5 -> test_a_coach_never_sees_my_notes_or_why_a_moment_was_picked","Founder 2026-11-02, the Claude Code chat, on the prototype https://claude.ai/artifact/KvAiek4DrxgbpDudcBFJNQ: ""Go with your picks on all four"" (N326, building N290)."
 tests/test_token_arc_charged.py,Story,"As a speaker, I want to see whether I already paid for an action on this presentation, without being charged for looking, so that the prices on its buttons are true. (Critical path: payments.)","O1  GET /v2/tokens/arc/<arc_id> answers, for every per-arc action, whether I
 already paid for it here and what it costs.
 O2  Looking charges nothing: no ledger row, no balance change, no charge

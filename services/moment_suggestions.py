@@ -173,8 +173,13 @@ def generate_moment_suggestion(
     context_document: Optional[str] = None,
     trigger: Optional[str] = None,
     user_id: Optional[str] = None,
+    speaker_focus: Optional[str] = None,
 ) -> Optional[dict]:
-    """{'why': str, 'replacement': str|None} or None on any miss. Guarded."""
+    """{'why': str, 'replacement': str|None} or None on any miss. Guarded.
+
+    ``speaker_focus``: the Take's verbal read's line on what matters to the
+    speaker (N326, `context_rewrites`); with it the prompt gains its one
+    instruction (``SPEAKER_FOCUS``), without it the prompt is unchanged."""
     if kind not in ("emphasize", "replace"):
         return None
     if not isinstance(transcript, str) or not transcript.strip():
@@ -201,9 +206,14 @@ def generate_moment_suggestion(
         if isinstance(context_document, str) and context_document.strip():
             payload["project_background"] = \
                 context_document.strip()[:_MAX_DOC_EXCERPT]
+        system = _SYSTEM
+        if isinstance(speaker_focus, str) and speaker_focus.strip():
+            from services.prompts.moment_suggestions import SPEAKER_FOCUS
+            payload["speaker_focus"] = speaker_focus.strip()[:200]
+            system = _SYSTEM + SPEAKER_FOCUS
         result = chat_complete(
             spec=SPEC_MOMENT_SUGGESTION,
-            system=_SYSTEM,
+            system=system,
             user=json.dumps(payload, ensure_ascii=False),
             surface="moment_suggestion",
             user_id=user_id,
@@ -1021,6 +1031,86 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
         logger.warning("moment_suggestion: session pass failed sid=%s: %s",
                        session_id, e)
         return 0
+
+
+#: How many moments the verbal read may have rewritten per Take (N326).
+CONTEXT_REWRITES_MAX = 2
+
+
+def context_rewrites(session_id: str, arc_id: Optional[str], weights: Any,
+                     focus: Optional[str], noted: Any, *,
+                     database=None) -> list[dict]:
+    """The Clearer versions the speaker's own notes shape (founder
+    2026-11-02, N326 item 5), for the moments the Take's verbal read weighs
+    most (``weights``, ``{snippet_id: weight}``; at most
+    ``CONTEXT_REWRITES_MAX``), each written with the read's line on what
+    matters to the speaker (``focus``).
+
+    Only a moment this lane would rewrite anyway (a replace candidate: an
+    unconfident read, profanity or a low slide fit, not decided, not
+    protected) is written again, with the trigger it already has, so a
+    coach reads no new reason (Never 2). A rewrite that carries a
+    phrase from the notes (``noted``) the speaker did not say is refused
+    (`rewrite_gate.leaks`). No why-line is kept: it could be built from the
+    notes. Returned, not stored: the analysis run stores them
+    (`store_context_rewrites`) once the rule lane has written its rows.
+    Best-effort: [] on any failure."""
+    from services.rewrite_gate import leaks
+    ranked = sorted(((str(k), float(v)) for k, v in (weights or {}).items()
+                     if isinstance(v, (int, float)) and v > 0),
+                    key=lambda kv: -kv[1])[:CONTEXT_REWRITES_MAX]
+    if not session_id or not arc_id or not ranked:
+        return []
+    try:
+        if database is None:
+            from services.db import db as database
+        context = _load_generation_context(session_id, str(arc_id), database)
+        by_id = {str(snip.get("id")): snip for snip in context.readout.get("snippets") or []}
+        out: list[dict] = []
+        for snippet_id, _weight in ranked:
+            snip = by_id.get(snippet_id)
+            if snip is None:
+                continue
+            plan = _classify_acoustic_candidate(snip, context, 0, session_id)
+            if plan.outcome != "candidate" or plan.kind != "replace" or not plan.trigger:
+                continue
+            made = generate_moment_suggestion(
+                "replace", plan.transcript, audience=context.audience,
+                strategic_context=context.strategic_context,
+                context_document=context.context_document, trigger=plan.trigger,
+                user_id=context.session.get("user_id"), speaker_focus=focus)
+            replacement = (made or {}).get("replacement")
+            if not replacement or leaks(replacement, noted, plan.transcript):
+                logger.info("context rewrite: none kept snip=%s", snippet_id)
+                continue
+            out.append({"snippet_id": snippet_id, "replacement": replacement,
+                        "trigger": plan.trigger})
+        return out
+    except Exception as e:
+        logger.warning("context rewrite: failed sid=%s: %s", session_id, e,
+                       exc_info=True)
+        return []
+
+
+def store_context_rewrites(rewrites: Any, arc_id: Optional[str], *,
+                           database=None) -> int:
+    """Store `context_rewrites`' rows over the rule lane's for the same
+    moments (kind ``replace``, their trigger, no why). Returns how many."""
+    if not arc_id or not rewrites:
+        return 0
+    if database is None:
+        from services.db import db as database
+    stored = 0
+    for row in rewrites:
+        try:
+            if database.upsert_moment_suggestion(
+                    row["snippet_id"], str(arc_id), "replace",
+                    row["replacement"], None, row["trigger"]):
+                stored += 1
+        except Exception as e:
+            logger.warning("context rewrite: not stored snip=%s: %s",
+                           row.get("snippet_id"), e, exc_info=True)
+    return stored
 
 
 def generate_praise_for_session(session_id: str, arc_id: Optional[str], *,

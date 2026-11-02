@@ -562,6 +562,20 @@ SPEC_WALK_QUOTE = LLMSpec(
 version, a kept strength, the vision or a # note that answers the sentence,
 or none (services.walk_quote)."""
 
+SPEC_VERBAL_READ = LLMSpec(
+    model=STRONG_MODEL,
+    # A read, not writing: which of eight closed kinds a moment shows and how
+    # much it matters, plus one short line. Steady, so two reads agree.
+    temperature=0.0,
+    max_tokens=400,
+    response_format={"type": "json_object"},
+    timeout_seconds=20.0,
+)
+"""The verbal read of one Take (N326, N290 item 4): the eight kinds against
+the Take's set-up and the speaker's own notes, a weight per flagged moment,
+and one short line for the Clearer version (services.verbal_read). Never
+shown; it only weighs the walk's pick."""
+
 SPEC_LIFE_GOAL_ASK = LLMSpec(
     model=CHEAP_MODEL,
     # Detection only: a life goal asked for, or not.

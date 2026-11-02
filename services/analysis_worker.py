@@ -191,6 +191,8 @@ def _run_full_analysis_impl(
 
     _deg = (degradation if degradation is not None
             else DegradationLog("take_analysis"))
+    # The Take's verbal read in flight, if one starts (N326).
+    _verbal: Any = None
 
     with _Timeline(session_id) as tl:
         _emit(progress, "transcribing", 15, "Transcribing your take…")
@@ -352,6 +354,13 @@ def _run_full_analysis_impl(
                 _emit(progress, "feedback_moments", 72,
                       "Finding feedback moments…")
                 tl.mark("feedback_moments")
+                # THE VERBAL READ (founder 2026-11-02, N326): for a speaker
+                # the walk's ring row reaches, one read of the Take against
+                # its set-up and their own notes, beside the moments, the
+                # Ideal Text and the KPI fold, inside this run's
+                # authorization; waited for at most 5 s (N327) before the
+                # ready flip (`_verbal_read_lands`). Nothing for anyone else.
+                _verbal = _verbal_read_starts(session_id, arc_id, user_id)
                 if _moment_suggestions_enabled():
                     def _moment_suggestions() -> None:
                         from services.moment_suggestions import (
@@ -520,6 +529,11 @@ def _run_full_analysis_impl(
                 _deg.note("review_version_card", "card_not_persisted")
         _deg.run("review_version_card", _review_version_card)
 
+    # The verbal read's Clearer versions and weights land before the walk's
+    # bake reads them, or not at all (N326; never raises, waits a few
+    # seconds at most, and only for a speaker the read reaches).
+    _verbal_read_lands(_verbal, session_id, arc_id)
+
     # THE SPEAKER-FACING TERMINAL STATE (founder 2026-10-14, the wait).
     # Everything a read depends on is persisted above this line: the
     # snippets, the session globals the FE's phase gate reads, the coach
@@ -566,6 +580,35 @@ def _run_full_analysis_impl(
     _after_ready(session_id=session_id, user_id=user_id,
                  send_result=_send_res, deg=_deg)
     return readout_local, sent_local
+
+
+def _verbal_read_starts(session_id: str, arc_id: Any, user_id: Any) -> Any:
+    """Begin the Take's verbal read (`services.verbal_read`, N326) beside
+    the run's other work, on a thread that keeps this run's provider
+    authorization. None when there is nothing to read. Never raises."""
+    try:
+        from services import verbal_read
+        return verbal_read.start(db, session_id=session_id, arc_id=arc_id,
+                                 user_id=user_id,
+                                 rewrites=_moment_suggestions_enabled())
+    except Exception:
+        logger.warning("lab: verbal read not started sid=%s", session_id,
+                       exc_info=True)
+        return None
+
+
+def _verbal_read_lands(handle: Any, session_id: str, arc_id: Any) -> None:
+    """Wait for the read at most ``verbal_read.JOIN_SECONDS``, then store
+    its Clearer versions and keep its weights for the bake. Late or failed:
+    the walk picks as it does today. Never raises."""
+    if handle is None:
+        return
+    try:
+        from services import verbal_read
+        verbal_read.finish(handle, db, session_id=session_id, arc_id=arc_id)
+    except Exception:
+        logger.warning("lab: verbal read not landed sid=%s", session_id,
+                       exc_info=True)
 
 
 def _flip_ready(on_ready: Optional[Callable[[], None]],
