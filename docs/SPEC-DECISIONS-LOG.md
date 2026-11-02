@@ -8502,6 +8502,11 @@ whenever rushing is the Take's biggest issue (the pace scale finds a stretch
 outside the green and it outweighs what the words or the voice need), with
 or without a plan, at any level. Was (as built for N309): only on a plan
 whose level this week is the key line or pauses.
+7. **The plan's coach calls are wanted on** (founder, the same chat: "YES",
+to "Did you mean you want them on?"): the switch of N315 stays; the founder
+turns it on by adding the ring row `plan_calls` in the rings panel
+(`/admin/rings`) at the ring the calls should reach. Until that row exists
+they stay hidden.
 The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
