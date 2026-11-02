@@ -8913,7 +8913,9 @@ someone first." (was "Or ask someone first."), "Consult with someone first"
 else" (was "Ask someone else"). Asking one person by name stays "Ask
 {name}?" and "Ask {name}" (N303).
 2. The "Consult with someone" tap is grey, not orange: the answer that goes on
-stays orange, on the right (N334 item 3).
+stays orange, on the right (N334 item 3). So are the other second choices,
+"Someone else", "Not now" and "Add something" (founder, the same chat, on the
+question whether they should be grey too: "You have my okays").
 3. Signed (Never 4): the four wordings of item 1.
 The prototype: version 35 of <https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>.
 No rules page yet: it lands on frontend
@@ -8953,9 +8955,51 @@ N329 and N336:
 2. **Where the speaker tapped to send it** (an ask in Will's chat), Will
 confirms in a bubble with the same check: "Sent to {name}. {name} gets it on
 WhatsApp."
-3. Its words wait for the founder's OK (Never 4). Was: a small grey line,
-"Take {N} sent to {name} on WhatsApp · {time}".
+3. Signed (Never 4; founder, the same chat: "You have my okays"): "Sent to
+{name} on WhatsApp", "Sent to {name}. {name} gets it on WhatsApp.". Was: a
+small grey line, "Take {N} sent to {name} on WhatsApp · {time}".
 The prototype: version 37 of <https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>.
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
+
+**N343 · Each chat holds only you and that one person; Will's chat holds
+only Will (founder, the Claude Code chat, 2 November 2026, on the prototype's
+consult in Will's chat: "if it's Sarah asking me, I should receive it from
+Sarah and not in a Will chat. In Will, I only receive messages from Will,
+right?"; then, asked to confirm the rule: "You have my okays").** For N305,
+N332 and N336:
+1. A message from a person arrives only in the chat with that person. Will's
+chat holds only Will and the speaker.
+2. "Consult with someone first" (N340) opens a sheet in the chat it is about,
+only the speaker sees it, not a message: Will's suggestion, "Ask {name}?
+{Name} has answered questions about {topic} before." (N303, N332), with
+"Someone else" and "Ask {name}". "Ask {name}" opens the chat with that
+person, the question passed on ("↪ {customer}'s question, a customer"); they
+answer there; "Back to {name}" returns to the first chat.
+3. Was (N305): the asks, the question and the colleague's answer in the
+speaker's chat with Will.
+4. Signed (Never 4): "↪ {customer}'s question, a customer", "Back to
+{name}".
+The prototype: version 38 of <https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>.
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
+
+**N344 · Practise with Will, after an answer has gone (founder, the Claude
+Code chat, 2 November 2026, on the prototype, version 33: "You have my
+okays").** Settles N336 item 4; for N329 item 4:
+1. Under an answer just sent, one tap on the right of that chat: "Practise
+with Will". It can be ignored.
+2. It opens the speaker's chat with Will on that answer: the Feedback walk,
+the Ideal Text, one point for the next answer ("For your next answer:
+..."), and "Record Take 2" under the chat: practice, sent to no one.
+3. After it, Will says what changed, in words, and one tap, "Back to
+{name}", returns to the chat it came from. Will's row in the list also shows
+a new dot, for practising later.
+4. Signed (Never 4): "Practise with Will", "Back to {name}"; Will's line
+after the practice is written fresh, in the prototype's style ("You named
+the treatment first this time.").
 No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration.
