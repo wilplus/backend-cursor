@@ -58,6 +58,10 @@ COPY = {
     # (N319 item 4).
     "plain_ack": "Thank you. Now I can hear you talking about your goal and why it matters.",
     "ratings_intro": "Two quick taps before your plan.",
+    # A rating tap, said back without its number: the speaker's turn, a lock
+    # and this word (founder 2026-11-02, N339: "just something like locked
+    # or guarded, you come up with it"; never the number, N178).
+    "rating_answered": "Answered",
     "stress_q": "How stressed do you feel about it right now?",
     "ready_q": "How ready do you feel for it right now?",
     "stress_lo": "Calm",

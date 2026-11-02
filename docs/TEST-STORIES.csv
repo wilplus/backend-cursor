@@ -2155,7 +2155,8 @@ kept with its recording, kept for Will, and shown as the speaker's
 voice bubble; when the AI fails Will says the plain words, and the key
 line is always the first follow-up, right after Will's reply (""Let me
 draft your plan. A few more questions first."" is gone, N319 item 4).
-O5  The two ratings are kept and never shown back as a number; then,
+O5  The two ratings are kept and never shown back as a number: each tap
+is the speaker's turn, ""Answered"" with a lock (N339); then,
 with the calls hidden (no ring row ``plan_calls``, N315), straight to
 ""You're all set. Here's your plan."" and the card, with no call asked.
 O15 With the calls on, they are asked as before: the kickoff call, then
