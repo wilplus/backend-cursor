@@ -9213,3 +9213,19 @@ No rules page yet: it lands on frontend
 [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 when built. No migration in this entry.
+
+**N352 · The answer page has no "What to do now" summary (founder, the
+Claude Code chat, 2 November 2026: "yes build it, drop what to do now").**
+For N336 item 2 and N333: the page someone opens from the link to an answer
+shows the answer only. Their question is first; then one message from the
+person who answered: the voice, the slides they talked over in a strip that
+follows it, and "Read it" for the words (N331), closed. Then the picks: the
+first as the one black button, the others as quiet rows. Then the bar of
+every chat (the + and three emoji, N341). No "What to do now" summary
+above the voice; it is dropped, not moved. The page looks like the app's
+chats: white, the reader's own messages orange on the right, the
+answerer's grey on the left. No new words are signed here.
+The prototype: <https://claude.ai/artifact/RWT4oazQ5VtLCZkcuuRWWB>, version
+5. No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
+No migration.
