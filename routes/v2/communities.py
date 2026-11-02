@@ -72,6 +72,19 @@ def v2_my_take_shares():
     return _run("take shares", lambda: my_live_shares(db, owner_user_id=str(request.user_id)))
 
 
+@v2_bp.route("/user/takes/share/last", methods=["GET"])
+@require_auth
+def v2_remembered_share():
+    """Sharing is asked once (N309 item 5): the speaker's remembered choice,
+    the newest line under a Take's recording, and whether the sharing screen
+    asks again (no choice yet, other words, a community added since).
+    200 {ask, choice: {general, community_ids, none, share_words_version,
+    communities: [{id, name}]} | null}. Reads only."""
+    from services.communities import remembered_share
+    return _run("remembered share", lambda: remembered_share(
+        db, owner_user_id=str(request.user_id)))
+
+
 @v2_bp.route("/user/takes/<take_id>/share", methods=["PUT"])
 @require_auth
 def v2_take_share(take_id):

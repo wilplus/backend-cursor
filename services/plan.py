@@ -73,9 +73,13 @@ COPY = {
     "days_done": "Done. You'll practise on {days}.",
     "told_coach": "I've told your coach. You can talk it over on your next call.",
     "practice_n": "Today is practice {n} of {total}: {level}.",
-    "done_next": "{n} of {total} practices done. Next: {day}.",
+    # The plan's progress in the chat after the walk, under its bar (N319
+    # item 7); was "{n} of {total} practices done. Next: {day}." on the
+    # walk's end sheet.
+    "done_of": "{n} of {total} practices done.",
+    # After a practice day's Take (G13); "Now go and live it, away from the
+    # phone." under it is gone (N319 item 4).
     "fifteen_1": "That's your 15 minutes for today.",
-    "fifteen_2": "Now go and live it, away from the phone.",
     "deadline_was": "Your deadline was {date}.",
     "how_did_it_go": "How did it go? Tell me in a voice message.",
     "thanks_told": "Thank you for telling me.",
@@ -235,6 +239,14 @@ def next_practice_day(after: date, deadline: date, days: Sequence[int],
             return d
         d += timedelta(days=1)
     return None
+
+
+def next_day_name(after: date, deadline: date, days: Sequence[int], every_day: bool) -> Optional[str]:
+    """The plan's next practice day by its weekday, for "Good job. See you
+    next {day}." (N319 item 7): "See you next tomorrow" does not read, so
+    tomorrow is named too. None after the last practice."""
+    nxt = next_practice_day(after, deadline, days, every_day)
+    return DAYS[nxt.weekday()] if nxt else None
 
 
 def next_day_text(after: date, deadline: date, days: Sequence[int], every_day: bool) -> Optional[str]:

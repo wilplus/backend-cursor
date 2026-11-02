@@ -23,7 +23,7 @@ The chat's own module for one question after the Feedback walk:
      "No" (or the old "Not really") under the question counts as tapping it.
 
 Which asks follow a Take, in what order, is ``after_take.chain`` (from
-Take 2 the CEO panel's ask, WhatsApp and the home screen come first). The
+Take 2 the CEO panel's ask, then Will's question, come first). The
 question still refuses a batch that carries another offer
 (``check_against_after_take``). A coach update that rewrites the summary does
 not ask again (the summary's batch is written once per Take).

@@ -272,20 +272,21 @@ where this one ended. A finished deletion is left out too.",O1 -> AdminUsersBein
 tests/test_admin_users_leave_out_deleted_accounts.py,Story,"As the founder, I want a finished deletion gone from the Users list, so that the list never shows an emptied account with no email and no name.","O1  Every auth user whose deleted_at is set is left out of the paged list
 and of the search; one without it stays. A page shortened by a deleted
 account still says there is more, so the list does not end early.",O1 -> AdminUsersLeaveOutDeletedAccountsTest::test_a_deleted_account_is_in_neither_the_page_nor_the_search,"N219: a finished deletion is in neither tab. N218: its auth record stays, emptied, with deleted_at set."
-tests/test_after_take.py,Story,"As a speaker, after a Take I want one thing to do at a time: the Take's card and its summary, then each ask on its own with Will's words leading into it, and only then ""practice makes perfect"" with ""Record Take N"", so that nothing competes with the walk or with recording again (founder 2026-10-20, N89).","O1  One ask after each Take, the first that waits (founder 2026-10-26,
-N189; was two, N94). After Take 1 that is WhatsApp when I left no
-number (N171), else Will's question when he has one, else ""Did this
-help?"" when the Take looks off; never an ask from the CEO panel or
-the home screen on Take 1.
-O2  From Take 2 the order is the CEO panel's ask, WhatsApp (at most twice
-in all), the home screen (once, where the phone can add it), Will's
-question, ""Did this help?""; the first that waits comes and the others
-wait for a later Take; nothing comes when nothing applies.
+tests/test_after_take.py,Story,"As a speaker, after a Take I want one thing to do at a time: the Take's card and its summary, then each ask on its own, then a goodbye with nothing pushing me to record again, and the settings asks only the next time I open the app, so that nothing competes with the walk and I practise because I want to (founder 2026-10-20, N89; 2026-10-31, N294, N295; N319 item 7).","O1  One ask after each Take, the first that waits (founder 2026-10-26,
+N189). After Take 1 that is Will's question when he has one, else
+""Did this help?"" when the Take looks off; never an ask from the CEO
+panel on Take 1; WhatsApp and the home screen never after a Take
+(N294 item 8).
+O2  From Take 2 the order is the CEO panel's ask, Will's question, ""Did
+this help?""; the first that waits comes and the others wait for a
+later Take; Will's next question may follow his first, only when his
+is the ask (N294 item 4); nothing comes when nothing applies.
 O3  The asks come one at a time, each under whatever closed the one
 before: a typed turn, under Will's reply; ""Yes"", tapped or typed,
 under ""We're glad it helped you.""; a reply that opens a form keeps the
-ask open. An ask that no longer applies is skipped. After the last,
-the closing message comes, with its words.
+ask open. An ask that no longer applies is skipped, and so is a
+settings ask a message held from before still names. After the last
+comes ""Good job. See you next time."", no push to the next Take.
 O4  A message still waiting when a newer Take is written shows where it
 stands.
 O5  After a distressed message the chat's safety reply comes and the asks
@@ -294,12 +295,19 @@ N94).
 O6  The plan's lines after a practice day's Take (""That's your 15
 minutes for today."") wait for the ask: the ask stays the newest
 bubble, so its answers stay; after my answer come the lines, then
-the closing message with ""Record Take N"", last (founder 2026-10-30).","O1 -> test_after_take_one_the_whatsapp_ask_else_will_else_the_question
-O2 -> test_from_take_two_one_ask_ceo_ask_whatsapp_home_screen_will_the_question
-O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_closing_message
+""Good job. See you next {day}."" with the plan's next practice day,
+then the plan's progress, last (N319 item 7).
+O7  The settings asks wait for the next visit (N294 item 8, N295): never
+before my second Take is done, never while an ask after a Take waits,
+at most one per Take; WhatsApp first, opened with ""It seems you enjoy
+using WillpowerLab."" (at most twice), the home screen last, once,
+where the phone can add it.","O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
+O2 -> test_from_take_two_one_ask_ceo_ask_will_the_question
+O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_goodbye
 O4 -> test_an_older_waiting_message_shows_where_it_stands
 O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
-O6 -> test_the_plans_lines_wait_for_the_ask","Founder 2026-10-20: ""one action at a time"", then, after checking the app: the summary without the CTA, Will's liaison before each ask, ""Look, practice makes perfect…"" and the CTA last."
+O6 -> test_the_plans_lines_wait_for_the_ask_then_the_goodbye_and_the_progress
+O7 -> test_settings_asks_wait_for_the_next_visit","Founder 2026-10-20: ""one action at a time""; 2026-10-31 (N294): ""No call to action means that there is no push"", ""the next time you come and open the app ask the settings questions""."
 tests/test_ai_voice.py,Story,"As a speaker practising, I want an AI clip of my own voice saying my own words with one improvement, never shown if it fails its check, and fully deleted when I ask, so that I hear a believable better version and keep control of my voice.","O1  One problem is picked against my own usual (or the default), and the
 sentence under the clip names it in words, with no numbers.
 O2  The clip says my own words (or the clearer version I accepted, with
@@ -769,7 +777,12 @@ O8  My answer on an imported clip is kept once (a second answer is
 refused) and never becomes a label.
 O9  The judging reopened from the Lounge lists imported clips too.
 O10 An empty queue is logged with its reason, and so is a short one.
-O11 The One thing walk asks one moment of a level (N309): the Take's
+O11 Sharing is asked once: with no choice yet the screen asks; once the
+line under a Take's recording carries my choice (""Only me"" too), the
+next Take keeps it without asking, with my community's name.
+O12 It is asked again when the sharing words change, when I join a
+community after my choice, or when nothing of my choice is left.
+O13 The One thing walk asks one moment of a level (N309): the Take's
 clip of that level alone, else the next level round; a level that is
 not high, middle or low is refused.","O1 -> test_answered_self_labelled_and_settled_clips_are_not_queued
 O2 -> test_the_judging_reopened_shows_the_latest_answers_with_their_clips
@@ -781,7 +794,9 @@ O7 -> test_an_imported_clip_plays_by_a_signed_link_audio_only
 O8 -> test_an_answer_on_an_imported_clip_is_kept_once_and_never_a_label
 O9 -> test_the_replay_lists_imported_clips
 O10 -> test_an_empty_queue_is_logged_with_why
-O11 -> test_the_one_thing_walk_judges_one_moment_of_its_level","Founder 2026-10-06 (N52.4, migration 0432; CM2). The consent and words versions on a share are pinned on the database in test_a_share_records_the_words_the_speaker_saw_postgres.py. O6 to O10: founder 2026-10-23 (N119, migration a_speaker_may_judge_an_imported_clip.sql): the imported corpus the coaches judge is played to speakers, three levels, three speakers; this amends CM1 A and replaces N97's one moment per try."
+O11 -> test_sharing_is_asked_once_then_remembered
+O12 -> test_sharing_is_asked_again_when_the_words_change_or_a_community_is_added
+O13 -> test_the_one_thing_walk_judges_one_moment_of_its_level","Founder 2026-10-06 (N52.4, migration 0432; CM2). The consent and words versions on a share are pinned on the database in test_a_share_records_the_words_the_speaker_saw_postgres.py. O6 to O10: founder 2026-10-23 (N119, migration a_speaker_may_judge_an_imported_clip.sql): the imported corpus the coaches judge is played to speakers, three levels, three speakers; this amends CM1 A and replaces N97's one moment per try. O11 and O12: founder 2026-10-31 (N309 item 5), sharing is asked once; replaces G1's ask before every Take. O13: founder 2026-11-02 (N309 item 2), the One thing walk judges one moment a walk, its level turning high, middle, low."
 tests/test_compose_locked_paths.py,Story,"As a speaker, I want the paragraphs I locked kept word for word and in place when a new Take rebuilds my Ideal Text, so that my chosen words stay until I pick new ones.","O1  With the same number of paragraphs, locked ones stay and the new
 Take's text fills the rest.
 O2  When the number of paragraphs changes, a locked paragraph keeps its
@@ -2119,8 +2134,11 @@ O5  The two ratings are kept and never shown back as a number; then the
 kickoff call is offered, then the summary call; skipping both still
 gives ""You're all set. Here's your plan."" and the card.
 O6  On a practice day after the first Take, the first open writes the
-hello and today's one thing, once; after a Take on a practice day the
-15 minutes lines come, once.
+hello and today's one thing, once; after a Take on a practice day
+""That's your 15 minutes for today."" comes, once, and nothing under it
+(N319 item 4); the chat's goodbye names the plan's next practice day,
+and the plan's progress comes as one bubble, ""1 of 9 practices done.""
+with what its bar draws, once per Take (N319 item 7).
 O7  A new project's first Take asks ""Is this for {date}?""; Yes keeps the
 plan, No starts ""When is your deadline?"" for a new one, the old plan
 kept in the history.
@@ -2914,7 +2932,8 @@ measurement number, and logs retired_route_called so any caller left
 shows up.",O1 -> test_the_retired_comparison_answers_410_with_no_numbers,"It sent raw Hz, wpm and pause milliseconds to the speaker, and no frontend called it. services/take_comparison.py has no caller left; deleting it is a follow-up."
 tests/test_take_context.py,Story,"As a speaker, I want the walk to know who my talk is for and what I want them to do, from what I already told Will or my plan, so that the moment it praises and the one it fixes are the ones my talk needs, and nothing changes when it knows nothing.","O1  What I told Will (the talk's setup) comes first, then my plan's
 answers, then a guess read from my Take; a guess never replaces
-something I said.
+something I said. The key line I said to Will counts on the talk's
+later Takes too (N294 item 2).
 O2  A sentence that carries my key line or my call to action counts in
 full when I said it, at half weight when it was only a guess, and not
 at all when nothing is known.
@@ -3059,17 +3078,18 @@ Take the third.
 O3  A coach note rewrites the summary in place, keeping the first one
 however many notes follow, once per note; a note shared after the
 review is its own bubble, stored once.
-O4  From Take 2, a speaker without a WhatsApp number is asked for it
-after the Take's card, and the summary waits under the ask
-(services/after_take.py).
-O5  The summary and the ask after it sort under the walk's last step,
+O4  Nothing is asked after the Take when nothing is off or missing: a
+speaker without a WhatsApp number is not asked for it (that waits for
+the next visit, N294 item 8), and the goodbye, ""Good job. See you
+next time."", comes right after the summary (services/after_take.py).
+O5  The summary and the goodbye after it sort under the walk's last step,
 even when my browser's clock runs ahead of the server's.
 O6  The summary can point back to what I said in an older Take (the same
 project first), never this Take, never a Take whose processing
 authorization is not in force; a failing or slow lookup leaves the
 summary as it was, and a number it brings in still falls back to the
 approved copy (founder 2026-10-20, step 3).","O1 -> test_a_take_gets_one_summary_from_its_real_progress,
-test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
+test_the_summary_knows_the_talk_and_no_settings_ask_follows
 O2 -> test_a_reply_with_a_number_falls_back_to_the_signed_copy,
 test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy,
 test_a_reply_that_ends_on_a_question_is_the_signed_copy,
@@ -3078,12 +3098,12 @@ test_a_fourth_take_is_never_called_the_third
 O3 -> test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_first,
 test_a_shared_coach_word_rewrites_a_reviewed_take_once_per_word,
 test_a_coach_word_shared_after_the_review_is_its_own_bubble
-O4 -> test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
-O5 -> test_the_summary_and_its_ask_sort_under_the_walk
+O4 -> test_the_summary_knows_the_talk_and_no_settings_ask_follows
+O5 -> test_the_summary_and_the_goodbye_sort_under_the_walk
 O6 -> test_the_summary_points_back_to_an_older_take_never_this_one,
 test_a_take_not_in_force_never_reaches_the_summary,
 test_a_failing_or_slow_lookup_leaves_the_summary_as_today,
-test_an_earlier_take_with_a_number_still_falls_back_to_the_signed_copy",Never-rule 1; founder lock 2026-10-12 (section 3) and 2026-10-14; founder 2026-10-20 (the chat keeps the order it shows; one action at a time).
+test_an_earlier_take_with_a_number_still_falls_back_to_the_signed_copy","Never-rule 1; founder lock 2026-10-12 (section 3) and 2026-10-14; founder 2026-10-20 (the chat keeps the order it shows; one action at a time); 2026-10-31 (N294: no push, settings at the next visit)."
 tests/test_take_two_rewrites_an_edited_slide_postgres.py,Story,"As a speaker who edited a Paragraph, I want Take 2 to replace the slides I spoke with what I said, keep the rest and my helper words, and keep my edit in history, so that the Ideal Text is my latest words and nothing is lost.","O1  On a real database, a slide I spoke in Take 2 shows exactly what I
 said, even if I had edited it, on the same Paragraph.
 O2  A slide I did not speak keeps its last version, including my own
@@ -3599,22 +3619,26 @@ O3 -> test_the_most_relevant_piece_comes_first
 O4 -> test_a_failing_read_gives_no_block_and_no_error
 O5 -> test_will_reads_the_lookup_in_the_chat
 O6 -> test_a_take_whose_authorization_is_gone_never_reaches_will","Will's answers should build on what this speaker already said and heard, without anything private to someone else, or to the coach, leaking in."
-tests/test_will_question.py,Story,"As a speaker, after a Take I want Will to ask me at most one short question, only when something is off or missing, that I answer with a tap or in my own words, so that the next feedback knows my talk without a form in front of my next Take.","O1  Will asks only when something is off or missing, the first that
+tests/test_will_question.py,Story,"As a speaker, after a Take I want Will to ask me a short question about the moment the walk just worked on, only when something is off or missing, that I answer with a tap or in my own words, so that the next feedback knows my talk without a form in front of my next Take.","O1  Will asks only when something is off or missing, the first that
 holds: a breather when the practice missed or the voice dipped two
 Takes in a row; ""On purpose?"" when the clearer line I practised last
 Take did not come back; who the talk is for; what I want them to do;
 from Take 3, with both known, one deeper question. Nothing missing, no
 question; each of these once per talk, a breather never twice in a row.
-O2  The tap answers come from what Will heard: a Take that names its
-audience twice is checked (""Right?""); named once, those words come
-first, then what I said for an earlier talk, then the signed answers
-for my field. From the AI's read only words my Take says, word for
-word, short and without a number, are kept.
+O2  The tap answers come from what Will heard, the recording first: a
+Take that names its audience twice is checked (""Right?""); named
+once, those words come first, then what I said for an earlier talk,
+then the signed answers for my field, then ""Someone else"" (N319 item
+8); what I want them to do the same way. From the AI's read only
+words my Take says, word for word, short and without a number, are
+kept.
 O3  A tap is kept for Will and fills the talk's setup, so the next Take
-carries who it is for; then ""Got it, thanks 🙏"" and the message after
-the Take. ""Someone else"" opens one follow-up and the message waits;
-my typed words under it are the answer, or Skip. Skip lets the
-message go; a repeat tap writes nothing.
+carries who it is for; Will says it back, ""{who}. I'll keep them in
+mind."" (N294 item 5), any other answer gets ""Got it, thanks 🙏""; then
+the message after the Take. ""Someone else"" opens one follow-up, ""Who
+is it for, then? 👀"", with no tap answers, and the message waits; my
+typed words under it are the answer, or Skip. Skip lets the message
+go; a repeat tap writes nothing.
 O4  Typed words under the question are the answer: what I want them to
 do lands as the talk's call to action, my own note on the talk kept.
 Distress is never taken as an answer: the chat's safety reply comes.
@@ -3623,6 +3647,22 @@ under Will's question, a bridge line between the summary and the
 question (""Ok, now let's dive into the content for a bit."", founder
 2026-10-21, N94), and the summary hears the line I practised last
 Take when this Take said it.
+O8  The question opens on my own words of the last moment the walk showed
+(N294 item 1): ""When you said “…”, "" where it reads on, else ""We just
+worked on “…”. ""; ""On purpose?"" quotes its own line and nothing more;
+with no moment the question is as signed.
+O9  One at a time (N294 item 4): when both who the talk is for and what I
+want them to do are missing, what I want them to do follows my answer
+to who, from what Will heard first; a Skip ends them.
+O10 The key line is asked last, by voice (N294 item 2): once who the talk
+is for and what I want them to do are known and my key line is
+missing, Will asks the plan's signed question with who in it, opened
+on the moment, no tap answers; it follows my answer to what I want
+them to do, naming who I said; my answer is kept as the talk's key
+line (sure) where the plan and the picker read it, and for Will.
+O11 An answer by voice answers Will's open question (N294 item 3, N319
+item 1): the words heard are my voice bubble, Will thanks me, the
+chain goes on; nothing heard, or no question open, writes nothing.
 O6  The founder's words are what Will asks from the next Take: a changed
 question and renamed answers (each answer keeps its follow-up by its
 place), a filled empty slot asked after the signed deeper questions;
@@ -3642,7 +3682,11 @@ test_distress_typed_under_the_question_gets_the_safety_reply
 O5 -> test_the_summary_holds_its_message_under_wills_question,
 test_the_summary_hears_the_practised_line_when_it_came_back
 O6 -> test_the_founders_words_are_what_will_asks
-O7 -> test_will_varies_his_words_lightly_or_says_them_as_written","Founder 2026-10-20 (N82): ""ask me a lot of questions … a natural flow in the walk and in the lounge""; the bank signed the same day."
+O7 -> test_will_varies_his_words_lightly_or_says_them_as_written
+O8 -> test_the_question_opens_on_the_moment_the_walk_just_worked_on
+O9 -> test_what_they_should_do_follows_an_answered_who
+O10 -> test_the_key_line_is_asked_last_by_voice_and_kept
+O11 -> test_a_voice_answer_answers_wills_question","Founder 2026-10-20 (N82): ""ask me a lot of questions … a natural flow in the walk and in the lounge""; the bank signed the same day. 2026-10-31 (N294): ""these questions, they should be related to the moment""; ""they can be only one at a time. Only once you answer""."
 tests/test_withdrawal_erases_sheets.py,Story,"As a speaker, I want the coach sheets about my Takes deleted when I turn training off, so that my withdrawal is real.","O1  Turning training off deletes my Takes' rows from all three coach
 sheet tables, and only mine.
 O2  If my Takes cannot be read, the switch still turns off, and the

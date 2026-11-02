@@ -23,7 +23,12 @@ OUTCOME
       refused) and never becomes a label.
   O9  The judging reopened from the Lounge lists imported clips too.
   O10 An empty queue is logged with its reason, and so is a short one.
-  O11 The One thing walk asks one moment of a level (N309): the Take's
+  O11 Sharing is asked once: with no choice yet the screen asks; once the
+      line under a Take's recording carries my choice ("Only me" too), the
+      next Take keeps it without asking, with my community's name.
+  O12 It is asked again when the sharing words change, when I join a
+      community after my choice, or when nothing of my choice is left.
+  O13 The One thing walk asks one moment of a level (N309): the Take's
       clip of that level alone, else the next level round; a level that is
       not high, middle or low is refused.
 PROVES   O1 -> test_answered_self_labelled_and_settled_clips_are_not_queued
@@ -36,7 +41,9 @@ PROVES   O1 -> test_answered_self_labelled_and_settled_clips_are_not_queued
          O8 -> test_an_answer_on_an_imported_clip_is_kept_once_and_never_a_label
          O9 -> test_the_replay_lists_imported_clips
          O10 -> test_an_empty_queue_is_logged_with_why
-         O11 -> test_the_one_thing_walk_judges_one_moment_of_its_level
+         O11 -> test_sharing_is_asked_once_then_remembered
+         O12 -> test_sharing_is_asked_again_when_the_words_change_or_a_community_is_added
+         O13 -> test_the_one_thing_walk_judges_one_moment_of_its_level
 WHY      Founder 2026-10-06 (N52.4, migration 0432; CM2). The consent and
          words versions on a share are pinned on the database in
          test_a_share_records_the_words_the_speaker_saw_postgres.py.
@@ -44,6 +51,10 @@ WHY      Founder 2026-10-06 (N52.4, migration 0432; CM2). The consent and
          a_speaker_may_judge_an_imported_clip.sql): the imported corpus the
          coaches judge is played to speakers, three levels, three speakers;
          this amends CM1 A and replaces N97's one moment per try.
+         O11 and O12: founder 2026-10-31 (N309 item 5), sharing is asked
+         once; replaces G1's ask before every Take.
+         O13: founder 2026-11-02 (N309 item 2), the One thing walk judges
+         one moment a walk, its level turning high, middle, low.
 """
 from __future__ import annotations
 
@@ -86,6 +97,10 @@ class _Db:
         self.import_answers: list = []
         self.takes = SimpleNamespace(list_training_import_cohorts=lambda: list(self.imports.values()))
         self.next = 100
+        # The Lounge's share lines, newest first, and the server's clock for
+        # a membership (N309 item 5).
+        self.lines: list = []
+        self.now = "2026-11-01T09:00:00+00:00"
 
     # communities
     def get_general_community(self):
@@ -110,11 +125,15 @@ class _Db:
     def add_community_member(self, *, community_id, user_id, role):
         if not any(m["community_id"] == community_id and m["user_id"] == user_id
                    for m in self.members):
-            self.members.append({"community_id": community_id, "user_id": user_id, "role": role})
+            self.members.append({"community_id": community_id, "user_id": user_id, "role": role,
+                                 "joined_at": self.now})
         return True
 
     def list_community_memberships(self, user_id):
         return [m for m in self.members if m["user_id"] == user_id]
+
+    def list_lounge_share_lines(self, user_id, *, limit=10):
+        return [ln for ln in self.lines if ln["user_id"] == user_id][:limit]
 
     # shares
     def v2_get_session_by_id(self, sid):
@@ -387,6 +406,68 @@ def test_data_and_consent_lists_each_shared_take_once_with_where():
         "communities": [{"id": GENERAL_ID, "name": None, "kind": "general"},
                         {"id": _uuid(7), "name": "Friends", "kind": "private"}]}]}
 
+
+
+# ── sharing is asked once (N309 item 5) ─────────────────────────────────
+
+WORDS_NOW = "sharing-screen-2026-10-12"
+
+
+def _line(db, at, owner="owner-1", *, words=WORDS_NOW, **choice):
+    """The line under a Take's recording, as the sharing screen stores it:
+    the speaker's own share message, carrying the choice it says."""
+    share = {"general": False, "community_ids": [], "none": False, "words_version": words, **choice}
+    db.lines.insert(0, {"user_id": owner, "client_id": f"line-{len(db.lines)}", "body": "a line",
+                        "metadata": {"step": "share", "share": share}, "created_at": at})
+
+
+def _remembered(db, owner="owner-1"):
+    status, body = cm.remembered_share(db, owner_user_id=owner)
+    assert status == 200
+    return body
+
+
+def test_sharing_is_asked_once_then_remembered():
+    db = _Db()
+    club = _private(db)
+    # Never chosen: the screen asks (the first "Record Take 2").
+    assert _remembered(db) == {"ask": True, "choice": None}
+    _line(db, "2026-11-01T10:00:00+00:00", community_ids=[club])
+    assert _remembered(db) == {"ask": False, "choice": {
+        "general": False, "community_ids": [club], "none": False,
+        "share_words_version": WORDS_NOW, "communities": [{"id": club, "name": "Friends"}]}}
+    # "Only me" is remembered too, though it shares nothing.
+    _line(db, "2026-11-01T11:00:00+00:00", none=True)
+    assert _remembered(db)["ask"] is False
+    assert _remembered(db)["choice"]["none"] is True
+    # The "Record Take N" bubble before the question carries no choice.
+    db.lines.insert(0, {"user_id": "owner-1", "client_id": "record", "body": "Record Take 4",
+                        "metadata": {"step": "share"}, "created_at": "2026-11-01T12:00:00+00:00"})
+    assert _remembered(db)["choice"]["none"] is True
+    # Another speaker's choice is never mine.
+    assert _remembered(db, owner="owner-2") == {"ask": True, "choice": None}
+
+
+def test_sharing_is_asked_again_when_the_words_change_or_a_community_is_added():
+    db = _Db()
+    club = _private(db)
+    _line(db, "2026-11-01T10:00:00+00:00", general=True)
+    assert _remembered(db)["ask"] is False
+    # New words for the screen: a new yes.
+    with patch.object(Config, "SHARE_WORDS_VERSIONS", (WORDS_NOW, "sharing-screen-2026-11-02")):
+        assert _remembered(db)["ask"] is True
+    # A community joined after the choice.
+    db.now = "2026-11-01T10:30:00+00:00"
+    _private(db, owner="owner-2", code="the-club-code")
+    cm.join_community(db, user_id="owner-1", body={"pass_code": "the-club-code"})
+    assert _remembered(db)["ask"] is True
+    # Chosen again after it: remembered again.
+    _line(db, "2026-11-01T11:00:00+00:00", community_ids=[club])
+    assert _remembered(db)["ask"] is False
+    # Its one community closed: nothing of the choice is left.
+    db.communities[club]["closed_at"] = "2026-11-01T12:00:00+00:00"
+    assert _remembered(db)["ask"] is True
+    assert _remembered(db)["choice"]["community_ids"] == []
 
 
 # ── three levels, three speakers, and the imported corpus (N119) ─────────

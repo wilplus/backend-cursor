@@ -36,6 +36,7 @@ from routes.v2.arcs import (
     _reassemble_after_decision,
 )
 from routes.v2.blueprint import v2_bp
+from routes.v2.processing_authorization import phase1_provider_route
 from services.db import db, first_client_repository
 from services.ideal_text_changes import with_evidence_coordinates
 from services.ideal_text_notebook import (
@@ -605,6 +606,47 @@ def v2_explore_arc_will_question(arc_id):
         return jsonify({"code": e.code, "error": str(e)}), e.status
     except Exception as e:
         logger.error("will question failed arc=%s: %s", arc_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to save the answer"}), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/will-question/voice", methods=["POST"])
+@phase1_provider_route
+@llm_limit
+@require_auth
+def v2_explore_arc_will_question_voice(arc_id):
+    """An answer to Will's open question by voice (N294 items 2 and 3, N314,
+    N319 item 1). Multipart: audio, duration_ms, take_session_id. The
+    recording is transcribed under the caller's processing authorization and
+    its words are the answer, as typed words are; the Lounge gets the
+    speaker's voice bubble with the words and Will's reply. The recording is
+    not kept. 200 {messages} · 400 · 404 · 413 · 422 · 500"""
+    from routes.v2.voice_notebook import _adapter
+    from services.will_question import QuestionError, answer_voice
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        take = str(request.form.get("take_session_id") or "")
+        if not owned or take not in {str(s.get("id")) for s in sessions}:
+            return jsonify({"code": "NOT_FOUND", "error": "take not found"}), 404
+        upload = request.files.get("audio")
+        if upload is None:
+            return jsonify({"code": "EMPTY_AUDIO", "error": "No audio."}), 400
+        try:
+            duration = int(request.form.get("duration_ms") or 0) or None
+        except ValueError:
+            duration = None
+        user_id = str(request.user_id)
+        messages = answer_voice(db, _adapter(user_id), upload.read(), user_id=user_id,
+                                arc_id=str(arc_id), take_session_id=take,
+                                filename=upload.filename or "answer.webm", duration_ms=duration)
+        return jsonify({"messages": messages}), 200
+    except QuestionError as e:
+        return jsonify({"code": e.code, "error": str(e)}), e.status
+    except Exception as e:
+        from services.processing_authorization import ProcessingAuthorizationError
+        if isinstance(e, ProcessingAuthorizationError):  # refused: never a 500
+            return jsonify({"code": e.code, "error": e.message}), e.status
+        logger.error("will question by voice failed arc=%s: %s", arc_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to save the answer"}), 500
 

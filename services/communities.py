@@ -71,6 +71,7 @@ import logging
 import re
 import unicodedata
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 _log = logging.getLogger(__name__)
@@ -333,6 +334,114 @@ def my_live_shares(database: Any, *, owner_user_id: str) -> tuple[int, dict]:
                                     "name": row.get("community_name"),
                                     "kind": row.get("community_kind")})
     return 200, {"takes": list(takes.values())}
+
+
+# ── the remembered choice (N309 item 5) ───────────────────────────────────
+#
+# Sharing is asked once, the first time "Record Take 2" is tapped; the choice
+# is remembered and is the small line under each Take's recording, which
+# opens the same screen to change it; asked again only when the consent
+# words change or a community is added. The record of the choice is that
+# line: the speaker's own Lounge message (kind walk_step, step "share") that
+# says it, written by the sharing screen, by a Take that kept the choice and
+# by a change made from the line. It carries what it says in its metadata,
+# ``share`` = {general, community_ids, none, words_version}, "Only me"
+# included, which a Take shared with nobody leaves nowhere else (take_shares
+# holds shares only). The consent itself stays per Take in take_shares,
+# stamped and revocable (G4): each Take is still shared through share_take.
+# No migration: the line was already stored per Take.
+
+#: How many of the speaker's newest share lines are looked at for the newest
+#: that carries its choice (a line stored before N309 item 5 carries none,
+#: nor does the "Record Take N" bubble the screen still stores before it).
+_SHARE_LINES_READ = 10
+
+
+def _at(value: Any) -> Optional[datetime]:
+    """An ISO-8601 time as an aware datetime (UTC when it names no zone);
+    None when unreadable. Pure."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw = value.strip()
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        stamp = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
+
+
+def _joined_after(joined_at: Any, since: datetime) -> bool:
+    """Whether a membership began after ``since``; an unreadable time
+    counts as after. Pure."""
+    at = _at(joined_at)
+    return at is None or at > since
+
+
+def line_choice(metadata: Any) -> Optional[dict]:
+    """The choice a share line carries ({general, community_ids, none,
+    words_version}), strictly typed; None when it carries none or one that
+    could not have been given ("Only me" with a community, nothing chosen,
+    no words version). Pure."""
+    meta = metadata if isinstance(metadata, dict) else {}
+    share = meta.get("share")
+    if not isinstance(share, dict):
+        return None
+    choice, error = _share_choice(share)
+    words = share.get("words_version")
+    if error or choice is None or not isinstance(words, str) or not _WORDS_VERSION_RE.match(words):
+        return None
+    return {**choice, "words_version": words}
+
+
+def current_share_words_version() -> Optional[str]:
+    """The words the sharing screen shows now: the newest of the server's
+    versions (``Config.SHARE_WORDS_VERSIONS`` lists them oldest first, and
+    new words add their version at the end)."""
+    versions = share_words_versions()
+    return versions[-1] if versions else None
+
+
+def _open_private_joined(database: Any, user_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """({id: name} of the open private communities this person belongs to,
+    {id: when their membership began}), ids lowercased."""
+    joined = {str(m.get("community_id")).lower(): m.get("joined_at")
+              for m in database.list_community_memberships(str(user_id)) or []
+              if isinstance(m, dict) and m.get("community_id")}
+    rows = [r for r in database.get_communities_by_ids(list(joined)) or []
+            if isinstance(r, dict) and r.get("kind") == PRIVATE and not r.get("closed_at")]
+    return {str(r.get("id")).lower(): r.get("name") for r in rows}, joined
+
+
+def remembered_share(database: Any, *, owner_user_id: str) -> tuple[int, dict]:
+    """The speaker's remembered sharing choice and whether the screen must
+    ask again (N309 item 5): {ask, choice}. ``choice`` is the newest share
+    line's ({general, community_ids, none, share_words_version,
+    communities: [{id, name}]}, the communities it names that are still
+    open and still the speaker's), or None when there is none. ``ask`` is
+    True when there is none, when it was given under other words than the
+    screen's current ones, when a private community was joined after it,
+    or when nothing of it is left (its communities closed)."""
+    me = str(owner_user_id)
+    lines = database.list_lounge_share_lines(me, limit=_SHARE_LINES_READ) or []
+    line = next((r for r in lines if isinstance(r, dict) and line_choice(r.get("metadata"))), None)
+    if line is None:
+        return 200, {"ask": True, "choice": None}
+    choice = line_choice(line.get("metadata")) or {}
+    names, joined = _open_private_joined(database, me)
+    since = _at(line.get("created_at"))
+    # A community the speaker joined after the line is new to the choice; a
+    # time that cannot be read asks, the safe side.
+    added = since is None or any(_joined_after(joined.get(cid), since) for cid in names)
+    kept = [cid for cid in choice["community_ids"] if cid in names]
+    shown: dict = {"general": choice["general"], "community_ids": kept, "none": choice["none"],
+                   "share_words_version": choice["words_version"],
+                   "communities": [{"id": cid, "name": names[cid]} for cid in kept]}
+    nothing_left = not choice["none"] and not choice["general"] and not kept
+    ask = (added or nothing_left
+           or choice["words_version"] != current_share_words_version())
+    return 200, {"ask": ask, "choice": shown}
 
 
 # ── the queue ─────────────────────────────────────────────────────────────
