@@ -8609,8 +8609,8 @@ as it does today; the loop never waits (Never 3). The coach never sees the
 notes, that they were used, or a reason built from them (Never 2). No score
 is shown (Never 1).
 This amends N182 item 3 for the walk's pick and its Clearer version only:
-the plan, the coach panel and a Take's summary still never read them. The
-rules: frontend
+the plan, the coach panel and a Take's summary still never read them.
+The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 H1 and [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md),
 when built. No migration.
