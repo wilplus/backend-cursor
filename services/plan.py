@@ -95,10 +95,12 @@ COPY = {
     # the prototype https://claude.ai/artifact/3GtUo7eVdf9SAhZQCDsTR7): asked
     # once, before the personal questions. Will's words, then the two taps.
     # "Settings", the page's name since N196 (founder 2026-10-28, N249).
-    "consent_ask": ("A few of my questions are personal: how stressed and how ready you feel, "
-                    "what worries you, and how you feel before each Take. I only ask with your "
-                    "yes. Your coach and I use your answers to shape your plan. You can turn "
-                    "this off in Settings."),
+    # The words, in Privacy 3.9 section 4e's own terms (founder 2026-11-02,
+    # N325 item 6: "New shorter words that match the policy").
+    "consent_ask": ("Some of my questions are personal: how stressed and ready you feel, "
+                    "what worries you, how you feel before each Take. I ask only with your "
+                    "yes. Your answers shape your plan and help your coach prepare. You can "
+                    "turn this off in Settings."),
     "consent_yes": "Yes, ask me",
     "consent_no": "Not now",
     # A voice answer with no speech in it, and a correction taken (founder
