@@ -433,7 +433,7 @@ def test_the_founders_words_are_what_will_asks():
 def test_will_varies_his_words_lightly_or_says_them_as_written():
     signed = will_question.QUESTIONS["audience"]
     check = will_question.QUESTIONS["audience_check"]
-    light = "Quick one: who is this talk actually for? 🎯"
+    light = "Who were you really talking to? 🎯"
     assert will_question.read_varied("audience", light, signed) == light
     # a number, a lost or doubled placeholder, no question, another meaning: as written
     assert will_question.read_varied("audience", "Quick one: who are the 2 people this talk is for?", signed) is None
@@ -464,7 +464,7 @@ def test_the_question_opens_on_the_moment_the_walk_just_worked_on():
     audience = _plan("audience", field_name=None)
     audience.moment = moment
     assert will_question.words_for(audience)[1] == (
-        f"We just worked on “{moment}”. Quick one: who's this talk really for? 🎯")
+        f"We just worked on “{moment}”. Who were you talking to? 🎯")
     check = _plan("audience", {"audience": "the board", "audience_times": 2})
     check.moment = moment
     assert will_question.words_for(check)[1] == (

@@ -29,8 +29,12 @@ clips cannot be read. Read on demand; nothing is stored.
 
 LAST TIME (founder 2026-10-31, N309 item 1). The One thing walk opens with
 the last Take's fix played back when it rose: "Last time: {the tip}. You
-did." with this Take's clip on that slide (``last_fix``). Only a moment's
-fix (the Clearer version or the AI clip); the speaker never sees a number.
+did." with this Take's clip on that slide (``last_fix``). A moment's fix
+(the Clearer version or the AI clip) rose when its issue is gone on that
+slide; the pace game's (the Sniper, when the last walk fixed no moment,
+N347 item 3) when that slide came out nearer the green on the side its
+stretch leaned, slower for a rushed one, read as the tempo step reads it
+(``tempo_stretch.furthest``). The speaker never sees a number.
 """
 from __future__ import annotations
 
@@ -105,7 +109,10 @@ def fixes_of(frame: Any, snippets: list[dict]) -> list[dict]:
     return sorted(found, key=lambda f: (f["slide_index"] is None, f["slide_index"] or 0))
 
 
-def _stretch_slide(frame: Any, snippets: list[dict]) -> Optional[Any]:
+def _stretch(frame: Any, snippets: list[dict]) -> Optional[dict]:
+    """The Take's tempo stretch on its slide: ``{"kind": "tempo",
+    "slide_index", "reading", "outside"}``; None when no clip leaves the
+    green, it is on no slide, or it cannot be read."""
     from services import tempo_stretch
     try:
         chosen = tempo_stretch.pick(snippets)
@@ -116,8 +123,27 @@ def _stretch_slide(frame: Any, snippets: list[dict]) -> Optional[Any]:
     clip = str(snippets[chosen["index"]].get("id"))
     for slide, clips in _clips_by_slide(frame, snippets).items():
         if any(str(c.get("id")) == clip for c in clips):
-            return slide
+            return {"kind": "tempo", "slide_index": slide, "reading": chosen["reading"],
+                    "outside": chosen["outside"]}
     return None
+
+
+def _stretch_slide(frame: Any, snippets: list[dict]) -> Optional[Any]:
+    found = _stretch(frame, snippets)
+    return found["slide_index"] if found else None
+
+
+def _slower(fix: dict, frame: Any, snippets: list[dict]) -> bool:
+    """The pace game's fix rose (N347 item 3): this Take's clips on the
+    stretch's slide all spent less of their time past the green on the side
+    it leaned than the stretch did, slower for a rushed one. False when the
+    slide is not in this Take or cannot be read."""
+    from services import tempo_stretch
+    clips = _clips_by_slide(frame, snippets).get(fix["slide_index"])
+    if not clips:
+        return False
+    now = tempo_stretch.furthest(snippets, {str(c.get("id")) for c in clips}, fix["reading"])
+    return now is not None and now < fix["outside"]
 
 
 def _issue(kind: str, clips: list[dict], frame: Any, snippets: list[dict], slide: Any) -> Optional[bool]:
@@ -171,24 +197,32 @@ def fix_outcomes(database: Any, take_id: Any, next_take_id: Optional[Any]) -> li
 # ── last time (N309 item 1) ──────────────────────────────────────────────────
 
 def last_fix(database: Any, take_id: Any, previous_take_id: Optional[Any]) -> Optional[dict]:
-    """The fix the previous Take's walk gave, when its issue is gone on this
-    Take's same slide: ``{"kind", "slide_index", "clip": {"snippet_id",
-    "url", "start_offset_ms", "duration_ms"}}``, the clip this Take's best
-    on that slide. None when there is no previous Take, it gave no moment
-    fix, the issue came back or could not be read, or no clip plays. The
-    Clearer version is the fix when an older Take gave two (words come
-    first, N309). Never raises."""
+    """The fix the previous Take's walk gave, when it rose on this Take's
+    same slide: ``{"kind", "slide_index", "clip": {"snippet_id", "url",
+    "start_offset_ms", "duration_ms"}}``, the clip this Take's best on that
+    slide. A moment's fix rose when its issue is gone; with no moment fixed,
+    the pace game's ("tempo", N347 item 3) when that slide came out slower
+    (``_slower``). None when there is no previous Take, it gave no fix, it
+    did not rise or could not be read, or no clip plays. The Clearer version
+    is the fix when an older Take gave two (words come first, N309). Never
+    raises."""
     if not previous_take_id:
         return None
     try:
         before = database.get_v4_dark_frame(str(previous_take_id))
-        fixes = fixes_of(before, []) if isinstance(before, dict) else []
-        if not fixes:
+        if not isinstance(before, dict):
             return None
-        fix = next((f for f in fixes if f["kind"] == "clearer"), fixes[0])
         frame = database.get_v4_dark_frame(str(take_id))
         snippets = database.get_snippets_by_session(str(take_id)) or []
-        if outcome(fix, frame, snippets) != GONE:
+        fixes = fixes_of(before, [])
+        fix: Optional[dict]
+        if fixes:
+            fix = next((f for f in fixes if f["kind"] == "clearer"), fixes[0])
+            rose = outcome(fix, frame, snippets) == GONE
+        else:
+            fix = _stretch(before, database.get_snippets_by_session(str(previous_take_id)) or [])
+            rose = fix is not None and _slower(fix, frame, snippets)
+        if not fix or not rose:
             return None
         clip = _best_clip(_clips_by_slide(frame, snippets).get(fix["slide_index"]) or [])
         from services.corpus_coach_queue import playback_body

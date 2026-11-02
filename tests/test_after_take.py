@@ -29,8 +29,9 @@ OUTCOME
   O6  The plan's lines after a practice day's Take ("That's your 15
       minutes for today.") wait for the ask: the ask stays the newest
       bubble, so its answers stay; after my answer come the lines, then
-      "Good job. See you next {day}." with the plan's next practice day,
-      then the plan's progress, last (N319 item 7).
+      "Good job. See you {day}." with the plan's next practice day
+      ("tomorrow" or its weekday, N347 item 2), then the plan's progress,
+      last (N319 item 7).
   O7  The settings asks wait for the next visit (N294 item 8, N295): never
       before my second Take is done, never while an ask after a Take waits,
       at most one per Take; WhatsApp first, opened with "It seems you enjoy
@@ -220,7 +221,7 @@ def test_the_plans_lines_wait_for_the_ask_then_the_goodbye_and_the_progress(monk
     assert db.drawn() == [SUMMARY, feedback_check.COPY["ask"]]
 
     feedback_check.answer(db, user_id="u", arc_id="arc", take_session_id="take-1", choice="yes")
-    assert db.drawn()[-3:] == [fifteen, "Good job. See you next Wednesday.", done]
+    assert db.drawn()[-3:] == [fifteen, "Good job. See you Wednesday.", done]
 
 
 def test_an_older_waiting_message_shows_where_it_stands():
