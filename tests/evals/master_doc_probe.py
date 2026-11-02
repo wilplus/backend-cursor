@@ -8,14 +8,15 @@ v2 changes vs v1:
     case, not three-clause aspirations. Less surface area for the
     grader to hallucinate violations.
   • MDR-11 + MDR-12 cover record intent (RULE I): record intent now
-    POINTS to the always-present "Start official recording" button — it
+    POINTS to the always-present "+" below the chat (the projects; the old
+    "Start official recording" button is gone, founder 2026-11-02) — it
     reveals NO mic (show_record_ui stays false) and offers NO button
     (suggested_action null); when the user states recording as their
     primary intent with an upload fallback mentioned, the bot still
     steers to recording without denying upload availability (RULE G,
     2026-07-07: uploads are live for deckless topics). (show_upload_ui
     removed end-to-end — FE seam-7b; record_again removed — the
-    official recording button is permanent.)
+    + below the chat is always there.)
   • MDR-01/02/12 updated (2026-07-07) for RULE G's re-lock: uploads are
     now live for deckless topics, so these no longer assert "uploads
     aren't available."
@@ -312,15 +313,18 @@ CASES: list[Case] = [
     # ── record intent → point to the always-present official button ──
     Case(
         id="MDR-11",
-        category="Record intent → official recording button (no mic, no button)",
+        category="Record intent → the + below the chat (no mic, no button)",
         user_message="Can I just record it here in the chat?",
         rubric={
-            # RULE I: point to the always-present recording button below,
-            # reveal no mic and offer no suggested_action button.
+            # RULE I: point to the always-present + below the chat (it opens
+            # the projects), reveal no mic and offer no suggested_action
+            # button. Never the removed "Start official recording" button
+            # (seen in the founder's chat, 2026-11-02).
             "must_set_show_record_ui": False,
             "must_set_suggested_action": None,
-            "must_mention_substrings": ["button"],
+            "must_mention_substrings": ["+"],
             "must_not_mention_substrings": [
+                "official recording",
                 "cannot access your microphone",
                 "i cannot access your phone",
             ],

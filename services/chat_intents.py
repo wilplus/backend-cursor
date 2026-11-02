@@ -16,7 +16,7 @@ Two intents, in precedence order:
 
 NOTE: there is deliberately NO record-intent intercept. Record/readiness intent
 is owned by the LLM (master_doc_rag RULE I): it POINTS to the always-present
-"Start official recording" button in words — no mic invite (show_record_ui
+"+" next to the message box (the projects) in words — no mic invite (show_record_ui
 stays false), no suggested_action. (A record-CTA intercept was tried and pulled
 2026-06-21 — product wants the permanent button, not an in-chat CTA.)
 """
