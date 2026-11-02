@@ -9318,3 +9318,22 @@ joined has two chats, so the list shows.
 The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1. No migration.
+
+**N358 · Will points to the "+" to record, never to the removed button; no
+weekly note with nothing to count (founder, the Claude Code chat, 2 November
+2026, on a screenshot of the founder's own chat with Will, which said "hit
+the 'Start official recording' button below" and showed a weekly note "in 0
+of 0 Takes": "yes fix 1 and 2").**
+1. **Will points to the "+" to record.** When someone wants to record, Will
+points in words to the "+" next to the message box: it opens their projects,
+where they record their next Take ("Ok — tap + below, open your project and
+record your next Take."). He never names the "Start official recording"
+button, removed on 27 July 2026, and never sends them to the mic, which
+records a voice note to Will, not a Take. Was: "hit the 'Start official
+recording' button below".
+2. **No weekly note with nothing to count.** The founder's weekly note
+("Feedback, the last 7 days") is not written for a week with no Take
+compared with the one before, no answer to "Did this help?" and nothing said
+about what would help. Was: a note saying "in 0 of 0 Takes".
+No rules page: Will's instructions are in `services/master_doc_rag.py`, the
+weekly note in `services/feedback_digest.py`. No migration.
