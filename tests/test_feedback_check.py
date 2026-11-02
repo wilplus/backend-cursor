@@ -21,7 +21,8 @@ OUTCOME
   O6  A Take that went fine is not asked; one whose practice did not land,
       or whose voice dipped, is (founder 2026-10-20).
   O7  The founder's weekly note says how often the voice rose, how many
-      answered, and what would help, in the speakers' own words.
+      answered, and what would help, in the speakers' own words; a week
+      with nothing to count posts no note (founder 2026-11-02).
 PROVES   O1 -> test_the_question_closes_the_summary_but_waits_when_another_offer_is_there
          O2 -> test_yes_is_kept_and_answered_with_the_signed_words_once
          O3 -> test_not_really_asks_what_was_missing_and_the_chat_keeps_the_answer,
@@ -30,7 +31,8 @@ PROVES   O1 -> test_the_question_closes_the_summary_but_waits_when_another_offer
                test_typing_a_button_counts_as_tapping_it_and_anything_else_goes_to_will
          O5 -> test_a_new_goal_is_kept_and_every_coach_but_the_speaker_gets_one_card_a_day
          O6 -> test_a_take_that_went_fine_is_not_asked
-         O7 -> test_the_weekly_note_says_what_was_missing_in_their_words
+         O7 -> test_the_weekly_note_says_what_was_missing_in_their_words,
+               test_a_week_with_nothing_to_count_posts_no_note
 WHY      WIL-74, founder 2026-10-19 (words signed the same day; the question
          and the thank-you simplified by the founder, 2026-10-20).
 """
@@ -227,3 +229,24 @@ def test_the_weekly_note_says_what_was_missing_in_their_words():
         "What would help:",
         "“Why my close felt rushed”",
     ]
+
+
+def test_a_week_with_nothing_to_count_posts_no_note(monkeypatch):
+    """Seen in the founder's chat, 2026-11-02: "The voice rose since the last
+    Take in 0 of 0 Takes". Takes without a comparison and questions no one
+    answered are nothing to count, so no note is written."""
+    import time
+    from services import feedback_digest
+
+    class Week:
+        written: list = []
+        def active_admin_user_ids(self): return ["founder"]
+        def get_lounge_message_by_client_id(self, *_): return None
+        def list_take_summaries_since(self, _): return [{"moved": None}]
+        def list_feedback_checks_since(self, _): return [{"helped": None, "skipped": True}]
+        def insert_lounge_messages(self, *row): self.written.append(row)
+
+    monkeypatch.setattr(feedback_digest, "_admins", (time.monotonic(), ["founder"]))
+    week = Week()
+    assert feedback_digest.post(week) == 0
+    assert week.written == []
