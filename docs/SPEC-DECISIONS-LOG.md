@@ -8478,7 +8478,7 @@ longer than eight words; a tip with no quoted phrase gives none (founder,
 the Claude Code chat, 2 November 2026, answering the open points of N309 and
 N319: "you have my sign off", "you can allow helper words to be longer than
 8 words", "when the tip quotes no phrase, then there are no helper words",
-"skip it for now").** For N309 items 3 and 5 and N319 items 3 and 5:
+"skip it for now", "yes, the pace game for everyone when rushing is the issue").** For N289 item 6, N309 items 1, 3 and 5 and N319 items 3 and 5:
 1. **Signed (Never 4):** "We need to hear this in your voice. Tap the mic.",
 the note a tap on the disabled "Type here" shows before Take 1 (N319 item 3).
 2. **The walk's own helper words may be longer than eight words:** the
@@ -8495,6 +8495,13 @@ consent (N95: the signed text stands). The signed words stay until either
 the policy changes with counsel or new words that match it are signed.
 5. **Deferred:** whether the sharing screen's words must say the choice
 covers later Takes (N309 item 5).
+6. **The pace game for everyone when rushing is the issue** (founder, the
+same chat: "yes, the pace game for everyone when rushing is the issue"): in
+the One thing walk the Sniper (the tempo step) is the one thing to improve
+whenever rushing is the Take's biggest issue (the pace scale finds a stretch
+outside the green and it outweighs what the words or the voice need), with
+or without a plan, at any level. Was (as built for N309): only on a plan
+whose level this week is the key line or pauses.
 The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
