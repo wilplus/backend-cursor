@@ -9116,3 +9116,38 @@ No rules page yet: it lands on frontend
 [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 when built. No migration in this entry.
+
+**N350 · Today's work, simplified: "ready" never waits, one rule for a pace
+fix that worked, the "Type here" note wherever the box is faded, Stop once
+the mic is live (founder, the Claude Code chat, 2 November 2026, on the
+review <https://claude.ai/artifact/W1DHw7bfgayNyZKG2w5gDF>: "1. … A, Yes, do
+them all", "2. … A, Move the wait after ready (withdraw N327's exception)",
+"3. … A", "4. … A, Whenever the box is faded", "5. … A, Stop once the mic is
+live, in both", "Go.").** For N323 item 1, N325 item 4, N326, N327, N347
+item 3 and N314:
+1. **The code is simplified with the same behaviour** where the review found
+it could be (one notes reader for the walk and its quotes, one rewrite
+check, one "Record Take N" button in the chat, the mic's early Stop through
+its existing switch-off), and its tests trimmed to the outcomes.
+2. **"Ready" never waits for the verbal read.** The run waits for it, at
+most 5 seconds and only for a speaker it reaches, after the Take is flipped
+ready and before the walk's marks are baked: the Ideal Text never waits, and
+the walk may open up to 5 seconds later. N327's exception to Never 3 is
+withdrawn.
+3. **One rule for "the pace fix worked":** the stretch the pace game fixed
+counts as fixed when every clip on that slide in the next Take stays inside
+the green on that side, the same bar that picks a stretch. It is the rule
+for "Last time: give “{words}” more room. You did." (N347 item 3) and for
+the Takes table's "did the fix work". Was: any drop for the walk, a moved
+stretch for the table.
+4. **The "Type here" notes show wherever the box is faded,** before Take 1
+and after it: "We need to hear this in your voice. Tap the mic." while the
+mic waits, "Tap one of the answers above." while a tap answer waits (N323
+item 1, N325 item 4). Was: before Take 1 only.
+5. **Stop shows once the mic is live,** in the walk's practise as in the
+pace game (N314): while the mic opens, the bar shows the bin and the strip
+without Stop.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C7, H1, T and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+B10, when built. No migration.
