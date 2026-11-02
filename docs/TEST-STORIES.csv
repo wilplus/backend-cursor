@@ -556,12 +556,15 @@ O4  My own link is refused (400 OWN_LINK), and nothing is made.
 O5  Without the ring row (chats, ring 6) my link and joining answer 404,
 and nothing is written.
 O6  In the chat, the one who joined sees whose link they joined through;
-the link's owner does not.","O1 -> ChatLinksTest::test_my_link_is_kept_and_a_replaced_one_opens_nothing
+the link's owner does not.
+O7  A chat left without its two people (a crash between the two writes)
+gets them back on the next join, so the pair is never locked out.","O1 -> ChatLinksTest::test_my_link_is_kept_and_a_replaced_one_opens_nothing
 O2 -> ChatLinksTest::test_the_join_page_learns_only_a_first_name
 O3 -> ChatLinksTest::test_joining_makes_one_chat_for_the_two
 O4 -> ChatLinksTest::test_my_own_link_is_refused
 O5 -> ChatLinksTest::test_without_the_ring_nothing_is_written
-O6 -> ChatLinksTest::test_the_one_who_joined_sees_whose_link_it_was","The join link, the chats' second slice (founder 2026-11-02: ""go, build the join link slice""); the intimacy rule (N328); joining is onboarding (N335 item 1)."
+O6 -> ChatLinksTest::test_the_one_who_joined_sees_whose_link_it_was
+O7 -> ChatLinksTest::test_a_chat_left_without_its_people_gets_them_back","The join link, the chats' second slice (founder 2026-11-02: ""go, build the join link slice""); the intimacy rule (N328); joining is onboarding (N335 item 1)."
 tests/test_chat_persist.py,Story,"As a speaker, I want every chat turn saved with its buttons, so that my chat bubbles never disappear when I reload.","O1  POST /v2/chat/query with persist writes my row and the bot's row,
 with the bot's choices in its metadata; posting the same turn again
 writes the same two ids, so the table keeps it once.

@@ -131,6 +131,23 @@ def _pair_chat(database: Any, key: str) -> Optional[str]:
     return str(rows[0]["id"]) if rows else None
 
 
+def _seat(database: Any, thread: str, people: list[dict]) -> None:
+    """Both people in the chat: whoever is missing is added (a chat left
+    without its members by a crash between the two inserts would otherwise
+    keep the pair out for good, its pair_key taken). A second request racing
+    this one meets the one-per-person index, which is fine."""
+    have = {str(m["user_id"]) for m in _rows(_table(database, MEMBERS).select("user_id")
+                                             .eq("thread_id", thread))}
+    missing = [{"thread_id": thread, **p} for p in people if p["user_id"] not in have]
+    if not missing:
+        return
+    try:
+        _rows(_table(database, MEMBERS).insert(missing))
+    except Exception as e:
+        if _UNIQUE_VIOLATION not in str(e):
+            raise
+
+
 def join(database: Any, user_id: Any, token: Any, token_payload: Any) -> dict:
     """POST /v2/chats/join/<token>: {"chat": {"id"}}, the caller's chat with
     the link's owner, made now or found. Your own link is 400."""
@@ -140,8 +157,11 @@ def join(database: Any, user_id: Any, token: Any, token_payload: Any) -> dict:
     if owner == user_id:
         raise ChatsError("OWN_LINK", "This is your own link.")
     key = ":".join(sorted((owner, user_id)))
+    people = [{"user_id": owner, "display_name": link["display_name"]},
+              {"user_id": user_id, "display_name": name_of(token_payload)}]
     found = _pair_chat(database, key)
     if found:
+        _seat(database, found, people)
         return {"chat": {"id": found}}
     try:
         rows = _rows(_table(database, THREADS).insert({
@@ -152,15 +172,14 @@ def join(database: Any, user_id: Any, token: Any, token_payload: Any) -> dict:
             raise
         found = _pair_chat(database, key)
         if found:
+            _seat(database, found, people)
             return {"chat": {"id": found}}
         raise
     if not rows:
         raise ChatsError("NOT_SAVED", "Could not join.", 503)
     thread = str(rows[0]["id"])
     try:
-        _rows(_table(database, MEMBERS).insert([
-            {"thread_id": thread, "user_id": owner, "display_name": link["display_name"]},
-            {"thread_id": thread, "user_id": user_id, "display_name": name_of(token_payload)}]))
+        _rows(_table(database, MEMBERS).insert([{"thread_id": thread, **p} for p in people]))
     except Exception:
         logger.error("chat_links: the chat %s for %s missed its members; removing it",
                      thread, key, exc_info=True)

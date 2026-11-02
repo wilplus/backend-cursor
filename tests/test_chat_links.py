@@ -15,12 +15,15 @@ OUTCOME
       and nothing is written.
   O6  In the chat, the one who joined sees whose link they joined through;
       the link's owner does not.
+  O7  A chat left without its two people (a crash between the two writes)
+      gets them back on the next join, so the pair is never locked out.
 PROVES   O1 -> ChatLinksTest::test_my_link_is_kept_and_a_replaced_one_opens_nothing
          O2 -> ChatLinksTest::test_the_join_page_learns_only_a_first_name
          O3 -> ChatLinksTest::test_joining_makes_one_chat_for_the_two
          O4 -> ChatLinksTest::test_my_own_link_is_refused
          O5 -> ChatLinksTest::test_without_the_ring_nothing_is_written
          O6 -> ChatLinksTest::test_the_one_who_joined_sees_whose_link_it_was
+         O7 -> ChatLinksTest::test_a_chat_left_without_its_people_gets_them_back
 WHY      The join link, the chats' second slice (founder 2026-11-02: "go,
          build the join link slice"); the intimacy rule (N328); joining is
          onboarding (N335 item 1).
@@ -146,6 +149,17 @@ class ChatLinksTest(unittest.TestCase):
         owner = self.client.get(f"/v2/chats/{chat}/messages", headers=self._as(TOMEK)).get_json()
         self.assertEqual((joined["messages"], joined["joined_through"]), ([], "Tomek"))
         self.assertIsNone(owner["joined_through"])
+
+    def test_a_chat_left_without_its_people_gets_them_back(self):
+        token = self._link(TOMEK).get_json()["token"]
+        key = ":".join(sorted((TOMEK, PIOTR)))
+        orphan = self.store.table("chat_threads").insert(
+            {"kind": "team", "title": "Tomek", "pair_key": key}).execute().data[0]["id"]
+        self.assertEqual(self._join(PIOTR, token).get_json()["chat"]["id"], orphan)
+        seated = sorted(m["user_id"] for m in self.store.tables["chat_members"])
+        self.assertEqual(seated, sorted((TOMEK, PIOTR)))
+        self.assertEqual(self.client.get(f"/v2/chats/{orphan}/messages",
+                                         headers=self._as(PIOTR)).status_code, 200)
 
 
 if __name__ == "__main__":
