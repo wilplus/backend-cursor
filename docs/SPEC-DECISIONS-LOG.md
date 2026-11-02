@@ -8614,3 +8614,15 @@ The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 H1 and [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md),
 when built. No migration.
+
+**N327 · The verbal read may hold a Take's "ready" for at most 5 seconds,
+only for speakers it reaches (founder, the Claude Code chat, 2 November
+2026, asked whether the read may wait up to 5 s or never wait: "Wait up to
+5 s").** Amends N326 item 5 ("the loop never waits"):
+1. For a speaker the ring row `walk_inner_context` reaches (and who noted
+something the walk may read), the Take's analysis waits at most 5 seconds
+for the verbal read before the Take is flipped ready. It usually finishes
+beside the run's other work and adds nothing.
+2. Late or failed after those 5 seconds: the walk picks as it does today.
+3. For everyone else nothing waits: the read stops at the ring check.
+No rules page. No migration.
