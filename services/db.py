@@ -13905,6 +13905,19 @@ class DatabaseService:
                         "project": projects.get(str(session.get("project_id") or ""), "")})
         return out
 
+    def list_lounge_share_lines(self, user_id: str, *, limit: int = 10) -> list[dict]:
+        """The speaker's newest share messages in the Lounge (kind
+        walk_step, step "share", their own), newest first, each with its
+        metadata and the server's time it was stored: the line under a
+        Take's recording carries the sharing choice (N309 item 5). Raises
+        on failure."""
+        res = (self.client.table("lounge_messages")
+               .select("client_id,body,metadata,client_created_at,created_at")
+               .eq("user_id", str(user_id)).eq("kind", "walk_step").eq("role", "user")
+               .eq("metadata->>step", "share")
+               .order("client_created_at", desc=True).limit(int(limit)).execute())
+        return list(res.data or [])
+
     def revoke_take_shares(self, take_session_id: str, *,
                            keep_community_ids: list[str]) -> int:
         """Withdraw the Take from every community not kept; the rows stay
