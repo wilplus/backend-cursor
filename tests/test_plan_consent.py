@@ -10,7 +10,8 @@ OUTCOME
       the plan goes on: the worry question, the two ratings.
   O3  "Not now" is kept; the worry is never asked or kept, the ratings are
       not asked (then or at any later moment), the plan still reaches the
-      calls and its end without "How did it go?".
+      plan card (its calls hidden, N315) and its end without "How did it
+      go?" or the summary call.
   O4  The card's Turn off deletes the personal answers: the answers and
       their recordings, their bubbles in the Lounge, the plan's worry,
       Will's memory of them (his note is cleared), the feelings before a
@@ -110,7 +111,9 @@ class _ConsentDb(_Db):
 def db(monkeypatch):
     d = _ConsentDb()
     monkeypatch.setattr(Config, "PLAN_CONSENT_ENABLED", True)
-    monkeypatch.setattr("services.rings.feature_is_on_for_user", lambda *a, **k: True)
+    # The plan is on; its calls are hidden, as with no ring row (N315).
+    monkeypatch.setattr("services.rings.feature_is_on_for_user",
+                        lambda feature, *a, **k: feature != "plan_calls")
     monkeypatch.setattr(F, "_readings", lambda *a, **k: {})
     # The audience and the length are known, so after the key line the next question is the worry.
     monkeypatch.setattr(F, "_turn", lambda *a, **k: {"facts": {
@@ -147,8 +150,6 @@ def _active_before_the_switch(db, monkeypatch):
         _say(db, said)
     F.answer_rating(db, USER, 7)
     F.answer_rating(db, USER, 4)
-    F.book_call(db, USER, "kickoff", None)
-    F.book_call(db, USER, "summary", None)
     monkeypatch.setattr(Config, "PLAN_CONSENT_ENABLED", True)
     return db.get_open_plan(USER)
 
@@ -198,11 +199,9 @@ def test_not_now_skips_the_personal_questions_and_keeps_the_plan(db):
     said = " ".join(bodies(db))
     assert "What worries you most" not in said and "How stressed" not in said
     plan = db.get_open_plan(USER)
-    assert "worry" not in plan["facts"] and plan["step"] == "kickoff"
+    assert "worry" not in plan["facts"] and plan["status"] == "active"
     assert [r["event_kind"] for r in db.consent] == ["decline"]
-    F.book_call(db, USER, "kickoff", None)
-    F.book_call(db, USER, "summary", None)
-    assert bodies(db)[-2] == "You're all set. Here's your plan."
+    assert bodies(db)[-2] == "You're all set. Here's your plan."  # the calls hidden (N315)
     assert [a for a in db.answers if a["kind"] in ("stress", "ready")] == []
     assert len(_asked(db)) == 1  # never asked again
 
@@ -259,7 +258,7 @@ def test_a_doubt_means_nothing_personal_is_asked(db):
     for said in ("The window closes soon.", "Starting with the cost.", "Two years in sales."):
         _say(db, said)
     assert "What worries you most" not in " ".join(bodies(db))
-    assert db.get_open_plan(USER)["step"] == "kickoff"
+    assert db.get_open_plan(USER)["status"] == "active"
 
 
 def test_a_yes_that_cannot_be_kept_is_not_a_yes(db):
@@ -307,6 +306,8 @@ def test_the_plans_end_asks_for_the_yes_before_how_did_it_go(db, monkeypatch, ye
         assert F.P.COPY["thanks_told"] not in bodies(db)
         assert bodies(db)[-1] == F.P.COPY["whats_next"]
         assert db.get_open_plan(USER)["step"] == "whats_next"
+        # The summary call is one of the plan's calls, hidden (N315).
+        assert not any((r["metadata"] or {}).get("plan_summary_call") for r in db.thread)
 
 
 def test_how_do_you_feel_is_kept_on_a_plan_only_after_its_yes(db, monkeypatch):
