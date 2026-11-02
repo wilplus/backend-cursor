@@ -1,7 +1,8 @@
 """The chats between people, first slice (founder, the Claude Code chat, 31
 October 2026, N298 to N316; prototype: the Ember & Air one kept with N298).
 Tables: chat_threads, chat_members, chat_messages (migration
-people_chat_with_each_other).
+people_chat_with_each_other) and chat_message_audio, a voice note's
+recording (a_chat_voice_note_keeps_its_recording; N321 item 2).
 
 A chat is between two people (N302 item 1): a person and a colleague
 (``team``) or a person and a customer (``customer``). The other member may be
@@ -16,15 +17,23 @@ or writes.
     caller. Only for a member.
   * ``post``: an emoji, one of the three with one meaning each (N311 item 1):
     👍 it's good, 👀 seen, I'll answer, 🙏 thanks. Its meaning is kept as a
-    clean label in ``meta``. Nothing else yet: the recording comes later.
+    clean label in ``meta``.
+  * ``post_voice``: a voice note (N321 item 2: "you can always answer with
+    an emoji or a mic"), up to two minutes: a message of kind ``voice`` with
+    its length in ``meta``, kept with its recording. Its words are not made
+    (``words`` stays NULL): no transcription in this slice.
+  * ``recording``: a voice note's recording, for any member of its chat.
   * ``seed_demo``: a customer's chat and a colleague's for the person, once,
     so the chats can be seen before anyone else is in them.
 
 Ring row ``chats``, ring 6 (the founder's). A person without it gets 404 from
-every route. No model or provider call here, so nothing in this module goes
-through the processing-authorization path. Deleted with the account: the
-purge registry takes a person's memberships and their demo chats, and the
-messages go with them.
+every route. No model or provider call here. A voice note is a speaker's
+recording, so its route (routes/v2/chats.py) passes the processing-
+authorization path before ``post_voice`` runs: ``phase1_provider_route``, as
+the voice notebook's notes, and the recording consent a Take asks for
+(``require_current``, operation "recording"). Deleted with the account: the
+purge registry takes the voice notes a person recorded, their memberships and
+their demo chats, and the messages go with them.
 """
 from __future__ import annotations
 
@@ -37,6 +46,13 @@ logger = logging.getLogger(__name__)
 
 FEATURE = "chats"
 THREADS, MEMBERS, MESSAGES = "chat_threads", "chat_members", "chat_messages"
+AUDIO = "chat_message_audio"
+#: A voice note is up to two minutes long ...
+MAX_VOICE_MS = 120_000
+#: ... and up to 12 MB, what chat_message_audio holds (migration 0504).
+MAX_VOICE_BYTES = 12 * 1024 * 1024
+#: The longest content type chat_message_audio holds.
+_MAX_TYPE_LEN = 100
 #: The three emoji and the label each one means (N311 item 1).
 EMOJI = {"👍": "good", "👀": "seen", "🙏": "thanks"}
 #: The demo chats (founder only, ring 6): the guest, their line, and what
@@ -113,6 +129,12 @@ def _member_of(database: Any, user_id: str, thread_id: Any) -> dict:
     if not rows:
         raise _not_found()
     return rows[0]
+
+
+def member(database: Any, user_id: Any, thread_id: Any) -> dict:
+    """The caller's membership of a chat, with the ring on; else 404. The
+    first check of every route that names a chat."""
+    return _member_of(database, _require(database, user_id), thread_id)
 
 
 def _last(database: Any, thread_id: str) -> Optional[dict]:
@@ -193,6 +215,106 @@ def post(database: Any, user_id: Any, thread_id: Any, body: Any) -> dict:
     if not rows:
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
     return {"message": _shown(rows[0], str(me["id"]), _authors(database, thread))}
+
+
+def _duration(value: Any) -> Optional[int]:
+    """``duration_ms`` as the form sends it, a whole number of 1 to
+    MAX_VOICE_MS; None otherwise."""
+    try:
+        ms = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return ms if 1 <= ms <= MAX_VOICE_MS else None
+
+
+def post_voice(database: Any, user_id: Any, thread_id: Any, audio: bytes, *,
+               content_type: Any, duration_ms: Any) -> dict:
+    """POST /v2/chats/<id>/voice: a voice note, its message and then its
+    recording. The route has passed the processing-authorization path first,
+    with the recording consent. A recording that is missing, empty, not audio,
+    or not 1 ms to two minutes long is 400; over 12 MB, 413. Either both rows
+    are kept or neither is. {"message": {...}}, as ``post``."""
+    me = member(database, user_id, thread_id)
+    kind = str(content_type or "").strip()
+    if not audio:
+        raise ChatsError("NOT_ALLOWED", "No recording.")
+    if not kind.startswith("audio/") or len(kind) > _MAX_TYPE_LEN:
+        raise ChatsError("NOT_ALLOWED", "Only an audio recording.")
+    ms = _duration(duration_ms)
+    if ms is None:
+        raise ChatsError("NOT_ALLOWED", "A voice note is 1 ms to two minutes long.")
+    if len(audio) > MAX_VOICE_BYTES:
+        raise ChatsError("TOO_LARGE", "A voice note is at most 12 MB.", 413)
+    thread = str(me["thread_id"])
+    rows = _rows(_table(database, MESSAGES).insert({
+        "thread_id": thread, "author_member_id": str(me["id"]), "kind": "voice",
+        "body": "", "meta": {"duration_ms": ms}}))
+    if not rows:
+        raise ChatsError("NOT_SAVED", "Could not send it.", 503)
+    message = rows[0]
+    if not _keep_recording(database, message, str(user_id), kind, ms, audio):
+        _forget(database, message)
+        raise ChatsError("NOT_SAVED", "Could not send it.", 503)
+    return {"message": _shown(message, str(me["id"]), _authors(database, thread))}
+
+
+def _keep_recording(database: Any, message: dict, user_id: str,
+                    content_type: str, duration_ms: int, audio: bytes) -> bool:
+    """The recording of a voice message just written; False when it was not
+    kept."""
+    try:
+        _table(database, AUDIO).insert({
+            "message_id": str(message["id"]),
+            # Invariant: thread_id is always the chat of this same
+            # chat_messages row, never taken from the request, so a
+            # recording and its message name one chat, and ``recording``,
+            # which reads by both, never answers it in another chat.
+            "thread_id": str(message["thread_id"]),
+            "user_id": user_id, "content_type": content_type,
+            "duration_ms": duration_ms, "audio": "\\x" + audio.hex(),
+            "words": None}).execute()
+        return True
+    except Exception:
+        logger.error("chats: recording of voice message %s not kept",
+                     message.get("id"), exc_info=True)
+        return False
+
+
+def _forget(database: Any, message: dict) -> None:
+    """A voice message whose recording was not kept goes, so no chat shows a
+    voice note that cannot be played."""
+    try:
+        _table(database, MESSAGES).delete().eq("id", str(message["id"])).execute()
+    except Exception:
+        logger.error("chats: voice message %s left without its recording",
+                     message.get("id"), exc_info=True)
+
+
+def _bytes(raw: Any) -> bytes:
+    """bytea as PostgREST answers it ("\\x" and hex), as bytes; b"" when
+    unreadable."""
+    try:
+        if isinstance(raw, str):
+            return bytes.fromhex(raw[2:]) if raw.startswith("\\x") else b""
+        return bytes(raw or b"")
+    except (TypeError, ValueError):
+        return b""
+
+
+def recording(database: Any, user_id: Any, thread_id: Any, message_id: Any) -> dict:
+    """GET /v2/chats/<id>/messages/<message_id>/audio: {content_type, audio}
+    of a voice note in this chat, for any member of it; 404 otherwise."""
+    me = member(database, user_id, thread_id)
+    message = _uuid(message_id)
+    if not message:
+        raise _not_found()
+    rows = _rows(_table(database, AUDIO).select("content_type,audio")
+                 .eq("message_id", message).eq("thread_id", str(me["thread_id"]))
+                 .limit(1))
+    audio = _bytes(rows[0].get("audio")) if rows else b""
+    if not audio:
+        raise _not_found()
+    return {"content_type": rows[0].get("content_type") or "audio/webm", "audio": audio}
 
 
 def _demo_kinds(database: Any, user_id: str) -> set[str]:

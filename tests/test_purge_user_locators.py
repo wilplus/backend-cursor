@@ -42,9 +42,10 @@ USER_KEYED = {
     "coach_block_pick_by_coach": ("coach_block_pick", "coach_id"),
     "coach_clip_exposures": ("coach_clip_exposures", "coach_id"),
     # The chats between people (0503): my place in each chat, and the demo
-    # chats made for me.
+    # chats made for me; the voice notes I recorded in them (0504).
     "chat_members": ("chat_members", "user_id"),
     "chat_demo_threads": ("chat_threads", "demo_user_id"),
+    "chat_message_audio": ("chat_message_audio", "user_id"),
 }
 
 #: A real account: its owner principal's id is not its user id.
