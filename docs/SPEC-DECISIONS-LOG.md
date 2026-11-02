@@ -9214,7 +9214,31 @@ No rules page yet: it lands on frontend
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 when built. No migration in this entry.
 
-**N353 · The answer page has no "What to do now" summary (founder, the
+**N353 · The team list shows only open teams; Will makes a closed team's
+code (founder, the Claude Code chat, 2 November 2026, on the prototype
+<https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ#su-team>: "show only
+open communities or join with a code or add a team"; asked whether Will
+makes a closed team's code or its owner types one: "Will makes the code, log
+it").** For N352 items 3 and 6, and N52.4:
+1. **The list of teams shows only the open ones** (like Artur's community),
+then "Join with a code" and "Add a team". A closed team is never on the
+list: whoever has its code joins it, and the code says which team it is.
+2. **Adding a team** is in Will's chat, one question at a time: its name;
+open or closed (open goes on the list for anyone to join; closed only with
+its code); for a closed team, its code; then which specialist the person is
+(a new team starts with the speaking coach only, N352 item 6), and the
+team's page with "Invite people".
+3. **Will makes a closed team's code.** The owner does not type one. It is
+shown once, with "Share the code" (a link to join with the code in it); it
+is not kept in the chat afterwards. Was (N52.4): the owner of a community of
+their own typed its pass code. Still a blank: making a new code from the
+team's page.
+No rules page yet: it lands on frontend
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+when built. No migration in this entry.
+
+**N354 · The answer page has no "What to do now" summary (founder, the
 Claude Code chat, 2 November 2026: "yes build it, drop what to do now").**
 For N336 item 2 and N333: the page someone opens from the link to an answer
 shows the answer only. Their question is first; then one message from the
@@ -9230,10 +9254,10 @@ The prototype: <https://claude.ai/artifact/RWT4oazQ5VtLCZkcuuRWWB>, version
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
 No migration.
 
-**N354 · The chats' words in the ambassador prototype, signed (founder, the
+**N355 · The chats' words in the ambassador prototype, signed (founder, the
 Claude Code chat, 2 November 2026: "A all, words ok, apply to main
 prototype").** Rewritten plain and short, as N200 was; for N336, N340 to
-N346, N351 and N353. **Signed (Never 4):**
+N346, N351 and N354. **Signed (Never 4):**
 1. A colleague's question passed on: "↪ {name} asks". A customer's stays
 "↪ {name}'s question, a customer" (N343).
 2. Under a question: "Video · hears back on WhatsApp"; on the ask form's
@@ -9248,7 +9272,7 @@ check."
 the consult sheet keeps "Someone else".
 6. The "+" pickers (N351): "Photos and screenshots", "For {name} only.",
 "Send {n}", "Back".
-7. The answer page (N353): "✓ Booked", "Video · 12 min", "Learning
+7. The answer page (N354): "✓ Booked", "Video · 12 min", "Learning
 platform · 20 min"; the phone's notice: "WhatsApp · now".
 The example texts (Kasia's question, the AI quotes) are the prototype's, not
 product words. The prototype:
@@ -9256,3 +9280,22 @@ product words. The prototype:
 lands with the chats' rules page (N274 item 6) and on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
 No migration.
+
+**N356 · After joining, the list of chats opens, with the inviter's message
+on top (founder, the Claude Code chat, 2 November 2026, on a screenshot of
+a list holding only Will: "actually amend the rule; the person should land
+on the message from the person that invited them from the invite link; as
+the message from them so in the list of chats!").** For N335 and N274:
+1. **Joining by a link opens the list of chats,** not a chat. The chat with
+the person who invited them is the first row, marked new, its last message
+the inviter's (their welcome, else the line "You joined through {name}'s
+link." of N335 item 2). Tapping it opens that chat. Was (N348 item 1):
+joining opened the chat with the link's owner.
+2. **Will's row is in the list too,** under it, his first lines waiting
+until it is opened, as N348 item 2 says. N274 item 1's "a person whose only
+chat is Will's opens on Will's chat" stays for everyone else; someone who
+joined has two chats, so the list shows.
+3. Nothing to sign: no new words.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1. No migration.
