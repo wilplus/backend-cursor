@@ -9237,3 +9237,20 @@ No rules page yet: it lands on frontend
 [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 when built. No migration in this entry.
+
+**N354 · The walk learns from what worked: a fix that worked on a slide is
+not given again there (founder, the Claude Code chat, 2 November 2026, to
+"once a fix has worked on a slide, the walk stops picking the same issue on
+that slide, and picks it again only if it comes back. Say go": "go").** For
+N290 item 6, N291 item 1, N326 item 5 and N350 item 3:
+1. When the previous Take's walk gave a fix on a slide (the Clearer version,
+the AI clip or the pace game) and that fix worked in this Take (the issue is
+gone on that slide, by the rule the Takes table and Last time already use;
+for the pace game N350 item 3), this Take's walk does not give the same fix
+on that slide. It picks from everything else as it does today.
+2. If the issue came back on that slide, the same fix may be given again.
+3. Nothing new on screen; the coach sees nothing of it (Never 2); no score
+(Never 1). Speakers with no previous walk pick as today.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C and H1, when built. No migration.
