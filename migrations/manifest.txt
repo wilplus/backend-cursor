@@ -540,3 +540,4 @@
 0502	the_first_visit_is_counted.sql
 0503	people_chat_with_each_other.sql
 0504	a_chat_voice_note_keeps_its_recording.sql
+0505	a_person_has_a_link_to_join_them.sql
