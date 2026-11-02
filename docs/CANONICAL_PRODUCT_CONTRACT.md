@@ -1136,6 +1136,15 @@ How an exercise is chosen for a moment, the whole rule in order: 35g-1.
     practice makes perfect. If you're ready, let's go with the next take. 💪"
     and "Record Take N" (N89). The rules: frontend
     `docs/flows/feedback-walk-and-chat.md` D3, D4, E1.
+    **Amended 2026-11-02 (founder, the Claude Code chat; decisions log N294,
+    N309, N319):** no push to the next Take. The walk ends on "Lesson done."
+    and Close (N309); after Will's one question, the chat ends on "Good job.
+    See you next time." (on a plan, "That's your 15 minutes for today.", then
+    "Good job. See you next {day}." and the plan's bar with "{n} of {total}
+    practices done."), with the tap "I want to continue my practice", which
+    brings "Record Take N" under the chat, alone (N294, N319). The settings
+    asks wait for the next visit (N294 item 8). The rules: frontend
+    `docs/flows/feedback-walk-and-chat.md` E1, E2.
 46. Take 3 completes the guided journey. Take 4+ is optional refinement and
     immediately offers Record again without another See-next-steps loop.
     **Amended 2026-10-05 (founder, decisions log N48.3 Q8 A):** the action
