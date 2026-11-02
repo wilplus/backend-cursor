@@ -10,7 +10,8 @@ OUTCOME
       Paragraph now.
   O4  After a Clearer version the walk's helper words come on their own
       (N309): the sentence the practice was opened on goes to the slide,
-      with or without a try; words not in it are refused.
+      with or without a try, whole, past eight words too (N323 item 2);
+      words not in it are refused.
 PROVES   O1 -> test_stale_or_invalid_live_root_fails_closed
          O2 -> test_recording_roots_route_returns_the_live_root
          O3 -> test_helper_words_from_an_earlier_take_stay_on_their_slide
@@ -157,6 +158,13 @@ def test_the_clearer_versions_sentence_becomes_my_helper_words(monkeypatch):
     status, _ = practice_adoption.helper_words_from_practice(
         database, practice, "part-1", "we are seeing traction", "user-1", source="passage")
     assert status == 400 and len(picked) == 1
+    # A Clearer version of twelve words is saved whole (N323 item 2).
+    twelve = "We're already seeing real traction with three paying customers this quarter alone."
+    status, body = practice_adoption.helper_words_from_practice(
+        database, {**practice, "exact_passage": twelve}, "part-1", twelve, "user-1",
+        source="passage")
+    assert (status, body) == (200, {"saved": True, "phrase": twelve})
+    assert picked[-1] == ("arc-1", "part-1", "take-3", twelve)
     # Without the walk's source, an open practice still needs a judged try.
     assert practice_adoption.helper_words_from_practice(
         database, practice, "part-1", "real traction", "user-1")[0] == 409

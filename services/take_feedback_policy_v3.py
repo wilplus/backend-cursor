@@ -877,15 +877,15 @@ def _take_clip(block: dict, candidate_id: Any, selections: list[dict]) -> None:
 def _mark_moments(blocks: list[dict], picked: dict,
                   rewrite_ranked: Optional[list[dict]] = None,
                   rewrite_rows: Optional[list] = None,
-                  sniper: bool = False,
+                  pace: Optional[dict] = None,
                   ) -> tuple[list[dict], list[dict], list[dict]]:
     """Each shown moment marked for its job in the walk (founder
     2026-10-30, N289, flow page C2 and C4; `services.moment_pick`), from
     the pick `_pick_moments` made, then cut to the One thing walk's two
     (founder 2026-10-31, N309 item 1; `_one_thing`): the strongest, and
-    the one fix whose tool fits. ``sniper``: this week's level is the tempo
-    step's and the Take has its stretch, so the Sniper is the fix and no
-    moment is.
+    the one fix whose tool fits. ``pace``: the Take's stretch outside the
+    green (`_pace`), from which the Sniper may be the fix, and then no
+    moment is (`_sniper_first`).
 
     Every block is written, so a re-run cannot leave a stale mark:
     `most_confident` (praised: the strongest and any next best),
@@ -922,7 +922,7 @@ def _mark_moments(blocks: list[dict], picked: dict,
             _mark_shown(block, {**moment, "praise": True, "kind": None,
                                 "slot": moment_pick.SLOT_NEXT},
                         value_of.get(block["block_id"]))
-    _one_thing(blocks, sniper)
+    _one_thing(blocks, pace, value_of)
     rewrite_blocks = [
         block for block in blocks
         if block["carries_exercise"]
@@ -931,15 +931,18 @@ def _mark_moments(blocks: list[dict], picked: dict,
     return [b for b in blocks if b["most_confident"]], rewrite_blocks, pool
 
 
-def _one_thing(blocks: list[dict], sniper: bool) -> None:
+def _one_thing(blocks: list[dict], pace: Optional[dict] = None,
+               value_of: Optional[dict] = None) -> None:
     """The One thing walk (founder 2026-10-31, N309 item 1): the picker's
     strongest stays, "their best", and of its fixes only the one whose tool
     fits: this week's level's moment (N289 item 8), else the between with
     its Clearer version (words come first), else the weakest with the AI
-    clip. With ``sniper`` (a pace or pause week whose Take has a stretch)
-    the tempo step is the fix and no moment is. Every other shown block,
-    the next bests included, is written as not shown, so the walk, the
-    Ideal Text's marks and the coach's queue hold the same two."""
+    clip. When the Sniper comes first (`_sniper_first`: a pace or pause
+    week whose Take has a stretch, or, for everyone, rushing that is the
+    Take's biggest issue) the tempo step is the fix and no moment is. Every
+    other shown block, the next bests included, is written as not shown, so
+    the walk, the Ideal Text's marks and the coach's queue hold the same
+    two."""
     from services import moment_pick
 
     fixes = [b for b in blocks if b.get("carries_exercise") and b.get("walk_slot")]
@@ -948,27 +951,70 @@ def _one_thing(blocks: list[dict], sniper: bool) -> None:
                     if b.get("exercise_kind") == moment_pick.EXERCISE_CLEARER), None)
     weakest = next((b for b in fixes
                     if b.get("walk_slot") == moment_pick.SLOT_WEAKEST), None)
+    sniper = _sniper_first(pace, fixes, value_of or {})
     keep = None if sniper else (level or clearer or weakest)
     for block in blocks:
         if block.get("walk_slot") and not block.get("highest_moment") and block is not keep:
             _mark_shown(block, None, None)
 
 
-def _sniper_fix(plan_level: Optional[str], snippets: Any) -> bool:
-    """On a plan, a pace or pause week's one fix is the Sniper, the tempo
-    step (N309 item 1, N289 item 8), when the Take has a stretch outside
-    the green for it (`tempo_stretch.pick`). False on any failure: the fix
-    is then a moment, as off a plan."""
-    from services import plan_walk
-    if plan_level not in plan_walk.TEMPO_LEVELS:
+def _sniper_first(pace: Optional[dict], fixes: list[dict], value_of: dict) -> bool:
+    """Is the Sniper, the tempo step, the One thing walk's one fix?
+
+    On a pace or pause week, whenever the Take has its stretch (N309 item
+    1, N289 item 8). For everyone else, with or without a plan, at any
+    level (founder 2026-11-02, N323 item 6), when rushing is the Take's
+    biggest issue: the stretch ran fast, and the share of its time the pace
+    scale spent past the green is larger than what each moment the walk
+    could fix falls short of, 1 minus its willfidence (S x W, the read the
+    picker ranks the moments by; `moment_pick`). Both are shares from 0 to 1
+    where 0 is all well. A moment whose read is missing keeps its place; a
+    tie goes to the moment, as before. With no moment to fix, a rushed
+    stretch is the fix. A plan's level moment counts as a fix like any
+    other, so the plan's choice stays unless rushing outweighs it.
+
+    Only for a speaker who has the tempo step (``pace["on"]``, a bool or a
+    callable read last): without it the walk has no Sniper to show, and its
+    fix stays a moment. False on any failure."""
+    if not pace:
         return False
+    if not pace.get("week"):
+        outside = pace.get("outside")
+        if pace.get("reading") != "rushed" or not isinstance(outside, (int, float)):
+            return False
+        for block in fixes:
+            value = value_of.get(block.get("block_id"))
+            need = 1.0 - float(value) if isinstance(value, (int, float)) else 1.0
+            if outside <= need:
+                return False
+    on = pace.get("on")
+    try:
+        return bool(on() if callable(on) else on)
+    except Exception as error:  # noqa: BLE001 -- the fix is a moment then
+        logger.warning("one thing: the tempo step not read: %s", error)
+        return False
+
+
+def _pace(plan_level: Optional[str], snippets: Any, take_id: str,
+          tempo_step: Any) -> Optional[dict]:
+    """The Take's stretch outside the green for the One thing walk's fix
+    (`tempo_stretch.pick`), with whether this week's level is the tempo
+    step's (``week``) and whether the speaker has the step (``on``); None
+    when no clip leaves the green, or off a pace or pause week when the
+    stretch ran slow (only rushing competes, N323 item 6). None on any
+    failure: the fix is then a moment."""
+    from services import plan_walk
     try:
         from services import tempo_stretch
         rows = [s for s in snippets or [] if isinstance(s, dict)]
-        return tempo_stretch.pick(rows) is not None
+        stretch = tempo_stretch.pick_for_take(take_id, rows)
     except Exception as error:  # noqa: BLE001 -- the fix is a moment then
         logger.warning("one thing: the tempo stretch not read level=%s: %s", plan_level, error)
-        return False
+        return None
+    week = plan_level in plan_walk.TEMPO_LEVELS
+    if not stretch or (not week and stretch.get("reading") != "rushed"):
+        return None
+    return {**stretch, "week": week, "on": tempo_step}
 
 
 def _mark_shown(block: dict, moment: Optional[dict], value: Any) -> None:
@@ -1727,8 +1773,14 @@ def build_shadow_frame(
     key_line: Any = None,
     held_words: Any = None,
     context: Any = None,
+    tempo_step: Any = False,
 ) -> Optional[dict]:
     """Build the complete v3 frame; return None for an unusable Take.
+
+    ``tempo_step``: the speaker has the walk's tempo step (a bool, or a
+    callable read only when the Sniper would be the One thing walk's fix;
+    `tempo_stretch.tempo_on_for`). Without it the fix is always a moment
+    (N323 item 6).
 
     ``context`` is what the Take is for (`services.take_context.for_take`,
     N293): a clip that carries its key line or call to action counts for
@@ -1848,7 +1900,7 @@ def build_shadow_frame(
     # (24g); it no longer decides where praise goes.
     green_blocks, weak_blocks, rewrite_pool = _mark_moments(
         blocks, picked, rewrite_ranked, feedback_rows,
-        sniper=_sniper_fix(plan_level, snippets))
+        pace=_pace(plan_level, snippets, take_id, tempo_step))
     rewrite_anchors = _anchored_notes(rewrite_pool, weak_blocks)
     praise_anchors = _anchored_notes(praise_ranked, green_blocks)
     rewrite_selected_ids = [row["candidate_id"] for row in rewrite_anchors]
