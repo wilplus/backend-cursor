@@ -28,6 +28,9 @@ or writes.
   * ``seed_demo``: a customer's chat and a colleague's for the person, once,
     so the chats can be seen before anyone else is in them.
 
+A real chat between two people is made by the join link
+(services/chat_links.py, N308, N328): nothing in this module makes one.
+
 Ring row ``chats``, ring 6 (the founder's). A person without it gets 404 from
 every route. One provider call, for a voice note only: its transcription,
 through the authorized provider (``AuthorizedProviderAdapter.transcribe_audio``,
@@ -193,7 +196,10 @@ def _shown(row: dict, me: str, authors: dict[str, str]) -> dict:
 
 
 def read(database: Any, user_id: Any, thread_id: Any) -> dict:
-    """GET /v2/chats/<id>/messages: {"messages": [...]}, oldest first."""
+    """GET /v2/chats/<id>/messages: {"messages": [...], "joined_through":
+    the first name of whose link the caller joined through, or null}
+    (services/chat_links.py), oldest first."""
+    from services.chat_links import joined_through
     user_id = _require(database, user_id)
     me = _member_of(database, user_id, thread_id)
     thread = str(me["thread_id"])
@@ -202,7 +208,8 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
                    .eq("thread_id", thread).order("created_at", desc=True)
                    .limit(_MAX_MESSAGES))
     authors = _authors(database, thread)
-    return {"messages": [_shown(r, str(me["id"]), authors) for r in reversed(newest)]}
+    return {"messages": [_shown(r, str(me["id"]), authors) for r in reversed(newest)],
+            "joined_through": joined_through(database, user_id, thread)}
 
 
 # ── Writing ──────────────────────────────────────────────────────────────

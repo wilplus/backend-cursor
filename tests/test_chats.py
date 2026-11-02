@@ -86,6 +86,11 @@ class _Query:
         self.filters.append(lambda r: r.get(column) in set(values))
         return self
 
+    def is_(self, column, value):
+        # Only "null", the one IS the services use.
+        self.filters.append(lambda r: r.get(column) is None)
+        return self
+
     def order(self, column, desc=False):
         self.sort = (column, desc)
         return self
