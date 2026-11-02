@@ -295,9 +295,8 @@ N94).
 O6  The plan's lines after a practice day's Take (""That's your 15
 minutes for today."") wait for the ask: the ask stays the newest
 bubble, so its answers stay; after my answer come the lines, then
-""Good job. See you {day}."" with the plan's next practice day
-(""tomorrow"" or its weekday, N347 item 2), then the plan's progress,
-last (N319 item 7).
+""Good job. See you {day}."" with the plan's next practice day (N347
+item 2), then the plan's progress, last (N319 item 7).
 O7  The settings asks wait for the next visit (N294 item 8, N295): never
 before my second Take is done, never while an ask after a Take waits,
 at most one per Take; WhatsApp first, opened with ""It seems you enjoy
@@ -377,7 +376,9 @@ O3  Take 2 builds the Ideal Text when the Project has none ...
 O4  ... and never rebuilds one that exists (no overwrite of my words).
 O5  My feedback marks are baked right after ""ready"", inside the run and
 before the trailing work, so the walk opens the moment the
-processing bubble ends (founder 2026-10-20, flow page A2).","O1 -> test_ready_comes_first_and_the_cards_are_waited_for
+processing bubble ends (founder 2026-10-20, flow page A2); ""ready""
+never waits for the verbal read, which is waited for after it and
+before the marks are baked (N350 item 2).","O1 -> test_ready_comes_first_and_the_cards_are_waited_for
 O2 -> test_trailing_work_failing_never_reaches_the_speaker
 O5 -> test_the_marks_are_baked_right_after_ready_in_the_run
 O3 -> test_a_later_take_DOES_create_a_document_that_is_missing
@@ -1289,8 +1290,9 @@ O3 -> test_a_video_upload_is_refused_as_audio_only
 test_mic_audio_webm_is_NOT_rejected_as_video","Bug batch 2026-07-13 (BE-1 guest re-read, BE-2 video reject)."
 tests/test_helper_words_any_words.py,Story,"As a speaker, I want to pick up to eight helper words from my paragraph, in the order I said them, so that my cues match my talk.","O1  Words picked apart from each other are saved (without a position).
 O2  Words out of order, or words I never said, are refused.
-O3  Eight words are accepted on a pick by hand; a ninth is refused. The
-One thing walk's own helper words are saved whole (N323 item 2).
+O3  Eight words are accepted on a pick by hand; a ninth is refused (the
+One thing walk's own words are saved whole: N323 item 2,
+test_ideal_text_route_contracts O5).
 O4  Words picked apart are also accepted against an earlier Take's text.","O1 -> test_words_picked_apart_save_without_a_span
 O2 -> test_words_out_of_order_or_not_said_are_refused
 O3 -> test_eight_words_is_the_cap_on_a_pick_by_hand
@@ -2094,7 +2096,7 @@ O4 -> test_the_whole_assembly_failing_is_false_and_named",Audit Q-C1: best-effor
 tests/test_plan.py,Story,"As a speaker with an event coming, I want the app to turn my deadline and my voice into a plan, so that each practice works on the one thing that will help most, in words, never a score.","O1  A deadline three weeks away gives three practices a week, nine in
 all; two weeks or less gives every day; no date gives two months.
 O2  The practice count reads the Takes done plus one and never passes the
-total; the next practice day is a weekday name, or ""tomorrow"".
+total; after the last practice there is no next practice day.
 O3  The level comes from what was measured today, strongest first: a key
 line said faster than the rest gives ""Let your key line land""; with
 nothing measured it is ""Make it yours"", never a guess.
@@ -3098,20 +3100,21 @@ tests/test_take_progress.py,Story,"As the founder, I want to see whether a speak
 a later Take that sounds stronger than those reads higher, even when
 it is no stronger than their recent Takes; with too few first Takes
 it is not measured.
-O2  The fixes a Take gave (the weakest and the one between, and its tempo
-stretch) are each marked came back or gone on the next Take of the
-talk, same slide; not measured when that slide is not in it.
+O2  The fixes a Take gave (the weakest and the one between) are each
+marked came back or gone on the next Take of the talk, same slide; not
+measured when that slide is not in it.
 O3  The One thing walk opens with the last Take's fix when it rose
 (N309): its kind and slide, and this Take's best clip there, played
 by a signed link; nothing when it came back or there is no Take
 before.
-O4  When the last walk's fix was the pace game, it rose when that slide
-came out slower in this Take, read as the tempo step reads it, and
-the walk opens with it the same way; nothing when it did not
-(N347 item 3).","O1 -> test_progress_is_read_against_my_first_takes
+O4  The pace game's fix worked when every clip on that slide in the next
+Take stays inside the green on the side the stretch leaned, the bar
+that picks a stretch: the Takes table marks it gone and the walk opens
+with it as the last fix; slower but still outside the green, it came
+back and nothing is said (N347 item 3, N350 item 3).","O1 -> test_progress_is_read_against_my_first_takes
 O2 -> test_each_fix_is_marked_came_back_or_gone_on_the_next_take
 O3 -> test_last_time_plays_the_fix_that_rose_on_this_take
-O4 -> test_last_time_after_the_pace_game_when_that_slide_came_out_slower","Founder 2026-10-31 (N291: ""yes""; ""ok go with the proposal""; N290: ""the next time it chooses a moment it should take into account what the user answered""; N309 item 1: ""Last time: {the tip}. You did.""; N347 item 3: ""Every fix gets its Last time, the pace game too"")."
+O4 -> test_the_pace_fix_worked_when_that_slide_stays_inside_the_green","Founder 2026-10-31 (N291: ""yes""; ""ok go with the proposal""; N290: ""the next time it chooses a moment it should take into account what the user answered""; N309 item 1: ""Last time: {the tip}. You did.""; N347 item 3: ""Every fix gets its Last time, the pace game too""; N350 item 3: one rule for ""the pace fix worked"")."
 tests/test_take_promotion_survives_a_dropped_connection.py,Story,"As a speaker, I want a dropped database connection at the last step to be retried, so that my Take is not thrown away and processed again.","O1  When the connection drops while the recording becomes a Take, the
 step is retried once and the Take is returned.",O1 -> PromotionRetryTests::test_a_dropped_connection_is_retried_and_the_take_returned,Founder's Takes of 2026-10-02 and 2026-10-03 were re-run from the start after one dropped call.
 tests/test_take_purge_postgres.py,Story,"As a speaker who deletes my account, I want everything I recorded erased, so that my Take, audio and project content are gone.","O1  The erasure finishes, with nothing left for manual review, and the
@@ -3293,7 +3296,8 @@ O3 -> test_a_library_save_and_a_library_pick_make_no_pair","Founder 2026-10-05 (
 tests/test_the_walk_reads_my_notes.py,Story,"As a speaker who noted what matters to me, I want the walk to pick the moment where my words matter most for me and to write its Clearer version with that in mind, in my own words, so that the one thing I fix is the one that helps me most, and nothing changes when the walk has nothing of mine to read.","O1  Without the ring row, without notes, or when the read fails, says
 something malformed or is late, the walk picks exactly as it did
 before; nobody waits for a read not known to reach them, and a read
-that does is waited for at most the cap (N326 items 4 and 5, N327).
+that does is waited for at most the cap, the walk held for it while
+it is (N326 items 4 and 5, N350 item 2).
 O2  With my note (""my manager says I explain too much and never give the
 answer"") and my manager's question, the read flags my buried answer
 and it becomes my one thing to improve, with its Clearer version
@@ -3309,7 +3313,7 @@ from them: the frame and the stored rewrite carry only the choice of
 moments and my own words (N326 item 5, Never 2).","O1 -> test_no_ring_no_notes_or_a_failed_read_leave_the_walk_as_it_was
 O2 -> test_my_note_makes_my_buried_answer_the_one_thing
 O3 -> test_a_clearer_version_never_repeats_my_notes
-O4 -> test_wills_private_note_is_never_read
+O4 -> test_my_note_makes_my_buried_answer_the_one_thing
 O5 -> test_a_coach_never_sees_my_notes_or_why_a_moment_was_picked","Founder 2026-11-02, the Claude Code chat, on the prototype https://claude.ai/artifact/KvAiek4DrxgbpDudcBFJNQ: ""Go with your picks on all four"" (N326, building N290)."
 tests/test_token_arc_charged.py,Story,"As a speaker, I want to see whether I already paid for an action on this presentation, without being charged for looking, so that the prices on its buttons are true. (Critical path: payments.)","O1  GET /v2/tokens/arc/<arc_id> answers, for every per-arc action, whether I
 already paid for it here and what it costs.

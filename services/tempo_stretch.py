@@ -160,12 +160,12 @@ def pick(snippets: list[dict]) -> Optional[dict]:
     return best
 
 
-def furthest(snippets: list[dict], ids: set[str], reading: str) -> Optional[float]:
-    """Of the Take's clips named in ``ids``, the largest share of time the
-    dot spent past the green on ``reading``'s side (the right for "rushed",
-    the left for "slow"), read as ``pick`` reads them; None when none can be
-    read. The pace game's "Last time" sets it against the stretch's own
-    share (N347 item 3). Pure."""
+def stays_inside(snippets: list[dict], ids: set[str], reading: str) -> Optional[bool]:
+    """Does every one of the Take's clips named in ``ids`` stay inside the
+    green on ``reading``'s side (the right for "rushed", the left for
+    "slow"), by the bar that picks a stretch: under ``MIN_OUTSIDE`` of its
+    time past it? None when none can be read. The pace game's fix worked
+    when they do (N350 item 3). Pure."""
     replay = _replay(snippets)
     if not replay:
         return None
@@ -173,7 +173,7 @@ def furthest(snippets: list[dict], ids: set[str], reading: str) -> Optional[floa
     side = 0 if reading == "rushed" else 1
     found = [shares[side] for s in snippets
              if str(s.get("id")) in ids and (shares := _shares(path, first, s))]
-    return max(found) if found else None
+    return all(share < MIN_OUTSIDE for share in found) if found else None
 
 
 _SENTENCE = re.compile(r"(?<=[.?!])\s+")
@@ -268,19 +268,14 @@ def pick_for_take(take: Any, snippets: list[dict]) -> Optional[dict]:
 
 
 def tempo_on_for(user_id: Any, *, database: Any = None) -> bool:
-    """`tempo_is_on` for the speaker whose Take's walk is being built, where
-    the founder is known only from the request: the rings panel's
-    ``tempo_step`` row, or the founder reading their own Take. False on any
-    failure (N323 item 6: without the step, the walk's fix stays a moment)."""
+    """Does the speaker whose Take's walk is being built have the tempo
+    step? The rings panel's ``tempo_step`` row, at ring 0 so it reaches
+    everyone, the founder too (N325 item 3); the same answer whoever reads
+    the walk. False on any failure (N323 item 6: without the step, the
+    walk's fix stays a moment)."""
     try:
         from services import rings
-        if rings.feature_is_on_for_user(rings.TEMPO_STEP, user_id, database=database):
-            return True
-        from flask import has_request_context, request
-        if not has_request_context() or str(getattr(request, "user_id", "") or "") != str(user_id or ""):
-            return False
-        from routes.admin import _token_email, is_founder_email
-        return is_founder_email(_token_email())
+        return rings.feature_is_on_for_user(rings.TEMPO_STEP, user_id, database=database)
     except Exception as error:  # noqa: BLE001 -- a closed door
         logger.warning("tempo step: not read user=%s: %s", user_id, type(error).__name__)
         return False
@@ -288,12 +283,10 @@ def tempo_on_for(user_id: Any, *, database: Any = None) -> bool:
 
 def tempo_is_on(user_id: Any, *, founder: bool) -> bool:
     """Who has the tempo step (N166 step 6): the founder always; anyone
-    else when the rings panel's ``tempo_step`` row reaches them. A missing
-    row or an unreachable ring table is a closed door."""
-    if founder:
-        return True
-    from services import rings
-    return rings.feature_is_on_for_user(rings.TEMPO_STEP, user_id)
+    else when the rings panel's ``tempo_step`` row reaches them
+    (`tempo_on_for`). A missing row or an unreachable ring table is a
+    closed door."""
+    return founder or tempo_on_for(user_id)
 
 
 _TRY_RESULTS = ("ok", "rush", "slow")

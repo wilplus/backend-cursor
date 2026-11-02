@@ -29,9 +29,8 @@ OUTCOME
   O6  The plan's lines after a practice day's Take ("That's your 15
       minutes for today.") wait for the ask: the ask stays the newest
       bubble, so its answers stay; after my answer come the lines, then
-      "Good job. See you {day}." with the plan's next practice day
-      ("tomorrow" or its weekday, N347 item 2), then the plan's progress,
-      last (N319 item 7).
+      "Good job. See you {day}." with the plan's next practice day (N347
+      item 2), then the plan's progress, last (N319 item 7).
   O7  The settings asks wait for the next visit (N294 item 8, N295): never
       before my second Take is done, never while an ask after a Take waits,
       at most one per Take; WhatsApp first, opened with "It seems you enjoy
@@ -212,7 +211,7 @@ def test_the_plans_lines_wait_for_the_ask_then_the_goodbye_and_the_progress(monk
     fifteen, done = "That's your 15 minutes for today.", "1 of 9 practices done."
     monkeypatch.setattr("services.plan_flow.after_take", lambda db, u: db.insert_lounge_messages(u, [
         {"client_id": "fifteen", "role": "bot", "kind": "text", "body": fifteen, "metadata": {}}]))
-    monkeypatch.setattr("services.plan_flow.next_day_name", lambda db, u: "Wednesday")
+    monkeypatch.setattr("services.plan_flow.next_day_text", lambda db, u: "Wednesday")
     monkeypatch.setattr("services.plan_flow.progress", lambda db, u: db.insert_lounge_messages(u, [
         {"client_id": "progress", "role": "bot", "kind": "text", "body": done,
          "metadata": {"plan_progress": True, "done": 1, "total": 9}}]))

@@ -789,18 +789,11 @@ def test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan(monkeypat
     from services import tempo_stretch
     stretch = {"index": 0, "outside": 0.9, "reading": "rushed"}
     monkeypatch.setattr(tempo_stretch, "pick_for_take", lambda take, rows: stretch)
-    asked = []
-
-    def tempo_on():
-        asked.append(True)
-        return True
-
     plain = [("p0", "strongest", None, None), ("p2", "weakest", "voice", None)]
     paced = (140, 140, 140, 200)
     # No plan, rushing the biggest issue: the Sniper is the one thing, so no
     # moment is; their best stays.
-    assert _slots(_paced_frame(paced, tempo_step=tempo_on)) == [("p0", "strongest", None, None)]
-    assert asked
+    assert _slots(_paced_frame(paced, tempo_step=lambda: True)) == [("p0", "strongest", None, None)]
     # On a plan whose level takes a slot, the same: rushing outweighs it.
     assert _slots(_filler_frame("p1", plan_level="say_once", tempo_step=True)) == [
         ("p0", "strongest", None, None)]
