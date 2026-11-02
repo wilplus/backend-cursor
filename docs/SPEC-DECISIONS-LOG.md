@@ -9337,3 +9337,19 @@ compared with the one before, no answer to "Did this help?" and nothing said
 about what would help. Was: a note saying "in 0 of 0 Takes".
 No rules page: Will's instructions are in `services/master_doc_rag.py`, the
 weekly note in `services/feedback_digest.py`. No migration.
+**N359 · The walk learns from what worked: a fix that worked on a slide is
+not given again there (founder, the Claude Code chat, 2 November 2026, to
+"once a fix has worked on a slide, the walk stops picking the same issue on
+that slide, and picks it again only if it comes back. Say go": "go").** For
+N290 item 6, N291 item 1, N326 item 5 and N350 item 3:
+1. When the previous Take's walk gave a fix on a slide (the Clearer version,
+the AI clip or the pace game) and that fix worked in this Take (the issue is
+gone on that slide, by the rule the Takes table and Last time already use;
+for the pace game N350 item 3), this Take's walk does not give the same fix
+on that slide. It picks from everything else as it does today.
+2. If the issue came back on that slide, the same fix may be given again.
+3. Nothing new on screen; the coach sees nothing of it (Never 2); no score
+(Never 1). Speakers with no previous walk pick as today.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C and H1, when built. No migration.
