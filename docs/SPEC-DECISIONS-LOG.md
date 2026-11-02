@@ -8452,3 +8452,23 @@ The prototype: <https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>, chapter
 answer". The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built. No migration.
+
+**N322 · The chats' open points of N321, settled (founder, the Claude Code
+chat, 2 November 2026, answering five questions on the Ember & Air
+prototype: "1 ok 2 ok 3 ok 4 yes 5 yes show these on the prototype, then I
+will give you a go to build it").** For N321 item 5:
+1. **The list** shows the circle with the first letter of the name on every
+chat but Will's (Will keeps his own mark). No photo.
+2. **Every message carries its time** ("06:12"), and the day above the
+messages ("Today"). A clock time is not about the speaker (Never 1).
+3. **After a voice note** the list's last line reads "🎤 Voice message".
+4. **Will's chat keeps the WillpowerLab bar on top**, with "‹ Will" under it
+to go back to the list, as built (N320). Only the other chats lose it
+(N321 item 1).
+5. **Will decides that a question is complex**, from its photos and whether
+it asks about a product or a treatment. The person never chooses.
+Signed (Never 4): "Today", "🎤 Voice message". The prototype: version 25 of
+<https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>, chapter "In the app now
+(ring 6)". Building waits for the founder's go. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built. No migration.
