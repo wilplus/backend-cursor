@@ -321,6 +321,14 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "database_row", 60),
     PurgeDependency("walk_quote_settings", "walk_quote_settings", "user_id",
                     "user", "delete", "database_row", 60),
+    # The chats between people (N298 to N316, migration 0503): the demo
+    # chats made for the person, then their place in every other chat. The
+    # messages go with the chat or the member they belong to (chat_messages,
+    # ON DELETE CASCADE).
+    PurgeDependency("chat_demo_threads", "chat_threads", "demo_user_id",
+                    "user", "delete", "database_row", 59),
+    PurgeDependency("chat_members", "chat_members", "user_id", "user",
+                    "delete", "database_row", 60),
     # Email and password on Data & consent (WIL-95, N190, migration 0493):
     # the person's own security log goes with the account.
     PurgeDependency("account_security_events", "account_security_events",
@@ -1614,6 +1622,9 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
 # explicit so the dependency audit cannot mistake them for global data.
 CASCADE_RELATIONS: frozenset[str] = frozenset({
     "coaching_attempt_annotations", "journal_post_image",
+    # A chat's messages: with their chat (chat_demo_threads) or their
+    # author's membership (chat_members).
+    "chat_messages",
 })
 
 # Child relations the lineage tombstone empties through their parent

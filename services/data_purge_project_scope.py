@@ -172,6 +172,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     "your_why", "your_why_versions", "strengths", "strength_notes", "talk_dates",
     # The security log of Email and password (WIL-95, N190): the account's.
     "account_security_events",
+    # The chats between people (N298 to N316): a person's chats belong to
+    # the account, never to a project.
+    "chat_demo_threads", "chat_members",
     # The plan (N203): one per person, across their projects; the account
     # purge deletes it, with its answers, their recordings and its levels.
     "speaker_plans", "plan_answers", "plan_answer_audio", "plan_level_events",
