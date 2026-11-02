@@ -9238,7 +9238,25 @@ No rules page yet: it lands on frontend
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 when built. No migration in this entry.
 
-**N354 · The walk learns from what worked: a fix that worked on a slide is
+**N354 · In the iPhone app: sign-in first, then the chats (founder, the Claude
+Code chat, 2 November 2026: "on the app, can you drop the blog post page and
+the enter the lab just sign up / log in and then the list of chats and a chat
+with Will in the list or invite tab if no chats from other there"; then, asked,
+"Yes, always the list" and "An invite row under Will").** For N267, N274 and
+N308, in the iPhone app only; the website is unchanged:
+1. **No landing, no welcome.** The app opens on sign-in (/login, with its
+"Sign up"); signed in, it goes past the welcome ("Enter the lab", the posts
+under it). Nothing about consent changes: the welcome records none; sign-up
+keeps its Terms and Privacy box and Phase1AcceptanceGate its receipt.
+2. **The list of chats first.** With the chats on (ring 6), the app opens on
+the list even when Will's chat is the only one, Will pinned on top.
+3. **Adding someone under Will.** With no chat besides Will's, the row under
+him is "Add someone to chat with" (signed, N310 item 3); it opens the add
+sheet with "Copy my link", as the + does. No new words.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 C1. No migration in this entry.
+**N355 · The walk learns from what worked: a fix that worked on a slide is
 not given again there (founder, the Claude Code chat, 2 November 2026, to
 "once a fix has worked on a slide, the walk stops picking the same issue on
 that slide, and picks it again only if it comes back. Say go": "go").** For
