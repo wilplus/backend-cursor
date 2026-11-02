@@ -8511,3 +8511,73 @@ The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C, when built. No migration.
+
+**N324 · A voice note in a chat is turned into words, and lasts at most 2
+minutes (founder, the Claude
+Code chat, 2 November 2026, asked "should each voice note be turned into
+words … so Will can learn from what colleagues and customers say?": "yes
+transcribe them").** For N321 item 2:
+1. **Every voice note sent in a chat between people is transcribed**, through
+the processing-authorization path, as the voice notebook's notes are. The
+words are kept with the recording (`chat_message_audio.words`, migration
+0504) and go when it goes.
+2. **A voice note that cannot be turned into words is still sent.** The words
+stay empty; the person sees no difference.
+3. **At most 2 minutes:** a voice note in a chat stops by itself at 2
+minutes, and a longer one is refused (founder, the same chat, asked what the
+limit was for: "keep 2 minutes"). A long, considered answer is a Take
+("Record an answer", N321 item 4).
+4. **Not decided yet:** whether the words show under the player, and how Will
+uses them (the speaker's memory, the team's know-how). Each comes as its own
+decision before it is built.
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
+**N325 · Eight open points settled on one decision page (founder, the Claude
+Code chat, 2 November 2026, on <https://claude.ai/artifact/RMB2xjrrZ13fbwC99JbXzx>:
+"1. … A, Button alone (as built)", "2. … B, Only me first (ring 6)", "on the
+second one the book now orange should be on the right skip on the left",
+"3. … A, Everyone (ring 0)", "4. … B, A note: “Tap one of the answers
+above.”", "5. … A, Keep the limit of 8 words", "6. … A, New shorter words
+that match the policy", "7. … A, Build it next", "8. … A, Reword the rule to
+match the app", "Go.").** For N290, N294 item 7, N315, N319 and N323:
+1. **A practice day's "Record Take N" stands alone under the chat,** as built
+for N294 item 7 and as the prototype shows: the message box, the "+" and the
+mic come back once that Take is recorded. Closes the open question on the
+plan's page.
+2. **The plan's coach calls reach the founder first:** the ring row
+`plan_calls` at ring 6, added by the founder in the rings panel
+(`/admin/rings`), widened later (N323 item 7). Under Will's ask for a call,
+"Skip" on the left, grey and quieter, and "Book now" on the right, orange
+outlined, as "Not now" and "Yes, ask me" are (N319 item 1). Was: both orange.
+3. **The pace game for everyone:** the ring row `tempo_step` at ring 0, set
+by the founder in the rings panel, so N323 item 6 reaches every speaker.
+4. **Signed (Never 4): "Tap one of the answers above."**, the note a tap on
+the faded "Type here" shows before Take 1 while the plan waits for a tap
+answer (the deadline, the plan's own yes, the two ratings, a call, what's
+next, the same event): one at a time, gone after about 2.5 seconds, as N323
+item 1's note on a voice question. Was: nothing.
+5. **The pace game's helper words keep the cap of eight** (the Sniper's
+stretch); N323 item 2's whole save stays for the walk's own helper words.
+6. **Signed (Never 4): the plan's own yes, matching Privacy Policy 3.9
+§4e:** "Some of my questions are personal: how stressed and ready you feel,
+what worries you, how you feel before each Take. I ask only with your yes.
+Your answers shape your plan and help your coach prepare. You can turn this
+off in Settings." It replaces "A few of my questions are personal: how
+stressed and how ready you feel, what worries you, and how you feel before
+each Take. I only ask with your yes. Your coach and I use your answers to
+shape your plan. You can turn this off in Settings." and the shorter words of
+N319 item 5 (N323 item 4). The taps and the record's sentence
+(`services/plan_consent.py` `SENTENCE`) are unchanged.
+7. **N290 is built next:** its design first, as a prototype for the founder,
+then the build. It reaches only speakers who have notes (ring 6 today, N182
+item 2), and a coach never sees the notes (Never 2).
+8. **Never 3 in both CLAUDE.md files** reads "the plan's questions come once,
+before the first Take, one at a time, and the first Take follows them;
+before any other Take, only the feelings check, with a Skip" in place of
+"the plan's questions come once, before the first Take, and never stop the
+speaker from recording it; before any other Take, only the feelings check,
+with a Skip" (N319 item 2; amends N262 item 1's wording).
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+(items 1, 2, 4 and 6), when built. No migration.
