@@ -16,13 +16,19 @@ the voice note, N321 item 2). Service: services/chats.py.
   POST /v2/chats/demo             makes the two demo chats once; the list
 
 Ring row ``chats`` (ring 6): a person without it gets 404 from every route,
-as a chat they are not in does. Anything but the three emoji is 400. No
-provider call. A voice note is a speaker's recording, and ``/v2/chats`` is
-outside the core gate's prefixes, so its upload passes the processing-
-authorization path itself, after the ring and the chat (404) and before the
-recording is looked at (400, 413): ``phase1_provider_route``, as the voice
-notebook's notes, then the recording consent a Take asks for
-(``require_current``, operation "recording", in every gate mode). A refusal
+as a chat they are not in does. Anything but the three emoji is 400. One
+provider call, for a voice note: its transcription (N324), made by
+``post_voice`` through the authorized provider with the voice notebook's
+adapter, inside the scope ``phase1_provider_route`` opens, so its permit is
+the caller's; limited as the notebook's notes are (``llm_limit``). Its words
+are kept with the recording and are in no answer here; a note that cannot be
+turned into words is sent all the same. A voice note is a speaker's
+recording, and ``/v2/chats`` is outside the core gate's prefixes, so its
+upload passes the processing-authorization path itself, after the ring and
+the chat (404) and before the recording is looked at (400, 413):
+``phase1_provider_route``, as the voice notebook's notes, then the recording
+consent a Take asks for (``require_current``, operation "recording", in every
+gate mode). A refusal
 answers as those do, ``{code, error}`` with its status (403
 PROCESSING_RECORDING_WITHDRAWN, 403 PROCESSING_AUTHORIZATION_REQUIRED, ...),
 and nothing is written.
@@ -38,6 +44,7 @@ from auth import require_auth
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import phase1_provider_route
 from services.db import db
+from services.rate_limits import llm_limit
 
 logger = logging.getLogger(__name__)
 
@@ -122,22 +129,31 @@ def _recording_refused():
 @require_auth
 @_a_member_first
 @phase1_provider_route
+@llm_limit
 def v2_chats_voice(thread_id):
     """A voice note. Its checks in order: the ring and the chat (404); the
     caller's processing authorization (``phase1_provider_route``) and
     recording consent (their refusal); the recording (400, 413). Then its
-    message and its recording are written."""
+    message and its recording are written, and the recording is turned into
+    words under the same authorization: the adapter the notebook's notes use,
+    the one ``phase1_provider_route`` bound when the gate is on (N324). The
+    answer is the message, never its words."""
     refused = _recording_refused()
     if refused is not None:
         return refused
+    from routes.v2.voice_notebook import _adapter
     from services.chats import MAX_VOICE_BYTES, post_voice
+    user_id = str(request.user_id)
     upload = request.files.get("audio")
     # One byte past the limit is enough to know it is over (413).
     audio = upload.stream.read(MAX_VOICE_BYTES + 1) if upload is not None else b""
     content_type = upload.content_type if upload is not None else None
+    # The transcriber reads the type from the name's ending, which the app
+    # gives by the recording's type (voice.webm, voice.m4a, voice.ogg).
+    filename = (upload.filename if upload is not None else None) or "voice.webm"
     return _run("voice", lambda: post_voice(
-        db, str(request.user_id), thread_id, audio, content_type=content_type,
-        duration_ms=request.form.get("duration_ms")))
+        db, user_id, thread_id, audio, adapter=_adapter(user_id), filename=filename,
+        content_type=content_type, duration_ms=request.form.get("duration_ms")))
 
 
 @v2_bp.route("/chats/<thread_id>/messages/<message_id>/audio", methods=["GET"])
