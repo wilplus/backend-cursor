@@ -8384,3 +8384,32 @@ practices done.". The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 E1 and E2, when built. No migration.
+
+**N320 · The chats between people built on ring 6, with two demo chats from
+Invita; the words signed; the migration merged without the outside review
+(founder, the Claude Code chat, 2 November 2026: "Please implement that
+design between the speakers… since one of my testing account, I don't have
+more than one chart, which is Will. You can show me a test account from, for
+example, Invita, customer… please implement it on ring 6"; then "ok to the
+words, merge without the review").** For N298 to N316:
+1. **Ring 6:** the first slice of the chats is on the ring row `chats` at
+ring 6 (the founder only). Off the ring, `/chat` is the Lounge as it is and
+every chats route answers as if the chat did not exist.
+2. **Two demo chats, once per person:** a customer, Sarah ("Customer ·
+Invita"), with her question, and a colleague, Ariel ("Your colleague ·
+Invita"), with "On slide 1: name the treatment and let it land." and 👍. The
+person is "You" in them. Made the first time the list is empty.
+3. **What the slice does:** the list of chats in front of the Lounge, Will
+pinned first; a chat's screen with the Lounge's bubbles, no pictures (N301),
+and 👍 👀 🙏 in the bar's box (N306, N311). No typing, voice note, passing on,
+invite or notice yet.
+4. **Signed (Never 4):** "You", "Customer · Invita", "Your colleague ·
+Invita", Sarah's and Ariel's lines, "Will" as the pinned row's name, and "Only
+👍, 👀 or 🙏 for now.".
+5. **The migration** `people_chat_with_each_other.sql` was merged without the
+outside review (GPT or Grok) that How to ship asks for, on the founder's
+word, for this migration only. It adds three tables and the ring row and
+drops nothing.
+Built: backend #1556, frontend #1125. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, §2 and §4.
