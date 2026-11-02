@@ -8885,7 +8885,26 @@ The rules: frontend
 §3 and [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
 §2. No migration.
 
-**N339 · "Consult with someone", in grey (founder, the Claude Code chat, 2
+**N339 · After a tap on the 1 to 10 scale, the answer shows as locked
+(founder, the Claude Code chat, 2 November 2026, asked what Will says after
+a rating tap: "just something like locked or guarded, you come up with it as
+the best user interaction design in the world"; drawn on
+<https://claude.ai/artifact/McErt5cu8ScmWVnEZeJ67f> version 2).** For N178
+and N319 item 1:
+1. After a tap on either rating (how stressed, how ready), the scale folds
+into one small grey bubble on the speaker's side: a lock and "Answered". No
+number, ever (Never 1). It is the speaker's turn in the thread, kept in the
+chat like any answer, and Will's next question follows it.
+2. The words are chosen by Claude under the founder's delegation and are
+signed with it (Never 4): "Answered". The lock says the number stays
+hidden; nothing claims the answer is private, since the coach and the
+founder see it (Privacy 3.9 §4e).
+3. This answers the plan page's open question on what follows a rating tap.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+D2, K and §3, when built. No migration.
+
+**N340 · "Consult with someone", in grey (founder, the Claude Code chat, 2
 November 2026, on the "Ask someone" tap on the Ember & Air prototype:
 "consult with someone;", then "and make it grey").** For N303, N329 and N336:
 1. The words: "Consult with someone" (was "Ask someone"), "Or consult with
@@ -8901,7 +8920,7 @@ No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 when built. No migration.
 
-**N340 · The mic only while a question waits for an answer (founder, the
+**N341 · The mic only while a question waits for an answer (founder, the
 Claude Code chat, 2 November 2026, on the Ember & Air prototype's chat after
 Mark booked: "you can answer more than just the emoji for a question but
 when there is no question the mic is hidden"; and "please remove the pass it
@@ -8925,7 +8944,7 @@ No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration.
 
-**N341 · A sent answer is confirmed (founder, the Claude Code chat, 2
+**N342 · A sent answer is confirmed (founder, the Claude Code chat, 2
 November 2026, on the Ember & Air prototype's "Send to Mark": "After that, I
 should receive something like a confirmation that it has been sent").** For
 N329 and N336:
