@@ -8413,3 +8413,42 @@ drops nothing.
 Built: backend #1556, frontend #1125. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, §2 and §4.
+
+**N321 · The chats with a WhatsApp feel: the chat's own top bar, the emoji
+and the mic at the bottom, and "Record an answer" for a complex question
+(founder, the Claude Code chat, 2 November 2026, on screenshots of the chats
+built on ring 6 (N320): "as the best designer in the world can you improve
+the design of it, so it feels like whatsapp? ... when I am on the chat with
+the user, the logo of wilpowerlab can be skipped and we can only have this
+top bar with the name"; on the Ember & Air prototype, version 23: "add the
+mic here; you can always answer with an emoji or a mic"; then "the bottom
+and top bars look good"; then, on a complex question: "show it as a record
+an answer and then the big screen with slides show up ... by complex
+question, I mean a question that involves photos, and that asks about the
+product ... From say the junior or customer perspective, it should show up
+here. And ask, should be respondable, with the record, the answer big,
+black button at the bottom, instead of the emojis or mic").** For N298,
+N303, N306 and N311:
+1. **The top bar:** in every chat but Will's, the WillpowerLab bar goes.
+The chat's own top bar takes its place: back, a circle with the first
+letter of the name, the name, and who they are ("Customer · Invita").
+2. **The bottom bar:** the three emoji in the box and the mic beside it, in
+every chat but Will's. You can always answer with an emoji or a voice note.
+3. **The messages** start at the bottom, by the bar, not at the top of an
+empty page.
+4. **A complex question** has photos and asks about a product or a
+treatment. Its chat ends in one big black button, "Record an answer", in
+place of the emoji and the mic, for a customer's question to a junior and
+for a junior's question to a senior alike. The button opens the locked
+recording screens, the slides full page on Take 1 (N303): the question, its
+photos, then what the answer points to. After the Take, Will's chat asks
+whether to send it (N305). Once it is answered, the emoji and the mic come
+back.
+5. **Still open:** the circles with letters in the list, the time on each
+message and "Today" above them, the list's "🎤 Voice message", and whether
+Will's chat keeps the WillpowerLab bar.
+The prototype: <https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>, chapter
+"In the app now (ring 6)", version 24. Signed (Never 4): "Record an
+answer". The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built. No migration.
