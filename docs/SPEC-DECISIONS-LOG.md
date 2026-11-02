@@ -8844,3 +8844,43 @@ then "Back to {name}". It would change N329 item 4, which has no Take 2.
 No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration.
+
+**N337 · The "+" sheet's words signed; a voice note keeps its 2 minutes
+(founder, the Claude Code chat, 2 November 2026, on N335 items 3 and 4:
+"keep 2 minutes, + sheet words ok").** For N324 and N335:
+1. **Signed (Never 4)**, closing N335 item 3: "Add to your chat with
+{name}", "A screenshot or photo opens a new question, for {name} only.",
+"Screenshot or photo", "then say in a voice note what you need", "Someone
+else", "they get your link and join first", "New question · for {name}
+only", "Cancel".
+2. **A voice note in a chat stays at most 2 minutes** (N324 item 3), also
+when it stands in for typing (N335 item 4). A longer, considered answer is
+a Take.
+The prototype: <https://claude.ai/artifact/Qu9N4HNpbpwT7N9Amo6LyL>, version
+4. No rules page yet: it lands with the chats' rules page (N274 item 6) and
+on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
+**N338 · No quiet hours; the signed words stay; no app words in the
+transcriber's hint; one Messages place later (founder, the Claude Code chat,
+2 November 2026, on <https://claude.ai/artifact/HYpYmk17fVkypFruYxxziV>:
+"don't build any quiet hours, anything like that", "Keep my signed words",
+"drop the third one, drop it", "the fifth one later").** For N123, N189 and
+N193:
+1. **No quiet hours.** Coach messages go when they fall due, at any hour;
+nothing holds a message until morning. N189 item 1 and N193 are withdrawn,
+and nothing like them is built.
+2. **The signed words stay.** Will's asks and the walk's lines are the words
+the founder signed. N123 (the asks and the walk's lines said fresh each
+time) is withdrawn.
+3. **No app words in the transcriber's hint.** "rewrite", "Take" and "Ideal
+Text" are not added to every Take's word hint; the Ideal Text page's open
+item on it is closed.
+4. **One "Messages" place (N189 item 6) waits;** it is drawn later.
+Still open: what Will says after a tap on the 1 to 10 scale, shown to the
+founder on a prototype first.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§2, [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
+§3 and [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+§2. No migration.
