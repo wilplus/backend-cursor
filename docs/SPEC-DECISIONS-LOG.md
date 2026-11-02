@@ -9151,3 +9151,26 @@ The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C7, H1, T and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 B10, when built. No migration.
+
+**N351 · The "+" opens what you can do in that chat: Photos, Camera, Files,
+Someone else (founder, the Claude Code chat, 2 November 2026: "The + should
+be opening smth… photos or files or screen shots… the files and photos
+though are certain. So build that", then "Yes the four are ok", "None of the
+connect stays cause Idk how they would connect").** For N335 and N337:
+1. **The "+" in a chat with a person opens four actions**, each for that
+person only: **Photos** (photos and screenshots, picked and sent; then a
+voice note says what you need, as N337), **Camera**, **Files** (a file sent
+as a file in the chat), and **Someone else** (they get your link and join
+first, N337).
+2. **Signed (Never 4):** "Photos", "Camera", "Files", "Someone else".
+N337's other signed words stay. The pickers' words in the prototype
+("Photos and screenshots", "For {name} only.", "Send {n}", "Back") are not
+signed yet.
+3. **No links to other tools** from the "+": no Slack, email, WhatsApp or
+calendar. How they would connect is not decided; they came up as ideas and
+none stays.
+The prototype: <https://claude.ai/artifact/RWT4oazQ5VtLCZkcuuRWWB>, version
+4. No rules page yet: it lands with the chats' rules page (N274 item 6) and
+on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
+No migration.
