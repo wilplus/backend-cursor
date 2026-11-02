@@ -43,6 +43,12 @@ OUTCOME
   O10 A sentence that already has the helper words I had when I recorded
       gives its place as my strongest to the next; helper words I pick
       during the walk don't move my moments (N246).
+  O12 A fix my last walk gave that worked (its issue gone on that slide in
+      this Take) is not given again there: the walk picks the next thing,
+      and keeps doing so when the Take is read again frozen; the pace game
+      that worked leaves the fix a moment. When the issue came back, the
+      same fix may be given again. With no walk before, or one that cannot
+      be read, the frame is exactly the one it always was (N359).
 PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O1 -> test_two_best_clips_in_one_block_get_a_block_each
          O1 -> test_a_one_block_take_is_split_for_two_moments
@@ -58,6 +64,8 @@ PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O9 -> test_on_a_plan_my_level_takes_the_slot_whose_tool_fits_it
          O10 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
          O11 -> test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan
+         O12 -> test_a_fix_that_worked_on_a_slide_is_not_given_there_again
+         O12 -> test_with_no_walk_before_mine_is_picked_as_it_always_was
 WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
          2026-10-18 ("words first, then voice"), 2026-10-21 (N108, "the
          voice decides"; N112, "There was no single rewrite in the take"), 2026-10-22 (N113, "After the
@@ -69,7 +77,9 @@ WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
          praise", "the third moment, the weakest one, is where we display
          the AI audio"); 2026-10-31 (N309, the One thing walk: "apply to it
          the one thing walk"); 2026-11-02 (N323 item 6: "yes, the pace game
-         for everyone when rushing is the issue").
+         for everyone when rushing is the issue"); 2026-11-02 (N359: "once a
+         fix has worked on a slide, the walk stops picking the same issue on
+         that slide, and picks it again only if it comes back": "go").
 """
 from pathlib import Path
 
@@ -842,3 +852,77 @@ def test_a_sentence_with_my_helper_words_gives_way_to_the_next():
     # and there is no next best (N309): the strongest alone.
     assert [clip for clip, _ in _moments(_clips_frame(take[:2], held_words=held))] == [
         _clip("q1")]
+
+
+# ── what worked is not given again (founder 2026-11-02, N359) ─────────────
+
+_SAID = "we made our plan clear and we will deliver it on time for everyone"
+
+
+def _after_a_voice_fix(slide_1_best):
+    """Slide 1 had the AI clip last time. This Take: q0 the strongest;
+    slide 1's best clip at ``slide_1_best`` beside r1b, the Take's weakest;
+    q2 the next weakest, on slide 2."""
+    return (("q0", 0, 75, 0.95, None), ("r1a", 1, 37, slide_1_best, _SAID),
+            ("r1b", 1, 37, -0.8, _SAID), ("q2", 2, 75, -0.4, None))
+
+
+def test_a_fix_that_worked_on_a_slide_is_not_given_there_again(monkeypatch):
+    voice = [{"slide_index": 1, "kind": "voice"}]
+    gone = _after_a_voice_fix(0.9)            # slide 1's voice now clears the floor
+    assert _moments(_clips_frame(gone)) == [(_clip("q0"), True), (_clip("r1b"), False)]
+    # It worked: no AI clip on slide 1 again; the next weakest gets it.
+    assert _moments(_clips_frame(gone, last_fixes=voice)) == [
+        (_clip("q0"), True), (_clip("q2"), False)]
+    # The served walk, and the same Take read again once frozen, alike.
+    served = _clips_frame(gone, select_servable=True, last_fixes=voice)
+    frozen = {b["selected_candidate_id"] for b in served["blocks"]}
+    again = _clips_frame(gone, select_servable=True, last_fixes=voice,
+                         frozen_candidate_ids=frozen)
+    assert _moments(again) == _moments(served) == [(_clip("q0"), True), (_clip("q2"), False)]
+    # It came back (slide 1 still under the floor): the same fix again.
+    back = _after_a_voice_fix(-0.5)
+    assert _moments(_clips_frame(back, last_fixes=voice)) == [
+        (_clip("q0"), True), (_clip("r1b"), False)]
+
+    # The pace game worked on the stretch's slide: the fix is a moment.
+    from services import tempo_stretch
+    monkeypatch.setattr(tempo_stretch, "pick_for_take",
+                        lambda take, rows: {"index": 0, "outside": 0.9, "reading": "rushed"})
+    pace = [{"slide_index": 0, "kind": "tempo", "reading": "rushed"}]
+    paced = (140, 140, 140, 200)
+    monkeypatch.setattr(tempo_stretch, "stays_inside", lambda snippets, ids, reading: True)
+    assert _slots(_paced_frame(paced, tempo_step=True, last_fixes=pace)) == [
+        ("p0", "strongest", None, None), ("p2", "weakest", "voice", None)]
+    # Still past the green there: the pace game again.
+    monkeypatch.setattr(tempo_stretch, "stays_inside", lambda snippets, ids, reading: False)
+    assert _slots(_paced_frame(paced, tempo_step=True, last_fixes=pace)) == [
+        ("p0", "strongest", None, None)]
+
+
+def test_with_no_walk_before_mine_is_picked_as_it_always_was():
+    from services.take_progress import last_walk
+
+    class Talk:
+        """A talk whose only Take before mine (t1) is still processing."""
+        def __init__(self, broken=False):
+            self.broken = broken
+            self.takes = self
+
+        def get_arc_sessions(self, arc_id):
+            if self.broken:
+                raise RuntimeError("the talk cannot be read")
+            return [{"id": "t1", "take_index": 1, "analysis_state": "processing"},
+                    {"id": "t2", "take_index": 2, "analysis_state": "ready"}]
+
+        def get_v4_dark_frame(self, take):
+            return {"blocks": [{"slide_index": 1, "walk_slot": "weakest", "carries_exercise": True,
+                                "exercise_kind": "voice", "snippet_ids": ["x"]}]}
+
+    take = _after_a_voice_fix(0.9)
+    plain = _clips_frame(take)["frame_hash"]
+    for walk in (last_walk(Talk(), "arc", "t1"), last_walk(Talk(), "arc", "t2"),
+                 last_walk(Talk(broken=True), "arc", "t2")):
+        assert walk == []
+        assert _clips_frame(take, last_fixes=walk)["frame_hash"] == plain
+    assert _clips_frame(take, last_fixes=None)["frame_hash"] == plain
