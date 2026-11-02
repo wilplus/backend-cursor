@@ -173,6 +173,9 @@ class Handle:
     done: threading.Event = field(default_factory=threading.Event)
     result: Optional[dict] = None
     late: bool = False
+    #: The ring row and the notes reach this speaker: only then may the run
+    #: wait for the read (N327 item 3).
+    reached: bool = False
 
 
 def _run(handle: Handle, database: Any, session_id: str, arc_id: str, user_id: str,
@@ -182,6 +185,7 @@ def _run(handle: Handle, database: Any, session_id: str, arc_id: str, user_id: s
         inner = inner_context.gather(database, user_id)
         if not inner:
             return
+        handle.reached = True
         session = database.v2_get_session_by_id(session_id) or {}
         moments = moments_of(database.get_snippets_by_session(session_id) or [])
         found = read(moments, outside_of(take_context.for_take(database, user_id, session),
@@ -232,6 +236,11 @@ def finish(handle: Optional[Handle], database: Any, *, session_id: Any, arc_id: 
     if handle is None:
         return False
     try:
+        # Nobody waits for a read not yet known to reach the speaker (N327
+        # item 3): a slow ring lookup never holds anyone's "ready".
+        if not handle.done.is_set() and not handle.reached:
+            handle.late = True
+            return False
         if not handle.done.wait(max(0.0, wait)):
             handle.late = True
             logger.info("verbal read: late take=%s, the walk picks as today", session_id)

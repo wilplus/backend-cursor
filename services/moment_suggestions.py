@@ -1055,7 +1055,7 @@ def context_rewrites(session_id: str, arc_id: Optional[str], weights: Any,
     notes. Returned, not stored: the analysis run stores them
     (`store_context_rewrites`) once the rule lane has written its rows.
     Best-effort: [] on any failure."""
-    from services.rewrite_gate import leaks
+    from services.rewrite_gate import leaks, words_refusal
     ranked = sorted(((str(k), float(v)) for k, v in (weights or {}).items()
                      if isinstance(v, (int, float)) and v > 0),
                     key=lambda kv: -kv[1])[:CONTEXT_REWRITES_MAX]
@@ -1080,7 +1080,11 @@ def context_rewrites(session_id: str, arc_id: Optional[str], weights: Any,
                 context_document=context.context_document, trigger=plan.trigger,
                 user_id=context.session.get("user_id"), speaker_focus=focus)
             replacement = (made or {}).get("replacement")
-            if not replacement or leaks(replacement, noted, plan.transcript):
+            # Stored over the rule lane's row only when it would pass the
+            # gate's word checks itself: a context rewrite never costs the
+            # speaker the Clearer version they had (N326 item 5).
+            if (not replacement or leaks(replacement, noted, plan.transcript)
+                    or words_refusal(plan.transcript, replacement)):
                 logger.info("context rewrite: none kept snip=%s", snippet_id)
                 continue
             out.append({"snippet_id": snippet_id, "replacement": replacement,

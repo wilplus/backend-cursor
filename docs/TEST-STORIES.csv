@@ -3290,15 +3290,17 @@ O3  A Library save and a pick of another library exercise make no pair,
 while the request still resolves.","O1 -> test_the_pair_is_stamped_and_releasable_with_the_owner_s_yes
 O2 -> test_without_the_owner_s_yes_it_is_recorded_but_not_releasable
 O3 -> test_a_library_save_and_a_library_pick_make_no_pair","Founder 2026-10-05 (W6): an unstamped pair had no owner, so no consent could ever reach it."
-tests/test_the_walk_reads_my_notes.py,Story,"As a speaker who noted what matters to me, I want the walk to pick the moment where my words matter most for me and to write its Clearer version with that in mind, in my own words, so that the one thing I fix is the one that helps me most, and nothing changes when the walk has nothing of mine to read.","O1  Without the ring row, without notes, or when the read fails or says
-something malformed, the walk picks exactly as it did before (N326
-items 4 and 5).
+tests/test_the_walk_reads_my_notes.py,Story,"As a speaker who noted what matters to me, I want the walk to pick the moment where my words matter most for me and to write its Clearer version with that in mind, in my own words, so that the one thing I fix is the one that helps me most, and nothing changes when the walk has nothing of mine to read.","O1  Without the ring row, without notes, or when the read fails, says
+something malformed or is late, the walk picks exactly as it did
+before; nobody waits for a read not known to reach them, and a read
+that does is waited for at most the cap (N326 items 4 and 5, N327).
 O2  With my note (""my manager says I explain too much and never give the
 answer"") and my manager's question, the read flags my buried answer
 and it becomes my one thing to improve, with its Clearer version
 ""With a second shift, ninety is possible by March.""; a later read of
 the frozen Take keeps that walk; a flagged moment whose Clearer
-version fails the gate leaves the walk as it was (N326 item 5).
+version fails the gate leaves the walk as it was, and such a rewrite
+never replaces the one I had (N326 item 5).
 O3  A Clearer version that repeats a phrase from my notes I did not say
 in the Take is refused (N326 item 5).
 O4  Will's private note about me is never read for the walk (N326 item 2).
