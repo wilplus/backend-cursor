@@ -17,8 +17,8 @@ kind "text"; the app draws a row by its ``metadata``):
     practice day (G13), the last practice's ratings (D1), a new event's
     questions, and a speaker with Takes but no plan asked "When is your
     deadline?" (A2); then, under the chat's closing message ("Good job. See
-    you next {day}.", ``next_day_name``), the plan's progress (``progress``,
-    N319 item 7);
+    you tomorrow." or "Good job. See you {weekday}.", ``next_day_name``,
+    N347 item 2), the plan's progress (``progress``, N319 item 7);
   * no row, the level on each Take (G10, N209): the level's own check read
     again on the Take; two in a row that reach it, or its time run out, and
     the next thing heard becomes the level; three on a level without
@@ -1343,15 +1343,16 @@ def _active(database: Any, user_id: str) -> Optional[dict]:
 
 
 def next_day_name(database: Any, user_id: str) -> Optional[str]:
-    """The plan's next practice day after today, by its weekday, for "Good
-    job. See you next {day}." (N319 item 7); None off a plan or after its
-    last practice. Best-effort: never raises."""
+    """The plan's next practice day after today as a person names it, for
+    "Good job. See you {day}." (N347 item 2): "tomorrow", else its weekday,
+    today in the plan's own time zone; None off a plan or after its last
+    practice. Best-effort: never raises."""
     try:
         plan = _active(database, user_id)
         deadline = _deadline(plan) if plan else None
         if not plan or not deadline:
             return None
-        return P.next_day_name(today_in(plan.get("time_zone")), deadline, _days(plan),
+        return P.next_day_text(today_in(plan.get("time_zone")), deadline, _days(plan),
                                bool(plan.get("every_day")))
     except Exception as error:  # noqa: BLE001 -- "See you next time."
         logger.warning("plan: next day unread user=%s: %s", user_id, error)

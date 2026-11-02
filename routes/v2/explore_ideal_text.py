@@ -515,10 +515,11 @@ def v2_explore_arc_review_tempo(arc_id, take_session_id):
 @require_auth
 def v2_explore_arc_review_last_fix(arc_id, take_session_id):
     """The One thing walk's "Last time" for one Take (founder 2026-10-31,
-    N309 item 1): the previous Take's fix when its issue is gone on this
-    Take's same slide, with this Take's clip there. 200 {last: {kind,
-    slide_index, clip: {snippet_id, url, start_offset_ms, duration_ms}} |
-    null} · 404 · 500"""
+    N309 item 1): the previous Take's fix when it rose on this Take's same
+    slide (a moment's issue gone; the pace game's slide slower, N347 item
+    3), with this Take's clip there. 200 {last: {kind ("voice", "clearer"
+    or "tempo"), slide_index, clip: {snippet_id, url, start_offset_ms,
+    duration_ms}} | null} · 404 · 500"""
     from services.take_progress import last_fix
     try:
         owned, sessions = _arc_owned_by_caller(arc_id)

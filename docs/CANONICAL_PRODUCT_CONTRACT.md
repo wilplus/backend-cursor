@@ -1145,6 +1145,11 @@ How an exercise is chosen for a moment, the whole rule in order: 35g-1.
     brings "Record Take N" under the chat, alone (N294, N319). The settings
     asks wait for the next visit (N294 item 8). The rules: frontend
     `docs/flows/feedback-walk-and-chat.md` E1, E2.
+    **Amended 2026-11-02 (founder, the Claude Code chat; decisions log
+    N347 item 2):** on a plan the goodbye names the next practice day as a
+    person would, "Good job. See you tomorrow." or "Good job. See you
+    {weekday}.", in place of "Good job. See you next {day}.". The rules:
+    frontend `docs/flows/feedback-walk-and-chat.md` D4, E.
 46. Take 3 completes the guided journey. Take 4+ is optional refinement and
     immediately offers Record again without another See-next-steps loop.
     **Amended 2026-10-05 (founder, decisions log N48.3 Q8 A):** the action

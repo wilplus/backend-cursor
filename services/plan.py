@@ -248,16 +248,11 @@ def next_practice_day(after: date, deadline: date, days: Sequence[int],
     return None
 
 
-def next_day_name(after: date, deadline: date, days: Sequence[int], every_day: bool) -> Optional[str]:
-    """The plan's next practice day by its weekday, for "Good job. See you
-    next {day}." (N319 item 7): "See you next tomorrow" does not read, so
-    tomorrow is named too. None after the last practice."""
-    nxt = next_practice_day(after, deadline, days, every_day)
-    return DAYS[nxt.weekday()] if nxt else None
-
-
 def next_day_text(after: date, deadline: date, days: Sequence[int], every_day: bool) -> Optional[str]:
-    """"Next: Wednesday." reads the weekday; every day reads "tomorrow"."""
+    """The plan's next practice day as a person names it: "tomorrow" when it
+    is the day after ``after``, else its weekday ("Good job. See you
+    tomorrow." / "Good job. See you Wednesday.", N347 item 2). None after
+    the last practice. Pure."""
     nxt = next_practice_day(after, deadline, days, every_day)
     if nxt is None:
         return None
