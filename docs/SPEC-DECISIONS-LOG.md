@@ -8900,3 +8900,27 @@ The prototype: version 35 of <https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>
 No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 when built. No migration.
+
+**N340 · The mic only while a question waits for an answer (founder, the
+Claude Code chat, 2 November 2026, on the Ember & Air prototype's chat after
+Mark booked: "you can answer more than just the emoji for a question but
+when there is no question the mic is hidden"; and "please remove the pass it
+to someone else and replace it with + so that you can also do a screenshot
+and ask your chatting mate for smth").** For N306, N321 item 2 and N335:
+1. **In a chat with a person, the mic shows only while a question waits for
+the speaker's answer** ("Is this good? Take {N} for {customer}", a
+colleague's or a customer's question; Will decides, as for a complex
+question, N322 item 5). It goes once the question is answered. With no
+question, the bar is the "+" and the three emoji. Was (N321 item 2): the mic
+always beside the emoji.
+2. **Something new starts with the "+"** (N335 item 3, words N337): a
+screenshot or photo opens a new question for that person only, followed by a
+voice note saying what is needed; or someone else gets the link and joins
+first. Passing a message on is gone from the bar, as N335 item 3 already
+says.
+3. A complex question still ends in "Record an answer" in place of the bar
+(N321 item 4).
+The prototype: version 36 of <https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>.
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
