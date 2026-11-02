@@ -8581,3 +8581,36 @@ with a Skip" (N319 item 2; amends N262 item 1's wording).
 The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 (items 1, 2, 4 and 6), when built. No migration.
+
+**N326 · N290 is built as designed, with the founder's four picks (founder,
+the Claude Code chat, 2 November 2026, on the prototype
+<https://claude.ai/artifact/KvAiek4DrxgbpDudcBFJNQ>: "Go with your picks on
+all four").** For N182, N268, N290, N291 and N325 item 7:
+1. **No line on screen.** The walk's screens and words stay as they are: the
+notes shape which moment is picked and how the Clearer version is written,
+and the speaker is not shown which note did it (no "From your notes:").
+2. **Only what the speaker noted themselves:** their principles (with the
+Life Panel's yes), kept strengths, life goals, Your why and # notes (with
+the notebook's yes), each only where its own ring row and consent already
+reach them. Will's private note (speaker memory) is not read by the walk.
+Variables and constants are not read until something keeps them.
+3. **# notes from the last 60 days,** the window the walk's quotes use
+(N268).
+4. **The founder first:** a new ring row `walk_inner_context`, at ring 6,
+widened later.
+5. **As designed on the prototype.** One verbal read per Take, an AI call
+inside the speaker's processing authorization, reads what was said against
+the outside context (the Take's set-up) and the notes, for the eight kinds
+of N290 item 4. It weighs the moments the picker chooses from, and gives the
+Clearer version a short line on what matters to the speaker. The rewrite
+check (H3) stays, and a new check refuses any phrase from the notes that the
+speaker didn't say in the Take. If the read fails or is late, the walk picks
+as it does today; the loop never waits (Never 3). The coach never sees the
+notes, that they were used, or a reason built from them (Never 2). No score
+is shown (Never 1).
+This amends N182 item 3 for the walk's pick and its Clearer version only:
+the plan, the coach panel and a Take's summary still never read them. The
+rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+H1 and [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md),
+when built. No migration.
