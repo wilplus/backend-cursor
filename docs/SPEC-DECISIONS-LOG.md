@@ -9041,3 +9041,34 @@ the expert's check pays.
 No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 when built. No migration.
+
+**N347 · Six calls in the walk, each the simplest rule a speaker can predict
+(founder, the Claude Code chat, 2 November 2026, on
+<https://claude.ai/artifact/87W574m8Ge7AsgFSeZ8BXJ>: "review it as the best
+designer and keep the rule as simple as possible and as intuitive as
+possible; and give me answers on those", then, to the answers, "go").** For
+N118, N178, N208, N309, N319 items 7 and 8:
+1. **Signed (Never 4): "Who were you talking to? 🎯"** is Will's question
+after the walk about who the talk was for, asked about the moment just
+heard, in place of "Quick one: who's this talk really for? 🎯". Its taps and
+"Someone else" stay (N319 item 8).
+2. **Signed (Never 4): the goodbye names the day as a person would:** "Good
+job. See you tomorrow." when the next practice day is tomorrow, otherwise
+"Good job. See you {weekday}." (no "next"), in place of "Good job. See you
+next {day}." (N319 item 7). Without a plan, "Good job. See you next time."
+stays.
+3. **Every fix gets its Last time, the pace game too. Signed (Never 4):
+"Last time: give “{words}” more room."**, with "You did." after it only
+when that stretch came out slower in this Take; the same place and rule as
+the other fixes' Last time (N309).
+4. **One set of helper words per slide, the newest wins** (N118): when two
+moments on one slide both give helper words, the later pick is the one the
+recording screen shows.
+5. **No time limit on the walk:** it ends when the speaker taps Close.
+N178's time limit is withdrawn.
+6. **The words' read is what the code counts and the signed legal note
+describes** (document 02 v1.3, N208): fillers, hedges and slide fit.
+"Holds together" stays in the hidden read only; H1 is corrected to say so.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§1 C, E, H1, K and §3, when built. No migration.
