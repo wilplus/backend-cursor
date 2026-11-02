@@ -61,7 +61,8 @@ def assemble(setup: Any, facts: Any) -> dict:
     answers (``facts``), best source first. Pure.
 
     Returns ``{"who", "what", "success", "key_line"}``: three slots and the
-    key line (a phrase, sure when the plan has it)."""
+    key line (a phrase, sure: the speaker's answer to Will kept in the setup,
+    N294 item 2, else the plan's)."""
     from services.will_question import call_to_action
     setup = setup if isinstance(setup, dict) else {}
     facts = facts if isinstance(facts, dict) else {}
@@ -79,13 +80,15 @@ def assemble(setup: Any, facts: Any) -> dict:
         "what": first((setup.get("topic"), SURE, "setup"), (facts.get("topic"), SURE, "plan")),
         "success": first((call_to_action(setup.get("strategic_context")), SURE, "setup"),
                          (facts.get("success"), SURE, "plan"), (heard.get("ask"), GUESS, "take")),
-        "key_line": first((facts.get("key_line"), SURE, "plan")),
+        "key_line": first((setup.get("key_line"), SURE, "setup"), (facts.get("key_line"), SURE, "plan")),
     }
 
 
 def for_take(database: Any, user_id: Any, take: Any) -> dict:
     """The Take's context, read from its setup and the speaker's open plan.
-    Never raises: anything unreadable is missing, and the walk is as it was."""
+    The key line said to Will on an earlier Take of the talk counts too: a
+    new Take's setup does not carry it (N294 item 2). Never raises: anything
+    unreadable is missing, and the walk is as it was."""
     take = take if isinstance(take, dict) else {}
     setup = take.get("intake_context") if isinstance(take.get("intake_context"), dict) else {}
     facts: dict = {}
@@ -94,7 +97,24 @@ def for_take(database: Any, user_id: Any, take: Any) -> dict:
         facts = (plan or {}).get("facts") or {}
     except Exception as error:  # noqa: BLE001 -- the context without the plan's answers
         logger.warning("take context: plan not read user=%s: %s", user_id, error)
+    if not _text(setup.get("key_line")) and take.get("arc_id"):
+        setup = {**setup, "key_line": _talk_key_line(database, take)}
     return assemble(setup, facts)
+
+
+def _talk_key_line(database: Any, take: dict) -> str:
+    """The key line kept in the setup of the talk's newest earlier Take that
+    has one; "" when none or unreadable."""
+    try:
+        from services.will_question import talk_key_line
+        sessions = database.takes.get_arc_sessions(str(take["arc_id"])) or []
+        earlier = sorted((s for s in sessions if isinstance(s, dict)
+                          and (s.get("take_index") or 0) < (take.get("take_index") or 10 ** 6)),
+                         key=lambda s: s.get("take_index") or 0)
+        return talk_key_line(earlier)
+    except Exception as error:  # noqa: BLE001 -- the context without it
+        logger.warning("take context: talk unread take=%s: %s", take.get("id"), error)
+        return ""
 
 
 def _words(text: Any) -> set[str]:

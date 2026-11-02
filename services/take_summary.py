@@ -519,8 +519,7 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
         take_index=take_index, now=(practice, moved), moments=moments)
     facts = talk_facts(takes) + said_facts(moments, now) + earlier() + carried + rest
     asks, lead_ins = _chain_plan(database, user_id=str(user_id), arc_id=str(arc_id), take=take,
-                                 take_index=take_index, practice=practice, moved=moved,
-                                 can_install=body.get("can_install") is True, will=will,
+                                 take_index=take_index, practice=practice, moved=moved, will=will,
                                  facts=facts, held=held is not None)
     text = _written(database, take, anchor, facts, practice, words,
                     note, str(arc_id), str(user_id),
@@ -561,7 +560,7 @@ def _will_plan(database: Any, *, user_id: str, arc_id: str, takes: list[dict], t
         found = will_question.plan(
             database, user_id=user_id, arc_id=arc_id, take=take, take_index=take_index,
             now=now, before=_before_outcome(database, user_id, arc_id, take_index),
-            takes=takes, carried=carried, heard_call=lambda: {})
+            takes=takes, carried=carried, heard_call=lambda: {}, snippets=snippets)
         if found and found.key in ("audience", "goal"):
             from services.chat_app_context import talk_title
             found.heard = will_question.start_heard(
@@ -569,7 +568,8 @@ def _will_plan(database: Any, *, user_id: str, arc_id: str, takes: list[dict], t
                 title=talk_title([t.get("intake_context") or {} for t in takes]),
                 said=" ".join(m["text"] for m in moments if m.get("text")))
         if found:
-            keys = [found.key] + (["audience_check"] if found.key == "audience" else [])
+            keys = ([found.key] + (["audience_check"] if found.key == "audience" else [])
+                    + ([found.then] if found.then else []))
             found.varied = will_question.start_vary(
                 database, user_id=user_id, arc_id=arc_id, take=take, keys=keys,
                 words=found.words)
@@ -598,7 +598,7 @@ def _rewritten(database: Any, user_id: str, client_id: str, held: dict,
 
 
 def _chain_plan(database: Any, *, user_id: str, arc_id: str, take: str, take_index: int,
-                practice: Optional[str], moved: Optional[str], can_install: bool,
+                practice: Optional[str], moved: Optional[str],
                 will: Any, facts: list[str], held: bool) -> tuple:
     """The asks after this Take (``after_take.chain``) and Will's lead-ins
     for them, started beside the summary's own call so they cost no extra
@@ -609,8 +609,8 @@ def _chain_plan(database: Any, *, user_id: str, arc_id: str, take: str, take_ind
     from services.feedback_check import looks_off
     try:
         asks = after_take.chain(database, user_id, take_index=take_index,
-                                off=looks_off(practice, moved), can_install=can_install,
-                                will=will is not None)
+                                off=looks_off(practice, moved), will=will is not None,
+                                will_next=bool(will is not None and will.then))
         return asks, after_take.start_lead_ins(database, user_id=user_id, arc_id=arc_id,
                                                take=take, asks=asks, facts=facts)
     except Exception as error:  # noqa: BLE001 -- the summary is written either way
@@ -622,18 +622,20 @@ def _first_written(database: Any, user_id: str, client_id: str, text: str, meta:
                    *, asks: list[str], lead_ins: dict, will: Any = None) -> Optional[dict]:
     """The summary's batch, once per Take (founder 2026-10-20, N89): the
     summary, drawn at once; the closing message, held back behind the chain
-    of asks (``after_take``) when there is one; then the first ask."""
+    of asks (``after_take``) when there is one; then the first ask. With no
+    ask, the end comes at once (``after_take.end_rows``): the plan's lines,
+    the closing message, the plan's progress."""
     from services import after_take
     from services.lounge_messages import stamp_after, thread_stamp
     take, practice, moved = meta["take_session_id"], meta["practice"], meta["moved"]
     after_take.release_older(database, user_id)
     # Under the walk it closes: the walk's steps carry the browser's time.
     at = thread_stamp(database, user_id)
-    # Will's question is put together now, from his plan, and written when
-    # its turn in the chain comes.
-    queued = ({"will_question": after_take.ask_rows(
-        database, "will_question", user_id=user_id, arc_id=meta["arc_id"], take=take,
-        at=at, will=will, take_index=meta["take_index"])} if "will_question" in asks else {})
+    # Will's questions are put together now, from his plan, and written when
+    # their turn in the chain comes.
+    queued = {ask: after_take.ask_rows(database, ask, user_id=user_id, arc_id=meta["arc_id"],
+                                       take=take, at=at, will=will, take_index=meta["take_index"])
+              for ask in ("will_question", "will_next") if ask in asks}
     closing = after_take.closing_row(user_id=user_id, arc_id=meta["arc_id"],
                                      take_index=meta["take_index"], take=take,
                                      at=stamp_after(at), asks=asks, lead_ins=lead_ins,
@@ -647,7 +649,7 @@ def _first_written(database: Any, user_id: str, client_id: str, text: str, meta:
         "body": text,
         "metadata": meta,
         "client_created_at": at,
-    }, closing] + first
+    }] + ([closing] + first if asks else [])
     persisted = database.insert_lounge_messages(user_id, batch)
     from services import speaker_memory
     speaker_memory.record(database, user_id, "take",
@@ -655,12 +657,16 @@ def _first_written(database: Any, user_id: str, client_id: str, text: str, meta:
                            "helper_words": meta["helper_words"]}, take)
     from services.feedback_digest import post_later
     post_later(database)
-    # The plan's lines after a practice (frontend the-plan.md G13, D1, A2);
-    # best-effort, never in the way of the summary. With an ask in front of
-    # the speaker they wait for the chain (``after_take.release``).
+    # Nothing asked: the end now, the plan's lines after a practice (frontend
+    # the-plan.md G13, D1, A2) above the closing message, the plan's
+    # progress under it; best-effort, never in the way of the summary. With
+    # an ask in front of the speaker they wait for the chain
+    # (``after_take.release``).
     if not asks:
-        from services.plan_flow import after_take as plan_after_take
-        plan_after_take(database, user_id)
+        try:
+            after_take.end_rows(database, user_id, closing, written=False)
+        except Exception as error:  # noqa: BLE001 -- the summary is written either way
+            logger.warning("take summary: end not written take=%s: %s", take, error, exc_info=True)
     return persisted[0] if persisted else None
 
 

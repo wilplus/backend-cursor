@@ -189,10 +189,10 @@ paper notebook; the voice notebook stays for short # notes for Will.
 - When the life goals lens first opens: "📓 Use your notebook!" and its
   explanation (frontend). When a goal is set: "That's the base. Now go and
   live it. Come back for a short recap." (`life_goals.finish`).
-- "That's your 15 minutes for today." and "Now go and live it, away from the
-  phone." come on a practice day once that day's practice is done, never on
-  a clock: they wait for the plan's practice days (frontend
-  `docs/flows/the-plan.md`).
+- "That's your 15 minutes for today." comes on a practice day once that
+  day's practice is done, never on a clock: it waits for the plan's practice
+  days (frontend `docs/flows/the-plan.md`); "Now go and live it, away from
+  the phone." under it is gone (N319 item 4).
 
 ## Step 4: later
 

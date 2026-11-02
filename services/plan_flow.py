@@ -12,9 +12,12 @@ kind "text"; the app draws a row by its ``metadata``):
   * a practice day's hello and today's one thing (G4 to G6), once a day, the
     first time the app opens on a practice day;
   * after a Take's walk (``after_take``, called once per Take where the
-    walk's summary is written): the 15 minutes lines on a practice day
-    (G13), the last practice's ratings (D1), a new event's questions, and a
-    speaker with Takes but no plan asked "When is your deadline?" (A2);
+    walk's summary is written): "That's your 15 minutes for today." on a
+    practice day (G13), the last practice's ratings (D1), a new event's
+    questions, and a speaker with Takes but no plan asked "When is your
+    deadline?" (A2); then, under the chat's closing message ("Good job. See
+    you next {day}.", ``next_day_name``), the plan's progress (``progress``,
+    N319 item 7);
   * no row, the level on each Take (G10, N209): the level's own check read
     again on the Take; two in a row that reach it, or its time run out, and
     the next thing heard becomes the level; three on a level without
@@ -1284,6 +1287,53 @@ def after_take(database: Any, user_id: str, *, first_name: Optional[str] = None)
     return []
 
 
+def _active(database: Any, user_id: str) -> Optional[dict]:
+    """The speaker's plan while it runs, or None (off the ring, no plan, or
+    still asking)."""
+    if not enabled(database, user_id):
+        return None
+    plan = database.get_open_plan(str(user_id))
+    return plan if plan and plan.get("status") == "active" else None
+
+
+def next_day_name(database: Any, user_id: str) -> Optional[str]:
+    """The plan's next practice day after today, by its weekday, for "Good
+    job. See you next {day}." (N319 item 7); None off a plan or after its
+    last practice. Best-effort: never raises."""
+    try:
+        plan = _active(database, user_id)
+        deadline = _deadline(plan) if plan else None
+        if not plan or not deadline:
+            return None
+        return P.next_day_name(today_in(plan.get("time_zone")), deadline, _days(plan),
+                               bool(plan.get("every_day")))
+    except Exception as error:  # noqa: BLE001 -- "See you next time."
+        logger.warning("plan: next day unread user=%s: %s", user_id, error)
+        return None
+
+
+def progress(database: Any, user_id: str) -> list[dict]:
+    """The plan's progress in the chat after a Take's walk, under the
+    closing message (N319 item 7): one bubble with the plan's bar and "{n}
+    of {total} practices done." (``metadata.plan_progress`` with ``done``
+    and ``total``, which the bar draws). What the speaker did, never a
+    measure of the voice (Never 1). Once per Take. Best-effort: never
+    raises; [] off a plan."""
+    try:
+        plan = _active(database, user_id)
+        total = int((plan or {}).get("total") or 0)
+        takes = _takes(database, user_id)
+        if not plan or total <= 0 or not takes:
+            return []
+        done = min(_done(plan, takes), total)
+        body = P.COPY["done_of"].format(n=done, total=total)
+        return _write(database, user_id, plan["id"], [_bot(
+            body, f"progress:{takes[-1].isoformat()}", plan_progress=True, done=done, total=total)])
+    except Exception as error:  # noqa: BLE001 -- the closing message stands alone
+        logger.warning("plan: progress not written user=%s: %s", user_id, error, exc_info=True)
+        return []
+
+
 def _ask_again(database: Any, user_id: str, plan: dict) -> list[dict]:
     """A new speaker who recorded before answering (N262 item 1): after the
     Take's walk, Will asks again what he was waiting for, where it was."""
@@ -1324,8 +1374,7 @@ def _after_active_take(database: Any, user_id: str, plan: dict) -> list[dict]:
     practice_day = bool(deadline) and P.is_practice_day(today, deadline, _days(plan),  # type: ignore[arg-type]
                                                        bool(plan.get("every_day")))
     if practice_day and str(plan.get("done_on") or "") != today.isoformat():
-        rows += [_bot(P.COPY["fifteen_1"], f"fifteen:{today.isoformat()}"),
-                 _bot(P.COPY["fifteen_2"], f"fifteen2:{today.isoformat()}")]
+        rows.append(_bot(P.COPY["fifteen_1"], f"fifteen:{today.isoformat()}"))
         fields["done_on"] = today.isoformat()
     facts, new_project = _with_project(database, user_id, facts)
     try:
