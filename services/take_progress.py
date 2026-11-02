@@ -261,7 +261,7 @@ def pace_worked(database: Any, sessions: Any, take_id: Any) -> bool:
         frame = database.get_v4_dark_frame(str(take_id))
         snippets = database.get_snippets_by_session(str(take_id)) or []
         now = _stretch(frame, snippets)
-        return bool(now) and (now["slide_index"], "tempo") in worked(fixes, frame, snippets)
+        return now is not None and (now["slide_index"], "tempo") in worked(fixes, frame, snippets)
     except Exception as error:  # noqa: BLE001 -- the step as without it
         logger.warning("take progress: pace unread take=%s: %s", take_id, error)
         return False
