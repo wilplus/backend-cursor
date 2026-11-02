@@ -78,13 +78,14 @@ logger = logging.getLogger(__name__)
 _NAMESPACE = uuid.UUID("3c8f1e27-9b54-4d0a-a6e3-52f7d9c1b08e")
 
 OFFER = "will_question"
-#: The signed words (founder 2026-10-20). ``{heard}`` and ``{words}`` are the
-#: speaker's own words.
+#: The signed words (founder 2026-10-20; who the talk is for, N347 item 1,
+#: was "Quick one: who's this talk really for? 🎯"). ``{heard}`` and
+#: ``{words}`` are the speaker's own words.
 QUESTIONS = {
     "pause": "You've put real work into this one 💪 Need a breather, or does something feel missing?",
     "not_used": "Last time we practised “{words}”. It didn't make it into this Take. On purpose? 😏",
     "audience_check": "Sounds like this one's for {heard}. Right? 🎯",
-    "audience": "Quick one: who's this talk really for? 🎯",
+    "audience": "Who were you talking to? 🎯",
     "goal": "When you finish, what do you want them to do? Or feel? 🤔",
     "vision": "Zoom out with me 🔭 Does this talk take you where you want to go?",
     "most_you": "Which part of this talk is most you?",

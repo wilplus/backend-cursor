@@ -65,8 +65,9 @@ Advancing (``release``), always under the rows that closed the ask:
 An ask that no longer applies when its turn comes is skipped. When the
 chain is empty the end comes (``end_rows``): the plan's lines after the
 Take (``plan_flow.after_take``, "That's your 15 minutes for today."), the
-closing message ("Good job. See you next {day}." on a plan, with its next
-practice day), then on a plan its progress, the plan's bar and "{n} of
+closing message ("Good job. See you tomorrow." or "Good job. See you
+{weekday}." on a plan, by its next practice day, N347 item 2), then on a
+plan its progress, the plan's bar and "{n} of
 {total} practices done." (``plan_flow.progress``, N319 item 7). The Lounge
 puts the tap "I want to continue my practice" under the last of them;
 tapping it, or typing that they want to practise, brings "Record Take N"
@@ -101,8 +102,10 @@ GLAD = "We're glad it helped you."
 #: perfect…" with "Record Take N", N89). The Lounge puts "I want to continue
 #: my practice" under it.
 SEE_YOU = "Good job. See you next time."
-#: On a plan, its next practice day (N319 item 7).
-SEE_YOU_ON = "Good job. See you next {day}."
+#: On a plan, its next practice day as a person names it (N347 item 2,
+#: was "Good job. See you next {day}.", N319 item 7): "tomorrow", else the
+#: weekday, with no "next".
+SEE_YOU_ON = "Good job. See you {day}."
 #: The settings asks of the next visit, in their order, each with its opener
 #: (founder 2026-10-31, N294 item 8, N295).
 VISIT_ASKS = ("whatsapp", "install")
@@ -257,8 +260,9 @@ def next_take_client_id(user_id: Any, arc_id: Any, take_index: int) -> str:
 
 
 def closing_line(day: Optional[str] = None) -> str:
-    """The closing message: "Good job. See you next {day}." with the plan's
-    next practice day, else "Good job. See you next time." Pure."""
+    """The closing message: "Good job. See you {day}." with the plan's next
+    practice day ("tomorrow" or its weekday, ``plan.next_day_text``), else
+    "Good job. See you next time." Pure."""
     return SEE_YOU_ON.format(day=day) if day else SEE_YOU
 
 
@@ -389,7 +393,7 @@ def end_rows(database: Any, user_id: str, row: dict, *, glad: bool = False,
              plan_after: bool = True, written: bool = True) -> list[dict]:
     """The end of the chat after a Take, once nothing is asked (N294 item 6,
     N319 item 7): the plan's lines after the Take, then the closing message
-    under them ("Good job. See you next {day}." on a plan), then the plan's
+    under them ("Good job. See you {day}." on a plan), then the plan's
     progress under it. ``row``: the closing message, let go where it was
     held (``written``) or written now. The rows written."""
     from services.lounge_messages import thread_stamp

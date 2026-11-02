@@ -332,6 +332,11 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "user", "delete", "database_row", 59),
     PurgeDependency("chat_members", "chat_members", "user_id", "user",
                     "delete", "database_row", 60),
+    # The join link (migration a_person_has_a_link_to_join_them, N308): a
+    # person's links. A chat made through one keeps its place (link_id is
+    # set to NULL); the person's membership of it goes above.
+    PurgeDependency("chat_links", "chat_links", "user_id", "user",
+                    "delete", "database_row", 60),
     # Email and password on Data & consent (WIL-95, N190, migration 0493):
     # the person's own security log goes with the account.
     PurgeDependency("account_security_events", "account_security_events",

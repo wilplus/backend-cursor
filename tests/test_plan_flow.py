@@ -24,9 +24,11 @@ OUTCOME
   O6  On a practice day after the first Take, the first open writes the
       hello and today's one thing, once; after a Take on a practice day
       "That's your 15 minutes for today." comes, once, and nothing under it
-      (N319 item 4); the chat's goodbye names the plan's next practice day,
-      and the plan's progress comes as one bubble, "1 of 9 practices done."
-      with what its bar draws, once per Take (N319 item 7).
+      (N319 item 4); the chat's goodbye names the plan's next practice day
+      as a person would, "Good job. See you tomorrow." when it is tomorrow,
+      else "Good job. See you {weekday}." (N347 item 2), and the plan's
+      progress comes as one bubble, "1 of 9 practices done." with what its
+      bar draws, once per Take (N319 item 7).
   O7  A new project's first Take asks "Is this for {date}?"; Yes keeps the
       plan, No starts "When is your deadline?" for a new one, the old plan
       kept in the history.
@@ -75,7 +77,8 @@ WHY      The plan, built one to one with the prototype (founder 2026-10-26,
          N203, N204); a level moving on, N134 items 3 and 4, N209; the
          principles waiting for the onboarding, N243; record first, Will
          asking again and a correction taken, N262; the calls hidden, not
-         removed, N315; the plan simplified, N319; the rules
+         removed, N315; the plan simplified, N319; the goodbye's day,
+         N347; the rules
          are frontend docs/flows/the-plan.md §1.
 """
 import uuid
@@ -83,6 +86,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+from services import after_take
 from services import plan as P
 from services import plan_flow as F
 
@@ -340,14 +344,19 @@ def test_a_practice_day_hello_and_the_fifteen_minutes(db, monkeypatch):
     n = len(db.thread)
     F.after_take(db, USER)
     assert len(db.thread) == n  # once a day
-    # Under the goodbye: the next practice day by its name, then the progress.
-    nxt = P.next_practice_day(today, date.fromisoformat(plan["deadline"]), [1, 3, 5], False)
-    assert F.next_day_name(db, USER) == P.DAYS[nxt.weekday()]
+    # Under the goodbye: the plan's progress, once per Take.
     progress = F.progress(db, USER)
     assert [r["body"] for r in progress] == ["1 of 9 practices done."]
     meta = progress[0]["metadata"]
     assert (meta["plan_progress"], meta["done"], meta["total"]) == (True, 1, 9)
     assert F.progress(db, USER) == []  # once per Take
+    # The goodbye names the next practice day (Mon, Wed, Fri) as a person
+    # would (N347 item 2): on a Sunday it is tomorrow; on a Monday, Wednesday.
+    sunday = today + timedelta(days=6 - today.weekday())
+    for day, said in ((sunday, "Good job. See you tomorrow."),
+                      (sunday + timedelta(days=1), "Good job. See you Wednesday.")):
+        monkeypatch.setattr(F, "today_in", lambda name, day=day: day)
+        assert after_take.closing_line(F.next_day_name(db, USER)) == said
     # The next practice day: the hello and today's one thing, once.
     monkeypatch.setattr(F, "today_in", lambda name: today + timedelta(days=2))
     out = F.state(db, USER, tz="UTC", first_name="Artur")

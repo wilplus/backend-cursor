@@ -176,6 +176,8 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # voice notes they recorded in them (N321) belong to the account, never
     # to a project.
     "chat_message_audio", "chat_demo_threads", "chat_members",
+    # A person's join link (N308): the account's, never a project's.
+    "chat_links",
     # The plan (N203): one per person, across their projects; the account
     # purge deletes it, with its answers, their recordings and its levels.
     "speaker_plans", "plan_answers", "plan_answer_audio", "plan_level_events",

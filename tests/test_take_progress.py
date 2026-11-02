@@ -14,13 +14,19 @@ OUTCOME
       (N309): its kind and slide, and this Take's best clip there, played
       by a signed link; nothing when it came back or there is no Take
       before.
+  O4  When the last walk's fix was the pace game, it rose when that slide
+      came out slower in this Take, read as the tempo step reads it, and
+      the walk opens with it the same way; nothing when it did not
+      (N347 item 3).
 PROVES   O1 -> test_progress_is_read_against_my_first_takes
          O2 -> test_each_fix_is_marked_came_back_or_gone_on_the_next_take
          O3 -> test_last_time_plays_the_fix_that_rose_on_this_take
+         O4 -> test_last_time_after_the_pace_game_when_that_slide_came_out_slower
 WHY      Founder 2026-10-31 (N291: "yes"; "ok go with the proposal"; N290:
          "the next time it chooses a moment it should take into account
          what the user answered"; N309 item 1: "Last time: {the tip}. You
-         did.").
+         did."; N347 item 3: "Every fix gets its Last time, the pace game
+         too").
 """
 from unittest.mock import patch
 
@@ -116,3 +122,46 @@ def test_last_time_plays_the_fix_that_rose_on_this_take():
         assert last_fix(Db([weak]), "t2", "t1") is None
         # The first Take has none before it.
         assert last_fix(Db([strong]), "t2", None) is None
+
+
+def _spoken(clip_id, start, n, *, word_s, gap_s, slide_words=_WORDS):
+    """A clip of ``n`` timed words from ``start`` seconds; the end."""
+    words, t = [], start
+    for _ in range(n):
+        words.append({"start": round(t, 3), "end": round(t + word_s, 3)})
+        t += word_s + gap_s
+    clip = {**_clip(1, f0_sd=30, dynamic_db=12, score=0.8, slide_words=slide_words), "id": clip_id,
+            "words": words, "audio_segment_path": f"takes/{clip_id}.webm"}
+    return clip, t
+
+
+def test_last_time_after_the_pace_game_when_that_slide_came_out_slower():
+    # The last walk fixed no moment: its fix was the pace game, on slide 2,
+    # where thirty seconds ran on without a pause.
+    before = _frame({"slide_index": 1, "walk_slot": "strongest", "carries_exercise": False, "snippet_ids": ["a"]},
+                    {"slide_index": 2, "carries_exercise": False, "snippet_ids": ["b"]})
+    now = _frame({"slide_index": 1, "snippet_ids": ["n1"]}, {"slide_index": 2, "snippet_ids": ["n2"]})
+    calm, end = _spoken("a", 0, 8, word_s=0.3, gap_s=0.5)
+    rushed, _ = _spoken("b", end + 1, 120, word_s=0.2, gap_s=0.05)
+    calm_now, end = _spoken("n1", 0, 8, word_s=0.3, gap_s=0.5)
+    slower, _ = _spoken("n2", end + 1, 60, word_s=0.3, gap_s=0.3)
+    same, _ = _spoken("n2", end + 1, 120, word_s=0.2, gap_s=0.05)
+
+    class Db:
+        def __init__(self, clips):
+            self.clips = clips
+
+        def get_v4_dark_frame(self, take):
+            return {"t1": before, "t2": now}.get(take)
+
+        def get_snippets_by_session(self, take):
+            return {"t1": [calm, rushed], "t2": self.clips}.get(take, [])
+
+    with patch("services.audio_ref_resolver.resolve_playable_ref",
+               lambda ref, expires_in=None, **_: f"https://signed.example/{ref}"):
+        # Slide 2 came out slower: the pace game rose, played with this
+        # Take's clip there.
+        last = last_fix(Db([calm_now, slower]), "t2", "t1")
+        assert (last["kind"], last["slide_index"], last["clip"]["snippet_id"]) == ("tempo", 2, "n2")
+        # As rushed as before: nothing is said.
+        assert last_fix(Db([calm_now, same]), "t2", "t1") is None

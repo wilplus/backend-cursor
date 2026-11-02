@@ -14,6 +14,14 @@ the voice note, N321 item 2). Service: services/chats.py.
   GET  /v2/chats/<id>/messages/<message_id>/audio
                                    the recording, for any member of the chat
   POST /v2/chats/demo             makes the two demo chats once; the list
+  GET  /v2/chats/link             {token, path}: the caller's own join link,
+                                   made the first time (N308)
+  POST /v2/chats/link             the link replaced; the old one stops working
+  GET  /v2/chats/join/<token>     no sign-in: {name}, whose link it is, for the
+                                   join page; 404 for a wrong or replaced link
+  POST /v2/chats/join/<token>     {chat: {id}}: the caller's chat with the
+                                   link's owner, made once for the two (N328);
+                                   400 OWN_LINK for your own
 
 Ring row ``chats`` (ring 6): a person without it gets 404 from every route,
 as a chat they are not in does. Anything but the three emoji is 400. One
@@ -44,7 +52,7 @@ from auth import require_auth
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import phase1_provider_route
 from services.db import db
-from services.rate_limits import llm_limit
+from services.rate_limits import client_ip, limiter, llm_limit
 
 logger = logging.getLogger(__name__)
 
@@ -177,3 +185,39 @@ def v2_chats_audio(thread_id, message_id):
 def v2_chats_demo():
     from services.chats import seed_demo
     return _run("demo", lambda: seed_demo(db, str(request.user_id)))
+
+
+# ── The join link (services/chat_links.py; N308, N328, N335) ─────────────
+
+@v2_bp.route("/chats/link", methods=["GET"])
+@require_auth
+def v2_chats_my_link():
+    from services.chat_links import my_link
+    payload = getattr(request, "token_payload", None)
+    return _run("link", lambda: my_link(db, str(request.user_id), payload))
+
+
+@v2_bp.route("/chats/link", methods=["POST"])
+@limiter.limit("10 per hour", scope="chats_link_renew")
+@require_auth
+def v2_chats_renew_link():
+    from services.chat_links import renew
+    payload = getattr(request, "token_payload", None)
+    return _run("renew", lambda: renew(db, str(request.user_id), payload))
+
+
+@v2_bp.route("/chats/join/<token>", methods=["GET"])
+@limiter.limit("60 per hour", key_func=client_ip, scope="chats_join_preview")
+def v2_chats_join_preview(token):
+    """The join page's read, before anyone signs in: whose link it is."""
+    from services.chat_links import preview
+    return _run("preview", lambda: preview(db, token))
+
+
+@v2_bp.route("/chats/join/<token>", methods=["POST"])
+@limiter.limit("30 per hour", scope="chats_join")
+@require_auth
+def v2_chats_join(token):
+    from services.chat_links import join
+    payload = getattr(request, "token_payload", None)
+    return _run("join", lambda: join(db, str(request.user_id), token, payload))

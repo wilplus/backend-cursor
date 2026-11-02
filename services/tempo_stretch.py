@@ -112,9 +112,9 @@ def _window(s: dict) -> Optional[tuple[int, int]]:
     return int(min(a for a, _ in times) * 1000 // FRAME_MS), int(max(b for _, b in times) * 1000 // FRAME_MS)
 
 
-def pick(snippets: list[dict]) -> Optional[dict]:
-    """The clip furthest from the green and which side it leaned to, or None
-    when no clip spends ``MIN_OUTSIDE`` of its time outside it. Pure."""
+def _replay(snippets: list[dict]) -> Optional[tuple[int, list[float]]]:
+    """The pace scale's activity over the whole Take, with the frame of its
+    first timed word; None without timed words. Pure."""
     words = _words(snippets)
     if not words:
         return None
@@ -124,21 +124,56 @@ def pick(snippets: list[dict]) -> Optional[dict]:
     for st, en in words:
         for f in range(int(st * 1000 // FRAME_MS) - first, int(en * 1000 // FRAME_MS) - first + 1):
             voiced[f] = True
-    path = activity_path(voiced)
+    return first, activity_path(voiced)
+
+
+def _shares(path: list[float], first: int, s: dict) -> Optional[tuple[float, float]]:
+    """A clip's share of its time past the green on the right (rushed) and
+    on the left (slow); None for a clip with no words or no timings."""
+    span = _window(s)
+    if not span or not str(s.get("transcript") or "").strip():
+        return None
+    frames = path[max(0, span[0] - first): span[1] - first + 1]
+    if not frames:
+        return None
+    return (sum(1 for v in frames if v > GREEN_HIGH) / len(frames),
+            sum(1 for v in frames if v < GREEN_LOW) / len(frames))
+
+
+def pick(snippets: list[dict]) -> Optional[dict]:
+    """The clip furthest from the green and which side it leaned to, or None
+    when no clip spends ``MIN_OUTSIDE`` of its time outside it. ``outside``
+    is its share of time on that side. Pure."""
+    replay = _replay(snippets)
+    if not replay:
+        return None
+    first, path = replay
     best: Optional[dict] = None
     for index, s in enumerate(snippets):
-        span = _window(s)
-        if not span or not str(s.get("transcript") or "").strip():
+        shares = _shares(path, first, s)
+        if not shares:
             continue
-        frames = path[max(0, span[0] - first): span[1] - first + 1]
-        if not frames:
-            continue
-        rushed = sum(1 for v in frames if v > GREEN_HIGH) / len(frames)
-        slow = sum(1 for v in frames if v < GREEN_LOW) / len(frames)
+        rushed, slow = shares
         outside = max(rushed, slow)
         if outside >= MIN_OUTSIDE and (best is None or outside > best["outside"]):
             best = {"index": index, "outside": outside, "reading": "rushed" if rushed >= slow else "slow"}
     return best
+
+
+def furthest(snippets: list[dict], ids: set[str], reading: str) -> Optional[float]:
+    """Of the Take's clips named in ``ids``, the largest share of time the
+    dot spent past the green on ``reading``'s side (the right for "rushed",
+    the left for "slow"), read as ``pick`` reads them; None when none can be
+    read. The pace game's "Last time" sets it against the stretch's own
+    share (N347 item 3). Pure."""
+    replay = _replay(snippets)
+    if not replay:
+        return None
+    first, path = replay
+    side = 0 if reading == "rushed" else 1
+    found = [shares[side] for s in snippets
+             if str(s.get("id")) in ids and (shares := _shares(path, first, s))]
+    return max(found) if found else None
 
 
 _SENTENCE = re.compile(r"(?<=[.?!])\s+")
