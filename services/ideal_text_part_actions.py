@@ -156,7 +156,10 @@ def _valid_root(target: dict, body: dict) -> Optional[dict]:
             raise Refusal("INVALID_INPUT", "skip must not include a span", 400)
         return None
     from services.rooting_phrase import validate_rooting_phrase
-    valid = validate_rooting_phrase(target.get("text"), phrase, start, end)
+    # "walk": the One thing walk's own helper words, saved whole (N323
+    # item 2); anything else is a pick by hand, within the cap of eight.
+    valid = validate_rooting_phrase(target.get("text"), phrase, start, end,
+                                    capped=body.get("source") != "walk")
     if valid is None:
         # "locked" dropped 2026-09-25, founder sign-off.
         raise Refusal("INVALID_ROOT_PHRASE",

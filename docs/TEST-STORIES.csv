@@ -1249,11 +1249,12 @@ O3 -> test_a_video_upload_is_refused_as_audio_only
 test_mic_audio_webm_is_NOT_rejected_as_video","Bug batch 2026-07-13 (BE-1 guest re-read, BE-2 video reject)."
 tests/test_helper_words_any_words.py,Story,"As a speaker, I want to pick up to eight helper words from my paragraph, in the order I said them, so that my cues match my talk.","O1  Words picked apart from each other are saved (without a position).
 O2  Words out of order, or words I never said, are refused.
-O3  Eight words are accepted; a ninth is refused.
+O3  Eight words are accepted on a pick by hand; a ninth is refused. The
+One thing walk's own helper words are saved whole (N323 item 2).
 O4  Words picked apart are also accepted against an earlier Take's text.","O1 -> test_words_picked_apart_save_without_a_span
 O2 -> test_words_out_of_order_or_not_said_are_refused
-O3 -> test_eight_words_is_the_cap
-O4 -> test_an_earlier_take_takes_words_picked_apart",Founder 2026-10-15.
+O3 -> test_eight_words_is_the_cap_on_a_pick_by_hand
+O4 -> test_an_earlier_take_takes_words_picked_apart","Founder 2026-10-15; 2026-11-02 (N323 item 2, ""you can allow helper words to be longer than 8 words"")."
 tests/test_helper_words_own_text.py,Story,"As a speaker, I want my helper words to survive the next Take's rewrite until I pick new ones, so that my cues are not lost.","O1  Never-5 (helper words stay until the speaker picks new ones): after
 Take 2 rewrites the Paragraph in different words, the next read still
 returns the stored helper words on that Paragraph, with Take 2's text.
@@ -1377,7 +1378,9 @@ skipping helper words each write their records in the same order; every
 refusal returns its exact code and writes nothing.
 O4  My own edit is saved through the one safe writer and published; a bad,
 outdated or failed edit returns its exact code (a database refusal is a
-409) and publishes nothing.","O1 -> test_the_notebook_read_composes_locks_and_prepares_the_exposure,
+409) and publishes nothing.
+O5  The One thing walk's own helper words are saved whole; a pick by hand
+past eight words is refused (N323 item 2).","O1 -> test_the_notebook_read_composes_locks_and_prepares_the_exposure,
 test_the_notebook_read_refuses_a_project_not_owned
 O2 -> test_enrichment_serves_the_asked_sections_for_the_current_snapshot,
 test_enrichment_refusals
@@ -1387,7 +1390,8 @@ test_lock_refusals, test_a_root_pick_and_a_skip_write_their_records,
 test_root_refusals
 O4 -> test_a_current_edit_is_saved_through_the_one_cas_writer,
 test_user_edit_refusals,
-test_a_typed_ideal_text_refusal_from_the_database_is_a_409",Founder 2026-10-12: move logic out of the routes; Never-rule 3.
+test_a_typed_ideal_text_refusal_from_the_database_is_a_409
+O5 -> test_the_walks_own_helper_words_are_saved_whole",Founder 2026-10-12: move logic out of the routes; Never-rule 3; 2026-11-02 (N323 item 2).
 tests/test_ideal_text_slide_linkage.py,Story,"As a speaker, I want each paragraph of my Ideal Text tied to its slide and my deck link kept, and my locked words shown even when composing fails, so that I can read my talk slide by slide.","O1  Pieces that line up 1:1 with the served paragraphs carry their slide.
 O2  Pieces that do not line up all degrade to slide_index null; the
 paragraph text still serves.
@@ -2573,7 +2577,8 @@ O3  Helper words picked in an earlier Take still appear, on the slide's
 Paragraph now.
 O4  After a Clearer version the walk's helper words come on their own
 (N309): the sentence the practice was opened on goes to the slide,
-with or without a try; words not in it are refused.","O1 -> test_stale_or_invalid_live_root_fails_closed
+with or without a try, whole, past eight words too (N323 item 2);
+words not in it are refused.","O1 -> test_stale_or_invalid_live_root_fails_closed
 O2 -> test_recording_roots_route_returns_the_live_root
 O3 -> test_helper_words_from_an_earlier_take_stay_on_their_slide
 O4 -> test_the_clearer_versions_sentence_becomes_my_helper_words","Never-rule 5; founder 2026-10-13, project ""S""; founder 2026-10-31 (N309 item 3, ""the helper words come on their own"")."
@@ -3015,6 +3020,10 @@ O9  On a plan, this week's level is the one fix: ""Say it once"" the
 between; never the strongest; a pace or pause week whose Take has a
 stretch has the Sniper as its fix and shows no moment to fix (N289,
 N309).
+O11 With or without a plan, when rushing is my Take's biggest issue the
+Sniper is my one thing to improve and no moment is; rushing that
+weighs less than what my moment needs, a slow stretch, or no tempo
+step for me leaves the fix a moment (N323 item 6).
 O10 A sentence that already has the helper words I had when I recorded
 gives its place as my strongest to the next; helper words I pick
 during the walk don't move my moments (N246).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
@@ -3030,7 +3039,8 @@ O6 -> test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_vers
 O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version
 O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen
 O9 -> test_on_a_plan_my_level_takes_the_slot_whose_tool_fits_it
-O10 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level""); 2026-10-30 (N289: ""the praise clips just get the praise"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-31 (N309, the One thing walk: ""apply to it the one thing walk"")."
+O10 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
+O11 -> test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level""); 2026-10-30 (N289: ""the praise clips just get the praise"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-31 (N309, the One thing walk: ""apply to it the one thing walk""); 2026-11-02 (N323 item 6: ""yes, the pace game for everyone when rushing is the issue"")."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name

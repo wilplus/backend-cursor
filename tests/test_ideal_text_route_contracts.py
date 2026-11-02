@@ -15,6 +15,8 @@ OUTCOME
   O4  My own edit is saved through the one safe writer and published; a bad,
       outdated or failed edit returns its exact code (a database refusal is a
       409) and publishes nothing.
+  O5  The One thing walk's own helper words are saved whole; a pick by hand
+      past eight words is refused (N323 item 2).
 PROVES   O1 -> test_the_notebook_read_composes_locks_and_prepares_the_exposure,
                test_the_notebook_read_refuses_a_project_not_owned
          O2 -> test_enrichment_serves_the_asked_sections_for_the_current_snapshot,
@@ -26,7 +28,9 @@ PROVES   O1 -> test_the_notebook_read_composes_locks_and_prepares_the_exposure,
          O4 -> test_a_current_edit_is_saved_through_the_one_cas_writer,
                test_user_edit_refusals,
                test_a_typed_ideal_text_refusal_from_the_database_is_a_409
-WHY      Founder 2026-10-12: move logic out of the routes; Never-rule 3.
+         O5 -> test_the_walks_own_helper_words_are_saved_whole
+WHY      Founder 2026-10-12: move logic out of the routes; Never-rule 3;
+         2026-11-02 (N323 item 2).
 """
 from __future__ import annotations
 
@@ -365,6 +369,30 @@ def test_root_refusals():
             400, {"code": "INVALID_ROOT_PHRASE",
                   "error": "Choose exact words from this paragraph."})
     root.assert_not_called()
+
+
+def test_the_walks_own_helper_words_are_saved_whole():
+    """Founder 2026-11-02 (N323 item 2): their own sentence after "Keep
+    mine", eleven words, is saved whole from the walk; the same words picked
+    by hand stay over the cap of eight."""
+    said = "Last year we lost three clients because nobody called them back."
+    rec = MagicMock()
+    rec.root.return_value = True
+    w = _part_writes(rec)
+    one = [{"id": PA, "ord": 0, "text": said, "locked_at": None, "iteration": 2}]
+    pick = {"text_echo": said, "phrase": said, "start": 0, "end": len(said)}
+    with patch.object(db, "get_ideal_text_parts", return_value=one), \
+            w[1], w[2], w[3], w[4], \
+            patch.object(db, "set_ideal_text_part_root", rec.root), \
+            patch.object(db, "record_canonical_root_phrase", rec.canonical):
+        view = route.v2_explore_set_part_root
+        assert _call(view, ARC, PA, method="PUT", json=pick)[:2] == (
+            400, {"code": "INVALID_ROOT_PHRASE",
+                  "error": "Choose exact words from this paragraph."})
+        status, body, _ = _call(view, ARC, PA, method="PUT",
+                                json={**pick, "source": "walk"})
+    assert (status, body["root_phrase"]) == (200, said)
+    assert rec.root.call_count == 1
 
 
 # ── PUT /explore/arc/<arc>/ideal-text/user-edit (the current CAS shape) ─────

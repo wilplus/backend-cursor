@@ -190,7 +190,9 @@ def helper_words_from_practice(database: Any, practice: Mapping,
     ``source`` "passage": the One thing walk's helper words after a Clearer
     version (founder 2026-10-31, N309 item 3), the sentence the practice was
     opened on, whether or not a try was kept: they come on their own, with
-    no pick. Exact words of that sentence, within the same cap."""
+    no pick. Exact words of that sentence, saved whole, whatever their
+    length (founder 2026-11-02, N323 item 2); words tapped from a try keep
+    the cap of eight."""
     from services.intervention_spend import latest_spoken_take_sid
     from services.slide_helper_words import record_pick
 
@@ -211,7 +213,7 @@ def helper_words_from_practice(database: Any, practice: Mapping,
             if str(r.get("id")) == str(practice.get("selected_attempt_id"))), None)
         words = phrase_in_transcript(phrase, (attempt or {}).get("transcript"))
     from services.slide_helper_words import within_cap
-    if words is None or not within_cap(words):
+    if words is None or (not passage and not within_cap(words)):
         return 400, {"code": "INVALID_ROOT_PHRASE",
                      "error": "Choose exact words from your practice."}
     arc_id = str(practice.get("project_id"))
