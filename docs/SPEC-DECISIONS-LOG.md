@@ -8861,3 +8861,26 @@ The prototype: <https://claude.ai/artifact/Qu9N4HNpbpwT7N9Amo6LyL>, version
 on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration.
+**N338 · No quiet hours; the signed words stay; no app words in the
+transcriber's hint; one Messages place later (founder, the Claude Code chat,
+2 November 2026, on <https://claude.ai/artifact/HYpYmk17fVkypFruYxxziV>:
+"don't build any quiet hours, anything like that", "Keep my signed words",
+"drop the third one, drop it", "the fifth one later").** For N123, N189 and
+N193:
+1. **No quiet hours.** Coach messages go when they fall due, at any hour;
+nothing holds a message until morning. N189 item 1 and N193 are withdrawn,
+and nothing like them is built.
+2. **The signed words stay.** Will's asks and the walk's lines are the words
+the founder signed. N123 (the asks and the walk's lines said fresh each
+time) is withdrawn.
+3. **No app words in the transcriber's hint.** "rewrite", "Take" and "Ideal
+Text" are not added to every Take's word hint; the Ideal Text page's open
+item on it is closed.
+4. **One "Messages" place (N189 item 6) waits;** it is drawn later.
+Still open: what Will says after a tap on the 1 to 10 scale, shown to the
+founder on a prototype first.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§2, [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
+§3 and [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+§2. No migration.
