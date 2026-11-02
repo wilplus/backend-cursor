@@ -26,6 +26,11 @@ Take gave are read from its stored frame (the blocks the picker marked
 
 "not_measured" when there is no next Take, the slide is not in it, or its
 clips cannot be read. Read on demand; nothing is stored.
+
+LAST TIME (founder 2026-10-31, N309 item 1). The One thing walk opens with
+the last Take's fix played back when it rose: "Last time: {the tip}. You
+did." with this Take's clip on that slide (``last_fix``). Only a moment's
+fix (the Clearer version or the AI clip); the speaker never sees a number.
 """
 from __future__ import annotations
 
@@ -161,3 +166,53 @@ def fix_outcomes(database: Any, take_id: Any, next_take_id: Optional[Any]) -> li
     except Exception as error:  # noqa: BLE001 -- the Takes table stands without it
         logger.warning("take progress: fixes unread take=%s: %s", take_id, error)
         return []
+
+
+# ── last time (N309 item 1) ──────────────────────────────────────────────────
+
+def last_fix(database: Any, take_id: Any, previous_take_id: Optional[Any]) -> Optional[dict]:
+    """The fix the previous Take's walk gave, when its issue is gone on this
+    Take's same slide: ``{"kind", "slide_index", "clip": {"snippet_id",
+    "url", "start_offset_ms", "duration_ms"}}``, the clip this Take's best
+    on that slide. None when there is no previous Take, it gave no moment
+    fix, the issue came back or could not be read, or no clip plays. The
+    Clearer version is the fix when an older Take gave two (words come
+    first, N309). Never raises."""
+    if not previous_take_id:
+        return None
+    try:
+        before = database.get_v4_dark_frame(str(previous_take_id))
+        fixes = fixes_of(before, []) if isinstance(before, dict) else []
+        if not fixes:
+            return None
+        fix = next((f for f in fixes if f["kind"] == "clearer"), fixes[0])
+        frame = database.get_v4_dark_frame(str(take_id))
+        snippets = database.get_snippets_by_session(str(take_id)) or []
+        if outcome(fix, frame, snippets) != GONE:
+            return None
+        clip = _best_clip(_clips_by_slide(frame, snippets).get(fix["slide_index"]) or [])
+        from services.corpus_coach_queue import playback_body
+        body = playback_body(clip) if clip else None
+        if not body:
+            return None
+        return {"kind": fix["kind"], "slide_index": fix["slide_index"],
+                "clip": {"snippet_id": body["snippet_id"], "url": body["url"],
+                         "start_offset_ms": body.get("start_offset_ms"),
+                         "duration_ms": body.get("duration_ms")}}
+    except Exception as error:  # noqa: BLE001 -- the walk opens without it
+        logger.warning("take progress: last fix unread take=%s: %s", take_id, error)
+        return None
+
+
+def _best_clip(clips: list[dict]) -> Optional[dict]:
+    """The slide's clip with the highest willfidence, clips with a whole
+    thought first; None for none."""
+    from services import moment_pick
+    from services.voice_confidence import stamped_score
+
+    def rank(c: dict) -> tuple:
+        read = moment_pick.read(stamped_score(c.get("metrics")), c.get("transcript"), c.get("metrics"))
+        worded = len(str(c.get("transcript") or "").split()) >= moment_pick.MIN_WORDS
+        return (worded, read["value"])
+
+    return max(clips, key=rank, default=None)
