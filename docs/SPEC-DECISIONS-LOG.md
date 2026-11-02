@@ -8653,3 +8653,137 @@ prototype; and whether short text is allowed in chats with people, which
 N306 does not allow today.
 No rules page yet: it lands with the chats' rules page (N274 item 6). No
 migration in this entry.
+
+**N329 · Answering someone in a chat: Send, or Record again; Will looks
+first; his feedback comes after, for the next answer (founder, the Claude
+Code chat, 2 November 2026: "It sort of makes no sense to record something
+second time ... the second take how it will be sent to someone else ... we
+need to integrate somehow the responses from Will about the speaking ...
+into the knowledge sharing, into the chat"; on a poor first take: "you can
+still send it, but it suggests like, oh, you can take a second take"; on the
+Ember & Air prototype, versions 28 and 29: "please log it all").** For N292,
+N294, N303, N305 and N321:
+1. **Finish take brings you back to the chat.** An answer recorded with
+"Record an answer" (N321 item 4) waits at the bottom of that chat, not sent,
+to be played. No processing screen in between: the person is waiting, and the
+processing (the Ideal Text, the feedback) runs on its own.
+2. **Send, or Record again.** "Record again" replaces it before anyone sees
+it, as re-recording a WhatsApp voice note does; "Send" sends it. The person
+gets one answer. Under them, "Ask someone first": the check of what was said
+(the facts, the product, the promise) comes from a colleague before sending
+(N333); how it was said is Will's, after.
+3. **Will looks first, in a few seconds, and only the speaker sees it.** When
+the answer is hard to follow (it jumps around, or does not answer what was
+asked), a note from Will suggests a second take; "Send" stays, the choice is
+the speaker's. A clear answer gets no note: no praise, no verdict (Never 1).
+4. **Will's feedback comes after the answer has gone,** in the speaker's chat
+with Will: the Feedback walk and the Ideal Text of that answer, then one
+point, from its highest-leverage moment, for the next answer ("For your next
+answer: ..."). No "Record Take N" under it: the next real answer is the next
+rep, and Will follows the same point across answers. Was (N292 item 4): the
+answer sent is the practised Take, after the walk.
+5. **Open:** whether the person who receives an answer sees its Take number
+(the proposal: no, only the speaker does).
+6. Signed (Never 4): "Record again", "Send", "Ask someone first", "Ask
+someone else", "For your next answer:", "Take {N}, for {name}, a customer",
+"Take {N} sent to {name}"; Will's note is written fresh for each answer, in
+the prototype's style.
+The prototype: <https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>, chapter
+"In the app now (ring 6)", version 32. No rules page yet: it lands on
+frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
+
+**N330 · The team's answer: a question that keeps coming is practised, and
+sent to no one (founder, the same chat, 2 November 2026, on the prototype's
+"The team's answer": "please log it all").** For N317 and N329:
+1. When the same question has come three times (to start), Will offers in the
+speaker's chat with Will: "Practise the team's answer?" ("Not now", "Practise
+it").
+2. The recording screens, the walk, then "Saved as the team's answer. Anyone
+who gets this question can listen to it before they answer.", and "Record
+Take 2" under the chat: here a second Take makes sense, because the answer
+only gets better and goes to no one.
+3. The speaking coaching and the knowledge sharing as one (N317): the team's
+answer is what a junior listens to before answering the same question.
+4. Signed (Never 4): "Practise the team's answer?", "Not now", "Practise
+it", "{Number} customers asked about {topic} this week.", "Saved as the
+team's answer. Anyone who gets this question can listen to it before they
+answer.".
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+when built. No migration.
+
+**N331 · The words of a voice note, closed under its player (founder, the
+same chat, 2 November 2026, asked whether to show the words under a voice
+note; on the prototype, version 26: "please log it all").** For N324:
+1. Under a voice note's player, "Read it" opens its words inside the bubble;
+"Hide" closes them. Closed by default, for both people: listening stays the
+default, so the voice is heard.
+2. "Read it" appears only once the words are ready, so nothing moves before;
+a voice note with no words shows none. The list keeps "🎤 Voice message" and
+never shows the words.
+3. Signed (Never 4): "Read it", "Hide".
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
+
+**N332 · How Will chooses who to ask (founder, the same chat, 2 November
+2026: "So explain to me how the matching algorithm works", then "show it on
+the prototype", then "please log it all").** For N303, N313 and N317 item 3:
+1. For a new question, Will weighs, for each person in the company: how close
+it is to what they have answered before (the words, typed or from their
+voice notes, and the products picked); how it ended (the customer booked or
+bought; the one who asked said 👍 It's good); and whether they are free now,
+so one expert is not asked everything.
+2. Will suggests one person, with the reason in words (N303); the person
+asking sees one name and one reason, never a number (Never 1). Nobody has
+answered anything like it yet: the owner gets it (N313).
+3. Only WillpowerLab sees how Will chose ("How Will chooses").
+4. Later, when there is enough to go on and the legal side is checked: the
+slow and fast learners of N317 item 3. Never shown to anyone, never used to
+judge a person (N317 item 7).
+No rules page yet: the matching gets its rules page when it is built. No
+migration.
+
+**N333 · Help on the moment, in one message (founder, the same chat, 2
+November 2026, on the prototype's review slide by slide: "What is this?
+Because I don't think anyone would be wanting to actually watch it. And
+review it."; on version 31: "please log it all").** Replaces N311 item 2:
+1. A Take sent to a colleague arrives as one message: "Is this good? Take
+{N} for {customer}, a customer", one player, and its slides in a strip that
+follows the voice as it plays.
+2. Under it, Will points to the one moment worth a human's check (a
+promise, a price, anything risky to get wrong), with its words and its few
+seconds of voice ("Slide 1 makes a promise:"), so the colleague can judge it
+without listening to it all.
+3. One answer: 👍 if it can go, or the mic. Will hears which slide the voice
+note is about and puts it there ("On slide {N}"), in that chat and in the
+asker's chat with Will (N305). No buttons per slide. Was (N311 item 2): each
+slide with its own voice, 👍 and mic.
+4. Signed (Never 4): Will's pointer line, written fresh for each Take.
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+when built. No migration.
+
+**N334 · Every chat page shows its own name; the WillpowerLab bar is on the
+list only (founder, the same chat, 2 November 2026: "one more thing to apply
+everyhwere for the design is that if you are on the page, the chat name of
+the person appears", with a screenshot of Will's chat crossing out the
+WillpowerLab bar above "‹ Will"; and "loojks right should be on the
+right").** For N321 and N322:
+1. Every chat, Will's included, shows only its own top bar: back, the
+circle, the name (and who they are, for a person). The WillpowerLab bar shows
+on the list of chats only. Was (N322 item 4): Will's chat kept the
+WillpowerLab bar, with "‹ Will" under it.
+2. The recording screens of an answer name the person it is for, above
+"Take {N} · Slide {N} of {N}". A change to the locked recording screens,
+approved here.
+3. In a pair of tap answers, the one that goes on sits on the right
+("Looks right", "Send to {name}", "Ask {name}"), as the app's pairs already
+do.
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+(Will's chat) and [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+when built. No migration.
