@@ -22,8 +22,9 @@ or writes.
     an emoji or a mic"), up to two minutes: a message of kind ``voice`` with
     its length in ``meta``, kept with its recording; then turned into words
     (N324), kept with the recording (``words``) and going when it goes. The
-    words are in no answer and fed nowhere yet. A note that cannot be turned
-    into words is sent all the same, ``words`` NULL.
+    words are in the chat's messages, for its members to open under the
+    player (N331: "Read it"), never in the list, and fed nowhere else. A note
+    that cannot be turned into words is sent all the same, ``words`` NULL.
   * ``recording``: a voice note's recording, for any member of its chat.
   * ``seed_demo``: a customer's chat and a colleague's for the person, once,
     so the chats can be seen before anyone else is in them.
@@ -188,11 +189,29 @@ def _authors(database: Any, thread_id: str) -> dict[str, str]:
                            .eq("thread_id", thread_id))}
 
 
-def _shown(row: dict, me: str, authors: dict[str, str]) -> dict:
+def _shown(row: dict, me: str, authors: dict[str, str],
+           words: Optional[dict[str, str]] = None) -> dict:
+    """A message as its members see it; a voice note with its ``words``
+    (N331), null until they are ready or when there are none."""
     author = str(row["author_member_id"])
-    return {"id": str(row["id"]), "mine": author == me, "author": authors.get(author, ""),
-            "kind": row["kind"], "body": row["body"], "meta": row.get("meta") or {},
-            "created_at": row["created_at"]}
+    shown = {"id": str(row["id"]), "mine": author == me, "author": authors.get(author, ""),
+             "kind": row["kind"], "body": row["body"], "meta": row.get("meta") or {},
+             "created_at": row["created_at"]}
+    if row["kind"] == "voice":
+        shown["words"] = (words or {}).get(str(row["id"])) or None
+    return shown
+
+
+def _words(database: Any, thread_id: str, rows: list[dict]) -> dict[str, str]:
+    """The words of the voice notes among ``rows`` (N324, N331), by message;
+    only this chat's recordings are read."""
+    ids = [str(r["id"]) for r in rows if r["kind"] == "voice"]
+    if not ids:
+        return {}
+    return {str(a["message_id"]): a["words"]
+            for a in _rows(_table(database, AUDIO).select("message_id,words")
+                           .eq("thread_id", thread_id).in_("message_id", ids))
+            if a.get("words")}
 
 
 def read(database: Any, user_id: Any, thread_id: Any) -> dict:
@@ -208,7 +227,8 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
                    .eq("thread_id", thread).order("created_at", desc=True)
                    .limit(_MAX_MESSAGES))
     authors = _authors(database, thread)
-    return {"messages": [_shown(r, str(me["id"]), authors) for r in reversed(newest)],
+    words = _words(database, thread, newest)
+    return {"messages": [_shown(r, str(me["id"]), authors, words) for r in reversed(newest)],
             "joined_through": joined_through(database, user_id, thread)}
 
 
@@ -252,7 +272,7 @@ def post_voice(database: Any, user_id: Any, thread_id: Any, audio: bytes, *,
     12 MB, 413. Either both rows are kept or neither is. Once they are, the
     same bytes are transcribed under the caller's authorization (``adapter``,
     the one provider call here; N324); a note with no words is sent all the
-    same. {"message": {...}}, as ``post``: never the words."""
+    same. {"message": {...}}, as ``post``, with its ``words`` (N331)."""
     me = member(database, user_id, thread_id)
     kind = str(content_type or "").strip()
     if not audio:
@@ -274,8 +294,9 @@ def post_voice(database: Any, user_id: Any, thread_id: Any, audio: bytes, *,
     if not _keep_recording(database, message, str(user_id), kind, ms, audio):
         _forget(database, message)
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
-    _keep_words(database, adapter, str(message["id"]), str(user_id), audio, filename)
-    return {"message": _shown(message, str(me["id"]), _authors(database, thread))}
+    said = _keep_words(database, adapter, str(message["id"]), str(user_id), audio, filename)
+    return {"message": _shown(message, str(me["id"]), _authors(database, thread),
+                              {str(message["id"]): said} if said else None)}
 
 
 def _keep_recording(database: Any, message: dict, user_id: str,
@@ -301,14 +322,15 @@ def _keep_recording(database: Any, message: dict, user_id: str,
 
 
 def _keep_words(database: Any, adapter: Any, message_id: str, user_id: str,
-                audio: bytes, filename: str) -> None:
+                audio: bytes, filename: str) -> Optional[str]:
     """What was said in a voice note just kept (N324 item 1): transcribed
     under the caller's authorization (``adapter``) as the voice notebook's
     notes are, cut to MAX_WORDS and kept with its recording, nowhere else.
     Never in the way (item 2): no words, a provider error or timeout, or a
     refusal at the permit leaves ``words`` NULL and the note sent. The log
     names the message, never the audio or the words: a database error can
-    quote the row it refused, so only the error's kind and code are logged."""
+    quote the row it refused, so only the error's kind and code are logged.
+    The words kept, or None."""
     try:
         result = adapter.transcribe_audio(
             audio, filename, usage_surface="chat_voice_note",
@@ -317,13 +339,14 @@ def _keep_words(database: Any, adapter: Any, message_id: str, user_id: str,
         if words:
             _table(database, AUDIO).update({"words": words}).eq(
                 "message_id", message_id).execute()
-            return
+            return words
         reason = "no words"
     except Exception as error:  # noqa: BLE001 -- the note is sent either way
         reason = " ".join(filter(None, (type(error).__name__,
                                         str(getattr(error, "code", "") or "")[:64])))
     logger.warning("chats: voice message %s kept without its words (%s)",
                    message_id, reason)
+    return None
 
 
 def _forget(database: Any, message: dict) -> None:
