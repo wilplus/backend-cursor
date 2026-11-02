@@ -9152,41 +9152,25 @@ The rules: frontend
 C7, H1, T and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 B10, when built. No migration.
 
-**N351 · Teams and specialists, not the speaking questions; the coach panel
-as it is, opened with a pass code (founder, the Claude Code chat, 2 November
-2026, on the setup chapter of the prototype: "Ok, so first question and
-questions about speaking should be skipped. Rest is fine"; on the training
-corpus, the corrections and the walk made for the speaking coach: "Maybe we
-should keep that as is and only make it available through a pass code";
-"there are also open teams like Artur's community and closed ones like
-invita community and then the specialists are shown and you can choose which
-one you are"; "one can also add a team and specialist if none they want
-exists go prototype it and we will fill the blanks as we design").** For
-N52.4 and N349:
-1. **The setup asks no first question and nothing about speaking.** "What
-brings you here?", "Can people ask you about how they speak?" and "Which
-languages can you judge?" go. The rest stays with its words: the agreement
-(N349 item 3), the voice note about one's work, and "You're set." The coach
-panel asks for a person's languages itself, the first time it opens, as it
-does today (`RaterLanguageGate`).
-2. **The coach panel stays as it is** (the corrections, the walk, the
-training corpus) **and opens only with a pass code.** Was (N349 item 1): a
-person said yes in setup to reviewing how others speak.
-3. **Teams.** A person joins a team: open, so anyone can join (like Artur's
-community), or closed, with its code (like the Invita community). Anyone can
-add a team: its name, open or closed, and a code for a closed one.
-4. **Specialists.** A team shows its specialists, with who is in each; a
-person picks which one they are, or adds the one that is missing, and it is
-on the list for everyone after them.
-5. **The people one practises with are in the chats,** as everyone's chats
-are; a team's page lists who is who.
-6. **Open, proposed on the prototype**
-(<https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ#su-team>): "Speaking
-coach" as the one specialist with a lock, whose code WillpowerLab gives; how
-someone is known as a specialist (the link they came by, or Teams in the
-menu); whether a team is a community and its code the community's pass code
-(N52.4); the words.
-No rules page yet: it lands on frontend
-[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
-and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
-when built. No migration in this entry.
+**N351 · The "+" opens what you can do in that chat: Photos, Camera, Files,
+Someone else (founder, the Claude Code chat, 2 November 2026: "The + should
+be opening smth… photos or files or screen shots… the files and photos
+though are certain. So build that", then "Yes the four are ok", "None of the
+connect stays cause Idk how they would connect").** For N335 and N337:
+1. **The "+" in a chat with a person opens four actions**, each for that
+person only: **Photos** (photos and screenshots, picked and sent; then a
+voice note says what you need, as N337), **Camera**, **Files** (a file sent
+as a file in the chat), and **Someone else** (they get your link and join
+first, N337).
+2. **Signed (Never 4):** "Photos", "Camera", "Files", "Someone else".
+N337's other signed words stay. The pickers' words in the prototype
+("Photos and screenshots", "For {name} only.", "Send {n}", "Back") are not
+signed yet.
+3. **No links to other tools** from the "+": no Slack, email, WhatsApp or
+calendar. How they would connect is not decided; they came up as ideas and
+none stays.
+The prototype: <https://claude.ai/artifact/RWT4oazQ5VtLCZkcuuRWWB>, version
+4. No rules page yet: it lands with the chats' rules page (N274 item 6) and
+on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
+No migration.

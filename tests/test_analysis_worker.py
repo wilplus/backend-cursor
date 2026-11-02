@@ -11,7 +11,9 @@ OUTCOME
   O4  ... and never rebuilds one that exists (no overwrite of my words).
   O5  My feedback marks are baked right after "ready", inside the run and
       before the trailing work, so the walk opens the moment the
-      processing bubble ends (founder 2026-10-20, flow page A2).
+      processing bubble ends (founder 2026-10-20, flow page A2); "ready"
+      never waits for the verbal read, which is waited for after it and
+      before the marks are baked (N350 item 2).
 PROVES   O1 -> test_ready_comes_first_and_the_cards_are_waited_for
          O2 -> test_trailing_work_failing_never_reaches_the_speaker
          O5 -> test_the_marks_are_baked_right_after_ready_in_the_run
@@ -133,7 +135,8 @@ class ReadyBeforeTrailingWorkTests(unittest.TestCase):
             return 1
 
         log = DegradationLog("take_analysis")
-        with patch.dict(sys.modules, {
+        with patch.object(aw, "_verbal_read_lands", lambda *a, **kw: order.append(
+                ("verbal_read", kw.get("flipped")))), patch.dict(sys.modules, {
             "services.lab_recording": _module(
                 "services.lab_recording",
                 process_lab_recording=lambda **kw: {"snippets": [1]}),
@@ -175,7 +178,7 @@ class ReadyBeforeTrailingWorkTests(unittest.TestCase):
         order, readout, _ = self._run()
         self.assertEqual(readout, {"snippets": [1]})
         self.assertEqual(order[0], "ready")
-        self.assertEqual(set(order[2:-1]), {
+        self.assertEqual(set(order[3:-1]), {
             "verbal_cue_shadow", "acoustic_cue_shadow",
             "detector_rollout_shadow"})
         self.assertEqual(order[-1], "cards")
@@ -183,9 +186,10 @@ class ReadyBeforeTrailingWorkTests(unittest.TestCase):
     def test_the_marks_are_baked_right_after_ready_in_the_run(self):
         # Founder 2026-10-20 (A2): the walk is the marks, so they are made
         # the moment the Take is ready, in this job, before any trailing
-        # work -- and the bake is told the run itself flipped ready.
+        # work -- and the bake is told the run itself flipped ready. The
+        # verbal read is waited for between the two (N350 item 2).
         order, _, _ = self._run()
-        self.assertEqual(order[:2], ["ready", ("bake", True)])
+        self.assertEqual(order[:3], ["ready", ("verbal_read", True), ("bake", True)])
 
     def test_trailing_work_failing_never_reaches_the_speaker(self):
         order, readout, log = self._run(shadow_raises=True)

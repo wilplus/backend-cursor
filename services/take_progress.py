@@ -22,19 +22,19 @@ Take gave are read from its stored frame (the blocks the picker marked
 
   voice    came back when the slide's best heard clip is still under the floor
   clearer  came back when a clip of the slide still has words that need help
-  tempo    came back when the next Take's stretch is on the same slide
+  tempo    came back unless every clip stays inside the green on the side the
+           stretch leaned, by the bar that picks a stretch
+           (``tempo_stretch.stays_inside``, N350 item 3)
 
 "not_measured" when there is no next Take, the slide is not in it, or its
 clips cannot be read. Read on demand; nothing is stored.
 
 LAST TIME (founder 2026-10-31, N309 item 1). The One thing walk opens with
 the last Take's fix played back when it rose: "Last time: {the tip}. You
-did." with this Take's clip on that slide (``last_fix``). A moment's fix
-(the Clearer version or the AI clip) rose when its issue is gone on that
-slide; the pace game's (the Sniper, when the last walk fixed no moment,
-N347 item 3) when that slide came out nearer the green on the side its
-stretch leaned, slower for a rushed one, read as the tempo step reads it
-(``tempo_stretch.furthest``). The speaker never sees a number.
+did." with this Take's clip on that slide (``last_fix``). A fix rose when
+its issue is gone on that slide, by the same rule as the table's: the pace
+game's too (the Sniper, when the last walk fixed no moment, N347 item 3,
+N350 item 3). The speaker never sees a number.
 """
 from __future__ import annotations
 
@@ -97,22 +97,23 @@ def _clips_by_slide(frame: Any, snippets: list[dict]) -> dict[Any, list[dict]]:
 
 def fixes_of(frame: Any, snippets: list[dict]) -> list[dict]:
     """The fixes a Take gave: ``[{"slide_index", "kind"}]``, kind "voice",
-    "clearer" or "tempo", in slide order. Pure."""
+    "clearer" or "tempo" (with the side its stretch leaned, ``reading``), in
+    slide order. Pure."""
     found = []
     for block in (frame or {}).get("blocks") or []:
         if block.get("walk_slot") in ("weakest", "between") and block.get("carries_exercise") \
                 and block.get("exercise_kind") in ("voice", "clearer"):
             found.append({"slide_index": block.get("slide_index"), "kind": block["exercise_kind"]})
-    stretch = _stretch_slide(frame, snippets)
+    stretch = _stretch(frame, snippets)
     if stretch is not None:
-        found.append({"slide_index": stretch, "kind": "tempo"})
+        found.append(stretch)
     return sorted(found, key=lambda f: (f["slide_index"] is None, f["slide_index"] or 0))
 
 
 def _stretch(frame: Any, snippets: list[dict]) -> Optional[dict]:
     """The Take's tempo stretch on its slide: ``{"kind": "tempo",
-    "slide_index", "reading", "outside"}``; None when no clip leaves the
-    green, it is on no slide, or it cannot be read."""
+    "slide_index", "reading"}``; None when no clip leaves the green, it is
+    on no slide, or it cannot be read."""
     from services import tempo_stretch
     try:
         chosen = tempo_stretch.pick(snippets)
@@ -123,35 +124,20 @@ def _stretch(frame: Any, snippets: list[dict]) -> Optional[dict]:
     clip = str(snippets[chosen["index"]].get("id"))
     for slide, clips in _clips_by_slide(frame, snippets).items():
         if any(str(c.get("id")) == clip for c in clips):
-            return {"kind": "tempo", "slide_index": slide, "reading": chosen["reading"],
-                    "outside": chosen["outside"]}
+            return {"kind": "tempo", "slide_index": slide, "reading": chosen["reading"]}
     return None
 
 
-def _stretch_slide(frame: Any, snippets: list[dict]) -> Optional[Any]:
-    found = _stretch(frame, snippets)
-    return found["slide_index"] if found else None
-
-
-def _slower(fix: dict, frame: Any, snippets: list[dict]) -> bool:
-    """The pace game's fix rose (N347 item 3): this Take's clips on the
-    stretch's slide all spent less of their time past the green on the side
-    it leaned than the stretch did, slower for a rushed one. False when the
-    slide is not in this Take or cannot be read."""
-    from services import tempo_stretch
-    clips = _clips_by_slide(frame, snippets).get(fix["slide_index"])
-    if not clips:
-        return False
-    now = tempo_stretch.furthest(snippets, {str(c.get("id")) for c in clips}, fix["reading"])
-    return now is not None and now < fix["outside"]
-
-
-def _issue(kind: str, clips: list[dict], frame: Any, snippets: list[dict], slide: Any) -> Optional[bool]:
-    """Whether the issue is on the slide's clips; None when unreadable."""
-    from services import moment_pick
+def _issue(fix: dict, clips: list[dict], snippets: list[dict]) -> Optional[bool]:
+    """Whether the fix's issue is on the slide's clips; None when
+    unreadable."""
+    from services import moment_pick, tempo_stretch
     from services.voice_confidence import stamped_score
+    kind = fix["kind"]
     if kind == "tempo":
-        return _stretch_slide(frame, snippets) == slide
+        inside = tempo_stretch.stays_inside(snippets, {str(c.get("id")) for c in clips},
+                                            fix["reading"])
+        return None if inside is None else not inside
     reads = [moment_pick.read(stamped_score(c.get("metrics")), c.get("transcript"), c.get("metrics"))
              for c in clips]
     if kind == "voice":
@@ -170,7 +156,7 @@ def outcome(fix: dict, next_frame: Any, next_snippets: list[dict]) -> str:
     clips = _clips_by_slide(next_frame, next_snippets).get(fix.get("slide_index"))
     if not clips:
         return NOT_MEASURED
-    found = _issue(fix["kind"], clips, next_frame, next_snippets, fix.get("slide_index"))
+    found = _issue(fix, clips, next_snippets)
     if found is None:
         return NOT_MEASURED
     return CAME_BACK if found else GONE
@@ -188,7 +174,8 @@ def fix_outcomes(database: Any, take_id: Any, next_take_id: Optional[Any]) -> li
             return []
         next_frame = database.get_v4_dark_frame(str(next_take_id)) if next_take_id else None
         next_snippets = (database.get_snippets_by_session(str(next_take_id)) or []) if next_take_id else []
-        return [{**f, "outcome": outcome(f, next_frame, next_snippets)} for f in fixes]
+        return [{"slide_index": f["slide_index"], "kind": f["kind"],
+                 "outcome": outcome(f, next_frame, next_snippets)} for f in fixes]
     except Exception as error:  # noqa: BLE001 -- the Takes table stands without it
         logger.warning("take progress: fixes unread take=%s: %s", take_id, error)
         return []
@@ -200,12 +187,11 @@ def last_fix(database: Any, take_id: Any, previous_take_id: Optional[Any]) -> Op
     """The fix the previous Take's walk gave, when it rose on this Take's
     same slide: ``{"kind", "slide_index", "clip": {"snippet_id", "url",
     "start_offset_ms", "duration_ms"}}``, the clip this Take's best on that
-    slide. A moment's fix rose when its issue is gone; with no moment fixed,
-    the pace game's ("tempo", N347 item 3) when that slide came out slower
-    (``_slower``). None when there is no previous Take, it gave no fix, it
-    did not rise or could not be read, or no clip plays. The Clearer version
-    is the fix when an older Take gave two (words come first, N309). Never
-    raises."""
+    slide. A fix rose when its issue is gone (``outcome``); with no moment
+    fixed, the fix is the pace game's ("tempo", N347 item 3). None when there
+    is no previous Take, it gave no fix, it did not rise or could not be
+    read, or no clip plays. The Clearer version is the fix when an older Take
+    gave two (words come first, N309). Never raises."""
     if not previous_take_id:
         return None
     try:
@@ -214,15 +200,10 @@ def last_fix(database: Any, take_id: Any, previous_take_id: Optional[Any]) -> Op
             return None
         frame = database.get_v4_dark_frame(str(take_id))
         snippets = database.get_snippets_by_session(str(take_id)) or []
-        fixes = fixes_of(before, [])
-        fix: Optional[dict]
-        if fixes:
-            fix = next((f for f in fixes if f["kind"] == "clearer"), fixes[0])
-            rose = outcome(fix, frame, snippets) == GONE
-        else:
-            fix = _stretch(before, database.get_snippets_by_session(str(previous_take_id)) or [])
-            rose = fix is not None and _slower(fix, frame, snippets)
-        if not fix or not rose:
+        moments = fixes_of(before, [])
+        fix = (next((f for f in moments if f["kind"] == "clearer"), moments[0]) if moments
+               else _stretch(before, database.get_snippets_by_session(str(previous_take_id)) or []))
+        if not fix or outcome(fix, frame, snippets) != GONE:
             return None
         clip = _best_clip(_clips_by_slide(frame, snippets).get(fix["slide_index"]) or [])
         from services.corpus_coach_queue import playback_body
