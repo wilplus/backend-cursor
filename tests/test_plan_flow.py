@@ -13,7 +13,8 @@ OUTCOME
       voice bubble; when the AI fails Will says the plain words, and the key
       line is always the first follow-up, right after Will's reply ("Let me
       draft your plan. A few more questions first." is gone, N319 item 4).
-  O5  The two ratings are kept and never shown back as a number; then,
+  O5  The two ratings are kept and never shown back as a number: each tap
+      is the speaker's turn, "Answered" with a lock (N339); then,
       with the calls hidden (no ring row ``plan_calls``, N315), straight to
       "You're all set. Here's your plan." and the card, with no call asked.
   O15 With the calls on, they are asked as before: the kickoff call, then
@@ -268,9 +269,13 @@ def test_ratings_are_kept_quietly_and_the_plan_follows(db):
     F.answer_rating(db, USER, 4)
     assert [a["value"] for a in db.answers if a.get("value")] == [7, 4]
     new = bodies(db)[before:]
-    assert "7" not in new and "4" not in new
+    assert not any(ch.isdigit() for body in new for ch in body)
+    # Each tap is the speaker's turn, "Answered", with no number (N339).
+    turns = [r for r in db.thread[before:] if (r["metadata"] or {}).get("plan_answered") == "rating"]
+    assert [(r["role"], r["body"]) for r in turns] == [("user", "Answered"), ("user", "Answered")]
     # The calls are hidden (N315): from the last answer straight to the plan.
-    assert new == ["How ready do you feel for it right now?", "You're all set. Here's your plan.", ""]
+    assert new == ["Answered", "How ready do you feel for it right now?", "Answered",
+                   "You're all set. Here's your plan.", ""]
     assert db.thread[-1]["metadata"]["plan_card"] is True
     assert _no_call_asked(db)
     plan = db.get_open_plan(USER)
@@ -292,7 +297,7 @@ def test_with_the_calls_on_they_are_asked_before_the_plan(db, monkeypatch):
     before = len(db.thread)
     F.answer_rating(db, USER, 7)
     F.answer_rating(db, USER, 4)
-    assert bodies(db)[before:] == ["How ready do you feel for it right now?",
+    assert bodies(db)[before:] == ["Answered", "How ready do you feel for it right now?", "Answered",
                                    "Every plan starts with a kickoff session with your coach. Would you like "
                                    "to book it now?"]
     F.book_call(db, USER, "kickoff", None)

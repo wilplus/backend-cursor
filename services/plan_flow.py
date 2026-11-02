@@ -897,7 +897,8 @@ def _scale_row(step: str, moment: str) -> tuple:
 
 def answer_rating(database: Any, user_id: str, value: Any) -> dict:
     """A tap on the 1 to 10 scale: kept for the founder and the coach, never
-    shown back (N178); then the next question."""
+    shown back (N178); the speaker's turn says "Answered" with a lock, no
+    number (N339); then the next question."""
     plan = _open(database, user_id)
     _need_step(plan, "stress", "ready")
     try:
@@ -913,6 +914,8 @@ def answer_rating(database: Any, user_id: str, value: Any) -> dict:
                                         "kind": plan["step"], "moment": moment,
                                         "question": P.COPY[q], "value": v}):
         raise PlanError("V2_ERROR", "Failed to keep the answer", 500)
+    answered = [_me(P.COPY["rating_answered"], f"{plan['step']}_answered:{moment}",
+                    plan_answered="rating")]
     if plan["step"] == "stress":
         plan = _save(database, user_id, plan, {"step": "ready"})
         rows = [_scale_row("ready", moment)]
@@ -921,7 +924,7 @@ def answer_rating(database: Any, user_id: str, value: Any) -> dict:
     else:
         plan = _save(database, user_id, plan, {"step": "done", "facts": {**facts, f"rated_{moment}": True}})
         rows = []
-    return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
+    return {"plan": plan, "messages": _write(database, user_id, plan["id"], answered + rows)}
 
 
 # ── the level (C) ──────────────────────────────────────────────────────────
