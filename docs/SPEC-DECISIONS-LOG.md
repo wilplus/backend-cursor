@@ -8626,6 +8626,7 @@ beside the run's other work and adds nothing.
 2. Late or failed after those 5 seconds: the walk picks as it does today.
 3. For everyone else nothing waits: the read stops at the ring check.
 No rules page. No migration.
+
 **N328 · The intimacy rule: in WillpowerLab you are reached only by people
 you let in (founder, the Claude Code chat, 2 November 2026, on the RASP
 ambassadors prototype <https://claude.ai/artifact/69U522Sp7oA82vo6iFFcNh>
