@@ -545,6 +545,23 @@ answer, not deflected; ""tell me a story"" on its own is still a
 request.","O1 -> test_next_after_a_joke_tells_another_one
 O2 -> test_next_without_a_joke_before_is_left_to_will
 O3 -> test_answering_wills_question_is_not_deflected","Founder 2026-10-15: ""next"" after a dad joke was read as a new message."
+tests/test_chat_links.py,Story,"As a person in WillpowerLab, I want my own link that I paste into any email, so that a colleague who opens it joins me in a chat, and nobody else can reach me (N308, N328, N335).","O1  My link is made the first time I ask and stays the same after;
+replacing it makes a new one, and the old one opens nothing.
+O2  Before signing in, the join page learns only the first name of whose
+link it is. A wrong link, a replaced one and one whose owner has no
+chats all answer 404, the same answer.
+O3  Joining makes one chat between the two of us, each named for the
+other; opening a link again, from either side, finds the same chat.
+O4  My own link is refused (400 OWN_LINK), and nothing is made.
+O5  Without the ring row (chats, ring 6) my link and joining answer 404,
+and nothing is written.
+O6  In the chat, the one who joined sees whose link they joined through;
+the link's owner does not.","O1 -> ChatLinksTest::test_my_link_is_kept_and_a_replaced_one_opens_nothing
+O2 -> ChatLinksTest::test_the_join_page_learns_only_a_first_name
+O3 -> ChatLinksTest::test_joining_makes_one_chat_for_the_two
+O4 -> ChatLinksTest::test_my_own_link_is_refused
+O5 -> ChatLinksTest::test_without_the_ring_nothing_is_written
+O6 -> ChatLinksTest::test_the_one_who_joined_sees_whose_link_it_was","The join link, the chats' second slice (founder 2026-11-02: ""go, build the join link slice""); the intimacy rule (N328); joining is onboarding (N335 item 1)."
 tests/test_chat_persist.py,Story,"As a speaker, I want every chat turn saved with its buttons, so that my chat bubbles never disappear when I reload.","O1  POST /v2/chat/query with persist writes my row and the bot's row,
 with the bot's choices in its metadata; posting the same turn again
 writes the same two ids, so the table keeps it once.

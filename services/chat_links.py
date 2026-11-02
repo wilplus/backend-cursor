@@ -56,8 +56,9 @@ def name_of(token_payload: Any) -> str:
     """The first word of the account's name; else the part of its email
     before the @; else WillpowerLab. Shown on the join page and as the
     person's name in the chat."""
-    payload = token_payload if isinstance(token_payload, dict) else {}
-    meta = payload.get("user_metadata") if isinstance(payload.get("user_metadata"), dict) else {}
+    payload: dict = token_payload if isinstance(token_payload, dict) else {}
+    raw_meta = payload.get("user_metadata")
+    meta: dict = raw_meta if isinstance(raw_meta, dict) else {}
     words = str(meta.get("full_name") or meta.get("name") or meta.get("display_name") or "").split()
     if words:
         return words[0][:120]
