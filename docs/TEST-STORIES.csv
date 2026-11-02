@@ -573,13 +573,21 @@ O6  A recording that is missing, empty, not audio or over two minutes is
 refused (400), one over 12 MB too (413), and nothing is written.
 O7  A voice note is a recording: it passes the processing authorization
 and the recording consent a Take asks for, after the chat's own 404;
-when they refuse, their refusal is the answer and nothing is written.","O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
+when they refuse, their refusal is the answer and nothing is written.
+O8  My voice note is turned into words (N324) under my own permit, before
+the transcriber hears it, and the words are kept with its recording,
+up to 20000 characters; they are in no answer.
+O9  A voice note that cannot be turned into words (none heard, the
+transcriber failing, the permit refused) is sent all the same: the
+same answer, its message and recording kept, its words empty.","O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
 O2 -> ChatsTest::test_the_demo_is_made_once_and_listed
 O3 -> ChatsTest::test_a_member_reads_and_sends_one_of_three_emoji
 O4 -> ChatsTest::test_someone_not_in_the_chat_is_refused
 O5 -> ChatsTest::test_a_voice_note_is_sent_and_the_other_member_plays_it
 O6 -> ChatsTest::test_a_recording_that_is_not_a_voice_note_is_refused
-O7 -> ChatsTest::test_the_processing_authorization_refuses_a_voice_note","The chats between people, first slice (founder 2026-10-31, N298 to N316; the three emoji N311; the mic N321 item 2). Every speaker's recording goes through the processing-authorization path (CLAUDE.md)."
+O7 -> ChatsTest::test_the_processing_authorization_refuses_a_voice_note
+O8 -> ChatsTest::test_a_voice_note_is_turned_into_words_under_my_permit
+O9 -> ChatsTest::test_a_voice_note_without_words_is_sent_all_the_same","The chats between people, first slice (founder 2026-10-31, N298 to N316; the three emoji N311; the mic N321 item 2; its words N324). Every speaker's recording and every provider call goes through the processing-authorization path (CLAUDE.md)."
 tests/test_clearer_versions_reach_the_manager.py,Story,"As a speaker, I want the model's clearer rewrites to reach my feedback with their evidence, so that I get a rewrite where my wording was weak.","O1  A clearer version written because a read was weak (unconfident,
 stickiness, profanity) carries the Manager evidence naming that weak
 read, and the generator version; any other trigger carries none (and

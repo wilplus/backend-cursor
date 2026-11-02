@@ -21,6 +21,12 @@ OUTCOME
   O7  A voice note is a recording: it passes the processing authorization
       and the recording consent a Take asks for, after the chat's own 404;
       when they refuse, their refusal is the answer and nothing is written.
+  O8  My voice note is turned into words (N324) under my own permit, before
+      the transcriber hears it, and the words are kept with its recording,
+      up to 20000 characters; they are in no answer.
+  O9  A voice note that cannot be turned into words (none heard, the
+      transcriber failing, the permit refused) is sent all the same: the
+      same answer, its message and recording kept, its words empty.
 PROVES   O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
          O2 -> ChatsTest::test_the_demo_is_made_once_and_listed
          O3 -> ChatsTest::test_a_member_reads_and_sends_one_of_three_emoji
@@ -28,9 +34,12 @@ PROVES   O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
          O5 -> ChatsTest::test_a_voice_note_is_sent_and_the_other_member_plays_it
          O6 -> ChatsTest::test_a_recording_that_is_not_a_voice_note_is_refused
          O7 -> ChatsTest::test_the_processing_authorization_refuses_a_voice_note
+         O8 -> ChatsTest::test_a_voice_note_is_turned_into_words_under_my_permit
+         O9 -> ChatsTest::test_a_voice_note_without_words_is_sent_all_the_same
 WHY      The chats between people, first slice (founder 2026-10-31, N298 to
-         N316; the three emoji N311; the mic N321 item 2). Every speaker's
-         recording goes through the processing-authorization path (CLAUDE.md).
+         N316; the three emoji N311; the mic N321 item 2; its words N324).
+         Every speaker's recording and every provider call goes through the
+         processing-authorization path (CLAUDE.md).
 """
 from __future__ import annotations
 
@@ -44,7 +53,9 @@ from unittest.mock import patch
 from services.canonical_product import OwnerPrincipal
 from services.chats import MAX_VOICE_BYTES
 from services.db import db
-from services.processing_authorization import ProcessingAuthorizationService
+from services.processing_authorization import (
+    ProcessingAuthorizationError, ProcessingAuthorizationService,
+)
 from services.project_repository import ProjectRepository
 
 ME = "11111111-1111-4111-8111-111111111111"
@@ -91,6 +102,10 @@ class _Query:
         self.write = ("delete", None)
         return self
 
+    def update(self, payload):
+        self.write = ("update", payload)
+        return self
+
     def execute(self):
         rows = self.store.tables.setdefault(self.name, [])
         if self.write and self.write[0] == "insert":
@@ -98,6 +113,10 @@ class _Query:
             rows.extend(made)
             return _Result([dict(r) for r in made])
         hits = [r for r in rows if all(f(r) for f in self.filters)]
+        if self.write and self.write[0] == "update":
+            for r in hits:
+                r.update(self.write[1])
+            return _Result([dict(r) for r in hits])
         if self.write:
             self.store.tables[self.name] = [r for r in rows if r not in hits]
             return _Result(hits)
@@ -132,6 +151,23 @@ class _Store:
         return len(self.tables.get(name, []))
 
 
+class _Transcriber:
+    """The transcriber behind the authorized adapter, stood in as the voice
+    notebook's tests stand it in: it answers the test's ``said`` (the words,
+    or the error it fails with) and notes what it heard."""
+
+    client = True
+
+    def __init__(self, test):
+        self.test = test
+
+    def transcribe_audio(self, audio, filename, **_):
+        self.test.heard.append((audio.read(), filename))
+        if isinstance(self.test.said, Exception):
+            raise self.test.said
+        return {"text": self.test.said, "language": "en"}
+
+
 class ChatsTest(unittest.TestCase):
     def setUp(self):
         from flask import Flask
@@ -158,7 +194,11 @@ class ChatsTest(unittest.TestCase):
         self.choices = {"has_receipt": True, "personalised_practice": True,
                         "sensitive_information": True}
         self.authority = {"authorized": True, "pooled_learning_eligible": False}
-        for p in (patch.object(auth, "verify_supabase_token", lambda t: {"sub": self.who}),
+        # The transcriber: what it hears, and the words it answers.
+        self.heard: list = []
+        self.said: object = ""
+        for p in (patch("services.openai_service.OpenAIService", lambda: _Transcriber(self)),
+                  patch.object(auth, "verify_supabase_token", lambda t: {"sub": self.who}),
                   patch("services.rings.feature_is_on_for_user",
                         lambda feature, user, database=None:
                         feature == "chats" and self.ring.get(user, False)),
@@ -335,6 +375,60 @@ class ChatsTest(unittest.TestCase):
         self.who = OTHER
         self.assertEqual(self._voice(chat).status_code, 404)
         self._nothing_sent()
+
+    def test_a_voice_note_is_turned_into_words_under_my_permit(self):
+        chat = self._shared_chat()
+        os.environ[GATE] = "enforce"
+        trail: list = []
+
+        def permit(_service, **asked):
+            trail.append(("permit", asked["acquisition_principal_id"],
+                          asked["provider"], asked["operation_kind"]))
+            return {"permit_id": f"permit-{len(trail)}"}
+        self.said = "  On slide one, name the treatment and let it land.  "
+        with patch.object(ProcessingAuthorizationService, "issue_provider_permit", permit), \
+                patch.object(ProcessingAuthorizationService, "record_provider_event",
+                             lambda _service, permit_id, kind, **_: trail.append((kind,))):
+            res = self._voice(chat, audio=b"OggS what I said")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(trail, [("permit", f"owner-{ME}", "openai", "transcription"),
+                                 ("started",), ("completed",)])
+        self.assertEqual(self.heard, [(b"OggS what I said", "voice.webm")])
+        sent = res.get_json()["message"]
+        self.assertEqual(set(sent), {"id", "mine", "author", "kind", "body", "meta", "created_at"})
+        self.assertEqual([(r["message_id"], r["words"])
+                          for r in self.store.tables["chat_message_audio"]],
+                         [(sent["id"], "On slide one, name the treatment and let it land.")])
+        for answer in (res, self._get(f"/v2/chats/{chat}/messages"), self._get("/v2/chats")):
+            self.assertNotIn("name the treatment", answer.get_data(as_text=True))
+
+        os.environ[GATE] = "off"
+        self.said = "a" * 20001
+        self._voice(chat)
+        self.assertEqual(len(self.store.tables["chat_message_audio"][-1]["words"]), 20000)
+
+    def test_a_voice_note_without_words_is_sent_all_the_same(self):
+        chat = self._shared_chat()
+        refused = ProcessingAuthorizationError("PROVIDER_PERMIT_DENIED", "No.", 403)
+        for said, permit in (("   ", None), (TimeoutError("timed out"), None),
+                             ("Never heard.", refused)):
+            self.said = said
+            with patch.object(ProcessingAuthorizationService, "issue_provider_permit",
+                              return_value=None, side_effect=permit), \
+                    self.assertLogs("services.chats", "WARNING") as logged:
+                res = self._voice(chat, audio=b"OggS a voice note")
+            self.assertEqual(res.status_code, 200)
+            sent = res.get_json()["message"]
+            self.assertEqual((sent["kind"], sent["meta"]), ("voice", {"duration_ms": 4200}))
+            kept = self.store.tables["chat_message_audio"][-1]
+            self.assertEqual((kept["message_id"], kept["words"]), (sent["id"], None))
+            self.assertIn(sent["id"], logged.output[-1])
+            self.assertNotIn("OggS", logged.output[-1])
+        self.assertEqual(self.store.count("chat_message_audio"), 3)
+        self.assertEqual(len([m for m in self.store.tables["chat_messages"]
+                              if m["kind"] == "voice"]), 3)
+        # The refused permit: the transcriber never heard the third.
+        self.assertEqual(len(self.heard), 2)
 
 
 if __name__ == "__main__":

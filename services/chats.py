@@ -20,20 +20,26 @@ or writes.
     clean label in ``meta``.
   * ``post_voice``: a voice note (N321 item 2: "you can always answer with
     an emoji or a mic"), up to two minutes: a message of kind ``voice`` with
-    its length in ``meta``, kept with its recording. Its words are not made
-    (``words`` stays NULL): no transcription in this slice.
+    its length in ``meta``, kept with its recording; then turned into words
+    (N324), kept with the recording (``words``) and going when it goes. The
+    words are in no answer and fed nowhere yet. A note that cannot be turned
+    into words is sent all the same, ``words`` NULL.
   * ``recording``: a voice note's recording, for any member of its chat.
   * ``seed_demo``: a customer's chat and a colleague's for the person, once,
     so the chats can be seen before anyone else is in them.
 
 Ring row ``chats``, ring 6 (the founder's). A person without it gets 404 from
-every route. No model or provider call here. A voice note is a speaker's
-recording, so its route (routes/v2/chats.py) passes the processing-
-authorization path before ``post_voice`` runs: ``phase1_provider_route``, as
-the voice notebook's notes, and the recording consent a Take asks for
-(``require_current``, operation "recording"). Deleted with the account: the
-purge registry takes the voice notes a person recorded, their memberships and
-their demo chats, and the messages go with them.
+every route. One provider call, for a voice note only: its transcription,
+through the authorized provider (``AuthorizedProviderAdapter.transcribe_audio``,
+the adapter the route hands ``post_voice``, as the voice notebook's notes),
+never a provider SDK of its own. A voice note is a speaker's recording, so its
+route (routes/v2/chats.py) passes the processing-authorization path before
+``post_voice`` runs: ``phase1_provider_route``, as the voice notebook's notes,
+and the recording consent a Take asks for (``require_current``, operation
+"recording"); the transcription's permit is issued under that same
+authority. Deleted with the account: the purge registry takes the voice notes
+a person recorded, their memberships and their demo chats, and the messages
+go with them.
 """
 from __future__ import annotations
 
@@ -53,6 +59,8 @@ MAX_VOICE_MS = 120_000
 MAX_VOICE_BYTES = 12 * 1024 * 1024
 #: The longest content type chat_message_audio holds.
 _MAX_TYPE_LEN = 100
+#: The most of a voice note's words chat_message_audio keeps (N324).
+MAX_WORDS = 20_000
 #: The three emoji and the label each one means (N311 item 1).
 EMOJI = {"👍": "good", "👀": "seen", "🙏": "thanks"}
 #: The demo chats (founder only, ring 6): the guest, their line, and what
@@ -228,12 +236,16 @@ def _duration(value: Any) -> Optional[int]:
 
 
 def post_voice(database: Any, user_id: Any, thread_id: Any, audio: bytes, *,
-               content_type: Any, duration_ms: Any) -> dict:
+               adapter: Any, filename: str, content_type: Any,
+               duration_ms: Any) -> dict:
     """POST /v2/chats/<id>/voice: a voice note, its message and then its
-    recording. The route has passed the processing-authorization path first,
-    with the recording consent. A recording that is missing, empty, not audio,
-    or not 1 ms to two minutes long is 400; over 12 MB, 413. Either both rows
-    are kept or neither is. {"message": {...}}, as ``post``."""
+    recording, then its words. The route has passed the processing-
+    authorization path first, with the recording consent. A recording that is
+    missing, empty, not audio, or not 1 ms to two minutes long is 400; over
+    12 MB, 413. Either both rows are kept or neither is. Once they are, the
+    same bytes are transcribed under the caller's authorization (``adapter``,
+    the one provider call here; N324); a note with no words is sent all the
+    same. {"message": {...}}, as ``post``: never the words."""
     me = member(database, user_id, thread_id)
     kind = str(content_type or "").strip()
     if not audio:
@@ -255,6 +267,7 @@ def post_voice(database: Any, user_id: Any, thread_id: Any, audio: bytes, *,
     if not _keep_recording(database, message, str(user_id), kind, ms, audio):
         _forget(database, message)
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
+    _keep_words(database, adapter, str(message["id"]), str(user_id), audio, filename)
     return {"message": _shown(message, str(me["id"]), _authors(database, thread))}
 
 
@@ -278,6 +291,32 @@ def _keep_recording(database: Any, message: dict, user_id: str,
         logger.error("chats: recording of voice message %s not kept",
                      message.get("id"), exc_info=True)
         return False
+
+
+def _keep_words(database: Any, adapter: Any, message_id: str, user_id: str,
+                audio: bytes, filename: str) -> None:
+    """What was said in a voice note just kept (N324 item 1): transcribed
+    under the caller's authorization (``adapter``) as the voice notebook's
+    notes are, cut to MAX_WORDS and kept with its recording, nowhere else.
+    Never in the way (item 2): no words, a provider error or timeout, or a
+    refusal at the permit leaves ``words`` NULL and the note sent. The log
+    names the message, never the audio or the words: a database error can
+    quote the row it refused, so only the error's kind and code are logged."""
+    try:
+        result = adapter.transcribe_audio(
+            audio, filename, usage_surface="chat_voice_note",
+            usage_user_id=user_id, usage_session_id=message_id) or {}
+        words = str(result.get("text") or "").strip()[:MAX_WORDS]
+        if words:
+            _table(database, AUDIO).update({"words": words}).eq(
+                "message_id", message_id).execute()
+            return
+        reason = "no words"
+    except Exception as error:  # noqa: BLE001 -- the note is sent either way
+        reason = " ".join(filter(None, (type(error).__name__,
+                                        str(getattr(error, "code", "") or "")[:64])))
+    logger.warning("chats: voice message %s kept without its words (%s)",
+                   message_id, reason)
 
 
 def _forget(database: Any, message: dict) -> None:
