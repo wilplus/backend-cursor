@@ -115,6 +115,13 @@ with this contract, this contract wins.
     say show as the headline with nothing italic until said again. A user
     whose answer opens the helper-words step (24e) but who closed the sheet
     before choosing may still choose them from the Paragraph's own sheet.
+    **Amended 2026-11-02 (founder, the Claude Code chat; decisions log N323
+    items 2 and 3, N325 item 5):** the walk's own helper words (the Clearer
+    version's sentence, their own sentence after "Keep mine", the phrase an
+    AI clip's tip quotes) are saved whole, whatever their length; a tip that
+    quotes no phrase gives none. The cap of eight stays for a pick by hand
+    on the Ideal Text and for the pace game's stretch (N325 item 5). The
+    rules: frontend `docs/flows/feedback-walk-and-chat.md` C3.
 14. A lock keeps the helper words, not the text. Locked helper words persist
     across Takes — including a later Take whose words no longer contain them,
     and a later No answer on that Paragraph — until the user explicitly picks
@@ -136,6 +143,13 @@ with this contract, this contract wins.
 18. Helper words are chosen by tapping exact words from the current Paragraph,
     or from the adopted practice transcript under 35d. Orange styling is never
     inferred from praise or a confidence response.
+    **Amended 2026-11-02 (founder, the Claude Code chat; decisions log N323
+    items 2 and 3, N325 item 5):** the walk's own helper words come with no
+    tap (N309 item 3): the Clearer version's sentence, their own sentence
+    after "Keep mine", or the phrase an AI clip's tip quotes, saved whole
+    (clause 13). Tapping, with the cap of eight, stays for a pick by hand on
+    the Ideal Text; the pace game's stretch keeps the cap of eight too (N325
+    item 5). The rules: frontend `docs/flows/feedback-walk-and-chat.md` C3.
 19. The Ideal Text shows each Paragraph as its latest text with no "changed"
     marker; the history lives behind the bookmark.
 20. Presentation Mode, export, and the Ideal Text render helper words as a bold
@@ -1138,18 +1152,18 @@ How an exercise is chosen for a moment, the whole rule in order: 35g-1.
     `docs/flows/feedback-walk-and-chat.md` D3, D4, E1.
     **Amended 2026-11-02 (founder, the Claude Code chat; decisions log N294,
     N309, N319):** no push to the next Take. The walk ends on "Lesson done."
-    and Close (N309); after Will's one question, the chat ends on "Good job.
-    See you next time." (on a plan, "That's your 15 minutes for today.", then
-    "Good job. See you next {day}." and the plan's bar with "{n} of {total}
-    practices done."), with the tap "I want to continue my practice", which
-    brings "Record Take N" under the chat, alone (N294, N319). The settings
+    and Close (N309); after Will's one question, the chat ends on the
+    goodbye (on a plan, with the plan's bar; its words: frontend
+    `docs/flows/feedback-walk-and-chat.md` D4 and K), with the tap "I want
+    to continue my practice", which brings "Record Take N" under the chat,
+    alone (N294, N319). The settings
     asks wait for the next visit (N294 item 8). The rules: frontend
     `docs/flows/feedback-walk-and-chat.md` E1, E2.
     **Amended 2026-11-02 (founder, the Claude Code chat; decisions log
     N347 item 2):** on a plan the goodbye names the next practice day as a
-    person would, "Good job. See you tomorrow." or "Good job. See you
-    {weekday}.", in place of "Good job. See you next {day}.". The rules:
-    frontend `docs/flows/feedback-walk-and-chat.md` D4, E.
+    person would, tomorrow or its weekday; its words: frontend
+    `docs/flows/feedback-walk-and-chat.md` D4 and K. The rules: frontend
+    `docs/flows/feedback-walk-and-chat.md` D4, E.
 46. Take 3 completes the guided journey. Take 4+ is optional refinement and
     immediately offers Record again without another See-next-steps loop.
     **Amended 2026-10-05 (founder, decisions log N48.3 Q8 A):** the action
