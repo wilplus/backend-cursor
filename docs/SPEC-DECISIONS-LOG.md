@@ -8924,3 +8924,19 @@ The prototype: version 36 of <https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>
 No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration.
+
+**N341 · A sent answer is confirmed (founder, the Claude Code chat, 2
+November 2026, on the Ember & Air prototype's "Send to Mark": "After that, I
+should receive something like a confirmation that it has been sent").** For
+N329 and N336:
+1. **In the chat it went to:** under the sent answer, one line with a check,
+"Sent to {name} on WhatsApp" (a customer's answer goes by WhatsApp, N239).
+2. **Where the speaker tapped to send it** (an ask in Will's chat), Will
+confirms in a bubble with the same check: "Sent to {name}. {name} gets it on
+WhatsApp."
+3. Its words wait for the founder's OK (Never 4). Was: a small grey line,
+"Take {N} sent to {name} on WhatsApp · {time}".
+The prototype: version 37 of <https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>.
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
