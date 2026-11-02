@@ -9238,7 +9238,26 @@ No rules page yet: it lands on frontend
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 when built. No migration in this entry.
 
-**N354 · The answer page has no "What to do now" summary (founder, the
+**N354 · In the iPhone app: sign-in first, then the chats (founder, the Claude
+Code chat, 2 November 2026: "on the app, can you drop the blog post page and
+the enter the lab just sign up / log in and then the list of chats and a chat
+with Will in the list or invite tab if no chats from other there"; then, asked,
+"Yes, always the list" and "An invite row under Will").** For N267, N274 and
+N308, in the iPhone app only; the website is unchanged:
+1. **No landing, no welcome.** The app opens on sign-in (/login, with its
+"Sign up"); signed in, it goes past the welcome ("Enter the lab", the posts
+under it). Nothing about consent changes: the welcome records none; sign-up
+keeps its Terms and Privacy box and Phase1AcceptanceGate its receipt.
+2. **The list of chats first.** With the chats on (ring 6), the app opens on
+the list even when Will's chat is the only one, Will pinned on top.
+3. **Adding someone under Will.** With no chat besides Will's, the row under
+him is "Add someone to chat with" (signed, N310 item 3); it opens the add
+sheet with "Copy my link", as the + does. No new words.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 C1. No migration in this entry.
+
+**N355 · The answer page has no "What to do now" summary (founder, the
 Claude Code chat, 2 November 2026: "yes build it, drop what to do now").**
 For N336 item 2 and N333: the page someone opens from the link to an answer
 shows the answer only. Their question is first; then one message from the
@@ -9254,10 +9273,10 @@ The prototype: <https://claude.ai/artifact/RWT4oazQ5VtLCZkcuuRWWB>, version
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
 No migration.
 
-**N355 · The chats' words in the ambassador prototype, signed (founder, the
+**N356 · The chats' words in the ambassador prototype, signed (founder, the
 Claude Code chat, 2 November 2026: "A all, words ok, apply to main
 prototype").** Rewritten plain and short, as N200 was; for N336, N340 to
-N346, N351 and N354. **Signed (Never 4):**
+N346, N351 and N355. **Signed (Never 4):**
 1. A colleague's question passed on: "↪ {name} asks". A customer's stays
 "↪ {name}'s question, a customer" (N343).
 2. Under a question: "Video · hears back on WhatsApp"; on the ask form's
@@ -9272,7 +9291,7 @@ check."
 the consult sheet keeps "Someone else".
 6. The "+" pickers (N351): "Photos and screenshots", "For {name} only.",
 "Send {n}", "Back".
-7. The answer page (N354): "✓ Booked", "Video · 12 min", "Learning
+7. The answer page (N355): "✓ Booked", "Video · 12 min", "Learning
 platform · 20 min"; the phone's notice: "WhatsApp · now".
 The example texts (Kasia's question, the AI quotes) are the prototype's, not
 product words. The prototype:
@@ -9281,7 +9300,7 @@ lands with the chats' rules page (N274 item 6) and on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
 No migration.
 
-**N356 · After joining, the list of chats opens, with the inviter's message
+**N357 · After joining, the list of chats opens, with the inviter's message
 on top (founder, the Claude Code chat, 2 November 2026, on a screenshot of
 a list holding only Will: "actually amend the rule; the person should land
 on the message from the person that invited them from the invite link; as
