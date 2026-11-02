@@ -6,7 +6,8 @@ STORY    As a speaker, I want the walk to know who my talk is for and what I
 OUTCOME
   O1  What I told Will (the talk's setup) comes first, then my plan's
       answers, then a guess read from my Take; a guess never replaces
-      something I said.
+      something I said. The key line I said to Will counts on the talk's
+      later Takes too (N294 item 2).
   O2  A sentence that carries my key line or my call to action counts in
       full when I said it, at half weight when it was only a guess, and not
       at all when nothing is known.
@@ -21,7 +22,7 @@ WHY      Founder 2026-10-31 (N293: "ok, it is good", "ok, build it"; N290:
          confidence and serve the intervention that is the most relevant").
 """
 from services.moment_pick import pick
-from services.take_context import assemble, relevance
+from services.take_context import assemble, for_take, relevance
 
 
 def test_what_i_said_comes_before_the_plan_and_a_guess():
@@ -38,6 +39,24 @@ def test_what_i_said_comes_before_the_plan_and_a_guess():
     ctx = assemble({"heard": setup["heard"]}, {})
     assert (ctx["who"]["value"], ctx["who"]["state"]) == ("investors", "guess")
     assert (ctx["success"]["value"], ctx["success"]["state"]) == ("fund us", "guess")
+    # The key line I said to Will (N294 item 2) comes before the plan's, and
+    # a later Take of the talk still knows it.
+    kept = {"key_line": "Churn fell because we listened"}
+    assert (assemble(kept, facts)["key_line"]["value"], assemble(kept, facts)["key_line"]["source"]) == (
+        "Churn fell because we listened", "setup")
+
+    class _Db:
+        class takes:
+            @staticmethod
+            def get_arc_sessions(arc):
+                return [{"id": "t1", "take_index": 1, "intake_context": kept},
+                        {"id": "t2", "take_index": 2, "intake_context": {}}]
+
+        @staticmethod
+        def get_open_plan(user):
+            return None
+    later = for_take(_Db, "u", {"id": "t2", "arc_id": "arc", "take_index": 2, "intake_context": {}})
+    assert (later["key_line"]["value"], later["key_line"]["state"]) == ("Churn fell because we listened", "sure")
     # Nothing at all: every slot missing.
     assert {k: v["state"] for k, v in assemble(None, None).items()} == {
         "who": "missing", "what": "missing", "success": "missing", "key_line": "missing"}

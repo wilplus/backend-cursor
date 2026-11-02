@@ -776,7 +776,12 @@ audio only, never a name, transcript or level.
 O8  My answer on an imported clip is kept once (a second answer is
 refused) and never becomes a label.
 O9  The judging reopened from the Lounge lists imported clips too.
-O10 An empty queue is logged with its reason, and so is a short one.","O1 -> test_answered_self_labelled_and_settled_clips_are_not_queued
+O10 An empty queue is logged with its reason, and so is a short one.
+O11 Sharing is asked once: with no choice yet the screen asks; once the
+line under a Take's recording carries my choice (""Only me"" too), the
+next Take keeps it without asking, with my community's name.
+O12 It is asked again when the sharing words change, when I join a
+community after my choice, or when nothing of my choice is left.","O1 -> test_answered_self_labelled_and_settled_clips_are_not_queued
 O2 -> test_the_judging_reopened_shows_the_latest_answers_with_their_clips
 O3 -> test_data_and_consent_lists_each_shared_take_once_with_where
 O4 -> test_none_withdraws_a_take_from_every_community
@@ -785,7 +790,9 @@ O6 -> test_three_clips_one_per_level_three_speakers_fixed_per_take
 O7 -> test_an_imported_clip_plays_by_a_signed_link_audio_only
 O8 -> test_an_answer_on_an_imported_clip_is_kept_once_and_never_a_label
 O9 -> test_the_replay_lists_imported_clips
-O10 -> test_an_empty_queue_is_logged_with_why","Founder 2026-10-06 (N52.4, migration 0432; CM2). The consent and words versions on a share are pinned on the database in test_a_share_records_the_words_the_speaker_saw_postgres.py. O6 to O10: founder 2026-10-23 (N119, migration a_speaker_may_judge_an_imported_clip.sql): the imported corpus the coaches judge is played to speakers, three levels, three speakers; this amends CM1 A and replaces N97's one moment per try."
+O10 -> test_an_empty_queue_is_logged_with_why
+O11 -> test_sharing_is_asked_once_then_remembered
+O12 -> test_sharing_is_asked_again_when_the_words_change_or_a_community_is_added","Founder 2026-10-06 (N52.4, migration 0432; CM2). The consent and words versions on a share are pinned on the database in test_a_share_records_the_words_the_speaker_saw_postgres.py. O6 to O10: founder 2026-10-23 (N119, migration a_speaker_may_judge_an_imported_clip.sql): the imported corpus the coaches judge is played to speakers, three levels, three speakers; this amends CM1 A and replaces N97's one moment per try. O11 and O12: founder 2026-10-31 (N309 item 5), sharing is asked once; replaces G1's ask before every Take."
 tests/test_compose_locked_paths.py,Story,"As a speaker, I want the paragraphs I locked kept word for word and in place when a new Take rebuilds my Ideal Text, so that my chosen words stay until I pick new ones.","O1  With the same number of paragraphs, locked ones stay and the new
 Take's text fills the rest.
 O2  When the number of paragraphs changes, a locked paragraph keeps its
@@ -2924,7 +2931,8 @@ measurement number, and logs retired_route_called so any caller left
 shows up.",O1 -> test_the_retired_comparison_answers_410_with_no_numbers,"It sent raw Hz, wpm and pause milliseconds to the speaker, and no frontend called it. services/take_comparison.py has no caller left; deleting it is a follow-up."
 tests/test_take_context.py,Story,"As a speaker, I want the walk to know who my talk is for and what I want them to do, from what I already told Will or my plan, so that the moment it praises and the one it fixes are the ones my talk needs, and nothing changes when it knows nothing.","O1  What I told Will (the talk's setup) comes first, then my plan's
 answers, then a guess read from my Take; a guess never replaces
-something I said.
+something I said. The key line I said to Will counts on the talk's
+later Takes too (N294 item 2).
 O2  A sentence that carries my key line or my call to action counts in
 full when I said it, at half weight when it was only a guess, and not
 at all when nothing is known.
@@ -3640,6 +3648,15 @@ with no moment the question is as signed.
 O9  One at a time (N294 item 4): when both who the talk is for and what I
 want them to do are missing, what I want them to do follows my answer
 to who, from what Will heard first; a Skip ends them.
+O10 The key line is asked last, by voice (N294 item 2): once who the talk
+is for and what I want them to do are known and my key line is
+missing, Will asks the plan's signed question with who in it, opened
+on the moment, no tap answers; it follows my answer to what I want
+them to do, naming who I said; my answer is kept as the talk's key
+line (sure) where the plan and the picker read it, and for Will.
+O11 An answer by voice answers Will's open question (N294 item 3, N319
+item 1): the words heard are my voice bubble, Will thanks me, the
+chain goes on; nothing heard, or no question open, writes nothing.
 O6  The founder's words are what Will asks from the next Take: a changed
 question and renamed answers (each answer keeps its follow-up by its
 place), a filled empty slot asked after the signed deeper questions;
@@ -3661,7 +3678,9 @@ test_the_summary_hears_the_practised_line_when_it_came_back
 O6 -> test_the_founders_words_are_what_will_asks
 O7 -> test_will_varies_his_words_lightly_or_says_them_as_written
 O8 -> test_the_question_opens_on_the_moment_the_walk_just_worked_on
-O9 -> test_what_they_should_do_follows_an_answered_who","Founder 2026-10-20 (N82): ""ask me a lot of questions … a natural flow in the walk and in the lounge""; the bank signed the same day. 2026-10-31 (N294): ""these questions, they should be related to the moment""; ""they can be only one at a time. Only once you answer""."
+O9 -> test_what_they_should_do_follows_an_answered_who
+O10 -> test_the_key_line_is_asked_last_by_voice_and_kept
+O11 -> test_a_voice_answer_answers_wills_question","Founder 2026-10-20 (N82): ""ask me a lot of questions … a natural flow in the walk and in the lounge""; the bank signed the same day. 2026-10-31 (N294): ""these questions, they should be related to the moment""; ""they can be only one at a time. Only once you answer""."
 tests/test_withdrawal_erases_sheets.py,Story,"As a speaker, I want the coach sheets about my Takes deleted when I turn training off, so that my withdrawal is real.","O1  Turning training off deletes my Takes' rows from all three coach
 sheet tables, and only mine.
 O2  If my Takes cannot be read, the switch still turns off, and the

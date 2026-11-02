@@ -15,7 +15,12 @@ home screen wait for the next visit, N294 item 8). The first that holds
   audience   the talk has no audience; Will checks ("Right?") when this Take
              names one twice, else asks
   goal       the talk has no call to action
-  vision ... from Take 3, with both in place: one deeper question, own words
+  key_line   with both in place, the talk has no key line: the plan's signed
+             question, "If {who} remembers one sentence from you, what is it?
+             Say it the way you'll say it.", answered by voice, no tap
+             answers (founder 2026-10-31, N294 item 2)
+  vision ... from Take 3, with all three in place: one deeper question, own
+             words
 
 The question is about the moment the walk just worked on (founder
 2026-10-31, N294 item 1): it opens on the speaker's own words of the last
@@ -39,9 +44,18 @@ other answer gets "Got it, thanks 🙏".
 
 One at a time (N294 item 4): who the talk is for, answered, may be followed
 by what they should do when that is missing too, as the next ask of the
-chain (``after_take``, "will_next"); not answering, or Skip, ends them. A
-typed answer or a tap that needs no follow-up lets the chain after the Take
-go on.
+chain (``after_take``, "will_next"), and what they should do, answered, by
+the key line when that is missing too; not answering, or Skip, ends them.
+A typed answer, a voice answer (``answer_voice``) or a tap that needs no
+follow-up lets the chain after the Take go on.
+
+An answer by voice (founder 2026-10-31, N294 items 2 and 3; N314, N319 item
+1): the recording is transcribed under the caller's processing authorization
+(the plan's own transcriber call), its words are the answer, as typed words
+are, and the thread keeps the words as the speaker's voice bubble
+(``will_voice``); the recording itself is not kept (the Lounge thread is
+text only). The key line answered is kept as the talk's key line, sure
+(``take_context``), in the Take's setup and the open plan that has none.
 
 No number, score or verdict reaches the speaker. No new words but those
 below, signed on 2026-10-20. Will says each question with a light touch
@@ -124,11 +138,15 @@ _MAX_MOMENT = 220
 _MAX_WHO = 80
 #: The signed "Skip" (the Lounge's chip vocabulary, as under "What would help?").
 SKIP = "Skip"
+#: The key line (founder 2026-10-31, N294 item 2): the plan's signed question,
+#: with who the talk is for in place of "your audience" when Will knows it.
+KEY_LINE = "key_line"
+_KEY_LINE_WHO = "your audience"
 #: The deeper questions, in the order Will asks them; the two slots are the
 #: founder's own (N83), asked once filled.
 PRINCIPLES = ("vision", "most_you", "why_matters", "changes", "slot_1", "slot_2")
 #: Asked at most once per talk; the others belong to the Take that shows them.
-_ONCE_PER_TALK = ("audience", "audience_check", "goal") + PRINCIPLES
+_ONCE_PER_TALK = ("audience", "audience_check", "goal", KEY_LINE) + PRINCIPLES
 CALL_TO_ACTION = "Desired call to action:"
 
 _MAX_CHIPS = 3
@@ -544,6 +562,39 @@ def talk_goal(takes: list[dict]) -> str:
                                    for t in reversed(takes)) if goal), "")
 
 
+def talk_key_line(takes: list[dict]) -> str:
+    """The talk's key line as Will heard it: the newest Take's setup that
+    has one (N294 item 2). Pure."""
+    return next((str(_ctx(t).get(KEY_LINE)).strip() for t in reversed(takes)
+                 if str(_ctx(t).get(KEY_LINE) or "").strip()), "")
+
+
+def _open_plan(database: Any, user_id: str) -> dict:
+    try:
+        return database.get_open_plan(str(user_id)) or {}
+    except Exception:  # noqa: BLE001 -- no plan read: Will asks as without one
+        return {}
+
+
+def known_key_line(database: Any, user_id: str, takes: list[dict]) -> str:
+    """The key line the talk already has: Will's answer kept in its setup,
+    else the open plan's (N294 item 2). "" when missing."""
+    return talk_key_line(takes) or str((_open_plan(database, user_id).get("facts") or {})
+                                       .get(KEY_LINE) or "").strip()
+
+
+def key_line_question(who: Optional[str]) -> str:
+    """The plan's signed key-line question, "If {who} remembers one sentence
+    from you, what is it? Say it the way you'll say it.", with who the talk
+    is for in place of "your audience" when known. Pure."""
+    from services.plan import BANK
+    signed = str(BANK["key"][0])
+    who = " ".join(str(who or "").split()).strip(" .,;:!?\"“”'")
+    if not who or len(who) > _MAX_WHO:
+        return signed
+    return signed.replace(_KEY_LINE_WHO, _in_sentence(who), 1)
+
+
 def with_goal(strategic: Any, goal: str) -> str:
     """The setup's note with ``goal`` as its call to action, the rest kept.
     Pure."""
@@ -574,6 +625,8 @@ class Plan:
     then: Optional[str] = None
     #: What the speaker answered to ``then`` on an earlier talk.
     then_earlier: list[str] = field(default_factory=list)
+    #: Who the talk is for, for the key-line question (N294 item 2).
+    who: Optional[str] = None
 
 
 def two_off(now: tuple, before: tuple) -> bool:
@@ -585,7 +638,7 @@ def two_off(now: tuple, before: tuple) -> bool:
 
 def choose_key(*, take_index: int, now: tuple, before: Optional[tuple],
                carried: Optional[dict], audience: str, goal: str,
-               asked: set[str], asked_last: Optional[str],
+               asked: set[str], asked_last: Optional[str], key_line: str = "",
                deeper: tuple = PRINCIPLES[:4]) -> Optional[str]:
     """The first that holds (module table), or None: nothing is off or
     missing. Pure."""
@@ -597,9 +650,17 @@ def choose_key(*, take_index: int, now: tuple, before: Optional[tuple],
         return "audience"
     if not goal and "goal" not in asked:
         return "goal"
+    if key_wanted(audience=audience, goal=goal, key_line=key_line, asked=asked):
+        return KEY_LINE
     if take_index >= 3 and audience and goal:
         return next((k for k in deeper if k not in asked), None)
     return None
+
+
+def key_wanted(*, audience: str, goal: str, key_line: str, asked: set[str]) -> bool:
+    """The key line is asked once who the talk is for and what they should
+    do are known and it is missing, once per talk (N294 item 2). Pure."""
+    return bool(audience and goal and not key_line and KEY_LINE not in asked)
 
 
 def _thread(database: Any, user_id: str, limit: int) -> list[dict]:
@@ -725,24 +786,32 @@ def plan(database: Any, *, user_id: str, arc_id: str, take: str, take_index: int
         rows = _thread(database, user_id, _SCAN)
         asked, asked_last = asked_on_talk(rows, arc_id)
         words = bank(database)
-        goal = talk_goal(takes)
+        goal, audience = talk_goal(takes), talk_audience(takes)
+        key_line = known_key_line(database, user_id, takes)
         key = choose_key(take_index=take_index, now=now, before=before, carried=carried,
-                         audience=talk_audience(takes), goal=goal,
+                         audience=audience, goal=goal, key_line=key_line,
                          asked=asked, asked_last=asked_last,
                          deeper=tuple(k for k in PRINCIPLES if words[k]["question"]))
         if not key:
             return None
         found = Plan(key=key, arc_id=str(arc_id), take=str(take), heard=heard_call,
                      passage=(carried or {}).get("passage"), words=words,
-                     moment=moment_of(rows, str(take), snippets or []))
+                     moment=moment_of(rows, str(take), snippets or []), who=audience or None)
+        # The key line follows an answered first question when, with it,
+        # both are known (N294 items 2 and 4); its who is read when it comes.
+        key_next = not key_line and KEY_LINE not in asked
         if key == "audience":
             found.field_name = _field(database, user_id)
             found.earlier = earlier_answers(database, user_id, "audience")
             if not goal and "goal" not in asked:
                 found.then = "goal"
                 found.then_earlier = earlier_answers(database, user_id, "goal")
+            elif goal and key_next:
+                found.then = KEY_LINE
         if key == "goal":
             found.earlier = earlier_answers(database, user_id, "goal")
+            if audience and key_next:
+                found.then = KEY_LINE
         return found
     except Exception as error:  # noqa: BLE001 -- the Take's other asks go on
         logger.warning("will question: no plan take=%s: %s", take, error, exc_info=True)
@@ -760,9 +829,12 @@ def words_for(found: Plan) -> tuple[str, str, list[str], dict]:
 def next_words(found: Plan) -> Optional[tuple[str, str, list[str]]]:
     """The context question that follows an answered first one (N294 item
     4): what they should do, its taps from the recording first, then their
-    earlier answers, then the signed ones; it reads on from the answer, so
-    it opens on no moment. None when nothing follows. Pure but for
-    collecting the heard call and the light touch."""
+    earlier answers, then the signed ones; or the key line, no taps (N294
+    item 2). It reads on from the answer, so it opens on no moment. None
+    when nothing follows. Pure but for collecting the heard call and the
+    light touch."""
+    if found.then == KEY_LINE:
+        return KEY_LINE, key_line_question(found.who), []
     if found.then != "goal":
         return None
     words = found.words or signed_bank()
@@ -773,6 +845,9 @@ def next_words(found: Plan) -> Optional[tuple[str, str, list[str]]]:
 
 def _asked_words(found: Plan) -> tuple[str, str, list[str], dict]:
     key, words = found.key, found.words or signed_bank()
+    if key == KEY_LINE:
+        # The plan's signed words, said as signed: no tap answers, by voice.
+        return key, key_line_question(found.who), [], {}
     said = {k: words[k]["question"] for k in words}
     for k, text in (found.varied() or {}).items():
         if k in said and text:
@@ -961,6 +1036,26 @@ def next_rows(found: Optional[Plan], *, user_id: str, at: str) -> list[dict]:
         return []
 
 
+def at_release(database: Any, rows: list[dict]) -> list[dict]:
+    """Will's next question as it comes (``after_take.rows_for``): the key
+    line names who the talk is for once the answer before it said so (N294
+    items 2 and 4). The rows, the key line's words read again. Never
+    raises."""
+    for row in rows:
+        meta = row.get("metadata") or {}
+        if meta.get("will_question") != KEY_LINE or not meta.get("take_session_id"):
+            continue
+        try:
+            ctx = database.takes.get_session_intake_context(str(meta["take_session_id"])) or {}
+        except Exception as error:  # noqa: BLE001 -- the words as put together
+            logger.warning("will question: setup unread take=%s: %s", meta.get("take_session_id"), error)
+            continue
+        who = str((ctx if isinstance(ctx, dict) else {}).get("audience") or "").strip()
+        if who:
+            row["body"] = key_line_question(who)
+    return rows
+
+
 def skipped(database: Any, user_id: str, take: str) -> bool:
     """Whether the speaker skipped the Take's first question or its
     follow-up: nothing more is asked after it (N294 item 4)."""
@@ -982,12 +1077,16 @@ def _save(database: Any, *, user_id: str, take: str, key: str, said: Optional[st
     if settled and said and key == "goal":
         payload["goal"] = said
         _into_setup(database, take, goal=said)
+    if settled and said and key == KEY_LINE:
+        payload[KEY_LINE] = said
+        _into_setup(database, take, key_line=said)
+        _into_plan(database, user_id, said)
     from services import speaker_memory
     speaker_memory.record(database, user_id, "answer", payload, take)
 
 
 def _into_setup(database: Any, take: str, *, audience: Optional[str] = None,
-                goal: Optional[str] = None) -> None:
+                goal: Optional[str] = None, key_line: Optional[str] = None) -> None:
     """The talk's setup hears the answer: the next Take carries it. A merge,
     so the blob's other keys stay. Never raises."""
     try:
@@ -996,9 +1095,24 @@ def _into_setup(database: Any, take: str, *, audience: Optional[str] = None,
             ctx["audience"] = audience[:200]
         if goal:
             ctx["strategic_context"] = with_goal(ctx.get("strategic_context"), goal[:300])
+        if key_line:
+            ctx[KEY_LINE] = key_line[:300]
         database.takes.set_session_intake_context(take, ctx)
     except Exception as error:  # noqa: BLE001 -- Will still keeps the answer
         logger.warning("will question: setup not written take=%s: %s", take, error, exc_info=True)
+
+
+def _into_plan(database: Any, user_id: str, key_line: str) -> None:
+    """An open plan with no key line takes the one said to Will (N294 item
+    2): its practice days and its walk read it from there. Never raises."""
+    plan = _open_plan(database, user_id)
+    facts = dict(plan.get("facts") or {}) if plan.get("id") else None
+    if facts is None or str(facts.get(KEY_LINE) or "").strip():
+        return
+    try:
+        database.update_plan(str(user_id), plan["id"], {"facts": {**facts, KEY_LINE: key_line[:300]}})
+    except Exception as error:  # noqa: BLE001 -- the setup keeps it either way
+        logger.warning("will question: plan not told the key line user=%s: %s", user_id, error)
 
 
 def follow_up(key: str, choice: str, chips: list) -> Optional[str]:
@@ -1138,23 +1252,104 @@ def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:
     open_q = open_question(database, str(user_id))
     if not open_q:
         return None
+    return _taken(database, str(user_id), open_q, question, typed=True)
+
+
+def _taken(database: Any, user_id: str, open_q: dict, text: str, **how: Any) -> dict:
+    """The speaker's own words (typed or said) under the open question,
+    kept: {"answer": Will's reply, "row_metadata": the reply row's}. Words
+    that say one of the tap answers are that tap (its follow-up included)."""
     take, key = open_q["take_session_id"], str(open_q.get("will_question"))
     rnd = _round(open_q)
     base = {"will_question": key, "arc_id": open_q.get("arc_id"), "take_session_id": take,
             **({"will_round": rnd} if rnd > 1 else {})}
-    tapped = _said_as_chip(question, list(open_q.get("chips") or []))
+    tapped = _said_as_chip(text, list(open_q.get("chips") or []))
     follow = follow_up(key, tapped, list(open_q.get("chips") or [])) if tapped else None
     if open_q["will_question_step"] == "ask" and follow:
-        _save(database, user_id=str(user_id), take=take, key=key, said=tapped,
-              settled=False, typed=True)
+        _save(database, user_id=user_id, take=take, key=key, said=tapped, settled=False, **how)
         return {"answer": follow,
                 "row_metadata": {**base, "offer": OFFER, "will_question_step": "follow", "chips": []}}
-    said = (resolved(key, tapped, open_q) or tapped) if tapped else question.strip()[:_MAX_SAID]
+    said = (resolved(key, tapped, open_q) or tapped) if tapped else text.strip()[:_MAX_SAID]
     if key == "audience_check" and not tapped:
         key = "audience"  # their own words name who it is for
-    _save(database, user_id=str(user_id), take=take, key=key, said=said, typed=True,
+    _save(database, user_id=user_id, take=take, key=key, said=said, **how,
           **({"follow_up": True} if open_q["will_question_step"] == "follow" else {}))
     return {"answer": said_back(key, said), "row_metadata": {**base, "will_question_step": "thanks"}}
+
+
+# ------------------------------------------------------------------ by voice
+
+#: A voice answer is a short recording: up to five minutes, as the plan's.
+_VOICE_MAX_SECONDS = 300
+_VOICE_MAX_BYTES = 12 * 1024 * 1024
+#: The words the speaker's voice bubble keeps.
+_VOICE_WORDS = 2000
+_VOICE_SURFACE = "will_question_answer"
+
+
+def answer_voice(database: Any, adapter: Any, audio: bytes, *, user_id: str, arc_id: str,
+                 take_session_id: str, filename: str,
+                 duration_ms: Optional[int] = None) -> list[dict]:
+    """An answer to Will's open question by voice (N294 items 2 and 3, N319
+    item 1): transcribed under the caller's processing authorization
+    (``adapter``, the route's ``phase1_provider_route``), kept as typed
+    words are, and written as the speaker's voice bubble with the words
+    heard, then Will's reply, then the chain after the Take. The recording
+    is not kept. Raises ``QuestionError``."""
+    take = str(take_session_id)
+    open_q = open_question(database, str(user_id))
+    if not open_q or open_q["take_session_id"] != take:
+        raise QuestionError("NOT_FOUND", "No question for this Take.", 404)
+    words, duration = _heard_words(adapter, audio, user_id=str(user_id), take=take,
+                                   filename=filename, duration_ms=duration_ms)
+    from services.feedback_check import _after
+    from services.lounge_messages import thread_stamp
+    rnd, step = _round(open_q), str(open_q["will_question_step"])
+    at = thread_stamp(database, user_id)
+    mine = _row(_cid(user_id, take, _part("said" if step == "ask" else "said-follow", rnd)), "user", words,
+                {"will_question": open_q.get("will_question"), "arc_id": open_q.get("arc_id") or arc_id,
+                 "take_session_id": take, "will_question_step": "answer", "will_voice": True,
+                 **({"duration_ms": duration} if duration else {}),
+                 **({"will_round": rnd} if rnd > 1 else {})}, at)
+    if _not_an_answer(words):
+        return database.insert_lounge_messages(user_id, [mine] + _safety_rows(user_id, take, rnd, words, at)) or []
+    turn = _taken(database, str(user_id), open_q, words, voice=True)
+    meta = turn["row_metadata"]
+    follows = meta.get("will_question_step") == "follow"
+    part = "follow" if follows else ("thanks" if step == "ask" else "thanks-follow")
+    reply = _row(_cid(user_id, take, _part(part, rnd)), "bot", turn["answer"], meta, _after(at, 1))
+    rows = database.insert_lounge_messages(user_id, [mine, reply]) or []
+    return rows if follows else rows + _let_go(database, user_id, take)
+
+
+def _heard_words(adapter: Any, audio: bytes, *, user_id: str, take: str, filename: str,
+                 duration_ms: Optional[int]) -> tuple[str, Optional[int]]:
+    """The words of a voice answer and its length, heard under the caller's
+    authorization (the plan's own transcriber call). Raises
+    ``QuestionError`` when it is empty, too long, or no words are heard."""
+    if not audio:
+        raise QuestionError("EMPTY_AUDIO", "No audio.")
+    if len(audio) > _VOICE_MAX_BYTES or (duration_ms or 0) > (_VOICE_MAX_SECONDS + 5) * 1000:
+        raise QuestionError("TOO_LONG", "Up to five minutes.", 413)
+    from services.plan_flow import _heard, _words
+    if not _heard(audio):
+        raise QuestionError("NO_WORDS", "No words heard.", 422)
+    result = adapter.transcribe_audio(audio, filename, usage_surface=_VOICE_SURFACE,
+                                      usage_user_id=user_id, usage_session_id=take) or {}
+    words = " ".join(_words(result).split())[:_VOICE_WORDS]
+    if not words:
+        raise QuestionError("NO_WORDS", "No words heard.", 422)
+    return words, duration_ms or int(float(result.get("duration") or 0) * 1000) or None
+
+
+def _safety_rows(user_id: str, take: str, rnd: int, words: str, at: str) -> list[dict]:
+    """Distress is never an answer: the chat's safety reply, and the asks
+    wait until the speaker writes again (N94)."""
+    from services.chat_intents import detect_chat_intent
+    from services.feedback_check import _after
+    safety = str((detect_chat_intent(words) or {}).get("answer") or "")
+    return [_row(_cid(user_id, take, _part("said-safety", rnd)), "bot", safety,
+                 {"intent": "crisis"}, _after(at, 1))] if safety else []
 
 
 #: What the chat knows about Will's question (founder 2026-10-20), as facts

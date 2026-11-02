@@ -24,8 +24,9 @@ whatever closed the ask (``release``). The asks (``chain``), in order:
 One ask a Take (founder 2026-10-26, N189): the first that waits, in the
 order above; the others wait for a later Take. Will's question may be
 followed by his next one (N294 item 4, "will_next": what they should do,
-after who the talk is for, when both are missing), only once the first is
-answered; a Skip ends them.
+after who the talk is for, when both are missing; or the key line, once
+who and what are known, N294 item 2), only once the first is answered; a
+Skip ends them.
 
 The settings asks wait for the next visit (founder 2026-10-31, N294 item 8,
 N295; ``visit``): WhatsApp and the home screen are never asked after a
@@ -302,6 +303,11 @@ def rows_for(database: Any, user_id: str, meta: dict, ask: str, at: str) -> list
                 if isinstance(r, dict)]
         for i, row in enumerate(rows):
             row["client_created_at"] = _after(at, i)
+        if ask == "will_next":
+            # The key line names who the talk is for, once that was answered
+            # (N294 item 2).
+            from services.will_question import at_release
+            rows = at_release(database, rows)
         return rows
     lead = (meta.get("lead_ins") or {}).get(ask)
     return ask_rows(database, ask, user_id=user_id, arc_id=str(meta.get("arc_id") or ""),

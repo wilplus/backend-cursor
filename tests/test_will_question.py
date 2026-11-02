@@ -40,6 +40,15 @@ OUTCOME
   O9  One at a time (N294 item 4): when both who the talk is for and what I
       want them to do are missing, what I want them to do follows my answer
       to who, from what Will heard first; a Skip ends them.
+  O10 The key line is asked last, by voice (N294 item 2): once who the talk
+      is for and what I want them to do are known and my key line is
+      missing, Will asks the plan's signed question with who in it, opened
+      on the moment, no tap answers; it follows my answer to what I want
+      them to do, naming who I said; my answer is kept as the talk's key
+      line (sure) where the plan and the picker read it, and for Will.
+  O11 An answer by voice answers Will's open question (N294 item 3, N319
+      item 1): the words heard are my voice bubble, Will thanks me, the
+      chain goes on; nothing heard, or no question open, writes nothing.
   O6  The founder's words are what Will asks from the next Take: a changed
       question and renamed answers (each answer keeps its follow-up by its
       place), a filled empty slot asked after the signed deeper questions;
@@ -63,6 +72,8 @@ PROVES   O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_m
          O7 -> test_will_varies_his_words_lightly_or_says_them_as_written
          O8 -> test_the_question_opens_on_the_moment_the_walk_just_worked_on
          O9 -> test_what_they_should_do_follows_an_answered_who
+         O10 -> test_the_key_line_is_asked_last_by_voice_and_kept
+         O11 -> test_a_voice_answer_answers_wills_question
 WHY      Founder 2026-10-20 (N82): "ask me a lot of questions … a natural
          flow in the walk and in the lounge"; the bank signed the same day.
          2026-10-31 (N294): "these questions, they should be related to the
@@ -159,8 +170,12 @@ def test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_missing():
     assert _key(carried={"passage": "We can match their price.", "used": True}) == "audience"
     assert _key(audience="The board") == "goal"
     assert _key(asked={"audience"}) == "goal"  # once per talk
-    assert _key(audience="The board", goal="Approve two hires") is None  # Take 2: nothing missing
-    known = dict(take_index=3, audience="The board", goal="Approve two hires")
+    both = dict(audience="The board", goal="Approve two hires")
+    assert _key(**both) == "key_line"  # who and what known, the key line missing (N294 item 2)
+    assert _key(**both, asked={"key_line"}) is None  # once per talk
+    assert _key(**both, key_line="We grow by owning the night shift.") is None  # nothing missing
+    known = dict(take_index=3, audience="The board", goal="Approve two hires",
+                 key_line="We grow by owning the night shift.")
     assert _key(**known) == "vision"
     assert _key(**known, asked={"vision", "most_you"}) == "why_matters"
     assert _key(**known, asked=set(will_question.PRINCIPLES)) is None
@@ -380,7 +395,8 @@ def test_the_summary_hears_the_practised_line_when_it_came_back(monkeypatch):
     _quiet(monkeypatch)
     db = _SummaryDb()
     takes = TAKES + [{"id": "t2", "intake_context": {"topic": "Q3 Board pitch", "audience": "The board",
-                                                      "strategic_context": "Desired call to action: say yes"}}]
+                                                      "strategic_context": "Desired call to action: say yes",
+                                                      "key_line": "We can match their price."}}]
     _, seen = _summary(db, monkeypatch, takes=takes, take="t2",
                        carried={"passage": "We can match their price.", "used": True})
     assert any("We can match their price." in f for f in seen["facts"])
@@ -404,7 +420,8 @@ def test_the_founders_words_are_what_will_asks():
     assert will_question.follow_up("audience_check", "Not quite", chips) == FOLLOW_AT["audience_check"][1]
     assert will_question.resolved("audience_check", "Spot on", {"chips": chips, "heard": "the board"}) == "the board"
     filled = tuple(k for k in PRINCIPLES if words[k]["question"])
-    assert _key(take_index=3, audience="The board", goal="Say yes", asked=set(PRINCIPLES[:4]), deeper=filled) == "slot_1"
+    assert _key(take_index=3, audience="The board", goal="Say yes", key_line="Say yes today.",
+                asked=set(PRINCIPLES[:4]), deeper=filled) == "slot_1"
     assert will_question.admin_view(db)["empty"] == 1
     for bad in ({"key": "audience_check", "question": "Is it for the board?", "chips": ["Yes", "No"]},
                 {"key": "goal", "question": "Give me 3 reasons", "chips": ["Say yes", "Trust me", "Get it"]},
@@ -457,3 +474,77 @@ def test_the_question_opens_on_the_moment_the_walk_just_worked_on():
     assert will_question.words_for(practised)[1] == QUESTIONS["not_used"].format(
         words="We can match their price.")
     assert will_question.words_for(_plan("goal"))[1] == QUESTIONS["goal"]  # no moment
+
+
+class _Adapter:
+    def __init__(self, text):
+        self.text, self.calls = text, []
+
+    def transcribe_audio(self, audio, filename, **kw):
+        self.calls.append(kw)
+        return {"text": self.text, "duration": 3.2}
+
+
+def _voice(db, monkeypatch, text, take="t1"):
+    monkeypatch.setattr("services.plan_flow._heard", lambda audio: True)
+    adapter = _Adapter(text)
+    rows = will_question.answer_voice(db, adapter, b"voice", user_id="u", arc_id="arc",
+                                      take_session_id=take, filename="answer.webm", duration_ms=3200)
+    return rows, adapter
+
+
+def test_the_key_line_is_asked_last_by_voice_and_kept(monkeypatch):
+    _quiet(monkeypatch)
+    db = _SummaryDb()
+    plans = {"id": "plan-1", "facts": {"why": "A promotion"}}
+    db.get_open_plan = lambda _u: plans
+    db.update_plan = lambda _u, _id, fields: plans.update(fields) or plans
+    takes = TAKES + [{"id": "t2", "intake_context": {"topic": "Q3 Board pitch", "audience": "the board"}}]
+    _summary(db, monkeypatch, takes=takes, take="t2", heard={"ask": "approve two hires"})
+    closing = next(r for r in db.thread.values() if (r.get("metadata") or {}).get("next_take"))
+    assert closing["metadata"]["chain"] == ["will_next"]  # the key line follows what they should do
+    rows = _tap(db, "Approve two hires", take="t2")
+    asked = rows[-1]
+    assert asked["body"] == ("If the board remembers one sentence from you, what is it? "
+                             "Say it the way you'll say it.")
+    assert asked["metadata"]["will_question"] == "key_line" and asked["metadata"]["chips"] == []
+    assert after_take.held(db, "u") is not None  # one at a time: the goodbye waits
+
+    rows, adapter = _voice(db, monkeypatch, "We match every transaction the moment it lands.", take="t2")
+    assert [r["body"] for r in rows] == ["We match every transaction the moment it lands.", THANKS, SEE_YOU]
+    assert rows[0]["role"] == "user" and rows[0]["metadata"]["will_voice"] is True
+    assert adapter.calls[0]["usage_surface"] == "will_question_answer"
+    kept = "We match every transaction the moment it lands."
+    assert db.takes.ctx["t2"]["key_line"] == kept
+    assert plans["facts"] == {"why": "A promotion", "key_line": kept}  # the plan had none
+    assert db.events[-1]["payload"]["key_line"] == kept and db.events[-1]["payload"]["voice"] is True
+    from services import take_context
+    assert take_context.assemble(db.takes.ctx["t2"], {})["key_line"] == {
+        "value": kept, "state": "sure", "source": "setup"}
+    # Asked first when who and what are known: on the moment, said as signed.
+    known = will_question.Plan(key="key_line", arc_id="arc", take="t3", who="Investors",
+                               moment="We're already seeing real traction")
+    assert will_question.words_for(known)[1:3] == (
+        "We just worked on “We're already seeing real traction”. If Investors remembers one sentence "
+        "from you, what is it? Say it the way you'll say it.", [])
+    unknown = will_question.Plan(key="key_line", arc_id="arc", take="t3")
+    assert will_question.words_for(unknown)[1].startswith("If your audience remembers one sentence")
+
+
+def test_a_voice_answer_answers_wills_question(monkeypatch):
+    _quiet(monkeypatch)
+    db = _Db()
+    _asked(db)
+    rows, _ = _voice(db, monkeypatch, "  The investors.  ")
+    assert [r["body"] for r in rows] == ["The investors.", "The investors. I'll keep them in mind.", SEE_YOU]
+    assert db.takes.ctx["t1"]["audience"] == "The investors."
+    assert will_question.open_question(db, "u") is None
+    with pytest.raises(will_question.QuestionError) as no_question:
+        _voice(db, monkeypatch, "The board")  # answered already: nothing open
+    assert no_question.value.status == 404
+
+    quiet = _Db()
+    _asked(quiet)
+    with pytest.raises(will_question.QuestionError) as nothing:
+        _voice(quiet, monkeypatch, "")
+    assert nothing.value.code == "NO_WORDS" and will_question.open_question(quiet, "u") is not None
