@@ -9213,3 +9213,27 @@ No rules page yet: it lands on frontend
 [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 when built. No migration in this entry.
+
+**N353 · The team list shows only open teams; Will makes a closed team's
+code (founder, the Claude Code chat, 2 November 2026, on the prototype
+<https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ#su-team>: "show only
+open communities or join with a code or add a team"; asked whether Will
+makes a closed team's code or its owner types one: "Will makes the code, log
+it").** For N352 items 3 and 6, and N52.4:
+1. **The list of teams shows only the open ones** (like Artur's community),
+then "Join with a code" and "Add a team". A closed team is never on the
+list: whoever has its code joins it, and the code says which team it is.
+2. **Adding a team** is in Will's chat, one question at a time: its name;
+open or closed (open goes on the list for anyone to join; closed only with
+its code); for a closed team, its code; then which specialist the person is
+(a new team starts with the speaking coach only, N352 item 6), and the
+team's page with "Invite people".
+3. **Will makes a closed team's code.** The owner does not type one. It is
+shown once, with "Share the code" (a link to join with the code in it); it
+is not kept in the chat afterwards. Was (N52.4): the owner of a community of
+their own typed its pass code. Still a blank: making a new code from the
+team's page.
+No rules page yet: it lands on frontend
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+when built. No migration in this entry.
