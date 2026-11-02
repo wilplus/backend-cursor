@@ -8511,3 +8511,25 @@ The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C, when built. No migration.
+
+**N324 · A voice note in a chat is turned into words, and lasts at most 2
+minutes (founder, the Claude
+Code chat, 2 November 2026, asked "should each voice note be turned into
+words … so Will can learn from what colleagues and customers say?": "yes
+transcribe them").** For N321 item 2:
+1. **Every voice note sent in a chat between people is transcribed**, through
+the processing-authorization path, as the voice notebook's notes are. The
+words are kept with the recording (`chat_message_audio.words`, migration
+0504) and go when it goes.
+2. **A voice note that cannot be turned into words is still sent.** The words
+stay empty; the person sees no difference.
+3. **At most 2 minutes:** a voice note in a chat stops by itself at 2
+minutes, and a longer one is refused (founder, the same chat, asked what the
+limit was for: "keep 2 minutes"). A long, considered answer is a Take
+("Record an answer", N321 item 4).
+4. **Not decided yet:** whether the words show under the player, and how Will
+uses them (the speaker's memory, the team's know-how). Each comes as its own
+decision before it is built.
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
