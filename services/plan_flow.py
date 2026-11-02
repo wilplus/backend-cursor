@@ -7,8 +7,9 @@ kind "text"; the app draws a row by its ``metadata``):
 
   * the questions before the first Take (B): the deadline, the voice
     message, up to three follow-ups (the key line first), the two ratings
-    (never shown back, N178), the two calls, then "You're all set. Here's
-    your plan." and the plan card (``metadata.plan_card``);
+    (never shown back, N178), the two calls while they are on (the ring row
+    ``plan_calls``, N315: hidden, not removed), then "You're all set.
+    Here's your plan." and the plan card (``metadata.plan_card``);
   * a practice day's hello and today's one thing (G4 to G6), once a day, the
     first time the app opens on a practice day;
   * after a Take's walk (``after_take``, called once per Take where the
@@ -23,7 +24,7 @@ kind "text"; the app draws a row by its ``metadata``):
     the next thing heard becomes the level; three on a level without
     moving, a ``stuck`` event for the coach's queue (Build 9);
   * the plan's end (I): "Your deadline was …", "How did it go?" by voice,
-    the summary call, "What's next?".
+    the summary call (while the calls are on, N315), "What's next?".
 
 Every recording is transcribed under the caller's processing authorization
 (the route's ``phase1_provider_route``), and every AI call runs inside it.
@@ -66,6 +67,18 @@ def enabled(database: Any, user_id: Any) -> bool:
     """Is the plan on for this person? Fails closed (rings)."""
     from services import rings
     return bool(user_id) and rings.feature_is_on_for_user(P.FEATURE, user_id, database=database)
+
+
+#: The steps where Will asks for a call (F1, F2).
+CALL_STEPS = ("kickoff", "summary")
+
+
+def calls_on(database: Any, user_id: Any) -> bool:
+    """Are the plan's two coach calls on for this person (N315)? Hidden, not
+    removed: the ring row ``plan_calls``; with no row they are off for
+    everyone, the founder included. Fails closed (rings)."""
+    from services import rings
+    return bool(user_id) and rings.feature_is_on_for_user(rings.PLAN_CALLS, user_id, database=database)
 
 
 # ── time ───────────────────────────────────────────────────────────────────
@@ -348,6 +361,9 @@ def state(database: Any, user_id: str, *, tz: Any = None,
             plan = database.update_plan(str(user_id), plan["id"], {"time_zone": zone_name}) or plan
         if plan.get("status") == "active":
             plan, wrote = _visit(database, user_id, plan, first_name)
+        elif _left_at_a_call(database, user_id, plan):
+            plan, all_set = _all_set(database, user_id, plan)
+            wrote = bool(_write(database, user_id, plan["id"], all_set))
     return {"enabled": True, "plan": view(database, user_id, plan) if plan else None,
             "wrote": wrote}
 
@@ -445,10 +461,8 @@ def answer_deadline(database: Any, user_id: str, raw: Any, *, tz: Any = None) ->
     fields = {"deadline": deadline.isoformat(), "deadline_given": not picked,
               "every_day": j.every_day, "total": j.total, "time_zone": zone_name}
     if _facts(plan).get("mode") == "takes":
-        fields["step"] = "kickoff"
-        plan = _save(database, user_id, plan, fields)
-        _diagnose_from_takes(database, user_id, plan)
-        rows += _kickoff_rows(plan)
+        plan, more = _questions_done(database, user_id, plan, fields, _diagnose_from_takes)
+        rows += more
     else:
         fields["step"] = "why"
         plan = _save(database, user_id, plan, fields)
@@ -741,7 +755,8 @@ def _next_question(database: Any, user_id: str, plan: dict, answer: dict,
     rows: list[tuple] = []
     if plan["step"] == "why":
         ack = P.fitted_ack((turn or {}).get("ack")) or P.COPY["plain_ack"]
-        rows += [_bot(f"{ack} {P.COPY['heard']}", "ack"), _bot(P.COPY["draft"], "draft")]
+        # "Let me draft your plan. A few more questions first." is gone (N319 item 4).
+        rows += [_bot(f"{ack} {P.COPY['heard']}", "ack")]
         facts["will_said"] = {str(answer["id"]): ack}  # what a correction may put right
     q = _choose(turn, asked, facts, plan,
                 skip=C.PERSONAL_BANKS if consent == C.DECLINED else ())
@@ -758,7 +773,7 @@ def _next_question(database: Any, user_id: str, plan: dict, answer: dict,
 def _ask_or_rate(database: Any, user_id: str, plan: dict, facts: dict, asked_rows: list,
                  q: Optional[dict], rows: list[tuple], consent: str) -> tuple[dict, list[tuple]]:
     """The next follow-up, or, when there is none, the two ratings: or, with
-    no yes to them, straight on to the calls (N211)."""
+    no yes to them, straight on to the calls (N211), or the plan (N315)."""
     if q:
         text = P.question_text(q)
         if q["bank"] == "key":
@@ -767,9 +782,8 @@ def _ask_or_rate(database: Any, user_id: str, plan: dict, facts: dict, asked_row
         plan = _save(database, user_id, plan, {"step": "followup", "asked": asked_rows, "facts": facts})
         return plan, rows + [_bot(text, f"q:{q['bank']}", plan_ask="voice")]
     if consent != C.GRANTED:
-        plan = _save(database, user_id, plan, {"step": "kickoff", "facts": facts})
-        _diagnose(database, user_id, plan)
-        return plan, rows + _kickoff_rows(plan)
+        plan, more = _questions_done(database, user_id, plan, {"facts": facts}, _diagnose)
+        return plan, rows + more
     plan = _save(database, user_id, plan, {"step": "stress", "facts": {**facts, "rating_moment": "first"}})
     return plan, rows + _ratings_rows("first")
 
@@ -902,9 +916,7 @@ def answer_rating(database: Any, user_id: str, value: Any) -> dict:
         plan = _save(database, user_id, plan, {"step": "ready"})
         rows = [_scale_row("ready", moment)]
     elif plan.get("status") == "asking":
-        plan = _save(database, user_id, plan, {"step": "kickoff"})
-        _diagnose(database, user_id, plan)
-        rows = _kickoff_rows(plan)
+        plan, rows = _questions_done(database, user_id, plan, {}, _diagnose)
     else:
         plan = _save(database, user_id, plan, {"step": "done", "facts": {**facts, f"rated_{moment}": True}})
         rows = []
@@ -1096,7 +1108,35 @@ def _level_on_take(database: Any, user_id: str, plan: dict, facts: dict, today: 
     return _level_time(database, user_id, plan, facts, today) or {"facts": facts}
 
 
-# ── the two calls (F) ──────────────────────────────────────────────────────
+# ── the two calls (F), hidden behind the ring row ``plan_calls`` (N315) ────
+
+def _questions_done(database: Any, user_id: str, plan: dict, fields: dict,
+                    diagnose: Any) -> tuple[dict, list[tuple]]:
+    """The plan's questions are answered: the level is set (``diagnose``);
+    then, while the calls are on, Will asks for the kickoff call (F1); with
+    them hidden (N315), the plan goes from the last answer straight to
+    "You're all set. Here's your plan." and the card. The calls' code and
+    words stay."""
+    on = calls_on(database, user_id)
+    fields = {**fields, "step": "kickoff"} if on else fields
+    if fields:
+        plan = _save(database, user_id, plan, fields)
+    diagnose(database, user_id, plan)
+    if on:
+        return plan, _kickoff_rows(plan)
+    return _all_set(database, user_id, plan)
+
+
+def _left_at_a_call(database: Any, user_id: str, plan: dict) -> bool:
+    """A plan still asking for a call, made while the calls were on, now
+    that they are hidden (N315): it moves on to the plan. Not while a new
+    speaker's Take waits for its walk, which asks again where Will was."""
+    if plan.get("status") != "asking" or plan.get("step") not in CALL_STEPS or _awaiting(plan):
+        return False
+    if _first_plan(plan) and _walk_due(plan, _takes(database, user_id)):
+        return False
+    return not calls_on(database, user_id)
+
 
 def _kickoff_rows(plan: dict) -> list[tuple]:
     if (plan.get("calls") or {}).get("kickoff"):
@@ -1149,10 +1189,12 @@ def book_call(database: Any, user_id: str, which: str, start: Any, *, tz: Any = 
     plan = _save(database, user_id, plan, {"calls": calls})
     if plan.get("step") == "kickoff" and which == "kickoff":
         plan = _save(database, user_id, plan, {"step": "summary"})
-        rows += [] if calls.get("summary") else _summary_rows(plan)
-        if calls.get("summary"):
+        # No summary ask once it is booked, or while the calls are hidden (N315).
+        if calls.get("summary") or not calls_on(database, user_id):
             plan, more = _all_set(database, user_id, plan)
             rows += more
+        else:
+            rows += _summary_rows(plan)
     elif plan.get("step") == "summary" and which == "summary":
         plan, more = _all_set(database, user_id, plan)
         rows += more
@@ -1352,6 +1394,10 @@ def _ask_again(database: Any, user_id: str, plan: dict) -> list[dict]:
         rows = [_bot(str(last.get("text") or ""), f"q:{last.get('bank')}", plan_ask="voice")]
     elif step in ("stress", "ready"):
         rows = [_scale_row(str(step), str(facts.get("rating_moment") or "first"))]
+    elif step in CALL_STEPS and not calls_on(database, user_id):
+        # The calls are hidden (N315): the plan, written once, as it is.
+        plan, done = _all_set(database, user_id, plan)
+        return _write(database, user_id, plan["id"], done)
     elif step == "kickoff":
         rows = _kickoff_rows(plan)
     elif step == "summary":
@@ -1479,11 +1525,12 @@ def _end(database: Any, user_id: str, plan: dict, first_name: Optional[str]) -> 
 def _after_how_it_went(database: Any, user_id: str, plan: dict, *,
                        told: bool = True) -> tuple[dict, list[tuple]]:
     """What follows the plan's end: "Thank you for telling me." only when the
-    speaker told Will how it went."""
+    speaker told Will how it went; the summary call only while the calls are
+    on (N315)."""
     plan = _save(database, user_id, plan, {"step": "whats_next"})
     thanks = [_bot(P.COPY["thanks_told"], "thanks_told")] if told else []
-    return plan, thanks + [_bot("", "summary_card", plan_summary_call=True),
-                           _bot(P.COPY["whats_next"], "whats_next", plan_ask="next")]
+    call = [_bot("", "summary_card", plan_summary_call=True)] if calls_on(database, user_id) else []
+    return plan, thanks + call + [_bot(P.COPY["whats_next"], "whats_next", plan_ask="next")]
 
 
 def next_plan(database: Any, user_id: str, choice: str, *, tz: Any = None,
