@@ -54,7 +54,8 @@ COPY = {
     "why_2": "Please tell me, why does it matter and what is it about?",
     "record": "Record your answer",
     "heard": "I can already hear your main vocal cues and verbal habits.",
-    "draft": "Let me draft your plan. A few more questions first.",
+    # "Let me draft your plan. A few more questions first." under it is gone
+    # (N319 item 4).
     "plain_ack": "Thank you. Now I can hear you talking about your goal and why it matters.",
     "ratings_intro": "Two quick taps before your plan.",
     "stress_q": "How stressed do you feel about it right now?",

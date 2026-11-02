@@ -28,6 +28,9 @@ OUTCOME
       next Take keeps it without asking, with my community's name.
   O12 It is asked again when the sharing words change, when I join a
       community after my choice, or when nothing of my choice is left.
+  O13 The One thing walk asks one moment of a level (N309): the Take's
+      clip of that level alone, else the next level round; a level that is
+      not high, middle or low is refused.
 PROVES   O1 -> test_answered_self_labelled_and_settled_clips_are_not_queued
          O2 -> test_the_judging_reopened_shows_the_latest_answers_with_their_clips
          O3 -> test_data_and_consent_lists_each_shared_take_once_with_where
@@ -40,6 +43,7 @@ PROVES   O1 -> test_answered_self_labelled_and_settled_clips_are_not_queued
          O10 -> test_an_empty_queue_is_logged_with_why
          O11 -> test_sharing_is_asked_once_then_remembered
          O12 -> test_sharing_is_asked_again_when_the_words_change_or_a_community_is_added
+         O13 -> test_the_one_thing_walk_judges_one_moment_of_its_level
 WHY      Founder 2026-10-06 (N52.4, migration 0432; CM2). The consent and
          words versions on a share are pinned on the database in
          test_a_share_records_the_words_the_speaker_saw_postgres.py.
@@ -49,6 +53,8 @@ WHY      Founder 2026-10-06 (N52.4, migration 0432; CM2). The consent and
          this amends CM1 A and replaces N97's one moment per try.
          O11 and O12: founder 2026-10-31 (N309 item 5), sharing is asked
          once; replaces G1's ask before every Take.
+         O13: founder 2026-11-02 (N309 item 2), the One thing walk judges
+         one moment a walk, its level turning high, middle, low.
 """
 from __future__ import annotations
 
@@ -557,6 +563,27 @@ def test_three_clips_one_per_level_three_speakers_fixed_per_take():
         clips = _queue(crowd)
         assert sorted(_level(crowd, c) for c in clips) == ["high", "low", "middle"]
         assert len({_speaker(crowd, c) for c in clips}) == 3
+
+
+def test_the_one_thing_walk_judges_one_moment_of_its_level():
+    with SIGNED:
+        db, _ = _imported_world()
+        whole = _queue(db)
+        for level in ("high", "middle", "low"):
+            status, payload = cm.queue_for(db, listener_id="listener", take=TAKE, level=level)
+            assert status == 200
+            (clip,) = payload["clips"]
+            assert _level(db, clip) == level
+            # The same clip the Take's set holds for that level.
+            assert clip in whole
+        # No middle left (both imported middles answered): the next level
+        # round, the low, never nothing.
+        for clip_id in (_uuid(62), _uuid(71)):
+            assert cm.answer(db, listener_id="listener",
+                             body={"clip_id": clip_id, "value": "yes"})[0] == 200
+        status, payload = cm.queue_for(db, listener_id="listener", take=_uuid(991), level="middle")
+        assert status == 200 and [_level(db, c) for c in payload["clips"]] == ["low"]
+        assert cm.queue_for(db, listener_id="listener", take=TAKE, level="top")[0] == 400
 
 
 def test_an_imported_clip_plays_by_a_signed_link_audio_only():

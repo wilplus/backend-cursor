@@ -511,6 +511,32 @@ def v2_explore_arc_review_tempo(arc_id, take_session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to read the tempo step"}), 500
 
 
+@v2_bp.route("/explore/arc/<arc_id>/review/last-fix/<take_session_id>", methods=["GET"])
+@require_auth
+def v2_explore_arc_review_last_fix(arc_id, take_session_id):
+    """The One thing walk's "Last time" for one Take (founder 2026-10-31,
+    N309 item 1): the previous Take's fix when its issue is gone on this
+    Take's same slide, with this Take's clip there. 200 {last: {kind,
+    slide_index, clip: {snippet_id, url, start_offset_ms, duration_ms}} |
+    null} · 404 · 500"""
+    from services.take_progress import last_fix
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        take = str(take_session_id)
+        done = sorted(_completed_spoken_sessions(sessions),
+                      key=lambda s: (s.get("take_index") or 0, str(s.get("created_at") or "")))
+        ids = [str(s.get("id")) for s in done]
+        if not owned or take not in ids:
+            return jsonify({"code": "NOT_FOUND", "error": "take not found"}), 404
+        at = ids.index(take)
+        previous = ids[at - 1] if at > 0 else None
+        return jsonify({"last": last_fix(db, take, previous)}), 200
+    except Exception as e:
+        logger.error("review last fix failed arc=%s: %s", arc_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to read the last fix"}), 500
+
+
 @v2_bp.route("/explore/arc/<arc_id>/review/tempo/<take_session_id>", methods=["POST"])
 @require_auth
 def v2_explore_arc_review_tempo_tries(arc_id, take_session_id):
