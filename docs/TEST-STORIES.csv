@@ -3071,7 +3071,13 @@ weighs less than what my moment needs, a slow stretch, or no tempo
 step for me leaves the fix a moment (N323 item 6).
 O10 A sentence that already has the helper words I had when I recorded
 gives its place as my strongest to the next; helper words I pick
-during the walk don't move my moments (N246).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
+during the walk don't move my moments (N246).
+O12 A fix my last walk gave that worked (its issue gone on that slide in
+this Take) is not given again there: the walk picks the next thing,
+and keeps doing so when the Take is read again frozen; the pace game
+that worked leaves the fix a moment. When the issue came back, the
+same fix may be given again. With no walk before, or one that cannot
+be read, the frame is exactly the one it always was (N359).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O1 -> test_two_best_clips_in_one_block_get_a_block_each
 O1 -> test_a_one_block_take_is_split_for_two_moments
 O1 -> test_a_short_take_still_shows_two_moments
@@ -3085,7 +3091,9 @@ O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version
 O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen
 O9 -> test_on_a_plan_my_level_takes_the_slot_whose_tool_fits_it
 O10 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
-O11 -> test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level""); 2026-10-30 (N289: ""the praise clips just get the praise"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-31 (N309, the One thing walk: ""apply to it the one thing walk""); 2026-11-02 (N323 item 6: ""yes, the pace game for everyone when rushing is the issue"")."
+O11 -> test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan
+O12 -> test_a_fix_that_worked_on_a_slide_is_not_given_there_again
+O12 -> test_with_no_walk_before_mine_is_picked_as_it_always_was","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level""); 2026-10-30 (N289: ""the praise clips just get the praise"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-31 (N309, the One thing walk: ""apply to it the one thing walk""); 2026-11-02 (N323 item 6: ""yes, the pace game for everyone when rushing is the issue""); 2026-11-02 (N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back"": ""go"")."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name

@@ -64,6 +64,13 @@ keeps that pick only when its Clearer version passes the gate, else the pick
 without it. Never the strongest or the weakest: their best stays theirs.
 No read, no change.
 
+What worked last time counts too (founder 2026-11-02, N359): a fix the
+walk of the Take before gave that worked on this Take, its issue gone on
+that slide (``services.take_progress``), is not given again there. The
+slot of that tool passes over the clips on that slide (``worked``: the
+weakest for the AI clip, the between for the Clearer version) and fills
+from everything else as it always does. Nothing worked, nothing changes.
+
 A clip with no sound read is not dropped (founder 2026-10-17): its S is
 neutral and its words order it. It can be the strongest, never the weakest.
 
@@ -161,7 +168,8 @@ def lift(read_: dict, weight: Any) -> dict:
 def pick(reads: list[dict], level: Optional[dict] = None) -> dict:
     """``reads``: one row per clip with ``block_id``, ``slide_index``,
     ``word_count``, ``candidate_id``, ``read`` (from :func:`read`, or
-    None) and ``held`` (its words hold the slide's helper words; N246).
+    None), ``held`` (its words hold the slide's helper words; N246) and
+    ``worked`` (the tools whose fix worked on its slide last time; N359).
 
     ``level``, on a plan (N289 item 8): ``{"candidate_id", "slot", "kind",
     "plan_level"}``, the clip where this week's level shows most and the
@@ -227,22 +235,30 @@ def _entry(row: dict, slot: str, *, praise: bool = False, highest: bool = False,
 def _weakest(rows: list[dict]) -> Optional[dict]:
     """The lowest willfidence clip with a whole thought and a sound read;
     never one that already holds its slide's helper words (N246 item 2:
-    it was worked on), which comes back only as a next best."""
+    it was worked on), which comes back only as a next best, nor one on a
+    slide where the AI clip worked last time (N359)."""
     heard = [row for row in rows if (row.get("word_count") or 0) >= STRETCH_WORDS
-             and row["read"].get("sound", True) and not row.get("held")]
+             and row["read"].get("sound", True) and not row.get("held")
+             and not _fixed(row, EXERCISE_VOICE)]
     return min(heard, key=lambda row: (row["read"]["value"] * _damp(row), row["read"]["s"]),
                default=None)
 
 
 def _between(rows: list[dict]) -> Optional[dict]:
     """The clip whose words need help the most: the lowest W, then the
-    lowest willfidence; never one that holds its slide's helper words. A
+    lowest willfidence; never one that holds its slide's helper words, nor
+    one on a slide where the Clearer version worked last time (N359). A
     moment the verbal read weighs reads lower (N326, ``_heard``)."""
     worded = [row for row in rows if _worded(row) and row["read"].get("words_help")
-              and not row.get("held")]
+              and not row.get("held") and not _fixed(row, EXERCISE_CLEARER)]
     return min(worded, key=lambda row: (row["read"]["w"] * _damp(row) * _heard(row),
                                         row["read"]["value"]),
                default=None)
+
+
+def _fixed(row: dict, kind: str) -> bool:
+    """The fix ``kind`` worked on this clip's slide last time (N359)."""
+    return kind in (row.get("worked") or ())
 
 
 def _level_row(rows: list[dict], level: Optional[dict],

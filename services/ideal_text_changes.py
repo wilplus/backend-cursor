@@ -1648,13 +1648,15 @@ class _ChangesRun:
         each slide had when the Take was recorded (N246 items 2 and 3),
         the Take's context (`take_context.for_take`, N293), whether the
         speaker has the tempo step, asked only when the Sniper would be the
-        One thing walk's fix (N323 item 6), and the Take's verbal read for a
-        speaker it reaches (`verbal_read.for_pick`, N326). Read
+        One thing walk's fix (N323 item 6), the Take's verbal read for a
+        speaker it reaches (`verbal_read.for_pick`, N326), and the fixes
+        the walk of the Take before gave, not given again where they worked
+        (`take_progress.last_walk`, N359). Read
         here, from the database, for the dark frame and the served one
         alike: the serve path's own store cannot read a plan, so the walk
         the speaker saw never had the level's moment (N246 item 4). Read
         once per Take per run."""
-        from services import take_context, verbal_read
+        from services import take_context, take_progress, verbal_read
         from services.plan_walk import walk_inputs
         from services.slide_helper_words import held_at_take
         from services.tempo_stretch import tempo_on_for
@@ -1673,7 +1675,10 @@ class _ChangesRun:
                     lambda: tempo_on_for(self.user_id, database=self.db)),
                 # What the speaker noted themselves weighs the between
                 # (N326); nothing when no read reached this Take.
-                "verbal": verbal_read.for_pick(self.db, self.user_id, session)}
+                "verbal": verbal_read.for_pick(self.db, self.user_id, session),
+                # A fix the last walk gave that worked is not given again
+                # on that slide (N359); nothing for a first Take.
+                "last_fixes": take_progress.last_walk(self.db, self.arc_id, key)}
         return self._walks[key]
 
     def _declined_rewrites(self, session: Any, parts: Any

@@ -520,18 +520,14 @@ def v2_explore_arc_review_last_fix(arc_id, take_session_id):
     3), with this Take's clip there. 200 {last: {kind ("voice", "clearer"
     or "tempo"), slide_index, clip: {snippet_id, url, start_offset_ms,
     duration_ms}} | null} · 404 · 500"""
-    from services.take_progress import last_fix
+    from services.take_progress import last_fix, previous_take
     try:
         owned, sessions = _arc_owned_by_caller(arc_id)
         take = str(take_session_id)
-        done = sorted(_completed_spoken_sessions(sessions),
-                      key=lambda s: (s.get("take_index") or 0, str(s.get("created_at") or "")))
-        ids = [str(s.get("id")) for s in done]
-        if not owned or take not in ids:
+        if not owned or take not in {str(s.get("id")) for s in _completed_spoken_sessions(sessions)}:
             return jsonify({"code": "NOT_FOUND", "error": "take not found"}), 404
-        at = ids.index(take)
-        previous = ids[at - 1] if at > 0 else None
-        return jsonify({"last": last_fix(db, take, previous)}), 200
+        # The same Take before as the walk's pick reads (N359).
+        return jsonify({"last": last_fix(db, take, previous_take(sessions, take))}), 200
     except Exception as e:
         logger.error("review last fix failed arc=%s: %s", arc_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
