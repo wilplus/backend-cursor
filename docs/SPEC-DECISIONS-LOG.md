@@ -8472,3 +8472,30 @@ Signed (Never 4): "Today", "🎤 Voice message". The prototype: version 25 of
 (ring 6)". Building waits for the founder's go. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built. No migration.
+
+**N323 · The note under "Type here" signed; the walk's helper words may be
+longer than eight words; a tip with no quoted phrase gives none (founder,
+the Claude Code chat, 2 November 2026, answering the open points of N309 and
+N319: "you have my sign off", "you can allow helper words to be longer than
+8 words", "when the tip quotes no phrase, then there are no helper words",
+"skip it for now").** For N309 items 3 and 5 and N319 items 3 and 5:
+1. **Signed (Never 4):** "We need to hear this in your voice. Tap the mic.",
+the note a tap on the disabled "Type here" shows before Take 1 (N319 item 3).
+2. **The walk's own helper words may be longer than eight words:** the
+Clearer version's sentence, or their own sentence after "Keep mine", is
+saved whole. The cap of eight stays for helper words picked on the Ideal Text.
+3. **A tip that quotes no phrase gives no helper words** (the AI clip's tips
+for pace or fillers); the walk goes from the try to "Lesson done.".
+4. **The shorter words for the plan's own yes are not built.** The founder
+signed them, but Privacy Policy 3.9 §4e, signed with counsel, says the
+answers are used "to shape your plan and to help your coach prepare" and
+that "your coach and the person who runs WillpowerLab can see them"; "I ask
+them only to help you handle the stress" would contradict it at the moment of
+consent (N95: the signed text stands). The signed words stay until either
+the policy changes with counsel or new words that match it are signed.
+5. **Deferred:** whether the sharing screen's words must say the choice
+covers later Takes (N309 item 5).
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C, when built. No migration.
