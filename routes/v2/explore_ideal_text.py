@@ -488,9 +488,11 @@ def _tempo_level(take: str):
 @require_auth
 def v2_explore_arc_review_tempo(arc_id, take_session_id):
     """The tempo step's stretch for one Take (founder 2026-10-26, N162,
-    N166). 200 {tempo: {reading, topic, said, plan_level} | null}
-    · 403 a denied permit · 404 · 500"""
+    N166); null too on a slide where the pace game the walk of the Take
+    before gave worked (N359). 200 {tempo: {reading, topic, said,
+    plan_level} | null} · 403 a denied permit · 404 · 500"""
     from services.processing_authorization import ProcessingAuthorizationError
+    from services.take_progress import pace_worked
     from services.tempo_stretch import tempo_for_take
     try:
         owned, sessions = _arc_owned_by_caller(arc_id)
@@ -500,6 +502,9 @@ def v2_explore_arc_review_tempo(arc_id, take_session_id):
         if not _tempo_on():
             return jsonify({"tempo": None}), 200
         tempo = tempo_for_take(db, take=take, user_id=str(request.user_id), arc_id=str(arc_id))
+        # Not again on a slide where the pace game worked last time (N359).
+        if tempo and pace_worked(db, sessions, take):
+            tempo = None
         if tempo:
             tempo = {**tempo, "plan_level": _tempo_level(take)}
         return jsonify({"tempo": tempo}), 200

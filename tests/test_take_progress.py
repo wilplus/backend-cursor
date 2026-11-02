@@ -18,7 +18,8 @@ OUTCOME
       Take stays inside the green on the side the stretch leaned, the bar
       that picks a stretch: the Takes table marks it gone and the walk opens
       with it as the last fix; slower but still outside the green, it came
-      back and nothing is said (N347 item 3, N350 item 3).
+      back and nothing is said (N347 item 3, N350 item 3). Where it worked,
+      the walk offers no tempo step on that slide again (N359).
 PROVES   O1 -> test_progress_is_read_against_my_first_takes
          O2 -> test_each_fix_is_marked_came_back_or_gone_on_the_next_take
          O3 -> test_last_time_plays_the_fix_that_rose_on_this_take
@@ -27,12 +28,15 @@ WHY      Founder 2026-10-31 (N291: "yes"; "ok go with the proposal"; N290:
          "the next time it chooses a moment it should take into account
          what the user answered"; N309 item 1: "Last time: {the tip}. You
          did."; N347 item 3: "Every fix gets its Last time, the pace game
-         too"; N350 item 3: one rule for "the pace fix worked").
+         too"; N350 item 3: one rule for "the pace fix worked"; N359: "once
+         a fix has worked on a slide, the walk stops picking the same issue
+         on that slide, and picks it again only if it comes back").
 """
 from unittest.mock import patch
 
 from services.take_progress import (CAME_BACK, GONE, NOT_MEASURED, anchored_willfidence,
-                                    fixes_of, frozen_reference, last_fix, outcome)
+                                    fixes_of, frozen_reference, last_fix, outcome,
+                                    pace_worked)
 
 _WORDS = "we made our plan clear and we will deliver it on time for everyone"
 
@@ -171,3 +175,12 @@ def test_the_pace_fix_worked_when_that_slide_stays_inside_the_green():
         # nothing is said.
         assert outcome(fix, now, [calm_now, still_out]) == CAME_BACK
         assert last_fix(Db([calm_now, still_out]), "t2", "t1") is None
+
+    # It worked, and this Take's stretch is on slide 2 again, slow now: the
+    # walk offers no tempo step there (N359). Still rushed there, it does,
+    # and with no Take before, nothing changes.
+    talk = [{"id": "t1", "take_index": 1}, {"id": "t2", "take_index": 2}]
+    slow, _ = _spoken("n2", end + 1, 12, word_s=0.3, gap_s=6.0)
+    assert pace_worked(Db([calm_now, slow]), talk, "t2") is True
+    assert pace_worked(Db([calm_now, still_out]), talk, "t2") is False
+    assert pace_worked(Db([calm_now, slow]), talk[1:], "t2") is False

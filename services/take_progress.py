@@ -41,7 +41,8 @@ walk of the Take before gave (``last_walk``: the completed spoken Take
 before this one in the talk, ``previous_take``; its fixes, ``walk_fixes``)
 whose issue is gone on this Take's same slide (``worked``, by ``outcome``,
 the rule above) are not given again on that slide by this Take's walk
-(``take_feedback_policy_v3``). Nothing of it reaches the speaker or a coach.
+(``take_feedback_policy_v3``), nor its tempo step there (``pace_worked``).
+Nothing of it reaches the speaker or a coach.
 """
 from __future__ import annotations
 
@@ -245,6 +246,25 @@ def worked(fixes: Any, frame: Any, snippets: list[dict]) -> frozenset:
     does not give again there (N359). Pure."""
     return frozenset((f["slide_index"], f["kind"]) for f in fixes or []
                      if outcome(f, frame, snippets) == GONE)
+
+
+def pace_worked(database: Any, sessions: Any, take_id: Any) -> bool:
+    """Whether this Take's tempo stretch is on a slide where the pace game
+    the walk of the Take before gave worked (``worked``, N359): the walk's
+    tempo step is then not offered, as the frame gives no Sniper there.
+    False with no such walk, or on any failure. Never raises."""
+    fixes = [f for f in walk_fixes(database, previous_take(sessions, take_id))
+             if f["kind"] == "tempo"]
+    if not fixes:
+        return False
+    try:
+        frame = database.get_v4_dark_frame(str(take_id))
+        snippets = database.get_snippets_by_session(str(take_id)) or []
+        now = _stretch(frame, snippets)
+        return bool(now) and (now["slide_index"], "tempo") in worked(fixes, frame, snippets)
+    except Exception as error:  # noqa: BLE001 -- the step as without it
+        logger.warning("take progress: pace unread take=%s: %s", take_id, error)
+        return False
 
 
 def last_fix(database: Any, take_id: Any, previous_take_id: Optional[Any]) -> Optional[dict]:
