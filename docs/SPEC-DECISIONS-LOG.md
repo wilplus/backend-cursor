@@ -9089,3 +9089,30 @@ The prototype: <https://claude.ai/artifact/6hwwEuqffTyQBAqG9SLhbJ>, version
 40. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1. No migration.
+
+**N349 · No coach role: a person says in setup what others can ask them
+(founder, the Claude Code chat, 2 November 2026: "I want to log in the coach
+through the new onboarding, so that the coach panel, everything that is
+there, has to be lovable through the universal set up process"; asked how
+someone becomes a coach: "There is no such a thing like a coach in the new
+setup there is just a user to whom you can ask a questions and that person
+defines during the set up"; and, to three questions, the recommended
+answers).** For N205, N274, N287, N300, N332 and N335:
+1. **No coach role.** Everyone joins the same way (the join link, N335; or
+signing up). A person defines, during setup, what others can ask them: how
+they speak (the reviews the coach panel holds today), their work, or
+nothing. Was: a coach was an email added by hand to `coach_users`.
+2. **The setup is in Will's chat,** one question at a time, as Will's first
+lines (N319, N348).
+3. **The agreement is accepted in the setup.** Before anyone's recordings
+reach a person, Will shows the data processing agreement's summary with a
+link to its full text, and the person taps to accept; it is kept with its
+date. No review opens before that (the DPIA's risk 6).
+4. **Which Takes reach a reviewer: as today,** every Take in a language they
+review, blind first. Pairing a personal coach (N287 item 4) is designed
+later, on its own.
+5. **Open:** the setup's questions and words, shown on a prototype first.
+No rules page yet: it lands on frontend
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+when built. No migration in this entry.
