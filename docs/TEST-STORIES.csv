@@ -3723,7 +3723,12 @@ thread change, Will does not answer again, and only their own voice
 note can be fixed (N194).
 O10 Every fifth note that names someone gets the short line ""🔒 Security
 disclaimer"" under its ""Noted.""; the others, and notes with no name,
-get nothing more; nothing is changed or deleted (N411 item 3).","O1 -> test_without_the_notebook_the_chat_is_unchanged
+get nothing more; nothing is changed or deleted (N411 item 3).
+O11 Before any note, once three Takes have their summaries, opening the
+Lounge brings ""We spotted a strength!"", the strength in one sentence
+and the notebook's ask, once; after Not now, again only after three
+more Takes; after Yes, never; a sentence with a number, or none,
+writes nothing until the next Take (N411 items 1, 5).","O1 -> test_without_the_notebook_the_chat_is_unchanged
 O2 -> test_the_first_note_asks_and_yes_keeps_it
 O3 -> test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash
 O4 -> test_a_crisis_note_gets_the_safety_reply
@@ -3732,7 +3737,8 @@ O6 -> test_every_typed_hash_is_one_note_as_the_mic
 O7 -> test_the_live_words_come_back_and_nothing_is_kept
 O8 -> test_a_note_sent_twice_is_kept_once
 O9 -> test_a_voice_note_is_fixed_in_the_notebook_and_the_thread
-O10 -> test_every_fifth_note_with_a_name_gets_the_privacy_line","Will learning plan, step 1 (founder 2026-10-20, ""approved, start step 1""; words signed the same day)."
+O10 -> test_every_fifth_note_with_a_name_gets_the_privacy_line
+O11 -> test_a_strength_in_the_takes_opens_the_notebook","Will learning plan, step 1 (founder 2026-10-20, ""approved, start step 1""; words signed the same day)."
 tests/test_walk_quote.py,Story,"As a speaker who just said a better try of a sentence that doubted me, I want Will to show me my own words that prove otherwise, so that the better sentence feels true, and I want to be able to say ""Not here"".","O1  A sentence that doubted me gets one quote: the signed line and my own
 kept words, word for word with their date; the same sentence gets the
 same quote again, and any other sentence in that Take gets none (N268

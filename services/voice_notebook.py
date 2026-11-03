@@ -417,6 +417,105 @@ def privacy_after_note(database: Any, user_id: str) -> list[dict]:
     return database.insert_lounge_messages(str(user_id), [row]) or []
 
 
+#: N411 items 1 and 5: before there are notes, Will may spot a strength in
+#: the speaker's Takes and open the notebook's introduction with it.
+INTRO_TAKES = 3
+_INTRO_SCAN = 500
+_SPOT_READ = (
+    "You read the short summaries a speaking coach wrote after a speaker's last "
+    "Takes (recordings of their talk). Find one strength that shows in at least "
+    "two of them. Answer in JSON: {\"strength\": \"one sentence to the speaker\"} "
+    "or {\"strength\": null}. The sentence starts \"In your last three Takes you\" "
+    "and names what they do well in plain words. No numbers, no scores, no "
+    "verdicts, no names of people, no advice. Only what the summaries say; never "
+    "invent. When no strength shows in two of them, answer null.")
+
+
+def _summaries(rows: list[dict]) -> list[dict]:
+    """The Takes' closing summaries in the thread, newest first."""
+    return [r for r in rows if r.get("role") == "bot"
+            and (r.get("metadata") or {}).get("summary") is True and (r.get("body") or "").strip()]
+
+
+def _intro_due(database: Any, user_id: str, rows: list[dict]) -> bool:
+    """Three summaries since the last introduction (or ever), the newest not
+    read for one yet, no ask waiting at the bottom, nothing held after a
+    Take, and the person neither onboarded nor already in (N411 item 5)."""
+    decision = (database.get_voice_notebook_consent(str(user_id)) or {}).get("decision")
+    if decision == "yes" or not rows or (rows[0].get("metadata") or {}).get("offer"):
+        return False
+    since = []
+    for row in rows:
+        if (row.get("metadata") or {}).get("notebook_intro") == "takes":
+            break
+        since.append(row)
+    found = _summaries(since)
+    if len(found) < INTRO_TAKES or (found[0].get("metadata") or {}).get("notebook_intro_read"):
+        return False
+    from services import after_take, plan_flow
+    return not plan_flow.onboarding(database, user_id) and after_take.held(database, user_id) is None
+
+
+def _spotted(database: Any, found: list[dict], user_id: str) -> Optional[str]:
+    """One strength from the last Takes' summaries, in one sentence, or None.
+    Under the newest Take's processing authorization, as its summary was."""
+    take = str((found[0].get("metadata") or {}).get("take_session_id") or "")
+    lines = [f"{i + 1}. {' '.join(str(r.get('body') or '').split())[:1200]}"
+             for i, r in enumerate(found[:INTRO_TAKES])]
+
+    def read() -> Optional[str]:
+        from services.llm import chat_complete
+        from services.llm_config import SPEC_NOTEBOOK_SPOT
+        result = chat_complete(spec=SPEC_NOTEBOOK_SPOT, system=_SPOT_READ, user="\n".join(lines),
+                               surface="voice_notebook_intro", user_id=str(user_id))
+        parsed = getattr(result, "parsed", None) if result else None
+        said = parsed.get("strength") if isinstance(parsed, dict) else None
+        return said.strip() if isinstance(said, str) else None
+
+    if not take:
+        return None
+    from services.take_summary import _under_authority
+    said = _under_authority(database, take, read)
+    # Words only (Never 1): a sentence with a digit, or that is not one, is dropped.
+    if not said or re.search(r"\d", said) or len(said) > 280:
+        return None
+    return said
+
+
+def intro_from_takes(database: Any, user_id: str) -> list[dict]:
+    """The Lounge opened (N411 items 1, 5): when due, "We spotted a
+    strength!", the strength in one sentence, and the notebook's ask, with
+    the intro the Lounge draws above it. The newest summary is marked read
+    either way, so Will reads again only after the next Take. [] most of
+    the time; never raises."""
+    try:
+        if not enabled(database, user_id):
+            return []
+        rows = database.get_lounge_messages_page(str(user_id), limit=_INTRO_SCAN) or []
+        if not _intro_due(database, user_id, rows):
+            return []
+        found = _summaries(rows)
+        newest = found[0]
+        database.rewrite_lounge_message(
+            str(user_id), str(newest["client_id"]), newest.get("body") or "",
+            {**(newest.get("metadata") or {}), "notebook_intro_read": True})
+        said = _spotted(database, found, user_id)
+        if not said:
+            return []
+        from services.lounge_messages import thread_stamp
+        from services.strengths import COPY as STRENGTH_COPY
+        at = thread_stamp(database, user_id)
+        meta = {"notebook_intro": "takes", "take_session_id": newest["metadata"].get("take_session_id")}
+        rows_out = [_row("bot", STRENGTH_COPY["head"], meta, at, f"{user_id}:intro:{at}:head"),
+                    _row("bot", said, meta, _after(at, 1), f"{user_id}:intro:{at}:case"),
+                    _row("bot", COPY["ask"], {**meta, "offer": OFFER}, _after(at, 2),
+                         f"{user_id}:intro:{at}:ask")]
+        return database.insert_lounge_messages(str(user_id), rows_out) or []
+    except Exception as error:  # noqa: BLE001 -- the Lounge opens either way
+        logger.warning("voice notebook: intro not made user=%s: %s", user_id, error, exc_info=True)
+        return []
+
+
 #: A leading "#note" is read as "#" (N253): the message box offers "# note".
 _NOTE_TAG = re.compile(r"^#note(?=\s|$)\s*", re.IGNORECASE)
 
