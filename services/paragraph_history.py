@@ -35,17 +35,11 @@ ACCEPTED_CORRECTION = "accepted_correction"
 
 def _slide_paragraphs(version: Mapping, slide_index: int) -> Optional[list]:
     """This Slide's Paragraph texts in one version, or None if unprovable."""
-    doc = version.get("document")
-    text = version.get("text")
-    if not isinstance(doc, Mapping) or not isinstance(text, str):
+    slides = _paragraph_slides(version)
+    if slides is None:
         return None
-    paragraphs = doc.get("paragraphs")
-    blocks = text.split(_PARA)
-    if not isinstance(paragraphs, list) or len(paragraphs) != len(blocks):
-        return None
-    return [block for block, para in zip(blocks, paragraphs)
-            if isinstance(para, Mapping)
-            and para.get("slide_index") == slide_index]
+    return [block for block, slide in zip(version["text"].split(_PARA), slides)
+            if slide == slide_index]
 
 
 def _take_index(version: Mapping) -> Optional[int]:
