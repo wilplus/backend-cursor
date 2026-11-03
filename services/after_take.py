@@ -364,10 +364,14 @@ def end_rows(database: Any, user_id: str, row: dict, *, glad: bool = False,
     N319 item 7): the plan's lines after the Take, then the closing message
     under them ("Good job. See you {day}." on a plan), then the plan's
     progress under it. ``row``: the closing message, let go where it was
-    held (``written``) or written now. The rows written."""
+    held (``written``) or written now; on the plan's first Take it says so
+    (``metadata.first_take``). The rows written."""
     from services.lounge_messages import thread_stamp
     from services.plan_flow import after_take as plan_after_take, next_day_text
     plan_rows = plan_after_take(database, user_id) if plan_after else []
+    meta = row.get("metadata") or {}
+    if not meta.get("first_take") and _first_take(database, user_id, str(meta.get("take_session_id") or "")):
+        row = {**row, "metadata": {**meta, "first_take": True}}
     body = closing_line(next_day_text(database, user_id))
     at = thread_stamp(database, user_id)
     if written:
@@ -377,6 +381,21 @@ def end_rows(database: Any, user_id: str, row: dict, *, glad: bool = False,
         closing = database.insert_lounge_messages(str(user_id), [{
             **row, "body": body, "client_created_at": at}]) or []
     return plan_rows + closing + (_plan_progress(database, user_id) if closing else [])
+
+
+def _first_take(database: Any, user_id: str, take: str) -> bool:
+    """Is ``take`` the plan's first Take (N401)? Its goodbye says so
+    (``metadata.first_take``), so "Record Take 2" comes at once under it on
+    every device (N449 item 2). Read after the plan's lines: the first
+    Take's read keeps its session in the plan's facts. Unknown: no."""
+    if not take:
+        return False
+    try:
+        plan = database.get_open_plan(str(user_id)) or {}
+    except Exception as error:  # noqa: BLE001 -- the goodbye as before
+        logger.warning("after take: plan unread user=%s: %s", user_id, error)
+        return False
+    return str((plan.get("facts") or {}).get("first_take_session") or "") == take
 
 
 def release(database: Any, user_id: str, *, take: Optional[str] = None,
