@@ -9,7 +9,7 @@ OUTCOME
       holds: a breather when the practice missed or the voice dipped two
       Takes in a row; "On purpose?" when the clearer line I practised last
       Take did not come back; who the talk is for; what I want them to do;
-      from Take 3, with both known, one deeper question. Nothing missing, no
+      from Take 3, with all three known, one deeper question. Nothing missing, no
       question; each of these once per talk, a breather never twice in a row.
   O2  The tap answers come from what Will heard, the recording first: a
       Take that names its audience twice is checked ("Right?"); named
@@ -187,6 +187,8 @@ def test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_missing():
     assert _key(**known) == "vision"
     assert _key(**known, asked={"vision", "most_you"}) == "why_matters"
     assert _key(**known, asked=set(will_question.PRINCIPLES)) is None
+    # The key line asked and left unanswered: no deeper question (E2).
+    assert _key(**{**known, "key_line": ""}, asked={"key_line"}) is None
     assert _key(take_index=1, before=None) == "audience"
 
 

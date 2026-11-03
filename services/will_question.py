@@ -691,7 +691,7 @@ def choose_key(*, take_index: int, now: tuple, before: Optional[tuple],
         return "goal"
     if key_wanted(audience=audience, goal=goal, key_line=key_line, asked=asked):
         return KEY_LINE
-    if take_index >= 3 and audience and goal:
+    if take_index >= 3 and audience and goal and key_line:
         return next((k for k in deeper if k not in asked), None)
     return None
 
