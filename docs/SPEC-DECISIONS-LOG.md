@@ -10733,3 +10733,26 @@ Same day: every Railway service and Vercel deploy from `production`, and
 migration.
 No rules page: the rule is in
 [`docs/OPS-FLAGS-AND-RELEASES.md`](docs/OPS-FLAGS-AND-RELEASES.md).
+
+**N445 · The One thing walk's clips show the speaker's own words, and the
+AI-clip fix's phrase to lean on is bold (founder, the Claude Code chat,
+3 November 2026: "so it really matches the design and the prototype"; on
+the comparison page <https://claude.ai/artifact/KGscH8yJXaf8ChXrA3TsRJ>,
+"still has no guidance on how to say it", then "yes, bold the phrase, add
+it to this PR").** For N309 item 1:
+1. **Their best's clip and the AI-clip fix's clip** show the moment's own
+words (its served `said`) above the player, as the locked prototype draws
+them (`clip(u.best.text)`, `clip(f.text)`). "Last time" and their best
+played again inside the fix stay without words. Was: both clips drawn with
+the player only.
+2. **The phrase the AI clip names** (its served `phrase`) is bold where it
+stands in the fix's own words above the clip, in the tip ("Lean on
+“**above ninety percent**”, like this:", or the tip in words when no clip
+comes), and in the chat's copy of the fix's words, so the speaker sees where
+to lean. Was: the words and the tip plain. This goes beyond the locked
+prototype, which draws the words plain; the founder signed it.
+3. No new words (Never 4): the words are the speaker's own and the tip is
+the signed bank's.
+Built: frontend #1192. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2 and C4. No migration.
