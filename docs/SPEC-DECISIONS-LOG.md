@@ -9389,3 +9389,30 @@ to become more slides once they can arrive (N303).
 No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration.
+
+**N362 · An answer: Finish take goes back to the chat, no feelings check,
+up to 5 minutes (founder, on the page "Record an Answer, Three Calls",
+round 2, <https://claude.ai/artifact/6csW4xUwcFdHnk58WrqGWs>, 3 November
+2026, the three recommended options, then "answered").** For N329 item 1,
+N336, N345, N319 and N324; builds N361:
+1. **Finish take brings an answer straight back to the chat.** For an
+answer only, Finish take goes back to the chat it came from, with "Sending
+to {name}…" and "Undo" (N345); no processing wait and no walk in between.
+The processing runs on its own and its walk waits in the speaker's chat with
+Will ("Practise with Will", N344). The speaker's own practice Takes keep the
+recording screens' ending as today. A change to the locked recording screens,
+approved here (Founder-Approved for the lock). The person's name sits above
+"Take {N} · Slide {N} of {N}" (N334 item 2).
+2. **No feelings check before an answer.** "Record an answer" opens the
+recording screens at once; someone is waiting. Practice Takes keep "How do
+you feel?" with its Skip (N319). An exception to Never 3's "before any other
+Take, only the feelings check", which concerns practice Takes.
+3. **An answer lasts up to 5 minutes.** A voice note keeps its 2 minutes
+(N324).
+4. Claude's two calls, unopposed: an answer's project never becomes the
+speaker's current project (N254), and a community share chosen earlier
+never applies to an answer.
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 and [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+when built. No migration.
