@@ -9368,3 +9368,24 @@ inviter's chat first, Will's under it.
 The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 (Will pinned first, as built). No migration.
+
+**N361 · "Record an answer": which questions get it, the line under an
+answer to a colleague, one slide (founder, on the page "Record an Answer,
+Three Calls", <https://claude.ai/artifact/6csW4xUwcFdHnk58WrqGWs>, 3 November
+2026, the three recommended options, then "answered").** For N321 item 4,
+N322 item 5, N342 and N303; settles what building N321, N334, N336, N342 and
+N345 left open:
+1. **Will decides from the words.** A question waiting for the speaker's
+answer that asks about a product or a treatment turns the bar into "Record
+an answer". Photos join the rule once they can arrive in a chat (N351). Was
+(N321 item 4): photos and a product or treatment.
+2. **"Sent to {name}" for a colleague.** The line under an answer sent to a
+colleague, and Will's confirmation, say "Sent to {name}"; a customer's keep
+"Sent to {name} on WhatsApp" and "Sent to {name}. {name} gets it on
+WhatsApp." (N342). Signed (Never 4): "Sent to {name}".
+3. **One slide: the question.** An answer's recording screens show one
+slide, the asker's words. The question's photos and what the answer points
+to become more slides once they can arrive (N303).
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
