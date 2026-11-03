@@ -50,6 +50,8 @@ USER_KEYED = {
     "chat_message_files": ("chat_message_files", "user_id"),
     # My join link (a_person_has_a_link_to_join_them, N308).
     "chat_links": ("chat_links", "user_id"),
+    # My profile (a_person_has_a_profile, N366).
+    "people_profiles": ("people_profiles", "user_id"),
 }
 
 #: A real account: its owner principal's id is not its user id.
