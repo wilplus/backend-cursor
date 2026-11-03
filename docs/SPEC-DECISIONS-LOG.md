@@ -9554,10 +9554,21 @@ own profile turns it into a box with the text in it, up to 300 characters;
 "Save" keeps it, with "Edited today" under it, and "Cancel" leaves it. The
 one place in the app where a person types; everywhere else stays voice and
 one tap. Others' profiles have no pencil.
-4. **Replaces N362 item 2's card** ("Ask {name} about" with the setup's
+4. **On your own profile, as on WhatsApp** (founder, the same chat: "if
+you click on the photo, you can change the photo ... if you click on the
+top right, you can actually edit also ... make it just like on WhatsApp,
+that you can edit your name, you can edit your role"): a tap on your circle
+(a small camera on it) opens "Take photo", "Choose photo", "Delete photo"
+(once there is one) and "Cancel"; the photo becomes your circle everywhere,
+the menu's top row included. "Edit" at the top right turns your name, who
+you are and your About into fields; "Done" keeps them. Others' profiles have
+neither.
+5. **Replaces N362 item 2's card** ("Ask {name} about" with the setup's
 topics): the topics now live in the person's About.
-5. **Signed (Never 4):** "About", "Photos", "Files", "No photos yet.", "No
+6. **Signed (Never 4):** "About", "Photos", "Files", "No photos yet.", "No
 files yet.", "Save", "Cancel", "Edited today", "From your setup, {date}".
+Not yet signed: "Edit", "Done", "Take photo", "Choose photo", "Delete
+photo".
 No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration in this entry.
