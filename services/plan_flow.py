@@ -1164,7 +1164,10 @@ def _from_first_take(database: Any, user_id: str, plan: dict) -> list[dict]:
     said = _said(slides)
     today = today_in(plan.get("time_zone"))
     read = _read_first_take(user_id, said, today) if any(said) else None
-    facts = {**_facts(plan), "first_take": "read", "first_take_session": take_id or None}
+    # The walk has come (N262 item 1, as ``_ask_again`` keeps it): the plan
+    # no longer waits for it, so "When is your deadline?" comes with its taps.
+    facts = {**_facts(plan), "first_take": "read", "first_take_session": take_id or None,
+             "takes_seen": len(_takes(database, user_id))}
     facts.update(P.clean_facts((read or {}).get("facts"), facts))
     if not facts.get("key_line") and said[3]:
         facts["key_line"] = said[3][:300]

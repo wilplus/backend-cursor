@@ -692,6 +692,8 @@ def test_a_first_take_with_no_day_asks_for_the_deadline(db, monkeypatch):
     F.after_take(db, USER, first_name="Anna")
     assert bodies(db)[-1] == P.COPY["deadline_q"]
     assert db.thread[-1]["metadata"].get("plan_ask") == "deadline"
+    view = F.state(db, USER, tz="UTC")["plan"]
+    assert view["step"] == "deadline" and not view["waiting"]  # its taps under it, not the walk's wait
     out = F.answer_deadline(db, USER, None, tz="UTC")
     assert out["plan"]["status"] == "active"
     assert bodies(db)[-2:] == [P.COPY["all_set"], ""]
