@@ -9501,3 +9501,34 @@ No rules page yet: it lands on frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 when built. No migration.
+
+**N365 · A person's profile, as on WhatsApp: name, one About, and what you
+shared (founder, the Claude Code chat, 3 November 2026, on the prototype
+"One bar", <https://claude.ai/artifact/2v8jSi91F157WFR8tjX5E1>: "We need to
+design user profile, just like on WhatsApp ... it sources information about
+you from the onboarding, it's just one description, your name, and files you
+shared ... Photos and files below"; then "let them edit the description the
+way they want it by typing ... just a small pencil"; then "You have my okay
+on the profile editing").** For N349, N352 and N362 item 2:
+1. **Where it opens:** in any chat, a tap on the circle or the name in the
+top bar opens that person's profile; your own opens from the top of the ☰
+menu. It slides in from the right; the back arrow returns to where you
+were.
+2. **What it shows, one page:** a large circle with the first letter, the
+name and who they are (from setup); "About", one description written from
+the setup's voice note about their work (N352 item 1); "Photos", a grid of
+the photos the two of you shared in that chat, each opening full screen;
+"Files", the files shared there, each opening. On your own profile, what you
+shared in any chat. Nothing else: no status, no phone number, no last seen.
+3. **You edit your About by typing.** A small pencil beside "About" on your
+own profile turns it into a box with the text in it, up to 300 characters;
+"Save" keeps it, with "Edited today" under it, and "Cancel" leaves it. The
+one place in the app where a person types; everywhere else stays voice and
+one tap. Others' profiles have no pencil.
+4. **Replaces N362 item 2's card** ("Ask {name} about" with the setup's
+topics): the topics now live in the person's About.
+5. **Signed (Never 4):** "About", "Photos", "Files", "No photos yet.", "No
+files yet.", "Save", "Cancel", "Edited today", "From your setup, {date}".
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration in this entry.
