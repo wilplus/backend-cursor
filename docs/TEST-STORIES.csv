@@ -309,7 +309,11 @@ O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
 O6 -> test_the_plans_lines_wait_for_the_ask_then_the_goodbye_and_the_progress
 O7 -> test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar","Founder 2026-10-20: ""one action at a time""; 2026-10-31 (N294): ""No call to action means that there is no push"", ""the next time you come and open the app ask the settings questions""."
 tests/test_ai_voice.py,Story,"As a speaker practising, I want an AI clip of my own voice saying my own words with one improvement, never shown if it fails its check, and fully deleted when I ask, so that I hear a believable better version and keep control of my voice.","O1  One problem is picked against my own usual (or the default), and the
-sentence under the clip names it in words, with no numbers.
+sentence under the clip names it in words, with no numbers. As the
+walk's one fix on a moment, the clip teaches the strongest problem my
+clip shows, never the runner-up, and with nothing measured no clip is
+made: no default (N425). A clearer version's example keeps the
+default.
 O2  The clip says my own words (or the clearer version I accepted, with
 the ums taken out), in at most 17 seconds.
 O3  A clip that fails its check is made once more with a new seed and
@@ -334,7 +338,8 @@ clip shows it; where it doesn't, the pick is as without a plan (G7,
 N209).","O1 -> test_a_problem_from_the_line_up_else_the_default,
 test_raw_units_are_never_compared_and_the_phrase_has_a_fallback,
 test_the_sentence_under_the_clip_comes_from_the_transcript_and_their_own_numbers,
-test_a_clean_sentence_never_gets_the_fillers_clip
+test_a_clean_sentence_never_gets_the_fillers_clip,
+test_the_walks_fix_gets_no_clip_when_nothing_was_off_and_never_the_runner_up
 O2 -> test_the_request_says_the_speakers_own_words,
 test_no_clip_is_longer_than_the_limit,
 test_a_clearer_version_practice_gets_a_clip_of_the_accepted_words,
@@ -1883,8 +1888,11 @@ under my identity, in the expected numbers.",O1 -> test_deletion_inventory_attri
 tests/test_moment_pick.py,Story,"As a speaker, I want each Take to show my strongest moment, praised, my weakest, practised with the AI voice, and the one whose words need help, with a clearer version, so that I know what to keep and get the one fix each moment needs.","O1  The strongest is the Take's highest willfidence clip, a block's best
 clip standing for it and a clip with enough words before a short
 one; it is praised whatever its voice and called my most confident.
-O2  The weakest is, from another block, the lowest willfidence clip with
-a whole thought and a sound read; it is practised with the voice.
+O2  The weakest is, from another block, the clip whose own voice shows
+the strongest problem the AI clip can teach (pace, pauses, a flat
+loudness range, fillers, against my own usual), with a whole thought
+and a sound read; it is practised with the voice. A clip that shows no
+such problem is never the weakest, however low its read (N425).
 O3  The between is the clip whose words need help the most; it gets the
 clearer version, and it is picked before the weakest, so a Take of
 two blocks gets the precise fix.
@@ -1902,7 +1910,7 @@ O3 -> test_words_that_need_help_get_the_between_first
 O4 -> test_an_empty_slot_goes_to_the_next_best
 O5 -> test_a_clip_with_no_sound_read_is_never_the_weakest
 O6 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
-O7 -> test_my_level_takes_its_slot_never_the_strongest","Founder 2026-10-30 (N289: ""the praise clips just get the praise"", ""a negative [word] has been spotted, or it was too fast, that's the second moment"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-28 (N246, ""go for the next confident moment""); 2026-10-30 (N284, three moments)."
+O7 -> test_my_level_takes_its_slot_never_the_strongest","Founder 2026-10-30 (N289: ""the praise clips just get the praise"", ""a negative [word] has been spotted, or it was too fast, that's the second moment"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-28 (N246, ""go for the next confident moment""); 2026-10-30 (N284, three moments); 2026-11-03 (N425, ""go for A, B and C"": the AI clip only where the voice shows the problem)."
 tests/test_moment_suggestions.py,Story,"As a speaker, I want my Ideal Text read to carry no star or suggestion outside the gated changes lane and no scores, so that I see only words and the latest text.","O1  Whatever lane a stored moment suggestion came from (replace,
 emphasize, structure), the GET serves the moment with its anchor and
 playback identity but no star and no suggestion.

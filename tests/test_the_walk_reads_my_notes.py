@@ -33,11 +33,20 @@ WHY      Founder 2026-11-02, the Claude Code chat, on the prototype
          picks on all four" (N326, building N290).
 """
 import json
+import time
 
 import pytest
 
 from services import moment_suggestions, verbal_read
 from services.take_feedback_policy_v3 import build_shadow_frame
+
+
+def _rushed(score):
+    """A weak voice measures as running on: barely a pause (the AI clip's
+    pause problem, below its absolute line whatever the speaker's usual;
+    N425: the weakest is a measured voice problem). A sound voice pauses as
+    a speaker usually does."""
+    return 0.15 if score is None or score >= 0 else 0.02
 
 _NOTE = "my manager says I explain too much and never give the answer"
 _QUESTION = "Can we get back above ninety percent by March?"
@@ -67,7 +76,7 @@ def _take(rewrite=None, clean=False, **options):
                          "start_offset_ms": index * 5000, "duration_ms": 5000,
                          "transcript": transcript,
                          "metrics": {"piece": {"slide_index": index}, "voice_confidence": {
-                             "version": "voice-confidence-universal-v3", "score": score}}})
+                             "version": "voice-confidence-universal-v3", "score": score}, "pause_ratio": _rushed(score)}})
         at += len(text) + 1
     buried = pieces[2]
     row = {"id": "r-buried", "feedback_family": "rewrite_clarity", "snippet_id": "s2",
@@ -184,7 +193,14 @@ def _run_the_read(monkeypatch, snippets, read_answer, rewrite=_CLEARER):
     seen = _model(monkeypatch, read_answer, rewrite)
     db = _Db(snippets)
     handle = verbal_read.start(db, session_id="take-2", arc_id="arc", user_id="u")
+    # The run finishes the read once the Take is ready, seconds later: by
+    # then the read knows whether it reaches me.
+    deadline = time.monotonic() + 5
+    while handle and not (handle.reached or handle.done.is_set()) and time.monotonic() < deadline:
+        time.sleep(0.001)
     landed = verbal_read.finish(handle, db, session_id="take-2", arc_id="arc", wait=10)
+    if handle:
+        handle.done.wait(10)  # no read outlives its test and calls the next one's model
     return landed, db, seen
 
 
