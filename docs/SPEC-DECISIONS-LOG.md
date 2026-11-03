@@ -9946,3 +9946,40 @@ The rules: frontend
 [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 F1. No migration.
+
+**N381 · The AI clip stays the weakest's: N374 item 1 is withdrawn
+(founder, the Claude Code chat, 3 November 2026, after a new Take whose
+between took the AI clip: "It showed me the wrong AI audio for the wrong
+fragment", "Please maybe revert it to what it was", "make it work like it
+used to work. don't do the fallbacks").** For N374 item 1 and N289 item 5:
+1. **A between whose Clearer version does not pass is praised as a next
+best again** (N289 item 5), whatever is left for the weakest. The AI clip
+is the weakest's alone, on a paragraph of its own, so a Take of two
+paragraphs can again end with their best alone. Was (N374 item 1, Takes
+recorded from 3 November 2026, 11:00 UTC, until this): that between took
+the AI clip when no paragraph was left for the weakest, and the clip coached
+the voice on a fragment whose trouble was its words.
+2. Nothing to sign: no new words.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2 and H1. No migration.
+
+**N385 · Push in the iPhone app: the coach's feedback and a new chat message
+(founder, the Claude Code chat, 3 November 2026, choosing on the questions
+asked: "Coach feedback is in", "New chat message", "After the first
+feedback", "Name + first line").** For N365 item 4, N155 and N171:
+1. **Two pushes, in the iPhone app only.** "The feedback from your coach is
+in!" (N171's words), sent when its WhatsApp would be (coach_feedback_notice),
+opening the feedback; and a new chat message, its title the sender's name and
+its line the start of the message ("🎤 Voice message" for a voice note,
+N322 item 3), opening that chat. Each is best-effort and never holds up a save
+or a send.
+2. **Asked once, after the first feedback:** iPhone's own permission question
+comes when the speaker has first seen their coach's feedback, never before
+the first Take (Never 3). A no is kept; nothing asks again.
+3. **Not yet:** practice-day reminders (N155 stands) and the Life Panel's
+reminders on the iPhone; N365 item 4's practice days wait for their own
+decision.
+No rules page: the code and its comments, with the frontend README's
+iPhone-app row. The migration (the iPhone's push address per account) gets
+its outside review before it is merged.

@@ -27,10 +27,7 @@ Three moments, one per block, each with its own job (N289):
              (``services.rewrite_gate``, read on the words the speaker sees,
              N121): CORRECTED with the clearer version (``clearer``). The
              policy keeps it only when a rewrite passes the gate's second
-             half; else it is praised as a next best, or, when no weakest
-             is shown and its clip could be one (``voice_fallback``), it is
-             the weakest, with the AI clip (founder 2026-11-03, N374), so a
-             Take of two blocks never ends with no fix. Picked before the
+             half; else it is praised as a next best. Picked before the
              weakest, so a Take of two blocks gets the precise fix. Rushing
              is the tempo step's (N181, N289 item 6), which follows the
              moments.
@@ -185,9 +182,7 @@ def pick(reads: list[dict], level: Optional[dict] = None) -> dict:
     the between (``kind`` "clearer"), each slot nothing fills taken by the
     next best block (``slot`` "next", praised); ``plan_level`` on the
     level's moment. ``voice_clears`` says the voice reached the floor
-    (N113). ``voice_fallback`` on the between when no weakest is shown and
-    its clip could be the weakest: should its Clearer version not pass,
-    the policy gives it the AI clip in the weakest's slot (N374)."""
+    (N113)."""
     readable = [row for row in reads if row.get("read")]
     best_per_block: dict[Any, dict] = {}
     for row in readable:
@@ -201,7 +196,6 @@ def pick(reads: list[dict], level: Optional[dict] = None) -> dict:
     used = {strongest["block_id"]}
     forced = _level_row(readable, level, strongest)
     shown = [_entry(strongest, SLOT_STRONGEST, praise=True, highest=True)]
-    rows: dict[str, dict] = {}
     # The precise fix first: on a Take of two blocks, words that need help
     # get their clearer version before the AI clip gets the weakest.
     for slot, find, kind in ((SLOT_BETWEEN, _between, EXERCISE_CLEARER),
@@ -215,14 +209,7 @@ def pick(reads: list[dict], level: Optional[dict] = None) -> dict:
             marks = {"kind": kind}
         if found is not None:
             used.add(found["block_id"])
-            rows[slot] = found
             shown.append({**_entry(found, slot, kind=marks.pop("kind")), **marks})
-    # No block was left for the weakest (a Take of two blocks, N374): the
-    # between may take the AI clip itself, should its Clearer version not
-    # pass the gate, when its clip is one the weakest could be.
-    if SLOT_BETWEEN in rows and SLOT_WEAKEST not in rows \
-            and _weakest([rows[SLOT_BETWEEN]]) is not None:
-        next(e for e in shown if e["slot"] == SLOT_BETWEEN)["voice_fallback"] = True
     for row in ranked[1:]:
         if len(shown) >= SHOWN_LIMIT:
             break
