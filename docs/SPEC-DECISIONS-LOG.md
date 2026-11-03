@@ -9651,3 +9651,20 @@ C1, where it lands as it is built.
 The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration.
+
+**N369 · Will's chat keeps its own bar (founder, the Claude Code chat, 3
+November 2026, asked what stops if "Type here" leaves Will's chat, since
+typing is how a person asks Will in their own words, gives a WhatsApp number
+and starts a "# note": "No, actually, Will is an exception. Keep it as it is
+right now").** For N368 items 1 and 2:
+1. **Will's chat is the exception to the one bar.** It keeps its bar as
+built: the "+" (Your projects), "Type here" with typing to Will, the voice
+notebook's mic, Will's tap answers above it and "Record Take {N}" alone
+(N294, N296, N314, N319, N350). Was (N368 items 1 and 2): Will's chat with
+the same bar as a person's chat, and no "Type here".
+2. **Every chat with a person keeps the one bar** (N368, built in frontend
+#1162): the "+" left, the mic right, the one thing to do now in the middle.
+3. Nothing to sign: no new words.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1. No migration.
