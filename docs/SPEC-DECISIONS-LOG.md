@@ -9761,7 +9761,7 @@ The rules: frontend
 and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
 No migration.
 
-**N371 · The fix never keeps the speaker waiting on its AI clip (founder,
+**N373 · The fix never keeps the speaker waiting on its AI clip (founder,
 the Claude Code chat, 3 November 2026, on items 1 and 2 of an interaction
 audit of the fix step: "build 1 and 2").** For the One thing walk's fix
 (N309 item 1, C4, N370):
