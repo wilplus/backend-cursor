@@ -9849,3 +9849,80 @@ The rules: frontend
 [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 F1. No migration.
+
+**N378 · The setup, one for any business: two questions for a person, two
+for a team, and where the app ends (founder, the Claude Code chat, 3
+November 2026: "now let's design the setup"; on the prototype "The setup",
+<https://claude.ai/artifact/Cmz1jj18KwpqG5G1n1fHk6>, version 1: "yes to all
+four, words ok, log it and lock").** For N312, N313, N319, N332, N349,
+N352, N353, N361, N366, N368 and N371; answers N349 item 5 and N352 item 6.
+Tried on two businesses: RASP (AI ambassadors inside the company) and
+Invita (sellers and their customers).
+1. **A person answers two questions** in Will's chat, one at a time. "Who
+are you here?": the team's specialists, or "I'm here to ask"; "Something
+else" types the one that is missing, and it is on the list for everyone
+after them. "What can people ask you?": one voice note (N352 item 1). The
+link or code someone comes in by names the team, so Will asks "Which team
+are you in?" only when there is neither (N353). Was (N352 item 4): "Which
+specialist are you?" and "+ Add a specialist" in Will's chat; the team's
+page keeps "+ Add a specialist".
+2. **The voice note gives topics and an About.** Will writes the note as
+the person's topics and their About, shows both, and the person taps
+"That's right" or "Change it". The About is on their profile ("From your
+setup, {date}", N366); the topics are "Ask about {topic}" in their chat
+(N368); a question on one of them gets "Record an answer" before Will reads
+its words (N361 item 1); Will sends a question to the person whose topics
+fit it (N332).
+3. **Someone who only asks** skips the voice note and the agreement:
+answers sent to them are meant for them, and the agreement (N349 item 3) is
+for those who hear others' recordings to answer them. The rest stays as
+N352 and N353 have it: the team list, the code Will makes, the agreement,
+"You're set", the speaking coach's lock and WillpowerLab's pass code. Then
+the plan's questions and the first Take (N319).
+4. **A team answers two questions on its page,** not in Will's chat, so the
+setup stays short and the first Take follows soon (Never 3): "Who can ask"
+("People in the team", or "Customers too", which shows the business's ask
+link, N312) and "What answers can point to" (links, each a title, a picture
+and where it goes). Will points to the page once, after "You're set". The
+page also shows "Who is who" and "Invite people".
+5. **The training corpus reaches a coach through the pass code:** the
+"Training corpus" row in the ☰ menu, as today. No new screen.
+6. **A team's links as slides.** What an answer points to can be a slide
+after the question's (N226, N361 item 3); the recording screen itself does
+not change. After the answer, the person who answered sees "{name} opened
+{link}".
+7. **Where the app ends:** if it's a link, it's the app; if the business's
+own system has to answer back, it is a custom integration, built once for
+that business. The app: join links, team codes and the ask link; the setup
+and the team's page; the chats; links as a title, a picture and where they
+go; knowing a link was opened; WhatsApp from WillpowerLab's number (N230);
+signing in with Google or Microsoft. An integration: the company's own
+sign-in and staff directory; pulling in a whole shop, calendar or course
+list; writing a booking into their calendar; knowing a purchase happened;
+their own WhatsApp number; their data in their region on their own DPA
+terms.
+8. **A manager** sees, in their chat with Will and in words, only what
+happened to the team's questions: what was asked, what was answered, what
+was booked. Never anyone's voice, and never how someone speaks (the EU AI
+Act, Article 5(1)(f), prohibits inferring emotions at work). Designed
+later.
+9. **Learning buddies** are matched by the topics people give in setup,
+never by their voices. Designed later, on its own.
+10. **Signed (Never 4):** "Who are you here?", "I'm here to ask", "Here's
+what people will be able to ask you about:", "And your About, for your
+profile:", "That's right", "Change it", "Tell me what to change.", "You're
+set. To ask someone, open their chat and tap what you want to ask about.",
+"Your team is ready. On its page, say who can ask and what your answers can
+point to.", "Open your team's page", "Hi {name}!", "The speaking coach's
+code, please. WillpowerLab gives it." (was "Artur gives it."); on the
+team's page "Who is who", "Here to ask", "No one yet", "Who can ask",
+"People in the team", "Customers too", "Copy the link", "What answers can
+point to", "+ Add a link", "Paste a link", "Add"; on the ask page "What is
+it about?", "Your question", "Your name", "Your WhatsApp number"; in the
+chats "{name} opened {link}".
+11. **Locked:** the prototype "The setup", version 2, in
+[`docs/LOCKS.md`](LOCKS.md).
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 and [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+when built. No migration.
