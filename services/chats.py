@@ -80,10 +80,6 @@ SESSIONS = "v2_sessions"
 #: An answer, a Take recorded with "Record an answer", is up to five minutes
 #: (N363 item 3); a voice note stays at two (MAX_VOICE_MS).
 MAX_ANSWER_MS = 300_000
-#: The type an answer's recording plays as, by the ending its key was kept
-#: with (lab_recording_persistence: recording_<hex><ext>).
-_TAKE_TYPES = {".webm": "audio/webm", ".ogg": "audio/ogg", ".m4a": "audio/mp4",
-               ".mp4": "audio/mp4", ".wav": "audio/wav", ".mp3": "audio/mpeg"}
 FILES = "chat_message_files"
 #: A voice note is up to two minutes long ...
 MAX_VOICE_MS = 120_000
@@ -105,21 +101,20 @@ PHOTO_TYPES = frozenset({"image/jpeg", "image/png", "image/gif", "image/webp",
 _MEDIA_TYPE = re.compile(r"^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$")
 #: The three emoji and the label each one means (N311 item 1).
 EMOJI = {"👍": "good", "👀": "seen", "🙏": "thanks"}
+#: The demo customer's question, which Will marks (N361 item 1).
+_DEMO_QUESTION = ("Itchy for two months, thinning at the top. I wash every day. "
+                  "What should I do?")
 #: The demo chats (founder only, ring 6): the guest, their line, and what
 #: they said, in order.
 DEMO = (
     {"kind": "customer", "name": "Sarah", "subtitle": "Customer · Invita",
      # Will's mark, made once here: it asks about a treatment (N361 item 1).
      "marked": True,
-     "said": [("text", "Itchy for two months, thinning at the top. I wash "
-                       "every day. What should I do?")]},
+     "said": [("text", _DEMO_QUESTION)]},
     {"kind": "team", "name": "Ariel", "subtitle": "Your colleague · Invita",
      "said": [("text", "On slide 1: name the treatment and let it land."),
               ("emoji", "👍")]},
 )
-#: The demo customer's question, which Will marks (N361 item 1).
-_DEMO_QUESTION = ("Itchy for two months, thinning at the top. I wash every day. "
-                  "What should I do?")
 #: How the signed-in person is named in a demo chat (seen only by the
 #: other member, who is a demo guest).
 _YOU = "You"
@@ -248,12 +243,12 @@ def _shown(row: dict, me: str, authors: dict[str, str],
     shown = {"id": str(row["id"]), "mine": author == me, "author": authors.get(author, ""),
              "kind": row["kind"], "body": row["body"], "meta": meta,
              "created_at": row["created_at"]}
-    if row["kind"] == "voice":
+    if row["kind"] == "voice" and meta.get("answer"):
+        answer = (answers or {}).get(str(row["id"])) or {}
+        shown["words"] = answer.get("words") or None
+        shown["slides"] = answer.get("slides") or []
+    elif row["kind"] == "voice":
         shown["words"] = (words or {}).get(str(row["id"])) or None
-        if meta.get("answer"):
-            answer = (answers or {}).get(str(row["id"])) or {}
-            shown["words"] = answer.get("words") or None
-            shown["slides"] = answer.get("slides") or []
     return shown
 
 
@@ -345,14 +340,14 @@ def post(database: Any, user_id: Any, thread_id: Any, body: Any) -> dict:
     return {"message": _shown(rows[0], str(me["id"]), _authors(database, thread))}
 
 
-def _duration(value: Any) -> Optional[int]:
-    """``duration_ms`` as the form sends it, a whole number of 1 to
-    MAX_VOICE_MS; None otherwise."""
+def _duration(value: Any, most: int = MAX_VOICE_MS) -> Optional[int]:
+    """``duration_ms`` as the app sends it, a whole number of 1 to ``most``
+    (a voice note's two minutes unless said otherwise); None otherwise."""
     try:
         ms = int(str(value).strip())
     except (TypeError, ValueError):
         return None
-    return ms if 1 <= ms <= MAX_VOICE_MS else None
+    return ms if 1 <= ms <= most else None
 
 
 def post_voice(database: Any, user_id: Any, thread_id: Any, audio: bytes, *,
@@ -441,10 +436,9 @@ def _mark_demo_question(database: Any, thread: str, newest: list[dict]) -> None:
     """The founder's demo customer, seeded before Will's mark existed, gets
     it once (N361): its question asks about a treatment. Any other chat:
     nothing."""
-    seeded = _DEMO_QUESTION
     for row in newest:
         meta = row.get("meta") or {}
-        if row.get("kind") != "text" or row.get("body") != seeded or "record_answer" in meta:
+        if row.get("kind") != "text" or row.get("body") != _DEMO_QUESTION or "record_answer" in meta:
             continue
         demo = _rows(_table(database, THREADS).select("demo_user_id")
                      .eq("id", thread).limit(1))
@@ -599,20 +593,10 @@ def _answer_length(row: dict, duration_ms: Any) -> int:
     except (TypeError, ValueError):
         ms = 0
     if not ms:
-        ms = _duration_up_to(duration_ms, MAX_ANSWER_MS) or 0
+        ms = _duration(duration_ms, MAX_ANSWER_MS) or 0
     if not 1 <= ms <= MAX_ANSWER_MS:
         raise ChatsError("NOT_ALLOWED", "An answer is up to five minutes long.")
     return ms
-
-
-def _duration_up_to(value: Any, most: int) -> Optional[int]:
-    """A whole number of ms from 1 to ``most`` as the app sends it; None
-    otherwise."""
-    try:
-        ms = int(str(value).strip())
-    except (TypeError, ValueError):
-        return None
-    return ms if 1 <= ms <= most else None
 
 
 def _answer_recording(database: Any, thread: str, message: str) -> dict:
@@ -623,20 +607,22 @@ def _answer_recording(database: Any, thread: str, message: str) -> dict:
                  .eq("id", message).eq("thread_id", thread).limit(1))
     meta = (rows[0].get("meta") or {}) if rows else {}
     session = _uuid(meta.get("take")) if meta.get("answer") else None
+    if not session:
+        raise _not_found()
     authors = _rows(_table(database, MEMBERS).select("user_id")
-                    .eq("id", str(rows[0]["author_member_id"])).limit(1)) if session else []
-    take = _take_of(database, str(authors[0]["user_id"]), session) if authors and session else None
+                    .eq("id", str(rows[0]["author_member_id"])).limit(1))
+    take = _take_of(database, str(authors[0]["user_id"]), session) if authors else None
     key = str((take or {}).get("storage_path") or "")
     if not key:
         raise _not_found()
     from services.lab_audio_storage import get_lab_audio_bytes
+    from services.training_import import content_type_for
     try:
         audio = get_lab_audio_bytes(key)
     except Exception:
         logger.warning("chats: an answer's recording could not be read (message %s)", message)
         raise _not_found()
-    ending = key[key.rfind("."):].lower() if "." in key else ""
-    return {"content_type": _TAKE_TYPES.get(ending, "audio/webm"), "audio": audio}
+    return {"content_type": content_type_for(key), "audio": audio}
 
 
 def _sent_type(kind: str, content_type: Any) -> str:
