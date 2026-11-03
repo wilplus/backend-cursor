@@ -9691,3 +9691,44 @@ the tip ends with a full stop in place of ", like this:".
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C4. No migration.
+
+**N371 · Suggested answers, one rule for the whole app; "Something else" in
+Will's chat (founder, the Claude Code chat, 3 November 2026, on the prototype
+"One bar", <https://claude.ai/artifact/2v8jSi91F157WFR8tjX5E1>: "there is no
+answer else ... I would want to see it visible in the place of the bottom bar
+inside of the text input form, but with the mic on the right side and the
+plus icon on the left side ... apply it only to ... a chat with Will"; "for
+the suggested answers buttons, we need to design them generally for the whole
+application"; on the words rewritten as Steven Pinker would, "A all").** For
+N323, N334 item 3, N364, N368 and N369:
+1. **Where:** suggested answers sit above the bar, on the right, where the
+person's own messages go. **Size:** at least 44px high, 15px text, the whole
+answer readable, never cut.
+2. **Order:** the most likely answer sits nearest the thumb, bottom right,
+filled orange; the others are outlined, above it or to its left. **Two:**
+side by side, the one that goes on on the right (N334 item 3). **Three or
+four:** one per line, stacked, the most likely at the bottom. **More than
+four:** the three most likely, and "Show more" above them, which shows the
+rest.
+3. **"Something else", always,** in Will's chat while he asks: the bar's
+middle, shaped like a text box, with the "+" on the left and the mic on the
+right, orange because Will waits. A tap turns it into a text box ("Type your
+answer") with a send arrow; the mic answers by voice. This is the one change
+to Will's own bar (N369): while a question with suggested answers waits,
+"Something else" stands where "Type here" stands. Chats with people keep
+the emoji in the middle (N368).
+4. **"Skip"** only when the question can be passed: a quiet grey word at the
+top, furthest from the thumb.
+5. **Signed (Never 4):** "Something else", "Type your answer", "Show more",
+"Skip"; Will's "When Kasia has heard your answer, what should she do or
+feel?" and "Thank you. I'll listen for that when you answer." ({name} for
+the person). The prototype's example answers ("Feel safe trying it", "Check
+every quote herself", "Book a seat on Thursday", "Trust the tool, but check
+it", "Come back with her next question", "Show her team how") show the shape;
+Will writes each question's own, in N364's style.
+6. **Locked:** the prototype "One bar", version 14, replaces version 12 in
+[`docs/LOCKS.md`](LOCKS.md).
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
