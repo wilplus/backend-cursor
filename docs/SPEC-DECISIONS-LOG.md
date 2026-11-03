@@ -9939,7 +9939,8 @@ the page opened with no line.
 4. **The helper words of its time.** An older version shows, read only and
 orange on their slide as the page shows them, the helper words the speaker
 had while it was the latest: the last set picked before the next Take's
-version. No new words.
+version. No new words. Was (N375 item 2): no helper words on an older
+version, and nothing leading to the latest.
 5. **Signed (Never 4):** "This is what you said in Take {N}.", "Go to Take
 {M}" and "Take {N}'s words weren't saved. This is Take {M}."
 The rules: frontend
