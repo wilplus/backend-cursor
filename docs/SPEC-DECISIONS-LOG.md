@@ -10756,3 +10756,16 @@ the signed bank's.
 Built: frontend #1192. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C2 and C4. No migration.
+
+**N448 · The trash is the Skip (founder, the Claude Code chat, 3 November
+2026, on frontend #1202 beside N435 item 3: "go with N435, trash is the
+skip").** For the One thing walk's fix and the Sniper, N435 item 3 stands:
+while a try records, the recording bar's trash is the Skip. The try is
+thrown away (nothing uploaded or counted), the walk says "Okay, we'll skip
+this one." and goes on. Was, briefly on main (frontend #1202, from "for that
+we have the trash button on the left"): the trash went back to the step that
+opened the recorder, with "Try it" and Skip. #1202's other part stands: no
+Skip under the recording bar. No new words.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C7 and T. No migration.
