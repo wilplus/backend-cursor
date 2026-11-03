@@ -10284,3 +10284,19 @@ The rules: frontend
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 when built. No migration.
+
+**N405 · Two lines signed for the One thing walk: "Okay, we'll skip this
+one." and "too slow · just right · too fast" (founder, the Claude Code chat,
+3 November 2026, on the page "One Thing Walk Audit",
+<https://claude.ai/artifact/HM9UjipUCZVSuPNESeGZtM>, both rewritten in Steven
+Pinker's style: "ok, both rewrites").** For N309 item 1 and the tempo step:
+1. **After Skip on the fix** (the Clearer version, the AI clip or the
+Sniper), the walk says "Okay, we'll skip this one." and goes on. Was:
+nothing was said; the prototype's "Okay." was never signed.
+2. **The pace scale's labels**, under it from left to right: "too slow",
+"just right", "too fast". Was: no labels; the prototype's "slow · just
+right · fast" was never signed.
+3. Signed (Never 4): the two lines above.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C7, T and K. No migration.
