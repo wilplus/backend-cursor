@@ -199,8 +199,8 @@ def v2_chats_voice(thread_id):
 @require_auth
 @_a_member_first
 def v2_chats_answer(thread_id):
-    """An answer recorded with "Record an answer" (N363), sent once its Undo
-    has passed. Its Take was recorded and uploaded through the processing-
+    """An answer recorded with "Record an answer" (N363), sent once its Take
+    is uploaded and held for what is left of its Undo (N441 item 3). Its Take was recorded and uploaded through the processing-
     authorization path already, and nothing here calls a provider; what is
     asked again is the recording consent, so a speaker who withdrew it sends
     nothing. Then the chat (404), the Take (404 if not the caller's) and its
@@ -211,7 +211,22 @@ def v2_chats_answer(thread_id):
     from services.chats import post_answer
     body = request.get_json(silent=True) or {}
     return _run("answer", lambda: post_answer(
-        db, str(request.user_id), thread_id, body.get("take"), body.get("duration_ms")))
+        db, str(request.user_id), thread_id, body.get("take"), body.get("duration_ms"),
+        body.get("hold_ms")))
+
+
+@v2_bp.route("/chats/<thread_id>/answer/undo", methods=["POST"])
+@limiter.limit("120 per hour", scope="chats_answer_undo")
+@require_auth
+@_a_member_first
+def v2_chats_answer_undo(thread_id):
+    """Undo (N345 item 2, N441): an answer still held is taken back; Will
+    says so in the speaker's chat with him. Records nothing and calls no
+    provider."""
+    from services.chats import undo_answer
+    body = request.get_json(silent=True) or {}
+    return _run("answer_undo", lambda: undo_answer(
+        db, str(request.user_id), thread_id, body.get("message"), body.get("project")))
 
 
 @v2_bp.route("/chats/<thread_id>/messages/<message_id>/audio", methods=["GET"])
