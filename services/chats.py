@@ -71,6 +71,16 @@ logger = logging.getLogger(__name__)
 FEATURE = "chats"
 THREADS, MEMBERS, MESSAGES = "chat_threads", "chat_members", "chat_messages"
 AUDIO = "chat_message_audio"
+#: A Take's recording row (services/lab_recording_persistence.py): its owner,
+#: its session, where its audio is kept and how long it is.
+RECORDINGS = "recordings"
+#: An answer, a Take recorded with "Record an answer", is up to five minutes
+#: (N363 item 3); a voice note stays at two (MAX_VOICE_MS).
+MAX_ANSWER_MS = 300_000
+#: The type an answer's recording plays as, by the ending its key was kept
+#: with (lab_recording_persistence: recording_<hex><ext>).
+_TAKE_TYPES = {".webm": "audio/webm", ".ogg": "audio/ogg", ".m4a": "audio/mp4",
+               ".mp4": "audio/mp4", ".wav": "audio/wav", ".mp3": "audio/mpeg"}
 FILES = "chat_message_files"
 #: A voice note is up to two minutes long ...
 MAX_VOICE_MS = 120_000
@@ -219,8 +229,13 @@ def _shown(row: dict, me: str, authors: dict[str, str],
     """A message as its members see it; a voice note with its ``words``
     (N331), null until they are ready or when there are none."""
     author = str(row["author_member_id"])
+    meta = dict(row.get("meta") or {})
+    if author != me:
+        # An answer's Take is the speaker's own: the person it was sent to
+        # gets just the answer (N336 item 2).
+        meta.pop("take", None)
     shown = {"id": str(row["id"]), "mine": author == me, "author": authors.get(author, ""),
-             "kind": row["kind"], "body": row["body"], "meta": row.get("meta") or {},
+             "kind": row["kind"], "body": row["body"], "meta": meta,
              "created_at": row["created_at"]}
     if row["kind"] == "voice":
         shown["words"] = (words or {}).get(str(row["id"])) or None
@@ -411,18 +426,101 @@ def _bytes(raw: Any) -> bytes:
 
 def recording(database: Any, user_id: Any, thread_id: Any, message_id: Any) -> dict:
     """GET /v2/chats/<id>/messages/<message_id>/audio: {content_type, audio}
-    of a voice note in this chat, for any member of it; 404 otherwise."""
+    of a voice note in this chat, or of an answer (its Take's own recording),
+    for any member of it; 404 otherwise."""
     me = member(database, user_id, thread_id)
     message = _uuid(message_id)
     if not message:
         raise _not_found()
+    thread = str(me["thread_id"])
     rows = _rows(_table(database, AUDIO).select("content_type,audio")
-                 .eq("message_id", message).eq("thread_id", str(me["thread_id"]))
-                 .limit(1))
+                 .eq("message_id", message).eq("thread_id", thread).limit(1))
     audio = _bytes(rows[0].get("audio")) if rows else b""
-    if not audio:
+    if audio:
+        return {"content_type": rows[0].get("content_type") or "audio/webm", "audio": audio}
+    return _answer_recording(database, thread, message)
+
+
+def post_answer(database: Any, user_id: Any, thread_id: Any, take: Any,
+                duration_ms: Any = None) -> dict:
+    """POST /v2/chats/<id>/answer: an answer recorded with "Record an answer"
+    (N321 item 4, N336, N363), sent once its 5-second Undo has passed. The
+    Take is already uploaded and processing on its own; the answer is a voice
+    message that points at it, so its recording is sent once, not twice. The
+    Take must be the caller's own (404 otherwise) and up to five minutes long
+    (N363 item 3; 400). Its length is the Take's, or the app's ``duration_ms``
+    while the Take's is not known yet. The caller sees it with its Take; the
+    other person gets just the answer (N336 item 2). {"message": {...}}."""
+    me = member(database, user_id, thread_id)
+    session = _uuid(take)
+    if not session:
+        raise ChatsError("NOT_ALLOWED", "An answer names its Take.")
+    take_row = _take_of(database, str(user_id), session)
+    if not take_row:
         raise _not_found()
-    return {"content_type": rows[0].get("content_type") or "audio/webm", "audio": audio}
+    ms = _answer_length(take_row, duration_ms)
+    thread = str(me["thread_id"])
+    rows = _rows(_table(database, MESSAGES).insert({
+        "thread_id": thread, "author_member_id": str(me["id"]), "kind": "voice", "body": "",
+        "meta": {"duration_ms": ms, "answer": True, "take": session}}))
+    if not rows:
+        raise ChatsError("NOT_SAVED", "Could not send it.", 503)
+    return {"message": _shown(rows[0], str(me["id"]), _authors(database, thread))}
+
+
+def _take_of(database: Any, user_id: str, session: str) -> Optional[dict]:
+    """The caller's recording row of the Take ``session``, or None."""
+    rows = _rows(_table(database, RECORDINGS).select("storage_path,duration")
+                 .eq("session_v2_id", session).eq("user_id", user_id).limit(1))
+    return rows[0] if rows else None
+
+
+def _answer_length(row: dict, duration_ms: Any) -> int:
+    """An answer's length in ms: its Take's, else what the app measured;
+    1 ms to five minutes, else 400."""
+    try:
+        ms = int(row.get("duration") or 0) * 1000
+    except (TypeError, ValueError):
+        ms = 0
+    if not ms:
+        ms = _duration_up_to(duration_ms, MAX_ANSWER_MS) or 0
+    if not 1 <= ms <= MAX_ANSWER_MS:
+        raise ChatsError("NOT_ALLOWED", "An answer is up to five minutes long.")
+    return ms
+
+
+def _duration_up_to(value: Any, most: int) -> Optional[int]:
+    """A whole number of ms from 1 to ``most`` as the app sends it; None
+    otherwise."""
+    try:
+        ms = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return ms if 1 <= ms <= most else None
+
+
+def _answer_recording(database: Any, thread: str, message: str) -> dict:
+    """An answer's recording: the Take it points at, read from where the Take
+    is kept, for a member of the chat; 404 when the message is no answer or
+    the Take's audio is gone (its owner deleted it)."""
+    rows = _rows(_table(database, MESSAGES).select("meta,author_member_id")
+                 .eq("id", message).eq("thread_id", thread).limit(1))
+    meta = (rows[0].get("meta") or {}) if rows else {}
+    session = _uuid(meta.get("take")) if meta.get("answer") else None
+    authors = _rows(_table(database, MEMBERS).select("user_id")
+                    .eq("id", str(rows[0]["author_member_id"])).limit(1)) if session else []
+    take = _take_of(database, str(authors[0]["user_id"]), session) if authors and session else None
+    key = str((take or {}).get("storage_path") or "")
+    if not key:
+        raise _not_found()
+    from services.lab_audio_storage import get_lab_audio_bytes
+    try:
+        audio = get_lab_audio_bytes(key)
+    except Exception:
+        logger.warning("chats: an answer's recording could not be read (message %s)", message)
+        raise _not_found()
+    ending = key[key.rfind("."):].lower() if "." in key else ""
+    return {"content_type": _TAKE_TYPES.get(ending, "audio/webm"), "audio": audio}
 
 
 def _sent_type(kind: str, content_type: Any) -> str:

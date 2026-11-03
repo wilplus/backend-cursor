@@ -41,6 +41,11 @@ OUTCOME
   O12 A photo that is not a raster image (text, SVG), an empty or missing
       file, or anything over 10 MB is refused (400, 413), and nothing is
       written.
+  O13 An answer I recorded with "Record an answer" is sent into the chat as a
+      voice message that plays my Take's own recording (N363): I see it with
+      its Take; the other person gets just the answer, no Take (N336). A Take
+      that is not mine, one over five minutes, or a withdrawn recording
+      consent sends nothing.
 PROVES   O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
          O2 -> ChatsTest::test_the_demo_is_made_once_and_listed
          O3 -> ChatsTest::test_a_member_reads_and_sends_one_of_three_emoji
@@ -53,9 +58,11 @@ PROVES   O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
          O10 -> ChatsTest::test_a_photo_and_a_file_are_sent_and_the_other_member_opens_them
          O11 -> ChatsTest::test_my_photo_and_the_voice_note_after_it_are_a_question_for_the_other_person
          O12 -> ChatsTest::test_a_photo_that_is_not_one_or_anything_over_10_mb_is_refused
+         O13 -> ChatsTest::test_an_answer_plays_my_take_and_the_other_member_gets_just_the_answer
 WHY      The chats between people, first slice (founder 2026-10-31, N298 to
          N316; the three emoji N311; the mic N321 item 2; its words N324,
-         shown under the player N331; the photos and files of the "+" N351).
+         shown under the player N331; the photos and files of the "+" N351;
+         an answer recorded with "Record an answer" N336, N361, N363).
          Every speaker's recording and every provider call goes through the
          processing-authorization path (CLAUDE.md).
 """
@@ -548,6 +555,46 @@ class ChatsTest(unittest.TestCase):
             self.assertEqual((res.status_code, res.get_json()["code"]), answer, (route, wrong.keys()))
         self.assertEqual(self.store.tables.get("chat_messages", []), [])
         self.assertEqual(self.store.count("chat_message_files"), 0)
+
+
+    def test_an_answer_plays_my_take_and_the_other_member_gets_just_the_answer(self):
+        chat = self._shared_chat()
+        mine, long_one, theirs = (str(uuid.uuid4()) for _ in range(3))
+        self.store.table("recordings").insert([
+            {"session_v2_id": mine, "user_id": ME, "duration": 52,
+             "storage_path": "willab_lab/a/recording_1.webm"},
+            {"session_v2_id": long_one, "user_id": ME, "duration": 301,
+             "storage_path": "willab_lab/b/recording_2.webm"},
+            {"session_v2_id": theirs, "user_id": SOMEONE, "duration": 40,
+             "storage_path": "willab_lab/c/recording_3.webm"}]).execute()
+
+        def answer(take):
+            return self._post(f"/v2/chats/{chat}/answer", {"take": take, "duration_ms": 52000})
+
+        # Nothing sent: someone else's Take, one over five minutes, no Take,
+        # and my recording consent withdrawn.
+        for take, code in ((theirs, (404, "NOT_FOUND")), (long_one, (400, "NOT_ALLOWED")),
+                           (None, (400, "NOT_ALLOWED"))):
+            res = answer(take)
+            self.assertEqual((res.status_code, res.get_json()["code"]), code, take)
+        self.choices["sensitive_information"] = False
+        self.assertEqual(answer(mine).get_json()["code"], "PROCESSING_RECORDING_WITHDRAWN")
+        self.assertEqual(self.store.tables.get("chat_messages", []), [])
+        self.choices["sensitive_information"] = True
+
+        sent = answer(mine).get_json()["message"]
+        self.assertEqual((sent["mine"], sent["kind"], sent["meta"]),
+                         (True, "voice", {"duration_ms": 52000, "answer": True, "take": mine}))
+
+        self.who = SOMEONE
+        said = self._get(f"/v2/chats/{chat}/messages").get_json()["messages"]
+        self.assertEqual([(m["mine"], m["kind"], m["meta"]) for m in said],
+                         [(False, "voice", {"duration_ms": 52000, "answer": True})])
+        with patch("services.lab_audio_storage.get_lab_audio_bytes",
+                   lambda key, **_: {"willab_lab/a/recording_1.webm": b"OggS my Take"}[key]):
+            played = self._get(f"/v2/chats/{chat}/messages/{sent['id']}/audio")
+        self.assertEqual((played.status_code, played.data, played.headers["Content-Type"]),
+                         (200, b"OggS my Take", "audio/webm"))
 
 
 if __name__ == "__main__":
