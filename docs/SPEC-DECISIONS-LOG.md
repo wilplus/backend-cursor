@@ -10044,7 +10044,25 @@ The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 E1, when built. No migration.
 
-**N392 · The voice note's words stream as they are said (founder, the
+**N392 · "How do you feel?" keeps its step marks on a later Take: two,
+this screen and then the Take (founder, the Claude Code chat, 3 November
+2026, on a screenshot of the check before a later Take with the empty space
+above the question circled: "There should be a progress bar … in this
+place"; then, to the prototype
+<https://claude.ai/artifact/ChbCQzEKiTNtxofatBKZ3o> and its choice of two
+marks or one: "two marks, go ahead and build it").** For N272 item 1:
+1. **Two marks when the set-up is restored.** On a Take whose set-up is
+restored (a later Take of a saved project), the bar has two marks beside the
+✕: "How do you feel?" the first and current one, the Take the second. Was
+(N272 item 1): the ✕ and no marks.
+2. **Nothing else changes.** When the set-up follows, the check is still the
+first of the set-up's marks (four, or three with no slide step); "Getting
+your mic ready" and the recording screen keep their own top bars.
+No new words.
+The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+§6, the line for N392.
+**N393 · The voice note's words stream as they are said (founder, the
 Claude Code chat, 3 November 2026: "yes, build it", to "switch the preview
 to a streaming transcription service through the backend", after asking
 for the words to appear "like it is on Claude ... milliseconds").** Amends

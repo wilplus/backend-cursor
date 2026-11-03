@@ -18,7 +18,7 @@ OUTCOME
       tags are notes too, and "#note" is read as "#" (N253).
   O7  While a note is said, its words so far come back, hesitations and
       all, and nothing is kept (N194); streamed, the key to stream is
-      given only to someone who said Yes (N392).
+      given only to someone who said Yes (N393).
   O8  A note the app sends twice under one key (the app closed mid-send)
       is kept and answered once (N194).
   O9  The person fixes a voice note's words: the note and its row in the
@@ -213,7 +213,7 @@ def test_the_live_words_come_back_and_nothing_is_kept(founder):
     assert (len(db.notes), len(db.thread), len(db.audio)) == before
     with pytest.raises(nb.NotebookError):  # someone without the notebook
         nb.preview(db, "someone", _Adapter("x"), b"piece", filename="p.webm")
-    # Streamed (N392): a short-lived key, only for someone who said Yes.
+    # Streamed (N393): a short-lived key, only for someone who said Yes.
     assert nb.live_session(db, "u", _Adapter(""))["value"] == "ek_live"
     assert (len(db.notes), len(db.thread), len(db.audio)) == before
     with pytest.raises(nb.NotebookError):

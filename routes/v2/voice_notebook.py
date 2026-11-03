@@ -7,7 +7,7 @@
   POST /v2/notebook/notes    multipart: audio (≤ 5 min), duration_ms, key, live_ms
   POST /v2/notebook/live     multipart: audio, a few seconds → {text} (N194)
   POST /v2/notebook/live-session  → {value, expires_at, model, rate}: a
-                             short-lived key to stream the note (N392)
+                             short-lived key to stream the note (N393)
   POST /v2/notebook/fix      {client_id, text}: a voice note's words fixed
   GET  /v2/notebook/sunday/<id>           the Sunday note's lens as it stands
   POST /v2/notebook/sunday/<id>/answer    {step, value}: one tap of the lens
@@ -191,7 +191,7 @@ def v2_notebook_live():
 @live_note_limit
 @require_auth
 def v2_notebook_live_session():
-    """A short-lived key to stream a note being said (N392); nothing is
+    """A short-lived key to stream a note being said (N393); nothing is
     kept."""
     from services.voice_notebook import NotebookError, live_session
     try:

@@ -220,7 +220,7 @@ LIVE_KEY_SECONDS = 60
 
 def live_session(database: Any, user_id: str, adapter: Any) -> dict:
     """A short-lived key to stream a note being said to the transcription
-    provider, the words coming back as they are said (N392; amends N199
+    provider, the words coming back as they are said (N393; amends N199
     item 2). Issued under the caller's authorization (``adapter``); the
     stream is a preview, nothing in it is kept: the whole recording, sent
     when the note is, stays the kept text (N194 item 2)."""
