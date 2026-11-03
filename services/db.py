@@ -11819,6 +11819,26 @@ class DatabaseService:
         )
         return (res.data or [None])[0]
 
+    def walk_fix_tip(self, user_id: str, take_session_id: str) -> Optional[str]:
+        """The tip the Take's One thing walk gave, kept with its fix step in
+        the chat (a walk step's ``metadata.fix_tip``, N309 item 1): the
+        newest one that has words, or None. Raises on a failed read."""
+        if not user_id or not take_session_id:
+            return None
+        res = (
+            self.client.table("lounge_messages")
+            .select("metadata,client_created_at")
+            .eq("user_id", str(user_id))
+            .eq("kind", "walk_step")
+            .eq("metadata->>take_session_id", str(take_session_id))
+            .not_.is_("metadata->>fix_tip", "null")
+            .order("client_created_at", desc=True)
+            .limit(5)
+            .execute()
+        )
+        tips = ((row.get("metadata") or {}).get("fix_tip") for row in res.data or [])
+        return next((t.strip() for t in tips if isinstance(t, str) and t.strip()), None)
+
     def rewrite_lounge_message(
         self, user_id: str, client_id: str, body: str, metadata: dict,
         at: Optional[str] = None,
