@@ -132,27 +132,65 @@ def _take_deck(version: Mapping, sessions: Any) -> Optional[str]:
     return None
 
 
-def document_history(versions: Any, sessions: Any = None) -> list:
+def _helper_words_then(slides: Optional[list], logs: Any,
+                       until: Optional[datetime]) -> list:
+    """The helper words each of a version's Slides had while it was the
+    latest (N380): per Slide, the last locked set logged before ``until``
+    (the next version's time; None for the newest), left out when empty.
+    ``logs`` is ``{slide_index: rows oldest first}``."""
+    if not slides or not isinstance(logs, Mapping):
+        return []
+    out = []
+    for slide in sorted({s for s in slides if isinstance(s, int)}):
+        phrases = None
+        for entry in logs.get(slide) or []:
+            at = _when(entry.get("created_at")) if isinstance(entry, Mapping) \
+                else None
+            if at is None or (until is not None and at >= until):
+                continue
+            phrases = entry.get("phrases")
+        if isinstance(phrases, list) and phrases:
+            out.append({"slide_index": slide,
+                        "phrases": [str(p) for p in phrases if p]})
+    return out
+
+
+def history_slides(versions: Any) -> list:
+    """Every Slide any version's Paragraphs sit on, for one helper-words
+    read across the whole History."""
+    found: set[int] = set()
+    for row in versions or []:
+        if isinstance(row, Mapping):
+            found.update(s for s in (_paragraph_slides(row) or [])
+                         if isinstance(s, int))
+    return sorted(found)
+
+
+def document_history(versions: Any, sessions: Any = None,
+                     helper_logs: Any = None) -> list:
     """The whole document's versions, newest first, for the History under ⋯
     (lock 2026-10-12, section 4; rule 5: every old version stays in the
     history) and for an older Take's Ideal Text card (N375). One row per
-    snapshot with its words, its Take, each Paragraph's Slide and that
-    Take's deck; the newest is the head. Read only: an old version is never
-    brought back, because the Ideal Text is what the latest Take said.
-    Pure."""
+    snapshot with its words, its Take, each Paragraph's Slide, that Take's
+    deck and the helper words of its time (N380); the newest is the head.
+    Read only: an old version is never brought back, because the Ideal Text
+    is what the latest Take said. Pure."""
+    kept = [row for row in versions or [] if isinstance(row, Mapping)
+            and isinstance(row.get("version"), int)
+            and isinstance(row.get("text"), str) and row["text"].strip()]
     rows = []
-    for row in versions or []:
-        if not isinstance(row, Mapping):
-            continue
-        text = row.get("text")
-        if not isinstance(row.get("version"), int) or not isinstance(text, str) \
-                or not text.strip():
-            continue
+    for at, row in enumerate(kept):
+        text = row["text"]
+        slides = _paragraph_slides(row)
+        until = _when(kept[at + 1].get("created_at")) \
+            if at + 1 < len(kept) else None
         rows.append({"revision": row.get("version"),
                      "take_index": _take_index(row),
                      "text": text,
-                     "slides": _paragraph_slides(row),
+                     "slides": slides,
                      "presentation_ref": _take_deck(row, sessions),
+                     "helper_words": _helper_words_then(
+                         slides, helper_logs, until),
                      "created_at": row.get("created_at")})
     rows.reverse()
     for index, row in enumerate(rows):
