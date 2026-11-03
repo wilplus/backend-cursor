@@ -9804,3 +9804,48 @@ the walk went on to "Lesson done.".
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C2, C3 and H1. No migration.
+
+**N375 · An older Take's Ideal Text card opens that Take's words (founder,
+the Claude Code chat, 3 November 2026: "when I click Take 1.0 ... and I open
+the ideal text, what I can see is exactly the ideal text I have recorded last
+time ... So 1.0 bubble and the walk refers to what was there. It stays as it
+was. And the next take overwrites it ... but the second take's bubble stay as
+it was. So it opens the text that was recorded for that time").** For rule 5
+and frontend `ideal-text.md` and `feedback-walk-and-chat.md` F1:
+1. **Each Ideal Text card in the chat opens its own version.** The newest
+card of a project opens the Ideal Text page as now. An older card (1.0 when
+the project is at 3.0) opens the words that Take made, as they were then,
+read from the versions the History under ⋯ already keeps.
+2. **An older version is read only,** in the page's frame: the project's
+name, the caption "AI-generated text · Take {N}", that version's paragraphs,
+✕ and "Close". No helper words, marks, edits, ⋯ or "Record Take {N}". Rule 5
+stands: the Ideal Text is what the latest Take said; an old version is shown,
+never brought back.
+3. A card whose version has no saved words (made before the history
+existed), or whose version is still the newest, opens the page as now.
+4. Was: every card opened the live page, its version a history marker only
+(the code since 29 July 2026, never logged).
+5. Nothing to sign: no new words.
+The rules: frontend
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+F1. No migration.
+
+**N376 · An older Take's Ideal Text, slide by slide and one screen per tap
+(founder, the Claude Code chat, 3 November 2026, on the interaction audit of
+N375: "build 1 and 2").** For N375 items 1 and 2:
+1. **One screen per tap.** Which page an Ideal Text card opens (that Take's
+version, or the live page) is known before either is drawn; a press on an
+older card starts its read, as a press on the newest starts the live page's.
+Was: a loader first, then sometimes the live page in its place.
+2. **Slide by slide.** An older version shows its paragraphs as the live page
+does: grouped by slide, each with its slide's picture and kicker ("Slide
+{N}", "Your talk"), on the deck that Take was said on (N257: a Take's deck is
+its own). A version whose slide map cannot be proved shows its words alone.
+The History under ⋯ serves each version's slides and deck. Was: plain
+paragraphs.
+3. Nothing to sign: no new words.
+The rules: frontend
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+F1. No migration.
