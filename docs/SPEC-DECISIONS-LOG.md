@@ -9459,3 +9459,45 @@ No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 and [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 when built. No migration.
+
+**N364 · How Will and the app write: plain, concrete, and in nonviolent
+communication; the chats' generated lines rewritten (founder, the Claude
+Code chat, 3 November 2026, on the prototype "One bar",
+<https://claude.ai/artifact/2v8jSi91F157WFR8tjX5E1>, version 4: "Can you
+apply some kind of a Steven Pinker style to the generated answers? And
+non-violence communication techniques all around it?", then "Yes, the new
+ones are a lot better. I can actually understand what you mean.").** For
+N200, N329, N356 and N362; Never 1 and Never 4 hold:
+1. **The style, for every line Will or the app writes** (his messages, the
+coach's and expert's examples, confirmations): plain and concrete, the way
+Steven Pinker writes (the thing itself, "wait three seconds", not "then
+wait"; short sentences; no jargon), and nonviolent communication in four
+moves: what happened, without judging it; what it means for someone; what
+they need; one clear request, asked as a question. No verdicts: no "Good",
+"Good question" or "Good job".
+2. **Signed (Never 4), replacing the earlier words:**
+"For your next answer: after your question, wait three seconds. People need
+a moment to think."; "Three people asked you this month whether AI can pick
+quotes."; "Would you record one answer the whole team can use?" (was
+"Practise the team's answer?", N330, N362); "Saved. The next person who gets
+this question can listen to you first." (was N356 item 3); "For your next
+answer: start with what {name} must check. That is the part that keeps them
+safe." (was N356 item 4); "This time you started with what to check, so
+{name} heard the rule first." (was N356 item 4); "How did you feel during
+Sunday's opening?"; "Thank you for telling me. When you count to three after
+a question, the room has time to answer. Would you try it on Thursday?";
+"I'm glad you're here. You can ask me about {topics}."; "Yes, the AI can
+suggest them. I'd give her one rule: check every quote against the full
+recording."; "The AI suggests, you decide, and you check every quote. That
+way the speaker's meaning stays theirs."; "Deleted. {name} didn't see it."
+3. The lines that name a topic or a project are the prototype's examples;
+Will writes his own in the same style, and a new fixed line still needs the
+founder's OK (Never 4).
+4. **Still open:** the tap answers under "Would you record one answer the
+whole team can use?" stay "Not now" and "Practise it" until the founder
+says otherwise; and the one-bar proposal itself (the mic always on the
+right, the same bar in Will's chat).
+No rules page yet: it lands on frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+when built. No migration.
