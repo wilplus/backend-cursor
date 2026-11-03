@@ -9946,3 +9946,20 @@ The rules: frontend
 [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 F1. No migration.
+
+**N381 · The AI clip stays the weakest's: N374 item 1 is withdrawn
+(founder, the Claude Code chat, 3 November 2026, after a new Take whose
+between took the AI clip: "It showed me the wrong AI audio for the wrong
+fragment", "Please maybe revert it to what it was", "make it work like it
+used to work. don't do the fallbacks").** For N374 item 1 and N289 item 5:
+1. **A between whose Clearer version does not pass is praised as a next
+best again** (N289 item 5), whatever is left for the weakest. The AI clip
+is the weakest's alone, on a paragraph of its own, so a Take of two
+paragraphs can again end with their best alone. Was (N374 item 1, Takes
+recorded from 3 November 2026, 11:00 UTC, until this): that between took
+the AI clip when no paragraph was left for the weakest, and the clip coached
+the voice on a fragment whose trouble was its words.
+2. Nothing to sign: no new words.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2 and H1. No migration.
