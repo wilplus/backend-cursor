@@ -9567,8 +9567,8 @@ neither.
 topics): the topics now live in the person's About.
 6. **Signed (Never 4):** "About", "Photos", "Files", "No photos yet.", "No
 files yet.", "Save", "Cancel", "Edited today", "From your setup, {date}".
-Not yet signed: "Edit", "Done", "Take photo", "Choose photo", "Delete
-photo".
+And "Edit", "Done", "Take photo", "Choose photo", "Delete photo" (founder,
+the same chat: "words are ok, all is ok; lock it").
 No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration in this entry.
@@ -9619,3 +9619,35 @@ No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 and [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
 (the menu's Settings row) when built. No migration.
+
+**N368 · One bar in every chat, and the chats' prototype locked (founder,
+the Claude Code chat, 3 November 2026, on the prototype "One bar",
+<https://claude.ai/artifact/2v8jSi91F157WFR8tjX5E1>, version 12: "words are
+ok, all is ok; lock it!!!!!! in the docs").** For N321, N341, N350, N361,
+N362, N364, N366 and N367:
+1. **One bar, three places that never move,** in every chat, Will's
+included: the "+" on the left; your voice, the mic, on the right, orange
+and pulsing when someone waits for your words; and in the middle the one
+thing to do now, the only part that changes. The middle shows 👍 👀 🙏 when
+nobody waits; "Record an answer" when a predefined question waits; Will's
+tap answers when he asks; "Record Take {N}" after his feedback; and
+"Sending to {name}… {n}" with "Undo" while an answer goes. While you talk,
+the whole bar is the recording strip (N314).
+2. **Changes:** the mic is always there, not only while a question waits
+(was N341); Will's chat has the same bar and no "Type here" (was N350); the
+"+" sheet has no "Voice note" (was N362 item 6); "Consult with someone
+first" becomes "Ask {name} first", a choice above the bar (was N340 and
+N343's grey line); a specialist's predefined questions sit above the bar in
+their chat as "Ask about {topic}", one tap and then your voice.
+3. **Every send** gives a short sound and a small buzz where the phone
+allows it; nothing covers the bar.
+4. **Signed (Never 4):** "Ask {name} first", "Ask about {topic}", and the
+countdown in "Sending to {name}… {n}".
+5. **Locked:** the prototype, version 12 (the one bar, the menu and the "+"
+sheet of N367, the profile of N366, and the words of N364), is a locked
+screen in [`docs/LOCKS.md`](LOCKS.md). Its rules page is frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, where it lands as it is built.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
