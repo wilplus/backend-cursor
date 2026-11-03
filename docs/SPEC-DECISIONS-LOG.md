@@ -9530,3 +9530,124 @@ submitting.
 Everything else stays one web codebase: no screen is rebuilt natively.
 No rules page: the app's code lands with comments and the frontend
 README's iPhone-app row. No migration in this entry.
+
+**N366 · A person's profile, as on WhatsApp: name, one About, and what you
+shared (founder, the Claude Code chat, 3 November 2026, on the prototype
+"One bar", <https://claude.ai/artifact/2v8jSi91F157WFR8tjX5E1>: "We need to
+design user profile, just like on WhatsApp ... it sources information about
+you from the onboarding, it's just one description, your name, and files you
+shared ... Photos and files below"; then "let them edit the description the
+way they want it by typing ... just a small pencil"; then "You have my okay
+on the profile editing").** For N349, N352 and N362 item 2:
+1. **Where it opens:** in any chat, a tap on the circle or the name in the
+top bar opens that person's profile; your own opens from the top of the ☰
+menu. It slides in from the right; the back arrow returns to where you
+were.
+2. **What it shows, one page:** a large circle with the first letter, the
+name and who they are (from setup); "About", one description written from
+the setup's voice note about their work (N352 item 1); "Photos", a grid of
+the photos the two of you shared in that chat, each opening full screen;
+"Files", the files shared there, each opening. On your own profile, what you
+shared in any chat. Nothing else: no status, no phone number, no last seen.
+3. **You edit your About by typing.** A small pencil beside "About" on your
+own profile turns it into a box with the text in it, up to 300 characters;
+"Save" keeps it, with "Edited today" under it, and "Cancel" leaves it. The
+one place in the app where a person types; everywhere else stays voice and
+one tap. Others' profiles have no pencil.
+4. **On your own profile, as on WhatsApp** (founder, the same chat: "if
+you click on the photo, you can change the photo ... if you click on the
+top right, you can actually edit also ... make it just like on WhatsApp,
+that you can edit your name, you can edit your role"): a tap on your circle
+(a small camera on it) opens "Take photo", "Choose photo", "Delete photo"
+(once there is one) and "Cancel"; the photo becomes your circle everywhere,
+the menu's top row included. "Edit" at the top right turns your name, who
+you are and your About into fields; "Done" keeps them. Others' profiles have
+neither.
+5. **Replaces N362 item 2's card** ("Ask {name} about" with the setup's
+topics): the topics now live in the person's About.
+6. **Signed (Never 4):** "About", "Photos", "Files", "No photos yet.", "No
+files yet.", "Save", "Cancel", "Edited today", "From your setup, {date}".
+And "Edit", "Done", "Take photo", "Choose photo", "Delete photo" (founder,
+the same chat: "words are ok, all is ok; lock it").
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration in this entry.
+
+**N367 · The ☰ menu and the "+" sheet, redesigned (founder, the Claude Code
+chat, 3 November 2026, on the prototype "One bar",
+<https://claude.ai/artifact/2v8jSi91F157WFR8tjX5E1>, comparing the app as
+built with the new design: "With a hamburger menu, I like the new design
+more. However, settings should replace data and content ... There shouldn't
+be anything like your takes. There should be tokens ... Sign out just like
+on your design ... copy my link at the top instead of the lab. And please
+remove the old add someone to chat with ... The new one is way better").**
+For N196, N308, N310, N365 and N366; corrects N362 item 1:
+1. **The ☰ menu** drops from the ☰ as a card: at the top, your circle, name
+and who you are, opening your profile (N366); then "Copy my link" (with
+"Whoever opens it joins you here" under it; it copies at once); "Settings"
+(the Data & consent page, N196); "Tokens" with the balance and its date
+under it; a thin line; "Sign out" in red. **"Lab" goes**, and "Copy my link"
+takes its place at the top. **No "Your Takes"** and no "Data & consent" row.
+Was: the email, Lab, Settings, Tokens, Log out (`AppMenu.tsx`); and N362
+item 1's Copy my link, Your Takes, Data & consent, Sign out.
+2. **"Tokens"** opens the pricing page on the web. In the iPhone app, the
+founder asked for it to open the web app's pricing page in the browser; that
+is a link to buy, which N365 item 1 (no buy button or link to buy in the
+iPhone app, for the App Store) rules out. Until the founder decides
+otherwise, in the iPhone app the row shows the balance and opens nothing.
+3. **The "+" sheet** ("Add someone to chat with") is the new one, wholly:
+it slides up over the dimmed list with a handle; the title, large; the line
+"Send them your link, in any email or message. Whoever opens it joins you
+here." (N310); the link in a box with 🔗; one big "Copy my link", which turns
+green with "✓ Copied" and closes the sheet (in the iPhone app the share
+sheet sits next to it, N365 item 6); three tiles, "1. Paste it" ("in
+an email or a message you send anyway"), "2. They open it" ("and join with
+their account"), "3. You chat" ("Only the two of you are in it"); "Cancel".
+It replaces the built sheet (a grey box with the title, the line, the link
+and Copy my link).
+4. **The menu's icons** are 36px rounded squares, as on the iPhone's
+Settings: a white link on blue for Copy my link, a white gear on grey for
+Settings, a gold coin on light gold for Tokens, a white arrow out on red for
+Sign out. On the profile (N366), the pencil is an orange pencil in a light
+orange circle beside the About text, and it stays in the box while you type
+(founder, the same chat: "Use bigger icons ... the Apple icons for settings
+for sure. For tokens, come up with something ... add the pencil to the
+editing of the profile text. You have my sign off on the words").
+5. **Signed (Never 4):** "Sign out" (was "Log out"), "✓ Copied", "Whoever
+opens it joins you here", and the three tiles' words.
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 and [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+(the menu's Settings row) when built. No migration.
+
+**N368 · One bar in every chat, and the chats' prototype locked (founder,
+the Claude Code chat, 3 November 2026, on the prototype "One bar",
+<https://claude.ai/artifact/2v8jSi91F157WFR8tjX5E1>, version 12: "words are
+ok, all is ok; lock it!!!!!! in the docs").** For N321, N341, N350, N361,
+N362, N364, N366 and N367:
+1. **One bar, three places that never move,** in every chat, Will's
+included: the "+" on the left; your voice, the mic, on the right, orange
+and pulsing when someone waits for your words; and in the middle the one
+thing to do now, the only part that changes. The middle shows 👍 👀 🙏 when
+nobody waits; "Record an answer" when a predefined question waits; Will's
+tap answers when he asks; "Record Take {N}" after his feedback; and
+"Sending to {name}… {n}" with "Undo" while an answer goes. While you talk,
+the whole bar is the recording strip (N314).
+2. **Changes:** the mic is always there, not only while a question waits
+(was N341); Will's chat has the same bar and no "Type here" (was N350); the
+"+" sheet has no "Voice note" (was N362 item 6); "Consult with someone
+first" becomes "Ask {name} first", a choice above the bar (was N340 and
+N343's grey line); a specialist's predefined questions sit above the bar in
+their chat as "Ask about {topic}", one tap and then your voice.
+3. **Every send** gives a short sound and a small buzz where the phone
+allows it; nothing covers the bar.
+4. **Signed (Never 4):** "Ask {name} first", "Ask about {topic}", and the
+countdown in "Sending to {name}… {n}".
+5. **Locked:** the prototype, version 12 (the one bar, the menu and the "+"
+sheet of N367, the profile of N366, and the words of N364), is a locked
+screen in [`docs/LOCKS.md`](LOCKS.md). Its rules page is frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, where it lands as it is built.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
