@@ -57,6 +57,16 @@ OUTCOME
       recording" is offered while the questions are asked; after that
       Take's walk Will asks again where he was; the plan, once made, counts
       that Take as its first practice (N262).
+  O16 With the first Take on (the ring row ``first_take``, N401), a new
+      speaker is not asked in the chat: Will says "Hi Anna!" and "Your first
+      Take is five questions. Answer each one out loud, one slide at a
+      time.", and the plan hands the app the five slides. After that
+      Take's walk Will reads it slide by slide: each answer is kept as the
+      plan answer it replaces (the voice message, the audience, the key
+      line, the opening) and all five in Will's notes; the plan's facts and
+      its topic come from what was said; a day said gives the plan and its
+      card at once, that Take its first practice; no day said asks "When is
+      your deadline?" as taps, and the answer gives the plan.
 PROVES   O1 -> test_without_the_ring_nothing_happens
          O2 -> test_a_new_speaker_is_asked_once
          O3 -> test_no_date_gives_two_months_then_the_voice_message
@@ -73,6 +83,8 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
          O13 -> test_a_correction_is_taken_and_the_question_asked_again
          O14 -> test_a_new_speaker_can_record_before_answering
          O15 -> test_with_the_calls_on_they_are_asked_before_the_plan
+         O16 -> test_with_the_first_take_on_the_questions_are_its_slides
+                test_a_first_take_with_no_day_asks_for_the_deadline
 WHY      The plan, built one to one with the prototype (founder 2026-10-26,
          N203, N204); a level moving on, N134 items 3 and 4, N209; the
          principles waiting for the onboarding, N243; record first, Will
@@ -175,10 +187,11 @@ class _Adapter:
         return {"text": self.text, "language": "en", "duration": 4.0}
 
 
-def _rings(monkeypatch, *, calls):
+def _rings(monkeypatch, *, calls, first_take=False):
     from services import rings
     monkeypatch.setattr("services.rings.feature_is_on_for_user",
-                        lambda feature, *a, **k: calls or feature != rings.PLAN_CALLS)
+                        lambda feature, *a, **k: (calls or feature != rings.PLAN_CALLS)
+                        and (first_take or feature != rings.FIRST_TAKE))
 
 
 @pytest.fixture
@@ -621,3 +634,58 @@ def test_a_new_speaker_can_record_before_answering(db, monkeypatch):
     assert out["plan"]["status"] == "active"
     view = F.view(db, USER, out["plan"])
     assert view["first_take_done"] and view["done"] == 1  # that Take is the first practice
+
+
+def _first_take(db, monkeypatch, read):
+    """A new speaker on the first Take's ring, and that Take recorded."""
+    _rings(monkeypatch, calls=False, first_take=True)
+    kept = []
+    monkeypatch.setattr("services.speaker_memory.record",
+                        lambda d, u, kind, payload, **k: kept.append((kind, payload)))
+    monkeypatch.setattr(F, "_read_first_take", lambda *a, **k: read)
+    out = F.state(db, USER, tz="UTC", first_name="Anna")
+    plan = db.get_open_plan(USER)
+    took = datetime.now(timezone.utc)
+    db.update_plan(USER, plan["id"], {"created_at": (took - timedelta(minutes=5)).isoformat()})
+    db.takes.rows = [{"id": "t1", "created_at": took.isoformat(), "arc_id": "arc-1", "take_index": 1}]
+    db.clips["t1"] = [{"transcript": said, "duration_ms": 6000, "metrics": {"piece": {"slide_index": i}}}
+                      for i, said in enumerate([
+                          "I'm a reporter on the politics desk.",
+                          "A talk at the newsroom conference, my first time on a stage.",
+                          "About two hundred journalists.",
+                          "A good story starts with one person.",
+                          "Last week, a bill changed my mind."])]
+    return out, kept
+
+
+def test_with_the_first_take_on_the_questions_are_its_slides(db, monkeypatch):
+    day = (date.today() + timedelta(days=11)).isoformat()
+    out, kept = _first_take(db, monkeypatch, {"facts": {
+        "event": "the newsroom conference", "topic": "My newsroom conference talk",
+        "audience": "about two hundred journalists"}, "deadline": day})
+    assert bodies(db) == ["Hi Anna!", P.COPY["first_take"]]  # no question in the chat
+    assert out["plan"]["first_take"] is True
+    assert [s["title"] for s in out["plan"]["first_take_slides"]] == [q for _k, q, _h, _x in P.FIRST_TAKE_SLIDES]
+
+    F.after_take(db, USER, first_name="Anna")
+    assert bodies(db)[-2:] == [P.COPY["all_set"], ""]  # the plan and its card
+    assert db.thread[-1]["metadata"].get("plan_card") is True
+    assert [a["kind"] for a in db.answers] == ["why", "audience", "key", "opening"]
+    assert [k for k, _p in kept] == ["answer"] * 5  # all five in Will's notes
+    view = F.state(db, USER, tz="UTC")["plan"]
+    assert view["status"] == "active" and view["deadline"] == day and not view["first_take"]
+    assert view["topic"] == "My newsroom conference talk"
+    assert view["key_line"] == "A good story starts with one person."  # as said, when the AI gave none
+    assert view["done"] == 1  # the first Take is the first practice
+
+
+def test_a_first_take_with_no_day_asks_for_the_deadline(db, monkeypatch):
+    _first_take(db, monkeypatch, {"facts": {"event": "the newsroom conference"}, "deadline": None})
+    F.after_take(db, USER, first_name="Anna")
+    assert bodies(db)[-1] == P.COPY["deadline_q"]
+    assert db.thread[-1]["metadata"].get("plan_ask") == "deadline"
+    out = F.answer_deadline(db, USER, None, tz="UTC")
+    assert out["plan"]["status"] == "active"
+    assert bodies(db)[-2:] == [P.COPY["all_set"], ""]
+    assert P.COPY["why_1"] not in bodies(db)  # never the chat's questions
+

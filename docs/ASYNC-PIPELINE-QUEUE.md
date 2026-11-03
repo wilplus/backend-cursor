@@ -203,7 +203,7 @@ Env reference (all optional beyond the two marked):
 | `PIPELINE_JOBS_SWEEP_SECRET` | web | unset | unset ⇒ sweep endpoint 503s |
 | `OPENAI_TIMEOUT_SECONDS` | both | `120` | client-wide LLM timeout |
 | `OPENAI_TRANSCRIBE_TIMEOUT_SECONDS` | both | `600` | Whisper per-call timeout |
-| `PARALLEL_TRANSCRIPTION_ENABLED` | worker | `1` | on: a Take of 90 s or more is cut in its pauses into up to four parts, transcribed at once, and stitched on the Take's clock; any failed part ⇒ the one whole-file call (N417, `services/parallel_transcription.py`). On by default, without the golden-set comparison (N417); `0` turns it off; `scripts/measure_transcripts.py --parallel` compares the two when a golden set exists |
+| `PARALLEL_TRANSCRIPTION_ENABLED` | worker | `1` | on: a Take of 90 s or more is cut in its pauses into up to four parts, transcribed at once, and stitched on the Take's clock; any failed part ⇒ the one whole-file call (N418, `services/parallel_transcription.py`). On by default, without the golden-set comparison (N418); `0` turns it off; `scripts/measure_transcripts.py --parallel` compares the two when a golden set exists |
 | `OPENAI_MAX_RETRIES` | both | `2` | SDK retry count |
 
 Scaling later: worker concurrency = add replicas of the worker service

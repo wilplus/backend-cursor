@@ -1,4 +1,4 @@
-"""A Take transcribed in parts at the same time (N417), behind
+"""A Take transcribed in parts at the same time (N418), behind
 ``PARALLEL_TRANSCRIPTION_ENABLED`` (on by default; "0" turns it off).
 
 One call for a whole Take makes the wait after Stop grow with the Take's

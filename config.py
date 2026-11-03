@@ -213,8 +213,8 @@ class Config:
     REASONABLE_CONFIDENCE_ENABLED = _env_flag("REASONABLE_CONFIDENCE_ENABLED", "0")
     MANAGER_CONTROLS_ENABLED = _env_flag("MANAGER_CONTROLS_ENABLED", "1")
     COACH_PREFILL_ENABLED = _env_flag("COACH_PREFILL_ENABLED", "0")
-    # A Take transcribed in up to four parts at once (N417,
-    # services/parallel_transcription.py). On by default (N417); "0" on
+    # A Take transcribed in up to four parts at once (N418,
+    # services/parallel_transcription.py). On by default (N418); "0" on
     # the WORKER turns it off, back to the one whole-file call.
     PARALLEL_TRANSCRIPTION_ENABLED = _env_not_off("PARALLEL_TRANSCRIPTION_ENABLED", "1")
     SENTENCE_BOUNDARY_SPLIT_ENABLED = _env_not_off("SENTENCE_BOUNDARY_SPLIT_ENABLED", "1")
