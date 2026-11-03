@@ -31,7 +31,10 @@ The lock (flow, words, rules) is
    per practice, reused for every appearance; a clip that fails its check is
    made once more with a new seed, never a third time
    (`AI_VOICE_GENERATION_RETRIES`, 1; founder 2026-10-21, N93), and a failed
-   one is never shown. While the job is queued or waiting for the voice,
+   one is never shown. A clip that is `unavailable` once its exercise was
+   chosen (a failed check, the provider or the limits refused, no voice)
+   still names `problem` and `phrase`, as a pending one does, so the One
+   thing walk's fix says its tip in words without the clip (N370). While the job is queued or waiting for the voice,
    `demo` already says `ai_voice` with the clip `pending`, so the walk shows
    the clip's place. A voice not ready yet (the clone from Take 1 still
    being made) is asked for again every 30 s, at most 5 times
