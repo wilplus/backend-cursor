@@ -82,11 +82,16 @@ def calls_on(database: Any, user_id: Any) -> bool:
 
 
 def first_take_on(database: Any, user_id: Any) -> bool:
-    """Is the first Take the onboarding for this person (N401)? The ring
-    row ``first_take``; with no row it is off and the plan asks its
-    questions in the chat, as before. Fails closed (rings)."""
+    """Is the first Take the onboarding for this person (N401)? Wherever the
+    plan is on, the first Take is the only way in (N457 item 3): with no
+    ``first_take`` ring row it is on; a row can still hold it back (killed,
+    or a ring the person is below), and then the plan asks in the chat."""
     from services import rings
-    return bool(user_id) and rings.feature_is_on_for_user(rings.FIRST_TAKE, user_id, database=database)
+    if not user_id:
+        return False
+    if rings.feature_ring_row(rings.FIRST_TAKE, database=database) is None:
+        return True
+    return rings.feature_is_on_for_user(rings.FIRST_TAKE, user_id, database=database)
 
 
 # ── time ───────────────────────────────────────────────────────────────────
