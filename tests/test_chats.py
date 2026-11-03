@@ -49,6 +49,12 @@ OUTCOME
   O14 Once my answer's Take has its words, both of us get them with the
       answer, slide by slide, and when each slide starts, for the strip that
       follows its voice (N355, N331); before that, no words and no slides.
+  O15 Will reads a question that waits for an answer once its words are
+      known (N361 item 1): asking about a product or a treatment, it carries
+      his mark (record_answer), the one "Record an answer" waits for; his
+      no is kept as no; anything else leaves no mark and the note is sent
+      all the same. The demo customer's question carries it, an older
+      seeded one too.
 PROVES   O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
          O2 -> ChatsTest::test_the_demo_is_made_once_and_listed
          O3 -> ChatsTest::test_a_member_reads_and_sends_one_of_three_emoji
@@ -61,8 +67,9 @@ PROVES   O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
          O10 -> ChatsTest::test_a_photo_and_a_file_are_sent_and_the_other_member_opens_them
          O11 -> ChatsTest::test_my_photo_and_the_voice_note_after_it_are_a_question_for_the_other_person
          O12 -> ChatsTest::test_a_photo_that_is_not_one_or_anything_over_10_mb_is_refused
-         O14 -> ChatsTest::test_an_answer_carries_its_takes_words_and_slides_once_processed
          O13 -> ChatsTest::test_an_answer_plays_my_take_and_the_other_member_gets_just_the_answer
+         O14 -> ChatsTest::test_an_answer_carries_its_takes_words_and_slides_once_processed
+         O15 -> ChatsTest::test_will_marks_a_question_about_a_product_or_a_treatment
 WHY      The chats between people, first slice (founder 2026-10-31, N298 to
          N316; the three emoji N311; the mic N321 item 2; its words N324,
          shown under the player N331; the photos and files of the "+" N351;
@@ -601,6 +608,42 @@ class ChatsTest(unittest.TestCase):
                          (200, b"OggS my Take", "audio/webm"))
 
 
+    def test_will_marks_a_question_about_a_product_or_a_treatment(self):
+        chat = self._shared_chat()
+        asked: list = []
+
+        def will(word):
+            def answer(**kwargs):
+                asked.append((kwargs["surface"], kwargs["user"]))
+                return type("Result", (), {"text": word})()
+            return answer
+
+        self.said = "Would the scalp treatment help with the itching?"
+        for word, mark in (("Yes.", {"record_answer": True}), ("no", {"record_answer": False}),
+                           ("maybe", {})):
+            self._upload(chat, "photo")
+            with patch("services.llm.chat_complete", will(word)):
+                sent = self._voice(chat).get_json()["message"]
+            self.assertEqual(sent["meta"], {"duration_ms": 4200, "question": True, **mark}, word)
+        self.assertEqual(asked[0], ("question_kind",
+                                    "Question: Would the scalp treatment help with the itching?"))
+        # A voice note that is no question is not read.
+        self._post(f"/v2/chats/{chat}/messages", {"kind": "emoji", "body": "👍"})
+        with patch("services.llm.chat_complete", will("yes")):
+            plain = self._voice(chat).get_json()["message"]
+        self.assertEqual(plain["meta"], {"duration_ms": 4200})
+        self.assertEqual(len(asked), 3)
+
+        # The demo customer's question carries the mark, and so does one
+        # seeded before the mark existed.
+        sarah = self._chat("customer")
+        said = self._get(f"/v2/chats/{sarah['id']}/messages").get_json()["messages"]
+        self.assertEqual(said[-1]["meta"], {"record_answer": True})
+        for row in self.store.tables["chat_messages"]:
+            if row["thread_id"] == sarah["id"]:
+                row["meta"] = {}
+        said = self._get(f"/v2/chats/{sarah['id']}/messages").get_json()["messages"]
+        self.assertEqual(said[-1]["meta"], {"record_answer": True})
     def test_an_answer_carries_its_takes_words_and_slides_once_processed(self):
         chat = self._shared_chat()
         take = str(uuid.uuid4())

@@ -109,12 +109,17 @@ EMOJI = {"👍": "good", "👀": "seen", "🙏": "thanks"}
 #: they said, in order.
 DEMO = (
     {"kind": "customer", "name": "Sarah", "subtitle": "Customer · Invita",
+     # Will's mark, made once here: it asks about a treatment (N361 item 1).
+     "marked": True,
      "said": [("text", "Itchy for two months, thinning at the top. I wash "
                        "every day. What should I do?")]},
     {"kind": "team", "name": "Ariel", "subtitle": "Your colleague · Invita",
      "said": [("text", "On slide 1: name the treatment and let it land."),
               ("emoji", "👍")]},
 )
+#: The demo customer's question, which Will marks (N361 item 1).
+_DEMO_QUESTION = ("Itchy for two months, thinning at the top. I wash every day. "
+                  "What should I do?")
 #: How the signed-in person is named in a demo chat (seen only by the
 #: other member, who is a demo guest).
 _YOU = "You"
@@ -311,6 +316,7 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
                    .select("id,author_member_id,kind,body,meta,created_at")
                    .eq("thread_id", thread).order("created_at", desc=True)
                    .limit(_MAX_MESSAGES))
+    _mark_demo_question(database, thread, newest)
     authors = _authors(database, thread)
     words = _words(database, thread, newest)
     answers = _answers(database, newest)
@@ -385,8 +391,71 @@ def post_voice(database: Any, user_id: Any, thread_id: Any, audio: bytes, *,
         _forget(database, message)
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
     said = _keep_words(database, adapter, str(message["id"]), str(user_id), audio, filename)
+    if meta.get("question") and said:
+        message = _marked(database, message, said, str(user_id))
     return {"message": _shown(message, str(me["id"]), _authors(database, thread),
                               {str(message["id"]): said} if said else None)}
+
+
+def read_kind(text: Any) -> Optional[bool]:
+    """The model's one word: True for yes, False for no, None for anything
+    else. Pure."""
+    word = str(text or "").strip().strip(".!\"'").lower()
+    return {"yes": True, "no": False}.get(word)
+
+
+def asks_about_a_product_or_treatment(words: str, *, user_id: Optional[str]) -> Optional[bool]:
+    """Will's mark on a question (N361 item 1): does it ask about a product
+    or a treatment? None when the model gives no clear yes or no. Called
+    inside the route's provider scope, so its permit is the caller's."""
+    from services.llm import chat_complete
+    from services.llm_config import SPEC_QUESTION_KIND
+    from services.prompts.question_kind import SYSTEM
+    result = chat_complete(spec=SPEC_QUESTION_KIND, system=SYSTEM,
+                           user=f"Question: {words.strip()[:1500]}",
+                           surface="question_kind", user_id=user_id)
+    return read_kind(getattr(result, "text", None) if result else None)
+
+
+def _marked(database: Any, message: dict, words: str, user_id: str) -> dict:
+    """A question's message with Will's mark kept in its meta
+    (``record_answer``); the message as it was when there is no clear mark or
+    it cannot be kept. Never in the way: the note is sent either way."""
+    try:
+        mark = asks_about_a_product_or_treatment(words, user_id=user_id)
+    except Exception:
+        logger.warning("chats: no mark on question %s", message.get("id"), exc_info=True)
+        return message
+    if mark is None:
+        return message
+    meta = {**(message.get("meta") or {}), "record_answer": mark}
+    try:
+        _table(database, MESSAGES).update({"meta": meta}).eq("id", str(message["id"])).execute()
+    except Exception:
+        logger.warning("chats: mark on question %s not kept", message.get("id"), exc_info=True)
+        return message
+    return {**message, "meta": meta}
+
+
+def _mark_demo_question(database: Any, thread: str, newest: list[dict]) -> None:
+    """The founder's demo customer, seeded before Will's mark existed, gets
+    it once (N361): its question asks about a treatment. Any other chat:
+    nothing."""
+    seeded = _DEMO_QUESTION
+    for row in newest:
+        meta = row.get("meta") or {}
+        if row.get("kind") != "text" or row.get("body") != seeded or "record_answer" in meta:
+            continue
+        demo = _rows(_table(database, THREADS).select("demo_user_id")
+                     .eq("id", thread).limit(1))
+        if not demo or not demo[0].get("demo_user_id"):
+            return
+        row["meta"] = {**meta, "record_answer": True}
+        try:
+            _table(database, MESSAGES).update({"meta": row["meta"]}).eq("id", str(row["id"])).execute()
+        except Exception:
+            logger.warning("chats: demo mark not kept", exc_info=True)
+        return
 
 
 def _keep_recording(database: Any, message: dict, user_id: str,
@@ -685,7 +754,8 @@ def _seed_one(database: Any, user_id: str, demo: dict, start: datetime) -> None:
         # message the person sends next.
         _rows(_table(database, MESSAGES).insert([
             {"thread_id": thread, "author_member_id": guest, "kind": kind, "body": body,
-             "meta": {"label": EMOJI[body]} if kind == "emoji" else {},
+             "meta": ({"label": EMOJI[body]} if kind == "emoji"
+                      else {"record_answer": True} if demo.get("marked") else {}),
              "created_at": (start - timedelta(seconds=len(said) - 1 - i)).isoformat()}
             for i, (kind, body) in enumerate(said)]))
     except Exception:

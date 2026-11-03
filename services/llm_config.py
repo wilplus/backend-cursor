@@ -588,6 +588,19 @@ SPEC_LIFE_GOAL_ASK = LLMSpec(
 (services.life_goals)."""
 
 
+SPEC_QUESTION_KIND = LLMSpec(
+    model=CHEAP_MODEL,
+    # One word, yes or no: the same question reads the same way every time.
+    temperature=0.0,
+    max_tokens=3,
+    timeout_seconds=6.0,
+)
+"""Will's mark on a question in a chat (founder 2026-11-03, N361 item 1):
+does it ask about a product or a treatment? A yes turns the bar into
+"Record an answer". No answer, or anything but yes or no, leaves no mark,
+and the bar stays the emoji and the mic."""
+
+
 SPEC_TEMPO_TOPIC = LLMSpec(
     model=CHEAP_MODEL,
     # A name for what the speaker talked about, never a new idea.

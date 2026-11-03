@@ -1,0 +1,7 @@
+// SEED dataset (engineering, 2026-11-03, N361 item 1) — Will's mark on a question in a chat: does it ask about a product or a treatment? A yes turns the bar into "Record an answer".
+// A strange mark in production becomes a new row here. Format: docs/prompt_evals.md
+{"id": "QK-SEED-01", "surface": "question_kind", "description": "whether a treatment would help is about a treatment", "input": {"words": "Itchy for two months, thinning at the top. I wash every day. Would the Deep Scalp Treatment help?"}, "rubric": {"expect": {"mark": true}}}
+{"id": "QK-SEED-02", "surface": "question_kind", "description": "which product to choose is about a product", "input": {"words": "Which shampoo should I buy for dry hair, the blue one or the green one?"}, "rubric": {"expect": {"mark": true}}}
+{"id": "QK-SEED-03", "surface": "question_kind", "description": "what a heating product costs is about a product", "input": {"words": "How much is the boiler service plan, and does it cover the radiators too?"}, "rubric": {"expect": {"mark": true}}}
+{"id": "QK-SEED-04", "surface": "question_kind", "description": "opening hours are not", "input": {"words": "Are you open on Sunday afternoon?"}, "rubric": {"expect": {"mark": false}}}
+{"id": "QK-SEED-05", "surface": "question_kind", "description": "moving a booking is not", "input": {"words": "Can I move my appointment from Tuesday to Thursday?"}, "rubric": {"expect": {"mark": false}}}
