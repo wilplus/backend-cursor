@@ -10886,3 +10886,38 @@ The rules: frontend
 and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 when built. The profile's topics need a migration, with its outside
 review, when built.
+
+**N457 · An invite lands on the chats, and the first Take is the only way
+in (founder, the Claude Code chat, 3 November 2026, from a phone screenshot
+of a tester invited by Artur who landed in Will's chat with the plan's
+questions asked by mic: "I land on a chat with Will eventhough I received an
+invite from Artur", "you should land on the list of chats and have a message
+from Artur and from Will and Will requires a set up and have the exact same
+word it has now and then you do the take", "these questions should be
+already recorded with the vocal and verbal cues so with the presentation
+not as a random answer with mic - fix that!!", "in cases where ... we need
+to hear it with the use of mic not text that should be in the
+presentation").** For N335, N357, N360, N401, N453 item 10:
+1. **Joining through someone's link works for anyone.** A person who joins
+through a link whose owner has the chats is raised to the chats' ring if
+they are below it, never above the link owner's own ring; the chat with
+the owner is made. Was: a joiner without the chats got no chat (404) and
+landed in Will's chat. This is how "a join link brings what its company has
+switched on" (N453 item 10) is built until teams are.
+2. **After joining, the list of chats** (N357, N360): Will on top, his row
+showing his newest line in bold with the orange dot while it is new
+("Your first Take is five questions…"); the chat with whoever invited you
+under him, marked new ("You joined through {name}'s link."). Will's chat
+says the words it says now, then "Start your first recording".
+3. **The first Take is the only way in.** Wherever the plan is on, a new
+speaker's plan begins with the first Take: the five slides, recorded, so
+Will hears how they were said as well as what. No ring row is needed; a
+row for `first_take` can still hold it back. The plan's questions are never
+asked by mic in Will's chat. Was: they were, with no ring row.
+4. **Where Will needs to hear the voice, it is a slide of a Take,** not a mic
+answer in the chat. Content asked by mic (fixing the card, "Something
+else") stays as it is.
+No new words. No migration (the ring is set through the existing
+`set_principal_ring_v1`). The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
