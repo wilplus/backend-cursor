@@ -9532,3 +9532,38 @@ files yet.", "Save", "Cancel", "Edited today", "From your setup, {date}".
 No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration in this entry.
+
+**N366 · The ☰ menu and the "+" sheet, redesigned (founder, the Claude Code
+chat, 3 November 2026, on the prototype "One bar",
+<https://claude.ai/artifact/2v8jSi91F157WFR8tjX5E1>, comparing the app as
+built with the new design: "With a hamburger menu, I like the new design
+more. However, settings should replace data and content ... There shouldn't
+be anything like your takes. There should be tokens ... Sign out just like
+on your design ... copy my link at the top instead of the lab. And please
+remove the old add someone to chat with ... The new one is way better").**
+For N196, N308, N310 and N365; corrects N362 item 1:
+1. **The ☰ menu** drops from the ☰ as a card: at the top, your circle, name
+and who you are, opening your profile (N365); then "Copy my link" (with
+"Whoever opens it joins you here" under it; it copies at once); "Settings"
+(the Data & consent page, N196); "Tokens" with the balance and its date
+under it; a thin line; "Sign out" in red. **"Lab" goes**, and "Copy my link"
+takes its place at the top. **No "Your Takes"** and no "Data & consent" row.
+Was: the email, Lab, Settings, Tokens, Log out (`AppMenu.tsx`); and N362
+item 1's Copy my link, Your Takes, Data & consent, Sign out.
+2. **"Tokens"** opens the pricing page: on the web, in the app; in the
+iPhone app, the web app's pricing page in the browser.
+3. **The "+" sheet** ("Add someone to chat with") is the new one, wholly:
+it slides up over the dimmed list with a handle; the title, large; the line
+"Send them your link, in any email or message. Whoever opens it joins you
+here." (N310); the link in a box with 🔗; one big "Copy my link", which turns
+green with "✓ Copied" and closes the sheet; three tiles, "1. Paste it" ("in
+an email or a message you send anyway"), "2. They open it" ("and join with
+their account"), "3. You chat" ("Only the two of you are in it"); "Cancel".
+It replaces the built sheet (a grey box with the title, the line, the link
+and Copy my link).
+4. **Signed (Never 4):** "Sign out" (was "Log out"), "✓ Copied", "Whoever
+opens it joins you here", and the three tiles' words.
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 and [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+(the menu's Settings row) when built. No migration.
