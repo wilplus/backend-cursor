@@ -9897,3 +9897,29 @@ only, with the founder's OK above.
 The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1. No migration.
+
+**N379 · One example in the fix, read aloud as it lands, one call to try
+(founder, the Claude Code chat, 3 November 2026, on items 4, 6 and 7 of the
+interaction audit of the fix step: "build 4 to 7 too"; item 5 waits, below).**
+For the One thing walk's fix (N309 item 1, C4, N370, N373, N377):
+1. **One example.** When the fix has its own example (the AI clip, or the
+exercise's video), their best's clip shrinks to a small chip under "Say
+this one like your confident moment:", labelled "Your confident moment"
+(signed, N289 item 7), so the example to copy is the one with the tip.
+With no other example, their best's clip stays full, as it is the example.
+2. **Read aloud as it lands.** The fix's bubbles after their best are a
+polite live region, so a screen reader reads the tip, the clip's label or
+the words as they land. The AI bubble's typing dots and its label "AI
+version of your voice" are not read while no clip is ready (the dots are
+hidden from assistive tech; the label is read once the player is there).
+3. **One call to try.** "Your turn." leaves the fix, in the walk and the
+chat: the "Try it" button under it says it. "Close. Once more." after a
+miss stays. Was (N309): "Your turn." closed the fix's bubble above "Try it".
+4. **Item 5 waits.** A tip that quotes no phrase (pace, fillers) would name
+its sentence; quoting the whole sentence is against the AI voice lock (§3:
+the speaker's two to four target words, never the whole sentence), so it
+waits for the founder's call.
+Nothing new to sign: "Your confident moment" is signed (N289 item 7).
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C4. No migration.
