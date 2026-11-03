@@ -1,8 +1,10 @@
 """The chats between people, first slice (founder, the Claude Code chat, 31
 October 2026, N298 to N316; prototype: the Ember & Air one kept with N298).
 Tables: chat_threads, chat_members, chat_messages (migration
-people_chat_with_each_other) and chat_message_audio, a voice note's
-recording (a_chat_voice_note_keeps_its_recording; N321 item 2).
+people_chat_with_each_other), chat_message_audio, a voice note's
+recording (a_chat_voice_note_keeps_its_recording; N321 item 2), and
+chat_message_files, a photo's or a file's bytes
+(a_chat_keeps_its_photos_and_files; N351).
 
 A chat is between two people (N302 item 1): a person and a colleague
 (``team``) or a person and a customer (``customer``). The other member may be
@@ -26,6 +28,15 @@ or writes.
     player (N331: "Read it"), never in the list, and fed nowhere else. A note
     that cannot be turned into words is sent all the same, ``words`` NULL.
   * ``recording``: a voice note's recording, for any member of its chat.
+  * ``post_file``: a photo (a raster image) or a file (any type), up to 10
+    MB, sent from the "+" (N351): a message of kind ``photo`` or ``file``
+    (a file's body is its own name, for the list's line), kept with its
+    bytes. Each opens a new question for the other person (N335 item 3,
+    N341 item 2): its ``meta`` says ``question``, the flag the app's mic
+    reads, and so does the sender's next voice note when it follows it
+    straight away, the voice note that says what they need (N337).
+  * ``sent_file``: a photo's or a file's bytes, type and name, for any member
+    of its chat.
   * ``seed_demo``: a customer's chat and a colleague's for the person, once,
     so the chats can be seen before anyone else is in them.
 
@@ -33,7 +44,9 @@ A real chat between two people is made by the join link
 (services/chat_links.py, N308, N328): nothing in this module makes one.
 
 Ring row ``chats``, ring 6 (the founder's). A person without it gets 404 from
-every route. One provider call, for a voice note only: its transcription,
+every route. A photo or a file makes no provider call and is no recording of
+the speaker, so it does not pass the processing-authorization path. One
+provider call, for a voice note only: its transcription,
 through the authorized provider (``AuthorizedProviderAdapter.transcribe_audio``,
 the adapter the route hands ``post_voice``, as the voice notebook's notes),
 never a provider SDK of its own. A voice note is a speaker's recording, so its
@@ -42,12 +55,13 @@ route (routes/v2/chats.py) passes the processing-authorization path before
 and the recording consent a Take asks for (``require_current``, operation
 "recording"); the transcription's permit is issued under that same
 authority. Deleted with the account: the purge registry takes the voice notes
-a person recorded, their memberships and their demo chats, and the messages
-go with them.
+a person recorded, the photos and files they sent, their memberships and
+their demo chats, and the messages go with them.
 """
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -57,6 +71,7 @@ logger = logging.getLogger(__name__)
 FEATURE = "chats"
 THREADS, MEMBERS, MESSAGES = "chat_threads", "chat_members", "chat_messages"
 AUDIO = "chat_message_audio"
+FILES = "chat_message_files"
 #: A voice note is up to two minutes long ...
 MAX_VOICE_MS = 120_000
 #: ... and up to 12 MB, what chat_message_audio holds (migration 0504).
@@ -65,6 +80,16 @@ MAX_VOICE_BYTES = 12 * 1024 * 1024
 _MAX_TYPE_LEN = 100
 #: The most of a voice note's words chat_message_audio keeps (N324).
 MAX_WORDS = 20_000
+#: A photo or a file is up to 10 MB, what chat_message_files holds.
+MAX_FILE_BYTES = 10 * 1024 * 1024
+#: The longest file name chat_message_files keeps.
+_MAX_NAME_LEN = 255
+#: What a photo may be: a raster image a browser shows. Never SVG, which can
+#: carry a script.
+PHOTO_TYPES = frozenset({"image/jpeg", "image/png", "image/gif", "image/webp",
+                         "image/heic", "image/heif", "image/avif"})
+#: A plain media type, type/subtype with no parameters.
+_MEDIA_TYPE = re.compile(r"^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$")
 #: The three emoji and the label each one means (N311 item 1).
 EMOJI = {"👍": "good", "👀": "seen", "🙏": "thanks"}
 #: The demo chats (founder only, ring 6): the guest, their line, and what
@@ -285,9 +310,12 @@ def post_voice(database: Any, user_id: Any, thread_id: Any, audio: bytes, *,
     if len(audio) > MAX_VOICE_BYTES:
         raise ChatsError("TOO_LARGE", "A voice note is at most 12 MB.", 413)
     thread = str(me["thread_id"])
+    meta: dict[str, Any] = {"duration_ms": ms}
+    if _after_my_photo_or_file(database, thread, str(me["id"])):
+        meta["question"] = True
     rows = _rows(_table(database, MESSAGES).insert({
         "thread_id": thread, "author_member_id": str(me["id"]), "kind": "voice",
-        "body": "", "meta": {"duration_ms": ms}}))
+        "body": "", "meta": meta}))
     if not rows:
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
     message = rows[0]
@@ -349,13 +377,24 @@ def _keep_words(database: Any, adapter: Any, message_id: str, user_id: str,
     return None
 
 
+def _after_my_photo_or_file(database: Any, thread_id: str, member_id: str) -> bool:
+    """Does a voice note about to be sent follow the sender's own photo or
+    file straight away? Then it says what they need (N337) and is part of
+    the question the photo or file opened for the other person (N341 item
+    2)."""
+    rows = _rows(_table(database, MESSAGES).select("author_member_id,kind")
+                 .eq("thread_id", thread_id).order("created_at", desc=True).limit(1))
+    return bool(rows) and str(rows[0]["author_member_id"]) == member_id \
+        and rows[0]["kind"] in ("photo", "file")
+
+
 def _forget(database: Any, message: dict) -> None:
-    """A voice message whose recording was not kept goes, so no chat shows a
-    voice note that cannot be played."""
+    """A message whose recording, photo or file was not kept goes, so no chat
+    shows one that cannot be opened."""
     try:
         _table(database, MESSAGES).delete().eq("id", str(message["id"])).execute()
     except Exception:
-        logger.error("chats: voice message %s left without its recording",
+        logger.error("chats: message %s left without its recording or file",
                      message.get("id"), exc_info=True)
 
 
@@ -384,6 +423,91 @@ def recording(database: Any, user_id: Any, thread_id: Any, message_id: Any) -> d
     if not audio:
         raise _not_found()
     return {"content_type": rows[0].get("content_type") or "audio/webm", "audio": audio}
+
+
+def _sent_type(kind: str, content_type: Any) -> str:
+    """The type kept for a photo, one of PHOTO_TYPES, else 400; for a file,
+    its own plain media type, or application/octet-stream when it has none a
+    browser could be trusted with."""
+    sent = str(content_type or "").split(";")[0].strip().lower()
+    if kind == "photo":
+        if sent not in PHOTO_TYPES:
+            raise ChatsError("NOT_ALLOWED", "Only a photo.")
+        return sent
+    if _MEDIA_TYPE.match(sent) and len(sent) <= _MAX_TYPE_LEN:
+        return sent
+    return "application/octet-stream"
+
+
+def _file_name(value: Any) -> str:
+    """A file's own name as it came, without any folder or unprintable
+    character, cut to _MAX_NAME_LEN."""
+    name = str(value or "").replace("\\", "/").rsplit("/", 1)[-1]
+    return "".join(ch for ch in name if ch.isprintable()).strip()[:_MAX_NAME_LEN]
+
+
+def post_file(database: Any, user_id: Any, thread_id: Any, kind: str, data: bytes, *,
+              content_type: Any, file_name: Any) -> dict:
+    """POST /v2/chats/<id>/photo and /file (N351): a photo, one of
+    PHOTO_TYPES, or a file of any type, from the "+". Missing, empty, or a
+    photo that is not one of them is 400; over 10 MB, 413. Its message (kind
+    ``photo`` or ``file``; a file's body is its own name) opens a new
+    question for the other person (``meta.question``, N341 item 2). Either
+    the message and its bytes are both kept or neither is. No provider call.
+    {"message": {...}}, as ``post``."""
+    me = member(database, user_id, thread_id)
+    sent_type = _sent_type(kind, content_type)
+    if not data:
+        raise ChatsError("NOT_ALLOWED", "No file.")
+    if len(data) > MAX_FILE_BYTES:
+        raise ChatsError("TOO_LARGE", "A photo or a file is at most 10 MB.", 413)
+    name = _file_name(file_name)
+    thread = str(me["thread_id"])
+    rows = _rows(_table(database, MESSAGES).insert({
+        "thread_id": thread, "author_member_id": str(me["id"]), "kind": kind,
+        "body": name if kind == "file" else "", "meta": {"question": True}}))
+    if not rows:
+        raise ChatsError("NOT_SAVED", "Could not send it.", 503)
+    message = rows[0]
+    if not _keep_file(database, message, str(user_id), sent_type, name, data):
+        _forget(database, message)
+        raise ChatsError("NOT_SAVED", "Could not send it.", 503)
+    return {"message": _shown(message, str(me["id"]), _authors(database, thread))}
+
+
+def _keep_file(database: Any, message: dict, user_id: str, content_type: str,
+               file_name: str, data: bytes) -> bool:
+    """The bytes of a photo or file message just written; False when they
+    were not kept. The log names the message, never the file."""
+    try:
+        _table(database, FILES).insert({
+            "message_id": str(message["id"]),
+            # As for a recording: always the chat of this same message.
+            "thread_id": str(message["thread_id"]),
+            "user_id": user_id, "content_type": content_type,
+            "file_name": file_name, "data": "\\x" + data.hex()}).execute()
+        return True
+    except Exception:
+        logger.error("chats: file of message %s not kept", message.get("id"), exc_info=True)
+        return False
+
+
+def sent_file(database: Any, user_id: Any, thread_id: Any, message_id: Any) -> dict:
+    """GET /v2/chats/<id>/messages/<message_id>/file: {content_type,
+    file_name, data} of a photo or file in this chat, for any member of it;
+    404 otherwise. With no name of its own, the message's id names it."""
+    me = member(database, user_id, thread_id)
+    message = _uuid(message_id)
+    if not message:
+        raise _not_found()
+    rows = _rows(_table(database, FILES).select("content_type,file_name,data")
+                 .eq("message_id", message).eq("thread_id", str(me["thread_id"]))
+                 .limit(1))
+    data = _bytes(rows[0].get("data")) if rows else b""
+    if not data:
+        raise _not_found()
+    return {"content_type": rows[0].get("content_type") or "application/octet-stream",
+            "file_name": rows[0].get("file_name") or message, "data": data}
 
 
 def _demo_kinds(database: Any, user_id: str) -> set[str]:

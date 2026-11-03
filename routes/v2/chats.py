@@ -1,5 +1,6 @@
 """The chats between people, first slice (founder 2026-10-31, N298 to N316;
-the voice note, N321 item 2). Service: services/chats.py.
+the voice note, N321 item 2; the photos and files of the "+", N351).
+Service: services/chats.py.
 
   GET  /v2/chats                  {chats: [{id, kind, title, subtitle,
                                    last: {kind, body, created_at} | null}]}
@@ -13,6 +14,16 @@ the voice note, N321 item 2). Service: services/chats.py.
                                    kind: "voice", body: "", meta: {duration_ms}}}
   GET  /v2/chats/<id>/messages/<message_id>/audio
                                    the recording, for any member of the chat
+  POST /v2/chats/<id>/photo       multipart: file (a jpeg, png, gif, webp,
+                                   heic, heif or avif image, up to 10 MB);
+                                   {message: {..., kind: "photo", body: "",
+                                   meta: {question: true}}}
+  POST /v2/chats/<id>/file        multipart: file (any type, up to 10 MB);
+                                   {message: {..., kind: "file", body: its own
+                                   name, meta: {question: true}}}
+  GET  /v2/chats/<id>/messages/<message_id>/file
+                                   the photo (inline) or the file (attachment),
+                                   with its own name, for any member of the chat
   POST /v2/chats/demo             makes the two demo chats once; the list
   GET  /v2/chats/link             {token, path}: the caller's own join link,
                                    made the first time (N308)
@@ -40,6 +51,12 @@ gate mode). A refusal
 answers as those do, ``{code, error}`` with its status (403
 PROCESSING_RECORDING_WITHDRAWN, 403 PROCESSING_AUTHORIZATION_REQUIRED, ...),
 and nothing is written.
+
+A photo or a file (N351) is neither a recording of the speaker nor a provider
+call: nothing reads it but the chat's two members, so its routes take the
+ring and the chat (404) and the file (400, 413), and no processing
+authorization. It is served with ``nosniff`` and a sandbox, a photo inline and
+a file as an attachment, so nothing sent can run as a page of ours.
 """
 import io
 import logging
@@ -178,6 +195,51 @@ def v2_chats_audio(thread_id, message_id):
         return response
     return _run("audio", lambda: recording(db, str(request.user_id), thread_id, message_id),
                 answer=played)
+
+
+def _sent(thread_id, kind):
+    """A photo or a file from the "+" (N351), multipart ``file``. One byte
+    past the limit is enough to know it is over (413)."""
+    from services.chats import MAX_FILE_BYTES, post_file
+    upload = request.files.get("file")
+    data = upload.stream.read(MAX_FILE_BYTES + 1) if upload is not None else b""
+    return _run(kind, lambda: post_file(
+        db, str(request.user_id), thread_id, kind, data,
+        content_type=upload.content_type if upload is not None else None,
+        file_name=upload.filename if upload is not None else None))
+
+
+@v2_bp.route("/chats/<thread_id>/photo", methods=["POST"])
+@limiter.limit("120 per hour", scope="chats_photo")
+@require_auth
+def v2_chats_photo(thread_id):
+    return _sent(thread_id, "photo")
+
+
+@v2_bp.route("/chats/<thread_id>/file", methods=["POST"])
+@limiter.limit("120 per hour", scope="chats_file")
+@require_auth
+def v2_chats_file(thread_id):
+    return _sent(thread_id, "file")
+
+
+@v2_bp.route("/chats/<thread_id>/messages/<message_id>/file", methods=["GET"])
+@require_auth
+def v2_chats_file_read(thread_id, message_id):
+    """A photo or a file, for any member of its chat: a photo shown in place,
+    anything else downloaded under its own name; never sniffed, sandboxed."""
+    from services.chats import PHOTO_TYPES, sent_file
+
+    def served(got):
+        response = send_file(io.BytesIO(got["data"]), mimetype=got["content_type"],
+                             as_attachment=got["content_type"] not in PHOTO_TYPES,
+                             download_name=got["file_name"], conditional=True)
+        response.headers["Cache-Control"] = "private, max-age=3600"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Content-Security-Policy"] = "sandbox"
+        return response
+    return _run("file", lambda: sent_file(db, str(request.user_id), thread_id, message_id),
+                answer=served)
 
 
 @v2_bp.route("/chats/demo", methods=["POST"])

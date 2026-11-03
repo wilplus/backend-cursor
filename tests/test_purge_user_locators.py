@@ -42,10 +42,12 @@ USER_KEYED = {
     "coach_block_pick_by_coach": ("coach_block_pick", "coach_id"),
     "coach_clip_exposures": ("coach_clip_exposures", "coach_id"),
     # The chats between people (0503): my place in each chat, and the demo
-    # chats made for me; the voice notes I recorded in them (0504).
+    # chats made for me; the voice notes I recorded in them (0504) and the
+    # photos and files I sent (0506, N351).
     "chat_members": ("chat_members", "user_id"),
     "chat_demo_threads": ("chat_threads", "demo_user_id"),
     "chat_message_audio": ("chat_message_audio", "user_id"),
+    "chat_message_files": ("chat_message_files", "user_id"),
     # My join link (a_person_has_a_link_to_join_them, N308).
     "chat_links": ("chat_links", "user_id"),
 }

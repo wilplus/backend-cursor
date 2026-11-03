@@ -173,9 +173,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # The security log of Email and password (WIL-95, N190): the account's.
     "account_security_events",
     # The chats between people (N298 to N316): a person's chats and the
-    # voice notes they recorded in them (N321) belong to the account, never
-    # to a project.
-    "chat_message_audio", "chat_demo_threads", "chat_members",
+    # voice notes they recorded in them (N321) and the photos and files they
+    # sent (N351) belong to the account, never to a project.
+    "chat_message_audio", "chat_message_files", "chat_demo_threads", "chat_members",
     # A person's join link (N308): the account's, never a project's.
     "chat_links",
     # The plan (N203): one per person, across their projects; the account

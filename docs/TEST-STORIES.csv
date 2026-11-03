@@ -579,7 +579,7 @@ O4     -> test_the_reply_is_saved_under_the_turn_it_answers",Founder #2: bubbles
 tests/test_chat_talk.py,Story,"As a speaker, I want Will to read my whole talk slide by slide, so that his answers refer to what I actually said on each slide.","O1  Each slide lists its bullet points and what I said on it.
 O2  A slide I said nothing on reads ""(nothing yet)"".
 O3  Words not tied to a slide are listed on their own.","O1, O2, O3 -> test_each_slide_carries_its_points_and_what_they_said",Founder 2026-10-15; Privacy 3.7 section 4.
-tests/test_chats.py,Story,"As the founder, I want my own chats with a colleague and a customer, apart from my chat with Will, where I answer with one of three emoji or a voice note, so that I can see the chats between people working before anyone else is in them.","O1  Without the ring row (chats, ring 6) every route answers 404 and
+tests/test_chats.py,Story,"As the founder, I want my own chats with a colleague and a customer, apart from my chat with Will, where I answer with one of three emoji or a voice note, and start something new with a photo or a file, so that I can see the chats between people working before anyone else is in them.","O1  Without the ring row (chats, ring 6) every route answers 404 and
 nothing is written.
 O2  The demo makes Sarah's customer chat and Ariel's colleague chat once,
 however often it is asked; the list names each chat for the other
@@ -587,8 +587,9 @@ person, with their line and the last thing said.
 O3  In my chat I read what was said, oldest first, mine marked; I send 👍,
 👀 or 🙏 with its meaning kept as a label (N311), and anything else is
 refused.
-O4  Someone not in a chat can neither read it, nor send to it, nor play
-its voice notes, not even through a chat of their own.
+O4  Someone not in a chat can neither read it, nor send to it (an emoji,
+a voice note, a photo or a file), nor play its voice notes, nor open
+its photos and files, not even through a chat of their own.
 O5  I send a voice note (N321 item 2) and the other person in the chat
 sees it, with its length, and plays my recording as I sent it.
 O6  A recording that is missing, empty, not audio or over two minutes is
@@ -602,7 +603,18 @@ up to 20000 characters; the chat's members get them with the voice
 note, to open under its player (N331), and the list never shows them.
 O9  A voice note that cannot be turned into words (none heard, the
 transcriber failing, the permit refused) is sent all the same: the
-same answer, its message and recording kept, its words empty.","O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
+same answer, its message and recording kept, its words empty.
+O10 I send a photo and a file from the ""+"" (N351); the other person in the
+chat sees them, the list's last line has the file's own name, and the
+photo opens in place and the file downloads under its name, as I sent
+them, never sniffed as anything else.
+O11 My photo or file opens a new question for the other person (N341 item
+2): it is marked as one, and so is the voice note I send straight after
+it to say what I need (N337); a voice note that follows nothing of mine
+is not.
+O12 A photo that is not a raster image (text, SVG), an empty or missing
+file, or anything over 10 MB is refused (400, 413), and nothing is
+written.","O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
 O2 -> ChatsTest::test_the_demo_is_made_once_and_listed
 O3 -> ChatsTest::test_a_member_reads_and_sends_one_of_three_emoji
 O4 -> ChatsTest::test_someone_not_in_the_chat_is_refused
@@ -610,7 +622,10 @@ O5 -> ChatsTest::test_a_voice_note_is_sent_and_the_other_member_plays_it
 O6 -> ChatsTest::test_a_recording_that_is_not_a_voice_note_is_refused
 O7 -> ChatsTest::test_the_processing_authorization_refuses_a_voice_note
 O8 -> ChatsTest::test_a_voice_note_is_turned_into_words_under_my_permit_and_its_members_read_them
-O9 -> ChatsTest::test_a_voice_note_without_words_is_sent_all_the_same","The chats between people, first slice (founder 2026-10-31, N298 to N316; the three emoji N311; the mic N321 item 2; its words N324, shown under the player N331). Every speaker's recording and every provider call goes through the processing-authorization path (CLAUDE.md)."
+O9 -> ChatsTest::test_a_voice_note_without_words_is_sent_all_the_same
+O10 -> ChatsTest::test_a_photo_and_a_file_are_sent_and_the_other_member_opens_them
+O11 -> ChatsTest::test_my_photo_and_the_voice_note_after_it_are_a_question_for_the_other_person
+O12 -> ChatsTest::test_a_photo_that_is_not_one_or_anything_over_10_mb_is_refused","The chats between people, first slice (founder 2026-10-31, N298 to N316; the three emoji N311; the mic N321 item 2; its words N324, shown under the player N331; the photos and files of the ""+"" N351). Every speaker's recording and every provider call goes through the processing-authorization path (CLAUDE.md)."
 tests/test_clearer_versions_reach_the_manager.py,Story,"As a speaker, I want the model's clearer rewrites to reach my feedback with their evidence, so that I get a rewrite where my wording was weak.","O1  A clearer version written because a read was weak (unconfident,
 stickiness, profanity) carries the Manager evidence naming that weak
 read, and the generator version; any other trigger carries none (and

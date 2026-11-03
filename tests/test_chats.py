@@ -1,8 +1,9 @@
 """
 STORY    As the founder, I want my own chats with a colleague and a customer,
          apart from my chat with Will, where I answer with one of three emoji
-         or a voice note, so that I can see the chats between people working
-         before anyone else is in them.
+         or a voice note, and start something new with a photo or a file, so
+         that I can see the chats between people working before anyone else
+         is in them.
 OUTCOME
   O1  Without the ring row (chats, ring 6) every route answers 404 and
       nothing is written.
@@ -12,8 +13,9 @@ OUTCOME
   O3  In my chat I read what was said, oldest first, mine marked; I send 👍,
       👀 or 🙏 with its meaning kept as a label (N311), and anything else is
       refused.
-  O4  Someone not in a chat can neither read it, nor send to it, nor play
-      its voice notes, not even through a chat of their own.
+  O4  Someone not in a chat can neither read it, nor send to it (an emoji,
+      a voice note, a photo or a file), nor play its voice notes, nor open
+      its photos and files, not even through a chat of their own.
   O5  I send a voice note (N321 item 2) and the other person in the chat
       sees it, with its length, and plays my recording as I sent it.
   O6  A recording that is missing, empty, not audio or over two minutes is
@@ -28,6 +30,17 @@ OUTCOME
   O9  A voice note that cannot be turned into words (none heard, the
       transcriber failing, the permit refused) is sent all the same: the
       same answer, its message and recording kept, its words empty.
+  O10 I send a photo and a file from the "+" (N351); the other person in the
+      chat sees them, the list's last line has the file's own name, and the
+      photo opens in place and the file downloads under its name, as I sent
+      them, never sniffed as anything else.
+  O11 My photo or file opens a new question for the other person (N341 item
+      2): it is marked as one, and so is the voice note I send straight after
+      it to say what I need (N337); a voice note that follows nothing of mine
+      is not.
+  O12 A photo that is not a raster image (text, SVG), an empty or missing
+      file, or anything over 10 MB is refused (400, 413), and nothing is
+      written.
 PROVES   O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
          O2 -> ChatsTest::test_the_demo_is_made_once_and_listed
          O3 -> ChatsTest::test_a_member_reads_and_sends_one_of_three_emoji
@@ -37,9 +50,12 @@ PROVES   O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
          O7 -> ChatsTest::test_the_processing_authorization_refuses_a_voice_note
          O8 -> ChatsTest::test_a_voice_note_is_turned_into_words_under_my_permit_and_its_members_read_them
          O9 -> ChatsTest::test_a_voice_note_without_words_is_sent_all_the_same
+         O10 -> ChatsTest::test_a_photo_and_a_file_are_sent_and_the_other_member_opens_them
+         O11 -> ChatsTest::test_my_photo_and_the_voice_note_after_it_are_a_question_for_the_other_person
+         O12 -> ChatsTest::test_a_photo_that_is_not_one_or_anything_over_10_mb_is_refused
 WHY      The chats between people, first slice (founder 2026-10-31, N298 to
          N316; the three emoji N311; the mic N321 item 2; its words N324,
-         shown under the player N331).
+         shown under the player N331; the photos and files of the "+" N351).
          Every speaker's recording and every provider call goes through the
          processing-authorization path (CLAUDE.md).
 """
@@ -53,7 +69,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from services.canonical_product import OwnerPrincipal
-from services.chats import MAX_VOICE_BYTES
+from services.chats import MAX_FILE_BYTES, MAX_VOICE_BYTES
 from services.db import db
 from services.processing_authorization import (
     ProcessingAuthorizationError, ProcessingAuthorizationService,
@@ -251,6 +267,14 @@ class ChatsTest(unittest.TestCase):
                                 content_type="multipart/form-data",
                                 headers={"Authorization": "Bearer t"})
 
+    def _upload(self, thread, route, data=b"\x89PNG my screen", kind="image/png",
+                name="Screenshot 1.png"):
+        """A photo or a file from the "+" (N351), as the app posts it."""
+        form = {} if data is None else {"file": (io.BytesIO(data), name, kind)}
+        return self.client.post(f"/v2/chats/{thread}/{route}", data=form,
+                                content_type="multipart/form-data",
+                                headers={"Authorization": "Bearer t"})
+
     def _nothing_sent(self):
         self.assertEqual([m for m in self.store.tables.get("chat_messages", [])
                           if m["kind"] == "voice"], [])
@@ -262,8 +286,10 @@ class ChatsTest(unittest.TestCase):
         for res in (self._get("/v2/chats"), self._post("/v2/chats/demo"),
                     self._get(f"/v2/chats/{thread}/messages"),
                     self._post(f"/v2/chats/{thread}/messages", {"kind": "emoji", "body": "👍"}),
-                    self._voice(thread),
-                    self._get(f"/v2/chats/{thread}/messages/{uuid.uuid4()}/audio")):
+                    self._voice(thread), self._upload(thread, "photo"),
+                    self._upload(thread, "file"),
+                    self._get(f"/v2/chats/{thread}/messages/{uuid.uuid4()}/audio"),
+                    self._get(f"/v2/chats/{thread}/messages/{uuid.uuid4()}/file")):
             self.assertEqual((res.status_code, res.get_json()["code"]), (404, "NOT_FOUND"))
         self.assertEqual(self.store.tables, {})
 
@@ -310,20 +336,26 @@ class ChatsTest(unittest.TestCase):
     def test_someone_not_in_the_chat_is_refused(self):
         sarah = self._chat("customer")["id"]
         note = self._voice(sarah).get_json()["message"]["id"]
+        photo = self._upload(sarah, "photo").get_json()["message"]["id"]
         self.who = SOMEONE
         self.assertEqual(self._get("/v2/chats").get_json(), {"chats": []})
         theirs = self._chat("team")["id"]
         for res in (self._get(f"/v2/chats/{sarah}/messages"),
                     self._post(f"/v2/chats/{sarah}/messages", {"kind": "emoji", "body": "🙏"}),
-                    self._voice(sarah),
+                    self._voice(sarah), self._upload(sarah, "photo"),
+                    self._upload(sarah, "file"),
                     self._get(f"/v2/chats/{sarah}/messages/{note}/audio"),
+                    self._get(f"/v2/chats/{sarah}/messages/{photo}/file"),
                     # Not through a chat of their own either.
                     self._get(f"/v2/chats/{theirs}/messages/{note}/audio"),
+                    self._get(f"/v2/chats/{theirs}/messages/{photo}/file"),
                     self._get("/v2/chats/not-a-chat/messages")):
             self.assertEqual((res.status_code, res.get_json()["code"]), (404, "NOT_FOUND"))
         self.assertEqual([m["thread_id"] for m in self.store.tables["chat_messages"]
                           if m["kind"] == "voice"], [sarah])
         self.assertEqual(self.store.count("chat_message_audio"), 1)
+        self.assertEqual([r["message_id"] for r in self.store.tables["chat_message_files"]],
+                         [photo])
 
     def test_a_voice_note_is_sent_and_the_other_member_plays_it(self):
         chat = self._shared_chat()
@@ -444,6 +476,78 @@ class ChatsTest(unittest.TestCase):
                               if m["kind"] == "voice"]), 3)
         # The refused permit: the transcriber never heard the third.
         self.assertEqual(len(self.heard), 2)
+
+    def test_a_photo_and_a_file_are_sent_and_the_other_member_opens_them(self):
+        chat = self._shared_chat()
+        photo = self._upload(chat, "photo", b"\x89PNG my screen", "image/png", "Screenshot 1.png")
+        file = self._upload(chat, "file", b"%PDF the guidelines", "application/pdf",
+                            "Newsroom AI guidelines.pdf")
+        self.assertEqual((photo.status_code, file.status_code), (200, 200))
+        photo, file = photo.get_json()["message"], file.get_json()["message"]
+        self.assertEqual([(m["mine"], m["author"], m["kind"], m["body"]) for m in (photo, file)],
+                         [(True, "Artur", "photo", ""),
+                          (True, "Artur", "file", "Newsroom AI guidelines.pdf")])
+        self.assertEqual([(r["message_id"], r["thread_id"], r["user_id"], r["file_name"])
+                          for r in self.store.tables["chat_message_files"]],
+                         [(photo["id"], chat, ME, "Screenshot 1.png"),
+                          (file["id"], chat, ME, "Newsroom AI guidelines.pdf")])
+
+        self.who = SOMEONE
+        said = self._get(f"/v2/chats/{chat}/messages").get_json()["messages"]
+        self.assertEqual([(m["id"], m["mine"], m["kind"], m["body"]) for m in said],
+                         [(photo["id"], False, "photo", ""),
+                          (file["id"], False, "file", "Newsroom AI guidelines.pdf")])
+        last = self._get("/v2/chats").get_json()["chats"][0]["last"]
+        self.assertEqual((last["kind"], last["body"]), ("file", "Newsroom AI guidelines.pdf"))
+        shown = self._get(f"/v2/chats/{chat}/messages/{photo['id']}/file")
+        self.assertEqual((shown.status_code, shown.data, shown.headers["Content-Type"],
+                          shown.headers["X-Content-Type-Options"]),
+                         (200, b"\x89PNG my screen", "image/png", "nosniff"))
+        self.assertRegex(shown.headers["Content-Disposition"], r'^inline; filename="?Screenshot 1\.png')
+        got = self._get(f"/v2/chats/{chat}/messages/{file['id']}/file")
+        self.assertEqual((got.status_code, got.data, got.headers["Content-Type"],
+                          got.headers["X-Content-Type-Options"]),
+                         (200, b"%PDF the guidelines", "application/pdf", "nosniff"))
+        self.assertRegex(got.headers["Content-Disposition"],
+                         r'^attachment; filename="?Newsroom AI guidelines\.pdf')
+        # A voice note is no file.
+        self.who = ME
+        note = self._voice(chat).get_json()["message"]["id"]
+        missing = self._get(f"/v2/chats/{chat}/messages/{note}/file")
+        self.assertEqual((missing.status_code, missing.get_json()["code"]), (404, "NOT_FOUND"))
+
+    def test_my_photo_and_the_voice_note_after_it_are_a_question_for_the_other_person(self):
+        chat = self._shared_chat()
+        before = self._voice(chat).get_json()["message"]
+        photo = self._upload(chat, "photo").get_json()["message"]
+        after = self._voice(chat).get_json()["message"]
+        self.assertEqual([m["meta"] for m in (before, photo, after)],
+                         [{"duration_ms": 4200}, {"question": True},
+                          {"duration_ms": 4200, "question": True}])
+        # The other person reads both as theirs to answer; their answer after
+        # my file is not a question, nor is their voice note after it.
+        self.who = SOMEONE
+        said = self._get(f"/v2/chats/{chat}/messages").get_json()["messages"]
+        self.assertEqual([(m["kind"], m["mine"], m["meta"].get("question")) for m in said],
+                         [("voice", False, None), ("photo", False, True), ("voice", False, True)])
+        self.who = ME
+        self._upload(chat, "file", b"%PDF", "application/pdf", "Brief.pdf")
+        self.who = SOMEONE
+        reply = self._voice(chat).get_json()["message"]
+        self.assertEqual(reply["meta"], {"duration_ms": 4200})
+
+    def test_a_photo_that_is_not_one_or_anything_over_10_mb_is_refused(self):
+        chat = self._shared_chat()
+        for route, wrong, answer in (
+                ("photo", {"kind": "text/plain"}, (400, "NOT_ALLOWED")),
+                ("photo", {"kind": "image/svg+xml", "data": b"<svg/>"}, (400, "NOT_ALLOWED")),
+                ("photo", {"data": b""}, (400, "NOT_ALLOWED")),
+                ("file", {"data": None}, (400, "NOT_ALLOWED")),
+                ("file", {"data": b"x" * (MAX_FILE_BYTES + 1)}, (413, "TOO_LARGE"))):
+            res = self._upload(chat, route, **wrong)
+            self.assertEqual((res.status_code, res.get_json()["code"]), answer, (route, wrong.keys()))
+        self.assertEqual(self.store.tables.get("chat_messages", []), [])
+        self.assertEqual(self.store.count("chat_message_files"), 0)
 
 
 if __name__ == "__main__":
