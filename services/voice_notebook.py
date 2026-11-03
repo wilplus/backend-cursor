@@ -25,7 +25,7 @@ The personal lane: notes are read by the person and by Will (``prompt_block``,
 Will's chat) and by nobody else; never by a coach, never in the Ideal Text.
 Before the first note the person is asked once, in the shape the Lounge
 draws as an offer, under the mic line and the three privacy lines: "Do you
-understand the rules and want this feature on?" Yes | Not now (N379; was
+understand the rules and want this feature on?" Yes | Not now (N411; was
 "Your notes are private. Only you and Will read them. Keep a voice
 notebook?"). Every fifth note that names someone gets the short line
 "🔒 Security disclaimer" (``privacy_after_note``). A note that sounds like a crisis is
@@ -48,10 +48,10 @@ FEATURE = "voice_notebook"
 OFFER = "voice_notebook"
 #: The signed words (founder 2026-10-20). No new words without the founder's OK.
 COPY = {
-    # N379 (signed 2026-11-03): the Lounge draws the mic line and the three
+    # N411 (signed 2026-11-03): the Lounge draws the mic line and the three
     # grey privacy lines above this ask (frontend loungeOffers NOTEBOOK_INTRO).
     "ask": "Do you understand the rules and want this feature on?",
-    # N379 item 3: under every fifth # note that names someone; a tap opens
+    # N411 item 3: under every fifth # note that names someone; a tap opens
     # the three privacy lines (frontend PRIVACY_LINE).
     "privacy_line": "🔒 Security disclaimer",
     "yes": "Yes",
@@ -336,7 +336,7 @@ def fix_note(database: Any, user_id: str, client_id: str, text: str) -> dict:
     return fixed
 
 
-#: N379 item 3: every fifth # note that names someone gets the short line.
+#: N411 item 3: every fifth # note that names someone gets the short line.
 PRIVACY_EVERY = 5
 #: How far back the count looks; a person writes far fewer notes than this
 #: between two reminders.
@@ -367,8 +367,28 @@ def _names_someone(text: str, user_id: str) -> bool:
         return False
 
 
+def _noted_row(rows: list[dict], note_id: str) -> Optional[dict]:
+    """The "Noted." row of one note, from the thread's newest rows."""
+    return next((r for r in rows if r.get("role") == "bot"
+                 and str((r.get("metadata") or {}).get("voice_note") or "") == note_id), None)
+
+
+def _named_since_reminder(rows: list[dict], noted: dict) -> int:
+    """Marked notes since the last reminder, this one included."""
+    count = 1
+    for row in rows:
+        m = row.get("metadata") or {}
+        if row is noted:
+            continue
+        if m.get("privacy_line") == "names":
+            break
+        if row.get("role") == "bot" and m.get("names_someone") is True:
+            count += 1
+    return count
+
+
 def privacy_after_note(database: Any, user_id: str) -> list[dict]:
-    """Under the newest note's "Noted." (N379 item 3): the note is marked when
+    """Under the newest note's "Noted." (N411 item 3): the note is marked when
     it names someone, and every fifth marked note since the last reminder gets
     the short line "🔒 Security disclaimer". Only a reminder: nothing is
     offered, changed or deleted. [] most of the time."""
@@ -376,36 +396,24 @@ def privacy_after_note(database: Any, user_id: str) -> list[dict]:
         return []
     notes = database.list_voice_notes(str(user_id), limit=1) or []
     newest = notes[-1] if notes else {}
-    text = newest.get("text_clean") if isinstance(newest.get("text_clean"), str) else ""
+    raw = newest.get("text_clean")
+    text: str = raw if isinstance(raw, str) else ""
     if not newest.get("id") or not text.strip() or _crisis(text):
         return []
     note_id = str(newest["id"])
     rows = database.get_lounge_messages_page(str(user_id), limit=_PRIVACY_WINDOW) or []
-    noted = next((r for r in rows if r.get("role") == "bot"
-                  and str((r.get("metadata") or {}).get("voice_note") or "") == note_id), None)
+    noted = _noted_row(rows, note_id)
     meta = (noted or {}).get("metadata") or {}
     if not noted or "names_someone" in meta:
         return []  # not in the thread, or read already
     named = _names_someone(text, user_id)
     database.rewrite_lounge_message(str(user_id), str(noted["client_id"]),
                                     noted.get("body") or "", {**meta, "names_someone": named})
-    if not named:
-        return []
-    count = 1
-    for row in rows:
-        if row is noted:
-            continue
-        m = row.get("metadata") or {}
-        if m.get("privacy_line") == "names":
-            break
-        if row.get("role") == "bot" and m.get("names_someone") is True:
-            count += 1
-    if count % PRIVACY_EVERY:
+    if not named or _named_since_reminder(rows, noted) % PRIVACY_EVERY:
         return []
     from services.lounge_messages import thread_stamp
-    at = thread_stamp(database, user_id)
     row = _row("bot", COPY["privacy_line"], {"privacy_line": "names", "privacy_note": note_id},
-               at, f"{user_id}:privacy:{note_id}")
+               thread_stamp(database, user_id), f"{user_id}:privacy:{note_id}")
     return database.insert_lounge_messages(str(user_id), [row]) or []
 
 

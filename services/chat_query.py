@@ -178,6 +178,16 @@ def _control_after_note(database, user_id) -> bool:
         return False
 
 
+def _after_note(database, user_id) -> bool:
+    """Under a # note's "Noted.", in order: the privacy line on every fifth
+    note that names someone (N411 item 3), the ask for life goals (N172 M1),
+    then the sales question or Will's answer to a worry (N241 O1, P2). True
+    when any of them wrote: the Lounge reads the thread again."""
+    wrote = _privacy_after_note(database, user_id)
+    wrote = _goals_after_note(database, user_id) or wrote
+    return _control_after_note(database, user_id) or wrote
+
+
 def _privacy_after_note(database, user_id) -> bool:
     try:
         from services.voice_notebook import privacy_after_note
@@ -231,23 +241,9 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
             from services.sunday_note import after_head
             if after_head(database, user_id, case):
                 resp["after_take"] = True
-        # Right under a # note's "Noted.", every fifth note that names
-        # someone gets the privacy line (N379 item 3).
         if (bot_cid and intent == "voice_notebook"
                 and (resp.get("row_metadata") or {}).get("voice_note")
-                and _privacy_after_note(database, user_id)):
-            resp["after_take"] = True
-        # Under a # note's "Noted.", the ask for life goals (N172 M1); the
-        # same flag reads the thread again.
-        if (bot_cid and intent == "voice_notebook"
-                and (resp.get("row_metadata") or {}).get("voice_note")
-                and _goals_after_note(database, user_id)):
-            resp["after_take"] = True
-        # Under a # note's "Noted.", the sales question or Will's answer to
-        # a worry (N241 O1, P2); the same flag reads the thread again.
-        if (bot_cid and intent == "voice_notebook"
-                and (resp.get("row_metadata") or {}).get("voice_note")
-                and _control_after_note(database, user_id)):
+                and _after_note(database, user_id)):
             resp["after_take"] = True
     # Charge after answering, never before. Chat is repeatable, so it has no
     # idempotency ref; billing failure must never replace the answer.

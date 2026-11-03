@@ -263,7 +263,7 @@ def test_every_fifth_note_with_a_name_gets_the_privacy_line(founder, monkeypatch
     lines = []
     notes = ["#Anna was late", "#booked the train", "#Piotr ghosted me", "#Tomek said no",
              "#Marta loved it", "#Kasia wants the deck", "#slides done", "#Ola", "#Ewa",
-             "#Jan", "#Adam"]
+             "#Jan", "#Adam", "#Zofia"]
     for text in notes:
         _type(db, text)
         lines += nb.privacy_after_note(db, "u")
