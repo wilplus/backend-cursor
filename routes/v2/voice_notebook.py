@@ -4,8 +4,10 @@
   GET  /v2/notebook/state    {enabled, consented, max_seconds}
   POST /v2/notebook/ask      the question before the first note, in the thread
   POST /v2/notebook/consent  {choice: yes | not_now}
-  POST /v2/notebook/notes    multipart: audio (≤ 5 min), duration_ms, key
+  POST /v2/notebook/notes    multipart: audio (≤ 5 min), duration_ms, key, live_ms
   POST /v2/notebook/live     multipart: audio, a few seconds → {text} (N194)
+  POST /v2/notebook/live-session  → {value, expires_at, model, rate}: a
+                             short-lived key to stream the note (N392)
   POST /v2/notebook/fix      {client_id, text}: a voice note's words fixed
   GET  /v2/notebook/sunday/<id>           the Sunday note's lens as it stands
   POST /v2/notebook/sunday/<id>/answer    {step, value}: one tap of the lens
@@ -142,11 +144,15 @@ def v2_notebook_note():
     except ValueError:
         duration = None
     try:
+        live_ms = int(request.form.get("live_ms") or 0) or None
+    except ValueError:
+        live_ms = None
+    try:
         messages = add_voice_note(
             db, user_id, _adapter(user_id), upload.read(),
             filename=upload.filename or "note.webm",
             content_type=upload.mimetype or "audio/webm", duration_ms=duration,
-            key=request.form.get("key"))
+            key=request.form.get("key"), live_ms=live_ms)
         return jsonify({"messages": messages + _goals_after_note(user_id)}), 200
     except NotebookError as e:
         return _error(e)
@@ -178,6 +184,23 @@ def v2_notebook_live():
     except Exception as e:
         logger.warning("live note piece failed: %s", e, exc_info=True)
         return jsonify({"code": "V2_ERROR", "error": "Failed to hear the piece"}), 500
+
+
+@v2_bp.route("/notebook/live-session", methods=["POST"])
+@phase1_provider_route
+@live_note_limit
+@require_auth
+def v2_notebook_live_session():
+    """A short-lived key to stream a note being said (N392); nothing is
+    kept."""
+    from services.voice_notebook import NotebookError, live_session
+    try:
+        return jsonify(live_session(db, str(request.user_id), _adapter(str(request.user_id)))), 200
+    except NotebookError as e:
+        return _error(e)
+    except Exception as e:
+        logger.warning("live note session failed: %s", e, exc_info=True)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to open the live words"}), 500
 
 
 @v2_bp.route("/notebook/fix", methods=["POST"])
