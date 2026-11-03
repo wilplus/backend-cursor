@@ -10300,3 +10300,21 @@ right · fast" was never signed.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C7, T and K. No migration.
+
+**N408 · One code for a team and a community (founder, the Claude Code
+chat, 3 November 2026, on the open questions of the prototype "The way
+in": "one code for a team and a community: yeah").** Answers N352 item 6
+and N401 item 6; for N52.4 and N353:
+1. **A team is a community, and its code is the community's pass code.**
+   The code Will makes for a closed team (N353) is the one code: it joins
+   the team from Will's chat ("Join with a code"), from a link with the
+   code inside, and from the share after a Take ("+ Add a community with a
+   passcode"). Was: two kinds of code, the community pass code of N52.4
+   and the team's code of N353.
+2. **No new words:** the screens that already ask for a code keep their
+   words.
+No rules page yet: it lands on frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+(the share after a Take) and
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
