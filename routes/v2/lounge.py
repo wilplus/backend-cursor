@@ -178,7 +178,8 @@ def v2_user_lounge_after_take_post():
     prices...): the chain after the Take advances under the newest row, to
     its next ask or, with none left, to the closing message (founder
     2026-10-20: one action at a time, N89; "Good job. See you next time.",
-    N294; services/after_take.py). No body.
+    N294; services/after_take.py), never past Will's question while it
+    waits for its answer (N406 item 1). No body.
 
     Responses:
       200 { "message": the last row written, or null when nothing was held;
@@ -186,8 +187,8 @@ def v2_user_lounge_after_take_post():
       500 V2_ERROR
     """
     try:
-        from services.after_take import release
-        rows = release(db, str(request.user_id))
+        from services.after_take import release_from_lounge
+        rows = release_from_lounge(db, str(request.user_id))
         return jsonify({"message": rows[-1] if rows else None, "rows": rows}), 200
     except Exception as e:
         logger.error("user/lounge/after-take failed: %s", e, exc_info=True)

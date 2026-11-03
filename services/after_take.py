@@ -58,6 +58,11 @@ Advancing (``release``), always under the rows that closed the ask:
   - the ask's form closing in the Lounge, whatever the choice (Save, Not
     now, See prices): POST /v2/user/lounge/after-take;
   - a newer Take's summary: an older held message is let go where it stands.
+The Lounge never advances past Will's question while it waits for its
+answer (``release_from_lounge``, N406 item 1): after a typed answer the
+chain wrote his next question, and the Lounge, not yet reading the thread
+again, asked to let the message go; it came under the question and cut it
+off.
 An ask that no longer applies when its turn comes is skipped. When the
 chain is empty the end comes (``end_rows``): the plan's lines after the
 Take (``plan_flow.after_take``, "That's your 15 minutes for today."), the
@@ -407,6 +412,33 @@ def release(database: Any, user_id: str, *, take: Optional[str] = None,
     except Exception as error:  # noqa: BLE001 -- the Lounge advances it on its next close
         logger.warning("after take: not advanced user=%s: %s", user_id, error, exc_info=True)
         return []
+
+
+def release_from_lounge(database: Any, user_id: str) -> list[dict]:
+    """The Lounge asks to advance the chain (POST /v2/user/lounge/after-take:
+    an ask's form closed, or a held message with no ask in front of it):
+    as ``release``, but never past Will's question while it waits for its
+    answer (N406 item 1). After a typed answer the Lounge asked before it
+    read the thread again, and the goodbye came under his next question.
+    The rows written, [] when nothing moved. Never raises."""
+    row = held(database, user_id)
+    take = str(((row or {}).get("metadata") or {}).get("take_session_id") or "")
+    if row and _will_waits(database, user_id, take):
+        return []
+    return release(database, user_id)
+
+
+def _will_waits(database: Any, user_id: str, take: str) -> bool:
+    """Will's question (or its follow-up) on this Take is the newest thing
+    he said and still has no answer (N406 item 1). Unknown: it does not
+    wait."""
+    try:
+        from services.will_question import open_question
+        found = open_question(database, str(user_id))
+    except Exception as error:  # noqa: BLE001 -- the chain goes on as before
+        logger.warning("after take: Will's question unread user=%s: %s", user_id, error)
+        return False
+    return found is not None and str(found.get("take_session_id")) == take
 
 
 def release_older(database: Any, user_id: str) -> None:
