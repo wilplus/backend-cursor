@@ -71,6 +71,12 @@ TEMPO_STEP = "tempo_step"
 #: summary call at the plan's end. No row until the founder makes one in the
 #: panel; until then they are off for everyone, the founder included.
 PLAN_CALLS = "plan_calls"
+#: The first Take is the onboarding (founder 2026-11-03, N401): a new
+#: speaker's plan begins with Will's hello and "Start your first recording",
+#: the five questions as the Take's slides, and the plan read from what was
+#: said. No row until the founder makes one in the panel; until then the
+#: plan asks its questions in the chat, as before.
+FIRST_TAKE = "first_take"
 #: The walk's pick and its Clearer version read what the speaker noted
 #: themselves (founder 2026-11-02, N326 item 4; services/inner_context.py,
 #: services/verbal_read.py). No row until the founder makes one at ring 6;
