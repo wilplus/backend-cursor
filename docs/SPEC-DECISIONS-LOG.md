@@ -10285,7 +10285,120 @@ The rules: frontend
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 when built. No migration.
 
-**N407 · The training corpus moves to the CEO panel and leaves the coach's
+**N405 · Two lines signed for the One thing walk: "Okay, we'll skip this
+one." and "too slow · just right · too fast" (founder, the Claude Code chat,
+3 November 2026, on the page "One Thing Walk Audit",
+<https://claude.ai/artifact/HM9UjipUCZVSuPNESeGZtM>, both rewritten in Steven
+Pinker's style: "ok, both rewrites").** For N309 item 1 and the tempo step:
+1. **After Skip on the fix** (the Clearer version, the AI clip or the
+Sniper), the walk says "Okay, we'll skip this one." and goes on. Was:
+nothing was said; the prototype's "Okay." was never signed.
+2. **The pace scale's labels**, under it from left to right: "too slow",
+"just right", "too fast". Was: no labels; the prototype's "slow · just
+right · fast" was never signed.
+3. Signed (Never 4): the two lines above.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C7, T and K. No migration.
+
+**N406 · Who the talk is for, fixed from the founder's screenshot (founder,
+the Claude Code chat, 3 November 2026, on a screenshot of "Who were you
+talking to? 🎯", "Someone else", "Who is it for, then? 👀", "Myself",
+"Myself. I'll keep them in mind." and the goodbye under the next question:
+"I would listen to you", "it's interrupted by something else"; then, on the
+prototype <https://claude.ai/artifact/NxE1pMJmngj8Q7ZTj9PQDp>: "A, and yes
+to the words, go").** For N294 items 2, 4 and 5, N319 item 8, N347 item 1
+and N371:
+1. **The goodbye waits for Will's question, however it is answered.** After
+a typed answer, the goodbye ("That's your 15 minutes for today.", "Good
+job. See you {day}.", the plan's progress) came under Will's next question
+and cut it off; a tapped answer waited. The chain after a Take never passes
+Will's question while it is open.
+2. **No "Someone else" under "Who were you talking to? 🎯"** (the
+prototype's Option A): the speaker's own answer goes into "Something else"
+in the bar (N371), so Will asks once. Replaces N319 item 8 for this
+question. "Sounds like this one's for {the board}. Right? 🎯" keeps "Yes",
+"Someone else" and its "Who is it for, then? 👀".
+3. **Will says it back from the speaker's side:** "my" becomes "your"
+("Your team. I'll keep them in mind."); a talk to themself ("Myself", "me",
+"just me") gets "I'll keep you in mind.". The same rule holds for who the
+talk is for inside "Sounds like this one's for…" and the key-line question.
+4. **A talk to themself:** what they should do is asked as "When you finish,
+what do you want to do? Or feel? 🤔", with no taps (their own words, typed
+or said); the key line keeps "If your audience remembers one sentence from
+you…".
+5. **Signed (Never 4):** "I'll keep you in mind."; "{who}. I'll keep them in
+mind." with "your" for "my"; "When you finish, what do you want to do? Or
+feel? 🤔".
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E2 and E3, when built. No migration.
+
+**N411 · The notebook's security disclaimer (founder, the Claude
+Code chat, 3 November 2026, on the prototypes
+<https://claude.ai/artifact/HXV7HUFsfoM1ST29fthnk6> and
+<https://claude.ai/artifact/5X4M3cnSBxX8YcuKFEFY3a>: "do not share personal
+information with us … My colleague annoyed me enormously today … Good
+message"; "sign the words"; then "way simpler … just a reminder … each
+time … every fifth time someone mentions a name").** For frontend
+`principles.md` A5, B and K:
+1. **The first time, the feature is introduced.** Will's first spotted
+message (a strength, a pattern) is followed by one bubble, "🎙 Tap the mic
+any time and say what's on your mind. It helps you catch negative thinking
+and self-sabotage. One privacy rule first:" (was "🎙 Tap any time. Dump the
+overthinking here, then let it go." and "A deep sigh for your mind…", both
+replaced by the founder the same day); then the full
+note, once, in grey, in one bubble: "Nothing fragile: health, family, money,
+address.", "We look for patterns, not secrets. Fewer clues, less for
+hackers.", "📓 For journalling try paper notebook 😉"; then "Do you
+understand the rules and want this feature on?" (Yes | Not now), in place
+of the notebook's signed ask "Your notes are private. Only you and Will read
+them. Keep a voice notebook?" (backend `voice_notebook.COPY["ask"]`); on Yes, "Noted." and "What's on your mind
+today?". These replace A5's three bubbles (N195, not built). Not now: the
+introduction comes again with the next spotted message.
+2. **After that, the short line "🔒 Security disclaimer ›" every time** Will
+spots something (the Sunday note's pattern, a strength, a strength again, a
+suggested principle), under the message; a tap opens the full note.
+3. **Notes that name someone:** only a reminder. Every fifth # note that names
+a person gets the short line under its "Noted."; the others get "Noted." as
+always. Nothing is offered, changed or deleted.
+4. The words in items 1 and 2 are signed (Never 4).
+5. **The first spotted message reads the Takes** ("All looks good. Please
+build it.", on the choice drawn "From their Takes"): before there are notes,
+Will may spot a strength in the speaker's Takes and open item 1 with it. This
+amends N182 item 3 for this one message: the notebook's introduction may
+read the Takes; nothing of the notebook reaches the Takes, the plan or a
+coach. The line "🔒 Security disclaimer ›" stays as drawn.
+6. Built first (this entry's PRs): the new ask and the intro above it, the
+line under every spotted message, and the fifth named note. Until the Takes
+reader is built, the introduction comes at the doors it has today: the
+first tap on the mic and the first typed "#".
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+A3, A5, B and K. No migration.
+
+**N415 · One look for every ask in Will's chat; a lone suggested answer is
+outlined (founder, the Claude Code chat, 3 November 2026: "I want to continue
+my practice looks weird ... make it unified across the app"; then, asked,
+"Looks like a sent message" and "Will's chat asks").** For N371, N294 item 6:
+1. **A lone suggested answer is outlined,** orange on white, never filled:
+filled orange on the right is what the speaker's own sent message looks
+like. With two or more, N371 item 2 stands (the most likely filled).
+2. **Every ask in Will's chat takes N371's suggested answers,** on the right,
+the one that goes on filled: the offers' "Not now" and their action
+(the Sunday note, the life goals, the sales step, the voice notebook, "Did
+the feedback help?", the admin's price and lesson asks) and the top-up
+card. Was: two equal pills, grey outline and black.
+3. **Not changed:** the consent and policy screens (locked), the Ideal
+Text's "Update slides" and the recording setup's one-project question
+(locked screens), and form buttons that save what was typed (the WhatsApp
+number). No new words: each ask keeps its words.
+Numbered a few ahead, leaving numbers free for the sessions logging one
+after another. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+No migration.
+
+**N416 · The training corpus moves to the CEO panel and leaves the coach's
 side (founder, the Claude Code chat, 3 November 2026: "[move] the training
 corpus to the CEO panel and remove it from the coach side so that it
 doesn't hang there, because we rebuild the whole infrastructure a little
