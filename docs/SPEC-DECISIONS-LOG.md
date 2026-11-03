@@ -10461,3 +10461,35 @@ Takes the speaker throws away before any Take exists to authorize it.
 No new words on screen. No migration.
 No rules page: the setting and its rule are in
 [`docs/ASYNC-PIPELINE-QUEUE.md`](docs/ASYNC-PIPELINE-QUEUE.md).
+
+
+**N425 · The AI clip only where the voice shows the problem (founder, the
+Claude Code chat, 3 November 2026, on three changes after "the wrong AI audio
+for the wrong fragment": "go for A, B and C").** For N289 item 2, N309 item 1
+and the AI voice's default (2026-10-15, A: "always a better version to
+copy"):
+1. **A · The AI clip goes to a measured voice problem.** The One thing walk's
+AI clip goes only to a moment whose own clip shows a problem the clip can
+teach: faster than the speaker's usual pace, fewer pauses, a flatter loudness
+range, or more fillers, each against their own usual on this Take, at the
+line the clip already uses (`AI_VOICE_MIN_SEVERITY`). Of those, the one
+where the problem is strongest, and the clip teaches that problem. Was
+(N289 item 2): the lowest voice × words read, whatever it showed, and the
+clip chose what to teach on its own.
+2. **B · No clip "just because".** With no such moment the AI clip is not the
+fix: the fix is the Clearer version or the Sniper, or there is none and
+their best's words are the helper words (N374 item 2). The walk's AI clip
+never falls back to "Lean on …" on a guessed phrase. Was (2026-10-15, A):
+with nothing measured, stress on the main point by default.
+3. **C · Always the biggest problem.** The walk's AI clip teaches the
+moment's strongest problem, never the runner-up. Was: about 15 in 100 clips
+practised the runner-up so the stored outcomes could tell which exercise
+helps (`AI_VOICE_EXPLORE_SHARE`).
+4. On a plan, this week's level still picks its moment and its problem (G7,
+N289 item 8). The Clearer version's example clip is unchanged. Nothing to
+sign: no new words.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C4 and H1, and
+[`docs/flows/ai-voice-practice.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md).
+No migration.
