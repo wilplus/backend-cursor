@@ -12,8 +12,17 @@ Service: services/chats.py.
                                    kept as it came, e.g. audio/webm;codecs=opus),
                                    duration_ms (1 to 120000); {message: {...,
                                    kind: "voice", body: "", meta: {duration_ms}}}
+  POST /v2/chats/<id>/answer      {take: the Take's session id, duration_ms}: an
+                                   answer recorded with "Record an answer"
+                                   (N363), once its Undo has passed; a voice
+                                   message pointing at the caller's own Take,
+                                   up to five minutes: {message: {..., kind:
+                                   "voice", body: "", meta: {duration_ms,
+                                   answer: true, take}}}; the other member's
+                                   meta has no take
   GET  /v2/chats/<id>/messages/<message_id>/audio
                                    the recording, for any member of the chat
+                                   (an answer's: its Take's own)
   POST /v2/chats/<id>/photo       multipart: file (a jpeg, png, gif, webp,
                                    heic, heif or avif image, up to 10 MB);
                                    {message: {..., kind: "photo", body: "",
@@ -179,6 +188,26 @@ def v2_chats_voice(thread_id):
     return _run("voice", lambda: post_voice(
         db, user_id, thread_id, audio, adapter=_adapter(user_id), filename=filename,
         content_type=content_type, duration_ms=request.form.get("duration_ms")))
+
+
+@v2_bp.route("/chats/<thread_id>/answer", methods=["POST"])
+@limiter.limit("120 per hour", scope="chats_answer")
+@require_auth
+@_a_member_first
+def v2_chats_answer(thread_id):
+    """An answer recorded with "Record an answer" (N363), sent once its Undo
+    has passed. Its Take was recorded and uploaded through the processing-
+    authorization path already, and nothing here calls a provider; what is
+    asked again is the recording consent, so a speaker who withdrew it sends
+    nothing. Then the chat (404), the Take (404 if not the caller's) and its
+    length (400)."""
+    refused = _recording_refused()
+    if refused is not None:
+        return refused
+    from services.chats import post_answer
+    body = request.get_json(silent=True) or {}
+    return _run("answer", lambda: post_answer(
+        db, str(request.user_id), thread_id, body.get("take"), body.get("duration_ms")))
 
 
 @v2_bp.route("/chats/<thread_id>/messages/<message_id>/audio", methods=["GET"])
