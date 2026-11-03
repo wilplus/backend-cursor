@@ -10012,6 +10012,38 @@ the waiver is for this one migration. Numbered a few ahead, leaving numbers
 free for the session logging one after another, as N385 was. No rules page.
 No migration in this entry.
 
+**N391 · Notifications come as a bar at the top, never in the buttons; the
+home-screen ask is deleted (founder, the Claude Code chat, 3 November 2026,
+on the prototype <https://claude.ai/artifact/9gpMMFvLKFMysRE4Db8mMv>:
+"delete the one notification added to the home screen, just delete it. And
+do not mix notifications about consent, the settings related to
+notifications, with the main screen buttons. The notifications should come
+as notifications at the top as a separate bar"; "add those to also to the
+top bar notification"; "please implement it ... and remove the bottom bar
+notifications from the code").** For N294 item 8, N295 and the CEO panel's
+asks (2026-10-13):
+1. **The home-screen ask is deleted,** everywhere: the next visit's ask
+("Well, I can see you're doing pretty good." and its ask), the CEO panel's
+"home screen" ask, and Will offering it in the chat.
+2. **A bar at the top of the chat,** under its top bar, one at a time, with
+✕ for Not now. The main buttons under the chat never carry it. It holds:
+the WhatsApp ask of the next visit (N294 item 8, N295: its opener and ask,
+never before the second Take, one per Take, at most twice); and the CEO
+panel's asks to one person: WhatsApp, a consent question (No | Yes), the
+promo price ("See prices", on the web only: the iPhone app has no buying,
+N365 item 1) and the lesson price ("See times"). Tapping the WhatsApp or
+consent bar opens its form as a sheet from the top; the price bars go to
+their page. The CEO panel's asks no longer wait for the end of a Take.
+3. **Not in the bar:** the policy update (it blocks recording, so it stays
+its own screen), iPhone's own notification question (N385), and the
+WhatsApp form Will opens when the speaker asks for it in the chat.
+No new words: every line in the bar is already signed. Replaces N294 item
+8's "its form opens by itself" in the chat and the CEO panel asks' place in
+the after-Take chain (N189).
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E1, when built. No migration.
+
 **N392 · "How do you feel?" keeps its step marks on a later Take: two,
 this screen and then the Take (founder, the Claude Code chat, 3 November
 2026, on a screenshot of the check before a later Take with the empty space
