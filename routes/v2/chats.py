@@ -5,7 +5,10 @@ Service: services/chats.py.
   GET  /v2/chats                  {chats: [{id, kind, title, subtitle,
                                    last: {kind, body, created_at} | null}]}
   GET  /v2/chats/<id>/messages    {messages: [{id, mine, author, kind, body,
-                                   meta, created_at}]}, oldest first
+                                   meta, created_at}]}, oldest first; a voice
+                                   note also with words, an answer with its
+                                   Take's words and slides (each slide's
+                                   start in ms, N355)
   POST /v2/chats/<id>/messages    {kind: "emoji", body: "👍" | "👀" | "🙏"};
                                    {message: {...}}
   POST /v2/chats/<id>/voice       multipart: audio (the recording; its type is
