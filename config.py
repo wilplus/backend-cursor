@@ -213,7 +213,7 @@ class Config:
     REASONABLE_CONFIDENCE_ENABLED = _env_flag("REASONABLE_CONFIDENCE_ENABLED", "0")
     MANAGER_CONTROLS_ENABLED = _env_flag("MANAGER_CONTROLS_ENABLED", "1")
     COACH_PREFILL_ENABLED = _env_flag("COACH_PREFILL_ENABLED", "0")
-    # A Take transcribed in up to four parts at once (N406,
+    # A Take transcribed in up to four parts at once (N407,
     # services/parallel_transcription.py). Off until the golden set says the
     # words are as good as the one-call transcript; read on the WORKER.
     PARALLEL_TRANSCRIPTION_ENABLED = _env_flag("PARALLEL_TRANSCRIPTION_ENABLED", "0")

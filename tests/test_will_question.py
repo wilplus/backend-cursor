@@ -14,17 +14,18 @@ OUTCOME
   O2  The tap answers come from what Will heard, the recording first: a
       Take that names its audience twice is checked ("Right?"); named
       once, those words come first, then what I said for an earlier talk,
-      then the signed answers for my field, then "Someone else" (N319 item
-      8); what I want them to do the same way. From the AI's read only
+      then the signed answers for my field, and no "Someone else": my own
+      words go into "Something else" in the bar (N406 item 2); what I want
+      them to do the same way. From the AI's read only
       words my Take says, word for word, short and without a number, are
       kept.
   O3  A tap is kept for Will and fills the talk's setup, so the next Take
       carries who it is for; Will says it back, "{who}. I'll keep them in
       mind." (N294 item 5), any other answer gets "Got it, thanks 🙏"; then
-      the message after the Take. "Someone else" opens one follow-up, "Who
-      is it for, then? 👀", with no tap answers, and the message waits; my
-      typed words under it are the answer, or Skip. Skip lets the message
-      go; a repeat tap writes nothing.
+      the message after the Take. "Someone else" under the check opens one
+      follow-up, "Who is it for, then? 👀", with no tap answers, and the
+      message waits; my typed words under it are the answer, or Skip. Skip
+      lets the message go; a repeat tap writes nothing.
   O4  Typed words under the question are the answer: what I want them to
       do lands as the talk's call to action, my own note on the talk kept.
       Distress is never taken as an answer: the chat's safety reply comes.
@@ -46,6 +47,12 @@ OUTCOME
       on the moment, no tap answers; it follows my answer to what I want
       them to do, naming who I said; my answer is kept as the talk's key
       line (sure) where the plan and the picker read it, and for Will.
+  O12 Will says who it is for from my side (N406 items 1, 3 and 4): "my
+      team" back as "Your team. I'll keep them in mind."; "Myself" as
+      "I'll keep you in mind.", then what I want to do with no "them" and
+      no taps, and the key line keeps "your audience". After a typed answer
+      the goodbye waits under his next question until I answer it, even
+      when the Lounge asks to let it go.
   O11 An answer by voice answers Will's open question (N294 item 3, N319
       item 1): the words heard are my voice bubble, Will thanks me, the
       chain goes on; nothing heard, or no question open, writes nothing.
@@ -74,6 +81,7 @@ PROVES   O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_m
          O9 -> test_what_they_should_do_follows_an_answered_who
          O10 -> test_the_key_line_is_asked_last_by_voice_and_kept
          O11 -> test_a_voice_answer_answers_wills_question
+         O12 -> test_will_says_who_from_my_side_and_the_goodbye_waits
 WHY      Founder 2026-10-20 (N82): "ask me a lot of questions … a natural
          flow in the walk and in the lounge"; the bank signed the same day.
          2026-10-31 (N294): "these questions, they should be related to the
@@ -194,10 +202,9 @@ def test_the_taps_come_from_what_will_heard():
     assert chips == list(CHIPS["audience_check"]) and rest == {"heard": "the board"}
 
     once = _plan("audience", {"audience": "the board", "audience_times": 1}, earlier=["my team"])
-    assert will_question.words_for(once)[2] == ["The board", "My team", AUDIENCE_BY_FIELD["sales"][0],
-                                                "Someone else"]
+    assert will_question.words_for(once)[2] == ["The board", "My team", AUDIENCE_BY_FIELD["sales"][0]]
     nothing = _plan("audience", field_name=None)
-    assert will_question.words_for(nothing)[2] == [*AUDIENCE_BY_FIELD["executive_presence"], "Someone else"]
+    assert will_question.words_for(nothing)[2] == list(AUDIENCE_BY_FIELD["executive_presence"])
     goal = _plan("goal", {"ask": "approve the pilot"}, earlier=["sign the contract"])
     assert will_question.words_for(goal)[2] == ["Approve the pilot", "Sign the contract", "Say yes"]
     for key in ("pause", "vision"):
@@ -275,16 +282,6 @@ def test_someone_else_opens_one_follow_up_answered_in_own_words(monkeypatch):
     assert resp["answer"] == "The investors. I'll keep them in mind."
     assert db.takes.ctx["t1"]["audience"] == "The investors."
     assert db.bodies()[-1] == SEE_YOU and after_take.held(db, "u") is None
-
-    # Asked openly, "Someone else" is the last tap; its follow-up has none.
-    asked = _Db()
-    _asked(asked, chips=["The board", "My team", "A buyer", "Someone else"])
-    rows = _tap(asked, "Someone else")
-    assert [r["body"] for r in rows] == ["Someone else", "Who is it for, then? 👀"]
-    assert rows[-1]["metadata"]["chips"] == []
-    assert _tap(asked, "The board") == []  # the follow-up takes their own words
-    resp = _typed(asked, monkeypatch, "my manager and her two leads")
-    assert resp["answer"] == "My manager and her two leads. I'll keep them in mind."
 
     skipped = _Db()  # Skip under the follow-up lets the message go too
     _asked(skipped, "pause", chips=CHIPS["pause"])
@@ -391,6 +388,30 @@ def test_what_they_should_do_follows_an_answered_who(monkeypatch):
     assert [r["body"] for r in _tap(skipped, will_question.SKIP)] == ["Skip", SEE_YOU]
 
 
+def test_will_says_who_from_my_side_and_the_goodbye_waits(monkeypatch):
+    _quiet(monkeypatch)
+    db = _SummaryDb()
+    _summary(db, monkeypatch)
+    asked = next(r for r in db.thread.values() if (r.get("metadata") or {}).get("offer") == "will_question")
+    assert will_question.SOMEONE_ELSE not in asked["metadata"]["chips"]  # "Something else" in the bar
+    resp = _typed(db, monkeypatch, "Myself")
+    assert resp["answer"] == "I'll keep you in mind."
+    assert db.bodies()[-1] == will_question.GOAL_SELF
+    assert will_question.open_question(db, "u")["chips"] == []
+    # The Lounge asks to let the goodbye go before it reads the thread again.
+    assert after_take.release_from_lounge(db, "u") == [] and db.bodies()[-1] == will_question.GOAL_SELF
+    resp = _typed(db, monkeypatch, "Feel calm")
+    assert resp["answer"] == THANKS and db.bodies()[-1] == SEE_YOU
+    assert will_question.key_line_question("Myself") == will_question.key_line_question(None)
+
+    mine = _SummaryDb()
+    _summary(mine, monkeypatch)
+    resp = _typed(mine, monkeypatch, "my manager and her two leads")
+    assert resp["answer"] == "Your manager and her two leads. I'll keep them in mind."
+    assert mine.bodies()[-1] == QUESTIONS["goal"]
+    assert will_question.key_line_question("my team").startswith("If your team remembers")
+
+
 def test_the_summary_hears_the_practised_line_when_it_came_back(monkeypatch):
     _quiet(monkeypatch)
     db = _SummaryDb()
@@ -446,7 +467,7 @@ def test_will_varies_his_words_lightly_or_says_them_as_written():
     found.varied = lambda: {"audience": light}
     key, text, chips, _ = will_question.words_for(found)
     assert (key, text) == ("audience", light)
-    assert chips == ["A buyer", "Their team", "The decision maker", "Someone else"]
+    assert chips == ["A buyer", "Their team", "The decision maker"]
 
 
 def test_the_question_opens_on_the_moment_the_walk_just_worked_on():

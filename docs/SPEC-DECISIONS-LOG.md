@@ -10301,7 +10301,39 @@ The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C7, T and K. No migration.
 
-**N406 · A Take is transcribed in parts at once, behind a setting
+**N406 · Who the talk is for, fixed from the founder's screenshot (founder,
+the Claude Code chat, 3 November 2026, on a screenshot of "Who were you
+talking to? 🎯", "Someone else", "Who is it for, then? 👀", "Myself",
+"Myself. I'll keep them in mind." and the goodbye under the next question:
+"I would listen to you", "it's interrupted by something else"; then, on the
+prototype <https://claude.ai/artifact/NxE1pMJmngj8Q7ZTj9PQDp>: "A, and yes
+to the words, go").** For N294 items 2, 4 and 5, N319 item 8, N347 item 1
+and N371:
+1. **The goodbye waits for Will's question, however it is answered.** After
+a typed answer, the goodbye ("That's your 15 minutes for today.", "Good
+job. See you {day}.", the plan's progress) came under Will's next question
+and cut it off; a tapped answer waited. The chain after a Take never passes
+Will's question while it is open.
+2. **No "Someone else" under "Who were you talking to? 🎯"** (the
+prototype's Option A): the speaker's own answer goes into "Something else"
+in the bar (N371), so Will asks once. Replaces N319 item 8 for this
+question. "Sounds like this one's for {the board}. Right? 🎯" keeps "Yes",
+"Someone else" and its "Who is it for, then? 👀".
+3. **Will says it back from the speaker's side:** "my" becomes "your"
+("Your team. I'll keep them in mind."); a talk to themself ("Myself", "me",
+"just me") gets "I'll keep you in mind.". The same rule holds for who the
+talk is for inside "Sounds like this one's for…" and the key-line question.
+4. **A talk to themself:** what they should do is asked as "When you finish,
+what do you want to do? Or feel? 🤔", with no taps (their own words, typed
+or said); the key line keeps "If your audience remembers one sentence from
+you…".
+5. **Signed (Never 4):** "I'll keep you in mind."; "{who}. I'll keep them in
+mind." with "your" for "my"; "When you finish, what do you want to do? Or
+feel? 🤔".
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E2 and E3, when built. No migration.
+**N407 · A Take is transcribed in parts at once, behind a setting
 (founder, the Claude Code chat, 3 November 2026: "build it behind a
 setting", to "cut the recording at your pauses into pieces of about a
 minute, transcribe all of them at the same time, join the words back

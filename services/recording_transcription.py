@@ -211,7 +211,7 @@ def recording_provider_adapter(
 
 
 def parallel_transcription_enabled() -> bool:
-    """The setting for a Take transcribed in parts at once (N406)."""
+    """The setting for a Take transcribed in parts at once (N407)."""
     try:
         from config import Config
         return bool(Config.PARALLEL_TRANSCRIPTION_ENABLED)
@@ -234,7 +234,7 @@ def transcribe_take_audio(
     log: logging.Logger = logger,
 ) -> Optional[dict]:
     """A Take's transcription: in parts at once when the setting is on and
-    the Take is long enough (N406), else, and whenever the parts fail, the
+    the Take is long enough (N407), else, and whenever the parts fail, the
     one whole-file call it always was. ``parallel`` overrides the setting
     (the measurement script compares both)."""
     if parallel_transcription_enabled() if parallel is None else parallel:
