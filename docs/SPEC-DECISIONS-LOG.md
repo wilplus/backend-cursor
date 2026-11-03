@@ -10493,3 +10493,25 @@ The rules: frontend
 C4 and H1, and
 [`docs/flows/ai-voice-practice.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md).
 No migration.
+
+**N426 · Releases go out in batches every two hours, not on every merge
+(founder, the Claude Code chat, 3 November 2026: "do both, every 2 hours",
+on bundling the deployments of the many chats merging at once so they stop
+slowing Railway down and using its build time).** For both repos:
+1. A merge to `main` no longer deploys. Every two hours a GitHub Action
+(`.github/workflows/release-to-production.yml`, in each repo) moves the
+`production` branch up to the newest `main` commit whose tests passed, and
+Railway (backend) and Vercel (frontend) deploy from `production`. Twelve
+merges in two hours make one build per service, not twelve.
+2. "Run workflow" on that Action in GitHub's Actions tab releases at once,
+for a fix to record → process → Ideal Text → next Take that cannot wait.
+3. A migration runs at the next release, not at merge; every pending one
+runs then, in order (`bin/railway-migrate.sh`). An environment variable it
+needs is set on every Railway service before that release.
+4. Railway skips a build when only docs, the legal pack, tests, Markdown or
+`.github` changed (each service's Watch Paths), as Vercel already does
+(`scripts/vercel-ignore-build.sh`).
+Was: every merge to `main` built and deployed every Railway service and
+Vercel. No new words on screen. No migration.
+No rules page: the rule is in `CLAUDE.md` (How to ship) in both repos and
+[`docs/OPS-FLAGS-AND-RELEASES.md`](docs/OPS-FLAGS-AND-RELEASES.md).
