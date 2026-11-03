@@ -274,6 +274,7 @@ class _ChangesRun:
         self._sessions: dict[str, dict] = {}
         self._snippets: dict[str, list] = {}
         self._walks: dict[str, dict] = {}
+        self._declines: dict[str, tuple[frozenset, frozenset]] = {}
 
     def _session_row(self, session_id: Any) -> dict:
         sid = str(session_id or "")
@@ -831,6 +832,12 @@ class _ChangesRun:
         if not isinstance(_v3_doc, dict):
             _v3_doc = build_transcript_document(
                 self.arc_id, database=db, session_id=_arm_sid)
+        # The standing "Keep my words" and this Take's frozen selection, as
+        # the served frame gets them (read once per run: whichever of the
+        # two asks first), so the fix the dark frame records is one the
+        # speaker could be served (N359, C2). Selection stays by rank alone.
+        _declined, _frozen_ids = self._declined_rewrites(
+            _v3_session, self._locked_parts())
         _v3_frame = build_shadow_frame(
             take_document=_v3_doc,
             snippets=db.get_snippets_by_session(_arm_sid) or [],
@@ -839,6 +846,8 @@ class _ChangesRun:
             take_index=_v3_take_index,
             expected_recording_id=_v3_session.get("recording_id"),
             served_text=self.served_text,
+            declined_rewrites=_declined,
+            frozen_candidate_ids=_frozen_ids,
             **self._walk_inputs(_v3_session, _v3_doc),
         )
         if _v3_frame is None:
@@ -1686,9 +1695,14 @@ class _ChangesRun:
         """The standing "Keep my words" keys for this Take and its frozen
         selection (N48.2, Q3 A; `services.rewrite_declines`). Read-only;
         anything unreadable applies no decline, which is the behaviour
-        before Q3 and never invents."""
+        before Q3 and never invents. Read once per Take per run, for the
+        served frame and the dark frame alike (a failed read is tried
+        again)."""
         from services.rewrite_declines import standing_declines
         take = session if isinstance(session, dict) else {}
+        take_id = str(take.get("id") or self.arm_sid or "")
+        if take_id in self._declines:
+            return self._declines[take_id]
         frozen = frozenset(
             str(key.get("id")) for key in (
                 (self.feedback_set or {}).get("selected_keys") or [])
@@ -1697,12 +1711,13 @@ class _ChangesRun:
             declined = standing_declines(
                 self.db, arc_id=str(self.arc_id),
                 owner_user_id=str(self.user_id),
-                take_session_id=str(take.get("id") or self.arm_sid or ""),
+                take_session_id=take_id,
                 take_created_at=take.get("created_at"), parts=parts)
         except Exception as error:  # noqa: BLE001 -- logged, never fatal
             logger.warning("rewrite declines failed arc=%s take=%s: %s",
                            self.arc_id, self.arm_sid, error, exc_info=True)
-            declined = frozenset()
+            return frozenset(), frozen
+        self._declines[take_id] = (declined, frozen)
         return declined, frozen
 
     def _serve_v3(self, _service_rows) -> None:
