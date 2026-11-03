@@ -467,6 +467,17 @@ def test_the_walks_fix_gets_no_clip_when_nothing_was_off_and_never_the_runner_up
         assert ai_voice_severity.select(both, medians, sentence=SENTENCE, seed="s")["exercise"] == "pace"
         assert ai_voice_severity.select(both, medians, sentence=SENTENCE, seed="s",
                                         explore=False)["exercise"] == "pause"
+        # Pause, just the worse, did not help this speaker twice running: a
+        # Clearer version's example holds it back, the walk's fix still
+        # teaches it, and keeps that it was held back for learning.
+        close = _snip(172, pause_ratio=0.07)
+        tried = [{"ready_at": "2026-11-0%dT09:00:00Z" % day, "exercise": "pause",
+                  "outcome": "similar"} for day in (2, 1)]
+        held = ai_voice_severity.select(close, medians, sentence=SENTENCE, seed="s", history=tried,
+                                        explore=False)
+        fix = ai_voice_severity.select(close, medians, sentence=SENTENCE, seed="s", history=tried,
+                                       explore=False, allow_default=False, hold_back=False)
+        assert (held["exercise"], fix["exercise"], fix["held_back"]) == ("pace", "pause", ["pause"])
 
 
 @pytest.mark.parametrize("limit, code", [
