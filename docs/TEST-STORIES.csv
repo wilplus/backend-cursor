@@ -555,13 +555,13 @@ O3 -> test_answering_wills_question_is_not_deflected","Founder 2026-10-15: ""nex
 tests/test_chat_links.py,Story,"As a person in WillpowerLab, I want my own link that I paste into any email, so that a colleague who opens it joins me in a chat, and nobody else can reach me (N308, N328, N335).","O1  My link is made the first time I ask and stays the same after;
 replacing it makes a new one, and the old one opens nothing.
 O2  Before signing in, the join page learns only the first name of whose
-link it is. A wrong link, a replaced one and one whose owner has no
-chats all answer 404, the same answer.
+link it is. A wrong link and a replaced one answer 404, the same
+answer.
 O3  Joining makes one chat between the two of us, each named for the
 other; opening a link again, from either side, finds the same chat.
 O4  My own link is refused (400 OWN_LINK), and nothing is made.
-O5  Without the ring row (chats, ring 6) my link and joining answer 404,
-and nothing is written.
+O5  As a user with no ring at all, I get my link and someone joins me
+through it (N456; was ring 6 only).
 O6  In the chat, the one who joined sees whose link they joined through;
 the link's owner does not.
 O7  A chat left without its two people (a crash between the two writes)
@@ -571,7 +571,7 @@ name over the chat list's line for it, opening our chat (N385).","O1 -> ChatLink
 O2 -> ChatLinksTest::test_the_join_page_learns_only_a_first_name
 O3 -> ChatLinksTest::test_joining_makes_one_chat_for_the_two
 O4 -> ChatLinksTest::test_my_own_link_is_refused
-O5 -> ChatLinksTest::test_without_the_ring_nothing_is_written
+O5 -> ChatLinksTest::test_as_a_user_without_any_ring_I_get_my_link_and_someone_joins
 O6 -> ChatLinksTest::test_the_one_who_joined_sees_whose_link_it_was
 O7 -> ChatLinksTest::test_a_chat_left_without_its_people_gets_them_back
 O8 -> ChatLinksTest::test_a_message_reaches_the_other_persons_iphone","The join link, the chats' second slice (founder 2026-11-02: ""go, build the join link slice""); the intimacy rule (N328); joining is onboarding (N335 item 1)."
@@ -587,8 +587,9 @@ O4     -> test_the_reply_is_saved_under_the_turn_it_answers",Founder #2: bubbles
 tests/test_chat_talk.py,Story,"As a speaker, I want Will to read my whole talk slide by slide, so that his answers refer to what I actually said on each slide.","O1  Each slide lists its bullet points and what I said on it.
 O2  A slide I said nothing on reads ""(nothing yet)"".
 O3  Words not tied to a slide are listed on their own.","O1, O2, O3 -> test_each_slide_carries_its_points_and_what_they_said",Founder 2026-10-15; Privacy 3.7 section 4.
-tests/test_chats.py,Story,"As the founder, I want my own chats with a colleague and a customer, apart from my chat with Will, where I answer with one of three emoji or a voice note, and start something new with a photo or a file, so that I can see the chats between people working before anyone else is in them.","O1  Without the ring row (chats, ring 6) every route answers 404 and
-nothing is written.
+tests/test_chats.py,Story,"As the founder, I want my own chats with a colleague and a customer, apart from my chat with Will, where I answer with one of three emoji or a voice note, and start something new with a photo or a file, so that I can see the chats between people working before anyone else is in them.","O1  As a user, I have my chats with no ring at all: the list answers
+without the rings ever being read (N456; was ring 6 only). As a
+server, I answer nobody who is not signed in, and write nothing.
 O2  The demo makes Sarah's customer chat and Ariel's colleague chat once,
 however often it is asked; the list names each chat for the other
 person, with their line and the last thing said.
@@ -642,7 +643,8 @@ item 3): until then the other person does not see it, the list does
 not show it and no push goes; Undo takes it back then, and Will says
 so in my chat with him, once, naming the other person (N441 item 5).
 Once its time is over Undo is refused and it reaches them; with no
-time left it goes at once. Nobody else can take my answer back.","O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
+time left it goes at once. Nobody else can take my answer back.","O1 -> ChatsTest::test_as_a_user_I_have_my_chats_without_any_ring,
+ChatsTest::test_as_a_server_I_answer_nobody_who_is_not_signed_in
 O2 -> ChatsTest::test_the_demo_is_made_once_and_listed
 O3 -> ChatsTest::test_a_member_reads_and_sends_one_of_three_emoji
 O4 -> ChatsTest::test_someone_not_in_the_chat_is_refused
@@ -2032,11 +2034,12 @@ O3  My photo is kept and shown to me and to the person I chat with; anyone
 not in a chat with me gets 404; I can take it away.
 O4  Their profile lists the photos and files shared in our chat; mine
 lists what I sent in any chat.
-O5  Without the ring row (chats, ring 6) every profile route is 404.","O1 -> PeopleProfilesTest::test_i_change_my_name_and_about_and_they_see_it
+O5  As a user with no ring at all, I have my profile (N456; was ring 6
+only).","O1 -> PeopleProfilesTest::test_i_change_my_name_and_about_and_they_see_it
 O2 -> PeopleProfilesTest::test_an_empty_name_or_too_long_is_refused
 O3 -> PeopleProfilesTest::test_my_photo_is_shown_to_the_person_i_chat_with_only
 O4 -> PeopleProfilesTest::test_the_photos_and_files_we_shared_are_on_the_profiles
-O5 -> PeopleProfilesTest::test_without_the_ring_nothing_is_shown","A person's profile, as on WhatsApp (founder 2026-11-03, N366; locked in docs/LOCKS.md with the prototype ""One bar"")."
+O5 -> PeopleProfilesTest::test_as_a_user_without_any_ring_I_have_my_profile","A person's profile, as on WhatsApp (founder 2026-11-03, N366; locked in docs/LOCKS.md with the prototype ""One bar"")."
 tests/test_person_asks.py,Story,"As a speaker, I want a ""no"" I give in the chat to stop the same consent being asked again for 30 days, and never to be asked for a consent no screen can answer, so that my consent stays freely given.","O1  Within 30 days of a ""no"" in the chat, asking again is refused
 (TOO_SOON); after 30 days it is allowed.
 O2  A consent no screen can answer (share, email) is never asked

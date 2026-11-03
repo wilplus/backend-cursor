@@ -12,12 +12,13 @@ OUTCOME
       not in a chat with me gets 404; I can take it away.
   O4  Their profile lists the photos and files shared in our chat; mine
       lists what I sent in any chat.
-  O5  Without the ring row (chats, ring 6) every profile route is 404.
+  O5  As a user with no ring at all, I have my profile (N456; was ring 6
+      only).
 PROVES   O1 -> PeopleProfilesTest::test_i_change_my_name_and_about_and_they_see_it
          O2 -> PeopleProfilesTest::test_an_empty_name_or_too_long_is_refused
          O3 -> PeopleProfilesTest::test_my_photo_is_shown_to_the_person_i_chat_with_only
          O4 -> PeopleProfilesTest::test_the_photos_and_files_we_shared_are_on_the_profiles
-         O5 -> PeopleProfilesTest::test_without_the_ring_nothing_is_shown
+         O5 -> PeopleProfilesTest::test_as_a_user_without_any_ring_I_have_my_profile
 WHY      A person's profile, as on WhatsApp (founder 2026-11-03, N366; locked
          in docs/LOCKS.md with the prototype "One bar").
 """
@@ -33,7 +34,7 @@ from tests.test_chats import _Store
 
 TOMEK = "11111111-1111-4111-8111-111111111111"
 PIOTR = "22222222-2222-4222-8222-222222222222"
-#: Signed in, with the ring, in no chat with Tomek.
+#: Signed in, in no chat with Tomek.
 ANNA = "33333333-3333-4333-8333-333333333333"
 NAMES = {TOMEK: ("Tomek Nowak", "tomek@example.com"),
          PIOTR: ("Piotr Kowalski", "piotr@example.com"),
@@ -59,16 +60,12 @@ class PeopleProfilesTest(unittest.TestCase):
         self.client = app.test_client()
         self.store = _Store()
         self.who = TOMEK
-        self.ring = {TOMEK: True, PIOTR: True, ANNA: True}
 
         def payload(_token):
             name, email = NAMES[self.who]
             return {"sub": self.who, "email": email, "user_metadata": {"full_name": name}}
 
         for p in (patch.object(auth, "verify_supabase_token", payload),
-                  patch("services.rings.feature_is_on_for_user",
-                        lambda feature, user, database=None:
-                        feature == "chats" and self.ring.get(user, False)),
                   patch.object(db, "client", self.store),
                   patch.dict(os.environ, {"PLF1_PROCESSING_AUTHORIZATION_MODE": "off"})):
             p.start()
@@ -129,14 +126,13 @@ class PeopleProfilesTest(unittest.TestCase):
         mine = self.client.get("/v2/profile", headers=self._as(TOMEK)).get_json()
         self.assertEqual((len(mine["photos"]), mine["files"]), (1, []))
 
-    def test_without_the_ring_nothing_is_shown(self):
-        chat = self._chat()
-        self.ring[TOMEK] = False
-        for res in (self.client.get("/v2/profile", headers=self._as(TOMEK)),
-                    self.client.patch("/v2/profile", headers=self._as(TOMEK), json={"name": "T"}),
-                    self.client.get(f"/v2/chats/{chat}/profile", headers=self._as(TOMEK))):
-            self.assertEqual(res.status_code, 404)
-        self.assertEqual(self.store.count("people_profiles"), 0)
+    def test_as_a_user_without_any_ring_I_have_my_profile(self):
+        # The rings are never asked: the chats are everyone's (N456).
+        def no_ring(*_args, **_kwargs):
+            raise AssertionError("the profile asked the rings")
+        with patch("services.rings.feature_is_on_for_user", no_ring):
+            res = self.client.get("/v2/profile", headers=self._as(TOMEK))
+        self.assertEqual(res.status_code, 200)
 
 
 if __name__ == "__main__":

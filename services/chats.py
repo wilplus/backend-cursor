@@ -76,7 +76,6 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-FEATURE = "chats"
 THREADS, MEMBERS, MESSAGES = "chat_threads", "chat_members", "chat_messages"
 AUDIO = "chat_message_audio"
 #: A Take's recording row (services/lab_recording_persistence.py): its owner,
@@ -151,9 +150,11 @@ def _not_found() -> ChatsError:
 
 
 def enabled(database: Any, user_id: Any) -> bool:
-    """Does this person have the chats? Fails closed (rings)."""
-    from services import rings
-    return bool(user_id) and rings.feature_is_on_for_user(FEATURE, user_id, database=database)
+    """Does this person have the chats? Everyone signed in does (N456: the
+    list of chats is the default for everyone; was ring 6, feature
+    `chats`). No ring is read."""
+    del database
+    return bool(user_id)
 
 
 def _require(database: Any, user_id: Any) -> str:
