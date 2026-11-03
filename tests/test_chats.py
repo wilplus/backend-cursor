@@ -55,6 +55,12 @@ OUTCOME
       no is kept as no; anything else leaves no mark and the note is sent
       all the same. The demo customer's question carries it, an older
       seeded one too.
+  O16 My answer waits on the server for what is left of its 5 seconds (N441
+      item 3): until then the other person does not see it, the list does
+      not show it and no push goes; Undo takes it back then, and Will says
+      so in my chat with him, once, naming the other person (N441 item 5).
+      Once its time is over Undo is refused and it reaches them; with no
+      time left it goes at once. Nobody else can take my answer back.
 PROVES   O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
          O2 -> ChatsTest::test_the_demo_is_made_once_and_listed
          O3 -> ChatsTest::test_a_member_reads_and_sends_one_of_three_emoji
@@ -70,6 +76,7 @@ PROVES   O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
          O13 -> ChatsTest::test_an_answer_plays_my_take_and_the_other_member_gets_just_the_answer
          O14 -> ChatsTest::test_an_answer_carries_its_takes_words_and_slides_once_processed
          O15 -> ChatsTest::test_will_marks_a_question_about_a_product_or_a_treatment
+         O16 -> ChatsTest::test_an_answer_waits_its_five_seconds_and_undo_takes_it_back
 WHY      The chats between people, first slice (founder 2026-10-31, N298 to
          N316; the three emoji N311; the mic N321 item 2; its words N324,
          shown under the player N331; the photos and files of the "+" N351;
@@ -607,6 +614,67 @@ class ChatsTest(unittest.TestCase):
         self.assertEqual((played.status_code, played.data, played.headers["Content-Type"]),
                          (200, b"OggS my Take", "audio/webm"))
 
+
+    def test_an_answer_waits_its_five_seconds_and_undo_takes_it_back(self):
+        chat = self._shared_chat()
+        take, project = str(uuid.uuid4()), str(uuid.uuid4())
+        self.store.table("recordings").insert(
+            {"session_v2_id": take, "user_id": ME, "duration": 52,
+             "storage_path": "willab_lab/a/recording_1.webm"}).execute()
+        later: list = []
+        pushed: list = []
+        will: list = []
+        for p in (patch("services.chats._after", lambda _s, then: later.append(then)),
+                  patch("services.chats._tell", lambda _db, _me, m: pushed.append(m["id"])),
+                  patch.object(db, "insert_lounge_messages",
+                               lambda user, rows: will.extend((user, r) for r in rows) or rows)):
+            p.start()
+            self.addCleanup(p.stop)
+
+        def answer(hold):
+            return self._post(f"/v2/chats/{chat}/answer",
+                              {"take": take, "duration_ms": 52000, "hold_ms": hold})
+
+        def seen_by(who):
+            self.who = who
+            said = [m["id"] for m in self._get(f"/v2/chats/{chat}/messages").get_json()["messages"]]
+            last = self._get("/v2/chats").get_json()["chats"][0]["last"]
+            self.who = ME
+            return said, last
+
+        # Held: nobody sees it, no push; Undo takes it back and Will says so.
+        held = answer(4000).get_json()["message"]
+        self.assertEqual((seen_by(SOMEONE), seen_by(ME), pushed), (([], None), ([], None), []))
+        undo = self._post(f"/v2/chats/{chat}/answer/undo", {"message": held["id"], "project": project})
+        self.assertEqual((undo.status_code, undo.get_json()), (200, {"undone": True}))
+        self.assertEqual(self._post(f"/v2/chats/{chat}/answer/undo",
+                                    {"message": held["id"]}).status_code, 404)
+        later.pop()()
+        self.assertEqual(pushed, [])
+        # Taken back before its message existed: the same one line.
+        self._post(f"/v2/chats/{chat}/answer/undo", {"project": project})
+        self.assertEqual({(user, r["client_id"], r["role"], r["kind"], r["body"]) for user, r in will},
+                         {(ME, will[0][1]["client_id"], "bot", "text",
+                           "You took this one back, so Ariel didn't hear it. "
+                           "Here's what I noticed, for practice.")})
+
+        # Its time over: Undo is refused, it reaches them, the push goes.
+        kept = answer(4000).get_json()["message"]
+        self.who = SOMEONE
+        self.assertEqual(self._post(f"/v2/chats/{chat}/answer/undo",
+                                    {"message": kept["id"]}).status_code, 404)
+        self.who = ME
+        with patch("services.chats._now", lambda: datetime.now(timezone.utc) + timedelta(seconds=8)):
+            self.assertEqual(self._post(f"/v2/chats/{chat}/answer/undo",
+                                        {"message": kept["id"]}).get_json()["code"], "ALREADY_SENT")
+            self.assertEqual(seen_by(SOMEONE)[0], [kept["id"]])
+        later.pop()()
+        self.assertEqual(pushed, [kept["id"]])
+
+        # No time left (Send again): it goes at once.
+        now = answer(0).get_json()["message"]
+        self.assertEqual((seen_by(SOMEONE)[0][-1], pushed[-1], "held_until" in now["meta"]),
+                         (now["id"], now["id"], False))
 
     def test_will_marks_a_question_about_a_product_or_a_treatment(self):
         chat = self._shared_chat()

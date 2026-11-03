@@ -10,7 +10,8 @@ A chat is between two people (N302 item 1): a person and a colleague
 (``team``) or a person and a customer (``customer``). The other member may be
 a guest with no account (a customer, a demo person). Separate from the
 Lounge, the chat with Will (lounge_messages), which this module never reads
-or writes.
+and writes once only: Will's line after an answer is taken back (N441 item
+5, ``undo_answer``).
 
   * ``list_chats``: the chats a person is in, each named for the other member
     (their name as the title, their line as the subtitle), with its last
@@ -29,6 +30,11 @@ or writes.
     player (N331: "Read it"), never in the list, and fed nowhere else. A note
     that cannot be turned into words is sent all the same, ``words`` NULL.
   * ``recording``: a voice note's recording, for any member of its chat.
+  * ``post_answer``: an answer recorded with "Record an answer" (N363), held
+    on the server for its 5 seconds (N441 item 3): until then nobody else
+    sees it, the list does not show it and no push goes. ``undo_answer``
+    takes it back while it is held, and Will says so in the speaker's chat
+    with him (N441 item 5).
   * ``post_file``: a photo (a raster image) or a file (any type), up to 10
     MB, sent from the "+" (N351): a message of kind ``photo`` or ``file``
     (a file's body is its own name, for the list's line), kept with its
@@ -63,6 +69,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -80,6 +87,15 @@ SESSIONS = "v2_sessions"
 #: An answer, a Take recorded with "Record an answer", is up to five minutes
 #: (N363 item 3); a voice note stays at two (MAX_VOICE_MS).
 MAX_ANSWER_MS = 300_000
+#: An answer waits this long on the server for its Undo (N345 item 2, N441
+#: item 3), counted from Finish take: the app sends what is left of it.
+ANSWER_HOLD_MS = 5_000
+#: And this much longer, so an Undo pressed in the last moment still lands.
+_UNDO_GRACE_MS = 2_000
+#: Will's line in the speaker's chat with him after an Undo (N441 item 5,
+#: signed); the Take's feedback follows as for any Take.
+TAKEN_BACK = "You took this one back, so {name} didn't hear it. Here's what I noticed, for practice."
+_TAKEN_BACK_KEYS = uuid.UUID("6f1d2c9e-3b7a-4e55-9a0c-2d8e41b7c5f3")
 FILES = "chat_message_files"
 #: A voice note is up to two minutes long ...
 MAX_VOICE_MS = 120_000
@@ -187,13 +203,28 @@ def member(database: Any, user_id: Any, thread_id: Any) -> dict:
     return _member_of(database, _require(database, user_id), thread_id)
 
 
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _held(row: dict) -> bool:
+    """An answer still in its 5 seconds (N441 item 3): nobody sees it yet."""
+    until = (row.get("meta") or {}).get("held_until")
+    if not isinstance(until, str):
+        return False
+    try:
+        return datetime.fromisoformat(until) > _now()
+    except ValueError:
+        return False
+
+
 def _last(database: Any, thread_id: str) -> Optional[dict]:
-    rows = _rows(_table(database, MESSAGES).select("kind,body,created_at")
-                 .eq("thread_id", thread_id).order("created_at", desc=True).limit(1))
-    if not rows:
+    rows = _rows(_table(database, MESSAGES).select("kind,body,meta,created_at")
+                 .eq("thread_id", thread_id).order("created_at", desc=True).limit(5))
+    row = next((r for r in rows if not _held(r)), None)
+    if not row:
         return None
-    return {"kind": rows[0]["kind"], "body": rows[0]["body"],
-            "created_at": rows[0]["created_at"]}
+    return {"kind": row["kind"], "body": row["body"], "created_at": row["created_at"]}
 
 
 def list_chats(database: Any, user_id: Any) -> dict:
@@ -348,6 +379,7 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
                    .select("id,author_member_id,kind,body,meta,created_at")
                    .eq("thread_id", thread).order("created_at", desc=True)
                    .limit(_MAX_MESSAGES))
+    newest = [r for r in newest if not _held(r)]
     _mark_demo_question(database, thread, newest)
     authors = _authors(database, thread)
     words = _words(database, thread, newest)
@@ -591,15 +623,19 @@ def recording(database: Any, user_id: Any, thread_id: Any, message_id: Any) -> d
 
 
 def post_answer(database: Any, user_id: Any, thread_id: Any, take: Any,
-                duration_ms: Any = None) -> dict:
+                duration_ms: Any = None, hold_ms: Any = None) -> dict:
     """POST /v2/chats/<id>/answer: an answer recorded with "Record an answer"
-    (N321 item 4, N336, N363), sent once its 5-second Undo has passed. The
-    Take is already uploaded and processing on its own; the answer is a voice
-    message that points at it, so its recording is sent once, not twice. The
-    Take must be the caller's own (404 otherwise) and up to five minutes long
-    (N363 item 3; 400). Its length is the Take's, or the app's ``duration_ms``
-    while the Take's is not known yet. The caller sees it with its Take; the
-    other person gets just the answer (N336 item 2). {"message": {...}}."""
+    (N321 item 4, N336, N363), sent as soon as its Take is uploaded. The Take
+    is already processing on its own; the answer is a voice message that
+    points at it, so its recording is sent once, not twice. ``hold_ms``, what
+    is left of its 5 seconds (N441 item 3, at most ``ANSWER_HOLD_MS``), holds
+    it here: nobody else sees it, the list does not show it and the push
+    waits until then, while ``undo_answer`` can take it back; with none left
+    it goes at once (Send again, N441 item 1). The Take must be the caller's
+    own (404 otherwise) and up to five minutes long (N363 item 3; 400). Its
+    length is the Take's, or the app's ``duration_ms`` while the Take's is
+    not known yet. The caller sees it with its Take; the other person gets
+    just the answer (N336 item 2). {"message": {...}}."""
     me = member(database, user_id, thread_id)
     session = _uuid(take)
     if not session:
@@ -608,14 +644,95 @@ def post_answer(database: Any, user_id: Any, thread_id: Any, take: Any,
     if not take_row:
         raise _not_found()
     ms = _answer_length(take_row, duration_ms)
+    hold = _hold(hold_ms)
+    meta: dict = {"duration_ms": ms, "answer": True, "take": session}
+    if hold:
+        meta["held_until"] = (_now() + timedelta(milliseconds=hold + _UNDO_GRACE_MS)).isoformat()
     thread = str(me["thread_id"])
     rows = _rows(_table(database, MESSAGES).insert({
         "thread_id": thread, "author_member_id": str(me["id"]), "kind": "voice", "body": "",
-        "meta": {"duration_ms": ms, "answer": True, "take": session}}))
+        "meta": meta}))
     if not rows:
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
-    _tell(database, me, rows[0])
+    if hold:
+        _after((hold + _UNDO_GRACE_MS) / 1000, lambda: _tell_if_kept(database, me, rows[0]))
+    else:
+        _tell(database, me, rows[0])
     return {"message": _shown(rows[0], str(me["id"]), _authors(database, thread))}
+
+
+def _hold(value: Any) -> int:
+    """What is left of an answer's 5 seconds, in ms: 0 to ``ANSWER_HOLD_MS``."""
+    try:
+        return max(0, min(ANSWER_HOLD_MS, int(value or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _after(seconds: float, then) -> None:
+    """``then`` once ``seconds`` have passed, beside the request."""
+    timer = threading.Timer(seconds, then)
+    timer.daemon = True
+    timer.start()
+
+
+def _tell_if_kept(database: Any, me: dict, message: dict) -> None:
+    """The push for a held answer, once its hold is over and if it was not
+    taken back."""
+    try:
+        kept = _rows(_table(database, MESSAGES).select("id").eq("id", str(message["id"])).limit(1))
+    except Exception:
+        logger.warning("chats: a held answer could not be read for its push", exc_info=True)
+        return
+    if kept:
+        _tell(database, me, message)
+
+
+def undo_answer(database: Any, user_id: Any, thread_id: Any, message: Any = None,
+                project: Any = None) -> dict:
+    """POST /v2/chats/<id>/answer/undo: Undo (N345 item 2, N441 items 3 and
+    5). ``message``, an answer of mine still held, is taken back before
+    anyone sees it (gone: 409 ALREADY_SENT; not my answer here: 404). Its
+    Take stays mine and its feedback comes as for any Take, after Will's line
+    in my chat with him, written once per answer (``project``, the answer's
+    own project, names it before its message exists). {"undone": true}."""
+    me = member(database, user_id, thread_id)
+    answer, about = _uuid(message), _uuid(project)
+    key = about or answer
+    if not key:
+        raise ChatsError("NOT_ALLOWED", "Undo names its answer.")
+    if answer:
+        rows = _rows(_table(database, MESSAGES).select("id,author_member_id,meta")
+                     .eq("id", answer).eq("thread_id", str(me["thread_id"])).limit(1))
+        row = rows[0] if rows else None
+        if (not row or str(row["author_member_id"]) != str(me["id"])
+                or not (row.get("meta") or {}).get("answer")):
+            raise _not_found()
+        if not _held(row):
+            raise ChatsError("ALREADY_SENT", "It has gone already.", 409)
+        _table(database, MESSAGES).delete().eq("id", answer).execute()
+    _will_says_taken_back(database, str(user_id), me, key)
+    return {"undone": True}
+
+
+def _will_says_taken_back(database: Any, user_id: str, me: dict, key: str) -> None:
+    """Will's line in my chat with him (N441 item 5), named for the other
+    person in this chat. Best-effort: the Undo stands either way."""
+    try:
+        thread = str(me["thread_id"])
+        names = [str(m.get("display_name") or "").strip()
+                 for m in _rows(_table(database, MEMBERS).select("id,display_name")
+                                .eq("thread_id", thread))
+                 if str(m["id"]) != str(me["id"])]
+        if not names or not names[0]:
+            return
+        database.insert_lounge_messages(user_id, [{
+            "client_id": str(uuid.uuid5(_TAKEN_BACK_KEYS, f"{thread}:{key}")),
+            "role": "bot", "kind": "text", "body": TAKEN_BACK.format(name=names[0]),
+            "metadata": {"answer_taken_back": True},
+            "client_created_at": _now().isoformat()}])
+    except Exception:
+        logger.warning("chats: Will's line after an Undo was not written", exc_info=True)
 
 
 def _take_of(database: Any, user_id: str, session: str) -> Optional[dict]:
