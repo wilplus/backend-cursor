@@ -341,6 +341,10 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # set to NULL); the person's membership of it goes above.
     PurgeDependency("chat_links", "chat_links", "user_id", "user",
                     "delete", "database_row", 60),
+    # A person's profile (migration a_person_has_a_profile, N366): their
+    # name, who they are, their About and their photo.
+    PurgeDependency("people_profiles", "people_profiles", "user_id", "user",
+                    "delete", "database_row", 60),
     # Email and password on Data & consent (WIL-95, N190, migration 0493):
     # the person's own security log goes with the account.
     PurgeDependency("account_security_events", "account_security_events",

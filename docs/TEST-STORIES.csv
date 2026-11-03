@@ -1987,6 +1987,20 @@ key may be set (the copy decision came first).
 O3  This process's own config does not contradict the Terms in force.","O1 -> test_the_contradiction_is_detected_when_it_exists
 O2 -> test_every_shipped_terms_describes_payment
 O3 -> test_this_environment_does_not_contradict_the_terms_in_force","2026-09-17: STRIPE_SECRET_KEY was live in production while the Terms said ""there is no paid plan and we do not take payment"". LIMITS   The check lives in this test file only; production has no boot or readiness check for it yet. O3 passes trivially wherever the key is absent (CI); it bites on a box that holds the key."
+tests/test_people_profiles.py,Story,"As a person in WillpowerLab, I want a profile as on WhatsApp, my name, who I am, my About and my photo, that the people I chat with see, with the photos and files we shared (N366).","O1  My profile starts with my account's name; I change my name, who I am
+and my About, and the person I chat with sees them, my new name as the
+chat's title too.
+O2  An empty name or anything over its limit is refused, and nothing is
+kept.
+O3  My photo is kept and shown to me and to the person I chat with; anyone
+not in a chat with me gets 404; I can take it away.
+O4  Their profile lists the photos and files shared in our chat; mine
+lists what I sent in any chat.
+O5  Without the ring row (chats, ring 6) every profile route is 404.","O1 -> PeopleProfilesTest::test_i_change_my_name_and_about_and_they_see_it
+O2 -> PeopleProfilesTest::test_an_empty_name_or_too_long_is_refused
+O3 -> PeopleProfilesTest::test_my_photo_is_shown_to_the_person_i_chat_with_only
+O4 -> PeopleProfilesTest::test_the_photos_and_files_we_shared_are_on_the_profiles
+O5 -> PeopleProfilesTest::test_without_the_ring_nothing_is_shown","A person's profile, as on WhatsApp (founder 2026-11-03, N366; locked in docs/LOCKS.md with the prototype ""One bar"")."
 tests/test_person_asks.py,Story,"As a speaker, I want a ""no"" I give in the chat to stop the same consent being asked again for 30 days, and never to be asked for a consent no screen can answer, so that my consent stays freely given.","O1  Within 30 days of a ""no"" in the chat, asking again is refused
 (TOO_SOON); after 30 days it is allowed.
 O2  A consent no screen can answer (share, email) is never asked

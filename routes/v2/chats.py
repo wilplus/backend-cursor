@@ -315,3 +315,73 @@ def v2_chats_join(token):
     from services.chat_links import join
     payload = getattr(request, "token_payload", None)
     return _run("join", lambda: join(db, str(request.user_id), token, payload))
+
+
+# ── A person's profile (services/people_profiles.py; N366) ───────────────
+
+def _photo_out(got):
+    response = send_file(io.BytesIO(got["data"]), mimetype=got["content_type"], conditional=True)
+    response.headers["Cache-Control"] = "private, max-age=300"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Content-Security-Policy"] = "sandbox"
+    return response
+
+
+@v2_bp.route("/profile", methods=["GET"])
+@require_auth
+def v2_profile_mine():
+    from services.people_profiles import mine
+    payload = getattr(request, "token_payload", None)
+    return _run("profile", lambda: mine(db, str(request.user_id), payload))
+
+
+@v2_bp.route("/profile", methods=["PATCH"])
+@limiter.limit("60 per hour", scope="profile_save")
+@require_auth
+def v2_profile_save():
+    from services.people_profiles import save_mine
+    payload = getattr(request, "token_payload", None)
+    body = request.get_json(silent=True) or {}
+    return _run("profile save", lambda: save_mine(db, str(request.user_id), payload, body))
+
+
+@v2_bp.route("/profile/photo", methods=["GET"])
+@require_auth
+def v2_profile_my_photo():
+    from services.people_profiles import my_photo
+    return _run("profile photo", lambda: my_photo(db, str(request.user_id)), answer=_photo_out)
+
+
+@v2_bp.route("/profile/photo", methods=["PUT"])
+@limiter.limit("30 per hour", scope="profile_photo")
+@require_auth
+def v2_profile_set_photo():
+    """Your photo, multipart ``file``. One byte past 5 MB is enough to know
+    it is over (413)."""
+    from services.people_profiles import MAX_PHOTO_BYTES, set_photo
+    upload = request.files.get("file")
+    data = upload.stream.read(MAX_PHOTO_BYTES + 1) if upload is not None else b""
+    kind = upload.content_type if upload is not None else None
+    return _run("profile photo", lambda: set_photo(db, str(request.user_id), data, kind))
+
+
+@v2_bp.route("/profile/photo", methods=["DELETE"])
+@require_auth
+def v2_profile_drop_photo():
+    from services.people_profiles import drop_photo
+    return _run("profile photo", lambda: drop_photo(db, str(request.user_id)))
+
+
+@v2_bp.route("/chats/<thread_id>/profile", methods=["GET"])
+@require_auth
+def v2_chats_their_profile(thread_id):
+    from services.people_profiles import theirs
+    return _run("their profile", lambda: theirs(db, str(request.user_id), thread_id))
+
+
+@v2_bp.route("/chats/<thread_id>/profile/photo", methods=["GET"])
+@require_auth
+def v2_chats_their_photo(thread_id):
+    from services.people_profiles import their_photo
+    return _run("their photo", lambda: their_photo(db, str(request.user_id), thread_id),
+                answer=_photo_out)
