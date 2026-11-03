@@ -10576,6 +10576,51 @@ The rules: frontend
 C, C3, C5, C7, T and K. No migration. The web walk is the iPhone app's
 walk too: nothing native to change.
 
+**N436 · From the list, a swipe from the right edge reopens the chat you
+just left; the list keeps its logo (founder, the Claude Code chat, 3
+November 2026: "swiping right makes you go back. Swiping left makes you go
+to that page on your right"; then, asked, "yes, reopen the chat I just
+left; keep the logo"; the prototype
+<https://claude.ai/artifact/18umQWRwwrCNnEATKiFe9X>).** For N378 and N334:
+1. **Forward, on the list.** In the iPhone app, a swipe from the right
+edge of the list reopens the chat you just came back from, Will's or a
+person's, following the finger: a person's chat comes in from the right
+over the list; for Will's, the list slides away to the left. Let go early
+and it springs back. Back on the list, a swipe from the right edge always
+reopens the chat you last came back from.
+2. **Nothing to go forward to, nothing moves:** on the list before you
+have left a chat, and never over a screen opened on top (a profile, the
+menu, the recording screens).
+3. **On the web,** the browser's Forward (Safari's own swipe from the
+right edge) does the same, as its Back already goes back by one (N378
+item 1).
+4. **Unchanged:** the swipe back from the left edge (N378 item 3), the
+slides and less motion (N378 item 4), the row lit grey on return (N378
+item 5). The list keeps the WillpowerLab bar, the logo and ☰; every chat
+keeps its own bar, ‹, the circle and the name (N334). No new words.
+Numbered a few ahead, leaving numbers free for the sessions logging one
+after another. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1. No migration.
+
+**N437 · The iPhone app: the camera's sentence names chat photos; a phone
+call pauses a Take, which carries on after (founder, the Claude Code chat,
+3 November 2026, choosing the recommended answer to each: "Add chat
+photos" and "Pause, then continue").** For N365 item 3 and N351:
+1. **The camera's sentence,** shown by iOS the first time the camera is
+used: "WillpowerLab uses the camera when you take a photo for a chat, or
+when a coach records video feedback." Was: "WillpowerLab uses the camera
+when a coach records video feedback.", which left out a chat's + → Camera.
+2. **A phone call during a Take** (iOS takes the microphone for the call):
+the Take and its clock pause while the call lasts and carry on from where
+they stopped when it ends; the slides keep their timing with the voice. No
+new words and no new screen. If the microphone does not come back by
+itself after the call, a prototype comes to the founder before anything
+is built for that case.
+No rules page: the app's code lands with comments, the recording screens'
+page ([`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md))
+gets a line with the build. No migration.
+
 **N441 · Record an answer: seven fixes from the interaction audit
 (founder, the Claude Code chat, 3 November 2026, on the page "Record an
 Answer, Before and After", <https://claude.ai/artifact/VMTAjB1kkWMnxYBHQ1BpgV>:
