@@ -58,6 +58,19 @@ def v2_notebook_ask():
     return jsonify({"messages": ask_rows(db, str(request.user_id))}), 200
 
 
+@v2_bp.route("/notebook/intro", methods=["POST"])
+@require_auth
+def v2_notebook_intro():
+    """The Lounge opened (N411 items 1, 5): the notebook's introduction,
+    opened by a strength Will spots in the last Takes, when it is due.
+
+    Responses:
+      200 { "messages": the rows written, usually [] }
+    """
+    from services.voice_notebook import intro_from_takes
+    return jsonify({"messages": intro_from_takes(db, str(request.user_id))}), 200
+
+
 @v2_bp.route("/notebook/consent", methods=["POST"])
 @require_auth
 def v2_notebook_consent():

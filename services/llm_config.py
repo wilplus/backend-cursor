@@ -536,6 +536,17 @@ SPEC_YOUR_WHY_ASK = LLMSpec(
 why? Runs only after a keyword pre-gate (services.your_why)."""
 
 
+SPEC_NOTEBOOK_SPOT = LLMSpec(
+    model=STRONG_MODEL,
+    # One strength from the last Takes' summaries, one sentence, or none.
+    temperature=0.2,
+    max_tokens=120,
+    response_format={"type": "json_object"},
+)
+"""The notebook's introduction (N411 items 1, 5): a strength that shows in
+two of the last three Takes' summaries (services.voice_notebook
+.intro_from_takes)."""
+
 SPEC_NOTE_NAMES = LLMSpec(
     model=CHEAP_MODEL,
     # One yes or no per note: does it name someone? Nothing to write.
