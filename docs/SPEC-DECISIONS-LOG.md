@@ -9782,6 +9782,29 @@ The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C4. No migration.
 
+**N374 · A short Take keeps its one fix, and every walk leaves helper words
+(founder, the Claude Code chat, 3 November 2026, on the page "The Walk With
+No Fix", <https://claude.ai/artifact/C39bmTD3XAUksneAU7dR9U>, after a new
+speaker's first Take showed only their best, with no fix and no helper
+words: "go with the recommendations", 1A and 2A).** For N289 item 5, N309
+items 1 and 3 and N323 item 3:
+1. **The AI clip when the Clearer version does not pass.** When the
+between's Clearer version fails the gate and no other paragraph is left for
+the weakest (a Take of two paragraphs), that moment takes the AI clip
+itself, if it has 8 words or more and a sound read. Takes recorded from
+3 November 2026, 11:00 UTC; one recorded before keeps the walk it had. Was
+(N289 item 5): it was praised as a next best and left out, so the walk was
+their best alone.
+2. **Helper words, always.** When the fix gives none (no fix at all, a tip
+that quotes no phrase, a stretch past eight words), their best's own words,
+whole, are the helper words, with the signed line "These are your helper
+words. …", saved like the fix's. Was (N309 item 3, N323 item 3): none, and
+the walk went on to "Lesson done.".
+3. Nothing to sign: no new words.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2, C3 and H1. No migration.
+
 **N375 · An older Take's Ideal Text card opens that Take's words (founder,
 the Claude Code chat, 3 November 2026: "when I click Take 1.0 ... and I open
 the ideal text, what I can see is exactly the ideal text I have recorded last

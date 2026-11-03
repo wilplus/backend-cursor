@@ -129,12 +129,13 @@ def v2_chats_post(thread_id):
 
 
 def _a_member_first(view):
-    """A voice note's first check, before its processing authorization: the
-    ring and the chat, else 404, as every route here answers."""
+    """A recording's first check, a voice note's or an answer's, before its
+    processing authorization: the ring and the chat, else 404, as every
+    route here answers."""
     @wraps(view)
     def wrapped(thread_id):
         from services.chats import member
-        return _run("voice", lambda: member(db, str(request.user_id), thread_id),
+        return _run("membership", lambda: member(db, str(request.user_id), thread_id),
                     answer=lambda _membership: view(thread_id))
     return wrapped
 
