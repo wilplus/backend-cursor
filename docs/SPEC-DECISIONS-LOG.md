@@ -10620,3 +10620,49 @@ is built for that case.
 No rules page: the app's code lands with comments, the recording screens'
 page ([`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md))
 gets a line with the build. No migration.
+
+**N440 · The walk's run-through fixes (founder, the Claude Code chat, 3
+November 2026, on the page "Walk Run-through Findings",
+<https://claude.ai/artifact/2ShrdEypJ3P8ARgmU45D3A>: "fix 1 to 9 and 11",
+"02 - keep the "skip" below it", "rest is fine please build it").** Twelve
+small things a mobile run-through of the One thing walk found; for B5, B7,
+B9, C4, C7 and J6 of the walk's rules page:
+1. **One bubble at a time.** The fix lands as the walk's other steps do:
+   "And now, one thing to improve:", the moment's clip, "Say this one like
+   your confident moment:", the chip and the AI bubble each behind the
+   typing dots, 350 ms a bubble, the thread following them down smoothly.
+   So do Skip's answer and the helper words after it, and Next after the
+   tries. Was: the AI clip's fix and the steps after Skip all in one frame,
+   the thread jumping past the speaker's own clip.
+2. **Scrolled away from the fix, the dock reads Next** (B9), which brings
+   the fix back, **and the fix's Skip stays under it**, on the AI clip's
+   fix and the Sniper's. The Clearer version, which has no Skip, shows Next
+   alone; "Keep mine" comes back with the fix. Was: "Try it" stayed, and a
+   tap opened the microphone for a sentence off screen.
+3. **The "Your confident moment" chip fits its player:** the waveform
+   never runs under the time, on any phone width.
+4. **With practice off, Next on the fix posts nothing** and the walk says
+   nothing about skipping. Was: an orange "Skip" the speaker never tapped,
+   then "Okay, we'll skip this one." (N405).
+5. **A try that can't be checked** (late, or the check failed) keeps the One
+   thing walk's "Try it" with Skip while a try is left (C7). Was: the
+   outlined "Practise again" with no reply and no Skip.
+6. **Two tries in a row** are each round all round (J6). Was: the corners
+   between them squared.
+7. **Helper words never keep the sentence's punctuation** at either end
+   (B7), after "Try it" as after "Keep mine". Was: the full stop kept after
+   "Try it".
+8. **A 44 px tap area** for the walk's ✕ and ‹ ›, and the paragraph sheet's
+   Edit and Delete; they look the same.
+9. The page's item 8 ("Slide 2" said twice from Take 2) and the speaker's
+   orange "Try it" after a tap ("why I am sending to try it?") are N435
+   items 1 and 2, built with it. Items 10 (✕ while recording in the Sniper
+   closes the walk) and 12 (the guest's "Done" screen keeps its breathing
+   mark) stay as they are.
+10. **The test page stays:** `/dev/feedback-walk?live=1` draws the One
+    thing walk on sample Takes (`&one=clearer|ai|sniper`, `&take=2`).
+No new words on screen. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+B5, B7, B9, C4, C7 and J6, and
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
+for the paragraph sheet. No migration.
