@@ -14,6 +14,9 @@ CATCHES
   C9  the stretch losing its player (the speaker's orange clip, N166, locked
       prototype X4gDmGfHH7ivuoRZ9ufiy9), playing another clip, serving a
       cached signature, or a failed signing losing the step
+  C10 the One thing walk's stretch waiting on a topic it never says (N435
+      item 6, N452 item 2), its words carrying an "um" or a repeat the
+      Ideal Text never shows (H3), or losing its slide
 IF REMOVED  the tempo step could practise the wrong stretch, or put a number
          or a made-up sentence on screen (Never 1, Never 4).
 PROVES   C1 -> test_a_clip_spoken_without_a_pause_is_rushed
@@ -25,6 +28,7 @@ PROVES   C1 -> test_a_clip_spoken_without_a_pause_is_rushed
          C7 -> test_a_partial_game_is_not_kept
          C8 -> test_only_the_founder_and_the_ring_have_the_step
          C9 -> test_the_stretch_plays_as_the_speakers_clip
+         C10 -> test_the_one_thing_walks_stretch_comes_without_a_topic_call_in_the_ideal_texts_words
 """
 from services import speaker_memory, tempo_stretch
 
@@ -100,7 +104,34 @@ def test_a_failed_topic_still_gives_the_step(monkeypatch):
         "said": {"before": "Big day.", "stretch": "And the beds are on sale this week.",
                  "after": "So come and see us."},
         "snippet_id": "s2",
+        "slide_index": None,
     }
+
+
+def test_the_one_thing_walks_stretch_comes_without_a_topic_call_in_the_ideal_texts_words(
+        monkeypatch):
+    take = [_normal(0, "Our new store opens on Monday. Big day."),
+            {**_clip(12, 60, 0.3, 0.1, "And um the the beds are on sale this week."), "id": "s2",
+             "language": "en", "metrics": {"piece": {"slide_index": 3}}},
+            _normal(40, "So come and see us. Thanks.")]
+
+    class Db:
+        def get_snippets_by_session(self, _take):
+            return take
+
+        def get_v4_dark_frame(self, _take):
+            return {"blocks": [{"walk_slot": "strongest"}, {"walk_slot": None}]}
+
+    asked: list = []
+    monkeypatch.setattr("services.take_summary._under_authority",
+                        lambda *_a, **_k: asked.append(1) or "the beds")
+    for one in (False, lambda: not tempo_stretch.walked_as_one_thing(Db(), "t1")):
+        tempo_stretch._CACHE.clear()
+        tempo = tempo_stretch.tempo_for_take(Db(), take="t1", user_id="u", arc_id="a", topic=one)
+        assert tempo is not None
+        assert (tempo["topic"], tempo["said"]["stretch"], tempo["slide_index"]) == (
+            "that part", "And the beds are on sale this week.", 3)
+    assert asked == []
 
 
 def test_the_stretch_plays_as_the_speakers_clip():

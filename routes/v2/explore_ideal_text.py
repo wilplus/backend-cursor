@@ -492,13 +492,17 @@ def v2_explore_arc_review_tempo(arc_id, take_session_id):
     N166); null too on a slide where the pace game the walk of the Take
     before gave worked (N359). The stretch's clip plays as the moments'
     do: ``snippet_audio_ref`` signed by the same signer, with
-    ``start_offset_ms`` / ``duration_ms`` within it (null without audio).
-    200 {tempo: {reading, topic, said, plan_level, snippet_id,
+    ``start_offset_ms`` / ``duration_ms`` within it (null without audio);
+    ``slide_index`` is its slide (null when unknown), and ``said`` its
+    words as the Ideal Text has them. ``?one=1`` (the One thing walk, also
+    read from the Take's stored frame): no topic is written, the opening
+    never says it (N435 item 6, N452 item 2), and ``topic`` is "that part".
+    200 {tempo: {reading, topic, said, plan_level, snippet_id, slide_index,
     snippet_audio_ref, start_offset_ms, duration_ms} | null} · 403 a
     denied permit · 404 · 500"""
     from services.processing_authorization import ProcessingAuthorizationError
     from services.take_progress import pace_worked
-    from services.tempo_stretch import tempo_for_take, with_clip
+    from services.tempo_stretch import tempo_for_take, walked_as_one_thing, with_clip
     try:
         owned, sessions = _arc_owned_by_caller(arc_id)
         take = str(take_session_id)
@@ -506,7 +510,9 @@ def v2_explore_arc_review_tempo(arc_id, take_session_id):
             return jsonify({"code": "NOT_FOUND", "error": "take not found"}), 404
         if not _tempo_on():
             return jsonify({"tempo": None}), 200
-        tempo = tempo_for_take(db, take=take, user_id=str(request.user_id), arc_id=str(arc_id))
+        one = request.args.get("one") == "1"
+        tempo = tempo_for_take(db, take=take, user_id=str(request.user_id), arc_id=str(arc_id),
+                               topic=False if one else (lambda: not walked_as_one_thing(db, take)))
         # Not again on a slide where the pace game worked last time (N359).
         if tempo and pace_worked(db, sessions, take):
             tempo = None
