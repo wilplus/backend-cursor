@@ -10769,3 +10769,24 @@ Skip under the recording bar. No new words.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C7 and T. No migration.
+
+**N452 · The chat drops the speaker's taps too; the slow Sniper's one line
+(founder, the Claude Code chat, 3 November 2026, on the two points left
+open by N435: "Yea gone" and "Yes"; then, asked, "You slowed down here.
+Keep it moving.").** For N435 items 2 and 6:
+1. **The chat writes no "Try it", "Keep mine" or "Skip" of the speaker's**
+for the One thing walk's fix and the Sniper, as the walk draws none (N435
+item 2). The walk's own answers stay in the chat ("Your words it is.",
+"Okay, we'll skip this one."). What the speaker chose is still kept: the
+Clearer version's accept or keep through its own save, the Sniper's game
+for Will (`postTempoGame`), the try's words. Was: the chat kept the taps as
+the speaker's messages.
+2. **A slow stretch's Sniper opens with one bubble too:** "You slowed down
+here. Keep it moving." with the pace scale in it, as the rushed one does
+(N435 item 6). Replaces "That part slowed down, with long pauses. 🐢 Let's
+try a little game.", the task line and "🤫 Find a quiet spot first." in the
+One thing walk.
+3. **Signed (Never 4):** "You slowed down here. Keep it moving.".
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+B7, T and K. No migration.
