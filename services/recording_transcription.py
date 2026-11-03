@@ -210,6 +210,59 @@ def recording_provider_adapter(
     )
 
 
+def parallel_transcription_enabled() -> bool:
+    """The setting for a Take transcribed in parts at once (N418)."""
+    try:
+        from config import Config
+        return bool(Config.PARALLEL_TRANSCRIPTION_ENABLED)
+    except Exception:  # noqa: BLE001 -- a broken setting means the one call
+        return False
+
+
+def transcribe_take_audio(
+    adapter: Any,
+    audio_bytes: bytes,
+    whisper_bytes: bytes,
+    whisper_name: str,
+    *,
+    vocabulary: Optional[list],
+    language: Optional[str],
+    usage_surface: str,
+    usage_user_id: Optional[str],
+    usage_session_id: str,
+    parallel: Optional[bool] = None,
+    log: logging.Logger = logger,
+) -> Optional[dict]:
+    """A Take's transcription: in parts at once when the setting is on and
+    the Take is long enough (N418), else, and whenever the parts fail, the
+    one whole-file call it always was. ``parallel`` overrides the setting
+    (the measurement script compares both)."""
+    if parallel_transcription_enabled() if parallel is None else parallel:
+        from services.processing_authorization import ProcessingAuthorizationError
+        from services.parallel_transcription import transcribe_in_parts
+        try:
+            parts = transcribe_in_parts(
+                adapter, audio_bytes, vocabulary=vocabulary, language=language,
+                usage_surface=usage_surface, usage_user_id=usage_user_id,
+                usage_session_id=usage_session_id)
+        except ProcessingAuthorizationError:
+            raise
+        except Exception as error:  # noqa: BLE001 -- the one call takes over
+            log.warning("parallel transcription failed, one call instead: %s", error)
+            parts = None
+        if parts is not None:
+            return parts
+    return adapter.transcribe_audio(
+        whisper_bytes,
+        whisper_name,
+        vocabulary=vocabulary,
+        language=language,
+        usage_surface=usage_surface,
+        usage_user_id=usage_user_id,
+        usage_session_id=usage_session_id,
+    )
+
+
 def transcribe_recording(
     state: RecordingState,
     *,
@@ -228,7 +281,9 @@ def transcribe_recording(
             recording_id=state.recording_id,
             user_id=str(state.user_id) if state.user_id else None,
         )
-        transcription = adapter.transcribe_audio(
+        transcription = transcribe_take_audio(
+            adapter,
+            state.audio_bytes,
             whisper_bytes,
             whisper_name,
             vocabulary=merge_slide_vocabulary(state.session_context),
@@ -236,6 +291,7 @@ def transcribe_recording(
             usage_surface=f"whisper_{state.recording_kind or 'spoken'}",
             usage_user_id=state.user_id,
             usage_session_id=state.session_id,
+            log=log,
         )
         if transcription is None:
             return replace(state, segments=(), words_all=())
