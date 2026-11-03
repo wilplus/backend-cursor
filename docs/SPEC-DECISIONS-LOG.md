@@ -9389,3 +9389,46 @@ to become more slides once they can arrive (N303).
 No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration.
+
+**N362 · The chats, all connected: the menu, a person's card, Someone else,
+your projects, a voice note from the +, and the team's answer in the flow
+(founder, the Claude Code chat, 3 November 2026, on the ambassador
+prototype's "The app, all connected", version 12: "make the chat
+interactive so that all the buttons are clickable and connected", "add all
+is missing", then "keep all, log them").** For N274, N335, N343, N349, N351,
+N330 and N346:
+1. **The ☰ menu on the list** opens: "Copy my link" (N310), "Your Takes"
+("Every Take and its Ideal Text": each Take opens its Ideal Text, with a
+back arrow), "Data & consent" (the locked page), "Sign out", "Cancel".
+2. **Tapping a person's name or circle** in a chat's top bar opens their
+card: the circle, the name, who they are, and "Ask {name} about" with the
+topics they gave in setup (N349); "Close".
+3. **Consult → "Someone else"** (N343) opens "Who should look at it?": the
+people in your chats, each with who they are and what they have answered
+before, and "Someone new" ("They get your link and join first", N337);
+"Back". Picking someone passes the question into your chat with them, as
+"Ask {name}" does.
+4. **The Feedback walk and the Ideal Text open from a chat** (the walk's
+row and the Ideal Text's card in Will's chat), each with a back arrow to
+that chat. The locked screens themselves are unchanged.
+5. **Will's "+"** opens "Your projects": each project with its last Take
+("Take {n} · {day}", or "Not recorded yet"), opening its Ideal Text, and
+"New project", which starts with its first Take (N319).
+6. **"Voice note" in a chat's "+" sheet,** a fifth action after N351's
+four, for when nothing waits for your answer and the bar has no mic (N341).
+7. **The team's answer in the flow:** after the thanks for an answer (N330),
+Will's row shows his line as new; "Practise the team's answer?" with "Not
+now" and "Practise it"; once saved, "Ask {name}?" (N346) with "Not now" and
+"Ask {name}"; Will's chat shows "↪ Sent to {name}"; the expert's 👍 comes
+back in your chat with them, marked new in the list.
+8. **Signed (Never 4):** "Your Takes", "Every Take and its Ideal Text",
+"Sign out", "Ask {name} about", "Close", "Who should look at it?", "Someone
+new", "Your projects", "New project", "Not recorded yet", "Voice note",
+"Practise it", "↪ Sent to {name}". The rest are N310's, N337's, N343's and
+N346's words.
+The prototype's "Prototype: see it as Kasia" is a control of the prototype,
+not the app. The prototype:
+<https://claude.ai/artifact/Qu9N4HNpbpwT7N9Amo6LyL>, version 13. No rules page yet:
+it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
