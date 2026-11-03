@@ -101,6 +101,11 @@ def _goals_after_note(user_id: str) -> list:
     sales question or Will's answer to a worry (N241 O1, P2); never in the
     way of the note."""
     rows: list = []
+    try:  # first, right under "Noted.": the privacy reminder (N411 item 3)
+        from services.voice_notebook import privacy_after_note
+        rows += privacy_after_note(db, user_id)
+    except Exception as e:  # noqa: BLE001 -- the note is kept either way
+        logger.warning("privacy reminder failed user=%s: %s", user_id, e)
     try:
         from services.life_goals import after_note
         rows += after_note(db, user_id)

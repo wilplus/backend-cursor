@@ -268,7 +268,7 @@ def provider_transcriber(items: list[GoldenItem], *, parallel: bool = False) -> 
             recording_id=item.recording_id,
             user_id=None,
         )
-        # The live stage's own choice of one call or parts (N416);
+        # The live stage's own choice of one call or parts (N417);
         # --parallel measures the parts whatever the setting says.
         audio = item.audio_bytes()
         result = transcribe_take_audio(
@@ -515,7 +515,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                         help=f"read {STUB_FILE} per item instead of calling the provider")
     parser.add_argument("--parallel", action="store_true",
                         help="transcribe each item in parts at once, as the live "
-                             "stage does with PARALLEL_TRANSCRIPTION_ENABLED (N416)")
+                             "stage does with PARALLEL_TRANSCRIPTION_ENABLED (N417)")
     parser.add_argument("--write-example", metavar="DIR",
                         help="write the synthetic example item under DIR and exit")
     args = parser.parse_args(argv)

@@ -1991,10 +1991,10 @@ O2 -> test_every_other_reason_keeps_its_pair_out
 O3 -> test_an_unreadable_source_stops_the_week","PLF-1.1 ""Dataset eligibility""; audit PLF-P5."
 tests/test_parallel_transcription.py,Story,"As a speaker, I want my Take's transcript ready sooner after Stop, with the same words on the same clock, so that the Ideal Text and the feedback come sooner.","O1  With the setting on, a long Take is transcribed in parts at once, cut
 in its pauses, and its words and segments come back in order on the
-Take's own clock (N416).
+Take's own clock (N417).
 O2  A part that fails gives the one whole-file call, as always; with the
 setting off, a Take is always the one call.","O1 -> test_a_long_take_in_parts_keeps_its_words_on_its_clock
-O2 -> test_a_failed_part_or_the_setting_off_is_the_one_call","Founder, the Claude Code chat, 3 November 2026: ""build it behind a setting"" (N416)."
+O2 -> test_a_failed_part_or_the_setting_off_is_the_one_call","Founder, the Claude Code chat, 3 November 2026: ""build it behind a setting"" (N417)."
 tests/test_part_histories_batch.py,Story,"As a speaker, I want the histories of my paragraphs (every old version) to load fast and exactly as the single-paragraph view shows them, so that my history is complete and the app stays quick.","O1  Each paragraph's history in the batch is exactly the single view's, and
 what the paragraphs share is read once, not once per paragraph.
 O2  If a batched read fails, that paragraph falls back to its own read and
@@ -3726,7 +3726,10 @@ O8  A note the app sends twice under one key (the app closed mid-send)
 is kept and answered once (N194).
 O9  The person fixes a voice note's words: the note and its row in the
 thread change, Will does not answer again, and only their own voice
-note can be fixed (N194).","O1 -> test_without_the_notebook_the_chat_is_unchanged
+note can be fixed (N194).
+O10 Every fifth note that names someone gets the short line ""🔒 Security
+disclaimer"" under its ""Noted.""; the others, and notes with no name,
+get nothing more; nothing is changed or deleted (N411 item 3).","O1 -> test_without_the_notebook_the_chat_is_unchanged
 O2 -> test_the_first_note_asks_and_yes_keeps_it
 O3 -> test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash
 O4 -> test_a_crisis_note_gets_the_safety_reply
@@ -3734,7 +3737,8 @@ O5 -> test_will_reads_the_notes_only_after_yes
 O6 -> test_every_typed_hash_is_one_note_as_the_mic
 O7 -> test_the_live_words_come_back_and_nothing_is_kept
 O8 -> test_a_note_sent_twice_is_kept_once
-O9 -> test_a_voice_note_is_fixed_in_the_notebook_and_the_thread","Will learning plan, step 1 (founder 2026-10-20, ""approved, start step 1""; words signed the same day)."
+O9 -> test_a_voice_note_is_fixed_in_the_notebook_and_the_thread
+O10 -> test_every_fifth_note_with_a_name_gets_the_privacy_line","Will learning plan, step 1 (founder 2026-10-20, ""approved, start step 1""; words signed the same day)."
 tests/test_walk_quote.py,Story,"As a speaker who just said a better try of a sentence that doubted me, I want Will to show me my own words that prove otherwise, so that the better sentence feels true, and I want to be able to say ""Not here"".","O1  A sentence that doubted me gets one quote: the signed line and my own
 kept words, word for word with their date; the same sentence gets the
 same quote again, and any other sentence in that Take gets none (N268

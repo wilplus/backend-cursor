@@ -1,5 +1,5 @@
-"""A Take transcribed in parts at the same time (N416), behind
-``PARALLEL_TRANSCRIPTION_ENABLED`` (off by default).
+"""A Take transcribed in parts at the same time (N417), behind
+``PARALLEL_TRANSCRIPTION_ENABLED`` (on by default; "0" turns it off).
 
 One call for a whole Take makes the wait after Stop grow with the Take's
 length. Here the recording is cut at its quietest moments into up to

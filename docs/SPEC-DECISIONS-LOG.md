@@ -10397,14 +10397,36 @@ Numbered a few ahead, leaving numbers free for the sessions logging one
 after another. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
 No migration.
-**N416 · A Take is transcribed in parts at once, behind a setting
+
+**N416 · The training corpus moves to the CEO panel and leaves the coach's
+side (founder, the Claude Code chat, 3 November 2026: "[move] the training
+corpus to the CEO panel and remove it from the coach side so that it
+doesn't hang there, because we rebuild the whole infrastructure a little
+bit").** While the corpus's infrastructure is rebuilt:
+1. The founder opens it from the CEO panel (`/admin/ceo`): a "Training
+corpus" button beside Bugs and Tasks opens the same screens as before (the
+imports, Import audio, the set-up, the blind judging; coach panel H1 to
+H3) over the panel, and ✕ comes back to it.
+2. No coach sees it: the Lounge's pinned "Training corpus" button and the
+☰ menu's coach-only row are gone; `/coach/corpus` goes to `/admin/ceo`.
+Speakers stays pinned on its own.
+3. The backend's corpus endpoints, their role checks, the imports and every
+label already given are unchanged; nothing is deleted.
+No new words on screen ("Training corpus" is the signed word, moved). No
+migration.
+The rules: frontend
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+B1, H0 and J, and
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+§1.
+**N417 · A Take is transcribed in parts at once, behind a setting
 (founder, the Claude Code chat, 3 November 2026: "build it behind a
 setting", to "cut the recording at your pauses into pieces of about a
 minute, transcribe all of them at the same time, join the words back
 together on the Take's clock", after choosing "Shorter wait after Stop"
 over live words on the recording screen).** For the transcription stage of
 every Take:
-1. With `PARALLEL_TRANSCRIPTION_ENABLED=1` on the worker, a Take of 90
+1. A Take of 90
 seconds or more is cut at its quietest moments into up to four parts of 45
 seconds or more; the parts are transcribed at the same time by the same
 authorized adapter, each under its own permit, and their words and segments
@@ -10413,10 +10435,11 @@ as long as one part.
 2. Any part that fails, or audio that cannot be decoded, gives the one
 whole-file call, as before; a refusal of the processing authorization is
 never swallowed.
-3. Off by default. The founder turns it on on the Railway worker without
-the golden-set comparison ("i can just skip it bro", the same chat, when no
+3. On by default, without the golden-set comparison ("i can just skip it
+bro", then "Can you just do it from the code?", the same chat, when no
 golden set existed yet); `scripts/measure_transcripts.py --parallel` stays
-for when one does. Unsetting the variable is the way back.
+for when one does. `PARALLEL_TRANSCRIPTION_ENABLED=0` on the worker is the
+way back to the one call.
 4. Nothing reaches the provider before the Take is sent; nothing changes on
 screen. Rejected: transcribing while recording, which would send audio of
 Takes the speaker throws away before any Take exists to authorize it.
