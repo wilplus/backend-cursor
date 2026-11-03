@@ -158,7 +158,7 @@ def _helper_words_then(slides: Optional[list], logs: Any,
 def history_slides(versions: Any) -> list:
     """Every Slide any version's Paragraphs sit on, for one helper-words
     read across the whole History."""
-    found = set()
+    found: set[int] = set()
     for row in versions or []:
         if isinstance(row, Mapping):
             found.update(s for s in (_paragraph_slides(row) or [])
