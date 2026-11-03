@@ -10093,3 +10093,26 @@ The rules: frontend
 G6 and
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 (Record buttons; after the goodbye), when built. No migration.
+**N396 · The voice note's words stream as they are said (founder, the
+Claude Code chat, 3 November 2026: "yes, build it", to "switch the preview
+to a streaming transcription service through the backend", after asking
+for the words to appear "like it is on Claude ... milliseconds").** Amends
+N199 item 2 for the voice notebook:
+1. The words follow the wave well under a second behind the voice, as
+they are said; a phrase stays lighter until its whole has been heard.
+2. The path: the backend issues a short-lived key (one minute to open)
+under the caller's processing-authorization permit
+(`POST /v2/notebook/live-session`, the provider's streaming
+transcription); the phone streams the voice to the provider with it.
+Nothing streamed is kept.
+3. The kept text is unchanged: the whole recording, sent with the note, is
+transcribed and cleaned as before (N194 item 2), and the vocal and verbal
+cues of a Take do not come from a voice note at all.
+4. Where the stream cannot open, the words come in pieces as before, 2 to
+4 seconds behind (N199). The streamed seconds go to the cost table with
+the note.
+No new words on screen. The chat's voice notes, which show no words while
+said, are unchanged. No migration.
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 B2.

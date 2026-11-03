@@ -20,6 +20,12 @@ from services.processing_authorization import (
 )
 
 
+#: The provider's streaming transcription model and the audio it takes
+#: (16-bit mono PCM at this rate), for the live words of a note (N396).
+LIVE_TRANSCRIPTION_MODEL = "gpt-live-transcribe"
+LIVE_TRANSCRIPTION_RATE = 24000
+
+
 @dataclass(frozen=True)
 class ProviderCoordinates:
     acquisition_principal_id: str
@@ -180,6 +186,84 @@ class AuthorizedProviderAdapter:
                 metadata={"result_kind": "transcription"},
             )
             return result
+        except Exception as error:
+            self.authorization.record_provider_event(
+                permit_id, "failed", error_code=type(error).__name__,
+            )
+            raise
+
+    def open_live_transcription(
+        self, *, language: str | None = None, seconds: int = 60,
+    ) -> dict | None:
+        """A short-lived key for the provider's streaming transcription
+        (backend N396): the phone streams the voice to it straight and the
+        words come back as they are said. The key is issued only under a
+        permit, like every other call; it opens one transcription session
+        and nothing else, and expires in ``seconds`` if unused. Returns
+        ``{"value", "expires_at", "model"}``, or None without a provider
+        outside enforcement."""
+        permit = self.authorization.issue_provider_permit(
+            acquisition_principal_id=self.coordinates.acquisition_principal_id,
+            take_id=self.coordinates.take_id,
+            recording_id=self.coordinates.recording_id,
+            provider="openai",
+            operation_kind="transcription",
+            minimum_data_manifest={
+                "content": ["audio_stream", "language_hint"],
+                "purpose": "live_preview",
+            },
+            idempotency_key=f"openai:live-transcription:{uuid.uuid4()}",
+        )
+        permit_id = str((permit or {}).get("permit_id") or "") or None
+        self.authorization.record_provider_event(permit_id, "started")
+        try:
+            import httpx
+            from config import Config
+
+            key = (Config().OPENAI_API_KEY or "").strip()
+            if not key:
+                self.authorization.record_provider_event(
+                    permit_id, "failed", error_code="NoProviderKey")
+                if not self.authorization.enforced:
+                    return None
+                raise ProcessingAuthorizationError(
+                    "PROVIDER_UNAVAILABLE", "The transcription provider is unavailable.", 503
+                )
+            transcription: dict[str, Any] = {"model": LIVE_TRANSCRIPTION_MODEL}
+            if language:
+                transcription["languages"] = [language]
+            response = httpx.post(
+                "https://api.openai.com/v1/realtime/client_secrets",
+                headers={"Authorization": f"Bearer {key}"},
+                json={
+                    "expires_after": {"anchor": "created_at", "seconds": int(seconds)},
+                    "session": {
+                        "type": "transcription",
+                        "audio": {"input": {
+                            "format": {"type": "audio/pcm", "rate": LIVE_TRANSCRIPTION_RATE},
+                            "transcription": transcription,
+                            "turn_detection": None,
+                        }},
+                    },
+                },
+                timeout=10.0,
+            )
+            response.raise_for_status()
+            body = response.json() or {}
+            value = str(body.get("value") or "")
+            if not value:
+                raise ValueError("no client secret in the provider's answer")
+            self.authorization.record_provider_event(
+                permit_id, "completed", metadata={"result_kind": "live_transcription_key"},
+            )
+            return {
+                "value": value,
+                "expires_at": body.get("expires_at"),
+                "model": LIVE_TRANSCRIPTION_MODEL,
+                "rate": LIVE_TRANSCRIPTION_RATE,
+            }
+        except ProcessingAuthorizationError:
+            raise
         except Exception as error:
             self.authorization.record_provider_event(
                 permit_id, "failed", error_code=type(error).__name__,

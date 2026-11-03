@@ -214,6 +214,40 @@ def preview(database: Any, user_id: str, adapter: Any, audio: bytes, *,
     return (result.get("text") or "").strip()
 
 
+#: A live key opens its session within this many seconds or not at all.
+LIVE_KEY_SECONDS = 60
+
+
+def live_session(database: Any, user_id: str, adapter: Any) -> dict:
+    """A short-lived key to stream a note being said to the transcription
+    provider, the words coming back as they are said (N396; amends N199
+    item 2). Issued under the caller's authorization (``adapter``); the
+    stream is a preview, nothing in it is kept: the whole recording, sent
+    when the note is, stays the kept text (N194 item 2)."""
+    if not enabled(database, user_id):
+        raise NotebookError("NOT_FOUND", "Not found.", 404)
+    if not consented(database, user_id):
+        raise NotebookError("CONSENT_REQUIRED", "Not yet.", 409)
+    opened = adapter.open_live_transcription(seconds=LIVE_KEY_SECONDS)
+    if not opened:
+        raise NotebookError("PROVIDER_UNAVAILABLE", "Not now.", 503)
+    return opened
+
+
+def record_live_seconds(user_id: str, live_ms: Optional[int]) -> None:
+    """The streamed seconds of a note's live words, for the cost table:
+    the provider bills them by the second, as the kept transcription."""
+    if not live_ms or live_ms <= 0:
+        return
+    from services.authorized_provider import LIVE_TRANSCRIPTION_MODEL
+    from services.llm_usage import record_audio_usage
+    record_audio_usage(
+        surface="voice_notebook_live_stream",
+        seconds=min(live_ms, (MAX_SECONDS + 5) * 1000) / 1000.0,
+        model=LIVE_TRANSCRIPTION_MODEL, user_id=str(user_id),
+        session_id=str(uuid.uuid4()))
+
+
 def _kept_already(database: Any, user_id: str, seed: str) -> list[dict]:
     """The rows of a note already kept under this seed, or []."""
     mine = database.get_lounge_message_by_client_id(
@@ -227,7 +261,8 @@ def _kept_already(database: Any, user_id: str, seed: str) -> list[dict]:
 
 def add_voice_note(database: Any, user_id: str, adapter: Any, audio: bytes, *,
                    filename: str, content_type: str,
-                   duration_ms: Optional[int], key: Optional[str] = None) -> list[dict]:
+                   duration_ms: Optional[int], key: Optional[str] = None,
+                   live_ms: Optional[int] = None) -> list[dict]:
     """A recorded note: transcribed under the caller's authorization
     (``adapter``), cleaned, kept with its audio, and written to the thread as
     "# " + the cleaned words, then the reply. With the app's ``key``, a note
@@ -245,6 +280,7 @@ def add_voice_note(database: Any, user_id: str, adapter: Any, audio: bytes, *,
         kept = _kept_already(database, user_id, seed)
         if kept:
             return kept
+    record_live_seconds(user_id, live_ms)
     result = adapter.transcribe_audio(
         audio, filename, usage_surface="voice_notebook",
         usage_user_id=str(user_id), usage_session_id=str(uuid.uuid4())) or {}

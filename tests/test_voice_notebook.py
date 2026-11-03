@@ -17,7 +17,8 @@ OUTCOME
   O6  Every typed "#" is one note, as the small mic's: the Life Panel's old
       tags are notes too, and "#note" is read as "#" (N253).
   O7  While a note is said, its words so far come back, hesitations and
-      all, and nothing is kept (N194).
+      all, and nothing is kept (N194); streamed, the key to stream is
+      given only to someone who said Yes (N396).
   O8  A note the app sends twice under one key (the app closed mid-send)
       is kept and answered once (N194).
   O9  The person fixes a voice note's words: the note and its row in the
@@ -102,6 +103,10 @@ class _Adapter:
     def transcribe_audio(self, audio, filename, **_):
         self.calls += 1
         return {"text": self.text, "language": "en"}
+
+    def open_live_transcription(self, **_):
+        self.calls += 1
+        return {"value": "ek_live", "expires_at": 1, "model": "m", "rate": 24000}
 
 
 @pytest.fixture
@@ -208,6 +213,13 @@ def test_the_live_words_come_back_and_nothing_is_kept(founder):
     assert (len(db.notes), len(db.thread), len(db.audio)) == before
     with pytest.raises(nb.NotebookError):  # someone without the notebook
         nb.preview(db, "someone", _Adapter("x"), b"piece", filename="p.webm")
+    # Streamed (N396): a short-lived key, only for someone who said Yes.
+    assert nb.live_session(db, "u", _Adapter(""))["value"] == "ek_live"
+    assert (len(db.notes), len(db.thread), len(db.audio)) == before
+    with pytest.raises(nb.NotebookError):
+        nb.live_session(_Db(), "u", _Adapter(""))  # not yet consented
+    with pytest.raises(nb.NotebookError):
+        nb.live_session(db, "someone", _Adapter(""))
 
 
 def test_a_note_sent_twice_is_kept_once(founder):
