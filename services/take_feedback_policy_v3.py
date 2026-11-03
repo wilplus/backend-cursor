@@ -10,7 +10,6 @@ import hashlib
 import json
 import logging
 import re
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, NamedTuple, Optional
 
@@ -59,11 +58,6 @@ MAX_WORDS = 90
 #: Appendix H.13.1). Take 3 and every Take after it are held at 100%.
 COVERAGE_FLOOR_BY_TAKE: dict[int, float] = {1: 0.70, 2: 0.80}
 COVERAGE_FLOOR_MATURE = 1.00
-#: N374 (founder 2026-11-03, new Takes only): on a Take recorded from this
-#: moment on, a between whose Clearer version does not pass takes the AI
-#: clip itself when no other block was left for the weakest
-#: (`_mark_moments`). A Take recorded before keeps the walk it had.
-VOICE_FALLBACK_FROM = datetime(2026, 11, 3, 11, 0, tzinfo=timezone.utc)
 _WORD_RE = re.compile(r"[^\W_]+(?:[’'-][^\W_]+)*", re.UNICODE)
 _VERBAL_FAMILIES = set(VERBAL_FAMILIES)
 
@@ -1015,7 +1009,6 @@ def _mark_moments(blocks: list[dict], picked: dict,
                   rewrite_ranked: Optional[list[dict]] = None,
                   rewrite_rows: Optional[list] = None,
                   pace: Optional[dict] = None,
-                  voice_fallback: bool = True,
                   ) -> tuple[list[dict], list[dict], list[dict]]:
     """Each shown moment marked for its job in the walk (founder
     2026-10-30, N289, flow page C2 and C4; `services.moment_pick`), from
@@ -1036,12 +1029,6 @@ def _mark_moments(blocks: list[dict], picked: dict,
 
     A between whose rewrite does not pass the gate is praised as a next best
     (N289 item 5); the weakest keeps its voice practise whatever its voice.
-    When no block was left for the weakest and the between's clip could be
-    one (the pick's ``voice_fallback``), that between is the weakest, with
-    the AI clip, instead (founder 2026-11-03, N374: a Take of two blocks
-    whose Clearer version did not pass had no fix at all, so no helper
-    words). ``voice_fallback`` False keeps the walk a Take recorded before
-    N374 had (`VOICE_FALLBACK_FROM`).
 
     Returns the praised blocks (praise anchors there), the blocks a rewrite
     may anchor to (the between, when its rewrite passes the gate, founder
@@ -1056,20 +1043,13 @@ def _mark_moments(blocks: list[dict], picked: dict,
         _mark_shown(block, shown.get(block["block_id"]), value_of.get(block["block_id"]))
     pool = _gate_exercise(blocks, rewrite_ranked, rewrite_rows)
     # A between whose rewrite did not pass the gate has nothing precise to
-    # offer: it is walked as a next best, praised (N289 item 5), or, with
-    # no block left for the weakest, it is the weakest with the AI clip
-    # (N374). The level's moment is practised whatever passed (G7, N209
-    # item 2).
+    # offer: it is walked as a next best, praised (N289 item 5). The
+    # level's moment is practised whatever passed (G7, N209 item 2).
     for block in blocks:
         moment = shown.get(block["block_id"])
         if (moment and moment["slot"] == moment_pick.SLOT_BETWEEN
                 and not moment.get("plan_level")
                 and block["exercise_kind"] == moment_pick.EXERCISE_VOICE):
-            if voice_fallback and moment.get("voice_fallback"):
-                _mark_shown(block, {**moment, "slot": moment_pick.SLOT_WEAKEST,
-                                    "kind": moment_pick.EXERCISE_VOICE},
-                            value_of.get(block["block_id"]))
-                continue
             _mark_shown(block, {**moment, "praise": True, "kind": None,
                                 "slot": moment_pick.SLOT_NEXT},
                         value_of.get(block["block_id"]))
@@ -1932,15 +1912,8 @@ def build_shadow_frame(
     tempo_step: Any = False,
     verbal: Any = None,
     last_fixes: Any = None,
-    recorded_at: Any = None,
 ) -> Optional[dict]:
     """Build the complete v3 frame; return None for an unusable Take.
-
-    ``recorded_at`` is when the Take was recorded (its session's
-    ``created_at``): one recorded before N374 (`VOICE_FALLBACK_FROM`) keeps
-    the walk it had, where a between whose Clearer version did not pass
-    never took the AI clip (`_mark_moments`). None, or unreadable, is a Take
-    of today. It never adds a key to the frame.
 
     ``last_fixes`` are the fixes the walk of the Take before gave
     (`take_progress.last_walk`): one that worked on this Take, its issue
@@ -2081,11 +2054,9 @@ def build_shadow_frame(
     # and the rewrite to every block read weak, each only where a defensible
     # candidate sits inside the block. The green mark stays on the top two
     # (24g); it no longer decides where praise goes.
-    from services.take_feedback_set import recorded_before_cutover
     green_blocks, weak_blocks, rewrite_pool = _mark_moments(
         blocks, picked, rewrite_ranked, feedback_rows,
-        pace=_pace(plan_level, snippets, take_id, tempo_step, blocks, worked),
-        voice_fallback=not recorded_before_cutover(recorded_at, VOICE_FALLBACK_FROM))
+        pace=_pace(plan_level, snippets, take_id, tempo_step, blocks, worked))
     rewrite_anchors = _anchored_notes(rewrite_pool, weak_blocks)
     praise_anchors = _anchored_notes(praise_ranked, green_blocks)
     rewrite_selected_ids = [row["candidate_id"] for row in rewrite_anchors]

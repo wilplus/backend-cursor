@@ -39,10 +39,8 @@ MAX_SELECTED_KEYS = 64
 V3_CUTOVER = datetime(2026, 9, 18, tzinfo=timezone.utc)
 
 
-def recorded_before_cutover(created_at: Any, cutover: datetime = V3_CUTOVER) -> bool:
-    """True when a Take's ``created_at`` is before ``cutover`` (the V3
-    cutover unless another is named, as N374's in
-    `take_feedback_policy_v3`).
+def recorded_before_cutover(created_at: Any) -> bool:
+    """True when a Take's ``created_at`` is before the V3 cutover.
 
     An unreadable timestamp is False: a Take of unknown age keeps its error.
     A naive timestamp is UTC, which is how ``v2_sessions`` stores it."""
@@ -54,7 +52,7 @@ def recorded_before_cutover(created_at: Any, cutover: datetime = V3_CUTOVER) -> 
         return False
     if when.tzinfo is None:
         when = when.replace(tzinfo=timezone.utc)
-    return when < cutover
+    return when < V3_CUTOVER
 
 
 def feedback_identity(change: Any) -> Optional[dict]:
