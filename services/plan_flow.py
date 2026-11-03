@@ -275,7 +275,7 @@ def view(database: Any, user_id: str, plan: dict) -> dict:
 
 
 def _first_take_view(plan: dict) -> dict:
-    waiting = plan.get("status") == "asking" and _facts(plan).get("first_take") == "waiting"
+    waiting = _first_take_waits(plan)
     slides = [{"kicker": k, "title": q, "body": hint} for k, q, hint, _kind in P.FIRST_TAKE_SLIDES]
     return {"first_take": waiting, "first_take_slides": slides if waiting else None}
 
@@ -1042,14 +1042,17 @@ def _first_take_deadline(raw: Any, today: date) -> Optional[date]:
 
 
 def _keep_first_take(database: Any, user_id: str, plan: dict, slides: list[list[dict]],
-                     said: list[str], key_line: Any) -> dict:
+                     said: list[str], key_line: Any,
+                     voices: Optional[dict[int, bytes]] = None) -> dict:
     """Each answer of the first Take, kept as the plan answer it replaces
     (the voice message, the audience, the key line, the opening) with its
-    readings, and every answer in Will's notes on the speaker. The facts to
-    keep: the key line's answer."""
+    readings, and every answer in Will's notes on the speaker; ``voices``,
+    by slide, the voice kept with its answer, which the coach's blind pick
+    plays (N213). The facts to keep: the key line's answer."""
     from services import speaker_memory
     out: dict[str, Any] = {}
-    for (_kicker, question, _hint, kind), clips, text in zip(P.FIRST_TAKE_SLIDES, slides, said):
+    for i, ((_kicker, question, _hint, kind), clips, text) in enumerate(
+            zip(P.FIRST_TAKE_SLIDES, slides, said)):
         if not text:
             continue
         speaker_memory.record(database, str(user_id), "answer", {"question": question, "said": text})
@@ -1060,9 +1063,89 @@ def _keep_first_take(database: Any, user_id: str, plan: dict, slides: list[list[
             "plan_id": plan["id"], "user_id": str(user_id), "kind": kind,
             "question": question, "transcript": text[:20000], "duration_ms": duration,
             "readings": _take_readings(clips, key_line if kind == "key" else None)})
+        voice = (voices or {}).get(i)
+        if answer and voice and not database.insert_plan_answer_audio(
+                answer["id"], str(user_id), "audio/mpeg", voice):
+            logger.warning("plan: the first Take's voice not kept answer=%s", answer.get("id"))
         if answer and kind == "key":
             out["key_answer_id"] = str(answer["id"])
     return out
+
+
+def _said(slides: list[list[dict]]) -> list[str]:
+    return [" ".join(str(c.get("transcript") or "").strip() for c in s).strip() for s in slides]
+
+
+#: The longest stretch of one answer kept for the coach to hear.
+FIRST_TAKE_VOICE_MAX_MS = 180_000
+#: The first Take's slides whose voice the coach's blind pick plays: the
+#: voice message (slide 2) and the key line (slide 4), N213.
+_COACH_HEARS = ("why", "key")
+
+
+def _cut_voice(audio: bytes, clips: list[dict]) -> Optional[bytes]:
+    """One slide's voice, cut from the Take's recording by its clips' times
+    (mp3, one channel); None when they carry no time or the cut fails."""
+    spans = [(s, d) for c in clips
+             if (s := _number(c.get("start_offset_ms"))) is not None
+             and (d := _number(c.get("duration_ms"))) is not None and d > 0]
+    if not audio or not spans:
+        return None
+    start = min(s for s, _ in spans)
+    length = min(max(s + d for s, d in spans) - start, FIRST_TAKE_VOICE_MAX_MS)
+    import subprocess
+    from services.audio_metrics import _resolve_ffmpeg_executable
+    exe = _resolve_ffmpeg_executable()
+    if not exe:
+        return None
+    try:
+        proc = subprocess.run(
+            [exe, "-v", "error", "-i", "pipe:0", "-ss", f"{start / 1000:.3f}",
+             "-t", f"{length / 1000:.3f}", "-vn", "-ac", "1", "-ar", "24000",
+             "-b:a", "64k", "-f", "mp3", "pipe:1"],
+            input=audio, capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return proc.stdout if proc.returncode == 0 and proc.stdout else None
+
+
+def _first_take_waits(plan: Optional[dict]) -> bool:
+    """The plan waits for the first Take (N401): asked nothing yet."""
+    return plan is not None and plan.get("status") == "asking" \
+        and _facts(plan).get("first_take") == "waiting"
+
+
+def after_processing(database: Any, payload: dict, audio: bytes) -> bool:
+    """The Take pipeline's call at the end of a spoken Take's processing
+    (N401): while the first Take waits, its answers are kept now, the voice
+    message and the key line each with its own voice, cut from the Take's
+    recording, which the pipeline downloaded through the processing
+    authorization; nothing else is sent anywhere. Will still reads the
+    answers after the walk (``_from_first_take``). Best-effort: never
+    raises, and the Take never waits on it beyond the cut."""
+    if payload.get("recording_kind") != "spoken" or payload.get("paired_session_id"):
+        return False
+    user_id, take_id = str(payload.get("user_id") or ""), str(payload.get("session_id") or "")
+    try:
+        if not user_id or not take_id or not enabled(database, user_id) \
+                or not _first_take_waits(database.get_open_plan(user_id)):
+            return False
+        slides = _first_take_slides(database.get_snippets_by_session(take_id) or [])
+        said = _said(slides)
+        if not any(said):
+            return False  # the walk's end reads it, and asks
+        voices = {i: v for i, (*_x, kind) in enumerate(P.FIRST_TAKE_SLIDES)
+                  if kind in _COACH_HEARS and said[i] and (v := _cut_voice(audio, slides[i]))}
+        plan = database.get_open_plan(user_id)  # again: the walk's end may have read it
+        if plan is None or not _first_take_waits(plan):
+            return False
+        kept = _keep_first_take(database, user_id, plan, slides, said, said[3], voices)
+        _save(database, user_id, plan, {"facts": {
+            **_facts(plan), **kept, "first_take": "kept", "first_take_session": take_id}})
+        return True
+    except Exception as error:  # noqa: BLE001 -- the walk's end keeps them, without the voice
+        logger.warning("plan: the first Take not kept take=%s: %s", take_id, error, exc_info=True)
+        return False
 
 
 def _from_first_take(database: Any, user_id: str, plan: dict) -> list[dict]:
@@ -1070,19 +1153,23 @@ def _from_first_take(database: Any, user_id: str, plan: dict) -> list[dict]:
     answers. The plan's facts come from them, each answer is kept as the
     plan answer it replaces and in Will's notes; with a day said, the plan
     and its card, as after the plan's last question (N319); with none, or
-    nothing heard, "When is your deadline?" as taps."""
-    take = _latest_take(database, user_id)
-    take_id = str(take.get("id") or "")
+    nothing heard, "When is your deadline?" as taps. Answers already kept
+    at the end of the Take's processing (``after_processing``) are not kept
+    again."""
+    kept = _facts(plan).get("first_take") == "kept"
+    take_id = str(_facts(plan).get("first_take_session") or "") if kept \
+        else str(_latest_take(database, user_id).get("id") or "")
     clips = (database.get_snippets_by_session(take_id) or []) if take_id else []
     slides = _first_take_slides(clips)
-    said = [" ".join(str(c.get("transcript") or "").strip() for c in s).strip() for s in slides]
+    said = _said(slides)
     today = today_in(plan.get("time_zone"))
     read = _read_first_take(user_id, said, today) if any(said) else None
     facts = {**_facts(plan), "first_take": "read", "first_take_session": take_id or None}
     facts.update(P.clean_facts((read or {}).get("facts"), facts))
     if not facts.get("key_line") and said[3]:
         facts["key_line"] = said[3][:300]
-    facts.update(_keep_first_take(database, user_id, plan, slides, said, facts.get("key_line")))
+    if not kept:
+        facts.update(_keep_first_take(database, user_id, plan, slides, said, facts.get("key_line")))
     plan = _save(database, user_id, plan, {"facts": facts})
     deadline = _first_take_deadline((read or {}).get("deadline"), today)
     if deadline is None:
@@ -1467,7 +1554,7 @@ def after_take(database: Any, user_id: str, *, first_name: Optional[str] = None)
             if database.get_latest_plan(str(user_id)) is None:
                 return begin(database, user_id, tz=None, first_name=first_name, mode="takes")[1]
             return []
-        if plan.get("status") == "asking" and _facts(plan).get("first_take") == "waiting":
+        if plan.get("status") == "asking" and _facts(plan).get("first_take") in ("waiting", "kept"):
             return _from_first_take(database, user_id, plan)
         if plan.get("status") == "asking" and _facts(plan).get("wait_take"):
             plan = _save(database, user_id, plan, {"facts": {**_facts(plan), "wait_take": False}})
