@@ -77,7 +77,8 @@ ends by naming where it landed ("The rules:" or "No rules page").
 
 - Branch from `main` → PR → checks green → squash-merge. "Merge when green" is standing permission.
 - Check locally before pushing: backend `bash scripts/local_ci.sh`, frontend `bash scripts/local_ci.sh`.
-- **Merging a migration runs it in production.** Make it idempotent (`IF NOT EXISTS`) and never drop anything. Set any environment variable it needs on every Railway service *before* merging.
+- **A merge does not deploy; releases go out every two hours.** A GitHub Action moves the `production` branch to the newest green `main`, and Railway and Vercel deploy from it. "Run workflow" on *Release to production* in the Actions tab releases at once (N426).
+- **A merged migration runs in production at the next release.** Make it idempotent (`IF NOT EXISTS`) and never drop anything. Set any environment variable it needs on every Railway service *before* merging.
 - New migrations get an outside review (GPT or Grok) before merging.
 - Every speaker's recording and every provider call goes through the processing-authorization path. No shortcuts.
 
