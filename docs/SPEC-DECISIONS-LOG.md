@@ -9983,3 +9983,17 @@ decision.
 No rules page: the code and its comments, with the frontend README's
 iPhone-app row. The migration (the iPhone's push address per account) gets
 its outside review before it is merged.
+
+**N386 · A tip with no phrase names no sentence (founder, the Claude Code
+chat, 3 November 2026, asked about item 5 of the interaction audit of the
+fix step, whether a tip that quotes no words should name its sentence:
+"Leave as is").** For the One thing walk's fix (N309 item 1, C4, N379 item
+4):
+1. **As it is.** A tip that quotes no phrase (pace: "Slow it down a little.";
+fillers: "Drop the ums.") names no sentence: the speaker's own clip of that
+moment, with its slide label, stands just above the tip and shows where.
+2. **The AI voice lock stands** (frontend `ai-voice-practice.md` §3): the
+fix may quote the speaker's two to four target words, never the whole
+sentence.
+3. Nothing to build and nothing to sign.
+No rules page: nothing changes; it closes N379 item 4.
