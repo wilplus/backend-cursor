@@ -10822,3 +10822,67 @@ One thing walk.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 B7, T and K. No migration.
+
+**N453 · Step 9: the checks while the first Take is processed, and the
+bottom bar (founder, the Claude Code chat, 3 November 2026, on the page
+"Checks While You Wait", <https://claude.ai/artifact/S62YW9oU8vSKD65QJLV4NS>:
+eighteen answers, each the recommended one; and "Rest of the app is better
+than the prototype except one thing which is the bottom bar").** For N400,
+N401 items 3 and 6, N309, N332, N349, N361, N395 and N449:
+1. **While Take 1 is processed,** Will reads its five answers then, not
+after the walk: Will's chat with the thin processing row on top, "While
+your feedback is being prepared, check what I heard.", then one check at a
+time, each short and in the speaker's own words (Q1).
+2. **"Here's how others will see you:"** comes from slide 1 only: the role,
+one line of About, and up to three topics, the ones said most, as "Ask
+about {topic}"; the name comes from sign-up (Q3). "Change it" brings "Tell
+me what to change.", answered out loud (Q2). Others see the card only after
+"That's right" (Q4). The topics go on the person's profile, and a team's
+question about one of them goes to that person first (Q15; N332 still
+weighs answers and outcomes after that).
+3. **The plan card** comes from slides 2 and 3; "When is your deadline?" as
+taps only when no date was heard, in the wait, never after the walk.
+4. **The plan's own yes** (N325's words) comes in the wait after the plan.
+With it, one personal question, "What worries you most about it?", with
+taps: first one in the speaker's own words from the five answers, then
+"Rushing" (Pauses that hold the room), "Forgetting my one sentence" (Let
+your key line land), "Repeating myself" (Say it once, and it lands),
+"Sounding flat" (A voice that moves), and "Something else" by voice (Q5,
+Q5a). A tap puts that practice first in the plan. The two 1-to-10 taps are
+not asked in the wait (Q5b); they stay at the last practice (N178 item 2).
+This answers N401 item 6's personal questions.
+5. **"Which team are you in?"** only with no link and no code (N400 item 2);
+the agreement only for people in a team, before anyone's recording can
+reach them (Q6). Was: everyone accepted it (N400 item 3).
+6. **"How big you want your audience?"** (N309) in the wait, after the team
+(Q7). Was: the first time "Record Take 2" was tapped.
+7. **"You're set."** The walk's row on top turns orange when the walk is
+ready; nothing waits for the checks, and the speaker opens the walk when
+done (Q8).
+8. **Take 1's walk practises the level** the five slides' voice gave (Q9).
+9. **The bar** (Q10, Q10a): every record button stands in it as the
+prototype draws it: "+" on the left, the black button in the middle, the
+mic on the right, for "Start your first recording" and every "Record Take
+N". N395's grey ✕ goes; the mic talks to Will.
+10. **A guest's first Take** is the same five questions (Q11). **A join
+link** brings what its company has switched on (Q12). **New accounts**
+start with the way in on: the first Take, the plan and the card (Q13; what
+"ring 1" meant); the default ring is set in Admin → Rings. These answer
+N401 item 6.
+11. **"Record an answer"** also comes for a question about one of the
+person's topics, not only a product or a treatment (Q14; N361 item 1).
+12. **Built with it, from the same page:** Will never asks again what the
+slides answered (who it's for, the one sentence, why it matters); Take 2's
+set-up gets who it's for and the one sentence from them, as it gets the
+topic; the language spoken is kept for the coaches' queue; "um" and "uh"
+stop counting toward the filler-words level (N134 item 8); the project
+takes the real talk's topic as its name at Take 2.
+13. **Signed (Never 4):** "Rushing", "Forgetting my one sentence",
+"Repeating myself", "Sounding flat". The other words are signed already.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md),
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md),
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+when built. The profile's topics need a migration, with its outside
+review, when built.
