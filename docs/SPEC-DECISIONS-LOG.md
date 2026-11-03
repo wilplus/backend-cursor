@@ -10116,3 +10116,15 @@ said, are unchanged. No migration.
 The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 §1 B2.
+**N397 · The walk's top bar names a slide by its title (founder, the
+Claude Code chat, 3 November 2026: "Slide title, as prototype", asked
+whether the bar should keep "Slide 2" or show the slide's title as the
+locked prototype X4gDmGfHH7ivuoRZ9ufiy9 does: "Product", "Traction").** The
+walk's top bar, and each part's small name in the thread, call a slide by
+its title; a slide with no title keeps "Slide N", and a talk with no deck
+keeps "Your talk". The words are the speaker's own slide titles, so none
+are new. Before it is built, check that the backend serves a title for each
+slide of a deck. No migration.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§1 B6, when built.
