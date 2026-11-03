@@ -1991,10 +1991,10 @@ O2 -> test_every_other_reason_keeps_its_pair_out
 O3 -> test_an_unreadable_source_stops_the_week","PLF-1.1 ""Dataset eligibility""; audit PLF-P5."
 tests/test_parallel_transcription.py,Story,"As a speaker, I want my Take's transcript ready sooner after Stop, with the same words on the same clock, so that the Ideal Text and the feedback come sooner.","O1  With the setting on, a long Take is transcribed in parts at once, cut
 in its pauses, and its words and segments come back in order on the
-Take's own clock (N407).
+Take's own clock (N416).
 O2  A part that fails gives the one whole-file call, as always; with the
 setting off, a Take is always the one call.","O1 -> test_a_long_take_in_parts_keeps_its_words_on_its_clock
-O2 -> test_a_failed_part_or_the_setting_off_is_the_one_call","Founder, the Claude Code chat, 3 November 2026: ""build it behind a setting"" (N407)."
+O2 -> test_a_failed_part_or_the_setting_off_is_the_one_call","Founder, the Claude Code chat, 3 November 2026: ""build it behind a setting"" (N416)."
 tests/test_part_histories_batch.py,Story,"As a speaker, I want the histories of my paragraphs (every old version) to load fast and exactly as the single-paragraph view shows them, so that my history is complete and the app stays quick.","O1  Each paragraph's history in the batch is exactly the single view's, and
 what the paragraphs share is read once, not once per paragraph.
 O2  If a batched read fails, that paragraph falls back to its own read and

@@ -5,13 +5,13 @@ STORY    As a speaker, I want my Take's transcript ready sooner after Stop,
 OUTCOME
   O1  With the setting on, a long Take is transcribed in parts at once, cut
       in its pauses, and its words and segments come back in order on the
-      Take's own clock (N407).
+      Take's own clock (N416).
   O2  A part that fails gives the one whole-file call, as always; with the
       setting off, a Take is always the one call.
 PROVES   O1 -> test_a_long_take_in_parts_keeps_its_words_on_its_clock
          O2 -> test_a_failed_part_or_the_setting_off_is_the_one_call
 WHY      Founder, the Claude Code chat, 3 November 2026: "build it behind a
-         setting" (N407).
+         setting" (N416).
 """
 import numpy as np
 import pytest

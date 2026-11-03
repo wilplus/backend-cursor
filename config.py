@@ -213,9 +213,9 @@ class Config:
     REASONABLE_CONFIDENCE_ENABLED = _env_flag("REASONABLE_CONFIDENCE_ENABLED", "0")
     MANAGER_CONTROLS_ENABLED = _env_flag("MANAGER_CONTROLS_ENABLED", "1")
     COACH_PREFILL_ENABLED = _env_flag("COACH_PREFILL_ENABLED", "0")
-    # A Take transcribed in up to four parts at once (N407,
-    # services/parallel_transcription.py). Off until the golden set says the
-    # words are as good as the one-call transcript; read on the WORKER.
+    # A Take transcribed in up to four parts at once (N416,
+    # services/parallel_transcription.py). Off until the
+    # founder turns it on (N416); read on the WORKER.
     PARALLEL_TRANSCRIPTION_ENABLED = _env_flag("PARALLEL_TRANSCRIPTION_ENABLED", "0")
     SENTENCE_BOUNDARY_SPLIT_ENABLED = _env_not_off("SENTENCE_BOUNDARY_SPLIT_ENABLED", "1")
     SENTENCE_SPLIT_MIN_GAP_MS = _env_int("SENTENCE_SPLIT_MIN_GAP_MS", 600)
