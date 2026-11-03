@@ -407,7 +407,6 @@ _LEAD_IN_MAX = 320
 #: What each ask must still say, whatever Will's words around it.
 _LEAD_IN_KEEPS = {
     "whatsapp": ("whatsapp", "number"),
-    "install": ("home screen", "screen", "tap"),
     "feedback_check": ("help",),
 }
 _LEAD_IN_BANNED = re.compile(r"\d|%|\bcue\b|\bscore\b|\bmetric|\bwillfidence\b|\bpercent", re.I)

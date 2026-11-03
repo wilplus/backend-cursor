@@ -275,11 +275,11 @@ account still says there is more, so the list does not end early.",O1 -> AdminUs
 tests/test_after_take.py,Story,"As a speaker, after a Take I want one thing to do at a time: the Take's card and its summary, then each ask on its own, then a goodbye with nothing pushing me to record again, and the settings asks only the next time I open the app, so that nothing competes with the walk and I practise because I want to (founder 2026-10-20, N89; 2026-10-31, N294, N295; N319 item 7).","O1  One ask after each Take, the first that waits (founder 2026-10-26,
 N189). After Take 1 that is Will's question when he has one, else
 ""Did this help?"" when the Take looks off; never an ask from the CEO
-panel on Take 1; WhatsApp and the home screen never after a Take
-(N294 item 8).
-O2  From Take 2 the order is the CEO panel's ask, Will's question, ""Did
-this help?""; the first that waits comes and the others wait for a
-later Take; Will's next question may follow his first, only when his
+panel and never WhatsApp after a Take (N294 item 8, N391).
+O2  From Take 2 the same: Will's question, then ""Did this help?""; the
+first that waits comes and the others wait for a later Take; an open
+ask from the CEO panel is not among them (it is in the bar at the
+top, N391); Will's next question may follow his first, only when his
 is the ask (N294 item 4); nothing comes when nothing applies.
 O3  The asks come one at a time, each under whatever closed the one
 before: a typed turn, under Will's reply; ""Yes"", tapped or typed,
@@ -297,17 +297,17 @@ minutes for today."") wait for the ask: the ask stays the newest
 bubble, so its answers stay; after my answer come the lines, then
 ""Good job. See you {day}."" with the plan's next practice day (N347
 item 2), then the plan's progress, last (N319 item 7).
-O7  The settings asks wait for the next visit (N294 item 8, N295): never
-before my second Take is done, never while an ask after a Take waits,
-at most one per Take; WhatsApp first, opened with ""It seems you enjoy
-using WillpowerLab."" (at most twice), the home screen last, once,
-where the phone can add it.","O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
+O7  The WhatsApp ask waits for the next visit and comes in the bar at the
+top, never in the chat (N294 item 8, N295, N391): never before my
+second Take is done, one per Take, at most twice, opened with ""It
+seems you enjoy using WillpowerLab.""; never once my number is saved.
+The home-screen ask is never made (N391).","O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
 O2 -> test_from_take_two_one_ask_ceo_ask_will_the_question
 O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_goodbye
 O4 -> test_an_older_waiting_message_shows_where_it_stands
 O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
 O6 -> test_the_plans_lines_wait_for_the_ask_then_the_goodbye_and_the_progress
-O7 -> test_settings_asks_wait_for_the_next_visit","Founder 2026-10-20: ""one action at a time""; 2026-10-31 (N294): ""No call to action means that there is no push"", ""the next time you come and open the app ask the settings questions""."
+O7 -> test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar","Founder 2026-10-20: ""one action at a time""; 2026-10-31 (N294): ""No call to action means that there is no push"", ""the next time you come and open the app ask the settings questions""."
 tests/test_ai_voice.py,Story,"As a speaker practising, I want an AI clip of my own voice saying my own words with one improvement, never shown if it fails its check, and fully deleted when I ask, so that I hear a believable better version and keep control of my voice.","O1  One problem is picked against my own usual (or the default), and the
 sentence under the clip names it in words, with no numbers.
 O2  The clip says my own words (or the clearer version I accepted, with
@@ -3707,7 +3707,7 @@ O6  Every typed ""#"" is one note, as the small mic's: the Life Panel's old
 tags are notes too, and ""#note"" is read as ""#"" (N253).
 O7  While a note is said, its words so far come back, hesitations and
 all, and nothing is kept (N194); streamed, the key to stream is
-given only to someone who said Yes (N393).
+given only to someone who said Yes (N396).
 O8  A note the app sends twice under one key (the app closed mid-send)
 is kept and answered once (N194).
 O9  The person fixes a voice note's words: the note and its row in the

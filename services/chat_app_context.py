@@ -57,8 +57,6 @@ VISITOR_BLOCK = (
 OFFER_PROMPTS = {
     # Simplified by the founder in chat, 2026-10-20.
     "whatsapp": "Want a WhatsApp when your coach replies? Add your number.",
-    # Simplified by the founder in chat, 2026-10-20.
-    "install": "Add WillpowerLab to your home screen? Your coach is one tap away.",
 }
 
 # action -> (what Will may say it does, how the app opens it)
@@ -66,10 +64,6 @@ FEATURES: dict[str, dict[str, str]] = {
     "whatsapp": {
         "says": "A WhatsApp message when the coach's feedback is in. The "
                 "speaker adds their phone number in the chat.",
-        "opens": "offer",
-    },
-    "install": {
-        "says": "Add WillpowerLab to the phone's home screen, one tap away.",
         "opens": "offer",
     },
     "consent": {
@@ -104,7 +98,7 @@ ACTIONS = tuple(FEATURES)
 #: What the speaker sees under Will's answer for each way a feature opens
 #: (founder 2026-10-18: Will said "tap the button below" over a link, then
 #: "I can't create clickable links").
-_SHOWS = {"whatsapp": "a form", "install": "a button", "chip": "a button",
+_SHOWS = {"whatsapp": "a form", "chip": "a button",
           "card": "a card"}
 
 

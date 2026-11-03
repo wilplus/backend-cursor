@@ -21,7 +21,7 @@ from services.processing_authorization import (
 
 
 #: The provider's streaming transcription model and the audio it takes
-#: (16-bit mono PCM at this rate), for the live words of a note (N393).
+#: (16-bit mono PCM at this rate), for the live words of a note (N396).
 LIVE_TRANSCRIPTION_MODEL = "gpt-live-transcribe"
 LIVE_TRANSCRIPTION_RATE = 24000
 
@@ -196,7 +196,7 @@ class AuthorizedProviderAdapter:
         self, *, language: str | None = None, seconds: int = 60,
     ) -> dict | None:
         """A short-lived key for the provider's streaming transcription
-        (backend N393): the phone streams the voice to it straight and the
+        (backend N396): the phone streams the voice to it straight and the
         words come back as they are said. The key is issued only under a
         permit, like every other call; it opens one transcription session
         and nothing else, and expires in ``seconds`` if unused. Returns

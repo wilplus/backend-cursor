@@ -10062,7 +10062,38 @@ No new words.
 The rules: frontend
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 §6, the line for N392.
-**N393 · The voice note's words stream as they are said (founder, the
+
+**N395 · The chat's "Record Take N" gets a grey ✕ beside it, and closing it
+brings the bar back (founder, the Claude Code chat, 3 November 2026, on the
+prototype <https://claude.ai/artifact/AS89KeG4agDejXcXujy2q3>: "add here a
+little bit more space and suggest how it can be closed when I don't want
+another recording, how I can just close it and have a normal bottom bar
+without the huge CTA there sitting there all the time"; then, of its four
+options, "go with B, build it").** For N294 item 7, N296 state 4 and N325
+item 1 (the chat's one "Record Take N", alone under the chat):
+1. **More room above it:** 24 px between the last bubble and the button
+(was 8).
+2. **A ✕ beside it,** on its right, in the same row: grey, with no background
+and no outline. The button is a little narrower. No new words: the ✕ is an
+icon, and a screen reader says "Close", as every close in the app does.
+3. **Closing it brings the bar back** ("+", "Type here", the mic) for that
+Take's button. The button comes back the next time the chat is opened, or
+when a newer Take's goodbye offers the next Take. While it is closed, Take N
+is still one tap away on the Ideal Text page's own "Record Take N" (the
+Take's card in the chat), and the "+" opens the projects. Nothing goes to
+the backend: the plan and the goodbye are unchanged.
+4. **It applies to both cases,** the goodbye's next Take and a practice day's
+(the one `RecordTakeButton`, N350 item 1). "Start your first recording"
+(N319 item 2) gets no ✕: the plan's first Take follows its questions
+(CLAUDE.md, Never 3).
+Replaces "alone, the message box and the mic gone" (N294 item 7, N296
+state 4) with "alone until the speaker closes it".
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+G6 and
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+(Record buttons; after the goodbye), when built. No migration.
+**N396 · The voice note's words stream as they are said (founder, the
 Claude Code chat, 3 November 2026: "yes, build it", to "switch the preview
 to a streaming transcription service through the backend", after asking
 for the words to appear "like it is on Claude ... milliseconds").** Amends
