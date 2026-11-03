@@ -16,7 +16,8 @@ or writes.
     (their name as the title, their line as the subtitle), with its last
     message; the newest first.
   * ``read``: a chat's messages, oldest first, each marked ``mine`` for the
-    caller. Only for a member.
+    caller. Only for a member, a voice note with its words (N331) and an answer
+    with its Take's words and when each slide starts (N355).
   * ``post``: an emoji, one of the three with one meaning each (N311 item 1):
     👍 it's good, 👀 seen, I'll answer, 🙏 thanks. Its meaning is kept as a
     clean label in ``meta``.
@@ -74,6 +75,8 @@ AUDIO = "chat_message_audio"
 #: A Take's recording row (services/lab_recording_persistence.py): its owner,
 #: its session, where its audio is kept and how long it is.
 RECORDINGS = "recordings"
+#: A Take's row, for an answer's words and slides (N355).
+SESSIONS = "v2_sessions"
 #: An answer, a Take recorded with "Record an answer", is up to five minutes
 #: (N363 item 3); a voice note stays at two (MAX_VOICE_MS).
 MAX_ANSWER_MS = 300_000
@@ -225,9 +228,12 @@ def _authors(database: Any, thread_id: str) -> dict[str, str]:
 
 
 def _shown(row: dict, me: str, authors: dict[str, str],
-           words: Optional[dict[str, str]] = None) -> dict:
+           words: Optional[dict[str, str]] = None,
+           answers: Optional[dict[str, dict]] = None) -> dict:
     """A message as its members see it; a voice note with its ``words``
-    (N331), null until they are ready or when there are none."""
+    (N331), null until they are ready or when there are none. An answer
+    (N355) also carries ``slides``: when each slide it was said over starts,
+    in ms, for the strip that follows its voice; its words are its Take's."""
     author = str(row["author_member_id"])
     meta = dict(row.get("meta") or {})
     if author != me:
@@ -239,7 +245,46 @@ def _shown(row: dict, me: str, authors: dict[str, str],
              "created_at": row["created_at"]}
     if row["kind"] == "voice":
         shown["words"] = (words or {}).get(str(row["id"])) or None
+        if meta.get("answer"):
+            answer = (answers or {}).get(str(row["id"])) or {}
+            shown["words"] = answer.get("words") or None
+            shown["slides"] = answer.get("slides") or []
     return shown
+
+
+def _answers(database: Any, rows: list[dict]) -> dict[str, dict]:
+    """What the answers among ``rows`` were said over (N355, N331): by
+    message, {"words": the Take's words, slide by slide, or None while it is
+    processing; "slides": each slide's start in ms}. Read from the Take's
+    per-slide transcript (v2_sessions.slide_transcripts); the Take's number
+    and anything about how it went stay out (N336 item 2, Never 1). An
+    unreadable Take reads as not ready."""
+    takes = {str(r["id"]): str((r.get("meta") or {}).get("take") or "")
+             for r in rows if r["kind"] == "voice" and (r.get("meta") or {}).get("answer")}
+    ids = sorted({t for t in takes.values() if _uuid(t)})
+    if not ids:
+        return {}
+    try:
+        sessions = {str(r["id"]): r.get("slide_transcripts")
+                    for r in _rows(_table(database, SESSIONS).select("id,slide_transcripts")
+                                   .in_("id", ids))}
+    except Exception:
+        logger.warning("chats: the answers' words could not be read", exc_info=True)
+        return {}
+    out: dict[str, dict] = {}
+    for message, take in takes.items():
+        parts = sessions.get(take)
+        parts = sorted((p for p in parts if isinstance(p, dict)),
+                       key=lambda p: int(p.get("index") or 0)) if isinstance(parts, list) else []
+        said = "\n\n".join(t for t in (str(p.get("transcript") or "").strip() for p in parts) if t)
+        starts = []
+        for p in parts:
+            try:
+                starts.append(max(0, int(p.get("start_offset_ms") or 0)))
+            except (TypeError, ValueError):
+                starts.append(0)
+        out[message] = {"words": said[:MAX_WORDS] or None, "slides": starts}
+    return out
 
 
 def _words(database: Any, thread_id: str, rows: list[dict]) -> dict[str, str]:
@@ -268,7 +313,9 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
                    .limit(_MAX_MESSAGES))
     authors = _authors(database, thread)
     words = _words(database, thread, newest)
-    return {"messages": [_shown(r, str(me["id"]), authors, words) for r in reversed(newest)],
+    answers = _answers(database, newest)
+    return {"messages": [_shown(r, str(me["id"]), authors, words, answers)
+                         for r in reversed(newest)],
             "joined_through": joined_through(database, user_id, thread)}
 
 

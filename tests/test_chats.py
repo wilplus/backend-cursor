@@ -46,6 +46,9 @@ OUTCOME
       its Take; the other person gets just the answer, no Take (N336). A Take
       that is not mine, one over five minutes, or a withdrawn recording
       consent sends nothing.
+  O14 Once my answer's Take has its words, both of us get them with the
+      answer, slide by slide, and when each slide starts, for the strip that
+      follows its voice (N355, N331); before that, no words and no slides.
 PROVES   O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
          O2 -> ChatsTest::test_the_demo_is_made_once_and_listed
          O3 -> ChatsTest::test_a_member_reads_and_sends_one_of_three_emoji
@@ -58,6 +61,7 @@ PROVES   O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
          O10 -> ChatsTest::test_a_photo_and_a_file_are_sent_and_the_other_member_opens_them
          O11 -> ChatsTest::test_my_photo_and_the_voice_note_after_it_are_a_question_for_the_other_person
          O12 -> ChatsTest::test_a_photo_that_is_not_one_or_anything_over_10_mb_is_refused
+         O14 -> ChatsTest::test_an_answer_carries_its_takes_words_and_slides_once_processed
          O13 -> ChatsTest::test_an_answer_plays_my_take_and_the_other_member_gets_just_the_answer
 WHY      The chats between people, first slice (founder 2026-10-31, N298 to
          N316; the three emoji N311; the mic N321 item 2; its words N324,
@@ -595,6 +599,30 @@ class ChatsTest(unittest.TestCase):
             played = self._get(f"/v2/chats/{chat}/messages/{sent['id']}/audio")
         self.assertEqual((played.status_code, played.data, played.headers["Content-Type"]),
                          (200, b"OggS my Take", "audio/webm"))
+
+
+    def test_an_answer_carries_its_takes_words_and_slides_once_processed(self):
+        chat = self._shared_chat()
+        take = str(uuid.uuid4())
+        self.store.table("recordings").insert(
+            {"session_v2_id": take, "user_id": ME, "duration": 30,
+             "storage_path": "willab_lab/a/recording_1.webm"}).execute()
+        sent = self._post(f"/v2/chats/{chat}/answer", {"take": take}).get_json()["message"]
+
+        # Still processing: nothing to read yet.
+        said = self._get(f"/v2/chats/{chat}/messages").get_json()["messages"]
+        self.assertEqual([(m["id"], m["words"], m["slides"]) for m in said], [(sent["id"], None, [])])
+
+        self.store.table("v2_sessions").insert({"id": take, "slide_transcripts": [
+            {"index": 1, "transcript": " Always check the quote. ", "start_offset_ms": 21000,
+             "duration_ms": 9000},
+            {"index": 0, "transcript": "Yes, it can pick them.", "start_offset_ms": 0,
+             "duration_ms": 21000}]}).execute()
+        for who in (ME, SOMEONE):
+            self.who = who
+            said = self._get(f"/v2/chats/{chat}/messages").get_json()["messages"]
+            self.assertEqual([(m["words"], m["slides"]) for m in said],
+                             [("Yes, it can pick them.\n\nAlways check the quote.", [0, 21000])])
 
 
 if __name__ == "__main__":
