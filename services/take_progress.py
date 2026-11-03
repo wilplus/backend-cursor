@@ -231,8 +231,8 @@ def walk_gave(database: Any, take_id: Any, frame: Any,
     a frame from before N289, with no walk slot: the moments' and the
     stretch, as the tempo step then came on any Take with a stretch.
 
-    ``snippets`` are the Take's clips, read only when the stretch is
-    needed when None. Raises on a database failure; the callers catch."""
+    ``snippets``: the Take's clips; when None, read only if the stretch is
+    needed. Raises on a database failure; the callers catch."""
     blocks = [b for b in (frame or {}).get("blocks") or [] if isinstance(b, dict)]
 
     def clips() -> list[dict]:
