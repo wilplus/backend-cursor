@@ -10533,3 +10533,45 @@ No rules page yet: it lands on frontend
 (the share after a Take) and
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration.
+
+**N435 · The One thing walk matches its locked prototype on seven points
+(founder, the Claude Code chat, 3 November 2026, on the side-by-side page
+<https://claude.ai/artifact/9FmH421ZiVTbA2VYH2ca3f>, the prototype
+<https://claude.ai/artifact/X4gDmGfHH7ivuoRZ9ufiy9> beside the app: "on the
+2nd one remove the skip - cause trash acts like a skip", "Idk why it says
+Try it ???", "rest is fien do it"; then, asked, "Trash = Skip" and "Web code
+is fine").** For N309 items 1 and 3, N314, N379, N397 and N405:
+1. **No slide names inside the thread.** The walk's top bar names the slide
+(N397); the small grey name above each part of the thread goes. The bar
+still follows the part in view.
+2. **No bubble for the speaker's tap** in the walk: "Try it", "Keep mine"
+and "Skip" add nothing to the thread; the walk's own answer stays ("Okay,
+we'll skip this one.", N405). The chat keeps writing them, as Will's record
+of what the speaker chose.
+3. **No Skip under the recording bar; the trash is the Skip.** In the One
+thing walk's fix and the Sniper, while a try records the dock is the
+recording bar alone (N314: the trash, then the strip with Stop). The trash
+throws the try away (nothing is uploaded or counted) and moves the walk on
+as Skip did: "Okay, we'll skip this one.", then the helper words. Skip
+stays where no try is recording ("Try it" and Skip).
+4. **After "Keep mine" the walk says "Your words it is."** Replaces "Your
+words it is. Now say them like you mean every one." (N268) in the One
+thing walk only.
+5. **Helper words after "Keep mine" leave out the hesitations they open
+with** ("So, um, I think…" gives "I think…"). The rest of the sentence is
+kept whole (N323 item 2).
+6. **The Sniper opens with one bubble when the speaker rushed:** "You
+rushed here. Let it breathe." with the pace scale in the same bubble,
+after the stretch's own clip. Replaces "That part went fast. 🏃 Let's try
+a little game.", the task line and "🤫 Find a quiet spot first." in the One
+thing walk. A slow stretch, which the prototype does not draw, keeps its
+lines; a plan week's level line stays (N289 item 8).
+7. **The Sniper's top bar names its slide** by its title from the deck
+(N397), during the game and its helper words; "Slide N" with none. Was:
+"Tempo".
+8. **Signed (Never 4):** "Your words it is." and "You rushed here. Let it
+breathe.".
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C, C3, C5, C7, T and K. No migration. The web walk is the iPhone app's
+walk too: nothing native to change.
