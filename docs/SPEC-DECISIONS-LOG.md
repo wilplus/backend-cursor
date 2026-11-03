@@ -10116,8 +10116,20 @@ said, are unchanged. No migration.
 The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 §1 B2.
+**N397 · The walk's top bar names a slide by its title (founder, the
+Claude Code chat, 3 November 2026: "Slide title, as prototype", asked
+whether the bar should keep "Slide 2" or show the slide's title as the
+locked prototype X4gDmGfHH7ivuoRZ9ufiy9 does: "Product", "Traction").** The
+walk's top bar, and each part's small name in the thread, call a slide by
+its title; a slide with no title keeps "Slide N", and a talk with no deck
+keeps "Your talk". The words are the speaker's own slide titles, so none
+are new. Before it is built, check that the backend serves a title for each
+slide of a deck. No migration.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§1 B6, when built.
 
-**N397 · The setup, one for any business: one voice note for a person, two
+**N400 · The setup, one for any business: one voice note for a person, two
 questions for a team, and where the app ends (founder, the Claude Code chat,
 3 November 2026: "now let's design the setup"; on the prototype "The setup",
 <https://claude.ai/artifact/Cmz1jj18KwpqG5G1n1fHk6>, version 1: "yes to all
@@ -10127,7 +10139,7 @@ sometimes to answer"; on version 4: "yes add both"; then "words ok, log it
 and lock").** For N312, N313, N332, N349, N352, N353, N361, N366, N368 and
 N371; answers N349 item 5 and N352 item 6. Tried on two businesses: RASP
 (AI ambassadors inside the company) and Invita (sellers and their
-customers). Its first question is now slide 1 of the first Take (N398).
+customers). Its first question is now slide 1 of the first Take (N401).
 1. **One question for a person, by voice:** "Tell me in a voice note what
 you do and what you know best, so I can send you the right questions."
 Will takes the person's role, their About and their topics from it, and
@@ -10200,7 +10212,7 @@ The rules: frontend
 C1 and [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
 when built. No migration.
 
-**N398 · The first Take is the onboarding: the first-timer's questions are
+**N401 · The first Take is the onboarding: the first-timer's questions are
 its slides (founder, the Claude Code chat, 3 November 2026: "this is a part
 that we apply to everyone logging into their application ... it should be
 your first official take ... whatever questions we have for the first
@@ -10208,7 +10220,7 @@ timer, we need to put them into slides and display them as slides on the
 big screen. And people are recording slide by slide"; on the prototype "The
 way in", <https://claude.ai/artifact/5RQsbVpt1F8NMtSbTs7wwB>, version 2:
 "words ok, log it and lock").** For N30, N319, N324, N335, N354, N357, N360
-and N397; changes Never 3's wording:
+and N400; changes Never 3's wording:
 1. **Will says hi, in one line, then one button.** After the acceptance
 screen (locked, unchanged), Will's first lines are his hello for the door
 the person came by, and "Your first Take is five questions. Answer each one
@@ -10226,7 +10238,7 @@ strip counts up, with no length chosen.
 3. **While it is processed,** for Take 1 only, the processing labels sit in
 a thin row at the top of Will's chat instead of the processing screen, and
 Will says "While your feedback is being prepared, check what I heard.",
-then, one tap each: "Here's how others will see you" (slide 1, N397); the
+then, one tap each: "Here's how others will see you" (slide 1, N400); the
 plan card (slides 2 and 3; "When is your deadline?" as taps only when no
 date was heard); "Which team are you in?" (only with no link and no code);
 the agreement; "You're set". The walk's row turns orange when the walk is
@@ -10237,7 +10249,7 @@ holds). Then "Record Take 2" for the real talk: the feelings check with its
 Skip, then the set-up, its topic from slide 2.
 5. **Moved:** the plan's questions in Will's chat (N319: the deadline's
 taps, the event, the one sentence, the follow-ups) are now slides 2 to 5;
-N397's voice note is slide 1. Never 3 now reads: the plan's questions come
+N400's voice note is slide 1. Never 3 now reads: the plan's questions come
 once, inside the first Take, one slide at a time; before any other Take,
 only the feelings check, with a Skip. N319's lock keeps the consent screen,
 the plan card and the plan's progress after each walk.

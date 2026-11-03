@@ -11,6 +11,9 @@ CATCHES
   C6  a played tempo game no longer kept for Will, or kept with a number in his note
   C7  a broken or partial game kept as if it were whole
   C8  the tempo step reaching a speaker the rings panel has not switched on
+  C9  the stretch losing its player (the speaker's orange clip, N166, locked
+      prototype X4gDmGfHH7ivuoRZ9ufiy9), playing another clip, serving a
+      cached signature, or a failed signing losing the step
 IF REMOVED  the tempo step could practise the wrong stretch, or put a number
          or a made-up sentence on screen (Never 1, Never 4).
 PROVES   C1 -> test_a_clip_spoken_without_a_pause_is_rushed
@@ -21,6 +24,7 @@ PROVES   C1 -> test_a_clip_spoken_without_a_pause_is_rushed
          C6 -> test_a_played_game_is_kept_for_will_in_words
          C7 -> test_a_partial_game_is_not_kept
          C8 -> test_only_the_founder_and_the_ring_have_the_step
+         C9 -> test_the_stretch_plays_as_the_speakers_clip
 """
 from services import speaker_memory, tempo_stretch
 
@@ -77,7 +81,7 @@ def test_only_a_short_plain_topic_is_kept():
 
 def test_a_failed_topic_still_gives_the_step(monkeypatch):
     take = [_normal(0, "Our new store opens on Monday. Big day."),
-            _clip(12, 60, 0.3, 0.1, "And the beds are on sale this week."),
+            {**_clip(12, 60, 0.3, 0.1, "And the beds are on sale this week."), "id": "s2"},
             _normal(40, "So come and see us. Thanks.")]
 
     class Db:
@@ -95,7 +99,31 @@ def test_a_failed_topic_still_gives_the_step(monkeypatch):
         "topic": "that part",
         "said": {"before": "Big day.", "stretch": "And the beds are on sale this week.",
                  "after": "So come and see us."},
+        "snippet_id": "s2",
     }
+
+
+def test_the_stretch_plays_as_the_speakers_clip():
+    tempo = {"reading": "rushed", "topic": "the beds", "said": {}, "snippet_id": "s2"}
+    asked = []
+
+    def signer(ids):
+        asked.append(ids)
+        return {"s2": {"snippet_audio_ref": "https://r2/take.webm?sig", "start_offset_ms": 12000,
+                       "duration_ms": 24000}}
+
+    played = tempo_stretch.with_clip(tempo, signer)
+    assert asked == [["s2"]]
+    assert played == {**tempo, "snippet_audio_ref": "https://r2/take.webm?sig",
+                      "start_offset_ms": 12000, "duration_ms": 24000}
+    assert "snippet_audio_ref" not in tempo  # the cached answer never holds a signature
+
+    def broken(_ids):
+        raise RuntimeError("storage down")
+
+    for signer in (broken, lambda _ids: {}, lambda _ids: {"s2": {"snippet_audio_ref": None}}):
+        words_only = tempo_stretch.with_clip(tempo, signer)
+        assert words_only["snippet_audio_ref"] is None and words_only["reading"] == "rushed"
 
 
 class _MemoryDb:
