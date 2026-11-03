@@ -9368,3 +9368,16 @@ inviter's chat first, Will's under it.
 The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 (Will pinned first, as built). No migration.
+
+**N361 · The migration for photos and files in a chat is merged without the
+outside review (founder, the Claude Code chat, 3 November 2026, asked whether
+the "+" sheet's migration (N351) should wait for a GPT or Grok review: "merge
+it without the review, as for N320").** For N351 and How to ship:
+1. **The migration that lets a chat between people hold photos and files**
+(N351 item 1: Photos, Camera, Files) is merged without the outside review
+that How to ship asks for, on the founder's word, for this migration only,
+as N320 item 5 did for `people_chat_with_each_other.sql`.
+2. It stays idempotent and additive: it adds, and drops nothing that holds
+data.
+No rules page: How to ship stays as written for every other migration. No
+migration in this entry.
