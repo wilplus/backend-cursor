@@ -24,6 +24,9 @@ OUTCOME
   O9  The person fixes a voice note's words: the note and its row in the
       thread change, Will does not answer again, and only their own voice
       note can be fixed (N194).
+  O10 Every fifth note that names someone gets the short line "🔒 Security
+      disclaimer" under its "Noted."; the others, and notes with no name,
+      get nothing more; nothing is changed or deleted (N411 item 3).
 PROVES   O1 -> test_without_the_notebook_the_chat_is_unchanged
          O2 -> test_the_first_note_asks_and_yes_keeps_it
          O3 -> test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash
@@ -33,6 +36,7 @@ PROVES   O1 -> test_without_the_notebook_the_chat_is_unchanged
          O7 -> test_the_live_words_come_back_and_nothing_is_kept
          O8 -> test_a_note_sent_twice_is_kept_once
          O9 -> test_a_voice_note_is_fixed_in_the_notebook_and_the_thread
+         O10 -> test_every_fifth_note_with_a_name_gets_the_privacy_line
 WHY      Will learning plan, step 1 (founder 2026-10-20, "approved, start
          step 1"; words signed the same day).
 """
@@ -250,3 +254,22 @@ def test_a_voice_note_is_fixed_in_the_notebook_and_the_thread(founder):
             nb.fix_note(db, "u", client_id, "anything")
     with pytest.raises(nb.NotebookError):  # someone else's row
         nb.fix_note(db, "someone", mine["client_id"], "anything")
+
+
+def test_every_fifth_note_with_a_name_gets_the_privacy_line(founder, monkeypatch):
+    db = _Db()
+    db.consent["u"] = {"decision": "yes"}
+    monkeypatch.setattr(nb, "_names_someone", lambda text, user_id: text[1:2].isupper())
+    lines = []
+    notes = ["#Anna was late", "#booked the train", "#Piotr ghosted me", "#Tomek said no",
+             "#Marta loved it", "#Kasia wants the deck", "#slides done", "#Ola", "#Ewa",
+             "#Jan", "#Adam", "#Zofia"]
+    for text in notes:
+        _type(db, text)
+        lines += nb.privacy_after_note(db, "u")
+    # Ten notes name someone: the line comes under the fifth and the tenth.
+    assert [r["body"] for r in lines] == [COPY["privacy_line"]] * 2
+    assert db.bodies().count(COPY["privacy_line"]) == 2
+    assert db.bodies()[db.bodies().index(COPY["privacy_line"]) - 1] == "Noted."
+    assert [n["text_clean"] for n in db.notes] == notes  # nothing changed
+    assert nb.privacy_after_note(db, "u") == []  # read once per note
