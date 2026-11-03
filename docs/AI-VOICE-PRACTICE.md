@@ -31,7 +31,10 @@ The lock (flow, words, rules) is
    per practice, reused for every appearance; a clip that fails its check is
    made once more with a new seed, never a third time
    (`AI_VOICE_GENERATION_RETRIES`, 1; founder 2026-10-21, N93), and a failed
-   one is never shown. While the job is queued or waiting for the voice,
+   one is never shown. A clip that is `unavailable` once its exercise was
+   chosen (a failed check, the provider or the limits refused, no voice)
+   still names `problem` and `phrase`, as a pending one does, so the One
+   thing walk's fix says its tip in words without the clip (N370). While the job is queued or waiting for the voice,
    `demo` already says `ai_voice` with the clip `pending`, so the walk shows
    the clip's place. A voice not ready yet (the clone from Take 1 still
    being made) is asked for again every 30 s, at most 5 times
@@ -93,11 +96,24 @@ validator refuses the clip if one is heard (`fillers_heard`). The sentence
 under the player is L18. The library has no fillers exercise, so fillers
 always takes the AI clip.
 
-When nothing reaches the minimum, the clip still comes: the default is
-stress, the main point said so it stands out (founder 2026-10-15, A). The
-selection says `default: true` and `reason: no_clear_problem_default`, so
-the stored cycles never count it as a problem found. A sentence of under
-five words has no main point apart from itself and gets no clip.
+When nothing reaches the minimum, a clearer version's example still
+comes: the default is stress, the main point said so it stands out (founder
+2026-10-15, A). The selection says `default: true` and `reason:
+no_clear_problem_default`, so the stored cycles never count it as a problem
+found. A sentence of under five words has no main point apart from itself
+and gets no clip.
+
+**The walk's one fix** (founder 2026-11-03, N425, "go for A, B and C"): the
+One thing walk gives the AI clip only to a moment whose own clip shows a
+problem at the minimum, the strongest of them (`moment_pick._weakest` reads
+each clip's severities against the Take's own usual, the same
+`ai_voice_severity.severities`). Its clip (`ai_voice_clip._choose`, a
+practice that is not a clearer version's, off a plan) asks `select` with
+`explore=False` and `allow_default=False`: it teaches that strongest
+problem, never the runner-up, and with nothing measured no clip is made
+(the cycle is `skipped`, `no_exercise`). On a plan the week's level still
+picks (G7). Exploring (`AI_VOICE_EXPLORE_SHARE`) now only touches a clearer
+version's example.
 
 ## What Eleven v4 can and cannot do
 

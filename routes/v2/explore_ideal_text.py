@@ -30,6 +30,7 @@ from routes.v2.arcs import (
     _moment_applied_map,
     _moment_explanations_map,
     _moment_playback_map,
+    _snippet_playback_map,
     _moment_reference_map,
     _moment_suggestions_enabled,
     _moments_entitled,
@@ -489,11 +490,15 @@ def _tempo_level(take: str):
 def v2_explore_arc_review_tempo(arc_id, take_session_id):
     """The tempo step's stretch for one Take (founder 2026-10-26, N162,
     N166); null too on a slide where the pace game the walk of the Take
-    before gave worked (N359). 200 {tempo: {reading, topic, said,
-    plan_level} | null} · 403 a denied permit · 404 · 500"""
+    before gave worked (N359). The stretch's clip plays as the moments'
+    do: ``snippet_audio_ref`` signed by the same signer, with
+    ``start_offset_ms`` / ``duration_ms`` within it (null without audio).
+    200 {tempo: {reading, topic, said, plan_level, snippet_id,
+    snippet_audio_ref, start_offset_ms, duration_ms} | null} · 403 a
+    denied permit · 404 · 500"""
     from services.processing_authorization import ProcessingAuthorizationError
     from services.take_progress import pace_worked
-    from services.tempo_stretch import tempo_for_take
+    from services.tempo_stretch import tempo_for_take, with_clip
     try:
         owned, sessions = _arc_owned_by_caller(arc_id)
         take = str(take_session_id)
@@ -506,7 +511,7 @@ def v2_explore_arc_review_tempo(arc_id, take_session_id):
         if tempo and pace_worked(db, sessions, take):
             tempo = None
         if tempo:
-            tempo = {**tempo, "plan_level": _tempo_level(take)}
+            tempo = {**with_clip(tempo, _snippet_playback_map), "plan_level": _tempo_level(take)}
         return jsonify({"tempo": tempo}), 200
     except ProcessingAuthorizationError:
         return jsonify({"code": "NOT_AUTHORIZED", "error": "processing not authorized"}), 403
@@ -759,15 +764,23 @@ def v2_explore_select_block_variant(arc_id, block_key):
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/revisions", methods=["GET"])
 @require_auth
 def v2_explore_ideal_revisions(arc_id):
-    """The History under ⋯ (lock 2026-10-12, section 4): every version of
-    the document, newest first, each with its Take and its words. Read only
+    """The History under ⋯ (lock 2026-10-12, section 4) and an older Take's
+    Ideal Text card (N375): every version of the document, newest first,
+    each with its Take, its words, each Paragraph's Slide (`slides`, null
+    when unproved), that Take's deck (`presentation_ref`) and the helper
+    words of its time (`helper_words`, N380). Read only
     (rule 5). Owner only."""
-    owned, _sessions = _arc_owned_by_caller(arc_id)
+    owned, sessions = _arc_owned_by_caller(arc_id)
     if not owned:
         return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-    from services.paragraph_history import document_history
+    from services.paragraph_history import document_history, history_slides
+    versions = db.list_ideal_text_versions(arc_id)
+    # One read for every Slide's helper words over time (N380); a failed
+    # read serves the words without them.
+    logs = db.list_slide_helper_words_log_for_slides(
+        arc_id, str(request.user_id), history_slides(versions))
     response = jsonify({"revisions": document_history(
-        db.list_ideal_text_versions(arc_id))})
+        versions, sessions, logs)})
     response.headers["Cache-Control"] = "private, no-store"
     return response
 

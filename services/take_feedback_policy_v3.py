@@ -749,7 +749,8 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
                   held_words: Any = None, context: Any = None,
                   heard: Optional[dict] = None,
                   clearer_ok: Optional[Callable[[dict, dict], bool]] = None,
-                  worked: frozenset = frozenset()) -> dict:
+                  worked: frozenset = frozenset(),
+                  voice_medians: Optional[dict] = None) -> dict:
     """The Take's shown moments (three, N284): the strongest, the weakest and
     the between, one per block (founder 2026-10-30, N289, flow page C2 and
     H1; `services.moment_pick`).
@@ -787,7 +788,7 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
     showable = [(block, candidate) for block in blocks
                 for candidate in _showable(block, clips, servability)]
     reads = [_moment_read(candidate, block, snippet_map, clips, served_text, held_words, context,
-                          worked)
+                          worked, voice_medians)
              for block, candidate in showable]
     picked = _level_pick(reads, showable, snippet_map, clips, served_text, plan) \
         or moment_pick.pick(reads)
@@ -937,7 +938,8 @@ def _level_pick(reads: list[dict], showable: list[tuple], snippet_map: dict,
 
 def _moment_read(candidate: dict, block: dict, snippet_map: dict, clips: dict,
                  served_text: Any, held_words: Any = None, context: Any = None,
-                 worked: frozenset = frozenset()) -> dict:
+                 worked: frozenset = frozenset(),
+                 voice_medians: Optional[dict] = None) -> dict:
     """One clip's row for `moment_pick`, with its willfidence read,
     whether its words hold the helper words its slide had when the Take
     was recorded (``held_words``, ``{slide_index: [phrase, ...]}``; N246
@@ -956,11 +958,43 @@ def _moment_read(candidate: dict, block: dict, snippet_map: dict, clips: dict,
         "word_count": candidate.get("word_count") or 0,
         "held": holds(shown, held),
         "worked": frozenset(kind for slide, kind in worked if slide == block.get("slide_index")),
+        # The clip's strongest voice problem the AI clip can teach, against
+        # the speaker's own usual on this Take (N425); 0 with none.
+        "voice": _voice_problem(snippet, voice_medians),
         "read": moment_pick.read(
             candidate.get("machine_score"), snippet.get("transcript"),
             snippet.get("metrics"), shown=shown,
             relevance=take_context.relevance(shown, context)),
     }
+
+
+def _voice_medians(snippets: Any) -> dict:
+    """The speaker's own usual pace, pausing, loudness range and fillers on
+    this Take, as the AI clip measures them (`ai_voice_severity.own_medians`;
+    N425). {} on any failure. Never raises."""
+    from services import ai_voice_severity
+    try:
+        return ai_voice_severity.own_medians([s for s in snippets or [] if isinstance(s, dict)])
+    except Exception as error:  # noqa: BLE001 -- no voice problem read
+        logger.warning("voice medians not read: %s", error)
+        return {}
+
+
+def _voice_problem(snippet: Any, medians: Optional[dict]) -> float:
+    """The clip's strongest voice problem the AI clip can teach (pace,
+    pause, stress, fillers), as the clip itself would measure it against the
+    speaker's own usual (`ai_voice_severity.severities`; N425): the weakest
+    needs one at the clip's line. 0 with no medians, no metrics, or on any
+    failure. Never raises."""
+    if medians is None or not isinstance(snippet, dict):
+        return 0.0
+    from services import ai_voice_severity
+    try:
+        scores = ai_voice_severity.severities(snippet, medians, sentence=str(snippet.get("transcript") or ""))
+        return float(max(scores.values(), default=0.0))
+    except Exception as error:  # noqa: BLE001 -- no voice problem read
+        logger.warning("voice problem not read snippet=%s: %s", snippet.get("id"), error)
+        return 0.0
 
 
 def _showable(block: dict, clips: dict,
@@ -2024,7 +2058,7 @@ def build_shadow_frame(
                            plan=(plan_level, key_line), held_words=held_words,
                            context=context, heard=heard,
                            clearer_ok=_clearer_check(rewrite_ranked, feedback_rows),
-                           worked=worked)
+                           worked=worked, voice_medians=_voice_medians(snippets))
 
     # THE ONLY PLACE THE REASON LAYER IS OBSERVABLE (24j). Everything else it
     # does is internal ordering that leaves no trace: the failure it can have

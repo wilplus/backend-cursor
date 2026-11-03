@@ -15,11 +15,9 @@ whatever closed the ask (``release``). The asks (``chain``), in order:
   Take 1      Will's question when he has one (``will_question``); "Did this
               help?" when the Take looks off (``feedback_check.looks_off``).
               Never an ask from the CEO panel.
-  Take 2 on   the founder's ask from the CEO panel when one is open
-              ("admin"; the Lounge draws it, and "Not now" leaves it open,
-              so it comes back at the end of the next Take); then Will's
-              question when he has one; then "Did this help?" when the Take
-              looks off.
+  Take 2 on   the same. The CEO panel's asks to one person are not in the
+              chain since N391: they come in the bar at the top of the chat
+              (``person_asks``), never after a Take.
 
 One ask a Take (founder 2026-10-26, N189): the first that waits, in the
 order above; the others wait for a later Take. Will's question may be
@@ -28,14 +26,12 @@ after who the talk is for, when both are missing; or the key line, once
 who and what are known, N294 item 2), only once the first is answered; a
 Skip ends them.
 
-The settings asks wait for the next visit (founder 2026-10-31, N294 item 8,
-N295; ``visit``): WhatsApp and the home screen are never asked after a
-Take. They come the next time the speaker opens the app, one at a time and
-one per Take, never before their second Take is done, WhatsApp first ("It
-seems you enjoy using WillpowerLab." and its signed ask, at most twice in
-all), the home screen last ("Well, I can see you're doing pretty good." and
-its signed ask, once, where the phone can add it). Was: the Take's one ask,
-WhatsApp from Take 1 (N171), the home screen from Take 2.
+The WhatsApp ask waits for the next visit (founder 2026-10-31, N294 item 8,
+N295; ``visit``) and comes in the bar at the top of the chat, never in the
+chat itself (N391): never after a Take, never before the second Take is
+done, one per Take, at most twice in all. The home-screen ask is deleted
+(N391). Was: the Take's one ask, WhatsApp from Take 1 (N171), the home
+screen from Take 2; then (N294) both written in the chat at the next visit.
 
 Will's question opens with a bridge line in the chat (``BRIDGE``, founder
 2026-10-21, N94), between the summary and the question: two signed lines,
@@ -62,6 +58,11 @@ Advancing (``release``), always under the rows that closed the ask:
   - the ask's form closing in the Lounge, whatever the choice (Save, Not
     now, See prices): POST /v2/user/lounge/after-take;
   - a newer Take's summary: an older held message is let go where it stands.
+The Lounge never advances past Will's question while it waits for its
+answer (``release_from_lounge``, N406 item 1): after a typed answer the
+chain wrote his next question, and the Lounge, not yet reading the thread
+again, asked to let the message go; it came under the question and cut it
+off.
 An ask that no longer applies when its turn comes is skipped. When the
 chain is empty the end comes (``end_rows``): the plan's lines after the
 Take (``plan_flow.after_take``, "That's your 15 minutes for today."), the
@@ -106,18 +107,12 @@ SEE_YOU = "Good job. See you next time."
 #: was "Good job. See you next {day}.", N319 item 7): "tomorrow", else the
 #: weekday, with no "next".
 SEE_YOU_ON = "Good job. See you {day}."
-#: The settings asks of the next visit, in their order, each with its opener
-#: (founder 2026-10-31, N294 item 8, N295).
-VISIT_ASKS = ("whatsapp", "install")
-VISIT_OPENERS = {
-    "whatsapp": "It seems you enjoy using WillpowerLab.",
-    "install": "Well, I can see you're doing pretty good.",
-}
 #: The asks Will opens with a lead-in line (``will_question.lead_in``).
 LEAD_IN_ASKS = ("feedback_check",)
-#: The asks a held message from before N294 may still name: never written
-#: after a Take now, they wait for the next visit.
-_SETTINGS_ASKS = ("whatsapp", "install")
+#: The asks a held message from before N294 or N391 may still name: never
+#: written after a Take now (the WhatsApp ask waits for the next visit's bar;
+#: the home screen is deleted; the CEO panel's asks are in the bar).
+_SETTINGS_ASKS = ("whatsapp", "install", "admin")
 #: WhatsApp is asked at most this many times (founder 2026-10-20).
 _WHATSAPP_TIMES = 2
 #: A visit's settings ask comes once the speaker has done this many Takes
@@ -145,15 +140,6 @@ def _rows(database: Any, user_id: str, limit: int) -> list[dict]:
         return []
 
 
-def _admin_ask(user_id: str) -> bool:
-    try:
-        from services import person_asks
-        return person_asks.next_for(str(user_id)) is not None
-    except Exception as error:  # noqa: BLE001 -- no ask read: the app's own asks
-        logger.warning("after take: admin ask unread user=%s: %s", user_id, error)
-        return False
-
-
 def _no_phone(database: Any, user_id: str) -> bool:
     try:
         from services.whatsapp_notify import whatsapp_state
@@ -170,8 +156,6 @@ def chain(database: Any, user_id: str, *, take_index: int, off: bool,
     Take; ``will_next``: and a second one may follow it once answered
     (N294 item 4)."""
     asks: list[str] = []
-    if take_index >= 2 and _admin_ask(user_id):
-        asks.append("admin")
     if will:
         asks.append("will_question")
     if off:
@@ -216,8 +200,7 @@ def ask_rows(database: Any, ask: Optional[str], *, user_id: str, arc_id: str,
              take: str, at: str, will: Any = None,
              lead_in: Optional[str] = None, take_index: Optional[int] = None) -> list[dict]:
     """The ask's bubble, with Will's lead-in as its words when he has one.
-    The CEO panel's ask is drawn by the Lounge itself (its price words live
-    there), so it has no row here. ``will``: Will's plan
+    ``will``: Will's plan
     (``will_question.Plan``) when his question is the ask; the bridge line
     comes before it, and before his next question nothing."""
     if ask == "will_question":
@@ -298,10 +281,7 @@ def _after(at: str, ms: int) -> str:
 def rows_for(database: Any, user_id: str, meta: dict, ask: str, at: str) -> list[dict]:
     """The rows of one ask of the chain, as written when its turn comes:
     Will's question as put together with the summary (``queued``), the
-    others with his lead-in. [] for the CEO panel's ask (the Lounge draws
-    it) and for an ask that cannot be written."""
-    if ask == "admin":
-        return []
+    others with his lead-in. [] for an ask that cannot be written."""
     if ask in ("will_question", "will_next"):
         rows = [dict(r) for r in (meta.get("queued") or {}).get(ask) or []
                 if isinstance(r, dict)]
@@ -359,12 +339,10 @@ def _let_go(database: Any, user_id: str, row: dict, *, glad: bool, at: Optional[
 
 def _applies(database: Any, user_id: str, ask: str, take: str) -> bool:
     """Whether an ask still applies when its turn comes. A settings ask a
-    held message from before N294 still names waits for the next visit;
+    held message from before N294 or N391 still names is not asked here;
     Will's next question only follows an answered first one."""
     if ask in _SETTINGS_ASKS:
         return False
-    if ask == "admin":
-        return _admin_ask(user_id)
     if ask == "will_next":
         from services.will_question import skipped
         return not skipped(database, user_id, take)
@@ -420,14 +398,12 @@ def release(database: Any, user_id: str, *, take: Optional[str] = None,
             if not _applies(database, user_id, ask, str(meta.get("take_session_id") or "")):
                 continue
             rows = rows_for(database, str(user_id), meta, ask, at)
-            if ask != "admin" and not rows:
+            if not rows:
                 continue
             meta.update({"held_for": ask, "chain": left})
-            kept = database.rewrite_lounge_message(str(user_id), row["client_id"],
-                                                   row.get("body") or "", meta, at=None)
-            if rows:
-                return database.insert_lounge_messages(str(user_id), rows) or []
-            return [kept] if kept else []
+            database.rewrite_lounge_message(str(user_id), row["client_id"],
+                                            row.get("body") or "", meta, at=None)
+            return database.insert_lounge_messages(str(user_id), rows) or []
         if meta.get("next_take") is not True:
             # The chain's first form held the summary itself: let go as it was.
             gone = _let_go(database, user_id, row, glad=glad, at=at)
@@ -436,6 +412,33 @@ def release(database: Any, user_id: str, *, take: Optional[str] = None,
     except Exception as error:  # noqa: BLE001 -- the Lounge advances it on its next close
         logger.warning("after take: not advanced user=%s: %s", user_id, error, exc_info=True)
         return []
+
+
+def release_from_lounge(database: Any, user_id: str) -> list[dict]:
+    """The Lounge asks to advance the chain (POST /v2/user/lounge/after-take:
+    an ask's form closed, or a held message with no ask in front of it):
+    as ``release``, but never past Will's question while it waits for its
+    answer (N406 item 1). After a typed answer the Lounge asked before it
+    read the thread again, and the goodbye came under his next question.
+    The rows written, [] when nothing moved. Never raises."""
+    row = held(database, user_id)
+    take = str(((row or {}).get("metadata") or {}).get("take_session_id") or "")
+    if row and _will_waits(database, user_id, take):
+        return []
+    return release(database, user_id)
+
+
+def _will_waits(database: Any, user_id: str, take: str) -> bool:
+    """Will's question (or its follow-up) on this Take is the newest thing
+    he said and still has no answer (N406 item 1). Unknown: it does not
+    wait."""
+    try:
+        from services.will_question import open_question
+        found = open_question(database, str(user_id))
+    except Exception as error:  # noqa: BLE001 -- the chain goes on as before
+        logger.warning("after take: Will's question unread user=%s: %s", user_id, error)
+        return False
+    return found is not None and str(found.get("take_session_id")) == take
 
 
 def release_older(database: Any, user_id: str) -> None:
@@ -449,63 +452,37 @@ def release_older(database: Any, user_id: str) -> None:
         logger.warning("after take: older not let go user=%s: %s", user_id, error, exc_info=True)
 
 
-def _takes_done(rows: list[dict]) -> list[str]:
-    """The Takes whose walk reached its summary, newest first (``rows``:
-    the thread, newest first). Pure."""
-    seen: list[str] = []
+def _takes_done(rows: list[dict]) -> list[tuple[str, str]]:
+    """The Takes whose walk reached its summary, newest first, each with
+    when its row was written (``rows``: the thread, newest first). Pure."""
+    seen: list[tuple[str, str]] = []
     for r in rows:
         meta = r.get("metadata") or {}
         take = meta.get("take_session_id")
         if (meta.get("next_take") is True or meta.get("summary") is True) and isinstance(take, str) \
-                and take and take not in seen:
-            seen.append(take)
+                and take and take not in [t for t, _ in seen]:
+            seen.append((take, str(r.get("client_created_at") or r.get("created_at") or "")))
     return seen
 
 
-def _visit_ask(database: Any, user_id: str, rows: list[dict], can_install: bool) -> Optional[str]:
-    """The settings ask the next visit brings, WhatsApp first, the home
-    screen last; None when neither applies."""
-    if (_no_phone(database, user_id)
-            and sum(1 for r in rows if (r.get("metadata") or {}).get("offer") == "whatsapp") < _WHATSAPP_TIMES):
-        return "whatsapp"
-    if can_install and not any((r.get("metadata") or {}).get("offer") == "install" for r in rows):
-        return "install"
-    return None
-
-
-def visit(database: Any, user_id: str, *, can_install: bool = False) -> list[dict]:
-    """The speaker opened the app (the Lounge loading, once a visit): one
-    settings ask, when one waits (founder 2026-10-31, N294 item 8, N295).
-    Never before their second Take is done, never while an ask after a Take
-    is in front of them, and at most one per Take: the next waits for the
-    next visit after the next Take. Its opener, then its signed words; the
-    Lounge opens its form. The rows written, [] when nothing is asked.
-    Best-effort: never raises."""
+def visit(database: Any, user_id: str) -> None:
+    """The speaker opened the app (the Lounge loading, once a visit): when
+    the WhatsApp ask is due, it is put in the bar at the top of the chat
+    (``person_asks.ask_from_visit``; founder 2026-10-31, N294 item 8, N295;
+    N391). Never before their second Take is done, one per Take, at most
+    twice in all (the asks the chat wrote before N391 count). Best-effort:
+    never raises."""
     try:
         rows = _rows(database, user_id, _SCAN)
         takes = _takes_done(rows)
-        if len(takes) < _VISIT_FROM or any(_is_held(r) for r in rows[:_LOOK]):
-            return []
-        newest = takes[0]
-        if any((r.get("metadata") or {}).get("visit_after") == newest for r in rows):
-            return []  # this Take's visit already asked
-        from services.will_question import open_question
-        if open_question(database, str(user_id)):
-            return []
-        ask = _visit_ask(database, user_id, rows, can_install)
-        if not ask:
-            return []
-        from services.chat_app_context import OFFER_PROMPTS
-        from services.lounge_messages import thread_stamp
-        return database.insert_lounge_messages(str(user_id), [{
-            "client_id": str(uuid.uuid5(_NAMESPACE, f"{user_id}:{newest}:visit:{ask}")),
-            "role": "bot", "kind": "text",
-            "body": f"{VISIT_OPENERS[ask]} {OFFER_PROMPTS[ask]}",
-            "metadata": {"offer": ask, "visit_after": newest, "take_session_id": newest},
-            "client_created_at": thread_stamp(database, user_id)}]) or []
+        if len(takes) < _VISIT_FROM or not _no_phone(database, user_id):
+            return
+        in_chat = sum(1 for r in rows if (r.get("metadata") or {}).get("offer") == "whatsapp"
+                      and (r.get("metadata") or {}).get("visit_after"))
+        from services import person_asks
+        person_asks.ask_from_visit(str(user_id), since=takes[0][1], most=_WHATSAPP_TIMES - in_chat)
     except Exception as error:  # noqa: BLE001 -- the Lounge opens either way
-        logger.warning("after take: visit ask not written user=%s: %s", user_id, error, exc_info=True)
-        return []
+        logger.warning("after take: visit ask not made user=%s: %s", user_id, error, exc_info=True)
 
 
 def passes(resp: dict) -> bool:

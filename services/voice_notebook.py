@@ -24,8 +24,11 @@ A private notebook in the Lounge, founder only for now (ring row
 The personal lane: notes are read by the person and by Will (``prompt_block``,
 Will's chat) and by nobody else; never by a coach, never in the Ideal Text.
 Before the first note the person is asked once, in the shape the Lounge
-draws as an offer: "Your notes are private. Only you and Will read them.
-Keep a voice notebook?" Yes | Not now. A note that sounds like a crisis is
+draws as an offer, under the mic line and the three privacy lines: "Do you
+understand the rules and want this feature on?" Yes | Not now (N411; was
+"Your notes are private. Only you and Will read them. Keep a voice
+notebook?"). Every fifth note that names someone gets the short line
+"🔒 Security disclaimer" (``privacy_after_note``). A note that sounds like a crisis is
 kept and answered at once with the chat's existing safety reply.
 
 Tables: voice_notebook_notes, voice_notebook_audio, voice_notebook_consent
@@ -45,10 +48,17 @@ FEATURE = "voice_notebook"
 OFFER = "voice_notebook"
 #: The signed words (founder 2026-10-20). No new words without the founder's OK.
 COPY = {
-    "ask": "Your notes are private. Only you and Will read them. Keep a voice notebook?",
+    # N411 (signed 2026-11-03): the Lounge draws the mic line and the three
+    # grey privacy lines above this ask (frontend loungeOffers NOTEBOOK_INTRO).
+    "ask": "Do you understand the rules and want this feature on?",
+    # N411 item 3: under every fifth # note that names someone; a tap opens
+    # the three privacy lines (frontend PRIVACY_LINE).
+    "privacy_line": "🔒 Security disclaimer",
     "yes": "Yes",
     "not_now": "Not now",
     "noted": "Noted.",
+    # N411 item 1 (signed 2026-11-03): after Yes with no note waiting.
+    "first": "What's on your mind today?",
 }
 CHOICES = ("yes", "not_now")
 MAX_SECONDS = 300
@@ -192,6 +202,11 @@ def decide(database: Any, user_id: str, choice: str) -> list[dict]:
         note = _save(database, user_id, "typed", held)
         rows.append(_row("bot", reply_to(held), {"voice_note": note.get("id")},
                          _after(at, 1), f"{user_id}:noted:{note.get('id')}"))
+    elif choice == "yes":  # N411 item 1: then the first question
+        rows += [_row("bot", COPY["noted"], {"voice_notebook": "welcome"}, _after(at, 1),
+                      f"{user_id}:yes-noted:{at}"),
+                 _row("bot", COPY["first"], {"voice_notebook": "welcome"}, _after(at, 2),
+                      f"{user_id}:first:{at}")]
     return database.insert_lounge_messages(str(user_id), rows) or []
 
 
@@ -214,6 +229,40 @@ def preview(database: Any, user_id: str, adapter: Any, audio: bytes, *,
     return (result.get("text") or "").strip()
 
 
+#: A live key opens its session within this many seconds or not at all.
+LIVE_KEY_SECONDS = 60
+
+
+def live_session(database: Any, user_id: str, adapter: Any) -> dict:
+    """A short-lived key to stream a note being said to the transcription
+    provider, the words coming back as they are said (N396; amends N199
+    item 2). Issued under the caller's authorization (``adapter``); the
+    stream is a preview, nothing in it is kept: the whole recording, sent
+    when the note is, stays the kept text (N194 item 2)."""
+    if not enabled(database, user_id):
+        raise NotebookError("NOT_FOUND", "Not found.", 404)
+    if not consented(database, user_id):
+        raise NotebookError("CONSENT_REQUIRED", "Not yet.", 409)
+    opened = adapter.open_live_transcription(seconds=LIVE_KEY_SECONDS)
+    if not opened:
+        raise NotebookError("PROVIDER_UNAVAILABLE", "Not now.", 503)
+    return opened
+
+
+def record_live_seconds(user_id: str, live_ms: Optional[int]) -> None:
+    """The streamed seconds of a note's live words, for the cost table:
+    the provider bills them by the second, as the kept transcription."""
+    if not live_ms or live_ms <= 0:
+        return
+    from services.authorized_provider import LIVE_TRANSCRIPTION_MODEL
+    from services.llm_usage import record_audio_usage
+    record_audio_usage(
+        surface="voice_notebook_live_stream",
+        seconds=min(live_ms, (MAX_SECONDS + 5) * 1000) / 1000.0,
+        model=LIVE_TRANSCRIPTION_MODEL, user_id=str(user_id),
+        session_id=str(uuid.uuid4()))
+
+
 def _kept_already(database: Any, user_id: str, seed: str) -> list[dict]:
     """The rows of a note already kept under this seed, or []."""
     mine = database.get_lounge_message_by_client_id(
@@ -227,7 +276,8 @@ def _kept_already(database: Any, user_id: str, seed: str) -> list[dict]:
 
 def add_voice_note(database: Any, user_id: str, adapter: Any, audio: bytes, *,
                    filename: str, content_type: str,
-                   duration_ms: Optional[int], key: Optional[str] = None) -> list[dict]:
+                   duration_ms: Optional[int], key: Optional[str] = None,
+                   live_ms: Optional[int] = None) -> list[dict]:
     """A recorded note: transcribed under the caller's authorization
     (``adapter``), cleaned, kept with its audio, and written to the thread as
     "# " + the cleaned words, then the reply. With the app's ``key``, a note
@@ -245,6 +295,7 @@ def add_voice_note(database: Any, user_id: str, adapter: Any, audio: bytes, *,
         kept = _kept_already(database, user_id, seed)
         if kept:
             return kept
+    record_live_seconds(user_id, live_ms)
     result = adapter.transcribe_audio(
         audio, filename, usage_surface="voice_notebook",
         usage_user_id=str(user_id), usage_session_id=str(uuid.uuid4())) or {}
@@ -290,6 +341,186 @@ def fix_note(database: Any, user_id: str, client_id: str, text: str) -> dict:
     if not fixed:
         raise NotebookError("V2_ERROR", "Failed to keep the words", 500)
     return fixed
+
+
+#: N411 item 3: every fifth # note that names someone gets the short line.
+PRIVACY_EVERY = 5
+#: How far back the count looks; a person writes far fewer notes than this
+#: between two reminders.
+_PRIVACY_WINDOW = 400
+_NAMES_READ = (
+    "You read one short private note. Answer in JSON. "
+    '{"names": true} when the note names a real person (a first name, a surname, '
+    "a nickname, or the writer's own name), or gives an address, a phone number, "
+    'an email or a health detail. Otherwise {"names": false}. Roles ("my '
+    'colleague", "my boss", "mum", "the client") are not names, and neither are '
+    "companies, products or places.")
+
+
+def _names_someone(text: str, user_id: str) -> bool:
+    """Does the note name someone, or hold a fragile detail? One small call,
+    under the request's processing authorization like every note read.
+    False on any failure: a missed reminder, never a wrong one."""
+    try:
+        from services.llm import chat_complete
+        from services.llm_config import SPEC_NOTE_NAMES
+        result = chat_complete(spec=SPEC_NOTE_NAMES, system=_NAMES_READ,
+                               user=text[:2000], surface="voice_notebook_privacy",
+                               user_id=str(user_id))
+        parsed = getattr(result, "parsed", None) if result else None
+        return isinstance(parsed, dict) and parsed.get("names") is True
+    except Exception as error:  # noqa: BLE001 -- the note is kept either way
+        logger.warning("voice notebook: names read failed user=%s: %s", user_id, error)
+        return False
+
+
+def _noted_row(rows: list[dict], note_id: str) -> Optional[dict]:
+    """The "Noted." row of one note, from the thread's newest rows."""
+    return next((r for r in rows if r.get("role") == "bot"
+                 and str((r.get("metadata") or {}).get("voice_note") or "") == note_id), None)
+
+
+def _named_since_reminder(rows: list[dict], noted: dict) -> int:
+    """Marked notes since the last reminder, this one included."""
+    count = 1
+    for row in rows:
+        m = row.get("metadata") or {}
+        if row is noted:
+            continue
+        if m.get("privacy_line") == "names":
+            break
+        if row.get("role") == "bot" and m.get("names_someone") is True:
+            count += 1
+    return count
+
+
+def privacy_after_note(database: Any, user_id: str) -> list[dict]:
+    """Under the newest note's "Noted." (N411 item 3): the note is marked when
+    it names someone, and every fifth marked note since the last reminder gets
+    the short line "🔒 Security disclaimer". Only a reminder: nothing is
+    offered, changed or deleted. [] most of the time."""
+    if not consented(database, user_id) or not enabled(database, user_id):
+        return []
+    notes = database.list_voice_notes(str(user_id), limit=1) or []
+    newest = notes[-1] if notes else {}
+    raw = newest.get("text_clean")
+    text: str = raw if isinstance(raw, str) else ""
+    if not newest.get("id") or not text.strip() or _crisis(text):
+        return []
+    note_id = str(newest["id"])
+    rows = database.get_lounge_messages_page(str(user_id), limit=_PRIVACY_WINDOW) or []
+    noted = _noted_row(rows, note_id)
+    meta = (noted or {}).get("metadata") or {}
+    if not noted or "names_someone" in meta:
+        return []  # not in the thread, or read already
+    named = _names_someone(text, user_id)
+    database.rewrite_lounge_message(str(user_id), str(noted["client_id"]),
+                                    noted.get("body") or "", {**meta, "names_someone": named})
+    if not named or _named_since_reminder(rows, noted) % PRIVACY_EVERY:
+        return []
+    from services.lounge_messages import thread_stamp
+    row = _row("bot", COPY["privacy_line"], {"privacy_line": "names", "privacy_note": note_id},
+               thread_stamp(database, user_id), f"{user_id}:privacy:{note_id}")
+    return database.insert_lounge_messages(str(user_id), [row]) or []
+
+
+#: N411 items 1 and 5: before there are notes, Will may spot a strength in
+#: the speaker's Takes and open the notebook's introduction with it.
+INTRO_TAKES = 3
+_INTRO_SCAN = 500
+_SPOT_READ = (
+    "You read the short summaries a speaking coach wrote after a speaker's last "
+    "Takes (recordings of their talk). Find one strength that shows in at least "
+    "two of them. Answer in JSON: {\"strength\": \"one sentence to the speaker\"} "
+    "or {\"strength\": null}. The sentence starts \"In your last three Takes you\" "
+    "and names what they do well in plain words. No numbers, no scores, no "
+    "verdicts, no names of people, no advice. Only what the summaries say; never "
+    "invent. When no strength shows in two of them, answer null.")
+
+
+def _summaries(rows: list[dict]) -> list[dict]:
+    """The Takes' closing summaries in the thread, newest first."""
+    return [r for r in rows if r.get("role") == "bot"
+            and (r.get("metadata") or {}).get("summary") is True and (r.get("body") or "").strip()]
+
+
+def _intro_due(database: Any, user_id: str, rows: list[dict]) -> bool:
+    """Three summaries since the last introduction (or ever), the newest not
+    read for one yet, no ask waiting at the bottom, nothing held after a
+    Take, and the person neither onboarded nor already in (N411 item 5)."""
+    decision = (database.get_voice_notebook_consent(str(user_id)) or {}).get("decision")
+    if decision == "yes" or not rows or (rows[0].get("metadata") or {}).get("offer"):
+        return False
+    since = []
+    for row in rows:
+        if (row.get("metadata") or {}).get("notebook_intro") == "takes":
+            break
+        since.append(row)
+    found = _summaries(since)
+    if len(found) < INTRO_TAKES or (found[0].get("metadata") or {}).get("notebook_intro_read"):
+        return False
+    from services import after_take, plan_flow
+    return not plan_flow.onboarding(database, user_id) and after_take.held(database, user_id) is None
+
+
+def _spotted(database: Any, found: list[dict], user_id: str) -> Optional[str]:
+    """One strength from the last Takes' summaries, in one sentence, or None.
+    Under the newest Take's processing authorization, as its summary was."""
+    take = str((found[0].get("metadata") or {}).get("take_session_id") or "")
+    lines = [f"{i + 1}. {' '.join(str(r.get('body') or '').split())[:1200]}"
+             for i, r in enumerate(found[:INTRO_TAKES])]
+
+    def read() -> Optional[str]:
+        from services.llm import chat_complete
+        from services.llm_config import SPEC_NOTEBOOK_SPOT
+        result = chat_complete(spec=SPEC_NOTEBOOK_SPOT, system=_SPOT_READ, user="\n".join(lines),
+                               surface="voice_notebook_intro", user_id=str(user_id))
+        parsed = getattr(result, "parsed", None) if result else None
+        said = parsed.get("strength") if isinstance(parsed, dict) else None
+        return said.strip() if isinstance(said, str) else None
+
+    if not take:
+        return None
+    from services.take_summary import _under_authority
+    said = _under_authority(database, take, read)
+    # Words only (Never 1): a sentence with a digit, or that is not one, is dropped.
+    if not said or re.search(r"\d", said) or len(said) > 280:
+        return None
+    return said
+
+
+def intro_from_takes(database: Any, user_id: str) -> list[dict]:
+    """The Lounge opened (N411 items 1, 5): when due, "We spotted a
+    strength!", the strength in one sentence, and the notebook's ask, with
+    the intro the Lounge draws above it. The newest summary is marked read
+    either way, so Will reads again only after the next Take. [] most of
+    the time; never raises."""
+    try:
+        if not enabled(database, user_id):
+            return []
+        rows = database.get_lounge_messages_page(str(user_id), limit=_INTRO_SCAN) or []
+        if not _intro_due(database, user_id, rows):
+            return []
+        found = _summaries(rows)
+        newest = found[0]
+        database.rewrite_lounge_message(
+            str(user_id), str(newest["client_id"]), newest.get("body") or "",
+            {**(newest.get("metadata") or {}), "notebook_intro_read": True})
+        said = _spotted(database, found, user_id)
+        if not said:
+            return []
+        from services.lounge_messages import thread_stamp
+        from services.strengths import COPY as STRENGTH_COPY
+        at = thread_stamp(database, user_id)
+        meta = {"notebook_intro": "takes", "take_session_id": newest["metadata"].get("take_session_id")}
+        rows_out = [_row("bot", STRENGTH_COPY["head"], meta, at, f"{user_id}:intro:{at}:head"),
+                    _row("bot", said, meta, _after(at, 1), f"{user_id}:intro:{at}:case"),
+                    _row("bot", COPY["ask"], {**meta, "offer": OFFER}, _after(at, 2),
+                         f"{user_id}:intro:{at}:ask")]
+        return database.insert_lounge_messages(str(user_id), rows_out) or []
+    except Exception as error:  # noqa: BLE001 -- the Lounge opens either way
+        logger.warning("voice notebook: intro not made user=%s: %s", user_id, error, exc_info=True)
+        return []
 
 
 #: A leading "#note" is read as "#" (N253): the message box offers "# note".

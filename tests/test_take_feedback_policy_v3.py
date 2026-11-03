@@ -88,6 +88,14 @@ from services.take_feedback_policy_v3 import (
 )
 
 
+def _rushed(score):
+    """A weak voice measures as running on: barely a pause (the AI clip's
+    pause problem, below its absolute line whatever the speaker's usual;
+    N425: the weakest is a measured voice problem). A sound voice pauses as
+    a speaker usually does."""
+    return 0.15 if score is None or score >= 0 else 0.02
+
+
 def _piece(index, slide, words, score):
     text = " ".join(f"word{index}x{n}" for n in range(words))
     return {
@@ -123,6 +131,7 @@ def _frame(take_index=2):
                 "version": "voice-confidence-universal-v3",
                 "score": piece["score"],
             },
+            "pause_ratio": _rushed(piece["score"]),
         },
     } for piece in pieces]
     suggestions = {
@@ -238,7 +247,7 @@ def _deck_frame(take_index):
         if has_snippet:
             metrics = ({"voice_confidence": {
                 "version": "voice-confidence-universal-v3", "score": score,
-            }} if score is not None else {})
+            }, "pause_ratio": _rushed(score)} if score is not None else {})
             snippets.append({
                 "id": f"s{index}", "session_id": "take-2",
                 "recording_id": "recording-1",
@@ -360,7 +369,7 @@ def _practise_frame(rewrite, scores=(0.9, -0.2, -0.6), shown=_SHOWN_HEDGED):
                          "start_offset_ms": index * 5000, "duration_ms": 5000,
                          "transcript": _UMS if index == 1 else None,
                          "metrics": {"voice_confidence": {
-                             "version": "voice-confidence-universal-v3", "score": score}}})
+                             "version": "voice-confidence-universal-v3", "score": score}, "pause_ratio": _rushed(score)}})
     start = pieces[1]["start"] + 10
     note = {"id": "r-clip", "feedback_family": "rewrite_clarity", "snippet_id": "s1",
             "take_session_id": "take-2", "span": {"start": start, "end": start + 40},
@@ -421,7 +430,7 @@ def _one_said_frame(said):
                          "start_offset_ms": index * 5000, "duration_ms": 5000,
                          "transcript": said if index == 1 else None,
                          "metrics": {"voice_confidence": {
-                             "version": "voice-confidence-universal-v3", "score": score}}})
+                             "version": "voice-confidence-universal-v3", "score": score}, "pause_ratio": _rushed(score)}})
     served = " ".join(piece["text"] for piece in pieces)
     rows = evidence_backed_rewrite_candidates(served, take_session_id="take-2", snippet_id="s0")
     frame = build_shadow_frame(
@@ -472,7 +481,7 @@ def _clips_frame(clips, **options):
                          "start_offset_ms": index * 5000, "duration_ms": 5000,
                          "transcript": transcript,
                          "metrics": {"voice_confidence": {
-                             "version": "voice-confidence-universal-v3", "score": score}}})
+                             "version": "voice-confidence-universal-v3", "score": score}, "pause_ratio": _rushed(score)}})
     served = " ".join(piece["text"] for piece in pieces)
     return build_shadow_frame(
         take_document={"take_session_id": "take-2", "text": served, "pieces": pieces},
@@ -612,9 +621,11 @@ def test_a_short_take_still_shows_two_moments():
     halves = _clips(("h0", 0, 30, 0.9), ("h1", 0, 30, 0.8))
     apart = _clips(("i0", 0, 10, 0.9), ("i1", 0, 20, -0.6), ("i2", 0, 15, -0.6),
                    ("i3", 0, 10, 0.8))
+    # Cut for two, the second shows only with something the AI clip can
+    # work on (N425): g2 and h1 are confident voices, so their best alone.
     for take, cut, best in (
-            (alone, [(0, 75, None), (1, 30, "moment_split"), (1, 45, "moment_split")], "g1 g2"),
-            (halves, [(0, 30, "moment_split"), (0, 30, "moment_split")], "h0 h1"),
+            (alone, [(0, 75, None), (1, 30, "moment_split"), (1, 45, "moment_split")], "g1"),
+            (halves, [(0, 30, "moment_split"), (0, 30, "moment_split")], "h0"),
             (apart, [(0, 30, "moment_split"), (0, 25, "moment_split")], "i0 i2")):
         frame = _clips_frame(take)
         assert _cut(frame) == cut, take
@@ -668,7 +679,7 @@ def test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version():
                          "start_offset_ms": index * 5000, "duration_ms": 5000,
                          "transcript": _HEDGED if index == 1 else None,
                          "metrics": {"voice_confidence": {
-                             "version": "voice-confidence-universal-v3", "score": score}}})
+                             "version": "voice-confidence-universal-v3", "score": score}, "pause_ratio": _rushed(score)}})
     served = " ".join(piece["text"] for piece in pieces)
     rows = evidence_backed_rewrite_candidates(served, take_session_id="take-2", snippet_id="s0")
     frame = build_shadow_frame(
@@ -720,7 +731,7 @@ def _paced_frame(wpms, **options):
         snippets.append({"id": sid, "session_id": "take-2", "recording_id": "recording-1",
                          "start_offset_ms": index * 5000, "duration_ms": 5000,
                          "metrics": {"wpm": wpm, "voice_confidence": {
-                             "version": "voice-confidence-universal-v3", "score": score}}})
+                             "version": "voice-confidence-universal-v3", "score": score}, "pause_ratio": _rushed(score)}})
     served = " ".join(piece["text"] for piece in pieces)
     return build_shadow_frame(
         take_document={"take_session_id": "take-2", "text": served, "pieces": pieces},
@@ -751,7 +762,7 @@ def _filler_frame(filled, **options):
         snippets.append({"id": sid, "session_id": "take-2", "recording_id": "recording-1",
                          "start_offset_ms": index * 5000, "duration_ms": 5000,
                          "metrics": {"voice_confidence": {
-                             "version": "voice-confidence-universal-v3", "score": score}}})
+                             "version": "voice-confidence-universal-v3", "score": score}, "pause_ratio": _rushed(score)}})
     served = " ".join(piece["text"] for piece in pieces)
     return build_shadow_frame(
         take_document={"take_session_id": "take-2", "text": served, "pieces": pieces},
@@ -777,8 +788,11 @@ def test_on_a_plan_my_level_takes_the_slot_whose_tool_fits_it(monkeypatch):
     # as off a plan.
     assert _slots(_filler_frame("p0", plan_level="say_once")) == plain
     # The pace levels go with the tempo step, so no block carries them; with
-    # no stretch to practise, the fix is a moment as off a plan.
-    assert _slots(_paced_frame((140, 140, 140, 200), plan_level="key_line")) == plain
+    # no stretch to practise, the fix is a moment as off a plan: the clip
+    # said far faster than the speaker's usual, the strongest measured
+    # problem (N425).
+    paced_plain = [("p0", "strongest", None, None), ("p3", "weakest", "voice", None)]
+    assert _slots(_paced_frame((140, 140, 140, 200), plan_level="key_line")) == paced_plain
     # A pause week whose Take has a stretch outside the green: the Sniper is
     # the one fix, so no moment is (N309 item 1); their best stays.
     from services import tempo_stretch
@@ -788,18 +802,21 @@ def test_on_a_plan_my_level_takes_the_slot_whose_tool_fits_it(monkeypatch):
                                tempo_step=True)) == [("p0", "strongest", None, None)]
     # Off a plan, rushing that weighs less than the weakest needs changes
     # nothing: the fix is a moment (N323 item 6).
-    assert _slots(_paced_frame((140, 140, 140, 200), tempo_step=True)) == plain
+    monkeypatch.setattr(tempo_stretch, "pick_for_take",
+                        lambda take, rows: {"index": 0, "outside": 0.2, "reading": "rushed"})
+    assert _slots(_paced_frame((140, 140, 140, 200), tempo_step=True)) == paced_plain
 
 
 def test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan(monkeypatch):
     """Founder 2026-11-02 (N323 item 6): "yes, the pace game for everyone
-    when rushing is the issue". The weakest (p2) falls short of full
-    willfidence by about 0.6; a stretch rushed for 0.9 of its time
-    outweighs it."""
+    when rushing is the issue". The moment the walk could fix (p3, said far
+    faster than the speaker's usual, the strongest measured voice problem,
+    N425) falls short of full willfidence by about a third; a stretch rushed
+    for 0.9 of its time outweighs it."""
     from services import tempo_stretch
     stretch = {"index": 0, "outside": 0.9, "reading": "rushed"}
     monkeypatch.setattr(tempo_stretch, "pick_for_take", lambda take, rows: stretch)
-    plain = [("p0", "strongest", None, None), ("p2", "weakest", "voice", None)]
+    plain = [("p0", "strongest", None, None), ("p3", "weakest", "voice", None)]
     paced = (140, 140, 140, 200)
     # No plan, rushing the biggest issue: the Sniper is the one thing, so no
     # moment is; their best stays.
@@ -819,8 +836,9 @@ def test_a_sentence_with_my_helper_words_gives_way_to_the_next():
     moment and helper words, go for the next confident moment"."""
     from services.slide_helper_words import held_at_take
 
+    # q3 is the weak voice the AI clip can work on (N425: a measured problem).
     take = _clips(("q0", 0, 75, 0.95), ("q1", 1, 75, 0.8), ("q2", 2, 75, 0.5),
-                  ("q3", 3, 75, 0.3))
+                  ("q3", 3, 75, -0.3))
 
     def shown(**options):
         return [clip for clip, _ in _moments(_clips_frame(take, **options))]
@@ -893,7 +911,7 @@ def test_a_fix_that_worked_on_a_slide_is_not_given_there_again(monkeypatch):
     paced = (140, 140, 140, 200)
     monkeypatch.setattr(tempo_stretch, "stays_inside", lambda snippets, ids, reading: True)
     assert _slots(_paced_frame(paced, tempo_step=True, last_fixes=pace)) == [
-        ("p0", "strongest", None, None), ("p2", "weakest", "voice", None)]
+        ("p0", "strongest", None, None), ("p3", "weakest", "voice", None)]
     # Still past the green there: the pace game again.
     monkeypatch.setattr(tempo_stretch, "stays_inside", lambda snippets, ids, reading: False)
     assert _slots(_paced_frame(paced, tempo_step=True, last_fixes=pace)) == [

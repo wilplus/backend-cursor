@@ -18,7 +18,7 @@ This repo: **backend** (Flask, Railway, Supabase). The frontend is
 
 1. **No scores, numbers or verdicts shown to speakers.** Feedback is in words. A processing-progress percentage and a token price are not about the speaker and are allowed (founder, 2026-10-19), and so is a count of where the speaker is in their plan ("Practice 2 of 9"); their own 1 to 10 answers are never shown back (N178).
 2. **No coach sees the machine's guess before answering.** Coach judgements stay blind.
-3. **Never break record → process → Ideal Text → next Take.** Coaches and exercises are never in the way; the plan's questions come once, before the first Take, one at a time, and the first Take follows them; before any other Take, only the feelings check, with a Skip (N136, N140, N178, N262, N319, N325).
+3. **Never break record → process → Ideal Text → next Take.** Coaches and exercises are never in the way; the plan's questions come once, inside the first Take, one slide at a time; before any other Take, only the feelings check, with a Skip (N136, N140, N178, N262, N319, N325, N401).
 4. **No new words on screen without the founder's OK.**
 5. **The Ideal Text is only what the speaker said in their latest Take.** Their helper words stay until they pick new ones. Every old version stays in the history.
 
@@ -77,7 +77,8 @@ ends by naming where it landed ("The rules:" or "No rules page").
 
 - Branch from `main` → PR → checks green → squash-merge. "Merge when green" is standing permission.
 - Check locally before pushing: backend `bash scripts/local_ci.sh`, frontend `bash scripts/local_ci.sh`.
-- **Merging a migration runs it in production.** Make it idempotent (`IF NOT EXISTS`) and never drop anything. Set any environment variable it needs on every Railway service *before* merging.
+- **A merge does not deploy; releases go out every two hours.** A GitHub Action moves the `production` branch to the newest green `main`, and Railway and Vercel deploy from it. "Run workflow" on *Release to production* in the Actions tab releases at once (N426).
+- **A merged migration runs in production at the next release.** Make it idempotent (`IF NOT EXISTS`) and never drop anything. Set any environment variable it needs on every Railway service *before* merging.
 - New migrations get an outside review (GPT or Grok) before merging.
 - Every speaker's recording and every provider call goes through the processing-authorization path. No shortcuts.
 

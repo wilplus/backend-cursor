@@ -9760,3 +9760,758 @@ The rules: frontend
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
 No migration.
+
+**N373 · The fix never keeps the speaker waiting on its AI clip (founder,
+the Claude Code chat, 3 November 2026, on items 1 and 2 of an interaction
+audit of the fix step: "build 1 and 2").** For the One thing walk's fix
+(N309 item 1, C4, N370):
+1. **Ten seconds, then the words.** A clip still being made ten seconds
+after the fix is on screen gives way to the no-clip bubble of N370 (the
+tip in words, the exercise's video and instruction, "Your turn."). A clip
+that comes later joins those words as its player alone, under them, with
+its label (L1); the words are never replaced. Was: the dots stood in the
+player's place for as long as the clip took, up to about two and a half
+minutes while the voice was still being made, with "Try it" live.
+2. **Never above a try.** Once the first try has begun, a clip the speaker
+has not yet seen is not shown: it would land above the try, out of sight.
+A clip seen before the try stays. A walk played again shows what is there.
+Was: a clip could arrive in the bubble above a try in progress.
+3. Nothing to sign: no new words. The wait is a constant
+(`AI_CLIP_WAIT_MS`, frontend).
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C4. No migration.
+
+**N374 · A short Take keeps its one fix, and every walk leaves helper words
+(founder, the Claude Code chat, 3 November 2026, on the page "The Walk With
+No Fix", <https://claude.ai/artifact/C39bmTD3XAUksneAU7dR9U>, after a new
+speaker's first Take showed only their best, with no fix and no helper
+words: "go with the recommendations", 1A and 2A).** For N289 item 5, N309
+items 1 and 3 and N323 item 3:
+1. **The AI clip when the Clearer version does not pass.** When the
+between's Clearer version fails the gate and no other paragraph is left for
+the weakest (a Take of two paragraphs), that moment takes the AI clip
+itself, if it has 8 words or more and a sound read. Takes recorded from
+3 November 2026, 11:00 UTC; one recorded before keeps the walk it had. Was
+(N289 item 5): it was praised as a next best and left out, so the walk was
+their best alone.
+2. **Helper words, always.** When the fix gives none (no fix at all, a tip
+that quotes no phrase, a stretch past eight words), their best's own words,
+whole, are the helper words, with the signed line "These are your helper
+words. …", saved like the fix's. Was (N309 item 3, N323 item 3): none, and
+the walk went on to "Lesson done.".
+3. Nothing to sign: no new words.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2, C3 and H1. No migration.
+
+**N375 · An older Take's Ideal Text card opens that Take's words (founder,
+the Claude Code chat, 3 November 2026: "when I click Take 1.0 ... and I open
+the ideal text, what I can see is exactly the ideal text I have recorded last
+time ... So 1.0 bubble and the walk refers to what was there. It stays as it
+was. And the next take overwrites it ... but the second take's bubble stay as
+it was. So it opens the text that was recorded for that time").** For rule 5
+and frontend `ideal-text.md` and `feedback-walk-and-chat.md` F1:
+1. **Each Ideal Text card in the chat opens its own version.** The newest
+card of a project opens the Ideal Text page as now. An older card (1.0 when
+the project is at 3.0) opens the words that Take made, as they were then,
+read from the versions the History under ⋯ already keeps.
+2. **An older version is read only,** in the page's frame: the project's
+name, the caption "AI-generated text · Take {N}", that version's paragraphs,
+✕ and "Close". No helper words, marks, edits, ⋯ or "Record Take {N}". Rule 5
+stands: the Ideal Text is what the latest Take said; an old version is shown,
+never brought back.
+3. A card whose version has no saved words (made before the history
+existed), or whose version is still the newest, opens the page as now.
+4. Was: every card opened the live page, its version a history marker only
+(the code since 29 July 2026, never logged).
+5. Nothing to sign: no new words.
+The rules: frontend
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+F1. No migration.
+
+**N376 · An older Take's Ideal Text, slide by slide and one screen per tap
+(founder, the Claude Code chat, 3 November 2026, on the interaction audit of
+N375: "build 1 and 2").** For N375 items 1 and 2:
+1. **One screen per tap.** Which page an Ideal Text card opens (that Take's
+version, or the live page) is known before either is drawn; a press on an
+older card starts its read, as a press on the newest starts the live page's.
+Was: a loader first, then sometimes the live page in its place.
+2. **Slide by slide.** An older version shows its paragraphs as the live page
+does: grouped by slide, each with its slide's picture and kicker ("Slide
+{N}", "Your talk"), on the deck that Take was said on (N257: a Take's deck is
+its own). A version whose slide map cannot be proved shows its words alone.
+The History under ⋯ serves each version's slides and deck. Was: plain
+paragraphs.
+3. Nothing to sign: no new words.
+The rules: frontend
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+F1. No migration.
+
+**N377 · The fix's words land like every message, and no colon points at
+nothing (founder, the Claude Code chat, 3 November 2026, on items 3 and 8
+of the interaction audit of the fix step: "build 3 and 8 too").** For the
+One thing walk's fix (N309 item 1, C4, N370, N373):
+1. **The words land, never swap.** The no-clip bubble of N370, when it
+takes the place of the AI bubble (the clip waited out or failed) or first
+appears, lands with the walk's bubble motion (`walk-bubble-in`), once per
+fix in the page's life; a screen drawn again shows it at once. Reduce
+motion makes it instant, as everywhere. Was: the AI bubble's label and dots
+vanished and the bubble changed shape with no motion.
+2. **No colon without its clip.** "Say this one like your confident
+moment:" is said only when their best's clip follows it, in the walk and
+the chat alike; with no such clip the fix opens on its own clip and the
+bubble after it. Was: the line could end on a colon with nothing after it.
+3. Nothing to sign: no new words.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C4. No migration.
+
+**N378 · Back goes back by one in the chats, and never off the list
+(founder, the Claude Code chat, 3 November 2026: "When we are in the chat and
+the list of chats, and I swipe to the right as if I want to go back ... when
+I do it abruptly, and I usually do, and most users usually do, it brings me
+back to the login page. Please fix that. So it only goes back by one, and you
+cannot go back from the list of chats").** For N322, N334 and N360:
+1. **From a chat,** Will's or a person's, Back (the iPhone's swipe, the
+browser's Back) goes back by one, to the list of chats, however abrupt the
+swipe.
+2. **From the list,** Back goes nowhere: the list is the bottom of /chat, and
+Back never leaves it for the sign-in page.
+Then, on the audit of these screens (the same chat: "build 1, 2 and 3"):
+3. **The iPhone app's swipe:** in the app, a swipe from the left edge goes
+back from a chat, Will's or a person's, following the finger; let go early
+and it springs back. Not from the list, nor over a screen opened on top of
+the chat.
+4. **The slide:** a person's chat comes in from the right and goes out to the
+right on Back, over the list; Will's chat, which is the Lounge underneath,
+opens as the list slides away to the left and closes as it comes back from
+the left. About a third of a second, iOS's own easing; none when the phone
+asks for less motion.
+5. **The list keeps its place:** back from a chat, the list is scrolled where
+you left it, and the row you came from is lit grey for a moment and fades.
+No new words on screen; this changes the locked "One bar" screens' motion
+only, with the founder's OK above.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1. No migration.
+
+**N379 · One example in the fix, read aloud as it lands, one call to try
+(founder, the Claude Code chat, 3 November 2026, on items 4, 6 and 7 of the
+interaction audit of the fix step: "build 4 to 7 too"; item 5 waits, below).**
+For the One thing walk's fix (N309 item 1, C4, N370, N373, N377):
+1. **One example.** When the fix has its own example (the AI clip, or the
+exercise's video), their best's clip shrinks to a small chip under "Say
+this one like your confident moment:", labelled "Your confident moment"
+(signed, N289 item 7), so the example to copy is the one with the tip.
+With no other example, their best's clip stays full, as it is the example.
+2. **Read aloud as it lands.** The fix's bubbles after their best are a
+polite live region, so a screen reader reads the tip, the clip's label or
+the words as they land. The AI bubble's typing dots and its label "AI
+version of your voice" are not read while no clip is ready (the dots are
+hidden from assistive tech; the label is read once the player is there).
+3. **One call to try.** "Your turn." leaves the fix, in the walk and the
+chat: the "Try it" button under it says it. "Close. Once more." after a
+miss stays. Was (N309): "Your turn." closed the fix's bubble above "Try it".
+4. **Item 5 waits.** A tip that quotes no phrase (pace, fillers) would name
+its sentence; quoting the whole sentence is against the AI voice lock (§3:
+the speaker's two to four target words, never the whole sentence), so it
+waits for the founder's call.
+Nothing new to sign: "Your confident moment" is signed (N289 item 7).
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C4. No migration.
+
+**N380 · An older Take's Ideal Text says which Take it is, leads to the
+latest, and keeps the helper words of its time (founder, the Claude Code
+chat, 3 November 2026, on the interaction audit of N375: "build 4 to 7, you
+have my OK on the words", then "go" on the words below).** For N375 and N376:
+1. **It says which Take it is.** One line above the text of an older
+version: "This is what you said in Take {N}."
+2. **It leads to the latest.** A button under that line, "Go to Take {M}",
+opens the Ideal Text page ({M} is the latest Take).
+3. **A version not kept says so.** When an older card's version was saved
+before the history existed, the Ideal Text page opens with one line at its
+top: "Take {N}'s words weren't saved. This is Take {M}." Was (N375 item 3):
+the page opened with no line.
+4. **The helper words of its time.** An older version shows, read only and
+orange on their slide as the page shows them, the helper words the speaker
+had while it was the latest: the last set picked before the next Take's
+version. No new words. Was (N375 item 2): no helper words on an older
+version, and nothing leading to the latest.
+5. **Signed (Never 4):** "This is what you said in Take {N}.", "Go to Take
+{M}" and "Take {N}'s words weren't saved. This is Take {M}."
+The rules: frontend
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+F1. No migration.
+
+**N381 · The AI clip stays the weakest's: N374 item 1 is withdrawn
+(founder, the Claude Code chat, 3 November 2026, after a new Take whose
+between took the AI clip: "It showed me the wrong AI audio for the wrong
+fragment", "Please maybe revert it to what it was", "make it work like it
+used to work. don't do the fallbacks").** For N374 item 1 and N289 item 5:
+1. **A between whose Clearer version does not pass is praised as a next
+best again** (N289 item 5), whatever is left for the weakest. The AI clip
+is the weakest's alone, on a paragraph of its own, so a Take of two
+paragraphs can again end with their best alone. Was (N374 item 1, Takes
+recorded from 3 November 2026, 11:00 UTC, until this): that between took
+the AI clip when no paragraph was left for the weakest, and the clip coached
+the voice on a fragment whose trouble was its words.
+2. Nothing to sign: no new words.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2 and H1. No migration.
+
+**N385 · Push in the iPhone app: the coach's feedback and a new chat message
+(founder, the Claude Code chat, 3 November 2026, choosing on the questions
+asked: "Coach feedback is in", "New chat message", "After the first
+feedback", "Name + first line").** For N365 item 4, N155 and N171:
+1. **Two pushes, in the iPhone app only.** "The feedback from your coach is
+in!" (N171's words), sent when its WhatsApp would be (coach_feedback_notice),
+opening the feedback; and a new chat message, its title the sender's name and
+its line the start of the message ("🎤 Voice message" for a voice note,
+N322 item 3), opening that chat. Each is best-effort and never holds up a save
+or a send.
+2. **Asked once, after the first feedback:** iPhone's own permission question
+comes when the speaker has first seen their coach's feedback, never before
+the first Take (Never 3). A no is kept; nothing asks again.
+3. **Not yet:** practice-day reminders (N155 stands) and the Life Panel's
+reminders on the iPhone; N365 item 4's practice days wait for their own
+decision.
+No rules page: the code and its comments, with the frontend README's
+iPhone-app row. The migration (the iPhone's push address per account) gets
+its outside review before it is merged.
+
+**N386 · A tip with no phrase names no sentence (founder, the Claude Code
+chat, 3 November 2026, asked about item 5 of the interaction audit of the
+fix step, whether a tip that quotes no words should name its sentence:
+"Leave as is").** For the One thing walk's fix (N309 item 1, C4, N379 item
+4):
+1. **As it is.** A tip that quotes no phrase (pace: "Slow it down a little.";
+fillers: "Drop the ums.") names no sentence: the speaker's own clip of that
+moment, with its slide label, stands just above the tip and shows where.
+2. **The AI voice lock stands** (frontend `ai-voice-practice.md` §3): the
+fix may quote the speaker's two to four target words, never the whole
+sentence.
+3. Nothing to build and nothing to sign.
+No rules page: nothing changes; it closes N379 item 4.
+
+**N390 · 0508, the iPhone's push address, merges without the outside review
+(founder, the Claude Code chat, 3 November 2026: "skip it, merge both", to
+"the migration 0508 review: paste it into GPT or Grok, or say skip it").**
+Migration 0508 (`an_iphone_keeps_its_push_address.sql`,
+[#1640](https://github.com/wilplus/backend-cursor/pull/1640), N385) merged on
+green checks without the GPT or Grok review CLAUDE.md asks of a new
+migration. It creates one table, `push_devices` (an iPhone's Apple push
+address per account), IF NOT EXISTS, with RLS on and the service role only;
+it drops nothing and needs no environment variable. As for N115 and N266,
+the waiver is for this one migration. Numbered a few ahead, leaving numbers
+free for the session logging one after another, as N385 was. No rules page.
+No migration in this entry.
+
+**N391 · Notifications come as a bar at the top, never in the buttons; the
+home-screen ask is deleted (founder, the Claude Code chat, 3 November 2026,
+on the prototype <https://claude.ai/artifact/9gpMMFvLKFMysRE4Db8mMv>:
+"delete the one notification added to the home screen, just delete it. And
+do not mix notifications about consent, the settings related to
+notifications, with the main screen buttons. The notifications should come
+as notifications at the top as a separate bar"; "add those to also to the
+top bar notification"; "please implement it ... and remove the bottom bar
+notifications from the code").** For N294 item 8, N295 and the CEO panel's
+asks (2026-10-13):
+1. **The home-screen ask is deleted,** everywhere: the next visit's ask
+("Well, I can see you're doing pretty good." and its ask), the CEO panel's
+"home screen" ask, and Will offering it in the chat.
+2. **A bar at the top of the chat,** under its top bar, one at a time, with
+✕ for Not now. The main buttons under the chat never carry it. It holds:
+the WhatsApp ask of the next visit (N294 item 8, N295: its opener and ask,
+never before the second Take, one per Take, at most twice); and the CEO
+panel's asks to one person: WhatsApp, a consent question (No | Yes), the
+promo price ("See prices", on the web only: the iPhone app has no buying,
+N365 item 1) and the lesson price ("See times"). Tapping the WhatsApp or
+consent bar opens its form as a sheet from the top; the price bars go to
+their page. The CEO panel's asks no longer wait for the end of a Take.
+3. **Not in the bar:** the policy update (it blocks recording, so it stays
+its own screen), iPhone's own notification question (N385), and the
+WhatsApp form Will opens when the speaker asks for it in the chat.
+No new words: every line in the bar is already signed. Replaces N294 item
+8's "its form opens by itself" in the chat and the CEO panel asks' place in
+the after-Take chain (N189).
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E1, when built. No migration.
+
+**N392 · "How do you feel?" keeps its step marks on a later Take: two,
+this screen and then the Take (founder, the Claude Code chat, 3 November
+2026, on a screenshot of the check before a later Take with the empty space
+above the question circled: "There should be a progress bar … in this
+place"; then, to the prototype
+<https://claude.ai/artifact/ChbCQzEKiTNtxofatBKZ3o> and its choice of two
+marks or one: "two marks, go ahead and build it").** For N272 item 1:
+1. **Two marks when the set-up is restored.** On a Take whose set-up is
+restored (a later Take of a saved project), the bar has two marks beside the
+✕: "How do you feel?" the first and current one, the Take the second. Was
+(N272 item 1): the ✕ and no marks.
+2. **Nothing else changes.** When the set-up follows, the check is still the
+first of the set-up's marks (four, or three with no slide step); "Getting
+your mic ready" and the recording screen keep their own top bars.
+No new words.
+The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+§6, the line for N392.
+
+**N395 · The chat's "Record Take N" gets a grey ✕ beside it, and closing it
+brings the bar back (founder, the Claude Code chat, 3 November 2026, on the
+prototype <https://claude.ai/artifact/AS89KeG4agDejXcXujy2q3>: "add here a
+little bit more space and suggest how it can be closed when I don't want
+another recording, how I can just close it and have a normal bottom bar
+without the huge CTA there sitting there all the time"; then, of its four
+options, "go with B, build it").** For N294 item 7, N296 state 4 and N325
+item 1 (the chat's one "Record Take N", alone under the chat):
+1. **More room above it:** 24 px between the last bubble and the button
+(was 8).
+2. **A ✕ beside it,** on its right, in the same row: grey, with no background
+and no outline. The button is a little narrower. No new words: the ✕ is an
+icon, and a screen reader says "Close", as every close in the app does.
+3. **Closing it brings the bar back** ("+", "Type here", the mic) for that
+Take's button. The button comes back the next time the chat is opened, or
+when a newer Take's goodbye offers the next Take. While it is closed, Take N
+is still one tap away on the Ideal Text page's own "Record Take N" (the
+Take's card in the chat), and the "+" opens the projects. Nothing goes to
+the backend: the plan and the goodbye are unchanged.
+4. **It applies to both cases,** the goodbye's next Take and a practice day's
+(the one `RecordTakeButton`, N350 item 1). "Start your first recording"
+(N319 item 2) gets no ✕: the plan's first Take follows its questions
+(CLAUDE.md, Never 3).
+Replaces "alone, the message box and the mic gone" (N294 item 7, N296
+state 4) with "alone until the speaker closes it".
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+G6 and
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+(Record buttons; after the goodbye), when built. No migration.
+**N396 · The voice note's words stream as they are said (founder, the
+Claude Code chat, 3 November 2026: "yes, build it", to "switch the preview
+to a streaming transcription service through the backend", after asking
+for the words to appear "like it is on Claude ... milliseconds").** Amends
+N199 item 2 for the voice notebook:
+1. The words follow the wave well under a second behind the voice, as
+they are said; a phrase stays lighter until its whole has been heard.
+2. The path: the backend issues a short-lived key (one minute to open)
+under the caller's processing-authorization permit
+(`POST /v2/notebook/live-session`, the provider's streaming
+transcription); the phone streams the voice to the provider with it.
+Nothing streamed is kept.
+3. The kept text is unchanged: the whole recording, sent with the note, is
+transcribed and cleaned as before (N194 item 2), and the vocal and verbal
+cues of a Take do not come from a voice note at all.
+4. Where the stream cannot open, the words come in pieces as before, 2 to
+4 seconds behind (N199). The streamed seconds go to the cost table with
+the note.
+No new words on screen. The chat's voice notes, which show no words while
+said, are unchanged. No migration.
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+§1 B2.
+**N397 · The walk's top bar names a slide by its title (founder, the
+Claude Code chat, 3 November 2026: "Slide title, as prototype", asked
+whether the bar should keep "Slide 2" or show the slide's title as the
+locked prototype X4gDmGfHH7ivuoRZ9ufiy9 does: "Product", "Traction").** The
+walk's top bar, and each part's small name in the thread, call a slide by
+its title; a slide with no title keeps "Slide N", and a talk with no deck
+keeps "Your talk". The words are the speaker's own slide titles, so none
+are new. Before it is built, check that the backend serves a title for each
+slide of a deck. No migration.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§1 B6, when built.
+
+**N400 · The setup, one for any business: one voice note for a person, two
+questions for a team, and where the app ends (founder, the Claude Code chat,
+3 November 2026: "now let's design the setup"; on the prototype "The setup",
+<https://claude.ai/artifact/Cmz1jj18KwpqG5G1n1fHk6>, version 1: "yes to all
+four, words ok, log it and lock"; on version 2: "So who are you? ... how can
+he say that he's here to ask? Everyone is sometimes here to ask and
+sometimes to answer"; on version 4: "yes add both"; then "words ok, log it
+and lock").** For N312, N313, N332, N349, N352, N353, N361, N366, N368 and
+N371; answers N349 item 5 and N352 item 6. Tried on two businesses: RASP
+(AI ambassadors inside the company) and Invita (sellers and their
+customers). Its first question is now slide 1 of the first Take (N401).
+1. **One question for a person, by voice:** "Tell me in a voice note what
+you do and what you know best, so I can send you the right questions."
+Will takes the person's role, their About and their topics from it, and
+shows "Here's how others will see you:", a card shaped like their profile
+(name, role, About, the topics as "Ask about {topic}"), with "That's right"
+or "Change it" ("Tell me what to change."). Nobody picks a role from a
+list, and there is no "I'm here to ask": everyone asks and everyone
+answers. A role nobody in the team had yet goes on the team's list.
+2. **The door names the team.** A join link or a code says which team;
+"Which team are you in?" (the open teams, "Join with a code", "Add a team",
+and Skip, N371) comes only with neither (N353).
+3. **Everyone accepts the agreement** (N349 item 3) and gets "You're set"
+(N352).
+4. **The speaking coach is never in a list.** WillpowerLab's coach link has
+the pass code inside it (N352, N353), so Will knows the role: "Hi {name}!
+{inviter} asked you to join {team} as a speaking coach." The coach panel's
+door in the chat with Will and the "Training corpus" row in the ☰ menu are
+as they are today; that is how the training corpus reaches a coach. Was:
+the code typed in Will's chat.
+5. **A team answers two questions on its page,** not in Will's chat: "Who
+can ask" ("People in the team", or "Customers too", which shows the
+business's ask link, N312) and "What answers can point to" (links, each a
+title, a picture and where it goes). "Who is who" lists each person with
+their role. Will points to the page once, after "You're set", for whoever
+added the team.
+6. **Changing your topics later:** your own profile shows your topics as
+"Ask about {topic}"; Edit, then "Change it", brings Will's "Tell me what to
+change." and the card again (N366 keeps the rest of Edit). This keeps
+"You can change this in Settings."
+7. **Anyone in the team adds links** to the team's page; the circle beside
+each link shows who added it. "Who can ask" stays with whoever added the
+team. Your team's name under your role on your profile opens the team's
+page.
+8. **Who defines what:** a topic ("Ask about Meet & Learn") is the person's
+own, from their voice note; a thing to book or buy ("Meet & Learn: AI in
+the cut, Thursday 10:00") is a link on the team's page. A team's links can
+be slides in an answer (N226, N361 item 3; the recording screen does not
+change), and the person who answered sees "{name} opened {link}".
+9. **Where the app ends:** if it's a link, it's the app; if the business's
+own system has to answer back, it is a custom integration, built once for
+that business. The app: join links, team codes and the ask link; the setup
+and the team's page; the chats; links; knowing a link was opened; WhatsApp
+from WillpowerLab's number (N230); signing in with Google or Microsoft. An
+integration: the company's own sign-in and staff directory; pulling in a
+whole shop, calendar or course list; writing a booking into their
+calendar; knowing a purchase happened; their own WhatsApp number; their
+data in their region on their own DPA terms.
+10. **A manager** sees, in their chat with Will and in words, only what
+happened to the team's questions: what was asked, what was answered, what
+was booked. Never anyone's voice, and never how someone speaks (the EU AI
+Act, Article 5(1)(f), prohibits inferring emotions at work). **Learning
+buddies** are matched by the topics from the setup, never by voices. Both
+are designed later.
+11. **Signed (Never 4):** "Tell me in a voice note what you do and what you
+know best, so I can send you the right questions.", "Here's how others
+will see you:", "That's right", "Change it", "Tell me what to change.",
+"Hi {name}! {inviter} asked you to join {team} as a speaking coach.",
+"Your team is ready. On its page, say who can ask and what your answers
+can point to.", "Open your team's page", "Hi {name}!"; on the team's page
+"Who is who", "Who can ask", "People in the team", "Customers too", "Copy
+the link", "What answers can point to", "+ Add a link", "Paste a link",
+"Add"; on the ask page "What is it about?", "Your question", "Your name",
+"Your WhatsApp number"; in the chats "{name} opened {link}". Gone before
+they were built: "Who are you here?", "I'm here to ask", "Here to ask", the
+speaking coach's typed code.
+12. **Locked:** the prototype "The setup", version 5, in
+[`docs/LOCKS.md`](LOCKS.md).
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 and [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+when built. No migration.
+
+**N401 · The first Take is the onboarding: the first-timer's questions are
+its slides (founder, the Claude Code chat, 3 November 2026: "this is a part
+that we apply to everyone logging into their application ... it should be
+your first official take ... whatever questions we have for the first
+timer, we need to put them into slides and display them as slides on the
+big screen. And people are recording slide by slide"; on the prototype "The
+way in", <https://claude.ai/artifact/5RQsbVpt1F8NMtSbTs7wwB>, version 2:
+"words ok, log it and lock").** For N30, N319, N324, N335, N354, N357, N360
+and N400; changes Never 3's wording:
+1. **Will says hi, in one line, then one button.** After the acceptance
+screen (locked, unchanged), Will's first lines are his hello for the door
+the person came by, and "Your first Take is five questions. Answer each one
+out loud, one slide at a time."; the bar's middle is "Start your first
+recording".
+2. **The first Take's slides are the questions,** on the recording screen
+as it is locked (Back, Next slide, Finish take, the strip): "About you":
+"What do you do, and what do you know best?" ("So I can send you the right
+questions."); "Your talk": "What are you practising for, and why does it
+matter?"; "The room": "When is it, and who will be in the room?"; "Your one
+sentence": "If they remember one sentence from you, what is it?" ("Say it
+the way you'll say it."); "Your opening": "How will you open? Say your
+first sentence." No set-up for Take 1: the questions are its deck. Its
+strip counts up, with no length chosen.
+3. **While it is processed,** for Take 1 only, the processing labels sit in
+a thin row at the top of Will's chat instead of the processing screen, and
+Will says "While your feedback is being prepared, check what I heard.",
+then, one tap each: "Here's how others will see you" (slide 1, N400); the
+plan card (slides 2 and 3; "When is your deadline?" as taps only when no
+date was heard); "Which team are you in?" (only with no link and no code);
+the agreement; "You're set". The walk's row turns orange when the walk is
+ready, and nothing waits for the checks.
+4. **The walk works on how the questions were answered,** and Take 1's
+Ideal Text is the five answers, one paragraph per question (Never 5
+holds). Then "Record Take 2" for the real talk: the feelings check with its
+Skip, then the set-up, its topic from slide 2.
+5. **Moved:** the plan's questions in Will's chat (N319: the deadline's
+taps, the event, the one sentence, the follow-ups) are now slides 2 to 5;
+N400's voice note is slide 1. Never 3 now reads: the plan's questions come
+once, inside the first Take, one slide at a time; before any other Take,
+only the feelings check, with a Skip. N319's lock keeps the consent screen,
+the plan card and the plan's progress after each walk.
+6. **The way in, from the code** (the map on the prototype): every way in
+(the landing, /signup, the iPhone app, a join link, the coach's link, the
+ask link) meets the same first Take after the acceptance screen. Decided
+on it: a signed-in person never sees the welcome again (it shows today
+after a direct sign-up on the web); the join page keeps "Join" until a
+company has its own sign-in, an integration (N335's "Join with your
+{company} account" waits for it); a "Microsoft" sign-in button beside
+Google; and no demo chats for a newcomer (founder, the same chat: "fix the
+gap"): an empty list shows Will and "Add someone to chat with", on the web
+as in the iPhone app. Was: two demo chats, "Sarah" and "Ariel". To build:
+the setup, universal links for /c/ in the iPhone app, the ask page (N313),
+and the coach link in place of the coach list kept by hand. Open, each
+with its recommendation on the prototype: the default ring for new
+accounts (today 2; the plan needs 5, the chats 6); a join link that brings
+its own access; a guest's first Take (as today, or the five questions
+too); one code for a team and a community; the plan's personal questions
+with the yes (a sixth slide, "What worries you most about it?", the 1 to
+10 taps during the processing).
+7. **Signed (Never 4):** "Your first Take is five questions. Answer each
+one out loud, one slide at a time."; "About you", "Your talk", "The room",
+"Your one sentence", "Your opening"; the five questions above; "So I can
+send you the right questions."; "While your feedback is being prepared,
+check what I heard."; "Microsoft".
+8. **Locked:** the prototypes "The way in", version 2, and "The first
+Take", <https://claude.ai/artifact/C78wBzWUKz7MaHjxrnsPVX>, version 1, in
+[`docs/LOCKS.md`](LOCKS.md); CLAUDE.md's Never 3 follows item 5.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md),
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+when built. No migration.
+
+**N405 · Two lines signed for the One thing walk: "Okay, we'll skip this
+one." and "too slow · just right · too fast" (founder, the Claude Code chat,
+3 November 2026, on the page "One Thing Walk Audit",
+<https://claude.ai/artifact/HM9UjipUCZVSuPNESeGZtM>, both rewritten in Steven
+Pinker's style: "ok, both rewrites").** For N309 item 1 and the tempo step:
+1. **After Skip on the fix** (the Clearer version, the AI clip or the
+Sniper), the walk says "Okay, we'll skip this one." and goes on. Was:
+nothing was said; the prototype's "Okay." was never signed.
+2. **The pace scale's labels**, under it from left to right: "too slow",
+"just right", "too fast". Was: no labels; the prototype's "slow · just
+right · fast" was never signed.
+3. Signed (Never 4): the two lines above.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C7, T and K. No migration.
+
+**N406 · Who the talk is for, fixed from the founder's screenshot (founder,
+the Claude Code chat, 3 November 2026, on a screenshot of "Who were you
+talking to? 🎯", "Someone else", "Who is it for, then? 👀", "Myself",
+"Myself. I'll keep them in mind." and the goodbye under the next question:
+"I would listen to you", "it's interrupted by something else"; then, on the
+prototype <https://claude.ai/artifact/NxE1pMJmngj8Q7ZTj9PQDp>: "A, and yes
+to the words, go").** For N294 items 2, 4 and 5, N319 item 8, N347 item 1
+and N371:
+1. **The goodbye waits for Will's question, however it is answered.** After
+a typed answer, the goodbye ("That's your 15 minutes for today.", "Good
+job. See you {day}.", the plan's progress) came under Will's next question
+and cut it off; a tapped answer waited. The chain after a Take never passes
+Will's question while it is open.
+2. **No "Someone else" under "Who were you talking to? 🎯"** (the
+prototype's Option A): the speaker's own answer goes into "Something else"
+in the bar (N371), so Will asks once. Replaces N319 item 8 for this
+question. "Sounds like this one's for {the board}. Right? 🎯" keeps "Yes",
+"Someone else" and its "Who is it for, then? 👀".
+3. **Will says it back from the speaker's side:** "my" becomes "your"
+("Your team. I'll keep them in mind."); a talk to themself ("Myself", "me",
+"just me") gets "I'll keep you in mind.". The same rule holds for who the
+talk is for inside "Sounds like this one's for…" and the key-line question.
+4. **A talk to themself:** what they should do is asked as "When you finish,
+what do you want to do? Or feel? 🤔", with no taps (their own words, typed
+or said); the key line keeps "If your audience remembers one sentence from
+you…".
+5. **Signed (Never 4):** "I'll keep you in mind."; "{who}. I'll keep them in
+mind." with "your" for "my"; "When you finish, what do you want to do? Or
+feel? 🤔".
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E2 and E3, when built. No migration.
+
+**N411 · The notebook's security disclaimer (founder, the Claude
+Code chat, 3 November 2026, on the prototypes
+<https://claude.ai/artifact/HXV7HUFsfoM1ST29fthnk6> and
+<https://claude.ai/artifact/5X4M3cnSBxX8YcuKFEFY3a>: "do not share personal
+information with us … My colleague annoyed me enormously today … Good
+message"; "sign the words"; then "way simpler … just a reminder … each
+time … every fifth time someone mentions a name").** For frontend
+`principles.md` A5, B and K:
+1. **The first time, the feature is introduced.** Will's first spotted
+message (a strength, a pattern) is followed by one bubble, "🎙 Tap the mic
+any time and say what's on your mind. It helps you catch negative thinking
+and self-sabotage. One privacy rule first:" (was "🎙 Tap any time. Dump the
+overthinking here, then let it go." and "A deep sigh for your mind…", both
+replaced by the founder the same day); then the full
+note, once, in grey, in one bubble: "Nothing fragile: health, family, money,
+address.", "We look for patterns, not secrets. Fewer clues, less for
+hackers.", "📓 For journalling try paper notebook 😉"; then "Do you
+understand the rules and want this feature on?" (Yes | Not now), in place
+of the notebook's signed ask "Your notes are private. Only you and Will read
+them. Keep a voice notebook?" (backend `voice_notebook.COPY["ask"]`); on Yes, "Noted." and "What's on your mind
+today?". These replace A5's three bubbles (N195, not built). Not now: the
+introduction comes again with the next spotted message.
+2. **After that, the short line "🔒 Security disclaimer ›" every time** Will
+spots something (the Sunday note's pattern, a strength, a strength again, a
+suggested principle), under the message; a tap opens the full note.
+3. **Notes that name someone:** only a reminder. Every fifth # note that names
+a person gets the short line under its "Noted."; the others get "Noted." as
+always. Nothing is offered, changed or deleted.
+4. The words in items 1 and 2 are signed (Never 4).
+5. **The first spotted message reads the Takes** ("All looks good. Please
+build it.", on the choice drawn "From their Takes"): before there are notes,
+Will may spot a strength in the speaker's Takes and open item 1 with it. This
+amends N182 item 3 for this one message: the notebook's introduction may
+read the Takes; nothing of the notebook reaches the Takes, the plan or a
+coach. The line "🔒 Security disclaimer ›" stays as drawn.
+6. Built first (this entry's PRs): the new ask and the intro above it, the
+line under every spotted message, and the fifth named note. Until the Takes
+reader is built, the introduction comes at the doors it has today: the
+first tap on the mic and the first typed "#".
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+A3, A5, B and K. No migration.
+
+**N415 · One look for every ask in Will's chat; a lone suggested answer is
+outlined (founder, the Claude Code chat, 3 November 2026: "I want to continue
+my practice looks weird ... make it unified across the app"; then, asked,
+"Looks like a sent message" and "Will's chat asks").** For N371, N294 item 6:
+1. **A lone suggested answer is outlined,** orange on white, never filled:
+filled orange on the right is what the speaker's own sent message looks
+like. With two or more, N371 item 2 stands (the most likely filled).
+2. **Every ask in Will's chat takes N371's suggested answers,** on the right,
+the one that goes on filled: the offers' "Not now" and their action
+(the Sunday note, the life goals, the sales step, the voice notebook, "Did
+the feedback help?", the admin's price and lesson asks) and the top-up
+card. Was: two equal pills, grey outline and black.
+3. **Not changed:** the consent and policy screens (locked), the Ideal
+Text's "Update slides" and the recording setup's one-project question
+(locked screens), and form buttons that save what was typed (the WhatsApp
+number). No new words: each ask keeps its words.
+Numbered a few ahead, leaving numbers free for the sessions logging one
+after another. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+No migration.
+
+**N416 · The training corpus moves to the CEO panel and leaves the coach's
+side (founder, the Claude Code chat, 3 November 2026: "[move] the training
+corpus to the CEO panel and remove it from the coach side so that it
+doesn't hang there, because we rebuild the whole infrastructure a little
+bit").** While the corpus's infrastructure is rebuilt:
+1. The founder opens it from the CEO panel (`/admin/ceo`): a "Training
+corpus" button beside Bugs and Tasks opens the same screens as before (the
+imports, Import audio, the set-up, the blind judging; coach panel H1 to
+H3) over the panel, and ✕ comes back to it.
+2. No coach sees it: the Lounge's pinned "Training corpus" button and the
+☰ menu's coach-only row are gone; `/coach/corpus` goes to `/admin/ceo`.
+Speakers stays pinned on its own.
+3. The backend's corpus endpoints, their role checks, the imports and every
+label already given are unchanged; nothing is deleted.
+No new words on screen ("Training corpus" is the signed word, moved). No
+migration.
+The rules: frontend
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+B1, H0 and J, and
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+§1.
+
+**N417 · The sale's four steps outlined, none filled (founder, the Claude
+Code chat, 3 November 2026, on the canvas "Sale steps answers",
+<https://claude.ai/artifact/9UpKbNHLVJ8W4nvVpSEpRN>: "B, go ahead").** For
+N415 item 2 and N241 P2:
+1. **"Which step did it stall at?"** takes N371's suggested answers: the
+four steps stacked on the right in their order ("The opening",
+"Discovery", "The offer", "The follow-up"), all four outlined orange and
+none filled, since no step is likelier than another. N415 item 2's "the
+one that goes on filled" does not apply to them. Was: four grey pills, two
+by two.
+2. Same words, the same taps and what they send.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E1. No migration.
+**N418 · A Take is transcribed in parts at once, behind a setting
+(founder, the Claude Code chat, 3 November 2026: "build it behind a
+setting", to "cut the recording at your pauses into pieces of about a
+minute, transcribe all of them at the same time, join the words back
+together on the Take's clock", after choosing "Shorter wait after Stop"
+over live words on the recording screen).** For the transcription stage of
+every Take:
+1. A Take of 90
+seconds or more is cut at its quietest moments into up to four parts of 45
+seconds or more; the parts are transcribed at the same time by the same
+authorized adapter, each under its own permit, and their words and segments
+are put back on the Take's clock. The transcription step then takes about
+as long as one part.
+2. Any part that fails, or audio that cannot be decoded, gives the one
+whole-file call, as before; a refusal of the processing authorization is
+never swallowed.
+3. On by default, without the golden-set comparison ("i can just skip it
+bro", then "Can you just do it from the code?", the same chat, when no
+golden set existed yet); `scripts/measure_transcripts.py --parallel` stays
+for when one does. `PARALLEL_TRANSCRIPTION_ENABLED=0` on the worker is the
+way back to the one call.
+4. Nothing reaches the provider before the Take is sent; nothing changes on
+screen. Rejected: transcribing while recording, which would send audio of
+Takes the speaker throws away before any Take exists to authorize it.
+No new words on screen. No migration.
+No rules page: the setting and its rule are in
+[`docs/ASYNC-PIPELINE-QUEUE.md`](docs/ASYNC-PIPELINE-QUEUE.md).
+
+
+**N425 · The AI clip only where the voice shows the problem (founder, the
+Claude Code chat, 3 November 2026, on three changes after "the wrong AI audio
+for the wrong fragment": "go for A, B and C").** For N289 item 2, N309 item 1
+and the AI voice's default (2026-10-15, A: "always a better version to
+copy"):
+1. **A · The AI clip goes to a measured voice problem.** The One thing walk's
+AI clip goes only to a moment whose own clip shows a problem the clip can
+teach: faster than the speaker's usual pace, fewer pauses, a flatter loudness
+range, or more fillers, each against their own usual on this Take, at the
+line the clip already uses (`AI_VOICE_MIN_SEVERITY`). Of those, the one
+where the problem is strongest, and the clip teaches that problem. Was
+(N289 item 2): the lowest voice × words read, whatever it showed, and the
+clip chose what to teach on its own.
+2. **B · No clip "just because".** With no such moment the AI clip is not the
+fix: the fix is the Clearer version or the Sniper, or there is none and
+their best's words are the helper words (N374 item 2). The walk's AI clip
+never falls back to "Lean on …" on a guessed phrase. Was (2026-10-15, A):
+with nothing measured, stress on the main point by default.
+3. **C · Always the biggest problem.** The walk's AI clip teaches the
+moment's strongest problem, never the runner-up. Was: about 15 in 100 clips
+practised the runner-up so the stored outcomes could tell which exercise
+helps (`AI_VOICE_EXPLORE_SHARE`).
+4. On a plan, this week's level still picks its moment and its problem (G7,
+N289 item 8). The Clearer version's example clip is unchanged. Nothing to
+sign: no new words.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C4 and H1, and
+[`docs/flows/ai-voice-practice.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md).
+No migration.
+
+**N426 · Releases go out in batches every two hours, not on every merge
+(founder, the Claude Code chat, 3 November 2026: "do both, every 2 hours",
+on bundling the deployments of the many chats merging at once so they stop
+slowing Railway down and using its build time).** For both repos:
+1. A merge to `main` no longer deploys. Every two hours a GitHub Action
+(`.github/workflows/release-to-production.yml`, in each repo) moves the
+`production` branch up to the newest `main` commit whose tests passed, and
+Railway (backend) and Vercel (frontend) deploy from `production`. Twelve
+merges in two hours make one build per service, not twelve.
+2. "Run workflow" on that Action in GitHub's Actions tab releases at once,
+for a fix to record → process → Ideal Text → next Take that cannot wait.
+3. A migration runs at the next release, not at merge; every pending one
+runs then, in order (`bin/railway-migrate.sh`). An environment variable it
+needs is set on every Railway service before that release.
+4. Railway skips a build when only docs, the legal pack, tests, Markdown or
+`.github` changed (each service's Watch Paths), as Vercel already does
+(`scripts/vercel-ignore-build.sh`).
+Was: every merge to `main` built and deployed every Railway service and
+Vercel. No new words on screen. No migration.
+No rules page: the rule is in `CLAUDE.md` (How to ship) in both repos and
+[`docs/OPS-FLAGS-AND-RELEASES.md`](docs/OPS-FLAGS-AND-RELEASES.md).

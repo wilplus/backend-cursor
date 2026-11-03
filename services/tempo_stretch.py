@@ -217,8 +217,9 @@ _CACHE_MAX = 256
 
 
 def tempo_for_take(database: Any, *, take: str, user_id: str, arc_id: str) -> Optional[dict]:
-    """{reading, topic, said} for the Take's tempo step, or None when no
-    clip leaves the green. Read once per Take per process."""
+    """{reading, topic, said, snippet_id} for the Take's tempo step, or None
+    when no clip leaves the green; ``snippet_id`` is the clip the stretch
+    is, for its player (`with_clip`). Read once per Take per process."""
     with _CACHE_LOCK:
         if take in _CACHE:
             _CACHE.move_to_end(take)
@@ -237,12 +238,35 @@ def tempo_for_take(database: Any, *, take: str, user_id: str, arc_id: str) -> Op
             from services.processing_authorization import rethrow_processing_authorization
             rethrow_processing_authorization(error)
             logger.warning("tempo topic failed take=%s: %s", take, type(error).__name__, exc_info=True)
-        result = {"reading": chosen["reading"], "topic": topic or FALLBACK_TOPIC, "said": said}
+        result = {"reading": chosen["reading"], "topic": topic or FALLBACK_TOPIC, "said": said,
+                  "snippet_id": snippets[chosen["index"]].get("id")}
     with _CACHE_LOCK:
         _CACHE[take] = result
         while len(_CACHE) > _CACHE_MAX:
             _CACHE.popitem(last=False)
     return result
+
+
+def with_clip(tempo: dict, playback: Any) -> dict:
+    """The tempo answer with the stretch's player, as the walk's moments
+    carry theirs: ``snippet_id``, ``snippet_audio_ref`` (signed now, never
+    cached: it expires), and ``start_offset_ms`` / ``duration_ms`` of the
+    clip within it. ``playback`` is the moments' signer
+    (``routes.v2.arcs._snippet_playback_map``). No playable audio, or a
+    failed signing: ``snippet_audio_ref`` is None and the bubble stays
+    words only. Never raises."""
+    snippet_id = tempo.get("snippet_id")
+    entry: Any = None
+    if snippet_id is not None:
+        try:
+            entry = (playback([str(snippet_id)]) or {}).get(str(snippet_id))
+        except Exception as error:  # noqa: BLE001 -- the words without a player
+            logger.warning("tempo clip unsigned snippet=%s: %s", snippet_id, type(error).__name__)
+    entry = entry if isinstance(entry, dict) and entry.get("snippet_audio_ref") else {}
+    return {**tempo, "snippet_id": None if snippet_id is None else str(snippet_id),
+            "snippet_audio_ref": entry.get("snippet_audio_ref"),
+            "start_offset_ms": entry.get("start_offset_ms"),
+            "duration_ms": entry.get("duration_ms")}
 
 
 _PICKS: "OrderedDict[tuple, Optional[dict]]" = OrderedDict()
