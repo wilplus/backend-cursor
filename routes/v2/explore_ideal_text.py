@@ -759,15 +759,17 @@ def v2_explore_select_block_variant(arc_id, block_key):
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/revisions", methods=["GET"])
 @require_auth
 def v2_explore_ideal_revisions(arc_id):
-    """The History under ⋯ (lock 2026-10-12, section 4): every version of
-    the document, newest first, each with its Take and its words. Read only
+    """The History under ⋯ (lock 2026-10-12, section 4) and an older Take's
+    Ideal Text card (N375): every version of the document, newest first,
+    each with its Take, its words, each Paragraph's Slide (`slides`, null
+    when unproved) and that Take's deck (`presentation_ref`). Read only
     (rule 5). Owner only."""
-    owned, _sessions = _arc_owned_by_caller(arc_id)
+    owned, sessions = _arc_owned_by_caller(arc_id)
     if not owned:
         return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
     from services.paragraph_history import document_history
     response = jsonify({"revisions": document_history(
-        db.list_ideal_text_versions(arc_id))})
+        db.list_ideal_text_versions(arc_id), sessions)})
     response.headers["Cache-Control"] = "private, no-store"
     return response
 

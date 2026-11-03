@@ -94,12 +94,52 @@ def slide_history(versions: Any, helper_log: Any, slide_index: int,
 
 
 
-def document_history(versions: Any) -> list:
+def _paragraph_slides(version: Mapping) -> Optional[list]:
+    """Each Paragraph's Slide in one version, in text order (an int, or None
+    for a Paragraph on no Slide); None when the Slide map cannot be proved,
+    as `_slide_paragraphs` reads it."""
+    doc = version.get("document")
+    text = version.get("text")
+    if not isinstance(doc, Mapping) or not isinstance(text, str):
+        return None
+    paragraphs = doc.get("paragraphs")
+    if not isinstance(paragraphs, list) \
+            or len(paragraphs) != len(text.split(_PARA)):
+        return None
+    out = []
+    for para in paragraphs:
+        index = para.get("slide_index") if isinstance(para, Mapping) else None
+        proven = isinstance(index, int) and not isinstance(index, bool) \
+            and index >= 0
+        out.append(index if proven else None)
+    return out
+
+
+def _take_deck(version: Mapping, sessions: Any) -> Optional[str]:
+    """The deck this version's Take was said on: that Take's own
+    ``intake_context.presentation_ref`` (N257: a Take's deck is its own);
+    None for a deckless Take or one that cannot be found."""
+    doc = version.get("document")
+    take = doc.get("take_session_id") if isinstance(doc, Mapping) else None
+    if not take:
+        return None
+    for session in sessions or []:
+        if isinstance(session, Mapping) and str(session.get("id")) == str(take):
+            context = session.get("intake_context")
+            ref = context.get("presentation_ref") \
+                if isinstance(context, Mapping) else None
+            return ref if isinstance(ref, str) and ref else None
+    return None
+
+
+def document_history(versions: Any, sessions: Any = None) -> list:
     """The whole document's versions, newest first, for the History under ⋯
     (lock 2026-10-12, section 4; rule 5: every old version stays in the
-    history). One row per snapshot with its words and its Take; the newest
-    is the head. Read only: an old version is never brought back, because
-    the Ideal Text is what the latest Take said. Pure."""
+    history) and for an older Take's Ideal Text card (N375). One row per
+    snapshot with its words, its Take, each Paragraph's Slide and that
+    Take's deck; the newest is the head. Read only: an old version is never
+    brought back, because the Ideal Text is what the latest Take said.
+    Pure."""
     rows = []
     for row in versions or []:
         if not isinstance(row, Mapping):
@@ -111,6 +151,8 @@ def document_history(versions: Any) -> list:
         rows.append({"revision": row.get("version"),
                      "take_index": _take_index(row),
                      "text": text,
+                     "slides": _paragraph_slides(row),
+                     "presentation_ref": _take_deck(row, sessions),
                      "created_at": row.get("created_at")})
     rows.reverse()
     for index, row in enumerate(rows):
