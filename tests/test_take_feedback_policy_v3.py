@@ -19,10 +19,7 @@ OUTCOME
   O3  Coverage is counted per slide, a slide without a clip says why, and
       the bar is higher from Take 3.
   O4  The between opens on a Clearer version only when the rewrite passes
-      the gate; with a weak fallback the fix is the weakest with the voice,
-      and on a Take of two blocks, where no block is left for the weakest,
-      the between itself takes the voice, so my walk always has its fix;
-      a Take recorded before that keeps the walk it had (N374).
+      the gate; with a weak fallback the fix is the weakest with the voice.
       Hesitations only its transcript heard never open one (N121).
   O5  A shown moment whose own words hedge opens on a Clearer version with
       its hedges left out, nothing added, even when its voice cleared the
@@ -82,9 +79,7 @@ WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
          the one thing walk"); 2026-11-02 (N323 item 6: "yes, the pace game
          for everyone when rushing is the issue"); 2026-11-02 (N359: "once a
          fix has worked on a slide, the walk stops picking the same issue on
-         that slide, and picks it again only if it comes back": "go");
-         2026-11-03 (N374: a short first Take showed only its best, no fix
-         and no helper words; "go with the recommendations").
+         that slide, and picks it again only if it comes back": "go").
 """
 from pathlib import Path
 
@@ -348,7 +343,7 @@ _UMS = " ".join(["um we think it matters"] * 3 + ["w"] * 60)
 _SHOWN_HEDGED = "So I think we kind of maybe matter a lot to us here"
 
 
-def _practise_frame(rewrite, scores=(0.9, -0.2, -0.6), shown=_SHOWN_HEDGED, **take):
+def _practise_frame(rewrite, scores=(0.9, -0.2, -0.6), shown=_SHOWN_HEDGED):
     """Three slides: the best is praised; the second's words on screen
     (``shown``) hedge, and its own transcript is full of ums, so it is
     corrected and may open on a clearer version when the rewrite passes
@@ -377,7 +372,7 @@ def _practise_frame(rewrite, scores=(0.9, -0.2, -0.6), shown=_SHOWN_HEDGED, **ta
     return build_shadow_frame(
         take_document={"take_session_id": "take-2", "text": text, "pieces": pieces},
         snippets=snippets, suggestions={}, feedback_candidates=[note],
-        take_index=2, expected_recording_id="recording-1", served_text=text, **take)
+        take_index=2, expected_recording_id="recording-1", served_text=text)
 
 
 def test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate():
@@ -397,17 +392,6 @@ def test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate():
             for b in fallback["blocks"]] == [
         (0, "strongest", True, None), (1, None, False, None), (2, "weakest", False, "voice")]
     assert fallback["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"] == []
-
-    # A Take of two blocks has no block left for the weakest: the between
-    # whose rewrite did not pass takes the voice itself, so the walk keeps
-    # its one fix (N374); a Take recorded before that keeps their best alone.
-    weak = {"tentative": True, "_manager_evidence": {"specificity": 5, "fallback": True}}
-    two = _practise_frame(weak, scores=(0.9, -0.2))
-    assert [(b["slide_index"], b["walk_slot"], b["most_confident"], b["exercise_kind"])
-            for b in two["blocks"]] == [(0, "strongest", True, None), (1, "weakest", False, "voice")]
-    before = _practise_frame(weak, scores=(0.9, -0.2), recorded_at="2026-11-02T09:00:00Z")
-    assert [(b["slide_index"], b["walk_slot"]) for b in before["blocks"]] == [
-        (0, "strongest"), (1, None)]
 
     # Ums only the transcript heard (N121): the words on screen are clean,
     # so they need no help and no rewrite opens; the weakest is the fix.

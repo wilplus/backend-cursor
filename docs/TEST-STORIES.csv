@@ -3102,10 +3102,7 @@ no next best is shown; praise is anchored inside the praised block.
 O3  Coverage is counted per slide, a slide without a clip says why, and
 the bar is higher from Take 3.
 O4  The between opens on a Clearer version only when the rewrite passes
-the gate; with a weak fallback the fix is the weakest with the voice,
-and on a Take of two blocks, where no block is left for the weakest,
-the between itself takes the voice, so my walk always has its fix;
-a Take recorded before that keeps the walk it had (N374).
+the gate; with a weak fallback the fix is the weakest with the voice.
 Hesitations only its transcript heard never open one (N121).
 O5  A shown moment whose own words hedge opens on a Clearer version with
 its hedges left out, nothing added, even when its voice cleared the
@@ -3150,7 +3147,7 @@ O9 -> test_on_a_plan_my_level_takes_the_slot_whose_tool_fits_it
 O10 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
 O11 -> test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan
 O12 -> test_a_fix_that_worked_on_a_slide_is_not_given_there_again
-O12 -> test_with_no_walk_before_mine_is_picked_as_it_always_was","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level""); 2026-10-30 (N289: ""the praise clips just get the praise"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-31 (N309, the One thing walk: ""apply to it the one thing walk""); 2026-11-02 (N323 item 6: ""yes, the pace game for everyone when rushing is the issue""); 2026-11-02 (N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back"": ""go""); 2026-11-03 (N374: a short first Take showed only its best, no fix and no helper words; ""go with the recommendations"")."
+O12 -> test_with_no_walk_before_mine_is_picked_as_it_always_was","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level""); 2026-10-30 (N289: ""the praise clips just get the praise"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-31 (N309, the One thing walk: ""apply to it the one thing walk""); 2026-11-02 (N323 item 6: ""yes, the pace game for everyone when rushing is the issue""); 2026-11-02 (N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back"": ""go"")."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name

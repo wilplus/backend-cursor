@@ -1678,10 +1678,7 @@ class _ChangesRun:
                 "verbal": verbal_read.for_pick(self.db, self.user_id, session),
                 # A fix the last walk gave that worked is not given again
                 # on that slide (N359); nothing for a first Take.
-                "last_fixes": take_progress.last_walk(self.db, self.arc_id, key),
-                # When the Take was recorded: one recorded before N374
-                # keeps the walk it had.
-                "recorded_at": session.get("created_at") if isinstance(session, dict) else None}
+                "last_fixes": take_progress.last_walk(self.db, self.arc_id, key)}
         return self._walks[key]
 
     def _declined_rewrites(self, session: Any, parts: Any
