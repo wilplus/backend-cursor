@@ -9668,3 +9668,26 @@ the same bar as a person's chat, and no "Type here".
 The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1. No migration.
+
+**N370 · The fix keeps its tip when no AI clip comes (founder, the Claude Code
+chat, 3 November 2026: "when there is no AI audio, the fallback is gone. So
+if you could fix the fallback when the AI audio is gone").** For the One
+thing walk's fix (N309 item 1, C4):
+1. **No AI clip, the tip still said.** When the clip does not come (its
+check failed, the provider or the limits refused, no voice yet), the fix
+keeps one bubble after their best: the same signed tip as its own sentence
+("Pause before “{phrase}”."), the served exercise's video and instruction
+when there is one (the locked Exercise, as before N309), then "Your turn.".
+The chat says the same and "Last time" keeps that tip. With no tip and no
+exercise, the fix stands as it did. Was (N309, 2026-10-31 to 2026-11-03):
+the tip lived only in the AI bubble and went with the clip, and the
+exercise's video was never drawn in this walk.
+2. **The server names the fix without the clip.** A clip that is
+unavailable once its exercise was chosen still carries `problem` and
+`phrase` (`ai_voice_clip.state`), as a pending one does (N120); no number,
+check or reason crosses (AC-9).
+3. Nothing to sign: the tip bank (N120) and "Your turn." (N309) are signed;
+the tip ends with a full stop in place of ", like this:".
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C4. No migration.
