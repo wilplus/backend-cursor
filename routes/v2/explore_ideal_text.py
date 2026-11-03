@@ -30,6 +30,7 @@ from routes.v2.arcs import (
     _moment_applied_map,
     _moment_explanations_map,
     _moment_playback_map,
+    _snippet_playback_map,
     _moment_reference_map,
     _moment_suggestions_enabled,
     _moments_entitled,
@@ -489,11 +490,15 @@ def _tempo_level(take: str):
 def v2_explore_arc_review_tempo(arc_id, take_session_id):
     """The tempo step's stretch for one Take (founder 2026-10-26, N162,
     N166); null too on a slide where the pace game the walk of the Take
-    before gave worked (N359). 200 {tempo: {reading, topic, said,
-    plan_level} | null} · 403 a denied permit · 404 · 500"""
+    before gave worked (N359). The stretch's clip plays as the moments'
+    do: ``snippet_audio_ref`` signed by the same signer, with
+    ``start_offset_ms`` / ``duration_ms`` within it (null without audio).
+    200 {tempo: {reading, topic, said, plan_level, snippet_id,
+    snippet_audio_ref, start_offset_ms, duration_ms} | null} · 403 a
+    denied permit · 404 · 500"""
     from services.processing_authorization import ProcessingAuthorizationError
     from services.take_progress import pace_worked
-    from services.tempo_stretch import tempo_for_take
+    from services.tempo_stretch import tempo_for_take, with_clip
     try:
         owned, sessions = _arc_owned_by_caller(arc_id)
         take = str(take_session_id)
@@ -506,7 +511,7 @@ def v2_explore_arc_review_tempo(arc_id, take_session_id):
         if tempo and pace_worked(db, sessions, take):
             tempo = None
         if tempo:
-            tempo = {**tempo, "plan_level": _tempo_level(take)}
+            tempo = {**with_clip(tempo, _snippet_playback_map), "plan_level": _tempo_level(take)}
         return jsonify({"tempo": tempo}), 200
     except ProcessingAuthorizationError:
         return jsonify({"code": "NOT_AUTHORIZED", "error": "processing not authorized"}), 403
