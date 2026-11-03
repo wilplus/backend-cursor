@@ -301,13 +301,17 @@ O7  The WhatsApp ask waits for the next visit and comes in the bar at the
 top, never in the chat (N294 item 8, N295, N391): never before my
 second Take is done, one per Take, at most twice, opened with ""It
 seems you enjoy using WillpowerLab.""; never once my number is saved.
-The home-screen ask is never made (N391).","O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
+The home-screen ask is never made (N391).
+O8  The first Take's goodbye says it is the first Take's, so ""Record
+Take 2"" comes at once under it on any device (N449 item 2); a later
+Take's does not.","O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
 O2 -> test_from_take_two_one_ask_ceo_ask_will_the_question
 O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_goodbye
 O4 -> test_an_older_waiting_message_shows_where_it_stands
 O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
 O6 -> test_the_plans_lines_wait_for_the_ask_then_the_goodbye_and_the_progress
-O7 -> test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar","Founder 2026-10-20: ""one action at a time""; 2026-10-31 (N294): ""No call to action means that there is no push"", ""the next time you come and open the app ask the settings questions""."
+O7 -> test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar
+O8 -> test_the_first_takes_goodbye_says_so_on_any_device","Founder 2026-10-20: ""one action at a time""; 2026-10-31 (N294): ""No call to action means that there is no push"", ""the next time you come and open the app ask the settings questions""."
 tests/test_ai_voice.py,Story,"As a speaker practising, I want an AI clip of my own voice saying my own words with one improvement, never shown if it fails its check, and fully deleted when I ask, so that I hear a believable better version and keep control of my voice.","O1  One problem is picked against my own usual (or the default), and the
 sentence under the clip names it in words, with no numbers. As the
 walk's one fix on a moment, the clip teaches the strongest problem my
@@ -2323,7 +2327,12 @@ card at once, that Take its first practice; no day said asks ""When is
 your deadline?"" as taps, and the answer gives the plan. Kept at the
 end of the Take's processing, the voice message and the key line keep
 their own voice, and the coach's blind pick plays them (N213); the
-walk's end then keeps nothing twice.","O1 -> test_without_the_ring_nothing_happens
+walk's end then keeps nothing twice.
+O17 One at a time (D4): the plan's question after a Take (""When is your
+deadline?"" after the first Take) comes before the goodbye. The
+goodbye waits under it, even when the Lounge asks to let it go, and
+comes under my answer, said as the first Take's (N449 item 2); the
+first Take is read once.","O1 -> test_without_the_ring_nothing_happens
 O2 -> test_a_new_speaker_is_asked_once
 O3 -> test_no_date_gives_two_months_then_the_voice_message
 O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
@@ -2342,7 +2351,8 @@ O15 -> test_with_the_calls_on_they_are_asked_before_the_plan
 O16 -> test_with_the_first_take_on_the_questions_are_its_slides
 test_with_no_first_take_row_a_new_speaker_meets_the_first_take
 test_a_first_take_with_no_day_asks_for_the_deadline
-test_the_coach_hears_the_first_takes_voice_message_and_key_line","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the principles waiting for the onboarding, N243; record first, Will asking again and a correction taken, N262; the calls hidden, not removed, N315; the plan simplified, N319; the goodbye's day, N347; the rules are frontend docs/flows/the-plan.md §1."
+test_the_coach_hears_the_first_takes_voice_message_and_key_line
+O17 -> test_the_goodbye_waits_under_the_plans_question_after_the_take","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the principles waiting for the onboarding, N243; record first, Will asking again and a correction taken, N262; the calls hidden, not removed, N315; the plan simplified, N319; the goodbye's day, N347; the rules are frontend docs/flows/the-plan.md §1."
 tests/test_playback_copy.py,Story,"As a speaker on iPhone or Safari, I want my recordings to play back, and the playback copy deleted with the recording, so that I can hear myself and deletion leaves nothing. (Record -> next Take: hearing the Take; and deletion.)","O1  A stored short recording gets its Safari-safe copy (.playback.m4a,
 audio/mp4) beside it at upload; the original is untouched.
 O2  The player is handed the original until the copy exists, and the copy
@@ -2738,10 +2748,14 @@ Paragraph now.
 O4  After a Clearer version the walk's helper words come on their own
 (N309): the sentence the practice was opened on goes to the slide,
 with or without a try, whole, past eight words too (N323 item 2);
-words not in it are refused.","O1 -> test_stale_or_invalid_live_root_fails_closed
+words not in it are refused.
+O5  The walk locks the paragraph first and saves the words after: those
+words show on the recording screen and the page, and a pick on the
+same paragraph in the next Take replaces them.","O1 -> test_stale_or_invalid_live_root_fails_closed
 O2 -> test_recording_roots_route_returns_the_live_root
 O3 -> test_helper_words_from_an_earlier_take_stay_on_their_slide
-O4 -> test_the_clearer_versions_sentence_becomes_my_helper_words","Never-rule 5; founder 2026-10-13, project ""S""; founder 2026-10-31 (N309 item 3, ""the helper words come on their own"")."
+O4 -> test_the_clearer_versions_sentence_becomes_my_helper_words
+O5 -> test_the_walks_helper_words_show_on_the_next_take","Never-rule 5; founder 2026-10-13, project ""S""; founder 2026-10-31 (N309 item 3, ""the helper words come on their own"")."
 tests/test_remaining_route_contracts.py,Story,"As a developer moving logic out of routes, I want each route's main success and main refusal pinned, so that the move never changes what speakers and admins see.","O1  Chat answers, saves the turn and charges it; the help answer covers
 the rest; a blank question is refused.
 O2  A transcript edit lands on the right snippet or chunk; bad edits are
@@ -3852,7 +3866,7 @@ tests/test_will_question.py,Story,"As a speaker, after a Take I want Will to ask
 holds: a breather when the practice missed or the voice dipped two
 Takes in a row; ""On purpose?"" when the clearer line I practised last
 Take did not come back; who the talk is for; what I want them to do;
-from Take 3, with both known, one deeper question. Nothing missing, no
+from Take 3, with all three known, one deeper question. Nothing missing, no
 question; each of these once per talk, a breather never twice in a row.
 O2  The tap answers come from what Will heard, the recording first: a
 Take that names its audience twice is checked (""Right?""); named
@@ -3883,7 +3897,8 @@ worked on “…”. ""; ""On purpose?"" quotes its own line and nothing more;
 with no moment the question is as signed.
 O9  One at a time (N294 item 4): when both who the talk is for and what I
 want them to do are missing, what I want them to do follows my answer
-to who, from what Will heard first; a Skip ends them.
+to who, from what Will heard first; a Skip ends them, and a ""#"" note
+under the question is no answer: the next question does not follow it.
 O10 The key line is asked last, by voice (N294 item 2): once who the talk
 is for and what I want them to do are known and my key line is
 missing, Will asks the plan's signed question with who in it, opened
