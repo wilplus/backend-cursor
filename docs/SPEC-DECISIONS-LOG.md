@@ -10886,3 +10886,33 @@ The rules: frontend
 and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 when built. The profile's topics need a migration, with its outside
 review, when built.
+
+**N456 · The list of chats and every chat's own top bar are the default,
+for everyone, everywhere; locked (founder, the Claude Code chat, 3 November
+2026: "Please make sure the top bar and that landing on the list of chats
+is the default everywhere and lock it in the docs and write simple tests
+that are readable"; then, asked whether the whole `chats` switch goes on
+for every signed-in person, "Everything, for everyone").** For N256, N274,
+N298, N302, N321, N322, N334, N354, N357, N360, N378, N401:
+1. **Everyone lands on the list of chats.** Every signed-in person, on the
+web and in the iPhone app, opens /chat on the list: Will pinned first, then
+their chats; with none, Will and "Add someone to chat with" (N401). Links
+into a chat keep their door (a join link opens the list with the inviter's
+row under Will, N357; the coach's and the walk's links open Will's chat).
+Was: ring 6 only (feature `chats`); everyone else opened Will's chat under
+the WillpowerLab bar, and a person whose only chat was Will's opened on it
+(N274).
+2. **The top bar.** The WillpowerLab bar shows on the list only; every chat,
+Will's included, has its own top bar: back, the circle or Will's mark, the
+name (N321, N334). Back from a chat goes to the list; from the list it goes
+nowhere (N378).
+3. **No switch.** The chats are no longer behind a ring: the frontend never
+waits on the rings read to show them, and the backend answers the chats,
+the join links and the messages to every signed-in person. The `chats` row
+in the rings panel no longer decides anything.
+4. **Locked:** the list as the landing and the top bars join the row "The
+chats, all of a piece" in [`docs/LOCKS.md`](LOCKS.md). A change needs the
+founder's OK with a prototype. No new words.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1. No migration.
