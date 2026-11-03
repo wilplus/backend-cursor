@@ -10720,3 +10720,16 @@ No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 and [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 when built. No migration.
+
+**N442 · Railway's Watch Paths stay empty; N426 item 4 does not apply to
+Railway (founder, the Claude Code chat, 3 November 2026, setting up the
+switch: Railway's Watch Paths box turned typed patterns into its own
+suggestions, so the founder emptied it).** Every release builds each
+Railway service, whatever the batch changed. An empty box can never stop a
+fix from deploying; with releases every two hours, a docs-only batch is
+rare. Vercel still skips a docs-only batch (`scripts/vercel-ignore-build.sh`).
+Same day: every Railway service and Vercel deploy from `production`, and
+`main` no longer deploys on Vercel either. No new words on screen. No
+migration.
+No rules page: the rule is in
+[`docs/OPS-FLAGS-AND-RELEASES.md`](docs/OPS-FLAGS-AND-RELEASES.md).
