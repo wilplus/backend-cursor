@@ -9502,7 +9502,36 @@ No rules page yet: it lands on frontend
 and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 when built. No migration.
 
-**N365 · A person's profile, as on WhatsApp: name, one About, and what you
+**N365 · The iPhone app on the App Store: what is native, buying, and the
+store (founder, the Claude Code chat, 3 November 2026, locking the twelve
+choices of the App Store plan page, each the recommended one).** For N267,
+N269 and N354:
+1. **No buying in the iPhone app.** The token balance shows; the top-up
+card, prices and any buy button or link to buy do not, in every country.
+People buy on the website, as now. On the website nothing changes.
+2. **Sign in with Apple, native.** Apple's own sheet (Face ID), in the app
+only, handing its token to Supabase; Apple's own button and words.
+3. **The microphone.** The web recorder stays (the loop is unchanged); the
+app adds native handling of interruptions (a call, another app's audio).
+4. **Native push before submitting:** practice-day reminders, feedback
+ready, a new chat message.
+5. **willpowerlab.com links open in the app** (universal links: a coach's
+link, an invite link).
+6. **The iPhone share sheet** next to "Copy my link" (N310).
+7. **Will's false "thank you for putting me right"** is fixed before
+TestFlight.
+8. **TestFlight first**, then the App Store.
+9. **EU trader:** declared, with business phone, email and address; the
+enrolment stays individual (Apple shows the founder's legal name as the
+seller until an organisation enrols). Store name "WillpowerLab", support
+contact@willpowerlab.com, all countries. Android later.
+10. **An agent quality pass** over every journey on the final build, before
+submitting.
+Everything else stays one web codebase: no screen is rebuilt natively.
+No rules page: the app's code lands with comments and the frontend
+README's iPhone-app row. No migration in this entry.
+
+**N366 · A person's profile, as on WhatsApp: name, one About, and what you
 shared (founder, the Claude Code chat, 3 November 2026, on the prototype
 "One bar", <https://claude.ai/artifact/2v8jSi91F157WFR8tjX5E1>: "We need to
 design user profile, just like on WhatsApp ... it sources information about
@@ -9533,7 +9562,7 @@ No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration in this entry.
 
-**N366 · The ☰ menu and the "+" sheet, redesigned (founder, the Claude Code
+**N367 · The ☰ menu and the "+" sheet, redesigned (founder, the Claude Code
 chat, 3 November 2026, on the prototype "One bar",
 <https://claude.ai/artifact/2v8jSi91F157WFR8tjX5E1>, comparing the app as
 built with the new design: "With a hamburger menu, I like the new design
@@ -9541,22 +9570,26 @@ more. However, settings should replace data and content ... There shouldn't
 be anything like your takes. There should be tokens ... Sign out just like
 on your design ... copy my link at the top instead of the lab. And please
 remove the old add someone to chat with ... The new one is way better").**
-For N196, N308, N310 and N365; corrects N362 item 1:
+For N196, N308, N310, N365 and N366; corrects N362 item 1:
 1. **The ☰ menu** drops from the ☰ as a card: at the top, your circle, name
-and who you are, opening your profile (N365); then "Copy my link" (with
+and who you are, opening your profile (N366); then "Copy my link" (with
 "Whoever opens it joins you here" under it; it copies at once); "Settings"
 (the Data & consent page, N196); "Tokens" with the balance and its date
 under it; a thin line; "Sign out" in red. **"Lab" goes**, and "Copy my link"
 takes its place at the top. **No "Your Takes"** and no "Data & consent" row.
 Was: the email, Lab, Settings, Tokens, Log out (`AppMenu.tsx`); and N362
 item 1's Copy my link, Your Takes, Data & consent, Sign out.
-2. **"Tokens"** opens the pricing page: on the web, in the app; in the
-iPhone app, the web app's pricing page in the browser.
+2. **"Tokens"** opens the pricing page on the web. In the iPhone app, the
+founder asked for it to open the web app's pricing page in the browser; that
+is a link to buy, which N365 item 1 (no buy button or link to buy in the
+iPhone app, for the App Store) rules out. Until the founder decides
+otherwise, in the iPhone app the row shows the balance and opens nothing.
 3. **The "+" sheet** ("Add someone to chat with") is the new one, wholly:
 it slides up over the dimmed list with a handle; the title, large; the line
 "Send them your link, in any email or message. Whoever opens it joins you
 here." (N310); the link in a box with 🔗; one big "Copy my link", which turns
-green with "✓ Copied" and closes the sheet; three tiles, "1. Paste it" ("in
+green with "✓ Copied" and closes the sheet (in the iPhone app the share
+sheet sits next to it, N365 item 6); three tiles, "1. Paste it" ("in
 an email or a message you send anyway"), "2. They open it" ("and join with
 their account"), "3. You chat" ("Only the two of you are in it"); "Cancel".
 It replaces the built sheet (a grey box with the title, the line, the link
