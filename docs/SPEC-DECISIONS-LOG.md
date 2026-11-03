@@ -9732,3 +9732,31 @@ The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration.
+
+**N372 · The voice as it is, heard at one loudness (founder, the Claude Code
+chat, 3 November 2026, asked why playback sounds worse than WhatsApp: "make
+sure this applies to all kinds of browsers and mobile application", "low-hanging
+fruits only", then on three suggestions "all 3 yes (write the words as Steven
+Pinker and you have my OK on them just make that concise)").**
+1. **The mic records the voice as it is.** Every browser and the iPhone app
+ask for the mic with the browser's call processing off: automatic gain,
+noise suppression and, for a Take, echo cancelling; mono. A voice note keeps
+echo cancelling, since another voice note can be playing out loud. Was:
+`audio: true`, which turns all of it on, so the voice was levelled and
+thinned like a phone call (frontend #1167).
+2. **Playback at one loudness.** The playback copy of each recording
+(`services/playback_copy.py`) is levelled to one loudness (−16 LUFS) and
+made at 128 kbps, so a quiet speaker is heard as clearly as a loud one. The
+original, which transcription and the feedback read, is never touched; its
+timing is unchanged, so a slide's window plays the same words. New
+recordings only. Was: a plain 96 kbps copy.
+3. **One voice at a time.** Playing a voice message pauses the one already
+playing, and starting the mic pauses any that plays.
+4. **Earbuds.** When the last Take was recorded through a Bluetooth mic
+(earbuds, a headset), "Getting your mic ready" before the next Take says
+under it: "Earbuds make you sound like a phone call. The built-in mic sounds
+like you." Signed (Never 4).
+The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
+No migration.
