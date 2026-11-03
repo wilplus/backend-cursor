@@ -57,7 +57,8 @@ OUTCOME
       recording" is offered while the questions are asked; after that
       Take's walk Will asks again where he was; the plan, once made, counts
       that Take as its first practice (N262).
-  O16 With the first Take on (the ring row ``first_take``, N401), a new
+  O16 With the first Take on (always with no ``first_take`` ring row,
+      N457 item 3; a row can hold it back, N401), a new
       speaker is not asked in the chat: Will says "Hi Anna!" and "Your first
       Take is five questions. Answer each one out loud, one slide at a
       time.", and the plan hands the app the five slides. After that
@@ -87,6 +88,7 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
          O14 -> test_a_new_speaker_can_record_before_answering
          O15 -> test_with_the_calls_on_they_are_asked_before_the_plan
          O16 -> test_with_the_first_take_on_the_questions_are_its_slides
+                test_with_no_first_take_row_a_new_speaker_meets_the_first_take
                 test_a_first_take_with_no_day_asks_for_the_deadline
                 test_the_coach_hears_the_first_takes_voice_message_and_key_line
 WHY      The plan, built one to one with the prototype (founder 2026-10-26,
@@ -195,11 +197,17 @@ class _Adapter:
         return {"text": self.text, "language": "en", "duration": 4.0}
 
 
-def _rings(monkeypatch, *, calls, first_take=False):
+def _rings(monkeypatch, *, calls, first_take=False, first_take_row=True):
+    """The plan on; its calls and the first Take as asked. With no
+    ``first_take`` row the first Take is on whatever its ring says (N457)."""
     from services import rings
     monkeypatch.setattr("services.rings.feature_is_on_for_user",
                         lambda feature, *a, **k: (calls or feature != rings.PLAN_CALLS)
                         and (first_take or feature != rings.FIRST_TAKE))
+    monkeypatch.setattr("services.rings.feature_ring_row",
+                        lambda feature, **k: ({"feature": feature, "min_ring": 0}
+                                              if first_take_row and feature == rings.FIRST_TAKE
+                                              else None))
 
 
 @pytest.fixture
@@ -236,6 +244,15 @@ def test_a_new_speaker_is_asked_once(db):
                           "When is your deadline?"]
     again = F.state(db, USER, tz="Europe/Warsaw", first_name="Artur")
     assert not again["wrote"] and len(db.thread) == 2
+
+
+def test_with_no_first_take_row_a_new_speaker_meets_the_first_take(db, monkeypatch):
+    # N457 item 3: wherever the plan is on, the first Take is the only way
+    # in; no ring row is needed, and none of the chat's questions is asked.
+    _rings(monkeypatch, calls=False, first_take_row=False)
+    out = F.state(db, USER, tz="Europe/Warsaw", first_name="Tester")
+    assert out["plan"]["first_take"] is True
+    assert bodies(db) == ["Hi Tester!", P.COPY["first_take"]]
 
 
 def test_no_date_gives_two_months_then_the_voice_message(db):

@@ -2310,7 +2310,8 @@ O14 A new speaker can record before answering: ""Start your first
 recording"" is offered while the questions are asked; after that
 Take's walk Will asks again where he was; the plan, once made, counts
 that Take as its first practice (N262).
-O16 With the first Take on (the ring row ``first_take``, N401), a new
+O16 With the first Take on (always with no ``first_take`` ring row,
+N457 item 3; a row can hold it back, N401), a new
 speaker is not asked in the chat: Will says ""Hi Anna!"" and ""Your first
 Take is five questions. Answer each one out loud, one slide at a
 time."", and the plan hands the app the five slides. After that
@@ -2339,6 +2340,7 @@ O13 -> test_a_correction_is_taken_and_the_question_asked_again
 O14 -> test_a_new_speaker_can_record_before_answering
 O15 -> test_with_the_calls_on_they_are_asked_before_the_plan
 O16 -> test_with_the_first_take_on_the_questions_are_its_slides
+test_with_no_first_take_row_a_new_speaker_meets_the_first_take
 test_a_first_take_with_no_day_asks_for_the_deadline
 test_the_coach_hears_the_first_takes_voice_message_and_key_line","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the principles waiting for the onboarding, N243; record first, Will asking again and a correction taken, N262; the calls hidden, not removed, N315; the plan simplified, N319; the goodbye's day, N347; the rules are frontend docs/flows/the-plan.md §1."
 tests/test_playback_copy.py,Story,"As a speaker on iPhone or Safari, I want my recordings to play back, and the playback copy deleted with the recording, so that I can hear myself and deletion leaves nothing. (Record -> next Take: hearing the Take; and deletion.)","O1  A stored short recording gets its Safari-safe copy (.playback.m4a,
