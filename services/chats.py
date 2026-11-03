@@ -221,6 +221,43 @@ def list_chats(database: Any, user_id: Any) -> dict:
     return {"chats": [chat for _, chat in chats]}
 
 
+#: The line a push shows for a message: the chat list's own (ChatList.tsx
+#: lastLine, N322 item 3, N351; N311 item 1's meanings). No word of ours.
+_PUSH_LINE = {"voice": "🎤 Voice message", "photo": "📷"}
+_EMOJI_MEANING = {"👍": "It's good", "👀": "Seen, I'll answer", "🙏": "Thanks"}
+
+
+def push_line(message: dict) -> str:
+    kind, body = message.get("kind"), str(message.get("body") or "")
+    if kind in _PUSH_LINE:
+        return _PUSH_LINE[kind]
+    if kind == "file":
+        return f"📄 {body}"
+    if kind == "emoji":
+        meaning = _EMOJI_MEANING.get(body)
+        return f"{body} {meaning}" if meaning else body
+    return body.splitlines()[0] if body else ""
+
+
+def _tell(database: Any, me: dict, message: dict) -> None:
+    """A push to everyone else in the chat (N385 item 1): the sender's name
+    over the message's line, opening the chat. Best-effort, beside the send."""
+    try:
+        from services import push_devices
+        thread = str(me["thread_id"])
+        members = _rows(_table(database, MEMBERS).select("id,user_id,display_name")
+                        .eq("thread_id", thread))
+        sender = next((m for m in members if str(m["id"]) == str(me["id"])), {})
+        for other in members:
+            if str(other["id"]) == str(me["id"]) or not other.get("user_id"):
+                continue
+            push_devices.push_later(database, str(other["user_id"]),
+                                    title=str(sender.get("display_name") or "") or None,
+                                    body=push_line(message), path=f"/chat?with={thread}")
+    except Exception as e:  # noqa: BLE001 -- the message is sent either way
+        logger.warning("chats: push not started: %s", e)
+
+
 def _authors(database: Any, thread_id: str) -> dict[str, str]:
     return {str(m["id"]): m["display_name"]
             for m in _rows(_table(database, MEMBERS).select("id,display_name")
@@ -337,6 +374,7 @@ def post(database: Any, user_id: Any, thread_id: Any, body: Any) -> dict:
         "body": emoji, "meta": {"label": EMOJI[emoji]}}))
     if not rows:
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
+    _tell(database, me, rows[0])
     return {"message": _shown(rows[0], str(me["id"]), _authors(database, thread))}
 
 
@@ -385,6 +423,7 @@ def post_voice(database: Any, user_id: Any, thread_id: Any, audio: bytes, *,
     if not _keep_recording(database, message, str(user_id), kind, ms, audio):
         _forget(database, message)
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
+    _tell(database, me, message)
     said = _keep_words(database, adapter, str(message["id"]), str(user_id), audio, filename)
     if meta.get("question") and said:
         message = _marked(database, message, said, str(user_id))
@@ -575,6 +614,7 @@ def post_answer(database: Any, user_id: Any, thread_id: Any, take: Any,
         "meta": {"duration_ms": ms, "answer": True, "take": session}}))
     if not rows:
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
+    _tell(database, me, rows[0])
     return {"message": _shown(rows[0], str(me["id"]), _authors(database, thread))}
 
 
@@ -672,6 +712,7 @@ def post_file(database: Any, user_id: Any, thread_id: Any, kind: str, data: byte
     if not _keep_file(database, message, str(user_id), sent_type, name, data):
         _forget(database, message)
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
+    _tell(database, me, message)
     return {"message": _shown(message, str(me["id"]), _authors(database, thread))}
 
 

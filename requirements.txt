@@ -18,6 +18,8 @@ realtime==2.5.3
 supafunc==0.10.2
 gotrue==2.11.4
 httpx==0.27.2
+# HTTP/2, which Apple's push service requires (services/push_devices.py, N377).
+h2==4.1.0
 openai==1.59.2
 sentry-sdk[flask]==2.72.0
 resend==2.4.0

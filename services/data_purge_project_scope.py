@@ -180,6 +180,8 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     "chat_links",
     # A person's profile (N366): the account's, never a project's.
     "people_profiles",
+    # Where the person's iPhone is reached (N385): the account's.
+    "push_devices",
     # The plan (N203): one per person, across their projects; the account
     # purge deletes it, with its answers, their recordings and its levels.
     "speaker_plans", "plan_answers", "plan_answer_audio", "plan_level_events",

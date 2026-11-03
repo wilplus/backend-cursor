@@ -17,6 +17,8 @@ OUTCOME
       the link's owner does not.
   O7  A chat left without its two people (a crash between the two writes)
       gets them back on the next join, so the pair is never locked out.
+  O8  A message I send reaches the other person's iPhone as a push: my
+      name over the chat list's line for it, opening our chat (N385).
 PROVES   O1 -> ChatLinksTest::test_my_link_is_kept_and_a_replaced_one_opens_nothing
          O2 -> ChatLinksTest::test_the_join_page_learns_only_a_first_name
          O3 -> ChatLinksTest::test_joining_makes_one_chat_for_the_two
@@ -24,6 +26,7 @@ PROVES   O1 -> ChatLinksTest::test_my_link_is_kept_and_a_replaced_one_opens_noth
          O5 -> ChatLinksTest::test_without_the_ring_nothing_is_written
          O6 -> ChatLinksTest::test_the_one_who_joined_sees_whose_link_it_was
          O7 -> ChatLinksTest::test_a_chat_left_without_its_people_gets_them_back
+         O8 -> ChatLinksTest::test_a_message_reaches_the_other_persons_iphone
 WHY      The join link, the chats' second slice (founder 2026-11-02: "go,
          build the join link slice"); the intimacy rule (N328); joining is
          onboarding (N335 item 1).
@@ -127,6 +130,19 @@ class ChatLinksTest(unittest.TestCase):
         tomek_sees = self.client.get("/v2/chats", headers=self._as(TOMEK)).get_json()["chats"]
         self.assertEqual([(c["id"], c["title"]) for c in piotr_sees], [(chat, "Tomek")])
         self.assertEqual([(c["id"], c["title"]) for c in tomek_sees], [(chat, "Piotr")])
+
+    def test_a_message_reaches_the_other_persons_iphone(self):
+        # N385 item 1: the sender's name over the chat list's own line, opening the chat.
+        token = self._link(TOMEK).get_json()["token"]
+        chat = self._join(PIOTR, token).get_json()["chat"]["id"]
+        with patch("services.push_devices.push_later") as push:
+            res = self.client.post(f"/v2/chats/{chat}/messages", headers=self._as(PIOTR),
+                                   json={"kind": "emoji", "body": "👍"})
+        self.assertEqual(res.status_code, 200)
+        push.assert_called_once()
+        self.assertEqual(push.call_args.args[1], TOMEK)
+        self.assertEqual(push.call_args.kwargs, {"title": "Piotr", "body": "👍 It's good",
+                                                 "path": f"/chat?with={chat}"})
 
     def test_my_own_link_is_refused(self):
         token = self._link(TOMEK).get_json()["token"]

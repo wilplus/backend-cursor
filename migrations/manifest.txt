@@ -543,3 +543,4 @@
 0505	a_person_has_a_link_to_join_them.sql
 0506	a_chat_keeps_its_photos_and_files.sql
 0507	a_person_has_a_profile.sql
+0508	an_iphone_keeps_its_push_address.sql

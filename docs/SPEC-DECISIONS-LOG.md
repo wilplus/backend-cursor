@@ -9984,3 +9984,30 @@ decision.
 No rules page: the code and its comments, with the frontend README's
 iPhone-app row. The migration (the iPhone's push address per account) gets
 its outside review before it is merged.
+
+**N386 · A tip with no phrase names no sentence (founder, the Claude Code
+chat, 3 November 2026, asked about item 5 of the interaction audit of the
+fix step, whether a tip that quotes no words should name its sentence:
+"Leave as is").** For the One thing walk's fix (N309 item 1, C4, N379 item
+4):
+1. **As it is.** A tip that quotes no phrase (pace: "Slow it down a little.";
+fillers: "Drop the ums.") names no sentence: the speaker's own clip of that
+moment, with its slide label, stands just above the tip and shows where.
+2. **The AI voice lock stands** (frontend `ai-voice-practice.md` §3): the
+fix may quote the speaker's two to four target words, never the whole
+sentence.
+3. Nothing to build and nothing to sign.
+No rules page: nothing changes; it closes N379 item 4.
+
+**N390 · 0508, the iPhone's push address, merges without the outside review
+(founder, the Claude Code chat, 3 November 2026: "skip it, merge both", to
+"the migration 0508 review: paste it into GPT or Grok, or say skip it").**
+Migration 0508 (`an_iphone_keeps_its_push_address.sql`,
+[#1640](https://github.com/wilplus/backend-cursor/pull/1640), N385) merged on
+green checks without the GPT or Grok review CLAUDE.md asks of a new
+migration. It creates one table, `push_devices` (an iPhone's Apple push
+address per account), IF NOT EXISTS, with RLS on and the service role only;
+it drops nothing and needs no environment variable. As for N115 and N266,
+the waiver is for this one migration. Numbered a few ahead, leaving numbers
+free for the session logging one after another, as N385 was. No rules page.
+No migration in this entry.

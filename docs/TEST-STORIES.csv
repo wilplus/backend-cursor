@@ -560,13 +560,16 @@ and nothing is written.
 O6  In the chat, the one who joined sees whose link they joined through;
 the link's owner does not.
 O7  A chat left without its two people (a crash between the two writes)
-gets them back on the next join, so the pair is never locked out.","O1 -> ChatLinksTest::test_my_link_is_kept_and_a_replaced_one_opens_nothing
+gets them back on the next join, so the pair is never locked out.
+O8  A message I send reaches the other person's iPhone as a push: my
+name over the chat list's line for it, opening our chat (N385).","O1 -> ChatLinksTest::test_my_link_is_kept_and_a_replaced_one_opens_nothing
 O2 -> ChatLinksTest::test_the_join_page_learns_only_a_first_name
 O3 -> ChatLinksTest::test_joining_makes_one_chat_for_the_two
 O4 -> ChatLinksTest::test_my_own_link_is_refused
 O5 -> ChatLinksTest::test_without_the_ring_nothing_is_written
 O6 -> ChatLinksTest::test_the_one_who_joined_sees_whose_link_it_was
-O7 -> ChatLinksTest::test_a_chat_left_without_its_people_gets_them_back","The join link, the chats' second slice (founder 2026-11-02: ""go, build the join link slice""); the intimacy rule (N328); joining is onboarding (N335 item 1)."
+O7 -> ChatLinksTest::test_a_chat_left_without_its_people_gets_them_back
+O8 -> ChatLinksTest::test_a_message_reaches_the_other_persons_iphone","The join link, the chats' second slice (founder 2026-11-02: ""go, build the join link slice""); the intimacy rule (N328); joining is onboarding (N335 item 1)."
 tests/test_chat_persist.py,Story,"As a speaker, I want every chat turn saved with its buttons, so that my chat bubbles never disappear when I reload.","O1  POST /v2/chat/query with persist writes my row and the bot's row,
 with the bot's choices in its metadata; posting the same turn again
 writes the same two ids, so the table keeps it once.
@@ -2639,6 +2642,15 @@ O2 -> test_until_the_rule_is_active_nothing_changes
 O3 -> test_with_the_rules_active_records_go_and_jobs_stay
 test_with_its_rule_a_project_record_goes_with_the_project
 O4 -> test_a_rule_withdrawn_after_the_freeze_deletes_nothing","Founder 2026-10-05, decisions log N48.4 Q15 A. Python orchestrator only, over the in-memory `PurgeDb` of tests/test_purge_user_locators.py. The real tables, scripts/ phase1_retention_rules_v1_4.sql and migration 0424's trigger are proved on the released lane by tests/test_product_records_purge_postgres.py."
+tests/test_push_devices.py,Story,"As a person using the WillpowerLab iPhone app, I want a notification when my coach's feedback is in or someone in my chats writes, so that I come back at the right moment (N385, for N365 item 4).","O1  My iPhone's address is kept once, follows the account it was last
+given for, and is forgotten when I sign out; a malformed one is refused.
+O2  Without Apple's push key on the server, nothing is sent.
+O3  An app run from Xcode is reached on Apple's sandbox, which is then
+remembered; the push carries the title, the line and where to open.
+O4  An address Apple no longer knows is forgotten.","O1 -> PushDevicesTest::test_a_phone_is_kept_once_and_follows_its_latest_account
+O2 -> PushDevicesTest::test_without_apples_key_nothing_is_sent
+O3 -> PushDevicesTest::test_an_app_run_from_xcode_is_reached_on_apples_sandbox
+O4 -> PushDevicesTest::test_an_address_apple_no_longer_knows_is_forgotten","Push in the iPhone app (founder 2026-11-03, N385); Apple's service is stood in for (services/push_devices.py)."
 tests/test_reacceptance_signal_postgres.py,Story,"As a returning speaker whose Terms changed, I want to be told the Terms moved instead of being shown a first-time screen, so that I re-accept knowing what changed (consent).","O1  Someone holding a receipt for an older policy only is flagged
 reacceptance_required, with the version they last agreed to.
 O2  A first-timer (no receipt at all) is not flagged and has no version:
