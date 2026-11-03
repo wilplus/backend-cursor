@@ -10376,3 +10376,24 @@ first tap on the mic and the first typed "#".
 The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 A3, A5, B and K. No migration.
+
+**N415 · One look for every ask in Will's chat; a lone suggested answer is
+outlined (founder, the Claude Code chat, 3 November 2026: "I want to continue
+my practice looks weird ... make it unified across the app"; then, asked,
+"Looks like a sent message" and "Will's chat asks").** For N371, N294 item 6:
+1. **A lone suggested answer is outlined,** orange on white, never filled:
+filled orange on the right is what the speaker's own sent message looks
+like. With two or more, N371 item 2 stands (the most likely filled).
+2. **Every ask in Will's chat takes N371's suggested answers,** on the right,
+the one that goes on filled: the offers' "Not now" and their action
+(the Sunday note, the life goals, the sales step, the voice notebook, "Did
+the feedback help?", the admin's price and lesson asks) and the top-up
+card. Was: two equal pills, grey outline and black.
+3. **Not changed:** the consent and policy screens (locked), the Ideal
+Text's "Update slides" and the recording setup's one-project question
+(locked screens), and form buttons that save what was typed (the WhatsApp
+number). No new words: each ask keeps its words.
+Numbered a few ahead, leaving numbers free for the sessions logging one
+after another. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+No migration.
