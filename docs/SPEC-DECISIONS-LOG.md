@@ -9923,3 +9923,26 @@ Nothing new to sign: "Your confident moment" is signed (N289 item 7).
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C4. No migration.
+
+**N380 · An older Take's Ideal Text says which Take it is, leads to the
+latest, and keeps the helper words of its time (founder, the Claude Code
+chat, 3 November 2026, on the interaction audit of N375: "build 4 to 7, you
+have my OK on the words", then "go" on the words below).** For N375 and N376:
+1. **It says which Take it is.** One line above the text of an older
+version: "This is what you said in Take {N}."
+2. **It leads to the latest.** A button under that line, "Go to Take {M}",
+opens the Ideal Text page ({M} is the latest Take).
+3. **A version not kept says so.** When an older card's version was saved
+before the history existed, the Ideal Text page opens with one line at its
+top: "Take {N}'s words weren't saved. This is Take {M}." Was (N375 item 3):
+the page opened with no line.
+4. **The helper words of its time.** An older version shows, read only and
+orange on their slide as the page shows them, the helper words the speaker
+had while it was the latest: the last set picked before the next Take's
+version. No new words.
+5. **Signed (Never 4):** "This is what you said in Take {N}.", "Go to Take
+{M}" and "Take {N}'s words weren't saved. This is Take {M}."
+The rules: frontend
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+F1. No migration.
