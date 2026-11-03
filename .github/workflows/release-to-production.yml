@@ -1,0 +1,70 @@
+name: Release to production
+
+# Releases go out in batches every two hours, not on every merge (founder,
+# 3 November 2026, backend decisions log N426). The host deploys from the
+# `production` branch; this moves it up to the newest `main` commit whose
+# `tests` run on main passed. Many merges in two hours make one build.
+#
+# Release now: Actions tab → "Release to production" → Run workflow.
+#
+# It only ever fast-forwards: `production` must be an ancestor of the commit
+# it moves to, so nothing on main is skipped and nothing is rewritten. If
+# someone pushed to `production` directly, it stops and says so.
+
+on:
+  schedule:
+    # Every two hours at :17 UTC (off the hour, when GitHub's queue is busy).
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: release-to-production
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Move production to the newest green main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow tests.yml \
+                   --branch main --event push --status success --limit 1 \
+                   --json headSha -q '.[0].headSha // empty')"
+          if [ -z "$sha" ]; then
+            echo "No green tests run on main yet: nothing to release."
+            exit 0
+          fi
+          git merge-base --is-ancestor "$sha" origin/main || {
+            echo "::error::$sha passed tests but is not on main"; exit 1; }
+
+          if git ls-remote --exit-code --heads origin production >/dev/null; then
+            git fetch --quiet origin production
+            current="$(git rev-parse origin/production)"
+            if git merge-base --is-ancestor "$sha" "$current"; then
+              echo "production ($current) already has $sha: nothing new to release."
+              exit 0
+            fi
+            git merge-base --is-ancestor "$current" "$sha" || {
+              echo "::error::production ($current) has commits that are not on main. Fix it by hand; this never force-pushes."
+              exit 1; }
+            echo "Releasing $(git rev-list --count "$current..$sha") commit(s):"
+            git log --oneline "$current..$sha"
+          else
+            echo "Creating production at $sha."
+          fi
+
+          git push origin "$sha:refs/heads/production"
+          echo "### Released \`${sha:0:12}\` to production" >> "$GITHUB_STEP_SUMMARY"

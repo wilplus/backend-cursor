@@ -16,6 +16,25 @@ code defaults are conservative and mostly left alone.
 **Reading a row:** `default` is what the code returns with the variable
 *absent*. An explicit `0` in the environment always wins.
 
+
+## Releases: every two hours, from `production` (N426)
+
+A merge to `main` does not deploy. `.github/workflows/release-to-production.yml`
+runs every two hours (at :17 UTC) and fast-forwards the `production` branch to
+the newest `main` commit whose `tests` run passed. Railway's services deploy
+from `production`, so every merge since the last release goes out in one build
+per service. A migration merged in between runs then (`bin/railway-migrate.sh`
+applies every pending one); set any variable it needs before that release.
+
+- **Release now:** Actions tab → *Release to production* → Run workflow.
+- **It never force-pushes.** If `production` has a commit `main` doesn't, the
+  run fails and says so; put `production` back on a `main` commit by hand.
+- **Roll back** in Railway (redeploy an earlier deployment). The next release
+  moves forward again from `main`, so revert the bad PR on `main` too.
+- **Docs-only batches don't build:** each Railway service's Watch Paths are
+  `**` then `!/docs/**`, `!/legal/**`, `!/tests/**`, `!**/*.md`, `!/.github/**`.
+  The server reads none of those at run time.
+
 ---
 
 ## Retired in place
