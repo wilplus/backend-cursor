@@ -351,6 +351,11 @@
       "module": "coach_answer_drafts",
       "sha256": "29b84443b1ce8b65a04d1d1def1a477e5c1542e3c3119c7a3b410ea69d4e7b93"
     },
+    "question_kind.system": {
+      "kind": "static",
+      "module": "question_kind",
+      "sha256": "da2363550d70aa3adf4115668e9f22df8785d290aaf1573d386f7e939af8ddb1"
+    },
     "say_it_stronger.system": {
       "kind": "static",
       "module": "say_it_stronger",

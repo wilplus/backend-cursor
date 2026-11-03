@@ -144,6 +144,13 @@ def _will_question(inp: dict) -> Any:
                  user_id=None, take=None, arc_id=None)
 
 
+def _question_kind(inp: dict) -> Any:
+    """Will's mark on a question in a chat (N361 item 1): True when it asks
+    about a product or a treatment, False when not, None when unclear."""
+    from services.chats import asks_about_a_product_or_treatment
+    return {"mark": asks_about_a_product_or_treatment(str(inp.get("words") or ""), user_id=None)}
+
+
 ADAPTERS: dict[str, Callable[[dict], Any]] = {
     "praise_line": _coach_answer("praise_line"),
     "clearer_version": _coach_answer("clearer_version"),
@@ -158,4 +165,5 @@ ADAPTERS: dict[str, Callable[[dict], Any]] = {
     "structural_star": _structural_star,
     "emphasis_phrase": _emphasis_phrase,
     "will_question": _will_question,
+    "question_kind": _question_kind,
 }
