@@ -10434,3 +10434,30 @@ by two.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 E1. No migration.
+**N418 · A Take is transcribed in parts at once, behind a setting
+(founder, the Claude Code chat, 3 November 2026: "build it behind a
+setting", to "cut the recording at your pauses into pieces of about a
+minute, transcribe all of them at the same time, join the words back
+together on the Take's clock", after choosing "Shorter wait after Stop"
+over live words on the recording screen).** For the transcription stage of
+every Take:
+1. A Take of 90
+seconds or more is cut at its quietest moments into up to four parts of 45
+seconds or more; the parts are transcribed at the same time by the same
+authorized adapter, each under its own permit, and their words and segments
+are put back on the Take's clock. The transcription step then takes about
+as long as one part.
+2. Any part that fails, or audio that cannot be decoded, gives the one
+whole-file call, as before; a refusal of the processing authorization is
+never swallowed.
+3. On by default, without the golden-set comparison ("i can just skip it
+bro", then "Can you just do it from the code?", the same chat, when no
+golden set existed yet); `scripts/measure_transcripts.py --parallel` stays
+for when one does. `PARALLEL_TRANSCRIPTION_ENABLED=0` on the worker is the
+way back to the one call.
+4. Nothing reaches the provider before the Take is sent; nothing changes on
+screen. Rejected: transcribing while recording, which would send audio of
+Takes the speaker throws away before any Take exists to authorize it.
+No new words on screen. No migration.
+No rules page: the setting and its rule are in
+[`docs/ASYNC-PIPELINE-QUEUE.md`](docs/ASYNC-PIPELINE-QUEUE.md).
