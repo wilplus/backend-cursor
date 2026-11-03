@@ -240,7 +240,9 @@ def test_a_note_sent_twice_is_kept_once(founder):
     again = _note(db, adapter, key="note-1234-abcd")
     assert [r["client_id"] for r in again] == [r["client_id"] for r in first]
     assert len(db.notes) == 1 and adapter.calls == 1
-    assert db.bodies().count("Noted.") == 1  # answered once
+    answers = [r for r in db.get_lounge_messages_page("u")
+               if r["role"] == "bot" and (r.get("metadata") or {}).get("voice_note")]
+    assert len(answers) == 1  # answered once
     _note(db, adapter, key="note-5678-efgh")
     assert len(db.notes) == 2
 
@@ -315,6 +317,7 @@ def test_a_strength_in_the_takes_opens_the_notebook(founder, monkeypatch):
     assert nb.intro_from_takes(db, "u")[1]["body"] == said["text"]
 
     nb.decide(db, "u", "yes")
+    assert db.bodies()[-3:] == ["Yes", "Noted.", COPY["first"]]
     take(8)
     take(9)
     take(10)

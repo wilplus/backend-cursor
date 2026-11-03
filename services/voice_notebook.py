@@ -57,6 +57,8 @@ COPY = {
     "yes": "Yes",
     "not_now": "Not now",
     "noted": "Noted.",
+    # N411 item 1 (signed 2026-11-03): after Yes with no note waiting.
+    "first": "What's on your mind today?",
 }
 CHOICES = ("yes", "not_now")
 MAX_SECONDS = 300
@@ -200,6 +202,11 @@ def decide(database: Any, user_id: str, choice: str) -> list[dict]:
         note = _save(database, user_id, "typed", held)
         rows.append(_row("bot", reply_to(held), {"voice_note": note.get("id")},
                          _after(at, 1), f"{user_id}:noted:{note.get('id')}"))
+    elif choice == "yes":  # N411 item 1: then the first question
+        rows += [_row("bot", COPY["noted"], {"voice_notebook": "welcome"}, _after(at, 1),
+                      f"{user_id}:yes-noted:{at}"),
+                 _row("bot", COPY["first"], {"voice_notebook": "welcome"}, _after(at, 2),
+                      f"{user_id}:first:{at}")]
     return database.insert_lounge_messages(str(user_id), rows) or []
 
 
