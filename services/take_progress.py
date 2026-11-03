@@ -35,6 +35,14 @@ did." with this Take's clip on that slide (``last_fix``). A fix rose when
 its issue is gone on that slide, by the same rule as the table's: the pace
 game's too (the Sniper, when the last walk fixed no moment, N347 item 3,
 N350 item 3). The speaker never sees a number.
+
+WHAT WORKED IS NOT GIVEN AGAIN (founder 2026-11-02, N359). The fixes the
+walk of the Take before gave (``last_walk``: the completed spoken Take
+before this one in the talk, ``previous_take``; its fixes, ``walk_fixes``)
+whose issue is gone on this Take's same slide (``worked``, by ``outcome``,
+the rule above) are not given again on that slide by this Take's walk
+(``take_feedback_policy_v3``), nor its tempo step there (``pace_worked``).
+Nothing of it reaches the speaker or a coach.
 """
 from __future__ import annotations
 
@@ -181,7 +189,83 @@ def fix_outcomes(database: Any, take_id: Any, next_take_id: Optional[Any]) -> li
         return []
 
 
-# ── last time (N309 item 1) ──────────────────────────────────────────────────
+# ── last time (N309 item 1), and what worked (N359) ──────────────────────────
+
+def previous_take(sessions: Any, take_id: Any) -> Optional[str]:
+    """The Take whose walk this Take's follows: the latest spoken Take of the
+    talk ordered before it (take index, then when it was made) whose
+    processing completed. None for the first, or when this Take is not
+    among them. Pure."""
+    from services.slide_selection import spoken_arc_sessions
+    spoken = sorted((s for s in spoken_arc_sessions(sessions) if s.get("id")),
+                    key=lambda s: (s.get("take_index") or 0, str(s.get("created_at") or "")))
+    ids = [str(s["id"]) for s in spoken]
+    if str(take_id) not in ids:
+        return None
+    done = [s for s in spoken[:ids.index(str(take_id))]
+            if s.get("analysis_state") in (None, "ready")]
+    return str(done[-1]["id"]) if done else None
+
+
+def walk_fixes(database: Any, previous_take_id: Optional[Any]) -> list[dict]:
+    """The fixes a Take's walk gave: its moments' (``fixes_of``), else, with
+    no moment fixed, the pace game's (``_stretch``, N347 item 3). [] when
+    there is no such Take, it gave no fix or cannot be read. Never
+    raises."""
+    if not previous_take_id:
+        return []
+    try:
+        before = database.get_v4_dark_frame(str(previous_take_id))
+        if not isinstance(before, dict):
+            return []
+        moments = fixes_of(before, [])
+        if moments:
+            return moments
+        stretch = _stretch(before, database.get_snippets_by_session(str(previous_take_id)) or [])
+        return [stretch] if stretch else []
+    except Exception as error:  # noqa: BLE001 -- the walk picks as without it
+        logger.warning("take progress: walk unread take=%s: %s", previous_take_id, error)
+        return []
+
+
+def last_walk(database: Any, arc_id: Any, take_id: Any) -> list[dict]:
+    """The fixes the walk of the Take before this one gave (``walk_fixes``
+    of ``previous_take``), for this Take's walk (N359). [] for the first
+    Take, or on any failure. Never raises."""
+    try:
+        sessions = database.takes.get_arc_sessions(str(arc_id)) or []
+    except Exception as error:  # noqa: BLE001 -- the walk picks as without it
+        logger.warning("take progress: talk unread take=%s: %s", take_id, error)
+        return []
+    return walk_fixes(database, previous_take(sessions, take_id))
+
+
+def worked(fixes: Any, frame: Any, snippets: list[dict]) -> frozenset:
+    """``{(slide_index, kind)}``: the fixes (``walk_fixes``) whose issue is
+    gone on this Take's same slide (``outcome``), which this Take's walk
+    does not give again there (N359). Pure."""
+    return frozenset((f["slide_index"], f["kind"]) for f in fixes or []
+                     if outcome(f, frame, snippets) == GONE)
+
+
+def pace_worked(database: Any, sessions: Any, take_id: Any) -> bool:
+    """Whether this Take's tempo stretch is on a slide where the pace game
+    the walk of the Take before gave worked (``worked``, N359): the walk's
+    tempo step is then not offered, as the frame gives no Sniper there.
+    False with no such walk, or on any failure. Never raises."""
+    fixes = [f for f in walk_fixes(database, previous_take(sessions, take_id))
+             if f["kind"] == "tempo"]
+    if not fixes:
+        return False
+    try:
+        frame = database.get_v4_dark_frame(str(take_id))
+        snippets = database.get_snippets_by_session(str(take_id)) or []
+        now = _stretch(frame, snippets)
+        return now is not None and (now["slide_index"], "tempo") in worked(fixes, frame, snippets)
+    except Exception as error:  # noqa: BLE001 -- the step as without it
+        logger.warning("take progress: pace unread take=%s: %s", take_id, error)
+        return False
+
 
 def last_fix(database: Any, take_id: Any, previous_take_id: Optional[Any]) -> Optional[dict]:
     """The fix the previous Take's walk gave, when it rose on this Take's
@@ -192,18 +276,14 @@ def last_fix(database: Any, take_id: Any, previous_take_id: Optional[Any]) -> Op
     is no previous Take, it gave no fix, it did not rise or could not be
     read, or no clip plays. The Clearer version is the fix when an older Take
     gave two (words come first, N309). Never raises."""
-    if not previous_take_id:
+    fixes = walk_fixes(database, previous_take_id)
+    if not fixes:
         return None
     try:
-        before = database.get_v4_dark_frame(str(previous_take_id))
-        if not isinstance(before, dict):
-            return None
         frame = database.get_v4_dark_frame(str(take_id))
         snippets = database.get_snippets_by_session(str(take_id)) or []
-        moments = fixes_of(before, [])
-        fix = (next((f for f in moments if f["kind"] == "clearer"), moments[0]) if moments
-               else _stretch(before, database.get_snippets_by_session(str(previous_take_id)) or []))
-        if not fix or outcome(fix, frame, snippets) != GONE:
+        fix = next((f for f in fixes if f["kind"] == "clearer"), fixes[0])
+        if outcome(fix, frame, snippets) != GONE:
             return None
         clip = _best_clip(_clips_by_slide(frame, snippets).get(fix["slide_index"]) or [])
         from services.corpus_coach_queue import playback_body

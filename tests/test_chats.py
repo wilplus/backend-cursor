@@ -23,7 +23,8 @@ OUTCOME
       when they refuse, their refusal is the answer and nothing is written.
   O8  My voice note is turned into words (N324) under my own permit, before
       the transcriber hears it, and the words are kept with its recording,
-      up to 20000 characters; they are in no answer.
+      up to 20000 characters; the chat's members get them with the voice
+      note, to open under its player (N331), and the list never shows them.
   O9  A voice note that cannot be turned into words (none heard, the
       transcriber failing, the permit refused) is sent all the same: the
       same answer, its message and recording kept, its words empty.
@@ -34,10 +35,11 @@ PROVES   O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
          O5 -> ChatsTest::test_a_voice_note_is_sent_and_the_other_member_plays_it
          O6 -> ChatsTest::test_a_recording_that_is_not_a_voice_note_is_refused
          O7 -> ChatsTest::test_the_processing_authorization_refuses_a_voice_note
-         O8 -> ChatsTest::test_a_voice_note_is_turned_into_words_under_my_permit
+         O8 -> ChatsTest::test_a_voice_note_is_turned_into_words_under_my_permit_and_its_members_read_them
          O9 -> ChatsTest::test_a_voice_note_without_words_is_sent_all_the_same
 WHY      The chats between people, first slice (founder 2026-10-31, N298 to
-         N316; the three emoji N311; the mic N321 item 2; its words N324).
+         N316; the three emoji N311; the mic N321 item 2; its words N324,
+         shown under the player N331).
          Every speaker's recording and every provider call goes through the
          processing-authorization path (CLAUDE.md).
 """
@@ -328,9 +330,11 @@ class ChatsTest(unittest.TestCase):
         res = self._voice(chat, audio=b"OggS what I said", ms="4200")
         self.assertEqual(res.status_code, 200)
         sent = res.get_json()["message"]
-        self.assertEqual(set(sent), {"id", "mine", "author", "kind", "body", "meta", "created_at"})
-        self.assertEqual((sent["mine"], sent["author"], sent["kind"], sent["body"], sent["meta"]),
-                         (True, "Artur", "voice", "", {"duration_ms": 4200}))
+        self.assertEqual(set(sent), {"id", "mine", "author", "kind", "body", "meta", "created_at",
+                                     "words"})
+        self.assertEqual((sent["mine"], sent["author"], sent["kind"], sent["body"], sent["meta"],
+                          sent["words"]),
+                         (True, "Artur", "voice", "", {"duration_ms": 4200}, None))
         kept = self.store.tables["chat_message_audio"]
         self.assertEqual([(r["message_id"], r["thread_id"], r["user_id"], r["words"])
                           for r in kept], [(sent["id"], chat, ME, None)])
@@ -381,7 +385,7 @@ class ChatsTest(unittest.TestCase):
         self.assertEqual(self._voice(chat).status_code, 404)
         self._nothing_sent()
 
-    def test_a_voice_note_is_turned_into_words_under_my_permit(self):
+    def test_a_voice_note_is_turned_into_words_under_my_permit_and_its_members_read_them(self):
         chat = self._shared_chat()
         os.environ[GATE] = "enforce"
         trail: list = []
@@ -400,12 +404,18 @@ class ChatsTest(unittest.TestCase):
                                  ("started",), ("completed",)])
         self.assertEqual(self.heard, [(b"OggS what I said", "voice.webm")])
         sent = res.get_json()["message"]
-        self.assertEqual(set(sent), {"id", "mine", "author", "kind", "body", "meta", "created_at"})
+        said = "On slide one, name the treatment and let it land."
         self.assertEqual([(r["message_id"], r["words"])
                           for r in self.store.tables["chat_message_audio"]],
-                         [(sent["id"], "On slide one, name the treatment and let it land.")])
-        for answer in (res, self._get(f"/v2/chats/{chat}/messages"), self._get("/v2/chats")):
-            self.assertNotIn("name the treatment", answer.get_data(as_text=True))
+                         [(sent["id"], said)])
+        # The words come with the voice note, to me and to the other member
+        # (N331), and never in the list.
+        self.assertEqual(sent["words"], said)
+        self.who = SOMEONE
+        read = self._get(f"/v2/chats/{chat}/messages").get_json()["messages"]
+        self.assertEqual([(m["id"], m["words"]) for m in read], [(sent["id"], said)])
+        self.assertNotIn("name the treatment", self._get("/v2/chats").get_data(as_text=True))
+        self.who = ME
 
         os.environ[GATE] = "off"
         self.said = "a" * 20001

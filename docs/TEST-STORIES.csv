@@ -598,7 +598,8 @@ and the recording consent a Take asks for, after the chat's own 404;
 when they refuse, their refusal is the answer and nothing is written.
 O8  My voice note is turned into words (N324) under my own permit, before
 the transcriber hears it, and the words are kept with its recording,
-up to 20000 characters; they are in no answer.
+up to 20000 characters; the chat's members get them with the voice
+note, to open under its player (N331), and the list never shows them.
 O9  A voice note that cannot be turned into words (none heard, the
 transcriber failing, the permit refused) is sent all the same: the
 same answer, its message and recording kept, its words empty.","O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
@@ -608,8 +609,8 @@ O4 -> ChatsTest::test_someone_not_in_the_chat_is_refused
 O5 -> ChatsTest::test_a_voice_note_is_sent_and_the_other_member_plays_it
 O6 -> ChatsTest::test_a_recording_that_is_not_a_voice_note_is_refused
 O7 -> ChatsTest::test_the_processing_authorization_refuses_a_voice_note
-O8 -> ChatsTest::test_a_voice_note_is_turned_into_words_under_my_permit
-O9 -> ChatsTest::test_a_voice_note_without_words_is_sent_all_the_same","The chats between people, first slice (founder 2026-10-31, N298 to N316; the three emoji N311; the mic N321 item 2; its words N324). Every speaker's recording and every provider call goes through the processing-authorization path (CLAUDE.md)."
+O8 -> ChatsTest::test_a_voice_note_is_turned_into_words_under_my_permit_and_its_members_read_them
+O9 -> ChatsTest::test_a_voice_note_without_words_is_sent_all_the_same","The chats between people, first slice (founder 2026-10-31, N298 to N316; the three emoji N311; the mic N321 item 2; its words N324, shown under the player N331). Every speaker's recording and every provider call goes through the processing-authorization path (CLAUDE.md)."
 tests/test_clearer_versions_reach_the_manager.py,Story,"As a speaker, I want the model's clearer rewrites to reach my feedback with their evidence, so that I get a rewrite where my wording was weak.","O1  A clearer version written because a read was weak (unconfident,
 stickiness, profanity) carries the Manager evidence naming that weak
 read, and the generator version; any other trigger carries none (and
@@ -3073,7 +3074,13 @@ weighs less than what my moment needs, a slow stretch, or no tempo
 step for me leaves the fix a moment (N323 item 6).
 O10 A sentence that already has the helper words I had when I recorded
 gives its place as my strongest to the next; helper words I pick
-during the walk don't move my moments (N246).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
+during the walk don't move my moments (N246).
+O12 A fix my last walk gave that worked (its issue gone on that slide in
+this Take) is not given again there: the walk picks the next thing,
+and keeps doing so when the Take is read again frozen; the pace game
+that worked leaves the fix a moment. When the issue came back, the
+same fix may be given again. With no walk before, or one that cannot
+be read, the frame is exactly the one it always was (N359).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O1 -> test_two_best_clips_in_one_block_get_a_block_each
 O1 -> test_a_one_block_take_is_split_for_two_moments
 O1 -> test_a_short_take_still_shows_two_moments
@@ -3087,7 +3094,9 @@ O7 -> test_a_shown_restart_or_approval_tag_opens_on_the_clearer_version
 O8 -> test_a_shown_block_takes_its_best_clip_unless_frozen
 O9 -> test_on_a_plan_my_level_takes_the_slot_whose_tool_fits_it
 O10 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
-O11 -> test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level""); 2026-10-30 (N289: ""the praise clips just get the praise"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-31 (N309, the One thing walk: ""apply to it the one thing walk""); 2026-11-02 (N323 item 6: ""yes, the pace game for everyone when rushing is the issue"")."
+O11 -> test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan
+O12 -> test_a_fix_that_worked_on_a_slide_is_not_given_there_again
+O12 -> test_with_no_walk_before_mine_is_picked_as_it_always_was","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level""); 2026-10-30 (N289: ""the praise clips just get the praise"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-31 (N309, the One thing walk: ""apply to it the one thing walk""); 2026-11-02 (N323 item 6: ""yes, the pace game for everyone when rushing is the issue""); 2026-11-02 (N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back"": ""go"")."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name
@@ -3113,10 +3122,11 @@ O4  The pace game's fix worked when every clip on that slide in the next
 Take stays inside the green on the side the stretch leaned, the bar
 that picks a stretch: the Takes table marks it gone and the walk opens
 with it as the last fix; slower but still outside the green, it came
-back and nothing is said (N347 item 3, N350 item 3).","O1 -> test_progress_is_read_against_my_first_takes
+back and nothing is said (N347 item 3, N350 item 3). Where it worked,
+the walk offers no tempo step on that slide again (N359).","O1 -> test_progress_is_read_against_my_first_takes
 O2 -> test_each_fix_is_marked_came_back_or_gone_on_the_next_take
 O3 -> test_last_time_plays_the_fix_that_rose_on_this_take
-O4 -> test_the_pace_fix_worked_when_that_slide_stays_inside_the_green","Founder 2026-10-31 (N291: ""yes""; ""ok go with the proposal""; N290: ""the next time it chooses a moment it should take into account what the user answered""; N309 item 1: ""Last time: {the tip}. You did.""; N347 item 3: ""Every fix gets its Last time, the pace game too""; N350 item 3: one rule for ""the pace fix worked"")."
+O4 -> test_the_pace_fix_worked_when_that_slide_stays_inside_the_green","Founder 2026-10-31 (N291: ""yes""; ""ok go with the proposal""; N290: ""the next time it chooses a moment it should take into account what the user answered""; N309 item 1: ""Last time: {the tip}. You did.""; N347 item 3: ""Every fix gets its Last time, the pace game too""; N350 item 3: one rule for ""the pace fix worked""; N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back"")."
 tests/test_take_promotion_survives_a_dropped_connection.py,Story,"As a speaker, I want a dropped database connection at the last step to be retried, so that my Take is not thrown away and processed again.","O1  When the connection drops while the recording becomes a Take, the
 step is retried once and the Take is returned.",O1 -> PromotionRetryTests::test_a_dropped_connection_is_retried_and_the_take_returned,Founder's Takes of 2026-10-02 and 2026-10-03 were re-run from the start after one dropped call.
 tests/test_take_purge_postgres.py,Story,"As a speaker who deletes my account, I want everything I recorded erased, so that my Take, audio and project content are gone.","O1  The erasure finishes, with nothing left for manual review, and the

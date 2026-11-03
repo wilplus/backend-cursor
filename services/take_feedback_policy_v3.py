@@ -748,7 +748,8 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
                   served_text: Any, plan: tuple = (None, None),
                   held_words: Any = None, context: Any = None,
                   heard: Optional[dict] = None,
-                  clearer_ok: Optional[Callable[[dict, dict], bool]] = None) -> dict:
+                  clearer_ok: Optional[Callable[[dict, dict], bool]] = None,
+                  worked: frozenset = frozenset()) -> dict:
     """The Take's shown moments (three, N284): the strongest, the weakest and
     the between, one per block (founder 2026-10-30, N289, flow page C2 and
     H1; `services.moment_pick`).
@@ -775,12 +776,18 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
     that passes the gate (``clearer_ok``); else the pick without them, so
     the read never costs the speaker a fix.
 
+    ``worked``, ``{(slide_index, kind)}``: the fixes the walk of the Take
+    before gave that worked on this Take (`_worked`, N359). The slot of that
+    tool passes over the clips on that slide (`moment_pick`), and this
+    week's level's moment too when its tool is that one (`_level_pick`).
+
     Returns ``{"shown": [...], "values": {block_id: willfidence}}``."""
     from services import moment_pick
 
     showable = [(block, candidate) for block in blocks
                 for candidate in _showable(block, clips, servability)]
-    reads = [_moment_read(candidate, block, snippet_map, clips, served_text, held_words, context)
+    reads = [_moment_read(candidate, block, snippet_map, clips, served_text, held_words, context,
+                          worked)
              for block, candidate in showable]
     picked = _level_pick(reads, showable, snippet_map, clips, served_text, plan) \
         or moment_pick.pick(reads)
@@ -860,6 +867,27 @@ def _heard_weights(verbal: Any, rewrite_ranked: list[dict],
         return {}
 
 
+def _worked(last_fixes: Any, blocks: list[dict], snippets: Any) -> frozenset:
+    """``{(slide_index, kind)}``: the fixes the walk of the Take before gave
+    (``last_fixes``) whose issue is gone on this Take's same slide, by the
+    rule the Takes table and Last time use (`take_progress.worked`; founder
+    2026-11-02, N359). This Take's walk does not give one of them again on
+    that slide; everything else is picked as before. Read from what is
+    stored and never changes (the Take before's frame, the clips), so a
+    frozen Take read again gets the same set and keeps the walk it froze.
+    frozenset() with no walk before, or on any failure: the pick as
+    without it. Never raises."""
+    if not last_fixes:
+        return frozenset()
+    from services import take_progress
+    try:
+        rows = [s for s in snippets or [] if isinstance(s, dict)]
+        return take_progress.worked(last_fixes, {"blocks": blocks}, rows)
+    except Exception as error:  # noqa: BLE001 -- the pick as without it
+        logger.warning("what worked last time not read: %s", error)
+        return frozenset()
+
+
 def _clearer_check(rewrite_ranked: list[dict], rewrite_rows: Any
                    ) -> Callable[[dict, dict], bool]:
     """Would a block's moment, shown with ``candidate``'s clip, open on a
@@ -877,7 +905,8 @@ def _level_pick(reads: list[dict], showable: list[tuple], snippet_map: dict,
     the clip where the level shows most as the between or the weakest; None
     when there is no level, the level has no slot (the tempo step carries
     "Let your key line land" and "Pauses that hold the room"), or no clip
-    shows it: the pick as off a plan. Never on the strongest's block."""
+    shows it: the pick as off a plan. Never on the strongest's block, nor
+    on a slide where the level's tool worked last time (N359)."""
     level, key_line = plan
     if not level:
         return None
@@ -887,11 +916,14 @@ def _level_pick(reads: list[dict], showable: list[tuple], snippet_map: dict,
         return None
     shown = moment_pick.pick(reads)["shown"]
     strongest = shown[0]["block_id"] if shown else None
+    # Nor on a slide where the level's tool worked last time (N359).
+    kind = plan_walk.practice_kind(level)
     rows = [{"candidate_id": candidate["candidate_id"],
              "word_count": candidate.get("word_count") or 0,
              "snippet": snippet_map.get(str(candidate["snippet_id"]), {}),
              "text": _shown_words(candidate, clips, served_text)}
-            for block, candidate in showable if block["block_id"] != strongest]
+            for (block, candidate), read in zip(showable, reads)
+            if block["block_id"] != strongest and kind not in read.get("worked", ())]
     try:
         at = plan_walk.level_moment(level, rows, list(snippet_map.values()), key_line=key_line)
     except Exception as error:  # noqa: BLE001 -- the walk as off a plan
@@ -904,11 +936,13 @@ def _level_pick(reads: list[dict], showable: list[tuple], snippet_map: dict,
 
 
 def _moment_read(candidate: dict, block: dict, snippet_map: dict, clips: dict,
-                 served_text: Any, held_words: Any = None, context: Any = None) -> dict:
-    """One clip's row for `moment_pick`, with its willfidence read and
+                 served_text: Any, held_words: Any = None, context: Any = None,
+                 worked: frozenset = frozenset()) -> dict:
+    """One clip's row for `moment_pick`, with its willfidence read,
     whether its words hold the helper words its slide had when the Take
     was recorded (``held_words``, ``{slide_index: [phrase, ...]}``; N246
-    item 2)."""
+    item 2), and the tools whose fix worked on its slide last time
+    (``worked``, ``{(slide_index, kind)}``; N359)."""
     from services import moment_pick, take_context
     from services.slide_helper_words import holds
 
@@ -921,6 +955,7 @@ def _moment_read(candidate: dict, block: dict, snippet_map: dict, clips: dict,
         "slide_index": block.get("slide_index"),
         "word_count": candidate.get("word_count") or 0,
         "held": holds(shown, held),
+        "worked": frozenset(kind for slide, kind in worked if slide == block.get("slide_index")),
         "read": moment_pick.read(
             candidate.get("machine_score"), snippet.get("transcript"),
             snippet.get("metrics"), shown=shown,
@@ -1092,23 +1127,30 @@ def _sniper_first(pace: Optional[dict], fixes: list[dict], value_of: dict) -> bo
 
 
 def _pace(plan_level: Optional[str], snippets: Any, take_id: str,
-          tempo_step: Any) -> Optional[dict]:
+          tempo_step: Any, blocks: Iterable[dict] = (), worked: frozenset = frozenset()
+          ) -> Optional[dict]:
     """The Take's stretch outside the green for the One thing walk's fix
     (`tempo_stretch.pick`), with whether this week's level is the tempo
     step's (``week``) and whether the speaker has the step (``on``); None
-    when no clip leaves the green, or off a pace or pause week when the
-    stretch ran slow (only rushing competes, N323 item 6). None on any
-    failure: the fix is then a moment."""
+    when no clip leaves the green, off a pace or pause week when the
+    stretch ran slow (only rushing competes, N323 item 6), or when its
+    slide is one where the pace game worked last time (``worked``, N359).
+    None on any failure: the fix is then a moment."""
     from services import plan_walk
     try:
         from services import tempo_stretch
         rows = [s for s in snippets or [] if isinstance(s, dict)]
         stretch = tempo_stretch.pick_for_take(take_id, rows)
+        # "tempo" is the pace game's kind (`take_progress.fixes_of`).
+        clip = str(rows[stretch["index"]].get("id")) if stretch and worked else None
+        fixed_there = clip is not None and any(
+            (block.get("slide_index"), "tempo") in worked for block in blocks
+            if clip in block["snippet_ids"])
     except Exception as error:  # noqa: BLE001 -- the fix is a moment then
         logger.warning("one thing: the tempo stretch not read level=%s: %s", plan_level, error)
         return None
     week = plan_level in plan_walk.TEMPO_LEVELS
-    if not stretch or (not week and stretch.get("reading") != "rushed"):
+    if not stretch or fixed_there or (not week and stretch.get("reading") != "rushed"):
         return None
     return {**stretch, "week": week, "on": tempo_step}
 
@@ -1869,8 +1911,14 @@ def build_shadow_frame(
     context: Any = None,
     tempo_step: Any = False,
     verbal: Any = None,
+    last_fixes: Any = None,
 ) -> Optional[dict]:
     """Build the complete v3 frame; return None for an unusable Take.
+
+    ``last_fixes`` are the fixes the walk of the Take before gave
+    (`take_progress.last_walk`): one that worked on this Take, its issue
+    gone on that slide (`_worked`), is not given again there (N359). It
+    never adds a key to the frame. None leaves the pick as it was.
 
     ``verbal`` is the Take's verbal read for a speaker it reaches
     (`services.verbal_read.for_pick`, N326): the moments whose words matter
@@ -1970,11 +2018,13 @@ def build_shadow_frame(
             declined_rewrites, frozen_candidate_ids, doc.get("pieces")),
     )
     heard = _heard_weights(verbal, rewrite_ranked, frozen_candidate_ids, blocks)
+    worked = _worked(last_fixes, blocks, snippets)
     picked = _pick_moments(blocks, snippet_map, clips, servability,
                            confidence_selections, served_text,
                            plan=(plan_level, key_line), held_words=held_words,
                            context=context, heard=heard,
-                           clearer_ok=_clearer_check(rewrite_ranked, feedback_rows))
+                           clearer_ok=_clearer_check(rewrite_ranked, feedback_rows),
+                           worked=worked)
 
     # THE ONLY PLACE THE REASON LAYER IS OBSERVABLE (24j). Everything else it
     # does is internal ordering that leaves no trace: the failure it can have
@@ -2006,7 +2056,7 @@ def build_shadow_frame(
     # (24g); it no longer decides where praise goes.
     green_blocks, weak_blocks, rewrite_pool = _mark_moments(
         blocks, picked, rewrite_ranked, feedback_rows,
-        pace=_pace(plan_level, snippets, take_id, tempo_step))
+        pace=_pace(plan_level, snippets, take_id, tempo_step, blocks, worked))
     rewrite_anchors = _anchored_notes(rewrite_pool, weak_blocks)
     praise_anchors = _anchored_notes(praise_ranked, green_blocks)
     rewrite_selected_ids = [row["candidate_id"] for row in rewrite_anchors]
