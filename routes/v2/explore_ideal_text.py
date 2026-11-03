@@ -762,14 +762,20 @@ def v2_explore_ideal_revisions(arc_id):
     """The History under ⋯ (lock 2026-10-12, section 4) and an older Take's
     Ideal Text card (N375): every version of the document, newest first,
     each with its Take, its words, each Paragraph's Slide (`slides`, null
-    when unproved) and that Take's deck (`presentation_ref`). Read only
+    when unproved), that Take's deck (`presentation_ref`) and the helper
+    words of its time (`helper_words`, N380). Read only
     (rule 5). Owner only."""
     owned, sessions = _arc_owned_by_caller(arc_id)
     if not owned:
         return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-    from services.paragraph_history import document_history
+    from services.paragraph_history import document_history, history_slides
+    versions = db.list_ideal_text_versions(arc_id)
+    # One read for every Slide's helper words over time (N380); a failed
+    # read serves the words without them.
+    logs = db.list_slide_helper_words_log_for_slides(
+        arc_id, str(request.user_id), history_slides(versions))
     response = jsonify({"revisions": document_history(
-        db.list_ideal_text_versions(arc_id), sessions)})
+        versions, sessions, logs)})
     response.headers["Cache-Control"] = "private, no-store"
     return response
 

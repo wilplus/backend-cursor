@@ -1053,11 +1053,14 @@ test_a_stale_row_and_a_bad_home_are_refused
 test_every_doc_is_listed_except_runtime_prompts
 test_a_new_doc_needs_the_founders_ok
 test_the_log_numbers_and_the_rules_pages_citations_hold","If removed: The docs pile up again, one new file per piece of work, as they did until 21 October 2026 (423 files)."
-tests/test_document_history_slides.py,Story,"As a speaker, I want an older Take's Ideal Text shown slide by slide on the deck I said it on, so that I read what I said then as the page showed it.","O1  Each version in the History carries each Paragraph's Slide and the
+tests/test_document_history_slides.py,Story,"As a speaker, I want an older Take's Ideal Text shown slide by slide on the deck I said it on, with the helper words I had then, so that I read what I said then as the page showed it.","O1  Each version in the History carries each Paragraph's Slide and the
 deck of its own Take, not the latest Take's.
 O2  A Slide map that cannot be proved, or a Take that cannot be found, is
-not guessed: no slides, no deck, the words as they are.","O1 -> test_each_version_carries_its_slides_and_its_own_takes_deck
-O2 -> test_an_unproved_slide_map_or_unknown_take_is_not_guessed","Founder 2026-11-03, N375 and N376; a Take's deck is its own (N257)."
+not guessed: no slides, no deck, the words as they are.
+O3  Each version keeps the helper words its Slides had while it was the
+latest: the last set picked before the next version, not today's.","O1 -> test_each_version_carries_its_slides_and_its_own_takes_deck
+O2 -> test_an_unproved_slide_map_or_unknown_take_is_not_guessed
+O3 -> test_each_version_keeps_the_helper_words_of_its_time","Founder 2026-11-03, N375, N376, N380; a Take's deck is its own (N257)."
 tests/test_each_served_take_keeps_its_coverage_postgres.py,Story,"As the founder, I want each served Take's feedback coverage and lane outcomes stored once, so that I can see where feedback found nothing worth saying.","O1  The row the serve path builds (`coverage_row`) fits the table, with an
 empty lane typed `no_defensible_candidate`.
 O2  One row per Take: a second serve inserts nothing.
