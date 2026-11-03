@@ -8,7 +8,8 @@ CATCHES
   C3  a Take in the green picking a stretch anyway, so the step shows for nothing
   C4  a topic with a number, a quote or a whole sentence reaching the speaker
   C5  a failed topic call losing the step, instead of saying "that part"
-  C6  a played tempo game no longer kept for Will, or kept with a number in his note
+  C6  a played tempo game no longer kept for Will, or kept with a number in his note,
+      or a game skipped after a try kept as played out
   C7  a broken or partial game kept as if it were whole
   C8  the tempo step reaching a speaker the rings panel has not switched on
   C9  the stretch losing its player (the speaker's orange clip, N166, locked
@@ -178,6 +179,12 @@ def test_a_played_game_is_kept_for_will_in_words(monkeypatch):
     assert line == ("- A take: a tempo game on a stretch they rushed: tries still rushed, "
                     "better, it ended dynamic.")
     assert not any(ch.isdigit() for ch in line)
+    # Skipped after a try: kept as skipped, not as an ending.
+    skipped = {"reading": "rushed", "close": "rush", "skipped": True,
+               "tries": [{"result": "rush", "path": [0.5, 0.9]}]}
+    assert tempo_stretch.keep_tries(db, user_id="u", take="t1", body=skipped)
+    assert speaker_memory._event_line(db.events[-1]) == (
+        "- A take: a tempo game on a stretch they rushed: tries still rushed, then skipped.")
 
 
 def test_a_partial_game_is_not_kept():

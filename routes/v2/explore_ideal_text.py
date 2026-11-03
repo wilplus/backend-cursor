@@ -554,7 +554,8 @@ def v2_explore_arc_review_last_fix(arc_id, take_session_id):
 @require_auth
 def v2_explore_arc_review_tempo_tries(arc_id, take_session_id):
     """The tempo game as played (founder 2026-10-26, N166 step 4), kept for
-    Will. Body: {reading, tries: [{result, path}], close}. 200 {kept: true}
+    Will. Body: {reading, tries: [{result, path}], close, skipped?} (skipped
+    an optional boolean: they skipped it, after a try too). 200 {kept: true}
     · 400 · 404 · 500"""
     from services.tempo_stretch import keep_tries
     try:

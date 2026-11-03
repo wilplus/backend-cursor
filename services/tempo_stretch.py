@@ -358,7 +358,9 @@ _PATH_MAX = 300
 def read_tries(body: dict) -> Optional[dict]:
     """The tempo game as the walk sends it, when it is whole: the stretch's
     reading, up to three tries (each its result and the dot's path, 0..1),
-    and how it ended (none when skipped before a try). Else None. Pure."""
+    how it ended (none when skipped before a try), and ``skipped``, an
+    optional boolean, kept when true: the speaker skipped it, after a try
+    too. Else None. Pure."""
     if not isinstance(body, dict) or body.get("reading") not in ("rushed", "slow"):
         return None
     tries = body.get("tries")
@@ -376,7 +378,11 @@ def read_tries(body: dict) -> Optional[dict]:
     close = body.get("close")
     if (close is None) != (not results) or (close is not None and close not in _CLOSES):
         return None
-    return {"reading": body["reading"], "tries": results, "paths": paths, "close": close}
+    skipped = body.get("skipped")
+    if skipped is not None and not isinstance(skipped, bool):
+        return None
+    game = {"reading": body["reading"], "tries": results, "paths": paths, "close": close}
+    return {**game, "skipped": True} if skipped else game
 
 
 def keep_tries(database: Any, *, user_id: str, take: str, body: dict) -> bool:

@@ -124,13 +124,16 @@ _TEMPO_CLOSE = {"dynamic": "it ended dynamic", "rush": "it ended still rushed",
 
 def _tempo_bit(tempo: Any) -> str:
     """The tempo game of a Take in words (founder 2026-10-26, N166 step 4):
-    the stretch it practised, each try, how it ended. Never a number."""
+    the stretch it practised, each try, how it ended, or that they skipped
+    it after a try. Never a number."""
     if not isinstance(tempo, dict) or tempo.get("reading") not in ("rushed", "slow"):
         return ""
     stretch = f"a tempo game on a stretch they {'rushed' if tempo['reading'] == 'rushed' else 'dragged'}"
     tries = [_TEMPO_TRY[t] for t in tempo.get("tries") or [] if t in _TEMPO_TRY]
     if not tries:
         return f"{stretch}, skipped"
+    if tempo.get("skipped") is True:
+        return f"{stretch}: tries {', '.join(tries)}, then skipped"
     ending = _TEMPO_CLOSE.get(str(tempo.get("close") or ""), "")
     return f"{stretch}: tries {', '.join(tries)}" + (f", {ending}" if ending else "")
 
