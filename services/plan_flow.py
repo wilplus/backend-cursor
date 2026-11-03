@@ -81,6 +81,14 @@ def calls_on(database: Any, user_id: Any) -> bool:
     return bool(user_id) and rings.feature_is_on_for_user(rings.PLAN_CALLS, user_id, database=database)
 
 
+def first_take_on(database: Any, user_id: Any) -> bool:
+    """Is the first Take the onboarding for this person (N401)? The ring
+    row ``first_take``; with no row it is off and the plan asks its
+    questions in the chat, as before. Fails closed (rings)."""
+    from services import rings
+    return bool(user_id) and rings.feature_is_on_for_user(rings.FIRST_TAKE, user_id, database=database)
+
+
 # ── time ───────────────────────────────────────────────────────────────────
 
 def zone(name: Any) -> ZoneInfo:
@@ -260,7 +268,16 @@ def view(database: Any, user_id: str, plan: dict) -> dict:
         # each voice question; it is the one button after the plan card
         # (N319 item 2, which amends N262).
         "onboarding": _onboarding(plan, done),
+        # N401: the first Take is the onboarding; its five slides, as the
+        # recording screen shows them, while the plan waits for that Take.
+        **_first_take_view(plan),
     }
+
+
+def _first_take_view(plan: dict) -> dict:
+    waiting = plan.get("status") == "asking" and _facts(plan).get("first_take") == "waiting"
+    slides = [{"kicker": k, "title": q, "body": hint} for k, q, hint, _kind in P.FIRST_TAKE_SLIDES]
+    return {"first_take": waiting, "first_take_slides": slides if waiting else None}
 
 
 def _open(database: Any, user_id: str) -> dict:
@@ -375,6 +392,10 @@ def begin(database: Any, user_id: str, *, tz: Optional[str], first_name: Optiona
     practice." and "When is your deadline?" (B1, B2). A speaker who already
     has Takes (``mode`` "takes", A2) is asked only the deadline."""
     facts: dict[str, Any] = {"mode": mode, **({"rate_after_first": True} if mode == "takes" else {})}
+    if mode == "new" and first_take_on(database, user_id):
+        # N401: the questions are the first Take's slides; the plan is read
+        # from what was said once the Take is processed (``after_take``).
+        facts["first_take"] = "waiting"
     plan = database.insert_plan({
         "user_id": str(user_id), "status": "asking", "step": "deadline",
         "time_zone": tz, "facts": facts,
@@ -385,6 +406,10 @@ def begin(database: Any, user_id: str, *, tz: Optional[str], first_name: Optiona
 
 
 def _opening(plan: dict, first_name: Optional[str]) -> list[tuple]:
+    if _facts(plan).get("first_take") == "waiting":
+        # N401 item 1: Will's hello and one line; the bar's middle is
+        # "Start your first recording" (the app reads ``first_take``).
+        return [_bot(_hi(first_name), "hello"), _bot(P.COPY["first_take"], "first_take")]
     first = _first_plan(plan)
     rows = [_bot(f"{_hi(first_name)} {P.COPY['hello_first']}", "hello")] if first else []
     return rows + [_bot(P.COPY["deadline_q"], "deadline_q", plan_ask="deadline")]
@@ -463,6 +488,10 @@ def answer_deadline(database: Any, user_id: str, raw: Any, *, tz: Any = None) ->
               "every_day": j.every_day, "total": j.total, "time_zone": zone_name}
     if _facts(plan).get("mode") == "takes":
         plan, more = _questions_done(database, user_id, plan, fields, _diagnose_from_takes)
+        rows += more
+    elif _facts(plan).get("first_take") == "read":
+        # The first Take said no day (N401 item 3): the plan from its answers.
+        plan, more = _questions_done(database, user_id, plan, fields, _diagnose_first_take)
         rows += more
     else:
         fields["step"] = "why"
@@ -949,6 +978,123 @@ def _diagnose_from_takes(database: Any, user_id: str, plan: dict) -> Optional[st
     return _set_level(database, user_id, plan, P.Diagnosis("make_it_yours", "a plan from their Takes"))
 
 
+def _diagnose_first_take(database: Any, user_id: str, plan: dict) -> Optional[str]:
+    """A plan read from the first Take (N401): its level from that Take's
+    readings, as a later Take's are read (N209); with none readable, "Make
+    it yours"."""
+    facts = _facts(plan)
+    take_id = str(facts.get("first_take_session") or "")
+    clips = (database.get_snippets_by_session(take_id) or []) if take_id else []
+    readings = _take_readings(clips, facts.get("key_line"))
+    d = P.pick_level(readings) if readings else P.Diagnosis("make_it_yours", "a plan from the first Take")
+    return _set_level(database, user_id, plan, d)
+
+
+# ── the first Take is the onboarding (N401) ────────────────────────────────
+
+def _slide_of(clip: dict) -> Optional[int]:
+    raw_metrics = clip.get("metrics")
+    metrics: dict = raw_metrics if isinstance(raw_metrics, dict) else {}
+    raw_piece = metrics.get("piece")
+    piece: dict = raw_piece if isinstance(raw_piece, dict) else {}
+    i = piece.get("slide_index")
+    return i if isinstance(i, int) and not isinstance(i, bool) else None
+
+
+def _first_take_slides(clips: list) -> list[list[dict]]:
+    """The first Take's clips, slide by slide (N401 item 2); a clip with no
+    slide, or past the fifth, is left out."""
+    out: list[list[dict]] = [[] for _ in P.FIRST_TAKE_SLIDES]
+    for clip in clips or []:
+        i = _slide_of(clip) if isinstance(clip, dict) else None
+        if i is not None and 0 <= i < len(out):
+            out[i].append(clip)
+    return out
+
+
+def _read_first_take(user_id: str, said: list[str], today: date) -> Optional[dict]:
+    """The AI's reading of the five answers: the plan's facts and the day of
+    the event when one was said; None when it failed (the plan then keeps
+    the words as they were said, and asks for the deadline)."""
+    from services.llm import chat_complete
+    from services.llm_config import SPEC_PLAN_TURN
+    from services.processing_authorization import rethrow_processing_authorization
+    answers = [(q, s) for (_k, q, _h, _kind), s in zip(P.FIRST_TAKE_SLIDES, said)]
+    try:
+        result = chat_complete(spec=SPEC_PLAN_TURN, system=P.first_take_prompt(answers=answers, today=today),
+                               user="Read the five answers now, as the JSON asked for.",
+                               surface="plan_first_take", user_id=str(user_id))
+    except Exception as error:  # noqa: BLE001 -- the words are kept as said
+        rethrow_processing_authorization(error)
+        logger.warning("plan: the first Take not read user=%s: %s", user_id, error)
+        return None
+    parsed = getattr(result, "parsed", None) if result else None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _first_take_deadline(raw: Any, today: date) -> Optional[date]:
+    """The day the AI read, kept only when it is after today and within two
+    years; otherwise none, and the plan asks."""
+    day = _parse_day(raw) if isinstance(raw, str) else None
+    if day is None or day <= today or (day - today).days > 730:
+        return None
+    return day
+
+
+def _keep_first_take(database: Any, user_id: str, plan: dict, slides: list[list[dict]],
+                     said: list[str], key_line: Any) -> dict:
+    """Each answer of the first Take, kept as the plan answer it replaces
+    (the voice message, the audience, the key line, the opening) with its
+    readings, and every answer in Will's notes on the speaker. The facts to
+    keep: the key line's answer."""
+    from services import speaker_memory
+    out: dict[str, Any] = {}
+    for (_kicker, question, _hint, kind), clips, text in zip(P.FIRST_TAKE_SLIDES, slides, said):
+        if not text:
+            continue
+        speaker_memory.record(database, str(user_id), "answer", {"question": question, "said": text})
+        if not kind:
+            continue  # slide 1 is the setup's (N400 item 1)
+        duration = sum(int(c.get("duration_ms") or 0) for c in clips) or None
+        answer = database.insert_plan_answer({
+            "plan_id": plan["id"], "user_id": str(user_id), "kind": kind,
+            "question": question, "transcript": text[:20000], "duration_ms": duration,
+            "readings": _take_readings(clips, key_line if kind == "key" else None)})
+        if answer and kind == "key":
+            out["key_answer_id"] = str(answer["id"])
+    return out
+
+
+def _from_first_take(database: Any, user_id: str, plan: dict) -> list[dict]:
+    """The first Take, after its walk (N401 item 3): Will reads its five
+    answers. The plan's facts come from them, each answer is kept as the
+    plan answer it replaces and in Will's notes; with a day said, the plan
+    and its card, as after the plan's last question (N319); with none, or
+    nothing heard, "When is your deadline?" as taps."""
+    take = _latest_take(database, user_id)
+    take_id = str(take.get("id") or "")
+    clips = (database.get_snippets_by_session(take_id) or []) if take_id else []
+    slides = _first_take_slides(clips)
+    said = [" ".join(str(c.get("transcript") or "").strip() for c in s).strip() for s in slides]
+    today = today_in(plan.get("time_zone"))
+    read = _read_first_take(user_id, said, today) if any(said) else None
+    facts = {**_facts(plan), "first_take": "read", "first_take_session": take_id or None}
+    facts.update(P.clean_facts((read or {}).get("facts"), facts))
+    if not facts.get("key_line") and said[3]:
+        facts["key_line"] = said[3][:300]
+    facts.update(_keep_first_take(database, user_id, plan, slides, said, facts.get("key_line")))
+    plan = _save(database, user_id, plan, {"facts": facts})
+    deadline = _first_take_deadline((read or {}).get("deadline"), today)
+    if deadline is None:
+        return _write(database, user_id, plan["id"],
+                      [_bot(P.COPY["deadline_q"], "deadline_q", plan_ask="deadline")])
+    j = P.journey(today, deadline)
+    plan, rows = _questions_done(database, user_id, plan, {
+        "deadline": deadline.isoformat(), "deadline_given": False,
+        "every_day": j.every_day, "total": j.total}, _diagnose_first_take)
+    return _write(database, user_id, plan["id"], rows)
+
+
 def _set_level(database: Any, user_id: str, plan: dict, d: P.Diagnosis) -> Optional[str]:
     if plan.get("level_by") == "coach":
         return plan.get("level")  # a coach's change always wins (C5)
@@ -1321,6 +1467,8 @@ def after_take(database: Any, user_id: str, *, first_name: Optional[str] = None)
             if database.get_latest_plan(str(user_id)) is None:
                 return begin(database, user_id, tz=None, first_name=first_name, mode="takes")[1]
             return []
+        if plan.get("status") == "asking" and _facts(plan).get("first_take") == "waiting":
+            return _from_first_take(database, user_id, plan)
         if plan.get("status") == "asking" and _facts(plan).get("wait_take"):
             plan = _save(database, user_id, plan, {"facts": {**_facts(plan), "wait_take": False}})
             return _write(database, user_id, plan["id"], _opening(plan, first_name))
