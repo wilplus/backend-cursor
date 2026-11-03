@@ -9963,3 +9963,23 @@ the voice on a fragment whose trouble was its words.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C2 and H1. No migration.
+
+**N385 · Push in the iPhone app: the coach's feedback and a new chat message
+(founder, the Claude Code chat, 3 November 2026, choosing on the questions
+asked: "Coach feedback is in", "New chat message", "After the first
+feedback", "Name + first line").** For N365 item 4, N155 and N171:
+1. **Two pushes, in the iPhone app only.** "The feedback from your coach is
+in!" (N171's words), sent when its WhatsApp would be (coach_feedback_notice),
+opening the feedback; and a new chat message, its title the sender's name and
+its line the start of the message ("🎤 Voice message" for a voice note,
+N322 item 3), opening that chat. Each is best-effort and never holds up a save
+or a send.
+2. **Asked once, after the first feedback:** iPhone's own permission question
+comes when the speaker has first seen their coach's feedback, never before
+the first Take (Never 3). A no is kept; nothing asks again.
+3. **Not yet:** practice-day reminders (N155 stands) and the Life Panel's
+reminders on the iPhone; N365 item 4's practice days wait for their own
+decision.
+No rules page: the code and its comments, with the frontend README's
+iPhone-app row. The migration (the iPhone's push address per account) gets
+its outside review before it is merged.
