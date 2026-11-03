@@ -10948,3 +10948,34 @@ else") stays as it is.
 No new words. No migration, and no ring is set. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
+
+**N458 · The walk's moments and their interventions, as the docs say; the
+code is made to match (founder, the Claude Code chat, 3 November 2026: "go
+through the feedback walk the errors being spotted and what interventions
+are assigned to it … compare it with the current code and How the app
+works. When something is off when it comes to the walk and the questions
+after the walk Please fix it right away", "Make it really like in the docs
+and locked prototype. The goal is that we spot very precisely the moments
+and then assign to them perfect interventions. Including the exercise
+videos that we still need to record but they are the calls to the coach";
+then, asked, four answers, each the recommended one).** For N103, N294,
+N309, N406, N425:
+1. **The walk stays the One thing walk (N309):** their best and one fix,
+the AI clip on a measured voice problem (N425), the Clearer version or the
+Sniper. It does not go back to three moments (N289).
+2. **An exercise video not yet recorded is an ask to the coach (N103):** the
+speaker gets the AI clip or its tip at once and never waits; the moment
+goes to the coach's queue asking Artur to record a version for that
+mistake, until three approved versions exist. N103 is still in force only
+once it is built and merged, and its coach-panel line still needs the
+founder's words.
+3. **The questions after the walk are Will's ask (E1 to E4):** who the talk
+is for, what they should do, the key line, opened on the moment the walk
+just worked on, answered by a tap, typing or voice, with the goodbye
+waiting under an open question (N294, N406).
+4. **Fixes that make the code match these docs and the locked prototype
+merge when green.** Anything that would change a rule waits in §3 of the
+rules page for the founder.
+No new words. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§3 and §6.
