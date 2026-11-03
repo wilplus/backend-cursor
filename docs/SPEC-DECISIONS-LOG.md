@@ -10398,6 +10398,43 @@ after another. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
 No migration.
 
+**N416 · The training corpus moves to the CEO panel and leaves the coach's
+side (founder, the Claude Code chat, 3 November 2026: "[move] the training
+corpus to the CEO panel and remove it from the coach side so that it
+doesn't hang there, because we rebuild the whole infrastructure a little
+bit").** While the corpus's infrastructure is rebuilt:
+1. The founder opens it from the CEO panel (`/admin/ceo`): a "Training
+corpus" button beside Bugs and Tasks opens the same screens as before (the
+imports, Import audio, the set-up, the blind judging; coach panel H1 to
+H3) over the panel, and ✕ comes back to it.
+2. No coach sees it: the Lounge's pinned "Training corpus" button and the
+☰ menu's coach-only row are gone; `/coach/corpus` goes to `/admin/ceo`.
+Speakers stays pinned on its own.
+3. The backend's corpus endpoints, their role checks, the imports and every
+label already given are unchanged; nothing is deleted.
+No new words on screen ("Training corpus" is the signed word, moved). No
+migration.
+The rules: frontend
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+B1, H0 and J, and
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+§1.
+
+**N417 · The sale's four steps outlined, none filled (founder, the Claude
+Code chat, 3 November 2026, on the canvas "Sale steps answers",
+<https://claude.ai/artifact/9UpKbNHLVJ8W4nvVpSEpRN>: "B, go ahead").** For
+N415 item 2 and N241 P2:
+1. **"Which step did it stall at?"** takes N371's suggested answers: the
+four steps stacked on the right in their order ("The opening",
+"Discovery", "The offer", "The follow-up"), all four outlined orange and
+none filled, since no step is likelier than another. N415 item 2's "the
+one that goes on filled" does not apply to them. Was: four grey pills, two
+by two.
+2. Same words, the same taps and what they send.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E1. No migration.
+
 **N419 · One code for a team and a community (founder, the Claude Code
 chat, 3 November 2026, on the open questions of the prototype "The way
 in": "one code for a team and a community: yeah").** Answers N352 item 6
