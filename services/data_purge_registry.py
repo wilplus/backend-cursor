@@ -328,6 +328,10 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # they belong to (chat_messages, ON DELETE CASCADE).
     PurgeDependency("chat_message_audio", "chat_message_audio", "user_id",
                     "user", "delete", "database_row", 58),
+    # The photos and files the person sent from the "+" (N351, migration
+    # a_chat_keeps_its_photos_and_files): they point at their message too.
+    PurgeDependency("chat_message_files", "chat_message_files", "user_id",
+                    "user", "delete", "database_row", 58),
     PurgeDependency("chat_demo_threads", "chat_threads", "demo_user_id",
                     "user", "delete", "database_row", 59),
     PurgeDependency("chat_members", "chat_members", "user_id", "user",
