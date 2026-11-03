@@ -198,23 +198,21 @@ def v2_user_lounge_after_take_post():
 @v2_bp.route("/user/lounge/visit", methods=["POST"])
 @require_auth
 def v2_user_lounge_visit_post():
-    """The speaker opened the app (the Lounge, once a visit): a settings ask
-    that waited for this visit is written, one at a time, never after a Take
-    and never before the second Take is done (founder 2026-10-31, N294 item
-    8, N295; services/after_take.py ``visit``).
-
-    Body: { "can_install": bool } (this device can add the app to its home
-    screen).
+    """The speaker opened the app (the Lounge, once a visit): the WhatsApp
+    ask that waited for this visit is made when due (founder 2026-10-31,
+    N294 item 8, N295; services/after_take.py ``visit``), and the one ask
+    for the bar at the top of the chat comes back (N391; the same as GET
+    /v2/user/asks/next).
 
     Responses:
-      200 { "rows": every row written, [] when nothing is asked }
+      200 { "ask": the bar's ask, or null }
       500 V2_ERROR
     """
     try:
+        from services import person_asks
         from services.after_take import visit
-        body = request.get_json(silent=True) or {}
-        rows = visit(db, str(request.user_id), can_install=body.get("can_install") is True)
-        return jsonify({"rows": rows}), 200
+        visit(db, str(request.user_id))
+        return jsonify({"ask": person_asks.next_for(str(request.user_id))}), 200
     except Exception as e:
         logger.error("user/lounge/visit failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)

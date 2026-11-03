@@ -9,11 +9,11 @@ OUTCOME
   O1  One ask after each Take, the first that waits (founder 2026-10-26,
       N189). After Take 1 that is Will's question when he has one, else
       "Did this help?" when the Take looks off; never an ask from the CEO
-      panel on Take 1; WhatsApp and the home screen never after a Take
-      (N294 item 8).
-  O2  From Take 2 the order is the CEO panel's ask, Will's question, "Did
-      this help?"; the first that waits comes and the others wait for a
-      later Take; Will's next question may follow his first, only when his
+      panel and never WhatsApp after a Take (N294 item 8, N391).
+  O2  From Take 2 the same: Will's question, then "Did this help?"; the
+      first that waits comes and the others wait for a later Take; an open
+      ask from the CEO panel is not among them (it is in the bar at the
+      top, N391); Will's next question may follow his first, only when his
       is the ask (N294 item 4); nothing comes when nothing applies.
   O3  The asks come one at a time, each under whatever closed the one
       before: a typed turn, under Will's reply; "Yes", tapped or typed,
@@ -31,23 +31,24 @@ OUTCOME
       bubble, so its answers stay; after my answer come the lines, then
       "Good job. See you {day}." with the plan's next practice day (N347
       item 2), then the plan's progress, last (N319 item 7).
-  O7  The settings asks wait for the next visit (N294 item 8, N295): never
-      before my second Take is done, never while an ask after a Take waits,
-      at most one per Take; WhatsApp first, opened with "It seems you enjoy
-      using WillpowerLab." (at most twice), the home screen last, once,
-      where the phone can add it.
+  O7  The WhatsApp ask waits for the next visit and comes in the bar at the
+      top, never in the chat (N294 item 8, N295, N391): never before my
+      second Take is done, one per Take, at most twice, opened with "It
+      seems you enjoy using WillpowerLab."; never once my number is saved.
+      The home-screen ask is never made (N391).
 PROVES   O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
          O2 -> test_from_take_two_one_ask_ceo_ask_will_the_question
          O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_goodbye
          O4 -> test_an_older_waiting_message_shows_where_it_stands
          O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
          O6 -> test_the_plans_lines_wait_for_the_ask_then_the_goodbye_and_the_progress
-         O7 -> test_settings_asks_wait_for_the_next_visit
+         O7 -> test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar
 WHY      Founder 2026-10-20: "one action at a time"; 2026-10-31 (N294): "No
          call to action means that there is no push", "the next time you
          come and open the app ask the settings questions".
 """
-from services import after_take, chat_query, feedback_check
+from services import after_take, chat_query, feedback_check, person_asks
+from tests.fakes import FakeSupabaseClient
 
 SUMMARY = "Your first take is in 🎉"
 AT = "2026-10-20T10:00:00+00:00"
@@ -141,9 +142,9 @@ def test_after_take_one_will_else_the_question_never_a_settings_ask(monkeypatch)
 
 def test_from_take_two_one_ask_ceo_ask_will_the_question(monkeypatch):
     db = _Db()
+    # A CEO panel's ask is open: it is in the bar, never after a Take (N391).
     _world(monkeypatch, phone=None, admin={"id": "a1", "kind": "promo"})
-    # Three would wait: the first comes, the others wait (N189).
-    assert after_take.chain(db, "u", take_index=2, off=True, will=True, will_next=True) == ["admin"]
+    assert after_take.chain(db, "u", take_index=2, off=True, will=True) == ["will_question"]
     _world(monkeypatch, phone=None, admin=None)
     # No number: still no WhatsApp after a Take (N294 item 8).
     assert after_take.chain(db, "u", take_index=2, off=True, will=True) == ["will_question"]
@@ -157,14 +158,14 @@ def test_from_take_two_one_ask_ceo_ask_will_the_question(monkeypatch):
 def test_each_ask_comes_under_what_closed_the_one_before_then_the_goodbye(monkeypatch):
     _world(monkeypatch, phone=None, admin={"id": "a1", "kind": "promo"})
     db = _Db()
-    # Take 2: the CEO panel's ask (the Lounge draws it), then "Did this
-    # help?", then the goodbye. The summary is drawn at once, without the CTA.
+    # Take 2, held from before N391 behind the CEO panel's ask: that ask is
+    # not asked here any more, so "Did this help?" comes, then the goodbye.
+    # The summary is drawn at once, without the CTA.
     _waiting(db, "take-2", ["admin", "feedback_check"])
     assert db.drawn() == [SUMMARY]
     assert after_take.held(db, "u")["metadata"]["chain"] == ["feedback_check"]
 
-    # The ask's form closes (the Lounge's POST): the question comes, the
-    # closing message still waits.
+    # The Lounge's POST: the question comes, the closing message still waits.
     rows = after_take.release(db, "u")
     assert [r["body"] for r in rows] == [feedback_check.COPY["ask"]]
     assert db.drawn() == [SUMMARY, feedback_check.COPY["ask"]]
@@ -251,31 +252,70 @@ def _done(db, take):
         user_id="u", arc_id="arc", take_index=_index(take), take=take, at=AT, asks=[])])
 
 
-def test_settings_asks_wait_for_the_next_visit(monkeypatch):
-    _world(monkeypatch, phone=None, admin=None)
+class _Asks:
+    """The person_asks table, in memory: enough of it for the visit's ask."""
+
+    def __init__(self):
+        self.rows = []
+        self.clock = "2026-10-21T00:00:00+00:00"
+
+    def __call__(self, q):
+        since = max(i for i, c in enumerate(q.calls) if c[0] in ("select", "insert", "update"))
+        verb, args, _ = q.calls[since]
+        if verb == "insert":
+            self.rows.append({"id": f"a{len(self.rows) + 1}", "status": "waiting", "created_by": None,
+                              "consent_key": None, "created_at": self.clock, **args[0]})
+            return []
+        if verb == "update":
+            for r in self.rows:
+                if ("in_", ("status", list(person_asks.OPEN)), {}) in q.calls[since:] \
+                        and r["status"] not in person_asks.OPEN:
+                    continue
+                r.update(args[0])
+            return []
+        rows = [dict(r) for r in self.rows]
+        if ("in_", ("status", list(person_asks.OPEN)), {}) in q.calls[since:]:
+            rows = [r for r in rows if r["status"] in person_asks.OPEN]
+        return rows
+
+
+def _done_at(db, take, at):
+    db.insert_lounge_messages("u", [after_take.closing_row(
+        user_id="u", arc_id="arc", take_index=_index(take), take=take, at=at, asks=[])])
+
+
+def _phone(monkeypatch, phone):
+    monkeypatch.setattr("services.whatsapp_notify.whatsapp_state", lambda _db, _u: {"phone": phone})
+
+
+def test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar(monkeypatch):
+    _phone(monkeypatch, None)
+    asks = _Asks()
+    monkeypatch.setattr(person_asks.db, "client", FakeSupabaseClient({"person_asks": asks}))
     db = _Db()
-    whatsapp = ("It seems you enjoy using WillpowerLab. "
-                "Want a WhatsApp when your coach replies? Add your number.")
     _done(db, "take-1")
-    assert after_take.visit(db, "u", can_install=True) == []  # never before the second Take
+    after_take.visit(db, "u")
+    assert person_asks.next_for("u") is None  # never before the second Take
     _done(db, "take-2")
-    rows = after_take.visit(db, "u", can_install=True)
-    assert [r["body"] for r in rows] == [whatsapp]
-    assert rows[0]["metadata"]["offer"] == "whatsapp"  # the Lounge opens its form
-    assert after_take.visit(db, "u", can_install=True) == []  # one a Take
+    after_take.visit(db, "u")
+    bar = person_asks.next_for("u")
+    assert bar["kind"] == "whatsapp" and bar["opener"] == "It seems you enjoy using WillpowerLab."
+    assert db.drawn() == [after_take.SEE_YOU, after_take.SEE_YOU]  # nothing written in the chat
+    person_asks.mark("u", bar["id"], "shown")
+    after_take.visit(db, "u")
+    assert person_asks.next_for("u") is None  # shown once; one a Take
 
-    # While an ask after a Take is in front of me, nothing is asked over it.
-    _waiting(db, "take-3", ["feedback_check"])
-    assert after_take.visit(db, "u", can_install=True) == []
-    feedback_check.answer(db, user_id="u", arc_id="arc", take_session_id="take-3", choice="yes")
-    assert [r["body"] for r in after_take.visit(db, "u", can_install=True)] == [whatsapp]
+    _done_at(db, "take-3", "2026-10-22T00:00:00+00:00")
+    after_take.visit(db, "u")
+    person_asks.mark("u", person_asks.next_for("u")["id"], "shown")
+    _done_at(db, "take-4", "2026-10-23T00:00:00+00:00")
+    after_take.visit(db, "u")
+    assert person_asks.next_for("u") is None  # at most twice
+    assert len(asks.rows) == 2
 
-    # Asked twice: then the home screen, once, where the phone can add it.
-    _done(db, "take-4")
-    assert after_take.visit(db, "u", can_install=False) == []
-    _done(db, "take-5")
-    assert [r["body"] for r in after_take.visit(db, "u", can_install=True)] == [
-        "Well, I can see you're doing pretty good. "
-        "Add WillpowerLab to your home screen? Your coach is one tap away."]
-    _done(db, "take-6")
-    assert after_take.visit(db, "u", can_install=True) == []
+    # My number saved: never asked.
+    _phone(monkeypatch, "+48500100200")
+    fresh = _Asks()
+    monkeypatch.setattr(person_asks.db, "client", FakeSupabaseClient({"person_asks": fresh}))
+    after_take.visit(db, "u")
+    assert fresh.rows == []

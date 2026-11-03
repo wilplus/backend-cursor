@@ -1,24 +1,25 @@
 """Asks to one person (founder 2026-10-13, step 2). Table: person_asks.
 
 The admin asks one person for a missing answer from their profile; the
-person's app shows it the next time they open the chat (founder 2026-10-18;
-it used to wait for their next Take), one at a time, in the footer slot the
-app's own offers use.
+person's app shows it the next time they open the chat, one at a time, in
+the bar at the top of the chat, never in the buttons under it (N391).
 
-  whatsapp     the app's WhatsApp offer (answered when the number is saved)
-  home_screen  the app's add-to-home-screen offer (answered when the app is
-               next opened from the home screen)
-  consent      the question in the chat, answered No | Yes (founder
-               2026-10-18); one the chat cannot show still points to the Data
-               & consent page (opened when they tap it)
-  promo        their special plan price, pointing to the pricing screen
-  lesson       their lesson price, pointing to the booking page
+  whatsapp  the WhatsApp form (answered when the number is saved); the next
+            visit's ask is one too, made by the app (``ask_from_visit``)
+  consent   the question, answered No | Yes (founder 2026-10-18); one the
+            app cannot show still points to the Data & consent page
+  promo     their special plan price, pointing to the pricing screen
+  lesson    their lesson price, pointing to the booking page
+
+The home-screen ask is deleted (N391): none is sent, an open one is closed.
+Was: the footer slot the app's own offers use, at the end of a Take.
 
 Any consent can be asked again, also after a "no", but not within 30 days of
 the last "no" (founder 2026-10-13: privacy law wants consent given freely).
 A consent ask answered in the chat while the consent is still not given is a
 "no" too. "share" and "email" are not asked: no screen answers them any more
-(founder 2026-10-18).
+(founder 2026-10-18). The app's own WhatsApp ask (no ``created_by``) carries
+its opener and is done once shown (N294 item 8, N295).
 """
 from __future__ import annotations
 
@@ -27,7 +28,9 @@ from typing import Optional
 
 from services.db import db
 
-KINDS = ("whatsapp", "home_screen", "consent", "promo", "lesson")
+KINDS = ("whatsapp", "consent", "promo", "lesson")
+#: The opener of the next visit's WhatsApp ask (founder 2026-10-31, N295).
+VISIT_OPENER = "It seems you enjoy using WillpowerLab."
 CONSENT_KEYS = ("processing", "personalised_practice", "sensitive_information",
                 "training")
 WAIT_AFTER_NO = timedelta(days=30)
@@ -98,10 +101,15 @@ def _last_chat_no(user_id: str, consent_key: str) -> Optional[str]:
 def next_for(user_id: str) -> Optional[dict]:
     """The oldest ask the person has not answered yet. A price ask carries
     the price it tells them about; one whose price has ended is closed."""
-    rows = (db.client.table("person_asks").select("id,kind,consent_key,status")
+    rows = (db.client.table("person_asks").select("id,kind,consent_key,status,created_by")
             .eq("user_id", user_id).in_("status", list(OPEN))
             .order("created_at").limit(5).execute().data) or []
     for ask in rows:
+        if ask["kind"] not in KINDS:  # the home screen, deleted (N391)
+            answered(user_id, ask["kind"])
+            continue
+        if ask.pop("created_by", None) is None and ask["kind"] == "whatsapp":
+            ask["opener"] = VISIT_OPENER
         if ask["kind"] == "promo":
             from services import plan_promotions
             ask["promotion"] = plan_promotions.active(user_id)
@@ -115,6 +123,20 @@ def next_for(user_id: str) -> Optional[dict]:
                 continue
         return ask
     return None
+
+
+def ask_from_visit(user_id: str, *, since: str, most: int) -> None:
+    """The next visit's WhatsApp ask, made by the app (N294 item 8, N391):
+    only when none is open, fewer than ``most`` were made, and none since
+    ``since`` (the newest Take done: one per Take)."""
+    made = (db.client.table("person_asks").select("status,created_at")
+            .eq("user_id", user_id).eq("kind", "whatsapp").is_("created_by", "null")
+            .execute().data) or []
+    if len(made) >= most or any(r.get("status") in OPEN for r in made):
+        return
+    if since and any(_when(r["created_at"]) >= _when(since) for r in made if r.get("created_at")):
+        return
+    db.client.table("person_asks").insert({"user_id": user_id, "kind": "whatsapp"}).execute()
 
 
 def lesson_offer(user_id: str) -> Optional[dict]:
@@ -138,6 +160,9 @@ def mark(user_id: str, ask_id: str, event: str) -> None:
     if event == "shown":
         (db.client.table("person_asks").update({"status": "shown", "shown_at": _now()})
          .eq("id", ask_id).eq("user_id", user_id).eq("status", "waiting").execute())
+        # The app's own ask is shown once (N294 item 8): it is done.
+        (db.client.table("person_asks").update({"status": "answered", "resolved_at": _now()})
+         .eq("id", ask_id).eq("user_id", user_id).is_("created_by", "null").execute())
     elif event == "opened":
         (db.client.table("person_asks").update({"status": "opened", "resolved_at": _now()})
          .eq("id", ask_id).eq("user_id", user_id).in_("status", list(OPEN)).execute())
