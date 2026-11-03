@@ -10334,7 +10334,71 @@ The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 E2 and E3, when built. No migration.
 
-**N408 · One code for a team and a community (founder, the Claude Code
+**N411 · The notebook's security disclaimer (founder, the Claude
+Code chat, 3 November 2026, on the prototypes
+<https://claude.ai/artifact/HXV7HUFsfoM1ST29fthnk6> and
+<https://claude.ai/artifact/5X4M3cnSBxX8YcuKFEFY3a>: "do not share personal
+information with us … My colleague annoyed me enormously today … Good
+message"; "sign the words"; then "way simpler … just a reminder … each
+time … every fifth time someone mentions a name").** For frontend
+`principles.md` A5, B and K:
+1. **The first time, the feature is introduced.** Will's first spotted
+message (a strength, a pattern) is followed by one bubble, "🎙 Tap the mic
+any time and say what's on your mind. It helps you catch negative thinking
+and self-sabotage. One privacy rule first:" (was "🎙 Tap any time. Dump the
+overthinking here, then let it go." and "A deep sigh for your mind…", both
+replaced by the founder the same day); then the full
+note, once, in grey, in one bubble: "Nothing fragile: health, family, money,
+address.", "We look for patterns, not secrets. Fewer clues, less for
+hackers.", "📓 For journalling try paper notebook 😉"; then "Do you
+understand the rules and want this feature on?" (Yes | Not now), in place
+of the notebook's signed ask "Your notes are private. Only you and Will read
+them. Keep a voice notebook?" (backend `voice_notebook.COPY["ask"]`); on Yes, "Noted." and "What's on your mind
+today?". These replace A5's three bubbles (N195, not built). Not now: the
+introduction comes again with the next spotted message.
+2. **After that, the short line "🔒 Security disclaimer ›" every time** Will
+spots something (the Sunday note's pattern, a strength, a strength again, a
+suggested principle), under the message; a tap opens the full note.
+3. **Notes that name someone:** only a reminder. Every fifth # note that names
+a person gets the short line under its "Noted."; the others get "Noted." as
+always. Nothing is offered, changed or deleted.
+4. The words in items 1 and 2 are signed (Never 4).
+5. **The first spotted message reads the Takes** ("All looks good. Please
+build it.", on the choice drawn "From their Takes"): before there are notes,
+Will may spot a strength in the speaker's Takes and open item 1 with it. This
+amends N182 item 3 for this one message: the notebook's introduction may
+read the Takes; nothing of the notebook reaches the Takes, the plan or a
+coach. The line "🔒 Security disclaimer ›" stays as drawn.
+6. Built first (this entry's PRs): the new ask and the intro above it, the
+line under every spotted message, and the fifth named note. Until the Takes
+reader is built, the introduction comes at the doors it has today: the
+first tap on the mic and the first typed "#".
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+A3, A5, B and K. No migration.
+
+**N415 · One look for every ask in Will's chat; a lone suggested answer is
+outlined (founder, the Claude Code chat, 3 November 2026: "I want to continue
+my practice looks weird ... make it unified across the app"; then, asked,
+"Looks like a sent message" and "Will's chat asks").** For N371, N294 item 6:
+1. **A lone suggested answer is outlined,** orange on white, never filled:
+filled orange on the right is what the speaker's own sent message looks
+like. With two or more, N371 item 2 stands (the most likely filled).
+2. **Every ask in Will's chat takes N371's suggested answers,** on the right,
+the one that goes on filled: the offers' "Not now" and their action
+(the Sunday note, the life goals, the sales step, the voice notebook, "Did
+the feedback help?", the admin's price and lesson asks) and the top-up
+card. Was: two equal pills, grey outline and black.
+3. **Not changed:** the consent and policy screens (locked), the Ideal
+Text's "Update slides" and the recording setup's one-project question
+(locked screens), and form buttons that save what was typed (the WhatsApp
+number). No new words: each ask keeps its words.
+Numbered a few ahead, leaving numbers free for the sessions logging one
+after another. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+No migration.
+
+**N419 · One code for a team and a community (founder, the Claude Code
 chat, 3 November 2026, on the open questions of the prototype "The way
 in": "one code for a team and a community: yeah").** Answers N352 item 6
 and N401 item 6; for N52.4 and N353:
