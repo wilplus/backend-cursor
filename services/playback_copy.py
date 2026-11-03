@@ -9,8 +9,8 @@ nothing is heard, worst of all when the player seeks into a Take to play one
 slide's window. Chrome plays them; Safari is half of the founder's speakers.
 
 WHAT. Beside each recording ``…/name.webm`` we keep ``…/name.playback.m4a``:
-the same audio as AAC in an MP4 with its index at the front (faststart), which
-Safari, Chrome and Firefox all play and seek. The original is never touched;
+the same audio as AAC in an MP4 with its index at the front (faststart), at
+one loudness (N372), which Safari, Chrome and Firefox all play and seek. The original is never touched;
 transcription, analysis and the purge inventory keep reading it. Only the
 player-facing resolver (services/audio_ref_resolver.resolve_playable_ref)
 hands out the copy, and only once it exists.
@@ -176,6 +176,13 @@ def _make_guarded(bucket: str, key: str) -> None:
             _in_flight.discard((bucket, key))
 
 
+#: Every copy at one loudness, so a quiet speaker is heard as clearly as a loud
+#: one (N372 item 2). Only the copy: the original, which transcription and the
+#: feedback read, keeps its own levels. loudnorm keeps the timing (a slide's
+#: window plays the same words) and works at 192 kHz, hence the -ar back to 48.
+LEVEL_ARGS: tuple[str, ...] = ("-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", "48000")
+
+
 def transcode_to_m4a(data: bytes, *, timeout: float = 120.0) -> Optional[bytes]:
     """AAC-in-MP4 (faststart) bytes for one recording, or None when it has a
     video stream or ffmpeg cannot make it."""
@@ -192,7 +199,7 @@ def transcode_to_m4a(data: bytes, *, timeout: float = 120.0) -> Optional[bytes]:
             fh.write(data)
         proc = subprocess.run(
             [exe, "-nostdin", "-hide_banner", "-y", "-i", src,
-             "-map", "0:a:0", "-vn", "-c:a", "aac", "-b:a", "96k",
+             "-map", "0:a:0", "-vn", *LEVEL_ARGS, "-c:a", "aac", "-b:a", "128k",
              "-movflags", "+faststart", "-f", "mp4", dst],
             capture_output=True, timeout=timeout, check=False,
         )

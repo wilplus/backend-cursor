@@ -9761,7 +9761,28 @@ The rules: frontend
 and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
 No migration.
 
-**N373 · An older Take's Ideal Text card opens that Take's words (founder,
+**N373 · The fix never keeps the speaker waiting on its AI clip (founder,
+the Claude Code chat, 3 November 2026, on items 1 and 2 of an interaction
+audit of the fix step: "build 1 and 2").** For the One thing walk's fix
+(N309 item 1, C4, N370):
+1. **Ten seconds, then the words.** A clip still being made ten seconds
+after the fix is on screen gives way to the no-clip bubble of N370 (the
+tip in words, the exercise's video and instruction, "Your turn."). A clip
+that comes later joins those words as its player alone, under them, with
+its label (L1); the words are never replaced. Was: the dots stood in the
+player's place for as long as the clip took, up to about two and a half
+minutes while the voice was still being made, with "Try it" live.
+2. **Never above a try.** Once the first try has begun, a clip the speaker
+has not yet seen is not shown: it would land above the try, out of sight.
+A clip seen before the try stays. A walk played again shows what is there.
+Was: a clip could arrive in the bubble above a try in progress.
+3. Nothing to sign: no new words. The wait is a constant
+(`AI_CLIP_WAIT_MS`, frontend).
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C4. No migration.
+
+**N375 · An older Take's Ideal Text card opens that Take's words (founder,
 the Claude Code chat, 3 November 2026: "when I click Take 1.0 ... and I open
 the ideal text, what I can see is exactly the ideal text I have recorded last
 time ... So 1.0 bubble and the walk refers to what was there. It stays as it
@@ -9787,9 +9808,9 @@ The rules: frontend
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 F1. No migration.
 
-**N374 · An older Take's Ideal Text, slide by slide and one screen per tap
+**N376 · An older Take's Ideal Text, slide by slide and one screen per tap
 (founder, the Claude Code chat, 3 November 2026, on the interaction audit of
-N373: "build 1 and 2").** For N373 items 1 and 2:
+N375: "build 1 and 2").** For N375 items 1 and 2:
 1. **One screen per tap.** Which page an Ideal Text card opens (that Take's
 version, or the live page) is known before either is drawn; a press on an
 older card starts its read, as a press on the newest starts the live page's.
