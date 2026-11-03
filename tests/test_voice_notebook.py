@@ -27,6 +27,11 @@ OUTCOME
   O10 Every fifth note that names someone gets the short line "🔒 Security
       disclaimer" under its "Noted."; the others, and notes with no name,
       get nothing more; nothing is changed or deleted (N411 item 3).
+  O11 Before any note, once three Takes have their summaries, opening the
+      Lounge brings "We spotted a strength!", the strength in one sentence
+      and the notebook's ask, once; after Not now, again only after three
+      more Takes; after Yes, never; a sentence with a number, or none,
+      writes nothing until the next Take (N411 items 1, 5).
 PROVES   O1 -> test_without_the_notebook_the_chat_is_unchanged
          O2 -> test_the_first_note_asks_and_yes_keeps_it
          O3 -> test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash
@@ -37,6 +42,7 @@ PROVES   O1 -> test_without_the_notebook_the_chat_is_unchanged
          O8 -> test_a_note_sent_twice_is_kept_once
          O9 -> test_a_voice_note_is_fixed_in_the_notebook_and_the_thread
          O10 -> test_every_fifth_note_with_a_name_gets_the_privacy_line
+         O11 -> test_a_strength_in_the_takes_opens_the_notebook
 WHY      Will learning plan, step 1 (founder 2026-10-20, "approved, start
          step 1"; words signed the same day).
 """
@@ -234,7 +240,9 @@ def test_a_note_sent_twice_is_kept_once(founder):
     again = _note(db, adapter, key="note-1234-abcd")
     assert [r["client_id"] for r in again] == [r["client_id"] for r in first]
     assert len(db.notes) == 1 and adapter.calls == 1
-    assert db.bodies().count("Noted.") == 1  # answered once
+    answers = [r for r in db.get_lounge_messages_page("u")
+               if r["role"] == "bot" and (r.get("metadata") or {}).get("voice_note")]
+    assert len(answers) == 1  # answered once
     _note(db, adapter, key="note-5678-efgh")
     assert len(db.notes) == 2
 
@@ -273,3 +281,44 @@ def test_every_fifth_note_with_a_name_gets_the_privacy_line(founder, monkeypatch
     assert db.bodies()[db.bodies().index(COPY["privacy_line"]) - 1] == "Noted."
     assert [n["text_clean"] for n in db.notes] == notes  # nothing changed
     assert nb.privacy_after_note(db, "u") == []  # read once per note
+
+
+def test_a_strength_in_the_takes_opens_the_notebook(founder, monkeypatch):
+    said = {"text": "In your last three Takes you stayed calm when you lost your place."}
+    monkeypatch.setattr("services.take_summary._under_authority",
+                        lambda database, take, write: said["text"])
+    monkeypatch.setattr("services.plan_flow.onboarding", lambda database, user_id: False)
+    monkeypatch.setattr("services.after_take.held", lambda database, user_id, take=None: None)
+    db = _Db()
+
+    def take(n):
+        db.insert_lounge_messages("u", [{"client_id": f"sum-{n}", "role": "bot", "body": f"Take {n} went well.",
+                                         "metadata": {"summary": True, "take_session_id": f"t{n}"}}])
+
+    take(1)
+    take(2)
+    assert nb.intro_from_takes(db, "u") == []  # two Takes: not yet
+    take(3)
+    rows = nb.intro_from_takes(db, "u")
+    assert [r["body"] for r in rows] == ["We spotted a strength!", said["text"], COPY["ask"]]
+    assert rows[-1]["metadata"]["offer"] == nb.OFFER
+    assert nb.intro_from_takes(db, "u") == []  # once
+
+    nb.decide(db, "u", "not_now")
+    take(4)
+    take(5)
+    assert nb.intro_from_takes(db, "u") == []  # not three Takes since
+    take(6)
+    said["text"] = "In your last 3 Takes you scored 8."
+    assert nb.intro_from_takes(db, "u") == []  # a number: dropped
+    said["text"] = "In your last three Takes you opened with a question."
+    assert nb.intro_from_takes(db, "u") == []  # read already: waits for the next Take
+    take(7)
+    assert nb.intro_from_takes(db, "u")[1]["body"] == said["text"]
+
+    nb.decide(db, "u", "yes")
+    assert db.bodies()[-3:] == ["Yes", "Noted.", COPY["first"]]
+    take(8)
+    take(9)
+    take(10)
+    assert nb.intro_from_takes(db, "u") == []  # in: never again

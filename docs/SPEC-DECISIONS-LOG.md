@@ -10462,7 +10462,61 @@ No new words on screen. No migration.
 No rules page: the setting and its rule are in
 [`docs/ASYNC-PIPELINE-QUEUE.md`](docs/ASYNC-PIPELINE-QUEUE.md).
 
-**N419 · One code for a team and a community (founder, the Claude Code
+
+**N425 · The AI clip only where the voice shows the problem (founder, the
+Claude Code chat, 3 November 2026, on three changes after "the wrong AI audio
+for the wrong fragment": "go for A, B and C").** For N289 item 2, N309 item 1
+and the AI voice's default (2026-10-15, A: "always a better version to
+copy"):
+1. **A · The AI clip goes to a measured voice problem.** The One thing walk's
+AI clip goes only to a moment whose own clip shows a problem the clip can
+teach: faster than the speaker's usual pace, fewer pauses, a flatter loudness
+range, or more fillers, each against their own usual on this Take, at the
+line the clip already uses (`AI_VOICE_MIN_SEVERITY`). Of those, the one
+where the problem is strongest, and the clip teaches that problem. Was
+(N289 item 2): the lowest voice × words read, whatever it showed, and the
+clip chose what to teach on its own.
+2. **B · No clip "just because".** With no such moment the AI clip is not the
+fix: the fix is the Clearer version or the Sniper, or there is none and
+their best's words are the helper words (N374 item 2). The walk's AI clip
+never falls back to "Lean on …" on a guessed phrase. Was (2026-10-15, A):
+with nothing measured, stress on the main point by default.
+3. **C · Always the biggest problem.** The walk's AI clip teaches the
+moment's strongest problem, never the runner-up. Was: about 15 in 100 clips
+practised the runner-up so the stored outcomes could tell which exercise
+helps (`AI_VOICE_EXPLORE_SHARE`).
+4. On a plan, this week's level still picks its moment and its problem (G7,
+N289 item 8). The Clearer version's example clip is unchanged. Nothing to
+sign: no new words.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C4 and H1, and
+[`docs/flows/ai-voice-practice.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md).
+No migration.
+
+**N426 · Releases go out in batches every two hours, not on every merge
+(founder, the Claude Code chat, 3 November 2026: "do both, every 2 hours",
+on bundling the deployments of the many chats merging at once so they stop
+slowing Railway down and using its build time).** For both repos:
+1. A merge to `main` no longer deploys. Every two hours a GitHub Action
+(`.github/workflows/release-to-production.yml`, in each repo) moves the
+`production` branch up to the newest `main` commit whose tests passed, and
+Railway (backend) and Vercel (frontend) deploy from `production`. Twelve
+merges in two hours make one build per service, not twelve.
+2. "Run workflow" on that Action in GitHub's Actions tab releases at once,
+for a fix to record → process → Ideal Text → next Take that cannot wait.
+3. A migration runs at the next release, not at merge; every pending one
+runs then, in order (`bin/railway-migrate.sh`). An environment variable it
+needs is set on every Railway service before that release.
+4. Railway skips a build when only docs, the legal pack, tests, Markdown or
+`.github` changed (each service's Watch Paths), as Vercel already does
+(`scripts/vercel-ignore-build.sh`).
+Was: every merge to `main` built and deployed every Railway service and
+Vercel. No new words on screen. No migration.
+No rules page: the rule is in `CLAUDE.md` (How to ship) in both repos and
+[`docs/OPS-FLAGS-AND-RELEASES.md`](docs/OPS-FLAGS-AND-RELEASES.md).
+
+**N431 · One code for a team and a community (founder, the Claude Code
 chat, 3 November 2026, on the open questions of the prototype "The way
 in": "one code for a team and a community: yeah").** Answers N352 item 6
 and N401 item 6; for N52.4 and N353:
