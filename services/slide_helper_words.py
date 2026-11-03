@@ -11,7 +11,9 @@ earlier Takes; another Paragraph's words on the same Slide stay until that
 Paragraph is locked anew (locked helper words persist until the user picks
 new ones, contract 14; the audit of 2026-10-03 found the whole Slide wiped).
 The replacement waits for the lock rather than the tap, because a pick the
-speaker never locks must not wipe the helper words they did lock.
+speaker never locks must not wipe the helper words they did lock. A pick on
+a Paragraph that is already locked (the walk locks first, then saves the
+words) is locked as it lands (`record_pick(locked=True)`).
 
 Tapping new words on the same Paragraph in the same Take replaces that
 Paragraph's pick; it does not add a second one.
@@ -378,12 +380,24 @@ def _apply(database: Any, arc_id: str, user_id: str, part_id: str,
 
 
 def record_pick(database: Any, arc_id: str, user_id: str, part_id: str,
-                take_id: str, phrase: Optional[str]) -> None:
-    """Best-effort: mirror a Paragraph pick onto its Slide."""
+                take_id: str, phrase: Optional[str],
+                locked: bool = False) -> None:
+    """Best-effort: mirror a Paragraph pick onto its Slide.
+
+    ``locked``: the Paragraph is already locked, so the pick is locked as it
+    lands, as a lock after it would have done: the new row is stamped and
+    the Paragraph's rows from earlier Takes (and orphans) are retired. The
+    walk locks first and saves the words after, so without this its words
+    stayed unlocked and never reached the recording screen or the page."""
+    def _change(rows: list[Row], live: Optional[set]) -> list[Row]:
+        after = pick(rows, take_id=take_id, part_id=part_id, phrase=phrase)
+        if not locked:
+            return after
+        return lock(after, take_id=take_id, part_id=part_id, locked=True,
+                    live_parts=live)
+
     try:
-        _apply(database, arc_id, user_id, part_id,
-               lambda rows, _live: pick(rows, take_id=take_id,
-                                        part_id=part_id, phrase=phrase))
+        _apply(database, arc_id, user_id, part_id, _change)
     except Exception as error:
         logger.warning("slide helper words pick failed arc=%s part=%s: %s",
                        arc_id, part_id, error)

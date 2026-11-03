@@ -184,8 +184,11 @@ def helper_words_from_practice(database: Any, practice: Mapping,
     """Tap helper words from the judged practice attempt (B6).
 
     The attempt's words are not in the paragraph, so the paragraph-level
-    endpoint cannot take them. They are stored on the Slide, unlocked; the
-    lock that follows locks them like any other pick.
+    endpoint cannot take them. They are stored on the Slide. The walk locks
+    the paragraph first and saves the words after (no lock follows), so on a
+    locked paragraph they are locked as they land, and show under the slide
+    in the next Take and on the Ideal Text (N309 item 3); on an open one
+    they wait for its lock like any other pick.
 
     ``source`` "passage": the One thing walk's helper words after a Clearer
     version (founder 2026-10-31, N309 item 3), the sentence the practice was
@@ -218,5 +221,21 @@ def helper_words_from_practice(database: Any, practice: Mapping,
                      "error": "Choose exact words from your practice."}
     arc_id = str(practice.get("project_id"))
     take_id = latest_spoken_take_sid(database.takes.get_arc_sessions(arc_id))
-    record_pick(database, arc_id, owner_user_id, part_id, take_id, words)
+    record_pick(database, arc_id, owner_user_id, part_id, take_id, words,
+                locked=_part_locked(database, arc_id, owner_user_id, part_id))
     return 200, {"saved": True, "phrase": words}
+
+
+def _part_locked(database: Any, arc_id: str, user_id: str,
+                 part_id: str) -> bool:
+    """Is the paragraph locked now? True when the parts cannot be read: the
+    walk, the one caller, has just locked it."""
+    try:
+        rows = database.get_ideal_text_parts(arc_id, user_id, with_lock=True)
+        return any(str(r.get("id") or "").lower() == part_id.lower()
+                   and bool(r.get("locked_at"))
+                   for r in rows or [] if isinstance(r, Mapping))
+    except Exception as error:  # noqa: BLE001 -- the walk has just locked it
+        logger.warning("practice helper words: parts unreadable arc=%s: %s",
+                       arc_id, error)
+        return True
