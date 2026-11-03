@@ -1107,7 +1107,13 @@ def _one_thing(blocks: list[dict], pace: Optional[dict] = None,
     Take's biggest issue) the tempo step is the fix and no moment is. Every
     other shown block, the next bests included, is written as not shown, so
     the walk, the Ideal Text's marks and the coach's queue hold the same
-    two."""
+    two.
+
+    The choice is written on the strongest block as ``one_fix`` (C-SNIPER):
+    "tempo" when the Sniper is the fix, "moment" when a moment is, "none"
+    when the walk has no fix. The client shows the Sniper by it, and
+    `take_progress` reads "the fix the last walk gave" by it. A word, never
+    a score."""
     from services import moment_pick
 
     fixes = [b for b in blocks if b.get("carries_exercise") and b.get("walk_slot")]
@@ -1119,8 +1125,13 @@ def _one_thing(blocks: list[dict], pace: Optional[dict] = None,
     sniper = _sniper_first(pace, fixes, value_of or {})
     keep = None if sniper else (level or clearer or weakest)
     for block in blocks:
+        block.pop("one_fix", None)
         if block.get("walk_slot") and not block.get("highest_moment") and block is not keep:
             _mark_shown(block, None, None)
+    strongest = next((b for b in blocks
+                      if b.get("walk_slot") == moment_pick.SLOT_STRONGEST), None)
+    if strongest is not None:
+        strongest["one_fix"] = "tempo" if sniper else ("moment" if keep is not None else "none")
 
 
 def _sniper_first(pace: Optional[dict], fixes: list[dict], value_of: dict) -> bool:
