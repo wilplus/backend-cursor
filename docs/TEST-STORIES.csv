@@ -3805,17 +3805,18 @@ question; each of these once per talk, a breather never twice in a row.
 O2  The tap answers come from what Will heard, the recording first: a
 Take that names its audience twice is checked (""Right?""); named
 once, those words come first, then what I said for an earlier talk,
-then the signed answers for my field, then ""Someone else"" (N319 item
-8); what I want them to do the same way. From the AI's read only
+then the signed answers for my field, and no ""Someone else"": my own
+words go into ""Something else"" in the bar (N406 item 2); what I want
+them to do the same way. From the AI's read only
 words my Take says, word for word, short and without a number, are
 kept.
 O3  A tap is kept for Will and fills the talk's setup, so the next Take
 carries who it is for; Will says it back, ""{who}. I'll keep them in
 mind."" (N294 item 5), any other answer gets ""Got it, thanks 🙏""; then
-the message after the Take. ""Someone else"" opens one follow-up, ""Who
-is it for, then? 👀"", with no tap answers, and the message waits; my
-typed words under it are the answer, or Skip. Skip lets the message
-go; a repeat tap writes nothing.
+the message after the Take. ""Someone else"" under the check opens one
+follow-up, ""Who is it for, then? 👀"", with no tap answers, and the
+message waits; my typed words under it are the answer, or Skip. Skip
+lets the message go; a repeat tap writes nothing.
 O4  Typed words under the question are the answer: what I want them to
 do lands as the talk's call to action, my own note on the talk kept.
 Distress is never taken as an answer: the chat's safety reply comes.
@@ -3837,6 +3838,12 @@ missing, Will asks the plan's signed question with who in it, opened
 on the moment, no tap answers; it follows my answer to what I want
 them to do, naming who I said; my answer is kept as the talk's key
 line (sure) where the plan and the picker read it, and for Will.
+O12 Will says who it is for from my side (N406 items 1, 3 and 4): ""my
+team"" back as ""Your team. I'll keep them in mind.""; ""Myself"" as
+""I'll keep you in mind."", then what I want to do with no ""them"" and
+no taps, and the key line keeps ""your audience"". After a typed answer
+the goodbye waits under his next question until I answer it, even
+when the Lounge asks to let it go.
 O11 An answer by voice answers Will's open question (N294 item 3, N319
 item 1): the words heard are my voice bubble, Will thanks me, the
 chain goes on; nothing heard, or no question open, writes nothing.
@@ -3863,7 +3870,8 @@ O7 -> test_will_varies_his_words_lightly_or_says_them_as_written
 O8 -> test_the_question_opens_on_the_moment_the_walk_just_worked_on
 O9 -> test_what_they_should_do_follows_an_answered_who
 O10 -> test_the_key_line_is_asked_last_by_voice_and_kept
-O11 -> test_a_voice_answer_answers_wills_question","Founder 2026-10-20 (N82): ""ask me a lot of questions … a natural flow in the walk and in the lounge""; the bank signed the same day. 2026-10-31 (N294): ""these questions, they should be related to the moment""; ""they can be only one at a time. Only once you answer""."
+O11 -> test_a_voice_answer_answers_wills_question
+O12 -> test_will_says_who_from_my_side_and_the_goodbye_waits","Founder 2026-10-20 (N82): ""ask me a lot of questions … a natural flow in the walk and in the lounge""; the bank signed the same day. 2026-10-31 (N294): ""these questions, they should be related to the moment""; ""they can be only one at a time. Only once you answer""."
 tests/test_withdrawal_erases_sheets.py,Story,"As a speaker, I want the coach sheets about my Takes deleted when I turn training off, so that my withdrawal is real.","O1  Turning training off deletes my Takes' rows from all three coach
 sheet tables, and only mine.
 O2  If my Takes cannot be read, the switch still turns off, and the

@@ -32,15 +32,20 @@ The tap answers come from what Will knows, the recording first (N297 item
 2): the words this Take said (one small call, ``heard``: gpt-4o-mini under
 the Take's authority, copied word for word or nothing), what the speaker
 answered on an earlier talk, then the signed answers for their field. Who
-the talk is for ends on "Someone else", which opens "Who is it for, then?
-👀", answered in their own words (N319 item 8). A follow-up has no tap
-answers (N294 item 3). Every answer is kept for Will (``speaker_memory``);
-who the talk is for and what they should do also fill the talk's own setup
-fields (``audience``; ``strategic_context``'s "Desired call to action:"), so
-every later Take of the talk and its clearer version hear them. A typed
-message under the question is the answer (``chat_turn``). Will says back
-who the talk is for ("{who}. I'll keep them in mind.", N294 item 5); every
-other answer gets "Got it, thanks 🙏".
+the talk is for has no "Someone else" (N406 item 2, was N319 item 8): their
+own words go into "Something else" in the Lounge's bar (N371); the check
+("Right?") keeps "Someone else", which opens "Who is it for, then? 👀". A
+follow-up has no tap answers (N294 item 3). Every answer is kept for Will
+(``speaker_memory``); who the talk is for and what they should do also fill
+the talk's own setup fields (``audience``; ``strategic_context``'s "Desired
+call to action:"), so every later Take of the talk and its clearer version
+hear them. A typed message under the question is the answer
+(``chat_turn``). Will says back who the talk is for ("{who}. I'll keep them
+in mind.", N294 item 5) from the speaker's side, "my team" as "Your team"
+(``their_side``, N406 item 3), and a talk to themself as "I'll keep you in
+mind."; every other answer gets "Got it, thanks 🙏". For a talk to themself
+what they should do is "When you finish, what do you want to do? Or feel?
+🤔", with no taps, and the key line keeps "your audience" (N406 item 4).
 
 One at a time (N294 item 4): who the talk is for, answered, may be followed
 by what they should do when that is missing too, as the next ask of the
@@ -117,14 +122,20 @@ FOLLOW_AT = {
     "pause": {1: "Tell me more 👀 What's missing?"},
     "not_used": {2: "What would feel more like you?"},
     "vision": {1: "What would make it a yes?", 2: "Where do you want it to take you?"},
-    # Counted from the end: "Someone else" is the last tap (N319 item 8).
-    "audience": {-1: "Who is it for, then? 👀"},
 }
-#: The last tap on who the talk is for (N319 item 8), the check's own words.
+#: The check's second answer. Who the talk is for, asked openly, no longer
+#: ends on it (N406 item 2, was N319 item 8); a question asked before still
+#: carries it, and it still opens the check's follow-up (``follow_up``).
 SOMEONE_ELSE = CHIPS["audience_check"][1]
 THANKS = "Got it, thanks 🙏"
-#: Will says back who the talk is for (founder 2026-10-31, N294 item 5).
+#: Will says back who the talk is for (founder 2026-10-31, N294 item 5),
+#: from the speaker's side (N406 item 3, ``their_side``).
 KEEP_IN_MIND = "{who}. I'll keep them in mind."
+#: A talk to themself, said back (N406 item 3).
+KEEP_YOU_IN_MIND = "I'll keep you in mind."
+#: What they should do, for a talk to themself: no "them", no taps (N406
+#: item 4).
+GOAL_SELF = "When you finish, what do you want to do? Or feel? 🤔"
 #: The question opens on the moment the walk just worked on (founder
 #: 2026-10-31, N294 item 1): read on from it, or said before it.
 WHEN_YOU_SAID = "When you said “{moment}”, "
@@ -193,6 +204,33 @@ def _in_sentence(phrase: str) -> str:
     article stays small, a name keeps its capital. Pure."""
     head, _, rest = phrase.partition(" ")
     return f"{head.lower()} {rest}".strip() if head.lower() in _LOWER_FIRST else phrase
+
+
+#: A talk to themself, as the speaker says it (N406 item 3).
+_SELF = re.compile(r"^(?:just |only |to |for )?(?:me|myself|my self|i)(?: only| alone)?$")
+#: The speaker's words for their own side, as Will says them back (N406 item 3).
+_MINE = re.compile(r"\b(myself|mine|my|ours|our|me|us)\b", re.I)
+_YOURS = {"myself": "yourself", "mine": "yours", "my": "your", "ours": "yours",
+          "our": "your", "me": "you", "us": "you"}
+
+
+def to_self(who: Any) -> bool:
+    """Whether who the talk is for is the speaker themself: "Myself", "me",
+    "just me" (N406 item 3). Pure."""
+    return bool(_SELF.match(_norm(who)))
+
+
+def their_side(who: str) -> str:
+    """Who the talk is for as Will says it to the speaker: "my team" is
+    "your team", "people like me" "people like you" (N406 item 3). A word
+    in capitals ("US") is a name and stays. Pure."""
+    def swap(found: "re.Match[str]") -> str:
+        word = found.group(0)
+        if len(word) > 1 and word.isupper():
+            return word
+        yours = _YOURS[word.lower()]
+        return yours[0].upper() + yours[1:] if word[0].isupper() else yours
+    return _MINE.sub(swap, who)
 
 
 def _chips(*groups: Any) -> list[str]:
@@ -586,13 +624,14 @@ def known_key_line(database: Any, user_id: str, takes: list[dict]) -> str:
 def key_line_question(who: Optional[str]) -> str:
     """The plan's signed key-line question, "If {who} remembers one sentence
     from you, what is it? Say it the way you'll say it.", with who the talk
-    is for in place of "your audience" when known. Pure."""
+    is for in place of "your audience" when known, from the speaker's side;
+    a talk to themself keeps "your audience" (N406 items 3 and 4). Pure."""
     from services.plan import BANK
     signed = str(BANK["key"][0])
     who = " ".join(str(who or "").split()).strip(" .,;:!?\"“”'")
-    if not who or len(who) > _MAX_WHO:
+    if not who or len(who) > _MAX_WHO or to_self(who):
         return signed
-    return signed.replace(_KEY_LINE_WHO, _in_sentence(who), 1)
+    return signed.replace(_KEY_LINE_WHO, _in_sentence(their_side(who)), 1)
 
 
 def with_goal(strategic: Any, goal: str) -> str:
@@ -724,13 +763,17 @@ def with_moment(key: str, question: str, moment: Optional[str]) -> str:
 
 
 def said_back(key: str, said: Optional[str]) -> str:
-    """Will's reply to an answer: who the talk is for, said back (N294 item
-    5), else "Got it, thanks 🙏". A long or many-line answer is not said
-    back. Pure."""
+    """Will's reply to an answer: who the talk is for, said back from the
+    speaker's side (N294 item 5, N406 item 3), "I'll keep you in mind." for
+    a talk to themself; else "Got it, thanks 🙏". A long or many-line answer
+    is not said back. Pure."""
     who = " ".join(str(said or "").split()).strip(" .,;:!?\"“”'")
     if (key not in ("audience", "audience_check") or not who or len(who) > _MAX_WHO
             or "\n" in str(said)):
         return THANKS
+    if to_self(who):
+        return KEEP_YOU_IN_MIND
+    who = their_side(who)
     return KEEP_IN_MIND.format(who=who[0].upper() + who[1:])
 
 
@@ -856,14 +899,19 @@ def _asked_words(found: Plan) -> tuple[str, str, list[str], dict]:
         got = found.heard() or {}
         if key == "audience" and got.get("audience") and got.get("audience_times", 0) >= 2:
             phrase = str(got["audience"])
-            return ("audience_check", said["audience_check"].replace("{heard}", _in_sentence(phrase)),
+            return ("audience_check",
+                    said["audience_check"].replace("{heard}", _in_sentence(their_side(phrase))),
                     list(words["audience_check"]["chips"]), {"heard": phrase})
         if key == "audience":
             signed = (AUDIENCE_BY_FIELD.get(found.field_name or "")
                       if found.field_name not in (None, "executive_presence") else None)
             taps = _chips([got.get("audience")], found.earlier, signed or words["audience"]["chips"])
-            # "Someone else" last, then their own words (N319 item 8).
-            return key, said[key], [t for t in taps if t != SOMEONE_ELSE] + [SOMEONE_ELSE], {}
+            # No "Someone else": their own words go into "Something else"
+            # in the bar (N406 item 2, N371; was N319 item 8).
+            return key, said[key], [t for t in taps if t != SOMEONE_ELSE], {}
+        if to_self(found.who):
+            # A talk to themself: no "them", no taps (N406 item 4).
+            return key, GOAL_SELF, [], {}
         return key, said[key], _chips([got.get("ask")], found.earlier, words["goal"]["chips"]), {}
     if key == "not_used":
         return key, said[key].replace("{words}", found.passage or ""), list(words[key]["chips"]), {}
@@ -1037,13 +1085,15 @@ def next_rows(found: Optional[Plan], *, user_id: str, at: str) -> list[dict]:
 
 
 def at_release(database: Any, rows: list[dict]) -> list[dict]:
-    """Will's next question as it comes (``after_take.rows_for``): the key
-    line names who the talk is for once the answer before it said so (N294
-    items 2 and 4). The rows, the key line's words read again. Never
+    """Will's next question as it comes (``after_take.rows_for``), read
+    again with who the answer before it said the talk is for (N294 items 2
+    and 4): the key line names them; what they should do, for a talk to
+    themself, has no "them" and no taps (N406 item 4). The rows. Never
     raises."""
     for row in rows:
         meta = row.get("metadata") or {}
-        if meta.get("will_question") != KEY_LINE or not meta.get("take_session_id"):
+        key = meta.get("will_question")
+        if key not in (KEY_LINE, "goal") or not meta.get("take_session_id"):
             continue
         try:
             ctx = database.takes.get_session_intake_context(str(meta["take_session_id"])) or {}
@@ -1051,8 +1101,13 @@ def at_release(database: Any, rows: list[dict]) -> list[dict]:
             logger.warning("will question: setup unread take=%s: %s", meta.get("take_session_id"), error)
             continue
         who = str((ctx if isinstance(ctx, dict) else {}).get("audience") or "").strip()
-        if who:
+        if not who:
+            continue
+        if key == KEY_LINE:
             row["body"] = key_line_question(who)
+        elif to_self(who):
+            row["body"] = GOAL_SELF
+            row["metadata"] = {**meta, "chips": []}
     return rows
 
 
@@ -1116,12 +1171,14 @@ def _into_plan(database: Any, user_id: str, key_line: str) -> None:
 
 
 def follow_up(key: str, choice: str, chips: list) -> Optional[str]:
-    """The one follow-up a tap opens, by its place among the answers, from
-    the start or, for "Someone else", from the end. Pure."""
+    """The one follow-up a tap opens, by its place among the answers. Who
+    the talk is for, asked before N406, may still carry "Someone else": it
+    opens the check's follow-up. Pure."""
     if choice not in chips:
         return None
-    place, at = chips.index(choice), FOLLOW_AT.get(key, {})
-    return at.get(place) or at.get(place - len(chips))
+    if key == "audience":
+        return FOLLOW_AT["audience_check"][1] if choice == SOMEONE_ELSE else None
+    return FOLLOW_AT.get(key, {}).get(chips.index(choice))
 
 
 def resolved(key: str, choice: str, meta: dict) -> Optional[str]:
