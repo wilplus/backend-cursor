@@ -1118,6 +1118,21 @@ def skipped(database: Any, user_id: str, take: str) -> bool:
                for part in ("skip-ask", "skip-follow"))
 
 
+def answered_first(database: Any, user_id: str, take: str) -> bool:
+    """Whether the speaker answered the Take's first question: Will's reply
+    to an answer ("thanks") is in the thread, whether the answer was a tap,
+    typed words (the chat's reply row, ``chat_turn``) or their voice
+    (``answer_voice``). A "#" note, distress or a tap that opened the
+    follow-up and nothing after it is no answer: his next question does not
+    follow it (N294 item 4). Unread: not answered."""
+    take = str(take)
+    return any(r.get("role") == "bot"
+               and (r.get("metadata") or {}).get("will_question_step") == "thanks"
+               and str((r.get("metadata") or {}).get("take_session_id") or "") == take
+               and _round(r.get("metadata")) == 1
+               for r in _thread(database, user_id, _SCAN))
+
+
 # ------------------------------------------------------------------ answers
 
 

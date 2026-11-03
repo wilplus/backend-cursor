@@ -344,8 +344,8 @@ def _applies(database: Any, user_id: str, ask: str, take: str) -> bool:
     if ask in _SETTINGS_ASKS:
         return False
     if ask == "will_next":
-        from services.will_question import skipped
-        return not skipped(database, user_id, take)
+        from services.will_question import answered_first, skipped
+        return answered_first(database, user_id, take) and not skipped(database, user_id, take)
     return True
 
 

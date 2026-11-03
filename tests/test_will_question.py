@@ -40,7 +40,8 @@ OUTCOME
       with no moment the question is as signed.
   O9  One at a time (N294 item 4): when both who the talk is for and what I
       want them to do are missing, what I want them to do follows my answer
-      to who, from what Will heard first; a Skip ends them.
+      to who, from what Will heard first; a Skip ends them, and a "#" note
+      under the question is no answer: the next question does not follow it.
   O10 The key line is asked last, by voice (N294 item 2): once who the talk
       is for and what I want them to do are known and my key line is
       missing, Will asks the plan's signed question with who in it, opened
@@ -388,6 +389,16 @@ def test_what_they_should_do_follows_an_answered_who(monkeypatch):
     skipped = _SummaryDb()  # a Skip ends them
     _summary(skipped, monkeypatch, heard={"audience": "the board", "audience_times": 1})
     assert [r["body"] for r in _tap(skipped, will_question.SKIP)] == ["Skip", SEE_YOU]
+
+    noted = _SummaryDb()  # a "#" note is no answer: the next question does not follow it
+    _summary(noted, monkeypatch, heard={"audience": "the board", "audience_times": 1,
+                                        "ask": "approve two hires"})
+    monkeypatch.setattr("services.db.db", noted, raising=False)
+    chat_query.finish_chat_turn(
+        noted, {"answer": "Noted.", "row_metadata": {"voice_note": "n1"}}, user_id="u",
+        question="# the board scares me", persist_thread=True, user_client_id=None,
+        user_created_at=None, intent="voice_notebook")
+    assert "Noted." in noted.bodies() and QUESTIONS["goal"] not in noted.bodies()
 
 
 def test_will_says_who_from_my_side_and_the_goodbye_waits(monkeypatch):
