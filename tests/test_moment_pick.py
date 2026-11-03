@@ -7,8 +7,11 @@ OUTCOME
   O1  The strongest is the Take's highest willfidence clip, a block's best
       clip standing for it and a clip with enough words before a short
       one; it is praised whatever its voice and called my most confident.
-  O2  The weakest is, from another block, the lowest willfidence clip with
-      a whole thought and a sound read; it is practised with the voice.
+  O2  The weakest is, from another block, the clip whose own voice shows
+      the strongest problem the AI clip can teach (pace, pauses, a flat
+      loudness range, fillers, against my own usual), with a whole thought
+      and a sound read; it is practised with the voice. A clip that shows no
+      such problem is never the weakest, however low its read (N425).
   O3  The between is the clip whose words need help the most; it gets the
       clearer version, and it is picked before the weakest, so a Take of
       two blocks gets the precise fix.
@@ -32,14 +35,19 @@ WHY      Founder 2026-10-30 (N289: "the praise clips just get the praise",
          "a negative [word] has been spotted, or it was too fast, that's
          the second moment", "the third moment, the weakest one, is where
          we display the AI audio"); 2026-10-28 (N246, "go for the next
-         confident moment"); 2026-10-30 (N284, three moments).
+         confident moment"); 2026-10-30 (N284, three moments); 2026-11-03
+         (N425, "go for A, B and C": the AI clip only where the voice shows
+         the problem).
 """
 from services.moment_pick import pick, read
 
 
-def _row(block, slide, s, *, w=1.0, words=12, help=None, sound=True, clip=None):
+def _row(block, slide, s, *, w=1.0, words=12, help=None, sound=True, clip=None, voice=None):
+    # The clip's measured voice problem (N425): by default it rises as the
+    # voice read drops, as a rushed or flat clip's does.
+    voice = max(0.0, round(1 - s, 3)) if voice is None else voice
     return {"block_id": block, "slide_index": slide, "word_count": words,
-            "candidate_id": clip or f"{block}-clip",
+            "candidate_id": clip or f"{block}-clip", "voice": voice,
             "read": {"s": s, "w": w, "value": s * w, "sound": sound, "words_help": help}}
 
 
@@ -76,6 +84,13 @@ def test_the_weakest_is_the_lowest_whole_thought_i_was_heard_saying():
                    _row("b", 1, 0.7, clip="b1"), _row("b", 1, 0.2, clip="b2")])
     assert [(m["candidate_id"], m["slot"]) for m in picked["shown"]] == [
         ("a1", "strongest"), ("b2", "weakest")]
+    # The strongest measured problem wins, not the lowest read (N425 A).
+    picked = pick([_row("a", 0, 0.9), _row("b", 1, 0.3, voice=0.3), _row("c", 2, 0.5, voice=0.9)])
+    assert [(m["block_id"], m["slot"]) for m in picked["shown"]][1] == ("c", "weakest")
+    # A low read whose voice shows nothing the AI clip can teach is never
+    # the weakest: no AI clip just because (N425 B).
+    quiet = pick([_row("a", 0, 0.9), _row("b", 1, 0.2, voice=0.0), _row("c", 2, 0.4, voice=0.1)])
+    assert [m["slot"] for m in quiet["shown"]] == ["strongest", "next", "next"]
 
 
 def test_words_that_need_help_get_the_between_first():
@@ -109,10 +124,12 @@ def test_a_clip_with_no_sound_read_is_never_the_weakest():
     never the room to grow."""
     clean = read(None, "we think the timing matters because the window closes once", {})
     assert clean["sound"] is False and clean["s"] == 0.5
-    picked = pick([{"block_id": "a", "slide_index": 0, "word_count": 10, "read": clean},
-                   {"block_id": "b", "slide_index": 1, "word_count": 10,
+    # Every clip shows a measured voice problem (N425): only the heard one
+    # can be the weakest.
+    picked = pick([{"block_id": "a", "slide_index": 0, "word_count": 10, "read": clean, "voice": 0.6},
+                   {"block_id": "b", "slide_index": 1, "word_count": 10, "voice": 0.6,
                     "read": read(-0.8, "we think the timing matters because the window closes", {})},
-                   {"block_id": "c", "slide_index": 2, "word_count": 10, "read": clean}])
+                   {"block_id": "c", "slide_index": 2, "word_count": 10, "read": clean, "voice": 0.6}])
     assert [(m["block_id"], m["slot"]) for m in picked["shown"]] == [
         ("a", "strongest"), ("b", "weakest"), ("c", "next")]
 

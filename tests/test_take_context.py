@@ -72,7 +72,9 @@ def test_my_key_line_counts_in_full_and_a_guess_at_half():
 
 
 def _row(block, s, *, w=1.0, words=12, rel=0.0, help=None):
+    # The clip's measured voice problem (N425) rises as its voice read drops.
     return {"block_id": block, "slide_index": 0, "word_count": words, "candidate_id": f"{block}-clip",
+            "voice": max(0.0, round(1 - s, 3)),
             "read": {"s": s, "w": w, "value": s * w, "sound": True, "words_help": help, "relevance": rel}}
 
 

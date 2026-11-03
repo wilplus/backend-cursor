@@ -374,9 +374,13 @@ def _choose(database: Any, practice: dict, cycle: dict) -> tuple[Optional[dict],
     sentence = str(practice.get("exact_passage") or snippet.get("transcript") or "")
     # On a plan, the level's own problem where the clip shows it (G7, N209).
     from services.plan_walk import AI_PROBLEM, level_of_practice
+    prefer = AI_PROBLEM.get(level_of_practice(database, practice) or "")
+    # The walk's one fix on a moment (not a Clearer version's example, not
+    # a plan's level): what the clip shows, the strongest, or no clip (N425).
+    fix = str(practice.get("kind") or "") != "rewrite" and prefer is None
     selection = select(snippet, medians, sentence=sentence,
-                       seed=str(practice["id"]), history=history,
-                       prefer=AI_PROBLEM.get(level_of_practice(database, practice) or ""))
+                       seed=str(practice["id"]), history=history, prefer=prefer,
+                       explore=not fix, allow_default=not fix)
     before = {k: (snippet.get("metrics") or {}).get(k)
               for k in ("wpm", "pause_ratio", "dynamic_db")}
     from services.ai_voice_severity import fillers_per_100

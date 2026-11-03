@@ -225,10 +225,16 @@ def target_phrase(sentence: str, max_words: int = 4) -> Optional[str]:
 
 
 def select(snippet: dict, medians: dict, *, sentence: str, seed: str,
-           history: Iterable[dict] = (), prefer: Optional[str] = None) -> Optional[dict]:
+           history: Iterable[dict] = (), prefer: Optional[str] = None,
+           explore: bool = True, allow_default: bool = True) -> Optional[dict]:
     """The one exercise for this clip. With every signal weak, the default
     (stress on the main point); None only when the sentence has no main
     point apart from itself.
+
+    ``explore`` False: always the strongest problem, never the runner-up;
+    ``allow_default`` False: None when no problem reaches the line, never
+    the default. The One thing walk's AI clip, its one fix, asks both (founder
+    2026-11-03, N425 B and C): it teaches what the clip shows, or is not made.
 
     ``prefer``: the problem this week's level practises, on a plan (G7,
     N209; ``services.plan_walk.AI_PROBLEM``). It is the exercise whenever
@@ -247,6 +253,8 @@ def select(snippet: dict, medians: dict, *, sentence: str, seed: str,
     floor = float(Config.AI_VOICE_MIN_SEVERITY)
     eligible = [p for p in ranked if scores[p] >= floor]
     if not eligible:
+        if not allow_default:
+            return None
         # Nothing clearly off: the main point said so it stands out, so the
         # speaker always hears a better version (founder 2026-10-15, A).
         # Recorded as a default, never as a problem found.
@@ -255,7 +263,7 @@ def select(snippet: dict, medians: dict, *, sentence: str, seed: str,
             return None
         return _selection("stress", phrase, scores, snippet, medians, held,
                           explored=False, default=True, sentence=sentence)
-    explored = len(eligible) > 1 and _explores(seed)
+    explored = explore and len(eligible) > 1 and _explores(seed)
     problem = eligible[1] if explored else eligible[0]
     phrase = None if problem in _NO_PHRASE else target_phrase(sentence)
     if problem not in _NO_PHRASE and not phrase:

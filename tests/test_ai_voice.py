@@ -5,7 +5,11 @@ STORY    As a speaker practising, I want an AI clip of my own voice saying my
          version and keep control of my voice.
 OUTCOME
   O1  One problem is picked against my own usual (or the default), and the
-      sentence under the clip names it in words, with no numbers.
+      sentence under the clip names it in words, with no numbers. As the
+      walk's one fix on a moment, the clip teaches the strongest problem my
+      clip shows, never the runner-up, and with nothing measured no clip is
+      made: no default (N425). A clearer version's example keeps the
+      default.
   O2  The clip says my own words (or the clearer version I accepted, with
       the ums taken out), in at most 17 seconds.
   O3  A clip that fails its check is made once more with a new seed and
@@ -31,7 +35,8 @@ OUTCOME
 PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
                test_raw_units_are_never_compared_and_the_phrase_has_a_fallback,
                test_the_sentence_under_the_clip_comes_from_the_transcript_and_their_own_numbers,
-               test_a_clean_sentence_never_gets_the_fillers_clip
+               test_a_clean_sentence_never_gets_the_fillers_clip,
+               test_the_walks_fix_gets_no_clip_when_nothing_was_off_and_never_the_runner_up
          O2 -> test_the_request_says_the_speakers_own_words,
                test_no_clip_is_longer_than_the_limit,
                test_a_clearer_version_practice_gets_a_clip_of_the_accepted_words,
@@ -282,6 +287,10 @@ def test_a_problem_from_the_line_up_else_the_default(pause_ratio, picked):
                                        sentence=SENTENCE, seed="s")
         assert out["exercise"] == picked and out["default"] is (picked == "stress")
         assert 0.0 <= out["severity"] <= 1.0 and out["target_phrase"]
+        # The walk's one fix (N425): what the clip shows, or nothing.
+        fix = ai_voice_severity.select(_snip(150, pause_ratio=pause_ratio), medians,
+                                       sentence=SENTENCE, seed="s", explore=False, allow_default=False)
+        assert (fix is None) if picked == "stress" else (fix["exercise"] == picked)
 
 
 def test_raw_units_are_never_compared_and_the_phrase_has_a_fallback():
@@ -416,7 +425,8 @@ def test_a_clip_that_fails_its_check_is_made_once_more_and_shown_only_if_it_pass
     (dict(wpm=180), lambda: _heard(0.0, PHRASE, step=0.4), None, "pace", None),
     # flatter than their usual: the main point stands out
     (dict(wpm=150, dynamic_db=10.0), lambda: _heard(0.0, PHRASE), _pcm_louder(1.0, 1.7), "stress", PHRASE),
-    # nothing reached the line: the default clip, and the sentence says so
+    # nothing reached the line: a clearer version's example keeps the
+    # default clip, and the sentence says so (N425 item 4)
     (dict(wpm=150), lambda: _heard(0.0, PHRASE), _pcm_louder(1.0, 1.7), "default", PHRASE),
 ])
 def test_the_sentence_under_the_clip_comes_from_the_transcript_and_their_own_numbers(
@@ -427,7 +437,7 @@ def test_the_sentence_under_the_clip_comes_from_the_transcript_and_their_own_num
     words cut from that transcript, and says nothing was off when nothing
     was. No number is in it."""
     with _on():
-        db = _Db(_practice(), _snip(**own_numbers), TAKE)
+        db = _Db(_practice("rewrite" if change == "default" else "plain"), _snip(**own_numbers), TAKE)
         _ready_voice(db)
         out = _run_pipeline(db, db.practice, _Voices(), heard(), pcm=pcm)
         cycle = db.client.tables["ai_voice_cycles"][0]
@@ -439,6 +449,25 @@ def test_the_sentence_under_the_clip_comes_from_the_transcript_and_their_own_num
         if quotes:
             assert quotes in SENTENCE and cycle["selection"]["target_phrase"] == quotes
         assert not re.search(r"\d", why)
+
+def test_the_walks_fix_gets_no_clip_when_nothing_was_off_and_never_the_runner_up():
+    """Founder 2026-11-03 (N425, "go for A, B and C"): as the walk's one fix
+    the clip teaches what the speaker's clip shows, or is not made; and it
+    never practises the runner-up, however the exploring share is set."""
+    with _on():
+        db = _Db(_practice(), _snip(150), TAKE)
+        _ready_voice(db)
+        voices = _Voices()
+        _run_pipeline(db, db.practice, voices, _heard(0.0, PHRASE))
+        cycle = db.client.tables["ai_voice_cycles"][0]
+        assert (cycle["status"], cycle["failure_kind"], voices.spoken) == ("skipped", "no_exercise", 0)
+    with _on(AI_VOICE_EXPLORE_SHARE=1.0):
+        medians = ai_voice_severity.own_medians(TAKE)
+        both = _snip(168, pause_ratio=0.05)  # pause the worse, pace the runner-up
+        assert ai_voice_severity.select(both, medians, sentence=SENTENCE, seed="s")["exercise"] == "pace"
+        assert ai_voice_severity.select(both, medians, sentence=SENTENCE, seed="s",
+                                        explore=False)["exercise"] == "pause"
+
 
 @pytest.mark.parametrize("limit, code", [
     ("AI_VOICE_DAILY_CLIPS_PER_SPEAKER", "speaker_daily"),

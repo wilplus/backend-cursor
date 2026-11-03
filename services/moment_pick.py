@@ -19,10 +19,12 @@ Three moments, one per block, each with its own job (N289):
              slide had when the Take was recorded (``held``) after the
              others (N246 item 2). Always PRAISED, whatever its voice, and
              "your most confident moment" (``highest``). No AI clip.
-  weakest    from a block left, the lowest willfidence clip with at least
-             ``STRETCH_WORDS`` words and a sound read: room to grow the
-             machine actually heard. CORRECTED with the voice (``voice``):
-             the AI clip, practised.
+  weakest    from a block left, the clip whose own voice shows the
+             strongest problem the AI clip can teach (pace, pauses, a flat
+             loudness range, fillers, against the speaker's own usual; N425),
+             with at least ``STRETCH_WORDS`` words and a sound read.
+             CORRECTED with the voice (``voice``): the AI clip, practised.
+             No such clip, no weakest. Until N425, the lowest willfidence.
   between    from another block, the clip whose words need help the most
              (``services.rewrite_gate``, read on the words the speaker sees,
              N121): CORRECTED with the clearer version (``clearer``). The
@@ -233,14 +235,24 @@ def _entry(row: dict, slot: str, *, praise: bool = False, highest: bool = False,
 
 
 def _weakest(rows: list[dict]) -> Optional[dict]:
-    """The lowest willfidence clip with a whole thought and a sound read;
-    never one that already holds its slide's helper words (N246 item 2:
-    it was worked on), which comes back only as a next best, nor one on a
-    slide where the AI clip worked last time (N359)."""
+    """The clip whose own voice shows the strongest problem the AI clip can
+    teach (``voice``: pace, pause, stress or fillers against the speaker's
+    own usual, at the clip's line, ``Config.AI_VOICE_MIN_SEVERITY``; founder
+    2026-11-03, N425 A), a relevant sentence counting a little more (N293);
+    ties go to the lower willfidence. A whole thought with a sound read;
+    never one that already holds its slide's helper words (N246 item 2: it
+    was worked on), which comes back only as a next best, nor one on a slide
+    where the AI clip worked last time (N359). None when no clip shows a
+    problem: the AI clip is then not the fix (N425 B). Was (N289 item 2):
+    the lowest willfidence, whatever its voice showed."""
+    from config import Config
+    floor = float(Config.AI_VOICE_MIN_SEVERITY)
     heard = [row for row in rows if (row.get("word_count") or 0) >= STRETCH_WORDS
              and row["read"].get("sound", True) and not row.get("held")
-             and not _fixed(row, EXERCISE_VOICE)]
-    return min(heard, key=lambda row: (row["read"]["value"] * _damp(row), row["read"]["s"]),
+             and not _fixed(row, EXERCISE_VOICE)
+             and float(row.get("voice") or 0.0) >= floor]
+    return min(heard, key=lambda row: (-float(row.get("voice") or 0.0) * (1 + RELEVANCE_LIFT * _relevance(row)),
+                                       row["read"]["value"] * _damp(row), row["read"]["s"]),
                default=None)
 
 
