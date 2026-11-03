@@ -178,6 +178,15 @@ def _control_after_note(database, user_id) -> bool:
         return False
 
 
+def _privacy_after_note(database, user_id) -> bool:
+    try:
+        from services.voice_notebook import privacy_after_note
+        return bool(privacy_after_note(database, str(user_id)))
+    except Exception as e:  # noqa: BLE001 -- the note is kept either way
+        logger.warning("chat/query: privacy reminder failed user=%s: %s", user_id, e)
+        return False
+
+
 def _goals_after_note(database, user_id) -> bool:
     try:
         from services.life_goals import after_note
@@ -222,6 +231,12 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
             from services.sunday_note import after_head
             if after_head(database, user_id, case):
                 resp["after_take"] = True
+        # Right under a # note's "Noted.", every fifth note that names
+        # someone gets the privacy line (N379 item 3).
+        if (bot_cid and intent == "voice_notebook"
+                and (resp.get("row_metadata") or {}).get("voice_note")
+                and _privacy_after_note(database, user_id)):
+            resp["after_take"] = True
         # Under a # note's "Noted.", the ask for life goals (N172 M1); the
         # same flag reads the thread again.
         if (bot_cid and intent == "voice_notebook"
