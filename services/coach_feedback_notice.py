@@ -120,6 +120,7 @@ def deliver(database: Any, user_id: str, take_session_id: str, moments: int) -> 
     try:
         if _already_seen(database, user_id, take_session_id):
             return "seen"
+        _push(database, user_id, take_session_id)
         from services.whatsapp_notify import notify_coach_feedback_in
         if notify_coach_feedback_in(database, user_id, take_session_id or None):
             return "whatsapp"
@@ -129,6 +130,21 @@ def deliver(database: Any, user_id: str, take_session_id: str, moments: int) -> 
     except Exception as e:  # noqa: BLE001 -- the Lounge bubble is there either way
         _log.warning("coach notice: delivery failed user=%s: %s", user_id, e)
         return "failed"
+
+
+def _push(database: Any, user_id: str, take_session_id: str) -> None:
+    """The iPhone app's push, beside the WhatsApp or the email (N385): N171's
+    words, opening where the WhatsApp opens. Best-effort."""
+    try:
+        from services import push_devices
+        from services.whatsapp_notify import COACH_FEEDBACK_IN, feedback_path
+        arc_id = None
+        if take_session_id:
+            arc_id = (database.v2_get_session_by_id(str(take_session_id)) or {}).get("arc_id")
+        push_devices.push_later(database, user_id, title=None, body=COACH_FEEDBACK_IN,
+                                path="/" + feedback_path(arc_id, take_session_id or None))
+    except Exception as e:  # noqa: BLE001 -- the other messages go either way
+        _log.warning("coach notice: push not started user=%s: %s", user_id, e)
 
 
 def _already_seen(database: Any, user_id: str, take_session_id: str) -> bool:
