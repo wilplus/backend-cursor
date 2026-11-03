@@ -10419,3 +10419,18 @@ The rules: frontend
 B1, H0 and J, and
 [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
 §1.
+
+**N417 · The sale's four steps outlined, none filled (founder, the Claude
+Code chat, 3 November 2026, on the canvas "Sale steps answers",
+<https://claude.ai/artifact/9UpKbNHLVJ8W4nvVpSEpRN>: "B, go ahead").** For
+N415 item 2 and N241 P2:
+1. **"Which step did it stall at?"** takes N371's suggested answers: the
+four steps stacked on the right in their order ("The opening",
+"Discovery", "The offer", "The follow-up"), all four outlined orange and
+none filled, since no step is likelier than another. N415 item 2's "the
+one that goes on filled" does not apply to them. Was: four grey pills, two
+by two.
+2. Same words, the same taps and what they send.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E1. No migration.
