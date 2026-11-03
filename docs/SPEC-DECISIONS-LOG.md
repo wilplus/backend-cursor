@@ -10397,3 +10397,25 @@ Numbered a few ahead, leaving numbers free for the sessions logging one
 after another. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
 No migration.
+
+**N416 · The training corpus moves to the CEO panel and leaves the coach's
+side (founder, the Claude Code chat, 3 November 2026: "[move] the training
+corpus to the CEO panel and remove it from the coach side so that it
+doesn't hang there, because we rebuild the whole infrastructure a little
+bit").** While the corpus's infrastructure is rebuilt:
+1. The founder opens it from the CEO panel (`/admin/ceo`): a "Training
+corpus" button beside Bugs and Tasks opens the same screens as before (the
+imports, Import audio, the set-up, the blind judging; coach panel H1 to
+H3) over the panel, and ✕ comes back to it.
+2. No coach sees it: the Lounge's pinned "Training corpus" button and the
+☰ menu's coach-only row are gone; `/coach/corpus` goes to `/admin/ceo`.
+Speakers stays pinned on its own.
+3. The backend's corpus endpoints, their role checks, the imports and every
+label already given are unchanged; nothing is deleted.
+No new words on screen ("Training corpus" is the signed word, moved). No
+migration.
+The rules: frontend
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+B1, H0 and J, and
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+§1.
