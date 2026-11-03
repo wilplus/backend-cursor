@@ -856,6 +856,9 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
     # The AI version of your voice (N71): queued on its own, never awaited.
     from services.ai_voice_clone import after_take_job
     after_take_job(db, payload, principal_id)
+    # The first Take's answers, kept with their voice for the coach (N401).
+    from services.plan_flow import after_processing
+    after_processing(db, payload, audio_bytes)
     return result
 
 

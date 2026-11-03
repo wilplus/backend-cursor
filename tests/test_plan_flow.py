@@ -66,7 +66,10 @@ OUTCOME
       line, the opening) and all five in Will's notes; the plan's facts and
       its topic come from what was said; a day said gives the plan and its
       card at once, that Take its first practice; no day said asks "When is
-      your deadline?" as taps, and the answer gives the plan.
+      your deadline?" as taps, and the answer gives the plan. Kept at the
+      end of the Take's processing, the voice message and the key line keep
+      their own voice, and the coach's blind pick plays them (N213); the
+      walk's end then keeps nothing twice.
 PROVES   O1 -> test_without_the_ring_nothing_happens
          O2 -> test_a_new_speaker_is_asked_once
          O3 -> test_no_date_gives_two_months_then_the_voice_message
@@ -85,6 +88,7 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
          O15 -> test_with_the_calls_on_they_are_asked_before_the_plan
          O16 -> test_with_the_first_take_on_the_questions_are_its_slides
                 test_a_first_take_with_no_day_asks_for_the_deadline
+                test_the_coach_hears_the_first_takes_voice_message_and_key_line
 WHY      The plan, built one to one with the prototype (founder 2026-10-26,
          N203, N204); a level moving on, N134 items 3 and 4, N209; the
          principles waiting for the onboarding, N243; record first, Will
@@ -154,6 +158,10 @@ class _Db:
     def insert_plan_answer_audio(self, answer_id, user_id, content_type, audio):
         self.audio[answer_id] = audio
         return True
+
+    def get_plan_answer_audio(self, user_id, answer_id):
+        audio = self.audio.get(answer_id)
+        return {"content_type": "audio/mpeg", "audio": audio} if audio else None
 
     def get_snippets_by_session(self, session_id):
         return list(self.clips.get(session_id, []))
@@ -689,3 +697,23 @@ def test_a_first_take_with_no_day_asks_for_the_deadline(db, monkeypatch):
     assert bodies(db)[-2:] == [P.COPY["all_set"], ""]
     assert P.COPY["why_1"] not in bodies(db)  # never the chat's questions
 
+
+def test_the_coach_hears_the_first_takes_voice_message_and_key_line(db, monkeypatch):
+    from services import plan_coach
+    day = (date.today() + timedelta(days=11)).isoformat()
+    _out, kept = _first_take(db, monkeypatch, {"facts": {"event": "the newsroom conference"}, "deadline": day})
+    monkeypatch.setattr(F, "_cut_voice", lambda audio, clips: b"voice of " + clips[0]["transcript"].encode())
+    take = {"recording_kind": "spoken", "user_id": USER, "session_id": "t1"}
+    assert F.after_processing(db, take, b"the Take's recording")
+    assert [a["kind"] for a in db.answers] == ["why", "audience", "key", "opening"]
+    assert not F.after_processing(db, take, b"the Take's recording")  # once
+
+    F.after_take(db, USER, first_name="Anna")
+    assert [a["kind"] for a in db.answers] == ["why", "audience", "key", "opening"]  # nothing twice
+    assert [k for k, _p in kept] == ["answer"] * 5
+    assert bodies(db)[-2:] == [P.COPY["all_set"], ""]
+    plan = db.get_open_plan(USER)
+    pick = plan_coach.blind(db, plan, plan_coach.NEW, pseudonym="Speaker 1")
+    heard = [plan_coach.answer_audio(db, plan, pick[k]["answer_id"])["audio"] for k in ("why", "key_line")]
+    assert heard == [b"voice of A talk at the newsroom conference, my first time on a stage.",
+                     b"voice of A good story starts with one person."]

@@ -10516,7 +10516,67 @@ Vercel. No new words on screen. No migration.
 No rules page: the rule is in `CLAUDE.md` (How to ship) in both repos and
 [`docs/OPS-FLAGS-AND-RELEASES.md`](docs/OPS-FLAGS-AND-RELEASES.md).
 
-**N427 · Record an answer: seven fixes from the interaction audit
+**N431 · One code for a team and a community (founder, the Claude Code
+chat, 3 November 2026, on the open questions of the prototype "The way
+in": "one code for a team and a community: yeah").** Answers N352 item 6
+and N401 item 6; for N52.4 and N353:
+1. **A team is a community, and its code is the community's pass code.**
+   The code Will makes for a closed team (N353) is the one code: it joins
+   the team from Will's chat ("Join with a code"), from a link with the
+   code inside, and from the share after a Take ("+ Add a community with a
+   passcode"). Was: two kinds of code, the community pass code of N52.4
+   and the team's code of N353.
+2. **No new words:** the screens that already ask for a code keep their
+   words.
+No rules page yet: it lands on frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+(the share after a Take) and
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
+
+**N435 · The One thing walk matches its locked prototype on seven points
+(founder, the Claude Code chat, 3 November 2026, on the side-by-side page
+<https://claude.ai/artifact/9FmH421ZiVTbA2VYH2ca3f>, the prototype
+<https://claude.ai/artifact/X4gDmGfHH7ivuoRZ9ufiy9> beside the app: "on the
+2nd one remove the skip - cause trash acts like a skip", "Idk why it says
+Try it ???", "rest is fien do it"; then, asked, "Trash = Skip" and "Web code
+is fine").** For N309 items 1 and 3, N314, N379, N397 and N405:
+1. **No slide names inside the thread.** The walk's top bar names the slide
+(N397); the small grey name above each part of the thread goes. The bar
+still follows the part in view.
+2. **No bubble for the speaker's tap** in the walk: "Try it", "Keep mine"
+and "Skip" add nothing to the thread; the walk's own answer stays ("Okay,
+we'll skip this one.", N405). The chat keeps writing them, as Will's record
+of what the speaker chose.
+3. **No Skip under the recording bar; the trash is the Skip.** In the One
+thing walk's fix and the Sniper, while a try records the dock is the
+recording bar alone (N314: the trash, then the strip with Stop). The trash
+throws the try away (nothing is uploaded or counted) and moves the walk on
+as Skip did: "Okay, we'll skip this one.", then the helper words. Skip
+stays where no try is recording ("Try it" and Skip).
+4. **After "Keep mine" the walk says "Your words it is."** Replaces "Your
+words it is. Now say them like you mean every one." (N268) in the One
+thing walk only.
+5. **Helper words after "Keep mine" leave out the hesitations they open
+with** ("So, um, I think…" gives "I think…"). The rest of the sentence is
+kept whole (N323 item 2).
+6. **The Sniper opens with one bubble when the speaker rushed:** "You
+rushed here. Let it breathe." with the pace scale in the same bubble,
+after the stretch's own clip. Replaces "That part went fast. 🏃 Let's try
+a little game.", the task line and "🤫 Find a quiet spot first." in the One
+thing walk. A slow stretch, which the prototype does not draw, keeps its
+lines; a plan week's level line stays (N289 item 8).
+7. **The Sniper's top bar names its slide** by its title from the deck
+(N397), during the game and its helper words; "Slide N" with none. Was:
+"Tempo".
+8. **Signed (Never 4):** "Your words it is." and "You rushed here. Let it
+breathe.".
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C, C3, C5, C7, T and K. No migration. The web walk is the iPhone app's
+walk too: nothing native to change.
+
+**N441 · Record an answer: seven fixes from the interaction audit
 (founder, the Claude Code chat, 3 November 2026, on the page "Record an
 Answer, Before and After", <https://claude.ai/artifact/VMTAjB1kkWMnxYBHQ1BpgV>:
 "all suggested on the artifact record and answer before and after, are
