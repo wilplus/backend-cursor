@@ -400,6 +400,9 @@ def test_a_clip_that_fails_its_check_is_made_once_more_and_shown_only_if_it_pass
         assert cycle["generation_attempts"] == 2
         if shown == "unavailable":
             assert out["clip"]["url"] is None
+            # No clip, but the walk still says the tip in words (N370).
+            assert out["clip"]["problem"] == "stress" and out["clip"]["phrase"] == PHRASE
+            assert "why" not in out["clip"]
             assert (cycle["failure_kind"], cycle["failure_code"]) == ("validation", "not_stressed")
             ai_voice_clip.note_attempts(db, db.practice, [
                 {"attempt_index": 1, "duration_ms": 3000, "acoustic_metrics": {"dynamic_db": 30.0}}])

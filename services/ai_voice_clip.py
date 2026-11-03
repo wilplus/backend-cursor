@@ -700,6 +700,11 @@ def state(database: Any, practice: dict, cycle: Optional[dict], *, sign=None) ->
             clip.update(problem_of(cycle))
     else:
         clip = {"state": "unavailable", "url": None, "max_appearances": MAX_APPEARANCES}
+        if (cycle.get("selection") or {}).get("exercise"):
+            # Chosen, but no clip came (its check failed, the provider or the
+            # limits refused, no voice): the walk still says the tip in words,
+            # without the clip (N370).
+            clip.update(problem_of(cycle))
     if clip["state"] == "unavailable" and demo == "ai_voice":
         # No clip to put in the video's place: the locked Exercise as it was.
         demo = "video" if _has_video(practice) else "none"

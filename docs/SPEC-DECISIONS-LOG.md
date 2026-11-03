@@ -9669,7 +9669,99 @@ The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1. No migration.
 
-**N370 · An older Take's Ideal Text card opens that Take's words (founder,
+**N370 · The fix keeps its tip when no AI clip comes (founder, the Claude Code
+chat, 3 November 2026: "when there is no AI audio, the fallback is gone. So
+if you could fix the fallback when the AI audio is gone").** For the One
+thing walk's fix (N309 item 1, C4):
+1. **No AI clip, the tip still said.** When the clip does not come (its
+check failed, the provider or the limits refused, no voice yet), the fix
+keeps one bubble after their best: the same signed tip as its own sentence
+("Pause before “{phrase}”."), the served exercise's video and instruction
+when there is one (the locked Exercise, as before N309), then "Your turn.".
+The chat says the same and "Last time" keeps that tip. With no tip and no
+exercise, the fix stands as it did. Was (N309, 2026-10-31 to 2026-11-03):
+the tip lived only in the AI bubble and went with the clip, and the
+exercise's video was never drawn in this walk.
+2. **The server names the fix without the clip.** A clip that is
+unavailable once its exercise was chosen still carries `problem` and
+`phrase` (`ai_voice_clip.state`), as a pending one does (N120); no number,
+check or reason crosses (AC-9).
+3. Nothing to sign: the tip bank (N120) and "Your turn." (N309) are signed;
+the tip ends with a full stop in place of ", like this:".
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C4. No migration.
+
+**N371 · Suggested answers, one rule for the whole app; "Something else" in
+Will's chat (founder, the Claude Code chat, 3 November 2026, on the prototype
+"One bar", <https://claude.ai/artifact/2v8jSi91F157WFR8tjX5E1>: "there is no
+answer else ... I would want to see it visible in the place of the bottom bar
+inside of the text input form, but with the mic on the right side and the
+plus icon on the left side ... apply it only to ... a chat with Will"; "for
+the suggested answers buttons, we need to design them generally for the whole
+application"; on the words rewritten as Steven Pinker would, "A all").** For
+N323, N334 item 3, N364, N368 and N369:
+1. **Where:** suggested answers sit above the bar, on the right, where the
+person's own messages go. **Size:** at least 44px high, 15px text, the whole
+answer readable, never cut.
+2. **Order:** the most likely answer sits nearest the thumb, bottom right,
+filled orange; the others are outlined, above it or to its left. **Two:**
+side by side, the one that goes on on the right (N334 item 3). **Three or
+four:** one per line, stacked, the most likely at the bottom. **More than
+four:** the three most likely, and "Show more" above them, which shows the
+rest.
+3. **"Something else", always,** in Will's chat while he asks: the bar's
+middle, shaped like a text box, with the "+" on the left and the mic on the
+right, orange because Will waits. A tap turns it into a text box ("Type your
+answer") with a send arrow; the mic answers by voice. This is the one change
+to Will's own bar (N369): while a question with suggested answers waits,
+"Something else" stands where "Type here" stands. Chats with people keep
+the emoji in the middle (N368).
+4. **"Skip"** only when the question can be passed: a quiet grey word at the
+top, furthest from the thumb.
+5. **Signed (Never 4):** "Something else", "Type your answer", "Show more",
+"Skip"; Will's "When Kasia has heard your answer, what should she do or
+feel?" and "Thank you. I'll listen for that when you answer." ({name} for
+the person). The prototype's example answers ("Feel safe trying it", "Check
+every quote herself", "Book a seat on Thursday", "Trust the tool, but check
+it", "Come back with her next question", "Show her team how") show the shape;
+Will writes each question's own, in N364's style.
+6. **Locked:** the prototype "One bar", version 14, replaces version 12 in
+[`docs/LOCKS.md`](LOCKS.md).
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
+
+**N372 · The voice as it is, heard at one loudness (founder, the Claude Code
+chat, 3 November 2026, asked why playback sounds worse than WhatsApp: "make
+sure this applies to all kinds of browsers and mobile application", "low-hanging
+fruits only", then on three suggestions "all 3 yes (write the words as Steven
+Pinker and you have my OK on them just make that concise)").**
+1. **The mic records the voice as it is.** Every browser and the iPhone app
+ask for the mic with the browser's call processing off: automatic gain,
+noise suppression and, for a Take, echo cancelling; mono. A voice note keeps
+echo cancelling, since another voice note can be playing out loud. Was:
+`audio: true`, which turns all of it on, so the voice was levelled and
+thinned like a phone call (frontend #1167).
+2. **Playback at one loudness.** The playback copy of each recording
+(`services/playback_copy.py`) is levelled to one loudness (−16 LUFS) and
+made at 128 kbps, so a quiet speaker is heard as clearly as a loud one. The
+original, which transcription and the feedback read, is never touched; its
+timing is unchanged, so a slide's window plays the same words. New
+recordings only. Was: a plain 96 kbps copy.
+3. **One voice at a time.** Playing a voice message pauses the one already
+playing, and starting the mic pauses any that plays.
+4. **Earbuds.** When the last Take was recorded through a Bluetooth mic
+(earbuds, a headset), "Getting your mic ready" before the next Take says
+under it: "Earbuds make you sound like a phone call. The built-in mic sounds
+like you." Signed (Never 4).
+The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
+No migration.
+
+**N373 · An older Take's Ideal Text card opens that Take's words (founder,
 the Claude Code chat, 3 November 2026: "when I click Take 1.0 ... and I open
 the ideal text, what I can see is exactly the ideal text I have recorded last
 time ... So 1.0 bubble and the walk refers to what was there. It stays as it
@@ -9695,9 +9787,9 @@ The rules: frontend
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 F1. No migration.
 
-**N371 · An older Take's Ideal Text, slide by slide and one screen per tap
+**N374 · An older Take's Ideal Text, slide by slide and one screen per tap
 (founder, the Claude Code chat, 3 November 2026, on the interaction audit of
-N370: "build 1 and 2").** For N370 items 1 and 2:
+N373: "build 1 and 2").** For N373 items 1 and 2:
 1. **One screen per tap.** Which page an Ideal Text card opens (that Take's
 version, or the live page) is known before either is drawn; a press on an
 older card starts its read, as a press on the newest starts the live page's.
