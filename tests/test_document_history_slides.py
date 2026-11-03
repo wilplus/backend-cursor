@@ -1,9 +1,15 @@
-"""An older Take's Ideal Text, slide by slide on its own deck (N375, N376).
-
-The History under ⋯ serves each version with each Paragraph's Slide and
-the deck that version's Take was said on, so the speaker reads an older
-Take's words as the page shows them. A Slide map that cannot be proved is
-not guessed.
+"""
+STORY    As a speaker, I want an older Take's Ideal Text shown slide by slide
+         on the deck I said it on, so that I read what I said then as the
+         page showed it.
+OUTCOME
+  O1  Each version in the History carries each Paragraph's Slide and the
+      deck of its own Take, not the latest Take's.
+  O2  A Slide map that cannot be proved, or a Take that cannot be found, is
+      not guessed: no slides, no deck, the words as they are.
+PROVES   O1 -> test_each_version_carries_its_slides_and_its_own_takes_deck
+         O2 -> test_an_unproved_slide_map_or_unknown_take_is_not_guessed
+WHY      Founder 2026-11-03, N375 and N376; a Take's deck is its own (N257).
 """
 from services.paragraph_history import document_history
 
