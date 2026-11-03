@@ -10333,3 +10333,46 @@ feel? 🤔".
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 E2 and E3, when built. No migration.
+
+**N411 · The notebook's security disclaimer (founder, the Claude
+Code chat, 3 November 2026, on the prototypes
+<https://claude.ai/artifact/HXV7HUFsfoM1ST29fthnk6> and
+<https://claude.ai/artifact/5X4M3cnSBxX8YcuKFEFY3a>: "do not share personal
+information with us … My colleague annoyed me enormously today … Good
+message"; "sign the words"; then "way simpler … just a reminder … each
+time … every fifth time someone mentions a name").** For frontend
+`principles.md` A5, B and K:
+1. **The first time, the feature is introduced.** Will's first spotted
+message (a strength, a pattern) is followed by one bubble, "🎙 Tap the mic
+any time and say what's on your mind. It helps you catch negative thinking
+and self-sabotage. One privacy rule first:" (was "🎙 Tap any time. Dump the
+overthinking here, then let it go." and "A deep sigh for your mind…", both
+replaced by the founder the same day); then the full
+note, once, in grey, in one bubble: "Nothing fragile: health, family, money,
+address.", "We look for patterns, not secrets. Fewer clues, less for
+hackers.", "📓 For journalling try paper notebook 😉"; then "Do you
+understand the rules and want this feature on?" (Yes | Not now), in place
+of the notebook's signed ask "Your notes are private. Only you and Will read
+them. Keep a voice notebook?" (backend `voice_notebook.COPY["ask"]`); on Yes, "Noted." and "What's on your mind
+today?". These replace A5's three bubbles (N195, not built). Not now: the
+introduction comes again with the next spotted message.
+2. **After that, the short line "🔒 Security disclaimer ›" every time** Will
+spots something (the Sunday note's pattern, a strength, a strength again, a
+suggested principle), under the message; a tap opens the full note.
+3. **Notes that name someone:** only a reminder. Every fifth # note that names
+a person gets the short line under its "Noted."; the others get "Noted." as
+always. Nothing is offered, changed or deleted.
+4. The words in items 1 and 2 are signed (Never 4).
+5. **The first spotted message reads the Takes** ("All looks good. Please
+build it.", on the choice drawn "From their Takes"): before there are notes,
+Will may spot a strength in the speaker's Takes and open item 1 with it. This
+amends N182 item 3 for this one message: the notebook's introduction may
+read the Takes; nothing of the notebook reaches the Takes, the plan or a
+coach. The line "🔒 Security disclaimer ›" stays as drawn.
+6. Built first (this entry's PRs): the new ask and the intro above it, the
+line under every spotted message, and the fifth named note. Until the Takes
+reader is built, the introduction comes at the doors it has today: the
+first tap on the mic and the first typed "#".
+The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+A3, A5, B and K. No migration.
