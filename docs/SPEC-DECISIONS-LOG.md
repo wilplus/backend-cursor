@@ -9868,3 +9868,32 @@ bubble after it. Was: the line could end on a colon with nothing after it.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C4. No migration.
+
+**N378 · Back goes back by one in the chats, and never off the list
+(founder, the Claude Code chat, 3 November 2026: "When we are in the chat and
+the list of chats, and I swipe to the right as if I want to go back ... when
+I do it abruptly, and I usually do, and most users usually do, it brings me
+back to the login page. Please fix that. So it only goes back by one, and you
+cannot go back from the list of chats").** For N322, N334 and N360:
+1. **From a chat,** Will's or a person's, Back (the iPhone's swipe, the
+browser's Back) goes back by one, to the list of chats, however abrupt the
+swipe.
+2. **From the list,** Back goes nowhere: the list is the bottom of /chat, and
+Back never leaves it for the sign-in page.
+Then, on the audit of these screens (the same chat: "build 1, 2 and 3"):
+3. **The iPhone app's swipe:** in the app, a swipe from the left edge goes
+back from a chat, Will's or a person's, following the finger; let go early
+and it springs back. Not from the list, nor over a screen opened on top of
+the chat.
+4. **The slide:** a person's chat comes in from the right and goes out to the
+right on Back, over the list; Will's chat, which is the Lounge underneath,
+opens as the list slides away to the left and closes as it comes back from
+the left. About a third of a second, iOS's own easing; none when the phone
+asks for less motion.
+5. **The list keeps its place:** back from a chat, the list is scrolled where
+you left it, and the row you came from is lit grey for a moment and fades.
+No new words on screen; this changes the locked "One bar" screens' motion
+only, with the founder's OK above.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1. No migration.
