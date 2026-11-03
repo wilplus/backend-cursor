@@ -9594,7 +9594,15 @@ an email or a message you send anyway"), "2. They open it" ("and join with
 their account"), "3. You chat" ("Only the two of you are in it"); "Cancel".
 It replaces the built sheet (a grey box with the title, the line, the link
 and Copy my link).
-4. **Signed (Never 4):** "Sign out" (was "Log out"), "✓ Copied", "Whoever
+4. **The menu's icons** are 36px rounded squares, as on the iPhone's
+Settings: a white link on blue for Copy my link, a white gear on grey for
+Settings, a gold coin on light gold for Tokens, a white arrow out on red for
+Sign out. On the profile (N366), the pencil is an orange pencil in a light
+orange circle beside the About text, and it stays in the box while you type
+(founder, the same chat: "Use bigger icons ... the Apple icons for settings
+for sure. For tokens, come up with something ... add the pencil to the
+editing of the profile text. You have my sign off on the words").
+5. **Signed (Never 4):** "Sign out" (was "Log out"), "✓ Copied", "Whoever
 opens it joins you here", and the three tiles' words.
 No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
