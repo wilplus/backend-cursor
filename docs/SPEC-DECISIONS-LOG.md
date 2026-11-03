@@ -10116,3 +10116,159 @@ said, are unchanged. No migration.
 The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 §1 B2.
+
+**N397 · The setup, one for any business: one voice note for a person, two
+questions for a team, and where the app ends (founder, the Claude Code chat,
+3 November 2026: "now let's design the setup"; on the prototype "The setup",
+<https://claude.ai/artifact/Cmz1jj18KwpqG5G1n1fHk6>, version 1: "yes to all
+four, words ok, log it and lock"; on version 2: "So who are you? ... how can
+he say that he's here to ask? Everyone is sometimes here to ask and
+sometimes to answer"; on version 4: "yes add both"; then "words ok, log it
+and lock").** For N312, N313, N332, N349, N352, N353, N361, N366, N368 and
+N371; answers N349 item 5 and N352 item 6. Tried on two businesses: RASP
+(AI ambassadors inside the company) and Invita (sellers and their
+customers). Its first question is now slide 1 of the first Take (N398).
+1. **One question for a person, by voice:** "Tell me in a voice note what
+you do and what you know best, so I can send you the right questions."
+Will takes the person's role, their About and their topics from it, and
+shows "Here's how others will see you:", a card shaped like their profile
+(name, role, About, the topics as "Ask about {topic}"), with "That's right"
+or "Change it" ("Tell me what to change."). Nobody picks a role from a
+list, and there is no "I'm here to ask": everyone asks and everyone
+answers. A role nobody in the team had yet goes on the team's list.
+2. **The door names the team.** A join link or a code says which team;
+"Which team are you in?" (the open teams, "Join with a code", "Add a team",
+and Skip, N371) comes only with neither (N353).
+3. **Everyone accepts the agreement** (N349 item 3) and gets "You're set"
+(N352).
+4. **The speaking coach is never in a list.** WillpowerLab's coach link has
+the pass code inside it (N352, N353), so Will knows the role: "Hi {name}!
+{inviter} asked you to join {team} as a speaking coach." The coach panel's
+door in the chat with Will and the "Training corpus" row in the ☰ menu are
+as they are today; that is how the training corpus reaches a coach. Was:
+the code typed in Will's chat.
+5. **A team answers two questions on its page,** not in Will's chat: "Who
+can ask" ("People in the team", or "Customers too", which shows the
+business's ask link, N312) and "What answers can point to" (links, each a
+title, a picture and where it goes). "Who is who" lists each person with
+their role. Will points to the page once, after "You're set", for whoever
+added the team.
+6. **Changing your topics later:** your own profile shows your topics as
+"Ask about {topic}"; Edit, then "Change it", brings Will's "Tell me what to
+change." and the card again (N366 keeps the rest of Edit). This keeps
+"You can change this in Settings."
+7. **Anyone in the team adds links** to the team's page; the circle beside
+each link shows who added it. "Who can ask" stays with whoever added the
+team. Your team's name under your role on your profile opens the team's
+page.
+8. **Who defines what:** a topic ("Ask about Meet & Learn") is the person's
+own, from their voice note; a thing to book or buy ("Meet & Learn: AI in
+the cut, Thursday 10:00") is a link on the team's page. A team's links can
+be slides in an answer (N226, N361 item 3; the recording screen does not
+change), and the person who answered sees "{name} opened {link}".
+9. **Where the app ends:** if it's a link, it's the app; if the business's
+own system has to answer back, it is a custom integration, built once for
+that business. The app: join links, team codes and the ask link; the setup
+and the team's page; the chats; links; knowing a link was opened; WhatsApp
+from WillpowerLab's number (N230); signing in with Google or Microsoft. An
+integration: the company's own sign-in and staff directory; pulling in a
+whole shop, calendar or course list; writing a booking into their
+calendar; knowing a purchase happened; their own WhatsApp number; their
+data in their region on their own DPA terms.
+10. **A manager** sees, in their chat with Will and in words, only what
+happened to the team's questions: what was asked, what was answered, what
+was booked. Never anyone's voice, and never how someone speaks (the EU AI
+Act, Article 5(1)(f), prohibits inferring emotions at work). **Learning
+buddies** are matched by the topics from the setup, never by voices. Both
+are designed later.
+11. **Signed (Never 4):** "Tell me in a voice note what you do and what you
+know best, so I can send you the right questions.", "Here's how others
+will see you:", "That's right", "Change it", "Tell me what to change.",
+"Hi {name}! {inviter} asked you to join {team} as a speaking coach.",
+"Your team is ready. On its page, say who can ask and what your answers
+can point to.", "Open your team's page", "Hi {name}!"; on the team's page
+"Who is who", "Who can ask", "People in the team", "Customers too", "Copy
+the link", "What answers can point to", "+ Add a link", "Paste a link",
+"Add"; on the ask page "What is it about?", "Your question", "Your name",
+"Your WhatsApp number"; in the chats "{name} opened {link}". Gone before
+they were built: "Who are you here?", "I'm here to ask", "Here to ask", the
+speaking coach's typed code.
+12. **Locked:** the prototype "The setup", version 5, in
+[`docs/LOCKS.md`](LOCKS.md).
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 and [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+when built. No migration.
+
+**N398 · The first Take is the onboarding: the first-timer's questions are
+its slides (founder, the Claude Code chat, 3 November 2026: "this is a part
+that we apply to everyone logging into their application ... it should be
+your first official take ... whatever questions we have for the first
+timer, we need to put them into slides and display them as slides on the
+big screen. And people are recording slide by slide"; on the prototype "The
+way in", <https://claude.ai/artifact/5RQsbVpt1F8NMtSbTs7wwB>, version 2:
+"words ok, log it and lock").** For N30, N319, N324, N335, N354, N357, N360
+and N397; changes Never 3's wording:
+1. **Will says hi, in one line, then one button.** After the acceptance
+screen (locked, unchanged), Will's first lines are his hello for the door
+the person came by, and "Your first Take is five questions. Answer each one
+out loud, one slide at a time."; the bar's middle is "Start your first
+recording".
+2. **The first Take's slides are the questions,** on the recording screen
+as it is locked (Back, Next slide, Finish take, the strip): "About you":
+"What do you do, and what do you know best?" ("So I can send you the right
+questions."); "Your talk": "What are you practising for, and why does it
+matter?"; "The room": "When is it, and who will be in the room?"; "Your one
+sentence": "If they remember one sentence from you, what is it?" ("Say it
+the way you'll say it."); "Your opening": "How will you open? Say your
+first sentence." No set-up for Take 1: the questions are its deck. Its
+strip counts up, with no length chosen.
+3. **While it is processed,** for Take 1 only, the processing labels sit in
+a thin row at the top of Will's chat instead of the processing screen, and
+Will says "While your feedback is being prepared, check what I heard.",
+then, one tap each: "Here's how others will see you" (slide 1, N397); the
+plan card (slides 2 and 3; "When is your deadline?" as taps only when no
+date was heard); "Which team are you in?" (only with no link and no code);
+the agreement; "You're set". The walk's row turns orange when the walk is
+ready, and nothing waits for the checks.
+4. **The walk works on how the questions were answered,** and Take 1's
+Ideal Text is the five answers, one paragraph per question (Never 5
+holds). Then "Record Take 2" for the real talk: the feelings check with its
+Skip, then the set-up, its topic from slide 2.
+5. **Moved:** the plan's questions in Will's chat (N319: the deadline's
+taps, the event, the one sentence, the follow-ups) are now slides 2 to 5;
+N397's voice note is slide 1. Never 3 now reads: the plan's questions come
+once, inside the first Take, one slide at a time; before any other Take,
+only the feelings check, with a Skip. N319's lock keeps the consent screen,
+the plan card and the plan's progress after each walk.
+6. **The way in, from the code** (the map on the prototype): every way in
+(the landing, /signup, the iPhone app, a join link, the coach's link, the
+ask link) meets the same first Take after the acceptance screen. Decided
+on it: a signed-in person never sees the welcome again (it shows today
+after a direct sign-up on the web); the join page keeps "Join" until a
+company has its own sign-in, an integration (N335's "Join with your
+{company} account" waits for it); a "Microsoft" sign-in button beside
+Google; and no demo chats for a newcomer (founder, the same chat: "fix the
+gap"): an empty list shows Will and "Add someone to chat with", on the web
+as in the iPhone app. Was: two demo chats, "Sarah" and "Ariel". To build:
+the setup, universal links for /c/ in the iPhone app, the ask page (N313),
+and the coach link in place of the coach list kept by hand. Open, each
+with its recommendation on the prototype: the default ring for new
+accounts (today 2; the plan needs 5, the chats 6); a join link that brings
+its own access; a guest's first Take (as today, or the five questions
+too); one code for a team and a community; the plan's personal questions
+with the yes (a sixth slide, "What worries you most about it?", the 1 to
+10 taps during the processing).
+7. **Signed (Never 4):** "Your first Take is five questions. Answer each
+one out loud, one slide at a time."; "About you", "Your talk", "The room",
+"Your one sentence", "Your opening"; the five questions above; "So I can
+send you the right questions."; "While your feedback is being prepared,
+check what I heard."; "Microsoft".
+8. **Locked:** the prototypes "The way in", version 2, and "The first
+Take", <https://claude.ai/artifact/C78wBzWUKz7MaHjxrnsPVX>, version 1, in
+[`docs/LOCKS.md`](LOCKS.md); CLAUDE.md's Never 3 follows item 5.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md),
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+when built. No migration.
