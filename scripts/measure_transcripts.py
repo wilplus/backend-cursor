@@ -231,7 +231,7 @@ def stub_transcriber(item: GoldenItem) -> dict:
     return data
 
 
-def provider_transcriber(items: list[GoldenItem]) -> Transcriber:
+def provider_transcriber(items: list[GoldenItem], *, parallel: bool = False) -> Transcriber:
     """The live adapter, or a refusal. Pre-flight runs over EVERY item before
     the first provider call so a half-labelled set does not half-spend."""
     from services.db import db
@@ -240,6 +240,7 @@ def provider_transcriber(items: list[GoldenItem]) -> Transcriber:
         _language_hint,
         merge_slide_vocabulary,
         recording_provider_adapter,
+        transcribe_take_audio,
     )
 
     authorization = ProcessingAuthorizationService(db)
@@ -267,8 +268,12 @@ def provider_transcriber(items: list[GoldenItem]) -> Transcriber:
             recording_id=item.recording_id,
             user_id=None,
         )
-        result = adapter.transcribe_audio(
-            item.audio_bytes(), os.path.basename(item.audio_path),
+        # The live stage's own choice of one call or parts (N406);
+        # --parallel measures the parts whatever the setting says.
+        audio = item.audio_bytes()
+        result = transcribe_take_audio(
+            adapter, audio, audio, os.path.basename(item.audio_path),
+            parallel=parallel,
             vocabulary=merge_slide_vocabulary(item.session_context()),
             language=_language_hint(item.session_context()),
             usage_surface="whisper_measure",
@@ -508,6 +513,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--date", help="date for the default report name (YYYY-MM-DD)")
     parser.add_argument("--stub", action="store_true",
                         help=f"read {STUB_FILE} per item instead of calling the provider")
+    parser.add_argument("--parallel", action="store_true",
+                        help="transcribe each item in parts at once, as the live "
+                             "stage does with PARALLEL_TRANSCRIPTION_ENABLED (N406)")
     parser.add_argument("--write-example", metavar="DIR",
                         help="write the synthetic example item under DIR and exit")
     args = parser.parse_args(argv)
@@ -527,8 +535,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             name = "stub"
             timeline_of: Callable[[GoldenItem], Optional[dict]] = no_timeline
         else:
-            transcriber = provider_transcriber(items)
-            name = "provider"
+            transcriber = provider_transcriber(items, parallel=args.parallel)
+            name = "provider-parallel" if args.parallel else "provider"
             timeline_of = fetch_pipeline_timeline
         report = run(items, transcriber, transcriber_name=name, timeline_of=timeline_of)
     except MeasureRefusal as refusal:
