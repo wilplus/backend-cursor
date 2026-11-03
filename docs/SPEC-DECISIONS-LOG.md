@@ -9849,3 +9849,22 @@ The rules: frontend
 [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
 and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 F1. No migration.
+
+**N377 · The fix's words land like every message, and no colon points at
+nothing (founder, the Claude Code chat, 3 November 2026, on items 3 and 8
+of the interaction audit of the fix step: "build 3 and 8 too").** For the
+One thing walk's fix (N309 item 1, C4, N370, N373):
+1. **The words land, never swap.** The no-clip bubble of N370, when it
+takes the place of the AI bubble (the clip waited out or failed) or first
+appears, lands with the walk's bubble motion (`walk-bubble-in`), once per
+fix in the page's life; a screen drawn again shows it at once. Reduce
+motion makes it instant, as everywhere. Was: the AI bubble's label and dots
+vanished and the bubble changed shape with no motion.
+2. **No colon without its clip.** "Say this one like your confident
+moment:" is said only when their best's clip follows it, in the walk and
+the chat alike; with no such clip the fix opens on its own clip and the
+bubble after it. Was: the line could end on a colon with nothing after it.
+3. Nothing to sign: no new words.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C4. No migration.
