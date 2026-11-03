@@ -11,11 +11,15 @@ OUTCOME
   O3  A speaker who opened the coach's feedback before it was due (the
       orange dot cleared) gets nothing.
   O4  A later sitting counts only its own moments.
+  O5  The iPhone app's push goes with the one message, sent inside the
+      queued job before it ends, in N171's words, opening the Take's
+      feedback (N385).
 PROVES   O1 -> test_a_sitting_sends_one_message_after_the_last_share
          O2 -> test_a_sitting_sends_one_message_after_the_last_share,
                test_without_a_number_one_email_counts_every_moment
          O3 -> test_nothing_goes_when_the_speaker_already_opened_it
          O4 -> test_a_later_sitting_counts_only_its_own_moments
+         O5 -> test_the_iphone_push_goes_with_the_message_inside_the_job
 WHY      Founder 2026-10-26, N171 items 3 and 4 and N174 item 2: "Today, if a
          coach answers 5 moments and leaves a note, the speaker's phone
          buzzes 6 times and 6 emails arrive."
@@ -119,6 +123,22 @@ def test_a_sitting_sends_one_message_after_the_last_share(world):
     assert world["whatsapp"] == [(USER, TAKE_2)] and world["email"] == []
     assert notice.send_when_quiet(*world["jobs"][-1], database=db) == "already_sent"
     assert len(world["whatsapp"]) == 1
+
+
+def test_the_iphone_push_goes_with_the_message_inside_the_job(world, monkeypatch):
+    pushed, later = [], []
+    monkeypatch.setattr("services.push_devices.push",
+                        lambda _db, user, **kw: pushed.append((user, kw)) or 1)
+    monkeypatch.setattr("services.push_devices.push_later",
+                        lambda _db, user, **kw: later.append((user, kw)))
+    db = _Db()
+    _sitting(db)
+
+    _run(world["jobs"], db)
+
+    assert later == []
+    assert pushed == [(USER, {"title": None, "body": "The feedback from your coach is in!",
+                              "path": f"/chat?lens=arc-1&take={TAKE_2}"})]
 
 
 def test_without_a_number_one_email_counts_every_moment(world):

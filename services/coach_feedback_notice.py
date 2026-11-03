@@ -104,7 +104,10 @@ def send_when_quiet(user_id: str, token: str, database: Any = None) -> str:
         conn.hincrby(key, "moments", -moments)
         if database is None:
             from services.db import db as database
-        outcome = deliver(database, str(user_id), data.get("take") or "", moments)
+        # A queued job: its process ends when it returns, so the push is sent
+        # here, not beside it (N385).
+        outcome = deliver(database, str(user_id), data.get("take") or "", moments,
+                          push_now=True)
         _log.info("coach notice: user=%s share=%s moments=%s: %s",
                   user_id, token, moments, outcome)
         return outcome
@@ -114,13 +117,16 @@ def send_when_quiet(user_id: str, token: str, database: Any = None) -> str:
         return "failed"
 
 
-def deliver(database: Any, user_id: str, take_session_id: str, moments: int) -> str:
+def deliver(database: Any, user_id: str, take_session_id: str, moments: int,
+            push_now: bool = False) -> str:
     """The one message: none when already seen; else the WhatsApp, else the
-    email. Returns what happened. Never raises."""
+    email, with the iPhone's push beside them. ``push_now`` sends the push
+    before returning (a queued job); otherwise it goes beside the request.
+    Returns what happened. Never raises."""
     try:
         if _already_seen(database, user_id, take_session_id):
             return "seen"
-        _push(database, user_id, take_session_id)
+        _push(database, user_id, take_session_id, now=push_now)
         from services.whatsapp_notify import notify_coach_feedback_in
         if notify_coach_feedback_in(database, user_id, take_session_id or None):
             return "whatsapp"
@@ -132,7 +138,7 @@ def deliver(database: Any, user_id: str, take_session_id: str, moments: int) -> 
         return "failed"
 
 
-def _push(database: Any, user_id: str, take_session_id: str) -> None:
+def _push(database: Any, user_id: str, take_session_id: str, now: bool = False) -> None:
     """The iPhone app's push, beside the WhatsApp or the email (N385): N171's
     words, opening where the WhatsApp opens. Best-effort."""
     try:
@@ -141,8 +147,9 @@ def _push(database: Any, user_id: str, take_session_id: str) -> None:
         arc_id = None
         if take_session_id:
             arc_id = (database.v2_get_session_by_id(str(take_session_id)) or {}).get("arc_id")
-        push_devices.push_later(database, user_id, title=None, body=COACH_FEEDBACK_IN,
-                                path="/" + feedback_path(arc_id, take_session_id or None))
+        send = push_devices.push if now else push_devices.push_later
+        send(database, user_id, title=None, body=COACH_FEEDBACK_IN,
+             path="/" + feedback_path(arc_id, take_session_id or None))
     except Exception as e:  # noqa: BLE001 -- the other messages go either way
         _log.warning("coach notice: push not started user=%s: %s", user_id, e)
 
