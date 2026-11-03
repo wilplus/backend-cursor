@@ -10770,6 +10770,38 @@ The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C7 and T. No migration.
 
+**N449 · After the first Take, as the prototype "The way in" draws it
+(founder, the Claude Code chat, 3 November 2026, on the comparison of the
+app with the prototype, <https://claude.ai/artifact/F8CwUxZ2jFy5VWmnSxRbnf>:
+"take 2, skip the extra tap, skip for now, tall slide").** For N401 items 2
+and 4, N294 item 6 and N257:
+1. **The real talk is Take 2.** "Record Take 2" after the first Take records
+Take 2 of the first Take's project, with the real talk's topic, length and
+slides, which the project takes as its new slides from Take 2 (N257). Its
+recording screen says "Take 2 · Slide 1 of 3", and the count goes on from
+there; Take 1 stays in the history as the five answers (Never 5). Was: the
+real talk was a project of its own, and its recording screen said "Take 1".
+2. **No extra tap after the first Take.** After the first Take's walk,
+"Record Take 2" comes at once under the goodbye; "I want to continue my
+practice" is not asked after that Take. After every other Take it stays
+(N294 item 6).
+3. **"Skip for now"** is the set-up's button on the slides step whenever no
+slides were added, the last step included, and it starts the recording.
+With slides it stays "Start recording". Was: "Start recording" on that step
+when it was the last.
+4. **The tall slide.** On the first Take's recording screen each question
+fills the space down to the strip, its words at the bottom, with five marks
+under it: the question you're on in orange, the ones done dark, the rest
+grey (the prototype "The first Take", version 1). Every other Take's slide
+stays as the recording screen draws it.
+5. No new words (Never 4): "Take 2", "Record Take 2", "Skip for now" and
+"Start recording" are already signed.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md),
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+when built. No migration.
+
 **N452 · The chat drops the speaker's taps too; the slow Sniper's one line
 (founder, the Claude Code chat, 3 November 2026, on the two points left
 open by N435: "Yea gone" and "Yes"; then, asked, "You slowed down here.
