@@ -10515,3 +10515,57 @@ Was: every merge to `main` built and deployed every Railway service and
 Vercel. No new words on screen. No migration.
 No rules page: the rule is in `CLAUDE.md` (How to ship) in both repos and
 [`docs/OPS-FLAGS-AND-RELEASES.md`](docs/OPS-FLAGS-AND-RELEASES.md).
+
+**N427 · Record an answer: seven fixes from the interaction audit
+(founder, the Claude Code chat, 3 November 2026, on the page "Record an
+Answer, Before and After", <https://claude.ai/artifact/VMTAjB1kkWMnxYBHQ1BpgV>:
+"all suggested on the artifact record and answer before and after, are
+good. And the after is good. If it's not yet built, please build"; the
+findings are the page "Record an Answer Audit",
+<https://claude.ai/artifact/QNYc8jzHCcQZfYNxpyJ2XU>).** For N342, N345,
+N363 and N368:
+1. **A failed send says so.** When an answer cannot be sent (the send is
+refused or the line drops), the middle of the bar keeps it: "Not sent" with
+"Send again", which sends the same Take again; nothing is recorded twice.
+Was: "Sending to {name}…" vanished and nothing said the answer had not gone.
+New words, signed here: "Not sent", "Send again".
+2. **An answer's clock counts down from 5:00.** On the recording screens an
+answer gets the clock a Take with a planned length already has, set to five
+minutes (N363 item 3); at 0:00 Finish take happens by itself, as a voice
+note stops at 2:00 (N324). Was: the clock counted up past 5:00 and the
+answer was then refused. A change to the locked recording screens, approved
+here (Founder-Approved for the lock).
+3. **The 5 seconds are held on the server.** As soon as its Take is
+uploaded, the answer goes to the server and waits there until its 5 seconds
+have passed: until then the person does not see it, the chat list does not
+show it and no push goes. Undo takes it back on the server. Leaving the app
+or locking the phone during the 5 seconds no longer stops the answer. Was:
+the 5 seconds were counted in the phone. No change on screen.
+4. **"Sent to {name}" under every answer** until answers are delivered on
+WhatsApp; a customer's line then goes back to "Sent to {name} on WhatsApp"
+(N342). Was: "on WhatsApp" for a customer, though nothing went there.
+Signed words only.
+5. **Undo keeps the feedback, as practice.** The Take still processes and
+its feedback comes to the speaker's chat with Will, who says first: "You
+took this one back, so {name} didn't hear it. Here's what I noticed, for
+practice." Was: the feedback came as if the answer had been sent. New words,
+signed here. The other way offered, Undo throwing the Take away, is not
+taken.
+6. **One slide: Finish take alone.** With one slide (an answer always has
+one), the recording screens show no Back; Finish take fills the row. Was:
+Back greyed out beside a half-width Finish take. A change to the locked
+recording screens, approved here.
+7. **An answer's top bar and slide.** The top bar shows the person's name
+alone, without "Take {N} · Slide {N} of {N}"; the slide shows a small
+"{name} asks" and the question under it in body size, not as the slide's
+heading. Was (N363 item 1, N334 item 2): the name above "Take 1 · Slide 1
+of 1", the question as the heading. A change to the locked recording
+screens, approved here; new words, signed here: "{name} asks".
+Not taken now: a second answer while one is sending and the emoji under a
+marked question (later); opening the recording screens before the project
+is made and keeping answers out of "Your projects" (not decided).
+"Practise with Will" stays N344, not built.
+No rules page yet: it lands on frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 and [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+when built. No migration.
