@@ -12028,3 +12028,29 @@ No migration for this entry. The rules: the matching gets its rules page
 when it is built (N332); the chat, frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 G, when built.
+
+**N486 · N485's three proposals stand, and an answer has no five-minute
+cap (founder, the Claude Code chat, 4 November 2026: "I agree with all
+three"; then, on the bottom bar, the status of N483 pasted in; then "lift
+the five-minute cap on answers too").** For N363, N441, N478, N481, N483
+and N485:
+1. **The asker sees the new person, with the name, once the answer is
+sent** (N478 item 3, for the asker). Accepting alone tells the asker
+nothing.
+2. **Declining is the locked bar's "Not now"** under the question (N483).
+Answering is the bar's "Record your answer" (N483), which opens the
+official recorder (N481 item 1).
+3. **It is for a matched Take.** A Take sent to your own list arrives in
+the chat you already have (N470, N479).
+4. **No five-minute cap on an answer.** An answer is a Take (N481 item 1),
+so it is as long as the person needs, like any Take. This replaces N363
+item 3 (an answer is up to five minutes) and N441 item 2 (the recording
+screens count an answer down from five minutes and finish it at 0:00).
+The recording screens time an answer as they time a Take with no planned
+length.
+Still open (Never 4): the words of the new chat before it is accepted, and
+of accepting (N485 item 5), drafted on the prototype of the official
+inquiry. No migration. The rules: the matching gets its rules page when it
+is built (N332); the cap, frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 and [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md).
