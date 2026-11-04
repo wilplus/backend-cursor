@@ -56,9 +56,11 @@ stays as written until N470 is built.
 
 1. Built and merged: invite-only (N471), backend and frontend.
 2. 3.10 is in force (PUBLISH-3.10-2026-11-04.sql has been run).
-3. On the go-live day engineering dates the two texts (the date line only),
-   writes them to `copy/terms-3.10.txt` and `copy/privacy-3.11.txt`, and
-   writes `PUBLISH-3.11-{date}.sql` in the shape of PUBLISH-3.10.
+3. The signed texts are already `copy/terms-3.10.txt` and
+   `copy/privacy-3.11.txt`, byte for byte as below, reading "Effective
+   {publication date}". On the go-live day engineering fills in that date
+   line and nothing else, and writes `PUBLISH-3.11-{date}.sql` in the shape
+   of PUBLISH-3.10.
 4. The release with invite-only goes out, and the founder runs the PUBLISH
    script the same day. Nothing is deleted, and nothing is switched on
    afterwards.
