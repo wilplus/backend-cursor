@@ -32,6 +32,9 @@ OUTCOME
       and the notebook's ask, once; after Not now, again only after three
       more Takes; after Yes, never; a sentence with a number, or none,
       writes nothing until the next Take (N411 items 1, 5).
+  O12 A Yes given on the dump screen writes "Yes" and "Noted." and asks
+      nothing; a Yes in the chat still asks "What's on your mind today?"
+      (N514).
 PROVES   O1 -> test_without_the_notebook_the_chat_is_unchanged
          O2 -> test_the_first_note_asks_and_yes_keeps_it
          O3 -> test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash
@@ -43,6 +46,7 @@ PROVES   O1 -> test_without_the_notebook_the_chat_is_unchanged
          O9 -> test_a_voice_note_is_fixed_in_the_notebook_and_the_thread
          O10 -> test_every_fifth_note_with_a_name_gets_the_privacy_line
          O11 -> test_a_strength_in_the_takes_opens_the_notebook
+         O12 -> test_a_yes_on_the_dump_screen_asks_nothing
 WHY      Will learning plan, step 1 (founder 2026-10-20, "approved, start
          step 1"; words signed the same day).
 """
@@ -322,3 +326,13 @@ def test_a_strength_in_the_takes_opens_the_notebook(founder, monkeypatch):
     take(9)
     take(10)
     assert nb.intro_from_takes(db, "u") == []  # in: never again
+
+
+def test_a_yes_on_the_dump_screen_asks_nothing(founder):
+    dump = _Db()
+    nb.decide(dump, "u", "yes", source="dump_screen")
+    assert dump.bodies()[-2:] == ["Yes", "Noted."]
+
+    chat = _Db()
+    nb.decide(chat, "u", "yes")
+    assert chat.bodies()[-1] == "What's on your mind today?"

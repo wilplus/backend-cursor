@@ -3,7 +3,7 @@
 
   GET  /v2/notebook/state    {enabled, consented, max_seconds}
   POST /v2/notebook/ask      the question before the first note, in the thread
-  POST /v2/notebook/consent  {choice: yes | not_now}
+  POST /v2/notebook/consent  {choice: yes | not_now, source?: chat | dump_screen}
   POST /v2/notebook/notes    multipart: audio (≤ 5 min), duration_ms, key, live_ms
   POST /v2/notebook/live     multipart: audio, a few seconds → {text} (N194)
   POST /v2/notebook/live-session  → {value, expires_at, model, rate}: a
@@ -77,7 +77,8 @@ def v2_notebook_consent():
     from services.voice_notebook import NotebookError, decide
     body = request.get_json(silent=True) or {}
     try:
-        messages = decide(db, str(request.user_id), str(body.get("choice") or ""))
+        source = "dump_screen" if body.get("source") == "dump_screen" else "chat"
+        messages = decide(db, str(request.user_id), str(body.get("choice") or ""), source=source)
         if any((m.get("metadata") or {}).get("voice_note") for m in messages):
             messages += _goals_after_note(str(request.user_id))
         return jsonify({"messages": messages}), 200
