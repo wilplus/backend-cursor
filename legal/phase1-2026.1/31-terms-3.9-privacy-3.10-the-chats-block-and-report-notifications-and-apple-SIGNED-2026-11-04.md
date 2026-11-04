@@ -6,7 +6,10 @@ word for word and asked for "I sign as drafted, question 1 A, question 2 A";
 then in chat: "signed", which engineering read back at once as signed as
 drafted, question 1 A, question 2 A; decisions log N468). **Counsel has not
 seen it**: by question 2 A, counsel reads it after it is published, as a
-check.
+check. Published 2026-11-04 11:26:48 UTC by the founder
+(`PUBLISH-3.10-2026-11-04.sql`, `phase1-2026-11-04-3.10`), after the
+releases that put Block and Report live (frontend 10:22 UTC, backend
+10:53 UTC).
 
     documents:   Terms 3.9 and Privacy 3.10, word for word in sections 4 and 5 below
     replaces:    copy/terms-3.8.txt, copy/privacy-3.9.txt
