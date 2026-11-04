@@ -60,11 +60,12 @@ OUTCOME
   O16 With the first Take on (always with no ``first_take`` ring row,
       N457 item 3; a row can hold it back, N401), a new
       speaker is not asked in the chat: Will says "Hi Anna!" and "Your first
-      Take is five questions. Answer each one out loud, one slide at a
-      time.", and the plan hands the app the five slides. After that
-      Take's walk Will reads it slide by slide: each answer is kept as the
-      plan answer it replaces (the voice message, the audience, the key
-      line, the opening) and all five in Will's notes; the plan's facts and
+      Take is about what you know. Five questions, one slide each. Answer
+      out loud, as you'd tell a friend.", and the plan hands the app the
+      five slides (N462). After that Take's walk Will reads it slide by
+      slide: each answer is kept as the plan answer it replaces (the voice
+      message on slide 2, the audience, the key line on slide 5) and all
+      five in Will's notes; the plan's facts and
       its topic come from what was said; a day said gives the plan and its
       card at once, that Take its first practice; no day said asks no
       deadline (N459 item 1): "No date yet"'s two months, and the plan and
@@ -677,10 +678,10 @@ def _first_take(db, monkeypatch, read):
     db.clips["t1"] = [{"transcript": said, "duration_ms": 6000, "metrics": {"piece": {"slide_index": i}}}
                       for i, said in enumerate([
                           "I'm a reporter on the politics desk.",
-                          "A talk at the newsroom conference, my first time on a stage.",
-                          "About two hundred journalists.",
-                          "A good story starts with one person.",
-                          "Last week, a bill changed my mind."])]
+                          "How to read a bill in five minutes: start with who pays.",
+                          "The young reporters on my desk.",
+                          "Last week, a bill changed my mind.",
+                          "A good story starts with one person."])]
     return out, kept
 
 
@@ -696,12 +697,12 @@ def test_with_the_first_take_on_the_questions_are_its_slides(db, monkeypatch):
     F.after_take(db, USER, first_name="Anna")
     assert bodies(db)[-2:] == [P.COPY["all_set"], ""]  # the plan and its card
     assert db.thread[-1]["metadata"].get("plan_card") is True
-    assert [a["kind"] for a in db.answers] == ["why", "audience", "key", "opening"]
+    assert [a["kind"] for a in db.answers] == ["why", "audience", "key"]  # N462
     assert [k for k, _p in kept] == ["answer"] * 5  # all five in Will's notes
     view = F.state(db, USER, tz="UTC")["plan"]
     assert view["status"] == "active" and view["deadline"] == day and not view["first_take"]
     assert view["topic"] == "My newsroom conference talk"
-    assert view["key_line"] == "A good story starts with one person."  # as said, when the AI gave none
+    assert view["key_line"] == "A good story starts with one person."  # slide 5 as said, when the AI gave none
     assert view["done"] == 1  # the first Take is the first practice
 
 
@@ -732,15 +733,15 @@ def test_the_coach_hears_the_first_takes_voice_message_and_key_line(db, monkeypa
     monkeypatch.setattr(F, "_cut_voice", lambda audio, clips: b"voice of " + clips[0]["transcript"].encode())
     take = {"recording_kind": "spoken", "user_id": USER, "session_id": "t1"}
     assert F.after_processing(db, take, b"the Take's recording")
-    assert [a["kind"] for a in db.answers] == ["why", "audience", "key", "opening"]
+    assert [a["kind"] for a in db.answers] == ["why", "audience", "key"]
     assert not F.after_processing(db, take, b"the Take's recording")  # once
 
     F.after_take(db, USER, first_name="Anna")
-    assert [a["kind"] for a in db.answers] == ["why", "audience", "key", "opening"]  # nothing twice
+    assert [a["kind"] for a in db.answers] == ["why", "audience", "key"]  # nothing twice
     assert [k for k, _p in kept] == ["answer"] * 5
     assert bodies(db)[-2:] == [P.COPY["all_set"], ""]
     plan = db.get_open_plan(USER)
     pick = plan_coach.blind(db, plan, plan_coach.NEW, pseudonym="Speaker 1")
     heard = [plan_coach.answer_audio(db, plan, pick[k]["answer_id"])["audio"] for k in ("why", "key_line")]
-    assert heard == [b"voice of A talk at the newsroom conference, my first time on a stage.",
-                     b"voice of A good story starts with one person."]
+    assert heard == [b"voice of How to read a bill in five minutes: start with who pays.",
+                     b"voice of A good story starts with one person."]  # slides 2 and 5 (N462)
