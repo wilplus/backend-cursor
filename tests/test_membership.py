@@ -123,7 +123,7 @@ class MembershipTest(unittest.TestCase):
         return self.client.post(f"/v2/chats/join/{token}", headers=self._as(who))
 
     def test_while_the_switch_is_off_everyone_is_in(self):
-        with patch.dict(os.environ, {"INVITE_ONLY_SINCE": ""}):
+        with patch.dict(os.environ, {"INVITE_ONLY_SINCE": "off"}):
             self.assertEqual(self._access(MARIA), {"member": True, "invite_only": False})
         self.assertEqual(self.sent, [])
 
