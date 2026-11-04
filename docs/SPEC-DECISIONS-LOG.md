@@ -11261,6 +11261,11 @@ step), once Block and Report is live in production. It deletes nothing and
 nothing is switched on after it; every speaker accepts 3.10 once, on the
 update prompt.
 No migration. No rules page: the legal pack.
+- **Published** (founder, 4 November 2026, 11:26:48 UTC):
+`PUBLISH-3.10-2026-11-04.sql` run in Supabase. `phase1-2026-11-04-3.10` is in
+force with the approved bytes, the five purposes and the United States;
+training-only-v4 unchanged. Block and Report went live first (frontend
+release 10:22 UTC, backend 10:53 UTC).
 
 **N469 · The rhythm of a run: bubbles of one side sit close, as on WhatsApp,
 in every chat (founder, the Claude Code chat, 4 November 2026, on a WhatsApp
