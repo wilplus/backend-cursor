@@ -460,12 +460,14 @@ def _will_waits(database: Any, user_id: str, take: str) -> bool:
     return found is not None and str(found.get("take_session_id")) == take
 
 
-def release_older(database: Any, user_id: str) -> None:
+def release_older(database: Any, user_id: str, take: Optional[str] = None) -> None:
     """Before a newer Take's batch: a message still held from an older Take
-    is let go where it stands. Best-effort."""
+    is let go where it stands. Never this Take's own (``take``): a second
+    write of the same Take's summary, after a reload, must not let its goodbye
+    go past Will's open question (N406 item 1). Best-effort."""
     try:
         row = held(database, user_id)
-        if row:
+        if row and (take is None or (row.get("metadata") or {}).get("take_session_id") != str(take)):
             _let_go(database, user_id, row, glad=False, at=None)
     except Exception as error:  # noqa: BLE001 -- the new Take is written either way
         logger.warning("after take: older not let go user=%s: %s", user_id, error, exc_info=True)

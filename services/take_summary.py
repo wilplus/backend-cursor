@@ -628,7 +628,12 @@ def _first_written(database: Any, user_id: str, client_id: str, text: str, meta:
     from services import after_take
     from services.lounge_messages import stamp_after, thread_stamp
     take, practice, moved = meta["take_session_id"], meta["practice"], meta["moved"]
-    after_take.release_older(database, user_id)
+    # Asked twice (the page reloaded while the first ask was being written):
+    # the first ask's batch stands, and nothing is written or let go again.
+    stored = database.get_lounge_message_by_client_id(user_id, client_id)
+    if stored:
+        return stored
+    after_take.release_older(database, user_id, take)
     # Under the walk it closes: the walk's steps carry the browser's time.
     at = thread_stamp(database, user_id)
     # Will's questions are put together now, from his plan, and written when
