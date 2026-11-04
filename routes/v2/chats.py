@@ -20,7 +20,7 @@ Service: services/chats.py.
                                    answer recorded with "Record an answer"
                                    (N363), once its Undo has passed; a voice
                                    message pointing at the caller's own Take,
-                                   up to five minutes: {message: {..., kind:
+                                   of any length (N486): {message: {..., kind:
                                    "voice", body: "", meta: {duration_ms,
                                    answer: true, take}}}; the other member's
                                    meta has no take

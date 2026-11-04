@@ -44,9 +44,10 @@ OUTCOME
       written.
   O13 An answer I recorded with "Record an answer" is sent into the chat as a
       voice message that plays my Take's own recording (N363): I see it with
-      its Take; the other person gets just the answer, no Take (N336). A Take
-      that is not mine, one over five minutes, or a withdrawn recording
-      consent sends nothing.
+      its Take; the other person gets just the answer, no Take (N336). An
+      answer has no five-minute cap: a long one is sent (N486 item 4). A
+      Take that is not mine, or a withdrawn recording consent, sends
+      nothing.
   O14 Once my answer's Take has its words, both of us get them with the
       answer, slide by slide, and when each slide starts, for the strip that
       follows its voice (N355, N331); before that, no words and no slides.
@@ -582,7 +583,7 @@ class ChatsTest(unittest.TestCase):
         self.store.table("recordings").insert([
             {"session_v2_id": mine, "user_id": ME, "duration": 52,
              "storage_path": "willab_lab/a/recording_1.webm"},
-            {"session_v2_id": long_one, "user_id": ME, "duration": 301,
+            {"session_v2_id": long_one, "user_id": ME, "duration": 1800,
              "storage_path": "willab_lab/b/recording_2.webm"},
             {"session_v2_id": theirs, "user_id": SOMEONE, "duration": 40,
              "storage_path": "willab_lab/c/recording_3.webm"}]).execute()
@@ -590,10 +591,9 @@ class ChatsTest(unittest.TestCase):
         def answer(take):
             return self._post(f"/v2/chats/{chat}/answer", {"take": take, "duration_ms": 52000})
 
-        # Nothing sent: someone else's Take, one over five minutes, no Take,
-        # and my recording consent withdrawn.
-        for take, code in ((theirs, (404, "NOT_FOUND")), (long_one, (400, "NOT_ALLOWED")),
-                           (None, (400, "NOT_ALLOWED"))):
+        # Nothing sent: someone else's Take, no Take, and my recording consent
+        # withdrawn.
+        for take, code in ((theirs, (404, "NOT_FOUND")), (None, (400, "NOT_ALLOWED"))):
             res = answer(take)
             self.assertEqual((res.status_code, res.get_json()["code"]), code, take)
         self.choices["sensitive_information"] = False
@@ -614,6 +614,12 @@ class ChatsTest(unittest.TestCase):
             played = self._get(f"/v2/chats/{chat}/messages/{sent['id']}/audio")
         self.assertEqual((played.status_code, played.data, played.headers["Content-Type"]),
                          (200, b"OggS my Take", "audio/webm"))
+
+        # A half-hour answer is sent too: an answer is a Take (N486 item 4).
+        self.who = ME
+        long_sent = answer(long_one)
+        self.assertEqual(long_sent.status_code, 200, long_sent.get_json())
+        self.assertEqual(long_sent.get_json()["message"]["meta"]["duration_ms"], 1_800_000)
 
 
     def test_an_answer_waits_its_five_seconds_and_undo_takes_it_back(self):
