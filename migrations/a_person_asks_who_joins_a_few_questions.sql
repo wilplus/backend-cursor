@@ -1,6 +1,6 @@
 -- a_person_asks_who_joins_a_few_questions (the questions a person who shares
 -- sets for everyone who joins through their link; founder, the Claude Code
--- chat, 4 November 2026, N487, its words signed in N491, N496 and N498)
+-- chat, 4 November 2026, N487, its words signed in N491, N496 and N502)
 --
 -- A person who shares what they know sets, in Will's chat, a few practical
 -- questions; whoever joins through their link is asked them in their chat
