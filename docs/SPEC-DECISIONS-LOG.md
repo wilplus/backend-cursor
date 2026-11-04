@@ -12334,3 +12334,41 @@ No new words. No migration. The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 H1 and [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
 K1.
+
+**N498 · N487's words, signed (founder, the Claude Code chat, 4 November
+2026, on the prototype "Asked When They Join"
+<https://claude.ai/artifact/G8gZ73CvfgkkJ1ztm1cmsb> (version 18), its list
+"New words to sign": "the words are signed, build it").** For N487 item 9,
+with N491 and N496 (Never 4). Signed, as the prototype shows them:
+1. **Will, to the person who shares:** "Should I ask which languages to
+use: {languages}, or both?" (only for someone who speaks more than one);
+"Anything else practical you'd like to ask?"; "They answer by tapping, so
+I've given it answers. Change them if you like."; "I've left out
+“{question}”: you'll hear that in their recording."; "I left out
+“{question}” because I couldn't think of answers they could tap. To keep
+it, tap “Change it” and tell me the answers."; "This is what someone new
+will see when they open your chat:"; "No questions, just the line above.";
+"What should change?"; "Done."; "Here's the new version:"; "I couldn't
+tell what to change, so it's as it was. Tap “Change it” and put it another
+way."; "You're set. Each question that comes to your chats, and each answer
+you give, builds a knowledge base you share."; "Your questions for people
+who join ›"; "Here are your questions for people who join:"; "Saved.
+Everyone who joins from now on will see these."
+2. **The answers of the plan question** (N491 item 2): "A week at a time",
+"A month at a time", "A quarter at a time", "No deadline".
+3. **Sent for the person who shares, in the joiner's chat:** "Let's build
+our knowledge base {a week, a month, a quarter} at a time."; "Are you in a
+hurry?"; "Which languages can we use?", with "Send" in the bar's middle
+once one is picked; "Thanks, that's everything. When you're ready, tap +
+and ask me your first question."
+4. **The date picker:** "When do you need to be ready?", "Done".
+5. **The sharer's side of the chat:** "{name} joined through your link.";
+the card "{name}'s answers", its rows "Deadline", "Languages", and any
+question the sharer added, by its words.
+6. **Answers Will adds:** the languages on the sharer's profile; "No",
+"Yes"; "Mornings", "Afternoons", "Evenings" for a time of day. Reused, as
+signed: "Your deadline: {date}", "Copy my link", "✓ Copied", "Change it",
+"That's right", "That's all", "Something else", and N483's words.
+No migration in this entry. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when N487 is built.
