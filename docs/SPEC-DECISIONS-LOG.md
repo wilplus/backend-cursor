@@ -12270,7 +12270,26 @@ C1 and
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md),
 when built; the matching gets its rules page when it is built (N332).
 
-**N494 · "Your level" leaves "Change your plan", and "Ask your coach" goes
+**N494 · Progress is measured within each talk (founder, the Claude Code
+chat, 4 November 2026, asked what progress means in the matching and what
+was recommended: "Okay, so measure progress within each talk rather than
+across all takes").** For N481 item 2 and N493:
+1. **Progress,** in the matching after a Take, is how fast a person's
+Willfidence rises from one Take to the next within the same talk (one
+project). Each Take is compared only with the person's other Takes of that
+talk, and the talks' trends are combined, a talk with more Takes counting
+more (a within-talk slope).
+2. **A harder new talk does not read as going backwards,** and an answer, a
+talk of its own with one Take (N493), adds nothing to it.
+3. **Kept:** the person's recent measured Takes; at least five Takes' worth
+of evidence; a short history pulled toward no change; never shown (Never
+1); off until the skills switch (N481 item 4).
+4. **Someone with one Take per talk** has no progress yet and counts as
+unknown (half points), matched on knowledge and skills.
+No migration. No rules page yet: the matching gets its rules page when it
+is built (N332).
+
+**N497 · "Your level" leaves "Change your plan", and "Ask your coach" goes
 with it (founder, the Claude Code chat, 4 November 2026: on the "Your level"
 sheet, "when I click that, nothing happens ... I don't have a coach. I was
 invited by Arthur, but is he my coach? I don't know ... This is not precise
