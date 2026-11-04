@@ -228,14 +228,19 @@ def helper_words_from_practice(database: Any, practice: Mapping,
 
 def _part_locked(database: Any, arc_id: str, user_id: str,
                  part_id: str) -> bool:
-    """Is the paragraph locked now? True when the parts cannot be read: the
-    walk, the one caller, has just locked it."""
+    """Is the paragraph locked now? True when it is not among the parts read
+    (the read failed, which `get_ideal_text_parts` answers with no rows):
+    the walk, the one caller, has just locked it."""
     try:
         rows = database.get_ideal_text_parts(arc_id, user_id, with_lock=True)
-        return any(str(r.get("id") or "").lower() == part_id.lower()
-                   and bool(r.get("locked_at"))
-                   for r in rows or [] if isinstance(r, Mapping))
     except Exception as error:  # noqa: BLE001 -- the walk has just locked it
         logger.warning("practice helper words: parts unreadable arc=%s: %s",
                        arc_id, error)
         return True
+    for row in rows if isinstance(rows, (list, tuple)) else []:
+        if isinstance(row, Mapping) and str(
+                row.get("id") or "").lower() == part_id.lower():
+            return bool(row.get("locked_at"))
+    logger.warning("practice helper words: part not read arc=%s part=%s",
+                   arc_id, part_id)
+    return True

@@ -11,9 +11,11 @@ earlier Takes; another Paragraph's words on the same Slide stay until that
 Paragraph is locked anew (locked helper words persist until the user picks
 new ones, contract 14; the audit of 2026-10-03 found the whole Slide wiped).
 The replacement waits for the lock rather than the tap, because a pick the
-speaker never locks must not wipe the helper words they did lock. A pick on
-a Paragraph that is already locked (the walk locks first, then saves the
-words) is locked as it lands (`record_pick(locked=True)`).
+speaker never locks must not wipe the helper words they did lock. The
+walk's saves land on a Paragraph it has just locked (it locks first, then
+saves the words), so they are locked as they land (`record_pick(locked=True)`
+from `root_part` and `helper_words_from_practice`). The helper words
+overlay's pick from an earlier Take still records unlocked.
 
 Tapping new words on the same Paragraph in the same Take replaces that
 Paragraph's pick; it does not add a second one.
