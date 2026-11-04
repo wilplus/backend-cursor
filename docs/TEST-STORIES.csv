@@ -1853,6 +1853,7 @@ tests/test_membership.py,Story,"As the founder, I want WillpowerLab to be by inv
 O2  An account from before the switch is a member; a new account is on
 the waitlist, and its first ask sends one email to the founder's
 inbox, which a reply answers; asking again sends no second email.
+A member's next ask is answered at once, without Supabase Auth.
 O3  A new account that joins through a member's link is let in at once,
 and so is one with a Take from before the switch.
 O4  A waiting account's link opens nothing: the same answer as a wrong

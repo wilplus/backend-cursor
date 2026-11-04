@@ -269,6 +269,12 @@ def status(database: Any, user_id: str) -> dict:
     account's first ask sends the waitlist email, once."""
     if not on():
         return {"member": True, "invite_only": False}
+    with _lock:
+        known = str(user_id) in _members
+    if known:
+        # A member stays a member: no call to Supabase Auth. The app asks on
+        # every page load, and that call was most of this answer's time.
+        return {"member": True, "invite_only": True}
     try:
         user = _auth_user(user_id)
     except Exception:  # noqa: BLE001 -- see is_member: never break the loop

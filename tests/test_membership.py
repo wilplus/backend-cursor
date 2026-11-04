@@ -7,6 +7,7 @@ OUTCOME
   O2  An account from before the switch is a member; a new account is on
       the waitlist, and its first ask sends one email to the founder's
       inbox, which a reply answers; asking again sends no second email.
+      A member's next ask is answered at once, without Supabase Auth.
   O3  A new account that joins through a member's link is let in at once,
       and so is one with a Take from before the switch.
   O4  A waiting account's link opens nothing: the same answer as a wrong
@@ -54,9 +55,11 @@ class _Auth:
     def __init__(self):
         self.meta = {uid: {"provider": "google"} for uid in MADE}
         self.updates = []
+        self.asked = 0
         self.auth = SimpleNamespace(admin=self)
 
     def get_user_by_id(self, uid):
+        self.asked += 1
         name, email = NAMES[uid]
         user = SimpleNamespace(id=uid, email=email, phone="", created_at=MADE[uid].isoformat(),
                                user_metadata={"full_name": name}, app_metadata=dict(self.meta[uid]))
@@ -129,6 +132,9 @@ class MembershipTest(unittest.TestCase):
 
     def test_a_new_account_waits_and_the_founder_gets_one_email(self):
         self.assertEqual(self._access(ARTUR), {"member": True, "invite_only": True})
+        asked = self.auth.asked
+        self.assertEqual(self._access(ARTUR), {"member": True, "invite_only": True})
+        self.assertEqual(self.auth.asked, asked)
         self.assertEqual(self._access(MARIA), {"member": False, "invite_only": True})
         self.assertEqual(len(self.sent), 1)
         email = self.sent[0]
