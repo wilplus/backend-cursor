@@ -78,6 +78,7 @@ import sentry_sdk
 from flask import jsonify, request, send_file
 
 from auth import require_auth
+from routes.admin import require_admin
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import phase1_provider_route
 from services.db import db
@@ -126,6 +127,48 @@ def v2_chats_post(thread_id):
     from services.chats import post
     body = request.get_json(silent=True)
     return _run("post", lambda: post(db, str(request.user_id), thread_id, body))
+
+
+# ── Block and Report (services/chat_safety.py; N466) ────────────────────
+
+@v2_bp.route("/chats/<thread_id>/block", methods=["POST"])
+@limiter.limit("60 per hour", scope="chats_block")
+@require_auth
+def v2_chats_block(thread_id):
+    from services.chat_safety import block
+    return _run("block", lambda: block(db, str(request.user_id), thread_id))
+
+
+@v2_bp.route("/chats/<thread_id>/block", methods=["DELETE"])
+@limiter.limit("60 per hour", scope="chats_block")
+@require_auth
+def v2_chats_unblock(thread_id):
+    from services.chat_safety import unblock
+    return _run("unblock", lambda: unblock(db, str(request.user_id), thread_id))
+
+
+@v2_bp.route("/chats/<thread_id>/report", methods=["POST"])
+@limiter.limit("20 per hour", scope="chats_report")
+@require_auth
+def v2_chats_report(thread_id):
+    from services.chat_safety import report
+    body = request.get_json(silent=True)
+    return _run("report", lambda: report(db, str(request.user_id), thread_id, body))
+
+
+@v2_bp.route("/admin/chat-reports", methods=["GET"])
+@require_admin
+def v2_admin_chat_reports():
+    """The founder's list of reports, in the CEO panel (N466 item 3)."""
+    from services.chat_safety import reports
+    return _run("reports", lambda: reports(db))
+
+
+@v2_bp.route("/admin/chat-reports/<report_id>/handled", methods=["POST"])
+@require_admin
+def v2_admin_chat_report_handled(report_id):
+    from services.chat_safety import handled
+    return _run("handled", lambda: handled(db, report_id))
 
 
 def _a_member_first(view):

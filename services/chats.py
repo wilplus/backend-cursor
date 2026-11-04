@@ -219,10 +219,12 @@ def _held(row: dict) -> bool:
         return False
 
 
-def _last(database: Any, thread_id: str) -> Optional[dict]:
-    rows = _rows(_table(database, MESSAGES).select("kind,body,meta,created_at")
-                 .eq("thread_id", thread_id).order("created_at", desc=True).limit(5))
-    row = next((r for r in rows if not _held(r)), None)
+def _last(database: Any, thread_id: str, unheard: Any = None) -> Optional[dict]:
+    """The chat's newest message the caller gets: not an answer still held,
+    nor one from the person they blocked, sent while blocked (N466)."""
+    rows = _rows(_table(database, MESSAGES).select("author_member_id,kind,body,meta,created_at")
+                 .eq("thread_id", thread_id).order("created_at", desc=True).limit(20))
+    row = next((r for r in rows if not _held(r) and not (unheard and unheard(r))), None)
     if not row:
         return None
     return {"kind": row["kind"], "body": row["body"], "created_at": row["created_at"]}
@@ -231,10 +233,13 @@ def _last(database: Any, thread_id: str) -> Optional[dict]:
 def list_chats(database: Any, user_id: Any) -> dict:
     """GET /v2/chats: {"chats": [{id, kind, title, subtitle, last}]}."""
     user_id = _require(database, user_id)
+    from services import chat_safety
     mine = {str(m["thread_id"]): str(m["id"]) for m in _memberships(database, user_id)}
     if not mine:
         return {"chats": []}
     ids = list(mine)
+    # Whom the caller blocked, and what therefore never reaches them (N466).
+    spans = chat_safety.spans_by_member(database, list(mine.values()))
     threads = _rows(_table(database, THREADS).select("id,kind,title,created_at").in_("id", ids))
     others: dict[str, dict] = {}
     for m in _rows(_table(database, MEMBERS).select("id,thread_id,display_name,subtitle")
@@ -244,11 +249,13 @@ def list_chats(database: Any, user_id: Any) -> dict:
     chats: list[tuple[str, dict]] = []
     for t in threads:
         other = others.get(str(t["id"])) or {}
-        last = _last(database, str(t["id"]))
+        me = mine[str(t["id"])]
+        last = _last(database, str(t["id"]), chat_safety.unheard(me, spans.get(me, [])))
         chats.append(((last or t)["created_at"] or "", {
             "id": str(t["id"]), "kind": t["kind"],
             "title": other.get("display_name") or t["title"],
-            "subtitle": other.get("subtitle"), "last": last}))
+            "subtitle": other.get("subtitle"), "last": last,
+            "blocked": chat_safety.blocking({"blocked_spans": spans.get(me, [])})}))
     chats.sort(key=lambda pair: str(pair[0]), reverse=True)
     return {"chats": [chat for _, chat in chats]}
 
@@ -280,8 +287,14 @@ def _tell(database: Any, me: dict, message: dict) -> None:
         members = _rows(_table(database, MEMBERS).select("id,user_id,display_name")
                         .eq("thread_id", thread))
         sender = next((m for m in members if str(m["id"]) == str(me["id"])), {})
+        # No push to someone who blocked the sender (N466 item 2).
+        from services import chat_safety
+        spans = chat_safety.spans_by_member(database, [str(m["id"]) for m in members
+                                                       if str(m["id"]) != str(me["id"])])
         for other in members:
             if str(other["id"]) == str(me["id"]) or not other.get("user_id"):
+                continue
+            if chat_safety.blocking({"blocked_spans": spans.get(str(other["id"]), [])}):
                 continue
             push_devices.push_later(database, str(other["user_id"]),
                                     title=str(sender.get("display_name") or "") or None,
@@ -372,6 +385,7 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
     """GET /v2/chats/<id>/messages: {"messages": [...], "joined_through":
     the first name of whose link the caller joined through, or null}
     (services/chat_links.py), oldest first."""
+    from services import chat_safety
     from services.chat_links import joined_through
     user_id = _require(database, user_id)
     me = _member_of(database, user_id, thread_id)
@@ -380,14 +394,19 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
                    .select("id,author_member_id,kind,body,meta,created_at")
                    .eq("thread_id", thread).order("created_at", desc=True)
                    .limit(_MAX_MESSAGES))
-    newest = [r for r in newest if not _held(r)]
+    # What the person the caller blocked sent while blocked never reaches
+    # them (N466 item 2).
+    spans = chat_safety.spans_by_member(database, [str(me["id"])]).get(str(me["id"]), [])
+    unheard = chat_safety.unheard(str(me["id"]), spans)
+    newest = [r for r in newest if not _held(r) and not unheard(r)]
     _mark_demo_question(database, thread, newest)
     authors = _authors(database, thread)
     words = _words(database, thread, newest)
     answers = _answers(database, newest)
     return {"messages": [_shown(r, str(me["id"]), authors, words, answers)
                          for r in reversed(newest)],
-            "joined_through": joined_through(database, user_id, thread)}
+            "joined_through": joined_through(database, user_id, thread),
+            "blocked": chat_safety.blocking({"blocked_spans": spans})}
 
 
 # ── Writing ──────────────────────────────────────────────────────────────

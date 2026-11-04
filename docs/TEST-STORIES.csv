@@ -592,6 +592,18 @@ O4  The bot's reply is saved under my turn even when my browser's clock
 runs ahead of the server's, so a reload keeps the order I saw.","O1, O2 -> test_a_turn_is_saved_once_and_its_choices_come_back
 O3     -> test_the_answer_still_comes_when_saving_fails
 O4     -> test_the_reply_is_saved_under_the_turn_it_answers",Founder #2: bubbles must never disappear; founder 2026-10-20: the chat keeps the order it shows. The harness is tests/chat_route_fakes.py; what the chat answers is pinned in test_chat_answers.py.
+tests/test_chat_safety.py,Story,"As a person in a chat with someone else, I want to block them and to report what they sent, so that I stop hearing from someone abusive and the founder can act on it; and as the founder, I want every report in front of me at once.","O1  When I block the other person, what they send from then on never
+reaches me: not in my chat, not as my list's last line, not as a push,
+and not after I unblock either. They are not told: their own chat
+reads as before, their message sent. My chat and my list say I
+blocked them; after Unblock, what they send reaches me again (N466
+item 2).
+O2  When I report them, the chat's last five messages as I see them are
+kept with who reported whom and whether I also blocked; the founder
+gets an email and sees it in the CEO panel's list, and can mark it
+read. Nobody else can read that list, and someone not in the chat can
+neither block nor report it, and writes nothing (N466 item 3).","O1 -> ChatSafetyTest::test_a_blocked_persons_messages_never_reach_me_and_they_are_not_told
+O2 -> ChatSafetyTest::test_a_report_keeps_the_last_five_and_reaches_the_founder","Founder 2026-11-04 (N466): Block and Report in the chats between people, for Apple's rule 1.2."
 tests/test_chat_talk.py,Story,"As a speaker, I want Will to read my whole talk slide by slide, so that his answers refer to what I actually said on each slide.","O1  Each slide lists its bullet points and what I said on it.
 O2  A slide I said nothing on reads ""(nothing yet)"".
 O3  Words not tied to a slide are listed on their own.","O1, O2, O3 -> test_each_slide_carries_its_points_and_what_they_said",Founder 2026-10-15; Privacy 3.7 section 4.
