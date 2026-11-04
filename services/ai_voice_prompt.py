@@ -106,12 +106,22 @@ def check_text(prepared: str, original: str) -> None:
         raise PromptRejected("WORDS_CHANGED")
 
 
+def _fillers_out(text: str) -> str:
+    """The text without its hesitations, one space between words."""
+    from services.ai_voice_severity import LANE_LANGUAGE
+    from services.transcript_smoothing import without_fillers
+    return _SPACE.sub(" ", without_fillers(text, LANE_LANGUAGE)).strip()
+
+
+def _seconds(text: str) -> float:
+    """How long the text takes said a little slower, with one pause."""
+    return len(text.split()) / SLOW_WORDS_PER_SECOND + 0.6
+
+
 def _without_fillers(text: str) -> str:
     """The sentence with its hesitations out; refused when there were none
     (then there is nothing to hear differently)."""
-    from services.ai_voice_severity import LANE_LANGUAGE
-    from services.transcript_smoothing import without_fillers
-    cleaned = _SPACE.sub(" ", without_fillers(text, LANE_LANGUAGE)).strip()
+    cleaned = _fillers_out(text)
     if not cleaned or _words(cleaned) == _words(text):
         raise PromptRejected("NO_FILLERS_TO_REMOVE")
     return cleaned
@@ -129,7 +139,7 @@ def build(*, sentence: str, exercise: dict, practice_id: str) -> dict:
     if len(text) > int(Config.AI_VOICE_MAX_SENTENCE_CHARACTERS):
         raise PromptRejected("SENTENCE_TOO_LONG")
     # Said a little slower, with one pause, it must fit the clip limit.
-    if len(text.split()) / SLOW_WORDS_PER_SECOND + 0.6 > float(Config.AI_VOICE_MAX_CLIP_SECONDS):
+    if _seconds(text) > float(Config.AI_VOICE_MAX_CLIP_SECONDS):
         raise PromptRejected("SENTENCE_TOO_LONG_TO_SAY")
     phrase = (exercise or {}).get("target_phrase")
     if problem == "pace":
@@ -179,11 +189,7 @@ _JOINING = frozenset({"because", "but", "so", "and", "which", "when", "if"})
 def _said(text: str, drop_fillers: bool) -> str:
     """The words the clip would say for this span, as ``build`` counts them."""
     words = _clean(text)
-    if drop_fillers:
-        from services.ai_voice_severity import LANE_LANGUAGE
-        from services.transcript_smoothing import without_fillers
-        words = _SPACE.sub(" ", without_fillers(words, LANE_LANGUAGE)).strip()
-    return words
+    return _fillers_out(words) if drop_fillers else words
 
 
 def fits_clip(text: str, *, drop_fillers: bool = False) -> bool:
@@ -191,8 +197,7 @@ def fits_clip(text: str, *, drop_fillers: bool = False) -> bool:
     and short enough to say a little slower, with one pause, in a clip."""
     words = _said(text, drop_fillers)
     return (len(words) <= int(Config.AI_VOICE_MAX_SENTENCE_CHARACTERS)
-            and len(words.split()) / SLOW_WORDS_PER_SECOND + 0.6
-            <= float(Config.AI_VOICE_MAX_CLIP_SECONDS))
+            and _seconds(words) <= float(Config.AI_VOICE_MAX_CLIP_SECONDS))
 
 
 def _anchor(text: str, phrase: Optional[str], drop_fillers: bool) -> tuple[int, int]:
@@ -206,12 +211,18 @@ def _anchor(text: str, phrase: Optional[str], drop_fillers: bool) -> tuple[int, 
     return (match.start(), match.end()) if match else (0, 0)
 
 
+def _covering(spans: list[tuple[int, int]], start: int, end: int) -> list[int]:
+    """The indexes of the spans that overlap [start, end) (an empty range
+    counts as its first character); [0] when none does."""
+    return [k for k, (s, e) in enumerate(spans) if s < max(end, start + 1) and e > start] or [0]
+
+
 def _sentence_span(text: str, start: int, end: int, drop_fillers: bool) -> Optional[tuple[int, int]]:
     """The sentences holding [start, end), grown by their neighbours while
     the whole still fits; None when those sentences alone do not fit."""
     spans = [(m.start() + len(m.group(0)) - len(m.group(0).lstrip()), m.end())
              for m in _SENTENCE.finditer(text) if m.group(0).strip()]
-    held = [k for k, (s, e) in enumerate(spans) if s < max(end, start + 1) and e > start] or [0]
+    held = _covering(spans, start, end)
     i, j = held[0], held[-1]
     if not fits_clip(text[spans[i][0]:spans[j][1]], drop_fillers=drop_fillers):
         return None
@@ -230,7 +241,7 @@ def _word_window(text: str, start: int, end: int, drop_fillers: bool) -> tuple[i
     """A window of words centred on [start, end) that fits, cut at a comma
     or a joining word when one is inside it."""
     words = [(m.start(), m.end()) for m in re.finditer(r"\S+", text)]
-    inside = [k for k, (s, e) in enumerate(words) if s < max(end, start + 1) and e > start] or [0]
+    inside = _covering(words, start, end)
     lo, hi = inside[0], inside[-1]
 
     def fit(a: int, b: int) -> bool:
