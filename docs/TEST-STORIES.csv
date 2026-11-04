@@ -1594,6 +1594,28 @@ O4  The recovery sweep runs only with the internal secret.","O1 -> test_poll_sho
 O2 -> test_unknown_and_foreign_jobs_look_identical
 O3 -> test_no_score_or_verdict_anywhere_in_the_body
 O4 -> test_sweep_needs_the_internal_secret","AC-9 split sink: results live on the readout GETs, never on the poll."
+tests/test_join_questions.py,Story,"As a person who shares what I know, I want everyone who joins through my link to answer a few practical questions by tapping, so that we start our knowledge base knowing the deadline and the language, and I read their answers on one card, not my own questions waiting (N487, words signed in N491, N496 and N502).","O1  My questions are kept and read back; a question without two to six
+answers is refused; an empty set means none.
+O2  Someone who joins me finds my first lines in our chat, as my
+messages, and is told a few questions come first; in my own view of
+the chat I see neither the questions nor their taps, only that they
+joined through my link.
+O3  They answer by tapping: ""No"" to ""Are you in a hurry?"" puts the
+deadline one step of my plan away and moves on; a question that takes
+more than one answer takes several; then my closing line; I see one
+card with the deadline and the languages.
+O4  A tap that is not one of the answers, two answers to a one-answer
+question, a second answer, or my tapping my own question is refused.
+O5  Joining someone with no questions posts nothing, and the line at the
+top says nothing about questions.
+O6  A question I type is kept only when it is practical and has answers
+to tap: Will gives a yes-or-no question its answers, and leaves out a
+question about the work itself and one he finds no answers for.","O1 -> JoinQuestionsTest::test_my_questions_are_kept_and_checked
+O2 -> JoinQuestionsTest::test_whoever_joins_finds_my_first_lines_and_i_do_not
+O3 -> JoinQuestionsTest::test_they_answer_by_tapping_and_i_read_one_card
+O4 -> JoinQuestionsTest::test_a_tap_that_is_not_an_answer_is_refused
+O5 -> JoinQuestionsTest::test_joining_someone_with_no_questions_posts_nothing
+O6 -> ReadyTest::test_a_typed_question_is_kept_only_when_practical_with_answers","The founder, 4 November 2026, on the prototype ""Asked When They Join"": ""in the user set up, we need to ask you the questions on what questions should be asked to the people that will ask you for the knowledge""; ""they can only click through the answers they can not type""."
 tests/test_journey_messages.py,Story,"As the founder, I want the messages after a speaker's first three Takes to say exactly the words I signed off, with their two actions, so that no unapproved words reach a speaker.","O1  The Take 1 message's text and its two actions (prepare Take 2, keep
 practising) equal the locked copy.
 O2  The Take 2 message's text and its two actions (prepare Take 3, keep

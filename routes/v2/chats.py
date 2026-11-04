@@ -411,6 +411,34 @@ def v2_chats_join(token):
     return _run("join", lambda: join(db, str(request.user_id), token, payload))
 
 
+# ── Asked when they join (services/join_questions.py; N487) ─────────────
+
+@v2_bp.route("/chats/join-questions", methods=["GET"])
+@require_auth
+def v2_chats_join_questions():
+    """The questions I set for whoever joins through my link, or null."""
+    from services.join_questions import mine
+    return _run("join-questions", lambda: {"questions": mine(db, str(request.user_id))})
+
+
+@v2_bp.route("/chats/join-questions", methods=["PUT"])
+@limiter.limit("30 per hour", scope="chats_join_questions")
+@require_auth
+def v2_chats_join_questions_save():
+    from services.join_questions import save
+    body = request.get_json(silent=True)
+    return _run("join-questions save", lambda: save(db, str(request.user_id), body))
+
+
+@v2_bp.route("/chats/<thread_id>/setup/<message_id>", methods=["POST"])
+@require_auth
+def v2_chats_setup_answer(thread_id, message_id):
+    """The joiner's tap on one of the link owner's questions (N487 item 4)."""
+    from services.join_questions import answer
+    body = request.get_json(silent=True)
+    return _run("setup answer", lambda: answer(db, str(request.user_id), thread_id, message_id, body))
+
+
 @v2_bp.route("/me/access", methods=["GET"])
 @require_auth
 def v2_me_access():
