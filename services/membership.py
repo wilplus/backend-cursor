@@ -8,8 +8,8 @@ sign in, but they cannot start a project, record, or talk to Will.
 NOTHING NEW IS STORED (N471 item 9). Membership is read from what is already
 kept:
 
-  * the switch is off (``INVITE_ONLY_SINCE`` unset): everyone is a member, as
-    before;
+  * the switch is off (``INVITE_ONLY_SINCE`` set to "off"): everyone is a
+    member, as before; unset, it is on from ``GO_LIVE`` (N480);
   * an admin or an allowlisted coach;
   * an account made before the switch (every user of today counts as
     invited by the founder, N470 item 3);
@@ -48,6 +48,12 @@ logger = logging.getLogger(__name__)
 WAITLIST = "WAITLIST"
 INVITE_ONLY = "INVITE_ONLY"
 
+#: The moment invite-only began (founder, 4 November 2026, N480): noon, so
+#: nobody who signed up that morning under the open rules waits. The
+#: INVITE_ONLY_SINCE setting wins when it is set; set to "off" (or empty), the
+#: switch is off and everyone is a member.
+GO_LIVE = "2026-11-04T12:00:00Z"
+
 _NO_TTL_S = 20.0
 _lock = threading.Lock()
 _members: set[str] = set()
@@ -56,8 +62,9 @@ _not_yet: dict[str, float] = {}
 
 def since() -> Optional[datetime]:
     """The moment invite-only began, or None while it is off."""
-    raw = (os.getenv("INVITE_ONLY_SINCE") or "").strip()
-    if not raw:
+    setting = os.getenv("INVITE_ONLY_SINCE")
+    raw = GO_LIVE if setting is None else setting.strip()
+    if not raw or raw.lower() == "off":
         return None
     try:
         moment = datetime.fromisoformat(raw.replace("Z", "+00:00"))
