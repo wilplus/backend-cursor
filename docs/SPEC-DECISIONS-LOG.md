@@ -11929,8 +11929,8 @@ can."; the steps "1. Ask one thing · A clear question gets a clear answer",
 "2. {name} answers · Out loud, when they have a moment", "3. It stays here
 · Play it again whenever you need it"; "To {name} · Slide {n} of 3". The
 prototype shows them for Sarah, with "she"; built, they name the person and
-say "they", because the app does not know anyone's pronouns. That one change
-waits for the founder's OK.
+say "they", because the app does not know anyone's pronouns (the founder,
+the same chat: "OK").
 7. **What stops:** voice notes to Will, the "#" note for principles and "Keep
 a voice notebook?" included (the note rests, everything already kept stays,
 and its place is decided with the walk and the way knowledge spreads);
