@@ -9047,94 +9047,10 @@ class DatabaseService:
             logger.warning("mark_arc_delivered failed arc=%s: %s", arc_id, e)
             return False
 
-    # arc_invite_codes — founding free-pass codes (A4).
-
-    def get_arc_invite_code(self, code: Optional[str]) -> Optional[dict]:
-        """An invite code row, or None. None on missing table / unknown
-        code / error."""
-        if not code:
-            return None
-        try:
-            res = (
-                self.client.table("arc_invite_codes")
-                .select("*")
-                .eq("code", str(code).strip())
-                .limit(1)
-                .execute()
-            )
-            rows = res.data or []
-            return rows[0] if rows else None
-        except Exception as e:
-            err_low = str(e).lower()
-            if "arc_invite_codes" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-                or "42p01" in err_low
-            ):
-                logger.warning(
-                    "get_arc_invite_code: table missing (run "
-                    "migrations/add_arc_invite_codes.sql) code=%s", code,
-                )
-                return None
-            logger.warning("get_arc_invite_code failed code=%s: %s", code, e)
-            return None
-
-    def consume_arc_invite_code(self, code: Optional[str]) -> bool:
-        """Atomically claim ONE use of an active code with uses < max_uses.
-        Guards on uses (conditional update) so two concurrent redeems can't
-        over-spend a code. Returns True iff a use was claimed. Caller mints the
-        purchase only on True."""
-        if not code:
-            return False
-        row = self.get_arc_invite_code(code)
-        if not row or not row.get("active"):
-            return False
-        try:
-            uses = int(row.get("uses") or 0)
-            max_uses = int(row.get("max_uses") or 0)
-        except (TypeError, ValueError):
-            return False
-        if uses >= max_uses:
-            return False
-        try:
-            # Conditional update: only bump when uses still equals what we read
-            # (optimistic lock). A racing redeem changed uses → 0 rows → retry
-            # is the caller's choice; here we just report no-claim.
-            res = (
-                self.client.table("arc_invite_codes")
-                .update({"uses": uses + 1})
-                .eq("code", str(code).strip())
-                .eq("uses", uses)
-                .eq("active", True)
-                .execute()
-            )
-            return bool(res.data)
-        except Exception as e:
-            logger.warning("consume_arc_invite_code failed code=%s: %s", code, e)
-            return False
-
-    def create_arc_invite_code(
-        self, code: str, *, max_uses: int = 1, note: Optional[str] = None,
-    ) -> Optional[dict]:
-        """Mint an invite code (admin/seed, A4). Idempotent: a re-run of the
-        same code returns the existing row. None on real failure."""
-        if not code:
-            return None
-        row = {"code": str(code).strip(), "max_uses": int(max_uses)}
-        if note:
-            row["note"] = str(note)
-        try:
-            res = self.client.table("arc_invite_codes").insert(row).execute()
-            created = (res.data or [None])[0]
-            return created or self.get_arc_invite_code(code)
-        except Exception as e:
-            err_low = str(e).lower()
-            if (
-                "duplicate" in err_low or "unique" in err_low
-                or "23505" in err_low or "conflict" in err_low
-            ):
-                return self.get_arc_invite_code(code)
-            logger.warning("create_arc_invite_code failed code=%s: %s", code, e)
-            return None
+    # arc_invite_codes: the founding free-pass codes (Paid Audits A4) were
+    # removed with their redeem route (founder 2026-11-04, N471 item 8: no
+    # screen ever called it). The table stays, and a founding pass already
+    # given keeps its audit (arc_purchases, retention v1.4).
 
     # ── willab — Audit Delivery (Prompt C §2/§3) ───────────────────────
     #
