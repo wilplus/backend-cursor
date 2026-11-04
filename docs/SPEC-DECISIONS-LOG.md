@@ -12690,3 +12690,30 @@ migration.
 The rules: frontend
 [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
 H0.
+
+**N512 · The matching is built and finished: the hold is lifted (founder,
+the Claude Code chat, 4 November 2026, on the explainer "Ask and Answer, Out
+Loud" <https://claude.ai/artifact/LeHx4fjiT1Z8cYehdjbYhZ>, which shows both
+flows, a Take sent to your list and a matched Take: "Okay, build it, finish
+it.").** For N477, N478, N481 (its "Hold it" for the matching's build),
+N485, N486, N493 and N504:
+1. **"Hold it" is lifted:** the matching after a Take (#1712) and its
+screens are built and finished as decided: the suggestion on the page after
+a Take (N477), the asking chat in the list with who asks and about what
+(N485), "Open Take" to accept and "Not now" to decline (N486, N504 item 1),
+the answer over the Take's own slides (N493 item 1), the names once the
+answer is sent (N486 item 1).
+2. **Nothing else changes:** its migration has its outside review again
+before merging, as every migration does; it stays off for everyone until a
+`take_match` ring row turns it on; `TAKE_MATCH_SKILLS` stays unset until the
+Terms and Privacy text of N481 item 4 is signed.
+3. **Signed (Never 4), for the speaker's side** (the founder, the same chat,
+asked which words: "Use the prototype's"): on the page after a Take, when
+someone new fits it (N477), "Someone new might be a good match for this
+Take.", "{Pseudonym} works on what you're practising. You could learn from
+each other. Send it to them too?" and, under their role, "Not in your chats
+yet"; then "Send" and "Not now". Withdraws N476 item 4's two drafted lines.
+Not in force until built and merged. No migration for this entry. The rules:
+frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built; the matching gets its rules page when it is built (N332).
