@@ -199,10 +199,45 @@ def _practice_row(*, user_id, session, take_id, snippet_id, kind, exercise_id,
     }
 
 
+#: The two sentences the Clearer version offers: "Try it" (its words) and
+#: "Keep mine" (the moment's own). A library exercise is not among them: it
+#: must pass the exercise gate when it starts.
+_SWITCHABLE = ("rewrite", "plain")
+
+
+def _resumed(database, existing: dict, *, kind: str, snip: dict, body: dict,
+             user_id: Any) -> dict:
+    """The moment's own row, resumed. Asked on the other sentence ("Try it",
+    ✕ on the recorder, then "Keep mine", or the other way round), an open
+    row with no try and no AI clip yet moves to that sentence, so the try is
+    heard against the words the speaker says and their helper words save.
+    A row with a try or a clip on its sentence stays as it is."""
+    from services.practice_adoption import passage_for
+    passage = passage_for(
+        kind, (snip.get("transcript") or "").strip(), body.get("passage"))
+    if (not passage or kind not in _SWITCHABLE
+            or existing.get("kind") not in _SWITCHABLE
+            or existing.get("status") != "open"
+            or (existing.get("kind"), existing.get("exact_passage")) == (kind, passage)):
+        return existing
+    practice_id = str(existing.get("id"))
+    from services.ai_voice_store import get_cycle
+    if (database.list_confident_voice_practice_attempts(practice_id)
+            or get_cycle(database, practice_id)):
+        return existing
+    snapshot = _snapshot(kind, None, None, body)
+    return database.update_confident_voice_practice(practice_id, str(user_id), {
+        "kind": kind, "exact_passage": passage, "exercise_id": None,
+        "exercise_version": int(snapshot["version"]),
+        "exercise_snapshot": snapshot,
+    }) or existing
+
+
 def start_practice(database, *, snippet_id: str, body: dict, user_id: Any,
                    answer: Any) -> tuple[dict, bool]:
     """(practice row, created). This moment's own row resumes (ONE PRACTICE
-    PER MOMENT, founder 2026-09-29); otherwise a new one is written.
+    PER MOMENT, founder 2026-09-29), on the sentence asked while it has no
+    try (``_resumed``); otherwise a new one is written.
     Raises ``Refusal`` for every refused start."""
     snip, session = _owned_moment(database, snippet_id, user_id)
     _answer_gate(database, session=session, snippet_id=str(snippet_id),
@@ -212,7 +247,8 @@ def start_practice(database, *, snippet_id: str, body: dict, user_id: Any,
     existing = database.get_confident_voice_practice_by_moment(
         take_id, str(snippet_id), str(user_id))
     if existing:
-        return existing, False
+        return _resumed(database, existing, kind=kind, snip=snip, body=body,
+                        user_id=user_id), False
     verdict, matching = _start_gate(
         database, kind, snip, take_id, str(snippet_id), exercise_id,
         _median_wpm(database, take_id), user_id)

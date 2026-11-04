@@ -3638,8 +3638,9 @@ O2 -> test_a_dead_signer_falls_through_to_supabase_not_to_a_bare_key",DPIA RISK-
 tests/test_user_sessions_route_contracts.py,Story,"As a speaker, I want my suggestion answers and Confident Voice practice (start, attempt, complete) to work and refuse bad input, so that practice never loses my recording.","O1  A suggestion answer is saved (200 {""saved"": true}); a bad target is 400
 and someone else's Take is 404 with nothing written.
 O2  Starting practice on a moment creates it for me (201); an existing one
-is resumed (200) without a second row; a bad or premature answer is
-refused (400, 409).
+is resumed (200) without a second row, on the other sentence I asked
+for while it has no try; a bad or premature answer is refused (400,
+409).
 O3  An attempt is stored and recorded (201) with no automatic outcome; a
 closed practice is 409 and a passage mismatch is 422 with nothing
 stored.
@@ -3649,6 +3650,7 @@ kept.","O1 -> SuggestionFeedbackContract.test_a_dismissed_star_is_saved
 -> SuggestionFeedbackContract.test_refusals
 O2 -> PracticeStartContract.test_a_moment_practice_is_created
 -> PracticeStartContract.test_refusals_and_the_resume
+-> PracticeStartContract.test_the_other_sentence_moves_an_untried_practice
 O3 -> PracticeAttemptContract.test_an_attempt_is_recorded
 -> PracticeAttemptContract.test_refusals
 O4 -> PracticeCompleteContract.test_a_kept_attempt_completes_the_practice
