@@ -11,7 +11,7 @@ questions for people who join ›" opens the summary again later (N503 item 2).
 
   * ``begin``: the setup's first lines, or its open question again at the
     bottom; {"started": False} once the questions are set, or before
-    migration 0511, when nothing could be kept.
+    migration 0513, when nothing could be kept.
   * ``answer``: a tap, or the words typed after "Something else" or under
     "What should change?"; then Will's next lines.
   * ``again``: the summary again, from "Your questions for people who join ›".

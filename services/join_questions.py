@@ -9,7 +9,7 @@ their own questions wait: they see one card, "{name}'s answers", once the
 joiner is done (N487 item 7).
 
   * ``mine`` / ``save``: the questions a person has set, kept on their
-    profile row (``people_profiles.join_questions``, migration 0511). NULL,
+    profile row (``people_profiles.join_questions``, migration 0513). NULL,
     or a database without the column yet, means no questions. ``kept``
     tells Will's setup (``services/join_setup.py``) whether a set can be
     kept at all, and whether one was, an empty one included.
@@ -160,7 +160,7 @@ def _rows(query: Any) -> list[dict]:
     try:
         return list(query.execute().data or [])
     except Exception:
-        # A database without migration 0511's column reads as no questions.
+        # A database without migration 0513's column reads as no questions.
         logger.warning("join_questions: a read failed", exc_info=True)
         return []
 
@@ -193,7 +193,7 @@ def normalize(payload: Any) -> Optional[dict]:
 
 def mine(database: Any, user_id: str) -> Optional[dict]:
     """The questions a person has set, or None. A database without the
-    column yet (before migration 0511) reads as none."""
+    column yet (before migration 0513) reads as none."""
     rows = _rows(_table(database, PROFILES).select(f"user_id,{COLUMN}")
                  .eq("user_id", str(user_id)).limit(1))
     value = rows[0].get(COLUMN) if rows else None
@@ -222,7 +222,7 @@ def save(database: Any, user_id: str, payload: Any) -> dict:
 
 def kept(database: Any, user_id: str) -> tuple[bool, Optional[dict]]:
     """(whether questions can be kept at all, the set as kept or None).
-    False before migration 0511: the column is not there to read."""
+    False before migration 0513: the column is not there to read."""
     try:
         rows = (_table(database, PROFILES).select(f"user_id,{COLUMN}")
                 .eq("user_id", str(user_id)).limit(1).execute().data or [])
