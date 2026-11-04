@@ -19,6 +19,9 @@ OUTCOME
       next time.", comes right after the summary (services/after_take.py).
   O5  The summary and the goodbye after it sort under the walk's last step,
       even when my browser's clock runs ahead of the server's.
+  O7  Asked twice for the same Take (the page reloaded while the first ask
+      was being written), the first ask's batch stands: nothing is written,
+      remembered or let go again, so the goodbye stays under Will's question.
   O6  The summary can point back to what I said in an older Take (the same
       project first), never this Take, never a Take whose processing
       authorization is not in force; a failing or slow lookup leaves the
@@ -36,6 +39,7 @@ PROVES   O1 -> test_a_take_gets_one_summary_from_its_real_progress,
                test_a_coach_word_shared_after_the_review_is_its_own_bubble
          O4 -> test_the_summary_knows_the_talk_and_no_settings_ask_follows
          O5 -> test_the_summary_and_the_goodbye_sort_under_the_walk
+         O7 -> test_a_second_ask_while_the_first_is_written_changes_nothing
          O6 -> test_the_summary_points_back_to_an_older_take_never_this_one,
                test_a_take_not_in_force_never_reaches_the_summary,
                test_a_failing_or_slow_lookup_leaves_the_summary_as_today,
@@ -363,3 +367,35 @@ def test_an_earlier_take_with_a_number_still_falls_back_to_the_signed_copy(monke
                      takes=ARC)
     assert "from 30 to 10" in _earlier(seen)
     assert msg["body"] == _COPY[2].split("\n\n")[0] and msg["metadata"]["written"] is False
+
+
+def test_a_second_ask_while_the_first_is_written_changes_nothing(monkeypatch):
+    """N406 item 1, N458: a reload re-asks the summary while the first ask is
+    still in its model call. When the first ask's batch lands meanwhile, the
+    second ask returns it and writes, remembers and lets go nothing."""
+    db = _Db(phone=None)
+    client_id = take_summary.summary_client_id("u", "a", 2)
+    first = {"client_id": client_id, "role": "bot", "kind": "cadence", "body": "First.",
+             "metadata": {"summary": True, "take_session_id": "t2"}}
+    goodbye = {"client_id": "goodbye", "role": "bot", "kind": "cadence",
+               "body": "Good job. See you next time.",
+               "metadata": {"next_take": True, "held_for": "will_question", "take_session_id": "t2"}}
+    remembered, let_go = [], []
+
+    def lands(write):
+        db.rows.update({client_id: first, "goodbye": goodbye})  # the first ask finished meanwhile
+        return write()
+
+    monkeypatch.setattr("services.whatsapp_notify.whatsapp_state",
+                        lambda _db, _user: {"phone": db.phone})
+    monkeypatch.setattr("services.person_asks.next_for", lambda _user: None)
+    monkeypatch.setattr("services.speaker_memory.record", lambda *a, **k: remembered.append(a))
+    monkeypatch.setattr("services.after_take._let_go", lambda *a, **k: let_go.append(a))
+    monkeypatch.setattr(take_summary, "_under_authority", lambda _db, _take, w: lands(w))
+    monkeypatch.setattr(take_summary, "write_summary",
+                        lambda anchor, facts, **kw: take_summary._clean("Churn in Q3, nailed it!"))
+    msg = take_summary.summary_message(db, user_id="u", arc_id="a", takes=TAKES,
+                                       take_session_id="t2", body={"practice": "better"})
+    assert msg is first
+    assert set(db.rows) == {client_id, "goodbye"} and db.rows["goodbye"]["metadata"]["held_for"]
+    assert remembered == [] and let_go == []
