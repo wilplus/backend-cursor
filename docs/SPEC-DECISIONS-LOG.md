@@ -12596,3 +12596,45 @@ Not in force until built and merged. No migration: a dump is a notebook
 note. The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md),
 when built.
+
+**N507 · The dump screen is the voice notebook's way in; its words signed;
+the switch in Settings; both rows at ring 2 (founder, the Claude Code chat,
+4 November 2026, after N506: "Signed" to the dump screen's words; "Ok set it
+yourself" to setting the ring row at ring 2; then, asked, "Dump screen is
+its new place", "Both at ring 2", "No menu line", "App Settings" and "Off by
+default").** For N411, N483 item 7, N506:
+1. **The notebook's new place is the dump screen.** N483 item 7 put the
+voice notebook to rest and left its place open; this is that place. The mic
+and the "#" note in the chat stay stopped (N483 stands). The first time
+someone opens the dump screen, before it listens, it shows N411's signed
+introduction once: "🎙 Tap the mic any time and say what's on your mind. It
+helps you catch negative thinking and self-sabotage. One privacy rule
+first:", the note ("Nothing fragile: health, family, money, address.", "We
+look for patterns, not secrets. Fewer clues, less for hackers.", "📓 For
+journalling try paper notebook 😉") and "Do you understand the rules and
+want this feature on?" (Yes | Not now). Yes is the notebook's consent
+(N411); then the screen. Not now closes it and turns the switch off; nothing
+is kept. This replaces N506 item 4's question after N411's "Yes": there is
+no ask in the chat.
+2. **The way in is one switch, in the app's Settings** (☰ → Settings, the
+Data & consent page): "Open to the dump screen", "First thing when you open
+the app, at most once an hour." Off by default. No menu line. The pull down
+in Will's chat (N506 item 4) stays. The Data & consent page is a locked
+consent screen: this item is the founder's OK for this one row.
+3. **Reach:** the ring rows `dump_screen` and `voice_notebook` both at ring 2,
+made by a migration ("set it yourself", as N264 did), each only if the
+founder has not made it already.
+4. **Signed (Never 4):** "Say it.", "Tap anywhere", "Listening", "Tap to
+stop", "Tap to say more", "Open to the dump screen", "First thing when you
+open the app, at most once an hour." With "Double tap to close" and "Kept"
+(N506) and N411's words, the web screen's words are all signed. Not yet
+signed: the iPhone app's two permission texts (N506 item 7), drafted as
+"WillpowerLab uses the microphone to record your Takes and your voice
+notes." and "Your words appear as you speak, made on this iPhone. Nothing
+is sent for it."
+Not in force until built and merged. The migration gets its outside review
+before it is merged. The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+and
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md),
+when built.
