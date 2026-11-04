@@ -11146,7 +11146,39 @@ No migration. The rules: frontend
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
 
-**N463 · Will's chat starts at the bottom, and every choice in every chat
+**N466 · Block and Report in the chats between people (founder, the Claude
+Code chat, 4 November 2026: "OK" to the prototype
+<https://claude.ai/artifact/FESNmETKXUPBvdRNH2ciLo>, its words, the Terms
+sentence and reading reports within a day).** For Apple's rule 1.2 (people
+messaging each other), N366 and N436:
+1. **At the foot of a person's profile** (not Will's): "Block {name}" and
+"Report {name}", in red; after blocking, "Unblock {name}".
+2. **Block:** a sheet, "Block {name}?", "{name} can't send you messages or
+answers. {name} isn't told.", "Block", "Cancel". From then on the other
+person's messages and answers do not reach you and no push goes; the chat
+stays in your list, its bar reading "You blocked {name}." with "Unblock".
+What they sent while blocked never reaches you, also after Unblock. They
+are not told; their own chat looks as before. Toasts: "{name} is
+blocked." and "{name} is unblocked."
+3. **Report:** a sheet, "Report {name}?", "The last five messages in this
+chat go to WillpowerLab, where a person reads them within a day. {name}
+isn't told.", "Report", "Report and block", "Cancel". The report keeps
+those five messages and reaches the founder: an email to the founder's
+address and a row in the CEO panel. Toasts: "Reported. Thank you." and
+"Reported and blocked."
+4. **The founder reads every report within a day,** removes a message that
+breaks the rule and can close the account that sent it.
+5. **The Terms gain one sentence** at their next version: "Don't send anyone
+in WillpowerLab anything abusive, hateful, sexual or threatening. When
+someone reports a message, we read it within a day, remove it if it breaks
+this rule, and can close the account that sent it."
+New words: those above, signed with the prototype. A migration (a block on
+the member's row, the reports' table) gets its outside review or the
+founder's waiver before it merges. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1.
+
+**N467 · Will's chat starts at the bottom, and every choice in every chat
 follows four rules (founder, the Claude Code chat, 4 November 2026, signed
 on the page "Will's Chat, to Sign",
 <https://claude.ai/artifact/74vqKTfEVgNeHfRgW2NyqL> (version 2), which shows
