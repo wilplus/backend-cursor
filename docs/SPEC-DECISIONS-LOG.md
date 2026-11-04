@@ -11146,6 +11146,118 @@ No migration. The rules: frontend
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
 
+**N463 · Matching by communication style: an opt-in experiment for learning
+buddies (founder, the Claude Code chat, 3 November 2026: "I was also
+thinking thinking about matching them based on communication profiles
+derived from the acoustic features so how they think and talks bout the
+problem and make it a platform to experiment that would ask later on how do
+you rate this communication match with Marek feeding the algorithm that
+matches them this way giving the managers also a panel to monitor the
+experiments and the dashboard with behavioral data and also making it
+usable to feed their own personas of learners"; then, to twelve questions,
+the recommended answer to eleven and "AI practice partners" to the
+twelfth; then, on the prototype
+<https://claude.ai/artifact/CKYJznNCva7EPmHtCkNQMS>, "A" for how the match
+is rated).** For N311, N317 items 3 and 7, N328, N332, N371 and N400 items
+1 and 10:
+1. **A communication style changes only who your learning buddies are.**
+Who to ask (N332) keeps weighing what people answered before, how it ended
+and who is free, and never reads a voice. Replaces, for who to ask, N317
+item 3's "It plugs in where Will suggests who to ask (N303)" and N332 item
+4.
+2. **Opt-in, for each person, off by default:** its own consent, which no
+employer or team owner can switch on for anyone. It works in teams and in
+communities alike.
+3. **The profile** is a few named dimensions, from the voice (pace, pauses,
+pitch range, loudness) and from the words of the person's Takes and voice
+notes (how they build an answer: a story or the facts first, concrete or
+abstract, questions back). Never an emotion (N317 item 7).
+4. **Never shown to anyone,** the speaker included (N317 item 7 stays).
+5. **The experiment:** each new buddy match for someone who opted in is
+drawn at random into one of three arms: topics only, topics and a similar
+style, topics and an opposite style. Every arm shows the same reason, from
+the topics, so nobody can tell their arm, and a style is never named on
+screen.
+6. **The rating:** after the pair's third exchange, Will asks once, in his
+chat, with three suggested answers (N371), as the prototype draws it: "How
+was practising with {name}?", then "Good match", "It was okay" and "Not for
+me". The tap locks; the answer feeds the matching and is never shown again
+or to anyone else (Never 1). The chats' three emoji keep their one meaning
+each (N311): none of them means "not a good match".
+7. **It worked when** more pairs are still exchanging voice notes 14 days
+after they were matched, in a style arm than in topics only. The rating
+comes second. Takes per person must not drop.
+8. **Who sees the experiments: WillpowerLab only,** in version 1, in its
+own panel. A client's manager sees nothing of it (N400 item 10 stays for
+managers).
+9. **The pilot is one open community first.** An employer's team (RASP or
+Invita) comes second, once its data processing agreement covers it and its
+works council has been asked.
+10. **Personas, later: AI practice partners.** A client builds partners to
+practise with in AI voice practice from the style patterns of groups of
+people (for example, a fast, fact-first customer); never a copy of one real
+person.
+11. **Legal first:** the counsel who signed privacy policy 3.9 writes the
+consent and the privacy policy that carries it (after 3.11: 3.10 carries
+the chats, N468, 3.11 the invitation and the waitlist, N472, and 3.12 the
+sending of N479), and an
+outside EU AI Act specialist reviews the classification once. Nobody is
+profiled before both.
+12. **So learning buddies by topics come first** (N400 items 1 and 10, not
+built yet): they are the experiment's control arm.
+13. **Open:** the words (Never 4: the consent, the buddy suggestion, the
+rating's ask, the Settings card), drafted on the prototype above and not
+signed yet; the dimensions, and how similar and
+opposite are measured, settled in a shadow run that routes nothing; how
+many buddies at once (N328 item 3).
+N400 item 10 now reads, for buddies: matched by the topics from the setup,
+and, for people who opted in, also by their communication style, as an
+experiment.
+No rules page yet: the matching gets its rules page when it is built
+(N332). No migration in this entry.
+
+**N464 · Counsel and the AI Act specialist signed off on matching by
+communication style (founder, the Claude Code chat, 4 November 2026: "So
+the good news is that Council and the AI Arc Specialist signed off. Let's
+move on.").** For N463 items 11 and 13:
+1. **The legal half of the gate is passed,** as the founder reports it: the
+counsel who signed privacy policy 3.9 and the outside EU AI Act specialist
+have signed off (N463 item 11).
+2. **Before anyone is profiled, still:** the founder signs the words (N463
+item 13: the consent card, the buddy suggestion, the rating's ask, the
+Settings card), and the signed texts (the consent, the privacy policy and
+the specialist's opinion) are filed in the legal pack
+[`legal/phase1-2026.1/`](../legal/phase1-2026.1/), as earlier sign-offs
+were.
+No rules page yet: the matching gets its rules page when it is built
+(N332). No migration.
+
+**N465 · The words of matching by communication style, signed (founder,
+the Claude Code chat, 4 November 2026, on the prototype
+<https://claude.ai/artifact/CKYJznNCva7EPmHtCkNQMS>: "Sign all as
+drawn").** For N463 item 13 and N464 item 2:
+1. **Signed (Never 4).** The opt-in ask in Will's chat: "I can also choose
+your practice buddies by how you speak. Do you want that?", the card
+"Matching by how you speak", "Will listens to your pace, your pauses and
+how you build an answer, in your Takes and voice notes. It is used only to
+choose your practice buddies. Nobody sees it, you included, and no feeling
+is read. You can turn it off in Settings.", "Read more", "No", "Yes". The
+buddy: "Practise with {name}?", "{Name} is practising {topic} too.",
+"Practise with {name}", "Not now". The rating: "How was practising with
+{name}?", "Good match", "It was okay", "Not for me". The Settings card:
+"Matching by how you speak", "On. Will uses your pace, your pauses and how
+you build an answer to choose your practice buddies. Nobody sees it, you
+included.", "Turn off", "Turn off matching by how you speak?", "We delete
+what Will learned from how you speak. Your buddies stay.", "Cancel", "Off.
+We deleted what Will learned from how you speak.", "Turn on".
+2. **The Settings card** joins the locked Settings page as drawn on the
+prototype (screen 5).
+3. **Before anyone is profiled, still:** the signed texts (the consent,
+the privacy policy, the AI Act specialist's opinion) are filed in the legal
+pack (N464 item 2).
+No rules page yet: the matching gets its rules page when it is built
+(N332). No migration.
+
 **N466 · Block and Report in the chats between people (founder, the Claude
 Code chat, 4 November 2026: "OK" to the prototype
 <https://claude.ai/artifact/FESNmETKXUPBvdRNH2ciLo>, its words, the Terms
@@ -11440,6 +11552,191 @@ and `copy/privacy-3.11.txt`, and are published as `phase1-{date}-3.11` by
 `PUBLISH-3.11-{date}.sql`, the founder's step, after 3.10. Nothing is
 deleted; every speaker accepts 3.11 once, on the update prompt.
 No migration. No rules page: the legal pack.
+
+**N473 · Learning buddies by topic: who, how a match opens, and when
+(founder, the Claude Code chat, 4 November 2026, on the prototype
+<https://claude.ai/artifact/FtJL4G1VGm1MTNMKWujZ6W>: asked what a buddy's
+topic is, "it is something they are learning and they are also sharing
+what they know themeselves"; then the recommended answer to the other
+three).** For N317 item 3, N328, N400 items 1 and 10, N431, N461 item 5,
+N462 and N463 item 12:
+1. **What a buddy match rests on:** both people are learning something,
+the topic they practise, and each shares what they know, their field from
+the first Take (N462 slides 1 and 2, the profile of N461 item 5).
+2. **Who:** only people who share a team or a community (N431). Nobody from
+outside it (N328).
+3. **How a match opens: both say yes.** The one who just finished a walk is
+asked first ("Practise with {name}?", signed in N465); the other is asked
+only after a yes; the chat opens when both said yes. A "Not now" is never
+told to anyone.
+4. **When:** after a walk ends, never between a Take and its Ideal Text, with
+"Record Take N" still under the ask (Never 3). One buddy at a time. After
+"Not now", asked again after the next walk, at most twice.
+5. **Open, drafted on the prototype for the founder's OK (Never 4):** "{Name}
+knows {field}." (what the buddy shares, under the signed reason) and
+"You're both practising {topic}." (the new chat's line on the list and its
+quiet first line).
+These are the experiment's control arm (N463 item 12). No rules page yet:
+the matching gets its rules page when it is built (N332). No migration.
+
+**N474 · A withdrawn buddy suggestion: one true line, then the next
+suggestion at once (founder, the Claude Code chat, 4 November 2026, on the
+prototype <https://claude.ai/artifact/FtJL4G1VGm1MTNMKWujZ6W>: "and why
+don't you just send the question to Anna? if they say no; e.g. Marek has
+had Anna suggested to him but he said no; so Anna can't see it; if Anna
+says No - he sees that option no more (and it is possible that she has been
+taken by someone else) and that is communicated; taht she has been chosen
+by someone else"; then, asked, "Same true line for both" and "Right
+away").** For N473 item 3:
+1. **The first says Not now:** the other is never asked and never sees
+anything (as N473 item 3).
+2. **The other says Not now, or another match takes them first** (one buddy
+at a time): the first person's suggestion is withdrawn, and Will tells them
+one line, true in both cases, that never says which: "{Name} isn't free to
+practise right now." Was (N473 item 3): a "Not now" was never told, and the
+one who said yes kept waiting.
+3. **Then the next suggestion at once,** in the same message, chosen as
+N473 says.
+4. **Signed (Never 4):** "{Name} isn't free to practise right now." Not
+chosen: "{Name} is practising with someone else now." for both cases,
+untrue after a Not now.
+No rules page yet: the matching gets its rules page when it is built
+(N332). No migration.
+
+**N475 · A buddy match is a link, delivered as a bubble, to one person
+(founder, the Claude Code chat, 4 November 2026, on the prototype
+<https://claude.ai/artifact/FtJL4G1VGm1MTNMKWujZ6W>: "if someone is
+actually matched with someone based on their acoustic criteria and behavior
+profile, what essentially happens is that the link is being sent to them,
+but in the form of a bubble. And if they say, yes, confirm, they join your
+community. And you simply appear. In the list of chats ... there should be
+no option to send to everyone ... There's only direct link. So please
+adjust the prototype.").** For N308, N328, N335, N473 and N474:
+1. **The first person's yes sends their link** to the one Will suggested,
+as a bubble in that person's chat with Will: the link's card ("A chat with
+{name}"), under Will's reason, with "Not now" and "Join". Was (N473 item 3):
+Will asked the second person "Practise with {name}?".
+2. **Join does what opening the link does** (N308, N335): they join the
+first person's community, and each appears in the other's list of chats.
+The one who joined reads "You joined through {name}'s link. Only the two of
+you are in this chat." The intimacy rule holds: the bubble is the link
+(N328).
+3. **To one person only.** A link, and a match, go to one person. There is
+no audience of everyone on WillpowerLab; within your own list, "Select all"
+stays (N470).
+4. **The same mechanism later** for matching by voice and behaviour (N463):
+whatever chooses the person, what reaches them is the link as a bubble.
+5. **No new words:** "A chat with {name}", "Join" and the joined line are
+the join link's, signed (N307, N310, N335); "Not now" is N465's.
+No rules page yet: the matching gets its rules page when it is built
+(N332). No migration.
+
+**N476 · Who a Take goes to: chosen before the Take, and asked once more
+after it when someone new fits (founder, the Claude Code chat, 4 November
+2026, on a screenshot of the page that picks who a Take goes to: "if it's
+before the take, it's hardly possible to define a good suggestion because
+we don't know yet what this can be about"; "the ones to send to recommended
+would be distinguished somehow in the list of people you know"; then "say
+we would keep it, we could keep the selection before the take, but after
+the take, when we detect something or someone that could be a good match
+for this question, we ask it again, like the same page it was, the
+selection page, and add a small new user and bubble something like, look,
+this person might actually fit your learning profile and you could benefit
+from sharing knowledge together. Send that to them too").** For N332,
+N461 item 1, N473 and N475; drawn on the prototype
+<https://claude.ai/artifact/FtJL4G1VGm1MTNMKWujZ6W> ("Sending a Take").
+1. **Before the Take, the page stays,** as N470 draws and locks it: the
+people in your list, "Select all" ticked by default, and no audience of
+everyone on WillpowerLab; asked once, at "Record Take 2" (N479 item 5).
+2. **After the Take, the same page once more,** only when Will, reading what
+the Take is about, finds someone who fits it and is not in the speaker's
+chats yet: that person on top, with Will's reason; the people already
+picked shown as "Sent". It comes after the walk, never between a Take and
+its Ideal Text (Never 3). Closing it changes nothing.
+3. **"Send" to the new person** delivers the speaker's link as a bubble in
+their chat with Will (N475), and the Take once they join. A "Not now" is
+never told; the Take still went to the people picked before.
+4. **Open, for the founder's OK (Never 4):** the two lines above the new
+person, drafted on the prototype ("{Name} isn't in your chats yet, but
+might fit what you're learning." and "You could both gain from sharing what
+you know. Send it to {name} too?"), and the page's own lines, which are not
+signed yet. Proposed: someone new comes from the speaker's teams and
+communities (N473 item 2).
+No rules page yet: the matching gets its rules page when it is built
+(N332). No migration.
+
+**N477 · People are matched in one place only: the page after a Take
+(founder, the Claude Code chat, 4 November 2026: "I think that the
+matching between the users should be happening only in the selection
+process after the take. That's the best place, literally. No other place.
+Could you prototype it just that way and remove anything else?"; then, on a
+screenshot of that page, "smth like this we are already building it on the
+other chat").** For N463, N473 to N476; drawn on the prototype
+<https://claude.ai/artifact/FtJL4G1VGm1MTNMKWujZ6W>:
+1. **Matching between people runs only when the page that picks who a Take
+goes to comes back after the Take** (N476 item 2), when someone new fits
+it. Nowhere else: no buddy offer after a walk, no suggestion before a Take,
+and no matched link to join a team (the prototype "Specialist Side",
+tab 2, retired before it was built).
+2. **The page and its words are the other chat's,** being built there ("Someone
+new might be a good match for this Take.", the card with "Not in your
+chats yet"); they are logged and signed there. The two lines drafted in
+N476 item 4 are withdrawn.
+3. **The experiment of N463 runs there:** its arm decides who is suggested;
+a style changes only that, for people who opted in. Measured: whether the
+speaker sends it to the one suggested, whether they join and answer,
+whether the two are still talking at day 14; Takes per person is the
+guardrail.
+4. **Retired before they were built:** Will's buddy offer after a walk, its
+order and timing (N473 items 3 and 4), the withdrawn-suggestion line (N474),
+and the first person's buddy yes (N475 item 1); their words stay signed,
+unused. **Still in force:** who can be suggested (N473 items 1 and 2), the
+link as a bubble for someone new and Join (N475 items 2 to 5), one person
+per link and nothing to everyone.
+5. **Not matching:** Will choosing who answers a question that comes through
+an ask link (N313, N316, N332) is routing, and stays.
+No rules page yet: the matching gets its rules page when it is built
+(N332). No migration.
+
+**N478 · The suggested person answers first; names only after the answer
+(founder, the Claude Code chat, 4 November 2026, on the prototype
+<https://claude.ai/artifact/FtJL4G1VGm1MTNMKWujZ6W> and a screenshot of
+"Amira sent you a Take": "it should be like Amira might benefit from your
+knowledge immensely; and add a bubble what her question is about more less
+and ones yo go through it you cna open it and record an answer and when you
+send it; that only then appears in the chat with Amira; so for her it is to
+click it to share with you - to initiate the match; for you it is to answer
+and record and send from Will to her and then when you send it; she appears
+in your chat and you conitnue with her on that chat and then you appear on
+her chat only too; if she is left witout the answer it is left like that; I
+would also let them be anonymous at the suggestion level; no names just
+pseudo and the dsrciption of her").** For N461 item 3, N470 item 7, N475
+and N477; refines N470 item 7 (and the prototype "Specialist Side", tab 3)
+and, for the one suggested, N479 item 8 (the name waits for the answer):
+delivered through Will's chat, not a direct chat opened at Send; anonymous
+both ways at the suggestion; the chats open only with the answer:
+1. **The sender initiates:** on the page after the Take (N477) they tick the
+suggested person and send.
+2. **The suggested person gets it in their chat with Will:** "{Pseudonym}
+might benefit from your knowledge immensely.", the sender's pseudonym with a
+short description, a line on what the question is about, and "Open Take".
+3. **The answer is the yes:** they open the Take, record an answer (the
+signed "Record an answer", "Stop", "Sending to {name}… {n}", "Undo") and it
+is sent. Only then does each appear in the other's chats, and they go on
+there. No answer: it stays as it is, and nobody is told.
+4. **Anonymous at the suggestion:** both sides see a pseudonym and a
+description, never a name, until the answer is sent; the pseudonym is the
+app's own kind ("Playful Octopus", as the blind coach queue makes them),
+as N461 item 3 does for a stranger. Proposed: real names once the answer
+is sent.
+5. **Replaces, for this, N475 items 1 and 2** (the link card with "Join"):
+there is no Join; answering does what joining did.
+6. **Open (Never 4):** "{Pseudonym} might benefit from your knowledge
+immensely." (the founder's words) and the line on what the question is
+about ("It's about {…}.", a draft), on the prototype.
+No rules page yet: the matching gets its rules page when it is built
+(N332). No migration.
+
 **N479 · Building N470: Continue is sending, the crowd stops for new Takes,
 add people after, no passcode (founder, the Claude
 Code chat, 4 November 2026, asked four questions after the inventory of
