@@ -11552,6 +11552,11 @@ and `copy/privacy-3.11.txt`, and are published as `phase1-{date}-3.11` by
 `PUBLISH-3.11-{date}.sql`, the founder's step, after 3.10. Nothing is
 deleted; every speaker accepts 3.11 once, on the update prompt.
 No migration. No rules page: the legal pack.
+- **Published** (founder, 4 November 2026, 12:06:34 UTC):
+`PUBLISH-3.11-2026-11-04.sql` run in Supabase. `phase1-2026-11-04-3.11` is in
+force with the approved bytes, the five purposes and the United States;
+training-only-v4 unchanged. Invite-only went live first (backend release with
+#1710, frontend release with #1233).
 
 **N473 · Learning buddies by topic: who, how a match opens, and when
 (founder, the Claude Code chat, 4 November 2026, on the prototype
