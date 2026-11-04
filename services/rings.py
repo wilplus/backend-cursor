@@ -82,10 +82,15 @@ FIRST_TAKE = "first_take"
 #: services/verbal_read.py). No row until the founder makes one at ring 6;
 #: until then it is off for everyone.
 WALK_INNER_CONTEXT = "walk_inner_context"
+#: Matching people after a Take (founder 2026-11-04, N477, N478;
+#: services/take_match.py): the page after the Take comes back with one
+#: person new to the speaker who fits it. No row until the founder makes one
+#: in the panel; until then it is off for everyone, the founder included.
+TAKE_MATCH = "take_match"
 GATED_FEATURES: tuple[str, ...] = (
     CANONICAL_TAKE_ROWS, CONFIDENCE_LEARNING_WRITES, EXERCISE_SERVICE,
     EXERCISE_SERVICE_UI, COACH_INLINE_AUTHORING, CONFIDENT_MOMENT_BUNDLES,
-    ROOTING_COVERAGE, TEMPO_STEP, PLAN_CALLS, WALK_INNER_CONTEXT,
+    ROOTING_COVERAGE, TEMPO_STEP, PLAN_CALLS, WALK_INNER_CONTEXT, TAKE_MATCH,
 )
 
 CONSENT_PURPOSES: tuple[str, ...] = (
