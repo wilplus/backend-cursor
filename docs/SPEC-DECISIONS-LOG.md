@@ -12372,3 +12372,22 @@ signed: "Your deadline: {date}", "Copy my link", "✓ Copied", "Change it",
 No migration in this entry. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when N487 is built.
+
+**N499 · Until the profile card is built, the setup of N487 comes when a
+person first shares their link (founder, the Claude Code chat, 4 November
+2026, asked where someone who shares sets the questions while the profile
+card, "Here's how others will see you" (N453 item 2), is not built: "When
+they share their link (Recommended)").** For N487 items 1 to 3:
+1. **When:** the first time a person opens "Add someone to chat with", Will
+asks N487's setup in his chat, one question at a time, before they copy
+their link. Was (N487 item 1): after "To share what I know" or "Both", once
+the profile is right; that stays the place once the profile card is built.
+2. **Later:** "Your questions for people who join ›" opens the summary
+again, with "Change it" and "That's right" (N487 item 3).
+3. **Until then, everyone who shares a link is asked,** since "To share
+what I know" is not built either; someone who sets no questions ("No
+deadline", No, "That's all") gives their joiners the line at the top only
+(N496 item 2).
+No new words. No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when N487 is built.
