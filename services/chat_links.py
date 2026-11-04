@@ -199,6 +199,9 @@ def join(database: Any, user_id: Any, token: Any, token_payload: Any) -> dict:
         _table(database, THREADS).delete().eq("id", thread).execute()
         raise
     membership.admitted(user_id)
+    # The questions the link's owner set for whoever joins (N487).
+    from services import join_questions
+    join_questions.begin(database, thread, owner, user_id)
     return {"chat": {"id": thread}}
 
 
@@ -215,3 +218,22 @@ def joined_through(database: Any, user_id: str, thread_id: Any) -> Optional[str]
     if not links or str(links[0]["user_id"]) == str(user_id):
         return None
     return str(links[0]["display_name"])
+
+
+def joined_by(database: Any, user_id: str, thread_id: Any) -> Optional[str]:
+    """For the link's owner: the first name of whoever joined this chat
+    through their link, or None, for the line "{name} joined through your
+    link." (N498 item 5)."""
+    thread = _uuid(thread_id)
+    rows = _rows(_table(database, THREADS).select("link_id").eq("id", thread).limit(1)) if thread else []
+    link_id = rows[0].get("link_id") if rows else None
+    if not link_id:
+        return None
+    links = _rows(_table(database, LINKS).select("user_id").eq("id", str(link_id)).limit(1))
+    if not links or str(links[0]["user_id"]) != str(user_id):
+        return None
+    other = next((m for m in _rows(_table(database, MEMBERS).select("user_id,display_name")
+                                   .eq("thread_id", thread))
+                  if str(m.get("user_id")) != str(user_id)), None)
+    name = str((other or {}).get("display_name") or "").strip()
+    return name.split()[0] if name else None
