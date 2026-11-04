@@ -12151,3 +12151,17 @@ need a migration, with its outside review, when built.
 Not in force until built and merged. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built.
+
+**N488 · The joined line stays on the row until the first message (founder,
+the Claude Code chat, 4 November 2026: "yes keep the line until the
+first message").** For N335 item 2, N357 and N360: in the list of chats,
+the row of a chat the person joined through someone's link keeps "You
+joined through {name}'s link. Only the two of you are in this chat." as
+its line until the chat has its first message, from either of them; opening
+the chat no longer leaves the row blank. Only the one who joined sees it;
+the link's owner's row is unchanged. No new words (Never 4): the line is
+N335 item 2's, signed. The list of chats carries, per chat, whose link the
+caller joined through (`services/chats.py` `list_chats`), as the chat's
+messages already do. No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1.
