@@ -31,7 +31,9 @@ range (``Config.AI_VOICE_PACE_*``, ``AI_VOICE_PAUSE_*``,
 ``AI_VOICE_STRESS_GAP_DB``) are configuration, read at each pick. An
 exercise that didn't help this speaker twice running is held back, and a
 small share of picks takes the runner-up, so the stored cycles can later
-tell which exercise helps. Both are deterministic from the practice id. Internal only (AC-9): no number
+tell which exercise helps. Both are deterministic from the practice id, and
+both touch only a Clearer version's example: the walk's AI clip, its one fix,
+teaches the strongest problem (N425 item 3). Internal only (AC-9): no number
 leaves the server.
 """
 from __future__ import annotations
@@ -226,15 +228,20 @@ def target_phrase(sentence: str, max_words: int = 4) -> Optional[str]:
 
 def select(snippet: dict, medians: dict, *, sentence: str, seed: str,
            history: Iterable[dict] = (), prefer: Optional[str] = None,
-           explore: bool = True, allow_default: bool = True) -> Optional[dict]:
+           explore: bool = True, allow_default: bool = True,
+           hold_back: bool = True) -> Optional[dict]:
     """The one exercise for this clip. With every signal weak, the default
     (stress on the main point); None only when the sentence has no main
     point apart from itself.
 
     ``explore`` False: always the strongest problem, never the runner-up;
     ``allow_default`` False: None when no problem reaches the line, never
-    the default. The One thing walk's AI clip, its one fix, asks both (founder
-    2026-11-03, N425 B and C): it teaches what the clip shows, or is not made.
+    the default; ``hold_back`` False: the problems ranked by their own
+    severity, a problem the speaker has not improved on held back from
+    nothing (it is still recorded, ``held_back``, for learning). The One
+    thing walk's AI clip, its one fix, asks all three (founder 2026-11-03,
+    N425 items 3, B and C): it teaches the strongest problem the clip shows,
+    or is not made.
 
     ``prefer``: the problem this week's level practises, on a plan (G7,
     N209; ``services.plan_walk.AI_PROBLEM``). It is the exercise whenever
@@ -249,7 +256,7 @@ def select(snippet: dict, medians: dict, *, sentence: str, seed: str,
                               explored=False, default=False, sentence=sentence)
     ranked = sorted(
         PROBLEMS,
-        key=lambda p: -(scores[p] * (HELD_BACK_FACTOR if p in held else 1.0)))
+        key=lambda p: -(scores[p] * (HELD_BACK_FACTOR if hold_back and p in held else 1.0)))
     floor = float(Config.AI_VOICE_MIN_SEVERITY)
     eligible = [p for p in ranked if scores[p] >= floor]
     if not eligible:

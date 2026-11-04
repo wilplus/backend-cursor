@@ -221,8 +221,10 @@ def root_part(database, *, arc_id: str, user_id: str, part_id: str,
             end=picked.get("end")):
         raise Refusal("V2_ERROR", "Could not save the rooting phrase", 500)
     take_id = latest_spoken_take_sid(sessions)
+    # A pick on a locked paragraph is locked as it lands: the walk locks
+    # first and saves the words after, and no lock follows.
     record_pick(database, arc_id, user_id, str(part_id), take_id,
-                picked.get("text"))
+                picked.get("text"), locked=bool(target.get("locked")))
     _record_root_decision(database, arc_id=arc_id, user_id=user_id,
                           part_id=part_id, valid=valid, take_id=take_id)
     return {

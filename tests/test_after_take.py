@@ -36,6 +36,9 @@ OUTCOME
       second Take is done, one per Take, at most twice, opened with "It
       seems you enjoy using WillpowerLab."; never once my number is saved.
       The home-screen ask is never made (N391).
+  O8  The first Take's goodbye says it is the first Take's, so "Record
+      Take 2" comes at once under it on any device (N449 item 2); a later
+      Take's does not.
 PROVES   O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
          O2 -> test_from_take_two_one_ask_ceo_ask_will_the_question
          O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_goodbye
@@ -43,6 +46,7 @@ PROVES   O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
          O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
          O6 -> test_the_plans_lines_wait_for_the_ask_then_the_goodbye_and_the_progress
          O7 -> test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar
+         O8 -> test_the_first_takes_goodbye_says_so_on_any_device
 WHY      Founder 2026-10-20: "one action at a time"; 2026-10-31 (N294): "No
          call to action means that there is no push", "the next time you
          come and open the app ask the settings questions".
@@ -222,6 +226,20 @@ def test_the_plans_lines_wait_for_the_ask_then_the_goodbye_and_the_progress(monk
 
     feedback_check.answer(db, user_id="u", arc_id="arc", take_session_id="take-1", choice="yes")
     assert db.drawn()[-3:] == [fifteen, "Good job. See you Wednesday.", done]
+
+
+def test_the_first_takes_goodbye_says_so_on_any_device(monkeypatch):
+    monkeypatch.setattr("services.plan_flow.after_take", lambda db, u: [])
+    monkeypatch.setattr("services.plan_flow.next_day_text", lambda db, u: None)
+    monkeypatch.setattr("services.plan_flow.progress", lambda db, u: [])
+    for take, first in (("take-1", True), ("take-2", None)):
+        db = _Db()
+        # The plan's facts keep the first Take's session once its walk is read.
+        db.get_open_plan = lambda _u: {"status": "active", "facts": {"first_take_session": "take-1"}}
+        _waiting(db, take, ["feedback_check"])
+        rows = feedback_check.answer(db, user_id="u", arc_id="arc", take_session_id=take, choice="yes")
+        assert rows[-1]["body"] == after_take.SEE_YOU
+        assert rows[-1]["metadata"].get("first_take") is first
 
 
 def test_an_older_waiting_message_shows_where_it_stands():

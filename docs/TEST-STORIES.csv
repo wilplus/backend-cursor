@@ -301,13 +301,17 @@ O7  The WhatsApp ask waits for the next visit and comes in the bar at the
 top, never in the chat (N294 item 8, N295, N391): never before my
 second Take is done, one per Take, at most twice, opened with ""It
 seems you enjoy using WillpowerLab.""; never once my number is saved.
-The home-screen ask is never made (N391).","O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
+The home-screen ask is never made (N391).
+O8  The first Take's goodbye says it is the first Take's, so ""Record
+Take 2"" comes at once under it on any device (N449 item 2); a later
+Take's does not.","O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
 O2 -> test_from_take_two_one_ask_ceo_ask_will_the_question
 O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_goodbye
 O4 -> test_an_older_waiting_message_shows_where_it_stands
 O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
 O6 -> test_the_plans_lines_wait_for_the_ask_then_the_goodbye_and_the_progress
-O7 -> test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar","Founder 2026-10-20: ""one action at a time""; 2026-10-31 (N294): ""No call to action means that there is no push"", ""the next time you come and open the app ask the settings questions""."
+O7 -> test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar
+O8 -> test_the_first_takes_goodbye_says_so_on_any_device","Founder 2026-10-20: ""one action at a time""; 2026-10-31 (N294): ""No call to action means that there is no push"", ""the next time you come and open the app ask the settings questions""."
 tests/test_ai_voice.py,Story,"As a speaker practising, I want an AI clip of my own voice saying my own words with one improvement, never shown if it fails its check, and fully deleted when I ask, so that I hear a believable better version and keep control of my voice.","O1  One problem is picked against my own usual (or the default), and the
 sentence under the clip names it in words, with no numbers. As the
 walk's one fix on a moment, the clip teaches the strongest problem my
@@ -2738,10 +2742,14 @@ Paragraph now.
 O4  After a Clearer version the walk's helper words come on their own
 (N309): the sentence the practice was opened on goes to the slide,
 with or without a try, whole, past eight words too (N323 item 2);
-words not in it are refused.","O1 -> test_stale_or_invalid_live_root_fails_closed
+words not in it are refused.
+O5  The walk locks the paragraph first and saves the words after: those
+words show on the recording screen and the page, and a pick on the
+same paragraph in the next Take replaces them.","O1 -> test_stale_or_invalid_live_root_fails_closed
 O2 -> test_recording_roots_route_returns_the_live_root
 O3 -> test_helper_words_from_an_earlier_take_stay_on_their_slide
-O4 -> test_the_clearer_versions_sentence_becomes_my_helper_words","Never-rule 5; founder 2026-10-13, project ""S""; founder 2026-10-31 (N309 item 3, ""the helper words come on their own"")."
+O4 -> test_the_clearer_versions_sentence_becomes_my_helper_words
+O5 -> test_the_walks_helper_words_show_on_the_next_take","Never-rule 5; founder 2026-10-13, project ""S""; founder 2026-10-31 (N309 item 3, ""the helper words come on their own"")."
 tests/test_remaining_route_contracts.py,Story,"As a developer moving logic out of routes, I want each route's main success and main refusal pinned, so that the move never changes what speakers and admins see.","O1  Chat answers, saves the turn and charges it; the help answer covers
 the rest; a blank question is refused.
 O2  A transcript edit lands on the right snippet or chunk; bad edits are
@@ -3235,7 +3243,9 @@ Take stays inside the green on the side the stretch leaned, the bar
 that picks a stretch: the Takes table marks it gone and the walk opens
 with it as the last fix; slower but still outside the green, it came
 back and nothing is said (N347 item 3, N350 item 3). Where it worked,
-the walk offers no tempo step on that slide again (N359).","O1 -> test_progress_is_read_against_my_first_takes
+the walk offers no tempo step on that slide again (N359). A slow
+stretch off a pace or pause week was never the Sniper, so it is no
+fix the walk gave (N323 item 6).","O1 -> test_progress_is_read_against_my_first_takes
 O2 -> test_each_fix_is_marked_came_back_or_gone_on_the_next_take
 O3 -> test_last_time_plays_the_fix_that_rose_on_this_take
 O4 -> test_the_pace_fix_worked_when_that_slide_stays_inside_the_green","Founder 2026-10-31 (N291: ""yes""; ""ok go with the proposal""; N290: ""the next time it chooses a moment it should take into account what the user answered""; N309 item 1: ""Last time: {the tip}. You did.""; N347 item 3: ""Every fix gets its Last time, the pace game too""; N350 item 3: one rule for ""the pace fix worked""; N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back"")."
@@ -3314,12 +3324,16 @@ C2  a Take with long pauses no longer picks that clip as slow
 C3  a Take in the green picking a stretch anyway, so the step shows for nothing
 C4  a topic with a number, a quote or a whole sentence reaching the speaker
 C5  a failed topic call losing the step, instead of saying ""that part""
-C6  a played tempo game no longer kept for Will, or kept with a number in his note
+C6  a played tempo game no longer kept for Will, or kept with a number in his note,
+or a game skipped after a try kept as played out
 C7  a broken or partial game kept as if it were whole
 C8  the tempo step reaching a speaker the rings panel has not switched on
 C9  the stretch losing its player (the speaker's orange clip, N166, locked
 prototype X4gDmGfHH7ivuoRZ9ufiy9), playing another clip, serving a
-cached signature, or a failed signing losing the step","C1 -> test_a_clip_spoken_without_a_pause_is_rushed
+cached signature, or a failed signing losing the step
+C10 the One thing walk's stretch waiting on a topic it never says (N435
+item 6, N452 item 2), its words carrying an ""um"" or a repeat the
+Ideal Text never shows (H3), or losing its slide","C1 -> test_a_clip_spoken_without_a_pause_is_rushed
 C2 -> test_a_clip_with_long_pauses_is_slow
 C3 -> test_a_take_in_the_green_has_no_stretch
 C4 -> test_only_a_short_plain_topic_is_kept
@@ -3327,7 +3341,8 @@ C5 -> test_a_failed_topic_still_gives_the_step
 C6 -> test_a_played_game_is_kept_for_will_in_words
 C7 -> test_a_partial_game_is_not_kept
 C8 -> test_only_the_founder_and_the_ring_have_the_step
-C9 -> test_the_stretch_plays_as_the_speakers_clip","If removed: the tempo step could practise the wrong stretch, or put a number or a made-up sentence on screen (Never 1, Never 4)."
+C9 -> test_the_stretch_plays_as_the_speakers_clip
+C10 -> test_the_one_thing_walks_stretch_comes_without_a_topic_call_in_the_ideal_texts_words","If removed: the tempo step could practise the wrong stretch, or put a number or a made-up sentence on screen (Never 1, Never 4)."
 tests/test_tests_never_touch_a_real_database.py,Guard,The test suite refuses to start against a real Supabase project.,"C1  a `pytest` run in an environment that carries a production SUPABASE_URL
 (founder 2026-10-20: fixture values ""arc-9"", ""owner-1"" reached the live
 database this way) -- it stops before any test module imports.
@@ -3623,8 +3638,9 @@ O2 -> test_a_dead_signer_falls_through_to_supabase_not_to_a_bare_key",DPIA RISK-
 tests/test_user_sessions_route_contracts.py,Story,"As a speaker, I want my suggestion answers and Confident Voice practice (start, attempt, complete) to work and refuse bad input, so that practice never loses my recording.","O1  A suggestion answer is saved (200 {""saved"": true}); a bad target is 400
 and someone else's Take is 404 with nothing written.
 O2  Starting practice on a moment creates it for me (201); an existing one
-is resumed (200) without a second row; a bad or premature answer is
-refused (400, 409).
+is resumed (200) without a second row, on the other sentence I asked
+for while it has no try; a bad or premature answer is refused (400,
+409).
 O3  An attempt is stored and recorded (201) with no automatic outcome; a
 closed practice is 409 and a passage mismatch is 422 with nothing
 stored.
@@ -3634,6 +3650,7 @@ kept.","O1 -> SuggestionFeedbackContract.test_a_dismissed_star_is_saved
 -> SuggestionFeedbackContract.test_refusals
 O2 -> PracticeStartContract.test_a_moment_practice_is_created
 -> PracticeStartContract.test_refusals_and_the_resume
+-> PracticeStartContract.test_the_other_sentence_moves_an_untried_practice
 O3 -> PracticeAttemptContract.test_an_attempt_is_recorded
 -> PracticeAttemptContract.test_refusals
 O4 -> PracticeCompleteContract.test_a_kept_attempt_completes_the_practice
@@ -3852,7 +3869,7 @@ tests/test_will_question.py,Story,"As a speaker, after a Take I want Will to ask
 holds: a breather when the practice missed or the voice dipped two
 Takes in a row; ""On purpose?"" when the clearer line I practised last
 Take did not come back; who the talk is for; what I want them to do;
-from Take 3, with both known, one deeper question. Nothing missing, no
+from Take 3, with all three known, one deeper question. Nothing missing, no
 question; each of these once per talk, a breather never twice in a row.
 O2  The tap answers come from what Will heard, the recording first: a
 Take that names its audience twice is checked (""Right?""); named
@@ -3883,7 +3900,8 @@ worked on “…”. ""; ""On purpose?"" quotes its own line and nothing more;
 with no moment the question is as signed.
 O9  One at a time (N294 item 4): when both who the talk is for and what I
 want them to do are missing, what I want them to do follows my answer
-to who, from what Will heard first; a Skip ends them.
+to who, from what Will heard first; a Skip ends them, and a ""#"" note
+under the question is no answer: the next question does not follow it.
 O10 The key line is asked last, by voice (N294 item 2): once who the talk
 is for and what I want them to do are known and my key line is
 missing, Will asks the plan's signed question with who in it, opened

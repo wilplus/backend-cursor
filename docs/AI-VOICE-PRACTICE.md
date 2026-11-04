@@ -108,12 +108,15 @@ One thing walk gives the AI clip only to a moment whose own clip shows a
 problem at the minimum, the strongest of them (`moment_pick._weakest` reads
 each clip's severities against the Take's own usual, the same
 `ai_voice_severity.severities`). Its clip (`ai_voice_clip._choose`, a
-practice that is not a clearer version's, off a plan) asks `select` with
-`explore=False` and `allow_default=False`: it teaches that strongest
-problem, never the runner-up, and with nothing measured no clip is made
-(the cycle is `skipped`, `no_exercise`). On a plan the week's level still
-picks (G7). Exploring (`AI_VOICE_EXPLORE_SHARE`) now only touches a clearer
-version's example.
+practice that is not a clearer version's, on a plan too) asks `select` with
+`explore=False`, `allow_default=False` and `hold_back=False`: it teaches
+that strongest problem by its own severity, never the runner-up, and with
+nothing measured no clip is made (the cycle is `skipped`, `no_exercise`).
+A problem the speaker has not improved on twice is still recorded
+(`held_back`), but no longer gives way. On a plan the week's level's
+problem still wins where the clip shows it (G7); where it does not, the
+clip is chosen as off a plan. Exploring (`AI_VOICE_EXPLORE_SHARE`) and the
+hold-back now only touch a clearer version's example.
 
 ## What Eleven v4 can and cannot do
 

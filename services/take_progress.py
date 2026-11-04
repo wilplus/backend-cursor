@@ -16,9 +16,12 @@ new speakers, comes later.
 
 DID THE FIX WORK (N291 item 1). A fix worked when the same issue does not
 come back on the next Take of the same talk, on the same slide. The fixes a
-Take gave are read from its stored frame (the blocks the picker marked
-``weakest`` or ``between``, N289), and its tempo stretch
-(``tempo_stretch.pick``). On the next Take's clips of that slide:
+Take gave are read from its stored frame by the walk's own rule
+(``walk_gave``, C2, N309 item 1): the One thing walk's one fix as the frame
+records it (``one_fix``: the pace game's tempo stretch, ``tempo_stretch.pick``,
+or the blocks the picker marked ``weakest`` or ``between``, N289), the same
+for the Takes table, Last time and what worked. On the next Take's clips of
+that slide:
 
   voice    came back when the slide's best heard clip is still under the floor
   clearer  came back when a clip of the slide still has words that need help
@@ -177,7 +180,8 @@ def fix_outcomes(database: Any, take_id: Any, next_take_id: Optional[Any]) -> li
         frame = database.get_v4_dark_frame(str(take_id))
         if not isinstance(frame, dict):
             return []
-        fixes = fixes_of(frame, database.get_snippets_by_session(str(take_id)) or [])
+        fixes = walk_gave(database, take_id, frame,
+                          database.get_snippets_by_session(str(take_id)) or [])
         if not fixes:
             return []
         next_frame = database.get_v4_dark_frame(str(next_take_id)) if next_take_id else None
@@ -207,9 +211,67 @@ def previous_take(sessions: Any, take_id: Any) -> Optional[str]:
     return str(done[-1]["id"]) if done else None
 
 
+#: The One thing walk's one fix as its frame records it, on the strongest
+#: block (`take_feedback_policy_v3._one_thing`, C-SNIPER).
+_ONE_FIX = ("tempo", "moment", "none")
+
+
+def walk_gave(database: Any, take_id: Any, frame: Any,
+              snippets: Optional[list[dict]] = None) -> list[dict]:
+    """The fixes a Take's walk gave, by the walk's own rule (C2, N309 item
+    1, N323 item 6), for the Takes table, Last time and what worked alike:
+
+    the frame's ``one_fix``, when it records one: "tempo" the pace game's
+    stretch (``_stretch``), "moment" the moments' fixes (``fixes_of``),
+    "none" nothing;
+    a frame with walk slots but no ``one_fix`` (baked before it was kept):
+    the moments' fixes, else the stretch only when it would have been the
+    Sniper, rushed or on a pace or pause week (``_tempo_week``); a slow
+    stretch off a week left the fix a moment;
+    a frame from before N289, with no walk slot: the moments' and the
+    stretch, as the tempo step then came on any Take with a stretch.
+
+    ``snippets``: the Take's clips; when None, read only if the stretch is
+    needed. Raises on a database failure; the callers catch."""
+    blocks = [b for b in (frame or {}).get("blocks") or [] if isinstance(b, dict)]
+
+    def clips() -> list[dict]:
+        if snippets is not None:
+            return snippets
+        return database.get_snippets_by_session(str(take_id)) or []
+
+    if not any("walk_slot" in block for block in blocks):
+        return fixes_of(frame, clips())
+    chosen = next((b["one_fix"] for b in blocks if b.get("one_fix") in _ONE_FIX), None)
+    moments = fixes_of(frame, [])
+    if chosen == "moment" or (chosen is None and moments):
+        return moments
+    if chosen == "none":
+        return []
+    stretch = _stretch(frame, clips())
+    if stretch is None:
+        return []
+    if chosen == "tempo" or stretch["reading"] == "rushed" or _tempo_week(database, take_id):
+        return [stretch]
+    return []
+
+
+def _tempo_week(database: Any, take_id: Any) -> bool:
+    """Whether the Take was recorded on a pace or pause week
+    (``plan_walk.TEMPO_LEVELS``), where any stretch is the Sniper (N309
+    item 1). False on any failure."""
+    from services import plan_walk
+    try:
+        take = database.v2_get_session_by_id(str(take_id)) or {}
+    except Exception as error:  # noqa: BLE001 -- no level read: off a week
+        logger.warning("take progress: take unread take=%s: %s", take_id, error)
+        return False
+    return plan_walk.level_for_take(database, take.get("user_id"), take) in plan_walk.TEMPO_LEVELS
+
+
 def walk_fixes(database: Any, previous_take_id: Optional[Any]) -> list[dict]:
-    """The fixes a Take's walk gave: its moments' (``fixes_of``), else, with
-    no moment fixed, the pace game's (``_stretch``, N347 item 3). [] when
+    """The fixes a Take's walk gave (``walk_gave``): its one fix, the pace
+    game's only when it was the Sniper (N347 item 3, N323 item 6). [] when
     there is no such Take, it gave no fix or cannot be read. Never
     raises."""
     if not previous_take_id:
@@ -218,11 +280,7 @@ def walk_fixes(database: Any, previous_take_id: Optional[Any]) -> list[dict]:
         before = database.get_v4_dark_frame(str(previous_take_id))
         if not isinstance(before, dict):
             return []
-        moments = fixes_of(before, [])
-        if moments:
-            return moments
-        stretch = _stretch(before, database.get_snippets_by_session(str(previous_take_id)) or [])
-        return [stretch] if stretch else []
+        return walk_gave(database, previous_take_id, before)
     except Exception as error:  # noqa: BLE001 -- the walk picks as without it
         logger.warning("take progress: walk unread take=%s: %s", previous_take_id, error)
         return []
