@@ -223,15 +223,22 @@ def _held(row: dict) -> bool:
         return False
 
 
-def _last(database: Any, thread_id: str, unheard: Any = None) -> Optional[dict]:
+def _last(database: Any, thread_id: str, unheard: Any = None, me: str = "") -> Optional[dict]:
     """The chat's newest message the caller gets: not an answer still held,
-    nor one from the person they blocked, sent while blocked (N466)."""
+    nor one from the person they blocked, sent while blocked (N466). With
+    ``mine`` (the caller sent it), and for a sent Take its number only
+    (``meta.take_index``), for the list's "{name} sent you Take {n}"
+    (N470); never its Take's id."""
     rows = _rows(_table(database, MESSAGES).select("author_member_id,kind,body,meta,created_at")
                  .eq("thread_id", thread_id).order("created_at", desc=True).limit(20))
     row = next((r for r in rows if not _held(r) and not (unheard and unheard(r))), None)
     if not row:
         return None
-    return {"kind": row["kind"], "body": row["body"], "created_at": row["created_at"]}
+    last = {"kind": row["kind"], "body": row["body"], "created_at": row["created_at"],
+            "mine": bool(me) and str(row.get("author_member_id")) == me}
+    if row["kind"] == "take":
+        last["meta"] = {"take_index": (row.get("meta") or {}).get("take_index")}
+    return last
 
 
 def list_chats(database: Any, user_id: Any) -> dict:
@@ -254,7 +261,7 @@ def list_chats(database: Any, user_id: Any) -> dict:
     for t in threads:
         other = others.get(str(t["id"])) or {}
         me = mine[str(t["id"])]
-        last = _last(database, str(t["id"]), chat_safety.unheard(me, spans.get(me, [])))
+        last = _last(database, str(t["id"]), chat_safety.unheard(me, spans.get(me, [])), me)
         chats.append(((last or t)["created_at"] or "", {
             "id": str(t["id"]), "kind": t["kind"],
             "title": other.get("display_name") or t["title"],

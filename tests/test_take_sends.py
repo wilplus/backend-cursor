@@ -21,8 +21,9 @@ OUTCOME
   O5  Someone not in the chat cannot open a Take sent in it, not even
       through a chat of their own.
   O6  The person it is sent to sees "{name} sent you Take {n}", plays the
-      Take and reads its words slide by slide, and never gets the Take's
-      id, its Ideal Text, its feedback, moments or levels.
+      Take and reads its words slide by slide (the list's last line says
+      whose it is and its number), and never gets the Take's id, its Ideal
+      Text, its feedback, moments or levels.
 PROVES   O1 -> TakeSendsTest::test_while_sending_is_off_nothing_new_runs
          O2 -> TakeSendsTest::test_the_list_is_real_people_last_sent_first
          O3 -> TakeSendsTest::test_with_no_chat_with_a_person_the_founder_is_listed
@@ -281,6 +282,9 @@ class TakeSendsTest(unittest.TestCase):
         self.assertEqual([(m["mine"], m["author"], m["kind"], m["meta"]) for m in said],
                          [(False, "Artur", "take",
                            {"take_index": 2, "project_title": "Board pitch", "duration_ms": 52000})])
+        self.assertEqual(self._get("/v2/chats").get_json()["chats"][0]["last"],
+                         {"kind": "take", "body": "", "created_at": said[0]["created_at"],
+                          "mine": False, "meta": {"take_index": 2}})
         opened = self._get(f"/v2/chats/{maya}/messages/{sent['message_id']}/take")
         self.assertEqual(opened.status_code, 200)
         self.assertEqual(opened.get_json(), {

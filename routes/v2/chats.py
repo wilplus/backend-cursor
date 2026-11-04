@@ -3,7 +3,8 @@ the voice note, N321 item 2; the photos and files of the "+", N351).
 Service: services/chats.py.
 
   GET  /v2/chats                  {chats: [{id, kind, title, subtitle,
-                                   last: {kind, body, created_at} | null}]}
+                                   last: {kind, body, created_at, mine,
+                                   meta: {take_index} for a sent Take} | null}]}
   GET  /v2/chats/<id>/messages    {messages: [{id, mine, author, kind, body,
                                    meta, created_at}]}, oldest first; a voice
                                    note also with words, an answer with its

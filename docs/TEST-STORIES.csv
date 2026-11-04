@@ -3329,8 +3329,9 @@ read back. Only my own Take, and never an answer.
 O5  Someone not in the chat cannot open a Take sent in it, not even
 through a chat of their own.
 O6  The person it is sent to sees ""{name} sent you Take {n}"", plays the
-Take and reads its words slide by slide, and never gets the Take's
-id, its Ideal Text, its feedback, moments or levels.","O1 -> TakeSendsTest::test_while_sending_is_off_nothing_new_runs
+Take and reads its words slide by slide (the list's last line says
+whose it is and its number), and never gets the Take's id, its Ideal
+Text, its feedback, moments or levels.","O1 -> TakeSendsTest::test_while_sending_is_off_nothing_new_runs
 O2 -> TakeSendsTest::test_the_list_is_real_people_last_sent_first
 O3 -> TakeSendsTest::test_with_no_chat_with_a_person_the_founder_is_listed
 O4 -> TakeSendsTest::test_sending_again_only_adds_people_and_is_kept_on_the_line
