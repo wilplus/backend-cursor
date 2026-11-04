@@ -1645,6 +1645,8 @@ CASCADE_RELATIONS: frozenset[str] = frozenset({
     # A chat's messages: with their chat (chat_demo_threads) or their
     # author's membership (chat_members).
     "chat_messages",
+    # A report in a chat (N466): with either member's row (chat_members).
+    "chat_reports",
 })
 
 # Child relations the lineage tombstone empties through their parent
