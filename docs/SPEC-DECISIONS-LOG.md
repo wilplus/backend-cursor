@@ -12387,6 +12387,31 @@ The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 B5.
 
+**N500 · An emoji from the other person lights up their row like any new
+message, and a new row's line is bold and orange (founder, the Claude Code
+chat, 4 November 2026: on the list of chats, where "🙏 Thanks" from
+signuptesterapple looked already read, "Also show it when an emoji appears,
+like it's a new message. Make it bold and orange"; then, of the mockup's two
+choices <https://claude.ai/artifact/48vaXQoXLsVKGVu8heWFqN>, "B, build
+it").** For N321, N322 and N457:
+1. **An emoji is a new message:** 👍, 👀 or 🙏 from the other person lights
+up their row as their words, a photo, a file or a Take do, until that chat
+is opened. Your own message, an emoji included, never lights up your row.
+2. **The new look, for every new row, Will's included:** the name bold, the
+time orange, the last line bold and orange, the orange dot. Was: the line
+dark, not bold.
+3. **The list reads the chats again** while it is open and each time you
+come back to it, so a message that arrives while you look at the list shows.
+Was: read once, when the list first loaded.
+4. **Locked for the whole app** (founder, the same chat: "and lock it for
+the whole app"): wherever a row in a list carries something new for you,
+it has this look and no other: the name bold, the time orange, the line
+bold and orange, the orange dot, and no number (Never 1). Option B of the
+mockup, version 1, is the prototype, in [`docs/LOCKS.md`](LOCKS.md).
+No new words. No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1.
+
 **N502 · N487's words, signed (founder, the Claude Code chat, 4 November
 2026, on the prototype "Asked When They Join"
 <https://claude.ai/artifact/G8gZ73CvfgkkJ1ztm1cmsb> (version 18), its list

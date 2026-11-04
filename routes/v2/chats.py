@@ -24,6 +24,11 @@ Service: services/chats.py.
                                    "voice", body: "", meta: {duration_ms,
                                    answer: true, take}}}; the other member's
                                    meta has no take
+  POST /v2/chats/<id>/question    the same body: a question recorded with
+                                   "Record your question" (N483 item 4), the
+                                   same message with meta asked, question and
+                                   record_answer true; its Undo is the
+                                   answer's
   GET  /v2/chats/<id>/messages/<message_id>/audio
                                    the recording, for any member of the chat
                                    (an answer's: its Take's own)
@@ -267,6 +272,25 @@ def v2_chats_answer(thread_id):
     return _run("answer", lambda: post_answer(
         db, str(request.user_id), thread_id, body.get("take"), body.get("duration_ms"),
         body.get("hold_ms")))
+
+
+@v2_bp.route("/chats/<thread_id>/question", methods=["POST"])
+@limiter.limit("120 per hour", scope="chats_question")
+@require_auth
+@_a_member_first
+def v2_chats_question(thread_id):
+    """A question recorded with "Record your question" (N483 item 4, N498),
+    sent as an answer is: once its Take is uploaded, held for what is left of
+    its Undo, after the recording consent is asked again. Marked for the
+    other person to answer ("Record your answer")."""
+    refused = _recording_refused()
+    if refused is not None:
+        return refused
+    from services.chats import post_answer
+    body = request.get_json(silent=True) or {}
+    return _run("question", lambda: post_answer(
+        db, str(request.user_id), thread_id, body.get("take"), body.get("duration_ms"),
+        body.get("hold_ms"), asks=True))
 
 
 @v2_bp.route("/chats/<thread_id>/answer/undo", methods=["POST"])

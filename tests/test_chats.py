@@ -63,6 +63,10 @@ OUTCOME
       so in my chat with him, once, naming the other person (N441 item 5).
       Once its time is over Undo is refused and it reaches them; with no
       time left it goes at once. Nobody else can take my answer back.
+  O17 A question I recorded with "Record your question" (N483 item 4) is
+      sent and held as an answer is, and the other person gets it marked
+      for them to answer ("Record your answer"), without its Take; Undo
+      takes it back the same way.
 PROVES   O1 -> ChatsTest::test_as_a_user_I_have_my_chats_without_any_ring,
                ChatsTest::test_as_a_server_I_answer_nobody_who_is_not_signed_in
          O2 -> ChatsTest::test_the_demo_is_made_once_and_listed
@@ -80,10 +84,12 @@ PROVES   O1 -> ChatsTest::test_as_a_user_I_have_my_chats_without_any_ring,
          O14 -> ChatsTest::test_an_answer_carries_its_takes_words_and_slides_once_processed
          O15 -> ChatsTest::test_will_marks_a_question_about_a_product_or_a_treatment
          O16 -> ChatsTest::test_an_answer_waits_its_five_seconds_and_undo_takes_it_back
+         O17 -> ChatsTest::test_my_question_is_sent_as_an_answer_is_and_marked_for_them_to_answer
 WHY      The chats between people, first slice (founder 2026-10-31, N298 to
          N316; the three emoji N311; the mic N321 item 2; its words N324,
          shown under the player N331; the photos and files of the "+" N351;
-         an answer recorded with "Record an answer" N336, N361, N363).
+         an answer recorded with "Record an answer" N336, N361, N363; a
+         question recorded with "Record your question" N483 item 4, N498).
          Every speaker's recording and every provider call goes through the
          processing-authorization path (CLAUDE.md).
 """
@@ -682,6 +688,35 @@ class ChatsTest(unittest.TestCase):
         now = answer(0).get_json()["message"]
         self.assertEqual((seen_by(SOMEONE)[0][-1], pushed[-1], "held_until" in now["meta"]),
                          (now["id"], now["id"], False))
+
+    def test_my_question_is_sent_as_an_answer_is_and_marked_for_them_to_answer(self):
+        chat = self._shared_chat()
+        take = str(uuid.uuid4())
+        self.store.table("recordings").insert(
+            {"session_v2_id": take, "user_id": ME, "duration": 14,
+             "storage_path": "willab_lab/q/recording_1.webm"}).execute()
+        for p in (patch("services.chats._after", lambda _s, _then: None),
+                  patch("services.chats._tell", lambda *_: None),
+                  patch.object(db, "insert_lounge_messages", lambda _user, rows: rows)):
+            p.start()
+            self.addCleanup(p.stop)
+
+        def ask(hold):
+            return self._post(f"/v2/chats/{chat}/question",
+                              {"take": take, "duration_ms": 14000, "hold_ms": hold})
+
+        # Held, then taken back with the answer's Undo: nobody sees it.
+        held = ask(4000).get_json()["message"]
+        self.assertEqual(self._post(f"/v2/chats/{chat}/answer/undo",
+                                    {"message": held["id"]}).get_json(), {"undone": True})
+        # Sent: mine with its Take; theirs marked for them to answer.
+        sent = ask(0).get_json()["message"]
+        marks = {"duration_ms": 14000, "answer": True, "asked": True, "question": True,
+                 "record_answer": True}
+        self.assertEqual(sent["meta"], {**marks, "take": take})
+        self.who = SOMEONE
+        said = self._get(f"/v2/chats/{chat}/messages").get_json()["messages"]
+        self.assertEqual([(m["mine"], m["kind"], m["meta"]) for m in said], [(False, "voice", marks)])
 
     def test_will_marks_a_question_about_a_product_or_a_treatment(self):
         chat = self._shared_chat()
