@@ -10979,3 +10979,29 @@ rules page for the founder.
 No new words. No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 §3 and §6.
+
+**N459 · After the walk no deadline question; the slow Sniper's own tip;
+the AI clip's moment trimmed to fit (founder, the Claude Code chat, 4
+November 2026, answering the open points of N458: "you can delete the
+deadline from here cause it is set during the before the walk set up";
+asked whether a slow Sniper's tip is "keep it moving" or "slow down a
+little", "Keep it moving"; "the moment recognized should be short enough to
+generate it ... in any case the moment is trimmed so that it fits and the
+AI audio can be generated").** For N347, N425, N452, N453, N458:
+1. **No "When is your deadline?" after a Take.** The deadline is set in the
+set-up before the walk; the chain after the walk never asks it. Was: after
+Take 1, with no day heard, it was asked above the goodbye.
+2. **A slow Sniper's Last time:** "Last time: keep “{words}” moving." (with
+"You did." when that stretch came out inside the green on its side). The
+rushed one keeps "give “{words}” more room". Signed (Never 4): "keep
+“{words}” moving".
+3. **The AI clip's moment always fits the clip.** When the moment's
+sentence is too long for the AI clip (17 s at the slow reading), the
+moment is trimmed to the part around what the clip teaches, so the AI
+audio can always be made; the speaker's try and the clip say the same
+trimmed words. Was: a moment of 37 words or more got only the tip in
+words.
+No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C0a, C4, T and §6, and
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
