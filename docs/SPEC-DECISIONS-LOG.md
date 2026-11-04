@@ -11261,3 +11261,25 @@ step), once Block and Report is live in production. It deletes nothing and
 nothing is switched on after it; every speaker accepts 3.10 once, on the
 update prompt.
 No migration. No rules page: the legal pack.
+
+**N469 · The rhythm of a run: bubbles of one side sit close, as on WhatsApp,
+in every chat (founder, the Claude Code chat, 4 November 2026, on a WhatsApp
+screenshot: "When there is a space between the bubbles from the same user,
+please decrease it so it looks like on WhatsApp. But between the one user and
+the other user, keep it wider. This is a style change for all the
+applications"; then, on the page "Getting To Know You"
+<https://claude.ai/artifact/LD1cXKQA8t4T5B6H92FErs> (version 10), "Perfect.
+Log it in for the whole application and implement it").** For N286, N321,
+N369:
+1. **In every chat,** Will's and every chat with a person: two rows of the
+same side in a row sit 2px apart; where the side changes, 12px; anything
+else in the thread (a day's line, a card, the answers under a question, a
+link) keeps 8px. With N286's shape, the corners drawn in where a run's
+bubbles meet, a run reads as one block. Was: 8px between every row.
+2. **The walk keeps its own spacing:** there every bubble stands apart
+(N286, N440).
+No new words on screen (Never 4). No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+J8 and
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1.
