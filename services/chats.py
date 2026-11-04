@@ -29,7 +29,11 @@ and writes once only: Will's line after an answer is taken back (N441 item
     words are in the chat's messages, for its members to open under the
     player (N331: "Read it"), never in the list, and fed nowhere else. A note
     that cannot be turned into words is sent all the same, ``words`` NULL.
-  * ``recording``: a voice note's recording, for any member of its chat.
+  * ``recording``: a voice note's recording, for any member of its chat
+    (an answer's and a sent Take's: its Take's own).
+  * A Take sent to the people the speaker ticked (N470, N479) is a message
+    of kind ``take`` made by services/take_sends.py; the receiver's meta
+    has no Take id, and its push says "{name} sent you Take {n}".
   * ``post_answer``: an answer recorded with "Record an answer" (N363), held
     on the server for its 5 seconds (N441 item 3): until then nobody else
     sees it, the list does not show it and no push goes. ``undo_answer``
@@ -219,15 +223,22 @@ def _held(row: dict) -> bool:
         return False
 
 
-def _last(database: Any, thread_id: str, unheard: Any = None) -> Optional[dict]:
+def _last(database: Any, thread_id: str, unheard: Any = None, me: str = "") -> Optional[dict]:
     """The chat's newest message the caller gets: not an answer still held,
-    nor one from the person they blocked, sent while blocked (N466)."""
+    nor one from the person they blocked, sent while blocked (N466). With
+    ``mine`` (the caller sent it), and for a sent Take its number only
+    (``meta.take_index``), for the list's "{name} sent you Take {n}"
+    (N470); never its Take's id."""
     rows = _rows(_table(database, MESSAGES).select("author_member_id,kind,body,meta,created_at")
                  .eq("thread_id", thread_id).order("created_at", desc=True).limit(20))
     row = next((r for r in rows if not _held(r) and not (unheard and unheard(r))), None)
     if not row:
         return None
-    return {"kind": row["kind"], "body": row["body"], "created_at": row["created_at"]}
+    last = {"kind": row["kind"], "body": row["body"], "created_at": row["created_at"],
+            "mine": bool(me) and str(row.get("author_member_id")) == me}
+    if row["kind"] == "take":
+        last["meta"] = {"take_index": (row.get("meta") or {}).get("take_index")}
+    return last
 
 
 def list_chats(database: Any, user_id: Any) -> dict:
@@ -250,7 +261,7 @@ def list_chats(database: Any, user_id: Any) -> dict:
     for t in threads:
         other = others.get(str(t["id"])) or {}
         me = mine[str(t["id"])]
-        last = _last(database, str(t["id"]), chat_safety.unheard(me, spans.get(me, [])))
+        last = _last(database, str(t["id"]), chat_safety.unheard(me, spans.get(me, [])), me)
         chats.append(((last or t)["created_at"] or "", {
             "id": str(t["id"]), "kind": t["kind"],
             "title": other.get("display_name") or t["title"],
@@ -264,10 +275,15 @@ def list_chats(database: Any, user_id: Any) -> dict:
 #: lastLine, N322 item 3, N351; N311 item 1's meanings). No word of ours.
 _PUSH_LINE = {"voice": "🎤 Voice message", "photo": "📷"}
 _EMOJI_MEANING = {"👍": "It's good", "👀": "Seen, I'll answer", "🙏": "Thanks"}
+#: A Take sent to the people the speaker ticked (N470, signed).
+TAKE_SENT = "{name} sent you Take {n}"
 
 
-def push_line(message: dict) -> str:
+def push_line(message: dict, sender: str = "") -> str:
     kind, body = message.get("kind"), str(message.get("body") or "")
+    if kind == "take":
+        n = (message.get("meta") or {}).get("take_index")
+        return TAKE_SENT.format(name=sender, n=n if isinstance(n, int) else "").strip()
     if kind in _PUSH_LINE:
         return _PUSH_LINE[kind]
     if kind == "file":
@@ -287,6 +303,7 @@ def _tell(database: Any, me: dict, message: dict) -> None:
         members = _rows(_table(database, MEMBERS).select("id,user_id,display_name")
                         .eq("thread_id", thread))
         sender = next((m for m in members if str(m["id"]) == str(me["id"])), {})
+        name = str(sender.get("display_name") or "")
         # No push to someone who blocked the sender (N466 item 2).
         from services import chat_safety
         spans = chat_safety.spans_by_member(database, [str(m["id"]) for m in members
@@ -297,8 +314,8 @@ def _tell(database: Any, me: dict, message: dict) -> None:
             if chat_safety.blocking({"blocked_spans": spans.get(str(other["id"]), [])}):
                 continue
             push_devices.push_later(database, str(other["user_id"]),
-                                    title=str(sender.get("display_name") or "") or None,
-                                    body=push_line(message), path=f"/chat?with={thread}")
+                                    title=name or None,
+                                    body=push_line(message, name), path=f"/chat?with={thread}")
     except Exception as e:  # noqa: BLE001 -- the message is sent either way
         logger.warning("chats: push not started: %s", e)
 
@@ -322,6 +339,9 @@ def _shown(row: dict, me: str, authors: dict[str, str],
         # An answer's Take is the speaker's own: the person it was sent to
         # gets just the answer (N336 item 2).
         meta.pop("take", None)
+        # A Take sent to them (N470): the sender's Take id stays theirs;
+        # the receiver opens it through its message (services/take_sends.py).
+        meta.pop("take_session_id", None)
     shown = {"id": str(row["id"]), "mine": author == me, "author": authors.get(author, ""),
              "kind": row["kind"], "body": row["body"], "meta": meta,
              "created_at": row["created_at"]}
@@ -627,8 +647,8 @@ def _bytes(raw: Any) -> bytes:
 
 def recording(database: Any, user_id: Any, thread_id: Any, message_id: Any) -> dict:
     """GET /v2/chats/<id>/messages/<message_id>/audio: {content_type, audio}
-    of a voice note in this chat, or of an answer (its Take's own recording),
-    for any member of it; 404 otherwise."""
+    of a voice note in this chat, or of an answer or a sent Take (its Take's
+    own recording), for any member of it; 404 otherwise."""
     me = member(database, user_id, thread_id)
     message = _uuid(message_id)
     if not message:
@@ -780,10 +800,14 @@ def _answer_recording(database: Any, thread: str, message: str) -> dict:
     """An answer's recording: the Take it points at, read from where the Take
     is kept, for a member of the chat; 404 when the message is no answer or
     the Take's audio is gone (its owner deleted it)."""
-    rows = _rows(_table(database, MESSAGES).select("meta,author_member_id")
+    rows = _rows(_table(database, MESSAGES).select("kind,meta,author_member_id")
                  .eq("id", message).eq("thread_id", thread).limit(1))
     meta = (rows[0].get("meta") or {}) if rows else {}
-    session = _uuid(meta.get("take")) if meta.get("answer") else None
+    # An answer points at its Take; so does a Take sent to the people the
+    # speaker ticked (N470), by ``take_session_id``.
+    sent = rows[0].get("kind") == "take" if rows else False
+    session = _uuid(meta.get("take_session_id") if sent else meta.get("take")) \
+        if (sent or meta.get("answer")) else None
     if not session:
         raise _not_found()
     authors = _rows(_table(database, MEMBERS).select("user_id")
