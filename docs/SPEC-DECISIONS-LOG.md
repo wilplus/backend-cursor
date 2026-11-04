@@ -11900,6 +11900,11 @@ No migration. The rules: the legal pack
 and frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 G.
+- **Published** (founder, 4 November 2026, 12:45:20 UTC):
+`PUBLISH-3.12-2026-11-04.sql` run in Supabase. `phase1-2026-11-04-3.12` is in
+force with the approved bytes, the five purposes and the United States;
+training-only-v4 unchanged. Next: `TAKE_SEND_ENABLED=1` on every Railway
+service (the founder), after the release carrying #1714.
 
 **N483 · The bottom bar, one logic in every chat: no mic, one black record
 button, and the "+" asks a person; locked (founder, the Claude Code chat,
@@ -12743,3 +12748,17 @@ Not in force until built and merged. No migration for this entry. The rules:
 frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built; the matching gets its rules page when it is built (N332).
+**N513 · "Who hears this Take": Will's three bubbles are one run, in the
+chats' rhythm (founder, the Claude Code chat, 4 November 2026, on the live
+screen after TAKE_SEND_ENABLED: "the bubbles should keep the spacing ...
+between the bubbles from the same user is smaller"; then, asked whether
+for this screen or the whole walk, "Chat rhythm here").** For N469, N470,
+N286:
+1. On the share screen (N470), Will's three bubbles sit 2px apart as one
+run, their corners drawn in where they meet (N469 J8, N286 J6), then the
+list of people below.
+2. The Feedback walk keeps its own spacing: every bubble stands apart, 16px
+(J6, N469 item 2).
+No new words. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+G and J8.
