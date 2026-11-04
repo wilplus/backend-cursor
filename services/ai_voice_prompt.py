@@ -170,3 +170,105 @@ def build(*, sentence: str, exercise: dict, practice_id: str) -> dict:
             "characters": len(prepared),
         },
     }
+
+
+_SENTENCE = re.compile(r"[^.!?]+(?:[.!?]+[\"'”)]*|$)")
+_JOINING = frozenset({"because", "but", "so", "and", "which", "when", "if"})
+
+
+def _said(text: str, drop_fillers: bool) -> str:
+    """The words the clip would say for this span, as ``build`` counts them."""
+    words = _clean(text)
+    if drop_fillers:
+        from services.ai_voice_severity import LANE_LANGUAGE
+        from services.transcript_smoothing import without_fillers
+        words = _SPACE.sub(" ", without_fillers(words, LANE_LANGUAGE)).strip()
+    return words
+
+
+def fits_clip(text: str, *, drop_fillers: bool = False) -> bool:
+    """True when ``build`` would take the text: under the character limit,
+    and short enough to say a little slower, with one pause, in a clip."""
+    words = _said(text, drop_fillers)
+    return (len(words) <= int(Config.AI_VOICE_MAX_SENTENCE_CHARACTERS)
+            and len(words.split()) / SLOW_WORDS_PER_SECOND + 0.6
+            <= float(Config.AI_VOICE_MAX_CLIP_SECONDS))
+
+
+def _anchor(text: str, phrase: Optional[str], drop_fillers: bool) -> tuple[int, int]:
+    """Where the clip's lesson sits: the target phrase, else (the fillers
+    clip) the first hesitation, else the opening."""
+    match = _locate(text, phrase) if phrase else None
+    if match is None and drop_fillers:
+        from services.ai_voice_severity import LANE_LANGUAGE
+        from services.transcript_smoothing import _filler_re, hesitations_for
+        match = _filler_re(hesitations_for(LANE_LANGUAGE)).search(text)
+    return (match.start(), match.end()) if match else (0, 0)
+
+
+def _sentence_span(text: str, start: int, end: int, drop_fillers: bool) -> Optional[tuple[int, int]]:
+    """The sentences holding [start, end), grown by their neighbours while
+    the whole still fits; None when those sentences alone do not fit."""
+    spans = [(m.start() + len(m.group(0)) - len(m.group(0).lstrip()), m.end())
+             for m in _SENTENCE.finditer(text) if m.group(0).strip()]
+    held = [k for k, (s, e) in enumerate(spans) if s < max(end, start + 1) and e > start] or [0]
+    i, j = held[0], held[-1]
+    if not fits_clip(text[spans[i][0]:spans[j][1]], drop_fillers=drop_fillers):
+        return None
+    grew = True
+    while grew:
+        grew = False
+        for a, b in ((i - 1, j), (i, j + 1)):
+            if 0 <= a and b < len(spans) and fits_clip(text[spans[a][0]:spans[b][1]],
+                                                       drop_fillers=drop_fillers):
+                i, j, grew = a, b, True
+                break
+    return spans[i][0], spans[j][1]
+
+
+def _word_window(text: str, start: int, end: int, drop_fillers: bool) -> tuple[int, int]:
+    """A window of words centred on [start, end) that fits, cut at a comma
+    or a joining word when one is inside it."""
+    words = [(m.start(), m.end()) for m in re.finditer(r"\S+", text)]
+    inside = [k for k, (s, e) in enumerate(words) if s < max(end, start + 1) and e > start] or [0]
+    lo, hi = inside[0], inside[-1]
+
+    def fit(a: int, b: int) -> bool:
+        return fits_clip(text[words[a][0]:words[b][1]], drop_fillers=drop_fillers)
+
+    left = True
+    while True:
+        a, b = (lo - 1, hi) if left else (lo, hi + 1)
+        if not (0 <= a and b < len(words)):
+            a, b = (lo, hi + 1) if left else (lo - 1, hi)
+        if not (0 <= a and b < len(words)) or not fit(a, b):
+            break
+        lo, hi, left = a, b, not left
+    first, last = inside[0], inside[-1]
+
+    def word(k: int) -> str:
+        return text[words[k][0]:words[k][1]]
+
+    cuts = [k for k in range(lo + 1, first + 1)
+            if word(k - 1)[-1] in ",;:" or word(k).lower().strip(",;:") in _JOINING]
+    ends = [k for k in range(last, hi) if word(k)[-1] in ",;:.!?"]
+    lo, hi = (cuts[0] if cuts else lo), (ends[-1] if ends else hi)
+    return words[lo][0], words[hi][1]
+
+
+def fit_to_clip(text: str, phrase: Optional[str] = None, *, drop_fillers: bool = False) -> str:
+    """The words a clip can say (founder 2026-11-04, N459 item 3): the text
+    unchanged when it fits; otherwise the shortest natural part of it that
+    fits and holds what the clip teaches. Whole sentences first (the one
+    with the phrase, then its neighbours while they fit); a sentence too
+    long alone gives a window of words around the phrase, cut at a comma
+    or a joining word. No phrase: from the first hesitation (the fillers
+    clip, ``drop_fillers``) or the opening. The words are the speaker's own,
+    cut, never changed. Pure."""
+    text = str(text or "")
+    if fits_clip(text, drop_fillers=drop_fillers):
+        return text
+    start, end = _anchor(text, phrase, drop_fillers)
+    span = _sentence_span(text, start, end, drop_fillers) or _word_window(
+        text, start, end, drop_fillers)
+    return text[span[0]:span[1]].strip().rstrip(",;:").strip()
