@@ -12289,6 +12289,32 @@ unknown (half points), matched on knowledge and skills.
 No migration. No rules page yet: the matching gets its rules page when it
 is built (N332).
 
+**N495 · In the iPhone app, "Tokens" opens the Tokens page; no way to buy,
+and no button to ask for prices (founder, the Claude Code chat, 4 November
+2026: "nothing happens when I click tokens"; then, of the in-app Tokens page
+with no buying, "let's stick with this first option. I don't want Apple to
+take any cuts"; then asked whether a button that sends the founder a request
+to buy is acceptable, answered no, as below).** For N365 item 1; corrects
+N367 item 2:
+1. **The ☰ menu's "Tokens" row opens the Tokens page in the iPhone app too,**
+as on the web. In the app the page shows the balance, what things cost and
+the recent activity, open at once; its title is "Tokens"; no plans, no
+prices in money, no buy button and no link to buy (N365 item 1). No new
+words. Was: in the app the row showed the balance and opened nothing (N367
+item 2), which a person, or Apple's reviewer, reads as broken.
+2. **No button in the app to ask for prices or to request to buy.** Outside
+the United States, Apple's rules (3.1.1 and 3.1.3) refuse any button, link
+or call to action in the app that leads to buying other than by Apple's
+In-App Purchase, and a button that sends the founder a request, answered
+with prices and a payment link, is one. People buy on the website, as now.
+3. **Outside the app the founder may write to people about buying** (email,
+WhatsApp), which Apple allows; the app itself says nothing about it.
+4. **No In-App Purchase** for now: the founder does not want Apple's share
+of each sale. Revisit when buying in the app matters more than the share.
+No migration. The rules: frontend
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+§1 (the ☰ menu).
+
 **N496 · The line at the top of a joiner's chat, signed (founder, the
 Claude Code chat, 4 November 2026, on the prototype "Asked When They Join"
 <https://claude.ai/artifact/G8gZ73CvfgkkJ1ztm1cmsb> (version 17), after
