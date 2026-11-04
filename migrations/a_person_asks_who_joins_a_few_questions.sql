@@ -8,10 +8,14 @@
 -- questions are what a person says to the people they chat with, so they
 -- live on that person's profile row (0507).
 --
---   people_profiles.join_questions   One JSON object, or NULL (no questions:
---                     the joiner sees only the line at the top, N496 item 2).
---                     Its shape, written and read by services/join_questions.py:
---                     {"v": 1, "plan": {"days": 7} | {"months": 1|3} | null,
+--   people_profiles.join_questions   One JSON object, or NULL. NULL: the
+--                     person has not been through Will's setup yet (N503),
+--                     and nobody who joins them is asked anything. An object
+--                     with no lines: they went through it and set none (the
+--                     joiner sees only the line at the top, N496 item 2).
+--                     Its shape, written and read by services/join_questions.py
+--                     (and services/join_setup.py, Will's setup):
+--                     {"v": 1, "plan": "week" | "month" | "quarter" | null,
 --                      "lines": [{"q": "...", "answers": ["...", ...],
 --                                 "multi": bool, "kind": "say"|"hurry"|"date"
 --                                 |"languages"|"tap"}, ...],
