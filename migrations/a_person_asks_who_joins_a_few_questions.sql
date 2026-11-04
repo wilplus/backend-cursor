@@ -20,7 +20,10 @@
 --                                 "multi": bool, "kind": "say"|"hurry"|"date"
 --                                 |"languages"|"tap"}, ...],
 --                      "updated_at": "..."}.
---                     The CHECKs keep it an object and under 8 KB.
+--                     The CHECKs keep it an object, and its JSON text
+--                     (join_questions::text) at most 8192 bytes: a backstop
+--                     to the backend's own limits (8 lines, 160 characters
+--                     a question, 2 to 6 answers of 40), not its storage size.
 --
 -- Deleted with the account, as the rest of the row: the purge registry
 -- (services/data_purge_registry.py) already deletes people_profiles by
@@ -28,12 +31,15 @@
 -- Read and written by the backend (service role) only, as the table already
 -- is; no grant changes. No environment variable needed.
 --
--- Idempotent and additive: ADD COLUMN IF NOT EXISTS, and each CHECK added
--- only when missing (DO block), so it can run twice. Nothing is dropped; no
--- row is written, rewritten or removed (the column starts NULL everywhere).
--- Locks: people_profiles briefly ACCESS EXCLUSIVE for the ADD COLUMN (no
--- default, so no rewrite) and SHARE UPDATE EXCLUSIVE while the NOT VALID
--- CHECKs are validated (a small table). One transaction.
+-- Idempotent and additive: ADD COLUMN IF NOT EXISTS; each CHECK added only
+-- when missing, and validated whenever it is there but not yet validated
+-- (DO block), so it can run twice, and a constraint left NOT VALID by any
+-- earlier run is validated by the next. Nothing is dropped; no row is
+-- written, rewritten or removed (the column starts NULL everywhere).
+-- Locks: ACCESS EXCLUSIVE on people_profiles for the ADD COLUMN (no default,
+-- so no rewrite) and the two ADD CONSTRAINT ... NOT VALID, SHARE UPDATE
+-- EXCLUSIVE for the VALIDATEs; one transaction, so they are held until
+-- COMMIT, a moment on a small table (one row per person with a profile).
 --
 -- Rollback (a new forward migration): leave the column; NULL means no
 -- questions, which is how the app behaves without it.
@@ -54,9 +60,17 @@ BEGIN
             ADD CONSTRAINT people_profiles_join_questions_object
             CHECK (join_questions IS NULL OR jsonb_typeof(join_questions) = 'object')
             NOT VALID;
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'people_profiles_join_questions_object'
+          AND conrelid = 'public.people_profiles'::regclass
+          AND NOT convalidated
+    ) THEN
         ALTER TABLE public.people_profiles
             VALIDATE CONSTRAINT people_profiles_join_questions_object;
     END IF;
+
     IF NOT EXISTS (
         SELECT 1 FROM pg_constraint
         WHERE conname = 'people_profiles_join_questions_size'
@@ -66,6 +80,13 @@ BEGIN
             ADD CONSTRAINT people_profiles_join_questions_size
             CHECK (join_questions IS NULL OR octet_length(join_questions::text) <= 8192)
             NOT VALID;
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'people_profiles_join_questions_size'
+          AND conrelid = 'public.people_profiles'::regclass
+          AND NOT convalidated
+    ) THEN
         ALTER TABLE public.people_profiles
             VALIDATE CONSTRAINT people_profiles_join_questions_size;
     END IF;
@@ -73,6 +94,6 @@ END
 $$;
 
 COMMENT ON COLUMN public.people_profiles.join_questions IS
-    'N487: the questions this person sets for everyone who joins through their link; NULL for none. Written by services/join_questions.py.';
+    'N487: the questions this person sets for everyone who joins through their link; NULL until they have been through Will''s setup (N503), an object with no lines when they set none. Written by services/join_questions.py.';
 
 COMMIT;
