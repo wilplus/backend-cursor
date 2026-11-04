@@ -2327,8 +2327,9 @@ Take's walk Will reads it slide by slide: each answer is kept as the
 plan answer it replaces (the voice message, the audience, the key
 line, the opening) and all five in Will's notes; the plan's facts and
 its topic come from what was said; a day said gives the plan and its
-card at once, that Take its first practice; no day said asks ""When is
-your deadline?"" as taps, and the answer gives the plan. Kept at the
+card at once, that Take its first practice; no day said asks no
+deadline (N459 item 1): ""No date yet""'s two months, and the plan and
+its card above the goodbye. Kept at the
 end of the Take's processing, the voice message and the key line keep
 their own voice, and the coach's blind pick plays them (N213); the
 walk's end then keeps nothing twice.","O1 -> test_without_the_ring_nothing_happens
@@ -2349,7 +2350,7 @@ O14 -> test_a_new_speaker_can_record_before_answering
 O15 -> test_with_the_calls_on_they_are_asked_before_the_plan
 O16 -> test_with_the_first_take_on_the_questions_are_its_slides
 test_with_no_first_take_row_a_new_speaker_meets_the_first_take
-test_a_first_take_with_no_day_asks_for_the_deadline
+test_a_first_take_with_no_day_asks_no_deadline
 test_the_coach_hears_the_first_takes_voice_message_and_key_line","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the principles waiting for the onboarding, N243; record first, Will asking again and a correction taken, N262; the calls hidden, not removed, N315; the plan simplified, N319; the goodbye's day, N347; the rules are frontend docs/flows/the-plan.md §1."
 tests/test_playback_copy.py,Story,"As a speaker on iPhone or Safari, I want my recordings to play back, and the playback copy deleted with the recording, so that I can hear myself and deletion leaves nothing. (Record -> next Take: hearing the Take; and deletion.)","O1  A stored short recording gets its Safari-safe copy (.playback.m4a,
 audio/mp4) beside it at upload; the original is untouched.
