@@ -233,13 +233,19 @@ def _last(database: Any, thread_id: str, unheard: Any = None, me: str = "") -> O
     (N470); never its Take's id."""
     rows = _rows(_table(database, MESSAGES).select("author_member_id,kind,body,meta,created_at")
                  .eq("thread_id", thread_id).order("created_at", desc=True).limit(20))
-    row = next((r for r in rows if not _held(r) and not (unheard and unheard(r))), None)
+    from services.join_questions import hidden
+    row = next((r for r in rows if not _held(r) and not (unheard and unheard(r))
+                and not (me and hidden(r, me))), None)
     if not row:
         return None
     last = {"kind": row["kind"], "body": row["body"], "created_at": row["created_at"],
             "mine": bool(me) and str(row.get("author_member_id")) == me}
     if row["kind"] == "take":
         last["meta"] = {"take_index": (row.get("meta") or {}).get("take_index")}
+    if "setup_card" in (row.get("meta") or {}):
+        # The owner's card of the joiner's answers: the list says "{name}'s
+        # answers" (N487 item 7, N502 item 5).
+        last["meta"] = {"setup_card": True}
     return last
 
 
@@ -415,7 +421,7 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
     the first name of whose link the caller joined through, or null}
     (services/chat_links.py), oldest first."""
     from services import chat_safety
-    from services.chat_links import joined_through
+    from services.chat_links import joined_by, joined_through
     user_id = _require(database, user_id)
     me = _member_of(database, user_id, thread_id)
     thread = str(me["thread_id"])
@@ -427,14 +433,21 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
     # them (N466 item 2).
     spans = chat_safety.spans_by_member(database, [str(me["id"])]).get(str(me["id"]), [])
     unheard = chat_safety.unheard(str(me["id"]), spans)
-    newest = [r for r in newest if not _held(r) and not unheard(r)]
+    from services import join_questions
+    newest = [r for r in newest if not _held(r) and not unheard(r)
+              and not join_questions.hidden(r, str(me["id"]))]
     _mark_demo_question(database, thread, newest)
     authors = _authors(database, thread)
     words = _words(database, thread, newest)
     answers = _answers(database, newest)
+    through = joined_through(database, user_id, thread)
     return {"messages": [_shown(r, str(me["id"]), authors, words, answers)
                          for r in reversed(newest)],
-            "joined_through": joined_through(database, user_id, thread),
+            "joined_through": through,
+            # The joiner's line at the top: with a few questions first, or not
+            # (N496); the owner's: who joined through their link (N502 item 5).
+            "joined_asks": bool(through) and join_questions.asks(database, thread),
+            "joined_by": None if through else joined_by(database, user_id, thread),
             "blocked": chat_safety.blocking({"blocked_spans": spans})}
 
 
@@ -672,9 +685,14 @@ def recording(database: Any, user_id: Any, thread_id: Any, message_id: Any) -> d
 
 
 def post_answer(database: Any, user_id: Any, thread_id: Any, take: Any,
-                duration_ms: Any = None, hold_ms: Any = None) -> dict:
-    """POST /v2/chats/<id>/answer: an answer recorded with "Record an answer"
-    (N321 item 4, N336, N363), sent as soon as its Take is uploaded. The Take
+                duration_ms: Any = None, hold_ms: Any = None, asks: bool = False) -> dict:
+    """POST /v2/chats/<id>/answer: an answer recorded with "Record your
+    answer" (N321 item 4, N336, N363, N483 item 5), sent as soon as its Take
+    is uploaded. With ``asks`` (POST /v2/chats/<id>/question), a question
+    recorded with "Record your question" (N483 item 4, N498): the same
+    message, held and taken back the same way, marked as a question for the
+    other person to answer (``asked``, ``question``, ``record_answer``), so
+    their bar's middle is "Record your answer". The Take
     is already processing on its own; the answer is a voice message that
     points at it, so its recording is sent once, not twice. ``hold_ms``, what
     is left of its 5 seconds (N441 item 3, at most ``ANSWER_HOLD_MS``), holds
@@ -695,6 +713,8 @@ def post_answer(database: Any, user_id: Any, thread_id: Any, take: Any,
     ms = _answer_length(take_row, duration_ms)
     hold = _hold(hold_ms)
     meta: dict = {"duration_ms": ms, "answer": True, "take": session}
+    if asks:
+        meta.update({"asked": True, "question": True, "record_answer": True})
     if hold:
         meta["held_until"] = (_now() + timedelta(milliseconds=hold + _UNDO_GRACE_MS)).isoformat()
     thread = str(me["thread_id"])

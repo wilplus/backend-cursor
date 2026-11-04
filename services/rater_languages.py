@@ -39,6 +39,13 @@ def normalize_language(value: Any) -> str | None:
     return code if _ISO_639_1.fullmatch(code) else None
 
 
+def language_name(code: Any) -> str | None:
+    """The English name of a language the provider names ("pl" or "polish"
+    -> "Polish"), or None for one it does not."""
+    names = {c: name.title() for name, c in _PROVIDER_LANGUAGE_NAMES.items()}
+    return names.get(normalize_provider_language(code) or "")
+
+
 def normalize_provider_language(value: Any) -> str | None:
     """Normalize an explicit transcription-provider language value."""
     if not isinstance(value, str):

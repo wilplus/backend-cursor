@@ -24,6 +24,11 @@ Service: services/chats.py.
                                    "voice", body: "", meta: {duration_ms,
                                    answer: true, take}}}; the other member's
                                    meta has no take
+  POST /v2/chats/<id>/question    the same body: a question recorded with
+                                   "Record your question" (N483 item 4), the
+                                   same message with meta asked, question and
+                                   record_answer true; its Undo is the
+                                   answer's
   GET  /v2/chats/<id>/messages/<message_id>/audio
                                    the recording, for any member of the chat
                                    (an answer's: its Take's own)
@@ -269,6 +274,25 @@ def v2_chats_answer(thread_id):
         body.get("hold_ms")))
 
 
+@v2_bp.route("/chats/<thread_id>/question", methods=["POST"])
+@limiter.limit("120 per hour", scope="chats_question")
+@require_auth
+@_a_member_first
+def v2_chats_question(thread_id):
+    """A question recorded with "Record your question" (N483 item 4, N498),
+    sent as an answer is: once its Take is uploaded, held for what is left of
+    its Undo, after the recording consent is asked again. Marked for the
+    other person to answer ("Record your answer")."""
+    refused = _recording_refused()
+    if refused is not None:
+        return refused
+    from services.chats import post_answer
+    body = request.get_json(silent=True) or {}
+    return _run("question", lambda: post_answer(
+        db, str(request.user_id), thread_id, body.get("take"), body.get("duration_ms"),
+        body.get("hold_ms"), asks=True))
+
+
 @v2_bp.route("/chats/<thread_id>/answer/undo", methods=["POST"])
 @limiter.limit("120 per hour", scope="chats_answer_undo")
 @require_auth
@@ -385,6 +409,63 @@ def v2_chats_join(token):
     from services.chat_links import join
     payload = getattr(request, "token_payload", None)
     return _run("join", lambda: join(db, str(request.user_id), token, payload))
+
+
+# ── Asked when they join (services/join_questions.py; N487) ─────────────
+
+@v2_bp.route("/chats/join-questions", methods=["GET"])
+@require_auth
+def v2_chats_join_questions():
+    """The questions I set for whoever joins through my link, or null."""
+    from services.join_questions import mine
+    return _run("join-questions", lambda: {"questions": mine(db, str(request.user_id))})
+
+
+@v2_bp.route("/chats/join-questions", methods=["PUT"])
+@limiter.limit("30 per hour", scope="chats_join_questions")
+@require_auth
+def v2_chats_join_questions_save():
+    from services.join_questions import save
+    body = request.get_json(silent=True)
+    return _run("join-questions save", lambda: save(db, str(request.user_id), body))
+
+
+@v2_bp.route("/chats/join-questions/setup", methods=["POST"])
+@limiter.limit("60 per hour", scope="chats_join_setup")
+@require_auth
+def v2_chats_join_setup():
+    """The first time "Add someone to chat with" opens: Will asks the setup
+    in his chat (N503). {"started"}: false opens the link at once."""
+    from services.join_setup import begin
+    return _run("join setup", lambda: begin(db, str(request.user_id)))
+
+
+@v2_bp.route("/chats/join-questions/setup/again", methods=["POST"])
+@limiter.limit("60 per hour", scope="chats_join_setup")
+@require_auth
+def v2_chats_join_setup_again():
+    """"Your questions for people who join ›": the summary again."""
+    from services.join_setup import again
+    return _run("join setup again", lambda: again(db, str(request.user_id)))
+
+
+@v2_bp.route("/chats/join-questions/setup/answer", methods=["POST"])
+@limiter.limit("120 per hour", scope="chats_join_setup_answer")
+@require_auth
+def v2_chats_join_setup_answer():
+    """A tap, or typed words, under Will's setup question."""
+    from services.join_setup import answer
+    body = request.get_json(silent=True)
+    return _run("join setup answer", lambda: answer(db, str(request.user_id), body))
+
+
+@v2_bp.route("/chats/<thread_id>/setup/<message_id>", methods=["POST"])
+@require_auth
+def v2_chats_setup_answer(thread_id, message_id):
+    """The joiner's tap on one of the link owner's questions (N487 item 4)."""
+    from services.join_questions import answer
+    body = request.get_json(silent=True)
+    return _run("setup answer", lambda: answer(db, str(request.user_id), thread_id, message_id, body))
 
 
 @v2_bp.route("/me/access", methods=["GET"])
@@ -519,3 +600,12 @@ def v2_chats_take(thread_id, message_id):
     its Ideal Text or feedback."""
     from services.take_sends import opened
     return _run("take", lambda: opened(db, str(request.user_id), thread_id, message_id))
+
+
+@v2_bp.route("/chats/<thread_id>/messages/<message_id>/not-now", methods=["POST"])
+@require_auth
+def v2_chats_not_now(thread_id, message_id):
+    """"Not now" under what someone asked me (N483 item 3, N493 item 3):
+    nobody is told; the system keeps it (N504 item 2). {"kept": true}."""
+    from services.chat_not_now import record
+    return _run("not now", lambda: record(db, str(request.user_id), thread_id, message_id))
