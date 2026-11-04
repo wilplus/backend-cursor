@@ -2140,6 +2140,13 @@ terms' and privacy fingerprints (hashes) are checked by the script.
 O2  It publishes version 3.10 over 3.9, keeps the United States, does not
 replace the training wording, and deletes nothing.","O1 -> test_the_copy_is_the_signed_text_byte_for_byte_and_its_hash_is_checked
 O2 -> test_it_publishes_3_10_over_3_9_and_deletes_nothing","Founder 2026-11-04, N468 (signed ""as drafted, question 1 A, question 2 A"": the chats, Block and Report, the iPhone app's notifications and Sign in with Apple); dated 4 November 2026."
+tests/test_phase1_policy_3_11.py,Story,"As a speaker, I want the 3.11 terms I accept to be the texts the founder signed, word for word, with the training wording left alone, so that I can later prove what I agreed to.","O1  The terms (3.10), privacy (3.11), AI notice and agreement text in the
+publish script equal the legal pack's files byte for byte; those files
+are the signed record's texts with only the date filled in; and the
+terms' and privacy fingerprints (hashes) are checked by the script.
+O2  It publishes version 3.11 over 3.10, keeps the United States, does not
+replace the training wording, and deletes nothing.","O1 -> test_the_copy_is_the_signed_text_byte_for_byte_and_its_hash_is_checked
+O2 -> test_it_publishes_3_11_over_3_10_and_deletes_nothing","Founder 2026-11-04, N472 (signed ""as drafted, question 1 A, question 2 A"": WillpowerLab by invitation, and the waitlist); dated 4 November 2026 (N480)."
 tests/test_phase1_policy_3_6.py,Story,"As a speaker, I want the 3.6 terms I accept to be the legal pack's files exactly, checked by their fingerprints, so that I can later prove what I agreed to.","O1  The terms, privacy, AI notice and agreement text in the publish script
 equal the legal pack's files byte for byte, and the terms' and privacy
 fingerprints (hashes) are checked by the script.

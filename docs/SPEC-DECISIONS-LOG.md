@@ -11481,3 +11481,22 @@ merges. Not in force until built and merged. The rules: frontend
 G and
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built.
+
+**N480 · Invite-only goes live on 4 November 2026; its moment is set in
+the code (founder, the Claude Code chat, 4 November 2026: "For the first
+one, could you please set it yourself in the code? Send emails is true. The
+date is 4th of November, 2026.").** For N471 and N472:
+1. **The moment** is 4 November 2026, 12:00 UTC: an account made before it
+is a member (everyone who signed up under the open rules that morning); one
+made after it joins through a link or waits. It is the code's own default
+(`services/membership.py`); the `INVITE_ONLY_SINCE` setting, if ever set,
+still wins. Chosen at noon, not midnight, so nobody who signed up this
+morning lands on the waitlist.
+2. **Emails:** `SEND_EMAILS` is true in production (founder), so the
+waitlist email reaches contact@willpowerlab.com.
+3. **Terms 3.10 and Privacy 3.11** are dated "Effective 4 November 2026"
+(the date line only) and published by
+`legal/phase1-2026.1/PUBLISH-3.11-2026-11-04.sql`, the founder's step,
+after `PUBLISH-3.10-2026-11-04.sql` and once the release with invite-only
+is out.
+No migration. No rules page: the legal pack and the code.
