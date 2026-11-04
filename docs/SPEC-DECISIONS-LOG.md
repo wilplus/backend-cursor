@@ -12778,3 +12778,23 @@ rows; each dump is still "# " and its words, then "Noted." (N194).
 Not in force until built and merged. No migration. The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 T3, when built.
+
+**N515 · Matching after a Take is on ring 2 (founder, the Claude Code chat,
+4 November 2026, after asking "why not have it for all? what is the risk?"
+and hearing the risks: "ok, I WILL PUT IT ON RING 2").** For N477, N481,
+N485 and N512:
+1. **The `take_match` ring row is at ring 2,** set by the founder in the
+rings panel once the release with #1712 (migration 0513) and the screens
+(frontend #1254) went out. Everyone on ring 2 or above can be suggested and
+can send; matching needs sending on (`TAKE_SEND_ENABLED`, which is on).
+2. **The voice-based part stays off** (`TAKE_MATCH_SKILLS` unset): the
+matching weighs knowledge only (N481 item 4; the voice research of 4
+November 2026).
+3. **The way off** is the row's Kill switch, at once and with no deploy;
+what was already sent stays sent.
+4. **Open, proposed:** counsel confirms that Privacy 3.12, which covers
+sending a Take to people you chat with (N479, N482), also covers sending it
+to someone new the app picked, and using people's profiles and Take topics
+to pick them.
+No migration. No rules page yet: the matching gets its rules page when it
+is built (N332).
