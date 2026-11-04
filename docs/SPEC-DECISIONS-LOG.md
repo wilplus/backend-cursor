@@ -11803,7 +11803,7 @@ after `PUBLISH-3.10-2026-11-04.sql` and once the release with invite-only
 is out.
 No migration. No rules page: the legal pack and the code.
 
-**N481 · The app tells one story: two people building a knowledge base
+**N482 · The app tells one story: two people building a knowledge base
 together (founder, the Claude Code chat, 4 November 2026, on the prototype
 "Asked When They Join" <https://claude.ai/artifact/G8gZ73CvfgkkJ1ztm1cmsb>,
 after asking that its top line end "before the two of you start building
