@@ -46,9 +46,19 @@ TODAY_ONE: dict[str, str] = {
 
 COPY = {
     "hello_first": "A few quick questions before your first practice.",
-    # The first Take is the onboarding (N401 item 1, signed).
-    "first_take": ("Your first Take is about what you know. Five questions, one slide each. "
-                   "Answer out loud, as you'd tell a friend."),
+    # The first Take is the onboarding (N401 item 1): Will's welcome, four
+    # lines (N492, signed; was "Hi {name}!" and N462 item 1's one line).
+    "first_take_hi": "Hi {name}, and welcome.",
+    "first_take_hi_anon": "Hi, and welcome.",
+    "first_take_hello": "We'd like to learn what you know and what you could teach others.",
+    "first_take": ("Your first Take is a short introduction: five questions, one slide each. "
+                   "Answer out loud, as you'd explain it to a friend. "
+                   "At the end, you'll get a few words on how you came across."),
+    "first_take_why": ("Wozniak built the computer; Jobs made the world want it. "
+                       "You're probably a Wozniak. We want you to be heard the way Jobs was."),
+    "first_take_where": ("Record somewhere quiet, where you'd usually take a call and no one will "
+                         "interrupt you. Passing knowledge from one mind to another is, after all, "
+                         "what civilization is made of."),
     "deadline_q": "When is your deadline?",
     "pick_date": "Pick a date",
     "no_date": "No date yet",

@@ -412,9 +412,13 @@ def begin(database: Any, user_id: str, *, tz: Optional[str], first_name: Optiona
 
 def _opening(plan: dict, first_name: Optional[str]) -> list[tuple]:
     if _facts(plan).get("first_take") == "waiting":
-        # N401 item 1: Will's hello and one line; the bar's middle is
-        # "Start your first recording" (the app reads ``first_take``).
-        return [_bot(_hi(first_name), "hello"), _bot(P.COPY["first_take"], "first_take")]
+        # N401 item 1, N492: Will's welcome in four lines; the bar's middle
+        # is "Start your first recording" (the app reads ``first_take``).
+        hi = P.COPY["first_take_hi"].format(name=first_name) if first_name else P.COPY["first_take_hi_anon"]
+        return [_bot(f"{hi} {P.COPY['first_take_hello']}", "hello"),
+                _bot(P.COPY["first_take"], "first_take"),
+                _bot(P.COPY["first_take_why"], "first_take_why"),
+                _bot(P.COPY["first_take_where"], "first_take_where")]
     first = _first_plan(plan)
     rows = [_bot(f"{_hi(first_name)} {P.COPY['hello_first']}", "hello")] if first else []
     return rows + [_bot(P.COPY["deadline_q"], "deadline_q", plan_ask="deadline")]

@@ -12152,7 +12152,125 @@ Not in force until built and merged. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built.
 
-**N491 · "Your level" leaves "Change your plan", and "Ask your coach" goes
+**N488 · The joined line stays on the row until the first message (founder,
+the Claude Code chat, 4 November 2026: "yes keep the line until the
+first message").** For N335 item 2, N357 and N360: in the list of chats,
+the row of a chat the person joined through someone's link keeps "You
+joined through {name}'s link. Only the two of you are in this chat." as
+its line until the chat has its first message, from either of them; opening
+the chat no longer leaves the row blank. Only the one who joined sees it;
+the link's owner's row is unchanged. No new words (Never 4): the line is
+N335 item 2's, signed. The list of chats carries, per chat, whose link the
+caller joined through (`services/chats.py` `list_chats`), as the chat's
+messages already do. No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1.
+
+**N491 · Two lines of Will's setup for a person who shares, signed
+(founder, the Claude Code chat, 4 November 2026, on the prototype "Asked
+When They Join" <https://claude.ai/artifact/G8gZ73CvfgkkJ1ztm1cmsb>
+(version 17), after asking to simplify them: "GOOD! you ahve my ok").** For
+N487 items 2 and 9 (Never 4):
+1. **Signed:** "Everyone who joins through your link builds a knowledge
+base with you. I'll ask them a few questions first." Was, on the
+prototype: "Everyone who joins through your link builds a knowledge base
+with you, in your chat with them. Before you start, I'll ask them a few
+questions for you."
+2. **Signed:** "How far ahead do you like to plan?" Was: "When you build a
+knowledge base with someone, how far ahead do you like to plan?" Its
+answers stay as N487 item 2 lists them, open with the rest.
+3. **Proposed on the same prototype, not signed yet:** the line at the top
+of the joiner's chat, made shorter at the founder's ask, "You joined
+thanks to {name}. A few questions first, then you build a knowledge base
+together.", and with no questions, "You joined thanks to {name}. Your
+first question starts the knowledge base you build together." Once signed,
+it is also the line N488 keeps on the list's row.
+No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when N487 is built.
+
+**N492 · Will's welcome before the first Take: four lines, in place of
+"Hi {name}!" and N462's one line (founder, the Claude Code chat, 4
+November 2026, on a static mock of the first-Take chat: "This first
+sentence should be like, great to have you here ... Please rewrite it all
+as Steven Pinker would. Make it a couple of bubbles"; "add some
+communication about when to use it ... in a place where it's quiet, where
+you usually hold calls"; "delete the non-essentials, make it concise and
+still hold the Stephen Pinker's style"; then "Approved, log it and ship
+it").** For N401 item 1 and N462 item 1:
+1. **The four lines, signed (Never 4),** each its own bubble, then "Start
+your first recording" as before:
+   1. "Hi {name}, and welcome. We'd like to learn what you know and what
+      you could teach others." (no name: "Hi, and welcome. ...")
+   2. "Your first Take is a short introduction: five questions, one slide
+      each. Answer out loud, as you'd explain it to a friend. At the end,
+      you'll get a few words on how you came across."
+   3. "Wozniak built the computer; Jobs made the world want it. You're
+      probably a Wozniak. We want you to be heard the way Jobs was."
+   4. "Record somewhere quiet, where you'd usually take a call and no one
+      will interrupt you. Passing knowledge from one mind to another is,
+      after all, what civilization is made of."
+   Was: "Hi {name}!" and "Your first Take is about what you know. Five
+   questions, one slide each. Answer out loud, as you'd tell a friend."
+2. **Nothing else changes:** the five slides, the button, no question in
+the chat and the rest of N401 and N462 stand.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§2.
+
+**N493 · The official inquiry: an answer follows the Take's own slides, its
+walk waits in Will's chat, a sent Take asks for an answer, and a Take's tile
+is its first slide, not a video (founder, the Claude Code chat, 4 November
+2026, on the prototype "The Official Inquiry"
+<https://claude.ai/artifact/TvYQQFXSAFbqmbEwK3wwFg> (version 16): "Go with
+all your recommendations").** For N470, N478, N479, N481, N483, N484, N485
+and N486; settles N481 item 5's open slides and the open words of N485
+item 5:
+1. **An answer is recorded over the Take's own slides** (N481 item 5). The
+answerer moves through the sender's slides with Back and Next slide, so the
+answer comes slide by slide; a Take with no uploaded deck brings its
+stand-in slides (Opening, Main points, Summary). No helper words: the
+sender's come from their Ideal Text (N479 item 8). The recording screens'
+top line is "{name} · Slide {n} of {m}" (was the name alone, N441 item 7).
+In the chat, the answer's voice bubble has one slide mark for each of the
+Take's slides. A customer's question (N361) has no Take behind it and keeps
+its one poster slide, "{name} asks" over the question (N462).
+2. **The answerer's own Ideal Text and walk wait in Will's chat**, on the
+answer's own project, as an answer's do today; it never becomes their
+current project, and their own "Record Take N" stays in the bar (Never 3,
+Never 5). Whether Will says a line when it is ready stays open (Never 4):
+drafted "Your answer to {name} is ready, if you want to look at it.".
+3. **A Take sent to you asks for an answer** (N483 item 3): in the chat you
+already have, the bar's middle is "Record your answer" with "Not now" under
+the Take until you answer or decline; "Not now" sends nothing and the
+sender is not told.
+4. **"Not now" after accepting a matched Take still removes the chat**, as
+before accepting (N485 item 3); nobody is told.
+5. **The asker sees the new person when Undo's five seconds end** (N486
+item 1), so an answer taken back shows nobody.
+6. **No video: a Take's tile is its first slide.** The tile in a chat shows
+the Take's first slide, small, with its length, and no play mark (was the
+dark 16:9 frame with a white play mark, `TakeTile`); the recording plays
+only in the voice player once the Take is opened.
+7. **Signed (Never 4), as the prototype shows them:** the row of a new
+matched chat, "Asks you about {topic}"; the line at the top of it,
+"{Pseudonym} is asking for what you know. Your answer starts a knowledge
+base you build together." (N484); "It's about {…}." (N478 item 6);
+accepting is the signed "Open Take" (N470 item 6), black with no dot in the
+bar's middle (N483 item 1). Built, a matched chat shows no "+" until it is
+accepted.
+8. **The locked screens change with the build:** the recording screens
+(the answer's slides and top line, `docs/flows/recording-screens.md` step
+6) and the chats' Take tile; each lock row names this entry when built.
+Not in force until built and merged. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+G,
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 and
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md),
+when built; the matching gets its rules page when it is built (N332).
+
+**N494 · "Your level" leaves "Change your plan", and "Ask your coach" goes
 with it (founder, the Claude Code chat, 4 November 2026: on the "Your level"
 sheet, "when I click that, nothing happens ... I don't have a coach. I was
 invited by Arthur, but is he my coach? I don't know ... This is not precise

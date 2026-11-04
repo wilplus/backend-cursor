@@ -14,7 +14,8 @@ OUTCOME
   O5  As a user with no ring at all, I get my link and someone joins me
       through it (N456; was ring 6 only).
   O6  In the chat, the one who joined sees whose link they joined through;
-      the link's owner does not.
+      the link's owner does not. In the list, the joiner's row says it too
+      until the chat's first message (N488).
   O7  A chat left without its two people (a crash between the two writes)
       gets them back on the next join, so the pair is never locked out.
   O8  A message I send reaches the other person's iPhone as a push: my
@@ -157,6 +158,13 @@ class ChatLinksTest(unittest.TestCase):
         owner = self.client.get(f"/v2/chats/{chat}/messages", headers=self._as(TOMEK)).get_json()
         self.assertEqual((joined["messages"], joined["joined_through"]), ([], "Tomek"))
         self.assertIsNone(owner["joined_through"])
+
+        def row(who):
+            return self.client.get("/v2/chats", headers=self._as(who)).get_json()["chats"][0]["joined_through"]
+        self.assertEqual((row(PIOTR), row(TOMEK)), ("Tomek", None))
+        self.client.post(f"/v2/chats/{chat}/messages", headers=self._as(TOMEK),
+                         json={"kind": "emoji", "body": "👍"})
+        self.assertIsNone(row(PIOTR))
 
     def test_a_chat_left_without_its_people_gets_them_back(self):
         token = self._link(TOMEK).get_json()["token"]

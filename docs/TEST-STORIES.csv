@@ -571,7 +571,8 @@ O4  My own link is refused (400 OWN_LINK), and nothing is made.
 O5  As a user with no ring at all, I get my link and someone joins me
 through it (N456; was ring 6 only).
 O6  In the chat, the one who joined sees whose link they joined through;
-the link's owner does not.
+the link's owner does not. In the list, the joiner's row says it too
+until the chat's first message (N488).
 O7  A chat left without its two people (a crash between the two writes)
 gets them back on the next join, so the pair is never locked out.
 O8  A message I send reaches the other person's iPhone as a push: my
@@ -2373,10 +2374,8 @@ Take's walk Will asks again where he was; the plan, once made, counts
 that Take as its first practice (N262).
 O16 With the first Take on (always with no ``first_take`` ring row,
 N457 item 3; a row can hold it back, N401), a new
-speaker is not asked in the chat: Will says ""Hi Anna!"" and ""Your first
-Take is about what you know. Five questions, one slide each. Answer
-out loud, as you'd tell a friend."", and the plan hands the app the
-five slides (N462). After that Take's walk Will reads it slide by
+speaker is not asked in the chat: Will says his four-line welcome
+(N492), and the plan hands the app the five slides (N462). After that Take's walk Will reads it slide by
 slide: each answer is kept as the plan answer it replaces (the voice
 message on slide 2, the audience, the key line on slide 5) and all
 five in Will's notes; the plan's facts and

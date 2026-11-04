@@ -59,10 +59,8 @@ OUTCOME
       that Take as its first practice (N262).
   O16 With the first Take on (always with no ``first_take`` ring row,
       N457 item 3; a row can hold it back, N401), a new
-      speaker is not asked in the chat: Will says "Hi Anna!" and "Your first
-      Take is about what you know. Five questions, one slide each. Answer
-      out loud, as you'd tell a friend.", and the plan hands the app the
-      five slides (N462). After that Take's walk Will reads it slide by
+      speaker is not asked in the chat: Will says his four-line welcome
+      (N492), and the plan hands the app the five slides (N462). After that Take's walk Will reads it slide by
       slide: each answer is kept as the plan answer it replaces (the voice
       message on slide 2, the audience, the key line on slide 5) and all
       five in Will's notes; the plan's facts and
@@ -254,7 +252,9 @@ def test_with_no_first_take_row_a_new_speaker_meets_the_first_take(db, monkeypat
     _rings(monkeypatch, calls=False, first_take_row=False)
     out = F.state(db, USER, tz="Europe/Warsaw", first_name="Tester")
     assert out["plan"]["first_take"] is True
-    assert bodies(db) == ["Hi Tester!", P.COPY["first_take"]]
+    assert bodies(db) == [  # Will's welcome, signed (N492)
+        "Hi Tester, and welcome. We'd like to learn what you know and what you could teach others.",
+        P.COPY["first_take"], P.COPY["first_take_why"], P.COPY["first_take_where"]]
 
 
 def test_no_date_gives_two_months_then_the_voice_message(db):
@@ -690,7 +690,8 @@ def test_with_the_first_take_on_the_questions_are_its_slides(db, monkeypatch):
     out, kept = _first_take(db, monkeypatch, {"facts": {
         "event": "the newsroom conference", "topic": "My newsroom conference talk",
         "audience": "about two hundred journalists"}, "deadline": day})
-    assert bodies(db) == ["Hi Anna!", P.COPY["first_take"]]  # no question in the chat
+    assert bodies(db)[1:] == [P.COPY["first_take"], P.COPY["first_take_why"],
+                              P.COPY["first_take_where"]]  # no question in the chat
     assert out["plan"]["first_take"] is True
     assert [s["title"] for s in out["plan"]["first_take_slides"]] == [q for _k, q, _h, _x in P.FIRST_TAKE_SLIDES]
 
