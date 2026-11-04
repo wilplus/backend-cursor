@@ -11900,6 +11900,11 @@ No migration. The rules: the legal pack
 and frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 G.
+- **Published** (founder, 4 November 2026, 12:45:20 UTC):
+`PUBLISH-3.12-2026-11-04.sql` run in Supabase. `phase1-2026-11-04-3.12` is in
+force with the approved bytes, the five purposes and the United States;
+training-only-v4 unchanged. Next: `TAKE_SEND_ENABLED=1` on every Railway
+service (the founder), after the release carrying #1714.
 
 **N483 · The bottom bar, one logic in every chat: no mic, one black record
 button, and the "+" asks a person; locked (founder, the Claude Code chat,
