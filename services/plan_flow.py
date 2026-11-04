@@ -1051,7 +1051,7 @@ def _keep_first_take(database: Any, user_id: str, plan: dict, slides: list[list[
                      said: list[str], key_line: Any,
                      voices: Optional[dict[int, bytes]] = None) -> dict:
     """Each answer of the first Take, kept as the plan answer it replaces
-    (the voice message, the audience, the key line, the opening) with its
+    (the voice message, the audience, the key line; N462) with its
     readings, and every answer in Will's notes on the speaker; ``voices``,
     by slide, the voice kept with its answer, which the coach's blind pick
     plays (N213). The facts to keep: the key line's answer."""
@@ -1085,7 +1085,7 @@ def _said(slides: list[list[dict]]) -> list[str]:
 #: The longest stretch of one answer kept for the coach to hear.
 FIRST_TAKE_VOICE_MAX_MS = 180_000
 #: The first Take's slides whose voice the coach's blind pick plays: the
-#: voice message (slide 2) and the key line (slide 4), N213.
+#: voice message (slide 2) and the key line (slide 5), N213, N462.
 _COACH_HEARS = ("why", "key")
 
 
@@ -1145,7 +1145,7 @@ def after_processing(database: Any, payload: dict, audio: bytes) -> bool:
         plan = database.get_open_plan(user_id)  # again: the walk's end may have read it
         if plan is None or not _first_take_waits(plan):
             return False
-        kept = _keep_first_take(database, user_id, plan, slides, said, said[3], voices)
+        kept = _keep_first_take(database, user_id, plan, slides, said, said[P.FIRST_TAKE_KEY], voices)
         _save(database, user_id, plan, {"facts": {
             **_facts(plan), **kept, "first_take": "kept", "first_take_session": take_id}})
         return True
@@ -1176,8 +1176,8 @@ def _from_first_take(database: Any, user_id: str, plan: dict) -> list[dict]:
     facts = {**_facts(plan), "first_take": "read", "first_take_session": take_id or None,
              "takes_seen": len(_takes(database, user_id))}
     facts.update(P.clean_facts((read or {}).get("facts"), facts))
-    if not facts.get("key_line") and said[3]:
-        facts["key_line"] = said[3][:300]
+    if not facts.get("key_line") and said[P.FIRST_TAKE_KEY]:
+        facts["key_line"] = said[P.FIRST_TAKE_KEY][:300]
     if not kept:
         facts.update(_keep_first_take(database, user_id, plan, slides, said, facts.get("key_line")))
     plan = _save(database, user_id, plan, {"facts": facts})

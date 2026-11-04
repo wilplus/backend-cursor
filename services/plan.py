@@ -47,7 +47,8 @@ TODAY_ONE: dict[str, str] = {
 COPY = {
     "hello_first": "A few quick questions before your first practice.",
     # The first Take is the onboarding (N401 item 1, signed).
-    "first_take": "Your first Take is five questions. Answer each one out loud, one slide at a time.",
+    "first_take": ("Your first Take is about what you know. Five questions, one slide each. "
+                   "Answer out loud, as you'd tell a friend."),
     "deadline_q": "When is your deadline?",
     "pick_date": "Pick a date",
     "no_date": "No date yet",
@@ -142,21 +143,27 @@ BANK: dict[str, tuple[Optional[str], str]] = {
 }
 BANK_ORDER = ("audience", "length", "worry", "experience", "success", "opening")
 
-#: The first Take's five slides (N401 item 2, signed): the small title, the
-#: question on the big screen, the line under it, and the plan answer each
-#: becomes. Slide 1, about the speaker, is the setup's (N400 item 1): it is
-#: kept in Will's notes, not as a plan answer.
+#: The first Take's five slides (N462, signed; was N401 item 2): the small
+#: title, the question on the big screen, the line under it, and the plan
+#: answer each becomes. Slide 1, about the speaker, is the setup's (N400
+#: item 1) and slide 4, the moment, is the speaker's story: both are kept in
+#: Will's notes, not as plan answers; the story is also a fact.
 FIRST_TAKE_SLIDES = (
-    ("About you", "What do you do, and what do you know best?",
-     "So I can send you the right questions.", None),
-    ("Your talk", "What are you practising for, and why does it matter?", "", "why"),
-    ("The room", "When is it, and who will be in the room?", "", "audience"),
-    ("Your one sentence", "If they remember one sentence from you, what is it?",
+    ("Your field", "What do you know better than most people you meet?",
+     "The thing people come to you for.", None),
+    ("Worth sharing", "What could you teach someone in five minutes that would save them a year?",
+     "Something you learned the hard way.", "why"),
+    ("Who it's for", "Who would be glad you told them?",
+     "Picture one person: a colleague, a customer, a friend.", "audience"),
+    ("A moment", "When did it make a difference? Take us to that day.",
+     "Where you were, what happened, what changed.", None),
+    ("Your one thing", "If they remember one sentence from you, what should it be?",
      "Say it the way you'll say it.", "key"),
-    ("Your opening", "How will you open? Say your first sentence.", "", "opening"),
 )
+#: The first Take's slide that holds the key line (N462: the last one).
+FIRST_TAKE_KEY = next(i for i, slide in enumerate(FIRST_TAKE_SLIDES) if slide[3] == "key")
 MAX_FOLLOWUPS = 3
-FACT_KEYS = ("event", "why", "topic", "audience", "length", "slides", "key_line",
+FACT_KEYS = ("event", "why", "topic", "audience", "length", "slides", "key_line", "story",
              "worry", "experience", "success", "opening", "who")
 
 MONTHS = ("January", "February", "March", "April", "May", "June", "July",
@@ -653,21 +660,23 @@ def first_take_prompt(*, answers: Sequence[tuple[str, str]], today: date) -> str
              for i, (q, said) in enumerate(answers, start=1)]
     return "\n".join([
         "You read the first Take of a new speaker in WillpowerLab, an app where people "
-        "practise speaking for an important event in their life. Their first Take is five "
-        "questions on five slides, answered out loud; the transcript of each slide is below.",
+        "practise speaking for an important event in their life. Their first Take is about "
+        "what they know and what they would share with others: five questions on five "
+        "slides, answered out loud; the transcript of each slide is below.",
         f"Today is {today.isoformat()} ({DAYS[today.weekday()]}).",
         "",
         *lines,
         "",
         "Answer with JSON only: {\"facts\": {\"event\": string|null, \"why\": string|null, "
         "\"topic\": string|null, \"audience\": string|null, \"key_line\": string|null, "
-        "\"opening\": string|null, \"who\": string|null}, \"deadline\": string|null}",
+        "\"story\": string|null, \"who\": string|null}, \"deadline\": string|null}",
         "facts are what the speaker said, short and in their words; null when not said. "
-        "\"event\" is what they are practising for; \"why\" why it matters; \"topic\" a short "
-        "title for their talk, at most 60 characters, in their words; \"audience\" who will be "
-        "in the room and how many; \"key_line\" the one sentence they want remembered, as they "
-        "said it; \"opening\" their first sentence, as they said it; \"who\" who they will speak "
-        "to, in a few words (\"the board\", \"your sister\").",
+        "\"event\" is what they are practising for, only when they named one; \"why\" what "
+        "they would teach others, the thing worth sharing; \"topic\" a short title for what "
+        "they know and would share, at most 60 characters, in their words; \"audience\" who "
+        "would be glad to hear it; \"key_line\" the one sentence they want remembered, as "
+        "they said it; \"story\" the moment they told, when it made a difference; "
+        "\"who\" who they will speak to, in a few words (\"the board\", \"your sister\").",
         "\"deadline\" is the day of the event as YYYY-MM-DD, only when they said a day you can "
         "date from today; null when they said none, or only a season or a vague time.",
     ])
