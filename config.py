@@ -379,8 +379,9 @@ class Config:
     TAKE_SEND_ENABLED = _env_flag("TAKE_SEND_ENABLED", "0")
     # The founder's account id: a speaker with no chat with a person gets
     # one with him (N479 item 7), listed as "Artur", speaking coach, and
-    # made on the first send. Unset: no fallback. Set it on every Railway
-    # service before the code merges.
+    # made on the first send. Optional: unset, the founder is the account
+    # with ADMIN_EMAIL (services/take_sends.py, found once per process);
+    # set, this id wins. Neither finds anybody: no fallback.
     FOUNDER_CHAT_USER_ID = (os.getenv("FOUNDER_CHAT_USER_ID") or "").strip() or None
 
     # 6d: fitting a learned detector on audit answers. ON from 2026-10-02
