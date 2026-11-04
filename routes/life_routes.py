@@ -176,7 +176,6 @@ def _offset(value) -> int:
 # State + consent + setup
 # ═════════════════════════════════════════════════════════════════════════
 
-@life_bp.route("/v2/life/state", methods=["GET"])
 def _strengths_on(user_id) -> bool:
     try:
         from services import rings
@@ -185,6 +184,7 @@ def _strengths_on(user_id) -> bool:
         return False
 
 
+@life_bp.route("/v2/life/state", methods=["GET"])
 @life_route(consent=False)
 def life_state():
     """What the panel shell needs to render itself.
