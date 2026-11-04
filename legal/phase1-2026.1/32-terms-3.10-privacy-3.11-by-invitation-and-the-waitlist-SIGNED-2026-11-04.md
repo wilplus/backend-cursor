@@ -11,8 +11,8 @@ reads it after it is published, as a check.
     documents:   Terms 3.10 and Privacy 3.11, word for word in sections 4 and 5 below
     replaces:    copy/terms-3.9.txt, copy/privacy-3.10.txt
     unchanged:   copy/ai-notice-3.2.txt, copy/agreement-3.1.txt
-    publish as:  phase1-{date}-3.11 (PUBLISH-3.11-{date}.sql, the founder's step),
-                 on the day invite-only goes live (N471)
+    publish as:  phase1-2026-11-04-3.11 (PUBLISH-3.11-2026-11-04.sql, the founder's step),
+                 dated 4 November 2026 by the founder (N480), the day invite-only goes live
     asked by:    the founder, 2026-11-04: N471 item 10
     question 1:  A, the waitlist email in our inbox is deleted when the person
                  closes their account, like the rest of their data
@@ -56,11 +56,11 @@ stays as written until N470 is built.
 
 1. Built and merged: invite-only (N471), backend and frontend.
 2. 3.10 is in force (PUBLISH-3.10-2026-11-04.sql has been run).
-3. The signed texts are already `copy/terms-3.10.txt` and
-   `copy/privacy-3.11.txt`, byte for byte as below, reading "Effective
-   {publication date}". On the go-live day engineering fills in that date
-   line and nothing else, and writes `PUBLISH-3.11-{date}.sql` in the shape
-   of PUBLISH-3.10.
+3. The signed texts are `copy/terms-3.10.txt` and `copy/privacy-3.11.txt`,
+   byte for byte as below with the date line filled in, "Effective 4
+   November 2026" (the founder's date, N480), and nothing else changed.
+   `PUBLISH-3.11-2026-11-04.sql` publishes them, in the shape of
+   PUBLISH-3.10.
 4. The release with invite-only goes out, and the founder runs the PUBLISH
    script the same day. Nothing is deleted, and nothing is switched on
    afterwards.
