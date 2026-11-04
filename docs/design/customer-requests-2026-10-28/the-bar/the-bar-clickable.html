@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<!-- The Bar, Clickable (version 8), locked by the founder on 2026-11-04 (backend N483). Open in any browser; the images are in img/. -->
+<!-- The Bar, Clickable (version 12), locked by the founder on 2026-11-04 (backend N483, N498). Open in any browser; the images are in img/. -->
 </head>
 <body>
 <title>The Bar, Clickable</title>
@@ -180,7 +180,7 @@ p { margin: 0; }
   <header class="intro">
     <h3>Chats · the bottom bar · with my suggestions</h3>
     <h1>The Bar, Clickable</h1>
-    <p>Pick a scenario, or just tap in the phone: every button works. Both chats follow one rule. Your things are on the left, and the one thing to do now is in the middle. To say no to a question, tap "Not now" under it: a grey word on your side. There's no ✕ in either bar and no mic. You type only in Will's chat, and only when he asks for words; a chat with a person has no box at all. In a chat with a person, the "+" adds a question for them: it opens "Ask Sarah", and your question always opens the default presentation. A red dot means tapping it starts a recording.</p>
+    <p>Pick a scenario, or just tap in the phone: every button works. Both chats follow one rule. Your things are on the left, and the one thing to do now is in the middle. To say no to a question, tap "Not now" under it: a grey word on your side. There's no ✕ in either bar and no mic. You type only in Will's chat, and only when he asks for your own words; a chat with a person has no box at all. In a chat with a person, the "+" adds a question for them: it opens "Ask Sarah", and your question always opens the default presentation. A red dot means tapping it starts a recording.</p>
     <p style="color:var(--muted);font-size:15px">Will's and Sarah's words are examples. The new words for asking someone are marked for your OK; every other word is already signed. The recording screens, the walk and Your projects are shown as plain stand-ins; they don't change.</p>
   </header>
 
@@ -188,11 +188,12 @@ p { margin: 0; }
     <div class="side">
       <div class="group" id="g-will"><h4>Will's chat</h4></div>
       <div class="group" id="g-sarah"><h4>A chat with Sarah</h4></div>
-      <div class="newwords"><span class="k">New words, for your OK</span><ul>
-        <li>The sheet: "Ask Sarah"; "Sarah knows about scalp care, hair loss and colour, and she's glad to share it. Ask her one specific question, and she'll answer in her own voice when she can."; "Record your question"</li>
-        <li>The steps, the first time only: "1. Ask one thing · A clear question gets a clear answer"; "2. She answers · Out loud, when she has a moment"; "3. It stays here · Play it again whenever you need it"</li>
-        <li>On the recording screen's top line: "To Sarah · Slide 1 of 3"</li>
-        <li>Her topics come from her profile (N400); "scalp care, hair loss and colour" is an example.</li>
+      <div class="newwords"><span class="k">Since version 8 (N498)</span><ul>
+        <li>No name is asked in Will's chat: it comes from sign-up (version 8 had "The setup asks for words", a name or a code). The box comes for your own words: "Something else", his follow-up, "What was missing?".</li>
+        <li>The sheet is "Ask Sarah", the steps the first time only, "Record your question" and Cancel. The line "Sarah knows about … when she can." is gone.</li>
+        <li>So the sheet needs no topics, and it works before anyone has set them up (N400).</li>
+        <li>The steps, signed: "1. Ask one thing · A clear question gets a clear answer"; "2. She answers · Out loud, when she has a moment"; "3. It stays here · Play it again whenever you need it". Built, they name the person and say "they".</li>
+        <li>On the recording screen's top line: "To Sarah · Slide 1 of 3".</li>
       </ul></div>
     </div>
     <div class="right">
@@ -248,7 +249,6 @@ p { margin: 0; }
       ["Will asks a question", "With answers to tap", function () { W = freshWill(); askQuestion(); }],
       ["Something else", "Your own words", function () { W = freshWill(); askQuestion(); W.words = true; }],
       ["Will needs to hear you", "A spoken question", function () { W = freshWill(); W.hear = true; W.thread.push({ w: "will", t: "Why does this talk matter to you?" }); }],
-      ["The setup asks for words", "A name or a code", function () { W = freshWill(); W.setup = true; W.words = true; W.mustType = true; W.thread.push({ w: "will", t: "What's your team called?" }); }],
       ["At rest", "Nothing asked", function () { W = freshWill(); W.thread.push({ w: "will", t: "Good job. See you next time." }); }],
       ["Your projects", "The stack on the left", function () { W = freshWill(); W.sheet = true; }]
     ],
@@ -348,7 +348,6 @@ p { margin: 0; }
       if (W.overlay === "rec") html += overlayRec("Take " + W.take, "Opening", "Let your key line land", "finishtake");
       if (W.overlay === "walk") html += '<div class="ov"><div class="head">Feedback · Take ' + (W.take - 1) + '</div><div class="body"><p style="font-size:17px;font-weight:600">The Feedback walk</p><p class="note">As it is today: praise, the one thing to improve, practice.</p></div><div class="foot"><button type="button" class="pill" data-a="closewalk">Close</button></div></div>';
       note = EXPLAIN[m];
-      if (m === "words" && W.setup) note = "The setup needs a name, so the box stays until you send it. Will's question says what to type.";
       if (m === "take" && W.question) note = "Will asks, with answers to tap above the bar. The middle keeps the next Take, so his question never stands in front of practice. \"Something else\" opens the box.";
       if (W.sheet) note = "The stack opens Your projects, as today. It's on the left in every state of the bar.";
       if (W.overlay === "rec") note = "The recording screens open as today. Finish the Take to come back.";
@@ -376,14 +375,14 @@ p { margin: 0; }
         html += '<div class="deck"><div class="frame2"><img src="img/rec-' + P.deck + '.png" alt="The recording screen, To Sarah, slide ' + (P.deck + 1) + ' of 3: ' + ["Opening", "Main points", "Summary"][P.deck] + '.">' +
           hot("deckclose", 346, 10, 28, 28, "Close") + (P.deck > 0 ? hot("deckback", 16, 652, 175, 48, "Back") : "") + hot(last ? "deckfinish" : "decknext", 201, 652, 173, 48, last ? "Finish take" : "Next slide") + "</div></div>";
       }
-      if (P.sheet) html += '<div class="sheet-wrap" data-a="closesheet"><div class="sheet" data-stop="1"><span class="grab"></span><p class="st">Ask Sarah</p><p class="sl">Sarah knows about scalp care, hair loss and colour, and she\'s glad to share it. Ask her one specific question, and she\'ll answer in her own voice when she can.</p><button type="button" class="big" data-a="recq"><span class="dot"></span>Record your question</button>' + (P.firstAsk ? '<div class="steps"><div><b>1. Ask one thing</b>A clear question gets a clear answer</div><div><b>2. She answers</b>Out loud, when she has a moment</div><div><b>3. It stays here</b>Play it again whenever you need it</div></div>' : "") + '<button type="button" class="cancel" data-a="closesheet">Cancel</button></div></div>';
+      if (P.sheet) html += '<div class="sheet-wrap" data-a="closesheet"><div class="sheet" data-stop="1"><span class="grab"></span><p class="st">Ask Sarah</p><button type="button" class="big" data-a="recq"><span class="dot"></span>Record your question</button>' + (P.firstAsk ? '<div class="steps"><div><b>1. Ask one thing</b>A clear question gets a clear answer</div><div><b>2. She answers</b>Out loud, when she has a moment</div><div><b>3. It stays here</b>Play it again whenever you need it</div></div>' : "") + '<button type="button" class="cancel" data-a="closesheet">Cancel</button></div></div>';
       if (P.toast) html += '<div class="toast">' + esc(P.toast) + "</div>";
       note = EXPLAIN[n];
       if (n === "ask" && !P.sheet && !P.taps && !plusUsed && !(P.question && P.crossed)) note = "A new chat, and you haven't asked anyone yet: the \"+\" is orange, as the mic was when your words were awaited (N460), and still. It's the one orange thing in the bar. Once you've tapped it, it's plain everywhere.";
       if (n === "ask" && P.question && P.crossed) note = "You tapped \"Not now\", so the emoji are back. Her question still waits, and \"Record your answer\" comes back when you open the chat again.";
       if (P.taps) note = "Her setup asks only closed questions: tap an answer under her question, on your side, as with Will's (N467). There's no box in a chat with a person; the bar keeps the \"+\" and the emoji.";
       if (P.deck !== null) note = "Your question always opens the default presentation on the recording screens: Opening, Main points with 1 2 3, and Summary. These are the real screens. The top line names Sarah. Tap Next slide, then Finish take.";
-      if (P.sheet) note = P.firstAsk ? "The \"+\" opens \"Ask Sarah\", built like \"Add someone to chat with\": a title, one line with what she knows, the black button, and Cancel. The first time, three short steps say how it works." : "After your first question, the sheet is short: who she is, what she knows, one black button. The steps have done their job.";
+      if (P.sheet) note = P.firstAsk ? "The \"+\" opens \"Ask Sarah\", built like \"Add someone to chat with\": a title, the black button, and Cancel. The first time, three short steps say how it works." : "After your first question, the sheet is short: who you are asking, one black button. The steps have done their job.";
       if (P.overlay === "rec") note = "Your answer is a Take: the recording screens open as today, with Sarah's question as the one slide.";
     }
     phone.innerHTML = html;

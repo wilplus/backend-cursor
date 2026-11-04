@@ -12335,7 +12335,59 @@ No new words. No migration. The rules: frontend
 H1 and [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
 K1.
 
-**N498 · N487's words, signed (founder, the Claude Code chat, 4 November
+**N498 · "Ask {name}" has no line, and Will's chat never asks for a name;
+the bar's prototype is version 12 (founder, the Claude Code chat, 4
+November 2026: on the sheet's line, which names topics nobody has yet
+because the setup that collects them (N400) is not built, "We don't need a
+line at all, maybe."; then, on the box for a setup's name, "Actually, the
+name is asked during the sign up, so we didn't need that."; then, of two
+choices, "1, and yes to version 9").** For N483:
+1. **The sheet has no line.** "Ask {name}" is the title, then the black
+"Record your question", the three steps before your first question only,
+and Cancel. The line "{name} knows about {topics} and is glad to share it.
+Ask one specific question, and {name} will answer in their own voice when
+they can." is gone, so the sheet needs no topics and works before N400's
+setup is built. This replaces N483 item 4's "one line with what they know"
+and that line in item 6; "Ask {name}", "Record your question", the steps and
+"To {name} · Slide {n} of 3" stay signed.
+2. **Will's chat never asks for a name:** it comes from sign-up. The box
+"Type your answer" comes when Will asks for your own words: "Something
+else", his follow-up with no answers to tap, and "What was missing?". This
+replaces N483 item 2's "a setup's name"; a code (N400 item 2) is unchanged.
+3. **Locked:** the bar's prototype in [`docs/LOCKS.md`](LOCKS.md) is
+version 12 of "The Bar, Clickable"
+<https://claude.ai/artifact/WfwtMu9qc6aefz3zYUdPC2>, in place of version 8:
+version 9 took the line out of the sheet, version 10 the scenario "The
+setup asks for words", and versions 11 and 12 fixed its notes. The files in
+`docs/design/customer-requests-2026-10-28/the-bar/` and
+`11-the-bar-clickable.pdf` are version 12.
+No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+B14 and
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when "Ask {name}" is built.
+
+**N499 · The walk loads with the typing dots at the bottom, and only after
+a moment (founder, the Claude Code chat, 4 November 2026: with a screenshot
+of the dots at the top left of the walk's empty loading screen, "could you
+please come up with some better loading, or at least put the three dots at
+the bottom"; then, on the prototype
+<https://claude.ai/artifact/1KxNrA1Yw1QDPEK1zRFBAe>, "yes add the
+quick-load option").** For N122 and the frontend's B5 and B8:
+1. **At the bottom:** while the walk loads, its screen shows ✕ and the
+typing dots at the bottom left, where the walk's first bubble lands, as
+N122 asked ("the 3 dots loading should be at the bottom"). A thread shorter
+than the screen sits at the bottom too, right above the buttons, as in the
+chat, so the first bubble takes the dots' place.
+2. **Only after a moment:** the dots show once the walk is still loading
+0.3 s after the screen opens; a quicker load opens on the walk with no
+flash of them. The ✕ is there from the first frame.
+The typing dots stay the walk's one wait (B8). No new words. No migration.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+B5.
+
+**N502 · N487's words, signed (founder, the Claude Code chat, 4 November
 2026, on the prototype "Asked When They Join"
 <https://claude.ai/artifact/G8gZ73CvfgkkJ1ztm1cmsb> (version 18), its list
 "New words to sign": "the words are signed, build it").** For N487 item 9,
@@ -12373,7 +12425,7 @@ No migration in this entry. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when N487 is built.
 
-**N499 · Until the profile card is built, the setup of N487 comes when a
+**N503 · Until the profile card is built, the setup of N487 comes when a
 person first shares their link (founder, the Claude Code chat, 4 November
 2026, asked where someone who shares sets the questions while the profile
 card, "Here's how others will see you" (N453 item 2), is not built: "When
