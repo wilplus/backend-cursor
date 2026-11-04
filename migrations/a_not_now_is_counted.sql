@@ -23,6 +23,9 @@
 -- and written by the service role only; nothing for anon or authenticated.
 -- No environment variable is needed.
 --
+-- Reviewed outside (4 November 2026): approved with one change, the indexes
+-- on thread_id and message_id for the cascading deletes, made here.
+--
 -- Idempotent and additive: CREATE ... IF NOT EXISTS; nothing is dropped and
 -- no row is written, rewritten or removed. One transaction; explicit grants
 -- to service_role, as 0509.
@@ -49,6 +52,11 @@ CREATE TABLE IF NOT EXISTS public.chat_not_now (
 
 CREATE INDEX IF NOT EXISTS chat_not_now_member_idx ON public.chat_not_now (member_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS chat_not_now_asker_idx ON public.chat_not_now (asker_member_id);
+-- The two other columns a delete cascades through (a chat thread, a
+-- message), so those deletes find their rows without a scan (outside
+-- review, 4 November 2026).
+CREATE INDEX IF NOT EXISTS chat_not_now_thread_idx ON public.chat_not_now (thread_id);
+CREATE INDEX IF NOT EXISTS chat_not_now_message_idx ON public.chat_not_now (message_id);
 
 ALTER TABLE public.chat_not_now ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.chat_not_now FROM PUBLIC, anon, authenticated;
