@@ -12366,3 +12366,23 @@ No migration. The rules: frontend
 B14 and
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when "Ask {name}" is built.
+
+**N499 · An emoji from the other person lights up their row like any new
+message, and a new row's line is bold and orange (founder, the Claude Code
+chat, 4 November 2026: on the list of chats, where "🙏 Thanks" from
+signuptesterapple looked already read, "Also show it when an emoji appears,
+like it's a new message. Make it bold and orange"; then, of the mockup's two
+choices <https://claude.ai/artifact/48vaXQoXLsVKGVu8heWFqN>, "B, build
+it").** For N321, N322 and N457:
+1. **An emoji is a new message:** 👍, 👀 or 🙏 from the other person lights
+up their row as their words, a photo, a file or a Take do, until that chat
+is opened. Your own message, an emoji included, never lights up your row.
+2. **The new look, for every new row, Will's included:** the name bold, the
+time orange, the last line bold and orange, the orange dot. Was: the line
+dark, not bold.
+3. **The list reads the chats again** while it is open and each time you
+come back to it, so a message that arrives while you look at the list shows.
+Was: read once, when the list first loaded.
+No new words. No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1.
