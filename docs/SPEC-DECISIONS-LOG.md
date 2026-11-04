@@ -11284,7 +11284,60 @@ J8 and
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1.
 
-**N470 · WillpowerLab is by invitation: a person's link is the only way in,
+**N470 · Who hears this Take: the people you tick, each in your chat with
+them; locked (founder, the Claude Code chat, 4 November 2026, on the
+prototype "Specialist Side Prototype"
+<https://claude.ai/artifact/CXHqV7paTVT4iVSA5uiyrV>, tab 1, from a paper
+sketch of "select all" over one row per user: "your knowledge matters. So do
+your questions. Here you have only your trusted people. Select the ones that
+are best suited to answer you. Or practice public speaking and send it to
+everyone"; "there should be no option to send to everyone, because it's been
+read nowhere in the app. There's only direct link"; "you cannot be in the
+app without someone ... for the current users in the app, assume they were
+invited by me, so they have Arthur speaking coach"; and, on finishing this
+here and the matching in its own chat, "lock it").** For N456, N457, N461
+items 1 and 2, N467, N469; replaces G1's "How big you want your audience?":
+1. **The screen** (at "Record Take N", as G1 is asked today, and changeable
+from the line under a Take's recording) keeps the walk's look (N286, N440:
+each bubble round and apart): three grey bubbles, "Your knowledge is worth
+sharing, and so are your questions.", "The people below are the ones you
+trust.", "Choose who can answer you best, or send it to all of them and
+practise speaking."; then "Select all" and one row per person in your list
+of chats (avatar, name, title), each with its tick box on the left, the
+person you sent to last on top with "Last sent" under the name, then the
+list's order; Continue.
+2. **Ticked by default:** everyone (Select all). Unticking all leaves
+Continue waiting. There is no "Everyone on WillpowerLab" and no "Only me":
+a Take goes only to people in your list, reached by direct links.
+3. **Nobody's list is empty:** every speaker came in through someone's
+link; a speaker who has no chat with a person has one with Artur, speaking
+coach (the founder), as if invited by him.
+4. **Each ticked person gets the Take as your own message** in your chat
+with them (N461 item 2: a peer, by name, not blind), with the Take attached
+and "Open Take". The line under the Take's recording names who it went to
+("Artur", "Artur, Maya Lindqvist", or "Everyone in my list").
+5. **The choice is locked once the Take is sent;** a later match is a
+separate suggestion (point 7).
+6. **Signed (Never 4):** the three bubbles above; "Select all"; "Last sent";
+"Everyone in my list"; "{name} sent you Take {n}"; "Open Take".
+7. **For the matching chat** (its own session builds it on this): joining
+by a matching link (tab 2) and the anonymous suggestion after the Take (tab
+3): one person, a pseudonym and their description only, sent only with
+Send; after Send a direct chat both ways, the sender seeing the pseudonym
+until the other replies; left without an answer it stays as it is.
+8. **The promise in CLAUDE.md changes with the build:** "every Take a
+speaker sends reaches the people they chose".
+9. **Locked** once built: the screen and its words join
+[`docs/LOCKS.md`](LOCKS.md); a change needs the founder's OK with a
+prototype. What happens to the crowd's judging and the community choice of
+today's G1 is listed before the build, and the founder told what stops.
+Not in force until built and merged. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+G and
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built.
+
+**N471 · WillpowerLab is by invitation: a person's link is the only way in,
 or the waitlist; no guest path (founder, the Claude Code chat, 4 November
 2026, on the prototype "Invite-Only Entry"
 <https://claude.ai/artifact/HSELYXuS99xctnHRVBo1e4>: "we would turn off the
@@ -11349,9 +11402,10 @@ through, the waitlist email, and drops recording as a guest.
 closing. **A person who recorded as a guest before the switch** (founder:
 "probably there is not such a person") is let in once when they sign up,
 into Artur's community, as if they had joined through his link.
-12. **Open:** the share question after a walk (locked, N52.4, N294): the
-general community, pass codes, and the other voices from shared Takes; the
-day it goes live, with Terms 3.10 and Privacy 3.11.
+12. **Who hears a Take** is N470: only the people you tick in your chats,
+never everyone, and today's users count as invited by the founder, with a
+chat with Artur, speaking coach. That answers the share question this entry
+left open. **Open:** the day it goes live, with Terms 3.10 and Privacy 3.11.
 No migration in this entry. The rules: frontend
 [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
 (the first page, the waitlist and the waiting screen) when built, and
