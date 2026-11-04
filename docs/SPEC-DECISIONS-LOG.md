@@ -11803,6 +11803,64 @@ after `PUBLISH-3.10-2026-11-04.sql` and once the release with invite-only
 is out.
 No migration. No rules page: the legal pack and the code.
 
+**N481 · Every answer to a Take is spoken in the official recorder; matching
+weighs knowledge, speaking skills, progress and the communication profile,
+for everyone (founder, the Claude Code chat, 4 November 2026: "each time it
+goes through an "official inquiry" so the recording with the slides meaning
+these takes are being analysed through vocal and verbal cues and matching
+algorithm particiaptes in them; so you should always open the oficcial
+recorder; and you can only say it; (we will adjust hte bottom bar for it
+later) So the matching algorithm is their knowledge, their speaking skills,
+so Wilfiden's score on average, and communication profile, so with
+Wilfiden's profile made out of our behavioral data collected through the
+app, and who fits with who based on that data; so the matching algorithm
+takes the speaking skills in general their similairty when it comes to
+progress fast progress / slow progress and the knowledge they share and how
+it fits the need of that person"; then, to four questions: "everyone cause
+at the steage of accepting hte terms you accept that too!", "Let the
+experiment decide", "Every answer to a Take" and "Hold it" for the
+matching's build, #1712).** For N463, N465, N470, N477, N478 and N479:
+1. **Every answer to a Take is a Take.** An answer to a Take, whether it was
+matched (N478) or sent to your list (N470), is recorded in the official
+recorder, with slides, and analysed like any Take, by its vocal and verbal
+cues. It is only spoken, never typed. Every answer feeds the matching. For
+answers, this replaces the chat's own recorder of N478 item 3 ("Record an
+answer", "Stop", "Sending to {name}… {n}", "Undo").
+2. **The matching after a Take (N477) weighs four things:**
+   - **knowledge:** what the person knows and shares, against what the
+     Take needs (as built);
+   - **speaking skills:** their Willfidence on average over their Takes;
+   - **progress:** how fast their Willfidence moves from Take to Take,
+     matched alike (fast with fast, slow with slow);
+   - **the communication profile:** a Willfidence profile made from the
+     behaviour the app collects. Proposed: the reads Willfidence keeps for
+     each moment (sound, fillers, hedging, slide fit, holding together),
+     then N463 item 3's voice and words dimensions once they are built.
+
+   None of it is ever shown, to anyone (Never 1, N463 item 4).
+3. **The experiment decides the skills:** each match is drawn into an arm,
+someone at a similar speaking level or someone further along, and the arm
+that keeps more pairs talking at day 14 wins (N463 item 7; Takes per person
+is the guardrail). Progress is matched alike in every arm. Proposed: N463
+item 5's style arms (similar, opposite) come after, one experiment at a
+time.
+4. **For everyone, accepted with the terms** (founder: "at the stage of
+accepting the terms you accept that too"). This replaces N463 item 2 (opt-in,
+its own consent, off by default) and retires N465's consent card. The
+Terms and the Privacy policy every speaker accepts say it, in their next
+version, and the matching weighs knowledge only until that text is signed.
+Proposed: counsel checks that accepting the terms can carry it, since the
+consent they signed was opt-in (N463 items 2 and 11, N464); and N465's
+Settings card stays as the way to turn it off.
+5. **Open (Never 4):** the chat's bottom bar for answering (founder: "we
+will adjust the bottom bar for it later"), and whose slides an answer is
+recorded over. Proposed: the Take's own slides, so it answers slide by
+slide.
+No migration for this entry. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+G, for answering a Take, when built; the matching gets its rules page when
+it is built (N332); the Terms and Privacy text, in the legal pack.
+
 **N483 · The bottom bar, one logic in every chat: no mic, one black record
 button, and the "+" asks a person; locked (founder, the Claude Code chat,
 4 November 2026, on the clickable prototype "The Bar, Clickable",
@@ -11862,8 +11920,8 @@ N460 item 4).
 5. **One label for answering anyone:** "Record your answer". Was "Record an
 answer" with people (N361, N441, N478 item 3). An answer opens the
 recording screens with their question as the one slide (N361 item 3);
-whose slides an answer to a Take is recorded over, still open in review,
-is not decided here.
+this settles N481's open bottom bar for answering; whose slides an answer
+to a Take is recorded over stays open there (N481 item 5).
 6. **Words, signed with the prototype (Never 4):** "Record your question";
 "Ask {name}"; "{name} knows about {topics} and is glad to share it. Ask one
 specific question, and {name} will answer in their own voice when they
