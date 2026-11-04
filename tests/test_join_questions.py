@@ -3,7 +3,7 @@ STORY    As a person who shares what I know, I want everyone who joins through
          my link to answer a few practical questions by tapping, so that we
          start our knowledge base knowing the deadline and the language, and I
          read their answers on one card, not my own questions waiting (N487,
-         words signed in N491, N496 and N498).
+         words signed in N491, N496 and N502).
 OUTCOME
   O1  My questions are kept and read back; a question without two to six
       answers is refused; an empty set means none.

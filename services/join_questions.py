@@ -1,4 +1,4 @@
-"""Asked when they join (N487; its words signed in N491, N496 and N498).
+"""Asked when they join (N487; its words signed in N491, N496 and N502).
 
 A person who shares what they know sets a few practical questions; everyone
 who joins through their link is asked them, one at a time, in their chat with
@@ -52,7 +52,7 @@ MAX_WORDS = 160
 MAX_ANSWERS = 6
 MAX_ANSWER = 40
 
-# ── The words (signed: N491, N496, N498) ────────────────────────────────
+# ── The words (signed: N491, N496, N502) ────────────────────────────────
 PLAN_LINE = "Let's build our knowledge base {span}."
 HURRY = "Are you in a hurry?"
 LANGUAGES = "Which languages can we use?"

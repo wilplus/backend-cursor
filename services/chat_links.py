@@ -223,7 +223,7 @@ def joined_through(database: Any, user_id: str, thread_id: Any) -> Optional[str]
 def joined_by(database: Any, user_id: str, thread_id: Any) -> Optional[str]:
     """For the link's owner: the first name of whoever joined this chat
     through their link, or None, for the line "{name} joined through your
-    link." (N498 item 5)."""
+    link." (N502 item 5)."""
     thread = _uuid(thread_id)
     rows = _rows(_table(database, THREADS).select("link_id").eq("id", thread).limit(1)) if thread else []
     link_id = rows[0].get("link_id") if rows else None

@@ -441,7 +441,7 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
                          for r in reversed(newest)],
             "joined_through": through,
             # The joiner's line at the top: with a few questions first, or not
-            # (N496); the owner's: who joined through their link (N498 item 5).
+            # (N496); the owner's: who joined through their link (N502 item 5).
             "joined_asks": bool(through) and join_questions.asks(database, thread),
             "joined_by": None if through else joined_by(database, user_id, thread),
             "blocked": chat_safety.blocking({"blocked_spans": spans})}
