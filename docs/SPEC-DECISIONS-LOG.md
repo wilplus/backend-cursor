@@ -12762,3 +12762,19 @@ list of people below.
 No new words. No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 G and J8.
+
+**N514 · A Yes on the dump screen writes only "Yes" and "Noted." in Will's
+chat (founder, the Claude Code chat, 4 November 2026, on the drawing "Dump in
+Will's Chat" <https://claude.ai/artifact/1mPhCH498wLUGUELSXWoFv>: "OK", to
+leaving out "What's on your mind today?" when the Yes comes from the dump
+screen).** For N411 item 1, N483 item 7, N507 item 1:
+1. **When the notebook's Yes is given on the dump screen** (N507 item 1),
+Will's chat gets the person's "Yes" and "Noted.", and not "What's on your
+mind today?": since N483 there is no mic and no typing to Will to answer it,
+and the person has just answered on the dump screen.
+2. **Everything else stands:** a Yes given anywhere else keeps N411 item 1's
+rows; each dump is still "# " and its words, then "Noted." (N194).
+3. No new words.
+Not in force until built and merged. No migration. The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+T3, when built.
