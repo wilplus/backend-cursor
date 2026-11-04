@@ -430,6 +430,35 @@ def v2_chats_join_questions_save():
     return _run("join-questions save", lambda: save(db, str(request.user_id), body))
 
 
+@v2_bp.route("/chats/join-questions/setup", methods=["POST"])
+@limiter.limit("60 per hour", scope="chats_join_setup")
+@require_auth
+def v2_chats_join_setup():
+    """The first time "Add someone to chat with" opens: Will asks the setup
+    in his chat (N503). {"started"}: false opens the link at once."""
+    from services.join_setup import begin
+    return _run("join setup", lambda: begin(db, str(request.user_id)))
+
+
+@v2_bp.route("/chats/join-questions/setup/again", methods=["POST"])
+@limiter.limit("60 per hour", scope="chats_join_setup")
+@require_auth
+def v2_chats_join_setup_again():
+    """"Your questions for people who join ›": the summary again."""
+    from services.join_setup import again
+    return _run("join setup again", lambda: again(db, str(request.user_id)))
+
+
+@v2_bp.route("/chats/join-questions/setup/answer", methods=["POST"])
+@limiter.limit("120 per hour", scope="chats_join_setup_answer")
+@require_auth
+def v2_chats_join_setup_answer():
+    """A tap, or typed words, under Will's setup question."""
+    from services.join_setup import answer
+    body = request.get_json(silent=True)
+    return _run("join setup answer", lambda: answer(db, str(request.user_id), body))
+
+
 @v2_bp.route("/chats/<thread_id>/setup/<message_id>", methods=["POST"])
 @require_auth
 def v2_chats_setup_answer(thread_id, message_id):
