@@ -545,3 +545,4 @@
 0507	a_person_has_a_profile.sql
 0508	an_iphone_keeps_its_push_address.sql
 0509	a_person_can_block_and_report_someone_in_a_chat.sql
+0510	a_chat_carries_a_take.sql
