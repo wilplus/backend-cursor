@@ -12165,3 +12165,26 @@ caller joined through (`services/chats.py` `list_chats`), as the chat's
 messages already do. No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1.
+
+**N491 · Two lines of Will's setup for a person who shares, signed
+(founder, the Claude Code chat, 4 November 2026, on the prototype "Asked
+When They Join" <https://claude.ai/artifact/G8gZ73CvfgkkJ1ztm1cmsb>
+(version 17), after asking to simplify them: "GOOD! you ahve my ok").** For
+N487 items 2 and 9 (Never 4):
+1. **Signed:** "Everyone who joins through your link builds a knowledge
+base with you. I'll ask them a few questions first." Was, on the
+prototype: "Everyone who joins through your link builds a knowledge base
+with you, in your chat with them. Before you start, I'll ask them a few
+questions for you."
+2. **Signed:** "How far ahead do you like to plan?" Was: "When you build a
+knowledge base with someone, how far ahead do you like to plan?" Its
+answers stay as N487 item 2 lists them, open with the rest.
+3. **Proposed on the same prototype, not signed yet:** the line at the top
+of the joiner's chat, made shorter at the founder's ask, "You joined
+thanks to {name}. A few questions first, then you build a knowledge base
+together.", and with no questions, "You joined thanks to {name}. Your
+first question starts the knowledge base you build together." Once signed,
+it is also the line N488 keeps on the list's row.
+No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when N487 is built.
