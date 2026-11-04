@@ -57,10 +57,6 @@ Advancing (``release``), always under the rows that closed the ask:
     again (founder 2026-10-21, N94);
   - the ask's form closing in the Lounge, whatever the choice (Save, Not
     now, See prices): POST /v2/user/lounge/after-take;
-  - the plan's answer to the ask its lines after the Take wrote (the
-    deadline, "Is this for {date}?", the ratings, the plan's yes, a voice
-    answer, a call booked or skipped), under the rows it wrote, unless they
-    ask the plan's next question (``after_plan_answer``);
   - a newer Take's summary: an older held message is let go where it stands.
 The Lounge never advances past Will's question while it waits for its
 answer (``release_from_lounge``, N406 item 1): after a typed answer the
@@ -73,9 +69,7 @@ Take (``plan_flow.after_take``, "That's your 15 minutes for today."), the
 closing message ("Good job. See you tomorrow." or "Good job. See you
 {weekday}." on a plan, by its next practice day, N347 item 2), then on a
 plan its progress, the plan's bar and "{n} of
-{total} practices done." (``plan_flow.progress``, N319 item 7); when the
-plan's lines ask something ("When is your deadline?" after the first Take),
-the closing message waits under that ask (``held_for`` "plan"). The Lounge
+{total} practices done." (``plan_flow.progress``, N319 item 7). The Lounge
 puts the tap "I want to continue my practice" under the last of them;
 tapping it, or typing that they want to practise, brings "Record Take N"
 under the chat (frontend ``afterTake.ts``). The plan's lines wait for the
@@ -371,19 +365,13 @@ def end_rows(database: Any, user_id: str, row: dict, *, glad: bool = False,
     under them ("Good job. See you {day}." on a plan), then the plan's
     progress under it. ``row``: the closing message, let go where it was
     held (``written``) or written now; on the plan's first Take it says so
-    (``metadata.first_take``). When the plan's lines ask something (D4, E1:
-    "When is your deadline?", "Is this for {date}?", the ratings, the
-    plan's yes), the closing message stays held under that ask and comes
-    under its answer (``after_plan_answer``). The rows written."""
+    (``metadata.first_take``). The rows written."""
     from services.lounge_messages import thread_stamp
     from services.plan_flow import after_take as plan_after_take, next_day_text
     plan_rows = plan_after_take(database, user_id) if plan_after else []
     meta = row.get("metadata") or {}
     if not meta.get("first_take") and _first_take(database, user_id, str(meta.get("take_session_id") or "")):
         row = {**row, "metadata": {**meta, "first_take": True}}
-    if any(_plan_ask(r) for r in plan_rows):
-        _hold_for_plan(database, user_id, row, written=written)
-        return plan_rows
     body = closing_line(next_day_text(database, user_id))
     at = thread_stamp(database, user_id)
     if written:
@@ -393,41 +381,6 @@ def end_rows(database: Any, user_id: str, row: dict, *, glad: bool = False,
         closing = database.insert_lounge_messages(str(user_id), [{
             **row, "body": body, "client_created_at": at}]) or []
     return plan_rows + closing + (_plan_progress(database, user_id) if closing else [])
-
-
-def _plan_ask(row: Any) -> bool:
-    """Does this row ask the speaker something for the plan? Pure."""
-    return isinstance(row, dict) and bool((row.get("metadata") or {}).get("plan_ask"))
-
-
-def _hold_for_plan(database: Any, user_id: str, row: dict, *, written: bool) -> None:
-    """The closing message held under the plan's ask: ``held_for`` "plan",
-    nothing left in the chain and the plan's lines already written, so its
-    release lets it go without reading the plan again."""
-    meta = {**{k: v for k, v in (row.get("metadata") or {}).items() if k not in _CHAIN_KEYS},
-            "held_for": "plan", "chain": [], "plan_after": False}
-    if written:
-        database.rewrite_lounge_message(str(user_id), row["client_id"], row.get("body") or "",
-                                        meta, at=None)
-    else:
-        database.insert_lounge_messages(str(user_id), [{**row, "metadata": meta}])
-
-
-def after_plan_answer(database: Any, user_id: str, rows: list[dict]) -> list[dict]:
-    """The plan's answer is stored (``rows``: what it wrote): the closing
-    message held under the plan's ask after the Take comes under them,
-    unless they ask the plan's next question. The rows written, [] when
-    nothing moved. Never raises."""
-    try:
-        if any(_plan_ask(r) for r in rows or []):
-            return []
-        row = held(database, user_id)
-        if not row or (row.get("metadata") or {}).get("held_for") != "plan":
-            return []
-        return release(database, user_id)
-    except Exception as error:  # noqa: BLE001 -- the Lounge lets it go on its next look
-        logger.warning("after take: not let go after the plan user=%s: %s", user_id, error, exc_info=True)
-        return []
 
 
 def _first_take(database: Any, user_id: str, take: str) -> bool:
@@ -484,25 +437,14 @@ def release_from_lounge(database: Any, user_id: str) -> list[dict]:
     """The Lounge asks to advance the chain (POST /v2/user/lounge/after-take:
     an ask's form closed, or a held message with no ask in front of it):
     as ``release``, but never past Will's question while it waits for its
-    answer (N406 item 1), nor past the plan's ask the goodbye waits under.
-    After a typed answer the Lounge asked before it read the thread again,
-    and the goodbye came under his next question.
+    answer (N406 item 1). After a typed answer the Lounge asked before it
+    read the thread again, and the goodbye came under his next question.
     The rows written, [] when nothing moved. Never raises."""
     row = held(database, user_id)
-    meta = (row or {}).get("metadata") or {}
-    take = str(meta.get("take_session_id") or "")
-    if row and (_will_waits(database, user_id, take)
-                or (meta.get("held_for") == "plan" and _plan_waits(database, user_id))):
+    take = str(((row or {}).get("metadata") or {}).get("take_session_id") or "")
+    if row and _will_waits(database, user_id, take):
         return []
     return release(database, user_id)
-
-
-def _plan_waits(database: Any, user_id: str) -> bool:
-    """The plan's ask is the newest thing Will said (the held message is
-    not said yet): its answer is not in yet. Unread: it does not wait."""
-    bot = next((r for r in _rows(database, user_id, _LOOK)
-                if r.get("role") == "bot" and not _is_held(r)), None)
-    return _plan_ask(bot)
 
 
 def _will_waits(database: Any, user_id: str, take: str) -> bool:

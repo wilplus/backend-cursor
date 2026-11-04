@@ -172,13 +172,6 @@ def _me(body: str, key: str, **meta: Any) -> tuple:
     return ("user", body, meta, key)
 
 
-def _then_goodbye(database: Any, user_id: str, written: list[dict]) -> list[dict]:
-    """The rows an answer wrote, then the goodbye after the Take when it
-    waited under this ask (``after_take.after_plan_answer``, D4)."""
-    from services import after_take
-    return written + after_take.after_plan_answer(database, user_id, written)
-
-
 def _hi(first_name: Optional[str]) -> str:
     return f"Hi {first_name}!" if first_name else "Hi!"
 
@@ -509,7 +502,7 @@ def answer_deadline(database: Any, user_id: str, raw: Any, *, tz: Any = None) ->
         fields["step"] = "why"
         plan = _save(database, user_id, plan, fields)
         rows += [_bot(P.COPY["why_1"], "why_1"), _bot(P.COPY["why_2"], "why_2", plan_ask="voice")]
-    return {"plan": plan, "messages": _then_goodbye(database, user_id, _write(database, user_id, plan["id"], rows))}
+    return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
 
 
 # ── a voice answer (B3 to B6, I2) ──────────────────────────────────────────
@@ -570,7 +563,7 @@ def answer_voice(database: Any, user_id: str, adapter: Any, audio: bytes, *,
         plan, more = _put_right(database, user_id, plan, answer, raw, turn, correction)
     else:
         plan, more = _next_question(database, user_id, plan, answer, raw, turn)
-    return {"plan": plan, "messages": _then_goodbye(database, user_id, _write(database, user_id, plan["id"], rows + more))}
+    return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows + more)}
 
 
 #: Voiced audio a voice answer needs to count as heard (N262 item 2), read
@@ -622,7 +615,7 @@ def _not_heard(database: Any, user_id: str, plan: dict) -> dict:
     at, n = _again(plan)
     if n >= MAX_AGAIN:
         plan, rows = _move_on(database, user_id, plan)
-        return {"plan": plan, "messages": _then_goodbye(database, user_id, _write(database, user_id, plan["id"], rows))}
+        return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
     plan = _save(database, user_id, plan, {"facts": {**_facts(plan), "asked_again": {"at": at, "n": n + 1}}})
     rows = [_bot(P.COPY["not_heard"], f"not_heard:{_now().isoformat()}")]
     return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
@@ -920,7 +913,7 @@ def _settle(database: Any, user_id: str, plan: dict, yes: bool) -> dict:
         plan, more = _ask_or_rate(database, user_id, plan, facts, list(plan.get("asked") or []),
                                   q, [], consent)
         rows += more
-    return {"plan": plan, "messages": _then_goodbye(database, user_id, _write(database, user_id, plan["id"], rows))}
+    return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
 
 
 def _ratings_rows(moment: str) -> list[tuple]:
@@ -965,8 +958,7 @@ def answer_rating(database: Any, user_id: str, value: Any) -> dict:
     else:
         plan = _save(database, user_id, plan, {"step": "done", "facts": {**facts, f"rated_{moment}": True}})
         rows = []
-    return {"plan": plan, "messages": _then_goodbye(
-        database, user_id, _write(database, user_id, plan["id"], answered + rows))}
+    return {"plan": plan, "messages": _write(database, user_id, plan["id"], answered + rows)}
 
 
 # ── the level (C) ──────────────────────────────────────────────────────────
@@ -1451,7 +1443,7 @@ def book_call(database: Any, user_id: str, which: str, start: Any, *, tz: Any = 
     elif plan.get("step") == "summary" and which == "summary":
         plan, more = _all_set(database, user_id, plan)
         rows += more
-    return {"plan": plan, "messages": _then_goodbye(database, user_id, _write(database, user_id, plan["id"], rows))}
+    return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
 
 
 def _book(database: Any, user_id: str, plan: dict, which: str, start: str, *, tz: Any,
@@ -1732,7 +1724,7 @@ def same_event(database: Any, user_id: str, yes: Any, *, tz: Any = None,
     if yes is True:
         rows = [_me(P.COPY["yes"], f"same_event_yes:{_now().isoformat()}")]
         plan = _save(database, user_id, plan, {"step": "done"})
-        return {"plan": plan, "messages": _then_goodbye(database, user_id, _write(database, user_id, plan["id"], rows))}
+        return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
     written = _write(database, user_id, plan["id"], [_me(P.COPY["no"], f"same_event_no:{_now().isoformat()}")])
     _save(database, user_id, plan, {"status": "replaced", "ended_at": _now().isoformat(), "step": "done"})
     zone_name = valid_zone(tz) or plan.get("time_zone")
@@ -1741,7 +1733,7 @@ def same_event(database: Any, user_id: str, yes: Any, *, tz: Any = None,
     if not fresh:
         raise PlanError("V2_ERROR", "Failed to keep the plan", 500)
     more = _write(database, user_id, fresh["id"], _opening(fresh, first_name))
-    return {"plan": fresh, "messages": _then_goodbye(database, user_id, written + more)}
+    return {"plan": fresh, "messages": written + more}
 
 
 def _ratings_due(plan: dict, facts: dict, done: int) -> Optional[str]:

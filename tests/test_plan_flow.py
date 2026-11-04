@@ -71,11 +71,6 @@ OUTCOME
       end of the Take's processing, the voice message and the key line keep
       their own voice, and the coach's blind pick plays them (N213); the
       walk's end then keeps nothing twice.
-  O17 One at a time (D4): the plan's question after a Take ("When is your
-      deadline?" after the first Take) comes before the goodbye. The
-      goodbye waits under it, even when the Lounge asks to let it go, and
-      comes under my answer, said as the first Take's (N449 item 2); the
-      first Take is read once.
 PROVES   O1 -> test_without_the_ring_nothing_happens
          O2 -> test_a_new_speaker_is_asked_once
          O3 -> test_no_date_gives_two_months_then_the_voice_message
@@ -96,7 +91,6 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
                 test_with_no_first_take_row_a_new_speaker_meets_the_first_take
                 test_a_first_take_with_no_day_asks_for_the_deadline
                 test_the_coach_hears_the_first_takes_voice_message_and_key_line
-         O17 -> test_the_goodbye_waits_under_the_plans_question_after_the_take
 WHY      The plan, built one to one with the prototype (founder 2026-10-26,
          N203, N204); a level moving on, N134 items 3 and 4, N209; the
          principles waiting for the onboarding, N243; record first, Will
@@ -192,14 +186,6 @@ class _Db:
         new = [r for r in rows if r["client_id"] not in known]
         self.thread.extend(new)
         return new
-
-    def rewrite_lounge_message(self, user_id, client_id, body, metadata, at=None):
-        row = next(r for r in self.thread if r["client_id"] == client_id)
-        if at:  # moved to the bottom, as the thread sorts by its time
-            self.thread.remove(row)
-            self.thread.append(row)
-        row.update(body=body, metadata=metadata, **({"client_created_at": at} if at else {}))
-        return row
 
 
 class _Adapter:
@@ -729,28 +715,6 @@ def test_a_first_take_with_no_day_asks_for_the_deadline(db, monkeypatch):
     assert out["plan"]["status"] == "active"
     assert bodies(db)[-2:] == [P.COPY["all_set"], ""]
     assert P.COPY["why_1"] not in bodies(db)  # never the chat's questions
-
-
-def test_the_goodbye_waits_under_the_plans_question_after_the_take(db, monkeypatch):
-    reads = []
-    _first_take(db, monkeypatch, None)
-    monkeypatch.setattr(F, "_read_first_take", lambda *a, **k: reads.append(1) or {
-        "facts": {"event": "the newsroom conference"}, "deadline": None})
-    # The walk's chain is done: the end, as the summary writes it with no ask.
-    closing = after_take.closing_row(user_id=USER, arc_id="arc-1", take_index=1, take="t1",
-                                     at=datetime.now(timezone.utc).isoformat(), asks=[])
-    after_take.end_rows(db, USER, closing, written=False)
-
-    def drawn():
-        return [r["body"] for r in db.thread if not (r["metadata"] or {}).get("held_for")]
-    assert drawn()[-1] == P.COPY["deadline_q"]  # the question, its taps under it
-    assert after_take.release_from_lounge(db, USER) == [] and drawn()[-1] == P.COPY["deadline_q"]
-
-    F.answer_deadline(db, USER, None, tz="UTC")
-    goodbye = next(r for r in db.thread if r["client_id"] == closing["client_id"])
-    assert not goodbye["metadata"].get("held_for") and goodbye["metadata"]["first_take"] is True
-    assert drawn().index(goodbye["body"]) > drawn().index(P.COPY["all_set"])  # under the answer
-    assert goodbye["body"].startswith("Good job. See you") and reads == [1]
 
 
 def test_the_coach_hears_the_first_takes_voice_message_and_key_line(db, monkeypatch):
