@@ -11440,3 +11440,44 @@ and `copy/privacy-3.11.txt`, and are published as `phase1-{date}-3.11` by
 `PUBLISH-3.11-{date}.sql`, the founder's step, after 3.10. Nothing is
 deleted; every speaker accepts 3.11 once, on the update prompt.
 No migration. No rules page: the legal pack.
+**N479 · Building N470: Continue is sending, the crowd stops for new Takes,
+add people after, no passcode (founder, the Claude
+Code chat, 4 November 2026, asked four questions after the inventory of
+G1, each "Recommended"; the rest taken as recommended and told).** For
+N470, N471, N461, N456, N457, N466, N468:
+1. **Ticked by default stays:** pressing Continue is the speaker sending a
+message to people they chat with. The Privacy text says so before it
+ships, in Privacy 3.12 (3.11 is signed without it, N472) (Privacy 3.6 §4d's "a pre-ticked box is not consent" is rewritten for
+it), and counsel checks whether a voice recording is special-category data
+here; if it is, nothing is ticked. Sending stays off until that text is signed.
+2. **The crowd stops for new Takes:** no new Take is shared with other
+speakers to judge; Takes are judged by coaches. The walk's "other speakers"
+step keeps running on the training corpus and on Takes shared before;
+those stay shared until the speaker stops them ("Stop sharing").
+3. **After sending, from the line under the recording, people can be
+added, never removed:** nothing is unsent.
+4. **No passcode:** joining a community by passcode leaves the app with
+G1; a person's link is the only way in (N471 item 2). Was, briefly in this
+chat: the passcode moved into the list of chats (founder: "No passcodes").
+5. **Asked once, at "Record Take 2"** (never before every Take, Never 3). A
+person who joins later is included silently when the choice was "Everyone
+in my list"; with chosen people, the speaker is asked once.
+6. **Both promises stand until N461 is built:** "every moment a speaker
+meets reaches a coach" and "every Take a speaker sends reaches the people
+they chose".
+7. **The list is real people only:** no demo or guest accounts, nobody
+blocked either way (N466); a speaker with no chat with a person gets one
+with Artur.
+8. **The receiver sees** the sender's name, the Take's recording and its
+words slide by slide; never its Ideal Text, feedback, moments or levels
+(Never 1, 2).
+9. **What stops:** "General community" and "Only me"; the crowd judging
+new Takes (peer labels on new Takes; their Album settles from coaches);
+taking a sent Take back; the screen asked again when a community is added.
+Needs one migration (a chat message of kind `take`), with its outside
+review, and `FOUNDER_CHAT_USER_ID` set on every Railway service before it
+merges. Not in force until built and merged. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+G and
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built.
