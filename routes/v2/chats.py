@@ -600,3 +600,12 @@ def v2_chats_take(thread_id, message_id):
     its Ideal Text or feedback."""
     from services.take_sends import opened
     return _run("take", lambda: opened(db, str(request.user_id), thread_id, message_id))
+
+
+@v2_bp.route("/chats/<thread_id>/messages/<message_id>/not-now", methods=["POST"])
+@require_auth
+def v2_chats_not_now(thread_id, message_id):
+    """"Not now" under what someone asked me (N483 item 3, N493 item 3):
+    nobody is told; the system keeps it (N504 item 2). {"kept": true}."""
+    from services.chat_not_now import record
+    return _run("not now", lambda: record(db, str(request.user_id), thread_id, message_id))
