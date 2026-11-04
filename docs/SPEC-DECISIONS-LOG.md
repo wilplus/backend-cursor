@@ -11086,3 +11086,62 @@ Not in force until built and merged. The cards' and the panel's words, and
 the "Send my Takes to" screen, need the founder's words and a prototype
 (Never 4). Needs migrations, each with its outside review. No rules page
 yet: the coach panel's and the chats' pages when built.
+
+**N462 · The first Take is your one thing, and its slide is a centered
+poster; the default presentation and an answer's question the same;
+locked (founder, the Claude Code chat, 4 November 2026: "i want the
+presentation to be smth that defines your speciality your knowledge domain
+what you can share with others what is your one thing? please write the
+that as steven pinker would"; "redesign the page of the slide maybe the
+text should be centred ? pleas design it as if you are from thefutur.com
+focus just on the layout of the presentation don't redesign the rest; the
+rest is actually fine"; then, on the review page, "the slides are perfect
+lock them" and "let's update the default presentation and keep this
+formating for any presentation that comes from the questions to the
+specialist").** For N213, N401, N441 item 7, N449 item 4, N459, N461 item 5:
+1. **Will's line before the first Take:** "Your first Take is about what
+you know. Five questions, one slide each. Answer out loud, as you'd tell a
+friend." Was: "Your first Take is five questions. Answer each one out
+loud, one slide at a time."
+2. **The five slides** (label, question, hint), signed (Never 4):
+   1. "Your field": "What do you know better than most people you meet?"
+      "The thing people come to you for."
+   2. "Worth sharing": "What could you teach someone in five minutes that
+      would save them a year?" "Something you learned the hard way."
+   3. "Who it's for": "Who would be glad you told them?" "Picture one
+      person: a colleague, a customer, a friend."
+   4. "A moment": "When did it make a difference? Take us to that day."
+      "Where you were, what happened, what changed."
+   5. "Your one thing": "If they remember one sentence from you, what should
+      it be?" "Say it the way you'll say it."
+   Was (N401): About you, Your talk, The room, Your one sentence, Your
+   opening.
+3. **What each slide feeds.** Slide 1: who the speaker is, in Will's notes
+and for the profile (N461 item 5). Slide 2: kept as the voice message the
+coach's blind pick plays (N213), and the profile's topics. Slide 3: the
+audience. Slide 4: the speaker's story, in Will's notes and the plan's
+facts. Slide 5: the key line,
+which the coach's blind pick plays, found by its kind and no longer by its
+place. The event and its day are set before the walk (N459); the opening is
+no longer a first-Take slide (Take 2, the real talk, opens with it). The
+answers keep kinds the plan's table already allows: no migration.
+4. **The poster.** On the recording screen the slide is one idea in the
+middle: the label in small spaced capitals, quiet; the question large and
+heavy, centered a little above the middle; the hint quiet under it; no
+orange line. The top bar, the strip, the clock and the buttons stay as they
+are.
+5. **The same poster** for the default presentation (Opening, Main points
+with its 1 2 3, Summary; words unchanged; was the generated colour artwork)
+and for any presentation made from a question to a specialist ("{name}
+asks" as its label, the question as the poster; was N441 item 7's small
+line). It fills the slide's space when the Take has no helper words; with
+helper words it keeps today's height, so the helper words keep their place
+(Never 5). An uploaded deck is drawn as itself. Elsewhere (the Ideal Text,
+present mode, the walk) the slides stay as they are.
+6. **Locked:** the review page "Your one thing"
+<https://claude.ai/artifact/6L2C5Uj7AiJbRaES4cxzb1> (version 1) is its
+prototype, in [`docs/LOCKS.md`](LOCKS.md) with the way in and the recording
+screens.
+No migration. The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
