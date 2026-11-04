@@ -3,7 +3,7 @@ STORY    As a speaker, after my Take, I want the page that chose who hears it
          to come back once with someone new who fits what I asked, so that
          the right person can answer; and as that person, I want to hear the
          Take before anyone knows who I am, so that answering is my yes
-         (founder, 4 November 2026, N477, N478, N481).
+         (founder, 4 November 2026, N477, N478, N481, N485, N486, N493).
 OUTCOME
   O1  With no ring row, or while sending a Take is off, nobody is ever
       suggested: the speaker's routes answer 404.
@@ -16,14 +16,15 @@ OUTCOME
   O3  Someone already in a chat with the speaker, or still waiting to be
       let in (N471), is never suggested, and nobody is suggested to the
       same speaker twice.
-  O4  Send puts Will's card in the suggested person's chat with Will,
-      under the speaker's pseudonym; it makes no chat, and the page does
-      not come back.
-  O5  Not now tells nobody: no card, no chat.
-  O6  The one suggested opens the Take (what it is about, its words slide
-      by slide) and answers with a Take; only then is the chat between the
-      two made, with the speaker's Take (a Take message) and the answer in
-      it, under their names.
+  O4  Send knocks: the one suggested gets a new asking chat in their list,
+      under the speaker's pseudonym, their role and what it is about; never
+      a card in Will's chat, no chat made, and the page does not come back.
+  O5  The speaker's Not now tells nobody: no inquiry, no chat.
+  O6  Before "Open Take" the one suggested sees only who is asking and
+      about what: no name, no words, no recording, no answering. After it,
+      the speaker's name and the Take, words slide by slide; their answer,
+      a Take, makes the chat between the two, with the speaker's Take (a
+      Take message) and the answer in it, under their names.
   O7  Nobody else can open or answer it, the one suggested cannot before it
       was sent, and a Take recorded before it reached them is no answer.
   O8  Once skills are on, the experiment's arm decides among people who
@@ -41,19 +42,30 @@ OUTCOME
       Take by Take in each talk is progressing, even when a harder new talk
       starts lower; an answer, a talk of one Take, adds nothing; with fewer
       than five Takes in talks of two or more there is no progress yet.
+  O12 The one suggested's Not now, before or after Open Take, removes the
+      asking chat and tells nobody: Send still reads "sent" to the speaker.
+      Who declined whose Take and when stays, and the two are never matched
+      again, whichever of them asks.
+  O13 An answer waits five seconds for Undo and nobody sees it: no chat,
+      nothing in the speaker's list. Undo leaves no trace. Once the time is
+      up the chat is made exactly once, even if the timer was lost, and
+      Undo is too late.
 PROVES   O1 -> TakeMatchTest::test_with_no_ring_nobody_is_suggested
          O2 -> TakeMatchTest::test_one_new_person_who_fits_is_suggested_as_a_pseudonym
          O3 -> TakeMatchTest::test_nobody_in_a_chat_waiting_or_suggested_before
-         O4 -> TakeMatchTest::test_send_reaches_only_the_one_suggested_through_will
+         O4 -> TakeMatchTest::test_send_knocks_as_a_new_chat_not_through_will
          O5 -> TakeMatchTest::test_not_now_tells_nobody
-         O6 -> TakeMatchTest::test_the_answer_opens_the_chat_for_both
+         O6 -> TakeMatchTest::test_open_take_then_the_answer_opens_the_chat_for_both
          O7 -> TakeMatchTest::test_only_the_one_suggested_answers_once_sent
          O8 -> TakeMatchTest::test_the_arm_picks_by_speaking_skills_and_progress
          O9 -> TakeMatchTest::test_words_that_say_nothing_make_no_match
          O10 -> TakeMatchTest::test_nobody_quiet_or_already_asked_enough
          O11 -> TakeMatchTest::test_progress_is_counted_within_each_talk
+         O12 -> TakeMatchTest::test_not_now_removes_it_tells_nobody_and_never_again
+         O13 -> TakeMatchTest::test_an_answer_waits_for_undo_and_counts_once
 WHY      Matching people happens in one place only, after the Take (N477);
-         anonymous until the answer, which alone opens the chats (N478);
+         a knock in the chats, opened or turned down, anonymous until the
+         answer, which alone opens the chats (N478, N485, N493);
          every answer is a Take, and the matching weighs how people speak
          and progress (N481).
 """
@@ -202,17 +214,27 @@ class TakeMatchTest(unittest.TestCase):
                                               "candidate_id": LEA, "status": "closed"}]
         self.assertIsNone(self._suggested())
 
-    def test_send_reaches_only_the_one_suggested_through_will(self):
+    def _sent(self):
         match = self._suggested()
-        response = self._post(f"/v2/take-matches/{match['id']}/send")
-        self.assertEqual(response.get_json()["match"]["status"], "sent")
-        self.assertEqual(len(self.cards), 1)
-        to, card = self.cards[0]
-        self.assertEqual(to, LEA)
-        self.assertNotIn("Amira", str(card))
-        self.assertIn("might benefit from your knowledge immensely", card["body"])
-        self.assertEqual(card["metadata"]["about"], "investor pitch")
+        self.assertEqual(self._post(f"/v2/take-matches/{match['id']}/send").get_json()["match"]["status"],
+                         "sent")
+        return match["id"]
+
+    def _inquiries(self):
+        return self._get("/v2/take-matches/inquiries").get_json()["inquiries"]
+
+    def test_send_knocks_as_a_new_chat_not_through_will(self):
+        match = self._sent()
+        self.assertEqual(self.cards, [])
+        self._as(LEA)
+        [knock] = self._inquiries()
+        self.assertEqual((knock["id"], knock["state"], knock["role"], knock["about"]),
+                         (match, "new", "Account executive", "investor pitch"))
+        self.assertTrue(knock["pseudonym"])
+        self.assertNotIn("name", knock)
+        self.assertNotIn("Amira", str(knock))
         self.assertEqual(self.store.count("chat_threads"), 0)
+        self._as(AMIRA)
         self.assertIsNone(self._suggested())
 
     def test_not_now_tells_nobody(self):
@@ -220,19 +242,26 @@ class TakeMatchTest(unittest.TestCase):
         self.assertEqual(self._post(f"/v2/take-matches/{match['id']}/close").status_code, 200)
         self.assertEqual(self.cards, [])
         self.assertEqual(self.store.tables["take_matches"][0]["status"], "closed")
+        self._as(LEA)
+        self.assertEqual(self._inquiries(), [])
         self.assertEqual(self.store.count("chat_threads"), 0)
 
-    def test_the_answer_opens_the_chat_for_both(self):
-        match = self._suggested()
-        self._post(f"/v2/take-matches/{match['id']}/send")
+    def test_open_take_then_the_answer_opens_the_chat_for_both(self):
+        match = self._sent()
         self._as(LEA)
-        opened = self._get(f"/v2/take-matches/{match['id']}").get_json()["match"]
-        self.assertEqual(opened["about"], "investor pitch")
+        outside = self._get(f"/v2/take-matches/{match}").get_json()["match"]
+        self.assertEqual(outside["about"], "investor pitch")
+        self.assertFalse({"name", "words", "slides"} & set(outside))
+        self.assertNotIn("Amira", str(outside))
+        self.assertEqual(self._get(f"/v2/take-matches/{match}/recording").status_code, 404)
+        self.assertEqual(self._post(f"/v2/take-matches/{match}/answer",
+                                    {"take": ANSWER, "hold_ms": 0}).status_code, 409)
+        opened = self._post(f"/v2/take-matches/{match}/accept").get_json()["match"]
+        self.assertEqual((opened["state"], opened["name"]), ("opened", "Amira"))
         self.assertIn("revenue and growth", opened["words"])
         self.assertEqual(opened["slides"], [0, 41000])
-        self.assertNotIn("Amira", str(opened))
         self.assertEqual(self.store.count("chat_threads"), 0)
-        made = self._post(f"/v2/take-matches/{match['id']}/answer", {"take": ANSWER})
+        made = self._post(f"/v2/take-matches/{match}/answer", {"take": ANSWER, "hold_ms": 0})
         self.assertEqual(made.status_code, 200, made.get_json())
         thread = made.get_json()["chat"]["id"]
         members = {m["user_id"]: m["display_name"] for m in self.store.tables["chat_members"]}
@@ -243,6 +272,7 @@ class TakeMatchTest(unittest.TestCase):
                            m["meta"].get("take_session_id") or m["meta"].get("take"))
                           for m in messages],
                          [(AMIRA, "take", TAKE), (LEA, "voice", ANSWER)])
+        self.assertEqual(self._inquiries(), [])
         self._as(AMIRA)
         chats = self._get("/v2/chats").get_json()["chats"]
         self.assertEqual([c["id"] for c in chats], [thread])
@@ -252,16 +282,78 @@ class TakeMatchTest(unittest.TestCase):
         match = self._suggested()
         self._as(LEA)
         self.assertEqual(self._get(f"/v2/take-matches/{match['id']}").status_code, 404)
+        self.assertEqual(self._inquiries(), [])
         self._as(AMIRA)
         self._post(f"/v2/take-matches/{match['id']}/send")
         self._as(TOMEK)
         self.assertEqual(self._get(f"/v2/take-matches/{match['id']}").status_code, 404)
+        self.assertEqual(self._post(f"/v2/take-matches/{match['id']}/accept").status_code, 404)
         self.assertEqual(self._post(f"/v2/take-matches/{match['id']}/answer",
                                     {"take": ANSWER}).status_code, 404)
         self._as(LEA)
+        self._post(f"/v2/take-matches/{match['id']}/accept")
         self.assertEqual(self._post(f"/v2/take-matches/{match['id']}/answer",
-                                    {"take": OLDER}).status_code, 400)
+                                    {"take": OLDER, "hold_ms": 0}).status_code, 400)
         self.assertEqual(self.store.count("chat_threads"), 0)
+
+    def test_not_now_removes_it_tells_nobody_and_never_again(self):
+        match = self._sent()
+        self._as(LEA)
+        self._post(f"/v2/take-matches/{match}/accept")
+        self.assertEqual(self._post(f"/v2/take-matches/{match}/decline").get_json()["match"]["status"],
+                         "declined")
+        self.assertEqual(self._inquiries(), [])
+        row = self.store.tables["take_matches"][0]
+        self.assertEqual((row["status"], row["candidate_id"], row["speaker_id"]),
+                         ("declined", LEA, AMIRA))
+        self.assertTrue(row["declined_at"])
+        self.assertEqual(self.store.count("chat_threads"), 0)
+        self._as(AMIRA)
+        self.assertEqual(self._post(f"/v2/take-matches/{match}/send").get_json()["match"]["status"],
+                         "sent")
+        # Lea's own Take about what Amira knows: Amira would fit, but the two
+        # are never matched again, whichever of them asks.
+        self.store.tables["v2_sessions"].append(
+            {"id": "99999999-9999-4999-8999-999999999999", "user_id": LEA,
+             "created_at": "2026-11-04T10:10:00Z",
+             "intake_context": {"topic": "selling software to banks"},
+             "slide_transcripts": [{"index": 0, "transcript": "How do I sell software to banks?",
+                                    "start_offset_ms": 0}]})
+        self._as(LEA)
+        again = self._get("/v2/takes/99999999-9999-4999-8999-999999999999/match")
+        self.assertEqual(again.get_json()["match"], None)
+
+    def test_an_answer_waits_for_undo_and_counts_once(self):
+        later: list = []
+        match = self._sent()
+        self._as(LEA)
+        self._post(f"/v2/take-matches/{match}/accept")
+        with patch("services.chats._after", lambda _s, then: later.append(then)):
+            waiting = self._post(f"/v2/take-matches/{match}/answer", {"take": ANSWER, "hold_ms": 5000})
+        self.assertTrue(waiting.get_json()["sending"]["due_at"])
+        self.assertEqual(self._inquiries()[0]["state"], "sending")
+        self.assertEqual(self.store.count("chat_threads"), 0)
+        self._as(AMIRA)
+        self.assertEqual(self._get("/v2/chats").get_json()["chats"], [])
+        self._as(LEA)
+        self.assertEqual(self._post(f"/v2/take-matches/{match}/undo").get_json()["match"]["status"],
+                         "accepted")
+        self.assertEqual(self._inquiries()[0]["state"], "opened")
+        self.assertEqual(self.store.count("chat_threads"), 0)
+        with patch("services.chats._after", lambda _s, then: later.append(then)):
+            self._post(f"/v2/take-matches/{match}/answer", {"take": ANSWER, "hold_ms": 5000})
+        with patch("services.take_match._now", lambda: "2026-11-04T10:31:00+00:00"):
+            self._as(AMIRA)
+            self._get(f"/v2/takes/{TAKE}/match")
+            for then in later:
+                then()
+            chats = self._get("/v2/chats").get_json()["chats"]
+            self.assertEqual(len(chats), 1)
+            self._as(LEA)
+            self.assertEqual(self._post(f"/v2/take-matches/{match}/undo").status_code, 409)
+        self.assertEqual(self.store.count("chat_threads"), 1)
+        kinds = [m["kind"] for m in self.store.tables["chat_messages"]]
+        self.assertEqual(kinds, ["take", "voice"])
 
     def test_the_arm_picks_by_speaking_skills_and_progress(self):
         t = self.store.tables

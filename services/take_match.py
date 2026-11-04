@@ -21,17 +21,24 @@ makes the chat between the two only when that person answers (N478):
     second or third, each pick's chance kept. A pseudonym made for this
     match and their role, never a name. One per Take; none when nobody
     knows enough.
-  * ``send`` / ``close``  Send puts Will's card in the candidate's chat with
-    Will; Not now ends it, and nobody is told.
-  * ``view`` / ``recording``  the candidate opens the Take: the speaker's
-    pseudonym and description, what it is about, its words slide by slide,
-    its voice. Never the Ideal Text, never the feedback.
-  * ``answer``  the candidate's answer: a Take of theirs, recorded in the
-    official recorder after the suggestion reached them and analysed like
-    any Take (N481 item 1). Only now is the chat between the two made: the
-    speaker's Take as a Take message (kind ``take``, as a Take sent to a
-    list is, services/take_sends.py), then the answer, under their names.
-    No answer: nothing happens, and nothing reminds anyone.
+  * ``send`` / ``close``  Send makes an inquiry: a new chat in the
+    candidate's list (N485), who is asking under a pseudonym and about
+    what, never through Will's chat. Not now ends it, and nobody is told.
+  * ``inquiries`` / ``view``  the candidate's asking chats. Before "Open
+    Take" (``accept``, N493 item 7) the outside only; after it the
+    speaker's name and the Take: its words slide by slide and its voice
+    (``recording``). Never the Ideal Text, never the feedback.
+  * ``decline``  the candidate's "Not now", before or after Open Take: the
+    chat goes, nobody is told, the two are never matched again, and who
+    declined whose Take and when stays for the founder (N504 item 2).
+  * ``answer`` / ``undo``  the candidate's answer: a Take of theirs,
+    recorded in the official recorder after the inquiry reached them and
+    analysed like any Take (N481 item 1). It waits five seconds for Undo,
+    seen by nobody; then it counts (``_settle``, claimed once) and only now
+    is the chat between the two made: the speaker's Take as a Take message
+    (kind ``take``, as a Take sent to a list is, services/take_sends.py),
+    then the answer, under their names (N486 item 1, N493 item 5). No
+    answer: nothing happens, and nothing reminds anyone.
 
 Behind the ring row ``take_match``: with no row it is off for everyone, the
 founder included (services/rings.py); and it lives in the page that sends a
@@ -63,17 +70,18 @@ logger = logging.getLogger(__name__)
 MATCHES = "take_matches"
 COMMUNITY_MEMBERS = "community_members"
 PROFILES = "people_profiles"
-#: The card's key in Will's chat (lounge_messages.metadata.card).
-CARD = "take_match"
 #: The least fit worth a suggestion: two words of what the Take is about
 #: that the candidate knows, or as much from what they practise. Proposed,
 #: for the founder's review of the first weeks.
 MIN_FIT = 2.0
 #: How many rows any one read takes, at most.
 MAX_ROWS = 500
-#: The card's words, Will's line to the candidate: the founder's own (N478
-#: item 6), not signed yet; the ring keeps them off every screen until then.
-COPY = {"card": "{pseudonym} might benefit from your knowledge immensely."}
+#: The inquiries still waiting on the one suggested (N485): sent, opened
+#: ("Open Take", N493 item 7), and an answer within its Undo time.
+OPEN = ("sent", "accepted", "sending")
+#: How long an answer waits for its Undo before it counts (N486, N493 item
+#: 5), and a moment more, so an Undo pressed at the last instant lands.
+HOLD_MS, HOLD_GRACE_MS = 5_000, 1_500
 #: The experiment's arms on speaking skills (N481 item 3): someone at a
 #: similar level, or someone further along. "topics" is every suggestion
 #: made while skills are off.
@@ -100,7 +108,6 @@ EXPLORE = (0.8, 0.1, 0.1)
 #: Ids per read, as ``db._chunks``; the most community members read; how
 #: many topics are kept per person.
 CHUNK, MAX_POOL, TOPICS_EACH = 100, 2000, 10
-_NAMESPACE = uuid.UUID("6f1d3b8e-3c0a-4d55-9a7e-2b9c1f4e8a10")
 
 
 def _now() -> str:
@@ -171,8 +178,13 @@ def _in_chats_with(database: Any, user_id: str) -> set[str]:
 
 
 def _suggested_before(database: Any, user_id: str) -> set[str]:
-    return {str(r["candidate_id"]) for r in _rows(
+    """Everyone this person was ever matched with, either way: suggested to
+    them, or they to them. Never again (N485 item 3)."""
+    asked = {str(r["candidate_id"]) for r in _rows(
         _table(database, MATCHES).select("candidate_id").eq("speaker_id", user_id)
+        .limit(MAX_ROWS))}
+    return asked | {str(r["speaker_id"]) for r in _rows(
+        _table(database, MATCHES).select("speaker_id").eq("candidate_id", user_id)
         .limit(MAX_ROWS))}
 
 
@@ -190,10 +202,10 @@ def _busy(database: Any, ids: list[str]) -> set[str]:
     recent: dict[str, int] = {}
     for part in _chunks(ids):
         for r in _rows(_table(database, MATCHES).select("candidate_id,status,offered_at")
-                       .in_("candidate_id", part).in_("status", ["offered", "sent"])
+                       .in_("candidate_id", part).in_("status", ["offered", *OPEN])
                        .limit(CHUNK * (WEEK_CAP + OPEN_CAP))):
             who = str(r["candidate_id"])
-            if r.get("status") == "sent":
+            if r.get("status") in OPEN:
                 open_now[who] = open_now.get(who, 0) + 1
             if str(r.get("offered_at") or "") >= week:
                 recent[who] = recent.get(who, 0) + 1
@@ -434,6 +446,7 @@ def suggest(database: Any, speaker_id: Any, session_id: Any) -> dict:
     speaker or the Take is not theirs."""
     if not is_on(database, speaker_id):
         raise _not_found()
+    settle_due(database, speaker_id)
     speaker, session = str(speaker_id), _uuid(session_id)
     if not session:
         raise _not_found()
@@ -476,17 +489,21 @@ def _speakers(database: Any, speaker_id: Any, match_id: Any) -> dict:
 
 def send(database: Any, speaker_id: Any, match_id: Any, speaker_name: str) -> dict:
     """POST /v2/take-matches/<id>/send: the speaker sends the Take to the one
-    suggested. Will's card reaches them; nothing else does. Sent again: the
-    same answer. Closed or answered: 409."""
+    suggested. It reaches them as a new chat in their list, an inquiry
+    (N485): who is asking, under a pseudonym, and about what; never through
+    Will's chat. Sent again, or declined since: the same answer, so a "Not
+    now" is never told (N485 item 3). Closed: 409."""
     row = _speakers(database, speaker_id, match_id)
-    if row["status"] == "sent":
+    if row["status"] in ("sent", "accepted", "sending", "declined"):
         return {"match": {"id": str(row["id"]), "status": "sent"}}
+    if row["status"] == "answered":
+        return {"match": {"id": str(row["id"]), "status": "answered"}}
     if row["status"] != "offered":
         raise ChatsError("NOT_ALLOWED", "This suggestion is closed.", 409)
     _table(database, MATCHES).update({
         "status": "sent", "sent_at": _now(),
-        "speaker_name": (speaker_name or "")[:120] or None}).eq("id", str(row["id"])).execute()
-    _card(database, row)
+        "speaker_name": (speaker_name or "")[:120] or None}).eq("id", str(row["id"])) \
+        .eq("status", "offered").execute()
     return {"match": {"id": str(row["id"]), "status": "sent"}}
 
 
@@ -497,11 +514,12 @@ def close(database: Any, speaker_id: Any, match_id: Any) -> dict:
         _table(database, MATCHES).update({"status": "closed", "closed_at": _now()}) \
             .eq("id", str(row["id"])).execute()
     return {"match": {"id": str(row["id"]), "status": "closed"
-                      if row["status"] in ("offered", "closed") else row["status"]}}
+                      if row["status"] in ("offered", "closed") else "sent"}}
 
 
 def _from(database: Any, row: dict) -> dict:
-    """The speaker as the candidate sees them: a pseudonym and a description."""
+    """The speaker as the candidate sees them before Open Take: a pseudonym
+    made for this match, their role, and what the Take is about."""
     speaker = str(row["speaker_id"])
     profile = _profiles(database, [speaker]).get(speaker, {})
     take = _take(database, speaker, str(row["session_id"])) or {}
@@ -509,48 +527,170 @@ def _from(database: Any, row: dict) -> dict:
             "about": topic_of(take) or None}
 
 
-def _card(database: Any, row: dict) -> None:
-    """Will's card in the candidate's chat with Will (N478): the speaker's
-    pseudonym, their description and what the Take is about; the app shows
-    "Open Take" under it. Kept with the speaker (about_user_id), so it goes
-    with either account."""
-    who = _from(database, row)
-    database.insert_lounge_messages(str(row["candidate_id"]), [{
-        "client_id": str(uuid.uuid5(_NAMESPACE, f"card:{row['id']}")),
-        "role": "bot", "kind": "text",
-        "body": COPY["card"].format(pseudonym=who["pseudonym"]),
-        "metadata": {"card": CARD, "match": str(row["id"]), **who},
-        "client_created_at": _now(), "about_user_id": str(row["speaker_id"])}])
+# ── The candidate's side: the inquiry ────────────────────────────────────
+
+def _later(milliseconds: int) -> str:
+    moment = _when(_now()) or datetime.now(timezone.utc)
+    return (moment + timedelta(milliseconds=milliseconds)).isoformat()
 
 
-# ── The candidate's side ─────────────────────────────────────────────────
+def _due(row: dict) -> bool:
+    """Has an answer's Undo time run out?"""
+    due, now = _when(row.get("answer_due_at")), _when(_now())
+    return bool(due and now and now >= due)
 
-def _candidates(database: Any, candidate_id: Any, match_id: Any) -> dict:
-    """The candidate's own suggestion once it was sent to them; else 404."""
+
+def _settle(database: Any, row: dict) -> Optional[str]:
+    """The answer counts: only now is the chat between the two made (N478,
+    N486 item 1, N493 item 5), with the speaker's Take as their own Take
+    message and the answer under it, under their names. Claimed once, so the
+    timer and a read racing it never make it twice; a failure gives the
+    claim back and is tried again on the next read. The chat's id, or None."""
+    claimed = _rows(_table(database, MATCHES).update({"status": "answered", "answered_at": _now()})
+                    .eq("id", str(row["id"])).eq("status", "sending"))
+    if not claimed:
+        again = _rows(_table(database, MATCHES).select("thread_id").eq("id", str(row["id"])).limit(1))
+        return str(again[0]["thread_id"]) if again and again[0].get("thread_id") else None
+    from services.chat_links import open_pair
+    speaker, candidate = str(row["speaker_id"]), str(row["candidate_id"])
+    shown = row.get("speaker_name") or _pseudonym(speaker, row["id"])
+    try:
+        thread = open_pair(database, [
+            {"user_id": speaker, "display_name": shown},
+            {"user_id": candidate, "display_name": row.get("candidate_name") or "WillpowerLab"}],
+            shown)
+        _post_take(database, row, thread)
+        post_answer(database, candidate, thread, str(row["answer_session_id"]),
+                    row.get("answer_ms"), 0)
+    except Exception:
+        logger.warning("take_match: the answer to %s did not open its chat; kept to retry",
+                       row["id"], exc_info=True)
+        _table(database, MATCHES).update({"status": "sending", "answered_at": None}) \
+            .eq("id", str(row["id"])).execute()
+        return None
+    _table(database, MATCHES).update({"thread_id": thread}).eq("id", str(row["id"])).execute()
+    return thread
+
+
+def _settled(database: Any, row: dict) -> dict:
+    """``row`` as it stands, its answer made to count first if its Undo time
+    has run out (a timer the process lost is caught up here)."""
+    if row.get("status") != "sending" or not _due(row):
+        return row
+    _settle(database, row)
+    rows = _rows(_table(database, MATCHES).select("*").eq("id", str(row["id"])).limit(1))
+    return rows[0] if rows else row
+
+
+def _settle_quietly(database: Any, match_id: str) -> None:
+    try:
+        rows = _rows(_table(database, MATCHES).select("*").eq("id", match_id).limit(1))
+        if rows:
+            _settled(database, rows[0])
+    except Exception:
+        logger.warning("take_match: settling %s failed; the next read retries", match_id,
+                       exc_info=True)
+
+
+def settle_due(database: Any, user_id: Any) -> None:
+    """Every answer to or from ``user_id`` whose Undo time has run out, made
+    to count: the speaker's page after a Take and the candidate's reads call
+    it, so a lost timer never leaves an answer waiting."""
+    if not user_id:
+        return
+    for column in ("speaker_id", "candidate_id"):
+        for row in _rows(_table(database, MATCHES).select("*").eq(column, str(user_id))
+                         .eq("status", "sending").limit(MAX_ROWS)):
+            if _due(row):
+                _settled(database, row)
+
+
+def _candidates(database: Any, candidate_id: Any, match_id: Any,
+                states: tuple[str, ...] = (*OPEN, "answered")) -> dict:
+    """The candidate's own inquiry, in one of ``states``; else 404."""
     match = _uuid(match_id)
     rows = _rows(_table(database, MATCHES).select("*").eq("id", match)
                  .eq("candidate_id", str(candidate_id)).limit(1)) if match and candidate_id else []
-    if not rows or rows[0]["status"] not in ("sent", "answered"):
+    row = _settled(database, rows[0]) if rows else None
+    if not row or row["status"] not in states:
         raise _not_found()
-    return rows[0]
+    return row
+
+
+def _inquiry(database: Any, row: dict) -> dict:
+    """An inquiry as the candidate's list and chat show it. Before Open Take,
+    the outside only: the pseudonym, the role, what it is about; after it,
+    the speaker's name too (N485 items 1 and 2)."""
+    state = {"sent": "new", "accepted": "opened", "sending": "sending",
+             "answered": "answered"}.get(row["status"], row["status"])
+    out = {"id": str(row["id"]), "state": state, "sent_at": row.get("sent_at"),
+           **_from(database, row)}
+    if state != "new":
+        out["name"] = row.get("speaker_name") or out["pseudonym"]
+    if state == "sending":
+        out["due_at"] = row.get("answer_due_at")
+    if state == "answered" and row.get("thread_id"):
+        out["chat"] = {"id": str(row["thread_id"])}
+    return out
+
+
+def inquiries(database: Any, candidate_id: Any) -> dict:
+    """GET /v2/take-matches/inquiries: the inquiries waiting on the caller,
+    newest first, each a new chat in their list (N485): {inquiries: [{id,
+    state: new|opened|sending, pseudonym, role, about, sent_at, name?,
+    due_at?}]}. Empty while sending a Take is off."""
+    from services import take_sends
+    if not candidate_id or not take_sends.is_on():
+        return {"inquiries": []}
+    settle_due(database, candidate_id)
+    rows = _rows(_table(database, MATCHES).select("*").eq("candidate_id", str(candidate_id))
+                 .in_("status", list(OPEN)).order("sent_at", desc=True).limit(MAX_ROWS))
+    return {"inquiries": [_inquiry(database, r) for r in rows]}
 
 
 def view(database: Any, candidate_id: Any, match_id: Any) -> dict:
-    """GET /v2/take-matches/<id>: the Take as the candidate opens it: who it
-    is from (pseudonym, description), what it is about, its words slide by
-    slide and each slide's start, its length; whether they answered."""
+    """GET /v2/take-matches/<id>: the inquiry as the candidate opens it.
+    Before Open Take, the outside only (N485 item 1); after it, the
+    speaker's name and the Take: its words slide by slide, each slide's
+    start, its length (N485 item 2, N479 item 8)."""
     row = _candidates(database, candidate_id, match_id)
+    out = _inquiry(database, row)
+    if row["status"] == "sent":
+        return {"match": out}
     take = _take(database, str(row["speaker_id"]), str(row["session_id"])) or {}
-    parts = _parts(take)
     starts = []
-    for p in parts:
+    for p in _parts(take):
         try:
             starts.append(max(0, int(p.get("start_offset_ms") or 0)))
         except (TypeError, ValueError):
             starts.append(0)
-    return {"match": {"id": str(row["id"]), "status": row["status"], **_from(database, row),
-                      "words": said(take) or None, "slides": starts,
+    return {"match": {**out, "words": said(take) or None, "slides": starts,
                       "duration_ms": _length(database, row)}}
+
+
+def accept(database: Any, candidate_id: Any, match_id: Any) -> dict:
+    """POST /v2/take-matches/<id>/accept: "Open Take" (N493 item 7): the
+    door opens, and the speaker's name and Take with it. The speaker is not
+    told (N486 item 1). Again: the same."""
+    row = _candidates(database, candidate_id, match_id)
+    if row["status"] == "sent":
+        _table(database, MATCHES).update({"status": "accepted", "accepted_at": _now()}) \
+            .eq("id", str(row["id"])).eq("status", "sent").execute()
+    return view(database, candidate_id, match_id)
+
+
+def decline(database: Any, candidate_id: Any, match_id: Any) -> dict:
+    """POST /v2/take-matches/<id>/decline: "Not now", before or after Open
+    Take, or while an answer waits for its Undo (N485 item 3, N493 item 4):
+    the chat goes, nobody is told, and the two are never matched again. Who
+    declined whose Take, and when, stays on the row, for the founder's view
+    of each person (N504 item 2)."""
+    row = _candidates(database, candidate_id, match_id, states=OPEN)
+    _table(database, MATCHES).update({
+        "status": "declined", "declined_at": _now(), "answer_session_id": None,
+        "answer_due_at": None, "answer_ms": None, "candidate_name": None}) \
+        .eq("id", str(row["id"])).in_("status", list(OPEN)).execute()
+    return {"match": {"id": str(row["id"]), "status": "declined"}}
 
 
 def _recording_row(database: Any, row: dict) -> Optional[dict]:
@@ -566,8 +706,9 @@ def _length(database: Any, row: dict) -> Optional[int]:
 
 def recording(database: Any, candidate_id: Any, match_id: Any) -> dict:
     """GET /v2/take-matches/<id>/recording: the Take's voice, for the
-    candidate; 404 once its owner deleted it."""
-    row = _candidates(database, candidate_id, match_id)
+    candidate once they opened it (N485 item 2); 404 before, and once its
+    owner deleted it."""
+    row = _candidates(database, candidate_id, match_id, states=("accepted", "sending", "answered"))
     key = str((_recording_row(database, row) or {}).get("storage_path") or "")
     if not key:
         raise _not_found()
@@ -581,33 +722,69 @@ def recording(database: Any, candidate_id: Any, match_id: Any) -> dict:
     return {"content_type": content_type_for(key), "audio": audio}
 
 
+def _hold(value: Any) -> int:
+    """What is left of an answer's five seconds, as the app sends it."""
+    try:
+        return max(0, min(HOLD_MS, int(str(value).strip())))
+    except (TypeError, ValueError):
+        return HOLD_MS
+
+
 def answer(database: Any, candidate_id: Any, match_id: Any, take: Any,
-           duration_ms: Any, candidate_name: str) -> dict:
-    """POST /v2/take-matches/<id>/answer: the candidate's answer, a Take of
-    theirs recorded in the official recorder after the suggestion reached
-    them (N481 item 1). Only now is the chat between the two made (N478):
-    the speaker's Take as the speaker's own Take message, then the answer,
-    under their names; {"chat": {"id"}}. Answered again: the same chat."""
+           duration_ms: Any, candidate_name: str, hold_ms: Any = None) -> dict:
+    """POST /v2/take-matches/<id>/answer: the candidate's answer, after Open
+    Take: a Take of theirs, recorded in the official recorder after the
+    inquiry reached them (N481 item 1). It waits what is left of its five
+    seconds for Undo, and nobody sees anything meanwhile; then it counts and
+    the chat is made (``_settle``): {sending: {due_at}}, or {chat: {id}} with
+    no time left. Answered already: the same chat."""
     row = _candidates(database, candidate_id, match_id)
     if row["status"] == "answered" and row.get("thread_id"):
         return {"chat": {"id": str(row["thread_id"])}}
+    if row["status"] == "sending":
+        return {"sending": {"due_at": row.get("answer_due_at")}}
+    if row["status"] != "accepted":
+        raise ChatsError("NOT_ALLOWED", "Open the Take first.", 409)
     session = _uuid(take)
-    if not session or not _take_of(database, str(candidate_id), session):
+    take_row = _take_of(database, str(candidate_id), session) if session else None
+    if not session or not take_row:
         raise _not_found()
     if not _recorded_after(database, session, row.get("sent_at")):
         raise ChatsError("NOT_ALLOWED", "An answer is a Take recorded after it reached you.")
-    from services.chat_links import open_pair
-    speaker = str(row["speaker_id"])
-    thread = open_pair(database, [
-        {"user_id": speaker, "display_name": row.get("speaker_name") or _pseudonym(speaker, row["id"])},
-        {"user_id": str(candidate_id), "display_name": candidate_name or "WillpowerLab"}],
-        row.get("speaker_name") or _pseudonym(speaker, row["id"]))
-    _post_take(database, row, thread)
-    post_answer(database, candidate_id, thread, session, duration_ms, 0)
-    _table(database, MATCHES).update({
-        "status": "answered", "answered_at": _now(), "answer_session_id": session,
-        "thread_id": thread}).eq("id", str(row["id"])).execute()
-    return {"chat": {"id": thread}}
+    from services.chats import _answer_length
+    length = _answer_length(take_row, duration_ms)
+    hold = _hold(hold_ms)
+    due = _later(hold + HOLD_GRACE_MS if hold else 0)
+    claimed = _rows(_table(database, MATCHES).update({
+        "status": "sending", "answer_session_id": session, "answer_ms": length,
+        "answer_due_at": due, "candidate_name": (candidate_name or "")[:120] or None})
+        .eq("id", str(row["id"])).eq("status", "accepted"))
+    if not claimed:
+        return answer(database, candidate_id, match_id, take, duration_ms, candidate_name, hold_ms)
+    if not hold:
+        thread = _settle(database, claimed[0])
+        if not thread:
+            raise ChatsError("NOT_SAVED", "Could not send it.", 503)
+        return {"chat": {"id": thread}}
+    from services.chats import _after
+    match = str(row["id"])
+    _after((hold + HOLD_GRACE_MS) / 1000, lambda: _settle_quietly(database, match))
+    return {"sending": {"due_at": due}}
+
+
+def undo(database: Any, candidate_id: Any, match_id: Any) -> dict:
+    """POST /v2/take-matches/<id>/undo: the answer taken back before its
+    five seconds end: back to opened, and nobody ever saw it (N493 item 5).
+    Too late: 409."""
+    row = _candidates(database, candidate_id, match_id)
+    if row["status"] == "answered":
+        raise ChatsError("NOT_ALLOWED", "It has been sent.", 409)
+    if row["status"] == "sending":
+        _table(database, MATCHES).update({
+            "status": "accepted", "answer_session_id": None, "answer_due_at": None,
+            "answer_ms": None, "candidate_name": None}) \
+            .eq("id", str(row["id"])).eq("status", "sending").execute()
+    return {"match": {"id": str(row["id"]), "status": "accepted"}}
 
 
 def _recorded_after(database: Any, session: str, sent_at: Any) -> bool:

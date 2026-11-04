@@ -1,5 +1,6 @@
 -- a_take_can_reach_someone_new_after_it (matching people after a Take;
--- founder, the Claude Code chat, 4 November 2026, N477, N478 and N481)
+-- founder, the Claude Code chat, 4 November 2026, N477, N478, N481, N485,
+-- N486, N493 and N504)
 --
 -- One table, take_matches: the one suggestion a Take may get, after it,
 -- of someone new who fits it (N477), and what came of it (N478):
@@ -18,13 +19,19 @@
 --                  knowledge, skills, progress, the communication profile's
 --                  distance): for WillpowerLab's own review only, never
 --                  shown to anyone (Never 1).
---   status         offered (the page came back with them), sent (the
---                  speaker sent it: the candidate has Will's card), closed
---                  (Not now), answered (the candidate answered: the chat
---                  between the two was made, thread_id).
+--   status         offered (the page came back with them), closed (the
+--                  speaker's Not now), sent (an inquiry: a new chat in the
+--                  candidate's list, N485), accepted ("Open Take": the
+--                  speaker's name and Take shown, N493 item 7), sending (an
+--                  answer within its five seconds of Undo, N493 item 5),
+--                  answered (the chat between the two was made, thread_id),
+--                  declined (the candidate's Not now: nobody is told; who
+--                  declined whose Take and when stay, N504 item 2).
 --   speaker_name   The speaker's name as they go by in the chats, kept at
---                  Send for the chat the answer makes; never shown before.
---   answer_session_id, thread_id, and the time of each step.
+--                  Send; shown to the candidate only after Open Take.
+--   candidate_name, answer_session_id, answer_ms, answer_due_at: the answer
+--                  while it waits for its Undo, for the chat it then makes.
+--   thread_id, and the time of each step.
 --
 -- Nothing reads this table but the backend (the matcher, its routes, the
 -- weekly review): service role only, nothing for anon or authenticated. It
@@ -55,14 +62,21 @@ CREATE TABLE IF NOT EXISTS public.take_matches (
     signals           JSONB NOT NULL DEFAULT '{}'::jsonb
                       CHECK (jsonb_typeof(signals) = 'object'),
     status            TEXT NOT NULL DEFAULT 'offered'
-                      CHECK (status IN ('offered', 'sent', 'closed', 'answered')),
+                      CHECK (status IN ('offered', 'closed', 'sent', 'accepted',
+                                        'sending', 'answered', 'declined')),
     speaker_name      TEXT CHECK (speaker_name IS NULL
                                   OR char_length(speaker_name) BETWEEN 1 AND 120),
+    candidate_name    TEXT CHECK (candidate_name IS NULL
+                                  OR char_length(candidate_name) BETWEEN 1 AND 120),
     answer_session_id UUID,
+    answer_ms         INTEGER CHECK (answer_ms IS NULL OR answer_ms > 0),
+    answer_due_at     TIMESTAMPTZ,
     thread_id         UUID,
     offered_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     sent_at           TIMESTAMPTZ,
     closed_at         TIMESTAMPTZ,
+    accepted_at       TIMESTAMPTZ,
+    declined_at       TIMESTAMPTZ,
     answered_at       TIMESTAMPTZ,
     CHECK (speaker_id <> candidate_id)
 );
