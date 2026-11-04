@@ -9,8 +9,10 @@ the line is the record).
     their chats with a real person (no demo, no guest, nobody blocked either
     way, N466), the person sent to last first ("Last sent"), then the list
     of chats' order. A speaker with no chat with a person at all gets the
-    founder (``FOUNDER_CHAT_USER_ID``, N479 item 7), with no chat yet: it is
-    made on the first send, never on a read.
+    founder (N479 item 7), with no chat yet: it is made on the first send,
+    never on a read. The founder's account is the one with
+    ``Config.ADMIN_EMAIL``, found once per process; the optional
+    ``FOUNDER_CHAT_USER_ID`` wins when set.
   * ``last``: the speaker's last choice, for the screen's default.
   * ``send``: the caller's own Take, as their own message in their chat with
     each person chosen. Idempotent (each message's id is uuid5 of the Take
@@ -34,6 +36,7 @@ audio answers 404 once the Take is gone.
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from typing import Any, Optional
 
@@ -55,8 +58,31 @@ def is_on() -> bool:
     return bool(Config.TAKE_SEND_ENABLED)
 
 
-def _founder() -> Optional[str]:
-    return chats._uuid(Config.FOUNDER_CHAT_USER_ID) if Config.FOUNDER_CHAT_USER_ID else None
+#: The founder's account id by admin email, per process: {email: (id, at)}.
+#: A miss is asked again after ``_MISS_RETRY_S``; a hit is kept.
+_FOUNDER_IDS: dict[str, tuple[Optional[str], float]] = {}
+_MISS_RETRY_S = 600.0
+
+
+def _founder(database: Any) -> Optional[str]:
+    """The founder's account id: ``FOUNDER_CHAT_USER_ID`` when set (optional),
+    else the account with ``ADMIN_EMAIL``. None when neither finds anybody;
+    never raises."""
+    if Config.FOUNDER_CHAT_USER_ID:
+        return chats._uuid(Config.FOUNDER_CHAT_USER_ID)
+    email = str(getattr(Config, "ADMIN_EMAIL", "") or "").strip().lower()
+    if not email:
+        return None
+    cached = _FOUNDER_IDS.get(email)
+    if cached and (cached[0] or time.monotonic() - cached[1] < _MISS_RETRY_S):
+        return cached[0]
+    try:
+        found = chats._uuid(database.v2_find_user_id_by_email(email))
+    except Exception:
+        logger.warning("take_sends: the founder's account not found by email", exc_info=True)
+        found = None
+    _FOUNDER_IDS[email] = (found, time.monotonic())
+    return found
 
 
 def _off() -> ChatsError:
@@ -122,8 +148,9 @@ def _unblocked(database: Any, chats_: list[str], mine: dict[str, str],
 
 def _the_founder(database: Any, user_id: str) -> list[dict]:
     """The founder, for a speaker with no chat with a person (N479 item 7),
-    with no chat yet; nobody when FOUNDER_CHAT_USER_ID is unset."""
-    founder = _founder()
+    with no chat yet; nobody when no account has the admin email (and the
+    optional FOUNDER_CHAT_USER_ID is unset)."""
+    founder = _founder(database)
     if not founder or founder == user_id:
         return []
     profile = _profiles(database, [founder]).get(founder) or {}

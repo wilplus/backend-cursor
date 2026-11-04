@@ -13,7 +13,9 @@ OUTCOME
       (N466).
   O3  With no chat with a person at all, the founder is listed (Artur,
       speaking coach) with no chat yet; the chat is made on my first send,
-      never on a read, and only once. Without FOUNDER_CHAT_USER_ID, nobody.
+      never on a read, and only once. The founder is the account with the
+      admin email (ADMIN_EMAIL), no env var needed; FOUNDER_CHAT_USER_ID,
+      when set, wins. Nobody has that email: nobody.
   O4  Sending is idempotent: sending again posts nothing twice and pushes
       nothing twice; adding people later only adds; nothing is unsent. The
       line under my recording keeps who it went to, and my last choice is
@@ -27,6 +29,7 @@ OUTCOME
 PROVES   O1 -> TakeSendsTest::test_while_sending_is_off_nothing_new_runs
          O2 -> TakeSendsTest::test_the_list_is_real_people_last_sent_first
          O3 -> TakeSendsTest::test_with_no_chat_with_a_person_the_founder_is_listed
+         O3 -> TakeSendsTest::test_with_no_env_var_the_founder_is_the_admin_email_account
          O4 -> TakeSendsTest::test_sending_again_only_adds_people_and_is_kept_on_the_line
          O5 -> TakeSendsTest::test_someone_not_in_the_chat_cannot_open_the_take
          O6 -> TakeSendsTest::test_the_receiver_hears_the_take_and_reads_its_words_only
@@ -42,6 +45,7 @@ import uuid
 from unittest.mock import patch
 
 from config import Config
+from services import take_sends
 from services.db import db
 from tests import test_chats as base
 from tests.test_chats import ME, OTHER, SOMEONE
@@ -72,6 +76,9 @@ class TakeSendsTest(unittest.TestCase):
         self.lines: list[dict] = []
         self.pushes: list = []
         self.on = True
+        self.accounts: dict[str, str] = {}
+        take_sends._FOUNDER_IDS.clear()
+        self.addCleanup(take_sends._FOUNDER_IDS.clear)
 
         def lines(user, limit=10):
             return [dict(r) for r in reversed(self.lines) if r["user_id"] == user][:limit]
@@ -86,6 +93,8 @@ class TakeSendsTest(unittest.TestCase):
         for p in (patch.object(base._Query, "eq", _eq),
                   patch.object(Config, "TAKE_SEND_ENABLED", True),
                   patch.object(Config, "FOUNDER_CHAT_USER_ID", None),
+                  patch.object(db, "v2_find_user_id_by_email",
+                               lambda email: self.accounts.get(email)),
                   patch.object(db, "list_lounge_share_lines", lines, create=True),
                   patch.object(db, "rewrite_lounge_message", rewrite, create=True),
                   patch("services.push_devices.push_later",
@@ -217,7 +226,17 @@ class TakeSendsTest(unittest.TestCase):
             said = self._get(f"/v2/chats/{chat}/messages").get_json()["messages"]
             self.assertEqual([m["kind"] for m in said], ["take"])
 
-    # ── O4 ───────────────────────────────────────────────────────────────
+    def test_with_no_env_var_the_founder_is_the_admin_email_account(self):
+        self._post("/v2/chats/demo")
+        with patch.object(Config, "ADMIN_EMAIL", "Founder@Example.com"):
+            self.assertEqual(self._people()["people"], [])  # nobody has that email
+            take_sends._FOUNDER_IDS.clear()
+            self.accounts["founder@example.com"] = FOUNDER
+            self.assertEqual(self._people()["people"], [
+                {"user_id": FOUNDER, "name": "Artur", "title": "speaking coach",
+                 "avatar_url": None, "chat_id": None, "last_sent": False}])
+
+        # ── O4 ───────────────────────────────────────────────────────────────
 
     def test_sending_again_only_adds_people_and_is_kept_on_the_line(self):
         maya = self._chat_with(MAYA, "Maya Lindqvist")
