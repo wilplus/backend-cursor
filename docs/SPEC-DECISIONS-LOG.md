@@ -11860,3 +11860,43 @@ No migration for this entry. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 G, for answering a Take, when built; the matching gets its rules page when
 it is built (N332); the Terms and Privacy text, in the legal pack.
+
+**N482 · Privacy 3.12 is signed: sending a Take is your own message, the
+crowd stops for new Takes (founder, the Claude Code chat, 4 November 2026,
+on the draft in PR #1716: "No, no special category here. No, there shouldn't
+be any way to untick someone for future takes. I am signing in 3.12. It has
+been signed in. Great. Let's publish the script.").** For N470 and N479 item
+1:
+1. Privacy 3.12 is signed as drafted, word for word in
+`legal/phase1-2026.1/33-privacy-3.12-sending-a-take-to-the-people-you-chat-with-SIGNED-2026-11-04.md`:
+§4d rewritten (no new Take is shared with a community; the screen "Choose
+who can answer you best" has everyone in your chats ticked, and Continue
+sends your Take as your own message to each ticked person; Takes shared
+before stay shared until Stop sharing in Data & consent), and a new §4f,
+sending a Take (the recording and its words slide by slide, never the Ideal
+Text, feedback, moments or levels; only people in your chats; contract,
+6(1)(b), like any chat message; never taken back, only added to; blocking
+stops it; kept as the chat is).
+2. **Not special-category data** (the founder's determination, not
+counsel's): everyone stays ticked (N479 item 1). Counsel reads 3.12 after
+it is published, as a check; if counsel says otherwise, sending is switched
+off until a new version and the build say nothing is ticked.
+3. **Terms 3.10 stays** (question 1 A): its §8 already covers delivering
+what you send in a chat. AI notice 3.2 and the 3.1 agreement stay.
+4. **No untick for future Takes:** the kept choice goes on to the same
+people, and only blocking stops someone getting your Takes; the build stays
+as it is.
+5. Dated 4 November 2026 (the date line only), it is `copy/privacy-3.12.txt`
+and is published as `phase1-2026-11-04-3.12` by
+`legal/phase1-2026.1/PUBLISH-3.12-2026-11-04.sql`, the founder's step, over
+3.11 (in force since 12:06 UTC). Nothing is deleted; every speaker accepts
+3.12 once, on the update prompt. Only after it has run is
+`TAKE_SEND_ENABLED` turned on, on every Railway service.
+6. 3.12 does not carry N481 item 4 (the matching, accepted with the terms);
+that waits for the next version, and until then the matching weighs
+knowledge only.
+No migration. The rules: the legal pack
+(`legal/phase1-2026.1/33-privacy-3.12-sending-a-take-to-the-people-you-chat-with-SIGNED-2026-11-04.md`),
+and frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+G.
