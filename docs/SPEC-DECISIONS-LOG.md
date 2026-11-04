@@ -11235,3 +11235,29 @@ No migration. The rules: frontend
 J7, [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built.
+
+**N468 · Terms 3.9 and Privacy 3.10 are signed: the chats between people,
+Block and Report, notifications in the iPhone app and Sign in with Apple
+(founder, the sign-off page <https://claude.ai/artifact/VvUTMUdKYKK8jSdsqxDGqV>,
+then the Claude Code chat, 4 November 2026: "signed", on the page asking for
+"I sign as drafted, question 1 A, question 2 A", read back at once as
+that).** For N320, N456 and N466 item 5:
+1. Terms 3.9 and Privacy 3.10 are signed as drafted, word for word in
+`legal/phase1-2026.1/31-terms-3.9-privacy-3.10-the-chats-block-and-report-notifications-and-apple-SIGNED-2026-11-04.md`.
+They name the chats between people (what you send, who sees it, your profile
+and link, the words of a voice message), Block and Report with the Terms'
+rule against abuse (N466 item 5), notifications in the iPhone app, carried by
+Apple on the speaker's consent, and Sign in with Apple. Engineering drafted
+them from the code; not a lawyer. AI notice 3.2 and the 3.1 agreement stay.
+2. Question 1, A: Privacy section 6 names Apple's transfers as Apple's own:
+"Apple: notifications and Sign in with Apple are Apple's own services, which
+Apple provides under its own terms and its own safeguards for transfers."
+3. Question 2, A: published after the founder's signature; counsel reads it
+afterwards, as a check.
+4. Dated 4 November 2026, the only change to the signed texts; they are
+`copy/terms-3.9.txt` and `copy/privacy-3.10.txt`, published as
+`phase1-2026-11-04-3.10` by `PUBLISH-3.10-2026-11-04.sql` (the founder's
+step), once Block and Report is live in production. It deletes nothing and
+nothing is switched on after it; every speaker accepts 3.10 once, on the
+update prompt.
+No migration. No rules page: the legal pack.
