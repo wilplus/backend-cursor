@@ -155,7 +155,7 @@ class TakeMatchTest(unittest.TestCase):
              "intake_context": {"topic": "investor pitch"},
              "slide_transcripts": [
                  {"index": 0, "transcript": "Our investor pitch opens with the numbers.",
-                  "start_offset_ms": 0},
+                  "start_offset_ms": 0, "title": "Open with one number"},
                  {"index": 1, "transcript": "The numbers that stick are revenue and growth.",
                   "start_offset_ms": 41000}]},
             {"id": ANSWER, "user_id": LEA, "created_at": "2026-11-04T11:00:00Z",
@@ -260,6 +260,7 @@ class TakeMatchTest(unittest.TestCase):
         self.assertEqual((opened["state"], opened["name"]), ("opened", "Amira"))
         self.assertIn("revenue and growth", opened["words"])
         self.assertEqual(opened["slides"], [0, 41000])
+        self.assertEqual(opened["slide_titles"], ["Open with one number", None])
         self.assertEqual(self.store.count("chat_threads"), 0)
         made = self._post(f"/v2/take-matches/{match}/answer", {"take": ANSWER, "hold_ms": 0})
         self.assertEqual(made.status_code, 200, made.get_json())

@@ -652,20 +652,23 @@ def view(database: Any, candidate_id: Any, match_id: Any) -> dict:
     """GET /v2/take-matches/<id>: the inquiry as the candidate opens it.
     Before Open Take, the outside only (N485 item 1); after it, the
     speaker's name and the Take: its words slide by slide, each slide's
-    start, its length (N485 item 2, N479 item 8)."""
+    start and title (the answer is recorded over the Take's own slides,
+    N493 item 1), its length (N485 item 2, N479 item 8)."""
     row = _candidates(database, candidate_id, match_id)
     out = _inquiry(database, row)
     if row["status"] == "sent":
         return {"match": out}
     take = _take(database, str(row["speaker_id"]), str(row["session_id"])) or {}
-    starts = []
+    starts, titles = [], []
     for p in _parts(take):
         try:
             starts.append(max(0, int(p.get("start_offset_ms") or 0)))
         except (TypeError, ValueError):
             starts.append(0)
+        title = p.get("title")
+        titles.append(title.strip() or None if isinstance(title, str) else None)
     return {"match": {**out, "words": said(take) or None, "slides": starts,
-                      "duration_ms": _length(database, row)}}
+                      "slide_titles": titles, "duration_ms": _length(database, row)}}
 
 
 def accept(database: Any, candidate_id: Any, match_id: Any) -> dict:
