@@ -12289,6 +12289,22 @@ unknown (half points), matched on knowledge and skills.
 No migration. No rules page yet: the matching gets its rules page when it
 is built (N332).
 
+**N496 · The line at the top of a joiner's chat, signed (founder, the
+Claude Code chat, 4 November 2026, on the prototype "Asked When They Join"
+<https://claude.ai/artifact/G8gZ73CvfgkkJ1ztm1cmsb> (version 17), after
+asking to make it as concise as possible: "You have my okay.").** For N487
+item 4 and N491 item 3 (Never 4):
+1. **Signed, when the link's owner set questions:** "You joined thanks to
+{name}. A few questions first, then you build a knowledge base together."
+2. **Signed, when they set none:** "You joined thanks to {name}. Your first
+question starts the knowledge base you build together."
+3. Both replace N335 item 2's "You joined through {name}'s link. Only the
+two of you are in this chat." in the chat, once N487 is built, and are the
+line N488 keeps on the list's row until the chat's first message.
+No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when N487 is built.
+
 **N497 · "Your level" leaves "Change your plan", and "Ask your coach" goes
 with it (founder, the Claude Code chat, 4 November 2026: on the "Your level"
 sheet, "when I click that, nothing happens ... I don't have a coach. I was
