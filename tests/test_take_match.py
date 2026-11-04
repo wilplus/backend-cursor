@@ -9,8 +9,10 @@ OUTCOME
       suggested: the speaker's routes answer 404.
   O2  After a Take, one person is suggested: someone who shares a community
       with the speaker, has no chat with them, and fits what the Take is
-      about; shown as a pseudonym and a description, never a name. Asking
-      again gives the same one; someone who fits nothing is never chosen.
+      about; shown as a pseudonym made for this match and their role, never
+      a name, never the name the coach queue gives them, and never what
+      their own Takes are about. Asking again gives the same one; someone
+      who fits nothing is never chosen.
   O3  Someone already in a chat with the speaker, or still waiting to be
       let in (N471), is never suggested, and nobody is suggested to the
       same speaker twice.
@@ -26,8 +28,15 @@ OUTCOME
       was sent, and a Take recorded before it reached them is no answer.
   O8  Once skills are on, the experiment's arm decides among people who
       know as much: someone at a similar level, or someone further along,
-      progressing alike; the arm and what made the fit are kept, and the
-      speaker sees none of it.
+      progressing alike; the arm, what made the fit, whether the other arm
+      would have chosen someone else and how likely the pick was are kept,
+      never another person's id, and the speaker sees none of it.
+  O9  Words that say nothing about the subject make no match: Polish
+      function words ("dla", "się"), or words everyone in the community
+      uses ("presentation", "speak").
+  O10 Nobody is suggested who has not recorded a Take in two weeks, or who
+      already has three Takes waiting for their answer or five suggestions
+      this week.
 PROVES   O1 -> TakeMatchTest::test_with_no_ring_nobody_is_suggested
          O2 -> TakeMatchTest::test_one_new_person_who_fits_is_suggested_as_a_pseudonym
          O3 -> TakeMatchTest::test_nobody_in_a_chat_waiting_or_suggested_before
@@ -36,6 +45,8 @@ PROVES   O1 -> TakeMatchTest::test_with_no_ring_nobody_is_suggested
          O6 -> TakeMatchTest::test_the_answer_opens_the_chat_for_both
          O7 -> TakeMatchTest::test_only_the_one_suggested_answers_once_sent
          O8 -> TakeMatchTest::test_the_arm_picks_by_speaking_skills_and_progress
+         O9 -> TakeMatchTest::test_words_that_say_nothing_make_no_match
+         O10 -> TakeMatchTest::test_nobody_quiet_or_already_asked_enough
 WHY      Matching people happens in one place only, after the Take (N477);
          anonymous until the answer, which alone opens the chats (N478);
          every answer is a Take, and the matching weighs how people speak
@@ -43,6 +54,7 @@ WHY      Matching people happens in one place only, after the Take (N477);
 """
 from __future__ import annotations
 
+import json
 import os
 import unittest
 from unittest.mock import patch
@@ -97,6 +109,7 @@ class TakeMatchTest(unittest.TestCase):
                   patch("services.rings.feature_is_on_for_user",
                         lambda feature, user, **_: self.ring and feature == "take_match"),
                   patch("services.take_sends.is_on", lambda: self.sending),
+                  patch("services.take_match.EXPLORE", (1.0,)),
                   patch("services.take_match._now", lambda: SENT_AT),
                   patch.dict(os.environ, {"PLF1_PROCESSING_AUTHORIZATION_MODE": "off"}),
                   patch.object(ProjectRepository, "owner_for_user",
@@ -131,7 +144,7 @@ class TakeMatchTest(unittest.TestCase):
             {"id": ANSWER, "user_id": LEA, "created_at": "2026-11-04T11:00:00Z",
              "intake_context": {}, "slide_transcripts": []},
             {"id": OLDER, "user_id": LEA, "created_at": "2026-11-03T09:00:00Z",
-             "intake_context": {}, "slide_transcripts": []}]
+             "intake_context": {"topic": "my wedding toast"}, "slide_transcripts": []}]
         t["recordings"] = [
             {"session_v2_id": TAKE, "user_id": AMIRA, "storage_path": "a/take.webm", "duration": 130},
             {"session_v2_id": ANSWER, "user_id": LEA, "storage_path": "l/answer.webm", "duration": 40},
@@ -159,10 +172,14 @@ class TakeMatchTest(unittest.TestCase):
         self.assertEqual(self.store.count("take_matches"), 0)
 
     def test_one_new_person_who_fits_is_suggested_as_a_pseudonym(self):
+        from services.coach_pseudonym import coach_pseudonym
         match = self._suggested()
+        self.assertEqual(set(match), {"id", "pseudonym", "role"})
         self.assertEqual(match["role"], "Speaking coach")
         self.assertNotIn("Lea", str(match))
+        self.assertNotIn("wedding", str(match))
         self.assertTrue(match["pseudonym"])
+        self.assertNotEqual(match["pseudonym"], coach_pseudonym(LEA))
         row = self.store.tables["take_matches"][0]
         self.assertEqual((row["candidate_id"], row["status"], row["arm"]),
                          (LEA, "offered", "topics"))
@@ -253,7 +270,7 @@ class TakeMatchTest(unittest.TestCase):
             for i in range(3):
                 take = f"{who[:8]}-0000-4000-8000-00000000000{i}"
                 t["v2_sessions"].append({"id": take, "user_id": who,
-                                         "created_at": f"2026-10-0{i + 1}T09:00:00Z",
+                                         "created_at": f"2026-10-2{i + 5}T09:00:00Z",
                                          "intake_context": {}, "slide_transcripts": []})
                 t["v4_willfidence_takes"].append({
                     "take_session_id": take, "read_version": "willfidence-v1-machine",
@@ -263,10 +280,68 @@ class TakeMatchTest(unittest.TestCase):
                 t["take_matches"] = []
                 with patch("services.take_match.draw_arm", lambda arm=arm: arm):
                     match = self._suggested()
-                self.assertEqual(set(match), {"id", "pseudonym", "role", "practises"})
+                self.assertEqual(set(match), {"id", "pseudonym", "role"})
                 row = t["take_matches"][0]
                 self.assertEqual((row["candidate_id"], row["arm"]), (chosen, arm))
-                self.assertTrue({"knowledge", "skill", "pace"} <= set(row["signals"]))
+                kept = row["signals"]
+                self.assertTrue({"knowledge", "skill", "pace", "rank", "propensity"} <= set(kept))
+                self.assertTrue(kept["other_arm_differs"])
+                self.assertEqual((kept["rank"], kept["propensity"]), (1, 1.0))
+                self.assertNotIn(LEA, json.dumps(kept))
+                self.assertNotIn(MAYA, json.dumps(kept))
+
+    def _only_take(self, topic, words):
+        self.store.tables["v2_sessions"][0].update(
+            {"intake_context": {"topic": topic},
+             "slide_transcripts": [{"index": 0, "transcript": words, "start_offset_ms": 0}]})
+
+    def _person(self, who, role, about, active=True):
+        t = self.store.tables
+        t["community_members"].append({"community_id": TEAM, "user_id": who})
+        t["people_profiles"].append({"user_id": who, "name": None, "role": role, "about": about})
+        t["v2_sessions"].append({"id": f"{who[:8]}-1111-4111-8111-{who[-12:]}", "user_id": who,
+                                 "created_at": "2026-11-03T08:00:00Z" if active else
+                                 "2026-09-01T08:00:00Z", "intake_context": {},
+                                 "slide_transcripts": []})
+
+    def test_words_that_say_nothing_make_no_match(self):
+        t = self.store.tables
+        t["community_members"] = [{"community_id": TEAM, "user_id": AMIRA}]
+        self._only_take("prezentacja dla inwestorów",
+                        "Nasza prezentacja zaczyna się od liczb, które zapadają w pamięć.")
+        self._person(TOMEK, "Księgowa", "Zajmuję się podatkami dla firm i jest to dla mnie ważne.")
+        self.assertIsNone(self._suggested())
+
+        t["community_members"] = [{"community_id": TEAM, "user_id": AMIRA}]
+        t["take_matches"] = []
+        self._only_take("presentation", "I want to speak about my presentation with confidence.")
+        for i in range(24):
+            self._person(f"{i:08d}-2222-4222-8222-222222222222", "Speaker",
+                         "I speak at events and give a presentation with confidence.")
+        self.assertIsNone(self._suggested())
+
+    def test_nobody_quiet_or_already_asked_enough(self):
+        t = self.store.tables
+        for row in t["v2_sessions"]:
+            if row["user_id"] == LEA:
+                row["created_at"] = "2026-09-01T08:00:00Z"
+        self.assertIsNone(self._suggested())
+        t["v2_sessions"][1]["created_at"] = "2026-11-04T11:00:00Z"
+        others = [f"{i:08d}-3333-4333-8333-333333333333" for i in range(5)]
+        t["take_matches"] = [{"id": f"m{i}", "session_id": f"s{i}", "speaker_id": who,
+                              "candidate_id": LEA, "status": "sent",
+                              "offered_at": "2026-11-03T08:00:00+00:00"}
+                             for i, who in enumerate(others[:3])]
+        self.assertIsNone(self._suggested())
+        for row in t["take_matches"]:
+            row["status"] = "offered"
+        t["take_matches"] += [{"id": f"n{i}", "session_id": f"q{i}", "speaker_id": who,
+                               "candidate_id": LEA, "status": "offered",
+                               "offered_at": "2026-11-02T08:00:00+00:00"}
+                              for i, who in enumerate(others[3:])]
+        self.assertIsNone(self._suggested())
+        t["take_matches"] = []
+        self.assertEqual(self._suggested()["role"], "Speaking coach")
 
 
 if __name__ == "__main__":

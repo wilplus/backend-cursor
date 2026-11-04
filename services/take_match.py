@@ -8,15 +8,19 @@ it (N477). This module finds that one person, keeps what came of it, and
 makes the chat between the two only when that person answers (N478):
 
   * ``suggest``  for the speaker, after the walk: one person who shares one
-    of their communities, is a member (N471), has no chat with them and was
-    never suggested to them before, and who fits the Take best (N481 item
-    2). Knowledge first, by its words, both ways: what the candidate knows
-    (their profile) and practises (their Takes' topics) against what the
-    Take needs, and what the speaker knows against what the candidate
+    of their communities, is a member (N471), has no chat with them, was
+    never suggested to them before, recorded a Take lately and is not
+    already asked enough; who fits the Take best (N481 item 2). Knowledge
+    first, by its words, both ways, rare words weighing most
+    (``take_match_knowledge``): what the candidate knows (their profile)
+    and practises (their Takes' topics, never shown) against what the Take
+    needs, and what the speaker knows against what the candidate
     practises; then, once skills are on (``take_match_signals``), speaking
     skills by the experiment's arm (a similar level, or further along,
-    N481 item 3) and progress alike. A pseudonym and a description, never
-    a name. One per Take; none when nobody knows enough.
+    N481 item 3) and progress alike. Mostly the best, now and then the
+    second or third, each pick's chance kept. A pseudonym made for this
+    match and their role, never a name. One per Take; none when nobody
+    knows enough.
   * ``send`` / ``close``  Send puts Will's card in the candidate's chat with
     Will; Not now ends it, and nobody is told.
   * ``view`` / ``recording``  the candidate opens the Take: the speaker's
@@ -40,10 +44,11 @@ off (N481 item 4).
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import random
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from services.chats import (
@@ -78,7 +83,23 @@ SKILL_ARMS = ("similar_level", "further_along")
 #: how far ahead "further along" aims, and how big a gap is no fit at all,
 #: in willfidence (0 to 1) and in its change per Take.
 SKILL_WEIGHT, PACE_WEIGHT = 2.0, 2.0
-FURTHER_BY, SKILL_SPAN, PACE_SPAN = 0.15, 0.5, 0.05
+#: The spans used until enough people are read to measure how far apart
+#: they are (``SPREAD_FROM``); then twice that spread, within bounds.
+FURTHER_BY, SKILL_SPAN, PACE_SPAN = 0.15, 0.3, 0.05
+SPREAD_FROM = 8
+#: How many Takes' worth a person's skills are pulled toward everyone's
+#: average, so a person with one or two Takes is not judged on them alone.
+SKILL_PRIOR = 3
+#: Proposed, for the founder (audit, 4 November 2026): only someone who
+#: recorded a Take in the last ``ACTIVE_DAYS``; at most ``OPEN_CAP`` Takes
+#: waiting for their answer and ``WEEK_CAP`` suggestions in seven days.
+ACTIVE_DAYS, OPEN_CAP, WEEK_CAP = 14, 3, 5
+#: The pick: the best, or now and then the second or third, with these
+#: chances, each kept with the suggestion (its propensity).
+EXPLORE = (0.8, 0.1, 0.1)
+#: Ids per read, as ``db._chunks``; the most community members read; how
+#: many topics are kept per person.
+CHUNK, MAX_POOL, TOPICS_EACH = 100, 2000, 10
 _NAMESPACE = uuid.UUID("6f1d3b8e-3c0a-4d55-9a7e-2b9c1f4e8a10")
 
 
@@ -103,26 +124,38 @@ def chat_name(database: Any, user_id: Any, token_payload: Any) -> str:
     return str(profile.get("name") or "").strip() or name_of(token_payload)
 
 
-def _pseudonym(user_id: str) -> str:
+def _pseudonym(user_id: str, match_id: Any) -> str:
+    """A name for this person in this one match only: never the name the
+    blind coach queue or an email gives them, and another in the next match,
+    so a pseudonym cannot be followed from one place to another (audit,
+    4 November 2026)."""
     from services.coach_pseudonym import coach_pseudonym
-    return coach_pseudonym(user_id)
+    return coach_pseudonym(f"take_match:{match_id}:{user_id}")
 
 
 # ── Who could it be ──────────────────────────────────────────────────────
 
+def _chunks(ids: list[str]) -> list[list[str]]:
+    """Lists of ids at most ``CHUNK`` long: a longer one makes a read's
+    address too long (``db._chunks``, the same size)."""
+    return [ids[i:i + CHUNK] for i in range(0, len(ids), CHUNK)]
+
+
 def pool(database: Any, speaker_id: str) -> list[str]:
     """Everyone who shares a community with the speaker (a private one: the
     general community has no member rows), minus whoever already has a chat
-    with them and whoever was suggested to them before; sorted, so a tie
-    always goes the same way."""
+    with them and whoever was suggested to them before; read in id order, so
+    a very large community is cut the same way every time, and sorted."""
     communities = [str(r["community_id"]) for r in _rows(
         _table(database, COMMUNITY_MEMBERS).select("community_id")
         .eq("user_id", speaker_id).limit(MAX_ROWS))]
-    if not communities:
-        return []
-    people = {str(r["user_id"]) for r in _rows(
-        _table(database, COMMUNITY_MEMBERS).select("user_id")
-        .in_("community_id", communities).limit(MAX_ROWS)) if r.get("user_id")}
+    people: set[str] = set()
+    for part in _chunks(sorted(set(communities))):
+        people |= {str(r["user_id"]) for r in _rows(
+            _table(database, COMMUNITY_MEMBERS).select("user_id")
+            .in_("community_id", part).order("user_id").limit(MAX_POOL)) if r.get("user_id")}
+    if len(people) >= MAX_POOL:
+        logger.warning("take_match: the pool of %s is cut at %s people", speaker_id, MAX_POOL)
     return sorted(people - _in_chats_with(database, speaker_id)
                   - _suggested_before(database, speaker_id) - {speaker_id})
 
@@ -130,17 +163,42 @@ def pool(database: Any, speaker_id: str) -> list[str]:
 def _in_chats_with(database: Any, user_id: str) -> set[str]:
     threads = [str(r["thread_id"]) for r in _rows(
         _table(database, MEMBERS).select("thread_id").eq("user_id", user_id).limit(MAX_ROWS))]
-    if not threads:
-        return set()
-    return {str(r["user_id"]) for r in _rows(
-        _table(database, MEMBERS).select("user_id").in_("thread_id", threads))
-        if r.get("user_id")}
+    out: set[str] = set()
+    for part in _chunks(threads):
+        out |= {str(r["user_id"]) for r in _rows(
+            _table(database, MEMBERS).select("user_id").in_("thread_id", part)) if r.get("user_id")}
+    return out
 
 
 def _suggested_before(database: Any, user_id: str) -> set[str]:
     return {str(r["candidate_id"]) for r in _rows(
         _table(database, MATCHES).select("candidate_id").eq("speaker_id", user_id)
         .limit(MAX_ROWS))}
+
+
+def _since(days: int) -> str:
+    moment = _when(_now()) or datetime.now(timezone.utc)
+    return (moment - timedelta(days=days)).isoformat()
+
+
+def _busy(database: Any, ids: list[str]) -> set[str]:
+    """Who has enough already (audit, 4 November 2026): ``OPEN_CAP`` Takes
+    sent to them and not yet answered, or ``WEEK_CAP`` suggestions in the
+    last seven days, from anyone."""
+    week = _since(7)
+    open_now: dict[str, int] = {}
+    recent: dict[str, int] = {}
+    for part in _chunks(ids):
+        for r in _rows(_table(database, MATCHES).select("candidate_id,status,offered_at")
+                       .in_("candidate_id", part).in_("status", ["offered", "sent"])
+                       .limit(CHUNK * (WEEK_CAP + OPEN_CAP))):
+            who = str(r["candidate_id"])
+            if r.get("status") == "sent":
+                open_now[who] = open_now.get(who, 0) + 1
+            if str(r.get("offered_at") or "") >= week:
+                recent[who] = recent.get(who, 0) + 1
+    return ({w for w, n in open_now.items() if n >= OPEN_CAP}
+            | {w for w, n in recent.items() if n >= WEEK_CAP})
 
 
 # ── What fits ────────────────────────────────────────────────────────────
@@ -171,38 +229,35 @@ def said(take: dict) -> str:
 
 
 def _profiles(database: Any, ids: list[str]) -> dict[str, dict]:
-    if not ids:
-        return {}
-    return {str(r["user_id"]): r for r in _rows(
-        _table(database, PROFILES).select("user_id,name,role,about").in_("user_id", ids))}
-
-
-def _topics(database: Any, ids: list[str]) -> dict[str, list[str]]:
-    """What each person practises: the topics of their own Takes, newest first."""
-    if not ids:
-        return {}
-    out: dict[str, list[str]] = {}
-    for row in _rows(_table(database, SESSIONS).select("user_id,intake_context")
-                     .in_("user_id", ids).order("created_at", desc=True).limit(MAX_ROWS)):
-        topic = topic_of(row)
-        if topic and topic not in out.get(str(row["user_id"]), []):
-            out.setdefault(str(row["user_id"]), []).append(topic)
+    out: dict[str, dict] = {}
+    for part in _chunks(ids):
+        out.update({str(r["user_id"]): r for r in _rows(
+            _table(database, PROFILES).select("user_id,name,role,about").in_("user_id", part))})
     return out
+
+
+def _activity(database: Any, ids: list[str]) -> tuple[dict[str, list[str]], dict[str, str]]:
+    """What each person practises (the topics of their newest Takes, never
+    shown to anyone) and when they last recorded one. Read in parts, a fair
+    share of rows for each part, so the busiest people cannot crowd out the
+    quiet ones."""
+    topics: dict[str, list[str]] = {}
+    last: dict[str, str] = {}
+    for part in _chunks(ids):
+        for row in _rows(_table(database, SESSIONS).select("user_id,intake_context,created_at")
+                         .in_("user_id", part).order("created_at", desc=True)
+                         .limit(CHUNK * TOPICS_EACH)):
+            who = str(row["user_id"])
+            last.setdefault(who, str(row.get("created_at") or ""))
+            topic = topic_of(row)
+            mine = topics.setdefault(who, [])
+            if topic and topic not in mine and len(mine) < TOPICS_EACH:
+                mine.append(topic)
+    return topics, last
 
 
 def _knows(profile: dict) -> str:
     return f"{profile.get('role') or ''} {profile.get('about') or ''}"
-
-
-def fit(wanted: set[str], knows: set[str], practises: set[str],
-        speaker_knows: set[str]) -> tuple[float, list[str]]:
-    """How well a candidate fits a Take, both ways, and the words that made
-    it: what the Take is about against what they know (1 a word) and what
-    they practise (half), and what the speaker knows against what they
-    practise (half). Pure."""
-    know, practise, back = wanted & knows, wanted & practises, speaker_knows & practises
-    return (len(know) + 0.5 * len(practise) + 0.5 * len(back),
-            sorted(know | practise | back))
 
 
 def draw_arm() -> str:
@@ -218,15 +273,18 @@ def closeness(gap: Optional[float], target: float, span: float) -> float:
     return max(0.0, 1.0 - abs(gap - target) / span)
 
 
-def weigh(arm: str, knowledge: float, speaker: dict, candidate: dict) -> tuple[float, dict]:
+def weigh(arm: str, knowledge: float, speaker: dict, candidate: dict,
+          spans: tuple[float, float] = (0.0, 0.0)) -> tuple[float, dict]:
     """A candidate's whole fit in ``arm`` and what made it (N481 item 2):
     knowledge, speaking skills by the arm, progress alike; the profiles'
     distance is kept beside it for the style arms. Never shown. Pure."""
+    skill_span, pace_span = spans[0] or SKILL_SPAN, spans[1] or PACE_SPAN
+
     def gap(key: str) -> Optional[float]:
         a, b = speaker.get(key), candidate.get(key)
         return None if a is None or b is None else round(b - a, 4)
-    skill = closeness(gap("skill"), FURTHER_BY if arm == "further_along" else 0.0, SKILL_SPAN)
-    pace = closeness(gap("pace"), 0.0, PACE_SPAN)
+    skill = closeness(gap("skill"), FURTHER_BY if arm == "further_along" else 0.0, skill_span)
+    pace = closeness(gap("pace"), 0.0, pace_span)
     made = {"knowledge": knowledge, "skill": round(skill, 4), "pace": round(pace, 4),
             "skill_gap": gap("skill"), "pace_gap": gap("pace"),
             "profile_distance": signals.profile_distance(speaker.get("profile") or {},
@@ -234,54 +292,134 @@ def weigh(arm: str, knowledge: float, speaker: dict, candidate: dict) -> tuple[f
     return round(knowledge + SKILL_WEIGHT * skill + PACE_WEIGHT * pace, 4), made
 
 
-def _with_skills(database: Any, speaker_id: str, fits: list[dict[str, Any]]) -> None:
-    """Weigh skills and progress into each fit, all in one arm."""
+def _spread(values: list[float], low: float, high: float, default: float) -> float:
+    """A span from how far apart people are (twice the spread), held between
+    ``low`` and ``high``; ``default`` with fewer than ``SPREAD_FROM`` people."""
+    if len(values) < SPREAD_FROM:
+        return default
+    mean = sum(values) / len(values)
+    sd = (sum((v - mean) ** 2 for v in values) / (len(values) - 1)) ** 0.5
+    return max(low, min(high, 2 * sd))
+
+
+def _steady(reads: dict[str, dict]) -> tuple[dict[str, dict], tuple[float, float]]:
+    """Each person's skills pulled toward everyone's average by how few Takes
+    they have (``SKILL_PRIOR`` Takes' worth), and the two spans from the
+    people read. The progress is already steadied (``signals.of``)."""
+    known = [r for r in reads.values() if r.get("skill") is not None]
+    mean = (sum(r["skill"] for r in known) / len(known)) if known else None
+    out = {}
+    for who, r in reads.items():
+        n = int(r.get("takes") or 0)
+        skill = r.get("skill")
+        if skill is not None and mean is not None:
+            skill = (n * skill + SKILL_PRIOR * mean) / (n + SKILL_PRIOR)
+        out[who] = {**r, "skill": skill}
+    spans = (_spread([r["skill"] for r in out.values() if r.get("skill") is not None],
+                     0.1, 0.5, SKILL_SPAN),
+             _spread([r["pace"] for r in out.values() if r.get("pace") is not None],
+                     0.02, 0.1, PACE_SPAN))
+    return out, spans
+
+
+def _ranked(fits: list[dict[str, Any]], session: str, key: str = "fit") -> list[dict[str, Any]]:
+    """Highest first; a tie goes the same way for the same Take, but not
+    always to the same person (audit, 4 November 2026)."""
+    def tie(f: dict) -> str:
+        return hashlib.sha256(f"{session}:{f['candidate_id']}".encode()).hexdigest()
+    return sorted(fits, key=lambda f: (-f[key], tie(f)))
+
+
+def _with_skills(database: Any, speaker_id: str, fits: list[dict[str, Any]],
+                 session: str) -> None:
+    """Weigh skills and progress into each fit, in the arm drawn for this
+    Take, and note whether the other arm would have chosen someone else
+    (only those Takes tell the arms apart)."""
     arm = draw_arm()
-    reads = signals.of(database, [speaker_id] + [f["candidate_id"] for f in fits])
+    other = SKILL_ARMS[1 - SKILL_ARMS.index(arm)]
+    reads, spans = _steady(signals.of(database, [speaker_id] + [f["candidate_id"] for f in fits]))
     for f in fits:
-        f["fit"], f["signals"] = weigh(arm, f["fit"], reads[speaker_id], reads[f["candidate_id"]])
+        f["other_fit"], _made = weigh(other, f["fit"], reads[speaker_id],
+                                      reads[f["candidate_id"]], spans)
+        f["fit"], f["signals"] = weigh(arm, f["fit"], reads[speaker_id],
+                                       reads[f["candidate_id"]], spans)
         f["arm"] = arm
+    first, first_other = _ranked(fits, session)[0], _ranked(fits, session, "other_fit")[0]
+    for f in fits:
+        f["signals"]["other_arm_differs"] = first is not first_other
+        f["signals"]["spans"] = [round(spans[0], 4), round(spans[1], 4)]
+
+
+def _pick(fits: list[dict[str, Any]], session: str) -> dict[str, Any]:
+    """One of the best few, mostly the best (``EXPLORE``), by a draw seeded
+    with the Take, and how likely that pick was: so later another way of
+    matching can be judged on what this one did (audit, 4 November 2026)."""
+    top = _ranked(fits, session)[:len(EXPLORE)]
+    chances = [p / sum(EXPLORE[:len(top)]) for p in EXPLORE[:len(top)]]
+    roll = random.Random(int(hashlib.sha256(session.encode()).hexdigest(), 16)).random()
+    at = 0
+    while at < len(top) - 1 and roll >= sum(chances[:at + 1]):
+        at += 1
+    chosen = top[at]
+    chosen["signals"] = {**chosen.get("signals", {}), "rank": at + 1,
+                         "propensity": round(chances[at], 4),
+                         "top_fits": [f["fit"] for f in top]}
+    return chosen
 
 
 def best(database: Any, speaker_id: str, take: dict) -> Optional[dict]:
-    """The one person who fits the Take best, or None: {"candidate_id",
-    "fit", "terms", "arm", "signals"}. Only someone who knows enough of what
-    it needs (``MIN_FIT``); then, once skills are on, skills and progress
-    too. Only a member (N471): a waiting account cannot record, so could
-    never answer."""
+    """The one person suggested for the Take, or None: {"candidate_id",
+    "fit", "terms", "arm", "signals"}. Only a member (N471) who recorded a
+    Take in the last ``ACTIVE_DAYS`` and is not already asked enough
+    (``_busy``), and who knows enough of what it needs (``MIN_FIT``, rare
+    words weighing most: services/take_match_knowledge.py); then, once
+    skills are on, skills and progress too."""
     from services import membership
-    from services.speaker_lookup import key_terms
-    people = pool(database, speaker_id)
-    topic = topic_of(take)
-    wanted = key_terms(f"{topic} {topic} {topic} {said(take)}")
-    if not people or not wanted:
+    from services import take_match_knowledge as knowledge
+    session = str(take.get("id") or "")
+    wanted = knowledge.take_words(topic_of(take), said(take))
+    people = pool(database, speaker_id) if wanted else []
+    if not people:
         return None
+    topics, last = _activity(database, people)
     profiles = _profiles(database, people + [speaker_id])
-    topics = _topics(database, people)
-    speaker_knows = key_terms(_knows(profiles.get(speaker_id, {})))
+    # Every word's weight is read among everyone the speaker shares a
+    # community with, so a word is rare or common there, not just among
+    # the few who may be asked today.
+    knows = {p: knowledge.counts(_knows(profiles.get(p, {}))) for p in people}
+    practises = {p: knowledge.counts(" ".join(topics.get(p, []))) for p in people}
+    weight, _n = knowledge.weights(set(knows[p]) | set(practises[p]) for p in people)
+    average_know = sum(sum(c.values()) for c in knows.values()) / len(people)
+    average_practise = sum(sum(c.values()) for c in practises.values()) / len(people)
+    speaker_knows = set(knowledge.counts(_knows(profiles.get(speaker_id, {}))))
+    active = _since(ACTIVE_DAYS)
+    people = [p for p in people if last.get(p, "") >= active]
+    busy = _busy(database, people)
+    people = [p for p in people if p not in busy]
     fits: list[dict[str, Any]] = []
     for uid in people:
-        score, terms = fit(wanted, key_terms(_knows(profiles.get(uid, {}))),
-                           key_terms(" ".join(topics.get(uid, []))), speaker_knows)
-        if score >= MIN_FIT:
+        score, terms = knowledge.score(wanted, knows[uid], practises[uid], speaker_knows,
+                                       weight, average_know, average_practise)
+        if score >= MIN_FIT and membership.is_member(database, uid):
             fits.append({"candidate_id": uid, "fit": score, "terms": terms,
                          "arm": "topics", "signals": {"knowledge": score}})
-    if fits and signals.is_on():
-        _with_skills(database, speaker_id, fits)
-    # Highest fit first; a tie keeps the pool's sorted order (a stable sort).
-    fits.sort(key=lambda f: f["fit"], reverse=True)
-    return next((f for f in fits if membership.is_member(database, f["candidate_id"])), None)
+    if not fits:
+        return None
+    if signals.is_on():
+        _with_skills(database, speaker_id, fits, session)
+    return _pick(fits, session)
 
 
 # ── The speaker's side ───────────────────────────────────────────────────
 
 def _offer(database: Any, row: dict) -> dict:
-    """A suggestion as the speaker sees it: a pseudonym and a description."""
+    """A suggestion as the speaker sees it: a pseudonym and the role from
+    their profile. Never what their own Takes are about: those are their
+    private practice (audit, 4 November 2026)."""
     candidate = str(row["candidate_id"])
     profile = _profiles(database, [candidate]).get(candidate, {})
-    topics = _topics(database, [candidate]).get(candidate) or []
-    return {"id": str(row["id"]), "pseudonym": _pseudonym(candidate),
-            "role": profile.get("role") or None, "practises": topics[0] if topics else None}
+    return {"id": str(row["id"]), "pseudonym": _pseudonym(candidate, row["id"]),
+            "role": profile.get("role") or None}
 
 
 def _match_of_take(database: Any, session: str) -> Optional[dict]:
@@ -290,8 +428,8 @@ def _match_of_take(database: Any, session: str) -> Optional[dict]:
 
 
 def suggest(database: Any, speaker_id: Any, session_id: Any) -> dict:
-    """GET /v2/takes/<session_id>/match: {"match": {id, pseudonym, role,
-    practises} | null}. The page after the Take comes back only with one;
+    """GET /v2/takes/<session_id>/match: {"match": {id, pseudonym, role} |
+    null}. The page after the Take comes back only with one;
     once sent or closed there is none. 404 when matching is off for the
     speaker or the Take is not theirs."""
     if not is_on(database, speaker_id):
@@ -367,7 +505,7 @@ def _from(database: Any, row: dict) -> dict:
     speaker = str(row["speaker_id"])
     profile = _profiles(database, [speaker]).get(speaker, {})
     take = _take(database, speaker, str(row["session_id"])) or {}
-    return {"pseudonym": _pseudonym(speaker), "role": profile.get("role") or None,
+    return {"pseudonym": _pseudonym(speaker, row["id"]), "role": profile.get("role") or None,
             "about": topic_of(take) or None}
 
 
@@ -461,9 +599,9 @@ def answer(database: Any, candidate_id: Any, match_id: Any, take: Any,
     from services.chat_links import open_pair
     speaker = str(row["speaker_id"])
     thread = open_pair(database, [
-        {"user_id": speaker, "display_name": row.get("speaker_name") or _pseudonym(speaker)},
+        {"user_id": speaker, "display_name": row.get("speaker_name") or _pseudonym(speaker, row["id"])},
         {"user_id": str(candidate_id), "display_name": candidate_name or "WillpowerLab"}],
-        row.get("speaker_name") or _pseudonym(speaker))
+        row.get("speaker_name") or _pseudonym(speaker, row["id"]))
     _post_take(database, row, thread)
     post_answer(database, candidate_id, thread, session, duration_ms, 0)
     _table(database, MATCHES).update({

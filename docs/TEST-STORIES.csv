@@ -3322,8 +3322,10 @@ tests/test_take_match.py,Story,"As a speaker, after my Take, I want the page tha
 suggested: the speaker's routes answer 404.
 O2  After a Take, one person is suggested: someone who shares a community
 with the speaker, has no chat with them, and fits what the Take is
-about; shown as a pseudonym and a description, never a name. Asking
-again gives the same one; someone who fits nothing is never chosen.
+about; shown as a pseudonym made for this match and their role, never
+a name, never the name the coach queue gives them, and never what
+their own Takes are about. Asking again gives the same one; someone
+who fits nothing is never chosen.
 O3  Someone already in a chat with the speaker, or still waiting to be
 let in (N471), is never suggested, and nobody is suggested to the
 same speaker twice.
@@ -3339,15 +3341,24 @@ O7  Nobody else can open or answer it, the one suggested cannot before it
 was sent, and a Take recorded before it reached them is no answer.
 O8  Once skills are on, the experiment's arm decides among people who
 know as much: someone at a similar level, or someone further along,
-progressing alike; the arm and what made the fit are kept, and the
-speaker sees none of it.","O1 -> TakeMatchTest::test_with_no_ring_nobody_is_suggested
+progressing alike; the arm, what made the fit, whether the other arm
+would have chosen someone else and how likely the pick was are kept,
+never another person's id, and the speaker sees none of it.
+O9  Words that say nothing about the subject make no match: Polish
+function words (""dla"", ""się""), or words everyone in the community
+uses (""presentation"", ""speak"").
+O10 Nobody is suggested who has not recorded a Take in two weeks, or who
+already has three Takes waiting for their answer or five suggestions
+this week.","O1 -> TakeMatchTest::test_with_no_ring_nobody_is_suggested
 O2 -> TakeMatchTest::test_one_new_person_who_fits_is_suggested_as_a_pseudonym
 O3 -> TakeMatchTest::test_nobody_in_a_chat_waiting_or_suggested_before
 O4 -> TakeMatchTest::test_send_reaches_only_the_one_suggested_through_will
 O5 -> TakeMatchTest::test_not_now_tells_nobody
 O6 -> TakeMatchTest::test_the_answer_opens_the_chat_for_both
 O7 -> TakeMatchTest::test_only_the_one_suggested_answers_once_sent
-O8 -> TakeMatchTest::test_the_arm_picks_by_speaking_skills_and_progress","Matching people happens in one place only, after the Take (N477); anonymous until the answer, which alone opens the chats (N478); every answer is a Take, and the matching weighs how people speak and progress (N481)."
+O8 -> TakeMatchTest::test_the_arm_picks_by_speaking_skills_and_progress
+O9 -> TakeMatchTest::test_words_that_say_nothing_make_no_match
+O10 -> TakeMatchTest::test_nobody_quiet_or_already_asked_enough","Matching people happens in one place only, after the Take (N477); anonymous until the answer, which alone opens the chats (N478); every answer is a Take, and the matching weighs how people speak and progress (N481)."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name
