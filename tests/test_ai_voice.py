@@ -11,7 +11,9 @@ OUTCOME
       made: no default (N425). A clearer version's example keeps the
       default.
   O2  The clip says my own words (or the clearer version I accepted, with
-      the ums taken out), in at most 17 seconds.
+      the ums taken out), in at most 17 seconds. A moment too long for that
+      is trimmed to the part around what the clip teaches, and my try is
+      asked for the same trimmed words (N459 item 3).
   O3  A clip that fails its check is made once more with a new seed and
       is never shown; a try after it is not scored; a real pause heard in
       the audio passes.
@@ -40,7 +42,9 @@ PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
          O2 -> test_the_request_says_the_speakers_own_words,
                test_no_clip_is_longer_than_the_limit,
                test_a_clearer_version_practice_gets_a_clip_of_the_accepted_words,
-               test_a_sentence_with_fillers_is_said_without_them_and_the_next_try_is_measured_on_them
+               test_a_sentence_with_fillers_is_said_without_them_and_the_next_try_is_measured_on_them,
+               test_a_moment_too_long_for_a_clip_is_trimmed_around_what_it_teaches,
+               test_the_walks_fix_on_a_long_moment_gets_its_clip_and_the_try_the_same_words
          O3 -> test_a_clip_that_fails_its_check_is_made_once_more_and_shown_only_if_it_passes,
                test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it
          O4 -> test_a_speakers_daily_or_monthly_limit_stops_the_provider_call,
@@ -348,6 +352,53 @@ def test_no_clip_is_longer_than_the_limit():
                    exercise={"exercise": "pace"}, original_wpm=None,
                    original_duration_s=None, decode=lambda _a: pcm)
     assert "too_long" in out["failed_checks"] and not out["passed"]
+
+
+LONG_MOMENT = ("Last year we tried three different ways to grow the business in new "
+               "markets, and none of them worked the way we had hoped they would. "
+               + SENTENCE)
+
+
+def test_a_moment_too_long_for_a_clip_is_trimmed_around_what_it_teaches():
+    """N459 item 3: a moment too long for the clip is cut to a part that
+    fits both limits and holds the phrase the clip teaches; a sentence too
+    long alone gives a window of its words around the phrase; a short one
+    is left as it is."""
+    def fits(text):  # 600 characters, 17 s said at 2.2 words a second, one pause
+        return len(text) <= 600 and len(text.split()) / 2.2 + 0.6 <= 17
+    assert ai_voice_prompt.fit_to_clip(SENTENCE, PHRASE) == SENTENCE
+    for text, phrase in ((LONG_MOMENT, "the window closes once"),
+                         (" ".join([SENTENCE] * 4), "match our price"),
+                         (LONG_MOMENT, None)):
+        assert not fits(text)
+        cut = ai_voice_prompt.fit_to_clip(text, phrase)
+        assert fits(cut) and cut in text and (phrase is None or phrase in cut)
+    assert ai_voice_prompt.fit_to_clip(LONG_MOMENT, "the window closes once") == SENTENCE
+
+
+class _TrimDb(_Db):
+    def list_confident_voice_practice_attempts(self, *_a):
+        return []
+
+    def update_confident_voice_practice(self, _pid, _owner, patch):
+        self.practice.update(patch)
+        return self.practice
+
+
+def test_the_walks_fix_on_a_long_moment_gets_its_clip_and_the_try_the_same_words():
+    """N459 item 3: the weakest moment, too long to say in a clip, used to
+    fail its clip; now the clip is made of the part around the phrase, the
+    practice asks the try for those same words, and the walk is told them."""
+    with _on():
+        practice = {**_practice(), "exact_passage": LONG_MOMENT, "owner_user_id": OWNER}
+        db = _TrimDb(practice, {**_snip(150, pause_ratio=0.02), "transcript": LONG_MOMENT}, TAKE)
+        _ready_voice(db)
+        voices = _Voices()
+        out = _run_pipeline(db, practice, voices, _heard(0.55, "the window closes once"))
+        cycle = db.client.tables["ai_voice_cycles"][0]
+        assert out["clip"]["state"] == "ready", cycle.get("failure_code")
+        assert voices.spoken == 1 and cycle["exercise"] == "pause"
+        assert practice["exact_passage"] == SENTENCE == out["clip"]["passage"]
 
 
 # ── the lane, once, the limits ────────────────────────────────────────────

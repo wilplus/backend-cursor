@@ -319,7 +319,9 @@ clip shows, never the runner-up, and with nothing measured no clip is
 made: no default (N425). A clearer version's example keeps the
 default.
 O2  The clip says my own words (or the clearer version I accepted, with
-the ums taken out), in at most 17 seconds.
+the ums taken out), in at most 17 seconds. A moment too long for that
+is trimmed to the part around what the clip teaches, and my try is
+asked for the same trimmed words (N459 item 3).
 O3  A clip that fails its check is made once more with a new seed and
 is never shown; a try after it is not scored; a real pause heard in
 the audio passes.
@@ -347,7 +349,9 @@ test_the_walks_fix_gets_no_clip_when_nothing_was_off_and_never_the_runner_up
 O2 -> test_the_request_says_the_speakers_own_words,
 test_no_clip_is_longer_than_the_limit,
 test_a_clearer_version_practice_gets_a_clip_of_the_accepted_words,
-test_a_sentence_with_fillers_is_said_without_them_and_the_next_try_is_measured_on_them
+test_a_sentence_with_fillers_is_said_without_them_and_the_next_try_is_measured_on_them,
+test_a_moment_too_long_for_a_clip_is_trimmed_around_what_it_teaches,
+test_the_walks_fix_on_a_long_moment_gets_its_clip_and_the_try_the_same_words
 O3 -> test_a_clip_that_fails_its_check_is_made_once_more_and_shown_only_if_it_passes,
 test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it
 O4 -> test_a_speakers_daily_or_monthly_limit_stops_the_provider_call,
@@ -2323,8 +2327,9 @@ Take's walk Will reads it slide by slide: each answer is kept as the
 plan answer it replaces (the voice message, the audience, the key
 line, the opening) and all five in Will's notes; the plan's facts and
 its topic come from what was said; a day said gives the plan and its
-card at once, that Take its first practice; no day said asks ""When is
-your deadline?"" as taps, and the answer gives the plan. Kept at the
+card at once, that Take its first practice; no day said asks no
+deadline (N459 item 1): ""No date yet""'s two months, and the plan and
+its card above the goodbye. Kept at the
 end of the Take's processing, the voice message and the key line keep
 their own voice, and the coach's blind pick plays them (N213); the
 walk's end then keeps nothing twice.","O1 -> test_without_the_ring_nothing_happens
@@ -2345,7 +2350,7 @@ O14 -> test_a_new_speaker_can_record_before_answering
 O15 -> test_with_the_calls_on_they_are_asked_before_the_plan
 O16 -> test_with_the_first_take_on_the_questions_are_its_slides
 test_with_no_first_take_row_a_new_speaker_meets_the_first_take
-test_a_first_take_with_no_day_asks_for_the_deadline
+test_a_first_take_with_no_day_asks_no_deadline
 test_the_coach_hears_the_first_takes_voice_message_and_key_line","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the principles waiting for the onboarding, N243; record first, Will asking again and a correction taken, N262; the calls hidden, not removed, N315; the plan simplified, N319; the goodbye's day, N347; the rules are frontend docs/flows/the-plan.md §1."
 tests/test_playback_copy.py,Story,"As a speaker on iPhone or Safari, I want my recordings to play back, and the playback copy deleted with the recording, so that I can hear myself and deletion leaves nothing. (Record -> next Take: hearing the Take; and deletion.)","O1  A stored short recording gets its Safari-safe copy (.playback.m4a,
 audio/mp4) beside it at upload; the original is untouched.
