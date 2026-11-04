@@ -237,13 +237,20 @@ def test_the_life_panel_shows_strengths_only_with_the_ring(me):
     from flask import Flask, request
     from routes import life_routes as life
 
+    # Resolve the view through the URL, not by name: the route decorator once
+    # sat on a helper, the URL answered 500 and a by-name call never saw it.
+    app = Flask(__name__)
+    app.register_blueprint(life.life_bp)
+    endpoint, _ = app.url_map.bind("localhost").match("/v2/life/state")
+    view = app.view_functions[endpoint]
+
     def menu(user):
-        with Flask(__name__).test_request_context("/"), \
+        with app.test_request_context("/v2/life/state"), \
                 patch.object(life.chat, "has_consented", return_value=True), \
                 patch.object(life.store, "get_setup", return_value={"completed_at": "2026-10-01"}), \
                 patch.object(life.lp, "tag_suggestions", return_value=[]):
             request.user_id = user
-            out = inspect.unwrap(life.life_state)()
+            out = inspect.unwrap(view)()
             return (out[0] if isinstance(out, tuple) else out).get_json()["menu"]
     assert menu("u")[:3] == ["principles", "strengths", "wins"]
     assert "strengths" not in menu("someone")
