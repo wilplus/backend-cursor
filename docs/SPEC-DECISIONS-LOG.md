@@ -11005,3 +11005,33 @@ No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C0a, C4, T and §6, and
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
+
+**N460 · The chat bar made calmer: five changes to the locked "One bar"
+(founder, the Claude Code chat, 4 November 2026, "yes" to each of the five
+on the page "The Chat Bar, Every State",
+<https://claude.ai/artifact/2f9TkHrRUkxTjYEzCuJjG7>, which shows every state
+of both bars as built and each change beside it on the real screens).** For
+N368, N369, N351, N367 and N441; approved here for the lock (Founder-Approved):
+1. **One mic, one look.** In a chat with a person the mic at rest is a bare
+icon, as in Will's chat, with no grey circle. Was: the mic in a grey circle.
+2. **One loud thing at a time.** While "Record an answer" stands in the
+middle, the mic beside it stays quiet. When the mic is the thing to do (the
+other person's words wait for yours), it is orange and stays still. Was
+(N368 item 1): orange and pulsing whenever someone waited, beside "Record
+an answer" too.
+3. **Undo and Send again are words.** In "Sending to {name}… {n}" and "Not
+sent", the action is a bold word in the grey pill, with no white pill of
+its own. Was: a white pill inside the grey one.
+4. **The "+" turns into ✕.** When the "+" opens Photos, Camera, Files and
+Someone else, a ✕ stands where the "+" was and closes them; the "Cancel"
+row goes. Was (N351, N367): the tiles with "Cancel" under them. A screen
+reader says "Close", as every close in the app does.
+5. **"+" means add, everywhere.** In Will's chat the left button that opens
+Your projects shows a stack icon, not a "+"; a screen reader still says
+"Your projects". Was (N369): a "+" there too.
+Kept: the middle as one pill of the same size whatever it holds, the
+recording bar (N314), "Record Take N" with its ✕ (N395) and the countdown.
+Nothing to sign: no new words. "Cancel" leaves the "+" sheet.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built. No migration.
