@@ -244,16 +244,21 @@ def _last(database: Any, thread_id: str, unheard: Any = None, me: str = "") -> O
 
 
 def list_chats(database: Any, user_id: Any) -> dict:
-    """GET /v2/chats: {"chats": [{id, kind, title, subtitle, last}]}."""
+    """GET /v2/chats: {"chats": [{id, kind, title, subtitle, last,
+    joined_through}]}. ``joined_through`` is the first name of whose link the
+    caller joined the chat through, while the chat has no message yet, else
+    None: the row keeps "You joined through {name}'s link." until the first
+    message (N488)."""
     user_id = _require(database, user_id)
     from services import chat_safety
+    from services.chat_links import joined_through
     mine = {str(m["thread_id"]): str(m["id"]) for m in _memberships(database, user_id)}
     if not mine:
         return {"chats": []}
     ids = list(mine)
     # Whom the caller blocked, and what therefore never reaches them (N466).
     spans = chat_safety.spans_by_member(database, list(mine.values()))
-    threads = _rows(_table(database, THREADS).select("id,kind,title,created_at").in_("id", ids))
+    threads = _rows(_table(database, THREADS).select("id,kind,title,created_at,link_id").in_("id", ids))
     others: dict[str, dict] = {}
     for m in _rows(_table(database, MEMBERS).select("id,thread_id,display_name,subtitle")
                    .in_("thread_id", ids)):
@@ -268,6 +273,8 @@ def list_chats(database: Any, user_id: Any) -> dict:
             "id": str(t["id"]), "kind": t["kind"],
             "title": other.get("display_name") or t["title"],
             "subtitle": other.get("subtitle"), "last": last,
+            "joined_through": (joined_through(database, user_id, t["id"])
+                               if last is None and t.get("link_id") else None),
             "blocked": chat_safety.blocking({"blocked_spans": spans.get(me, [])})}))
     chats.sort(key=lambda pair: str(pair[0]), reverse=True)
     return {"chats": [chat for _, chat in chats]}
