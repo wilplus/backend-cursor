@@ -242,6 +242,10 @@ def _last(database: Any, thread_id: str, unheard: Any = None, me: str = "") -> O
             "mine": bool(me) and str(row.get("author_member_id")) == me}
     if row["kind"] == "take":
         last["meta"] = {"take_index": (row.get("meta") or {}).get("take_index")}
+    if "setup_card" in (row.get("meta") or {}):
+        # The owner's card of the joiner's answers: the list says "{name}'s
+        # answers" (N487 item 7, N502 item 5).
+        last["meta"] = {"setup_card": True}
     return last
 
 

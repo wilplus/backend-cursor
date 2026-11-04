@@ -138,6 +138,10 @@ class JoinQuestionsTest(unittest.TestCase):
                          [{"rows": [{"k": "Deadline", "v": P.fmt_day(due)},
                                     {"k": "Languages", "v": "Polish, English"}]}])
         self.assertNotIn("setup_card", str(self._read(PIOTR, chat)["messages"]))
+        row = self.client.get("/v2/chats", headers=self._as(TOMEK)).get_json()["chats"][0]
+        self.assertEqual(row["last"]["meta"], {"setup_card": True})
+        piotr_row = self.client.get("/v2/chats", headers=self._as(PIOTR)).get_json()["chats"][0]
+        self.assertEqual(piotr_row["last"]["body"], J.CLOSING)
 
     def test_a_tap_that_is_not_an_answer_is_refused(self):
         self._set(TOMEK, SET)
