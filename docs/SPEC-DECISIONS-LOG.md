@@ -12671,3 +12671,22 @@ from ring 6 to ring 2 while it is above 2 and not killed, each with its
 audit entry; it drops nothing and needs no environment variable. As for
 N115, N266 and N390, the waiver is for this one migration. No rules page.
 No migration in this entry.
+
+**N511 · The training corpus is a row in the admin ☰ menu (founder, the
+Claude Code chat, 4 November 2026, on a phone screenshot of the admin menu:
+"Please place it in the hamburger as one of the options").** For N416:
+1. The admin menu (`AdminMenu`, the ☰ on a phone, the left column on a
+computer) has a **Training corpus** row under Data, beside Project
+deletions. It opens the same corpus screens as before (the imports, Import
+audio, the set-up, the blind judging; coach panel H1 to H3) at
+`/admin/training-corpus`; ✕ goes to the CEO panel.
+2. The CEO panel's "Training corpus" button beside Bugs and Tasks is gone:
+the row replaces it (N416 item 1). `/coach/corpus` goes to the new page.
+3. Unchanged: no coach sees it (N416 item 2); the backend's corpus
+endpoints, their role checks, the imports and every label already given;
+`/admin/corpus` (Hide and Restore) stays where it is.
+No new words on screen ("Training corpus" is the signed word, moved). No
+migration.
+The rules: frontend
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+H0.
