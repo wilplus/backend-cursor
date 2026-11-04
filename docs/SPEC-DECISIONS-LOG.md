@@ -12217,3 +12217,55 @@ the chat and the rest of N401 and N462 stand.
 The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §2.
+
+**N493 · The official inquiry: an answer follows the Take's own slides, its
+walk waits in Will's chat, a sent Take asks for an answer, and a Take's tile
+is its first slide, not a video (founder, the Claude Code chat, 4 November
+2026, on the prototype "The Official Inquiry"
+<https://claude.ai/artifact/TvYQQFXSAFbqmbEwK3wwFg> (version 16): "Go with
+all your recommendations").** For N470, N478, N479, N481, N483, N484, N485
+and N486; settles N481 item 5's open slides and the open words of N485
+item 5:
+1. **An answer is recorded over the Take's own slides** (N481 item 5). The
+answerer moves through the sender's slides with Back and Next slide, so the
+answer comes slide by slide; a Take with no uploaded deck brings its
+stand-in slides (Opening, Main points, Summary). No helper words: the
+sender's come from their Ideal Text (N479 item 8). The recording screens'
+top line is "{name} · Slide {n} of {m}" (was the name alone, N441 item 7).
+In the chat, the answer's voice bubble has one slide mark for each of the
+Take's slides. A customer's question (N361) has no Take behind it and keeps
+its one poster slide, "{name} asks" over the question (N462).
+2. **The answerer's own Ideal Text and walk wait in Will's chat**, on the
+answer's own project, as an answer's do today; it never becomes their
+current project, and their own "Record Take N" stays in the bar (Never 3,
+Never 5). Whether Will says a line when it is ready stays open (Never 4):
+drafted "Your answer to {name} is ready, if you want to look at it.".
+3. **A Take sent to you asks for an answer** (N483 item 3): in the chat you
+already have, the bar's middle is "Record your answer" with "Not now" under
+the Take until you answer or decline; "Not now" sends nothing and the
+sender is not told.
+4. **"Not now" after accepting a matched Take still removes the chat**, as
+before accepting (N485 item 3); nobody is told.
+5. **The asker sees the new person when Undo's five seconds end** (N486
+item 1), so an answer taken back shows nobody.
+6. **No video: a Take's tile is its first slide.** The tile in a chat shows
+the Take's first slide, small, with its length, and no play mark (was the
+dark 16:9 frame with a white play mark, `TakeTile`); the recording plays
+only in the voice player once the Take is opened.
+7. **Signed (Never 4), as the prototype shows them:** the row of a new
+matched chat, "Asks you about {topic}"; the line at the top of it,
+"{Pseudonym} is asking for what you know. Your answer starts a knowledge
+base you build together." (N484); "It's about {…}." (N478 item 6);
+accepting is the signed "Open Take" (N470 item 6), black with no dot in the
+bar's middle (N483 item 1). Built, a matched chat shows no "+" until it is
+accepted.
+8. **The locked screens change with the build:** the recording screens
+(the answer's slides and top line, `docs/flows/recording-screens.md` step
+6) and the chats' Take tile; each lock row names this entry when built.
+Not in force until built and merged. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+G,
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 and
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md),
+when built; the matching gets its rules page when it is built (N332).
