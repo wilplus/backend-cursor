@@ -87,6 +87,10 @@ CREATE INDEX IF NOT EXISTS take_matches_by_speaker
     ON public.take_matches (speaker_id);
 CREATE INDEX IF NOT EXISTS take_matches_by_candidate
     ON public.take_matches (candidate_id);
+-- The inquiries waiting on a person (status sent, accepted or sending),
+-- read each time they open their chats (outside review, 4 November 2026).
+CREATE INDEX IF NOT EXISTS take_matches_by_candidate_status
+    ON public.take_matches (candidate_id, status);
 
 ALTER TABLE public.take_matches ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.take_matches FROM PUBLIC, anon, authenticated;
