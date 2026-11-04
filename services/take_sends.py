@@ -1,5 +1,5 @@
 """Sending a Take to the people you tick (founder, the Claude Code chat, 4
-November 2026, N470 and N472). No table of its own: each Take sent is a
+November 2026, N470 and N479). No table of its own: each Take sent is a
 message of kind ``take`` (migration a_chat_carries_a_take) in the sender's
 chat with each person, and the choice is kept on the speaker's own line
 under the recording in the Lounge (``metadata.share``, the N309 precedent:
@@ -9,18 +9,18 @@ the line is the record).
     their chats with a real person (no demo, no guest, nobody blocked either
     way, N466), the person sent to last first ("Last sent"), then the list
     of chats' order. A speaker with no chat with a person at all gets the
-    founder (``FOUNDER_CHAT_USER_ID``, N472 item 7), with no chat yet: it is
+    founder (``FOUNDER_CHAT_USER_ID``, N479 item 7), with no chat yet: it is
     made on the first send, never on a read.
   * ``last``: the speaker's last choice, for the screen's default.
   * ``send``: the caller's own Take, as their own message in their chat with
     each person chosen. Idempotent (each message's id is uuid5 of the Take
     and the chat): a retry or a second tap never posts twice, and a later
-    call only adds people (N472 item 3); nothing is ever unsent. Each new
+    call only adds people (N479 item 3); nothing is ever unsent. Each new
     message tells the receiver by the chats' push, "{name} sent you Take
     {n}" (N470).
   * ``opened``: what the receiver opens ("Open Take"): the Take's recording
     and its words slide by slide, for a member of that chat only; never its
-    Ideal Text, feedback, moments or levels (Never 1, 2; N472 item 8).
+    Ideal Text, feedback, moments or levels (Never 1, 2; N479 item 8).
 
 Behind ``Config.TAKE_SEND_ENABLED`` (default off): while off, the reads
 answer ``{"enabled": false}``, the send 409 SENDING_OFF, and nothing here
@@ -121,7 +121,7 @@ def _unblocked(database: Any, chats_: list[str], mine: dict[str, str],
 
 
 def _the_founder(database: Any, user_id: str) -> list[dict]:
-    """The founder, for a speaker with no chat with a person (N472 item 7),
+    """The founder, for a speaker with no chat with a person (N479 item 7),
     with no chat yet; nobody when FOUNDER_CHAT_USER_ID is unset."""
     founder = _founder()
     if not founder or founder == user_id:
@@ -278,7 +278,7 @@ def _choice(body: Any) -> tuple[bool, list[str]]:
 
 
 def _founder_chat(database: Any, user_id: str, founder: str, token_payload: Any) -> dict:
-    """The speaker's chat with the founder, made now (N472 item 7) as the
+    """The speaker's chat with the founder, made now (N479 item 7) as the
     founder's join link makes one, so the chat says whose link it came
     through; without a live link, the same pair chat with none. Returns the
     speaker's membership {id, thread_id}."""

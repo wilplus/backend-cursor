@@ -30,7 +30,7 @@ PROVES   O1 -> TakeSendsTest::test_while_sending_is_off_nothing_new_runs
          O4 -> TakeSendsTest::test_sending_again_only_adds_people_and_is_kept_on_the_line
          O5 -> TakeSendsTest::test_someone_not_in_the_chat_cannot_open_the_take
          O6 -> TakeSendsTest::test_the_receiver_hears_the_take_and_reads_its_words_only
-WHY      N470 and N472 (founder, the Claude Code chat, 4 November 2026): a
+WHY      N470 and N479 (founder, the Claude Code chat, 4 November 2026): a
          Take goes to the people the speaker ticks; never a score or the
          machine's read to anyone (Never 1, 2). Built on tests/test_chats.py's
          in-memory chat tables.

@@ -31,7 +31,7 @@ and writes once only: Will's line after an answer is taken back (N441 item
     that cannot be turned into words is sent all the same, ``words`` NULL.
   * ``recording``: a voice note's recording, for any member of its chat
     (an answer's and a sent Take's: its Take's own).
-  * A Take sent to the people the speaker ticked (N470, N472) is a message
+  * A Take sent to the people the speaker ticked (N470, N479) is a message
     of kind ``take`` made by services/take_sends.py; the receiver's meta
     has no Take id, and its push says "{name} sent you Take {n}".
   * ``post_answer``: an answer recorded with "Record an answer" (N363), held

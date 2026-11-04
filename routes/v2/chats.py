@@ -468,7 +468,7 @@ def v2_chats_their_photo(thread_id):
 
 
 # ── Sending a Take to the people you tick (services/take_sends.py; N470,
-# N472). Behind TAKE_SEND_ENABLED, default off: the reads answer
+# N479). Behind TAKE_SEND_ENABLED, default off: the reads answer
 # {enabled: false}, the send 409 SENDING_OFF, before anything else runs.
 
 @v2_bp.route("/user/takes/send/people", methods=["GET"])
