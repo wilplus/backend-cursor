@@ -11336,3 +11336,77 @@ Not in force until built and merged. The rules: frontend
 G and
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built.
+
+**N471 · WillpowerLab is by invitation: a person's link is the only way in,
+or the waitlist; no guest path (founder, the Claude Code chat, 4 November
+2026, on the prototype "Invite-Only Entry"
+<https://claude.ai/artifact/HSELYXuS99xctnHRVBo1e4>: "we would turn off the
+not-signed user path", "go with B!", "words are signed"; version 12 is what
+was signed, version 13 adds the simplification audit of item 9, which the
+founder took: "Yes, and merge when green").** For
+N271, N277, N308, N328, N335, N352 and N353:
+1. **Only signed-in people use WillpowerLab.** The guest path goes: nobody
+records, or reaches a provider, without an account (the processing-
+authorization path refuses an account that is not in). Was: a visitor
+recorded first and signed up after seeing the feedback (founder,
+2026-10-04).
+2. **One way in: a person's link** (N308). It opens the join page as it is;
+Join, then sign up, and the chat with that person opens first. There are no
+community codes and no open communities (was: N352 item 3, "open teams like
+Artur's community", and N353's list of open teams).
+3. **The waitlist.** Without a link: "No link yet? Join the waitlist", then
+"Join the waitlist with:" and Apple, Google, LinkedIn, WhatsApp, Email
+(Apple because the iPhone app must offer it beside Google and LinkedIn).
+Then "You're on the waitlist", every time the app opens, until the person
+is in. One email reaches contact@willpowerlab.com; the founder answers by
+hand, with his own link, or that the queue is long, or no. The app sends a
+waiting person nothing.
+4. **The first page, design B, web and iPhone app alike:** "Sign in" in the
+corner, the mark, the name, "See an example" under it, the link field drawn
+as the message field of Will's chat (the send arrow only once there is a
+link), and "No link yet? Join the waitlist". "Enter the lab" goes, and so do
+the two lines under the name (N277; founder: "you can remove it"). The
+iPhone app opens on this page, not on sign-in.
+5. **Signed (Never 4):** "Paste your link", "No link yet? Join the
+waitlist", "This link doesn't work. Ask whoever sent it for a new one.",
+"Join the waitlist with:", "You're on the waitlist", "If we say yes, we'll
+email a link to {email}.", "{Name} wants to join WillpowerLab", "To let
+{Name} in, reply with your link." Also signed, and not needed now that item 9 is
+taken: "I have a link", the link page's title and line, "Link", "Open",
+"Got a link? Paste it", and the admin page's "Joined by", "Waiting for
+you", "Send my link", "Sent to {email}".
+6. **Communities are direct.** Your community is the people who joined
+through your link; Tom, who joined through Maria's, is in Maria's, not
+yours. Nothing is sent to everyone: every chat and message is with one
+person. Later, matching uses the same mechanism: your link arrives as a
+card in Will's chat, and Join puts the person in your community.
+7. **Your link never expires;** you can replace it (renew, as built). After
+10 people join through one link in a day, the next go to the waitlist.
+8. **Bookings are for members:** the founder sends his link first, then the
+person books a call. The free-audit codes (Paid Audits A4: the redeem
+route, `scripts/mint_arc_invite_codes.py` and their helpers) are removed;
+no screen ever called them. The table stays, and a founding pass already
+given keeps its audit (retention v1.4).
+9. **The simplification audit (version 13), taken:** the app uses the same first page, so there is no
+separate link page; the founder answers by replying to the waitlist email
+(the person is its Reply-to), so there is no admin button and no invite
+email of ours; nothing new is stored, because a chat made through a link
+already records the link and its owner (`chat_threads.link_id`), so a
+member is an account from before the switch or one that joined through a
+link, and the daily limit counts those chats.
+10. **Terms 3.10 and Privacy 3.11** are drafted for the founder's signature
+and go live together with this: Terms §5 loses "You may start using the
+service before creating an account"; Privacy names whose link you joined
+through, the waitlist email, and drops recording as a guest.
+11. **No community has a pass code today** (founder), so none needs
+closing. **A person who recorded as a guest before the switch** (founder:
+"probably there is not such a person") is let in once when they sign up,
+into Artur's community, as if they had joined through his link.
+12. **Who hears a Take** is N470: only the people you tick in your chats,
+never everyone, and today's users count as invited by the founder, with a
+chat with Artur, speaking coach. That answers the share question this entry
+left open. **Open:** the day it goes live, with Terms 3.10 and Privacy 3.11.
+No migration in this entry. The rules: frontend
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+(the first page, the waitlist and the waiting screen) when built, and
+[`docs/LOCKS.md`](LOCKS.md).
