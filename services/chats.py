@@ -87,9 +87,11 @@ AUDIO = "chat_message_audio"
 RECORDINGS = "recordings"
 #: A Take's row, for an answer's words and slides (N355).
 SESSIONS = "v2_sessions"
-#: An answer, a Take recorded with "Record an answer", is up to five minutes
-#: (N363 item 3); a voice note stays at two (MAX_VOICE_MS).
-MAX_ANSWER_MS = 300_000
+#: An answer is a Take, as long as the person needs (N486 item 4, which
+#: lifted N363 item 3's five minutes); a voice note stays at two
+#: (MAX_VOICE_MS). Only the length the app measures, used while the Take's
+#: own is not known yet, is bounded, at a day, to keep nonsense out.
+MAX_ANSWER_MS = 24 * 3600 * 1000
 #: An answer waits this long on the server for its Undo (N345 item 2, N441
 #: item 3), counted from Finish take: the app sends what is left of it.
 ANSWER_HOLD_MS = 5_000
@@ -672,9 +674,9 @@ def post_answer(database: Any, user_id: Any, thread_id: Any, take: Any,
     it here: nobody else sees it, the list does not show it and the push
     waits until then, while ``undo_answer`` can take it back; with none left
     it goes at once (Send again, N441 item 1). The Take must be the caller's
-    own (404 otherwise) and up to five minutes long (N363 item 3; 400). Its
-    length is the Take's, or the app's ``duration_ms`` while the Take's is
-    not known yet. The caller sees it with its Take; the other person gets
+    own (404 otherwise), of any length (N486 item 4), and its length known
+    (400): the Take's, or the app's ``duration_ms`` while the Take's is not
+    known yet. The caller sees it with its Take; the other person gets
     just the answer (N336 item 2). {"message": {...}}."""
     me = member(database, user_id, thread_id)
     session = _uuid(take)
@@ -784,15 +786,15 @@ def _take_of(database: Any, user_id: str, session: str) -> Optional[dict]:
 
 def _answer_length(row: dict, duration_ms: Any) -> int:
     """An answer's length in ms: its Take's, else what the app measured;
-    1 ms to five minutes, else 400."""
+    any length (N486 item 4), but known, else 400."""
     try:
         ms = int(row.get("duration") or 0) * 1000
     except (TypeError, ValueError):
         ms = 0
     if not ms:
         ms = _duration(duration_ms, MAX_ANSWER_MS) or 0
-    if not 1 <= ms <= MAX_ANSWER_MS:
-        raise ChatsError("NOT_ALLOWED", "An answer is up to five minutes long.")
+    if ms < 1:
+        raise ChatsError("NOT_ALLOWED", "This answer's length is not known yet.")
     return ms
 
 

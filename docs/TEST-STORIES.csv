@@ -646,9 +646,10 @@ file, or anything over 10 MB is refused (400, 413), and nothing is
 written.
 O13 An answer I recorded with ""Record an answer"" is sent into the chat as a
 voice message that plays my Take's own recording (N363): I see it with
-its Take; the other person gets just the answer, no Take (N336). A Take
-that is not mine, one over five minutes, or a withdrawn recording
-consent sends nothing.
+its Take; the other person gets just the answer, no Take (N336). An
+answer has no five-minute cap: a long one is sent (N486 item 4). A
+Take that is not mine, or a withdrawn recording consent, sends
+nothing.
 O14 Once my answer's Take has its words, both of us get them with the
 answer, slide by slide, and when each slide starts, for the strip that
 follows its voice (N355, N331); before that, no words and no slides.
