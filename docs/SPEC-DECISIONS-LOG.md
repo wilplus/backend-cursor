@@ -11145,3 +11145,61 @@ screens.
 No migration. The rules: frontend
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
+
+**N463 · Will's chat starts at the bottom, and every choice in every chat
+follows four rules (founder, the Claude Code chat, 4 November 2026, signed
+on the page "Will's Chat, to Sign",
+<https://claude.ai/artifact/74vqKTfEVgNeHfRgW2NyqL> (version 2), which shows
+each change on the real screens beside the app today; "all signed", "lock
+it for all app").** For N321, N319, N325, N371 and N415; approved here for
+the lock (Founder-Approved):
+1. **Will's chat starts at the bottom,** as chats with people already do
+(N321 item 3): a short chat sits just above the bar, so the question sits
+with its answers. Once a chat fills the screen, nothing changes. No extra
+room above the first message. Was: Will's chat started at the top, its
+answers a screen away.
+2. **One box while Will waits,** as N371 item 3 already says: "Something
+else" stands where "Type here" stands. The app showed both, stacked, by
+mistake; fixed in frontend #1227.
+3. **Four rules for every choice in a chat,** anywhere in the app (Will's
+chat, the plan, chats with people):
+   - Your answers sit on your side, on the right, right under the question.
+   - One answer look: N371's orange pill, the likely answer filled, whoever
+     asks.
+   - Saying no is a grey word: "Not now", "Skip", "Cancel" and "Close" never
+     get a pill.
+   - Going somewhere is a link on Will's side: a line of text with ›, no
+     card.
+   So orange is what you say, grey is how you leave, and black is the one
+   thing to do on a screen ("Record Take 2", "Accept and practise").
+4. **"Not now" and "Skip" are grey words** in the plan's asks and in Will's
+offers. Was: a faded grey pill (N319 item 1, N325 item 2) and an outlined
+orange pill (N415 item 2).
+5. **Ways to go are links.** "What would help?"'s "Your presentations" and
+"Create new project", "Replace PDF", and the small outlined buttons ("Open
+exercise", "Review coach feedback") are a line of text with ›; "Skip" among
+them is a grey word on the right. Was: grey cards with ›, and small outlined
+buttons.
+6. **Buttons come out of Will's cards.** Under "I couldn't create your Ideal
+Text this time.", "View this take's feedback" and "Try creating it again"
+are answers on your side, "Try creating it again" filled. Was: two buttons
+stacked inside the card.
+7. **The black-and-grey pairs become answers.** A new project ("Cancel /
+Continue"), the slides ("Cancel / Upload PDF") and the WhatsApp number
+("Not now / Save", then "Not now / Continue") keep their grey card; under
+it, the action is an orange pill on your side and "Cancel" or "Not now" a
+grey word. The consent ask and the policy update keep their own look, with
+the locked consent screens. **The 1-to-10 pick turns orange** (was black),
+**and "Yes" always sits last** in a yes-or-no ask, so the filled answer is
+the likely one. Was: "Are you preparing for the same event?" filled "No".
+8. **Stays:** Will's question chips (the model), the Feedback walk and the
+lenses (locked), the bar's one command ("Record Take N", "Record an answer",
+"Continue review") and the emoji bar. No new words.
+9. **Locked, for the whole app:** the page above (version 2) is the
+prototype for every choice offered in a chat, and a new choice anywhere
+follows the four rules; in [`docs/LOCKS.md`](LOCKS.md).
+No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E1, [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 when built.
