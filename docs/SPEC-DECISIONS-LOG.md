@@ -11884,7 +11884,10 @@ note (N325 item 1).
 8. **Locked:** the prototype above (version 8) is the bar's prototype in
 [`docs/LOCKS.md`](LOCKS.md), in place of "One bar" (version 14) for the bar;
 the rest of "The chats, all of a piece" stands. A change needs the
-founder's OK with a prototype.
+founder's OK with a prototype. Kept as files (N229):
+`docs/design/customer-requests-2026-10-28/the-bar/the-bar-clickable.html`,
+which runs in any browser, and a PDF of every step,
+`docs/design/customer-requests-2026-10-28/11-the-bar-clickable.pdf`.
 Not in force until built and merged. No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 J7 and

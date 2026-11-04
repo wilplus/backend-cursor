@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- The Bar, Clickable (version 8), locked by the founder on 2026-11-04 (backend N483). Open in any browser; the images are in img/. -->
+</head>
+<body>
+<title>The Bar, Clickable</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: two columns (scenario list left, the phone right); on a phone the list sits above the phone. The phone is the app's own white screen in both themes. */
+:root {
+  --bg: #FFFFFF;
+  --surface: #F5F5F4;
+  --fg: #121212;
+  --muted: #6B6B6B;
+  --line: #E6E6E4;
+  --accent: #FF640A;
+  --accent-soft: #FFF1E6;
+  --accent-ink: #B24400;
+  --font: Inter, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* the app's own colours, fixed in both themes */
+  --app-bg: #FFFFFF; --app-fg: #121212; --app-muted: #737373; --app-line: #E8E8E8; --app-bubble: #F3F3F3;
+  --app-orange: #FF640A; --app-red: #EF4444; --app-grey: #F2F2F2;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111113; --surface: #1C1C1F; --fg: #F1F1F1; --muted: #A3A3A8; --line: #2C2C31;
+    --accent: #FF7A2E; --accent-soft: #2B1A0F; --accent-ink: #FFB07F; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111113; --surface: #1C1C1F; --fg: #F1F1F1; --muted: #A3A3A8; --line: #2C2C31;
+  --accent: #FF7A2E; --accent-soft: #2B1A0F; --accent-ink: #FFB07F; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 16px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 64px;
+}
+button { font: inherit; cursor: pointer; }
+.wrap { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+h1 { font-size: clamp(26px, 5vw, 34px); line-height: 1.1; letter-spacing: -0.02em; margin: 0; }
+h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0; font-weight: 600; }
+p { margin: 0; }
+.intro { display: flex; flex-direction: column; gap: 10px; max-width: 66ch; }
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 28px; align-items: start; }
+.side { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.group { display: flex; flex-direction: column; gap: 6px; }
+.group h4 { margin: 0 0 2px; font-size: 13px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.sc { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; text-align: left; background: var(--bg); color: var(--fg); border: 1.5px solid var(--line); border-radius: 12px; padding: 9px 12px; }
+.sc .i { font-size: 12.5px; font-weight: 700; color: var(--muted); padding-top: 1px; }
+.sc b { font-weight: 600; font-size: 15px; display: block; }
+.sc span.s { font-size: 13.5px; color: var(--muted); display: block; }
+.sc[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.sc:focus-visible, .ph button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.ph input:focus-visible { outline: none; }
+.now { border-radius: 14px; background: var(--surface); padding: 14px 16px; display: grid; gap: 6px; font-size: 15px; }
+.now .k { font-size: 12.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent-ink); }
+.right { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.reset { align-self: flex-start; background: none; border: 0; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; padding: 0; font-size: 14px; }
+
+/* ---------- the phone ---------- */
+.ph { width: 100%; max-width: 390px; height: 720px; background: var(--app-bg); color: var(--app-fg); border: 1px solid var(--line); border-radius: 34px; overflow: hidden; display: flex; flex-direction: column; position: relative; box-shadow: 0 18px 50px -24px rgba(0,0,0,.35); font-family: var(--font); }
+.ph svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; display: block; }
+.top { height: 60px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--app-line); }
+.top .back { width: 36px; height: 36px; border: 0; background: none; color: var(--app-fg); display: flex; align-items: center; justify-content: center; border-radius: 999px; }
+.av { width: 36px; height: 36px; border-radius: 999px; background: var(--app-grey); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: #121212; letter-spacing: 1px; }
+.av.s { background: #E7EEF8; color: #23406B; letter-spacing: 0; }
+.nm { display: flex; flex-direction: column; line-height: 1.2; }
+.nm b { font-size: 16.5px; }
+.nm span { font-size: 12px; color: var(--app-muted); }
+.thread { flex: 1; overflow-y: auto; padding: 12px 16px 6px; display: flex; flex-direction: column; gap: 8px; scrollbar-width: none; }
+.thread::-webkit-scrollbar { display: none; }
+.thread > :first-child { margin-top: auto; }
+.b { max-width: 82%; padding: 8px 12px; border-radius: 16px; font-size: 15px; line-height: 1.45; }
+.b.will { background: var(--app-bubble); align-self: flex-start; }
+.b.me { background: var(--app-orange); color: #FFFFFF; align-self: flex-end; }
+.b.card { background: var(--app-bubble); align-self: flex-start; border-radius: 16px; }
+.b.card small { display: block; font-size: 13px; color: var(--app-muted); }
+.voice { display: flex; align-items: center; gap: 8px; }
+.voice i { display: inline-block; width: 3px; border-radius: 2px; background: #FFFFFF; opacity: .9; }
+.voice em { font-style: normal; font-size: 13px; opacity: .9; font-variant-numeric: tabular-nums; }
+.emo { align-self: flex-end; font-size: 40px; line-height: 1; }
+.sent { align-self: flex-end; font-size: 12px; color: var(--app-muted); display: flex; align-items: center; gap: 4px; margin-top: -4px; }
+.sent svg { width: 13px; height: 13px; }
+.when { align-self: center; font-size: 12px; color: var(--app-muted); padding: 4px 0; }
+.taps { align-self: flex-end; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; max-width: 86%; padding-top: 2px; }
+.tap { min-height: 44px; border-radius: 22px; border: 1.5px solid var(--app-orange); background: #FFFFFF; color: var(--app-orange); font-weight: 600; font-size: 15px; padding: 9px 16px; text-align: left; }
+.tap.goes { background: var(--app-orange); color: #FFFFFF; }
+.leave { min-height: 44px; border: 0; background: none; color: var(--app-muted); font-weight: 500; font-size: 15px; padding: 0 10px; }
+.bar { flex-shrink: 0; padding: 8px 14px 14px; display: flex; align-items: center; gap: 4px; min-height: 66px; }
+.ib { width: 40px; height: 40px; flex-shrink: 0; border: 0; background: none; color: var(--app-fg); display: flex; align-items: center; justify-content: center; border-radius: 999px; }
+.ib.x { width: 44px; height: 44px; color: var(--app-muted); }
+.ib.plus-new { background: var(--app-orange); color: #FFFFFF; }
+.pill { flex: 1; min-width: 0; height: 48px; border: 0; border-radius: 999px; background: #121212; color: #FFFFFF; font-size: 15px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.pill .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--app-red); }
+.pill[disabled] { opacity: .45; cursor: default; }
+.box { flex: 1; min-width: 0; position: relative; }
+.box input { width: 100%; height: 42px; border-radius: 24px; border: 1px solid var(--app-line); background: #FFFFFF; color: var(--app-fg); padding: 0 44px 0 14px; font: inherit; font-size: 15px; outline: none; }
+.box input:focus { border-color: var(--app-orange); }
+.box input::placeholder { color: #A3A3A3; }
+.box .go { position: absolute; right: 5px; top: 5px; width: 32px; height: 32px; border: 0; background: none; color: var(--app-fg); display: flex; align-items: center; justify-content: center; }
+.emoji { flex: 1; min-width: 0; height: 42px; border: 1px solid var(--app-line); border-radius: 24px; display: flex; align-items: center; justify-content: space-around; padding: 0 8px; }
+.emoji button { border: 0; background: none; font-size: 23px; width: 40px; height: 38px; border-radius: 999px; }
+.status { flex: 1; min-width: 0; height: 44px; border-radius: 999px; background: var(--app-grey); display: flex; align-items: center; justify-content: space-between; padding: 0 6px 0 18px; font-size: 14.5px; color: #5F5F5F; font-weight: 500; }
+.status button { border: 0; background: none; font-weight: 700; color: #121212; font-size: 14.5px; padding: 0 12px; height: 36px; }
+.blocked { flex: 1; min-width: 0; height: 48px; border-radius: 999px; background: var(--app-grey); display: flex; align-items: center; justify-content: space-between; padding: 0 6px 0 18px; font-size: 14.5px; color: #5F5F5F; font-weight: 500; }
+.blocked button { border: 0; background: #FFFFFF; color: #121212; font-weight: 600; font-size: 14.5px; height: 36px; padding: 0 16px; border-radius: 999px; }
+.rec { flex: 1; min-width: 0; height: 48px; border-radius: 999px; background: var(--app-grey); display: flex; align-items: center; gap: 10px; padding: 0 5px 0 14px; }
+.rec .d { width: 8px; height: 8px; border-radius: 999px; background: var(--app-red); animation: blink 1.2s infinite; }
+@media (prefers-reduced-motion: reduce) { .rec .d { animation: none; } }
+@keyframes blink { 50% { opacity: .3; } }
+.rec .t { font-family: var(--mono); font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; }
+.rec .tr { flex: 1; height: 3px; border-radius: 2px; background: #D9D9D9; position: relative; overflow: hidden; }
+.rec .tr i { position: absolute; inset: 0 auto 0 0; background: #121212; width: 0; }
+.rec .stop { height: 38px; border: 0; border-radius: 999px; background: var(--app-red); color: #FFFFFF; font-weight: 600; font-size: 14px; padding: 0 14px; display: flex; align-items: center; gap: 6px; }
+.rec .stop span { width: 10px; height: 10px; background: #FFFFFF; border-radius: 2px; }
+.tiles { flex: 1; display: grid; grid-template-columns: 40px repeat(4, minmax(0, 1fr)); gap: 4px; align-items: start; }
+.tile { border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12.5px; color: var(--app-fg); padding: 0; }
+.tile .c { width: 52px; height: 52px; border-radius: 999px; display: flex; align-items: center; justify-content: center; color: #FFFFFF; }
+.tile .c svg { width: 22px; height: 22px; }
+/* overlays inside the phone */
+.ov { position: absolute; inset: 0; background: var(--app-bg); display: flex; flex-direction: column; z-index: 5; }
+.ov .head { height: 60px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--app-line); font-weight: 700; font-size: 16.5px; }
+.ov .body { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; padding: 24px; text-align: center; }
+.ov .poster { width: 100%; border: 1px solid var(--app-line); border-radius: 18px; aspect-ratio: 4 / 3; display: flex; flex-direction: column; justify-content: center; gap: 10px; padding: 22px; }
+.ov .poster small { font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--app-muted); }
+.ov .poster b { font-size: 21px; line-height: 1.25; }
+.ov .foot { padding: 14px 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.ov .note { font-size: 13px; color: var(--app-muted); }
+.list { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; flex: 1; }
+.list .pill { flex: none; width: 100%; }
+.proj { border: 1px solid var(--app-line); border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; text-align: left; background: #FFFFFF; color: var(--app-fg); }
+.proj small { font-size: 13px; color: var(--app-muted); }
+.b.sarah { cursor: pointer; }
+.b.sv { background: var(--app-bubble); align-self: flex-start; }
+.b.sv .voice i { background: #121212; }
+.b.sv .voice em { color: #121212; }
+.reacts { align-self: flex-start; display: flex; gap: 2px; background: #FFFFFF; border: 1px solid var(--app-line); border-radius: 999px; padding: 3px 5px; box-shadow: 0 6px 18px -8px rgba(0,0,0,.35); margin-top: -2px; }
+.reacts button { border: 0; background: none; font-size: 24px; width: 42px; height: 40px; border-radius: 999px; }
+.sheet-wrap { position: absolute; inset: 0; background: rgba(0,0,0,.3); display: flex; flex-direction: column; justify-content: flex-end; z-index: 7; }
+.sheet { background: #FFFFFF; border-radius: 24px 24px 0 0; padding: 10px 18px 22px; display: flex; flex-direction: column; gap: 14px; }
+.sheet .grab { width: 40px; height: 5px; border-radius: 999px; background: #E0E0E0; align-self: center; }
+.sheet .st { font-size: 21px; font-weight: 700; line-height: 1.2; margin-top: 4px; }
+.sheet .sl { font-size: 15px; color: var(--app-muted); line-height: 1.4; }
+.knows { display: flex; gap: 10px; align-items: center; border: 1.5px solid #121212; border-radius: 14px; padding: 12px 14px; }
+.knows .ic { width: 34px; height: 34px; flex-shrink: 0; border-radius: 10px; background: #FFF1E7; color: #F26B21; display: flex; align-items: center; justify-content: center; }
+.knows .ic svg { width: 17px; height: 17px; }
+.knows small { display: block; font-size: 12.5px; color: var(--app-muted); }
+.knows b { font-size: 15px; }
+.big { height: 54px; border-radius: 999px; background: #121212; color: #FFFFFF; font-size: 16px; font-weight: 600; border: 0; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; }
+.big .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--app-red); }
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.steps div { background: var(--app-bubble); border-radius: 12px; padding: 10px; font-size: 12.5px; color: var(--app-muted); line-height: 1.35; }
+.steps b { display: block; font-size: 13px; color: #121212; margin-bottom: 2px; }
+.cancel { height: 40px; border: 0; background: none; color: var(--app-muted); font-size: 15px; font-weight: 500; }
+.newwords { border: 1.5px dashed var(--accent); border-radius: 14px; padding: 12px 14px; display: grid; gap: 6px; font-size: 14px; }
+.newwords .k { font-size: 12.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent-ink); }
+.newwords ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
+.deck { position: absolute; inset: 0; background: #FFFFFF; z-index: 8; display: flex; align-items: center; justify-content: center; }
+.deck .frame2 { position: relative; height: 100%; aspect-ratio: 390 / 720; max-width: 100%; }
+.deck img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.deck .hot { position: absolute; border: 0; background: transparent; border-radius: 999px; }
+.deck .hot:focus-visible { outline: 3px solid var(--accent); }
+.toast { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); background: #121212; color: #FFFFFF; font-size: 13.5px; padding: 8px 14px; border-radius: 999px; z-index: 6; white-space: nowrap; }
+@media (max-width: 760px) {
+  .stage { grid-template-columns: minmax(0, 1fr); }
+  .ph { margin: 0 auto; height: 660px; }
+  .side { order: 2; }
+  .right { position: static; }
+}
+</style>
+
+<div class="wrap">
+  <header class="intro">
+    <h3>Chats · the bottom bar · with my suggestions</h3>
+    <h1>The Bar, Clickable</h1>
+    <p>Pick a scenario, or just tap in the phone: every button works. Both chats follow one rule. Your things are on the left, and the one thing to do now is in the middle. To say no to a question, tap "Not now" under it: a grey word on your side. There's no ✕ in either bar and no mic. You type only in Will's chat, and only when he asks for words; a chat with a person has no box at all. In a chat with a person, the "+" adds a question for them: it opens "Ask Sarah", and your question always opens the default presentation. A red dot means tapping it starts a recording.</p>
+    <p style="color:var(--muted);font-size:15px">Will's and Sarah's words are examples. The new words for asking someone are marked for your OK; every other word is already signed. The recording screens, the walk and Your projects are shown as plain stand-ins; they don't change.</p>
+  </header>
+
+  <div class="stage">
+    <div class="side">
+      <div class="group" id="g-will"><h4>Will's chat</h4></div>
+      <div class="group" id="g-sarah"><h4>A chat with Sarah</h4></div>
+      <div class="newwords"><span class="k">New words, for your OK</span><ul>
+        <li>The sheet: "Ask Sarah"; "Sarah knows about scalp care, hair loss and colour, and she's glad to share it. Ask her one specific question, and she'll answer in her own voice when she can."; "Record your question"</li>
+        <li>The steps, the first time only: "1. Ask one thing · A clear question gets a clear answer"; "2. She answers · Out loud, when she has a moment"; "3. It stays here · Play it again whenever you need it"</li>
+        <li>On the recording screen's top line: "To Sarah · Slide 1 of 3"</li>
+        <li>Her topics come from her profile (N400); "scalp care, hair loss and colour" is an example.</li>
+      </ul></div>
+    </div>
+    <div class="right">
+      <div class="ph" id="phone" aria-label="The app, clickable"></div>
+      <div class="now" aria-live="polite"><span class="k">What you see</span><p id="now-text"></p></div>
+      <button class="reset" type="button" id="reset">Start again</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var I = {
+    back: '<svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>',
+    stack: '<svg viewBox="0 0 24 24"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>',
+    plus: '<svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>',
+    x: '<svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
+    send: '<svg viewBox="0 0 24 24"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></svg>',
+    trash: '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
+    image: '<svg viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>',
+    camera: '<svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>',
+    file: '<svg viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>',
+    person: '<svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>',
+    check: '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
+    bulb: '<svg viewBox="0 0 24 24"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>'
+  };
+  var Q = "How do you calm an itchy scalp after a bleach?";
+  var CHIPS = ["Something else", "A buyer", "My team", "The board"];
+  var timers = [];
+  function later(ms, fn) { var t = setTimeout(fn, ms); timers.push(t); return t; }
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; clearInterval(tick); tick = null; }
+  var tick = null;
+
+  var chat = "will", W, P, note = "";
+  var plusUsed = false;
+  function freshWill() {
+    return { first: true, processing: false, review: false, question: false, words: false, hear: false, hearX: false,
+      setup: false, recording: false, recSec: 0, take: 2, sheet: false, overlay: null, draft: "",
+      thread: [{ w: "will", t: "Morning. Your board pitch is on Friday. Want to run the opening once?" }] };
+  }
+  function freshSarah() {
+    return { question: false, crossed: false, sending: null, tiles: false, blocked: false, overlay: null, toast: "",
+      sheet: false, recording: false, recSec: 0, react: null, kind: "answer", firstAsk: true, deck: null, words: false, mustType: false, draft: "", setup: 0, taps: null,
+      thread: [{ k: "when", t: "Today" }, { w: "sarah", t: "Thanks for covering my Friday client!" }] };
+  }
+
+  /* ---------- scenarios ---------- */
+  var SCEN = {
+    will: [
+      ["First visit", "Before any Take", function () { W = freshWill(); W.first = false; W.take = 1; W.thread = [{ w: "will", t: "Hi Tomás, I'm Will, your speaking coach. Let's hear your talk once." }]; }],
+      ["A Take is being processed", "Right after you finish one", function () { W = freshWill(); W.processing = true; W.thread.push({ w: "will", t: "Got it. Your Take 1 is on its way." }); }],
+      ["The review is unfinished", "Feedback waits", function () { W = freshWill(); W.review = true; W.thread.push({ k: "card", t: "Feedback · Take 1", s: "Your feedback is ready." }); }],
+      ["Will asks a question", "With answers to tap", function () { W = freshWill(); askQuestion(); }],
+      ["Something else", "Your own words", function () { W = freshWill(); askQuestion(); W.words = true; }],
+      ["Will needs to hear you", "A spoken question", function () { W = freshWill(); W.hear = true; W.thread.push({ w: "will", t: "Why does this talk matter to you?" }); }],
+      ["The setup asks for words", "A name or a code", function () { W = freshWill(); W.setup = true; W.words = true; W.mustType = true; W.thread.push({ w: "will", t: "What's your team called?" }); }],
+      ["At rest", "Nothing asked", function () { W = freshWill(); W.thread.push({ w: "will", t: "Good job. See you next time." }); }],
+      ["Your projects", "The stack on the left", function () { W = freshWill(); W.sheet = true; }]
+    ],
+    sarah: [
+      ["When you join: her questions", "Closed questions, taps only", function () { P = freshSarah(); plusUsed = false; setupStep(1); }],
+      ["A new chat, before your first question", "The + in orange", function () { P = freshSarah(); plusUsed = false; P.thread = [{ k: "when", t: "Today" }, { w: "sarah", t: "Hi, I'm Sarah from Invita. If you have a question about your hair, tap + and ask me." }]; }],
+      ["At rest", "The + and the emoji", function () { P = freshSarah(); plusUsed = true; }],
+      ["Tap the +, the first time", "Ask Sarah, with the three steps", function () { P = freshSarah(); P.sheet = true; }],
+      ["Tap the +, after that", "Ask Sarah, short", function () { P = freshSarah(); P.firstAsk = false; P.sheet = true; }],
+      ["Your question is sending", "5 seconds to take it back", function () { P = freshSarah(); P.kind = "question"; startSending(); }],
+      ["Sarah asks you something", "Record your answer, or Not now", function () { P = freshSarah(); sarahAsks(); }],
+      ["It couldn't go", "Not sent", function () { P = freshSarah(); sarahAsks(); P.sending = { left: 0, failed: true }; }],
+      ["You blocked Sarah", "Block and Report", function () { P = freshSarah(); P.blocked = true; }]
+    ]
+  };
+  function askQuestion() { W.question = true; W.thread.push({ w: "will", t: "Who will hear this talk first?" }); }
+  function setupStep(n) {
+    P.setup = n; P.taps = null; P.words = false; P.mustType = false;
+    if (n === 1) { P.thread = [{ k: "when", t: "Today" }, { w: "sarah", t: "Hi, I'm Sarah from Invita. Which salon do you usually visit?" }]; P.taps = ["Praga", "Wola", "Mokotów"]; }
+    if (n === 2) { P.thread.push({ w: "sarah", t: "How often do you colour your hair?" }); P.taps = ["Rarely", "Every few months", "Every month"]; }
+    if (n === 3) { P.thread.push({ w: "sarah", t: "Thanks! If you have a question about your hair, tap + and ask me." }); P.setup = 0; }
+  }
+  function sarahAsks() { P.question = true; P.crossed = false; P.thread = [{ k: "when", t: "Today" }, { w: "sarah", t: Q }]; }
+
+  /* ---------- the middle, by rule ---------- */
+  function willMiddle() {
+    if (W.recording) return "recording";
+    if (W.words) return "words";
+    if (W.hear && !W.hearX) return "hear";
+    if (W.review) return "review";
+    if (!W.first) return "first";
+    if (W.processing) return "busy";
+    return "take";
+  }
+  function sarahMiddle() {
+    if (P.blocked) return "blocked";
+    if (P.recording) return "srec";
+    if (P.sending) return P.sending.failed ? "notsent" : "sending";
+    if (P.question && !P.crossed) return "answer";
+    return "ask";
+  }
+  var EXPLAIN = {
+    recording: "The recording bar: the trash, the clock and Stop, as everywhere in the app. Stop sends your answer to Will.",
+    words: "You chose your own words, so the middle is the box. Tap away with nothing typed and it closes by itself, back to the record button: no ✕ needed.",
+    hear: "Will needs to hear you, so the middle is \"Record your answer\". To leave it, tap \"Not now\" under his question: saying no sits with the question, as every \"Not now\" does (N467). The bar then goes back to the next Take.",
+    review: "Your review is unfinished, so the middle is \"Continue review\", with no red dot because it isn't a recording. The next Take comes after it.",
+    first: "Nothing yet: the middle is \"Start your first recording\".",
+    busy: "Your last Take is being processed, so the next one waits, faded.",
+    take: "Nothing is asked, so the middle is what Will's chat is for: practice. \"Record Take N\" is always one tap away.",
+    blocked: "Blocked, the whole bar is one grey pill with Unblock, as today.",
+    tiles: "The \"+\" turned into a ✕, and the four tiles took the bar's place, as today.",
+    sending: "\"Sending to Sarah…\" with Undo for 5 seconds, as today.",
+    ask: "Nothing is asked: the \"+\" on the left, the emoji in the middle, as before. The \"+\" adds a question for Sarah: it opens \"Ask Sarah\".",
+    srec: "The recording bar.",
+    notsent: "It couldn't go: \"Not sent\" with Send again, as today.",
+    answer: "Sarah asked you something to answer properly, so the middle is \"Record your answer\". \"Not now\" under her question gives the emoji back. Sarah isn't told.",
+    emoji: "Nothing is asked, so the middle is what a chat with a person is for: a reply. Their message waiting doesn't change it, because there's no mic."
+  };
+
+  /* ---------- render ---------- */
+  var phone = document.getElementById("phone");
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function wave(n, sec) { var h = [6, 12, 18, 9, 15, 20, 11, 7, 16, 13, 8, 18, 10, 6]; var out = ""; for (var i = 0; i < n; i++) out += '<i style="height:' + h[i % h.length] + 'px"></i>'; return '<span class="voice">' + out + "<em>0:" + String(sec).padStart(2, "0") + "</em></span>"; }
+  function item(m) {
+    if (m.k === "when") return '<div class="when">' + esc(m.t) + "</div>";
+    if (m.k === "emo") return '<div class="emo">' + esc(m.t) + "</div>";
+    if (m.k === "card") return '<div class="b card"><b>' + esc(m.t) + "</b><small>" + esc(m.s) + "</small></div>";
+    if (m.k === "voice") return '<div class="b me">' + wave(14, m.sec || 8) + "</div>";
+    if (m.k === "sv") return '<div class="b sv">' + wave(14, m.sec || 40) + "</div>";
+    if (m.k === "sent") return '<div class="sent">' + I.check + esc(m.t) + "</div>";
+    return '<div class="b ' + (m.w === "me" ? "me" : "will") + '">' + esc(m.t) + "</div>";
+  }
+  function pill(label, act, dot, disabled) { return '<button type="button" class="pill" data-a="' + act + '"' + (disabled ? " disabled" : "") + ">" + (dot ? '<span class="dot"></span>' : "") + esc(label) + "</button>"; }
+  function xbtn(act) { return '<button type="button" class="ib x" aria-label="Close" data-a="' + act + '">' + I.x + "</button>"; }
+
+  function render() {
+    var html = "";
+    if (chat === "will") {
+      html += '<div class="top"><button class="back" type="button" aria-label="Back">' + I.back + '</button><div class="av">•••</div><div class="nm"><b>Will</b></div></div>';
+      html += '<div class="thread" id="thread">' + W.thread.map(item).join("");
+      if (W.hear && !W.hearX && !W.recording) html += '<div class="taps"><button type="button" class="leave" data-a="notnowwill">Not now</button></div>';
+      if (W.question) html += '<div class="taps">' + CHIPS.map(function (c, i) { return '<button type="button" class="tap' + (i === CHIPS.length - 1 ? " goes" : "") + '" data-a="chip" data-v="' + esc(c) + '">' + esc(c) + "</button>"; }).join("") + "</div>";
+      html += "</div>";
+      var m = willMiddle(), bar = "";
+      if (m === "recording") bar = '<button type="button" class="ib" aria-label="Throw it away" data-a="trash" style="color:#737373">' + I.trash + '</button><div class="rec"><span class="d"></span><span class="t" id="clock">0:' + String(W.recSec).padStart(2, "0") + '</span><span class="tr"><i id="track"></i></span><button type="button" class="stop" data-a="stop"><span></span>Stop</button></div>';
+      else {
+        bar = '<button type="button" class="ib" aria-label="Your projects" data-a="projects">' + I.stack + "</button>";
+        if (m === "words") bar += '<div class="box"><input id="draft" type="text" placeholder="Type your answer" autocomplete="off" value="' + esc(W.draft) + '" aria-label="Type your answer">' + (W.draft.trim() ? '<button type="button" class="go" aria-label="Send" data-a="sendwords">' + I.send + "</button>" : "") + "</div>";
+        else if (m === "hear") bar += pill("Record your answer", "hear", true);
+        else if (m === "review") bar += pill("Continue review", "review", false);
+        else if (m === "first") bar += pill("Start your first recording", "take", true);
+        else if (m === "busy") bar += pill("Record Take " + W.take, "take", true, true);
+        else bar += pill("Record Take " + W.take, "take", true);
+      }
+      html += '<div class="bar">' + bar + "</div>";
+      if (W.sheet) html += '<div class="ov"><div class="head"><button class="back" type="button" aria-label="Back" data-a="closesheet" style="border:0;background:none;color:inherit">' + I.back + '</button>Your projects</div><div class="list"><button type="button" class="pill" data-a="closesheet">' + I.plus.replace("<svg", '<svg style="width:16px;height:16px"') + 'Start a new project</button><button type="button" class="proj" data-a="closesheet"><b>Our Q3 board pitch</b><small>Take 1</small></button></div></div>';
+      if (W.overlay === "rec") html += overlayRec("Take " + W.take, "Opening", "Let your key line land", "finishtake");
+      if (W.overlay === "walk") html += '<div class="ov"><div class="head">Feedback · Take ' + (W.take - 1) + '</div><div class="body"><p style="font-size:17px;font-weight:600">The Feedback walk</p><p class="note">As it is today: praise, the one thing to improve, practice.</p></div><div class="foot"><button type="button" class="pill" data-a="closewalk">Close</button></div></div>';
+      note = EXPLAIN[m];
+      if (m === "words" && W.setup) note = "The setup needs a name, so the box stays until you send it. Will's question says what to type.";
+      if (m === "take" && W.question) note = "Will asks, with answers to tap above the bar. The middle keeps the next Take, so his question never stands in front of practice. \"Something else\" opens the box.";
+      if (W.sheet) note = "The stack opens Your projects, as today. It's on the left in every state of the bar.";
+      if (W.overlay === "rec") note = "The recording screens open as today. Finish the Take to come back.";
+      if (W.overlay === "walk") note = "The Feedback walk opens as today. Close it to come back.";
+    } else {
+      html += '<div class="top"><button class="back" type="button" aria-label="Back">' + I.back + '</button><div class="av s">S</div><div class="nm"><b>Sarah</b><span>Colour specialist · Invita</span></div></div>';
+      html += '<div class="thread" id="thread">' + P.thread.map(function (m, i) {
+        var out = m.w === "sarah" ? '<div class="b will">' + esc(m.t) + "</div>" : item(m);
+        if (P.react === i) out += '<div class="reacts">' + ["👍", "👀", "🙏"].map(function (e) { return '<button type="button" data-a="emoji" data-v="' + e + '" aria-label="' + e + '">' + e + "</button>"; }).join("") + "</div>";
+        return out;
+      }).join("") + (P.taps ? '<div class="taps">' + P.taps.map(function (c, i) { return '<button type="button" class="tap' + (i === P.taps.length - 1 ? " goes" : "") + '" data-a="stap" data-v="' + esc(c) + '">' + esc(c) + "</button>"; }).join("") + "</div>" : "") + (P.question && !P.crossed && !P.sending && !P.blocked && !P.recording ? '<div class="taps"><button type="button" class="leave" data-a="notnowsarah">Not now</button></div>' : "") + "</div>";
+      var n = sarahMiddle(), b2 = "";
+      var plusNew = !plusUsed && n === "ask" && !P.taps && !P.sheet;
+      var plusBtn = '<button type="button" class="ib' + (plusNew ? " plus-new" : "") + '" aria-label="Ask Sarah" data-a="ask">' + I.plus + "</button>";
+      if (n === "blocked") b2 = '<div class="blocked">You blocked Sarah.<button type="button" data-a="unblock">Unblock</button></div>';
+      else if (n === "srec") b2 = '<button type="button" class="ib" aria-label="Throw it away" data-a="strash" style="color:#737373">' + I.trash + '</button><div class="rec"><span class="d"></span><span class="t" id="clock">0:' + String(P.recSec).padStart(2, "0") + '</span><span class="tr"><i id="track"></i></span><button type="button" class="stop" data-a="sstop"><span></span>Stop</button></div>';
+      else if (n === "sending") b2 = plusBtn + '<div class="status"><span>Sending to Sarah… ' + P.sending.left + '</span>' + (P.sending.left > 0 ? '<button type="button" data-a="undo">Undo</button>' : "") + "</div>";
+      else if (n === "notsent") b2 = plusBtn + '<div class="status"><span>Not sent</span><button type="button" data-a="again">Send again</button></div>';
+      else if (n === "answer") b2 = plusBtn + pill("Record your answer", "answer", true);
+      else b2 = plusBtn + '<div class="emoji">' + ["👍", "👀", "🙏"].map(function (e) { return '<button type="button" data-a="emoji" data-v="' + e + '" aria-label="' + e + '">' + e + "</button>"; }).join("") + "</div>";
+      html += '<div class="bar">' + b2 + "</div>";
+      if (P.overlay === "rec") html += overlayRec("Sarah asks", "Sarah asks", Q, "finishanswer");
+      if (P.deck !== null) {
+        var last = P.deck === 2;
+        html += '<div class="deck"><div class="frame2"><img src="img/rec-' + P.deck + '.png" alt="The recording screen, To Sarah, slide ' + (P.deck + 1) + ' of 3: ' + ["Opening", "Main points", "Summary"][P.deck] + '.">' +
+          hot("deckclose", 346, 10, 28, 28, "Close") + (P.deck > 0 ? hot("deckback", 16, 652, 175, 48, "Back") : "") + hot(last ? "deckfinish" : "decknext", 201, 652, 173, 48, last ? "Finish take" : "Next slide") + "</div></div>";
+      }
+      if (P.sheet) html += '<div class="sheet-wrap" data-a="closesheet"><div class="sheet" data-stop="1"><span class="grab"></span><p class="st">Ask Sarah</p><p class="sl">Sarah knows about scalp care, hair loss and colour, and she\'s glad to share it. Ask her one specific question, and she\'ll answer in her own voice when she can.</p><button type="button" class="big" data-a="recq"><span class="dot"></span>Record your question</button>' + (P.firstAsk ? '<div class="steps"><div><b>1. Ask one thing</b>A clear question gets a clear answer</div><div><b>2. She answers</b>Out loud, when she has a moment</div><div><b>3. It stays here</b>Play it again whenever you need it</div></div>' : "") + '<button type="button" class="cancel" data-a="closesheet">Cancel</button></div></div>';
+      if (P.toast) html += '<div class="toast">' + esc(P.toast) + "</div>";
+      note = EXPLAIN[n];
+      if (n === "ask" && !P.sheet && !P.taps && !plusUsed && !(P.question && P.crossed)) note = "A new chat, and you haven't asked anyone yet: the \"+\" is orange, as the mic was when your words were awaited (N460), and still. It's the one orange thing in the bar. Once you've tapped it, it's plain everywhere.";
+      if (n === "ask" && P.question && P.crossed) note = "You tapped \"Not now\", so the emoji are back. Her question still waits, and \"Record your answer\" comes back when you open the chat again.";
+      if (P.taps) note = "Her setup asks only closed questions: tap an answer under her question, on your side, as with Will's (N467). There's no box in a chat with a person; the bar keeps the \"+\" and the emoji.";
+      if (P.deck !== null) note = "Your question always opens the default presentation on the recording screens: Opening, Main points with 1 2 3, and Summary. These are the real screens. The top line names Sarah. Tap Next slide, then Finish take.";
+      if (P.sheet) note = P.firstAsk ? "The \"+\" opens \"Ask Sarah\", built like \"Add someone to chat with\": a title, one line with what she knows, the black button, and Cancel. The first time, three short steps say how it works." : "After your first question, the sheet is short: who she is, what she knows, one black button. The steps have done their job.";
+      if (P.overlay === "rec") note = "Your answer is a Take: the recording screens open as today, with Sarah's question as the one slide.";
+    }
+    phone.innerHTML = html;
+    document.getElementById("now-text").textContent = note;
+    var th = document.getElementById("thread"); if (th) th.scrollTop = th.scrollHeight;
+    var d = document.getElementById("draft");
+    var C = chat === "will" ? W : P;
+    if (d && chat === "sarah" && P.mustType && document.activeElement !== d) setTimeout(function () { var x = document.getElementById("draft"); if (x) x.focus(); }, 0);
+    if (d) { d.addEventListener("input", function () { var had = !!C.draft.trim(); C.draft = d.value; if (had !== !!C.draft.trim()) { render(); var nd = document.getElementById("draft"); nd.focus(); nd.setSelectionRange(nd.value.length, nd.value.length); } });
+      d.addEventListener("keydown", function (e) { if (e.key === "Enter" && C.draft.trim()) act("sendwords"); });
+      // Tap away with nothing typed: the box closes by itself (no ✕). The setup's box stays, as Will waits for those words.
+      d.addEventListener("blur", function () { setTimeout(function () { if (C.words && !C.mustType && !C.draft.trim() && document.activeElement !== document.getElementById("draft")) { C.words = false; render(); } }, 120); }); }
+    paintList();
+  }
+  function hot(a, x, y, w, h, label) { return '<button type="button" class="hot" aria-label="' + label + '" data-a="' + a + '" style="left:' + (x / 390 * 100) + '%;top:' + (y / 720 * 100) + '%;width:' + (w / 390 * 100) + '%;height:' + (h / 720 * 100) + '%"></button>'; }
+  function tile(label, color, icon) { return '<button type="button" class="tile" data-a="tile" data-v="' + label + '"><span class="c" style="background:' + color + '">' + icon + "</span>" + label + "</button>"; }
+  function overlayRec(head, label, words, done) {
+    return '<div class="ov"><div class="head">' + esc(head) + '</div><div class="body"><div class="poster"><small>' + esc(label) + "</small><b>" + esc(words) + '</b></div><p class="note">The recording screens, as today.</p></div><div class="foot"><button type="button" class="pill" data-a="' + done + '"><span class="dot"></span>Finish</button></div></div>';
+  }
+
+  /* ---------- actions ---------- */
+  function sent() {
+    P.sending = null;
+    var wasQuestion = P.kind === "question";
+    if (wasQuestion) P.firstAsk = false;
+    if (!wasQuestion) P.question = false;
+    P.thread.push({ k: "voice", sec: wasQuestion ? 14 : 52 }); P.thread.push({ k: "sent", t: "Sent to Sarah" });
+    if (wasQuestion) later(2600, function () { P.thread.push({ k: "sv", sec: 41 }); render(); });
+  }
+  function startSending() {
+    clearTimers();
+    P.sending = { left: 5, failed: false };
+    tick = setInterval(function () {
+      if (!P.sending || P.sending.failed) { clearInterval(tick); tick = null; return; }
+      P.sending.left -= 1;
+      if (P.sending.left <= 0) { clearInterval(tick); tick = null; sent(); }
+      render();
+    }, 1000);
+  }
+  function act(a, v) {
+    if (chat === "will") {
+      if (a === "projects") W.sheet = true;
+      else if (a === "closesheet") W.sheet = false;
+      else if (a === "take") W.overlay = "rec";
+      else if (a === "finishtake") {
+        W.overlay = null; W.first = true; W.processing = true; W.question = false; W.hear = false; W.words = false;
+        W.thread.push({ w: "will", t: "Got it. Your Take " + W.take + " is on its way." });
+        var done = W.take; W.take += 1;
+        later(2200, function () { W.processing = false; W.review = true; W.thread.push({ k: "card", t: "Feedback · Take " + done, s: "Your feedback is ready." }); render(); });
+      }
+      else if (a === "review") W.overlay = "walk";
+      else if (a === "closewalk") { W.overlay = null; W.review = false; askQuestion(); }
+      else if (a === "chip") {
+        if (v === "Something else") { W.words = true; render(); var d = document.getElementById("draft"); if (d) d.focus(); return; }
+        W.question = false; W.words = false; W.thread.push({ w: "me", t: v }); later(600, function () { W.thread.push({ w: "will", t: "Good job. See you next time." }); render(); });
+      }
+      else if (a === "closewords") { W.words = false; W.draft = ""; }
+      else if (a === "sendwords") {
+        var t = W.draft.trim(); if (!t) return;
+        W.thread.push({ w: "me", t: t }); W.draft = ""; W.words = false;
+        if (W.question) { W.question = false; later(600, function () { W.thread.push({ w: "will", t: "Good job. See you next time." }); render(); }); }
+        if (W.setup) { W.setup = false; W.mustType = false; later(600, function () { W.thread.push({ w: "will", t: "Thanks. Your team is set." }); render(); }); }
+      }
+      else if (a === "hear") { W.recording = true; W.recSec = 0; tick = setInterval(function () { W.recSec += 1; var c = document.getElementById("clock"); if (c) c.textContent = "0:" + String(W.recSec).padStart(2, "0"); var tr = document.getElementById("track"); if (tr) tr.style.width = Math.min(100, W.recSec * 4) + "%"; }, 1000); }
+      else if (a === "trash") { clearInterval(tick); tick = null; W.recording = false; }
+      else if (a === "stop") { clearInterval(tick); tick = null; W.recording = false; W.hear = false; W.thread.push({ k: "voice", sec: Math.max(3, W.recSec) }); later(600, function () { W.thread.push({ w: "will", t: "Thank you. That helps." }); render(); }); }
+      else if (a === "notnowwill") W.hearX = true;
+    } else {
+      if (a === "plus") P.tiles = true;
+      else if (a === "closetiles") P.tiles = false;
+      else if (a === "tile") { P.tiles = false; P.toast = v + " opens, as today"; later(1600, function () { P.toast = ""; render(); }); }
+      else if (a === "emoji") { P.thread.push({ k: "emo", t: v }); P.react = null; }
+      else if (a === "react") { var ix = Number(v); P.react = P.react === ix ? null : ix; }
+      else if (a === "ask") { P.sheet = true; P.react = null; plusUsed = true; }
+      else if (a === "closesheet") P.sheet = false;
+      else if (a === "recq") { P.sheet = false; P.kind = "question"; P.deck = 0; }
+      else if (a === "decknext") P.deck = Math.min(2, P.deck + 1);
+      else if (a === "deckback") P.deck = Math.max(0, P.deck - 1);
+      else if (a === "deckclose") P.deck = null;
+      else if (a === "deckfinish") { P.deck = null; startSending(); }
+      else if (a === "strash") { clearInterval(tick); tick = null; P.recording = false; }
+      else if (a === "sstop") { clearInterval(tick); tick = null; P.recording = false; startSending(); }
+      else if (a === "answer") { P.kind = "answer"; P.overlay = "rec"; }
+      else if (a === "finishanswer") { P.overlay = null; startSending(); }
+      else if (a === "undo") { clearTimers(); P.sending = null; }
+      else if (a === "again") { P.sending = { left: 0, failed: false }; later(900, function () { sent(); render(); }); }
+      else if (a === "notnowsarah") P.crossed = true;
+      else if (a === "stap") {
+        var next = P.setup + 1;
+        P.thread.push({ w: "me", t: v }); P.taps = null; later(600, function () { setupStep(next); render(); });
+      }
+      else if (a === "unblock") P.blocked = false;
+    }
+    render();
+  }
+  phone.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-a]"); if (!b || b.disabled) return;
+    if (b.classList.contains("sheet-wrap") && e.target.closest("[data-stop]")) return;
+    act(b.getAttribute("data-a"), b.getAttribute("data-v"));
+  });
+
+  /* ---------- scenario list ---------- */
+  var current = { will: 0, sarah: null };
+  function buildList() {
+    ["will", "sarah"].forEach(function (c) {
+      var g = document.getElementById(c === "will" ? "g-will" : "g-sarah");
+      SCEN[c].forEach(function (s, i) {
+        var b = document.createElement("button");
+        b.type = "button"; b.className = "sc"; b.dataset.c = c; b.dataset.i = i;
+        b.innerHTML = '<span class="i">' + (i + 1) + '</span><span><b></b><span class="s"></span></span>';
+        b.querySelector("b").textContent = s[0]; b.querySelector(".s").textContent = s[1];
+        b.addEventListener("click", function () { go(c, i); });
+        g.appendChild(b);
+      });
+    });
+  }
+  function paintList() {
+    document.querySelectorAll(".sc").forEach(function (b) {
+      b.setAttribute("aria-current", String(b.dataset.c === chat && Number(b.dataset.i) === current[chat]));
+    });
+  }
+  function go(c, i) { clearTimers(); chat = c; current[c] = i; SCEN[c][i][2](); if (c === "will") current.sarah = null; else current.will = null; render(); }
+  document.getElementById("reset").addEventListener("click", function () { plusUsed = false; go("will", 0); });
+
+  W = freshWill(); P = freshSarah();
+  buildList();
+  go("will", 0);
+})();
+</script>
+
+</body>
+</html>
