@@ -11410,3 +11410,28 @@ No migration in this entry. The rules: frontend
 [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
 (the first page, the waitlist and the waiting screen) when built, and
 [`docs/LOCKS.md`](LOCKS.md).
+
+**N472 · Terms 3.10 and Privacy 3.11 are signed: WillpowerLab by invitation,
+and the waitlist (founder, the sign-off page
+<https://claude.ai/artifact/JDPYqsyy9uzA1tUHkdevpA> (version 2), then the
+Claude Code chat, 4 November 2026: "You have my signature for the first
+one", on the page asking for "I sign as drafted, question 1 A, question 2
+A", read back at once as that; and "Yes, start the build").** For N471 item
+10:
+1. Terms 3.10 and Privacy 3.11 are signed as drafted, word for word in
+`legal/phase1-2026.1/32-terms-3.10-privacy-3.11-by-invitation-and-the-waitlist-SIGNED-2026-11-04.md`.
+Terms §5: WillpowerLab is open by invitation; you join through a person's
+link or join the waitlist, and cannot record until you join through a link.
+Privacy: whose link you joined through, the "Joining by invitation"
+paragraph (6(1)(b)), the waitlist email through Resend to our own inbox, and
+how long each is kept. AI notice 3.2 and the 3.1 agreement stay.
+2. Question 1, A: the waitlist email in our inbox is deleted when the
+person closes their account, like the rest of their data.
+3. Question 2, A: published after the founder's signature; counsel reads it
+afterwards, as a check.
+4. They go live with invite-only, on the day its build is released: the
+texts are dated then (the date line only), become `copy/terms-3.10.txt`
+and `copy/privacy-3.11.txt`, and are published as `phase1-{date}-3.11` by
+`PUBLISH-3.11-{date}.sql`, the founder's step, after 3.10. Nothing is
+deleted; every speaker accepts 3.11 once, on the update prompt.
+No migration. No rules page: the legal pack.
