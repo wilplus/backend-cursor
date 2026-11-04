@@ -12503,3 +12503,37 @@ frontend
 G and
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built; the matching gets its rules page when it is built (N332).
+
+**N505 · One space around every bottom bar: 8px above, 8px on each side,
+8px below (founder, the Claude Code chat, 4 November 2026, on phone
+screenshots of "Record Take 2" / "Close" and of the chat's "Type here",
+and on the prototype "Bottom Bar Spacing"
+<https://claude.ai/artifact/2riV2BjMgYdESpBv7piuhi>, version 3: "the
+margin is a little bit too small … symmetrically on all devices";
+"get inspired by WhatsApp"; "make it symmetrical. Measure the distance
+that already exists at the bottom. Make it symmetrical with the one at the
+top. And on the sides"; "Go and build it … apply it across the app").**
+1. **The rule:** a bar at the bottom of a screen (the chat's bar, "Record
+Take N" and "Close", the walk's footer, the plan's answers and button,
+the recording screen's buttons, the transcript's Save, the welcome
+example's button) keeps 8px between itself and everything around it:
+the bottom edge, the left and right edges, and what scrolls above it,
+which stops 8px above the bar, as WhatsApp's messages stop above its
+typing bar. 8px is the space measured at the bottom on 4 November: the
+chat's input sat 8px above the edge, and "Close" sat 8px above it.
+2. **"Close" and the other grey words at the bottom keep their own 8px:**
+the 40px row of a grey word already holds 8px under the word, so a bar
+ending in one adds nothing under it (N280 stands).
+3. **A phone's home-bar strip** stays the space below where it is more
+than 8px; above and the sides are still 8px. On a computer the 8px is
+inside the page's column.
+4. **Unchanged:** every button, word, size and the gaps inside a bar. A
+slide-up sheet (the end card, the consent ask, the one-project sheet) is
+a card, not a bar, and keeps its own padding.
+Was: 16px sides everywhere; 0px above the chat's bar and above "Record
+Take N"; 20px sides and 30px under the walk's footer and the plan's
+answers, 24px under the plan's button, 16px under the transcript's Save,
+20px under the welcome example's button. No new words. No migration.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+J9, with a line on the Ideal Text, recording, consent and plan pages.
