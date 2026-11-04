@@ -12028,3 +12028,19 @@ No migration for this entry. The rules: the matching gets its rules page
 when it is built (N332); the chat, frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 G, when built.
+
+**N486 · N485's three proposals stand (founder, the Claude Code chat, 4
+November 2026: "I agree with all three"; then, on the bottom bar, the
+status of N483 pasted in).** For N478, N483 and N485:
+1. **The asker sees the new person, with the name, once the answer is
+sent** (N478 item 3, for the asker). Accepting alone tells the asker
+nothing.
+2. **Declining is the locked bar's "Not now"** under the question (N483).
+Answering is the bar's "Record your answer" (N483), which opens the
+official recorder (N481 item 1).
+3. **It is for a matched Take.** A Take sent to your own list arrives in
+the chat you already have (N470, N479).
+Still open (Never 4): the words of the new chat before it is accepted, and
+of accepting (N485 item 5), drafted on the prototype of the official
+inquiry. No migration. The rules: the matching gets its rules page when it
+is built (N332).
