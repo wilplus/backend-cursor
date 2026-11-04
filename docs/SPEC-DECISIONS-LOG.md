@@ -11035,3 +11035,54 @@ Nothing to sign: no new words. "Cancel" leaves the "+" sheet.
 The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 when built. No migration.
+
+**N461 · The specialist side: who a Take goes to, peers and strangers, one
+walk for every specialty, the profile from the intro, exercise videos
+filtered (founder, the Claude Code chat, 4 November 2026, on N103: "it
+should be a request like a message in a chat from that person who asked or
+who took a take", "if it is general any speaking coach can receive the
+request ... if it is only the community only the coach from that community
+if it is only me (the recorder) then no one receives it but you can send
+it to one person too", "sometimes it is a message from your peer colleague
+from work from the team but sometimes it is an external request", "it
+comes from the introduction presenation and you can change your
+affiliation ... it is precisely defined what is your speciliaty", "there
+should be some filtering so there are videos with exercise that will be
+really good and useful for everyne"; then, asked, "Only me", "Checks, then
+your OK", "Yes, change it").** For N77, N103, N274, N287, N332, N349,
+N352, N353, N400, N456, N457:
+1. **Who a Take goes to.** Per project, changeable per Take, "Send my
+Takes to": only me (the default: nobody receives it), one person (picked
+from their chats), my community or team (its specialists), or any coach
+(every speaking coach who shares the speaker's language).
+2. **A peer's request is a message from them.** Same team or community,
+invited each other, or already chatting: the Take arrives as the speaker's
+own message in their chat, with their name, not blind.
+3. **A stranger's request is a Will card.** Sent to any coach, or to a
+community specialist they do not know: a stored Will card in the
+specialist's chat with Will, blind (a pseudonym and the mistake only), that
+opens the correction walk, blind as today. The goal card is its pattern.
+4. **One walk for every specialty:** judgement, what happened, diagnosis,
+cure, share; each specialty brings its own questions and library; blind for
+a stranger, a plain review for a peer. Speaking coach is the only specialty
+built now.
+5. **Who is a specialist** comes from the introduction Take into a defined
+profile: the specialty from a fixed list, title, community or team, how
+they can help, languages; editable. It decides who is shown when someone
+looks for help, in a community or across the app, and replaces the
+hand-filled coach list.
+6. **Exercise videos (N78 written here, for N103).** A coach's video serves
+the speaker it was made for at once. It enters the library for everyone
+only after automatic checks (clear, a sensible length, one of the seven
+mistakes, its words match the exercise) and then the founder's Approve or
+Keep private, a card in the founder's chat. Only approved versions count
+toward N103's three per mistake. The seven mistakes: pace, pauses, loudness
+range, fillers, rushing, dragging, unclear words.
+7. **The promise changes when this is built:** "every moment a speaker
+sends reaches who they chose" replaces "every moment a speaker meets
+reaches a coach"; the reach alarm checks that. CLAUDE.md changes with the
+build.
+Not in force until built and merged. The cards' and the panel's words, and
+the "Send my Takes to" screen, need the founder's words and a prototype
+(Never 4). Needs migrations, each with its outside review. No rules page
+yet: the coach panel's and the chats' pages when built.
