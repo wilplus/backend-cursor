@@ -249,9 +249,8 @@ def walk_gave(database: Any, take_id: Any, frame: Any,
     if chosen == "none":
         return []
     stretch = _stretch(frame, clips())
-    if stretch is None:
-        return []
-    if chosen == "tempo" or stretch["reading"] == "rushed" or _tempo_week(database, take_id):
+    if stretch and (chosen == "tempo" or stretch["reading"] == "rushed"
+                    or _tempo_week(database, take_id)):
         return [stretch]
     return []
 
