@@ -12638,3 +12638,16 @@ before it is merged. The rules: frontend
 and
 [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md),
 when built.
+
+**N508 · 0511, the dump screen and the voice notebook at ring 2, merges
+without the outside review (founder, the Claude Code chat, 4 November 2026:
+"Skip it", to "paste it into GPT or Grok, or say skip it").** Migration 0511
+(`the_dump_screen_and_the_notebook_at_ring_two.sql`,
+[#1746](https://github.com/wilplus/backend-cursor/pull/1746), N507 item 3)
+merged on green checks without the GPT or Grok review CLAUDE.md asks of a
+new migration. It creates no table and changes none: it adds the ring row
+`dump_screen` at ring 2 (ON CONFLICT DO NOTHING) and lowers `voice_notebook`
+from ring 6 to ring 2 while it is above 2 and not killed, each with its
+audit entry; it drops nothing and needs no environment variable. As for
+N115, N266 and N390, the waiver is for this one migration. No rules page.
+No migration in this entry.
