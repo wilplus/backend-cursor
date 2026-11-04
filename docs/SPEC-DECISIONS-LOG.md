@@ -12304,3 +12304,33 @@ line N488 keeps on the list's row until the chat's first message.
 No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when N487 is built.
+
+**N497 · "Your level" leaves "Change your plan", and "Ask your coach" goes
+with it (founder, the Claude Code chat, 4 November 2026: on the "Your level"
+sheet, "when I click that, nothing happens ... I don't have a coach. I was
+invited by Arthur, but is he my coach? I don't know ... This is not precise
+enough. So we should either remove it, the feature, or keep it and make it
+more precise"; then, of three choices, "Remove it").** For N140, N213 and
+N315:
+1. **"Change your plan" has three rows:** Deadline, Practice days and "I
+have a new event". The "Your level" row and its sheet ("Your level comes
+from what I heard in your voice. Your coach can change it." and "Ask your
+coach") are gone. The level still shows where it acts: each practice day's
+hello and "See your plan" (N319 item 6).
+2. **Why:** the ask went to the shared coach queue, to any coach who speaks
+the speaker's language, not to a coach the speaker knows; the speaker has no
+named coach; and Will's reply, "I've told your coach. You can talk it over
+on your next call.", promised a call while the plan's calls are off for
+everyone (N315). The sheet closed with nothing on it, so the tap seemed to
+do nothing.
+3. **What stops:** a speaker can no longer ask about their level, so the
+coach queue's "Asked about their level" card (N213, coach panel K1) gets no
+new ones; one already waiting stays until a coach answers it. A new plan
+and a stuck level still reach the queue. The backend's
+`POST /v2/plan/ask-coach` stays, unused, so nothing is dropped.
+4. **It can come back** once a speaker has a named coach and the calls are
+on, with its words signed again (Never 4).
+No new words. No migration. The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+H1 and [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+K1.
