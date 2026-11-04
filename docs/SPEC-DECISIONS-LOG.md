@@ -11802,3 +11802,36 @@ waitlist email reaches contact@willpowerlab.com.
 after `PUBLISH-3.10-2026-11-04.sql` and once the release with invite-only
 is out.
 No migration. No rules page: the legal pack and the code.
+
+**N481 · The app tells one story: two people building a knowledge base
+together (founder, the Claude Code chat, 4 November 2026, on the prototype
+"Asked When They Join" <https://claude.ai/artifact/G8gZ73CvfgkkJ1ztm1cmsb>,
+after asking that its top line end "before the two of you start building
+knowledge base together": "basically make all the narration on this chat
+around knowledge building, knowledge base building together. You can make
+it even a rule, general rule for the whole application that's about
+knowledge building together and sharing, or, you know, knowledge base,
+rewrite it as Steven Pinker would").** For N317, N364, N461 and N470:
+1. **The story.** When the app or Will says what is happening between
+people (someone joins through a link, asks a question, answers one, sends a
+Take), it says what they are doing together: building a knowledge base they
+share. Each question someone records adds to it, and so does each answer.
+The words are not "work", "a project", "a case" or "a session".
+2. **How it is written** stays N364: plain and concrete, as Steven Pinker
+writes, with people as the subjects and one idea to a sentence; nonviolent
+communication; no verdicts (Never 1).
+3. **Practical words stay practical.** A deadline, a date, a language or a
+time for a call is said as itself; the story is in the lines around it
+("Let's build our knowledge base a month at a time.").
+4. **The speaking loop keeps its own words.** A Take, its Ideal Text and its
+feedback are about how someone spoke (Never 3); the story is about what
+people know and share.
+5. **From now on, not all at once.** The rule applies to every new line and
+every line rewritten from today. Lines already signed, and the locked
+screens, change only when the founder signs each rewrite (Never 4).
+6. **First use:** the chat a person opens after joining through someone's
+link, and the setup in which the person who shares chooses its practical
+questions, both drawn on the prototype above; their lines wait for the
+founder's signature there.
+No new words are signed here. No migration. No rules page: the style is
+N364's, and each screen's rules page names this rule when its words change.
