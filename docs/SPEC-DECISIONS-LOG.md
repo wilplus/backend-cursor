@@ -11802,3 +11802,91 @@ waitlist email reaches contact@willpowerlab.com.
 after `PUBLISH-3.10-2026-11-04.sql` and once the release with invite-only
 is out.
 No migration. No rules page: the legal pack and the code.
+
+**N483 · The bottom bar, one logic in every chat: no mic, one black record
+button, and the "+" asks a person; locked (founder, the Claude Code chat,
+4 November 2026, on the clickable prototype "The Bar, Clickable",
+<https://claude.ai/artifact/WfwtMu9qc6aefz3zYUdPC2> (version 8), from a
+screenshot of "Record an answer" with a mic beside it: "I want to simplify
+it; so that there is no this case where there are two mics"; "we resign
+from text input"; "for the set up the text input is necessary"; "why don't
+we just have it like it was, but with a plus, it opens to ask an official
+inquiry to that person"; "this should always open the default page
+presentation"; "they're going to be only closed questions, so taps only
+... only emojis or recording"; "make the plus button marked somehow"; then
+"I like the bottom bar. Could you please lock it?").** For N368, N369,
+N371, N395, N460 and N467; it replaces them where they differ:
+1. **One logic.** The left holds your things. The middle holds the one
+thing to do now: when something is asked, the answer; when nothing is,
+what the chat is for. There is no mic in any chat, and no ✕ beside a
+record button or the box. To decline a question, tap "Not now", a grey word
+under it (N467 rule 3). A black button with a red dot starts a recording
+when tapped; one without a dot opens something first.
+2. **Will's chat.** The left is the stack, Your projects (N460 item 5). The
+middle is the first of these that holds:
+   - Will asks for words (a setup's name or code, or you tapped "Something
+     else"): the box "Type your answer". An empty box opened from
+     "Something else" closes when you tap away; a setup's box stays until
+     you send.
+   - Will needs to hear you (the plan's spoken questions): "Record your
+     answer", with "Not now" under his question.
+   - A review is unfinished: "Continue review", moved from above the bar.
+   - Otherwise: "Record Take N", faded while the last Take is processed,
+     and "Start your first recording" before any Take.
+   Will's tap answers sit above the bar (N467), "Something else" first; his
+   question never stands in front of the next Take. You type at no other
+   time. Was: "Type here" and the mic always (N369); "Something else" in the
+   bar's middle (N371 item 3); "Record Take N" only after the goodbye's tap,
+   with a ✕ (N294 item 6, N395); "Continue review" above the bar; the orange
+   mic while Will waited (N296, N319).
+3. **A chat with a person.** The left is the "+". The middle is 👍 👀 🙏;
+"Record your answer" when they asked you something to answer properly
+(N361), with "Not now" under their question, which they are not told
+about; and Sending, Not sent and the blocked bar as today. There is no mic
+and no box: no voice notes and no typing. A setup in a chat with a person
+asks closed questions only, answered by tapping under the question. Was:
+the mic, orange when their words waited (N368, N460 items 1 and 2).
+4. **The "+" asks them.** It opens "Ask {name}", a sheet from the bottom
+built like "Add someone to chat with": the title, one line with what they
+know (their topics, from their profile, N400), the black "Record your
+question", and Cancel; the three steps show only before your first
+question. "Record your question" always opens the recording screens with
+the default presentation (Opening, Main points, Summary, as N462's poster),
+the top line "To {name} · Slide {n} of 3"; "Finish take" sends it with
+"Sending to {name}… {n}" and Undo (N441), and their answer comes back in
+the chat. In a new chat, until you have asked anyone a question, the "+" is
+a filled orange circle, still, the one orange thing in the bar (as the mic
+was when your words were awaited, N460 item 2); once tapped it is plain.
+Photos, Camera, Files and Someone else are off for now (were N351, N367,
+N460 item 4).
+5. **One label for answering anyone:** "Record your answer". Was "Record an
+answer" with people (N361, N441, N478 item 3). An answer opens the
+recording screens with their question as the one slide (N361 item 3);
+whose slides an answer to a Take is recorded over, still open in review,
+is not decided here.
+6. **Words, signed with the prototype (Never 4):** "Record your question";
+"Ask {name}"; "{name} knows about {topics} and is glad to share it. Ask one
+specific question, and {name} will answer in their own voice when they
+can."; the steps "1. Ask one thing · A clear question gets a clear answer",
+"2. {name} answers · Out loud, when they have a moment", "3. It stays here
+· Play it again whenever you need it"; "To {name} · Slide {n} of 3". The
+prototype shows them for Sarah, with "she"; built, they name the person and
+say "they", because the app does not know anyone's pronouns. That one change
+waits for the founder's OK.
+7. **What stops:** voice notes to Will, the "#" note for principles and "Keep
+a voice notebook?" included (the note rests, everything already kept stays,
+and its place is decided with the walk and the way knowledge spreads);
+voice notes to people (their older ones still play); typing to Will when he
+has not asked for words; a spoken answer to Will's question after the walk
+(a tap or written words instead); the tap "I want to continue my practice";
+the ✕ beside "Record Take N"; the orange mic; the faded "Type here" and its
+note (N325 item 1).
+8. **Locked:** the prototype above (version 8) is the bar's prototype in
+[`docs/LOCKS.md`](LOCKS.md), in place of "One bar" (version 14) for the bar;
+the rest of "The chats, all of a piece" stands. A change needs the
+founder's OK with a prototype.
+Not in force until built and merged. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+J7 and
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built.
