@@ -180,6 +180,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     "chat_links",
     # A person's profile (N366): the account's, never a project's.
     "people_profiles",
+    # A Take's suggestion of someone new (N477, N478): the account's, as
+    # the chats are, whether the person recorded the Take or was suggested.
+    "take_matches", "take_matches_suggested",
     # Where the person's iPhone is reached (N385): the account's.
     "push_devices",
     # The plan (N203): one per person, across their projects; the account
