@@ -12468,3 +12468,38 @@ deadline", No, "That's all") gives their joiners the line at the top only
 No new words. No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when N487 is built.
+
+**N504 · The official inquiry, three follow-ups: accepting a match stays
+"Open Take", nobody is told of a "Not now" but the system counts it, and
+"Sent" under your own Take (founder, the Claude Code chat, 4 November 2026,
+on the clickable prototype "The Official Inquiry"
+<https://claude.ai/artifact/R3dPycpjHvgZ8sJHKpWFau>: "1. yes 2. a person
+no - maybe a system for tracking who rejected how many times etc. for the
+behavioral data table that is created from the interaction with the system
+next to the voice data; it should be also visible in the ceo panel in the
+user profile below the voice data from the takes 3. OK").** For N483,
+N485, N486 and N493:
+1. **A matched chat keeps its accept step:** before accepting, it shows who
+is asking and about what, and "Open Take" (black, no dot, N483 item 1)
+accepts; only then do the name and the Take show (N485 item 2). A Take sent
+to someone you already chat with arrives open, its recording and its words
+slide by slide, with no "Open Take" button; the bar asks with "Record your
+answer" and "Not now" (N493 item 3).
+2. **"Not now" is never told to a person,** in either flow (N483 item 3,
+N485 item 3). **The system counts it:** each "Not now" (who declined, whose
+Take, when, in which flow, and how many times that person has declined) is
+kept as behavioural data, from the person's interaction with the app,
+beside the voice data from their Takes; the matching may read it (N481
+item 2's communication profile). Never shown to the person (Never 1). The
+founder sees it on the person's admin page, under the voice data from
+their Takes.
+3. **Signed (Never 4): "Sent"** with the check under your own sent Take or
+answer, in place of "Sent to {name}" (the chat already names the person).
+Was: `sentTo(chat.title)` in `chats/ChatThread.tsx`.
+Not in force until built and merged. Item 2 needs a migration (the
+declines kept per person), with its outside review, when built. The rules:
+frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+G and
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built; the matching gets its rules page when it is built (N332).
