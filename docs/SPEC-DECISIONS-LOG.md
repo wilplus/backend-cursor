@@ -11991,3 +11991,40 @@ Not in force until built and merged. No migration. The rules: frontend
 J7 and
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built.
+
+**N485 · An inquiry arrives as a new chat: who is asking and about what;
+accepting shows the name and the Take, declining removes it (founder, the
+Claude Code chat, 4 November 2026: "I'm thinking about this, that the
+inquiry should be shown as a new chat, that someone is asking, and who is
+asking, and in what context. It should not be starting in Will's chat. It
+should start as a new chat. And if you accept it, it reveals itself. So the
+name of the user and the inquiry itself. But it already is a new chat. And
+you have option to open it or close it. Like, I don't have time. It's like,
+I'm not available. Something like that. Like, accept or reject it,
+basically. And if you reject, that's fine. Nothing happens. The chat gets
+removed.").** For N477, N478, N481 and N483; replaces N478 item 2 (the
+card in Will's chat):
+1. **A new chat, not Will's chat.** A Take sent to someone new who was
+matched to it (N477) reaches them as a new chat in their list of chats.
+Before they accept, it shows that someone is asking, who is asking (a
+pseudonym and a short description, N478 item 4) and in what context (what
+the Take is about).
+2. **Accepting shows it:** the asker's name and the inquiry itself, the
+Take, with its recording and its words slide by slide (N479 item 8). They
+answer it spoken, in the official recorder (N481 item 1).
+3. **Declining is fine** (founder: "I don't have time", "I'm not
+available"). Nothing happens and the chat is removed. Nobody is told, and
+the asker never learns who it was (N478). The two are not matched again.
+4. **Proposed:**
+   - The asker sees the new person in their chats, with the name, once the
+     answer is sent (N478 item 3, for the asker); accepting alone tells
+     the asker nothing.
+   - The decline is the locked bar's "Not now" under the question (N483).
+   - This is for a matched Take; a Take sent to your own list arrives in
+     the chat you already have (N470, N479).
+5. **Open (Never 4):** the words of the new chat before it is accepted,
+   and of accepting; drafted on the prototype of the official inquiry.
+No migration for this entry. The rules: the matching gets its rules page
+when it is built (N332); the chat, frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+G, when built.
