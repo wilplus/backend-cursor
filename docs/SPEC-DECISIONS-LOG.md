@@ -12188,3 +12188,32 @@ it is also the line N488 keeps on the list's row.
 No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when N487 is built.
+
+**N492 · Will's welcome before the first Take: four lines, in place of
+"Hi {name}!" and N462's one line (founder, the Claude Code chat, 4
+November 2026, on a static mock of the first-Take chat: "This first
+sentence should be like, great to have you here ... Please rewrite it all
+as Steven Pinker would. Make it a couple of bubbles"; "add some
+communication about when to use it ... in a place where it's quiet, where
+you usually hold calls"; "delete the non-essentials, make it concise and
+still hold the Stephen Pinker's style"; then "Approved, log it and ship
+it").** For N401 item 1 and N462 item 1:
+1. **The four lines, signed (Never 4),** each its own bubble, then "Start
+your first recording" as before:
+   1. "Hi {name}, and welcome. We'd like to learn what you know and what
+      you could teach others." (no name: "Hi, and welcome. ...")
+   2. "Your first Take is a short introduction: five questions, one slide
+      each. Answer out loud, as you'd explain it to a friend. At the end,
+      you'll get a few words on how you came across."
+   3. "Wozniak built the computer; Jobs made the world want it. You're
+      probably a Wozniak. We want you to be heard the way Jobs was."
+   4. "Record somewhere quiet, where you'd usually take a call and no one
+      will interrupt you. Passing knowledge from one mind to another is,
+      after all, what civilization is made of."
+   Was: "Hi {name}!" and "Your first Take is about what you know. Five
+   questions, one slide each. Answer out loud, as you'd tell a friend."
+2. **Nothing else changes:** the five slides, the button, no question in
+the chat and the rest of N401 and N462 stand.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§2.
