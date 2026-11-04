@@ -1804,6 +1804,24 @@ on the pricing page only.","O1 -> ChatAnswerGuardTests::test_every_answer_leaves
 O2 -> ChatAnswerGuardTests::test_every_answer_leaves_through_the_guards
 O3 -> ChatAnswerGuardTests::test_every_answer_leaves_through_the_guards
 O4 -> ChatAnswerGuardTests::test_will_knows_no_price","Never-rule 1 (RULE A / AC-9) and RULE K; no AI call is made in the test. O4: founder 2026-10-27, N210 (""once they see the price on the pricing page, they don't see any prices later on"")."
+tests/test_membership.py,Story,"As the founder, I want WillpowerLab to be by invitation: a person's link is the only way in, and without one a person joins the waitlist and I answer by email (N471).","O1  While the switch is off, everyone is a member, as before.
+O2  An account from before the switch is a member; a new account is on
+the waitlist, and its first ask sends one email to the founder's
+inbox, which a reply answers; asking again sends no second email.
+O3  A new account that joins through a member's link is let in at once,
+and so is one with a Take from before the switch.
+O4  A waiting account's link opens nothing: the same answer as a wrong
+link.
+O5  After the day's number of people join through one person's link, the
+next one goes to the waitlist and no chat is made.
+O6  A waiting account cannot start a project or record; a guest cannot
+start one either, and no new guest identity is made.","O1 -> MembershipTest::test_while_the_switch_is_off_everyone_is_in
+O2 -> MembershipTest::test_a_new_account_waits_and_the_founder_gets_one_email
+O3 -> MembershipTest::test_joining_through_a_members_link_lets_a_new_account_in
+O3 -> MembershipTest::test_a_take_from_before_the_switch_lets_a_guest_in
+O4 -> MembershipTest::test_a_waiting_accounts_link_opens_nothing
+O5 -> MembershipTest::test_past_the_days_joins_the_next_one_waits
+O6 -> MembershipTest::test_only_members_start_a_project_and_guests_do_not","The founder's decision of 4 November 2026 (N471): members only, links as the one way in, the waitlist answered by hand."
 tests/test_migration_security_rules.py,Story,"As a developer, I want every new table to switch on RLS and every new function to revoke EXECUTE from public, anon and authenticated, so that the browser's anon key can never read tables or call money-moving functions again.","O1  CI goes red on a new migration that creates a public table without
 ENABLE ROW LEVEL SECURITY in the same file.
 O2  CI goes red on a new function that does not revoke EXECUTE from PUBLIC.

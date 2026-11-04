@@ -2,7 +2,7 @@
 
   /v2/explore/*        enter an arc, its moments/breakthroughs/progress,
                        per-take feedback, setup + context document
-  /v2/arc/*            checkout, redeem, unlock, unlock-moments
+  /v2/arc/*            checkout, unlock, unlock-moments
                        + snippet-library stubs
 
 Plus the historical presentation grouping used by deletion/read surfaces,
@@ -872,58 +872,6 @@ def v2_explore_arc_take_comparison(arc_id):
     """
     return retired_route("/v2/explore/arc/<id>/take-comparison",
                          "The take comparison was retired (founder 2026-10-19).")
-
-
-@v2_bp.route("/arc/<arc_id>/redeem", methods=["POST"])
-@require_auth
-def v2_arc_redeem(arc_id):
-    """Redeem a founding free-pass invite code for this arc (Paid Audits A4).
-
-    Ownership-gated. Body: { code }. An active code with uses < max_uses mints a
-    'founding_pass' purchase (source='invite_code') and burns one use.
-
-    Response 200 { ok: true, arc_id, kind: 'founding_pass' }
-             200 { already_entitled: true, arc_id }
-             400 INVALID_INPUT (no code) · 404 NOT_FOUND (arc)
-             409 CODE_INVALID (unknown / inactive / exhausted) · 500
-    """
-    try:
-        from services.arc_entitlement import is_arc_entitled
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        if is_arc_entitled(db, arc_id, request.user_id):
-            return jsonify({"already_entitled": True, "arc_id": arc_id}), 200
-        body = request.get_json(silent=True) or {}
-        code = (body.get("code") or "").strip() if isinstance(body.get("code"), str) else ""
-        if not code:
-            return jsonify({"code": "INVALID_INPUT", "error": "code is required"}), 400
-        if not db.consume_arc_invite_code(code):
-            return jsonify({
-                "code": "CODE_INVALID",
-                "error": "That code is not valid, inactive, or fully used.",
-            }), 409
-        purchase = db.create_arc_purchase(
-            str(arc_id), str(request.user_id),
-            kind="founding_pass", source="invite_code",
-        )
-        if not purchase:
-            # The use was burned but the purchase failed — log loudly; the user
-            # can retry with another code (rare; arc_purchases table missing).
-            logger.error(
-                "arc redeem: code consumed but purchase failed arc=%s code=%s",
-                arc_id, code,
-            )
-            return jsonify({
-                "code": "V2_ERROR", "error": "Could not record the pass",
-            }), 500
-        return jsonify({"ok": True, "arc_id": arc_id, "kind": "founding_pass"}), 200
-    except Exception as e:
-        logger.error("arc redeem failed arc=%s: %s", arc_id, e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({
-            "code": "V2_ERROR", "error": "Failed to redeem code",
-        }), 500
 
 
 # The $25 arc unlock was retired 2026-07-17 (single deliverable); its 410

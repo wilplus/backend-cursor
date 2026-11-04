@@ -95,9 +95,14 @@ def phase1_provider_route(function):
     Recording work supplies exact Take coordinates in the worker. Lounge text
     has no Take/audio lineage, so its provider snapshot deliberately stores
     null source coordinates while retaining the acquisition principal.
+    By invitation (N471), a waiting account or a guest is refused first.
     """
     @wraps(function)
     def wrapped(*args, **kwargs):
+        from services.membership import refusal
+        refused = refusal(db, _request_user_id())
+        if refused is not None:  # members only
+            return jsonify(refused[0]), refused[1]
         service = ProcessingAuthorizationService(db)
         if not service.enforced:
             return function(*args, **kwargs)
@@ -286,6 +291,11 @@ def v2_processing_principal():
     """
     repository = ProjectRepository(db)
     user_id = getattr(request, "user_id", None)
+    from services.membership import on as invite_only
+    if not user_id and invite_only():
+        # By invitation (N471): no new guest identity; the guest path is off.
+        return jsonify({"code": "INVITE_ONLY",
+                        "error": "WillpowerLab is by invitation. Sign in to continue."}), 401
     try:
         if user_id:
             principal = repository.owner_for_user(str(user_id))

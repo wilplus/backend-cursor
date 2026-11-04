@@ -681,6 +681,10 @@ def _start_ai_voice(upload: Any, persisted: Any, user_id: Any) -> None:
 @optional_auth
 def v2_lab_create_recording():
     """Create one strictly owned, project-scoped Take and analyze it."""
+    from services.membership import refusal
+    refused = refusal(db, getattr(request, "user_id", None))
+    if refused is not None:  # by invitation (N471): members only
+        return jsonify(refused[0]), refused[1]
     session_id = None
     try:
         form = request.form or {}

@@ -59,6 +59,10 @@ def _existing_guest_principal(repository: ProjectRepository) -> str | None:
 @optional_auth
 def v2_create_project():
     """Create the immutable Project before Take 1, signed in or as a guest."""
+    from services.membership import refusal
+    refused = refusal(db, getattr(request, "user_id", None))
+    if refused is not None:  # by invitation (N471): members only
+        return jsonify(refused[0]), refused[1]
     body = request.get_json(silent=True) or {}
     if not isinstance(body, dict):
         return jsonify({"code": "INVALID_INPUT",
