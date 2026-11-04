@@ -3,10 +3,10 @@ STORY    As a speaker, after my Take, I want the page that chose who hears it
          to come back once with someone new who fits what I asked, so that
          the right person can answer; and as that person, I want to hear the
          Take before anyone knows who I am, so that answering is my yes
-         (founder, 4 November 2026, N477, N478).
+         (founder, 4 November 2026, N477, N478, N481).
 OUTCOME
-  O1  With no ring row, nobody is ever suggested: the speaker's routes
-      answer 404.
+  O1  With no ring row, or while sending a Take is off, nobody is ever
+      suggested: the speaker's routes answer 404.
   O2  After a Take, one person is suggested: someone who shares a community
       with the speaker, has no chat with them, and fits what the Take is
       about; shown as a pseudonym and a description, never a name. Asking
@@ -19,19 +19,27 @@ OUTCOME
       not come back.
   O5  Not now tells nobody: no card, no chat.
   O6  The one suggested opens the Take (what it is about, its words slide
-      by slide) and answers; only then is the chat between the two made,
-      with the speaker's Take and the answer in it, under their names.
-  O7  Nobody else can open or answer it, and the one suggested cannot
-      before it was sent.
+      by slide) and answers with a Take; only then is the chat between the
+      two made, with the speaker's Take (a Take message) and the answer in
+      it, under their names.
+  O7  Nobody else can open or answer it, the one suggested cannot before it
+      was sent, and a Take recorded before it reached them is no answer.
+  O8  Once skills are on, the experiment's arm decides among people who
+      know as much: someone at a similar level, or someone further along,
+      progressing alike; the arm and what made the fit are kept, and the
+      speaker sees none of it.
 PROVES   O1 -> TakeMatchTest::test_with_no_ring_nobody_is_suggested
          O2 -> TakeMatchTest::test_one_new_person_who_fits_is_suggested_as_a_pseudonym
          O3 -> TakeMatchTest::test_nobody_in_a_chat_waiting_or_suggested_before
          O4 -> TakeMatchTest::test_send_reaches_only_the_one_suggested_through_will
          O5 -> TakeMatchTest::test_not_now_tells_nobody
          O6 -> TakeMatchTest::test_the_answer_opens_the_chat_for_both
-         O7 -> TakeMatchTest::test_only_the_one_suggested_opens_it_once_sent
+         O7 -> TakeMatchTest::test_only_the_one_suggested_answers_once_sent
+         O8 -> TakeMatchTest::test_the_arm_picks_by_speaking_skills_and_progress
 WHY      Matching people happens in one place only, after the Take (N477);
-         anonymous until the answer, which alone opens the chats (N478).
+         anonymous until the answer, which alone opens the chats (N478);
+         every answer is a Take, and the matching weighs how people speak
+         and progress (N481).
 """
 from __future__ import annotations
 
@@ -50,7 +58,10 @@ TOMEK = "33333333-3333-4333-8333-333333333333"
 TAKE = "44444444-4444-4444-8444-444444444444"
 ANSWER = "55555555-5555-4555-8555-555555555555"
 TEAM = "66666666-6666-4666-8666-666666666666"
-NAMES = {AMIRA: "Amira Haddad", LEA: "Lea Brandt", TOMEK: "Tomek Nowak"}
+MAYA = "77777777-7777-4777-8777-777777777777"
+OLDER = "88888888-8888-4888-8888-888888888888"
+NAMES = {AMIRA: "Amira Haddad", LEA: "Lea Brandt", TOMEK: "Tomek Nowak", MAYA: "Maya Lind"}
+SENT_AT = "2026-11-04T10:30:00+00:00"
 
 
 class TakeMatchTest(unittest.TestCase):
@@ -73,6 +84,7 @@ class TakeMatchTest(unittest.TestCase):
         self.store = _Store()
         self.who = AMIRA
         self.ring = True
+        self.sending = True
         self.cards: list = []
 
         def payload(_token):
@@ -84,6 +96,8 @@ class TakeMatchTest(unittest.TestCase):
                                lambda user, rows: self.cards.extend((user, r) for r in rows)),
                   patch("services.rings.feature_is_on_for_user",
                         lambda feature, user, **_: self.ring and feature == "take_match"),
+                  patch("services.take_sends.is_on", lambda: self.sending),
+                  patch("services.take_match._now", lambda: SENT_AT),
                   patch.dict(os.environ, {"PLF1_PROCESSING_AUTHORIZATION_MODE": "off"}),
                   patch.object(ProjectRepository, "owner_for_user",
                                lambda _repo, user: OwnerPrincipal(f"owner-{user}", user, False)),
@@ -115,10 +129,13 @@ class TakeMatchTest(unittest.TestCase):
                  {"index": 1, "transcript": "The numbers that stick are revenue and growth.",
                   "start_offset_ms": 41000}]},
             {"id": ANSWER, "user_id": LEA, "created_at": "2026-11-04T11:00:00Z",
+             "intake_context": {}, "slide_transcripts": []},
+            {"id": OLDER, "user_id": LEA, "created_at": "2026-11-03T09:00:00Z",
              "intake_context": {}, "slide_transcripts": []}]
         t["recordings"] = [
             {"session_v2_id": TAKE, "user_id": AMIRA, "storage_path": "a/take.webm", "duration": 130},
-            {"session_v2_id": ANSWER, "user_id": LEA, "storage_path": "l/answer.webm", "duration": 40}]
+            {"session_v2_id": ANSWER, "user_id": LEA, "storage_path": "l/answer.webm", "duration": 40},
+            {"session_v2_id": OLDER, "user_id": LEA, "storage_path": "l/older.webm", "duration": 60}]
 
     def _as(self, who):
         self.who = who
@@ -136,6 +153,8 @@ class TakeMatchTest(unittest.TestCase):
 
     def test_with_no_ring_nobody_is_suggested(self):
         self.ring = False
+        self.assertEqual(self._get(f"/v2/takes/{TAKE}/match").status_code, 404)
+        self.ring, self.sending = True, False
         self.assertEqual(self._get(f"/v2/takes/{TAKE}/match").status_code, 404)
         self.assertEqual(self.store.count("take_matches"), 0)
 
@@ -198,14 +217,16 @@ class TakeMatchTest(unittest.TestCase):
         self.assertEqual(members, {AMIRA: "Amira", LEA: "Lea"})
         messages = self.store.tables["chat_messages"]
         authors = {m["id"]: m["user_id"] for m in self.store.tables["chat_members"]}
-        self.assertEqual([(authors[m["author_member_id"]], m["meta"]["take"]) for m in messages],
-                         [(AMIRA, TAKE), (LEA, ANSWER)])
+        self.assertEqual([(authors[m["author_member_id"]], m["kind"],
+                           m["meta"].get("take_session_id") or m["meta"].get("take"))
+                          for m in messages],
+                         [(AMIRA, "take", TAKE), (LEA, "voice", ANSWER)])
         self._as(AMIRA)
         chats = self._get("/v2/chats").get_json()["chats"]
         self.assertEqual([c["id"] for c in chats], [thread])
         self.assertEqual(self.store.tables["take_matches"][0]["status"], "answered")
 
-    def test_only_the_one_suggested_opens_it_once_sent(self):
+    def test_only_the_one_suggested_answers_once_sent(self):
         match = self._suggested()
         self._as(LEA)
         self.assertEqual(self._get(f"/v2/take-matches/{match['id']}").status_code, 404)
@@ -215,7 +236,37 @@ class TakeMatchTest(unittest.TestCase):
         self.assertEqual(self._get(f"/v2/take-matches/{match['id']}").status_code, 404)
         self.assertEqual(self._post(f"/v2/take-matches/{match['id']}/answer",
                                     {"take": ANSWER}).status_code, 404)
+        self._as(LEA)
+        self.assertEqual(self._post(f"/v2/take-matches/{match['id']}/answer",
+                                    {"take": OLDER}).status_code, 400)
         self.assertEqual(self.store.count("chat_threads"), 0)
+
+    def test_the_arm_picks_by_speaking_skills_and_progress(self):
+        t = self.store.tables
+        t["community_members"].append({"community_id": TEAM, "user_id": MAYA})
+        t["people_profiles"].append(
+            {"user_id": MAYA, "name": None, "role": "Pitch trainer",
+             "about": "I help founders open an investor pitch with numbers that stick."})
+        t["v4_willfidence_takes"] = []
+        # Amira 0.40 -> 0.44; Lea at her level, alike; Maya further along, alike.
+        for who, start in ((AMIRA, 0.40), (LEA, 0.43), (MAYA, 0.56)):
+            for i in range(3):
+                take = f"{who[:8]}-0000-4000-8000-00000000000{i}"
+                t["v2_sessions"].append({"id": take, "user_id": who,
+                                         "created_at": f"2026-10-0{i + 1}T09:00:00Z",
+                                         "intake_context": {}, "slide_transcripts": []})
+                t["v4_willfidence_takes"].append({
+                    "take_session_id": take, "read_version": "willfidence-v1-machine",
+                    "status": "measured", "willfidence": round(start + 0.02 * i, 2)})
+        with patch.dict(os.environ, {"TAKE_MATCH_SKILLS": "1"}):
+            for arm, chosen in (("similar_level", LEA), ("further_along", MAYA)):
+                t["take_matches"] = []
+                with patch("services.take_match.draw_arm", lambda arm=arm: arm):
+                    match = self._suggested()
+                self.assertEqual(set(match), {"id", "pseudonym", "role", "practises"})
+                row = t["take_matches"][0]
+                self.assertEqual((row["candidate_id"], row["arm"]), (chosen, arm))
+                self.assertTrue({"knowledge", "skill", "pace"} <= set(row["signals"]))
 
 
 if __name__ == "__main__":

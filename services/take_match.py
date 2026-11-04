@@ -1,5 +1,5 @@
 """Matching people after a Take (founder, the Claude Code chat, 4 November
-2026, N477 and N478; drawn on the prototype
+2026, N477, N478 and N481; drawn on the prototype
 https://claude.ai/artifact/FtJL4G1VGm1MTNMKWujZ6W). Table: take_matches
 (migration a_take_can_reach_someone_new_after_it).
 
@@ -9,32 +9,39 @@ makes the chat between the two only when that person answers (N478):
 
   * ``suggest``  for the speaker, after the walk: one person who shares one
     of their communities, is a member (N471), has no chat with them and was
-    never suggested to them before, and who fits the Take best by its
-    words, both ways: what
-    the candidate knows (their profile) and practises (their Takes' topics)
-    against what the Take is about, and what the speaker knows against what
-    the candidate practises. A pseudonym and a description, never a name.
-    One per Take; none when nobody fits well enough.
+    never suggested to them before, and who fits the Take best (N481 item
+    2). Knowledge first, by its words, both ways: what the candidate knows
+    (their profile) and practises (their Takes' topics) against what the
+    Take needs, and what the speaker knows against what the candidate
+    practises; then, once skills are on (``take_match_signals``), speaking
+    skills by the experiment's arm (a similar level, or further along,
+    N481 item 3) and progress alike. A pseudonym and a description, never
+    a name. One per Take; none when nobody knows enough.
   * ``send`` / ``close``  Send puts Will's card in the candidate's chat with
     Will; Not now ends it, and nobody is told.
   * ``view`` / ``recording``  the candidate opens the Take: the speaker's
     pseudonym and description, what it is about, its words slide by slide,
     its voice. Never the Ideal Text, never the feedback.
-  * ``answer``  the candidate's answer, a Take recorded with "Record an
-    answer": only now is the chat between the two made, with the speaker's
-    Take and the answer in it, under their names. No answer: nothing
-    happens, and nothing reminds anyone.
+  * ``answer``  the candidate's answer: a Take of theirs, recorded in the
+    official recorder after the suggestion reached them and analysed like
+    any Take (N481 item 1). Only now is the chat between the two made: the
+    speaker's Take as a Take message (kind ``take``, as a Take sent to a
+    list is, services/take_sends.py), then the answer, under their names.
+    No answer: nothing happens, and nothing reminds anyone.
 
 Behind the ring row ``take_match``: with no row it is off for everyone, the
-founder included (services/rings.py). The ranking is word overlap
-(``speaker_lookup.key_terms``): no provider call, nothing leaves the
-backend. The fit is kept for WillpowerLab's review and never shown to
-anyone (Never 1). Every suggestion is in the arm "topics" until matching by
-how people speak is switched on (N463).
+founder included (services/rings.py); and it lives in the page that sends a
+Take (N477), so it is off while sending is (``TAKE_SEND_ENABLED``). The
+ranking reads only what is kept: word overlap (``speaker_lookup.key_terms``)
+and Willfidence's reads; no provider call, nothing leaves the backend. The
+fit and what made it are kept for WillpowerLab's review and never shown to
+anyone (Never 1). Every suggestion is in the arm "topics" while skills are
+off (N481 item 4).
 """
 from __future__ import annotations
 
 import logging
+import random
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -43,6 +50,7 @@ from services.chats import (
     MEMBERS, MESSAGES, SESSIONS, ChatsError, _not_found, _rows, _table, _take_of,
     _UNIQUE_VIOLATION, _uuid, post_answer,
 )
+from services import take_match_signals as signals
 from services.rings import TAKE_MATCH as FEATURE
 
 logger = logging.getLogger(__name__)
@@ -61,6 +69,16 @@ MAX_ROWS = 500
 #: The card's words, Will's line to the candidate: the founder's own (N478
 #: item 6), not signed yet; the ring keeps them off every screen until then.
 COPY = {"card": "{pseudonym} might benefit from your knowledge immensely."}
+#: The experiment's arms on speaking skills (N481 item 3): someone at a
+#: similar level, or someone further along. "topics" is every suggestion
+#: made while skills are off.
+SKILL_ARMS = ("similar_level", "further_along")
+#: Proposed, for the founder's review of the first weeks: what skills and
+#: progress weigh beside knowledge (a word the candidate knows weighs 1),
+#: how far ahead "further along" aims, and how big a gap is no fit at all,
+#: in willfidence (0 to 1) and in its change per Take.
+SKILL_WEIGHT, PACE_WEIGHT = 2.0, 2.0
+FURTHER_BY, SKILL_SPAN, PACE_SPAN = 0.15, 0.5, 0.05
 _NAMESPACE = uuid.UUID("6f1d3b8e-3c0a-4d55-9a7e-2b9c1f4e8a10")
 
 
@@ -69,11 +87,12 @@ def _now() -> str:
 
 
 def is_on(database: Any, user_id: Any) -> bool:
-    """Is matching on for this speaker? The ring row ``take_match``; a
+    """Is matching on for this speaker? The ring row ``take_match``, and
+    sending a Take on, since the match is made on its page (N477); a
     failure is a closed door."""
-    from services import rings
-    return bool(user_id) and rings.feature_is_on_for_user(FEATURE, str(user_id),
-                                                           database=database)
+    from services import rings, take_sends
+    return bool(user_id) and take_sends.is_on() and rings.feature_is_on_for_user(
+        FEATURE, str(user_id), database=database)
 
 
 def chat_name(database: Any, user_id: Any, token_payload: Any) -> str:
@@ -186,10 +205,50 @@ def fit(wanted: set[str], knows: set[str], practises: set[str],
             sorted(know | practise | back))
 
 
+def draw_arm() -> str:
+    """The experiment's arm for one suggestion, at random (N481 item 3)."""
+    return random.choice(SKILL_ARMS)
+
+
+def closeness(gap: Optional[float], target: float, span: float) -> float:
+    """1 when ``gap`` is ``target``, down to 0 at ``span`` away; a half when
+    it is not known yet. Pure."""
+    if gap is None:
+        return 0.5
+    return max(0.0, 1.0 - abs(gap - target) / span)
+
+
+def weigh(arm: str, knowledge: float, speaker: dict, candidate: dict) -> tuple[float, dict]:
+    """A candidate's whole fit in ``arm`` and what made it (N481 item 2):
+    knowledge, speaking skills by the arm, progress alike; the profiles'
+    distance is kept beside it for the style arms. Never shown. Pure."""
+    def gap(key: str) -> Optional[float]:
+        a, b = speaker.get(key), candidate.get(key)
+        return None if a is None or b is None else round(b - a, 4)
+    skill = closeness(gap("skill"), FURTHER_BY if arm == "further_along" else 0.0, SKILL_SPAN)
+    pace = closeness(gap("pace"), 0.0, PACE_SPAN)
+    made = {"knowledge": knowledge, "skill": round(skill, 4), "pace": round(pace, 4),
+            "skill_gap": gap("skill"), "pace_gap": gap("pace"),
+            "profile_distance": signals.profile_distance(speaker.get("profile") or {},
+                                                         candidate.get("profile") or {})}
+    return round(knowledge + SKILL_WEIGHT * skill + PACE_WEIGHT * pace, 4), made
+
+
+def _with_skills(database: Any, speaker_id: str, fits: list[dict[str, Any]]) -> None:
+    """Weigh skills and progress into each fit, all in one arm."""
+    arm = draw_arm()
+    reads = signals.of(database, [speaker_id] + [f["candidate_id"] for f in fits])
+    for f in fits:
+        f["fit"], f["signals"] = weigh(arm, f["fit"], reads[speaker_id], reads[f["candidate_id"]])
+        f["arm"] = arm
+
+
 def best(database: Any, speaker_id: str, take: dict) -> Optional[dict]:
-    """The one person who fits the Take best, at least ``MIN_FIT``, or None:
-    {"candidate_id", "fit", "terms"}. Only a member (N471): a waiting account
-    cannot record, so could never answer."""
+    """The one person who fits the Take best, or None: {"candidate_id",
+    "fit", "terms", "arm", "signals"}. Only someone who knows enough of what
+    it needs (``MIN_FIT``); then, once skills are on, skills and progress
+    too. Only a member (N471): a waiting account cannot record, so could
+    never answer."""
     from services import membership
     from services.speaker_lookup import key_terms
     people = pool(database, speaker_id)
@@ -205,7 +264,10 @@ def best(database: Any, speaker_id: str, take: dict) -> Optional[dict]:
         score, terms = fit(wanted, key_terms(_knows(profiles.get(uid, {}))),
                            key_terms(" ".join(topics.get(uid, []))), speaker_knows)
         if score >= MIN_FIT:
-            fits.append({"candidate_id": uid, "fit": score, "terms": terms})
+            fits.append({"candidate_id": uid, "fit": score, "terms": terms,
+                         "arm": "topics", "signals": {"knowledge": score}})
+    if fits and signals.is_on():
+        _with_skills(database, speaker_id, fits)
     # Highest fit first; a tie keeps the pool's sorted order (a stable sort).
     fits.sort(key=lambda f: f["fit"], reverse=True)
     return next((f for f in fits if membership.is_member(database, f["candidate_id"])), None)
@@ -255,8 +317,9 @@ def _keep(database: Any, speaker: str, session: str, found: dict) -> Optional[di
     try:
         rows = _rows(_table(database, MATCHES).insert({
             "session_id": session, "speaker_id": speaker,
-            "candidate_id": found["candidate_id"], "arm": "topics",
-            "fit": found["fit"], "shared_terms": found["terms"], "status": "offered"}))
+            "candidate_id": found["candidate_id"], "arm": found["arm"],
+            "fit": found["fit"], "shared_terms": found["terms"],
+            "signals": found["signals"], "status": "offered"}))
     except Exception as e:
         if _UNIQUE_VIOLATION not in str(e):
             raise
@@ -383,16 +446,18 @@ def recording(database: Any, candidate_id: Any, match_id: Any) -> dict:
 def answer(database: Any, candidate_id: Any, match_id: Any, take: Any,
            duration_ms: Any, candidate_name: str) -> dict:
     """POST /v2/take-matches/<id>/answer: the candidate's answer, a Take of
-    theirs recorded with "Record an answer". Only now is the chat between
-    the two made (N478): the speaker's Take as the speaker's own message,
-    then the answer, under their names; {"chat": {"id"}}. Answered again:
-    the same chat."""
+    theirs recorded in the official recorder after the suggestion reached
+    them (N481 item 1). Only now is the chat between the two made (N478):
+    the speaker's Take as the speaker's own Take message, then the answer,
+    under their names; {"chat": {"id"}}. Answered again: the same chat."""
     row = _candidates(database, candidate_id, match_id)
     if row["status"] == "answered" and row.get("thread_id"):
         return {"chat": {"id": str(row["thread_id"])}}
     session = _uuid(take)
     if not session or not _take_of(database, str(candidate_id), session):
         raise _not_found()
+    if not _recorded_after(database, session, row.get("sent_at")):
+        raise ChatsError("NOT_ALLOWED", "An answer is a Take recorded after it reached you.")
     from services.chat_links import open_pair
     speaker = str(row["speaker_id"])
     thread = open_pair(database, [
@@ -407,17 +472,45 @@ def answer(database: Any, candidate_id: Any, match_id: Any, take: Any,
     return {"chat": {"id": thread}}
 
 
+def _recorded_after(database: Any, session: str, sent_at: Any) -> bool:
+    """Whether the Take ``session`` was recorded once the suggestion was
+    sent: an older Take is not an answer to it."""
+    rows = _rows(_table(database, SESSIONS).select("created_at").eq("id", session).limit(1))
+    made = _when(rows[0].get("created_at")) if rows else None
+    sent = _when(sent_at)
+    return bool(made and sent and made >= sent)
+
+
+def _when(value: Any) -> Optional[datetime]:
+    try:
+        moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
 def _post_take(database: Any, row: dict, thread: str) -> None:
-    """The speaker's Take in the new chat, as their own message: a voice
-    message that points at the Take, as an answer does (services/chats.py),
-    so both see its words and slides and hear it from where it is kept."""
+    """The speaker's Take in the new chat, as their own Take message (kind
+    ``take``, the same message a Take sent to a list is, so both open it the
+    same way: services/take_sends.py), once: its id is uuid5 of the Take and
+    the chat, as there. No push: the one who answered is the only other."""
+    from services import take_sends
     speaker = str(row["speaker_id"])
     seat = _rows(_table(database, MEMBERS).select("id").eq("thread_id", thread)
                  .eq("user_id", speaker).limit(1))
     if not seat:
         raise ChatsError("NOT_SAVED", "Could not open the chat.", 503)
-    _rows(_table(database, MESSAGES).insert({
-        "thread_id": thread, "author_member_id": str(seat[0]["id"]), "kind": "voice",
-        "body": "", "meta": {"answer": True, "take": str(row["session_id"]),
-                             "duration_ms": _length(database, row) or 1,
-                             "match": str(row["id"])}}))
+    take = take_sends._the_take(database, speaker, str(row["session_id"]))
+    message = str(uuid.uuid5(uuid.UUID(take["session"]), thread))
+    if _rows(_table(database, MESSAGES).select("id").eq("id", message).limit(1)):
+        return
+    try:
+        _rows(_table(database, MESSAGES).insert({
+            "id": message, "thread_id": thread, "author_member_id": str(seat[0]["id"]),
+            "kind": "take", "body": "",
+            "meta": {"take_session_id": take["session"], "take_index": take["index"],
+                     "project_title": take["project_title"],
+                     "duration_ms": take["duration_ms"], "match": str(row["id"])}}))
+    except Exception as e:
+        if _UNIQUE_VIOLATION not in str(e):
+            raise

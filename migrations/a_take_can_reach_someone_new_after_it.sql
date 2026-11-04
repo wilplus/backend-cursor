@@ -1,5 +1,5 @@
 -- a_take_can_reach_someone_new_after_it (matching people after a Take;
--- founder, the Claude Code chat, 4 November 2026, N477 and N478)
+-- founder, the Claude Code chat, 4 November 2026, N477, N478 and N481)
 --
 -- One table, take_matches: the one suggestion a Take may get, after it,
 -- of someone new who fits it (N477), and what came of it (N478):
@@ -9,12 +9,15 @@
 --   speaker_id     Who recorded the Take.
 --   candidate_id   Who was suggested: someone in one of the speaker's
 --                  communities with no chat with them yet.
---   arm            The experiment's arm (N463): 'topics' for everyone until
---                  matching by how people speak is switched on; 'similar'
---                  and 'opposite' are kept for it.
---   fit            How well the candidate fitted the Take, and the words
---                  they shared (shared_terms): for WillpowerLab's own review
---                  only, never shown to anyone (Never 1).
+--   arm            The experiment's arm (N481 item 3): 'topics' (knowledge
+--                  only, while skills are off, N481 item 4), 'similar_level'
+--                  or 'further_along' (speaking skills); 'similar_style' and
+--                  'opposite_style' are kept for N463 item 5's style arms.
+--   fit            How well the candidate fitted the Take, the words they
+--                  shared (shared_terms) and what made the fit (signals:
+--                  knowledge, skills, progress, the communication profile's
+--                  distance): for WillpowerLab's own review only, never
+--                  shown to anyone (Never 1).
 --   status         offered (the page came back with them), sent (the
 --                  speaker sent it: the candidate has Will's card), closed
 --                  (Not now), answered (the candidate answered: the chat
@@ -45,9 +48,12 @@ CREATE TABLE IF NOT EXISTS public.take_matches (
     speaker_id        TEXT NOT NULL,
     candidate_id      TEXT NOT NULL,
     arm               TEXT NOT NULL DEFAULT 'topics'
-                      CHECK (arm IN ('topics', 'similar', 'opposite')),
+                      CHECK (arm IN ('topics', 'similar_level', 'further_along',
+                                     'similar_style', 'opposite_style')),
     fit               REAL NOT NULL DEFAULT 0,
     shared_terms      TEXT[] NOT NULL DEFAULT '{}',
+    signals           JSONB NOT NULL DEFAULT '{}'::jsonb
+                      CHECK (jsonb_typeof(signals) = 'object'),
     status            TEXT NOT NULL DEFAULT 'offered'
                       CHECK (status IN ('offered', 'sent', 'closed', 'answered')),
     speaker_name      TEXT CHECK (speaker_name IS NULL
