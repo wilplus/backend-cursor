@@ -12537,3 +12537,62 @@ answers, 24px under the plan's button, 16px under the transcript's Save,
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 J9, with a line on the Ideal Text, recording, consent and plan pages.
+
+**N506 · The dump screen: one screen that only listens, tap to start, tap
+to stop, double tap to close; a full-screen way into the voice notebook,
+native in the iPhone app (founder, the Claude Code chat, 4 November 2026,
+on the prototypes <https://claude.ai/artifact/RY5gT9bg8xSpGvKiLVScsW>,
+<https://claude.ai/artifact/Mwm8temUQSdoGp763TULct> and
+<https://claude.ai/artifact/CBtfMKH7QUvJUbQ6Sf5Db4>: "Single touch to open
+it, single touch to stop it, and then double touch to close it"; asked
+whether a double tap while talking stops, keeps and closes, "yes"; asked to
+sign "Double tap to close" and "Kept", "yes"; "for the app I would want it
+to be fully native this feature"; then "Yes" to writing this entry with the
+simpler plan: the dump screen goes into the voice notebook and its
+introduction, not beside them).** For N194, N396, N411:
+1. **One screen, one job.** The whole screen listens: tap anywhere to start,
+tap again to stop and keep, double tap to close. What is said is a voice
+note in the notebook (N194): the same note, the same "Noted." in Will's
+chat, the same Sunday review. No new kind of note, no score, nothing that
+counts the days nothing was said (Never 1).
+2. **The taps.** A tap acts at once. A second tap within 0.3 s and close to
+the first is a double tap: it undoes the first tap and closes, so a start
+that lasted under 0.3 s is thrown away. A double tap while talking stops,
+keeps and closes. Ignored: touches in the first half second after the
+screen appears, two-finger and palm-sized touches, a tap that moved. The ×
+and a swipe down always close too (screen readers own the double tap).
+"Double tap to close" shows for the first three dumps only. Closing gives a
+double haptic tick, the screen slides down, and "Kept" shows.
+3. **Leaving keeps it.** Closing the app or losing the signal mid-sentence
+keeps what was said: it is saved on the phone first and sent when it can,
+under the speaker's processing authorization, through the notebook's own
+upload. Nothing is sent without the notebook's consent (N411).
+4. **How it is offered.** Off by default. Inside N411's introduction, after
+"Yes", one question: open the app to this screen first? Yes: a fresh open
+of the app shows it first, at most once an hour, never when a link or a
+notification opened the app; Will's chat is underneath, untouched, and the
+next Take is one tap away (Never 3). It is also in the menu, and a pull
+down in Will's chat opens it. Turned off with one switch in the panel's
+Settings, beside the reminders. No separate full-screen introduction; no
+"keep opening it?" asked of someone who did not use it.
+5. **Native in the iPhone app, the capture screen only:** it opens on
+launch before the website has loaded, so it listens on the first tap. The
+live words are made on the phone (Apple's on-device speech), a preview only:
+the audio is sent nowhere for them, and the backend transcribes the kept
+recording as for every note. The upload is the web notebook's own
+(`POST /v2/notebook/notes`, its `key` so a retry counts once). The web owns
+the switch and tells the app; the introduction, the question, Settings and
+the notes stay on the web. The browser, the home-screen app and an app
+without the native screen get the web screen.
+6. **Reach:** behind the ring row `dump_screen`, set by the founder in
+Admin → Rings (the founder asked for ring 2 once it is built).
+7. **Signed (Never 4): "Double tap to close", "Kept".** Not yet signed, and
+not shipped until they are: the screen's own words (drawn as "Say it.",
+"Tap anywhere", "Listening", "Tap to stop", "Tap to say more"), the
+question after N411's "Yes", the Settings switch and its line, and the two
+iPhone permission texts (the microphone, which says "to record your Takes"
+today, and on-device speech).
+Not in force until built and merged. No migration: a dump is a notebook
+note. The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md),
+when built.
