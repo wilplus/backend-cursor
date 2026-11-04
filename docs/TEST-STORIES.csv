@@ -3349,7 +3349,11 @@ function words (""dla"", ""się""), or words everyone in the community
 uses (""presentation"", ""speak"").
 O10 Nobody is suggested who has not recorded a Take in two weeks, or who
 already has three Takes waiting for their answer or five suggestions
-this week.","O1 -> TakeMatchTest::test_with_no_ring_nobody_is_suggested
+this week.
+O11 Progress is counted within each talk (N494): someone who gets better
+Take by Take in each talk is progressing, even when a harder new talk
+starts lower; an answer, a talk of one Take, adds nothing; with fewer
+than five Takes in talks of two or more there is no progress yet.","O1 -> TakeMatchTest::test_with_no_ring_nobody_is_suggested
 O2 -> TakeMatchTest::test_one_new_person_who_fits_is_suggested_as_a_pseudonym
 O3 -> TakeMatchTest::test_nobody_in_a_chat_waiting_or_suggested_before
 O4 -> TakeMatchTest::test_send_reaches_only_the_one_suggested_through_will
@@ -3358,7 +3362,8 @@ O6 -> TakeMatchTest::test_the_answer_opens_the_chat_for_both
 O7 -> TakeMatchTest::test_only_the_one_suggested_answers_once_sent
 O8 -> TakeMatchTest::test_the_arm_picks_by_speaking_skills_and_progress
 O9 -> TakeMatchTest::test_words_that_say_nothing_make_no_match
-O10 -> TakeMatchTest::test_nobody_quiet_or_already_asked_enough","Matching people happens in one place only, after the Take (N477); anonymous until the answer, which alone opens the chats (N478); every answer is a Take, and the matching weighs how people speak and progress (N481)."
+O10 -> TakeMatchTest::test_nobody_quiet_or_already_asked_enough
+O11 -> TakeMatchTest::test_progress_is_counted_within_each_talk","Matching people happens in one place only, after the Take (N477); anonymous until the answer, which alone opens the chats (N478); every answer is a Take, and the matching weighs how people speak and progress (N481)."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name

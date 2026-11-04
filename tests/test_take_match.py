@@ -37,6 +37,10 @@ OUTCOME
   O10 Nobody is suggested who has not recorded a Take in two weeks, or who
       already has three Takes waiting for their answer or five suggestions
       this week.
+  O11 Progress is counted within each talk (N494): someone who gets better
+      Take by Take in each talk is progressing, even when a harder new talk
+      starts lower; an answer, a talk of one Take, adds nothing; with fewer
+      than five Takes in talks of two or more there is no progress yet.
 PROVES   O1 -> TakeMatchTest::test_with_no_ring_nobody_is_suggested
          O2 -> TakeMatchTest::test_one_new_person_who_fits_is_suggested_as_a_pseudonym
          O3 -> TakeMatchTest::test_nobody_in_a_chat_waiting_or_suggested_before
@@ -47,6 +51,7 @@ PROVES   O1 -> TakeMatchTest::test_with_no_ring_nobody_is_suggested
          O8 -> TakeMatchTest::test_the_arm_picks_by_speaking_skills_and_progress
          O9 -> TakeMatchTest::test_words_that_say_nothing_make_no_match
          O10 -> TakeMatchTest::test_nobody_quiet_or_already_asked_enough
+         O11 -> TakeMatchTest::test_progress_is_counted_within_each_talk
 WHY      Matching people happens in one place only, after the Take (N477);
          anonymous until the answer, which alone opens the chats (N478);
          every answer is a Take, and the matching weighs how people speak
@@ -342,6 +347,28 @@ class TakeMatchTest(unittest.TestCase):
         self.assertIsNone(self._suggested())
         t["take_matches"] = []
         self.assertEqual(self._suggested()["role"], "Speaking coach")
+
+
+    def test_progress_is_counted_within_each_talk(self):
+        from services import take_match_signals
+        t = self.store.tables
+        t["v4_willfidence_takes"] = []
+        talks = (("pitch", (0.40, 0.45, 0.50)), ("keynote", (0.30, 0.35, 0.40)), ("answer", (0.20,)))
+        n = 0
+        for talk, values in talks:
+            for i, value in enumerate(values):
+                n += 1
+                take = f"77777777-0000-4000-8000-{n:012d}"
+                t["v2_sessions"].append({"id": take, "user_id": TOMEK, "project_id": talk,
+                                         "take_index": i + 1, "intake_context": {},
+                                         "created_at": f"2026-10-{10 + n:02d}T09:00:00Z"})
+                t["v4_willfidence_takes"].append({
+                    "take_session_id": take, "read_version": "willfidence-v1-machine",
+                    "status": "measured", "willfidence": value})
+        pace = take_match_signals.of(db, [TOMEK])[TOMEK]["pace"]
+        self.assertGreater(pace, 0)
+        t["v2_sessions"] = [r for r in t["v2_sessions"] if r.get("project_id") != "keynote"]
+        self.assertIsNone(take_match_signals.of(db, [TOMEK])[TOMEK]["pace"])
 
 
 if __name__ == "__main__":
