@@ -165,10 +165,9 @@ def join(database: Any, user_id: Any, token: Any, token_payload: Any) -> dict:
     # answer as a wrong link, so a waiting account's link opens nothing.
     if not membership.is_member(database, owner):
         raise _not_found()
-    key = ":".join(sorted((owner, user_id)))
     people = [{"user_id": owner, "display_name": link["display_name"]},
               {"user_id": user_id, "display_name": name_of(token_payload)}]
-    found = _pair_chat(database, key)
+    found = _pair_chat(database, _pair_key(people))
     if found:
         _seat(database, found, people)
         return {"chat": {"id": found}}
@@ -176,17 +175,49 @@ def join(database: Any, user_id: Any, token: Any, token_payload: Any) -> dict:
     # one goes to the waitlist (N471 item 7): no chat is made.
     if membership.link_is_full(database, owner, user_id):
         return {"waitlist": True}
+    thread, made = _open_pair(database, people, link["display_name"], link_id=str(link["id"]))
+    if made:
+        membership.admitted(user_id)
+        # The questions the link's owner set for whoever joins (N487).
+        from services import join_questions
+        join_questions.begin(database, thread, owner, user_id)
+    return {"chat": {"id": thread}}
+
+
+def _pair_key(people: list[dict]) -> str:
+    return ":".join(sorted(str(p["user_id"]) for p in people))
+
+
+def open_pair(database: Any, people: list[dict], title: str,
+              link_id: Optional[str] = None) -> str:
+    """The chat of two people, found or made now, both seated: one chat per
+    pair (``pair_key``). ``people`` are the two ``{"user_id",
+    "display_name"}``; ``title`` the chat's; ``link_id`` the link it was made
+    through (N308), or none for a chat made by an answer (N478)."""
+    return _open_pair(database, people, title, link_id)[0]
+
+
+def _open_pair(database: Any, people: list[dict], title: str,
+               link_id: Optional[str] = None) -> tuple[str, bool]:
+    """``open_pair``, and whether the chat was made just now (a join's
+    welcome follows only a chat it made, N471, N487)."""
+    key = _pair_key(people)
+    found = _pair_chat(database, key)
+    if found:
+        _seat(database, found, people)
+        return found, False
+    thread_row: dict = {"kind": "team", "title": title, "pair_key": key}
+    if link_id:
+        thread_row["link_id"] = link_id
     try:
-        rows = _rows(_table(database, THREADS).insert({
-            "kind": "team", "title": link["display_name"], "link_id": str(link["id"]),
-            "pair_key": key}))
+        rows = _rows(_table(database, THREADS).insert(thread_row))
     except Exception as e:
         if _UNIQUE_VIOLATION not in str(e):
             raise
         found = _pair_chat(database, key)
         if found:
             _seat(database, found, people)
-            return {"chat": {"id": found}}
+            return found, False
         raise
     if not rows:
         raise ChatsError("NOT_SAVED", "Could not join.", 503)
@@ -198,8 +229,7 @@ def join(database: Any, user_id: Any, token: Any, token_payload: Any) -> dict:
                      thread, key, exc_info=True)
         _table(database, THREADS).delete().eq("id", thread).execute()
         raise
-    membership.admitted(user_id)
-    return {"chat": {"id": thread}}
+    return thread, True
 
 
 def joined_through(database: Any, user_id: str, thread_id: Any) -> Optional[str]:
@@ -215,3 +245,22 @@ def joined_through(database: Any, user_id: str, thread_id: Any) -> Optional[str]
     if not links or str(links[0]["user_id"]) == str(user_id):
         return None
     return str(links[0]["display_name"])
+
+
+def joined_by(database: Any, user_id: str, thread_id: Any) -> Optional[str]:
+    """For the link's owner: the first name of whoever joined this chat
+    through their link, or None, for the line "{name} joined through your
+    link." (N502 item 5)."""
+    thread = _uuid(thread_id)
+    rows = _rows(_table(database, THREADS).select("link_id").eq("id", thread).limit(1)) if thread else []
+    link_id = rows[0].get("link_id") if rows else None
+    if not link_id:
+        return None
+    links = _rows(_table(database, LINKS).select("user_id").eq("id", str(link_id)).limit(1))
+    if not links or str(links[0]["user_id"]) != str(user_id):
+        return None
+    other = next((m for m in _rows(_table(database, MEMBERS).select("user_id,display_name")
+                                   .eq("thread_id", thread))
+                  if str(m.get("user_id")) != str(user_id)), None)
+    name = str((other or {}).get("display_name") or "").strip()
+    return name.split()[0] if name else None

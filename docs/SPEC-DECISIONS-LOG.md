@@ -11900,6 +11900,11 @@ No migration. The rules: the legal pack
 and frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 G.
+- **Published** (founder, 4 November 2026, 12:45:20 UTC):
+`PUBLISH-3.12-2026-11-04.sql` run in Supabase. `phase1-2026-11-04-3.12` is in
+force with the approved bytes, the five purposes and the United States;
+training-only-v4 unchanged. Next: `TAKE_SEND_ENABLED=1` on every Railway
+service (the founder), after the release carrying #1714.
 
 **N483 · The bottom bar, one logic in every chat: no mic, one black record
 button, and the "+" asks a person; locked (founder, the Claude Code chat,
@@ -12289,6 +12294,32 @@ unknown (half points), matched on knowledge and skills.
 No migration. No rules page yet: the matching gets its rules page when it
 is built (N332).
 
+**N495 · In the iPhone app, "Tokens" opens the Tokens page; no way to buy,
+and no button to ask for prices (founder, the Claude Code chat, 4 November
+2026: "nothing happens when I click tokens"; then, of the in-app Tokens page
+with no buying, "let's stick with this first option. I don't want Apple to
+take any cuts"; then asked whether a button that sends the founder a request
+to buy is acceptable, answered no, as below).** For N365 item 1; corrects
+N367 item 2:
+1. **The ☰ menu's "Tokens" row opens the Tokens page in the iPhone app too,**
+as on the web. In the app the page shows the balance, what things cost and
+the recent activity, open at once; its title is "Tokens"; no plans, no
+prices in money, no buy button and no link to buy (N365 item 1). No new
+words. Was: in the app the row showed the balance and opened nothing (N367
+item 2), which a person, or Apple's reviewer, reads as broken.
+2. **No button in the app to ask for prices or to request to buy.** Outside
+the United States, Apple's rules (3.1.1 and 3.1.3) refuse any button, link
+or call to action in the app that leads to buying other than by Apple's
+In-App Purchase, and a button that sends the founder a request, answered
+with prices and a payment link, is one. People buy on the website, as now.
+3. **Outside the app the founder may write to people about buying** (email,
+WhatsApp), which Apple allows; the app itself says nothing about it.
+4. **No In-App Purchase** for now: the founder does not want Apple's share
+of each sale. Revisit when buying in the app matters more than the share.
+No migration. The rules: frontend
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+§1 (the ☰ menu).
+
 **N496 · The line at the top of a joiner's chat, signed (founder, the
 Claude Code chat, 4 November 2026, on the prototype "Asked When They Join"
 <https://claude.ai/artifact/G8gZ73CvfgkkJ1ztm1cmsb> (version 17), after
@@ -12366,3 +12397,404 @@ No migration. The rules: frontend
 B14 and
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when "Ask {name}" is built.
+
+**N499 · The walk loads with the typing dots at the bottom, and only after
+a moment (founder, the Claude Code chat, 4 November 2026: with a screenshot
+of the dots at the top left of the walk's empty loading screen, "could you
+please come up with some better loading, or at least put the three dots at
+the bottom"; then, on the prototype
+<https://claude.ai/artifact/1KxNrA1Yw1QDPEK1zRFBAe>, "yes add the
+quick-load option").** For N122 and the frontend's B5 and B8:
+1. **At the bottom:** while the walk loads, its screen shows ✕ and the
+typing dots at the bottom left, where the walk's first bubble lands, as
+N122 asked ("the 3 dots loading should be at the bottom"). A thread shorter
+than the screen sits at the bottom too, right above the buttons, as in the
+chat, so the first bubble takes the dots' place.
+2. **Only after a moment:** the dots show once the walk is still loading
+0.3 s after the screen opens; a quicker load opens on the walk with no
+flash of them. The ✕ is there from the first frame.
+The typing dots stay the walk's one wait (B8). No new words. No migration.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+B5.
+
+**N500 · An emoji from the other person lights up their row like any new
+message, and a new row's line is bold and orange (founder, the Claude Code
+chat, 4 November 2026: on the list of chats, where "🙏 Thanks" from
+signuptesterapple looked already read, "Also show it when an emoji appears,
+like it's a new message. Make it bold and orange"; then, of the mockup's two
+choices <https://claude.ai/artifact/48vaXQoXLsVKGVu8heWFqN>, "B, build
+it").** For N321, N322 and N457:
+1. **An emoji is a new message:** 👍, 👀 or 🙏 from the other person lights
+up their row as their words, a photo, a file or a Take do, until that chat
+is opened. Your own message, an emoji included, never lights up your row.
+2. **The new look, for every new row, Will's included:** the name bold, the
+time orange, the last line bold and orange, the orange dot. Was: the line
+dark, not bold.
+3. **The list reads the chats again** while it is open and each time you
+come back to it, so a message that arrives while you look at the list shows.
+Was: read once, when the list first loaded.
+4. **Locked for the whole app** (founder, the same chat: "and lock it for
+the whole app"): wherever a row in a list carries something new for you,
+it has this look and no other: the name bold, the time orange, the line
+bold and orange, the orange dot, and no number (Never 1). Option B of the
+mockup, version 1, is the prototype, in [`docs/LOCKS.md`](LOCKS.md).
+No new words. No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1.
+
+**N502 · N487's words, signed (founder, the Claude Code chat, 4 November
+2026, on the prototype "Asked When They Join"
+<https://claude.ai/artifact/G8gZ73CvfgkkJ1ztm1cmsb> (version 18), its list
+"New words to sign": "the words are signed, build it").** For N487 item 9,
+with N491 and N496 (Never 4). Signed, as the prototype shows them:
+1. **Will, to the person who shares:** "Should I ask which languages to
+use: {languages}, or both?" (only for someone who speaks more than one);
+"Anything else practical you'd like to ask?"; "They answer by tapping, so
+I've given it answers. Change them if you like."; "I've left out
+“{question}”: you'll hear that in their recording."; "I left out
+“{question}” because I couldn't think of answers they could tap. To keep
+it, tap “Change it” and tell me the answers."; "This is what someone new
+will see when they open your chat:"; "No questions, just the line above.";
+"What should change?"; "Done."; "Here's the new version:"; "I couldn't
+tell what to change, so it's as it was. Tap “Change it” and put it another
+way."; "You're set. Each question that comes to your chats, and each answer
+you give, builds a knowledge base you share."; "Your questions for people
+who join ›"; "Here are your questions for people who join:"; "Saved.
+Everyone who joins from now on will see these."
+2. **The answers of the plan question** (N491 item 2): "A week at a time",
+"A month at a time", "A quarter at a time", "No deadline".
+3. **Sent for the person who shares, in the joiner's chat:** "Let's build
+our knowledge base {a week, a month, a quarter} at a time."; "Are you in a
+hurry?"; "Which languages can we use?", with "Send" in the bar's middle
+once one is picked; "Thanks, that's everything. When you're ready, tap +
+and ask me your first question."
+4. **The date picker:** "When do you need to be ready?", "Done".
+5. **The sharer's side of the chat:** "{name} joined through your link.";
+the card "{name}'s answers", its rows "Deadline", "Languages", and any
+question the sharer added, by its words.
+6. **Answers Will adds:** the languages on the sharer's profile; "No",
+"Yes"; "Mornings", "Afternoons", "Evenings" for a time of day. Reused, as
+signed: "Your deadline: {date}", "Copy my link", "✓ Copied", "Change it",
+"That's right", "That's all", "Something else", and N483's words.
+No migration in this entry. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when N487 is built.
+
+**N503 · Until the profile card is built, the setup of N487 comes when a
+person first shares their link (founder, the Claude Code chat, 4 November
+2026, asked where someone who shares sets the questions while the profile
+card, "Here's how others will see you" (N453 item 2), is not built: "When
+they share their link (Recommended)").** For N487 items 1 to 3:
+1. **When:** the first time a person opens "Add someone to chat with", Will
+asks N487's setup in his chat, one question at a time, before they copy
+their link. Was (N487 item 1): after "To share what I know" or "Both", once
+the profile is right; that stays the place once the profile card is built.
+2. **Later:** "Your questions for people who join ›" opens the summary
+again, with "Change it" and "That's right" (N487 item 3).
+3. **Until then, everyone who shares a link is asked,** since "To share
+what I know" is not built either; someone who sets no questions ("No
+deadline", No, "That's all") gives their joiners the line at the top only
+(N496 item 2).
+No new words. No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when N487 is built.
+
+**N504 · The official inquiry, three follow-ups: accepting a match stays
+"Open Take", nobody is told of a "Not now" but the system counts it, and
+"Sent" under your own Take (founder, the Claude Code chat, 4 November 2026,
+on the clickable prototype "The Official Inquiry"
+<https://claude.ai/artifact/R3dPycpjHvgZ8sJHKpWFau>: "1. yes 2. a person
+no - maybe a system for tracking who rejected how many times etc. for the
+behavioral data table that is created from the interaction with the system
+next to the voice data; it should be also visible in the ceo panel in the
+user profile below the voice data from the takes 3. OK").** For N483,
+N485, N486 and N493:
+1. **A matched chat keeps its accept step:** before accepting, it shows who
+is asking and about what, and "Open Take" (black, no dot, N483 item 1)
+accepts; only then do the name and the Take show (N485 item 2). A Take sent
+to someone you already chat with arrives open, its recording and its words
+slide by slide, with no "Open Take" button; the bar asks with "Record your
+answer" and "Not now" (N493 item 3).
+2. **"Not now" is never told to a person,** in either flow (N483 item 3,
+N485 item 3). **The system counts it:** each "Not now" (who declined, whose
+Take, when, in which flow, and how many times that person has declined) is
+kept as behavioural data, from the person's interaction with the app,
+beside the voice data from their Takes; the matching may read it (N481
+item 2's communication profile). Never shown to the person (Never 1). The
+founder sees it on the person's admin page, under the voice data from
+their Takes.
+3. **Signed (Never 4): "Sent"** with the check under your own sent Take or
+answer, in place of "Sent to {name}" (the chat already names the person).
+Was: `sentTo(chat.title)` in `chats/ChatThread.tsx`.
+Not in force until built and merged. Item 2 needs a migration (the
+declines kept per person), with its outside review, when built. The rules:
+frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+G and
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built; the matching gets its rules page when it is built (N332).
+
+**N505 · One space around every bottom bar: 8px above, 8px on each side,
+8px below (founder, the Claude Code chat, 4 November 2026, on phone
+screenshots of "Record Take 2" / "Close" and of the chat's "Type here",
+and on the prototype "Bottom Bar Spacing"
+<https://claude.ai/artifact/2riV2BjMgYdESpBv7piuhi>, version 3: "the
+margin is a little bit too small … symmetrically on all devices";
+"get inspired by WhatsApp"; "make it symmetrical. Measure the distance
+that already exists at the bottom. Make it symmetrical with the one at the
+top. And on the sides"; "Go and build it … apply it across the app").**
+1. **The rule:** a bar at the bottom of a screen (the chat's bar, "Record
+Take N" and "Close", the walk's footer, the plan's answers and button,
+the recording screen's buttons, the transcript's Save, the welcome
+example's button) keeps 8px between itself and everything around it:
+the bottom edge, the left and right edges, and what scrolls above it,
+which stops 8px above the bar, as WhatsApp's messages stop above its
+typing bar. 8px is the space measured at the bottom on 4 November: the
+chat's input sat 8px above the edge, and "Close" sat 8px above it.
+2. **"Close" and the other grey words at the bottom keep their own 8px:**
+the 40px row of a grey word already holds 8px under the word, so a bar
+ending in one adds nothing under it (N280 stands).
+3. **A phone's home-bar strip** stays the space below where it is more
+than 8px; above and the sides are still 8px. On a computer the 8px is
+inside the page's column.
+4. **Unchanged:** every button, word, size and the gaps inside a bar. A
+slide-up sheet (the end card, the consent ask, the one-project sheet) is
+a card, not a bar, and keeps its own padding.
+Was: 16px sides everywhere; 0px above the chat's bar and above "Record
+Take N"; 20px sides and 30px under the walk's footer and the plan's
+answers, 24px under the plan's button, 16px under the transcript's Save,
+20px under the welcome example's button. No new words. No migration.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+J9, with a line on the Ideal Text, recording, consent and plan pages.
+
+**N506 · The dump screen: one screen that only listens, tap to start, tap
+to stop, double tap to close; a full-screen way into the voice notebook,
+native in the iPhone app (founder, the Claude Code chat, 4 November 2026,
+on the prototypes <https://claude.ai/artifact/RY5gT9bg8xSpGvKiLVScsW>,
+<https://claude.ai/artifact/Mwm8temUQSdoGp763TULct> and
+<https://claude.ai/artifact/CBtfMKH7QUvJUbQ6Sf5Db4>: "Single touch to open
+it, single touch to stop it, and then double touch to close it"; asked
+whether a double tap while talking stops, keeps and closes, "yes"; asked to
+sign "Double tap to close" and "Kept", "yes"; "for the app I would want it
+to be fully native this feature"; then "Yes" to writing this entry with the
+simpler plan: the dump screen goes into the voice notebook and its
+introduction, not beside them).** For N194, N396, N411:
+1. **One screen, one job.** The whole screen listens: tap anywhere to start,
+tap again to stop and keep, double tap to close. What is said is a voice
+note in the notebook (N194): the same note, the same "Noted." in Will's
+chat, the same Sunday review. No new kind of note, no score, nothing that
+counts the days nothing was said (Never 1).
+2. **The taps.** A tap acts at once. A second tap within 0.3 s and close to
+the first is a double tap: it undoes the first tap and closes, so a start
+that lasted under 0.3 s is thrown away. A double tap while talking stops,
+keeps and closes. Ignored: touches in the first half second after the
+screen appears, two-finger and palm-sized touches, a tap that moved. The ×
+and a swipe down always close too (screen readers own the double tap).
+"Double tap to close" shows for the first three dumps only. Closing gives a
+double haptic tick, the screen slides down, and "Kept" shows.
+3. **Leaving keeps it.** Closing the app or losing the signal mid-sentence
+keeps what was said: it is saved on the phone first and sent when it can,
+under the speaker's processing authorization, through the notebook's own
+upload. Nothing is sent without the notebook's consent (N411).
+4. **How it is offered.** Off by default. Inside N411's introduction, after
+"Yes", one question: open the app to this screen first? Yes: a fresh open
+of the app shows it first, at most once an hour, never when a link or a
+notification opened the app; Will's chat is underneath, untouched, and the
+next Take is one tap away (Never 3). It is also in the menu, and a pull
+down in Will's chat opens it. Turned off with one switch in the panel's
+Settings, beside the reminders. No separate full-screen introduction; no
+"keep opening it?" asked of someone who did not use it.
+5. **Native in the iPhone app, the capture screen only:** it opens on
+launch before the website has loaded, so it listens on the first tap. The
+live words are made on the phone (Apple's on-device speech), a preview only:
+the audio is sent nowhere for them, and the backend transcribes the kept
+recording as for every note. The upload is the web notebook's own
+(`POST /v2/notebook/notes`, its `key` so a retry counts once). The web owns
+the switch and tells the app; the introduction, the question, Settings and
+the notes stay on the web. The browser, the home-screen app and an app
+without the native screen get the web screen.
+6. **Reach:** behind the ring row `dump_screen`, set by the founder in
+Admin → Rings (the founder asked for ring 2 once it is built).
+7. **Signed (Never 4): "Double tap to close", "Kept".** Not yet signed, and
+not shipped until they are: the screen's own words (drawn as "Say it.",
+"Tap anywhere", "Listening", "Tap to stop", "Tap to say more"), the
+question after N411's "Yes", the Settings switch and its line, and the two
+iPhone permission texts (the microphone, which says "to record your Takes"
+today, and on-device speech).
+Not in force until built and merged. No migration: a dump is a notebook
+note. The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md),
+when built.
+
+**N507 · The dump screen is the voice notebook's way in; its words signed;
+the switch in Settings; both rows at ring 2 (founder, the Claude Code chat,
+4 November 2026, after N506: "Signed" to the dump screen's words; "Ok set it
+yourself" to setting the ring row at ring 2; then, asked, "Dump screen is
+its new place", "Both at ring 2", "No menu line", "App Settings" and "Off by
+default").** For N411, N483 item 7, N506:
+1. **The notebook's new place is the dump screen.** N483 item 7 put the
+voice notebook to rest and left its place open; this is that place. The mic
+and the "#" note in the chat stay stopped (N483 stands). The first time
+someone opens the dump screen, before it listens, it shows N411's signed
+introduction once: "🎙 Tap the mic any time and say what's on your mind. It
+helps you catch negative thinking and self-sabotage. One privacy rule
+first:", the note ("Nothing fragile: health, family, money, address.", "We
+look for patterns, not secrets. Fewer clues, less for hackers.", "📓 For
+journalling try paper notebook 😉") and "Do you understand the rules and
+want this feature on?" (Yes | Not now). Yes is the notebook's consent
+(N411); then the screen. Not now closes it and turns the switch off; nothing
+is kept. This replaces N506 item 4's question after N411's "Yes": there is
+no ask in the chat.
+2. **The way in is one switch, in the app's Settings** (☰ → Settings, the
+Data & consent page): "Open to the dump screen", "First thing when you open
+the app, at most once an hour." Off by default. No menu line. The pull down
+in Will's chat (N506 item 4) stays. The Data & consent page is a locked
+consent screen: this item is the founder's OK for this one row.
+3. **Reach:** the ring rows `dump_screen` and `voice_notebook` both at ring 2,
+made by a migration ("set it yourself", as N264 did), each only if the
+founder has not made it already.
+4. **Signed (Never 4):** "Say it.", "Tap anywhere", "Listening", "Tap to
+stop", "Tap to say more", "Open to the dump screen", "First thing when you
+open the app, at most once an hour." With "Double tap to close" and "Kept"
+(N506) and N411's words, the web screen's words are all signed. Not yet
+signed: the iPhone app's two permission texts (N506 item 7), drafted as
+"WillpowerLab uses the microphone to record your Takes and your voice
+notes." and "Your words appear as you speak, made on this iPhone. Nothing
+is sent for it."
+Not in force until built and merged. The migration gets its outside review
+before it is merged. The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+and
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md),
+when built.
+
+**N508 · Judging starts with Take 2 because Take 1 is the introduction
+(founder, the Claude Code chat, 4 November 2026: "justification for it is
+that it's onboarding, it's introduction only call. So you start judging
+from the real practice, from the second take").** For N309 item 2 and
+N401:
+1. **The reason, written down.** Take 1, the five questions (N401, N462),
+is the onboarding: an introduction only. Its walk works on how the
+questions were answered, and no other speaker's moment is judged in it.
+Judging starts with the real practice, Take 2.
+2. **Not because there is nothing to judge.** There is always a moment to
+judge: the training corpus fills any gap (N119). Leaving Take 1 out is a
+choice, kept after weighing it in the same chat: one moment on Take 1, or
+during its processing, would bring a rating from people who leave after
+Take 1, but would stand between the newcomer and the real talk (Never 3).
+3. Nothing changes in the code: the walk already judges from Take 2
+(frontend C8, "Take 1 judges no one").
+No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C8, unchanged.
+
+**N509 · 0511, the dump screen and the voice notebook at ring 2, merges
+without the outside review (founder, the Claude Code chat, 4 November 2026:
+"Skip it", to "paste it into GPT or Grok, or say skip it").** Migration 0511
+(`the_dump_screen_and_the_notebook_at_ring_two.sql`,
+[#1746](https://github.com/wilplus/backend-cursor/pull/1746), N507 item 3)
+merged on green checks without the GPT or Grok review CLAUDE.md asks of a
+new migration. It creates no table and changes none: it adds the ring row
+`dump_screen` at ring 2 (ON CONFLICT DO NOTHING) and lowers `voice_notebook`
+from ring 6 to ring 2 while it is above 2 and not killed, each with its
+audit entry; it drops nothing and needs no environment variable. As for
+N115, N266 and N390, the waiver is for this one migration. No rules page.
+No migration in this entry.
+
+**N511 · The training corpus is a row in the admin ☰ menu (founder, the
+Claude Code chat, 4 November 2026, on a phone screenshot of the admin menu:
+"Please place it in the hamburger as one of the options").** For N416:
+1. The admin menu (`AdminMenu`, the ☰ on a phone, the left column on a
+computer) has a **Training corpus** row under Data, beside Project
+deletions. It opens the same corpus screens as before (the imports, Import
+audio, the set-up, the blind judging; coach panel H1 to H3) at
+`/admin/training-corpus`; ✕ goes to the CEO panel.
+2. The CEO panel's "Training corpus" button beside Bugs and Tasks is gone:
+the row replaces it (N416 item 1). `/coach/corpus` goes to the new page.
+3. Unchanged: no coach sees it (N416 item 2); the backend's corpus
+endpoints, their role checks, the imports and every label already given;
+`/admin/corpus` (Hide and Restore) stays where it is.
+No new words on screen ("Training corpus" is the signed word, moved). No
+migration.
+The rules: frontend
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+H0.
+
+**N512 · The matching is built and finished: the hold is lifted (founder,
+the Claude Code chat, 4 November 2026, on the explainer "Ask and Answer, Out
+Loud" <https://claude.ai/artifact/LeHx4fjiT1Z8cYehdjbYhZ>, which shows both
+flows, a Take sent to your list and a matched Take: "Okay, build it, finish
+it.").** For N477, N478, N481 (its "Hold it" for the matching's build),
+N485, N486, N493 and N504:
+1. **"Hold it" is lifted:** the matching after a Take (#1712) and its
+screens are built and finished as decided: the suggestion on the page after
+a Take (N477), the asking chat in the list with who asks and about what
+(N485), "Open Take" to accept and "Not now" to decline (N486, N504 item 1),
+the answer over the Take's own slides (N493 item 1), the names once the
+answer is sent (N486 item 1).
+2. **Nothing else changes:** its migration has its outside review again
+before merging, as every migration does; it stays off for everyone until a
+`take_match` ring row turns it on; `TAKE_MATCH_SKILLS` stays unset until the
+Terms and Privacy text of N481 item 4 is signed.
+3. **Signed (Never 4), for the speaker's side** (the founder, the same chat,
+asked which words: "Use the prototype's"): on the page after a Take, when
+someone new fits it (N477), "Someone new might be a good match for this
+Take.", "{Pseudonym} works on what you're practising. You could learn from
+each other. Send it to them too?" and, under their role, "Not in your chats
+yet"; then "Send" and "Not now". Withdraws N476 item 4's two drafted lines.
+Not in force until built and merged. No migration for this entry. The rules:
+frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built; the matching gets its rules page when it is built (N332).
+**N513 · "Who hears this Take": Will's three bubbles are one run, in the
+chats' rhythm (founder, the Claude Code chat, 4 November 2026, on the live
+screen after TAKE_SEND_ENABLED: "the bubbles should keep the spacing ...
+between the bubbles from the same user is smaller"; then, asked whether
+for this screen or the whole walk, "Chat rhythm here").** For N469, N470,
+N286:
+1. On the share screen (N470), Will's three bubbles sit 2px apart as one
+run, their corners drawn in where they meet (N469 J8, N286 J6), then the
+list of people below.
+2. The Feedback walk keeps its own spacing: every bubble stands apart, 16px
+(J6, N469 item 2).
+No new words. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+G and J8.
+
+**N514 · A Yes on the dump screen writes only "Yes" and "Noted." in Will's
+chat (founder, the Claude Code chat, 4 November 2026, on the drawing "Dump in
+Will's Chat" <https://claude.ai/artifact/1mPhCH498wLUGUELSXWoFv>: "OK", to
+leaving out "What's on your mind today?" when the Yes comes from the dump
+screen).** For N411 item 1, N483 item 7, N507 item 1:
+1. **When the notebook's Yes is given on the dump screen** (N507 item 1),
+Will's chat gets the person's "Yes" and "Noted.", and not "What's on your
+mind today?": since N483 there is no mic and no typing to Will to answer it,
+and the person has just answered on the dump screen.
+2. **Everything else stands:** a Yes given anywhere else keeps N411 item 1's
+rows; each dump is still "# " and its words, then "Noted." (N194).
+3. No new words.
+Not in force until built and merged. No migration. The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+T3, when built.
+
+**N515 · Matching after a Take is on ring 2 (founder, the Claude Code chat,
+4 November 2026, after asking "why not have it for all? what is the risk?"
+and hearing the risks: "ok, I WILL PUT IT ON RING 2").** For N477, N481,
+N485 and N512:
+1. **The `take_match` ring row is at ring 2,** set by the founder in the
+rings panel once the release with #1712 (migration 0513) and the screens
+(frontend #1254) went out. Everyone on ring 2 or above can be suggested and
+can send; matching needs sending on (`TAKE_SEND_ENABLED`, which is on).
+2. **The voice-based part stays off** (`TAKE_MATCH_SKILLS` unset): the
+matching weighs knowledge only (N481 item 4; the voice research of 4
+November 2026).
+3. **The way off** is the row's Kill switch, at once and with no deploy;
+what was already sent stays sent.
+4. **Open, proposed:** counsel confirms that Privacy 3.12, which covers
+sending a Take to people you chat with (N479, N482), also covers sending it
+to someone new the app picked, and using people's profiles and Take topics
+to pick them.
+No migration. No rules page yet: the matching gets its rules page when it
+is built (N332).

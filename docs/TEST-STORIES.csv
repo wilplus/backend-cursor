@@ -665,7 +665,16 @@ item 3): until then the other person does not see it, the list does
 not show it and no push goes; Undo takes it back then, and Will says
 so in my chat with him, once, naming the other person (N441 item 5).
 Once its time is over Undo is refused and it reaches them; with no
-time left it goes at once. Nobody else can take my answer back.","O1 -> ChatsTest::test_as_a_user_I_have_my_chats_without_any_ring,
+time left it goes at once. Nobody else can take my answer back.
+O17 A question I recorded with ""Record your question"" (N483 item 4) is
+sent and held as an answer is, and the other person gets it marked
+for them to answer (""Record your answer""), without its Take; Undo
+takes it back the same way.
+O18 ""Not now"" under a Take or a question someone asked me (N483 item 3,
+N493 item 3) tells nobody: no message is written. The system keeps it
+once, with whose it was, what and the flow (N504 item 2), and the
+founder reads how often and the newest; ""Not now"" on my own message,
+or on one that asks for nothing, is refused.","O1 -> ChatsTest::test_as_a_user_I_have_my_chats_without_any_ring,
 ChatsTest::test_as_a_server_I_answer_nobody_who_is_not_signed_in
 O2 -> ChatsTest::test_the_demo_is_made_once_and_listed
 O3 -> ChatsTest::test_a_member_reads_and_sends_one_of_three_emoji
@@ -681,7 +690,9 @@ O12 -> ChatsTest::test_a_photo_that_is_not_one_or_anything_over_10_mb_is_refused
 O13 -> ChatsTest::test_an_answer_plays_my_take_and_the_other_member_gets_just_the_answer
 O14 -> ChatsTest::test_an_answer_carries_its_takes_words_and_slides_once_processed
 O15 -> ChatsTest::test_will_marks_a_question_about_a_product_or_a_treatment
-O16 -> ChatsTest::test_an_answer_waits_its_five_seconds_and_undo_takes_it_back","The chats between people, first slice (founder 2026-10-31, N298 to N316; the three emoji N311; the mic N321 item 2; its words N324, shown under the player N331; the photos and files of the ""+"" N351; an answer recorded with ""Record an answer"" N336, N361, N363). Every speaker's recording and every provider call goes through the processing-authorization path (CLAUDE.md)."
+O16 -> ChatsTest::test_an_answer_waits_its_five_seconds_and_undo_takes_it_back
+O17 -> ChatsTest::test_my_question_is_sent_as_an_answer_is_and_marked_for_them_to_answer
+O18 -> ChatsTest::test_not_now_tells_nobody_and_is_kept_once_for_the_founder","The chats between people, first slice (founder 2026-10-31, N298 to N316; the three emoji N311; the mic N321 item 2; its words N324, shown under the player N331; the photos and files of the ""+"" N351; an answer recorded with ""Record an answer"" N336, N361, N363; a question recorded with ""Record your question"" N483 item 4, N498). Every speaker's recording and every provider call goes through the processing-authorization path (CLAUDE.md)."
 tests/test_clearer_versions_reach_the_manager.py,Story,"As a speaker, I want the model's clearer rewrites to reach my feedback with their evidence, so that I get a rewrite where my wording was weak.","O1  A clearer version written because a read was weak (unconfident,
 stickiness, profanity) carries the Manager evidence naming that weak
 read, and the generator version; any other trigger carries none (and
@@ -1589,6 +1600,38 @@ O4  The recovery sweep runs only with the internal secret.","O1 -> test_poll_sho
 O2 -> test_unknown_and_foreign_jobs_look_identical
 O3 -> test_no_score_or_verdict_anywhere_in_the_body
 O4 -> test_sweep_needs_the_internal_secret","AC-9 split sink: results live on the readout GETs, never on the poll."
+tests/test_join_questions.py,Story,"As a person who shares what I know, I want everyone who joins through my link to answer a few practical questions by tapping, so that we start our knowledge base knowing the deadline and the language, and I read their answers on one card, not my own questions waiting (N487, words signed in N491, N496 and N502).","O1  My questions are kept and read back; a question without two to six
+answers is refused; an empty set means none.
+O2  Someone who joins me finds my first lines in our chat, as my
+messages, and is told a few questions come first; in my own view of
+the chat I see neither the questions nor their taps, only that they
+joined through my link.
+O3  They answer by tapping: ""No"" to ""Are you in a hurry?"" puts the
+deadline one step of my plan away and moves on; a question that takes
+more than one answer takes several; then my closing line; I see one
+card with the deadline and the languages.
+O4  A tap that is not one of the answers, two answers to a one-answer
+question, a second answer, or my tapping my own question is refused.
+O5  Joining someone with no questions posts nothing, and the line at the
+top says nothing about questions.
+O6  A question I type is kept only when it is practical and has answers
+to tap: Will gives a yes-or-no question its answers, and leaves out a
+question about the work itself and one he finds no answers for.
+O7  The first time I open ""Add someone to chat with"", Will asks me in his
+chat, one question at a time: how far ahead I plan, the languages (I
+speak two), anything else; my own question gets answers to tap; the
+summary shows what someone new will see; ""That's right"" keeps it, and
+the next time my link opens at once (N503).
+O8  Setting no questions is an answer too; later ""Your questions for
+people who join ›"" opens the summary again, ""Change it"" makes the
+change from my words or says it could not, and ""That's right"" saves.","O1 -> JoinQuestionsTest::test_my_questions_are_kept_and_checked
+O2 -> JoinQuestionsTest::test_whoever_joins_finds_my_first_lines_and_i_do_not
+O3 -> JoinQuestionsTest::test_they_answer_by_tapping_and_i_read_one_card
+O4 -> JoinQuestionsTest::test_a_tap_that_is_not_an_answer_is_refused
+O5 -> JoinQuestionsTest::test_joining_someone_with_no_questions_posts_nothing
+O6 -> ReadyTest::test_a_typed_question_is_kept_only_when_practical_with_answers
+O7 -> WillAsksTheSetupTest::test_will_asks_me_the_setup_the_first_time_i_share_my_link
+O8 -> WillAsksTheSetupTest::test_no_questions_is_an_answer_and_the_summary_opens_again","The founder, 4 November 2026, on the prototype ""Asked When They Join"": ""in the user set up, we need to ask you the questions on what questions should be asked to the people that will ask you for the knowledge""; ""they can only click through the answers they can not type""."
 tests/test_journey_messages.py,Story,"As the founder, I want the messages after a speaker's first three Takes to say exactly the words I signed off, with their two actions, so that no unapproved words reach a speaker.","O1  The Take 1 message's text and its two actions (prepare Take 2, keep
 practising) equal the locked copy.
 O2  The Take 2 message's text and its two actions (prepare Take 3, keep
@@ -3275,6 +3318,63 @@ O10 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
 O11 -> test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan
 O12 -> test_a_fix_that_worked_on_a_slide_is_not_given_there_again
 O12 -> test_with_no_walk_before_mine_is_picked_as_it_always_was","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level""); 2026-10-30 (N289: ""the praise clips just get the praise"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-31 (N309, the One thing walk: ""apply to it the one thing walk""); 2026-11-02 (N323 item 6: ""yes, the pace game for everyone when rushing is the issue""); 2026-11-02 (N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back"": ""go"")."
+tests/test_take_match.py,Story,"As a speaker, after my Take, I want the page that chose who hears it to come back once with someone new who fits what I asked, so that the right person can answer; and as that person, I want to hear the Take before anyone knows who I am, so that answering is my yes (founder, 4 November 2026, N477, N478, N481, N485, N486, N493).","O1  With no ring row, or while sending a Take is off, nobody is ever
+suggested: the speaker's routes answer 404.
+O2  After a Take, one person is suggested: someone who shares a community
+with the speaker, has no chat with them, and fits what the Take is
+about; shown as a pseudonym made for this match and their role, never
+a name, never the name the coach queue gives them, and never what
+their own Takes are about. Asking again gives the same one; someone
+who fits nothing is never chosen.
+O3  Someone already in a chat with the speaker, or still waiting to be
+let in (N471), is never suggested, and nobody is suggested to the
+same speaker twice.
+O4  Send knocks: the one suggested gets a new asking chat in their list,
+under the speaker's pseudonym, their role and what it is about; never
+a card in Will's chat, no chat made, and the page does not come back.
+O5  The speaker's Not now tells nobody: no inquiry, no chat.
+O6  Before ""Open Take"" the one suggested sees only who is asking and
+about what: no name, no words, no recording, no answering. After it,
+the speaker's name and the Take, words slide by slide; their answer,
+a Take, makes the chat between the two, with the speaker's Take (a
+Take message) and the answer in it, under their names.
+O7  Nobody else can open or answer it, the one suggested cannot before it
+was sent, and a Take recorded before it reached them is no answer.
+O8  Once skills are on, the experiment's arm decides among people who
+know as much: someone at a similar level, or someone further along,
+progressing alike; the arm, what made the fit, whether the other arm
+would have chosen someone else and how likely the pick was are kept,
+never another person's id, and the speaker sees none of it.
+O9  Words that say nothing about the subject make no match: Polish
+function words (""dla"", ""się""), or words everyone in the community
+uses (""presentation"", ""speak"").
+O10 Nobody is suggested who has not recorded a Take in two weeks, or who
+already has three Takes waiting for their answer or five suggestions
+this week.
+O11 Progress is counted within each talk (N494): someone who gets better
+Take by Take in each talk is progressing, even when a harder new talk
+starts lower; an answer, a talk of one Take, adds nothing; with fewer
+than five Takes in talks of two or more there is no progress yet.
+O12 The one suggested's Not now, before or after Open Take, removes the
+asking chat and tells nobody: Send still reads ""sent"" to the speaker.
+Who declined whose Take and when stays, and the two are never matched
+again, whichever of them asks.
+O13 An answer waits five seconds for Undo and nobody sees it: no chat,
+nothing in the speaker's list. Undo leaves no trace. Once the time is
+up the chat is made exactly once, even if the timer was lost, and
+Undo is too late.","O1 -> TakeMatchTest::test_with_no_ring_nobody_is_suggested
+O2 -> TakeMatchTest::test_one_new_person_who_fits_is_suggested_as_a_pseudonym
+O3 -> TakeMatchTest::test_nobody_in_a_chat_waiting_or_suggested_before
+O4 -> TakeMatchTest::test_send_knocks_as_a_new_chat_not_through_will
+O5 -> TakeMatchTest::test_not_now_tells_nobody
+O6 -> TakeMatchTest::test_open_take_then_the_answer_opens_the_chat_for_both
+O7 -> TakeMatchTest::test_only_the_one_suggested_answers_once_sent
+O8 -> TakeMatchTest::test_the_arm_picks_by_speaking_skills_and_progress
+O9 -> TakeMatchTest::test_words_that_say_nothing_make_no_match
+O10 -> TakeMatchTest::test_nobody_quiet_or_already_asked_enough
+O11 -> TakeMatchTest::test_progress_is_counted_within_each_talk
+O12 -> TakeMatchTest::test_not_now_removes_it_tells_nobody_and_never_again
+O13 -> TakeMatchTest::test_an_answer_waits_for_undo_and_counts_once","Matching people happens in one place only, after the Take (N477); a knock in the chats, opened or turned down, anonymous until the answer, which alone opens the chats (N478, N485, N493); every answer is a Take, and the matching weighs how people speak and progress (N481)."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name
@@ -3877,7 +3977,10 @@ O11 Before any note, once three Takes have their summaries, opening the
 Lounge brings ""We spotted a strength!"", the strength in one sentence
 and the notebook's ask, once; after Not now, again only after three
 more Takes; after Yes, never; a sentence with a number, or none,
-writes nothing until the next Take (N411 items 1, 5).","O1 -> test_without_the_notebook_the_chat_is_unchanged
+writes nothing until the next Take (N411 items 1, 5).
+O12 A Yes given on the dump screen writes ""Yes"" and ""Noted."" and asks
+nothing; a Yes in the chat still asks ""What's on your mind today?""
+(N514).","O1 -> test_without_the_notebook_the_chat_is_unchanged
 O2 -> test_the_first_note_asks_and_yes_keeps_it
 O3 -> test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash
 O4 -> test_a_crisis_note_gets_the_safety_reply
@@ -3887,7 +3990,8 @@ O7 -> test_the_live_words_come_back_and_nothing_is_kept
 O8 -> test_a_note_sent_twice_is_kept_once
 O9 -> test_a_voice_note_is_fixed_in_the_notebook_and_the_thread
 O10 -> test_every_fifth_note_with_a_name_gets_the_privacy_line
-O11 -> test_a_strength_in_the_takes_opens_the_notebook","Will learning plan, step 1 (founder 2026-10-20, ""approved, start step 1""; words signed the same day)."
+O11 -> test_a_strength_in_the_takes_opens_the_notebook
+O12 -> test_a_yes_on_the_dump_screen_asks_nothing","Will learning plan, step 1 (founder 2026-10-20, ""approved, start step 1""; words signed the same day)."
 tests/test_walk_quote.py,Story,"As a speaker who just said a better try of a sentence that doubted me, I want Will to show me my own words that prove otherwise, so that the better sentence feels true, and I want to be able to say ""Not here"".","O1  A sentence that doubted me gets one quote: the signed line and my own
 kept words, word for word with their date; the same sentence gets the
 same quote again, and any other sentence in that Take gets none (N268

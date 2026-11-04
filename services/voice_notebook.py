@@ -184,9 +184,15 @@ def _held_note(database: Any, user_id: str) -> Optional[str]:
     return meta.get("held_note") if meta.get("offer") == OFFER else None
 
 
-def decide(database: Any, user_id: str, choice: str) -> list[dict]:
+#: Where the notebook's Yes can come from. "dump_screen": the dump screen's
+#: own question (N507 item 1), after which the chat asks nothing (N514).
+SOURCES = ("chat", "dump_screen")
+
+
+def decide(database: Any, user_id: str, choice: str, *, source: str = "chat") -> list[dict]:
     """A tap on Yes or Not now: kept, and the thread gets their tap; on Yes a
-    typed note that was waiting is kept and answered."""
+    typed note that was waiting is kept and answered. A Yes from the dump
+    screen gets "Noted." and no first question (N514)."""
     if choice not in CHOICES:
         raise NotebookError("INVALID_CHOICE", "Unknown answer.")
     if not enabled(database, user_id):
@@ -203,10 +209,12 @@ def decide(database: Any, user_id: str, choice: str) -> list[dict]:
         rows.append(_row("bot", reply_to(held), {"voice_note": note.get("id")},
                          _after(at, 1), f"{user_id}:noted:{note.get('id')}"))
     elif choice == "yes":  # N411 item 1: then the first question
-        rows += [_row("bot", COPY["noted"], {"voice_notebook": "welcome"}, _after(at, 1),
-                      f"{user_id}:yes-noted:{at}"),
-                 _row("bot", COPY["first"], {"voice_notebook": "welcome"}, _after(at, 2),
-                      f"{user_id}:first:{at}")]
+        rows.append(_row("bot", COPY["noted"], {"voice_notebook": "welcome"}, _after(at, 1),
+                         f"{user_id}:yes-noted:{at}"))
+        # N514: on the dump screen they have just answered; nothing to ask.
+        if source != "dump_screen":
+            rows.append(_row("bot", COPY["first"], {"voice_notebook": "welcome"}, _after(at, 2),
+                             f"{user_id}:first:{at}"))
     return database.insert_lounge_messages(str(user_id), rows) or []
 
 

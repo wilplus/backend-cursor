@@ -19,6 +19,10 @@ Prices for one person (step 3, services/plan_promotions.py):
   DELETE /v2/admin/people/<user_id>/promotion   end it now
   GET    /v2/user/offers                        {"promotion", "lesson"} for the pricing screen
 
+One person's "Not now"s, behavioural data (services/chat_not_now.py, FOUNDER
+only, N504 item 2):
+  GET    /v2/admin/people/<user_id>/not-now
+
 One person's exercises, as facts (services/practice_effects.py, FOUNDER only,
 founder 2026-10-18, WIL-29):
   GET    /v2/admin/people/<user_id>/practice-effects
@@ -125,6 +129,20 @@ def get_practice_effects(user_id: str):
     except Exception:
         logger.warning("practice effects read failed user=%s", user_id, exc_info=True)
         return _reply({"code": "V2_ERROR", "error": "Could not read practice"}, 500)
+
+
+@people_bp.route("/v2/admin/people/<user_id>/not-now", methods=["GET"])
+@require_founder
+def get_not_now(user_id: str):
+    """Founder only (N504 item 2): how often the person said "Not now" to
+    what someone asked them, and the newest ones; never shown to them."""
+    from services.chat_not_now import for_person
+    from services.db import db
+    try:
+        return _reply(for_person(db, user_id))
+    except Exception:
+        logger.warning("not now read failed user=%s", user_id, exc_info=True)
+        return _reply({"code": "V2_ERROR", "error": "Could not read the declines"}, 500)
 
 
 @people_bp.route("/v2/user/home-screen", methods=["PUT"])

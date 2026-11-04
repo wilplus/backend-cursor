@@ -345,6 +345,13 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # name, who they are, their About and their photo.
     PurgeDependency("people_profiles", "people_profiles", "user_id", "user",
                     "delete", "database_row", 60),
+    # A Take's suggestion of someone new after it (migration
+    # a_take_can_reach_someone_new_after_it, N477, N478): it goes with
+    # either account, the speaker's and the one suggested.
+    PurgeDependency("take_matches", "take_matches", "speaker_id", "user",
+                    "delete", "database_row", 60),
+    PurgeDependency("take_matches_suggested", "take_matches", "candidate_id", "user",
+                    "delete", "database_row", 60),
     # Where Apple's push service reaches the person's iPhone (migration
     # an_iphone_keeps_its_push_address, N385).
     PurgeDependency("push_devices", "push_devices", "user_id", "user",
