@@ -12366,3 +12366,23 @@ No migration. The rules: frontend
 B14 and
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when "Ask {name}" is built.
+
+**N499 · The walk loads with the typing dots at the bottom, and only after
+a moment (founder, the Claude Code chat, 4 November 2026: with a screenshot
+of the dots at the top left of the walk's empty loading screen, "could you
+please come up with some better loading, or at least put the three dots at
+the bottom"; then, on the prototype
+<https://claude.ai/artifact/1KxNrA1Yw1QDPEK1zRFBAe>, "yes add the
+quick-load option").** For N122 and the frontend's B5 and B8:
+1. **At the bottom:** while the walk loads, its screen shows ✕ and the
+typing dots at the bottom left, where the walk's first bubble lands, as
+N122 asked ("the 3 dots loading should be at the bottom"). A thread shorter
+than the screen sits at the bottom too, right above the buttons, as in the
+chat, so the first bubble takes the dots' place.
+2. **Only after a moment:** the dots show once the walk is still loading
+0.3 s after the screen opens; a quicker load opens on the walk with no
+flash of them. The ✕ is there from the first frame.
+The typing dots stay the walk's one wait (B8). No new words. No migration.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+B5.
