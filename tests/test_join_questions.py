@@ -22,12 +22,22 @@ OUTCOME
   O6  A question I type is kept only when it is practical and has answers
       to tap: Will gives a yes-or-no question its answers, and leaves out a
       question about the work itself and one he finds no answers for.
+  O7  The first time I open "Add someone to chat with", Will asks me in his
+      chat, one question at a time: how far ahead I plan, the languages (I
+      speak two), anything else; my own question gets answers to tap; the
+      summary shows what someone new will see; "That's right" keeps it, and
+      the next time my link opens at once (N503).
+  O8  Setting no questions is an answer too; later "Your questions for
+      people who join ›" opens the summary again, "Change it" makes the
+      change from my words or says it could not, and "That's right" saves.
 PROVES   O1 -> JoinQuestionsTest::test_my_questions_are_kept_and_checked
          O2 -> JoinQuestionsTest::test_whoever_joins_finds_my_first_lines_and_i_do_not
          O3 -> JoinQuestionsTest::test_they_answer_by_tapping_and_i_read_one_card
          O4 -> JoinQuestionsTest::test_a_tap_that_is_not_an_answer_is_refused
          O5 -> JoinQuestionsTest::test_joining_someone_with_no_questions_posts_nothing
          O6 -> ReadyTest::test_a_typed_question_is_kept_only_when_practical_with_answers
+         O7 -> WillAsksTheSetupTest::test_will_asks_me_the_setup_the_first_time_i_share_my_link
+         O8 -> WillAsksTheSetupTest::test_no_questions_is_an_answer_and_the_summary_opens_again
 WHY      The founder, 4 November 2026, on the prototype "Asked When They
          Join": "in the user set up, we need to ask you the questions on what
          questions should be asked to the people that will ask you for the
@@ -42,6 +52,7 @@ from datetime import date, timedelta
 from unittest.mock import patch
 
 from services import join_questions as J
+from services import join_setup as S
 from services import plan as P
 from services.db import db
 from tests.test_chats import _Store
@@ -53,7 +64,9 @@ SET = {"plan": "month",
        "lines": [{"q": "Which languages can we use?", "answers": ["Polish", "English"], "multi": True}]}
 
 
-class JoinQuestionsTest(unittest.TestCase):
+class _App(unittest.TestCase):
+    """The chats' routes, signed in as Tomek or Piotr, on the store in memory."""
+
     def setUp(self):
         from flask import Flask
 
@@ -100,6 +113,8 @@ class JoinQuestionsTest(unittest.TestCase):
         return self.client.post(f"/v2/chats/{chat}/setup/{message}", json={"picked": picked, **more},
                                 headers=self._as(who))
 
+
+class JoinQuestionsTest(_App):
     def test_my_questions_are_kept_and_checked(self):
         self.assertEqual(self._set(TOMEK, SET).status_code, 200)
         kept = self.client.get("/v2/chats/join-questions", headers=self._as(TOMEK)).get_json()["questions"]
@@ -159,6 +174,88 @@ class JoinQuestionsTest(unittest.TestCase):
         chat = self._join(TOMEK, PIOTR)
         piotr = self._read(PIOTR, chat)
         self.assertEqual((piotr["messages"], piotr["joined_asks"]), ([], False))
+
+
+class _Lounge:
+    """Will's chat in memory, standing in for the Lounge's three reads and writes."""
+
+    def __init__(self):
+        self.rows: dict = {}
+
+    def insert(self, user_id, rows):
+        for row in rows:
+            self.rows.setdefault((user_id, row["client_id"]), dict(row))
+        return [self.rows[(user_id, row["client_id"])] for row in rows]
+
+    def page(self, user_id, limit=50, before=None):
+        return [r for (u, _), r in reversed(list(self.rows.items())) if u == user_id][:limit]
+
+    def one(self, user_id, client_id):
+        return self.rows.get((user_id, client_id))
+
+
+class WillAsksTheSetupTest(_App):
+    def setUp(self):
+        super().setUp()
+        self.lounge = _Lounge()
+        for p in (patch.object(db, "insert_lounge_messages", self.lounge.insert),
+                  patch.object(db, "get_lounge_messages_page", self.lounge.page),
+                  patch.object(db, "get_lounge_message_by_client_id", self.lounge.one)):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _begin(self, path=""):
+        return self.client.post(f"/v2/chats/join-questions/setup{path}", headers=self._as(TOMEK)).get_json()
+
+    def _asked(self):
+        return self.lounge.page(TOMEK)[0]
+
+    def _say(self, **answer):
+        got = self.client.post("/v2/chats/join-questions/setup/answer",
+                               json={"to": self._asked()["client_id"], **answer}, headers=self._as(TOMEK))
+        return [m["body"] for m in got.get_json()["messages"]] if got.status_code == 200 else got.status_code
+
+    def _summary(self):
+        return [line["q"] for line in self._asked()["metadata"]["join_setup"]["lines"]]
+
+    def _kept(self):
+        kept = self.client.get("/v2/chats/join-questions", headers=self._as(TOMEK)).get_json()["questions"]
+        return kept and [line["q"] for line in kept["lines"]]
+
+    def test_will_asks_me_the_setup_the_first_time_i_share_my_link(self):
+        self.store.tables["user_settings"] = [{"user_id": TOMEK, "profile_proficient_languages": ["pl", "en"]}]
+        self.assertEqual(self._begin(), {"started": True})
+        self.assertEqual([r["body"] for r in self.lounge.page(TOMEK)][::-1], [S.INTRO, S.PLAN_Q])
+        self.assertEqual(self._say(picked="A month at a time"),
+                         ["A month at a time", "Should I ask which languages to use: Polish, English or both?"])
+        self.assertEqual(self._say(picked="Yes"), ["Yes", S.MORE_Q])
+        self.assertEqual(self._say(said="Is a video call OK?"), ["Is a video call OK?", S.ADDED, S.PEEK])
+        month = "Let's build our knowledge base a month at a time."
+        self.assertEqual(self._summary(), [month, J.HURRY, J.LANGUAGES, "Is a video call OK?"])
+        self.assertEqual(self._say(picked="That's right"), ["That's right", S.SET])
+        self.assertEqual(self._kept(), [month, J.HURRY, J.LANGUAGES, "Is a video call OK?"])
+        self.assertEqual(self._begin(), {"started": False})
+
+    def test_no_questions_is_an_answer_and_the_summary_opens_again(self):
+        self._begin()
+        self.assertEqual(self._say(picked="No deadline"), ["No deadline", S.MORE_Q])
+        self.assertEqual(self._say(picked="That's all"), ["That's all", S.PEEK])
+        self.assertEqual((self._summary(), self._say(picked="That's right")), ([], ["That's right", S.SET]))
+        self.assertEqual((self._begin(), self._kept()), ({"started": False}, None))
+        self._begin("/again")
+        self.assertEqual(self._asked()["body"], S.AGAIN)
+        self.assertEqual(self._say(picked="Change it"), ["Change it", S.CHANGE_Q])
+        self.assertEqual(self._say(said="Ask when are you free for a call"),
+                         ["Ask when are you free for a call", S.DONE, S.NEW_VERSION])
+        self.assertEqual(self._summary(), ["When are you free for a call?"])
+        self._say(picked="Change it")
+        self.assertEqual(self._say(said="make it nicer"), ["make it nicer", S.UNCLEAR, S.NEW_VERSION])
+        answered = self._asked()["client_id"]
+        self.assertEqual(self._say(picked="That's right"), ["That's right", S.SAVED])
+        self.assertEqual(self._kept(), ["When are you free for a call?"])
+        again = self.client.post("/v2/chats/join-questions/setup/answer",
+                                 json={"to": answered, "picked": "That's right"}, headers=self._as(TOMEK))
+        self.assertEqual(again.status_code, 409)
 
 
 class ReadyTest(unittest.TestCase):

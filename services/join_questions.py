@@ -10,7 +10,9 @@ joiner is done (N487 item 7).
 
   * ``mine`` / ``save``: the questions a person has set, kept on their
     profile row (``people_profiles.join_questions``, migration 0511). NULL,
-    or a database without the column yet, means no questions.
+    or a database without the column yet, means no questions. ``kept``
+    tells Will's setup (``services/join_setup.py``) whether a set can be
+    kept at all, and whether one was, an empty one included.
   * ``suggest`` / ``practical`` / ``ready``: what Will does with a question
     someone types in the setup (N487 item 2): give it answers to tap, or
     leave it out, with a word why. Rules, no provider call.
@@ -199,22 +201,36 @@ def mine(database: Any, user_id: str) -> Optional[dict]:
 
 
 def save(database: Any, user_id: str, payload: Any) -> dict:
-    """Keep a person's questions, replacing what was there; {"questions"}."""
+    """Keep a person's questions, replacing what was there; {"questions"}.
+    An empty set is kept as a set with no lines (``mine`` reads it as none),
+    so Will's setup knows it was answered (``services/join_setup.py``)."""
     from datetime import datetime, timezone
     value = normalize(payload)
     stamp = datetime.now(timezone.utc).isoformat()
-    if value:
-        value["updated_at"] = stamp
+    stored = {**(value or {"v": 1, "plan": None, "lines": []}), "updated_at": stamp}
     table = _table(database, PROFILES)
     try:
         if _rows(table.select("user_id").eq("user_id", str(user_id)).limit(1)):
-            table.update({COLUMN: value, "updated_at": stamp}).eq("user_id", str(user_id)).execute()
+            table.update({COLUMN: stored, "updated_at": stamp}).eq("user_id", str(user_id)).execute()
         else:
-            table.insert({"user_id": str(user_id), COLUMN: value}).execute()
+            table.insert({"user_id": str(user_id), COLUMN: stored}).execute()
     except Exception as e:
         logger.error("join_questions: not kept for %s", user_id, exc_info=True)
         raise JoinQuestionsError("NOT_SAVED", "Could not keep them.", 503) from e
-    return {"questions": value}
+    return {"questions": stored if value else None}
+
+
+def kept(database: Any, user_id: str) -> tuple[bool, Optional[dict]]:
+    """(whether questions can be kept at all, the set as kept or None).
+    False before migration 0511: the column is not there to read."""
+    try:
+        rows = (_table(database, PROFILES).select(f"user_id,{COLUMN}")
+                .eq("user_id", str(user_id)).limit(1).execute().data or [])
+    except Exception:
+        logger.warning("join_questions: the column could not be read", exc_info=True)
+        return False, None
+    value = rows[0].get(COLUMN) if rows else None
+    return True, value if isinstance(value, dict) else None
 
 
 # ── In the joiner's chat ────────────────────────────────────────────────
