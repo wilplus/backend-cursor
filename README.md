@@ -154,7 +154,7 @@ The frontend has its own short [`README.md`](https://github.com/wilplus/frontend
 Counsel's documents keep their own indexes: [`legal/phase1-2026.1/README.md`](legal/phase1-2026.1/README.md)
 and [`docs/legal/README.md`](docs/legal/README.md). Every file in them is Reference and stays byte for byte.
 
-<details><summary>All 56 files of the legal pack</summary>
+<details><summary>All 62 files of the legal pack</summary>
 
 - [Memorandum to Counsel](docs/legal/AI-ACT-SCOPING-MEMO.md) · `backend` `docs/legal/AI-ACT-SCOPING-MEMO.md`
 - [Why the accepted terms version has been stuck at 1.0 since July](docs/legal/CONSENT-VERSION-INVESTIGATION.md) · `backend` `docs/legal/CONSENT-VERSION-INVESTIGATION.md`
@@ -213,6 +213,7 @@ and [`docs/legal/README.md`](docs/legal/README.md). Every file in them is Refere
 - [30 · Terms 3.8 and Privacy 3.9: the plan's personal answers, "How do you feel?" and WhatsApp sign-in (SIGNED 2026-10-27)](legal/phase1-2026.1/30-terms-3.8-privacy-3.9-the-plan-feelings-and-whatsapp-sign-in-SIGNED-2026-10-27.md) · `backend` `legal/phase1-2026.1/30-terms-3.8-privacy-3.9-the-plan-feelings-and-whatsapp-sign-in-SIGNED-2026-10-27.md` · Founder-Approved: the sign-off page and the Claude Code chat, 27 October 2026, "I sign as drafted, question 1 A, question 2 A" (N217)
 - [31 · Terms 3.9 and Privacy 3.10: the chats between people, Block and Report, notifications in the iPhone app and Sign in with Apple (SIGNED 2026-11-04)](legal/phase1-2026.1/31-terms-3.9-privacy-3.10-the-chats-block-and-report-notifications-and-apple-SIGNED-2026-11-04.md) · `backend` `legal/phase1-2026.1/31-terms-3.9-privacy-3.10-the-chats-block-and-report-notifications-and-apple-SIGNED-2026-11-04.md` · Founder-Approved: the sign-off page and the Claude Code chat, 4 November 2026, "signed" (as drafted, question 1 A, question 2 A) (N468)
 - [32 · Terms 3.10 and Privacy 3.11: WillpowerLab by invitation, and the waitlist (SIGNED 2026-11-04)](legal/phase1-2026.1/32-terms-3.10-privacy-3.11-by-invitation-and-the-waitlist-SIGNED-2026-11-04.md) · `backend` `legal/phase1-2026.1/32-terms-3.10-privacy-3.11-by-invitation-and-the-waitlist-SIGNED-2026-11-04.md` · Founder-Approved: the sign-off page and the Claude Code chat, 4 November 2026, "You have my signature" (as drafted, question 1 A, question 2 A) (N472)
+- [33 · Privacy 3.12: sending a Take to the people you chat with, and no more community sharing for new Takes (DRAFT, not signed)](legal/phase1-2026.1/33-privacy-3.12-sending-a-take-to-the-people-you-chat-with-DRAFT-2026-11-04.md) · `backend` `legal/phase1-2026.1/33-privacy-3.12-sending-a-take-to-the-people-you-chat-with-DRAFT-2026-11-04.md` · Founder-Approved: the Claude Code chat, 4 November 2026, N479 item 1 ("in Privacy 3.12"); the draft only, the text is not signed
 - [Phase-1 processing policy `phase1-2026.1` — drafting pack](legal/phase1-2026.1/README.md) · `backend` `legal/phase1-2026.1/README.md`
 - [Signing sheet — the 3.5 pack, 8 October 2026 — SIGNED by the founder 2026-10-08](legal/phase1-2026.1/SIGN-3.5-2026-10-08.md) · `backend` `legal/phase1-2026.1/SIGN-3.5-2026-10-08.md`
 - [Signed artifacts — what exists, and its fingerprint](legal/phase1-2026.1/SIGNED-ARTIFACTS.md) · `backend` `legal/phase1-2026.1/SIGNED-ARTIFACTS.md`

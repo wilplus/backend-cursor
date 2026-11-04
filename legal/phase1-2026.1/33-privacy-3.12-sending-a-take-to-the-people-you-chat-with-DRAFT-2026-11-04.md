@@ -1,0 +1,1157 @@
+# 33 · Privacy 3.12: sending a Take to the people you chat with, and no more community sharing for new Takes — DRAFT for the founder's signature, 2026-11-04
+
+**DRAFT. NOT SIGNED. NOT PUBLISHED. NOT REGISTERED.** Drafted by engineering
+on 4 November 2026 for N479 item 1, which says the Privacy text names sending
+before it ships, in Privacy 3.12 (3.11 was signed without it, N472). Nothing
+here is in force: Privacy 3.11 stays the policy every speaker accepts, the
+config and `accepted-versions/` are unchanged, there is no publish script,
+and sending stays off (`config.py:379`, `TAKE_SEND_ENABLED`, default off)
+until this text is signed and published. **Counsel has not seen it.**
+
+    documents:   Privacy 3.12, word for word in section 5 below
+    replaces:    copy/privacy-3.11.txt (once signed and published; not before)
+    unchanged:   copy/terms-3.10.txt, copy/ai-notice-3.2.txt, copy/agreement-3.1.txt
+    publish as:  phase1-{date}-3.12, by PUBLISH-3.12-{date}.sql, written only
+                 after the signature, in the shape of PUBLISH-3.11 (the founder's step)
+    asked by:    the founder, 2026-11-04: N479 item 1 (for N470)
+    question 1:  open (section 4)
+    question 2:  open (section 4)
+    drafted by:  engineering, from the code and the decisions log; not a lawyer
+
+The text reads "Effective {publication date}". On the day it is published
+that line, and nothing else, gets the date. Then the text becomes the pack's
+copy file for Privacy 3.12, whose exact bytes are hashed and are what a
+speaker later proves they agreed to. No copy file and no fingerprint exist
+yet, on purpose: they are made from the signed text, never from a draft.
+
+## Note for counsel (not for the user)
+
+**The question: is a voice recording special-category data here (GDPR
+Article 9)?** N479 item 1 makes the screen depend on the answer.
+
+- **What happens.** Before Take 2, the screen "Choose who can answer you
+  best" lists every person in the speaker's chats, **all ticked**. Pressing
+  Continue sends the Take (its recording, and its words slide by slide) as
+  the speaker's own chat message to each ticked person. Continue waits until
+  at least one person is ticked: there is no "Only me". The choice is kept,
+  so later Takes go to the same people without the screen again; a person
+  who joins later is added silently when the choice was everyone. A sent
+  Take cannot be unsent. (`services/take_sends.py`; N470, N479.)
+- **How 3.12 drafts it.** As the speaker sending a message, under Article
+  6(1)(b), exactly as voice messages and recorded answers in a chat already
+  are (Privacy 3.10 §4, Terms 3.10 §8: "deliver what you send in a chat to
+  the person you send it to"). Until now, a Take heard by other users rested
+  on Article 9(2)(a), per Take: community sharing (§4d) and lending (§4b,
+  unchanged). Document 25 D5 said of the share screen then: "a pre-ticked
+  box is not consent" (recital 32; CJEU C-673/17, Planet49).
+- **Why it may not be special-category data.** Voice is biometric data under
+  Article 4(14) and 9(1) only when processed to uniquely identify a person.
+  WillpowerLab does not (Privacy §3; document 02,
+  `biometric_identification = false`), and sending a Take identifies no one
+  that the speaker has not named themselves.
+- **Why it may be.** A free-speech recording can reveal health or other
+  Article 9 matters (Privacy §4, "Special categories", relies on the explicit
+  consent given at the acceptance screen for exactly this). The question is
+  whether that consent, or 6(1)(b) with no Article 9 condition at all, can
+  cover disclosure to other users chosen on a pre-ticked list.
+- **Please answer:**
+  1. Is a Take sent this way special-category data?
+  2. If not: is Article 6(1)(b) right for a pre-ticked list sent with one
+     press, given that sending at least one Take to someone is now needed to
+     record a second Take (the §4 "Do you have to provide this data?" line
+     says so), and that later Takes follow the same choice?
+  3. If it is: **nothing may be pre-ticked, and by N479 item 1 nothing is
+     ticked.** The speaker ticks each person. Then §4d's and §4f's "everyone
+     is ticked" become "nobody is ticked; you tick the people", the basis
+     becomes explicit consent per Take (Article 9(2)(a)), and the build
+     changes before sending is switched on.
+
+## 1. Why 3.12
+
+- **A Take can be sent** (N470, built behind its switch by N479): the
+  speaker ticks people in their chats, and Continue sends the Take to each,
+  as the speaker's own message. Privacy 3.11 does not name it.
+- **The crowd stops for new Takes** (N479 item 2): no new Take is shared
+  with a community for other speakers to judge. Privacy 3.11 §4d still offers
+  it, "OPTIONAL, PER TAKE", with "Only me".
+
+Terms 3.10 stays (question 1).
+
+## 2. What changes
+
+**Privacy 3.11 → 3.12:** the version note; §2 the takes you send in a chat;
+§3 who can hear your voice: a take shared before 3.12, or a take you send;
+§4 the chats paragraph names the takes you send, and "Do you have to provide
+this data?" says that a take after your first goes to at least one person;
+§4d rewritten: community sharing ends for new takes, the screen sends a take
+as your message (pointing to §4f), and takes shared before stay shared, on
+their Article 9(2)(a) basis, until Stop sharing in Data & consent; §4f new:
+sending a take to people you chat with (what is sent, to whom, what they can
+do, no taking back, blocking, how long, the basis); §5 "Other users"; §7 your
+chats include the takes you send.
+
+Nothing else changes. Lending a recording (§4b) stays as written.
+
+## 3. What the founder should know before signing
+
+1. **Sending is the only way to Take 2.** Continue waits until someone is
+   ticked, and every list has at least Artur (N470 item 3), so every speaker
+   sends each Take from the second on to someone. The text says so (§4, §4f).
+2. **A person cannot be taken off for later Takes**, only added. The
+   kept choice goes on to the same people; the only way to stop someone
+   getting your Takes is to block them. The text says so (§4f). If you want
+   a way to untick someone for future Takes, that is a build change first.
+3. **The founder receives the Takes** of every speaker whose only chat is
+   with Artur.
+4. **Deleting a Take** stops it playing in the chat (the receiver's player
+   answers 404 once the Take is gone, `services/take_sends.py`). §4f says so.
+
+## 4. Questions
+
+**Question 1, Terms.**
+A (recommended): Terms 3.10 stays. Its §8 already covers sending ("deliver
+what you send in a chat to the person you send it to"), and its lines on
+sharing with a community stay true of Takes shared before.
+B: a Terms 3.11 alongside, saying community sharing is only for Takes shared
+before 3.12.
+
+**Question 2, counsel.**
+A (recommended): counsel answers the note above before 3.12 is published,
+because the answer can change what the screen ticks, and with it §4d and §4f.
+B: published after the founder's signature; counsel reads it afterwards, as a
+check (as for 3.10 and 3.11). If counsel then says it is special-category
+data, sending is switched off again until a 3.13 and the build say nothing is
+ticked.
+
+## 5. Before it is published
+
+1. **Counsel answers the note above** (question 2 A). If a Take sent this
+   way is special-category data, the build and §4d and §4f change to
+   "nobody is ticked" first, and the founder reads the changed text.
+2. **The founder signs** 3.12, as drafted or as changed, with the answers to
+   questions 1 and 2. Then engineering, in one small docs PR: logs the
+   signature as the next N in `docs/SPEC-DECISIONS-LOG.md`; renames this file
+   from DRAFT to SIGNED with the date and the signature header, as 32 has;
+   adds copy/privacy-3.12.txt, the signed text byte for byte, still reading
+   "Effective {publication date}", with its fingerprint; and updates both
+   indexes.
+3. **The build is out:** sending a Take (backend #1709, migration
+   `migrations/a_chat_carries_a_take.sql` #1711, and the frontend's G build),
+   released to production, with `FOUNDER_CHAT_USER_ID` set on every Railway
+   service. Sending is still off.
+4. **On the day of publication:** the date line, and nothing else, is filled
+   in; `PUBLISH-3.12-{date}.sql` is written in the shape of PUBLISH-3.11
+   (Privacy 3.12, Terms 3.10, AI notice 3.2, the 3.1 agreement, the same
+   countries; register, then activate; the training wording left alone;
+   nothing deleted), with a test pinning its texts and fingerprints as
+   `tests/test_phase1_policy_3_11.py` does; merged and released.
+5. **The founder runs the PUBLISH script** after 3.11 is in force. Every
+   speaker accepts 3.12 once, on the update prompt.
+6. **Only then** `TAKE_SEND_ENABLED` is turned on, on web, worker and every
+   cron service, and checked in each boot log. Turned on before step 5, Takes
+   would be sent under a policy that does not name sending.
+
+## 6. Privacy Policy 3.12, as drafted
+
+```text
+WillpowerLab — Privacy Policy
+Version 3.12. Effective {publication date}.
+
+This policy explains what WillpowerLab does with your personal data, who else
+receives it, how long we keep it, and how you get it deleted.
+
+Version 3.12 replaces every earlier version. It lets you send a take to the
+people you chat with, as your own message (sections 2, 3, 4, 4f, 5 and 7). It
+ends sharing new takes with a community: other users no longer listen to your
+new takes or answer questions about them, and a take you shared before stays
+shared until you stop it (section 4d). Version 3.11 named how you join: through
+someone's link, which we keep, or through the waitlist, which sends your
+request to our own inbox (sections 2, 4, 5 and 7). Version 3.10 named the
+chats between people: what you send, who sees it, what the words of a voice message are used for,
+your profile and your link (sections 2, 3, 4, 5 and 7); blocking and reporting
+someone (sections 4, 5 and 7); notifications in the iPhone app, which Apple
+carries (sections 2, 4, 5, 6 and 7); and signing in with Apple (sections 2, 5
+and 6). Version 3.9 named your plan: the questions Will asks when you start,
+what we do with your answers, and the personal ones, which are asked only if
+you say yes (sections 2, 4, 4e, 5 and 7). It named the question "How do you
+feel?" that may come before a take, which the version before left out (section
+4e). It let you sign up and sign in with your WhatsApp number, by a code we
+send you there (sections 2, 4, 5 and 7). Version 3.8 named two more WhatsApp
+messages: a reminder 10 minutes before a lesson you booked and, if you ask for
+it, a reminder on your practice days (sections 4 and 5). It said that you buy
+tokens rather than a plan (sections 4 and 5) and that your coach's answer costs
+nothing (section 5). It also said five things the service already did that the
+version before left out: the one reading we take of how sure a moment sounds,
+who sees it, and that you never do (section 3); Will's note about you and what
+Will reads of your history (sections 2, 4, 5 and 7); what you tell Will that
+reaches your coach or us (section 4); the card in the Lounge that can ask for
+the choice in section 4a; and that clips of recordings we import may be played
+to you (section 4c). Version 3.7 said more fully what Will is given to answer
+you in the Lounge (sections 4 and 7). Version 3.6 described what WillpowerLab
+now does that earlier versions did not: the AI version of your voice, made by
+ElevenLabs (sections 3 and 5); talking to Will in the Lounge (section 4);
+WhatsApp messages when your coach's feedback is in (section 4); one-to-one
+lessons you book with a coach (section 4); signing in with Google or LinkedIn
+(section 2); sharing a take with a community (section 4d); and what residents
+of California should know, now that the service is open to them (section 14).
+It also asked you again for one choice, Help improve WillpowerLab (section 4a),
+in fewer words: a yes you gave before version 3.6 does not carry over, so it
+counts as off until you say yes again. Your conversation with Will is never
+used for training. No recording of your voice, and no clip of one, is ever
+copied or sent for training.
+
+
+1. WHO IS RESPONSIBLE FOR YOUR DATA
+
+WillpowerLab is operated by an individual based in Poland. The controller of
+the personal data described here is:
+
+Artur Willoński, operating under the name "WillpowerLab"
+Poland, European Union
+Contact: contact@willpowerlab.com (a postal address is provided on request to
+data subjects and to the supervisory authority)
+
+The lead supervisory authority under Article 56 GDPR is the President of the
+Personal Data Protection Office (UODO), ul. Stawki 2, 00-193 Warsaw, Poland.
+
+Given the scale of processing we have not appointed a Data Protection Officer,
+which GDPR Article 37 does not require of us. Privacy requests are handled
+directly at the address above.
+
+
+2. WHAT WE COLLECT
+
+Things you give us
+- Your email address and account details. If you sign in with Google or
+  LinkedIn, we receive your email address and the name on that account. If you
+  sign up with WhatsApp, we ask for your email address only when you book a
+  lesson; when you buy tokens, Stripe's payment page asks for it.
+- Whose link you joined through or, if you joined the waitlist, the day you
+  joined it.
+- Your slides and presentation materials.
+- Audio recordings of you presenting.
+- Edits you make to your Ideal Text, and your responses to feedback.
+- What you write to Will in the Lounge.
+- Your phone number, if you give it to us for WhatsApp messages or to sign up
+  and sign in with WhatsApp.
+- If you book a lesson: your name, the time zone you choose, the time you
+  booked and any note you add.
+- Your plan: your deadline; why the event matters to you and what the talk is
+  about, and a few answers about the talk, all by voice; the days you pick to
+  practise; the times you pick for your calls with your coach.
+- If you say yes in section 4e: how stressed and how ready you feel (two taps
+  on a scale), what worries you about the talk (by voice), and how it went
+  when your plan ends (by voice).
+- How you feel before a take, if you answer: one tap, Nervous, Excited, Calm
+  or Not sure (section 4e).
+- Your answers about other people's clips, if you listen to them.
+- If you sign in with Apple: the email address Apple gives us, which can be an
+  address Apple makes so that yours stays private, and your name, the first
+  time you sign in.
+- In your chats: what you send the people you chat with: emoji, voice messages,
+  photos, files, answers you record over your slides, and the takes you send
+  them (section 4f).
+- Your profile, if you fill it in: your name, who you are, your About and your
+  photo.
+- If you block or report someone: who you blocked, and your report.
+
+Things produced from your recordings
+- Transcripts of what you said.
+- Measurements taken from the sound of your voice: how much your pitch varies,
+  how loud and how varied your delivery is, how fast you speak, how you pause,
+  and how your energy and pitch move across a sentence.
+- Your Ideal Text and your feedback.
+- Whether a fragment you re-recorded after an exercise came out better.
+- The AI version of your voice, and the practice examples made with it
+  (section 3).
+- Measurements of your plan's voice answers, as section 3 describes, from
+  which we choose your level: what your plan works on first. Later levels are
+  chosen from your takes.
+- A short note about you, at most five lines, on what has helped you and what
+  you are working on, written by AI from your answers and your takes
+  (section 4).
+- The words of each voice message you send in a chat, written out from its
+  sound.
+
+Things collected automatically
+- Technical and security logs: IP address, device and browser information,
+  timestamps, and error records.
+- In the iPhone app, if you allow notifications: the address Apple gives your
+  iPhone for them.
+- The version of the app you used, the country you told us you live in, and the
+  language your app was set to, recorded as part of your agreement to this
+  policy.
+- On the booking page, the time zone your IP address suggests, used only to
+  show you times in your own zone first. We do not store it; we store the time
+  zone you end up choosing.
+
+
+3. THE SOUND OF YOUR VOICE
+
+We take measurements from how your voice sounds and compare them against your
+own earlier recordings — never against other people. We use them to help choose
+which of your own sentences to show back to you.
+
+We do not produce a grade or a verdict about you. To choose which of your
+moments to show you, we work out for each moment how sure it sounds, from
+these measurements, and how plainly it is worded. That reading is a
+percentage, and you are never shown it. A coach sees it for a moment only
+after giving their own answer about that moment, and the person who runs
+WillpowerLab sees it for each take, to check our software. We do not use your voice
+to identify you. We do not infer, record or guess your sex, gender, age, health,
+ethnicity, or any other characteristic about you from the sound of your voice.
+
+If the measurements cannot be taken reliably from a recording, we record that
+they could not be taken. We do not fill in a value.
+
+If you turn on the choice in section 4a, some of these measurements, taken
+from a clip a coach has answered a question about, may also help tune the
+software that spots speaking patterns for everyone: your pace, your pauses,
+and how long your words and sentence endings last. What the software keeps is
+settings learned from many people, not your measurements. Without your yes
+your measurements are never used beyond your own recordings.
+
+The AI version of your voice. From the first take you record, we send up to
+two and a half minutes of its clearest speech to ElevenLabs, a voice AI
+company, which makes an AI version of your voice for us. We use it to say one
+of your own sentences back to you the way you could say it, as a practice
+example. Only you hear these examples, and every one is labelled "AI version
+of your voice". Each example is checked by transcribing it again, and we
+measure your next try to see whether the example helped. The AI version of
+your voice is made for you alone: it is not used to identify you, not used
+for anyone else, and not used to train any model. You can delete it at any
+time in Data & consent: we delete it at ElevenLabs and here, with every
+example made from it, and we stop making examples. You can turn it on again,
+and we make it from your next take.
+
+Other users never hear your voice unless you lend a particular recording to
+them yourself (section 4b), shared a take with a community before version 3.12
+(section 4d), send a take to people you chat with (section 4f), or send a voice
+message or an answer to someone in a chat (section 4).
+
+
+4. WHAT WE USE IT FOR, AND ON WHAT LEGAL BASIS
+
+To provide the service: to store your recording, transcribe it, generate your
+Ideal Text and your feedback, have a WillpowerLab coach review that feedback,
+make the AI version of your voice and your practice examples, answer you when
+you talk to Will, and keep all of it available to you.
+Legal basis: performance of our contract with you (Article 6(1)(b) GDPR). This
+processing is what the service is; we cannot provide it without doing this.
+WillpowerLab is hybrid coaching — automated work and a human coach together —
+so the coach's review sits inside this basis rather than beside it. That basis
+covers delivering your coaching and nothing else: it does not cover training
+models, analytics about you, or advertising. We do not do analytics or
+advertising. Training happens only with the separate choice in section 4a.
+
+Talking to Will. Will is the AI assistant in the Lounge. To answer you, Will
+is given what you write and your recent messages in the Lounge, including the
+summary after each take and your coach's word. He is also given your current
+project: its title, what each of your slides says, your Ideal Text slide by
+slide, how many takes you have recorded, and whether your coach's feedback is
+in. If your talk is long, he gets the slides you ask about in full and the
+others by their titles. To answer about your past, he is also given the parts
+of your own history that fit the question: what you said in earlier takes, in
+any of your projects, what your coach sent you, including the words of their
+videos, and your own earlier messages. Will only ever sees what is yours. Your
+conversation is kept in your account so you can come back to it, and you can
+clear it at any time.
+Will's note about you. Will keeps a short note about you, at most five lines:
+what has helped you and what you are working on. OpenAI rewrites it from your
+answers to "Did this help?" and from how each take went. Will reads it before
+he answers you and before he writes the summary after a take. The person who
+runs WillpowerLab can read it and correct it.
+Your conversation with Will is private. A few things you tell Will reach a
+person, because your coaching needs them: your coach sees who your talk is
+for and what you want your audience to do, and your goal, including when you
+change it; the person who runs WillpowerLab sees your answers to "Did this
+help?", quotes up to three of them a week, without your name, in a note to
+themselves, and can read Will's note about you. Beyond that, nobody at
+WillpowerLab reads your conversation, except when we must to keep the service
+safe and working, when the law requires it, or when you ask us to, for
+example for help with your account. It is never used for training.
+Legal basis: performance of our contract with you (Article 6(1)(b) GDPR).
+
+Your plan. When you start, Will asks when your deadline is, why the event
+matters to you and what the talk is about, and a few things about the talk.
+From your answers and your own voice we choose your level and your practice
+days, and we offer you a call with your coach before you start and one after
+your deadline. The plan and its answers are kept so that you and your coach
+can see where you started and where you are.
+Legal basis: performance of our contract with you (Article 6(1)(b) GDPR). The
+personal answers in section 4e rest on your consent instead.
+
+WhatsApp messages. If you give us your phone number, we send you a WhatsApp
+message when your coach's feedback is in, with a link to it, and 10 minutes
+before a lesson you booked, with the link to join it. If you ask for it, we
+also remind you on your practice days. No message contains your feedback or
+your recordings.
+If you sign up or sign in with WhatsApp, we send these messages to that
+number.
+Legal basis: your consent (Article 6(1)(a) GDPR), which you give by adding
+your number, or by signing up with it. You can remove it at any time in Data &
+consent, and we stop; if you sign in with it, you still can.
+
+Signing in with WhatsApp. If you sign up or sign in with your WhatsApp number,
+Supabase makes a six-digit code, valid for 10 minutes, and we send it to you
+on WhatsApp. We do not keep the code ourselves: Supabase keeps it only in
+hashed form until it is used or expires, and our message stays in your
+WhatsApp chat.
+Legal basis: performance of our contract with you (Article 6(1)(b) GDPR).
+
+Joining by invitation. You join WillpowerLab through a link from someone who
+already uses it, and we keep whose link it was; the chat it opens shows them
+that you joined. If you join the waitlist instead, we email your name, your
+email address and the way you signed up to our own inbox, so that we can
+decide, and we answer you by email from there. Until you join through a link,
+your account can sign in but not record.
+
+Legal basis: performance of our contract with you, and the steps you ask us to
+take before it (Article 6(1)(b) GDPR).
+
+Chats with other people. Each chat is between two people. You join someone's
+chats by opening the link they sent you and signing in, and anyone who opens
+your link sees your name first. In a chat, the other person sees everything you
+send: emoji, voice messages, photos, files, answers you record over your
+slides, and the takes you send them (section 4f). They also see your profile:
+your name, who you are, your About, your photo, and the photos and files you
+have shared with them. An answer plays the recording of that take and shows
+its words slide by slide; the feedback on it stays yours. OpenAI writes out
+the words of each voice message, so that both of you can read them under it,
+and reads those words to tell whether the message asks about a product or a
+treatment, so that the app can offer to record your answer. Nobody at
+WillpowerLab reads your chats, except the messages in a report, when we must
+to keep the service safe and working, when the law requires it, or when you
+ask us to.
+
+Legal basis: performance of our contract with you (Article 6(1)(b) GDPR).
+
+Blocking and reporting. You can block anyone you chat with: what they send
+while they are blocked never reaches you, even after you unblock them, and they
+are not told. You can report someone: the last five messages in your chat with
+them, as you see them, including the words of voice messages, go to the person
+who runs WillpowerLab, by email and in WillpowerLab's own admin panel. That
+person reads every report within a day, can remove a message that breaks our
+rules, and can close the account that sent it. The person you report is not
+told who reported them.
+
+Legal basis: our legitimate interest in keeping the people who use WillpowerLab
+safe (Article 6(1)(f) GDPR), for the person who reports and for the person
+reported.
+
+Notifications in the iPhone app. If you allow notifications, we tell you when
+your coach's feedback is in and when someone writes to you in a chat. Apple's
+push service carries them. It receives the address Apple gives your iPhone for
+notifications and the text of each one: for a chat, the name of the person who
+wrote and a short line, such as an emoji with its meaning, "Voice message", a
+camera for a photo, or a file's name; never the words of a voice message, and
+never a photo. You can turn notifications off in your iPhone's settings, and
+signing out of the app stops them on that iPhone.
+
+Legal basis: your consent (Article 6(1)(a) GDPR), which you give when your
+iPhone asks, and withdraw in its settings.
+
+One-to-one lessons. If you book a lesson with a coach, we use your name, your
+email address, the time and time zone you chose and any note you add to
+arrange it, to send you and the coach a confirmation with a calendar entry
+and the video-call link, and to take payment for it.
+Legal basis: performance of our contract with you (Article 6(1)(b) GDPR), and
+legal obligation (Article 6(1)(c) GDPR) for the accounting records of a paid
+lesson.
+
+To keep the service secure and working: fraud and abuse prevention, debugging,
+protecting the service and its users, and answering you when you write to us.
+To do this, the person who runs WillpowerLab can see an account's recordings,
+transcripts and measurements, and can export the measurements of an account's
+takes, without the account's name or email address.
+Legal basis: our legitimate interests (Article 6(1)(f) GDPR).
+
+To check that our automated listening is right: from time to time a
+WillpowerLab coach — a person — hears a short clip of a recording and answers
+one question about one speaking pattern, for example whether the words sound
+rushed, without being told what our software found. The answer is used only
+to check and correct the software that chooses your feedback. The coach does
+not see your name, your words or anything about you, and the answer is never
+shown to you or used as feedback. If you have turned on the choice in section
+4a, the answer may also be used to tune that software, as section 4a says.
+Legal basis: our legitimate interest in keeping the tool accurate (Article
+6(1)(f) GDPR). You can object to it at any time by writing to
+contact@willpowerlab.com: from then on no clip of yours is chosen for a check.
+Objecting costs you nothing else.
+
+Practice, and making it personal: choosing a short exercise that fits your
+recording, keeping the fragment you re-record, and remembering what you have
+been working on so that later exercises suit you better.
+Legal basis: performance of our contract with you (Article 6(1)(b) GDPR).
+Practice is part of what WillpowerLab is, alongside your feedback, so it is no
+longer a separate choice. Doing an exercise is always up to you: you can skip
+any exercise, and skipping costs you nothing.
+
+To meet our legal obligations: for example accounting records, and responding
+to lawful requests.
+Legal basis: legal obligation (Article 6(1)(c) GDPR).
+
+If you buy tokens or pay for a lesson by card, your payment is handled by
+Stripe. We never see or store your card details; we hold the record of what
+you bought, what you spent your tokens on and which lessons are paid, and
+the invoices we are required to keep.
+
+We never use the sound of anyone's recordings to train models: no recording,
+and no clip of one, is copied or sent for training. Making the AI version of
+your voice is not training: it makes a voice for you alone. What may be used
+for training, and only with your yes, is set out in section 4a. Recordings we
+import from elsewhere are covered in section 4c.
+
+Do you have to provide this data? For the parts the service is made of, yes.
+Recording your voice, having it transcribed, and having a coach able to review
+your feedback are what WillpowerLab is; there is no version of it that works
+without them, so if you are not willing to provide them you cannot use the
+service. Practice is part of the service too, though doing any one exercise is
+always up to you. So are your plan's questions about your event. Your phone
+number, a lesson booking, talking to Will, your chats and your profile,
+notifications, your plan's personal answers (section 4e) and how you feel
+before a take are up to you. To record a take after your first, you send it to
+at least one person in your chats, as section 4f says.
+
+Special categories of data. A recording of you speaking freely may happen to
+reveal something sensitive — a health condition audible in your speech, or
+something you mention while presenting. We do not look for this and we do not
+infer it. Where such information is present, we rely on your explicit consent
+(Article 9(2)(a) GDPR), which you give as its own separate agreement on the
+acceptance screen. It is not bundled with anything else, and a contract can
+never stand in for it. You can withdraw it at any time; because we cannot
+process a recording of you speaking freely without it, withdrawing it means we
+stop providing the service. Withdrawing does not affect anything we did
+lawfully beforehand, and you keep every right in section 8 afterwards — you can
+still get a copy of your data and still have it deleted.
+The personal answers of your plan, and how you feel before a take, are asked
+only as section 4e says.
+
+We do not make decisions about you by automated means that produce legal effects
+or similarly significantly affect you.
+
+
+4a. HELPING TO IMPROVE WILLPOWERLAB — OPTIONAL
+
+If you turn on Help improve WillpowerLab, we use your practice to train the
+models that give feedback to every WillpowerLab speaker. Your practice, as
+the Terms define it, is the words of the passages you practise, the numbers
+measured from them, and what your coach writes and answers
+about them; never the sound of your recordings, and never your conversation
+with Will. The screen asks "Can we
+make the product so much better for you?", says "We'd train our feedback on
+your practice.", and you say yes with "Yes, make it so much better."
+
+What we use, and what for:
+
+- Your practice text and your coach's words. The words of a passage you
+  practised, as the transcript holds them, and what your coach wrote about it:
+  a praise line, a clearer version, the words of an exercise, your coach's own
+  line on one moment of a take, and your coach's word for a whole take. They
+  train the models that write those five kinds of feedback.
+- A coach's answers about your clips. With your yes, a coach may hear a short
+  moment of a recording, sometimes with its words and never with your name,
+  to answer one question: which moment of a passage most needs feedback, or
+  whether a reworded version of your words sounds surer. Those answers, and
+  the answers from the check in section 4 on whether a speaking pattern such
+  as rushing is there, teach the software that spots speaking patterns and
+  chooses which moments to give feedback on.
+- Measurements of your practice. Numbers taken from a clip a coach answered
+  about, such as your pace, your pauses and how long your words and sentence
+  endings last, and whether an exercise or a practice example in the AI
+  version of your voice helped when you tried again. They tune the same
+  software, and the order in which exercises that fit you equally well are
+  offered.
+- Separate copies. While the switch is on, we keep a separate copy of the
+  words of each moment you were shown as feedback, and of a coach's yes or no
+  about how assured it sounded, so that training does not depend on your
+  project still existing.
+
+Text and numbers only. No recording of your voice, and no clip of one, is ever
+copied or sent for training. The AI version of your voice, the examples made
+with it, and your coach's videos are not part of it either. While the switch
+is on, OpenAI writes out the words of your coach's videos about your takes;
+those words are kept with the take, and Will can read them to answer you, but
+they are not used for training.
+
+What is used from before you turn it on: the words of passages already in your
+account, and your coach's words about them, can be used too. Separate copies are made only from takes you record while the
+switch is on.
+
+Legal basis: your consent (Article 6(1)(a) GDPR). You give it by turning the
+switch on, on its own screen, or by answering yes on a card in the Lounge
+that asks only this, in the same words. If you answer no, it is not asked
+again for at least 30 days. It is never on when you sign up, never
+pre-ticked, and never a condition of using WillpowerLab. Saying no costs you
+nothing. You can turn it off at any time.
+
+Your coach's words are your coach's too. What a coach writes about your
+practice is personal data about you and about your coach. Our agreement with
+each coach allows what they write to be used this way; your yes is what allows
+it for what they wrote about you.
+
+The trained models. A model trained this way writes feedback for every
+WillpowerLab speaker, not only for you. Before a trained model is used we test
+it: if it repeats eight words in a row from the text of anyone who has turned
+this choice off, it is not used, and it is trained again without that text.
+The software tuned on coaches' answers and on measurements keeps settings
+learned from many people, not your words or your measurements.
+
+How long we keep the copies: until you turn the switch off or delete your
+account. If you delete a project while the switch is on, the training copies
+made from that project stay until you turn the switch off.
+
+When you turn it off: your training copies are deleted, here and at the
+provider that trains for us, and you are left out of every training that
+starts afterwards, including one already waiting to start. A model already
+trained stays and may still be used, provided it passes the test above; the
+settings our software already learned stay too.
+
+If you said yes before version 3.6: that yes covered less than this one, so it
+now counts as off. We treat it as if you had turned the switch off, as the
+paragraph above describes, until you say yes again.
+
+The record of your choice: we keep the record of when you turned the switch on
+and off, including after you delete your account, for six years after you turn
+it off or delete your account, and then delete it. It holds identifiers and
+timestamps, not your words.
+
+Who trains, and where: OpenAI trains the models that write feedback for us.
+Your training copies, which are text, are sent to OpenAI in the United States,
+under the European Commission's standard contractual clauses. They are deleted
+there as soon as each training finishes, and when you turn the switch off. The
+software that spots speaking patterns, chooses moments and orders exercises is
+tuned on our own systems; nothing for it is sent to OpenAI.
+
+4b. LENDING A RECORDING TO OTHER USERS — OPTIONAL, PER RECORDING
+
+You can let other WillpowerLab users hear one short clip of your voice, one
+recording at a time. It is off unless you turn it on for that recording, and
+you can turn it off again at any time.
+
+What others hear and do: a clip of a few seconds, with no name, no words on
+screen and nothing about you. A listener answers one question about how
+assured the clip sounds, or simply listens to it as an example. If you
+practised that moment, the practised version may be played the same way.
+Their answers help settle, together with a coach's, whether that moment
+belongs in your Voice Album; no listener learns who you are, and you never
+learn who listened.
+
+Legal basis: your explicit consent (Article 9(2)(a) GDPR), given per
+recording by the switch itself. Turning it off withdraws it for that
+recording: the clip leaves every place it could be heard at once. Nothing
+you did before is affected, and nothing else in your account changes.
+
+Your own answers as a listener: when you answer a question about someone
+else's clip, that answer is about their voice and it is also your own data.
+It stays tied to your account, you can ask us for a copy of it (section 8),
+and it is deleted when you delete your account.
+
+
+4c. RECORDINGS WE IMPORT FOR TRAINING
+
+This section is for people whose voices are in recordings we bring in from
+elsewhere. They are not WillpowerLab users.
+
+We may import recordings of people speaking that we hold the rights to use,
+to build a set of examples on which our coaches judge speaking patterns and
+moments, and on which our software is checked and trained. An imported
+recording is transcribed by OpenAI, measured as section 3 describes, and heard
+by WillpowerLab coaches without a name. Short clips of it may be played to
+WillpowerLab users in their feedback, as another speaker's voice to listen
+to: sound only, without a name or any words. The person speaking has no
+account with us.
+
+What we hold: the recording, its transcript, its measurements, and coaches'
+and users' answers about it. Like everything else used for training, it is never sent to
+anyone for training as audio.
+
+Legal basis: our legitimate interest in coaching software that is accurate and
+tested on real speech (Article 6(1)(f) GDPR). We do not look for sensitive
+information in an imported recording, we do not infer it, and we do not use
+it.
+
+How long we keep it: while we hold the right to use it. It is deleted when
+that right ends, or when the person speaking asks us.
+
+Your rights: if your voice may be in a recording we imported, section 8 applies
+to you. You can ask us whether we hold a recording of you, ask for a copy, and
+ask us to delete it, and you can object to its use at any time by writing to
+contact@willpowerlab.com. An objection takes your recording out of training
+and checking.
+
+
+4d. SHARING A TAKE WITH A COMMUNITY — ENDED FOR NEW TAKES
+
+New takes are no longer shared with a community. Other users no longer listen
+to them or answer questions about them; your coach does.
+
+Instead, before you record your second take, the screen "Choose who can answer
+you best" lists everyone in your chats, and everyone is ticked. When you press
+Continue, your take goes as your own message to each person who is still
+ticked, in your chat with them. That is you sending a message, not sharing
+with a community. Section 4f says what is sent, to whom, and on what basis.
+
+A take you shared with a community before version 3.12 stays shared until you
+stop it. Other users may hear its short clips, with no name, no words on
+screen and no measurements; listeners see only the community's name. A
+listener may answer a question about how a clip sounds. Those answers are kept
+with the clip and may help settle, together with a coach's, whether a moment
+belongs in your Voice Album. They are never used to train models on their own.
+
+Legal basis for those takes: your explicit consent (Article 9(2)(a) GDPR),
+which you gave for each take by choosing a community. To stop sharing one,
+press Stop sharing next to it in Data & consent, under Your projects: its
+clips leave every community at once. Nothing else in your account changes.
+
+
+4e. YOUR PLAN: PERSONAL ANSWERS — OPTIONAL
+
+Part of your plan is personal. If you say yes, Will also asks how stressed you
+feel about the talk and how ready you feel, each as a tap on a scale; what
+worries you most about it, which you answer by voice; and, when your plan
+ends, how it went, by voice. Before a take you may also be asked how you feel,
+with one tap: Nervous, Excited, Calm or Not sure. You can skip it every time.
+
+These answers can say something about your state of mind, so they can count as
+sensitive. We use them to shape your plan and to help your coach prepare. You
+are never shown a number for them. Your coach and the person who runs
+WillpowerLab can see them, and Will reads your voice answers. OpenAI writes
+out your voice answers and helps Will reply (section 5). They are never used
+to train models, and they are not part of the choice in section 4a.
+
+If you say no, we do not ask them and your plan is built from the rest.
+Nothing else changes.
+
+Legal basis: your explicit consent (Article 9(2)(a) GDPR), which you give by
+saying yes when Will asks, or by turning the card on in Data & consent. You
+can turn it off at any time: we stop asking and delete the personal answers
+you gave, and how you felt before your takes. Withdrawing does not affect what
+we did lawfully before.
+
+If you have no plan yet. Before a take you may be asked how you feel, with one
+tap, and you can skip it every time. Your coach sees your answer. Answering is
+your explicit consent to our keeping that one answer (Article 9(2)(a) GDPR);
+skipping costs you nothing. To have the answers you gave deleted, write to
+contact@willpowerlab.com.
+
+
+4f. SENDING A TAKE TO PEOPLE YOU CHAT WITH
+
+Before you record your second take, the screen "Choose who can answer you
+best" lists everyone in your chats, each with a tick box, and everyone is
+ticked. You can untick anyone, but not everyone: Continue waits until at least
+one person is ticked. When you press Continue, the take you record goes to
+each ticked person as your own message, in your chat with them. Your choice is
+kept: each take you record after it goes to the same people, without asking
+again. If you chose everyone, someone who joins your chats later gets your
+next takes too; if you chose some people, we ask you again when someone new
+joins.
+
+What is sent: the recording of the take and its words, slide by slide, with
+the take's number, your project's title and your slides' titles. Never your
+Ideal Text, your feedback, your moments or your levels: those stay yours.
+
+Who receives it: only the people in your chats whom you tick. Never anyone
+else, and never everyone on WillpowerLab. If you have no chat with anyone yet,
+your list holds Artur, the speaking coach who runs WillpowerLab, and your chat
+with him is made when you first send.
+
+What they can do: play the recording and read its words, in your chat with
+them. They see that it came from you, by name.
+
+A take you sent cannot be taken back. From the line under its recording you
+can send it to more people, never to fewer. If either of you blocks the other,
+your takes stop going to that person.
+
+How long: like everything you send in a chat (section 7). It is kept while
+your account is open, for you and for the person you sent it to, and deleted
+from both sides when you close your account. If you delete the take, it can no
+longer be played in the chat.
+
+Legal basis: performance of our contract with you (Article 6(1)(b) GDPR).
+Sending a take is you sending a message, like anything else you send in a
+chat.
+
+
+5. WHO ELSE RECEIVES YOUR DATA
+
+AI providers
+
+OpenAI receives:
+- the audio of your recording, in order to transcribe it;
+- parts of your transcript and related text, in order to generate your Ideal
+  Text and your feedback;
+- what you write to Will, your recent Lounge messages and your project as
+  described in section 4, in order to answer you;
+- each practice example made in the AI version of your voice, in order to
+  check by transcribing it that it says your words;
+- your answers and how your takes went, in order to rewrite Will's note about
+  you;
+- your plan's voice answers, in order to write them out, choose your next
+  question and answer you;
+- the sound of each voice message you send in a chat, in order to write out its
+  words, and those words, in order to tell whether the message asks about a
+  product or a treatment;
+- if you turned on the choice in section 4a, the sound of your coach's videos
+  about your takes, in order to write out their words.
+
+ElevenLabs receives:
+- up to two and a half minutes of audio from one of your takes, in order to
+  make the AI version of your voice;
+- one of your own sentences at a time, in order to say it in that voice as a
+  practice example.
+
+OpenAI and ElevenLabs are the AI providers that receive your audio or your
+transcript: OpenAI to transcribe it, check it and write your feedback and
+Will's answers, ElevenLabs to make the AI version of your voice. Each
+transfer is made under a short-lived internal permit that records which
+operation it was for and the minimum data it was allowed to carry. We do not
+authorise OpenAI or ElevenLabs to use your content to train their own
+models. If you turn on the choice in section 4a, your training copies, which
+are text, are processed by OpenAI to train WillpowerLab's models, and by no
+one else. OpenAI also transcribes the recordings we import for training
+(section 4c).
+
+Infrastructure providers
+- Cloudflare (R2): storage of your audio recordings, of your practice
+  examples, and of your coach's video answers.
+- Supabase: our database, sign-in, and audio storage on a fallback path. If
+  you sign in with WhatsApp, Supabase makes and checks your code.
+- Railway: hosting of the application. Railway is our processor for what it
+  hosts on our behalf, and a controller in its own right for its own account
+  and service-usage records about us as its customer.
+- Resend: transactional email, including lesson confirmations and the emails
+  that bring a report, or a request from the waitlist, to the person who runs
+  WillpowerLab.
+- Vercel: hosting of the website.
+- Sentry: error reports, stored in the European Union.
+
+Messaging
+- Meta (WhatsApp), if you give us your phone number: your number and our
+  messages to you: that your coach's feedback is in, with its link; that a
+  lesson you booked starts in 10 minutes, with the link to join it; and, if
+  you ask for them, the reminders on your practice days; and, if you sign up
+  or sign in with WhatsApp, the code we send you. Meta also handles those
+  messages as a controller for its own service, under WhatsApp's terms.
+- Apple, if you allow notifications in the iPhone app: the address Apple gives
+  your iPhone for them, and the text of each notification, as section 4
+  describes. Apple carries them as part of its own service, under its own
+  terms.
+
+Signing in
+- Google, LinkedIn or Apple, if you choose to sign in with them. They tell us
+  your email address and name; Apple may give us an address it makes so that
+  yours stays private. They decide for themselves, under their own terms, what
+  they do with the fact that you signed in.
+
+Payments
+- Stripe, if you buy tokens or pay for a lesson by card. Stripe is not our
+  processor: it decides for itself how it uses payment data, as a controller
+  in its own right, under its own terms. We never see or store your card
+  details.
+
+Human coaches
+A WillpowerLab coach — a person — may listen to your recordings in order to
+review the feedback you were given and to prepare practice for you. The review
+is part of the service rather than an extra you
+switch on, because WillpowerLab is hybrid coaching; the Terms say so in section 1 and section 11, and an answer
+that comes back to you costs nothing. A coach who reviews your
+recording does not see the voice measurements described in section 3, only,
+after answering about a moment, the reading of it that section describes. Coaches
+are bound to confidentiality and see only what a review requires.
+A coach may answer you in writing or with a video; a video answer is for you.
+If you book a lesson, the coach receives your name, your email address, the
+time and any note you add.
+A coach sees your plan: your deadline, why the event matters to you, your key
+line, your level, your practice days and the time of your calls. If you said
+yes in section 4e, a coach also sees how stressed and how ready you feel, and
+how you feel before a take. If you have no plan and answer how you feel before
+a take, your coach sees that answer.
+A coach may also hear a short clip of a recording to check our automated
+listening, as section 4 describes, unless you have objected to it. If you turn
+on the choice in section 4a, a coach may also hear a moment of yours, and
+sometimes read its words, to answer a question that teaches our software, as
+section 4a describes.
+
+Other users
+If you lend a recording (section 4b), or shared a take with a community before
+version 3.12 and have not stopped it (section 4d), other WillpowerLab users hear
+those clips, without your name or your words. The people you chat with see and
+hear what you send them in that chat, including the takes you send them
+(section 4f), and your profile (section 4). Nobody else does.
+
+Others
+We share data with professional advisers, and with authorities where the law
+requires it. We do not sell your personal data and we do not share it for
+advertising.
+
+
+6. TRANSFERS OUTSIDE THE EEA
+
+Some of the providers above process data in the United States. Every one of
+those transfers is made under the European Commission's Standard Contractual
+Clauses or the EU-US Data Privacy Framework, as each provider's data
+processing agreement sets out.
+
+- OpenAI: Standard Contractual Clauses. Its agreement appoints OpenAI Ireland
+  Limited to process data from the EEA and Switzerland. Training copies
+  (section 4a) are transferred to OpenAI in the United States under the same
+  clauses.
+- ElevenLabs: the EU-US Data Privacy Framework, and Standard Contractual
+  Clauses, which its data processing agreement incorporates.
+- Cloudflare: Standard Contractual Clauses. Our storage carries an Eastern
+  Europe location hint, which is a preference rather than a guarantee.
+- Supabase: Standard Contractual Clauses and a UK addendum. Your data is stored
+  in Ireland.
+- Railway, Resend, Vercel: Standard Contractual Clauses.
+- Meta (WhatsApp): the EU-US Data Privacy Framework, under WhatsApp's Data
+  Transfer Addendum, which allows Standard Contractual Clauses instead.
+- Sentry: error reports are stored in the European Union.
+- Apple: notifications and Sign in with Apple are Apple's own services, which
+  Apple provides under its own terms and its own safeguards for transfers.
+
+You can ask us for a copy of the safeguards in place.
+
+
+7. HOW LONG WE KEEP IT
+
+We keep what you give us for as long as your account is open. When you ask us
+to delete something, or when you delete your account, we delete it — section 9
+describes what that involves and what survives it.
+
+Recordings, transcripts, Ideal Text, feedback, voice measurements, practice
+attempts and account records: kept while your account is open, and deleted
+when you ask or when you close it. Voice measurements are deleted together with
+the recording they came from and are never kept after it.
+A coach's answer in a blind check is deleted together with the recording it
+was about, and never kept after it.
+
+Your coach's video answers: kept while your account is open, including
+after you delete the take they answer. They are deleted when you ask us or
+when you close your account.
+
+The AI version of your voice and the practice examples made with it: kept
+until you delete it or close your account, then deleted here and at
+ElevenLabs. Whether an example helped you is kept with your practice, like
+your other practice attempts.
+
+Your conversation with Will: kept while your account is open, and deleted
+when you clear it or close your account.
+
+Will's note about you, and the answers and take outcomes it is written from:
+kept while your account is open, and deleted when you close it.
+
+Your phone number: kept until you remove it or close your account. If you sign
+in with it, removing it stops the messages, and it stays as your way in until
+you close your account.
+
+Your plan: your deadline, your voice answers and their recordings, your level
+and its history: kept while your account is open, and deleted when you close
+it. Deleting a project does not delete them. The personal answers of section
+4e are also deleted when you turn them off.
+
+How you feel before a take: kept while your account is open, and deleted when
+you ask or when you close it, and, if you have a plan, when you turn off its
+personal answers.
+
+Your chats: what you send in a chat (emoji, voice messages and their words,
+photos, files, answers and the takes you send) is kept while your account is
+open, for you and for the person you sent it to, and deleted from both sides
+when you close your account. What the other person sends you stays until they
+close theirs.
+
+Your profile: kept while your account is open, and deleted when you close it.
+You can delete your photo at any time. Your link: kept while your account is
+open; when you make a new one, the old one stops working.
+
+Whose link you joined through: kept while your account is open, and deleted
+when you close it. If you joined the waitlist: your account is kept until you
+join through a link or close it, and the email about your request is deleted
+from our inbox when you close your account.
+
+Who you blocked: kept while your chat with them is there. A report, with the
+five messages it holds: kept until the account of the person who reported, or
+of the person reported, is closed.
+
+The address Apple gives your iPhone for notifications: kept until you sign out
+of the app on that iPhone, until Apple tells us it no longer works, or until
+you close your account.
+
+A lesson you booked: kept while your account is open, and deleted when you
+close it, except the record of a paid lesson, which we keep with our
+accounting records for as long as the law requires.
+
+A recording you lent stops being heard by others the moment you turn the
+switch off, and is deleted with the recording like everything else.
+A take you shared stops being heard by others the moment you stop sharing it,
+and is deleted with the take like everything else.
+Your answers about other users' clips are kept while your account is open
+and deleted when you delete it.
+
+Training copies, if you chose to make them (section 4a) — text only, never
+audio: the words of practised passages, what your coach wrote about them, and a
+coach's yes or no about a moment. Kept until you turn
+the choice off or delete your account, then deleted here and at OpenAI.
+
+A coach's answer about a moment of yours given for section 4a, and the two
+versions of your words it compared, is deleted with the recording it was
+about, and when you turn the choice off.
+
+A trained model, and the settings our software learned from many people's
+answers and measurements, are kept until we replace them. They hold no copy of
+your text or your measurements, and a model that fails the test in section 4a
+is not used.
+
+Recordings we import for training (section 4c): kept while we hold the right
+to use them, and deleted when that right ends or when the person speaking asks
+us.
+
+Record of your agreement to this policy: kept for as long as we may need it to
+show that your recordings were processed lawfully, and then deleted.
+
+Record of your training choice: kept, including after you delete your account,
+for six years after you turn the choice off or delete your account, and then
+deleted.
+
+We are not quoting fixed retention periods here. A period in a privacy policy
+is a promise that something is deleted on a clock. We would rather tell you
+what we actually do than name a number we do not yet enforce. When the
+automatic schedule is in place we will publish it, and you will be asked to
+accept the version that describes it.
+
+What OpenAI holds, separately from us
+OpenAI keeps the audio and text sent to its API for up to 30 days, to check for
+abuse, and then deletes it. On our current plan that period cannot be switched
+off. It is not used to train OpenAI's models.
+
+
+8. YOUR RIGHTS
+
+You have the right to:
+- get a copy of the personal data we hold about you;
+- have inaccurate data corrected;
+- have your data deleted;
+- restrict how we use your data, or object to our using it on the basis of our
+  legitimate interests;
+- receive your data in a portable format;
+- withdraw any consent you have given, at any time, without affecting what we
+  did lawfully before you withdrew it.
+
+To exercise any of these, contact contact@willpowerlab.com. We respond within one
+month. If we need longer because a request is complex, we will tell you within
+that month and explain why.
+
+If you are unhappy with how we handle your data, you can complain to your local
+supervisory authority. In Poland that is the President of the Personal Data
+Protection Office (Prezes Urzędu Ochrony Danych Osobowych), ul. Stawki 2,
+00-193 Warszawa.
+
+
+9. DELETING YOUR DATA — WHAT ACTUALLY HAPPENS
+
+We want to be precise about this rather than reassuring.
+
+When you ask us to delete your data, we build an inventory of everywhere it is:
+database records, stored audio files, transcripts, generated documents, queued
+processing jobs, records of what was sent to providers, and coach copies where
+they exist. We then delete them and record proof of each deletion.
+
+If our process reaches something it cannot resolve on its own, it stops rather
+than guessing, and a person completes it. That is deliberate: it is better for
+the process to halt than to report a deletion it did not actually make. It means
+some deletions are finished by hand. We finish them within the one-month period
+in section 8, and we tell you when it is done.
+
+Three things survive deletion:
+
+- Records that prove your recordings were processed with your agreement. These
+  contain identifiers, timestamps and fingerprints — not your recordings, your
+  transcripts or anything you said. We keep them because they are the evidence
+  that we handled your data lawfully, and we delete them when we no longer need
+  them for that.
+- The record of your training choice (section 4a): when you turned it on and
+  off. It holds identifiers and timestamps, not your recordings or anything
+  you said, and we keep it for six years after you turned it off or deleted
+  your account, then delete it.
+- Anything we must keep by law, for example accounting records, including the
+  record of a paid lesson.
+
+Your training copies, and the answers a coach gave about your moments for
+section 4a, do not survive an account deletion: they are deleted with
+everything else.
+
+Audio already sent to a provider is deleted at the provider as part of the same
+process, and we record the outcome. The AI version of your voice is deleted at
+ElevenLabs before anything else.
+
+
+10. SECURITY
+
+Your recordings are stored with access restricted to the systems that need it.
+We verify each stored recording against a fingerprint of its exact bytes so we
+can tell that what we hold is what you uploaded and that nothing has been
+altered. Internal access is limited and logged. Records that prove how your data
+was handled cannot be edited or deleted by the application.
+
+No service is perfectly secure. If a breach affects your rights, we will notify
+you and the supervisory authority as the law requires.
+
+
+11. CHILDREN
+
+The service is for adults aged 18 and over. We do not knowingly collect data
+about anyone under 18. If you believe we hold data about a child, contact us and
+we will delete it.
+
+
+12. CHANGES TO THIS POLICY
+
+When we change this policy we publish a new version with a new version number.
+The exact words of each version are fingerprinted, so you will be asked to
+accept the new version before continuing to use the service, and your record
+shows exactly which version you agreed to and when.
+
+
+13. CONTACT
+
+Artur Willoński, operating under the name "WillpowerLab"
+Poland, European Union
+Contact: contact@willpowerlab.com (a postal address is provided on request to
+data subjects and to the supervisory authority)
+
+
+14. IF YOU LIVE IN CALIFORNIA
+
+This section adds to the rest of this policy for residents of California.
+Everything above applies to you too, including your rights in section 8.
+
+What we collect, and why: the categories of personal information we collect are
+those in section 2: identifiers, such as your email address, your name and your
+phone number; audio recordings of your voice, and the AI version of your voice
+made from them; what you write and send, such as your Ideal Text, your messages
+to Will and what you send in your chats; and internet activity, such as
+technical and security logs. We collect them from you and from your use of the
+service, for the purposes in section 4, and keep each for as long as section 7
+says.
+
+Sensitive personal information: the recordings of your voice, and anything
+sensitive they happen to reveal; and the personal answers of your plan and how
+you feel before a take, which you give only if you choose (section 4e). We use it only to provide the service you
+asked for, and, if you turn on the choice in section 4a, to train models as
+that section describes. You can turn that choice off at any time.
+
+We do not sell your personal information, and we do not share it for
+cross-context behavioral advertising. We do not knowingly collect personal
+information from anyone under 18.
+
+Your rights: to know what personal information we collect, use and disclose,
+and to get a copy of it; to have it deleted; to have it corrected; to limit
+our use of your sensitive personal information; and not to be treated
+differently for using any of these rights. To use them, write to
+contact@willpowerlab.com. Someone you authorise may also write for you. We
+confirm who you are before we act on a request, and we answer within 45
+days.
+```
+
+No fingerprint yet: it is taken from the signed text (step 2 of section 5).
