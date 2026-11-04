@@ -12383,6 +12383,11 @@ dark, not bold.
 3. **The list reads the chats again** while it is open and each time you
 come back to it, so a message that arrives while you look at the list shows.
 Was: read once, when the list first loaded.
+4. **Locked for the whole app** (founder, the same chat: "and lock it for
+the whole app"): wherever a row in a list carries something new for you,
+it has this look and no other: the name bold, the time orange, the line
+bold and orange, the orange dot, and no number (Never 1). Option B of the
+mockup, version 1, is the prototype, in [`docs/LOCKS.md`](LOCKS.md).
 No new words. No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1.
