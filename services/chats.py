@@ -672,9 +672,14 @@ def recording(database: Any, user_id: Any, thread_id: Any, message_id: Any) -> d
 
 
 def post_answer(database: Any, user_id: Any, thread_id: Any, take: Any,
-                duration_ms: Any = None, hold_ms: Any = None) -> dict:
-    """POST /v2/chats/<id>/answer: an answer recorded with "Record an answer"
-    (N321 item 4, N336, N363), sent as soon as its Take is uploaded. The Take
+                duration_ms: Any = None, hold_ms: Any = None, asks: bool = False) -> dict:
+    """POST /v2/chats/<id>/answer: an answer recorded with "Record your
+    answer" (N321 item 4, N336, N363, N483 item 5), sent as soon as its Take
+    is uploaded. With ``asks`` (POST /v2/chats/<id>/question), a question
+    recorded with "Record your question" (N483 item 4, N498): the same
+    message, held and taken back the same way, marked as a question for the
+    other person to answer (``asked``, ``question``, ``record_answer``), so
+    their bar's middle is "Record your answer". The Take
     is already processing on its own; the answer is a voice message that
     points at it, so its recording is sent once, not twice. ``hold_ms``, what
     is left of its 5 seconds (N441 item 3, at most ``ANSWER_HOLD_MS``), holds
@@ -695,6 +700,8 @@ def post_answer(database: Any, user_id: Any, thread_id: Any, take: Any,
     ms = _answer_length(take_row, duration_ms)
     hold = _hold(hold_ms)
     meta: dict = {"duration_ms": ms, "answer": True, "take": session}
+    if asks:
+        meta.update({"asked": True, "question": True, "record_answer": True})
     if hold:
         meta["held_until"] = (_now() + timedelta(milliseconds=hold + _UNDO_GRACE_MS)).isoformat()
     thread = str(me["thread_id"])
