@@ -571,7 +571,8 @@ O4  My own link is refused (400 OWN_LINK), and nothing is made.
 O5  As a user with no ring at all, I get my link and someone joins me
 through it (N456; was ring 6 only).
 O6  In the chat, the one who joined sees whose link they joined through;
-the link's owner does not.
+the link's owner does not. In the list, the joiner's row says it too
+until the chat's first message (N488).
 O7  A chat left without its two people (a crash between the two writes)
 gets them back on the next join, so the pair is never locked out.
 O8  A message I send reaches the other person's iPhone as a push: my
