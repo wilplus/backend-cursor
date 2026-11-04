@@ -10720,3 +10720,288 @@ No rules page yet: it lands on frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1 and [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 when built. No migration.
+
+**N442 · Railway's Watch Paths stay empty; N426 item 4 does not apply to
+Railway (founder, the Claude Code chat, 3 November 2026, setting up the
+switch: Railway's Watch Paths box turned typed patterns into its own
+suggestions, so the founder emptied it).** Every release builds each
+Railway service, whatever the batch changed. An empty box can never stop a
+fix from deploying; with releases every two hours, a docs-only batch is
+rare. Vercel still skips a docs-only batch (`scripts/vercel-ignore-build.sh`).
+Same day: every Railway service and Vercel deploy from `production`, and
+`main` no longer deploys on Vercel either. No new words on screen. No
+migration.
+No rules page: the rule is in
+[`docs/OPS-FLAGS-AND-RELEASES.md`](docs/OPS-FLAGS-AND-RELEASES.md).
+
+**N445 · The One thing walk's clips show the speaker's own words, and the
+AI-clip fix's phrase to lean on is bold (founder, the Claude Code chat,
+3 November 2026: "so it really matches the design and the prototype"; on
+the comparison page <https://claude.ai/artifact/KGscH8yJXaf8ChXrA3TsRJ>,
+"still has no guidance on how to say it", then "yes, bold the phrase, add
+it to this PR").** For N309 item 1:
+1. **Their best's clip and the AI-clip fix's clip** show the moment's own
+words (its served `said`) above the player, as the locked prototype draws
+them (`clip(u.best.text)`, `clip(f.text)`). "Last time" and their best
+played again inside the fix stay without words. Was: both clips drawn with
+the player only.
+2. **The phrase the AI clip names** (its served `phrase`) is bold where it
+stands in the fix's own words above the clip, in the tip ("Lean on
+“**above ninety percent**”, like this:", or the tip in words when no clip
+comes), and in the chat's copy of the fix's words, so the speaker sees where
+to lean. Was: the words and the tip plain. This goes beyond the locked
+prototype, which draws the words plain; the founder signed it.
+3. No new words (Never 4): the words are the speaker's own and the tip is
+the signed bank's.
+Built: frontend #1192. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2 and C4. No migration.
+
+**N448 · The trash is the Skip (founder, the Claude Code chat, 3 November
+2026, on frontend #1202 beside N435 item 3: "go with N435, trash is the
+skip").** For the One thing walk's fix and the Sniper, N435 item 3 stands:
+while a try records, the recording bar's trash is the Skip. The try is
+thrown away (nothing uploaded or counted), the walk says "Okay, we'll skip
+this one." and goes on. Was, briefly on main (frontend #1202, from "for that
+we have the trash button on the left"): the trash went back to the step that
+opened the recorder, with "Try it" and Skip. #1202's other part stands: no
+Skip under the recording bar. No new words.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C7 and T. No migration.
+
+**N449 · After the first Take, as the prototype "The way in" draws it
+(founder, the Claude Code chat, 3 November 2026, on the comparison of the
+app with the prototype, <https://claude.ai/artifact/F8CwUxZ2jFy5VWmnSxRbnf>:
+"take 2, skip the extra tap, skip for now, tall slide").** For N401 items 2
+and 4, N294 item 6 and N257:
+1. **The real talk is Take 2.** "Record Take 2" after the first Take records
+Take 2 of the first Take's project, with the real talk's topic, length and
+slides, which the project takes as its new slides from Take 2 (N257). Its
+recording screen says "Take 2 · Slide 1 of 3", and the count goes on from
+there; Take 1 stays in the history as the five answers (Never 5). Was: the
+real talk was a project of its own, and its recording screen said "Take 1".
+2. **No extra tap after the first Take.** After the first Take's walk,
+"Record Take 2" comes at once under the goodbye; "I want to continue my
+practice" is not asked after that Take. After every other Take it stays
+(N294 item 6).
+3. **"Skip for now"** is the set-up's button on the slides step whenever no
+slides were added, the last step included, and it starts the recording.
+With slides it stays "Start recording". Was: "Start recording" on that step
+when it was the last.
+4. **The tall slide.** On the first Take's recording screen each question
+fills the space down to the strip, its words at the bottom, with five marks
+under it: the question you're on in orange, the ones done dark, the rest
+grey (the prototype "The first Take", version 1). Every other Take's slide
+stays as the recording screen draws it.
+5. No new words (Never 4): "Take 2", "Record Take 2", "Skip for now" and
+"Start recording" are already signed.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md),
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+and [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+when built. No migration.
+
+**N452 · The chat drops the speaker's taps too; the slow Sniper's one line
+(founder, the Claude Code chat, 3 November 2026, on the two points left
+open by N435: "Yea gone" and "Yes"; then, asked, "You slowed down here.
+Keep it moving.").** For N435 items 2 and 6:
+1. **The chat writes no "Try it", "Keep mine" or "Skip" of the speaker's**
+for the One thing walk's fix and the Sniper, as the walk draws none (N435
+item 2). The walk's own answers stay in the chat ("Your words it is.",
+"Okay, we'll skip this one."). What the speaker chose is still kept: the
+Clearer version's accept or keep through its own save, the Sniper's game
+for Will (`postTempoGame`), the try's words. Was: the chat kept the taps as
+the speaker's messages.
+2. **A slow stretch's Sniper opens with one bubble too:** "You slowed down
+here. Keep it moving." with the pace scale in it, as the rushed one does
+(N435 item 6). Replaces "That part slowed down, with long pauses. 🐢 Let's
+try a little game.", the task line and "🤫 Find a quiet spot first." in the
+One thing walk.
+3. **Signed (Never 4):** "You slowed down here. Keep it moving.".
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+B7, T and K. No migration.
+
+**N453 · Step 9: the checks while the first Take is processed, and the
+bottom bar (founder, the Claude Code chat, 3 November 2026, on the page
+"Checks While You Wait", <https://claude.ai/artifact/S62YW9oU8vSKD65QJLV4NS>:
+eighteen answers, each the recommended one; and "Rest of the app is better
+than the prototype except one thing which is the bottom bar").** For N400,
+N401 items 3 and 6, N309, N332, N349, N361, N395 and N449:
+1. **While Take 1 is processed,** Will reads its five answers then, not
+after the walk: Will's chat with the thin processing row on top, "While
+your feedback is being prepared, check what I heard.", then one check at a
+time, each short and in the speaker's own words (Q1).
+2. **"Here's how others will see you:"** comes from slide 1 only: the role,
+one line of About, and up to three topics, the ones said most, as "Ask
+about {topic}"; the name comes from sign-up (Q3). "Change it" brings "Tell
+me what to change.", answered out loud (Q2). Others see the card only after
+"That's right" (Q4). The topics go on the person's profile, and a team's
+question about one of them goes to that person first (Q15; N332 still
+weighs answers and outcomes after that).
+3. **The plan card** comes from slides 2 and 3; "When is your deadline?" as
+taps only when no date was heard, in the wait, never after the walk.
+4. **The plan's own yes** (N325's words) comes in the wait after the plan.
+With it, one personal question, "What worries you most about it?", with
+taps: first one in the speaker's own words from the five answers, then
+"Rushing" (Pauses that hold the room), "Forgetting my one sentence" (Let
+your key line land), "Repeating myself" (Say it once, and it lands),
+"Sounding flat" (A voice that moves), and "Something else" by voice (Q5,
+Q5a). A tap puts that practice first in the plan. The two 1-to-10 taps are
+not asked in the wait (Q5b); they stay at the last practice (N178 item 2).
+This answers N401 item 6's personal questions.
+5. **"Which team are you in?"** only with no link and no code (N400 item 2);
+the agreement only for people in a team, before anyone's recording can
+reach them (Q6). Was: everyone accepted it (N400 item 3).
+6. **"How big you want your audience?"** (N309) in the wait, after the team
+(Q7). Was: the first time "Record Take 2" was tapped.
+7. **"You're set."** The walk's row on top turns orange when the walk is
+ready; nothing waits for the checks, and the speaker opens the walk when
+done (Q8).
+8. **Take 1's walk practises the level** the five slides' voice gave (Q9).
+9. **The bar** (Q10, Q10a): every record button stands in it as the
+prototype draws it: "+" on the left, the black button in the middle, the
+mic on the right, for "Start your first recording" and every "Record Take
+N". N395's grey ✕ goes; the mic talks to Will.
+10. **A guest's first Take** is the same five questions (Q11). **A join
+link** brings what its company has switched on (Q12). **New accounts**
+start with the way in on: the first Take, the plan and the card (Q13; what
+"ring 1" meant); the default ring is set in Admin → Rings. These answer
+N401 item 6.
+11. **"Record an answer"** also comes for a question about one of the
+person's topics, not only a product or a treatment (Q14; N361 item 1).
+12. **Built with it, from the same page:** Will never asks again what the
+slides answered (who it's for, the one sentence, why it matters); Take 2's
+set-up gets who it's for and the one sentence from them, as it gets the
+topic; the language spoken is kept for the coaches' queue; "um" and "uh"
+stop counting toward the filler-words level (N134 item 8); the project
+takes the real talk's topic as its name at Take 2.
+13. **Signed (Never 4):** "Rushing", "Forgetting my one sentence",
+"Repeating myself", "Sounding flat". The other words are signed already.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md),
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md),
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+when built. The profile's topics need a migration, with its outside
+review, when built.
+
+**N456 · The list of chats and every chat's own top bar are the default,
+for everyone, everywhere; locked (founder, the Claude Code chat, 3 November
+2026: "Please make sure the top bar and that landing on the list of chats
+is the default everywhere and lock it in the docs and write simple tests
+that are readable"; then, asked whether the whole `chats` switch goes on
+for every signed-in person, "Everything, for everyone").** For N256, N274,
+N298, N302, N321, N322, N334, N354, N357, N360, N378, N401:
+1. **Everyone lands on the list of chats.** Every signed-in person, on the
+web and in the iPhone app, opens /chat on the list: Will pinned first, then
+their chats; with none, Will and "Add someone to chat with" (N401). Links
+into a chat keep their door (a join link opens the list with the inviter's
+row under Will, N357; the coach's and the walk's links open Will's chat).
+Was: ring 6 only (feature `chats`); everyone else opened Will's chat under
+the WillpowerLab bar, and a person whose only chat was Will's opened on it
+(N274).
+2. **The top bar.** The WillpowerLab bar shows on the list only; every chat,
+Will's included, has its own top bar: back, the circle or Will's mark, the
+name (N321, N334). Back from a chat goes to the list; from the list it goes
+nowhere (N378).
+3. **No switch.** The chats are no longer behind a ring: the frontend never
+waits on the rings read to show them, and the backend answers the chats,
+the join links and the messages to every signed-in person. The `chats` row
+in the rings panel no longer decides anything.
+4. **Locked:** the list as the landing and the top bars join the row "The
+chats, all of a piece" in [`docs/LOCKS.md`](LOCKS.md). A change needs the
+founder's OK with a prototype. No new words.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1. No migration.
+
+**N457 · An invite lands on the chats, and the first Take is the only way
+in (founder, the Claude Code chat, 3 November 2026, from a phone screenshot
+of a tester invited by Artur who landed in Will's chat with the plan's
+questions asked by mic: "I land on a chat with Will eventhough I received an
+invite from Artur", "you should land on the list of chats and have a message
+from Artur and from Will and Will requires a set up and have the exact same
+word it has now and then you do the take", "these questions should be
+already recorded with the vocal and verbal cues so with the presentation
+not as a random answer with mic - fix that!!", "in cases where ... we need
+to hear it with the use of mic not text that should be in the
+presentation").** For N335, N357, N360, N401, N453 item 10, N456:
+1. **Joining through someone's link works for anyone.** The chats are
+everyone's (N456 item 3), so the chat with the link's owner is made for
+any signed-in person and no ring is raised. Was: a joiner without the chats
+got no chat (404) and landed in Will's chat.
+2. **After joining, the list of chats** (N357, N360): Will on top, his row
+showing his newest line in bold with the orange dot while it is new
+("Your first Take is five questions…"); the chat with whoever invited you
+under him, marked new ("You joined through {name}'s link."). Will's chat
+says the words it says now, then "Start your first recording".
+3. **The first Take is the only way in.** Wherever the plan is on, a new
+speaker's plan begins with the first Take: the five slides, recorded, so
+Will hears how they were said as well as what. No ring row is needed; a
+row for `first_take` can still hold it back. The plan's questions are never
+asked by mic in Will's chat. Was: they were, with no ring row.
+4. **Where Will needs to hear the voice, it is a slide of a Take,** not a mic
+answer in the chat. Content asked by mic (fixing the card, "Something
+else") stays as it is.
+No new words. No migration, and no ring is set. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1 and [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
+
+**N458 · The walk's moments and their interventions, as the docs say; the
+code is made to match (founder, the Claude Code chat, 3 November 2026: "go
+through the feedback walk the errors being spotted and what interventions
+are assigned to it … compare it with the current code and How the app
+works. When something is off when it comes to the walk and the questions
+after the walk Please fix it right away", "Make it really like in the docs
+and locked prototype. The goal is that we spot very precisely the moments
+and then assign to them perfect interventions. Including the exercise
+videos that we still need to record but they are the calls to the coach";
+then, asked, four answers, each the recommended one).** For N103, N294,
+N309, N406, N425:
+1. **The walk stays the One thing walk (N309):** their best and one fix,
+the AI clip on a measured voice problem (N425), the Clearer version or the
+Sniper. It does not go back to three moments (N289).
+2. **An exercise video not yet recorded is an ask to the coach (N103):** the
+speaker gets the AI clip or its tip at once and never waits; the moment
+goes to the coach's queue asking Artur to record a version for that
+mistake, until three approved versions exist. N103 is still in force only
+once it is built and merged, and its coach-panel line still needs the
+founder's words.
+3. **The questions after the walk are Will's ask (E1 to E4):** who the talk
+is for, what they should do, the key line, opened on the moment the walk
+just worked on, answered by a tap, typing or voice, with the goodbye
+waiting under an open question (N294, N406).
+4. **Fixes that make the code match these docs and the locked prototype
+merge when green.** Anything that would change a rule waits in §3 of the
+rules page for the founder.
+No new words. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+§3 and §6.
+
+**N459 · After the walk no deadline question; the slow Sniper's own tip;
+the AI clip's moment trimmed to fit (founder, the Claude Code chat, 4
+November 2026, answering the open points of N458: "you can delete the
+deadline from here cause it is set during the before the walk set up";
+asked whether a slow Sniper's tip is "keep it moving" or "slow down a
+little", "Keep it moving"; "the moment recognized should be short enough to
+generate it ... in any case the moment is trimmed so that it fits and the
+AI audio can be generated").** For N347, N425, N452, N453, N458:
+1. **No "When is your deadline?" after a Take.** The deadline is set in the
+set-up before the walk; the chain after the walk never asks it. Was: after
+Take 1, with no day heard, it was asked above the goodbye.
+2. **A slow Sniper's Last time:** "Last time: keep “{words}” moving." (with
+"You did." when that stretch came out inside the green on its side). The
+rushed one keeps "give “{words}” more room". Signed (Never 4): "keep
+“{words}” moving".
+3. **The AI clip's moment always fits the clip.** When the moment's
+sentence is too long for the AI clip (17 s at the slow reading), the
+moment is trimmed to the part around what the clip teaches, so the AI
+audio can always be made; the speaker's try and the clip say the same
+trimmed words. Was: a moment of 37 words or more got only the tip in
+words.
+No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C0a, C4, T and §6, and
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).

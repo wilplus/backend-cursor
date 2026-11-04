@@ -492,13 +492,17 @@ def v2_explore_arc_review_tempo(arc_id, take_session_id):
     N166); null too on a slide where the pace game the walk of the Take
     before gave worked (N359). The stretch's clip plays as the moments'
     do: ``snippet_audio_ref`` signed by the same signer, with
-    ``start_offset_ms`` / ``duration_ms`` within it (null without audio).
-    200 {tempo: {reading, topic, said, plan_level, snippet_id,
+    ``start_offset_ms`` / ``duration_ms`` within it (null without audio);
+    ``slide_index`` is its slide (null when unknown), and ``said`` its
+    words as the Ideal Text has them. ``?one=1`` (the One thing walk, also
+    read from the Take's stored frame): no topic is written, the opening
+    never says it (N435 item 6, N452 item 2), and ``topic`` is "that part".
+    200 {tempo: {reading, topic, said, plan_level, snippet_id, slide_index,
     snippet_audio_ref, start_offset_ms, duration_ms} | null} · 403 a
     denied permit · 404 · 500"""
     from services.processing_authorization import ProcessingAuthorizationError
     from services.take_progress import pace_worked
-    from services.tempo_stretch import tempo_for_take, with_clip
+    from services.tempo_stretch import tempo_for_take, walked_as_one_thing, with_clip
     try:
         owned, sessions = _arc_owned_by_caller(arc_id)
         take = str(take_session_id)
@@ -506,7 +510,9 @@ def v2_explore_arc_review_tempo(arc_id, take_session_id):
             return jsonify({"code": "NOT_FOUND", "error": "take not found"}), 404
         if not _tempo_on():
             return jsonify({"tempo": None}), 200
-        tempo = tempo_for_take(db, take=take, user_id=str(request.user_id), arc_id=str(arc_id))
+        one = request.args.get("one") == "1"
+        tempo = tempo_for_take(db, take=take, user_id=str(request.user_id), arc_id=str(arc_id),
+                               topic=False if one else (lambda: not walked_as_one_thing(db, take)))
         # Not again on a slide where the pace game worked last time (N359).
         if tempo and pace_worked(db, sessions, take):
             tempo = None
@@ -521,15 +527,29 @@ def v2_explore_arc_review_tempo(arc_id, take_session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to read the tempo step"}), 500
 
 
+def _last_tip(take: str | None) -> str | None:
+    """The tip the walk of ``take`` gave with its fix (``fix_tip``, N309
+    item 1), whatever the chat has loaded; None when it kept none or on any
+    failure: the walk then reads the chat it has. Never raises."""
+    try:
+        return db.walk_fix_tip(str(getattr(request, "user_id", "")), take) if take else None
+    except Exception as error:  # noqa: BLE001 -- the chat's own tip stands
+        logger.warning("review last fix: tip unread take=%s: %s", take, error)
+        return None
+
+
 @v2_bp.route("/explore/arc/<arc_id>/review/last-fix/<take_session_id>", methods=["GET"])
 @require_auth
 def v2_explore_arc_review_last_fix(arc_id, take_session_id):
     """The One thing walk's "Last time" for one Take (founder 2026-10-31,
     N309 item 1): the previous Take's fix when it rose on this Take's same
     slide (a moment's issue gone; the pace game's slide slower, N347 item
-    3), with this Take's clip there. 200 {last: {kind ("voice", "clearer"
-    or "tempo"), slide_index, clip: {snippet_id, url, start_offset_ms,
-    duration_ms}} | null} · 404 · 500"""
+    3), with this Take's clip there, and ``tip``, the tip that walk gave,
+    kept with its fix step in the chat (``fix_tip``, C0a), null when it
+    kept none or there is no last fix. 200 {last: {kind ("voice",
+    "clearer" or "tempo"), slide_index, clip: {snippet_id, url,
+    start_offset_ms, duration_ms}} | null, tip: string | null} · 404 ·
+    500"""
     from services.take_progress import last_fix, previous_take
     try:
         owned, sessions = _arc_owned_by_caller(arc_id)
@@ -537,7 +557,9 @@ def v2_explore_arc_review_last_fix(arc_id, take_session_id):
         if not owned or take not in {str(s.get("id")) for s in _completed_spoken_sessions(sessions)}:
             return jsonify({"code": "NOT_FOUND", "error": "take not found"}), 404
         # The same Take before as the walk's pick reads (N359).
-        return jsonify({"last": last_fix(db, take, previous_take(sessions, take))}), 200
+        before = previous_take(sessions, take)
+        last = last_fix(db, take, before)
+        return jsonify({"last": last, "tip": _last_tip(before) if last else None}), 200
     except Exception as e:
         logger.error("review last fix failed arc=%s: %s", arc_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
@@ -548,7 +570,8 @@ def v2_explore_arc_review_last_fix(arc_id, take_session_id):
 @require_auth
 def v2_explore_arc_review_tempo_tries(arc_id, take_session_id):
     """The tempo game as played (founder 2026-10-26, N166 step 4), kept for
-    Will. Body: {reading, tries: [{result, path}], close}. 200 {kept: true}
+    Will. Body: {reading, tries: [{result, path}], close, skipped?} (skipped
+    an optional boolean: they skipped it, after a try too). 200 {kept: true}
     · 400 · 404 · 500"""
     from services.tempo_stretch import keep_tries
     try:

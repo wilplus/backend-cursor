@@ -82,11 +82,16 @@ def calls_on(database: Any, user_id: Any) -> bool:
 
 
 def first_take_on(database: Any, user_id: Any) -> bool:
-    """Is the first Take the onboarding for this person (N401)? The ring
-    row ``first_take``; with no row it is off and the plan asks its
-    questions in the chat, as before. Fails closed (rings)."""
+    """Is the first Take the onboarding for this person (N401)? Wherever the
+    plan is on, the first Take is the only way in (N457 item 3): with no
+    ``first_take`` ring row it is on; a row can still hold it back (killed,
+    or a ring the person is below), and then the plan asks in the chat."""
     from services import rings
-    return bool(user_id) and rings.feature_is_on_for_user(rings.FIRST_TAKE, user_id, database=database)
+    if not user_id:
+        return False
+    if rings.feature_ring_row(rings.FIRST_TAKE, database=database) is None:
+        return True
+    return rings.feature_is_on_for_user(rings.FIRST_TAKE, user_id, database=database)
 
 
 # ── time ───────────────────────────────────────────────────────────────────
@@ -1015,7 +1020,7 @@ def _first_take_slides(clips: list) -> list[list[dict]]:
 def _read_first_take(user_id: str, said: list[str], today: date) -> Optional[dict]:
     """The AI's reading of the five answers: the plan's facts and the day of
     the event when one was said; None when it failed (the plan then keeps
-    the words as they were said, and asks for the deadline)."""
+    the words as they were said, and gives "No date yet"'s two months)."""
     from services.llm import chat_complete
     from services.llm_config import SPEC_PLAN_TURN
     from services.processing_authorization import rethrow_processing_authorization
@@ -1034,7 +1039,8 @@ def _read_first_take(user_id: str, said: list[str], today: date) -> Optional[dic
 
 def _first_take_deadline(raw: Any, today: date) -> Optional[date]:
     """The day the AI read, kept only when it is after today and within two
-    years; otherwise none, and the plan asks."""
+    years; otherwise none, and the plan takes "No date yet"'s two months
+    (N459 item 1)."""
     day = _parse_day(raw) if isinstance(raw, str) else None
     if day is None or day <= today or (day - today).days > 730:
         return None
@@ -1133,7 +1139,7 @@ def after_processing(database: Any, payload: dict, audio: bytes) -> bool:
         slides = _first_take_slides(database.get_snippets_by_session(take_id) or [])
         said = _said(slides)
         if not any(said):
-            return False  # the walk's end reads it, and asks
+            return False  # the walk's end reads it
         voices = {i: v for i, (*_x, kind) in enumerate(P.FIRST_TAKE_SLIDES)
                   if kind in _COACH_HEARS and said[i] and (v := _cut_voice(audio, slides[i]))}
         plan = database.get_open_plan(user_id)  # again: the walk's end may have read it
@@ -1153,7 +1159,8 @@ def _from_first_take(database: Any, user_id: str, plan: dict) -> list[dict]:
     answers. The plan's facts come from them, each answer is kept as the
     plan answer it replaces and in Will's notes; with a day said, the plan
     and its card, as after the plan's last question (N319); with none, or
-    nothing heard, "When is your deadline?" as taps. Answers already kept
+    nothing heard, the same with "No date yet"'s two months, and no question
+    (N459 item 1: the deadline is set before the walk). Answers already kept
     at the end of the Take's processing (``after_processing``) are not kept
     again."""
     kept = _facts(plan).get("first_take") == "kept"
@@ -1164,20 +1171,21 @@ def _from_first_take(database: Any, user_id: str, plan: dict) -> list[dict]:
     said = _said(slides)
     today = today_in(plan.get("time_zone"))
     read = _read_first_take(user_id, said, today) if any(said) else None
-    facts = {**_facts(plan), "first_take": "read", "first_take_session": take_id or None}
+    # The walk has come (N262 item 1, as ``_ask_again`` keeps it): the plan
+    # no longer waits for it.
+    facts = {**_facts(plan), "first_take": "read", "first_take_session": take_id or None,
+             "takes_seen": len(_takes(database, user_id))}
     facts.update(P.clean_facts((read or {}).get("facts"), facts))
     if not facts.get("key_line") and said[3]:
         facts["key_line"] = said[3][:300]
     if not kept:
         facts.update(_keep_first_take(database, user_id, plan, slides, said, facts.get("key_line")))
     plan = _save(database, user_id, plan, {"facts": facts})
-    deadline = _first_take_deadline((read or {}).get("deadline"), today)
-    if deadline is None:
-        return _write(database, user_id, plan["id"],
-                      [_bot(P.COPY["deadline_q"], "deadline_q", plan_ask="deadline")])
+    heard = _first_take_deadline((read or {}).get("deadline"), today)
+    deadline = heard or P.given_deadline(today)
     j = P.journey(today, deadline)
     plan, rows = _questions_done(database, user_id, plan, {
-        "deadline": deadline.isoformat(), "deadline_given": False,
+        "deadline": deadline.isoformat(), "deadline_given": heard is None,
         "every_day": j.every_day, "total": j.total}, _diagnose_first_take)
     return _write(database, user_id, plan["id"], rows)
 

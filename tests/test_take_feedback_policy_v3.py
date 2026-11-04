@@ -831,6 +831,52 @@ def test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan(monkeypat
     assert _slots(_paced_frame(paced, tempo_step=True)) == plain
 
 
+def _served_walk(**options):
+    """The paced Take's walk as the speaker's payload carries it: the
+    service frame, its inventory, the serving boundary. ``[(walk_slot,
+    one_fix)]`` of the rows that carry a walk slot."""
+    from services.ideal_text_parts import with_served_spans
+    from services.take_feedback_manager import strip_internal_evidence
+    from services.take_feedback_policy_v3 import build_service_candidate_frame
+    from services.take_feedback_policy_v3_service import prepare_v3_service_inventory
+    pieces = [{"snippet_id": f"p{i}", "take_session_id": "take-2", "slide_index": i,
+               "text": " ".join(f"p{i}x{n}" for n in range(75)) + ".",
+               "recording_id": "recording-1", "start_offset_ms": i * 5000, "duration_ms": 5000}
+              for i in range(4)]
+    at = 0
+    for piece in pieces:
+        piece.update(start=at, end=at + len(piece["text"]), part_id=f"part-{piece['slide_index']}")
+        at = piece["end"] + 1
+    served = " ".join(piece["text"] for piece in pieces)
+    document = with_served_spans({"take_session_id": "take-2", "text": served, "pieces": pieces},
+                                 served_text=served, slide_regions={})
+    snippets = [{"id": f"p{i}", "session_id": "take-2", "recording_id": "recording-1",
+                 "start_offset_ms": i * 5000, "duration_ms": 5000,
+                 "metrics": {"wpm": wpm, "voice_confidence": {
+                     "version": "voice-confidence-universal-v3", "score": score},
+                     "pause_ratio": _rushed(score)}}
+                for i, (score, wpm) in enumerate(zip((0.95, 0.8, -0.2, 0.3), (140, 140, 140, 200)))]
+    service = build_service_candidate_frame(
+        take_document=document, snippets=snippets, suggestions={}, feedback_candidates=[],
+        take_index=2, expected_recording_id="recording-1", served_text=served, **options)
+    inventory = prepare_v3_service_inventory(frame=service, take_document=document,
+                                             served_text=served, feedback_candidates=[])
+    assert inventory is not None
+    return [(row["walk_slot"], row.get("one_fix"))
+            for row in strip_internal_evidence(inventory["visible_rows"]) if row.get("walk_slot")]
+
+
+def test_the_served_walk_says_which_one_fix_it_chose(monkeypatch):
+    """C-SNIPER (N309 item 1, N323 item 6): the walk's one fix is served on
+    their best, so the client shows the Sniper only when the server chose
+    it: "tempo" when rushing wins, "moment" when a moment is the fix."""
+    from services import tempo_stretch
+    monkeypatch.setattr(tempo_stretch, "pick_for_take",
+                        lambda take, rows: {"index": 0, "outside": 0.9, "reading": "rushed"})
+    assert _served_walk(tempo_step=True) == [("strongest", "tempo")]
+    assert _served_walk(tempo_step=False) == [("strongest", "moment"), ("weakest", None)]
+
+
 def test_a_sentence_with_my_helper_words_gives_way_to_the_next():
     """Founder 2026-10-28 (N246 item 2): "if there is already a confident
     moment and helper words, go for the next confident moment"."""

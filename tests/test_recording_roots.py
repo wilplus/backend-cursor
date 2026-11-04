@@ -12,10 +12,14 @@ OUTCOME
       (N309): the sentence the practice was opened on goes to the slide,
       with or without a try, whole, past eight words too (N323 item 2);
       words not in it are refused.
+  O5  The walk locks the paragraph first and saves the words after: those
+      words show on the recording screen and the page, and a pick on the
+      same paragraph in the next Take replaces them.
 PROVES   O1 -> test_stale_or_invalid_live_root_fails_closed
          O2 -> test_recording_roots_route_returns_the_live_root
          O3 -> test_helper_words_from_an_earlier_take_stay_on_their_slide
          O4 -> test_the_clearer_versions_sentence_becomes_my_helper_words
+         O5 -> test_the_walks_helper_words_show_on_the_next_take
 WHY      Never-rule 5; founder 2026-10-13, project "S"; founder 2026-10-31
          (N309 item 3, "the helper words come on their own").
 """
@@ -143,7 +147,7 @@ def test_the_clearer_versions_sentence_becomes_my_helper_words(monkeypatch):
 
     picked = []
     monkeypatch.setattr(slide_helper_words, "record_pick",
-                        lambda _db, arc, user, part, take, words: picked.append((arc, part, take, words)))
+                        lambda _db, arc, user, part, take, words, **_: picked.append((arc, part, take, words)))
     database = Mock()
     database.takes.get_arc_sessions.return_value = [{"id": "take-3", "take_index": 3}]
     # Opened on the Clearer version's words; no try was kept yet.
@@ -168,3 +172,95 @@ def test_the_clearer_versions_sentence_becomes_my_helper_words(monkeypatch):
     # Without the walk's source, an open practice still needs a judged try.
     assert practice_adoption.helper_words_from_practice(
         database, practice, "part-1", "real traction", "user-1")[0] == 409
+
+
+class _Arc:
+    """One arc's paragraph and its Slide's helper words, kept as the
+    database keeps them."""
+
+    def __init__(self):
+        self.parts = [dict(_live_rows()[0], locked_at=None, root_phrase=None,
+                           root_start=None, root_end=None)]
+        self.slide_rows: list = []
+        self.takes = Mock()
+
+    def get_ideal_text_document_core(self, _arc, _user):
+        return _snapshot()
+
+    def get_ideal_text_parts(self, _arc, _user, with_lock=False):
+        return [dict(p) for p in self.parts]
+
+    def set_ideal_text_part_lock(self, _arc, _user, _part, locked, revision_action=None):
+        self.parts = [dict(p, locked_at="2026-11-03T10:00:00Z" if locked else None)
+                      for p in self.parts]
+        return True
+
+    def set_ideal_text_part_root(self, *, arc_id, user_id, part_id, phrase, start, end):
+        self.parts = [dict(p, root_phrase=phrase, root_start=start, root_end=end)
+                      for p in self.parts]
+        return True
+
+    def get_slide_helper_words(self, _arc, _user):
+        return [dict(r) for r in self.slide_rows]
+
+    def replace_slide_helper_words(self, _arc, _user, slide, rows):
+        self.slide_rows = [r for r in self.slide_rows if r["slide_index"] != slide] + [
+            dict(r, slide_index=slide) for r in rows]
+        return True
+
+    def v2_get_session_by_id(self, _sid):
+        return {}
+
+    def get_latest_ideal_text_part_revision(self, **_):
+        return {}
+
+    def record_canonical_paragraph_decision(self, _decision):
+        return None
+
+    def record_canonical_root_phrase(self, _root):
+        return None
+
+
+def test_the_walks_helper_words_show_on_the_next_take(monkeypatch):
+    """N309 item 3: the Clearer version's sentence shows under the slide in
+    the next Take and on the Ideal Text. The walk locks first, then saves the
+    words; a pick on that paragraph in the next Take replaces them (Q14 A)."""
+    import routes.v2.explore_ideal_text as route
+    from services import practice_adoption
+    from services.ideal_text_part_actions import lock_part, root_part
+    from services.ideal_text_parts import serve
+
+    arc = _Arc()
+    monkeypatch.setattr(route, "db", arc)
+    monkeypatch.setattr(route, "_arc_owned_by_caller", lambda _arc: (True, []))
+    app = Flask(__name__)
+
+    @app.before_request
+    def actor():
+        request.user_id = "actor-1"
+
+    app.add_url_rule("/test/<arc_id>",
+                     view_func=inspect.unwrap(route.v2_explore_get_recording_roots))
+
+    def roots():
+        return [r["text"] for r in app.test_client().get("/test/arc-1").get_json()["roots"]]
+
+    sentence = "We're already seeing real traction."
+    take_one = [{"id": "take-1", "take_index": 1}]
+    arc.takes.get_arc_sessions.return_value = take_one
+    lock_part(arc, arc_id="arc-1", user_id="actor-1", part_id="part-1",
+              parts=serve(arc.parts), locked=True, body={}, sessions=take_one)
+    practice = {"id": "p-1", "project_id": "arc-1", "status": "open",
+                "exact_passage": sentence}
+    assert practice_adoption.helper_words_from_practice(
+        arc, practice, "part-1", sentence, "actor-1", source="passage")[0] == 200
+    assert roots() == [sentence]
+
+    take_two = take_one + [{"id": "take-2", "take_index": 2}]
+    lock_part(arc, arc_id="arc-1", user_id="actor-1", part_id="part-1",
+              parts=serve(arc.parts), locked=True, body={}, sessions=take_two)
+    root_part(arc, arc_id="arc-1", user_id="actor-1", part_id="part-1",
+              target=serve(arc.parts)[0],
+              body={"phrase": "accepted sentence", "start": 10, "end": 27},
+              sessions=take_two)
+    assert roots() == ["accepted sentence"]

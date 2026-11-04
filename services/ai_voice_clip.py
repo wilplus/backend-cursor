@@ -375,18 +375,42 @@ def _choose(database: Any, practice: dict, cycle: dict) -> tuple[Optional[dict],
     # On a plan, the level's own problem where the clip shows it (G7, N209).
     from services.plan_walk import AI_PROBLEM, level_of_practice
     prefer = AI_PROBLEM.get(level_of_practice(database, practice) or "")
-    # The walk's one fix on a moment (not a Clearer version's example, not
-    # a plan's level): what the clip shows, the strongest, or no clip (N425).
-    fix = str(practice.get("kind") or "") != "rewrite" and prefer is None
+    # The walk's one fix on a moment (not a Clearer version's example), on
+    # a plan too: the level's problem where the clip shows it, else what
+    # the clip shows, the strongest, never the runner-up, or no clip (N425
+    # items 3 and 4, B and C).
+    fix = str(practice.get("kind") or "") != "rewrite"
     selection = select(snippet, medians, sentence=sentence,
                        seed=str(practice["id"]), history=history, prefer=prefer,
-                       explore=not fix, allow_default=not fix)
+                       explore=not fix, allow_default=not fix, hold_back=not fix)
+    if fix and selection:
+        sentence = _fit_passage(database, practice, sentence, selection)
     before = {k: (snippet.get("metrics") or {}).get(k)
               for k in ("wpm", "pause_ratio", "dynamic_db")}
     from services.ai_voice_severity import fillers_per_100
     before["fillers_per_100"] = fillers_per_100(sentence)
     return selection, {"before": before, "medians": medians,
                        "sentence": sentence, "snippet": snippet}
+
+
+def _fit_passage(database: Any, practice: dict, sentence: str, selection: dict) -> str:
+    """The walk's fix on a moment too long for a clip: its words trimmed to
+    the part around what the clip teaches, so the clip can be made, and the
+    practice re-pointed to them before any try, so the try is checked
+    against the words the clip says (founder 2026-11-04, N459 item 3).
+    ``selection`` carries them as ``passage`` for the walk to show."""
+    from services.ai_voice_prompt import fit_to_clip
+    words = fit_to_clip(sentence, selection.get("target_phrase"),
+                        drop_fillers=selection.get("exercise") == "fillers")
+    practice_id = str(practice.get("id") or "")
+    if (words == sentence or not words
+            or database.list_confident_voice_practice_attempts(practice_id)):
+        return sentence
+    database.update_confident_voice_practice(
+        practice_id, str(practice.get("owner_user_id") or ""), {"exact_passage": words})
+    practice["exact_passage"] = words
+    selection["passage"] = words
+    return words
 
 
 class _Job:
@@ -754,7 +778,12 @@ def problem_of(cycle: dict) -> dict:
     selection = cycle.get("selection") or {}
     exercise = str(cycle.get("exercise") or selection.get("exercise") or "") or None
     phrase = " ".join(str(selection.get("target_phrase") or "").split()) or None
-    return {"problem": "default" if selection.get("default") else exercise, "phrase": phrase}
+    out = {"problem": "default" if selection.get("default") else exercise, "phrase": phrase}
+    if selection.get("passage"):
+        # The words the clip says and the try is asked for, when the
+        # moment was trimmed to fit the clip (N459 item 3).
+        out["passage"] = str(selection["passage"])
+    return out
 
 
 def why_of(cycle: dict) -> Optional[str]:

@@ -19,7 +19,9 @@ OUTCOME
       that picks a stretch: the Takes table marks it gone and the walk opens
       with it as the last fix; slower but still outside the green, it came
       back and nothing is said (N347 item 3, N350 item 3). Where it worked,
-      the walk offers no tempo step on that slide again (N359).
+      the walk offers no tempo step on that slide again (N359). A slow
+      stretch off a pace or pause week was never the Sniper, so it is no
+      fix the walk gave (N323 item 6).
 PROVES   O1 -> test_progress_is_read_against_my_first_takes
          O2 -> test_each_fix_is_marked_came_back_or_gone_on_the_next_take
          O3 -> test_last_time_plays_the_fix_that_rose_on_this_take
@@ -155,14 +157,17 @@ def test_the_pace_fix_worked_when_that_slide_stays_inside_the_green():
     assert (fix["kind"], fix["slide_index"]) == ("tempo", 2)
 
     class Db:
-        def __init__(self, clips):
-            self.clips = clips
+        def __init__(self, clips, said_before=(calm, rushed)):
+            self.clips, self.said_before = clips, list(said_before)
 
         def get_v4_dark_frame(self, take):
             return {"t1": before, "t2": now}.get(take)
 
         def get_snippets_by_session(self, take):
-            return {"t1": [calm, rushed], "t2": self.clips}.get(take, [])
+            return {"t1": self.said_before, "t2": self.clips}.get(take, [])
+
+        def v2_get_session_by_id(self, take):
+            return {"id": take}           # on no plan
 
     with patch("services.audio_ref_resolver.resolve_playable_ref",
                lambda ref, expires_in=None, **_: f"https://signed.example/{ref}"):
@@ -184,3 +189,12 @@ def test_the_pace_fix_worked_when_that_slide_stays_inside_the_green():
     assert pace_worked(Db([calm_now, slow]), talk, "t2") is True
     assert pace_worked(Db([calm_now, still_out]), talk, "t2") is False
     assert pace_worked(Db([calm_now, slow]), talk[1:], "t2") is False
+
+    # The last walk's stretch ran slow, off a pace or pause week: it was not
+    # the Sniper (N323 item 6), so it is no fix that walk gave. Nothing is
+    # said, and the tempo step stays on that slide.
+    slow_before, _ = _spoken("b", end + 1, 12, word_s=0.3, gap_s=6.0)
+    with patch("services.audio_ref_resolver.resolve_playable_ref",
+               lambda ref, expires_in=None, **_: f"https://signed.example/{ref}"):
+        assert last_fix(Db([calm_now, inside], said_before=(calm, slow_before)), "t2", "t1") is None
+    assert pace_worked(Db([calm_now, slow], said_before=(calm, slow_before)), talk, "t2") is False

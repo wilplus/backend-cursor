@@ -99,6 +99,11 @@ def _block_presentation(block: dict, block_id: str) -> dict:
         # level's key, from which the walk says "This week's level:
         # {level}. Here's where it shows:". A word, never a score.
         presentation["plan_level"] = block["plan_level"]
+    if block.get("one_fix"):
+        # The One thing walk's one fix, on its strongest block (C-SNIPER):
+        # "tempo" (the Sniper), "moment" or "none". The walk shows the
+        # Sniper by it. A word, never a score.
+        presentation["one_fix"] = block["one_fix"]
     return presentation
 
 

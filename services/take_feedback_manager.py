@@ -457,6 +457,11 @@ CLIENT_READ_ROW_FIELDS = frozenset({
     # The moment where this week's level shows most, on a plan (G7, N209):
     # the level's key, a word, never a score.
     "plan_level",
+    # The One thing walk's one fix, on its strongest moment (C-SNIPER,
+    # N309 item 1, N323 item 6): "tempo" when the Sniper is the fix,
+    # "moment" or "none". The walk shows the Sniper by it. A word, never a
+    # score.
+    "one_fix",
 })
 UNRENDERED_ROW_FIELDS: frozenset[str] = frozenset()
 CLIENT_ROW_FIELDS = CLIENT_READ_ROW_FIELDS | UNRENDERED_ROW_FIELDS

@@ -16,6 +16,8 @@ picked and the walk passes the step by.
 The topic is one small-model call inside the Take's protected provider
 scope (``services.take_summary._under_authority``), kept only when it is a
 short plain phrase (``read_topic``); otherwise the step says "that part".
+The One thing walk never says it (N435 item 6, N452 item 2), so its read
+makes no call (``tempo_for_take``'s ``topic``) and answers "that part".
 Internal only (AC-9): no number leaves the server.
 
 When the game ends, the walk sends it back (build step 4): each try's
@@ -180,9 +182,16 @@ _SENTENCE = re.compile(r"(?<=[.?!])\s+")
 
 
 def said_around(snippets: list[dict], index: int) -> dict:
-    """The stretch with the sentence before and after it, as said. Pure."""
+    """The stretch with the sentence before and after it, in the Ideal
+    Text's words: its silent smoothing, no hesitation or immediate repeat
+    (``transcript_smoothing.smooth_piece``, H3). Pure."""
+    from services.transcript_smoothing import smooth_piece
+
     def text(i: int) -> str:
-        return " ".join(str(snippets[i].get("transcript") or "").split()) if 0 <= i < len(snippets) else ""
+        if not 0 <= i < len(snippets):
+            return ""
+        clip = snippets[i]
+        return " ".join(smooth_piece(clip.get("transcript"), clip.get("language")).split())
     before = [s for s in _SENTENCE.split(text(index - 1)) if s]
     after = [s for s in _SENTENCE.split(text(index + 1)) if s]
     return {"before": before[-1] if before else "", "stretch": text(index), "after": after[0] if after else ""}
@@ -216,10 +225,35 @@ _CACHE_LOCK = threading.Lock()
 _CACHE_MAX = 256
 
 
-def tempo_for_take(database: Any, *, take: str, user_id: str, arc_id: str) -> Optional[dict]:
-    """{reading, topic, said, snippet_id} for the Take's tempo step, or None
-    when no clip leaves the green; ``snippet_id`` is the clip the stretch
-    is, for its player (`with_clip`). Read once per Take per process."""
+def walked_as_one_thing(database: Any, take: str) -> bool:
+    """Whether the Take's walk is the One thing walk (N289, N309): its
+    stored frame's moments carry walk slots. False with no frame, or on any
+    failure: the topic is then written, as for a Take walked before."""
+    try:
+        frame = database.get_v4_dark_frame(str(take))
+    except Exception as error:  # noqa: BLE001 -- the topic as before
+        logger.warning("tempo: frame unread take=%s: %s", take, type(error).__name__)
+        return False
+    blocks = frame.get("blocks") if isinstance(frame, dict) else None
+    return any(isinstance(b, dict) and b.get("walk_slot") for b in blocks or [])
+
+
+def _stretch_slide(database: Any, take: str, clip: dict) -> Optional[int]:
+    """The stretch's slide, as the Ideal Text places the clip (a coach's
+    correction first, then the cutter's bucket); None when unknown."""
+    from services.transcript_document import _slide_corrections, _slide_of
+    return _slide_of(clip, _slide_corrections(database, take))
+
+
+def tempo_for_take(database: Any, *, take: str, user_id: str, arc_id: str,
+                   topic: Any = True) -> Optional[dict]:
+    """{reading, topic, said, snippet_id, slide_index} for the Take's tempo
+    step, or None when no clip leaves the green; ``snippet_id`` is the clip
+    the stretch is, for its player (`with_clip`), ``slide_index`` its slide
+    (None when unknown). ``topic``: whether the topic is written (a bool,
+    or a callable read only when there is a stretch); the One thing walk's
+    opening never says it, so without it no model call is made and the
+    topic is ``FALLBACK_TOPIC``. Read once per Take per process."""
     with _CACHE_LOCK:
         if take in _CACHE:
             _CACHE.move_to_end(take)
@@ -229,17 +263,19 @@ def tempo_for_take(database: Any, *, take: str, user_id: str, arc_id: str) -> Op
     result: Optional[dict] = None
     if chosen:
         said = said_around(snippets, chosen["index"])
-        topic: Optional[str] = None
+        written: Optional[str] = None
         try:
-            from services.take_summary import _under_authority
-            topic = _under_authority(database, take, lambda: write_topic(
-                said["stretch"], user_id=user_id, take=take, arc_id=arc_id))
+            if topic() if callable(topic) else topic:
+                from services.take_summary import _under_authority
+                written = _under_authority(database, take, lambda: write_topic(
+                    said["stretch"], user_id=user_id, take=take, arc_id=arc_id))
         except Exception as error:  # noqa: BLE001 -- the step says "that part"
             from services.processing_authorization import rethrow_processing_authorization
             rethrow_processing_authorization(error)
             logger.warning("tempo topic failed take=%s: %s", take, type(error).__name__, exc_info=True)
-        result = {"reading": chosen["reading"], "topic": topic or FALLBACK_TOPIC, "said": said,
-                  "snippet_id": snippets[chosen["index"]].get("id")}
+        clip = snippets[chosen["index"]]
+        result = {"reading": chosen["reading"], "topic": written or FALLBACK_TOPIC, "said": said,
+                  "snippet_id": clip.get("id"), "slide_index": _stretch_slide(database, take, clip)}
     with _CACHE_LOCK:
         _CACHE[take] = result
         while len(_CACHE) > _CACHE_MAX:
@@ -322,7 +358,9 @@ _PATH_MAX = 300
 def read_tries(body: dict) -> Optional[dict]:
     """The tempo game as the walk sends it, when it is whole: the stretch's
     reading, up to three tries (each its result and the dot's path, 0..1),
-    and how it ended (none when skipped before a try). Else None. Pure."""
+    how it ended (none when skipped before a try), and ``skipped``, an
+    optional boolean, kept when true: the speaker skipped it, after a try
+    too. Else None. Pure."""
     if not isinstance(body, dict) or body.get("reading") not in ("rushed", "slow"):
         return None
     tries = body.get("tries")
@@ -340,7 +378,11 @@ def read_tries(body: dict) -> Optional[dict]:
     close = body.get("close")
     if (close is None) != (not results) or (close is not None and close not in _CLOSES):
         return None
-    return {"reading": body["reading"], "tries": results, "paths": paths, "close": close}
+    skipped = body.get("skipped")
+    if skipped is not None and not isinstance(skipped, bool):
+        return None
+    game = {"reading": body["reading"], "tries": results, "paths": paths, "close": close}
+    return {**game, "skipped": True} if skipped else game
 
 
 def keep_tries(database: Any, *, user_id: str, take: str, body: dict) -> bool:

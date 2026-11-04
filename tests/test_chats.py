@@ -5,8 +5,9 @@ STORY    As the founder, I want my own chats with a colleague and a customer,
          that I can see the chats between people working before anyone else
          is in them.
 OUTCOME
-  O1  Without the ring row (chats, ring 6) every route answers 404 and
-      nothing is written.
+  O1  As a user, I have my chats with no ring at all: the list answers
+      without the rings ever being read (N456; was ring 6 only). As a
+      server, I answer nobody who is not signed in, and write nothing.
   O2  The demo makes Sarah's customer chat and Ariel's colleague chat once,
       however often it is asked; the list names each chat for the other
       person, with their line and the last thing said.
@@ -61,7 +62,8 @@ OUTCOME
       so in my chat with him, once, naming the other person (N441 item 5).
       Once its time is over Undo is refused and it reaches them; with no
       time left it goes at once. Nobody else can take my answer back.
-PROVES   O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
+PROVES   O1 -> ChatsTest::test_as_a_user_I_have_my_chats_without_any_ring,
+               ChatsTest::test_as_a_server_I_answer_nobody_who_is_not_signed_in
          O2 -> ChatsTest::test_the_demo_is_made_once_and_listed
          O3 -> ChatsTest::test_a_member_reads_and_sends_one_of_three_emoji
          O4 -> ChatsTest::test_someone_not_in_the_chat_is_refused
@@ -103,7 +105,7 @@ from services.project_repository import ProjectRepository
 
 ME = "11111111-1111-4111-8111-111111111111"
 SOMEONE = "22222222-2222-4222-8222-222222222222"
-#: Signed in, with the ring, in no chat of ours.
+#: Signed in, in no chat of ours.
 OTHER = "33333333-3333-4333-8333-333333333333"
 GATE = "PLF1_PROCESSING_AUTHORIZATION_MODE"
 
@@ -234,7 +236,6 @@ class ChatsTest(unittest.TestCase):
         self.client = app.test_client()
         self.store = _Store()
         self.who = ME
-        self.ring = {ME: True, SOMEONE: True, OTHER: True}
         # The processing-authorization path runs as written; only what it
         # reads from the database answers from here: the caller's principal,
         # the consent choices they hold and the authority in force. The gate
@@ -247,9 +248,6 @@ class ChatsTest(unittest.TestCase):
         self.said: object = ""
         for p in (patch("services.openai_service.OpenAIService", lambda: _Transcriber(self)),
                   patch.object(auth, "verify_supabase_token", lambda t: {"sub": self.who}),
-                  patch("services.rings.feature_is_on_for_user",
-                        lambda feature, user, database=None:
-                        feature == "chats" and self.ring.get(user, False)),
                   patch.object(db, "client", self.store),
                   patch.dict(os.environ, {GATE: "off"}),
                   patch.object(ProjectRepository, "owner_for_user",
@@ -305,17 +303,20 @@ class ChatsTest(unittest.TestCase):
                           if m["kind"] == "voice"], [])
         self.assertEqual(self.store.count("chat_message_audio"), 0)
 
-    def test_without_the_ring_every_route_is_not_found(self):
-        self.ring[ME] = False
+    def test_as_a_user_I_have_my_chats_without_any_ring(self):
+        # No ring row, and the rings never asked: the chats are everyone's (N456).
+        def no_ring(*_args, **_kwargs):
+            raise AssertionError("the chats asked the rings")
+        with patch("services.rings.feature_is_on_for_user", no_ring):
+            res = self._get("/v2/chats")
+        self.assertEqual((res.status_code, res.get_json()), (200, {"chats": []}))
+
+    def test_as_a_server_I_answer_nobody_who_is_not_signed_in(self):
         thread = str(uuid.uuid4())
-        for res in (self._get("/v2/chats"), self._post("/v2/chats/demo"),
-                    self._get(f"/v2/chats/{thread}/messages"),
-                    self._post(f"/v2/chats/{thread}/messages", {"kind": "emoji", "body": "👍"}),
-                    self._voice(thread), self._upload(thread, "photo"),
-                    self._upload(thread, "file"),
-                    self._get(f"/v2/chats/{thread}/messages/{uuid.uuid4()}/audio"),
-                    self._get(f"/v2/chats/{thread}/messages/{uuid.uuid4()}/file")):
-            self.assertEqual((res.status_code, res.get_json()["code"]), (404, "NOT_FOUND"))
+        for res in (self.client.get("/v2/chats"),
+                    self.client.get(f"/v2/chats/{thread}/messages"),
+                    self.client.post(f"/v2/chats/{thread}/messages", json={"kind": "emoji", "body": "👍"})):
+            self.assertEqual(res.status_code, 401)
         self.assertEqual(self.store.tables, {})
 
     def test_the_demo_is_made_once_and_listed(self):

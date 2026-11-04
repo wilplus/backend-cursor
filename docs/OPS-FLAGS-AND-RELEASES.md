@@ -31,9 +31,12 @@ applies every pending one); set any variable it needs before that release.
   run fails and says so; put `production` back on a `main` commit by hand.
 - **Roll back** in Railway (redeploy an earlier deployment). The next release
   moves forward again from `main`, so revert the bad PR on `main` too.
-- **Docs-only batches don't build:** each Railway service's Watch Paths are
-  `**` then `!/docs/**`, `!/legal/**`, `!/tests/**`, `!**/*.md`, `!/.github/**`.
-  The server reads none of those at run time.
+- **Every release builds every Railway service.** Watch Paths stay empty
+  (N442): an empty box can never stop a fix from deploying. Vercel still skips
+  a docs-only batch.
+- **Switched on 3 November 2026:** every Railway service and Vercel track
+  `production`; the migration runs as each deploy's Pre-deploy Command
+  (`sh bin/railway-migrate.sh`).
 
 ---
 

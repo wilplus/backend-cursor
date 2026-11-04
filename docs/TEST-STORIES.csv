@@ -301,13 +301,17 @@ O7  The WhatsApp ask waits for the next visit and comes in the bar at the
 top, never in the chat (N294 item 8, N295, N391): never before my
 second Take is done, one per Take, at most twice, opened with ""It
 seems you enjoy using WillpowerLab.""; never once my number is saved.
-The home-screen ask is never made (N391).","O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
+The home-screen ask is never made (N391).
+O8  The first Take's goodbye says it is the first Take's, so ""Record
+Take 2"" comes at once under it on any device (N449 item 2); a later
+Take's does not.","O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
 O2 -> test_from_take_two_one_ask_ceo_ask_will_the_question
 O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_goodbye
 O4 -> test_an_older_waiting_message_shows_where_it_stands
 O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
 O6 -> test_the_plans_lines_wait_for_the_ask_then_the_goodbye_and_the_progress
-O7 -> test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar","Founder 2026-10-20: ""one action at a time""; 2026-10-31 (N294): ""No call to action means that there is no push"", ""the next time you come and open the app ask the settings questions""."
+O7 -> test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar
+O8 -> test_the_first_takes_goodbye_says_so_on_any_device","Founder 2026-10-20: ""one action at a time""; 2026-10-31 (N294): ""No call to action means that there is no push"", ""the next time you come and open the app ask the settings questions""."
 tests/test_ai_voice.py,Story,"As a speaker practising, I want an AI clip of my own voice saying my own words with one improvement, never shown if it fails its check, and fully deleted when I ask, so that I hear a believable better version and keep control of my voice.","O1  One problem is picked against my own usual (or the default), and the
 sentence under the clip names it in words, with no numbers. As the
 walk's one fix on a moment, the clip teaches the strongest problem my
@@ -315,7 +319,9 @@ clip shows, never the runner-up, and with nothing measured no clip is
 made: no default (N425). A clearer version's example keeps the
 default.
 O2  The clip says my own words (or the clearer version I accepted, with
-the ums taken out), in at most 17 seconds.
+the ums taken out), in at most 17 seconds. A moment too long for that
+is trimmed to the part around what the clip teaches, and my try is
+asked for the same trimmed words (N459 item 3).
 O3  A clip that fails its check is made once more with a new seed and
 is never shown; a try after it is not scored; a real pause heard in
 the audio passes.
@@ -343,7 +349,9 @@ test_the_walks_fix_gets_no_clip_when_nothing_was_off_and_never_the_runner_up
 O2 -> test_the_request_says_the_speakers_own_words,
 test_no_clip_is_longer_than_the_limit,
 test_a_clearer_version_practice_gets_a_clip_of_the_accepted_words,
-test_a_sentence_with_fillers_is_said_without_them_and_the_next_try_is_measured_on_them
+test_a_sentence_with_fillers_is_said_without_them_and_the_next_try_is_measured_on_them,
+test_a_moment_too_long_for_a_clip_is_trimmed_around_what_it_teaches,
+test_the_walks_fix_on_a_long_moment_gets_its_clip_and_the_try_the_same_words
 O3 -> test_a_clip_that_fails_its_check_is_made_once_more_and_shown_only_if_it_passes,
 test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it
 O4 -> test_a_speakers_daily_or_monthly_limit_stops_the_provider_call,
@@ -555,13 +563,13 @@ O3 -> test_answering_wills_question_is_not_deflected","Founder 2026-10-15: ""nex
 tests/test_chat_links.py,Story,"As a person in WillpowerLab, I want my own link that I paste into any email, so that a colleague who opens it joins me in a chat, and nobody else can reach me (N308, N328, N335).","O1  My link is made the first time I ask and stays the same after;
 replacing it makes a new one, and the old one opens nothing.
 O2  Before signing in, the join page learns only the first name of whose
-link it is. A wrong link, a replaced one and one whose owner has no
-chats all answer 404, the same answer.
+link it is. A wrong link and a replaced one answer 404, the same
+answer.
 O3  Joining makes one chat between the two of us, each named for the
 other; opening a link again, from either side, finds the same chat.
 O4  My own link is refused (400 OWN_LINK), and nothing is made.
-O5  Without the ring row (chats, ring 6) my link and joining answer 404,
-and nothing is written.
+O5  As a user with no ring at all, I get my link and someone joins me
+through it (N456; was ring 6 only).
 O6  In the chat, the one who joined sees whose link they joined through;
 the link's owner does not.
 O7  A chat left without its two people (a crash between the two writes)
@@ -571,7 +579,7 @@ name over the chat list's line for it, opening our chat (N385).","O1 -> ChatLink
 O2 -> ChatLinksTest::test_the_join_page_learns_only_a_first_name
 O3 -> ChatLinksTest::test_joining_makes_one_chat_for_the_two
 O4 -> ChatLinksTest::test_my_own_link_is_refused
-O5 -> ChatLinksTest::test_without_the_ring_nothing_is_written
+O5 -> ChatLinksTest::test_as_a_user_without_any_ring_I_get_my_link_and_someone_joins
 O6 -> ChatLinksTest::test_the_one_who_joined_sees_whose_link_it_was
 O7 -> ChatLinksTest::test_a_chat_left_without_its_people_gets_them_back
 O8 -> ChatLinksTest::test_a_message_reaches_the_other_persons_iphone","The join link, the chats' second slice (founder 2026-11-02: ""go, build the join link slice""); the intimacy rule (N328); joining is onboarding (N335 item 1)."
@@ -587,8 +595,9 @@ O4     -> test_the_reply_is_saved_under_the_turn_it_answers",Founder #2: bubbles
 tests/test_chat_talk.py,Story,"As a speaker, I want Will to read my whole talk slide by slide, so that his answers refer to what I actually said on each slide.","O1  Each slide lists its bullet points and what I said on it.
 O2  A slide I said nothing on reads ""(nothing yet)"".
 O3  Words not tied to a slide are listed on their own.","O1, O2, O3 -> test_each_slide_carries_its_points_and_what_they_said",Founder 2026-10-15; Privacy 3.7 section 4.
-tests/test_chats.py,Story,"As the founder, I want my own chats with a colleague and a customer, apart from my chat with Will, where I answer with one of three emoji or a voice note, and start something new with a photo or a file, so that I can see the chats between people working before anyone else is in them.","O1  Without the ring row (chats, ring 6) every route answers 404 and
-nothing is written.
+tests/test_chats.py,Story,"As the founder, I want my own chats with a colleague and a customer, apart from my chat with Will, where I answer with one of three emoji or a voice note, and start something new with a photo or a file, so that I can see the chats between people working before anyone else is in them.","O1  As a user, I have my chats with no ring at all: the list answers
+without the rings ever being read (N456; was ring 6 only). As a
+server, I answer nobody who is not signed in, and write nothing.
 O2  The demo makes Sarah's customer chat and Ariel's colleague chat once,
 however often it is asked; the list names each chat for the other
 person, with their line and the last thing said.
@@ -642,7 +651,8 @@ item 3): until then the other person does not see it, the list does
 not show it and no push goes; Undo takes it back then, and Will says
 so in my chat with him, once, naming the other person (N441 item 5).
 Once its time is over Undo is refused and it reaches them; with no
-time left it goes at once. Nobody else can take my answer back.","O1 -> ChatsTest::test_without_the_ring_every_route_is_not_found
+time left it goes at once. Nobody else can take my answer back.","O1 -> ChatsTest::test_as_a_user_I_have_my_chats_without_any_ring,
+ChatsTest::test_as_a_server_I_answer_nobody_who_is_not_signed_in
 O2 -> ChatsTest::test_the_demo_is_made_once_and_listed
 O3 -> ChatsTest::test_a_member_reads_and_sends_one_of_three_emoji
 O4 -> ChatsTest::test_someone_not_in_the_chat_is_refused
@@ -2032,11 +2042,12 @@ O3  My photo is kept and shown to me and to the person I chat with; anyone
 not in a chat with me gets 404; I can take it away.
 O4  Their profile lists the photos and files shared in our chat; mine
 lists what I sent in any chat.
-O5  Without the ring row (chats, ring 6) every profile route is 404.","O1 -> PeopleProfilesTest::test_i_change_my_name_and_about_and_they_see_it
+O5  As a user with no ring at all, I have my profile (N456; was ring 6
+only).","O1 -> PeopleProfilesTest::test_i_change_my_name_and_about_and_they_see_it
 O2 -> PeopleProfilesTest::test_an_empty_name_or_too_long_is_refused
 O3 -> PeopleProfilesTest::test_my_photo_is_shown_to_the_person_i_chat_with_only
 O4 -> PeopleProfilesTest::test_the_photos_and_files_we_shared_are_on_the_profiles
-O5 -> PeopleProfilesTest::test_without_the_ring_nothing_is_shown","A person's profile, as on WhatsApp (founder 2026-11-03, N366; locked in docs/LOCKS.md with the prototype ""One bar"")."
+O5 -> PeopleProfilesTest::test_as_a_user_without_any_ring_I_have_my_profile","A person's profile, as on WhatsApp (founder 2026-11-03, N366; locked in docs/LOCKS.md with the prototype ""One bar"")."
 tests/test_person_asks.py,Story,"As a speaker, I want a ""no"" I give in the chat to stop the same consent being asked again for 30 days, and never to be asked for a consent no screen can answer, so that my consent stays freely given.","O1  Within 30 days of a ""no"" in the chat, asking again is refused
 (TOO_SOON); after 30 days it is allowed.
 O2  A consent no screen can answer (share, email) is never asked
@@ -2307,7 +2318,8 @@ O14 A new speaker can record before answering: ""Start your first
 recording"" is offered while the questions are asked; after that
 Take's walk Will asks again where he was; the plan, once made, counts
 that Take as its first practice (N262).
-O16 With the first Take on (the ring row ``first_take``, N401), a new
+O16 With the first Take on (always with no ``first_take`` ring row,
+N457 item 3; a row can hold it back, N401), a new
 speaker is not asked in the chat: Will says ""Hi Anna!"" and ""Your first
 Take is five questions. Answer each one out loud, one slide at a
 time."", and the plan hands the app the five slides. After that
@@ -2315,8 +2327,9 @@ Take's walk Will reads it slide by slide: each answer is kept as the
 plan answer it replaces (the voice message, the audience, the key
 line, the opening) and all five in Will's notes; the plan's facts and
 its topic come from what was said; a day said gives the plan and its
-card at once, that Take its first practice; no day said asks ""When is
-your deadline?"" as taps, and the answer gives the plan. Kept at the
+card at once, that Take its first practice; no day said asks no
+deadline (N459 item 1): ""No date yet""'s two months, and the plan and
+its card above the goodbye. Kept at the
 end of the Take's processing, the voice message and the key line keep
 their own voice, and the coach's blind pick plays them (N213); the
 walk's end then keeps nothing twice.","O1 -> test_without_the_ring_nothing_happens
@@ -2336,7 +2349,8 @@ O13 -> test_a_correction_is_taken_and_the_question_asked_again
 O14 -> test_a_new_speaker_can_record_before_answering
 O15 -> test_with_the_calls_on_they_are_asked_before_the_plan
 O16 -> test_with_the_first_take_on_the_questions_are_its_slides
-test_a_first_take_with_no_day_asks_for_the_deadline
+test_with_no_first_take_row_a_new_speaker_meets_the_first_take
+test_a_first_take_with_no_day_asks_no_deadline
 test_the_coach_hears_the_first_takes_voice_message_and_key_line","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the principles waiting for the onboarding, N243; record first, Will asking again and a correction taken, N262; the calls hidden, not removed, N315; the plan simplified, N319; the goodbye's day, N347; the rules are frontend docs/flows/the-plan.md §1."
 tests/test_playback_copy.py,Story,"As a speaker on iPhone or Safari, I want my recordings to play back, and the playback copy deleted with the recording, so that I can hear myself and deletion leaves nothing. (Record -> next Take: hearing the Take; and deletion.)","O1  A stored short recording gets its Safari-safe copy (.playback.m4a,
 audio/mp4) beside it at upload; the original is untouched.
@@ -2733,10 +2747,14 @@ Paragraph now.
 O4  After a Clearer version the walk's helper words come on their own
 (N309): the sentence the practice was opened on goes to the slide,
 with or without a try, whole, past eight words too (N323 item 2);
-words not in it are refused.","O1 -> test_stale_or_invalid_live_root_fails_closed
+words not in it are refused.
+O5  The walk locks the paragraph first and saves the words after: those
+words show on the recording screen and the page, and a pick on the
+same paragraph in the next Take replaces them.","O1 -> test_stale_or_invalid_live_root_fails_closed
 O2 -> test_recording_roots_route_returns_the_live_root
 O3 -> test_helper_words_from_an_earlier_take_stay_on_their_slide
-O4 -> test_the_clearer_versions_sentence_becomes_my_helper_words","Never-rule 5; founder 2026-10-13, project ""S""; founder 2026-10-31 (N309 item 3, ""the helper words come on their own"")."
+O4 -> test_the_clearer_versions_sentence_becomes_my_helper_words
+O5 -> test_the_walks_helper_words_show_on_the_next_take","Never-rule 5; founder 2026-10-13, project ""S""; founder 2026-10-31 (N309 item 3, ""the helper words come on their own"")."
 tests/test_remaining_route_contracts.py,Story,"As a developer moving logic out of routes, I want each route's main success and main refusal pinned, so that the move never changes what speakers and admins see.","O1  Chat answers, saves the turn and charges it; the help answer covers
 the rest; a blank question is refused.
 O2  A transcript edit lands on the right snippet or chunk; bad edits are
@@ -3230,7 +3248,9 @@ Take stays inside the green on the side the stretch leaned, the bar
 that picks a stretch: the Takes table marks it gone and the walk opens
 with it as the last fix; slower but still outside the green, it came
 back and nothing is said (N347 item 3, N350 item 3). Where it worked,
-the walk offers no tempo step on that slide again (N359).","O1 -> test_progress_is_read_against_my_first_takes
+the walk offers no tempo step on that slide again (N359). A slow
+stretch off a pace or pause week was never the Sniper, so it is no
+fix the walk gave (N323 item 6).","O1 -> test_progress_is_read_against_my_first_takes
 O2 -> test_each_fix_is_marked_came_back_or_gone_on_the_next_take
 O3 -> test_last_time_plays_the_fix_that_rose_on_this_take
 O4 -> test_the_pace_fix_worked_when_that_slide_stays_inside_the_green","Founder 2026-10-31 (N291: ""yes""; ""ok go with the proposal""; N290: ""the next time it chooses a moment it should take into account what the user answered""; N309 item 1: ""Last time: {the tip}. You did.""; N347 item 3: ""Every fix gets its Last time, the pace game too""; N350 item 3: one rule for ""the pace fix worked""; N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back"")."
@@ -3271,6 +3291,9 @@ the next visit, N294 item 8), and the goodbye, ""Good job. See you
 next time."", comes right after the summary (services/after_take.py).
 O5  The summary and the goodbye after it sort under the walk's last step,
 even when my browser's clock runs ahead of the server's.
+O7  Asked twice for the same Take (the page reloaded while the first ask
+was being written), the first ask's batch stands: nothing is written,
+remembered or let go again, so the goodbye stays under Will's question.
 O6  The summary can point back to what I said in an older Take (the same
 project first), never this Take, never a Take whose processing
 authorization is not in force; a failing or slow lookup leaves the
@@ -3287,6 +3310,7 @@ test_a_shared_coach_word_rewrites_a_reviewed_take_once_per_word,
 test_a_coach_word_shared_after_the_review_is_its_own_bubble
 O4 -> test_the_summary_knows_the_talk_and_no_settings_ask_follows
 O5 -> test_the_summary_and_the_goodbye_sort_under_the_walk
+O7 -> test_a_second_ask_while_the_first_is_written_changes_nothing
 O6 -> test_the_summary_points_back_to_an_older_take_never_this_one,
 test_a_take_not_in_force_never_reaches_the_summary,
 test_a_failing_or_slow_lookup_leaves_the_summary_as_today,
@@ -3309,12 +3333,16 @@ C2  a Take with long pauses no longer picks that clip as slow
 C3  a Take in the green picking a stretch anyway, so the step shows for nothing
 C4  a topic with a number, a quote or a whole sentence reaching the speaker
 C5  a failed topic call losing the step, instead of saying ""that part""
-C6  a played tempo game no longer kept for Will, or kept with a number in his note
+C6  a played tempo game no longer kept for Will, or kept with a number in his note,
+or a game skipped after a try kept as played out
 C7  a broken or partial game kept as if it were whole
 C8  the tempo step reaching a speaker the rings panel has not switched on
 C9  the stretch losing its player (the speaker's orange clip, N166, locked
 prototype X4gDmGfHH7ivuoRZ9ufiy9), playing another clip, serving a
-cached signature, or a failed signing losing the step","C1 -> test_a_clip_spoken_without_a_pause_is_rushed
+cached signature, or a failed signing losing the step
+C10 the One thing walk's stretch waiting on a topic it never says (N435
+item 6, N452 item 2), its words carrying an ""um"" or a repeat the
+Ideal Text never shows (H3), or losing its slide","C1 -> test_a_clip_spoken_without_a_pause_is_rushed
 C2 -> test_a_clip_with_long_pauses_is_slow
 C3 -> test_a_take_in_the_green_has_no_stretch
 C4 -> test_only_a_short_plain_topic_is_kept
@@ -3322,7 +3350,8 @@ C5 -> test_a_failed_topic_still_gives_the_step
 C6 -> test_a_played_game_is_kept_for_will_in_words
 C7 -> test_a_partial_game_is_not_kept
 C8 -> test_only_the_founder_and_the_ring_have_the_step
-C9 -> test_the_stretch_plays_as_the_speakers_clip","If removed: the tempo step could practise the wrong stretch, or put a number or a made-up sentence on screen (Never 1, Never 4)."
+C9 -> test_the_stretch_plays_as_the_speakers_clip
+C10 -> test_the_one_thing_walks_stretch_comes_without_a_topic_call_in_the_ideal_texts_words","If removed: the tempo step could practise the wrong stretch, or put a number or a made-up sentence on screen (Never 1, Never 4)."
 tests/test_tests_never_touch_a_real_database.py,Guard,The test suite refuses to start against a real Supabase project.,"C1  a `pytest` run in an environment that carries a production SUPABASE_URL
 (founder 2026-10-20: fixture values ""arc-9"", ""owner-1"" reached the live
 database this way) -- it stops before any test module imports.
@@ -3618,8 +3647,9 @@ O2 -> test_a_dead_signer_falls_through_to_supabase_not_to_a_bare_key",DPIA RISK-
 tests/test_user_sessions_route_contracts.py,Story,"As a speaker, I want my suggestion answers and Confident Voice practice (start, attempt, complete) to work and refuse bad input, so that practice never loses my recording.","O1  A suggestion answer is saved (200 {""saved"": true}); a bad target is 400
 and someone else's Take is 404 with nothing written.
 O2  Starting practice on a moment creates it for me (201); an existing one
-is resumed (200) without a second row; a bad or premature answer is
-refused (400, 409).
+is resumed (200) without a second row, on the other sentence I asked
+for while it has no try; a bad or premature answer is refused (400,
+409).
 O3  An attempt is stored and recorded (201) with no automatic outcome; a
 closed practice is 409 and a passage mismatch is 422 with nothing
 stored.
@@ -3629,6 +3659,7 @@ kept.","O1 -> SuggestionFeedbackContract.test_a_dismissed_star_is_saved
 -> SuggestionFeedbackContract.test_refusals
 O2 -> PracticeStartContract.test_a_moment_practice_is_created
 -> PracticeStartContract.test_refusals_and_the_resume
+-> PracticeStartContract.test_the_other_sentence_moves_an_untried_practice
 O3 -> PracticeAttemptContract.test_an_attempt_is_recorded
 -> PracticeAttemptContract.test_refusals
 O4 -> PracticeCompleteContract.test_a_kept_attempt_completes_the_practice
@@ -3847,7 +3878,7 @@ tests/test_will_question.py,Story,"As a speaker, after a Take I want Will to ask
 holds: a breather when the practice missed or the voice dipped two
 Takes in a row; ""On purpose?"" when the clearer line I practised last
 Take did not come back; who the talk is for; what I want them to do;
-from Take 3, with both known, one deeper question. Nothing missing, no
+from Take 3, with all three known, one deeper question. Nothing missing, no
 question; each of these once per talk, a breather never twice in a row.
 O2  The tap answers come from what Will heard, the recording first: a
 Take that names its audience twice is checked (""Right?""); named
@@ -3878,7 +3909,8 @@ worked on “…”. ""; ""On purpose?"" quotes its own line and nothing more;
 with no moment the question is as signed.
 O9  One at a time (N294 item 4): when both who the talk is for and what I
 want them to do are missing, what I want them to do follows my answer
-to who, from what Will heard first; a Skip ends them.
+to who, from what Will heard first; a Skip ends them, and a ""#"" note
+under the question is no answer: the next question does not follow it.
 O10 The key line is asked last, by voice (N294 item 2): once who the talk
 is for and what I want them to do are known and my key line is
 missing, Will asks the plan's signed question with who in it, opened

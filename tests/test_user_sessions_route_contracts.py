@@ -6,8 +6,9 @@ OUTCOME
   O1  A suggestion answer is saved (200 {"saved": true}); a bad target is 400
       and someone else's Take is 404 with nothing written.
   O2  Starting practice on a moment creates it for me (201); an existing one
-      is resumed (200) without a second row; a bad or premature answer is
-      refused (400, 409).
+      is resumed (200) without a second row, on the other sentence I asked
+      for while it has no try; a bad or premature answer is refused (400,
+      409).
   O3  An attempt is stored and recorded (201) with no automatic outcome; a
       closed practice is 409 and a passage mismatch is 422 with nothing
       stored.
@@ -18,6 +19,7 @@ PROVES   O1 -> SuggestionFeedbackContract.test_a_dismissed_star_is_saved
             -> SuggestionFeedbackContract.test_refusals
          O2 -> PracticeStartContract.test_a_moment_practice_is_created
             -> PracticeStartContract.test_refusals_and_the_resume
+            -> PracticeStartContract.test_the_other_sentence_moves_an_untried_practice
          O3 -> PracticeAttemptContract.test_an_attempt_is_recorded
             -> PracticeAttemptContract.test_refusals
          O4 -> PracticeCompleteContract.test_a_kept_attempt_completes_the_practice
@@ -173,6 +175,35 @@ class PracticeStartContract(unittest.TestCase):
         self.assertEqual((status, body), (200, {"practice": {"id": PRACTICE,
                                                              "attempts": None}}))
         create.assert_not_called()
+
+    def test_the_other_sentence_moves_an_untried_practice(self):
+        """"Try it", ✕, then "Keep mine": the Clearer version's open practice
+        with no try comes back on the moment's own words, same id; once it
+        has a try it stays on the Clearer sentence."""
+        rewrite = {"id": PRACTICE, "kind": "rewrite", "status": "open",
+                   "exact_passage": "The clearer sentence."}
+
+        def ask(attempts):
+            reads = self._reads(existing=dict(rewrite))
+            with reads[0], reads[1], reads[2], \
+                    patch.object(us, "_practice_user_payload", side_effect=lambda p, a=None: {
+                        "id": p["id"], "kind": p["kind"], "passage": p["exact_passage"]}), \
+                    patch.object(db, "list_confident_voice_practice_attempts",
+                                 return_value=attempts), \
+                    patch("services.ai_voice_store.get_cycle", return_value=None), \
+                    patch.object(db, "update_confident_voice_practice",
+                                 side_effect=lambda pid, owner, fields: {
+                                     **rewrite, **fields}) as update, \
+                    patch.object(db, "create_confident_voice_practice") as create:
+                status, body = self._post({"kind": "plain", "evidence": self.EVIDENCE})
+            create.assert_not_called()
+            return status, body["practice"], update.called
+
+        self.assertEqual(ask([]), (200, {"id": PRACTICE, "kind": "plain",
+                                         "passage": "said words"}, True))
+        self.assertEqual(ask([{"id": ATTEMPT}]), (200, {
+            "id": PRACTICE, "kind": "rewrite",
+            "passage": "The clearer sentence."}, False))
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
