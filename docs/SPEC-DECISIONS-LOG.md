@@ -12638,3 +12638,23 @@ before it is merged. The rules: frontend
 and
 [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md),
 when built.
+
+**N508 · Judging starts with Take 2 because Take 1 is the introduction
+(founder, the Claude Code chat, 4 November 2026: "justification for it is
+that it's onboarding, it's introduction only call. So you start judging
+from the real practice, from the second take").** For N309 item 2 and
+N401:
+1. **The reason, written down.** Take 1, the five questions (N401, N462),
+is the onboarding: an introduction only. Its walk works on how the
+questions were answered, and no other speaker's moment is judged in it.
+Judging starts with the real practice, Take 2.
+2. **Not because there is nothing to judge.** There is always a moment to
+judge: the training corpus fills any gap (N119). Leaving Take 1 out is a
+choice, kept after weighing it in the same chat: one moment on Take 1, or
+during its processing, would bring a rating from people who leave after
+Take 1, but would stand between the newcomer and the real talk (Never 3).
+3. Nothing changes in the code: the walk already judges from Take 2
+(frontend C8, "Take 1 judges no one").
+No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C8, unchanged.
