@@ -36,6 +36,16 @@ Service: services/chats.py.
   GET  /v2/chats/<id>/messages/<message_id>/file
                                    the photo (inline) or the file (attachment),
                                    with its own name, for any member of the chat
+  GET  /v2/chats/<id>/messages/<message_id>/take
+                                   a Take sent in the chat (kind "take",
+                                   N470): {audio_url, duration_ms, slides:
+                                   [{index, title, words}]}, for any member
+  GET  /v2/user/takes/send/people {enabled, people: [...]}, whom a Take can
+                                   be sent to (services/take_sends.py)
+  GET  /v2/user/takes/send/last   {enabled, choice: {all, user_ids} | null}
+  POST /v2/user/takes/<id>/send   {all, user_ids}: {enabled, sent: [...]};
+                                   409 SENDING_OFF while TAKE_SEND_ENABLED
+                                   is off
   POST /v2/chats/demo             makes the two demo chats once; the list
   GET  /v2/chats/link             {token, path}: the caller's own join link,
                                    made the first time (N308)
@@ -454,3 +464,57 @@ def v2_chats_their_photo(thread_id):
     from services.people_profiles import their_photo
     return _run("their photo", lambda: their_photo(db, str(request.user_id), thread_id),
                 answer=_photo_out)
+
+
+# ── Sending a Take to the people you tick (services/take_sends.py; N470,
+# N472). Behind TAKE_SEND_ENABLED, default off: the reads answer
+# {enabled: false}, the send 409 SENDING_OFF, before anything else runs.
+
+@v2_bp.route("/user/takes/send/people", methods=["GET"])
+@require_auth
+def v2_take_send_people():
+    """{enabled, people: [{user_id, name, title, avatar_url, chat_id,
+    last_sent}]}: whom the speaker can send a Take to, "Last sent" first."""
+    from services.take_sends import people
+    return _run("send people", lambda: people(db, str(request.user_id)))
+
+
+@v2_bp.route("/user/takes/send/last", methods=["GET"])
+@require_auth
+def v2_take_send_last():
+    """{enabled, choice: {all, user_ids} | null}: the speaker's last choice."""
+    from services.take_sends import last
+    return _run("send last", lambda: last(db, str(request.user_id)))
+
+
+@v2_bp.route("/user/takes/<take_id>/send", methods=["POST"])
+@limiter.limit("120 per hour", scope="take_send")
+@require_auth
+def v2_take_send(take_id):
+    """{all, user_ids}: the caller's own Take, as their message in their
+    chat with each person chosen; {enabled, sent: [{user_id, chat_id,
+    message_id}]}. Idempotent; only ever adds people. Its Take was recorded
+    and uploaded through the processing-authorization path already and
+    nothing here calls a provider; the recording consent is asked again,
+    as for an answer, so a speaker who withdrew it sends nothing."""
+    from services.chats import ChatsError
+    from services.take_sends import is_on, send
+    if not is_on():
+        error = ChatsError("SENDING_OFF", "Sending a Take is not on yet.", 409)
+        return jsonify({"code": error.code, "error": str(error)}), error.status
+    refused = _recording_refused()
+    if refused is not None:
+        return refused
+    body = request.get_json(silent=True)
+    payload = getattr(request, "token_payload", None)
+    return _run("send", lambda: send(db, str(request.user_id), take_id, body, payload))
+
+
+@v2_bp.route("/chats/<thread_id>/messages/<message_id>/take", methods=["GET"])
+@require_auth
+def v2_chats_take(thread_id, message_id):
+    """"Open Take": {audio_url, duration_ms, slides: [{index, title,
+    words}]} of a Take sent in this chat, for a member of it only; never
+    its Ideal Text or feedback."""
+    from services.take_sends import opened
+    return _run("take", lambda: opened(db, str(request.user_id), thread_id, message_id))

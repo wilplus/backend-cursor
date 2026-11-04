@@ -370,6 +370,18 @@ class Config:
     # to share your next take with others?", founder lock of the moment and
     # feedback chat, section 9).
     SHARE_WORDS_VERSIONS: tuple[str, ...] = ("sharing-screen-2026-10-06", "sharing-screen-2026-10-12")
+    # Sending a Take to the people you tick (N470, N472;
+    # services/take_sends.py). Off by default: while off, the three new
+    # routes answer {enabled: false} (409 SENDING_OFF for the send) and
+    # nothing new runs. The founder turns it on once the Privacy text that
+    # covers sending (3.11 or the next) is signed (N472 item 1). Needs
+    # migration a_chat_carries_a_take first.
+    TAKE_SEND_ENABLED = _env_flag("TAKE_SEND_ENABLED", "0")
+    # The founder's account id: a speaker with no chat with a person gets
+    # one with him (N472 item 7), listed as "Artur", speaking coach, and
+    # made on the first send. Unset: no fallback. Set it on every Railway
+    # service before the code merges.
+    FOUNDER_CHAT_USER_ID = (os.getenv("FOUNDER_CHAT_USER_ID") or "").strip() or None
 
     # 6d: fitting a learned detector on audit answers. ON from 2026-10-02
     # (founder: "You have my go on each of the flips"; N26): the AI Act

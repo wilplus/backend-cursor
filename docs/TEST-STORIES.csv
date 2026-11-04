@@ -3312,6 +3312,30 @@ same title; the others leave the page.","O1 -> EveryTakeRewritesTheSlidesItSpoke
 O2 -> EveryTakeRewritesTheSlidesItSpoke::test_the_spoken_slide_is_rebuilt_and_the_other_is_kept
 O3 -> EveryTakeRewritesTheSlidesItSpoke::test_the_spoken_slide_is_rebuilt_and_the_other_is_kept
 O4 -> TheFirstTakeOnNewSlides::test_the_whole_text_is_fresh_and_helper_words_follow_the_title",Never-rule 5; founder 2026-09-25 (contracts 8-9); N257.
+tests/test_take_sends.py,Story,"As a speaker, I want to send my Take to the people I tick, each as my own message in my chat with them, so that the people I trust hear it and can answer me; as the person it is sent to, I want to hear it and read its words, and nothing else of it.","O1  While sending is off (TAKE_SEND_ENABLED, default off), the new routes
+answer {enabled: false}, the send 409 SENDING_OFF, and nothing is
+written.
+O2  The list is the other person of each of my chats with a real person:
+the one I sent to last first (""Last sent""), then my chats' order; no
+demo chat, no guest, nobody I blocked and nobody who blocked me
+(N466).
+O3  With no chat with a person at all, the founder is listed (Artur,
+speaking coach) with no chat yet; the chat is made on my first send,
+never on a read, and only once. Without FOUNDER_CHAT_USER_ID, nobody.
+O4  Sending is idempotent: sending again posts nothing twice and pushes
+nothing twice; adding people later only adds; nothing is unsent. The
+line under my recording keeps who it went to, and my last choice is
+read back. Only my own Take, and never an answer.
+O5  Someone not in the chat cannot open a Take sent in it, not even
+through a chat of their own.
+O6  The person it is sent to sees ""{name} sent you Take {n}"", plays the
+Take and reads its words slide by slide, and never gets the Take's
+id, its Ideal Text, its feedback, moments or levels.","O1 -> TakeSendsTest::test_while_sending_is_off_nothing_new_runs
+O2 -> TakeSendsTest::test_the_list_is_real_people_last_sent_first
+O3 -> TakeSendsTest::test_with_no_chat_with_a_person_the_founder_is_listed
+O4 -> TakeSendsTest::test_sending_again_only_adds_people_and_is_kept_on_the_line
+O5 -> TakeSendsTest::test_someone_not_in_the_chat_cannot_open_the_take
+O6 -> TakeSendsTest::test_the_receiver_hears_the_take_and_reads_its_words_only","N470 and N472 (founder, the Claude Code chat, 4 November 2026): a Take goes to the people the speaker ticks; never a score or the machine's read to anyone (Never 1, 2). Built on tests/test_chats.py's in-memory chat tables."
 tests/test_take_summary.py,Story,"As a speaker, I want one short summary of my Take in words, about my own talk, so that I know what went well without a number or verdict.","O1  Each Take gets one stored summary, written from its real progress and
 about my talk (its title, slides, my most confident moment).
 O2  The summary is only a cheeky sum-up of the Take: one or two short
