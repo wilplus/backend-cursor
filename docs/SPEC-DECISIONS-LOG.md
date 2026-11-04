@@ -11119,7 +11119,8 @@ loud, one slide at a time."
 3. **What each slide feeds.** Slide 1: who the speaker is, in Will's notes
 and for the profile (N461 item 5). Slide 2: kept as the voice message the
 coach's blind pick plays (N213), and the profile's topics. Slide 3: the
-audience. Slide 4: kept as the speaker's experience. Slide 5: the key line,
+audience. Slide 4: the speaker's story, in Will's notes and the plan's
+facts. Slide 5: the key line,
 which the coach's blind pick plays, found by its kind and no longer by its
 place. The event and its day are set before the walk (N459); the opening is
 no longer a first-Take slide (Take 2, the real talk, opens with it). The
