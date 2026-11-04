@@ -66,8 +66,9 @@ OUTCOME
       plan answer it replaces (the voice message, the audience, the key
       line, the opening) and all five in Will's notes; the plan's facts and
       its topic come from what was said; a day said gives the plan and its
-      card at once, that Take its first practice; no day said asks "When is
-      your deadline?" as taps, and the answer gives the plan. Kept at the
+      card at once, that Take its first practice; no day said asks no
+      deadline (N459 item 1): "No date yet"'s two months, and the plan and
+      its card above the goodbye. Kept at the
       end of the Take's processing, the voice message and the key line keep
       their own voice, and the coach's blind pick plays them (N213); the
       walk's end then keeps nothing twice.
@@ -89,7 +90,7 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
          O15 -> test_with_the_calls_on_they_are_asked_before_the_plan
          O16 -> test_with_the_first_take_on_the_questions_are_its_slides
                 test_with_no_first_take_row_a_new_speaker_meets_the_first_take
-                test_a_first_take_with_no_day_asks_for_the_deadline
+                test_a_first_take_with_no_day_asks_no_deadline
                 test_the_coach_hears_the_first_takes_voice_message_and_key_line
 WHY      The plan, built one to one with the prototype (founder 2026-10-26,
          N203, N204); a level moving on, N134 items 3 and 4, N209; the
@@ -704,16 +705,23 @@ def test_with_the_first_take_on_the_questions_are_its_slides(db, monkeypatch):
     assert view["done"] == 1  # the first Take is the first practice
 
 
-def test_a_first_take_with_no_day_asks_for_the_deadline(db, monkeypatch):
+def test_a_first_take_with_no_day_asks_no_deadline(db, monkeypatch):
+    """N459 item 1: the deadline is set before the walk; after it, no day
+    heard gives "No date yet"'s two months, no question, and the goodbye
+    follows the plan's lines as usual."""
     _first_take(db, monkeypatch, {"facts": {"event": "the newsroom conference"}, "deadline": None})
-    F.after_take(db, USER, first_name="Anna")
-    assert bodies(db)[-1] == P.COPY["deadline_q"]
-    assert db.thread[-1]["metadata"].get("plan_ask") == "deadline"
+    goodbye = after_take.closing_row(user_id=USER, arc_id="arc-1", take_index=1, take="t1",
+                                     at=datetime.now(timezone.utc).isoformat(), asks=[])
+    after_take.end_rows(db, USER, goodbye, written=False)
+    assert P.COPY["deadline_q"] not in bodies(db)
+    assert not any(r["metadata"].get("plan_ask") == "deadline" for r in db.thread)
+    card = next(i for i, r in enumerate(db.thread) if r["metadata"].get("plan_card"))
+    assert bodies(db)[card - 1] == P.COPY["all_set"]
+    assert db.thread[card + 1]["body"].startswith("Good job.")  # the goodbye under the plan
+    assert db.thread[card + 1]["metadata"].get("first_take") is True
     view = F.state(db, USER, tz="UTC")["plan"]
-    assert view["step"] == "deadline" and not view["waiting"]  # its taps under it, not the walk's wait
-    out = F.answer_deadline(db, USER, None, tz="UTC")
-    assert out["plan"]["status"] == "active"
-    assert bodies(db)[-2:] == [P.COPY["all_set"], ""]
+    assert view["status"] == "active" and view["step"] != "deadline"
+    assert view["deadline"] == P.given_deadline(date.today()).isoformat() and view["deadline_given"]
     assert P.COPY["why_1"] not in bodies(db)  # never the chat's questions
 
 
