@@ -413,6 +413,19 @@ class Config:
     # against a copy of the user table. Unset = today's behaviour.
     EMAIL_REDIRECT_TO = (os.getenv("EMAIL_REDIRECT_TO") or "").strip()
 
+    # WillpowerLab by invitation (founder 2026-11-04, N471). Off while
+    # INVITE_ONLY_SINCE is unset: everyone is a member, as before. Set it to
+    # the moment it goes live (ISO 8601, e.g. 2026-11-05T09:00:00Z): from then
+    # a new account is a member only once it joins through someone's link
+    # (services/membership.py), and the app shows everyone else the waitlist.
+    INVITE_ONLY_SINCE = (os.getenv("INVITE_ONLY_SINCE") or "").strip()
+    # Where the one waitlist email goes (N471 item 3); its Reply-To is the
+    # person, so the founder answers with a plain reply.
+    WAITLIST_INBOX = (os.getenv("WAITLIST_INBOX") or "contact@willpowerlab.com").strip()
+    # After this many people join through one link in a day, the next ones go
+    # to the waitlist (N471 item 7).
+    INVITE_LINK_DAILY_LIMIT = int(os.getenv("INVITE_LINK_DAILY_LIMIT") or "10")
+
     # WhatsApp "the feedback from your coach is in", through Meta's WhatsApp
     # Cloud API. Off unless WHATSAPP_NOTIFICATIONS=true; numbers are still
     # saved while it is off. A message the business starts needs a template

@@ -17,7 +17,10 @@ onboarding (N335 item 1).
     link is 404, the same answer for each.
   * ``join``: the signed-in caller joins: one chat with the link's owner,
     made once for the two of them (chat_threads.pair_key), however often
-    either opens a link. Your own link is refused.
+    either opens a link. Your own link is refused. By invitation (N471):
+    the chat made through a link is what lets a new person in
+    (services/membership.py); a waiting account's link opens nothing, and
+    past the day's number of joins the joiner goes to the waitlist.
   * ``joined_through``: for a chat's screen, the first name of whose link
     the caller joined through, or None (the owner, a demo chat).
 
@@ -151,11 +154,17 @@ def _seat(database: Any, thread: str, people: list[dict]) -> None:
 def join(database: Any, user_id: Any, token: Any, token_payload: Any) -> dict:
     """POST /v2/chats/join/<token>: {"chat": {"id"}}, the caller's chat with
     the link's owner, made now or found. Your own link is 400."""
+    from services import membership
+
     user_id = _require(database, user_id)
     link = _open(database, token)
     owner = str(link["user_id"])
     if owner == user_id:
         raise ChatsError("OWN_LINK", "This is your own link.")
+    # By invitation (N471): only a member's link lets anyone in, and the same
+    # answer as a wrong link, so a waiting account's link opens nothing.
+    if not membership.is_member(database, owner):
+        raise _not_found()
     key = ":".join(sorted((owner, user_id)))
     people = [{"user_id": owner, "display_name": link["display_name"]},
               {"user_id": user_id, "display_name": name_of(token_payload)}]
@@ -163,6 +172,10 @@ def join(database: Any, user_id: Any, token: Any, token_payload: Any) -> dict:
     if found:
         _seat(database, found, people)
         return {"chat": {"id": found}}
+    # After the day's number of joins through this person's links, the next
+    # one goes to the waitlist (N471 item 7): no chat is made.
+    if membership.link_is_full(database, owner, user_id):
+        return {"waitlist": True}
     try:
         rows = _rows(_table(database, THREADS).insert({
             "kind": "team", "title": link["display_name"], "link_id": str(link["id"]),
@@ -185,6 +198,7 @@ def join(database: Any, user_id: Any, token: Any, token_payload: Any) -> dict:
                      thread, key, exc_info=True)
         _table(database, THREADS).delete().eq("id", thread).execute()
         raise
+    membership.admitted(user_id)
     return {"chat": {"id": thread}}
 
 

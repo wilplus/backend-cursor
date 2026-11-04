@@ -376,6 +376,16 @@ def v2_chats_join(token):
     return _run("join", lambda: join(db, str(request.user_id), token, payload))
 
 
+@v2_bp.route("/me/access", methods=["GET"])
+@require_auth
+def v2_me_access():
+    """By invitation (N471): {"member", "invite_only"}. The app shows a
+    waiting account the waitlist; its first ask sends the one waitlist
+    email to the founder (services/membership.py)."""
+    from services.membership import status
+    return _run("access", lambda: status(db, str(request.user_id)))
+
+
 # ── A person's profile (services/people_profiles.py; N366) ───────────────
 
 def _photo_out(got):
