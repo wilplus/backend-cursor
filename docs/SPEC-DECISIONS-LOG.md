@@ -12840,3 +12840,67 @@ item 5); otherwise the web screen, with N411's introduction the first time
 Not in force until built and merged. No migration. The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 T4, when built.
+
+**N518 · Who teaches Will when someone answers a Take: no card after Sent;
+whoever answers rates the moments first, inside the answer, one vote each
+and two to settle; the job in their profile picks the model their answer
+feeds, by the matching's own score (founder, the Claude Code chat,
+5 November 2026, on the prototype "Ask, Answer, Teach Will"
+<https://claude.ai/artifact/EAjR9DTKFJsbxEKVtpc1VU> (version 3) and eleven
+yes-or-no questions with suggested answers: "No, never ask"; "Anyone who
+answers, friend counts less", then, told that `label_quorum` has no
+weights, "Keep the code's rule"; "Inside the answer, before Sent"; "Train
+anyway, ask counsel first"; "No, keep it hidden"; "Their profile job";
+"Yes, the same taps"; for the media expert, "how to design it so that the
+closest model to her expertise is chosen and she answers there; if no
+treshold matched then she doesnt count for training the specific model - by
+training I mean colelcting data pairs for future triaining not trianing per
+se", then "Yes, reuse the score and threshold"; "People can add their own";
+and "but how someone matters is already locked in the app source code look
+for it").** For N79, N224, N240, N461, N479, N481, N493 and N512:
+1. **No card after Sent.** Nobody is asked "Help Will hear what you heard?"
+after sending an answer; the prototype's card, its "Teach Will" and its
+"Will would have said" are not built.
+2. **Rating is part of answering, before Sent.** Whoever a Take reaches (a
+person in the speaker's list, N470, or a match, N512) answers "Does the
+speaker sound confident here?" (👍 Yes, 😐 In-between, 👎 No, Audio
+unclear) on a few of its moments while listening, then records their
+answer over its slides (N493 item 1). Blind and in a language they have, as
+every vote (`docs/LEARNING-AND-QUORUM.md` A2, A3). This amends N479 item 2
+for the people a speaker sends a Take to: they judge it too; nobody else
+does. The step sits in the answerer's way, never the speaker's (Never 3);
+it needs a prototype before it is built, since it comes before the locked
+recording screens.
+3. **How someone counts stays as the code has it** (`services/label_quorum.py`):
+one vote each, no weights, a coach in the `coach` lane and anyone else in
+`game_peer`; one vote never settles a moment, two matching votes do, a clash
+goes to a third. "A friend counts less" is not built: the quorum of two
+already keeps one kind friend from settling anything.
+4. **The machine's read stays hidden from whoever answers** (N479 item 8
+unchanged): no "What happened", no Willfidence, no "Will would have said"
+for them. The coach panel keeps its own (panel D2, E1).
+5. **The speaker's training yes: put to counsel.** The founder's wish is to
+collect from every Take, a speaker's "no" included. Not in force: until
+counsel answers in writing, only Takes whose speaker said yes feed any
+model (N79, section M6: model improvement stays declinable), and the votes
+on a "no" Take settle labels that never train.
+6. **The job in a person's profile decides their step**, never the Take's
+topic: a speaking coach rates as in item 2; a trichologist gets N240's taps
+(the condition chips and the stage on its scale) instead of the confidence
+rating; anyone else rates as in item 2.
+7. **People write their own job** (amends N461 item 5's fixed list). Which
+model a person's answer feeds is chosen by the matching's knowledge score
+(`services/take_match_knowledge.py`: their profile's words against each
+model's own words, rare words weighing most): the highest model at or over
+`MIN_FIT` (2.0, `services/take_match.py`) gets the answer as a data pair,
+kept for future training, not training now (N224). Below it, the answer
+stays their own Take and feeds no model. A media expert is the first case:
+no step of her own yet; her answer is her teaching.
+8. **Open:** a colleague with no job in their profile (the founder had no
+preference; item 2 applies until decided); each model's own words, to
+match against; counsel's answer to item 5.
+No new words: the rating's words are signed (coach panel J). Not in force
+until built and merged. Its migration, if the pairs need a table, gets its
+outside review. No rules page yet: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+G and [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) B, when built.
