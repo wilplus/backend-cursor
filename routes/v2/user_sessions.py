@@ -598,8 +598,11 @@ def v2_user_get_session_readout(session_id):
         # include_upgrade_cards=False — USER surface: the manager engine is
         # the sole gatekeeper (founder 2026-08-10); ungated LLM rewrite
         # cards do not ride the student payload.
+        # The row read for the owner check is the readout's session row: its
+        # context, per-slide transcript and publish are not read again.
         readout = build_readout_from_session(
             session_id, audit_paid=_audit_paid, include_upgrade_cards=False,
+            session_row=session,
         )
 
         published = bool(session.get("results_published_at"))

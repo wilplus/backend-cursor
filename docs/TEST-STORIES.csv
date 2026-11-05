@@ -1384,14 +1384,17 @@ its state.
 O2  A bare Take id, or someone else's Take, answers 404 SESSION_NOT_FOUND
 without saying whose it is; a malformed id answers 400.
 O3  A video upload answers 415 AUDIO_ONLY; the mic's own audio/webm passes
-the gate.","O1 -> test_the_guest_owner_reads_their_readout
+the gate.
+O4  The readout that opens the walk reads my Take's pieces, its edits and
+its taps side by side, and reads my Take's row once.","O1 -> test_the_guest_owner_reads_their_readout
 test_claimed_owner_can_read
 test_state_reflects_lifecycle
 O2 -> test_bare_session_id_is_not_authorization
 test_claimed_by_other_404s_without_leak
 test_bad_uuid_400s
 O3 -> test_a_video_upload_is_refused_as_audio_only
-test_mic_audio_webm_is_NOT_rejected_as_video","Bug batch 2026-07-13 (BE-1 guest re-read, BE-2 video reject)."
+test_mic_audio_webm_is_NOT_rejected_as_video
+O4 -> ReadoutReadsTests.test_the_readout_reads_side_by_side_and_the_row_once","Bug batch 2026-07-13 (BE-1 guest re-read, BE-2 video reject)."
 tests/test_helper_words_any_words.py,Story,"As a speaker, I want to pick up to eight helper words from my paragraph, in the order I said them, so that my cues match my talk.","O1  Words picked apart from each other are saved (without a position).
 O2  Words out of order, or words I never said, are refused.
 O3  Eight words are accepted on a pick by hand; a ninth is refused (the
@@ -1459,8 +1462,13 @@ never the ""pending"" 404 that would show an existing Ideal Text as
 missing.
 O2  A snapshot that turns stale while the enrichment readers run answers
 409 SNAPSHOT_STALE with the current snapshot id, and the server-side
-acknowledgement token never leaves.","O1 -> test_a_failed_cold_open_read_says_retry_not_pending
-O2 -> test_enrichment_rejects_snapshot_that_turns_stale_during_readers","Founder 2026-09-26: a dropped connection showed an existing Ideal Text as missing. (The old v1 fallback and its ""degraded read is counted"" tests are gone: a failed read is now a visible 503.) NOTE     Stale-at-first-check refusals live in tests/test_ideal_text_route_contracts.py::test_enrichment_refusals; this file pins the stale-DURING-readers case only."
+acknowledgement token never leaves.
+O3  An open answers with whether the version on screen was saved and with
+the deck flags, read side by side once the document is read: each is
+one read of its own, and one after the other they added a round trip
+to every open.","O1 -> test_a_failed_cold_open_read_says_retry_not_pending
+O2 -> test_enrichment_rejects_snapshot_that_turns_stale_during_readers
+O3 -> test_an_open_reads_its_save_state_and_deck_flags_side_by_side","Founder 2026-09-26: a dropped connection showed an existing Ideal Text as missing. (The old v1 fallback and its ""degraded read is counted"" tests are gone: a failed read is now a visible 503.) NOTE     Stale-at-first-check refusals live in tests/test_ideal_text_route_contracts.py::test_enrichment_refusals; this file pins the stale-DURING-readers case only."
 tests/test_ideal_text_confirmation.py,Story,"As a speaker, I want my first Ideal Text built from my first Take, retried after a dropped connection, and never undone by a failed notification, so that Take 1 always produces my text.","O1  A retry builds version 1 from the Take that created the document, not
 from a later Take.
 O2  One dropped database connection is retried instead of failing Take 1.

@@ -791,8 +791,10 @@ def v2_guest_get_recording_readout(session_id):
 
         from services.lab_recording import build_readout_from_session
         # USER surface — no ungated upgrade cards (founder 2026-08-10).
+        # The row read for the owner check is the readout's session row: its
+        # context, per-slide transcript and publish are not read again.
         readout = build_readout_from_session(
-            session_id, include_upgrade_cards=False)
+            session_id, include_upgrade_cards=False, session_row=session)
 
         if session.get("results_published_at"):
             state = "insights_ready"

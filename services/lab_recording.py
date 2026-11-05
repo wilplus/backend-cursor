@@ -625,8 +625,35 @@ def build_readout_from_session(
     # them, and `edit_rows` / `feedback_rows` are the transcript edits and
     # suggestion taps the coach route read beside its other reads (founder
     # 2026-10-21: the coach's link took 6.7 s, one read after another).
-    snippets = (db.get_snippets_by_session(session_id) or []
-                if snippet_rows is None else snippet_rows)
+    #
+    # The reads a caller did not hand in go out side by side (none needs
+    # another's answer): the readout that opens the walk made them one after
+    # another. A transcript-edit or suggestion read that raises is left to
+    # the step that reads it (None), which handles it as it always did.
+    from services.parallel import run_in_parallel
+
+    def _guarded(read):
+        def attempt():
+            try:
+                return read()
+            except Exception:  # noqa: BLE001 -- the step reads it again
+                logger.warning("readout: early read failed sid=%s", session_id,
+                               exc_info=True)
+                return None
+        return attempt
+
+    pending: dict = {}
+    if snippet_rows is None:
+        pending["snippets"] = lambda: db.get_snippets_by_session(session_id) or []
+    if edit_rows is None:
+        pending["edits"] = _guarded(lambda: db.get_user_transcript_edits(session_id))
+    if feedback_rows is None:
+        pending["feedback"] = _guarded(
+            lambda: db.get_suggestion_feedback_by_session(session_id))
+    got = dict(zip(pending, run_in_parallel(*pending.values())))
+    snippets = got["snippets"] if snippet_rows is None else snippet_rows
+    edit_rows = got.get("edits", edit_rows)
+    feedback_rows = got.get("feedback", feedback_rows)
 
     out_snips, _edits_by_chunk = prepare_readout_snippets(
         db,
