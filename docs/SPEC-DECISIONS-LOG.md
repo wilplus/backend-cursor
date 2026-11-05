@@ -12920,3 +12920,19 @@ until built and merged. Its migration, if the pairs need a table, gets its
 outside review. No rules page yet: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 G and [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) B, when built.
+
+**N519 · The dump screen gives a tiny vibration when it starts listening
+(founder, the Claude Code chat, 5 November 2026, trying the native dump
+screen on their iPhone: "if it could just add a tiny little vibration when
+it starts to listen to me that would be absolutely amazing!").** For N506
+item 2:
+1. **One light haptic tick the moment the microphone starts,** in the
+iPhone app's native screen. It is felt even while recording: iOS mutes
+haptics during a recording unless the app allows them, and the dump screen
+allows them. Stopping keeps its light tick; closing keeps its double tick
+(N506 item 2).
+2. No sound and no words on screen (Never 4). The web screen keeps the tick
+the browser can give.
+Not in force until built and merged. No migration. The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+T6, when built.
