@@ -181,6 +181,24 @@ def test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash(founder):
                           content_type="audio/webm", duration_ms=400_000)
 
 
+def test_a_tap_on_the_mic_is_no_words_and_nothing_is_kept(founder):
+    """Audio under the provider's minimum is "no words heard" (422, which the
+    app does not send again), never a 500."""
+    from services.openai_service import AudioTooShort
+
+    class _Tap(_Adapter):
+        def transcribe_audio(self, audio, filename, **_):
+            raise AudioTooShort("Transcription failed: audio_too_short")
+
+    db = _Db()
+    nb.decide(db, "u", "yes")
+    with pytest.raises(nb.NotebookError) as refused:
+        _note(db, _Tap(""))
+    assert (refused.value.code, refused.value.status) == ("NO_WORDS", 422)
+    assert not db.notes and not db.audio
+    assert nb.preview(db, "u", _Tap(""), b"piece", filename="p.webm") == ""
+
+
 def test_a_crisis_note_gets_the_safety_reply(founder):
     db = _Db()
     nb.decide(db, "u", "yes")
