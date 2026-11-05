@@ -269,6 +269,13 @@ def status(database: Any, user_id: str) -> dict:
     account's first ask sends the waitlist email, once."""
     if not on():
         return {"member": True, "invite_only": False}
+    # A remembered YES answers at once. This is the question the app waits on
+    # behind a full-screen loader before /chat opens, and a member's answer
+    # never needs the account: only a waiting account's email does.
+    with _lock:
+        known = str(user_id) in _members
+    if known:
+        return {"member": True, "invite_only": True}
     try:
         user = _auth_user(user_id)
     except Exception:  # noqa: BLE001 -- see is_member: never break the loop
