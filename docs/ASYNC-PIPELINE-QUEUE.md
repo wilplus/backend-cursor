@@ -58,8 +58,10 @@ Load-bearing decisions:
 - **Idempotent re-runs.** Retry deletes the recording's lab snippets first
   (`v2_delete_lab_snippets_for_recording`); candidate windows UPSERT; the
   token charge already dedups on `recording_id` (ledger unique index);
-  cadence / arc cards / ideal-text are idempotent per arc/version by
-  construction. A crashed run re-executes without duplicating user data.
+  arc cards / ideal-text are idempotent per arc/version by construction (the
+  cadence stage, a no-op since the pre-take-1 framing was retired, was
+  removed 2026-11-05). A crashed run re-executes without duplicating user
+  data.
 - **A session can never strand in "processing".** Terminal failure (attempt
   cap) flips `analysis_state='failed'`; the worker stamps `'processing'` on
   claim; heartbeat + sweeper recover orphans. The daemon's accepted

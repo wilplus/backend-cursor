@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Callable, Dict, Optional, Tuple, cast
+from typing import Any, Callable, Dict, Optional, Sequence, Tuple, cast
 
 from services.db import db
 from services.ideal_text_confirmation import IdealTextUnconfirmedError
@@ -173,7 +173,7 @@ def _run_full_analysis_impl(
 ) -> Tuple[Dict[str, Any], bool]:
     """Runs the full pipeline to completion. Returns (readout, sent_to_coach).
 
-    Transcribe → cut pieces → metrics → persist → cadence → auto-send →
+    Transcribe → cut pieces → metrics → persist → auto-send →
     arc cards → eager ideal-text → KPI fold → later-take review. Stage
     semantics and ordering are the closure's, unchanged. Every best-effort
     stage runs through ``degradation`` (a ``DegradationLog``, audit Q-C1):
@@ -259,18 +259,11 @@ def _run_full_analysis_impl(
         _emit(progress, "ideal_text", 55, "Building your Ideal Text…")
         tl.mark("ideal_text")
 
-        # Explore-session cadence (Prompt A §6 C3) — after a take in an
-        # arc, invite the NEXT take as a Lounge bubble. Authed only;
-        # best-effort + idempotent.
-        if user_id and arc_id:
-            def _cadence() -> None:
-                from services.session_cadence import fire_arc_start
-                _goal = (db.get_user_profile(user_id) or {}).get("goal")
-                # Always-on (2026-06-17): the framing fires here on take 1.
-                # Idempotent per arc.
-                if take_index == 1:
-                    fire_arc_start(user_id, arc_id, goal=_goal)
-            _deg.run("cadence", _cadence)
+        # The Explore-session cadence stage that stood here read the
+        # speaker's profile and handed it to ``fire_arc_start``, which has
+        # been a no-op since the pre-take-1 framing was retired
+        # (services/session_cadence.py). It went (loading times,
+        # 2026-11-05): a database read in the speaker's wait for nothing.
 
         # AUTO-SEND to the coach (founder re-lock 2026-07-06, bug #4):
         # EVERY registered recording reaches the coach queue. Idempotent
@@ -281,6 +274,9 @@ def _run_full_analysis_impl(
         # from ``_after_ready``, so a slow mail provider is never in the
         # speaker's wait.
         _send_res: Dict[str, Any] = {}
+        # Logs that no speaker-facing read depends on, found on the way and
+        # run by ``_after_ready`` once the speaker has been told.
+        _later: list[tuple[str, Callable[[], None]]] = []
         if user_id:
             def _auto_send() -> Dict[str, Any]:
                 from services.lab_send import send_lab_recording_to_coach
@@ -439,6 +435,8 @@ def _run_full_analysis_impl(
                     # gets. The assembler has no per-user selection
                     # channel yet, so capture it as structured
                     # metadata (selection-influence = named follow-up).
+                    # A log line and nothing else, so its read runs after
+                    # the ready flip (``_after_ready``), not in the wait.
                     def _user_edit_signal() -> None:
                         _pe = db.get_user_ideal_edit(arc_id, user_id)
                         if _pe and isinstance(_pe.get("version"), int) \
@@ -450,7 +448,7 @@ def _run_full_analysis_impl(
                                 "selection-influence is a follow-up)",
                                 arc_id, _pe["version"], _new_v,
                                 len(_pe.get("text") or ""))
-                    _deg.run("user_edit_signal", _user_edit_signal)
+                    _later.append(("user_edit_signal", _user_edit_signal))
             except IdealTextUnconfirmedError:
                 # This is the Take 1 success boundary, not optional telemetry.
                 # Queue/daemon/sync dispatchers translate it into the exact
@@ -582,7 +580,7 @@ def _run_full_analysis_impl(
     # heartbeat covers it and a retry sees it done): the shadow logs, the
     # coach email, and the wait for the Say-It-Stronger cards.
     _after_ready(session_id=session_id, user_id=user_id,
-                 send_result=_send_res, deg=_deg)
+                 send_result=_send_res, deg=_deg, later=_later)
     return readout_local, sent_local
 
 
@@ -682,16 +680,21 @@ def _shadow_stages(session_id: str, deg: Any) -> None:
 
 
 def _after_ready(*, session_id: str, user_id: Optional[str],
-                 send_result: Dict[str, Any], deg: Any) -> None:
+                 send_result: Dict[str, Any], deg: Any,
+                 later: Sequence[tuple[str, Callable[[], None]]] = ()) -> None:
     """Work no speaker-facing read depends on, run after the ready flip.
 
     Nothing here may raise: the Take is already ``ready`` to the speaker,
     and a failure in work they never waited on must not turn it into a
     failed one. Every stage is best-effort through ``deg`` (the job row
     still names it), and the whole block is fenced once more below.
+    ``later`` holds the run's own logs, named by stage, that waited for
+    this moment (the user-edit signal).
     """
     try:
         _shadow_stages(session_id, deg)
+        for stage, log in later:
+            deg.run(stage, log)
         # The coach email for the hand-off `_auto_send` landed above: one per
         # spoken Take, none for a Take that was already in the queue.
         if send_result.get("ok") and not send_result.get("already_sent"):
