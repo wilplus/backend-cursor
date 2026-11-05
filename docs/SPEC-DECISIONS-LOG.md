@@ -13263,3 +13263,44 @@ export); the words on the pages.
 Not in force until built and merged. No migration in this entry.
 No rules page yet: [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md)
 F, when built.
+
+**N527 · "Listen before your talk" waits; a test by hand decides it
+(founder, the Claude Code chat, 5 November 2026, on the prototype "Listen
+before your talk" <https://claude.ai/artifact/TKUk8xRCdBKUA26fxiVss6>
+(version 6) and the analysis of who it is for that came with it: "yes";
+then, on its timing, "yes we build a prototype").**
+For SPEC §9 (the Voice Album), contract 32 and the-plan.md §D1 and §I3:
+1. **What was proposed.** The Voice Album's one job, hearing yourself at
+your best just before you need it (SPEC §9.3), leaves its page for two
+moments in Will's chat. At the last practice, after its Take and walk and
+just before the plan's last two ratings (§D1): the speaker's best moment
+as a clip with their own words over it, then "Does this sound confident to
+you?", the speaker's leg of contract 32, and the coach's line only after
+their Yes. On the talk day, the deadline-morning line (§I3) carries the
+same clip, playable in the chat all day, with nothing asked. The clip
+plays with their words at once, with no guess before it (founder, the same
+chat: "there should be a playback here!"), which sets aside SPEC §9.2's
+guess before any playback. The study is on the frontend branch
+`study/voice-album-walk-look`, `/dev/voice-album-walk`; nothing of it is
+in force.
+2. **Not built now.** It does not make the transcript, the Ideal Text or
+the feedback better. It reaches only a speaker with a plan, a deadline and
+a moment that qualifies, once per talk, while WillpowerLab is by
+invitation. And the self-modelling studies SPEC §9.3 cites are mostly
+video, many with children, so its effect on adults before a talk is a
+guess still to be tested.
+3. **The test by hand.** For the next 10 speakers with a deadline, the
+founder or their coach writes to them in the chat twice: at the end of the
+last practice, before its two ratings, the speaker's best moment a coach
+said Yes to (their key line, where one was said that way) and "Does this
+sound confident to you?"; and on the deadline's morning, a good-luck line
+with the same clip. No code and no new screen; the plan's first and last
+ratings show the effect.
+4. **What decides it.** It is built, from the prototype, when about 6 of
+the 10 play it, most feel readier at the last practice than at the first,
+and some bring it up on their own in "How did it go?". Otherwise it is
+dropped. The founder decides after the tenth.
+5. **Meanwhile** the Voice Album stays as it is: clips still enter it under
+contract 32, nothing new is said to speakers, and the fix for its History,
+which never loads, goes as its own bug fix.
+No migration. No rules page.
