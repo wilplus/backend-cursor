@@ -75,6 +75,8 @@ import logging
 import re
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -225,14 +227,18 @@ def _held(row: dict) -> bool:
         return False
 
 
-def _last(database: Any, thread_id: str, unheard: Any = None, me: str = "") -> Optional[dict]:
-    """The chat's newest message the caller gets: not an answer still held,
-    nor one from the person they blocked, sent while blocked (N466). With
-    ``mine`` (the caller sent it), and for a sent Take its number only
-    (``meta.take_index``), for the list's "{name} sent you Take {n}"
-    (N470); never its Take's id."""
-    rows = _rows(_table(database, MESSAGES).select("author_member_id,kind,body,meta,created_at")
+def _recent(database: Any, thread_id: str) -> list[dict]:
+    """The chat's 20 newest messages, newest first: where ``_last`` looks."""
+    return _rows(_table(database, MESSAGES).select("author_member_id,kind,body,meta,created_at")
                  .eq("thread_id", thread_id).order("created_at", desc=True).limit(20))
+
+
+def _last(rows: list[dict], unheard: Any = None, me: str = "") -> Optional[dict]:
+    """The chat's newest message the caller gets, of its ``_recent`` rows:
+    not an answer still held, nor one from the person they blocked, sent
+    while blocked (N466). With ``mine`` (the caller sent it), and for a sent
+    Take its number only (``meta.take_index``), for the list's "{name} sent
+    you Take {n}" (N470); never its Take's id."""
     from services.join_questions import hidden
     row = next((r for r in rows if not _held(r) and not (unheard and unheard(r))
                 and not (me and hidden(r, me))), None)
@@ -249,6 +255,22 @@ def _last(database: Any, thread_id: str, unheard: Any = None, me: str = "") -> O
     return last
 
 
+#: How many of the list's reads run at once: each is one call to the
+#: database, so the list waits for about the slowest, not for their sum.
+_LIST_READERS = 8
+
+
+def _side_by_side(calls: list) -> list:
+    """Run these zero-argument reads at once; their results in the same
+    order. Each keeps the request's context (its timing and its id)."""
+    if len(calls) <= 1:
+        return [c() for c in calls]
+    with ThreadPoolExecutor(max_workers=min(_LIST_READERS, len(calls)),
+                            thread_name_prefix="chats-list") as pool:
+        futures = [pool.submit(copy_context().run, c) for c in calls]
+        return [f.result() for f in futures]
+
+
 def list_chats(database: Any, user_id: Any) -> dict:
     """GET /v2/chats: {"chats": [{id, kind, title, subtitle, last,
     joined_through}]}. ``joined_through`` is the first name of whose link the
@@ -262,25 +284,40 @@ def list_chats(database: Any, user_id: Any) -> dict:
     if not mine:
         return {"chats": []}
     ids = list(mine)
-    # Whom the caller blocked, and what therefore never reaches them (N466).
-    spans = chat_safety.spans_by_member(database, list(mine.values()))
-    threads = _rows(_table(database, THREADS).select("id,kind,title,created_at,link_id").in_("id", ids))
+    # Every read below needs only the caller's memberships, so they run side
+    # by side: the list waits for the slowest, not for all of them in turn.
+    spans, threads, members, *recent = _side_by_side([
+        # Whom the caller blocked, and what therefore never reaches them (N466).
+        lambda: chat_safety.spans_by_member(database, list(mine.values())),
+        lambda: _rows(_table(database, THREADS).select("id,kind,title,created_at,link_id").in_("id", ids)),
+        lambda: _rows(_table(database, MEMBERS).select("id,thread_id,display_name,subtitle")
+                      .in_("thread_id", ids)),
+        *[(lambda t=t: _recent(database, t)) for t in ids],
+    ])
+    recent_of = dict(zip(ids, recent))
     others: dict[str, dict] = {}
-    for m in _rows(_table(database, MEMBERS).select("id,thread_id,display_name,subtitle")
-                   .in_("thread_id", ids)):
+    for m in members:
         if str(m["id"]) != mine.get(str(m["thread_id"])):
             others.setdefault(str(m["thread_id"]), m)
+    lasts: dict[str, Optional[dict]] = {}
+    for t in threads:
+        me = mine[str(t["id"])]
+        lasts[str(t["id"])] = _last(recent_of.get(str(t["id"]), []),
+                                    chat_safety.unheard(me, spans.get(me, [])), me)
+    # A chat with no message yet, joined through a link: whose (N488).
+    joining = [str(t["id"]) for t in threads if lasts[str(t["id"])] is None and t.get("link_id")]
+    through = dict(zip(joining, _side_by_side(
+        [(lambda t=t: joined_through(database, user_id, t)) for t in joining])))
     chats: list[tuple[str, dict]] = []
     for t in threads:
         other = others.get(str(t["id"])) or {}
         me = mine[str(t["id"])]
-        last = _last(database, str(t["id"]), chat_safety.unheard(me, spans.get(me, [])), me)
+        last = lasts[str(t["id"])]
         chats.append(((last or t)["created_at"] or "", {
             "id": str(t["id"]), "kind": t["kind"],
             "title": other.get("display_name") or t["title"],
             "subtitle": other.get("subtitle"), "last": last,
-            "joined_through": (joined_through(database, user_id, t["id"])
-                               if last is None and t.get("link_id") else None),
+            "joined_through": through.get(str(t["id"])),
             "blocked": chat_safety.blocking({"blocked_spans": spans.get(me, [])})}))
     chats.sort(key=lambda pair: str(pair[0]), reverse=True)
     return {"chats": [chat for _, chat in chats]}
