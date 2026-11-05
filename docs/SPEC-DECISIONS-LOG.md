@@ -13133,3 +13133,37 @@ speaker's card in the queue still says how many moments wait. No migration.
 The rules: frontend
 [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
 B1, when built.
+
+**N522 · N520's seven gaps: client data in the shared model only by
+contract, tokens for counted answers, where speaking stands on the stages,
+randomness only among safe options, deletion within 90 days, a second coach
+for the golden set, one language first (founder, the Claude Code chat,
+5 November 2026, "address the gaps"; seven questions, each answered with
+the recommended option).** For N223, N240 and N520:
+1. **An organisation's data trains the shared model only if its contract
+says yes.** Off by default; a client may opt in. Its private model and raw
+data stay its own either way (N520 items 5 and 9).
+2. **Experts earn tokens for each answer that counts:** an answer from a
+trusted rater (N520 item 8), never a vote that does not count. It rewards
+quality, not clicking. The amount per answer is the founder's to set.
+3. **Where speaking stands on the four stages (N520 item 5):** Says is
+Alone, as Will's feedback already reaches speakers by itself; Reads'
+willfidence-v2 is in Shadow until it passes the upgrade test (N520 item
+12); Picks, the exercise, stays with the coaches and the library.
+4. **Randomness in Picks only among options the expert or the
+organisation's catalogue marked safe for that case,** never near a red
+flag (N520 item 9).
+5. **Deletion:** a deleted person's clips and votes leave the tables, and
+every model is retrained at least every 90 days without them. The privacy
+text says so once the founder signs its new line.
+6. **The speaking golden set grows from 50 toward 150 with the founder and
+one trusted coach the founder names:** a clip goes in where both agree, and
+the coach's agreement with the founder is measured. The founder's taste
+stays the reference.
+7. **A model starts in one language,** its organisation's main one; another
+opens once it has its own known clips (60) and two trusted experts there.
+**Open:** the tokens per counted answer; the trusted coach's name; the
+contract clause and the privacy line, each for the founder's signature.
+Not in force until built and merged. No migration in this entry. No rules
+page yet: [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) B, E and
+F, when built.
