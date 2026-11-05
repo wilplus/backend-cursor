@@ -13439,3 +13439,40 @@ no talk to prepare for and none of it shows.
 The words in the prototype, rewritten in classic style, are not decided
 here; those that replace signed lines wait for the founder's choice. No
 migration. No rules page.
+
+**N530 · "Listen before your talk": its words are signed, for this flow
+only (founder, the Claude Code chat, 5 November 2026, on the prototype
+"Listen before your talk" <https://claude.ai/artifact/TKUk8xRCdBKUA26fxiVss6>
+(version 8), whose words were rewritten in classic style after Steven
+Pinker's "The Sense of Style": "signed off"; then, asked where the lines
+that replace signed wording apply, "This flow only").** For N527 and N529:
+1. **Signed for this flow** (the evening-before exchange at the last
+practice, the talk-day line and its reminder, the next morning):
+"That was your last practice." · "Your talk is tomorrow. Before my last
+two questions, listen to the sentence you most want them to remember, the
+way you said it best." · "Your talk is tomorrow. Before my last two
+questions, listen to how you open, the way you said it best." · "The
+sentence to remember" · "How you open" · "Do you sound confident here?" ·
+"I can't hear it well" · "Your coach heard confidence in it too." · "Then
+hold on to it: this is how you sound. Tomorrow morning, just before you go
+on, you'll find it right here." · "It may not sound that way to you today.
+But your coach heard confidence in it, and so did you the first time you
+listened. Nerves make us harsh judges of our own voices. You're doing
+well. Tomorrow morning, just before you go on, you'll find it right here."
+· "How tense do you feel about the talk right now?" · "Calm" · "Very
+tense" · "How ready do you feel for the talk right now?" · "Not ready" ·
+"Completely ready" · "Answered" · "Good luck with your talk today." ·
+"Good luck today. Here is the sentence you most want them to remember, as
+you said it best. Play it just before you go on." · "Good luck today.
+Here is how you open, as you said it best. Play it just before you go
+on." · "How did the talk go? Tell me in a voice message."
+2. **Everywhere else, the signed lines stay as they are**: "Does this
+sound confident to you?" and "Audio unclear" in the walk and on the coach
+panel; "9 of 9 practices done.", "How stressed do you feel about it right
+now?", "Very stressed", "How ready do you feel for it right now?", "Fully
+ready" and "How did it go? Tell me in a voice message." in the plan, so
+the plan's earlier ratings stay comparable.
+3. The words wait with the feature: N527's test by hand decides whether it
+is built. The study is on the frontend branch `study/voice-album-walk-look`
+(`twoMoments.tsx`, `WORDS`).
+No migration. No rules page.
