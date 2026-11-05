@@ -13190,3 +13190,17 @@ contract clause and the privacy line, each for the founder's signature.
 Not in force until built and merged. No migration in this entry.
 No rules page yet: [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md)
 B, E and F, when built.
+
+**N524 · The iPhone app's two permission texts are signed (founder, the
+Claude Code chat, 5 November 2026: "you have my permissions", after being
+shown the two drafts of N507 item 4 and told they were the last words not
+yet signed).** For N506 item 7 and N507 item 4:
+1. **Signed (Never 4):** the microphone, "WillpowerLab uses the microphone
+to record your Takes and your voice notes." (was "WillpowerLab uses the
+microphone to record your Takes."), and on-device speech, "Your words
+appear as you speak, made on this iPhone. Nothing is sent for it."
+2. With these, every word of the native dump screen is signed.
+Not in force until built and merged (frontend #1251, `ios/App/App/Info.plist`).
+No migration. The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+K and T6.
