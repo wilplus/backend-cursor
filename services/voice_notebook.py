@@ -96,6 +96,21 @@ def state(database: Any, user_id: str) -> dict:
             "max_seconds": MAX_SECONDS}
 
 
+def opening_state(database: Any, user_id: str) -> tuple[dict, dict]:
+    """``state`` for GET /v2/notebook/state, with the consent row it read
+    (``{}`` when there is none). The app opens to the dump screen after
+    this answer (N522), so the ring check (two reads) and the consent read
+    go side by side instead of one after the other; the answer is
+    ``state``'s."""
+    from services.parallel import run_in_parallel
+    on, row = run_in_parallel(
+        lambda: enabled(database, user_id),
+        lambda: database.get_voice_notebook_consent(str(user_id)))
+    consent = row if isinstance(row, dict) else {}
+    return ({"enabled": on, "consented": on and consent.get("decision") == "yes",
+             "max_seconds": MAX_SECONDS}, consent)
+
+
 def _after(at: str, ms: int) -> str:
     try:
         return (datetime.fromisoformat(at) + timedelta(milliseconds=ms)).isoformat()

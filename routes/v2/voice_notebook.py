@@ -41,10 +41,12 @@ def _error(e):
 @require_auth
 def v2_notebook_state():
     from services.sunday_note import valid_zone
-    from services.voice_notebook import state
-    now = state(db, str(request.user_id))
+    from services.voice_notebook import opening_state
+    now, consent = opening_state(db, str(request.user_id))
     zone = request.args.get("tz")
-    if now["consented"] and valid_zone(zone):
+    # Written when it changed, not on every open: the same zone again is
+    # the same row, and the write was one more round trip before the answer.
+    if now["consented"] and valid_zone(zone) and consent.get("time_zone") != str(zone):
         db.set_voice_notebook_time_zone(str(request.user_id), str(zone))
     return jsonify(now), 200
 

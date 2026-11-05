@@ -35,6 +35,9 @@ OUTCOME
   O12 A Yes given on the dump screen writes "Yes" and "Noted." and asks
       nothing; a Yes in the chat still asks "What's on your mind today?"
       (N514).
+  O13 Opening the app asks the notebook's state (the dump screen opens on
+      its answer, N522): the ring and the Yes are read side by side, and my
+      time zone is written only when it changed, not on every open.
 PROVES   O1 -> test_without_the_notebook_the_chat_is_unchanged
          O2 -> test_the_first_note_asks_and_yes_keeps_it
          O3 -> test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash
@@ -47,6 +50,7 @@ PROVES   O1 -> test_without_the_notebook_the_chat_is_unchanged
          O10 -> test_every_fifth_note_with_a_name_gets_the_privacy_line
          O11 -> test_a_strength_in_the_takes_opens_the_notebook
          O12 -> test_a_yes_on_the_dump_screen_asks_nothing
+         O13 -> test_the_opening_state_reads_side_by_side_and_writes_a_new_zone_only
 WHY      Will learning plan, step 1 (founder 2026-10-20, "approved, start
          step 1"; words signed the same day).
 """
@@ -354,3 +358,46 @@ def test_a_yes_on_the_dump_screen_asks_nothing(founder):
     chat = _Db()
     nb.decide(chat, "u", "yes")
     assert chat.bodies()[-1] == "What's on your mind today?"
+
+
+def test_the_opening_state_reads_side_by_side_and_writes_a_new_zone_only(monkeypatch):
+    """Each read answers only once both are being read: one after the
+    other, the first would wait for the second and time out."""
+    import threading
+    from unittest.mock import patch
+
+    from flask import Flask
+
+    import auth
+    from routes.v2 import register_domains
+    from routes.v2.blueprint import v2_bp
+    from services.db import db
+
+    register_domains()
+    app = Flask(__name__)
+    app.register_blueprint(v2_bp, url_prefix="/v2")
+    together = threading.Barrier(2, timeout=5)
+    row = {"decision": "yes", "time_zone": "Europe/Warsaw"}
+    written = []
+
+    def ring(feature, user, database=None):
+        together.wait()
+        return True
+
+    def consent(user_id):
+        together.wait()
+        return dict(row)
+
+    monkeypatch.setattr(auth, "verify_supabase_token", lambda _t: {"sub": "u"})
+    monkeypatch.setattr("services.rings.feature_is_on_for_user", ring)
+    with patch.object(db, "get_voice_notebook_consent", consent), \
+            patch.object(db, "set_voice_notebook_time_zone",
+                         lambda u, z: written.append(z) or True):
+        client = app.test_client()
+        same = client.get("/v2/notebook/state?tz=Europe/Warsaw",
+                          headers={"Authorization": "Bearer t"})
+        moved = client.get("/v2/notebook/state?tz=Europe/Lisbon",
+                           headers={"Authorization": "Bearer t"})
+    assert same.get_json() == moved.get_json() == {
+        "enabled": True, "consented": True, "max_seconds": nb.MAX_SECONDS}
+    assert written == ["Europe/Lisbon"]
