@@ -13164,6 +13164,6 @@ stays the reference.
 opens once it has its own known clips (60) and two trusted experts there.
 **Open:** the tokens per counted answer; the trusted coach's name; the
 contract clause and the privacy line, each for the founder's signature.
-Not in force until built and merged. No migration in this entry. No rules
-page yet: [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) B, E and
-F, when built.
+Not in force until built and merged. No migration in this entry.
+No rules page yet: [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md)
+B, E and F, when built.
