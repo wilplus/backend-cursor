@@ -24,6 +24,16 @@ from services.llm_client import build_openai_client
 config = Config()
 logger = logging.getLogger(__name__)
 
+
+class AudioTooShort(Exception):
+    """The provider heard no audio to transcribe (a tap on the mic, under
+    0.1 s). Not a fault: the caller answers "no words heard"."""
+
+
+def _too_short(error: Exception) -> bool:
+    return (getattr(error, "code", None) == "audio_too_short"
+            or "audio_too_short" in str(error))
+
 _AUDIO_CONTENT_TYPES = {
     ".webm": "audio/webm",
     ".wav": "audio/wav",
@@ -98,6 +108,8 @@ def _create_transcription(client, create_kwargs: dict):
             timestamp_granularities=["segment", "word"], **create_kwargs,
         )
     except Exception as _gran_err:
+        if _too_short(_gran_err):  # the same audio is as short without words
+            raise
         # SDK too old / API rejects the param → fall back to the prior
         # segment-only call so transcription is never worse than before
         # (#6 just loses word timestamps; the readout/transcript stand).
@@ -324,6 +336,10 @@ class OpenAIService:
                 "words": words,
             }
         except Exception as e:
+            if _too_short(e):
+                logger.info("transcribe_audio: too short filename=%s size=%d",
+                            filename, len(audio_data))
+                raise AudioTooShort(f"Transcription failed: {str(e)}") from e
             logger.error(
                 "transcribe_audio: FAILED filename=%s size=%d error=%r",
                 filename, len(audio_data), e, exc_info=True,

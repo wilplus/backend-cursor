@@ -96,7 +96,7 @@
   "services/mlc3_first_client_feedback.py": 1,
   "services/moment_suggestions.py": 22,
   "services/next_session_icebreaker.py": 7,
-  "services/openai_service.py": 2,
+  "services/openai_service.py": 1,
   "services/orphan_audio_cleanup.py": 1,
   "services/paragraph_history.py": 2,
   "services/part_acoustics.py": 4,

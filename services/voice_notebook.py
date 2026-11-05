@@ -231,9 +231,13 @@ def preview(database: Any, user_id: str, adapter: Any, audio: bytes, *,
         raise NotebookError("EMPTY_AUDIO", "No audio.")
     if len(audio) > MAX_PREVIEW_BYTES:
         raise NotebookError("TOO_LONG", "A live piece is a few seconds.", 413)
-    result = adapter.transcribe_audio(
-        audio, filename, usage_surface="voice_notebook_live",
-        usage_user_id=str(user_id), usage_session_id=str(uuid.uuid4())) or {}
+    from services.openai_service import AudioTooShort
+    try:
+        result = adapter.transcribe_audio(
+            audio, filename, usage_surface="voice_notebook_live",
+            usage_user_id=str(user_id), usage_session_id=str(uuid.uuid4())) or {}
+    except AudioTooShort:  # nothing said yet
+        return ""
     return (result.get("text") or "").strip()
 
 
@@ -304,9 +308,13 @@ def add_voice_note(database: Any, user_id: str, adapter: Any, audio: bytes, *,
         if kept:
             return kept
     record_live_seconds(user_id, live_ms)
-    result = adapter.transcribe_audio(
-        audio, filename, usage_surface="voice_notebook",
-        usage_user_id=str(user_id), usage_session_id=str(uuid.uuid4())) or {}
+    from services.openai_service import AudioTooShort
+    try:
+        result = adapter.transcribe_audio(
+            audio, filename, usage_surface="voice_notebook",
+            usage_user_id=str(user_id), usage_session_id=str(uuid.uuid4())) or {}
+    except AudioTooShort:  # a tap on the mic: refused once, never retried
+        raise NotebookError("NO_WORDS", "No words heard.", 422)
     raw = (result.get("text") or "").strip()
     from services.transcript_smoothing import strip_fillers, tidy_piece
     text = tidy_piece(strip_fillers(raw, result.get("language")))
