@@ -3847,7 +3847,10 @@ O4 -> PracticeCompleteContract.test_a_kept_attempt_completes_the_practice
 tests/test_user_trainings.py,Story,"As a speaker, I want my trainings list to show which talks have an Ideal Text ready, so that I know where I can record next.","O1  GET /v2/user/trainings groups Takes by arc, one card per talk, Takes in
 take order.
 O2  A talk is ideal_ready once the coach has corrected every slide; a talk
-with a slide still uncorrected is not.","O1, O2 -> test_trainings_group_by_talk_and_mark_ideal_ready","Founder 2026-07-13 (arc-grouped trainings). The save-at-publish half (POST /v2/internal/publish-session-results) is retired and answers 410 (routes/v2/canonical_publish.py), so it has no test here."
+with a slide still uncorrected is not.
+O3  A coach's training import is never in the coach's own project list
+(it has no project to archive, so it blocked ""One project at a time"").","O1, O2 -> test_trainings_group_by_talk_and_mark_ideal_ready
+O3     -> test_a_training_import_is_not_a_project","Founder 2026-07-13 (arc-grouped trainings). The save-at-publish half (POST /v2/internal/publish-session-results) is retired and answers 410 (routes/v2/canonical_publish.py), so it has no test here."
 tests/test_v3_end_to_end_production_shape.py,Story,"As a speaker, I want my answer to Confident Voice feedback recorded as a valid decision on real production-shaped data, so that the feedback loop works outside tests.","O1  On production-shaped data (a transcript and a DIFFERENT, shorter Ideal
 Text, snapshot-bound), the chain runs end to end and serves a Confident
 Voice row that quotes the Ideal Text and is backed by the spoken words.
