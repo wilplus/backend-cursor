@@ -150,7 +150,11 @@ def refresh_practice_clips(messages: list, user_id: str, database: Any,
             return {}
 
     def reads() -> dict:
-        return {pid: attempts(pid) for pid in wanted}
+        # Each practice is two reads, its row then its tries; the practices
+        # go side by side, so three of them cost two round trips, not six.
+        pids = list(wanted)
+        return dict(zip(pids, run_in_parallel(
+            *[(lambda pid=pid: attempts(pid)) for pid in pids])))
 
     allowed, rows_by_practice = run_in_parallel(gate, reads)
     if not allowed:
@@ -437,8 +441,13 @@ def enrich_page(page: dict, user_id: str, database: Any, *,
         with lap("coach_words"):
             return refresh_coach_words(messages, user_id, database)
 
-    _, _, _, fresh, older = run_in_parallel(recordings, practice, decks, flags,
-                                            coach_words)
+    # Five groups on four lanes (services.parallel.MAX_WORKERS), so one starts
+    # only when a lane frees. The two that make a second read after their
+    # first (the coach's word, the practice) start at once, and the one that
+    # waits is a single read: the page costs the page read and two more round
+    # trips, where the coach's word used to wait for a lane and then pay two.
+    older, _, _, fresh, _ = run_in_parallel(coach_words, practice, recordings,
+                                            flags, decks)
     if older:
         page["messages"] = [m for m in messages
                             if str(m.get("client_id") or "") not in older]
