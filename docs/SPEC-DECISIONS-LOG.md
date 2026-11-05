@@ -12798,3 +12798,24 @@ to someone new the app picked, and using people's profiles and Take topics
 to pick them.
 No migration. No rules page yet: the matching gets its rules page when it
 is built (N332).
+
+**N516 · No weekly note in the founder's chat (founder, the Claude Code chat,
+5 November 2026, on a screenshot of the founder's own chat with Will showing
+three "Feedback, the last 7 days" notes under Will's reply: "There's some
+feedback summaries that are appearing on my screen. Please do not make them
+appear.").** For WIL-74 principles 3 and 7 and N358 item 2:
+1. **The weekly note is no longer written.** No "Feedback, the last 7 days"
+note is posted in any admin's chat with Will after a Take's summary. Was:
+once a week, after the week's first closing summary.
+2. **The notes already written are hidden** from the chat on screen and are
+never read back to Will as conversation. The rows stay stored, like every
+other retired row.
+3. **What stays:** "Did this help?" is still asked when a Take looks off,
+every answer is still kept and still feeds the speaker's private note that
+Will reads (`services/speaker_memory.py`); each summary still stores whether
+the voice rose, held or dipped. Only the founder's weekly read of them in
+the chat stops.
+No rules page: the weekly note is `services/feedback_digest.py`, which
+nothing calls any more and which stays because the signed counsel pack cites
+it; the hiding is in `services/chat_query.py` (`_retired`) and the
+frontend's `isRetiredLoungeMessage`. No migration.

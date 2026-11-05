@@ -13,9 +13,10 @@ of them: the simplest thing that works, nothing to set up or test by hand.
    the practice did not land (not yet, or none tried) or the voice dipped
    (`feedback_check.looks_off`). It is never asked when another offer comes
    in the same step, and it never stands in front of the next Take.
-3. **The founder reads the answers in a short note in their own chat, once a
-   week** (`services/feedback_digest.py`). No page to open, no job to run:
-   the week's first closing summary posts it. Only the founder reads the
+3. ~~The founder reads the answers in a short note in their own chat, once a
+   week.~~ Retired (founder, 2026-11-05, N516): no weekly note is written in
+   the chat, and the ones already there are hidden. The answers are still
+   kept and feed the speaker's private note. Only the founder reads the
    answers; coaches do not.
 4. **A goal is tracked in words in every summary.** One goal, in the
    speaker's own words, changed by telling the chat, never graded. The
@@ -25,7 +26,7 @@ of them: the simplest thing that works, nothing to set up or test by hand.
    is in. Nothing else, and only in the app's chat.
 6. **Everyone gets it.** No test group: it is optional and quiet.
 7. **We change something when the same thing is missing three times** in
-   the weekly note.
+   the answers (no longer read in a weekly note, N516).
 
 The chat knows these as facts (`feedback_check.CHAT_FACTS`, passed to the
 librarian with the feature list and the speaker's status card), so it can

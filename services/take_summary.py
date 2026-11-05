@@ -660,8 +660,6 @@ def _first_written(database: Any, user_id: str, client_id: str, text: str, meta:
     speaker_memory.record(database, user_id, "take",
                           {"practice": practice, "moved": moved,
                            "helper_words": meta["helper_words"]}, take)
-    from services.feedback_digest import post_later
-    post_later(database)
     # Nothing asked: the end now, the plan's lines after a practice (frontend
     # the-plan.md G13, D1, A2) above the closing message, the plan's
     # progress under it; best-effort, never in the way of the summary. With
