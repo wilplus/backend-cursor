@@ -3606,6 +3606,10 @@ tests/test_tests_never_touch_a_real_database.py,Guard,The test suite refuses to 
 database this way) -- it stops before any test module imports.
 C2  the deliberate way through: WILLAB_TESTS_REAL_DB=1 lets a run against a
 disposable project proceed.","C1, C2 -> test_a_real_supabase_url_stops_the_suite_unless_asked_for","If removed: the next session that runs pytest plainly with production keys in its environment reads from, and can write to, production."
+tests/test_the_arousal_capture_does_not_hold_the_wait.py,Story,"As a speaker, I want my Take's feedback moments found without waiting on bookkeeping, so that my Ideal Text opens sooner.","O1  Every piece with an arousal read still gets that read stored, with
+the same value, before the feedback moments go on.
+O2  The stores go out together, not one database round trip after
+another (a five-minute Take has about thirty pieces).","O1, O2 -> test_every_arousal_read_is_stored_and_the_stores_overlap","2026-11-05, the wait. Driven through the public generate_for_session; only the Take's readout and the speaker's cross-Take cue baseline are faked, and the store itself."
 tests/test_the_chain_hears_the_training_yes_postgres.py,Story,"As a speaker, I want my recordings used for training only after my own training yes, so that an old bundled yes or a withdrawal is respected. (Critical path: consent.)","O1  The ring's consent door says yes only for an active training yes with
 a bound speaker.
 O2  It says no before the speaker is bound, after a withdrawal, and for an

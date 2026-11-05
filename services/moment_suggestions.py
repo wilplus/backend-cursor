@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -812,8 +812,18 @@ def _resolve_delivery_baseline_and_capture_arousal(
     context: _GenerationContext,
     database: Any,
 ) -> Any:
-    """Resolve delivery reference and persist its private arousal axis."""
+    """Resolve delivery reference and persist its private arousal axis.
+
+    THE WRITES GO OUT TOGETHER (2026-11-05, the wait). The capture is one
+    row update per piece -- about thirty on a five-minute Take -- and they
+    ran one after another, a database round trip each, inside the speaker's
+    wait before the Ideal Text. Nothing in the pipeline reads `arousal_z`
+    back (a learning-loop signal: never surfaced, never ranked), so the
+    order between them is nobody's input. They now run through the bounded
+    pool in `services.parallel`: the same rows get the same values, and
+    every write has finished before this returns, exactly as before."""
     from services.delivery_stars import arousal_z, resolve_delivery_baseline
+    from services.parallel import run_in_parallel
 
     snippets = context.readout.get("snippets") or []
     baseline = resolve_delivery_baseline(
@@ -823,15 +833,26 @@ def _resolve_delivery_baseline_and_capture_arousal(
     )
     if not baseline:
         return baseline
+    captures: list[tuple[str, Any]] = []
     for snippet in snippets:
         try:
             snippet_id = str(snippet.get("id") or "")
             activation = arousal_z(
                 snippet.get("features") or {}, baseline)
-            if snippet_id and activation is not None:
-                database.set_snippet_arousal(snippet_id, activation)
         except Exception:
             continue
+        if snippet_id and activation is not None:
+            captures.append((snippet_id, activation))
+
+    def _capture(snippet_id: str, activation: Any) -> Callable[[], None]:
+        def _run() -> None:
+            try:
+                database.set_snippet_arousal(snippet_id, activation)
+            except Exception:  # noqa: BLE001 -- capture-only, as the loop was
+                pass
+        return _run
+
+    run_in_parallel(*[_capture(sid, act) for sid, act in captures])
     return baseline
 
 
