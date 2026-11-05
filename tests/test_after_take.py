@@ -39,6 +39,9 @@ OUTCOME
   O8  The first Take's goodbye says it is the first Take's, so "Record
       Take 2" comes at once under it on any device (N449 item 2); a later
       Take's does not.
+  O9  The visit on every app open makes the same WhatsApp ask from what it
+      reads of the thread: when each message was written and the few keys
+      it looks at, never the messages' words.
 PROVES   O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
          O2 -> test_from_take_two_one_ask_ceo_ask_will_the_question
          O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_goodbye
@@ -47,6 +50,7 @@ PROVES   O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
          O6 -> test_the_plans_lines_wait_for_the_ask_then_the_goodbye_and_the_progress
          O7 -> test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar
          O8 -> test_the_first_takes_goodbye_says_so_on_any_device
+         O9 -> test_the_visit_reads_the_keys_it_needs_not_the_words
 WHY      Founder 2026-10-20: "one action at a time"; 2026-10-31 (N294): "No
          call to action means that there is no push", "the next time you
          come and open the app ask the settings questions".
@@ -337,3 +341,37 @@ def test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar(monkeypatch):
     monkeypatch.setattr(person_asks.db, "client", FakeSupabaseClient({"person_asks": fresh}))
     after_take.visit(db, "u")
     assert fresh.rows == []
+
+
+def test_the_visit_reads_the_keys_it_needs_not_the_words(monkeypatch):
+    from services.db import DatabaseService
+    _phone(monkeypatch, None)
+    asks = _Asks()
+    monkeypatch.setattr(person_asks.db, "client", FakeSupabaseClient({"person_asks": asks}))
+    thread = _Db()
+    _done(thread, "take-1")
+    _done(thread, "take-2")
+    served = []
+
+    def lounge(query):
+        """What PostgREST answers for the columns asked for: an
+        ``alias:metadata->key`` column is that one value of the metadata."""
+        cols = [c.strip() for c in query.calls[0][1][0].split(",")]
+        rows = []
+        for stored in thread.get_lounge_messages_page("u", limit=501):
+            row = {}
+            for col in cols:
+                alias, _, path = col.partition(":")
+                row[alias] = ((stored.get("metadata") or {}).get(path.split("->")[1])
+                              if "->" in path else stored.get(col))
+            rows.append(row)
+        served.extend(rows)
+        return rows
+
+    database = DatabaseService.__new__(DatabaseService)
+    database.client = FakeSupabaseClient({"lounge_messages": lounge})
+    after_take.visit(database, "u")
+    bar = person_asks.next_for("u")
+    assert bar["kind"] == "whatsapp" and bar["opener"] == "It seems you enjoy using WillpowerLab."
+    assert served and not any("body" in row for row in served)
+    assert after_take.SEE_YOU not in repr(served)

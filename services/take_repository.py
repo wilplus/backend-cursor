@@ -1842,6 +1842,11 @@ class TakeRepository(TableRepository):
         history / scroll-back view. Filters source='audit_upload' so
         old-funnel/homework sessions don't appear. Returns lightweight
         rows; the FE fetches the full readout per session on tap.
+
+        Of the context only the topic is read (``intake_context`` comes back
+        as ``{"topic": ...}``, or ``{}``): the whole column carries a deck's
+        slide text and timeline, up to 60 slides of 2,000 characters on every
+        Take, and this list is read on every app open (GET /v2/user/readouts).
         """
         if not user_id:
             return []
@@ -1850,7 +1855,7 @@ class TakeRepository(TableRepository):
                 self.client.table("v2_sessions")
                 .select(
                     "id, created_at, status, results_published_at, "
-                    "intake_context"
+                    "ctx_topic:intake_context->topic"
                 )
                 .eq("user_id", user_id)
                 .eq("source", "audit_upload")
@@ -1858,7 +1863,7 @@ class TakeRepository(TableRepository):
                 .limit(limit)
                 .execute()
             )
-            return res.data or []
+            return [_with_context(r) for r in res.data or []]
         except Exception as e:
             err_low = str(e).lower()
             if "source" in err_low and "pgrst" in err_low:

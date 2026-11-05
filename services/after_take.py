@@ -140,6 +140,29 @@ def _rows(database: Any, user_id: str, limit: int) -> list[dict]:
         return []
 
 
+#: All ``visit`` reads of a message: its metadata's five keys (and when it
+#: was written), never its words.
+_VISIT_KEYS = ("take_session_id", "next_take", "summary", "offer", "visit_after")
+
+
+def _visit_rows(database: Any, user_id: str) -> list[dict]:
+    """The thread as ``visit`` reads it: the same ``_SCAN`` rows, newest
+    first, with only the keys it looks at. The visit runs on every app open
+    and read up to 501 whole messages for them; the whole read is the
+    fallback when the narrow one is not there or fails."""
+    reader = getattr(database, "get_lounge_metadata_page", None)
+    if callable(reader):
+        try:
+            rows = reader(str(user_id), limit=_SCAN, keys=_VISIT_KEYS)
+        except Exception as error:  # noqa: BLE001 -- the whole read follows
+            logger.warning("after take: narrow thread read failed user=%s: %s", user_id, error,
+                           exc_info=True)
+            rows = None
+        if isinstance(rows, list):
+            return rows
+    return _rows(database, user_id, _SCAN)
+
+
 def _no_phone(database: Any, user_id: str) -> bool:
     try:
         from services.whatsapp_notify import whatsapp_state
@@ -494,7 +517,7 @@ def visit(database: Any, user_id: str) -> None:
     twice in all (the asks the chat wrote before N391 count). Best-effort:
     never raises."""
     try:
-        rows = _rows(database, user_id, _SCAN)
+        rows = _visit_rows(database, user_id)
         takes = _takes_done(rows)
         if len(takes) < _VISIT_FROM or not _no_phone(database, user_id):
             return

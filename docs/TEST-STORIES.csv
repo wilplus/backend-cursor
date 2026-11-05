@@ -304,14 +304,18 @@ seems you enjoy using WillpowerLab.""; never once my number is saved.
 The home-screen ask is never made (N391).
 O8  The first Take's goodbye says it is the first Take's, so ""Record
 Take 2"" comes at once under it on any device (N449 item 2); a later
-Take's does not.","O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
+Take's does not.
+O9  The visit on every app open makes the same WhatsApp ask from what it
+reads of the thread: when each message was written and the few keys
+it looks at, never the messages' words.","O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
 O2 -> test_from_take_two_one_ask_ceo_ask_will_the_question
 O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_goodbye
 O4 -> test_an_older_waiting_message_shows_where_it_stands
 O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
 O6 -> test_the_plans_lines_wait_for_the_ask_then_the_goodbye_and_the_progress
 O7 -> test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar
-O8 -> test_the_first_takes_goodbye_says_so_on_any_device","Founder 2026-10-20: ""one action at a time""; 2026-10-31 (N294): ""No call to action means that there is no push"", ""the next time you come and open the app ask the settings questions""."
+O8 -> test_the_first_takes_goodbye_says_so_on_any_device
+O9 -> test_the_visit_reads_the_keys_it_needs_not_the_words","Founder 2026-10-20: ""one action at a time""; 2026-10-31 (N294): ""No call to action means that there is no push"", ""the next time you come and open the app ask the settings questions""."
 tests/test_ai_voice.py,Story,"As a speaker practising, I want an AI clip of my own voice saying my own words with one improvement, never shown if it fails its check, and fully deleted when I ask, so that I hear a believable better version and keep control of my voice.","O1  One problem is picked against my own usual (or the default), and the
 sentence under the clip names it in words, with no numbers. As the
 walk's one fix on a moment, the clip teaches the strongest problem my
@@ -1823,10 +1827,13 @@ O3  An older page carries no flags, and a failing step (such as decks)
 costs only that step; my clips still refresh.
 O4  A coach's video plays only while it is their word's current one; a
 video they replaced or removed never plays, an older ""Later · from your
-coach"" bubble is left out, and each bubble says whether it is new.","O1 -> test_own_clip_is_resigned_and_another_users_is_not
+coach"" bubble is left out, and each bubble says whether it is new.
+O5  My practice tries from several practices on one page all get fresh
+links, and the practices are read side by side, not one after another.","O1 -> test_own_clip_is_resigned_and_another_users_is_not
 O2 -> test_one_page_gets_fresh_links_decks_and_flags_from_batched_reads
 O3 -> test_an_older_page_carries_no_flags_and_a_failed_step_costs_only_itself
-O4 -> test_a_coach_video_plays_only_while_it_is_the_word_s_current_one",
+O4 -> test_a_coach_video_plays_only_while_it_is_the_word_s_current_one
+O5 -> test_practice_tries_from_several_practices_are_read_side_by_side",
 tests/test_manager_engine.py,Story,"As the founder, I want the feedback arbitration's experiment honest (protected Confident Voice slot, per-slide exploration, withheld notes recorded as having won), so that we can later learn what feedback helps.","O1  A protected note never gives up its slot to exploration or withholding.
 O2  Exploration trades only inside the swapped note's own slide.
 O3  Every withheld note is logged as would_have_surfaced, not surfaced.
@@ -3859,7 +3866,10 @@ closed practice is 409 and a passage mismatch is 422 with nothing
 stored.
 O4  Keeping an attempt completes the practice and dismissing closes it
 (200); keeping an attempt that is not the strongest is 400 with nothing
-kept.","O1 -> SuggestionFeedbackContract.test_a_dismissed_star_is_saved
+kept.
+O5  The list of my Takes the app reads on every open names each Take's
+topic and state, and a Take's deck (its slide text and timeline) never
+comes with it.","O1 -> SuggestionFeedbackContract.test_a_dismissed_star_is_saved
 -> SuggestionFeedbackContract.test_refusals
 O2 -> PracticeStartContract.test_a_moment_practice_is_created
 -> PracticeStartContract.test_refusals_and_the_resume
@@ -3867,7 +3877,8 @@ O2 -> PracticeStartContract.test_a_moment_practice_is_created
 O3 -> PracticeAttemptContract.test_an_attempt_is_recorded
 -> PracticeAttemptContract.test_refusals
 O4 -> PracticeCompleteContract.test_a_kept_attempt_completes_the_practice
--> PracticeCompleteContract.test_refusals_and_the_dismissal",Founder 2026-10-12: route logic moved into services; these hold the routes' status and refusal contracts across that move. Decorators are peeled with inspect.unwrap.
+-> PracticeCompleteContract.test_refusals_and_the_dismissal
+O5 -> ReadoutsListContract.test_each_take_has_its_topic_and_not_its_deck",Founder 2026-10-12: route logic moved into services; these hold the routes' status and refusal contracts across that move. Decorators are peeled with inspect.unwrap.
 tests/test_user_trainings.py,Story,"As a speaker, I want my trainings list to show which talks have an Ideal Text ready, so that I know where I can record next.","O1  GET /v2/user/trainings groups Takes by arc, one card per talk, Takes in
 take order.
 O2  A talk is ideal_ready once the coach has corrected every slide; a talk
@@ -4006,7 +4017,10 @@ more Takes; after Yes, never; a sentence with a number, or none,
 writes nothing until the next Take (N411 items 1, 5).
 O12 A Yes given on the dump screen writes ""Yes"" and ""Noted."" and asks
 nothing; a Yes in the chat still asks ""What's on your mind today?""
-(N514).","O1 -> test_without_the_notebook_the_chat_is_unchanged
+(N514).
+O13 Opening the app asks the notebook's state (the dump screen opens on
+its answer, N522): the ring and the Yes are read side by side, and my
+time zone is written only when it changed, not on every open.","O1 -> test_without_the_notebook_the_chat_is_unchanged
 O2 -> test_the_first_note_asks_and_yes_keeps_it
 O3 -> test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash
 O4 -> test_a_crisis_note_gets_the_safety_reply
@@ -4017,7 +4031,8 @@ O8 -> test_a_note_sent_twice_is_kept_once
 O9 -> test_a_voice_note_is_fixed_in_the_notebook_and_the_thread
 O10 -> test_every_fifth_note_with_a_name_gets_the_privacy_line
 O11 -> test_a_strength_in_the_takes_opens_the_notebook
-O12 -> test_a_yes_on_the_dump_screen_asks_nothing","Will learning plan, step 1 (founder 2026-10-20, ""approved, start step 1""; words signed the same day)."
+O12 -> test_a_yes_on_the_dump_screen_asks_nothing
+O13 -> test_the_opening_state_reads_side_by_side_and_writes_a_new_zone_only","Will learning plan, step 1 (founder 2026-10-20, ""approved, start step 1""; words signed the same day)."
 tests/test_walk_quote.py,Story,"As a speaker who just said a better try of a sentence that doubted me, I want Will to show me my own words that prove otherwise, so that the better sentence feels true, and I want to be able to say ""Not here"".","O1  A sentence that doubted me gets one quote: the signed line and my own
 kept words, word for word with their date; the same sentence gets the
 same quote again, and any other sentence in that Take gets none (N268

@@ -15,6 +15,9 @@ OUTCOME
   O4  Keeping an attempt completes the practice and dismissing closes it
       (200); keeping an attempt that is not the strongest is 400 with nothing
       kept.
+  O5  The list of my Takes the app reads on every open names each Take's
+      topic and state, and a Take's deck (its slide text and timeline) never
+      comes with it.
 PROVES   O1 -> SuggestionFeedbackContract.test_a_dismissed_star_is_saved
             -> SuggestionFeedbackContract.test_refusals
          O2 -> PracticeStartContract.test_a_moment_practice_is_created
@@ -24,6 +27,7 @@ PROVES   O1 -> SuggestionFeedbackContract.test_a_dismissed_star_is_saved
             -> PracticeAttemptContract.test_refusals
          O4 -> PracticeCompleteContract.test_a_kept_attempt_completes_the_practice
             -> PracticeCompleteContract.test_refusals_and_the_dismissal
+         O5 -> ReadoutsListContract.test_each_take_has_its_topic_and_not_its_deck
 WHY      Founder 2026-10-12: route logic moved into services; these hold the
          routes' status and refusal contracts across that move. Decorators are
          peeled with inspect.unwrap.
@@ -328,6 +332,54 @@ class PracticeCompleteContract(unittest.TestCase):
             status, body = self._put({"action": "dismiss"})
         self.assertEqual(status, 200)
         self.assertEqual(update.call_args.args[2]["status"], "dismissed")
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ReadoutsListContract(unittest.TestCase):
+    """GET /v2/user/readouts."""
+
+    STORED = [
+        {"id": SID, "created_at": "2026-11-02T10:00:00Z", "status": "completed",
+         "results_published_at": "2026-11-03T10:00:00Z",
+         "intake_context": {"topic": "Q3 review", "slides": [
+             {"title": "Revenue", "body": "Up 12% on last quarter"}],
+             "slide_advances": [{"slide": 1, "t_ms": 900}]}},
+        {"id": SNIP, "created_at": "2026-11-01T10:00:00Z",
+         "status": "pending_admin_review", "results_published_at": None,
+         "intake_context": None},
+    ]
+
+    def test_each_take_has_its_topic_and_not_its_deck(self):
+        from tests.fakes import FakeSupabaseClient, swap_attr
+        served = []
+
+        def v2_sessions(query):
+            """What PostgREST answers for the columns asked for: a
+            ``name:intake_context->key`` path is that one value."""
+            cols = [c.strip() for c in query.calls[0][1][0].split(",")]
+            rows = []
+            for stored in self.STORED:
+                row = {}
+                for col in cols:
+                    alias, _, path = col.partition(":")
+                    if "->" in path:
+                        key = path.split("->")[-1]
+                        row[alias] = (stored["intake_context"] or {}).get(key)
+                    else:
+                        row[col] = stored[col]
+                rows.append(row)
+            served.extend(rows)
+            return rows
+
+        with swap_attr(db, "client", FakeSupabaseClient({"v2_sessions": v2_sessions})):
+            status, body = _call(us.v2_user_list_readouts)
+        self.assertEqual((status, body), (200, {"count": 2, "readouts": [
+            {"session_id": SID, "created_at": "2026-11-02T10:00:00Z",
+             "topic": "Q3 review", "state": "insights_ready"},
+            {"session_id": SNIP, "created_at": "2026-11-01T10:00:00Z",
+             "topic": None, "state": "review_pending"},
+        ]}))
+        self.assertNotIn("Revenue", repr(served))
 
 
 if __name__ == "__main__":  # pragma: no cover

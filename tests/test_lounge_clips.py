@@ -13,10 +13,13 @@ OUTCOME
   O4  A coach's video plays only while it is their word's current one; a
       video they replaced or removed never plays, an older "Later · from your
       coach" bubble is left out, and each bubble says whether it is new.
+  O5  My practice tries from several practices on one page all get fresh
+      links, and the practices are read side by side, not one after another.
 PROVES   O1 -> test_own_clip_is_resigned_and_another_users_is_not
          O2 -> test_one_page_gets_fresh_links_decks_and_flags_from_batched_reads
          O3 -> test_an_older_page_carries_no_flags_and_a_failed_step_costs_only_itself
          O4 -> test_a_coach_video_plays_only_while_it_is_the_word_s_current_one
+         O5 -> test_practice_tries_from_several_practices_are_read_side_by_side
 """
 from services.lounge_clips import refresh_walk_clips
 
@@ -193,3 +196,28 @@ def test_an_older_page_carries_no_flags_and_a_failed_step_costs_only_itself(monk
     assert clip["metadata"]["clip"]["src"] == "fresh-s1"
     assert "deck" not in card["metadata"]
     assert "new_coach_feedback" not in page
+
+
+def test_practice_tries_from_several_practices_are_read_side_by_side(monkeypatch):
+    """Each practice is read only once all three are being read: one after
+    another, the first would wait for the others and time out."""
+    import threading
+    from services import lounge_clips
+    monkeypatch.setattr(lounge_clips, "_practice_allowed", lambda user_id, database: True)
+    together = threading.Barrier(3, timeout=5)
+
+    class _PracticeDb:
+        def get_confident_voice_practice(self, pid, owner):
+            together.wait()
+            return {"id": pid, "owner_user_id": owner}
+
+        def list_confident_voice_practice_attempts(self, pid):
+            return [{"id": f"try-{pid}", "audio_ref": f"s3://b/{pid}.webm"}]
+
+    tries = [{"kind": "walk_step", "metadata": {"clip": {
+        "practice_id": pid, "attempt_id": f"try-{pid}", "src": "old"}}}
+        for pid in ("p1", "p2", "p3")]
+    lounge_clips.refresh_practice_clips(tries, "me", _PracticeDb(),
+                                        lambda ref: f"signed-{ref}")
+    assert [t["metadata"]["clip"]["src"] for t in tries] == [
+        "signed-s3://b/p1.webm", "signed-s3://b/p2.webm", "signed-s3://b/p3.webm"]
