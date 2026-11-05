@@ -10,6 +10,8 @@ OUTCOME
       without saying whose it is; a malformed id answers 400.
   O3  A video upload answers 415 AUDIO_ONLY; the mic's own audio/webm passes
       the gate.
+  O4  The readout that opens the walk reads my Take's pieces, its edits and
+      its taps side by side, and reads my Take's row once.
 PROVES   O1 -> test_the_guest_owner_reads_their_readout
                test_claimed_owner_can_read
                test_state_reflects_lifecycle
@@ -18,6 +20,7 @@ PROVES   O1 -> test_the_guest_owner_reads_their_readout
                test_bad_uuid_400s
          O3 -> test_a_video_upload_is_refused_as_audio_only
                test_mic_audio_webm_is_NOT_rejected_as_video
+         O4 -> ReadoutReadsTests.test_the_readout_reads_side_by_side_and_the_row_once
 WHY      Bug batch 2026-07-13 (BE-1 guest re-read, BE-2 video reject).
 """
 from __future__ import annotations
@@ -166,6 +169,55 @@ class VideoRejectTests(unittest.TestCase):
         body, status = self._post("lab.webm", "audio/webm")
         self.assertNotEqual(status, 415)
         self.assertNotEqual((body or {}).get("code"), "AUDIO_ONLY")
+
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ReadoutReadsTests(unittest.TestCase):
+    """Each of the three reads answers only once all three are being read:
+    one after another, the first would wait for the others and time out."""
+
+    def test_the_readout_reads_side_by_side_and_the_row_once(self):
+        import threading
+        guest = issue_guest_owner()
+        together = threading.Barrier(3, timeout=5)
+        rows_read = []
+        session = {"id": _SID, "user_id": None, "status": "readout_ready",
+                   "owner_principal_id": guest.principal_id,
+                   "intake_context": {"topic": "Q3 review"},
+                   "slide_transcripts": None, "results_published_at": None}
+
+        def side_by_side(answer):
+            def read(*_args):
+                together.wait()
+                return answer
+            return read
+
+        def row(sid):
+            rows_read.append(sid)
+            return dict(session)
+
+        def never(*_args):
+            raise AssertionError("the row in hand is not read again")
+
+        app = Flask(__name__)
+        with patch.object(db, "v2_get_session_by_id", row), \
+                patch.object(db, "get_owner_principal", lambda _pid: {
+                    "id": guest.principal_id, "user_id": None,
+                    "guest_secret_hash": guest.secret_hash}), \
+                patch.object(db, "get_snippets_by_session", side_by_side([])), \
+                patch.object(db, "get_user_transcript_edits", side_by_side([])), \
+                patch.object(db, "get_suggestion_feedback_by_session", side_by_side([])), \
+                patch.object(db.takes, "get_session_intake_context", never), \
+                patch.object(db.takes, "get_session_slide_transcripts", never), \
+                app.test_request_context(headers={GUEST_OWNER_HEADER: guest.token}):
+            request.user_id = None
+            resp, status = v2_lab_recording.v2_guest_get_recording_readout.__wrapped__(_SID)
+        body = resp.get_json()
+        self.assertEqual((status, body["state"], body["analysis_state"]),
+                         (200, "readout_ready", "ready"))
+        self.assertEqual(body["readout"]["setup"]["topic"], "Q3 review")
+        self.assertEqual(rows_read, [_SID])
 
 
 if __name__ == "__main__":
