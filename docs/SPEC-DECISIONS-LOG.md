@@ -13224,3 +13224,42 @@ arrive one after another. No migration.
 The rules: frontend
 [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
 B1 and B2.
+
+**N526 · A model is like a repository: an owner, contributors, open or
+private, and its own page with the jars; a prototype first (founder, the
+Claude Code chat, 5 November 2026: "I would like to give that panel for
+each specialist who builds their model, that they can open it and see the
+progress (the jars) and how far are they and monitor the users using it
+and what it will look like when they are done ... something like github
+you can have the open code and close code ... I wanted it to be also a
+launchpad for models building"; then four questions, each answered with
+the recommended option but the last: "Just a prototype first").** For
+N520, N522 and N523; the pace panel and its jars (`/admin/pace`) are the
+pattern:
+1. **A model is the unit,** like a repository: one owner (an organisation,
+or the founder for WillpowerLab's own), its contributors, its recipe card
+(N520 item 3), its jars, its stage, its experiments.
+2. **Open means open to see and to join.** Anyone may see an open model's
+page and progress; anyone the matching admits may teach it (N520 items 7
+and 8). Raw data never leaves WillpowerLab. Downloadable weights come later,
+per model, only with the founder's yes after a privacy check. A private
+model is seen only by its owner and contributors and is in no directory.
+3. **Who sees what on a model's page:** the owner everything, its
+experiments included; a contributor the jars, the stage and their own
+part; anyone, for an open model, the page in totals only. Every number is
+about the model and its data, never a read on a person: no speaker, no
+contributor's reliability (N520 item 8, AC-9 of the pace panel). Speakers
+never see these pages (Never 1).
+4. **Experiments:** an owner watches the experiments run on their model
+(as the rings page shows today); setting their own comes in a later
+phase, inside limits.
+5. **A clickable prototype first:** the directory of models, a model's page
+as its owner, as a contributor and as the public, drawn with the founder
+panels' own components (FounderFrame, Panel, Meter). Nothing is built
+before the founder's OK on it (Never 4).
+**Open:** the phases after the prototype (speaking as the first model;
+one private client model; the contributor view; the directory and
+export); the words on the pages.
+Not in force until built and merged. No migration in this entry.
+No rules page yet: [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md)
+F, when built.
