@@ -1789,10 +1789,15 @@ O5 -> test_ac9_no_internal_vocabulary_or_scores,
 test_an_UNKNOWN_key_never_reaches_a_user_payload",Founder decisions 2026-07-20 #1-#3 (the Living Transcript re-shape).
 tests/test_llm_client_fence.py,Guard,"One OpenAI client constructor (services/llm_client.py) and no new direct `.chat.completions.create(` call sites. services/llm.py (`chat_complete`: authorization, timeouts, usage ledger) is the sanctioned entry. Both rules read the AST, so prose cannot trip or dodge them.","A second provider client, or a new direct chat call that skips the
 processing-authorization path (CLAUDE.md: every provider call goes
-through it).","test_the_openai_client_is_constructed_in_exactly_one_module
+through it). And a client shared across a fork: the rq worker forks
+a process per job, and two processes on one pooled TLS connection
+corrupt each other.","test_the_openai_client_is_constructed_in_exactly_one_module
 test_direct_chat_calls_can_only_go_down
 the ratchet: counts must equal CHAT_CALLS_ALLOWED; migrating a
-site to chat_complete lowers its number here in the same change","If removed: A provider call can be added anywhere without authorization or usage accounting, and nothing goes red."
+site to chat_complete lowers its number here in the same change
+test_one_client_per_process_and_a_fork_gets_its_own
+a process's model calls share one client (and its open
+connections); a forked job process builds its own","If removed: A provider call can be added anywhere without authorization or usage accounting, and nothing goes red; a job could write on its parent's provider connection."
 tests/test_login_code.py,Story,"As someone signing up or in with WhatsApp, I want my code to arrive on WhatsApp, and only when Supabase asked for it, so that my number is proven and nobody else can send codes in our name.","O1  A request signed with the hook's secret sends the code to the
 number with the login template, the code in its body and its Copy
 code button.

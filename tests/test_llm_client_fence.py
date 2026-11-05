@@ -6,19 +6,26 @@ GUARD      One OpenAI client constructor (services/llm_client.py) and no new
            dodge them.
 CATCHES    A second provider client, or a new direct chat call that skips the
            processing-authorization path (CLAUDE.md: every provider call goes
-           through it).
+           through it). And a client shared across a fork: the rq worker forks
+           a process per job, and two processes on one pooled TLS connection
+           corrupt each other.
 IF REMOVED A provider call can be added anywhere without authorization or
-           usage accounting, and nothing goes red.
+           usage accounting, and nothing goes red; a job could write on its
+           parent's provider connection.
 PROVES     test_the_openai_client_is_constructed_in_exactly_one_module
            test_direct_chat_calls_can_only_go_down
              the ratchet: counts must equal CHAT_CALLS_ALLOWED; migrating a
              site to chat_complete lowers its number here in the same change
-WHY        Audit Q-A4, Phase 3.
+           test_one_client_per_process_and_a_fork_gets_its_own
+             a process's model calls share one client (and its open
+             connections); a forked job process builds its own
+WHY        Audit Q-A4, Phase 3. The shared client: loading times, 2026-11-05.
 """
 from __future__ import annotations
 
 import ast
 import collections
+import multiprocessing
 import pathlib
 
 import pytest
@@ -103,3 +110,20 @@ def test_direct_chat_calls_can_only_go_down(sightings):
     assert chat_calls == CHAT_CALLS_ALLOWED, (
         "a direct chat call was migrated: lower its number in "
         f"CHAT_CALLS_ALLOWED. Now: {chat_calls}")
+
+
+def test_one_client_per_process_and_a_fork_gets_its_own():
+    from services.llm_client import build_openai_client
+
+    def build():
+        return build_openai_client("sk-fence-test", timeout=5.0, max_retries=0)
+
+    first = build()
+    assert build() is first, "a second call in the same process must reuse the client"
+
+    ctx = multiprocessing.get_context("fork")
+    answer = ctx.Queue()
+    child = ctx.Process(target=lambda: answer.put(build() is not first))
+    child.start()
+    child.join(timeout=30)
+    assert answer.get(timeout=5) is True, "a forked process reused its parent's client"
