@@ -488,6 +488,8 @@ def answer_deadline(database: Any, user_id: str, raw: Any, *, tz: Any = None) ->
     picked = _parse_day(raw) if raw else None
     if raw and (picked is None or picked <= today):
         raise PlanError("INVALID_DATE", "Pick a day after today.")
+    if plan.get("status") == "active":
+        return _project_deadline(database, user_id, plan, picked, today, zone_name)
     deadline = picked or P.given_deadline(today)
     j = P.journey(today, deadline)
     rows = [_me(P.fmt_day(deadline) if picked else P.COPY["no_date"], "deadline_a")]
@@ -506,6 +508,21 @@ def answer_deadline(database: Any, user_id: str, raw: Any, *, tz: Any = None) ->
         fields["step"] = "why"
         plan = _save(database, user_id, plan, fields)
         rows += [_bot(P.COPY["why_1"], "why_1"), _bot(P.COPY["why_2"], "why_2", plan_ask="voice")]
+    return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
+
+
+def _project_deadline(database: Any, user_id: str, plan: dict, picked: Optional[date],
+                      today: date, zone_name: Optional[str]) -> dict:
+    """"When is your deadline?" on a new project, for a plan whose day the
+    speaker never chose (N524): a day picked becomes theirs ("Done. Your plan
+    now runs to {date}."); "No date yet" gives two months from today, said in
+    words. The plan goes on either way."""
+    now = _now().isoformat()
+    day = picked or P.given_deadline(today)
+    said = P.fmt_day(day) if picked else P.COPY["no_date"]
+    plan, more = _move_deadline(database, user_id, plan, day.isoformat(), zone_name, given=picked is None)
+    plan = _save(database, user_id, plan, {"step": "done"})
+    rows = [_me(said, f"deadline_a:{now}")] + more
     return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
 
 
@@ -1186,6 +1203,9 @@ def _from_first_take(database: Any, user_id: str, plan: dict) -> list[dict]:
         facts.update(_keep_first_take(database, user_id, plan, slides, said, facts.get("key_line")))
     plan = _save(database, user_id, plan, {"facts": facts})
     heard = _first_take_deadline((read or {}).get("deadline"), today)
+    chosen = _deadline(plan) if not plan.get("deadline_given") else None
+    if heard is None and chosen and chosen > today:
+        heard = chosen  # a day already chosen (a join link's date) stays (N524)
     deadline = heard or P.given_deadline(today)
     j = P.journey(today, deadline)
     plan, rows = _questions_done(database, user_id, plan, {
@@ -1512,7 +1532,11 @@ def change(database: Any, user_id: str, *, deadline: Any = None, days: Any = Non
     return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
 
 
-def _move_deadline(database: Any, user_id: str, plan: dict, raw: Any, tz: Any) -> tuple[dict, list[tuple]]:
+def _move_deadline(database: Any, user_id: str, plan: dict, raw: Any, tz: Any, *,
+                   given: bool = False) -> tuple[dict, list[tuple]]:
+    """The plan runs to a new day and recalculates. ``given``: a day the
+    speaker didn't choose ("No date yet"'s two months, a join link's "No"),
+    which the plan never speaks of as theirs (N524)."""
     zone_name = valid_zone(tz) or plan.get("time_zone")
     today = today_in(zone_name)
     new = _parse_day(raw)
@@ -1534,13 +1558,26 @@ def _move_deadline(database: Any, user_id: str, plan: dict, raw: Any, tz: Any) -
     started = _parse_dt(plan.get("started_at"))
     today_done = j.every_day and any(started and t >= started and t.astimezone(zone(zone_name)).date() == today
                                      for t in takes)
-    plan = _save(database, user_id, plan, {"deadline": new.isoformat(), "deadline_given": False,
+    plan = _save(database, user_id, plan, {"deadline": new.isoformat(), "deadline_given": given,
                                            "every_day": j.every_day,
                                            "total": done + j.total - (1 if today_done else 0)})
-    rows = [_bot(P.COPY["runs_to"].format(date=P.fmt_day(new)), f"runs_to:{new.isoformat()}:{_now().isoformat()}")]
+    said = P.COPY["two_months"] if given else P.COPY["runs_to"]
+    rows = [_bot(said.format(date=P.fmt_day(new)), f"runs_to:{new.isoformat()}:{_now().isoformat()}")]
     if j.every_day and not was_daily:
         rows.append(_bot(P.COPY["every_day"], f"every_day:{new.isoformat()}:{_now().isoformat()}"))
     return plan, rows
+
+
+def set_deadline(database: Any, user_id: str, day: date, *, given: bool) -> bool:
+    """A day set from outside the plan's own chat (a join link's "Are you in
+    a hurry?", N487 item 4): the open plan runs to it and recalculates, as
+    Edit does; never over a day the speaker chose. Writes no row. Returns
+    whether the plan took it."""
+    plan = database.get_open_plan(str(user_id))
+    if not plan or (_deadline(plan) and not plan.get("deadline_given")):
+        return False
+    _move_deadline(database, user_id, plan, day.isoformat(), None, given=given)
+    return True
 
 
 def ask_coach(database: Any, user_id: str) -> dict:
@@ -1686,7 +1723,12 @@ def _after_active_take(database: Any, user_id: str, plan: dict) -> list[dict]:
     moment = _ratings_due(plan, facts, done)
     asking = _awaiting(plan)  # Will is waiting for the plan's yes: nothing new over it
     consent = C.state(database, user_id) if moment else C.GRANTED
-    if new_project and deadline and plan.get("step") == "done" and not asking:
+    if new_project and deadline and plan.get("step") == "done" and not asking and plan.get("deadline_given"):
+        # A day the speaker never chose is never asked about as theirs: the
+        # first project, the first real event, asks for it (N524).
+        fields["step"] = "deadline"
+        rows.append(_bot(P.COPY["deadline_q"], f"deadline_q:{new_project}", plan_ask="deadline"))
+    elif new_project and deadline and plan.get("step") == "done" and not asking:
         fields["step"] = "same_event"
         rows.append(_bot(P.COPY["is_this_for"].format(date=P.fmt_day(deadline)),
                          f"same_event:{new_project}", plan_ask="same_event"))
@@ -1758,10 +1800,16 @@ def _end(database: Any, user_id: str, plan: dict, first_name: Optional[str]) -> 
     deadline = _deadline(plan)
     consent = C.state(database, user_id)
     plan = _save(database, user_id, plan, {"status": "ending", "step": "how_it_went"})
-    was = P.COPY["deadline_was"].format(date=P.fmt_day(deadline)) if deadline else ""
+    chosen = bool(deadline) and not plan.get("deadline_given")
+    was = P.COPY["deadline_was"].format(date=P.fmt_day(deadline)) if chosen and deadline else ""
     rows = [_bot(f"{_greeting(first_name)} {was}".strip(), "deadline_was",
                  day_line=P.fmt_long(today_in(plan.get("time_zone"))))]
-    if consent == C.GRANTED:
+    if not chosen:
+        # No event the speaker named (N524): nothing to ask how it went;
+        # straight to what's next.
+        plan, more = _after_how_it_went(database, user_id, plan, told=False)
+        rows += more
+    elif consent == C.GRANTED:
         rows += [_bot(P.COPY["how_did_it_go"], "how_did_it_go", plan_ask="voice")]
     elif consent == C.UNANSWERED:  # Will asks for the yes first (N211)
         key = _ask_key(plan, "end")

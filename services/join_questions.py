@@ -273,14 +273,14 @@ def _deadline_known(database: Any, user_id: str) -> Optional[date]:
     return day if day and not plan.get("deadline_given") else None
 
 
-def _set_deadline(database: Any, user_id: str, day: date) -> None:
-    """The joiner's plan takes the day, unless they picked one already.
-    Best-effort: the answer is kept in the chat either way."""
+def _set_deadline(database: Any, user_id: str, day: date, *, given: bool) -> None:
+    """The joiner's plan takes the day, unless they picked one already, and
+    recalculates as Edit does. ``given``: "No", a day they didn't choose,
+    which the plan never speaks of as theirs (N524). Best-effort: the answer
+    is kept in the chat either way."""
+    from services import plan_flow
     try:
-        plan = database.get_open_plan(str(user_id))
-        if plan and not _deadline_known(database, user_id):
-            database.update_plan(str(user_id), plan["id"],
-                                 {"deadline": day.isoformat(), "deadline_given": False})
+        plan_flow.set_deadline(database, str(user_id), day, given=given)
     except Exception:  # noqa: BLE001
         logger.warning("join_questions: the plan kept no deadline", exc_info=True)
 
@@ -432,7 +432,7 @@ def answer(database: Any, user_id: Any, thread_id: Any, message_id: Any, payload
         record["deadline"] = day.isoformat()
         if picked == [YES]:
             shown_body = _day_text(day)
-        _set_deadline(database, str(user_id), day)
+        _set_deadline(database, str(user_id), day, given=picked != [YES])
     mine_row = _insert(database, thread, my_member, shown_body, {"setup_answer": record})
     if not mine_row:
         raise JoinQuestionsError("NOT_SAVED", "Could not send it.", 503)

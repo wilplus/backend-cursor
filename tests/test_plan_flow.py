@@ -32,6 +32,14 @@ OUTCOME
   O7  A new project's first Take asks "Is this for {date}?"; Yes keeps the
       plan, No starts "When is your deadline?" for a new one, the old plan
       kept in the history.
+  O7a A day the speaker never chose ("No date yet"'s two months, a first
+      Take with no day heard, a join link's "No") is never asked about as
+      theirs (N524): their first new project asks "When is your
+      deadline?"; a day picked becomes theirs ("Done. Your plan now runs to
+      {date}."), "No date yet" gives two months from today, said in words;
+      at the plan's end Will asks nothing about how it went and goes
+      straight to "What's next?". A join link's day recalculates the plan
+      and never replaces a day the speaker chose.
   O8  Moving the deadline keeps the practices done and counts the ones
       ahead: today's practice, already done, is not counted twice.
   O9  Two Takes in a row that reach the level start the next thing heard;
@@ -78,6 +86,7 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
          O5 -> test_ratings_are_kept_quietly_and_the_plan_follows
          O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
          O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
+         O7a -> test_a_day_never_chosen_is_asked_at_the_first_project
          O8 -> test_moving_the_deadline_keeps_the_practices_done
          O9 -> test_the_level_moves_on_after_two_takes_that_reach_it
                test_a_level_whose_time_ran_out_gives_way
@@ -436,6 +445,48 @@ def test_a_new_project_asks_whether_it_is_for_the_same_event(db, monkeypatch):
     _say(db, "It's our board pitch for two more hires.")
     _say(db, "We need the hires before spring.")
     assert len(db.get_open_plan(USER)["asked"]) == 2
+
+
+def test_a_day_never_chosen_is_asked_at_the_first_project(db, monkeypatch):
+    plan = _active(db)
+    db.update_plan(USER, plan["id"], {"deadline_given": True})  # the plan's own two months
+    started = datetime.fromisoformat(plan["started_at"])
+    monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: False)
+    db.takes.rows = [{"created_at": (started + timedelta(minutes=5)).isoformat(), "arc_id": "arc-1", "take_index": 1}]
+    F.after_take(db, USER)
+    db.takes.rows.append({"created_at": (started + timedelta(days=2)).isoformat(), "arc_id": "arc-2", "take_index": 1})
+    F.after_take(db, USER)
+    assert bodies(db)[-1] == P.COPY["deadline_q"] and "Is this for" not in " ".join(bodies(db))
+    assert db.thread[-1]["metadata"]["plan_ask"] == "deadline"
+    # "No date yet": two months from today, in words; the plan goes on.
+    out = F.answer_deadline(db, USER, None, tz="UTC")
+    two = P.given_deadline(date.today())
+    assert bodies(db)[-2:] == [P.COPY["no_date"], P.COPY["two_months"].format(date=P.fmt_day(two))]
+    assert out["plan"]["status"] == "active" and out["plan"]["step"] == "done"
+    assert out["plan"]["deadline"] == two.isoformat() and out["plan"]["deadline_given"]
+    assert [p["status"] for p in db.plans] == ["active"]
+    # The next new project asks again; a day picked becomes theirs.
+    db.takes.rows.append({"created_at": (started + timedelta(days=3)).isoformat(), "arc_id": "arc-3", "take_index": 1})
+    F.after_take(db, USER)
+    assert bodies(db)[-1] == P.COPY["deadline_q"]
+    day = date.today() + timedelta(days=30)
+    out = F.answer_deadline(db, USER, day.isoformat(), tz="UTC")
+    assert bodies(db)[-2:] == [P.fmt_day(day), P.COPY["runs_to"].format(date=P.fmt_day(day))]
+    assert not out["plan"]["deadline_given"]
+    # A join link's day never replaces it.
+    assert not F.set_deadline(db, USER, date.today() + timedelta(days=7), given=True)
+    assert db.get_open_plan(USER)["deadline"] == day.isoformat()
+    # A join link's "No" on a day never chosen: the plan recalculates.
+    db.update_plan(USER, plan["id"], {"deadline_given": True})
+    assert F.set_deadline(db, USER, date.today() + timedelta(days=7), given=True)
+    moved = db.get_open_plan(USER)
+    assert moved["deadline_given"] and moved["every_day"]
+    # Its end asks nothing about an event the speaker never named.
+    monkeypatch.setattr(F, "today_in", lambda name: date.fromisoformat(moved["deadline"]) + timedelta(days=1))
+    F.state(db, USER, tz="UTC", first_name="Artur")
+    assert not any(b.startswith("Hi Artur") and "Your deadline was" in b for b in bodies(db))
+    assert P.COPY["how_did_it_go"] not in bodies(db)
+    assert bodies(db)[-1] == P.COPY["whats_next"] and db.get_open_plan(USER)["step"] == "whats_next"
 
 
 def test_moving_the_deadline_keeps_the_practices_done(db, monkeypatch):

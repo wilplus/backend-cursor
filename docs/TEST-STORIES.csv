@@ -2389,6 +2389,14 @@ bar draws, once per Take (N319 item 7).
 O7  A new project's first Take asks ""Is this for {date}?""; Yes keeps the
 plan, No starts ""When is your deadline?"" for a new one, the old plan
 kept in the history.
+O7a A day the speaker never chose (""No date yet""'s two months, a first
+Take with no day heard, a join link's ""No"") is never asked about as
+theirs (N524): their first new project asks ""When is your
+deadline?""; a day picked becomes theirs (""Done. Your plan now runs to
+{date}.""), ""No date yet"" gives two months from today, said in words;
+at the plan's end Will asks nothing about how it went and goes
+straight to ""What's next?"". A join link's day recalculates the plan
+and never replaces a day the speaker chose.
 O8  Moving the deadline keeps the practices done and counts the ones
 ahead: today's practice, already done, is not counted twice.
 O9  Two Takes in a row that reach the level start the next thing heard;
@@ -2434,6 +2442,7 @@ O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
 O5 -> test_ratings_are_kept_quietly_and_the_plan_follows
 O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
 O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
+O7a -> test_a_day_never_chosen_is_asked_at_the_first_project
 O8 -> test_moving_the_deadline_keeps_the_practices_done
 O9 -> test_the_level_moves_on_after_two_takes_that_reach_it
 test_a_level_whose_time_ran_out_gives_way
