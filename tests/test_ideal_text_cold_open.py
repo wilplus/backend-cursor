@@ -9,8 +9,13 @@ OUTCOME
   O2  A snapshot that turns stale while the enrichment readers run answers
       409 SNAPSHOT_STALE with the current snapshot id, and the server-side
       acknowledgement token never leaves.
+  O3  An open answers with whether the version on screen was saved and with
+      the deck flags, read side by side once the document is read: each is
+      one read of its own, and one after the other they added a round trip
+      to every open.
 PROVES   O1 -> test_a_failed_cold_open_read_says_retry_not_pending
          O2 -> test_enrichment_rejects_snapshot_that_turns_stale_during_readers
+         O3 -> test_an_open_reads_its_save_state_and_deck_flags_side_by_side
 WHY      Founder 2026-09-26: a dropped connection showed an existing Ideal Text
          as missing. (The old v1 fallback and its "degraded read is counted"
          tests are gone: a failed read is now a visible 503.)
@@ -131,3 +136,39 @@ def test_the_fence_read_is_the_head_and_the_generation_only(monkeypatch):
         "ideal_text_fence_head": head,
         "ideal_text_fence_generation": [{"generation": 5}]}))
     assert db.get_ideal_text_document_fence("arc-1", "actor-1") is None
+
+
+def test_an_open_reads_its_save_state_and_deck_flags_side_by_side(monkeypatch):
+    """Each read answers only once both are being read: one after the
+    other, the first would wait for the second and time out."""
+    import threading
+    import routes.v2.explore_ideal_text as route
+    import services.ideal_text_core_snapshot as core
+
+    together = threading.Barrier(2, timeout=5)
+
+    def saved(arc_id, version):
+        together.wait()
+        return True
+
+    def project(project_id):
+        together.wait()
+        return {"id": project_id, "archived_at": None}
+
+    database = Mock()
+    database.ideal_text.ideal_text_saved.side_effect = saved
+    database.get_project_row.side_effect = project
+    monkeypatch.setattr(route, "db", database)
+    monkeypatch.setattr(core, "read_core_or_publish", lambda *a, **k: {
+        "snapshot": {"id": "snapshot-1", "payload_sha256": "ab",
+                     "payload": {"text": "Para one.", "version": 3,
+                                 "presentation_ref": None}},
+        "dynamic_overlay": {"owner_edit": None, "confident_moment_summary": None,
+                            "confident_moment_summary_status": {"state": "unavailable"}}})
+
+    response = _get(route.v2_explore_get_ideal_text_core, "/test/arc-1")
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert (body["is_saved"], body["has_deck"], body["project_archived"]) == (
+        True, False, False)

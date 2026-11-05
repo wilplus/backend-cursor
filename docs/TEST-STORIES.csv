@@ -1455,8 +1455,13 @@ never the ""pending"" 404 that would show an existing Ideal Text as
 missing.
 O2  A snapshot that turns stale while the enrichment readers run answers
 409 SNAPSHOT_STALE with the current snapshot id, and the server-side
-acknowledgement token never leaves.","O1 -> test_a_failed_cold_open_read_says_retry_not_pending
-O2 -> test_enrichment_rejects_snapshot_that_turns_stale_during_readers","Founder 2026-09-26: a dropped connection showed an existing Ideal Text as missing. (The old v1 fallback and its ""degraded read is counted"" tests are gone: a failed read is now a visible 503.) NOTE     Stale-at-first-check refusals live in tests/test_ideal_text_route_contracts.py::test_enrichment_refusals; this file pins the stale-DURING-readers case only."
+acknowledgement token never leaves.
+O3  An open answers with whether the version on screen was saved and with
+the deck flags, read side by side once the document is read: each is
+one read of its own, and one after the other they added a round trip
+to every open.","O1 -> test_a_failed_cold_open_read_says_retry_not_pending
+O2 -> test_enrichment_rejects_snapshot_that_turns_stale_during_readers
+O3 -> test_an_open_reads_its_save_state_and_deck_flags_side_by_side","Founder 2026-09-26: a dropped connection showed an existing Ideal Text as missing. (The old v1 fallback and its ""degraded read is counted"" tests are gone: a failed read is now a visible 503.) NOTE     Stale-at-first-check refusals live in tests/test_ideal_text_route_contracts.py::test_enrichment_refusals; this file pins the stale-DURING-readers case only."
 tests/test_ideal_text_confirmation.py,Story,"As a speaker, I want my first Ideal Text built from my first Take, retried after a dropped connection, and never undone by a failed notification, so that Take 1 always produces my text.","O1  A retry builds version 1 from the Take that created the document, not
 from a later Take.
 O2  One dropped database connection is retried instead of failing Take 1.

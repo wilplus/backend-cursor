@@ -172,8 +172,7 @@ def v2_explore_get_ideal_text_core(arc_id):
         # rather than an address that resolves to nothing.
         payload["presentation_ref"] = refreshed_media_url(
             payload.get("presentation_ref")) or None
-        _serve_is_saved(payload, arc_id)
-        _serve_deck_flags(payload, arc_id)
+        _serve_live_flags(payload, arc_id)
         response = jsonify(payload)
     elapsed = (perf_counter() - started) * 1000
     response.headers["Cache-Control"] = "private, no-store"
@@ -396,8 +395,7 @@ def v2_explore_get_ideal_text(arc_id):
             requested_version=request.args.get("version"),
             deps=_notebook_deps())
         if status == 200 and not payload.get("historical"):
-            _serve_is_saved(payload, arc_id)
-            _serve_deck_flags(payload, arc_id)
+            _serve_live_flags(payload, arc_id)
         return jsonify(payload), status
     except Exception as e:
         logger.error("explore ideal-text GET failed arc=%s: %s", arc_id, e,
@@ -859,6 +857,20 @@ def _serve_deck_flags(payload, arc_id) -> None:
     without a new Take."""
     from services.slide_deck_update import deck_flags
     payload.update(deck_flags(db, arc_id, payload.get("presentation_ref")))
+
+
+def _serve_live_flags(payload, arc_id) -> None:
+    """Both live reads above on a served document, side by side: each is one
+    read of its own after the document's, and each writes only its own keys
+    (`is_saved`; `has_deck`, `project_archived`). One after the other they
+    added a round trip to every Ideal Text open. A guest has no save state,
+    so a guest's read is the deck flags alone."""
+    if caller_is_guest():
+        _serve_deck_flags(payload, arc_id)
+        return
+    from services.parallel import run_in_parallel
+    run_in_parallel(lambda: _serve_is_saved(payload, arc_id),
+                    lambda: _serve_deck_flags(payload, arc_id))
 
 
 def _generated_text(arc_id, user_id) -> "str | None":
