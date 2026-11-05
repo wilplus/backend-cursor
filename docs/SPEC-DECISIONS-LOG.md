@@ -13407,3 +13407,35 @@ Not in force until built and merged. Its migrations (models, shares,
 API keys) each get their outside review.
 No rules page yet: [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md)
 F, when built.
+
+**N529 · "Listen before your talk": Will answers what the speaker said,
+the clip is the sentence they most want remembered, and a No on the eve
+leaves the album alone (founder, the Claude Code chat, 5 November 2026, on
+the prototype "Listen before your talk"
+<https://claude.ai/artifact/TKUk8xRCdBKUA26fxiVss6> (version 8): "If it
+is no, then you should tell them that ... it was judged positively by your
+coach ... Don't be too harsh on yourself"; "it should be the recording of
+the key line ... If there is no key line that was positively judged by the
+coach and by you, then show the next most important thing"; then, asked
+whether a No that evening takes the moment out of the Voice Album, "it
+shouldn't").** Amends N527 item 1, the design the test by hand follows:
+1. **Will answers what they said.** After Yes: the coach's line, then hold
+on to it, and when it comes back (tomorrow morning, just before they go
+on). After No or In-between: it may not sound that way to them today, but
+their coach heard confidence in it and so did they the first time; nerves
+make us harsh judges of our own voices; they are doing well; then the same
+promise. No reply says only that the clip will be there tomorrow.
+2. **Which moment plays.** The sentence they most want the audience to
+remember (the plan's key line, the clip `services/plan.py` `key_line_at`
+finds) when their coach and they both said Yes to that clip; else how they
+open (the plan's opening sentence), the same way; else their newest moment
+with both Yeses; else none, and the talk day has the good-luck line alone.
+3. **A No that evening leaves the album as it is.** It is the speaker's
+feeling on the eve of a talk, kept with the plan's answers, not a new
+judgement of the moment: it does not take the moment out of the Voice
+Album and is not owner routing under contract 30.
+4. **Only with a deadline.** Without a date, or without a plan, there is
+no talk to prepare for and none of it shows.
+The words in the prototype, rewritten in classic style, are not decided
+here; those that replace signed lines wait for the founder's choice. No
+migration. No rules page.
