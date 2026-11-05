@@ -11492,6 +11492,44 @@ class DatabaseService:
             )
             return []
 
+    def get_lounge_metadata_page(
+        self,
+        user_id: str,
+        *,
+        limit: int,
+        keys: tuple[str, ...],
+    ) -> Optional[list[dict]]:
+        """The rows ``get_lounge_messages_page`` reads for the latest page
+        (``limit + 1``, newest first), each with only ``client_created_at``
+        and these keys of its metadata: ``{"client_created_at",
+        "metadata": {key: value}}``, a key that is absent or null left out.
+        Never the words or the rest of the metadata.
+
+        For a reader that scans the whole thread for a few keys (the visit
+        on every app open read 501 whole rows for five). None when the read
+        fails, so the caller can fall back to the whole read.
+        """
+        if not user_id:
+            return []
+        try:
+            cols = ", ".join(["client_created_at"]
+                             + [f"m_{key}:metadata->{key}" for key in keys])
+            res = (
+                self.client.table("lounge_messages").select(cols)
+                .eq("user_id", user_id)
+                .order("client_created_at", desc=True)
+                .limit(limit + 1)
+                .execute()
+            )
+        except Exception as e:
+            logger.warning("get_lounge_metadata_page failed user=%s err=%s",
+                           user_id, e, exc_info=True)
+            return None
+        return [{"client_created_at": row.get("client_created_at"),
+                 "metadata": {key: row[f"m_{key}"] for key in keys
+                              if row.get(f"m_{key}") is not None}}
+                for row in res.data or [] if isinstance(row, dict)]
+
     def bump_latest_lounge_ideal_bubble(
         self,
         user_id: str,

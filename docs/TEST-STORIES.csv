@@ -304,14 +304,18 @@ seems you enjoy using WillpowerLab.""; never once my number is saved.
 The home-screen ask is never made (N391).
 O8  The first Take's goodbye says it is the first Take's, so ""Record
 Take 2"" comes at once under it on any device (N449 item 2); a later
-Take's does not.","O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
+Take's does not.
+O9  The visit on every app open makes the same WhatsApp ask from what it
+reads of the thread: when each message was written and the few keys
+it looks at, never the messages' words.","O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
 O2 -> test_from_take_two_one_ask_ceo_ask_will_the_question
 O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_goodbye
 O4 -> test_an_older_waiting_message_shows_where_it_stands
 O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
 O6 -> test_the_plans_lines_wait_for_the_ask_then_the_goodbye_and_the_progress
 O7 -> test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar
-O8 -> test_the_first_takes_goodbye_says_so_on_any_device","Founder 2026-10-20: ""one action at a time""; 2026-10-31 (N294): ""No call to action means that there is no push"", ""the next time you come and open the app ask the settings questions""."
+O8 -> test_the_first_takes_goodbye_says_so_on_any_device
+O9 -> test_the_visit_reads_the_keys_it_needs_not_the_words","Founder 2026-10-20: ""one action at a time""; 2026-10-31 (N294): ""No call to action means that there is no push"", ""the next time you come and open the app ask the settings questions""."
 tests/test_ai_voice.py,Story,"As a speaker practising, I want an AI clip of my own voice saying my own words with one improvement, never shown if it fails its check, and fully deleted when I ask, so that I hear a believable better version and keep control of my voice.","O1  One problem is picked against my own usual (or the default), and the
 sentence under the clip names it in words, with no numbers. As the
 walk's one fix on a moment, the clip teaches the strongest problem my
