@@ -13204,3 +13204,23 @@ Not in force until built and merged (frontend #1251, `ios/App/App/Info.plist`).
 No migration. The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 K and T6.
+
+**N525 · Your queue has the app's top bar and draws all at once (founder,
+the Claude Code chat, 5 November 2026, on a screenshot of Your queue: "Please
+apply the same top bar as everywhere else in the app. And if you could, make
+the whole page load at once, not one by one, because it looks like one tab
+is there, the other is loading, and it jumps").** For N321 item 1, N334 and
+N521; amends the coach panel's B1 and B2:
+1. **The queue's top bar is a chat's top bar:** ‹ on the left, the round
+Speakers icon of its row in the list of chats, then "Your queue" (signed),
+with the line under it. ‹ comes back to the list, as ✕ did. The ✕ and the
+large title over the cards are gone. No new words.
+2. **The queue draws once, whole:** the typing dots until your speakers,
+the blind lines and (for the founder) Will's questions have all been read,
+then every section together. Later opens show what was read and update in
+place.
+What stops: the ✕ and the large "Your queue" title; the sections no longer
+arrive one after another. No migration.
+The rules: frontend
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+B1 and B2.
