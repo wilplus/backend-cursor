@@ -12936,3 +12936,90 @@ the browser can give.
 Not in force until built and merged. No migration. The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 T6, when built.
+
+**N520 · One framework for every organisation's AI: three parts (Reads,
+Picks, Says), one template, four stages; specialists matched to models, a
+waiting pool when no model fits, and what a model does with too few
+specialists (founder, the Claude Code chat, 5 November 2026: "we need to
+define how the new model fits the needs of the organization ... I want it
+to be universal and applicable to many organizations from all sorts of
+different backgrounds ... It cannot be custom at each point. It needs to
+have a set framework and a matching between the specialist and the model
+... What if there is no model, and what if there is model but not enough
+specialists?"; then twelve questions, each answered with the recommended
+option).** For N223, N224, N240, N461, N481, N512 and N518; generalises
+N240's three models from the head spas to every organisation, the speaking
+coach's included:
+1. **Three parts, always.** Every organisation's AI, WillpowerLab's own
+included, is the same three parts; an organisation may leave a part out,
+never add a fourth:
+   - **Reads** (perception): an input to a label on a fixed scale or from
+     a fixed list. The speaking coach's is the voice to confident Yes /
+     In-between / No (the confidence model); a trichologist's, the photo to
+     a condition and its stage (N240). Learned from specialists' blind
+     taps, settled by two matching votes (`services/label_quorum.py`),
+     checked against a sealed golden set.
+   - **Picks** (decision): what was read to a choice from the
+     organisation's catalogue: an exercise from the library, a treatment or
+     a product. Learned from specialists' picks and the outcome (the next
+     Take moved, the customer booked or bought).
+   - **Says** (voice): the pick to the answer in the organisation's words:
+     the large language model's feedback as a coach gives it. Learned from
+     preference pairs, what the machine drafted against what the specialist
+     said (`services/feedback_pairs.py`).
+2. **What a model learns from:** Takes (their voice and their words) and a
+photo where its field needs one. Nothing else for now; a photo trains only
+under N240 item 5.
+3. **One template per model, filled by the founder with the organisation**
+in admin, as a workspace is made today (N223 item 13): its field and
+languages, its input, Reads' scale or list, Picks' catalogue, a few examples
+of how Says should sound, its red flags (always to a person) and its
+outcome. Never custom beyond the template. The template is also what
+specialists are matched against (N518 item 8).
+4. **Labels are a fixed scale or a fixed list only,** so two people can
+agree and the quorum works. A new name ("Name a new error") joins the list
+before it can settle anything.
+5. **Four stages, the same for every model,** on the thresholds that
+exist: Collect (no AI shown), Shadow (drafts, blind, from about a hundred
+pairs), Assist (drafts shown after the person answers, once the golden set
+passes), Alone (per request type, by the founder's door and the
+organisation's switch; a red flag always to a person) (N224, N240 item 4).
+The organisation's data and weights stay apart and are exported to it
+(N223 item 5).
+6. **Two kinds of model.** Shared: WillpowerLab's own, speaking confidence
+first; any specialist who matches may join. Private: one organisation's;
+only people it invites by link (N471) join, and the matching only suggests
+them.
+7. **Matching** is N518 items 7 and 8: a person's knowledge profile against
+each model's template, the best at or over the threshold offers "join".
+One person may join every model they match; each asks only its own
+questions. A joined specialist teaches all three parts as part of
+answering (N518 item 2): Reads by their blind taps, Picks by their choice,
+Says by their spoken answer, which becomes a pair with no step of its own.
+8. **A short trial before a vote counts:** a new specialist's first
+ratings are checked against moments already settled; they count once they
+agree often enough. They are never shown a number (Never 1), only that
+they are in.
+9. **No model fits (step 3):** what the person gives is kept as pairs in a
+waiting pool under their field; when enough people of one field gather,
+the founder gets one alert that a new model could start there. Nothing is
+shown to them. **A new model starts** only by the founder: a private one
+when an organisation asks for it, a shared one when the pool shows the
+demand.
+10. **Too few specialists (step 4):** the model stays in Collect; a single
+vote is kept as a weak signal, never for training (`docs/LEARNING-AND-QUORUM.md`
+C, `singleton`); the matching suggests and invites people who fit; the
+founder is alerted when moments wait too long, as
+`coach_moments_queue.reach_alarm` alerts today. **A private model may
+borrow** specialists from the shared pool only with the organisation's yes,
+and blind: a pseudonym and the moment only, as a stranger hears it in the
+coach panel.
+11. **Open:** how many people of one field start a pool's alert; the
+trial's length and how often a newcomer must agree; how long moments wait
+before the alert; the template's screen in admin, drawn on a prototype.
+The specialist's own screens are the coach door's redesign, in its own
+session.
+Not in force until built and merged. Each migration it needs (templates,
+the waiting pool) gets its outside review. No rules page yet:
+[`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) B, E and F, when
+built.
