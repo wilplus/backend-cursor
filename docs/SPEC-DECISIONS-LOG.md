@@ -13056,13 +13056,35 @@ founder is alerted when moments wait too long, as
 borrow** specialists from the shared pool only with the organisation's yes,
 and blind: a pseudonym and the moment only, as a stranger hears it in the
 coach panel.
-12. **Open:** how many people of one field start a pool's alert; the
-reliability threshold and how many known clips stay in a queue; when
-willfidence-v2's "200 settled clips" (N111) becomes enough weighted soft
-labels; how long moments wait
-before the alert; the template's screen in admin, drawn on a prototype.
-The specialist's own screens are the coach door's redesign, in its own
-session.
+12. **The starting numbers** (the founder, the same chat: "go ahead and
+apply those"), each to be tuned after the first weeks:
+   - **Reliability:** a rater's chance-corrected agreement with the
+     consensus that leaves their own answer out. Admitted when the cautious
+     edge (the lower end of an 80% range) reaches 70% of the median of the
+     model's trusted raters, never below 0.20; no decision before 20
+     answers, at least 5 on known clips; removed only when the hopeful edge
+     falls below 50% of that median. A model with nobody trusted yet takes
+     its golden-set experts as the reference.
+   - **Known clips:** 1 in 4 of a newcomer's first 20 answers, then 1 in 10
+     for good; two thirds clear, one third hard (votes split, about 40 to
+     60%), a hard one scored against the share of answers, not as right or
+     wrong. At least 60 per language, never shown twice to one person, kept
+     apart from the sealed golden set.
+   - **willfidence-v2 on weighted soft labels:** tried once there are 300
+     clips with a reliable rater's answer, 500 votes counted by
+     reliability, and 30 speakers; promoted only if, on the sealed golden
+     set and split by person, it beats v1 on log-loss with a 95% bootstrap
+     range clear of zero and is no less calibrated. Replaces N111's "200
+     settled clips". The confidence golden set grows from 50 toward 150.
+   - **The waiting pool's alert:** one field with 5 people, 50 answers and 2
+     organisations in 90 days; once, and again when it doubles.
+   - **Waiting before the founder is alerted:** the reach alarm's 6 hours
+     and a request's 24 hours unchanged (N223 item 10); a moment with no
+     reliable rater, 72 hours; one needing a third vote, 7 days; a model in
+     Collect with fewer than 2 reliable raters, 14 days, with the matching's
+     list of people who fit. New alerts come at most once a day, together.
+13. **Open:** the template's screen in admin, drawn on a prototype; the
+specialist's own screens are the coach door's redesign, in its own session.
 Not in force until built and merged. Each migration it needs (templates,
 the waiting pool) gets its outside review. No rules page yet:
 [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) B, E and F, when
