@@ -12819,3 +12819,24 @@ No rules page: the weekly note is `services/feedback_digest.py`, which
 nothing calls any more and which stays because the signed counsel pack cites
 it; the hiding is in `services/chat_query.py` (`_retired`) and the
 frontend's `isRetiredLoungeMessage`. No migration.
+
+**N517 · The pull down that opens the dump screen starts on the top bar,
+of the chat list and of Will's chat; dots only, no words (founder, the
+Claude Code chat, 5 November 2026, asked where a pull down should open the
+dump screen and what shows while pulling: "Top bar, both screens" and "No
+words, the dots only").** For N506 item 4 and N507 item 2:
+1. **Where.** A pull down that starts on the top bar (the ••• WillpowerLab
+row) opens the dump screen, on the chat list and in Will's chat. Not a pull
+anywhere in the thread: there a pull down scrolls back through the
+messages, and it stays that way.
+2. **What shows.** The three-dot mark follows the finger down; past about
+90 pt the release opens the dump screen, short of it nothing happens. No
+words on screen, so nothing new to sign (Never 4). The prototype's "Pull
+down to say something else" is not used.
+3. **Which screen opens.** The same as on opening the app: in the iPhone
+app with the native screen and the notebook's Yes, the native one (N506
+item 5); otherwise the web screen, with N411's introduction the first time
+(N507 item 1). Only where the ring row `dump_screen` is on.
+Not in force until built and merged. No migration. The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+T4, when built.
