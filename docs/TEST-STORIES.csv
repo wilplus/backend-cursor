@@ -3859,7 +3859,10 @@ closed practice is 409 and a passage mismatch is 422 with nothing
 stored.
 O4  Keeping an attempt completes the practice and dismissing closes it
 (200); keeping an attempt that is not the strongest is 400 with nothing
-kept.","O1 -> SuggestionFeedbackContract.test_a_dismissed_star_is_saved
+kept.
+O5  The list of my Takes the app reads on every open names each Take's
+topic and state, and a Take's deck (its slide text and timeline) never
+comes with it.","O1 -> SuggestionFeedbackContract.test_a_dismissed_star_is_saved
 -> SuggestionFeedbackContract.test_refusals
 O2 -> PracticeStartContract.test_a_moment_practice_is_created
 -> PracticeStartContract.test_refusals_and_the_resume
@@ -3867,7 +3870,8 @@ O2 -> PracticeStartContract.test_a_moment_practice_is_created
 O3 -> PracticeAttemptContract.test_an_attempt_is_recorded
 -> PracticeAttemptContract.test_refusals
 O4 -> PracticeCompleteContract.test_a_kept_attempt_completes_the_practice
--> PracticeCompleteContract.test_refusals_and_the_dismissal",Founder 2026-10-12: route logic moved into services; these hold the routes' status and refusal contracts across that move. Decorators are peeled with inspect.unwrap.
+-> PracticeCompleteContract.test_refusals_and_the_dismissal
+O5 -> ReadoutsListContract.test_each_take_has_its_topic_and_not_its_deck",Founder 2026-10-12: route logic moved into services; these hold the routes' status and refusal contracts across that move. Decorators are peeled with inspect.unwrap.
 tests/test_user_trainings.py,Story,"As a speaker, I want my trainings list to show which talks have an Ideal Text ready, so that I know where I can record next.","O1  GET /v2/user/trainings groups Takes by arc, one card per talk, Takes in
 take order.
 O2  A talk is ideal_ready once the coach has corrected every slide; a talk
