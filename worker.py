@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from typing import Any, Dict
+from typing import Any, ContextManager, Dict
 
 try:
     from dotenv import load_dotenv
@@ -381,6 +381,9 @@ def _traced_worker_class():
     The web request that queued the job put its id in ``job.meta``
     (services/job_queue.py); binding it here puts the same id on every log
     line the job writes, so one id follows a Take from upload to worker.
+
+    A Take's job also gets its database connections opened at its first
+    moment (``_warm_for``).
     """
     from rq import Worker
 
@@ -389,9 +392,40 @@ def _traced_worker_class():
     class TracedWorker(Worker):
         def perform_job(self, job, queue):  # noqa: D401 - rq hook
             bind_from_job_meta(getattr(job, "meta", None))
-            return super().perform_job(job, queue)
+            with _warm_for(job):
+                return super().perform_job(job, queue)
 
     return TracedWorker
+
+
+def _warm_for(job: Any) -> ContextManager[None]:
+    """Hold database connections open while a Take's job runs (loading
+    times, 2026-11-05).
+
+    rq runs every job in a process forked for it, whose database pool starts
+    empty (the slot reset its client after its own fork and never reads), so
+    each Take's processing used to open its connections as it went, about a
+    second for each new one (services/warm_connections.py), the first time
+    its stages fanned out. Now the job opens them side by side with its own
+    first reads and keeps them until it ends; it never waits for them.
+
+    How many: the widest group the pipeline reads in at once,
+    ``services.parallel.MAX_WORKERS``; the job's own thread, waiting on that
+    group, brings one more. Only the Take's job: nothing else a speaker waits
+    on runs here at that width. Never raises: without it the job is only
+    colder.
+    """
+    from contextlib import nullcontext
+    try:
+        from services.pipeline_jobs import TASK_PATH
+        if getattr(job, "func_name", None) != TASK_PATH:
+            return nullcontext()
+        from services import warm_connections
+        from services.parallel import MAX_WORKERS
+        return warm_connections.held_warm(MAX_WORKERS)
+    except Exception:  # noqa: BLE001 -- a cold job is slower, never broken
+        logger.warning("worker: connections not warmed for job", exc_info=True)
+        return nullcontext()
 
 
 def _run_worker_loop(conn, *, with_scheduler: bool) -> None:

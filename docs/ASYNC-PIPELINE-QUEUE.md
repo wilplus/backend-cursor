@@ -31,6 +31,8 @@ POST /v2/lab/recordings
   │          → else legacy sync (201 with readout)   ← today's behaviour
   │
 worker service (bin/railway-worker.sh → worker.py → rq Worker)
+  │  a fresh process per job: a Take's job opens its database connections
+  │  at once, beside its own first reads (warm_connections.held_warm) →
   │  claim (attempts-CAS) → heartbeat thread → re-download audio from
   │  storage → services/analysis_worker.run_full_analysis(...) →
   │  completed + analysis_state='ready'  (or retry w/ backoff → failed +

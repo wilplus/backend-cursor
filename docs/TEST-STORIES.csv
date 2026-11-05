@@ -1031,7 +1031,7 @@ its lock preamble, so concurrent writes stop being serialised; and a
 writer listed as unresolved that has quietly been repaired.","test_the_installed_writer_carries_its_d11_marker (one case per
 registered writer: marker once, right after BEGIN; unresolved
 writers have no marker)","If removed: Only the file copy (or 0327's own re-run) is checked, so a writer broken by a later migration reaches production unnoticed."
-tests/test_db_transport_pool.py,Guard,"The database transport is a pool of HTTP/1 connections, kept warm once per gunicorn thread, so the app opens fast.","A supabase/httpx upgrade, a config edit or a session rebuilt in
+tests/test_db_transport_pool.py,Guard,"The database transport is a pool of HTTP/1 connections, kept warm wide enough for the app's opening requests, and opened at the start of a Take's job, so the app opens fast and processing does not wait for connections.","A supabase/httpx upgrade, a config edit or a session rebuilt in
 services/db.py that brings back the one shared HTTP/2 socket,
 shrinks the pool, or pings slower than the pool drops idle
 connections.","test_every_postgrest_session_is_a_pool_of_http1_connections
@@ -1045,8 +1045,12 @@ the hand-built calls (auth admin, storage, realtime, RPC): a
 legacy JWT also goes as the Bearer token, a secret key never
 test_the_keep_warm_ping_comes_before_the_pool_drops_an_idle_connection
 a constant comparison (ping interval < keepalive expiry)
-test_the_keep_warm_ping_warms_one_connection_per_lane
-one ping per gunicorn thread, sent in parallel","If removed: Boot requests queue behind the slowest one again (founder 2026-10-16: fast calls took 4.00 s on the socket, 0.07 s on the pool) and nobody notices until speakers do."
+test_the_keep_warm_ping_warms_enough_for_one_wide_request
+one wide request's eight reads beside the other threads, sent
+in parallel (loading times, 2026-11-05)
+test_a_takes_job_opens_its_connections_without_waiting
+the job worker: the connections open together while the job
+goes on; the job never waits for them","If removed: Boot requests queue behind the slowest one again (founder 2026-10-16: fast calls took 4.00 s on the socket, 0.07 s on the pool) and nobody notices until speakers do."
 tests/test_deck_update_inside_project.py,Story,"As a speaker, I want to add slides to my project, or update them, inside the same project, so that my next Take uses them and my Take count, my coach's history and my plan carry on. (N257)","O1  Updating the slides stores them for the next Take and tells which
 Take that is; the recording screen's setup then serves them and says
 the next Take is the first on new slides. Someone else's project is

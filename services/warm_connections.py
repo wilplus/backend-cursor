@@ -5,7 +5,8 @@ about 1.5 s together, with one database question each: after a quiet spell
 the worker had to reopen its pooled database connection (Supabase closes
 idle ones). A tiny read every PING_EVERY_S keeps that connection open, so
 opening the app costs nothing extra. Started once per gunicorn worker
-(gunicorn_conf.post_worker_init), never in the job worker or in tests.
+(gunicorn_conf.post_worker_init); the job worker holds connections warm for
+the length of each Take's job instead (``held_warm``); never in tests.
 
 Founder 2026-10-18: the status read at app open still took 610 ms for one
 database call. The pool (services/db_transport, 2026-10-16) drops a
@@ -23,15 +24,33 @@ every lane gets its own: the ping is one tiny read per gunicorn thread,
 sent together, which leaves that many idle connections in the pool. A ping
 that takes longer than a warm call is logged, so the log shows when a
 connection had to be reopened anyway.
+
+Loading times, 2026-11-05, two widenings:
+
+  * One lane per thread was too few. A single request at app open can read
+    eight things at once (the chats list, ``services/chats._LIST_READERS``;
+    the Ideal Text's enrichment readers, ``services/ideal_text_enrichment``),
+    so one wide request beside the other lanes needs about ``threads - 1 +
+    8`` connections, and every one past the warm ones cost a new TLS
+    connection. The ping now keeps that many, capped so that a ping round
+    always leaves each thread a connection free in the pool
+    (``db_transport.POOL_SIZE``): a ping never makes a request wait.
+  * The job worker forks a fresh process for every job, so each Take's
+    processing began with an empty pool and opened its connections one cold
+    second at a time as its stages fanned out. ``held_warm`` opens them at
+    the job's first moment, side by side with the job's own first reads, and
+    keeps them open until the job ends (``worker.py``). Nothing waits for it.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import threading
 import time
+from typing import Iterator
 
-from services.db_transport import KEEPALIVE_S
+from services.db_transport import KEEPALIVE_S, POOL_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +59,8 @@ logger = logging.getLogger(__name__)
 PING_EVERY_S = min(20.0, KEEPALIVE_S * 2 / 3)
 # A ping slower than this reopened a connection (a warm call takes ~60 ms).
 SLOW_PING_MS = 250.0
+# The most database reads one request makes at once (see the docstring).
+WIDEST_FAN_OUT = 8
 _started = False
 
 
@@ -52,6 +73,14 @@ def _lanes() -> int:
         return 4
 
 
+def _web_connections() -> int:
+    """How many connections a web worker keeps warm: one wide request beside
+    the other lanes, never so many that a ping round fills the pool. With the
+    defaults (4 threads, a pool of 16): 11."""
+    lanes = _lanes()
+    return max(lanes, min(lanes - 1 + WIDEST_FAN_OUT, POOL_SIZE - lanes))
+
+
 def _ping_once() -> None:
     from services.db import db
     started = time.perf_counter()
@@ -61,9 +90,10 @@ def _ping_once() -> None:
         logger.info("warm_connections: ping took %.0f ms (a connection was reopened)", ms)
 
 
-def _ping_every_lane() -> None:
-    """One tiny read per lane, sent together, so the pool keeps one idle
-    connection per lane. A lane whose ping fails is only cold."""
+def _ping_every_lane(count: int | None = None) -> None:
+    """One tiny read per connection to keep, sent together, so the pool keeps
+    that many idle connections (a web worker's, unless ``count`` says). A
+    ping that fails leaves one connection cold, nothing more."""
     def one() -> None:
         try:
             _ping_once()
@@ -71,7 +101,7 @@ def _ping_every_lane() -> None:
             logger.warning("warm_connections: ping failed", exc_info=True)
 
     pings = [threading.Thread(target=one, name="warm-connections-ping", daemon=True)
-             for _ in range(_lanes())]
+             for _ in range(count or _web_connections())]
     for ping in pings:
         ping.start()
     for ping in pings:
@@ -90,6 +120,26 @@ def _loop(stop: threading.Event) -> None:
         logger.warning("warm_connections: signing keys not warmed", exc_info=True)
     while not stop.wait(PING_EVERY_S):
         _ping_every_lane()
+
+
+@contextlib.contextmanager
+def held_warm(count: int) -> Iterator[None]:
+    """Keep ``count`` connections open while the block runs: pinged at once,
+    on a thread of their own, then before the pool would drop them. The
+    block never waits for a ping; leaving it stops the pings (a ping still
+    in flight is a read and finishes on its own)."""
+    stop = threading.Event()
+
+    def loop() -> None:
+        _ping_every_lane(count)
+        while not stop.wait(PING_EVERY_S):
+            _ping_every_lane(count)
+
+    threading.Thread(target=loop, name="warm-connections-job", daemon=True).start()
+    try:
+        yield
+    finally:
+        stop.set()
 
 
 def start() -> None:
