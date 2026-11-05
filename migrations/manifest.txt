@@ -549,3 +549,4 @@
 0511	the_dump_screen_and_the_notebook_at_ring_two.sql
 0512	a_not_now_is_counted.sql
 0513	a_take_can_reach_someone_new_after_it.sql
+0514	a_person_s_chat_opens_on_a_website.sql

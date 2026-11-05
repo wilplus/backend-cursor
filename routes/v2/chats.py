@@ -609,3 +609,87 @@ def v2_chats_not_now(thread_id, message_id):
     nobody is told; the system keeps it (N504 item 2). {"kept": true}."""
     from services.chat_not_now import record
     return _run("not now", lambda: record(db, str(request.user_id), thread_id, message_id))
+
+
+# ── Your chat on any website (services/chat_widget.py; N530) ─────────────
+# The widget's visitor has no account: these routes take no sign-in (but
+# "keep") and read the visitor's secret from one header. Limited by address.
+
+WIDGET_GUEST_HEADER = "X-Willab-Widget-Guest"
+
+
+def _widget_guest():
+    return request.headers.get(WIDGET_GUEST_HEADER, "")
+
+
+@v2_bp.route("/chats/widget/<token>", methods=["GET"])
+@limiter.limit("300 per hour", key_func=client_ip, scope="chats_widget_preview")
+def v2_chats_widget_preview(token):
+    """The pill's read: whose chat it is, and what a visitor may ask."""
+    from services.chat_widget import preview
+    return _run("widget_preview", lambda: preview(db, token))
+
+
+@v2_bp.route("/chats/widget/<token>/start", methods=["POST"])
+@limiter.limit("20 per hour", key_func=client_ip, scope="chats_widget_start")
+def v2_chats_widget_start(token):
+    """"Agree and start": the visitor's chat, made now."""
+    from services.chat_widget import start
+    body = request.get_json(silent=True) or {}
+    return _run("widget_start", lambda: start(db, token, body.get("site")))
+
+
+@v2_bp.route("/chats/widget/<token>/messages", methods=["GET"])
+@limiter.limit("600 per hour", key_func=client_ip, scope="chats_widget_read")
+def v2_chats_widget_read(token):
+    from services.chat_widget import read
+    return _run("widget_read", lambda: read(db, token, _widget_guest()))
+
+
+@v2_bp.route("/chats/widget/<token>/messages", methods=["POST"])
+@limiter.limit("120 per hour", key_func=client_ip, scope="chats_widget_emoji")
+def v2_chats_widget_emoji(token):
+    from services.chat_widget import emoji
+    body = request.get_json(silent=True) or {}
+    return _run("widget_emoji", lambda: emoji(db, token, _widget_guest(), body))
+
+
+@v2_bp.route("/chats/widget/<token>/setup/<message_id>", methods=["POST"])
+@limiter.limit("120 per hour", key_func=client_ip, scope="chats_widget_setup")
+def v2_chats_widget_setup(token, message_id):
+    from services.chat_widget import answer_setup
+    body = request.get_json(silent=True) or {}
+    return _run("widget_setup", lambda: answer_setup(db, token, _widget_guest(), message_id, body))
+
+
+@v2_bp.route("/chats/widget/<token>/ask", methods=["POST"])
+@limiter.limit("30 per hour", key_func=client_ip, scope="chats_widget_ask")
+def v2_chats_widget_ask(token):
+    from services.chat_widget import ask
+    body = request.get_json(silent=True) or {}
+    return _run("widget_ask", lambda: ask(db, token, _widget_guest(), body))
+
+
+@v2_bp.route("/chats/widget/<token>/messages/<message_id>/audio", methods=["GET"])
+@limiter.limit("300 per hour", key_func=client_ip, scope="chats_widget_audio")
+def v2_chats_widget_audio(token, message_id):
+    """An answer's voice, for the visitor; byte ranges answered."""
+    from services.chat_widget import recording
+
+    def played(got):
+        response = send_file(io.BytesIO(got["audio"]), mimetype=got["content_type"],
+                             conditional=True)
+        response.headers["Cache-Control"] = "private, max-age=3600"
+        return response
+    return _run("widget_audio", lambda: recording(db, token, _widget_guest(), message_id),
+                answer=played)
+
+
+@v2_bp.route("/chats/widget/<token>/keep", methods=["POST"])
+@limiter.limit("30 per hour", scope="chats_widget_keep")
+@require_auth
+def v2_chats_widget_keep(token):
+    """"Keep this chat": the signed-in caller takes the visitor's seat."""
+    from services.chat_widget import keep
+    payload = getattr(request, "token_payload", None)
+    return _run("widget_keep", lambda: keep(db, str(request.user_id), token, _widget_guest(), payload))
