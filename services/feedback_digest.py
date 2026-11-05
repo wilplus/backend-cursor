@@ -13,7 +13,7 @@ after the first closing summary of the week (``take_summary`` calls
     “…” (up to three, newest first)
 
 For the founder only; no speaker ever sees a number (CLAUDE.md, Never 1).
-Best-effort: it never raises into the summary.
+Retired (N516): nothing calls it; kept as the signed counsel pack cites it.
 """
 from __future__ import annotations
 

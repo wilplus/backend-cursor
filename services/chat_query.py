@@ -553,10 +553,12 @@ _HISTORY_ROWS = 24
 
 
 def _retired(row: dict) -> bool:
-    """The rows the Lounge hides (frontend isRetiredLoungeMessage)."""
+    """The rows the Lounge hides (frontend isRetiredLoungeMessage). The
+    founder's weekly note is retired too (N516): no longer written, and the
+    ones already in the chat are never read back to Will."""
     meta = row.get("metadata") or {}
     return (row.get("kind") == "cadence" and meta.get("beat") == 0) or \
-        meta.get("note") in ("human_check", "coach_video_shared")
+        meta.get("note") in ("human_check", "coach_video_shared", "feedback_digest")
 
 
 def _fallback_label(row: dict) -> str:

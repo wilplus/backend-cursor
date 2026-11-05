@@ -20,9 +20,9 @@ OUTCOME
       gets one card a day showing before and now; no change, no card.
   O6  A Take that went fine is not asked; one whose practice did not land,
       or whose voice dipped, is (founder 2026-10-20).
-  O7  The founder's weekly note says how often the voice rose, how many
-      answered, and what would help, in the speakers' own words; a week
-      with nothing to count posts no note (founder 2026-11-02).
+  O7  No weekly note ("Feedback, the last 7 days") is written in the
+      founder's chat any more, and Will never reads one already there back
+      as conversation (founder 2026-11-05, N516).
 PROVES   O1 -> test_the_question_closes_the_summary_but_waits_when_another_offer_is_there
          O2 -> test_yes_is_kept_and_answered_with_the_signed_words_once
          O3 -> test_not_really_asks_what_was_missing_and_the_chat_keeps_the_answer,
@@ -31,8 +31,7 @@ PROVES   O1 -> test_the_question_closes_the_summary_but_waits_when_another_offer
                test_typing_a_button_counts_as_tapping_it_and_anything_else_goes_to_will
          O5 -> test_a_new_goal_is_kept_and_every_coach_but_the_speaker_gets_one_card_a_day
          O6 -> test_a_take_that_went_fine_is_not_asked
-         O7 -> test_the_weekly_note_says_what_was_missing_in_their_words,
-               test_a_week_with_nothing_to_count_posts_no_note
+         O7 -> test_an_old_weekly_note_is_never_read_back_to_will
 WHY      WIL-74, founder 2026-10-19 (words signed the same day; the question
          and the thank-you simplified by the founder, 2026-10-20).
 """
@@ -217,36 +216,18 @@ def test_a_take_that_went_fine_is_not_asked():
     assert feedback_check.looks_off("better", "dipped")
 
 
-def test_the_weekly_note_says_what_was_missing_in_their_words():
-    from services.feedback_digest import note
-    words = note([{"moved": "rose"}, {"moved": "held"}, {"moved": None}],
-                 [{"helped": False, "missing": "Why my close felt rushed"},
-                  {"helped": True}, {"helped": None, "skipped": False}])
-    assert words.splitlines() == [
-        "Feedback, the last 7 days",
-        "The voice rose since the last Take in 1 of 2 Takes",
-        "Asked \"Did this help?\": 2 · it helped: 1",
-        "What would help:",
-        "“Why my close felt rushed”",
-    ]
-
-
-def test_a_week_with_nothing_to_count_posts_no_note(monkeypatch):
-    """Seen in the founder's chat, 2026-11-02: "The voice rose since the last
-    Take in 0 of 0 Takes". Takes without a comparison and questions no one
-    answered are nothing to count, so no note is written."""
-    import time
-    from services import feedback_digest
-
-    class Week:
-        written: list = []
-        def active_admin_user_ids(self): return ["founder"]
-        def get_lounge_message_by_client_id(self, *_): return None
-        def list_take_summaries_since(self, _): return [{"moved": None}]
-        def list_feedback_checks_since(self, _): return [{"helped": None, "skipped": True}]
-        def insert_lounge_messages(self, *row): self.written.append(row)
-
-    monkeypatch.setattr(feedback_digest, "_admins", (time.monotonic(), ["founder"]))
-    week = Week()
-    assert feedback_digest.post(week) == 0
-    assert week.written == []
+def test_an_old_weekly_note_is_never_read_back_to_will():
+    """Seen in the founder's chat, 2026-11-05: three "Feedback, the last 7
+    days" notes under Will's reply. They are no longer written (N516); the
+    ones already stored stay out of what Will reads."""
+    class Thread:
+        def get_lounge_messages_page(self, *_, **__):
+            return [  # newest first, as the database gives them
+                {"role": "user", "kind": "text", "body": "Ready", "client_id": "u2"},
+                {"role": "bot", "kind": "text", "client_id": "d",
+                 "body": "Feedback, the last 7 days\nThe voice rose since the last Take in 1 of 2 Takes",
+                 "metadata": {"note": "feedback_digest", "week": "2026-W45"}},
+                {"role": "bot", "kind": "text", "body": "What do you want to work on?", "client_id": "b"},
+            ]
+    turns = chat_query.thread_history(Thread(), "founder", "Next?")
+    assert [t["content"] for t in turns] == ["What do you want to work on?", "Ready"]
