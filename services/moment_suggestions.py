@@ -64,15 +64,102 @@ class _GenerationContext:
     take_texts: list
 
 
+def _read_take_metrics(database: Any, session_id: str) -> tuple[list, dict]:
+    """This Take's snippet rows, and their metric blobs by id. A failed
+    read keeps what it had, named in the log, as before."""
+    rows: list = []
+    metrics_by_id: dict[str, dict[str, Any]] = {}
+    try:
+        rows = list(database.get_snippets_by_session(session_id) or [])
+        for row in rows:
+            row_metrics = row.get("metrics")
+            metrics_by_id[str(row.get("id"))] = (
+                row_metrics if isinstance(row_metrics, dict) else {})
+    except Exception as metrics_error:
+        logger.warning(
+            "moment_suggestion: metrics read failed sid=%s: %s",
+            session_id,
+            metrics_error,
+        )
+    return rows, metrics_by_id
+
+
+def _read_session(database: Any, session_id: str) -> dict[str, Any]:
+    try:
+        return database.v2_get_session_by_id(session_id) or {}
+    except Exception:
+        return {}
+
+
+def _read_context_document(database: Any, arc_id: str) -> Optional[str]:
+    try:
+        document = database.get_arc_context_document(arc_id) or {}
+        return (document.get("text") or "").strip() or None
+    except Exception as document_error:
+        logger.warning(
+            "moment_suggestions: context doc read failed arc=%s: %s",
+            arc_id,
+            document_error,
+        )
+        return None
+
+
+def _read_decided_keys(database: Any, arc_id: str) -> tuple[set, set]:
+    from services.ideal_decision_ledger import intent_keys, ledger_keys
+
+    try:
+        ledger_rows = database.list_ideal_decisions(arc_id)
+        return ledger_keys(ledger_rows), intent_keys(ledger_rows)
+    except Exception:
+        return set(), set()
+
+
+def _read_confidence_baseline(
+    session_id: str, session: dict[str, Any],
+    metrics_by_id: dict[str, dict[str, Any]],
+) -> Any:
+    try:
+        from services.voice_confidence import resolve_confidence_baseline
+
+        baseline, _ = resolve_confidence_baseline(
+            session.get("user_id"),
+            [
+                metric
+                for metric in metrics_by_id.values()
+                if isinstance(metric, dict)
+            ],
+        )
+        return baseline
+    except Exception as baseline_error:
+        logger.warning(
+            "moment_suggestion: cue baseline failed sid=%s: %s",
+            session_id,
+            baseline_error,
+        )
+        return None
+
+
 def _load_generation_context(
     session_id: str,
     arc_id: str,
     database: Any,
 ) -> _GenerationContext:
-    """Load take-wide inputs without making any candidate decision."""
+    """Load take-wide inputs without making any candidate decision.
+
+    TWO WAVES OF READS, NOT A QUEUE OF THEM (2026-11-05, the wait). These
+    reads decide nothing about one another and each is a database round
+    trip; one after another they sat in the speaker's wait before the Ideal
+    Text, and the readout read the Take's rows and its session a second
+    time. The first wave reads what needs nothing; the second, what needs
+    the first: the readout over those same rows and session (the hand-in
+    its signature exists for), the speaker's cue reference over the rows'
+    metrics, and the recurrence corpus. Every read keeps its own fallback
+    and log line, and a read that raised before still raises, in the order
+    it did (`run_in_parallel` surfaces in submission order).
+    """
     from config import Config
-    from services.ideal_decision_ledger import intent_keys, ledger_keys
     from services.lab_recording import build_readout_from_session
+    from services.parallel import run_in_parallel
     from services.protected_phrases import collect_take_texts
 
     try:
@@ -85,70 +172,29 @@ def _load_generation_context(
     except Exception:
         sticky_max = 0.15
 
+    (rows, metrics_by_id), session, context_document, (
+        decided_keys, decision_intent_keys) = run_in_parallel(
+        lambda: _read_take_metrics(database, session_id),
+        lambda: _read_session(database, session_id),
+        lambda: _read_context_document(database, arc_id),
+        lambda: _read_decided_keys(database, arc_id),
+    )
     # Internal coach-view read only. Its serializer deliberately omits the
     # machine-confidence blob, so that evidence is loaded from snippet rows.
-    readout = build_readout_from_session(
-        session_id, include_slide_scores=True)
-    metrics_by_id: dict[str, dict[str, Any]] = {}
-    try:
-        for row in (database.get_snippets_by_session(session_id) or []):
-            row_metrics = row.get("metrics")
-            metrics_by_id[str(row.get("id"))] = (
-                row_metrics if isinstance(row_metrics, dict) else {})
-    except Exception as metrics_error:
-        logger.warning(
-            "moment_suggestion: metrics read failed sid=%s: %s",
-            session_id,
-            metrics_error,
-        )
+    # A read that came back empty is not handed in: the readout then reads
+    # for itself, as it always did.
+    readout, confidence_baseline, take_texts = run_in_parallel(
+        lambda: build_readout_from_session(
+            session_id, include_slide_scores=True,
+            snippet_rows=rows or None, session_row=session or None),
+        lambda: _read_confidence_baseline(session_id, session, metrics_by_id),
+        lambda: collect_take_texts(database, arc_id),
+    )
 
-    session: dict[str, Any] = {}
-    try:
-        session = database.v2_get_session_by_id(session_id) or {}
-    except Exception:
-        pass
     intake = session.get("intake_context")
     context = intake if isinstance(intake, dict) else {}
     audience = context.get("audience") or None
     strategic_context = context.get("strategic_context") or None
-
-    confidence_baseline = None
-    try:
-        from services.voice_confidence import resolve_confidence_baseline
-
-        confidence_baseline, _ = resolve_confidence_baseline(
-            session.get("user_id"),
-            [
-                metric
-                for metric in metrics_by_id.values()
-                if isinstance(metric, dict)
-            ],
-        )
-    except Exception as baseline_error:
-        logger.warning(
-            "moment_suggestion: cue baseline failed sid=%s: %s",
-            session_id,
-            baseline_error,
-        )
-
-    context_document = None
-    try:
-        document = database.get_arc_context_document(arc_id) or {}
-        context_document = (document.get("text") or "").strip() or None
-    except Exception as document_error:
-        logger.warning(
-            "moment_suggestions: context doc read failed arc=%s: %s",
-            arc_id,
-            document_error,
-        )
-
-    try:
-        ledger_rows = database.list_ideal_decisions(arc_id)
-        decided_keys = ledger_keys(ledger_rows)
-        decision_intent_keys = intent_keys(ledger_rows)
-    except Exception:
-        decided_keys = set()
-        decision_intent_keys = set()
 
     return _GenerationContext(
         cap=cap,
@@ -162,7 +208,7 @@ def _load_generation_context(
         context_document=context_document,
         decided_keys=decided_keys,
         intent_keys=decision_intent_keys,
-        take_texts=collect_take_texts(database, arc_id),
+        take_texts=take_texts,
     )
 
 

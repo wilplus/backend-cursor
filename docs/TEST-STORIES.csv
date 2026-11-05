@@ -3579,6 +3579,11 @@ nullable.
 O3  Applying the file again changes nothing.","O1 -> test_the_promote_rpc_accepts_only_the_listed_keys
 O2 -> test_the_doors_hold_the_coach_words
 O3 -> test_applying_the_file_again_changes_nothing","0459 (the_coach_s_words_reach_the_doors.sql), Privacy/Terms 3.5, N68. Runs on the released lane, which has no runtime_config: the test creates it (0051) and re-applies 0459 inside a rolled-back transaction."
+tests/test_the_feedback_moments_read_their_inputs_at_once.py,Story,"As a speaker, I want my Take's feedback moments to gather what they read at once, so that my Ideal Text opens sooner.","O1  The Take's pieces, its session, the project's background document and
+its decisions are read at the same time, not one database round trip
+after another.
+O2  The readout the moments are found in is built over those same pieces
+and that same session, so neither is read a second time.","O1, O2 -> test_the_takes_inputs_are_read_once_and_together","2026-11-05, the wait: these reads ran one after another inside the feedback moments, before the Ideal Text. Driven through the public generate_praise_for_session; only the database, the readout and the provider call are faked."
 tests/test_the_ledger_keeps_its_weeks_postgres.py,Story,"As the founder, I want one ledger snapshot per week and a golden set that seals once, so that the model quality record cannot be rewritten.","O1  A second snapshot for the same week is refused (the job upserts).
 O2  A golden judgement is one per (surface, moment, judge) and takes only
 the five answers.
