@@ -13318,9 +13318,14 @@ app should deifne is it a linear regresison prediction model or a paring
 shadowin type of model or else ... you can upload the sceince about it to
 set the tresholds"; "all the words on this setup ... should be written as
 if Steven Pinker would wrote it"; then sixteen questions, each answered
-with the recommended option).** For N364, N518, N520, N523 and N526;
+with the recommended option; then, on export: "even if it's an open source,
+it's open on the Willpower Lab, but it's not open source entirely ... it's
+free to export the data and fine-tune the model, but if you want to use the
+model through the API key, then you pay", and four questions more, each
+answered with the recommended option).** For N364, N518, N520, N523 and N526;
 amends N518 item 8 and N520 item 7 for public models, N520 items 2 and 3
-(documents, and who fills the template), and N520 item 9's Says steps:
+(documents, and who fills the template), N520 item 9's Says steps, and
+N526 item 2 (data leaving WillpowerLab):
 1. **Where:** a row "AI models" under the people in the list of chats
 opens the list; a person's own models and the ones they teach are also on
 their profile. The most mature models are at the top, each showing how
@@ -13376,12 +13381,27 @@ disclaimer at the door says so.
 11. **Leaving:** a teacher keeps what they earned; their data leaves the
 model at its next retraining (N523 item 5), and from then their share goes
 to the others.
-12. **Every word in these screens is written as Steven Pinker writes**
+12. **Open on WillpowerLab, not open source.** An open model is open to see
+and to teach. Its owner and its contributors may download its data from
+their panel and fine-tune their own copy for free; a private model's owner
+and team may do the same with theirs. Using the model itself through an API
+key is paid (item 7), so its teachers earn. **What a download holds:** the
+teachers' ratings and answers, and the speakers' words de-identified (names,
+places and anything identifying removed); recordings never leave. Speakers'
+words are shared only once the training yes they give on joining carries one
+more line saying so, for the founder's signature; until then, a download
+holds the teachers' own ratings and answers only. **The licence:** downloaded
+data is free to build on, test and research with; selling a product built on
+it needs a licence from WillpowerLab, its revenue shared with the model's
+contributors as the API's is.
+13. **Every word in these screens is written as Steven Pinker writes**
 (N364): plain and concrete, people as the subjects, one idea a sentence.
-13. **Before it is locked:** a clickable prototype of the whole journey on
+14. **Before it is locked:** a clickable prototype of the whole journey on
 the app's real screens, for the founder's changes and OK (Never 4).
 **Open:** the founder's share and the platform fee; the legal terms for
-co-ownership and revenue payouts, for counsel; where this sits beside the
+co-ownership, revenue payouts and the data licence, for counsel; the line
+in the training yes about sharing de-identified words, for the founder's
+signature; where this sits beside the
 speaking loop, which stays first (CLAUDE.md, the loop wins).
 Not in force until built and merged. Its migrations (models, shares,
 API keys) each get their outside review.
