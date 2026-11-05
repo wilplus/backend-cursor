@@ -65,15 +65,20 @@ def collect_take_texts(database, arc_id: Any) -> list:
     if not arc_id:
         return []
     try:
+        from services.parallel import run_in_parallel
         from services.slide_selection import spoken_arc_sessions
         sessions = spoken_arc_sessions(database.takes.get_arc_sessions(arc_id))
+        sids = [sid for sid in (str(s.get("id") or "") for s in sessions)
+                if sid]
+        # One read per Take, at once rather than one after another on the
+        # speaker's wait (2026-11-05); joined in the Takes' order.
+        snippets_by_take = run_in_parallel(*[
+            (lambda sid=sid: database.get_snippets_by_session(sid))
+            for sid in sids])
         texts = []
-        for s in sessions:
-            sid = str(s.get("id") or "")
-            if not sid:
-                continue
+        for rows in snippets_by_take:
             parts = []
-            for sn in (database.get_snippets_by_session(sid) or []):
+            for sn in (rows or []):
                 t = (sn.get("transcript")
                      or sn.get("transcription_text") or "").strip()
                 if t:

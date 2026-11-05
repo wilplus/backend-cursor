@@ -117,13 +117,17 @@ def resolve_delivery_baseline(user_id: Any, current_piece_metrics: Any, *,
                 from services.db import db as database
             hist: list = []
             try:
+                from services.parallel import run_in_parallel
                 sessions = database.takes.v2_list_user_lab_sessions(
                     str(user_id), limit=5) or []
-                for s in sessions:
-                    sid = str(s.get("id") or "")
-                    if not sid:
-                        continue
-                    for snip in (database.get_snippets_by_session(sid) or []):
+                sids = [sid for sid in (str(s.get("id") or "")
+                                        for s in sessions) if sid]
+                # One read per Take, at once (2026-11-05, the wait); joined
+                # in the list's order, so the pool is the loop's.
+                for rows in run_in_parallel(*[
+                        (lambda sid=sid: database.get_snippets_by_session(sid))
+                        for sid in sids]):
+                    for snip in (rows or []):
                         m = snip.get("metrics")
                         if isinstance(m, dict):
                             hist.append(m)
