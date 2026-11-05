@@ -13134,7 +13134,30 @@ The rules: frontend
 [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
 B1, when built.
 
-**N522 · N520's seven gaps: client data in the shared model only by
+**N522 · The dump screen opens first on every open of the app, online or
+offline; no hourly limit (founder, the Claude Code chat, 5 November 2026,
+after "it simply does not open the dump" in airplane mode; first "Yes,
+always when offline", then: "I don't think once an hour rule is actually
+good … it's better if you just make it open first. Every time. Every time
+you open the application, even if you close it entirely or you just
+minimize it, it opens on offline, it opens first. Let's do it").** For N506
+items 4 and 5 and N507 item 2:
+1. **Every open shows the dump screen first,** for someone with "Open to the
+dump screen" on, the ring row on and the notebook's Yes: a fresh open, and
+every return to the front after the app was in the background, online or
+offline. The once-an-hour limit (N506 item 4, N507 item 2) is gone, in the
+iPhone app and on the web.
+2. **Still never when a link or a notification opened the app** (N506
+item 4). Will's chat is underneath, untouched, and the × or a double tap
+reaches it at once (Never 3).
+3. **Signed (Never 4):** the Settings line becomes "First thing when you
+open the app." (founder, the same chat: "signed"). Was: "First thing when
+you open the app, at most once an hour." (N507 item 4).
+Not in force until built and merged. No migration. The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+T4 and T6, when built.
+
+**N523 · N520's seven gaps: client data in the shared model only by
 contract, tokens for counted answers, where speaking stands on the stages,
 randomness only among safe options, deletion within 90 days, a second coach
 for the golden set, one language first (founder, the Claude Code chat,
