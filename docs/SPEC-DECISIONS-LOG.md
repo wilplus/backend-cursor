@@ -12850,7 +12850,8 @@ feeds, by the matching's own score (founder, the Claude Code chat,
 yes-or-no questions with suggested answers: "No, never ask"; "Anyone who
 answers, friend counts less", then, told that `label_quorum` has no
 weights, "Keep the code's rule"; "Inside the answer, before Sent"; "Train
-anyway, ask counsel first"; "No, keep it hidden"; "Their profile job";
+anyway, ask counsel first", then, told it waits for counsel, that the
+switch at entry is the agreement; "No, keep it hidden"; "Their profile job";
 "Yes, the same taps"; for the media expert, "how to design it so that the
 closest model to her expertise is chosen and she answers there; if no
 treshold matched then she doesnt count for training the specific model - by
@@ -12862,7 +12863,8 @@ for it").** For N79, N224, N240, N461, N479, N481, N493 and N512:
 after sending an answer; the prototype's card, its "Teach Will" and its
 "Will would have said" are not built.
 2. **Rating is part of answering, before Sent.** Whoever a Take reaches (a
-person in the speaker's list, N470, or a match, N512) answers "Does the
+person in the speaker's list, N470, or a match, N512) and who teaches the
+speaking model (a speaking coach, or someone who joined it, item 8) answers "Does the
 speaker sound confident here?" (👍 Yes, 😐 In-between, 👎 No, Audio
 unclear) on a few of its moments while listening, then records their
 answer over its slides (N493 item 1). Blind and in a language they have, as
@@ -12879,15 +12881,19 @@ already keeps one kind friend from settling anything.
 4. **The machine's read stays hidden from whoever answers** (N479 item 8
 unchanged): no "What happened", no Willfidence, no "Will would have said"
 for them. The coach panel keeps its own (panel D2, E1).
-5. **The speaker's training yes: put to counsel.** The founder's wish is to
-collect from every Take, a speaker's "no" included. Not in force: until
-counsel answers in writing, only Takes whose speaker said yes feed any
-model (N79, section M6: model improvement stays declinable), and the votes
-on a "no" Take settle labels that never train.
+5. **The speaker's training yes is the switch they already have.** It is
+asked when they come in ("Help improve WillpowerLab"), and they can refuse
+it there or turn it off later ("Turn off training?"). No other ask before a
+Take feeds a model: a Take whose speaker has the switch on feeds it, one
+whose speaker refused or turned it off does not (N79, section M6). The
+founder, the same chat: "we already have their agreement when they enter
+the app and later on they can of course turn this OFF!! ... it is the
+pricniples switch they can refuse or don't accep tit in the first place!"
 6. **The job in a person's profile decides their step**, never the Take's
 topic: a speaking coach rates as in item 2; a trichologist gets N240's taps
 (the condition chips and the stage on its scale) instead of the confidence
-rating; anyone else rates as in item 2.
+rating; a job that is in no model's list, or no job at all, goes through
+item 8.
 7. **People write their own job** (amends N461 item 5's fixed list). Which
 model a person's answer feeds is chosen by the matching's knowledge score
 (`services/take_match_knowledge.py`: their profile's words against each
@@ -12896,9 +12902,19 @@ model's own words, rare words weighing most): the highest model at or over
 kept for future training, not training now (N224). Below it, the answer
 stays their own Take and feeds no model. A media expert is the first case:
 no step of her own yet; her answer is her teaching.
-8. **Open:** a colleague with no job in their profile (the founder had no
-preference; item 2 applies until decided); each model's own words, to
-match against; counsel's answer to item 5.
+8. **A person with no job in their profile is matched, never assumed.**
+Their knowledge profile is scored against each existing model's
+specification (the second matching, of a person to a model, beside the
+matching of a person to a Take). If one model passes its threshold, they
+are shown an option to join it; if none does, they get nothing more than
+their own answer (founder, the same chat: "if they match (another mathcing
+needed here) they are being displayed an option to join if not = NO!").
+The option's words need a prototype and the founder's OK (Never 4).
+9. **The step before the recording screens** (item 2) gets its prototype
+before it is built: the founder, the same chat, "OK".
+10. **Open:** each model's specification, the words the matching of items 7
+and 8 reads; the person-to-model threshold, `MIN_FIT` until the founder
+sets its own.
 No new words: the rating's words are signed (coach panel J). Not in force
 until built and merged. Its migration, if the pairs need a table, gets its
 outside review. No rules page yet: frontend
