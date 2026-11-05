@@ -6,7 +6,10 @@ OUTCOME
       take order.
   O2  A talk is ideal_ready once the coach has corrected every slide; a talk
       with a slide still uncorrected is not.
+  O3  A coach's training import is never in the coach's own project list
+      (it has no project to archive, so it blocked "One project at a time").
 PROVES   O1, O2 -> test_trainings_group_by_talk_and_mark_ideal_ready
+         O3     -> test_a_training_import_is_not_a_project
 WHY      Founder 2026-07-13 (arc-grouped trainings). The save-at-publish half
          (POST /v2/internal/publish-session-results) is retired and answers
          410 (routes/v2/canonical_publish.py), so it has no test here.
@@ -49,3 +52,31 @@ def test_trainings_group_by_talk_and_mark_ideal_ready():
     assert cards["ready"]["take_count"] == 2
     assert cards["ready"]["ideal_ready"] is True
     assert cards["half"]["ideal_ready"] is False
+
+
+class _Rows:
+    """Answers any select chain on v2_sessions with fixed rows."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.not_ = self
+
+    def table(self, _name):
+        return self
+
+    def __getattr__(self, _name):
+        return lambda *a, **k: self
+
+    def execute(self):
+        return type("R", (), {"data": self.rows})()
+
+
+def test_a_training_import_is_not_a_project():
+    from services.take_repository import TakeRepository
+    rows = [{**_take("mine", "own", 1), "source": "audit_upload"},
+            {**_take("old", "legacy", 1), "source": None},
+            {**_take("clip", "g100", 1), "source": "training_import"}]
+    repo = TakeRepository(type("Db", (), {"client": _Rows(rows)})())
+    for strict in (False, True):
+        listed = repo.list_user_arc_sessions("coach", strict=strict)
+        assert [r["arc_id"] for r in listed] == ["own", "legacy"]

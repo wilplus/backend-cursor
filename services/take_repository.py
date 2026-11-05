@@ -1585,12 +1585,19 @@ class TakeRepository(TableRepository):
 
         ``strict=True`` (Data & consent's every-project read, D-CS-4)
         re-raises a failed read instead: an empty list there reads as "you
-        have no projects", which is false."""
+        have no projects", which is false.
+
+        A coach's training import is never the coach's own project: its
+        session carries the importing coach's ``user_id`` and an arc with no
+        ``projects`` row, so listed here it showed in the coach's project
+        list, where Archive answered 404 and "One project at a time" could
+        not go on. The filter runs here, not in SQL, because ``source <> x``
+        drops rows whose source is NULL."""
         if not user_id:
             return []
         _legacy_cols = ("id, arc_id, take_index, status, created_at, "
                         "intake_context, results_published_at")
-        _full_cols = _legacy_cols + ", recording_kind, paired_session_id"
+        _full_cols = _legacy_cols + ", recording_kind, paired_session_id, source"
         try:
             try:
                 res = (
@@ -1601,11 +1608,13 @@ class TakeRepository(TableRepository):
                     .order("created_at", desc=False)
                     .execute()
                 )
-                return res.data or []
+                return [r for r in (res.data or [])
+                        if r.get("source") != "training_import"]
             except Exception as _ef:
                 _lowf = str(_ef).lower()
                 if not ("recording_kind" in _lowf
-                        or "paired_session_id" in _lowf):
+                        or "paired_session_id" in _lowf
+                        or "source" in _lowf):
                     raise
             res = (
                 self.client.table("v2_sessions")
