@@ -13156,3 +13156,37 @@ you open the app, at most once an hour." (N507 item 4).
 Not in force until built and merged. No migration. The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 T4 and T6, when built.
+
+**N524 · The deadline is asked when there is an event: at the first new
+project, never invented as the speaker's own (founder, the Claude Code
+chat, 5 November 2026, on the memo "When to ask the deadline",
+<https://claude.ai/artifact/E4MwxNxQd2CggTWGA7Syk6>, option A,
+recommended: "implement recommended").** For N135, N149, N401, N459,
+N462 and N487 item 4; amends N459 item 1, whose premise ("set during the
+before the walk set-up") held only for someone who joined through a link:
+no step before the first walk asks for the day, and the first Take's
+slides (N462) are about what the speaker knows, so the plan almost always
+took "No date yet"'s two months without a word.
+1. **A day the speaker never chose is never spoken of as theirs.** That is
+"No date yet"'s two months, a first Take with no day heard, or a join
+link's "No" to "Are you in a hurry?" (the plan's `deadline_given`).
+2. **The first new project asks for it.** After that project's first Take,
+in place of "Is this for {date}?", Will asks "When is your deadline?" with
+Pick a date or No date yet. A day picked becomes theirs: "Done. Your plan
+now runs to {date}." "No date yet" gives two months from today: "That's
+fine. Let's give it two months, until {date}." The plan goes on either
+way, and the next new project asks again while no day is chosen. A chosen
+day keeps "Is this for {date}?" as before (H2).
+3. **The plan card shows "Your deadline:" only for a day the speaker
+chose.** The plan still runs on its two months meanwhile; "Change your
+plan" keeps its Deadline row (a locked screen, approved here).
+4. **The plan's end with no day chosen** asks neither "Your deadline was
+{date}." nor "How did it go?": the hello, then "What's next?" (I2).
+5. **A join link's day** recalculates the plan as Edit does (the practices
+and every day), never replaces a day the speaker chose, and a day picked
+there stays when the first Take is read.
+What stops: "Is this for {date}?" and "How did it go?" about a date the
+speaker never gave; the plan card's guessed date. Signed words only, no
+new ones. No migration. The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+E, H2, I2.
