@@ -15,6 +15,8 @@ OUTCOME
       next one goes to the waitlist and no chat is made.
   O6  A waiting account cannot start a project or record; a guest cannot
       start one either, and no new guest identity is made.
+  O7  A member the server already knows opens the app without another
+      lookup of their account (the app waits on this answer).
 PROVES   O1 -> MembershipTest::test_while_the_switch_is_off_everyone_is_in
          O2 -> MembershipTest::test_a_new_account_waits_and_the_founder_gets_one_email
          O3 -> MembershipTest::test_joining_through_a_members_link_lets_a_new_account_in
@@ -22,6 +24,7 @@ PROVES   O1 -> MembershipTest::test_while_the_switch_is_off_everyone_is_in
          O4 -> MembershipTest::test_a_waiting_accounts_link_opens_nothing
          O5 -> MembershipTest::test_past_the_days_joins_the_next_one_waits
          O6 -> MembershipTest::test_only_members_start_a_project_and_guests_do_not
+         O7 -> MembershipTest::test_a_known_member_is_answered_without_a_lookup
 WHY      The founder's decision of 4 November 2026 (N471): members only,
          links as the one way in, the waitlist answered by hand.
 """
@@ -54,9 +57,11 @@ class _Auth:
     def __init__(self):
         self.meta = {uid: {"provider": "google"} for uid in MADE}
         self.updates = []
+        self.asked = []
         self.auth = SimpleNamespace(admin=self)
 
     def get_user_by_id(self, uid):
+        self.asked.append(uid)
         name, email = NAMES[uid]
         user = SimpleNamespace(id=uid, email=email, phone="", created_at=MADE[uid].isoformat(),
                                user_metadata={"full_name": name}, app_metadata=dict(self.meta[uid]))
@@ -182,6 +187,12 @@ class MembershipTest(unittest.TestCase):
         self.assertEqual((guest.status_code, guest.get_json()["code"]), (401, "INVITE_ONLY"))
         minted = self.client.post("/v2/processing-authorization/principal")
         self.assertEqual((minted.status_code, minted.get_json()["code"]), (401, "INVITE_ONLY"))
+
+    def test_a_known_member_is_answered_without_a_lookup(self):
+        self.assertEqual(self._access(ARTUR), {"member": True, "invite_only": True})
+        asked = len(self.auth.asked)
+        self.assertEqual(self._access(ARTUR), {"member": True, "invite_only": True})
+        self.assertEqual(len(self.auth.asked), asked)
 
 
 if __name__ == "__main__":
