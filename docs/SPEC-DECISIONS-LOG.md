@@ -13089,3 +13089,47 @@ Not in force until built and merged. Each migration it needs (templates,
 the waiting pool) gets its outside review. No rules page yet:
 [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) B, E and F, when
 built.
+
+**N521 · The coach's way in is a row in the list of chats, named by their
+profile job; nothing of the coach stays at the bottom of Will's chat
+(founder, the Claude Code chat, 5 November 2026, on a screenshot of their
+own chat with Will with the bubble and the Speakers button circled: "It
+shouldn't be looking like this, because it's two additional tabs that are
+fixed at the bottom. We need to make it another way to access it for the
+professionals that want to fine-tune a specific model"; then, on the
+prototype "Coach Door Ways In"
+<https://claude.ai/artifact/NpxymPEGy3j8ZmNxVWHwU3> (version 1), three
+questions with a recommended answer each: "A · Row in chats", "Their
+profile job", "Last card in the queue").** For N456, N461 items 4–5,
+N483, N500, N505 and N518 item 7; amends the coach panel's B1:
+1. **A row in the list of chats, right under Will,** for whoever may hear
+speakers (today the coaches' list). It has the list's own row: a round
+icon (the Speakers icon), a name and one line. It replaces the Lounge
+bubble "N speakers waiting · Open your queue" and the pinned **Speakers**
+button above the message box: the bottom of Will's chat is only its bar
+(N483, N505).
+2. **Its name is the job in the person's own profile** ("who they are", in
+their own words; N518 item 7), so no new words of ours. With no job
+written, it reads "Your queue" (signed).
+3. **Its line:** "Open your queue" (signed) while someone waits, with the
+list's locked new look: the name bold, the line bold and orange, the orange
+dot, no number (N500 item 4). "Nobody is waiting for you." (signed) in grey
+when nobody does. Until the queue has been read once, the line is empty,
+never "Nobody" (2026-10-18). What waits is the same count the bubble had:
+speakers with moments and plans waiting (B2, K1).
+4. **Tapping it opens Your queue,** the same screen as before (B2, B3, B4,
+B5, K1), over the list; ✕ comes back to the list.
+5. **Speakers moves into the queue,** as its last card, "Speakers" with a
+chevron and no dot, opening the same list of every speaker (C5).
+6. **Kept as it is:** the panel stays mounted under the list, so a goal
+card's "Open speaker" still opens that speaker; the reach alarm
+(`coach_moments_queue.reach_alarm`) is unchanged; the training corpus stays
+in the admin menu (N416, N511); a coach records as before.
+7. **One row per model a person teaches, when there is more than one:**
+each under its own name, opening its own queue (N461 item 4). Only the
+speaking coach's is built now.
+What stops: the count "N speakers waiting" is no longer on the way in; each
+speaker's card in the queue still says how many moments wait. No migration.
+The rules: frontend
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+B1, when built.
