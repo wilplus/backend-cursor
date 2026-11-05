@@ -12947,7 +12947,8 @@ different backgrounds ... It cannot be custom at each point. It needs to
 have a set framework and a matching between the specialist and the model
 ... What if there is no model, and what if there is model but not enough
 specialists?"; then twelve questions, each answered with the recommended
-option).** For N223, N224, N240, N461, N481, N512 and N518; generalises
+option; then, on a data scientist's review of this setup: "Could you
+listen to these specialists and apply these changes?").** For N223, N224, N240, N461, N481, N512 and N518; generalises
 N240's three models from the head spas to every organisation, the speaking
 coach's included:
 1. **Three parts, always.** Every organisation's AI, WillpowerLab's own
@@ -12996,17 +12997,58 @@ One person may join every model they match; each asks only its own
 questions. A joined specialist teaches all three parts as part of
 answering (N518 item 2): Reads by their blind taps, Picks by their choice,
 Says by their spoken answer, which becomes a pair with no step of its own.
-8. **A short trial before a vote counts:** a new specialist's first
-ratings are checked against moments already settled; they count once they
-agree often enough. They are never shown a number (Never 1), only that
-they are in.
-9. **No model fits (step 3):** what the person gives is kept as pairs in a
+8. **Reliability is measured all the time, not once.** A rater model (in
+the family of Dawid–Skene) learns each person's reliability and lean from
+all their answers, a friend's kindness included; a few clips whose answer
+is known, hard ones among them, stay mixed into everyone's queue. A
+newcomer's votes count once their measured reliability passes the
+threshold, and stop counting if it falls. The matching only proposes a
+person; their reliability admits them (item 7). Nobody is shown a number
+(Never 1), only that they are in. Was, the same day: a one-off trial on
+moments already settled, which are the easy ones.
+9. **The statistics inside the parts** (the review, taken as a whole):
+   - **Reads trains on soft labels, weighed by the rater model.** The
+     share of answers per clip is kept already
+     (`services/clip_answer_counts.py`); each answer now counts by its
+     rater's measured reliability. Two matching votes stay the gate for the
+     golden set and for evaluation only. Agreement between raters is
+     measured and reported per model (Krippendorff's alpha); it is the
+     ceiling a model cannot beat.
+   - **Picks keeps its odds.** Each pick is stored with how likely it was;
+     among options equally fit, a little is drawn at random (as Swap it
+     already lists exercises in random order), so a change can be judged
+     from the logs. Until then Picks is said to imitate the specialist,
+     not to optimise the outcome; the next Take's change is read beside
+     practice and regression to the mean.
+   - **Says learns in three steps.** Before drafts are shown, an answer is a
+     supervised example (input to the specialist's answer); a preference
+     pair (draft against final) exists only once drafts are shown, after
+     the person answers (N224 item 2). Order: the organisation's examples
+     and documents looked up in the prompt first; one shared preference
+     fine-tune for how a great coach speaks, across every organisation
+     whose speakers said yes; an adapter per organisation (LoRA) only from
+     thousands of pairs. Says is judged by specialists choosing, blind,
+     which of two answers is better, never by word overlap. Was (N224): a
+     fine-tune at 200 pairs.
+   - **One shared base, a head per organisation.** Raw data stays apart (item
+     5); a base trained only on consented WillpowerLab data serves every
+     organisation, and each private model is a small head of its own,
+     private and exported to it.
+   - **A private model's golden set comes from two or more of its own
+     experts**, their agreement measured; WillpowerLab's speaking set stays
+     the founder's, by design.
+   - **What is measured before anything is built:** Reads, agreement with
+     the soft labels and whether its confidence is honest (calibration);
+     Picks, its value read from the logged odds; Says, the blind win-rate.
+     Every model is evaluated split by person, the speaker or the customer
+     never on both sides (as today).
+10. **No model fits (step 3):** what the person gives is kept as pairs in a
 waiting pool under their field; when enough people of one field gather,
 the founder gets one alert that a new model could start there. Nothing is
 shown to them. **A new model starts** only by the founder: a private one
 when an organisation asks for it, a shared one when the pool shows the
 demand.
-10. **Too few specialists (step 4):** the model stays in Collect; a single
+11. **Too few specialists (step 4):** the model stays in Collect; a single
 vote is kept as a weak signal, never for training (`docs/LEARNING-AND-QUORUM.md`
 C, `singleton`); the matching suggests and invites people who fit; the
 founder is alerted when moments wait too long, as
@@ -13014,8 +13056,10 @@ founder is alerted when moments wait too long, as
 borrow** specialists from the shared pool only with the organisation's yes,
 and blind: a pseudonym and the moment only, as a stranger hears it in the
 coach panel.
-11. **Open:** how many people of one field start a pool's alert; the
-trial's length and how often a newcomer must agree; how long moments wait
+12. **Open:** how many people of one field start a pool's alert; the
+reliability threshold and how many known clips stay in a queue; when
+willfidence-v2's "200 settled clips" (N111) becomes enough weighted soft
+labels; how long moments wait
 before the alert; the template's screen in admin, drawn on a prototype.
 The specialist's own screens are the coach door's redesign, in its own
 session.
