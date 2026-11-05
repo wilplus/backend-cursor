@@ -13106,9 +13106,9 @@ iPhone app and on the web.
 2. **Still never when a link or a notification opened the app** (N506
 item 4). Will's chat is underneath, untouched, and the × or a double tap
 reaches it at once (Never 3).
-3. **Words:** the Settings line "First thing when you open the app, at most
-once an hour." (N507 item 4) no longer says what it does; its new words wait
-for the founder's signature (Never 4).
+3. **Signed (Never 4):** the Settings line becomes "First thing when you
+open the app." (founder, the same chat: "signed"). Was: "First thing when
+you open the app, at most once an hour." (N507 item 4).
 Not in force until built and merged. No migration. The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 T4 and T6, when built.
