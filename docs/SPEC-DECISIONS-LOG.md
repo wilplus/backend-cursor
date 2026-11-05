@@ -13089,3 +13089,26 @@ Not in force until built and merged. Each migration it needs (templates,
 the waiting pool) gets its outside review. No rules page yet:
 [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) B, E and F, when
 built.
+
+**N521 · The dump screen opens first on every open of the app, online or
+offline; no hourly limit (founder, the Claude Code chat, 5 November 2026,
+after "it simply does not open the dump" in airplane mode; first "Yes,
+always when offline", then: "I don't think once an hour rule is actually
+good … it's better if you just make it open first. Every time. Every time
+you open the application, even if you close it entirely or you just
+minimize it, it opens on offline, it opens first. Let's do it").** For N506
+items 4 and 5 and N507 item 2:
+1. **Every open shows the dump screen first,** for someone with "Open to the
+dump screen" on, the ring row on and the notebook's Yes: a fresh open, and
+every return to the front after the app was in the background, online or
+offline. The once-an-hour limit (N506 item 4, N507 item 2) is gone, in the
+iPhone app and on the web.
+2. **Still never when a link or a notification opened the app** (N506
+item 4). Will's chat is underneath, untouched, and the × or a double tap
+reaches it at once (Never 3).
+3. **Words:** the Settings line "First thing when you open the app, at most
+once an hour." (N507 item 4) no longer says what it does; its new words wait
+for the founder's signature (Never 4).
+Not in force until built and merged. No migration. The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+T4 and T6, when built.
