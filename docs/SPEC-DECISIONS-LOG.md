@@ -13304,3 +13304,106 @@ dropped. The founder decides after the tenth.
 contract 32, nothing new is said to speakers, and the fix for its History,
 which never loads, goes as its own bug fix.
 No migration. No rules page.
+
+**N528 · The launchpad: anyone sets up a model in a few taps, anyone may
+teach a public one, its teachers co-own it, and it is sold through its own
+API; a prototype before it is locked (founder, the Claude Code chat,
+5 November 2026: "anyone can set up a new model; at the top of the list
+are the most mature models showing how close we are to the first fine
+tuning ... all the contributors IP prioprietors of that model ... the
+sales of the APIs to the concrete cases is the job of willpowerlab, but you
+can simply copy the link to the model and go thorugh the set up of API keys
+... so WillpowerLab stays out of this it is only an infrastructure"; "the
+app should deifne is it a linear regresison prediction model or a paring
+shadowin type of model or else ... you can upload the sceince about it to
+set the tresholds"; "all the words on this setup ... should be written as
+if Steven Pinker would wrote it"; then sixteen questions, each answered
+with the recommended option; then, on export: "even if it's an open source,
+it's open on the Willpower Lab, but it's not open source entirely ... it's
+free to export the data and fine-tune the model, but if you want to use the
+model through the API key, then you pay", and four questions more, each
+answered with the recommended option).** For N364, N518, N520, N523 and N526;
+amends N518 item 8 and N520 item 7 for public models, N520 items 2 and 3
+(documents, and who fills the template), N520 item 9's Says steps, and
+N526 item 2 (data leaving WillpowerLab):
+1. **Where:** a row "AI models" under the people in the list of chats
+opens the list; a person's own models and the ones they teach are also on
+their profile. The most mature models are at the top, each showing how
+close it is to its first fine-tuning and a small mark for who started it.
+2. **Anyone may teach a public model** after a disclaimer at the door: to
+teach only what they know well, since a weak answer harms a model everyone
+uses. Behind the door the quiet trust check of N520 item 8 stands: hidden
+known clips in the first 20 answers, which count once the teacher hears
+what experts hear. The matching still suggests; it no longer bars.
+3. **An invite to teach or to set up a model stays in the chat** after "Not
+now": the card can be tapped again at any time, and the model is always in
+the list.
+4. **Anyone may set up a model,** one action a screen:
+   - three short answers first: the problem it solves, how the person
+     solves it today, how they will teach it;
+   - then, if a public model is close (the matching on its card), "Teach
+     this one" or "Set up mine anyway";
+   - the app proposes what kind of model it is, the person confirms or
+     changes it: "It gives a score on a scale" (a prediction, such as a
+     regression), "It picks from a list", "It learns to answer like you"
+     (shadowing, from pairs); one, two or all three;
+   - the app fills the template of N520 item 3 from the answers and
+     generates the journey the teachers will take; the person shortens or
+     widens it by switching parts on or off;
+   - the base model: GPT-4o mini now; GPT-4o, Mistral, Llama and
+     WillpowerLab's own small models shown faded, marked as coming;
+   - uploaded research sets the starting rules: the app proposes thresholds
+     from it, each with its source, the person confirms each one; the model
+     works from day one on them, and learned values replace them as the
+     jars fill;
+   - "Invite others to teach it", and one switch, Private or Public.
+5. **Public at once,** after a disclaimer before the switch; every model has
+a report button and WillpowerLab can take one down. **Private** means only
+its owner and the people they invite; **Archive** hides a model from every
+list and deletes nothing.
+6. **Ownership:** whoever started a model keeps a fixed share; the rest is
+split by each teacher's counted answers, weighed by their reliability.
+**Money:** tokens per counted answer now (N523); a share of the API's
+revenue once a model sells, paid out once the legal terms are signed.
+WillpowerLab takes a platform fee on every API call, its percentage the
+founder's to set, and stays the infrastructure.
+7. **The API:** anyone who pays may create a key for a public model; only a
+private model's team for theirs. A model is sold only after its first
+fine-tuning passes its final exam; before that it can be tried on its link.
+8. **The first fine-tuning:** once a model has enough answers from trusted
+teachers and a final exam judged by two experts (a starting point: 500
+answers and 50 cases), GPT-4o mini is fine-tuned on them, and must beat the
+untrained version on the exam.
+9. **A finished model is a specialised chat,** in text first; voice later.
+10. **What a public model learns from:** teachers' ratings and the written
+words of their answers. Recordings never leave WillpowerLab; the
+disclaimer at the door says so.
+11. **Leaving:** a teacher keeps what they earned; their data leaves the
+model at its next retraining (N523 item 5), and from then their share goes
+to the others.
+12. **Open on WillpowerLab, not open source.** An open model is open to see
+and to teach. Its owner and its contributors may download its data from
+their panel and fine-tune their own copy for free; a private model's owner
+and team may do the same with theirs. Using the model itself through an API
+key is paid (item 7), so its teachers earn. **What a download holds:** the
+teachers' ratings and answers, and the speakers' words de-identified (names,
+places and anything identifying removed); recordings never leave. Speakers'
+words are shared only once the training yes they give on joining carries one
+more line saying so, for the founder's signature; until then, a download
+holds the teachers' own ratings and answers only. **The licence:** downloaded
+data is free to build on, test and research with; selling a product built on
+it needs a licence from WillpowerLab, its revenue shared with the model's
+contributors as the API's is.
+13. **Every word in these screens is written as Steven Pinker writes**
+(N364): plain and concrete, people as the subjects, one idea a sentence.
+14. **Before it is locked:** a clickable prototype of the whole journey on
+the app's real screens, for the founder's changes and OK (Never 4).
+**Open:** the founder's share and the platform fee; the legal terms for
+co-ownership, revenue payouts and the data licence, for counsel; the line
+in the training yes about sharing de-identified words, for the founder's
+signature; where this sits beside the
+speaking loop, which stays first (CLAUDE.md, the loop wins).
+Not in force until built and merged. Its migrations (models, shares,
+API keys) each get their outside review.
+No rules page yet: [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md)
+F, when built.
