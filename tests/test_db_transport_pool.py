@@ -1,6 +1,8 @@
 """
 GUARD      The database transport is a pool of HTTP/1 connections, kept warm
-           once per gunicorn thread, so the app opens fast.
+           wide enough for the app's opening requests, and opened at the
+           start of a Take's job, so the app opens fast and processing does
+           not wait for connections.
 CATCHES    A supabase/httpx upgrade, a config edit or a session rebuilt in
            services/db.py that brings back the one shared HTTP/2 socket,
            shrinks the pool, or pings slower than the pool drops idle
@@ -19,8 +21,12 @@ PROVES     test_every_postgrest_session_is_a_pool_of_http1_connections
              legacy JWT also goes as the Bearer token, a secret key never
            test_the_keep_warm_ping_comes_before_the_pool_drops_an_idle_connection
              a constant comparison (ping interval < keepalive expiry)
-           test_the_keep_warm_ping_warms_one_connection_per_lane
-             one ping per gunicorn thread, sent in parallel
+           test_the_keep_warm_ping_warms_enough_for_one_wide_request
+             one wide request's eight reads beside the other threads, sent
+             in parallel (loading times, 2026-11-05)
+           test_a_takes_job_opens_its_connections_without_waiting
+             the job worker: the connections open together while the job
+             goes on; the job never waits for them
 """
 import pytest
 
@@ -66,15 +72,16 @@ def test_the_keep_warm_ping_comes_before_the_pool_drops_an_idle_connection():
     assert 0 < warm_connections.PING_EVERY_S < db_transport.KEEPALIVE_S
 
 
-def test_the_keep_warm_ping_warms_one_connection_per_lane(monkeypatch):
-    """The app opens with several requests at once; one warm connection
-    serves one of them, so the ping reads once per gunicorn thread, together."""
+def test_the_keep_warm_ping_warms_enough_for_one_wide_request(monkeypatch):
+    """The app opens with several requests at once, and one of them can read
+    eight things at once (the chats list); one warm connection serves one
+    read, so with three threads the ping keeps two plus eight, together."""
     import threading
     from services import warm_connections
     monkeypatch.setenv("GUNICORN_THREADS", "3")
-    # Every ping waits for the other two: pings sent one after another would
+    # Every ping waits for all the others: pings sent one after another would
     # never all arrive, and the barrier would break instead.
-    together = threading.Barrier(3, timeout=5)
+    together = threading.Barrier(10, timeout=5)
     seen: list = []
 
     def ping():
@@ -83,4 +90,26 @@ def test_the_keep_warm_ping_warms_one_connection_per_lane(monkeypatch):
 
     monkeypatch.setattr(warm_connections, "_ping_once", ping)
     warm_connections._ping_every_lane()
-    assert len(seen) == 3 and not together.broken
+    assert len(seen) == 10 and not together.broken
+
+
+def test_a_takes_job_opens_its_connections_without_waiting(monkeypatch):
+    """Each Take's job starts with an empty pool: its connections open
+    together while the job goes on, and the job never waits for them."""
+    import threading
+    import time
+    from services import warm_connections
+    together = threading.Barrier(4 + 1, timeout=5)   # four pings and the job
+    release = threading.Event()
+
+    def ping():
+        together.wait()
+        release.wait(5)   # a slow connection: still open when the job goes on
+
+    monkeypatch.setattr(warm_connections, "_ping_once", ping)
+    started = time.monotonic()
+    with warm_connections.held_warm(4):
+        entered_after = time.monotonic() - started
+        together.wait()   # the job's own work, while all four pings are in flight
+    release.set()
+    assert entered_after < 1.0 and not together.broken
