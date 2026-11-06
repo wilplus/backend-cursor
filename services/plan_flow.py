@@ -1702,19 +1702,26 @@ def _after_active_take(database: Any, user_id: str, plan: dict) -> list[dict]:
         rows.append(_bot(P.COPY["is_this_for"].format(date=P.fmt_day(deadline)),
                          f"same_event:{new_project}", plan_ask="same_event"))
     elif moment and plan.get("step") == "done" and not asking:  # never over ratings already being asked
-        if consent == C.GRANTED:
-            fields.update({"step": "stress", "facts": {**facts, "rating_moment": moment}})
-            rows += _ratings_rows(moment)
-        elif consent == C.DECLINED:  # no yes to them: they are not asked, nor asked again
-            fields["facts"] = {**facts, f"rated_{moment}": True}
-        else:
-            key = _ask_key(plan, moment)
-            fields["facts"] = {**facts, "rating_moment": moment, "awaiting": "consent",
-                               "resume": "stress", "pending_q": None, "ask_key": key}
-            rows += _ask_rows(key)
+        more_fields, more = _rate(plan, facts, moment, consent)
+        fields.update(more_fields)
+        rows += more
     if fields:
         plan = _save(database, user_id, plan, fields)
     return _write(database, user_id, plan["id"], rows)
+
+
+def _rate(plan: dict, facts: dict, moment: str, consent: str) -> tuple[dict, list[tuple]]:
+    """The ratings due after a Take: asked with the yes; with "Not now",
+    not asked nor asked again; with no answer yet, Will asks for the yes
+    first (N211)."""
+    if consent == C.GRANTED:
+        return {"step": "stress", "facts": {**facts, "rating_moment": moment}}, _ratings_rows(moment)
+    if consent == C.DECLINED:
+        return {"facts": {**facts, f"rated_{moment}": True}}, []
+    key = _ask_key(plan, moment)
+    return ({"facts": {**facts, "rating_moment": moment, "awaiting": "consent",
+                       "resume": "stress", "pending_q": None, "ask_key": key}},
+            _ask_rows(key))
 
 
 def _with_project(database: Any, user_id: str, facts: dict) -> tuple[dict, Optional[str]]:
@@ -1747,7 +1754,15 @@ def same_event(database: Any, user_id: str, yes: Any, *, tz: Any = None,
     _need_step(plan, "same_event")
     if yes is True:
         rows = [_me(P.COPY["yes"], f"same_event_yes:{_now().isoformat()}")]
-        plan = _save(database, user_id, plan, {"step": "done"})
+        fields: dict[str, Any] = {"step": "done"}
+        # The ratings the question came in place of follow the Yes (N536).
+        facts = _facts(plan)
+        moment = _ratings_due(plan, facts, _done(plan, _takes(database, user_id)))
+        if moment:
+            more_fields, more = _rate(plan, facts, moment, C.state(database, user_id))
+            fields.update(more_fields)
+            rows += more
+        plan = _save(database, user_id, plan, fields)
         return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
     written = _write(database, user_id, plan["id"], [_me(P.COPY["no"], f"same_event_no:{_now().isoformat()}")])
     _save(database, user_id, plan, {"status": "replaced", "ended_at": _now().isoformat(), "step": "done"})
@@ -1756,8 +1771,8 @@ def same_event(database: Any, user_id: str, yes: Any, *, tz: Any = None,
                                   "time_zone": zone_name, "facts": {"mode": "new", "again": True}})
     if not fresh:
         raise PlanError("V2_ERROR", "Failed to keep the plan", 500)
-    more = _write(database, user_id, fresh["id"], _opening(fresh, first_name))
-    return {"plan": fresh, "messages": written + more}
+    opened = _write(database, user_id, fresh["id"], _opening(fresh, first_name))
+    return {"plan": fresh, "messages": written + opened}
 
 
 def _ratings_due(plan: dict, facts: dict, done: int) -> Optional[str]:

@@ -75,7 +75,8 @@ OUTCOME
       "Two quick taps before your plan." after its first Take ends on
       "You're all set. Here's your plan." and the card; the plan is not
       begun again (N536). A new project's first Take on such a plan asks
-      "Is this for {date}?" (H2).
+      "Is this for {date}?" (H2); after Yes, the ratings it came in place
+      of, then the plan (N536).
 PROVES   O1 -> test_without_the_ring_nothing_happens
          O2 -> test_a_new_speaker_is_asked_once
          O3 -> test_no_date_gives_two_months_then_the_voice_message
@@ -446,20 +447,26 @@ def test_a_new_project_asks_whether_it_is_for_the_same_event(db, monkeypatch):
 
 
 def test_a_new_project_on_a_plan_made_after_earlier_takes_is_asked_about(db, monkeypatch):
-    # A plan made from Takes, "Keep practising" or the first Take has seen no
-    # Take of its own: the speaker's earlier project is the plan's, so a new
-    # project's first Take asks, before the plan's first ratings (H2).
-    plan = _active(db)
-    started = datetime.fromisoformat(plan["started_at"])
-    db.update_plan(USER, plan["id"], {"facts": {**plan["facts"], "rate_after_first": True}})
+    # A plan made from Takes has seen no Take of its own: the speaker's earlier
+    # project is the plan's, so a new project's first Take asks (H2), and Yes
+    # brings the ratings it came in place of, then the plan (N536).
     monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: False)
-    db.takes.rows = [
-        {"created_at": (started - timedelta(days=3)).isoformat(), "arc_id": "arc-1", "take_index": 1},
-        {"created_at": (started + timedelta(days=1)).isoformat(), "arc_id": "arc-2", "take_index": 1}]
+    took = datetime.now(timezone.utc) - timedelta(days=3)
+    db.takes.rows = [{"created_at": took.isoformat(), "arc_id": "arc-1", "take_index": 1}]
+    F.after_take(db, USER)
+    plan = F.answer_deadline(db, USER, (date.today() + timedelta(days=21)).isoformat(), tz="UTC")["plan"]
+    started = datetime.fromisoformat(plan["started_at"])
+    db.takes.rows.append({"created_at": (started + timedelta(minutes=5)).isoformat(),
+                          "arc_id": "arc-2", "take_index": 1})
     F.after_take(db, USER)
     deadline = F.P.fmt_day(date.fromisoformat(plan["deadline"]))
     assert bodies(db)[-1] == f"Is this for {deadline}?"
-    assert "Two quick taps before your plan." not in bodies(db)[-3:]
+    F.same_event(db, USER, True)
+    assert bodies(db)[-3:] == ["Yes", "Two quick taps before your plan.",
+                               "How stressed do you feel about it right now?"]
+    F.answer_rating(db, USER, 6)
+    F.answer_rating(db, USER, 5)
+    assert bodies(db)[-2:] == ["You're all set. Here's your plan.", ""]
 
 
 def test_the_first_ratings_on_a_running_plan_end_on_the_plan(db, monkeypatch):

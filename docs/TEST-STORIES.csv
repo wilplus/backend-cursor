@@ -2462,7 +2462,8 @@ O17 On a plan already running (made from Takes or ""Keep practising""),
 ""Two quick taps before your plan."" after its first Take ends on
 ""You're all set. Here's your plan."" and the card; the plan is not
 begun again (N536). A new project's first Take on such a plan asks
-""Is this for {date}?"" (H2).","O1 -> test_without_the_ring_nothing_happens
+""Is this for {date}?"" (H2); after Yes, the ratings it came in place
+of, then the plan (N536).","O1 -> test_without_the_ring_nothing_happens
 O2 -> test_a_new_speaker_is_asked_once
 O3 -> test_no_date_gives_two_months_then_the_voice_message
 O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
