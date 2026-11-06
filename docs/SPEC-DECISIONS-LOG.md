@@ -13717,3 +13717,26 @@ native screen (N506 item 5, frontend #1251) is unchanged. No new words. No
 migration. The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 T4 and T6.
+
+**N541 · A Take sent to the people the speaker ticked is never lost
+silently (founder, the Claude Code chat, 6 November 2026, asked about two
+places where a failed send went unseen: "(A) After a Take: a failed send
+closes the screen as if it worked; the fix shows the existing words
+"Couldn't share this take. Try again." and keeps the screen open. (B)
+Before a Take: the choice is sent once after upload and thrown away even
+if that send fails; the fix keeps it and retries quietly (seconds later,
+then at the next app open), never making the speaker wait", answered "Fix
+both").** For N470 item 8, N479 item 3, R2:
+1. **From a Take's line** (adding people to a Take already recorded), a
+send that fails keeps the screen open, with the ticks as chosen, and says
+"Couldn't share this take. Try again.", as sharing with communities
+already does. Was: the screen closed as if the Take had gone.
+2. **Chosen before a Take,** the choice is kept on the phone until its send
+succeeds: a failed send is tried again a few seconds later, then at the
+next opening of the app, within the choice's own time limit. It is still
+never waited on (R2): nothing holds the recording, the processing or the
+walk. Was: one try, and the choice was dropped before it.
+No new words ("Couldn't share this take. Try again." is signed). No
+migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+G3, G4.
