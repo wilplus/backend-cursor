@@ -13691,3 +13691,29 @@ words stay editable after a tap (N259).
 No new words ("Close" is signed). No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 B9, B10.
+
+**N540 · The dump screen is the iPhone app's only, and it never opens
+first over a screen (founder, the Claude Code chat, 6 November 2026, on the
+overnight finding that the dump screen opened over a paused recording when
+the speaker came back to the app: "Never over any screen", then "but the
+dump screen should work only for the app users; it is not a web feature",
+then "iPhone app only").** For N506, N507, N517 and N522:
+1. **Only in the iPhone app** (the App Store app). In a browser, the
+website and the website saved to a phone's home screen alike, the dump
+screen never opens: not first, not by the pull from the top bar (N517),
+and Data & consent shows no "Open to the dump screen" there. Was (N506,
+N507): built on the web, for every device. The notebook itself is
+unchanged everywhere: voice notes, "Noted." in Will's chat, the chat's own
+notebook ask (N514).
+2. **Never first over a screen** (amends N522 item 1). In the app it opens
+first only while nothing is open over the chat: never over a recording, the
+processing wait, the Ideal Text, the walk, or any other screen or sheet. It
+does not open when that screen closes either; it waits for the next open of
+the app or the next coming back to it (Never 3). The pull still opens it at
+any time.
+What stops: someone in a browser who turned "Open to the dump screen" on no
+longer gets it there (the switch stays stored on that device, unseen). The
+native screen (N506 item 5, frontend #1251) is unchanged. No new words. No
+migration. The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+T4 and T6.
