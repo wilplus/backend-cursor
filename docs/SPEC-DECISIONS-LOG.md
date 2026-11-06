@@ -13507,3 +13507,25 @@ payment provider, for counsel.
 Not in force until built and merged. No migration in this entry.
 No rules page yet: [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md)
 F, when built.
+
+**N532 · "Continue review" goes from the bar: the bar's middle is "Record
+Take N" as soon as the Take is processed (founder, the Claude Code chat,
+6 November 2026, after a finished walk left "Continue review" in the bar
+with no way to record: "if you simply close the review with a cross "X" it
+should also just allow you to record a new recording and make the continue
+review go away; actually I would like to continue review to go away at
+all!").** For N483 item 2, N309 item 4, N192:
+1. Will's bar no longer offers "Continue review". Its middle is "Record
+your answer" when the plan asks to hear you, else "Record Take N" for the
+newest Take (faded while it is processed), else "Start your first
+recording".
+2. Closing the walk any way, Close under "Lesson done." or ✕, leaves
+"Record Take N" in the bar; an unfinished walk never holds the next Take
+back.
+3. The review is still reached from the Take's Feedback walk bubble, which
+keeps its orange outline while a step waits (B10, J6). Close still writes
+the review's end (N309 item 4).
+No new words (one label leaves the screen). No migration. The rules:
+frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+B10, B14.
