@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Iterable
-from typing import Any
+from typing import Any, Optional
 
 from services.take_feedback_policy_v3 import span_rejection, unservable
 
@@ -399,6 +399,7 @@ def _v3_verbal_candidate_row(
     raw_by_identity: dict[tuple[str, str], dict],
     pieces: dict[str, dict], snippet_block: dict[str, tuple[int, int, str]],
     inventory: _V3ServiceInventory,
+    anchored: Optional[dict[str, tuple[int, int, str]]] = None,
 ) -> bool:
     if not isinstance(row_input, dict):
         return False
@@ -406,7 +407,9 @@ def _v3_verbal_candidate_row(
     raw = raw_by_identity.get((family, candidate_key))
     snippet_id = str(row_input.get("snippet_id") or "")
     source = pieces.get(snippet_id)
-    block_identity = snippet_block.get(snippet_id)
+    # The block the frame anchored the row to, where it did: the moment it
+    # was chosen for (N536). Its snippet's block otherwise.
+    block_identity = (anchored or {}).get(candidate_key) or snippet_block.get(snippet_id)
     if (
         not candidate_key or raw is None or source is None
         or block_identity is None or not source.get("part_id")
@@ -460,11 +463,13 @@ def _v3_verbal_lane(
         str(value) for value in (lane.get("selected_candidate_ids") or [])
         if str(value or "")
     )
+    anchored = _anchored_blocks(lane, snippet_block)
     for position, row_input in enumerate(lane.get("candidates") or [], 1):
         if not _v3_verbal_candidate_row(
             row_input, family=family, lane_selected=lane_selected,
             raw_by_identity=raw_by_identity, pieces=pieces,
             snippet_block=snippet_block, inventory=inventory,
+            anchored=anchored,
         ):
             # SKIPPED, NOT LANE-FATAL (N48.1, Wave 1) -- the confidence
             # lane's 2026-09-19 rule, applied to the verbal lanes. A row
@@ -475,6 +480,21 @@ def _v3_verbal_lane(
             # silenced every eligible note and the fallback behind it.
             closed(f"verbal_candidate_unplaced:{family}:{position}")
     return True
+
+
+def _anchored_blocks(lane: dict, snippet_block: dict[str, tuple[int, int, str]]
+                     ) -> dict[str, tuple[int, int, str]]:
+    """{candidate id: its block} for each row the frame anchored to a block
+    (`anchors`): the moment it was chosen for (founder 2026-11-06, N536). A
+    row served on another block's moment left its own without its Clearer
+    version, and the walk showed "the closest one" in its place."""
+    blocks = {identity[2]: identity for identity in snippet_block.values()}
+    return {
+        str(anchor.get("candidate_id")): blocks[str(anchor.get("block_id"))]
+        for anchor in lane.get("anchors") or []
+        if isinstance(anchor, dict) and anchor.get("candidate_id")
+        and str(anchor.get("block_id")) in blocks
+    }
 
 
 def _v3_inventory_is_complete(inventory: _V3ServiceInventory) -> bool:
