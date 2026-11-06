@@ -588,19 +588,66 @@ def prepare_v3_service_inventory(
 def _name_lost_clearer(blocks: list, inventory: _V3ServiceInventory,
                        closed: Callable[[str], None], take_id: Any) -> None:
     """The walk's fix chosen as a Clearer version whose rewrite row is not
-    among the served rows (founder 2026-11-06, N536): the walk then shows
-    the closest exercise in its place. Named here, a warning in the log, so
-    the next one says where its rewrite was lost. Changes nothing."""
+    among the served rows (N536). The walk no longer shows the closest
+    exercise in its place (founder 2026-11-06, N547): the voice fix the
+    frame kept behind it (`take_feedback_policy_v3.FIX_BACKUP`, the Take's
+    weakest, a moment whose own voice shows a problem the AI clip teaches)
+    is walked instead, with its AI clip; with none, no moment is the fix,
+    and the walk is their best and its helper words. The served rows and
+    the frame's blocks say the same. Named in the log either way."""
     from services.moment_pick import EXERCISE_CLEARER
+    from services.take_feedback_policy_v3 import FIX_BACKUP, SHOWN_MARKS
     served = {str(row.get("block_id")) for row in inventory.visible
               if row.get("feedback_family") == "rewrite_clarity"}
-    for block in blocks:
-        if (isinstance(block, dict) and block.get("carries_exercise")
+    by_id = {str(b.get("block_id")): b for b in blocks if isinstance(b, dict)}
+    for block in list(by_id.values()):
+        if not (block.get("carries_exercise")
                 and block.get("exercise_kind") == EXERCISE_CLEARER
                 and str(block.get("block_id")) not in served):
-            closed(f"fix_clearer_not_served:{block.get('block_id')}")
-            logger.warning("one thing: the fix's Clearer version was not served "
-                           "take=%s block=%s", take_id, block.get("block_id"))
+            continue
+        backup = block.get(FIX_BACKUP) if isinstance(block.get(FIX_BACKUP), dict) else None
+        stand_in = by_id.get(str((backup or {}).get("block_id"))) if backup else None
+        closed(f"fix_clearer_not_served:{block.get('block_id')}")
+        logger.warning("one thing: the fix's Clearer version was not served take=%s "
+                       "block=%s; walked instead=%s", take_id, block.get("block_id"),
+                       stand_in.get("block_id") if stand_in else "none")
+        block.update(_NOT_SHOWN)
+        block.pop(FIX_BACKUP, None)
+        changed = [block]
+        if stand_in is not None and backup is not None:
+            stand_in.update({key: backup.get(key) for key in SHOWN_MARKS})
+            changed.append(stand_in)
+        else:
+            strongest = next((b for b in by_id.values() if b.get("one_fix")), None)
+            if strongest is not None:
+                strongest["one_fix"] = "none"
+                changed.append(strongest)
+        for moved in changed:
+            _present_again(inventory, moved)
+
+
+#: A block no moment of the walk is on (`take_feedback_policy_v3._mark_shown`
+#: with no moment).
+_NOT_SHOWN = {"most_confident": False, "highest_moment": False, "level_key": None,
+              "practice_prompt": False, "carries_exercise": False, "exercise_kind": None,
+              "helper_words_prompt": False, "confident_practice": False,
+              "walk_slot": None, "plan_level": None}
+#: Every key `_block_presentation` may write on a visible row.
+_PRESENTATION_KEYS = ("bookmark_tier", "practice_prompt", "highest_moment", "level_key",
+                      "exercise_kind", "helper_words_prompt", "walk_slot", "plan_level",
+                      "one_fix")
+
+
+def _present_again(inventory: _V3ServiceInventory, block: dict) -> None:
+    """The visible Confident Voice row of ``block`` drawn from its marks as
+    they now stand (N547)."""
+    block_id = str(block.get("block_id") or "")
+    presentation = _block_presentation(block, block_id)
+    for row in inventory.visible:
+        if str(row.get("block_id")) == block_id and row.get("feedback_family") == "confident_voice":
+            for key in _PRESENTATION_KEYS:
+                row.pop(key, None)
+            row.update(presentation)
 
 
 def _selected_confidence(policy: dict) -> dict[str, str]:

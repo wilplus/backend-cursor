@@ -1138,6 +1138,11 @@ def _one_thing(blocks: list[dict], pace: Optional[dict] = None,
     the walk, the Ideal Text's marks and the coach's queue hold the same
     two.
 
+    When the one fix is a Clearer version and the Take has a weakest, the
+    weakest's marks are kept on the fix as ``fix_backup`` (founder
+    2026-11-06, N547): the serving walks it in its place, with its AI clip,
+    when the Clearer version does not reach the walk. Never served.
+
     The choice is written on the strongest block as ``one_fix`` (C-SNIPER):
     "tempo" when the Sniper is the fix, "moment" when a moment is, "none"
     when the walk has no fix. The client shows the Sniper by it, and
@@ -1153,14 +1158,40 @@ def _one_thing(blocks: list[dict], pace: Optional[dict] = None,
                     if b.get("walk_slot") == moment_pick.SLOT_WEAKEST), None)
     sniper = _sniper_first(pace, fixes, value_of or {})
     keep = None if sniper else (level or clearer or weakest)
+    backup = _fix_backup(keep, clearer if keep is not level else None, weakest)
     for block in blocks:
         block.pop("one_fix", None)
+        block.pop(FIX_BACKUP, None)
         if block.get("walk_slot") and not block.get("highest_moment") and block is not keep:
             _mark_shown(block, None, None)
     strongest = next((b for b in blocks
                       if b.get("walk_slot") == moment_pick.SLOT_STRONGEST), None)
     if strongest is not None:
         strongest["one_fix"] = "tempo" if sniper else ("moment" if keep is not None else "none")
+    if backup is not None:
+        keep[FIX_BACKUP] = backup  # type: ignore[index]
+
+
+def _fix_backup(keep: Optional[dict], clearer: Optional[dict],
+                weakest: Optional[dict]) -> Optional[dict]:
+    """The voice fix behind the One thing walk's Clearer version: the
+    weakest's marks, which the serving walks in its place when the Clearer
+    version does not reach the walk (founder 2026-11-06, N547;
+    `take_feedback_policy_v3_service`). None unless ``keep`` is that
+    Clearer version and there is a weakest."""
+    if keep is None or keep is not clearer or weakest is None:
+        return None
+    return {"block_id": weakest["block_id"], **{key: weakest.get(key) for key in SHOWN_MARKS}}
+
+
+#: The marks `_mark_shown` writes on a block: what a voice fix kept as a
+#: backup carries, so the serving can walk it as it was picked (N547).
+SHOWN_MARKS = ("most_confident", "highest_moment", "level_key", "practice_prompt",
+               "carries_exercise", "exercise_kind", "helper_words_prompt",
+               "confident_practice", "walk_slot", "plan_level")
+#: The key on the One thing walk's Clearer fix that names its voice backup
+#: (N547). Never served.
+FIX_BACKUP = "fix_backup"
 
 
 def _sniper_first(pace: Optional[dict], fixes: list[dict], value_of: dict) -> bool:

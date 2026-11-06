@@ -689,6 +689,13 @@ def test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version():
 
     assert [(b["slide_index"], b["exercise_kind"]) for b in frame["blocks"]
             if b["carries_exercise"]] == [(1, "clearer")]
+    # The voice fix kept behind it, for a Clearer version lost on the way:
+    # slide 2's weak voice, with its AI clip (N547).
+    (fix,) = [b for b in frame["blocks"] if b["carries_exercise"]]
+    backup = fix["fix_backup"]
+    (weak,) = [b for b in frame["blocks"] if b["slide_index"] == 2]
+    assert (backup["block_id"], backup["walk_slot"], backup["exercise_kind"]) == (
+        weak["block_id"], "weakest", "voice")
     (chosen,) = frame["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"]
     (row,) = [r for r in rows if r["id"] == chosen]
     assert (row["quote"], row["proposed_text"]) == (
