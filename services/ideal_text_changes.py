@@ -749,10 +749,14 @@ class _ChangesRun:
             # emergency fallback. Add the complete exact-text pool before
             # the Manager ranks it, so the presence of any weaker model
             # rewrite cannot suppress an obvious word-preserving repair.
+            # Each row names the clip its words were said in (N536): the
+            # serving places it on its moment by that clip.
+            _document_map = self._take_document_map()
             self.changes.extend(evidence_backed_rewrite_candidates(
                 self.served_text,
                 take_session_id=self.arm_sid,
                 snippet_id=_rewrite_sid,
+                document_map=_document_map,
             ))
             self.changes = ensure_required_families(
                 self.served_text,
@@ -760,7 +764,7 @@ class _ChangesRun:
                 take_session_id=self.arm_sid,
                 snippet_id=_candidate_sid,
                 snippet_ids_by_family=self.frozen_family_snippets,
-                document_map=self._take_document_map(),
+                document_map=_document_map,
             )
             self.feedback_exposure = exposure_snapshot(self.changes)
         else:

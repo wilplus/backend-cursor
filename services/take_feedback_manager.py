@@ -163,11 +163,17 @@ class TakeDocumentMap:
             for key, value in (snippet_takes or {}).items() if key
         }
         self._verbatim: list[tuple[int, int, int, int]] = []
+        self._snippet_spans: list[tuple[int, int, str]] = []
         for piece in pieces or []:
             row = piece if isinstance(piece, dict) else {}
             start, end = _int_or_none(row.get("start")), _int_or_none(row.get("end"))
             s_start = _int_or_none(row.get("served_start"))
             s_end = _int_or_none(row.get("served_end"))
+            if (s_start is None and self.served_text == self.document_text
+                    and start is not None and end is not None):
+                # The same document served (Take 1): its own offsets are
+                # the served ones.
+                s_start, s_end = start, end
             if (start is None or end is None or s_start is None
                     or s_end is None or self.served_text is None
                     or not 0 <= start < end <= len(self.document_text)
@@ -176,6 +182,9 @@ class TakeDocumentMap:
             if (self.served_text[s_start:s_end]
                     == self.document_text[start:end]):
                 self._verbatim.append((s_start, s_end, start, end))
+                if row.get("snippet_id"):
+                    self._snippet_spans.append(
+                        (s_start, s_end, str(row["snippet_id"])))
 
     @classmethod
     def for_document(cls, take_document: Any, served_text: Any, *,
@@ -197,6 +206,24 @@ class TakeDocumentMap:
     def snippet_take(self, snippet_id: Any) -> Optional[str]:
         """The Take a snippet belongs to, or None when it is not this Take's."""
         return self.snippet_takes.get(str(snippet_id or ""))
+
+    def snippet_at(self, span: Any) -> Optional[str]:
+        """The snippet whose served words hold the start of ``span``, or
+        None when no piece of this Take is proven there.
+
+        A rewrite or praise cut from the whole served text names the clip
+        its words were said in by this (founder 2026-11-06, N536): the
+        serving places a verbal row on its moment by its snippet, so a row
+        named after the Take's first clip was drawn on the first block, and
+        the walk's fix showed "the closest one" in place of its Clearer
+        version."""
+        if not isinstance(span, dict):
+            return None
+        start = _int_or_none(span.get("start"))
+        if start is None:
+            return None
+        return next((sid for s0, s1, sid in self._snippet_spans
+                     if s0 <= start < s1), None)
 
     def to_document(self, start: int, end: int) -> Optional[tuple[int, int]]:
         """The same words in the Take document, or None when unproven."""
@@ -571,11 +598,27 @@ def has_broken_boundary(text: Any) -> bool:
     return False
 
 
+def on_their_own_snippets(rows: list[dict],
+                          document_map: Optional[TakeDocumentMap]) -> list[dict]:
+    """Each row cut from the whole served text, named after the snippet its
+    words were said in (`TakeDocumentMap.snippet_at`, founder 2026-11-06,
+    N536), so it is served on its own moment. A row whose words no piece of
+    this Take holds keeps the snippet it was given."""
+    if document_map is None:
+        return rows
+    for row in rows:
+        own = document_map.snippet_at(row.get("span"))
+        if own:
+            row["snippet_id"] = own
+    return rows
+
+
 def evidence_backed_rewrite_candidates(
     served_text: Any,
     *,
     take_session_id: Any,
     snippet_id: Any,
+    document_map: Optional[TakeDocumentMap] = None,
 ) -> list[dict]:
     """Return every high-signal, word-preserving structural repair.
 
@@ -641,7 +684,7 @@ def evidence_backed_rewrite_candidates(
             },
         })
     rows.extend(_sentence_rewrites(text, sentences, take=take, sid=sid))
-    return rows
+    return on_their_own_snippets(rows, document_map)
 
 
 #: The rule a sentence's rewrite is named after, strongest first: what it
@@ -905,9 +948,9 @@ def ensure_required_families(
     candidates = _sentences(text)
     if not text or not take or not sid or not candidates:
         return rows
-    rows.extend(_missing_lane_fallbacks(
+    rows.extend(on_their_own_snippets(_missing_lane_fallbacks(
         present, candidates, take=take, sid=sid,
-        family_snippets=family_snippets))
+        family_snippets=family_snippets), document_map))
     return rows
 
 

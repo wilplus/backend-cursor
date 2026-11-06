@@ -11,12 +11,16 @@ OUTCOME
       and no rank, evidence, score, version or other number (AC-9).
   O4  A served clearer version names the moment it corrects (its block),
       so the walk draws it on that moment and not as a moment of its own
-      (founder 2026-10-20: "the rewrite doesn't appear at all").
+      (founder 2026-10-20: "the rewrite doesn't appear at all"), even when
+      it was cut from the whole text under the Take's first clip: it names
+      the clip its words were said in (founder 2026-11-06, N536: the walk
+      showed "the closest one" in its place).
 PROVES   O1 -> test_a_row_on_this_takes_words_is_mapped_into_its_transcript
          O2 -> test_a_row_on_an_unspoken_slide_is_excluded
          O3 -> test_a_served_v3_payload_carries_no_internal_evidence_or_numbers
          O3 -> test_a_stray_mlc3_service_block_never_reaches_the_client
          O4 -> test_a_served_rewrite_rides_its_moments_block
+         O4 -> test_a_rewrite_cut_from_the_whole_text_names_its_own_clip
 WHY      N48.1 (Wave 1, E1), founder-approved 2026-10-05: from Take 2 on the
          served Ideal Text and the Take's transcript are two documents.
 """
@@ -24,6 +28,8 @@ from __future__ import annotations
 
 from services.ideal_text_parts import with_served_spans
 from services.take_feedback_manager import (
+    TakeDocumentMap,
+    evidence_backed_rewrite_candidates,
     exposure_snapshot,
     strip_internal_evidence,
 )
@@ -247,7 +253,9 @@ def test_a_served_rewrite_rides_its_moments_block(monkeypatch):
                         lambda *_a, **_k: "fillers")
     monkeypatch.setattr("services.rewrite_gate.rewrite_refusal",
                         lambda *_a, **_k: None)
-    pool = exposure_snapshot([_praise(), _rewrite()])
+    # Named after another block's clip, as a rewrite cut from the whole
+    # served text was (N536): it still rides the moment it corrects.
+    pool = exposure_snapshot([_praise(), _rewrite(snippet_id="s2b")])
     document = _placed_document(parts=True)
     frame = build_service_candidate_frame(
         take_document=document, snippets=_snippets(), suggestions={},
@@ -265,9 +273,28 @@ def test_a_served_rewrite_rides_its_moments_block(monkeypatch):
     rewrite = [row for row in visible
                if row["feedback_family"] == "rewrite_clarity"]
     assert rewrite, "the clearer version is served"
-    # One block id per snippet: the rewrite's is its moment's, and it is set.
-    assert all(rewrite_row.get("block_id") for rewrite_row in rewrite)
-    assert len(by_snippet["s1a"]) == 1
+    # The rewrite's block is its moment's: the block of the clip it corrects.
+    [moment] = [row for row in visible if row["feedback_family"] == "confident_voice"
+                and row.get("snippet_id") in ("s1a", "s1b")]
+    assert [row.get("block_id") for row in rewrite] == [moment["block_id"]]
+
+
+def test_a_rewrite_cut_from_the_whole_text_names_its_own_clip():
+    # Cut under the Take's first clip, as the live path does (N536): the
+    # row names the clip its words were said in.
+    first = "Our main idea comes first."
+    served = first + " We need to. We need to fix it."
+    doc = {"text": served, "take_session_id": TAKE, "pieces": [
+        {"snippet_id": "c1", "take_session_id": TAKE, "start": 0,
+         "end": len(first), "text": first},
+        {"snippet_id": "c2", "take_session_id": TAKE, "start": len(first) + 1,
+         "end": len(served), "text": served[len(first) + 1:]},
+    ]}
+    rows = evidence_backed_rewrite_candidates(
+        served, take_session_id=TAKE, snippet_id="c1",
+        document_map=TakeDocumentMap.for_document(doc, served, take_id=TAKE))
+    assert [(row["quote"], row["snippet_id"]) for row in rows] == [
+        ("We need to. We need to fix it.", "c2")]
 
 
 def test_a_stray_mlc3_service_block_never_reaches_the_client():

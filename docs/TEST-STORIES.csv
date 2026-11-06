@@ -3965,11 +3965,15 @@ O3  NEVER-1: the rows that leave the server carry the feedback's words
 and no rank, evidence, score, version or other number (AC-9).
 O4  A served clearer version names the moment it corrects (its block),
 so the walk draws it on that moment and not as a moment of its own
-(founder 2026-10-20: ""the rewrite doesn't appear at all"").","O1 -> test_a_row_on_this_takes_words_is_mapped_into_its_transcript
+(founder 2026-10-20: ""the rewrite doesn't appear at all""), even when
+it was cut from the whole text under the Take's first clip: it names
+the clip its words were said in (founder 2026-11-06, N536: the walk
+showed ""the closest one"" in its place).","O1 -> test_a_row_on_this_takes_words_is_mapped_into_its_transcript
 O2 -> test_a_row_on_an_unspoken_slide_is_excluded
 O3 -> test_a_served_v3_payload_carries_no_internal_evidence_or_numbers
 O3 -> test_a_stray_mlc3_service_block_never_reaches_the_client
-O4 -> test_a_served_rewrite_rides_its_moments_block","N48.1 (Wave 1, E1), founder-approved 2026-10-05: from Take 2 on the served Ideal Text and the Take's transcript are two documents."
+O4 -> test_a_served_rewrite_rides_its_moments_block
+O4 -> test_a_rewrite_cut_from_the_whole_text_names_its_own_clip","N48.1 (Wave 1, E1), founder-approved 2026-10-05: from Take 2 on the served Ideal Text and the Take's transcript are two documents."
 tests/test_voice_album.py,Story,"As a speaker, I want a moment in my Voice Album only when the machine, I and a coach all agree, and shown without scores, so that the album is trustworthy and number-free.","O1  A moment enters only with all three yeses (machine reads it
 confident, the speaker said yes, a coach said yes); missing any one
 keeps it out.
