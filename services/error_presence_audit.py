@@ -246,7 +246,8 @@ def sample_for_coach(database: Any, *, coach_id: str, now: Optional[datetime] = 
 
 # ── the queue and the answer ──────────────────────────────────────────────
 
-def _clip_playback(database: Any, clip_id: str, clip_kind: str) -> dict:
+def _clip_playback(database: Any, clip_id: str, clip_kind: str,
+                   snippets: dict | None = None) -> dict:
     """``{audio_ref, start_offset_ms, duration_ms}`` for one audit clip —
     audio and its window only (BLIND COACH). A snippet resolves the way
     ``_moment_playback_map`` does (the finalized parent plus its offsets;
@@ -265,7 +266,9 @@ def _clip_playback(database: Any, clip_id: str, clip_kind: str) -> dict:
                                 and not isinstance(duration, bool) and duration >= 0
                                 else None),
             }
-        return snippet_clip_playback(database.get_snippet_by_id(clip_id) or {}, database)
+        snippet = (snippets.get(clip_id) if snippets is not None
+                   else database.get_snippet_by_id(clip_id))
+        return snippet_clip_playback(snippet or {}, database)
     except Exception as e:
         _log.warning("audit clip playback failed clip=%s: %s", clip_id, e, exc_info=True)
         return {"audio_ref": None, "start_offset_ms": None, "duration_ms": None}
@@ -276,13 +279,18 @@ def queue(database: Any, *, coach_id: str) -> tuple[int, dict]:
     nothing else."""
     asks = {str(r.get("error_id")): r for r in (database.list_speaking_errors() or [])
             if isinstance(r, dict) and r.get("error_id")}
+    from services.snippet_audio_url import snippet_rows_by_id
+    pending = [r for r in database.list_error_presence_audit_pending(str(coach_id)) or []
+               if isinstance(r, dict)]
+    snippets = snippet_rows_by_id(database, [
+        r.get("clip_id") for r in pending
+        if str(r.get("clip_kind") or "snippet") != "practice_attempt"])
     items = []
-    for row in database.list_error_presence_audit_pending(str(coach_id)) or []:
-        if not isinstance(row, dict):
-            continue
+    for row in pending:
         library = asks.get(str(row.get("error_id")), {})
         playback = _clip_playback(
-            database, str(row.get("clip_id")), str(row.get("clip_kind") or "snippet"))
+            database, str(row.get("clip_id")), str(row.get("clip_kind") or "snippet"),
+            snippets)
         items.append({
             "audit_id": str(row.get("id")),
             "clip_id": str(row.get("clip_id")),

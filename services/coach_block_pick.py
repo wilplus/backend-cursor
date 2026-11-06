@@ -185,15 +185,19 @@ def sample_for_coach(database: Any, *, coach_id: str, week: str,
 def queue(database: Any, *, coach_id: str) -> tuple[int, dict]:
     """The coach's pending picks, audio only; the Manager's pick is never
     in the payload."""
-    from services.snippet_audio_url import snippet_clip_playback
-    memo: dict = {}
-    rows = [r for r in (database.list_coach_block_picks_pending(str(coach_id)) or [])
-            if isinstance(r, dict) and _admitted(database, r.get("take_session_id"), memo)]
+    from services.snippet_audio_url import snippet_clip_playback, snippet_rows_by_id
+    pending = [r for r in (database.list_coach_block_picks_pending(str(coach_id)) or [])
+               if isinstance(r, dict)]
+    admitted = pair_consent.takes_may_reach_a_coach_sheet(
+        database, [r.get("take_session_id") for r in pending])
+    rows = [r for r in pending if admitted.get(str(r.get("take_session_id") or ""))]
+    snippets = snippet_rows_by_id(
+        database, [c for r in rows for c in (r.get("candidate_snippet_ids") or [])])
     items = []
     for n, row in enumerate(rows, start=1):
         clips = []
         for i, clip_id in enumerate(row.get("candidate_snippet_ids") or []):
-            snippet = database.get_snippet_by_id(str(clip_id)) or {}
+            snippet = snippets.get(str(clip_id)) or {}
             # Audio and its window only (BLIND COACH): the parent ref plays
             # only the clip once the offsets ride along.
             clips.append({"clip_id": str(clip_id), "letter": "ABC"[i] if i < 3 else str(i + 1),

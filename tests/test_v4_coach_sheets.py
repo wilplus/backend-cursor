@@ -72,8 +72,9 @@ class _Db:
         row.update(answer_snippet_id=clip, none_needs_it=True if none else None, answered_at="x")
         return row
 
-    def get_snippet_by_id(self, clip):
-        return {"transcript": f"words of {clip}", "audio_segment_path": None}
+    def get_snippet_playback_rows(self, ids, with_transcript=False):
+        return [{"id": clip, "transcript": f"words of {clip}", "audio_segment_path": None}
+                for clip in ids]
 
 
 def test_the_sheet_payload_is_blind():

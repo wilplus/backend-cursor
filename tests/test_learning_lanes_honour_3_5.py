@@ -156,8 +156,9 @@ class _SheetDb(_Ledger):
         row.update(answered_at="x")
         return row
 
-    def get_snippet_by_id(self, clip):
-        return {"transcript": f"words of {clip}", "audio_segment_path": None}
+    def get_snippet_playback_rows(self, ids, with_transcript=False):
+        return [{"id": clip, "transcript": f"words of {clip}", "audio_segment_path": None}
+                for clip in ids]
 
 
 def test_only_yes_speakers_reach_the_coach_sheets_and_a_withdrawal_empties_them(monkeypatch):
@@ -226,6 +227,9 @@ class _PickDb(_Ledger):
 
     def get_snippet_by_id(self, clip):
         return {"id": clip, "audio_segment_path": None}
+
+    def get_snippet_playback_rows(self, ids, with_transcript=False):
+        return [self.get_snippet_by_id(c) for c in ids]
 
 
 def test_only_yes_speakers_reach_the_block_pick_and_a_withdrawal_empties_it():

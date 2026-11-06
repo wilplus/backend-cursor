@@ -178,6 +178,24 @@ def _offset_ms(value: Any) -> Optional[int]:
     return int(value) if value >= 0 else None
 
 
+def snippet_rows_by_id(database: Any, clip_ids: Any, *,
+                       with_transcript: bool = False) -> dict:
+    """The playback columns of every clip a coach line shows, in ONE read,
+    keyed by id (the blind lines read them one clip at a time: up to 60
+    round trips per queue, 2026-11-06). ``{}`` on failure: no player
+    rather than no line."""
+    ids = sorted({str(c) for c in (clip_ids or []) if c})
+    if not ids:
+        return {}
+    try:
+        rows = database.get_snippet_playback_rows(
+            ids, with_transcript=with_transcript) or []
+    except Exception as exc:  # noqa: BLE001 -- no player rather than no line
+        logger.warning("snippet rows read failed (%d clips): %s", len(ids), exc)
+        return {}
+    return {str(r.get("id")): r for r in rows if isinstance(r, dict)}
+
+
 def snippet_clip_playback(snippet: Any, database: Any = None) -> dict:
     """``{audio_ref, start_offset_ms, duration_ms}`` for one snippet clip.
 
