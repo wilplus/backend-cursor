@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import json
 import logging
-from time import perf_counter
+from time import perf_counter, sleep
 from typing import Any, Mapping, TypeGuard
 
 from services.ideal_text_enrichment import SectionPending
@@ -452,7 +452,8 @@ def _compute_live(database: Any, arc_id: str, actor_id: str,
             str(core.get("latest_take_session_id") or ""),
             review_version=core.get("version"),
             # The V3 dark frame is written after the block, off this
-            # request's wait (`ideal_text_changes._ChangesRun`).
+            # request's wait (`ideal_text_changes._ChangesRun`); a walk
+            # reader that comes first writes it itself (`walk_frame`).
             background_shadow=True)
         _backfill(database, arc_id, actor_id, snapshot_id, block,
                   int((perf_counter() - _started) * 1000))
@@ -1143,3 +1144,126 @@ def _claim(key: str, ttl_seconds: int) -> bool:
     except Exception as error:  # noqa: BLE001 -- the job is idempotent
         logger.warning("bake mark not claimed key=%s: %s", key, error)
         return True
+
+
+# ── the walk's frame ───────────────────────────────────────────────────────
+#
+#  THE WALK READS THE TAKE'S FRAME, SO IT MUST BE THERE (founder "Go, fix
+#  both", 2026-11-06). The V3 dark frame (`ideal_text_changes._v3_shadow`)
+#  is read by the Feedback walk: whether it is the One thing walk
+#  (`tempo_stretch.walked_as_one_thing`), whether the pace game worked
+#  (`take_progress.pace_worked`) and "Last time" (`take_progress.last_fix`).
+#  The bake writes it inside its run, before the marks the walk waits for.
+#  The live read writes it on a thread after its block is served, because
+#  inline it cost the speaker 380-1,860 ms (2026-10-15), and the walk asks
+#  for those three as soon as it knows the Take, while that read is still
+#  running. On a Take whose Ideal Text is computed live they read before the
+#  frame exists: no "Last time", a tempo step where the pace game had
+#  worked, and a topic call for a One thing walk that never says it.
+#
+#  So those readers ask here. A stored frame is returned as it is, one read
+#  as before. A missing one is written now, inline, by the same run the live
+#  read uses, stopped at the frame (`ideal_text_changes.write_take_frame`),
+#  unless someone is writing it already (another reader, or the live read's
+#  thread, which takes the same mark): then the reader waits for that write,
+#  for at most `FRAME_JOIN_SECONDS`. The mark is in Redis because the read
+#  and the write can land in different web processes (2 workers x 4
+#  threads). A bake in flight writes the frame in its own run, from the
+#  worker's reads, so a reader leaves it to the bake and answers as before.
+#  Writing the frame calls no model; the willfidence read it queues the
+#  first time goes through the processing-authorization path in its own job,
+#  as it always has.
+
+#: How long the "frame being written" mark lives: a writer that dies frees
+#: its readers on its own.
+FRAME_WRITING_TTL_SECONDS = 30
+#: How long a reader waits on a frame someone else is writing, and how often
+#: it looks: past the slowest frame write measured on the live read.
+FRAME_JOIN_SECONDS = 5.0
+FRAME_JOIN_STEP_SECONDS = 0.2
+
+
+def _frame_writing_key(take_id: str) -> str:
+    return f"take-frame-writing:{take_id}"
+
+
+def claim_frame_writing(take_id: Any) -> bool:
+    """Take the mark for writing this Take's frame: True when this caller
+    holds it now (or there is no broker to ask). Never raises."""
+    take = str(take_id or "")
+    return bool(take) and _claim(_frame_writing_key(take),
+                                 FRAME_WRITING_TTL_SECONDS)
+
+
+def release_frame_writing(take_id: Any) -> None:
+    """Give the mark back once the write is done. Never raises."""
+    take = str(take_id or "")
+    if take:
+        _unmark(_frame_writing_key(take))
+
+
+def walk_frame(database: Any, take_id: Any) -> dict | None:
+    """The Take's V3 dark frame, for the walk's readers: the stored frame;
+    else the one written now (`_write_walk_frame`) or, when someone else is
+    writing it, that one once it lands; None when there is none to be had.
+    Raises only where ``get_v4_dark_frame`` does (the readers catch)."""
+    take = str(take_id or "")
+    frame = database.get_v4_dark_frame(take)
+    if isinstance(frame, dict):
+        return frame
+    if not take:
+        return None
+    if claim_frame_writing(take):
+        try:
+            written = _write_walk_frame(database, take)
+        finally:
+            release_frame_writing(take)
+        frame = database.get_v4_dark_frame(take) if written else None
+    else:
+        frame = _join_frame(database, take)
+    return frame if isinstance(frame, dict) else None
+
+
+def _write_walk_frame(database: Any, take: str) -> bool:
+    """Write the frame the live read writes for this Take, now. True when
+    the run went; False when the frame is not this reader's to write: the
+    Take is not the document's latest (the frame is only written over the
+    head), its owner gets no frame (`dark_enabled`), or a bake for the
+    document is in flight. Never raises."""
+    try:
+        from services.take_feedback_policy_v3 import dark_enabled
+        session = database.v2_get_session_by_id(take) or {}
+        if not isinstance(session, Mapping) \
+                or not dark_enabled(session.get("owner_principal_id")):
+            return False
+        arc, actor = str(session.get("arc_id") or ""), document_actor_of(session)
+        head = database.get_ideal_text_document_snapshot(arc, actor) \
+            if arc and actor else None
+        served = _served_head(head)
+        if served is None or served[1] != take \
+                or bake_in_flight(arc, actor, _snapshot_id_of(head)):
+            return False
+        from routes.v2.explore_ideal_text import _changes_deps
+        from services.ideal_text_changes import write_take_frame
+        write_take_frame(arc, served[0], actor, take, served[2],
+                         deps=_changes_deps())
+        return True
+    except Exception as error:  # noqa: BLE001 -- the walk reads as before
+        logger.warning("take frame not written for the walk take=%s: %s",
+                       take, error, exc_info=True)
+        return False
+
+
+def _join_frame(database: Any, take: str) -> Any:
+    """The frame someone else is writing, read once their mark is gone or
+    after `FRAME_JOIN_SECONDS`, whichever comes first."""
+    conn = _broker()
+    key = _frame_writing_key(take)
+    deadline = perf_counter() + FRAME_JOIN_SECONDS
+    try:
+        while conn is not None and conn.exists(key) \
+                and perf_counter() < deadline:
+            sleep(FRAME_JOIN_STEP_SECONDS)
+    except Exception as error:  # noqa: BLE001 -- read what is there now
+        logger.warning("take frame mark unread take=%s: %s", take, error)
+    return database.get_v4_dark_frame(take)

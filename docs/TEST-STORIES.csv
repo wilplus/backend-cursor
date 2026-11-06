@@ -1450,14 +1450,19 @@ leaves the server with it.
 O6  The block equals the frozen block, each row read once, and the live
 read is served before the dark frame is written.
 O7  On a plan, the walk I see knows this week's level, and which helper
-words I had when I recorded (N246).","O1 -> test_the_span_check_serving_none_is_a_named_fallback
+words I had when I recorded (N246).
+O8  My walk reads this Take's frame even when the Ideal Text was computed
+live and its frame is not written yet: ""Last time"" plays the fix that
+rose, and the tempo step knows the One thing walk, with the frame
+written once.","O1 -> test_the_span_check_serving_none_is_a_named_fallback
 O2 -> test_a_failure_on_the_way_to_v3_serves_no_v2_rows
 O3 -> test_a_served_confident_voice_row_carries_its_recording
 O4 -> test_a_yes_on_the_legacy_route_marks_the_row_approved_and_keeps_it
 O5 -> test_every_served_v3_row_carries_its_learning_handles
 O6 -> test_the_block_is_the_same_block_and_no_row_is_read_twice
 test_the_live_read_serves_the_block_before_the_dark_frame_is_written
-O7 -> test_on_a_plan_the_walk_i_see_knows_my_level","services.ideal_text_changes (audit Q-C1). O3: founder 2026-09-20 ""there is no playback on the overlay"". O4 and O5 drive stages of _ChangesRun directly; the rest go through build_changes_block."
+O7 -> test_on_a_plan_the_walk_i_see_knows_my_level
+O8 -> test_the_walk_reads_this_takes_frame_before_the_live_write_lands","services.ideal_text_changes (audit Q-C1). O3: founder 2026-09-20 ""there is no playback on the overlay"". O4 and O5 drive stages of _ChangesRun directly; the rest go through build_changes_block. O8: founder 2026-11-06 ""Go, fix both"", through the walk's own readers."
 tests/test_ideal_text_cold_open.py,Story,"As a speaker, I want opening my Ideal Text never to show it as missing when the read failed, and never to serve an out-of-date snapshot, so that the loop never breaks quietly.","O1  A failed cold-open read answers 503 IDEAL_TEXT_READ_FAILED, retryable,
 never the ""pending"" 404 that would show an existing Ideal Text as
 missing.

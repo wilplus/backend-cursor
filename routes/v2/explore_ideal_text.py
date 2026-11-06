@@ -1034,21 +1034,31 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
     the request's log; without one the block reports its own fallbacks
     under a `degraded` key of its own.
     """
-    from services.ideal_text_changes import ChangesDeps, build_changes_block
+    from services.ideal_text_changes import build_changes_block
     return build_changes_block(
         arc_id, served_text, user_id, take_session_id, review_version,
-        deps=ChangesDeps(
-            database=db,
-            first_client_repository=first_client_repository,
-            applied_map=_moment_applied_map,
-            playback_map=_moment_playback_map,
-            previous_spoken_session=_previous_spoken_session,
-            locked_parts=_locked_parts,
-            with_evidence_coordinates=with_evidence_coordinates,
-            record_arms=_record_arms,
-        ),
+        deps=_changes_deps(),
         degradation=degradation,
         background_shadow=background_shadow,
+    )
+
+
+def _changes_deps():
+    """The block's dependencies bound to this surface: the database service
+    and the helpers it shares (the moment maps, the previous-take lookup,
+    the locked parts, the evidence coordinates, the experiment arms). One
+    binding for the block and for the frame a walk reader writes
+    (`ideal_text_feedback_bake.walk_frame`), so the two cannot drift."""
+    from services.ideal_text_changes import ChangesDeps
+    return ChangesDeps(
+        database=db,
+        first_client_repository=first_client_repository,
+        applied_map=_moment_applied_map,
+        playback_map=_moment_playback_map,
+        previous_spoken_session=_previous_spoken_session,
+        locked_parts=_locked_parts,
+        with_evidence_coordinates=with_evidence_coordinates,
+        record_arms=_record_arms,
     )
 
 

@@ -32,6 +32,12 @@ that slide:
 "not_measured" when there is no next Take, the slide is not in it, or its
 clips cannot be read. Read on demand; nothing is stored.
 
+THIS TAKE'S FRAME IS ALWAYS THERE FOR THE WALK (founder 2026-11-06). Last
+time and the tempo step read the frame of the Take being walked through
+``ideal_text_feedback_bake.walk_frame``: when the Ideal Text was computed
+live and its frame is not written yet, the reader writes it, or waits for
+the write under way, so the walk never reads a Take as frameless.
+
 LAST TIME (founder 2026-10-31, N309 item 1). The One thing walk opens with
 the last Take's fix played back when it rose: "Last time: {the tip}. You
 did." with this Take's clip on that slide (``last_fix``). A fix rose when
@@ -51,6 +57,8 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Optional
+
+from services.ideal_text_feedback_bake import walk_frame
 
 logger = logging.getLogger(__name__)
 
@@ -315,7 +323,7 @@ def pace_worked(database: Any, sessions: Any, take_id: Any) -> bool:
     if not fixes:
         return False
     try:
-        frame = database.get_v4_dark_frame(str(take_id))
+        frame = walk_frame(database, take_id)
         snippets = database.get_snippets_by_session(str(take_id)) or []
         now = _stretch(frame, snippets)
         return now is not None and (now["slide_index"], "tempo") in worked(fixes, frame, snippets)
@@ -337,7 +345,7 @@ def last_fix(database: Any, take_id: Any, previous_take_id: Optional[Any]) -> Op
     if not fixes:
         return None
     try:
-        frame = database.get_v4_dark_frame(str(take_id))
+        frame = walk_frame(database, take_id)
         snippets = database.get_snippets_by_session(str(take_id)) or []
         fix = next((f for f in fixes if f["kind"] == "clearer"), fixes[0])
         if outcome(fix, frame, snippets) != GONE:

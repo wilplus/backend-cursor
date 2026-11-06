@@ -227,10 +227,13 @@ _CACHE_MAX = 256
 
 def walked_as_one_thing(database: Any, take: str) -> bool:
     """Whether the Take's walk is the One thing walk (N289, N309): its
-    stored frame's moments carry walk slots. False with no frame, or on any
-    failure: the topic is then written, as for a Take walked before."""
+    stored frame's moments carry walk slots. The frame is written first when
+    the Ideal Text's live read has not written it yet (`walk_frame`). False
+    with no frame, or on any failure: the topic is then written, as for a
+    Take walked before."""
+    from services.ideal_text_feedback_bake import walk_frame
     try:
-        frame = database.get_v4_dark_frame(str(take))
+        frame = walk_frame(database, str(take))
     except Exception as error:  # noqa: BLE001 -- the topic as before
         logger.warning("tempo: frame unread take=%s: %s", take, type(error).__name__)
         return False
