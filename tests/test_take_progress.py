@@ -22,23 +22,29 @@ OUTCOME
       the walk offers no tempo step on that slide again (N359). A slow
       stretch off a pace or pause week was never the Sniper, so it is no
       fix the walk gave (N323 item 6).
+  O5  The next walk knows where in the talk the last one praised and
+      fixed, its beginning, middle or ending, so its own praise and fix
+      move through the talk (N546).
 PROVES   O1 -> test_progress_is_read_against_my_first_takes
          O2 -> test_each_fix_is_marked_came_back_or_gone_on_the_next_take
          O3 -> test_last_time_plays_the_fix_that_rose_on_this_take
          O4 -> test_the_pace_fix_worked_when_that_slide_stays_inside_the_green
+         O5 -> test_the_next_walk_knows_where_the_last_one_praised_and_fixed
 WHY      Founder 2026-10-31 (N291: "yes"; "ok go with the proposal"; N290:
          "the next time it chooses a moment it should take into account
          what the user answered"; N309 item 1: "Last time: {the tip}. You
          did."; N347 item 3: "Every fix gets its Last time, the pace game
          too"; N350 item 3: one rule for "the pace fix worked"; N359: "once
          a fix has worked on a slide, the walk stops picking the same issue
-         on that slide, and picks it again only if it comes back").
+         on that slide, and picks it again only if it comes back");
+         2026-11-06 (N546: "if I had already the ending praised I should
+         have the beginning corrected").
 """
 from unittest.mock import patch
 
 from services.take_progress import (CAME_BACK, GONE, NOT_MEASURED, anchored_willfidence,
                                     fixes_of, frozen_reference, last_fix, outcome,
-                                    pace_worked)
+                                    pace_worked, walk_parts)
 
 _WORDS = "we made our plan clear and we will deliver it on time for everyone"
 
@@ -198,3 +204,15 @@ def test_the_pace_fix_worked_when_that_slide_stays_inside_the_green():
                lambda ref, expires_in=None, **_: f"https://signed.example/{ref}"):
         assert last_fix(Db([calm_now, inside], said_before=(calm, slow_before)), "t2", "t1") is None
     assert pace_worked(Db([calm_now, slow], said_before=(calm, slow_before)), talk, "t2") is False
+
+
+def test_the_next_walk_knows_where_the_last_one_praised_and_fixed():
+    # Six paragraphs: the ending praised, the beginning's AI clip the fix,
+    # and the pace game on slide 1, in the middle.
+    blocks = [{"slide_index": 0, "carries_exercise": True, "exercise_kind": "voice"},
+              {"slide_index": 0}, {"slide_index": 1}, {"slide_index": 1},
+              {"slide_index": 2}, {"slide_index": 2, "highest_moment": True}]
+    fixes = [{"slide_index": 0, "kind": "voice"}, {"slide_index": 1, "kind": "tempo"}]
+    assert walk_parts({"blocks": blocks}, fixes) == {"praise": 2, "fix": {0, 1}}
+    # Nothing given: nothing known, and the walk picks as it always did.
+    assert walk_parts({"blocks": []}, []) == {}

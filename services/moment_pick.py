@@ -73,13 +73,19 @@ slot of that tool passes over the clips on that slide (``worked``: the
 weakest for the AI clip, the between for the Clearer version) and fills
 from everything else as it always does. Nothing worked, nothing changes.
 
-Untouched slides first (founder 2026-11-06, N543): a slide that had helper
-words when the Take was recorded was worked on (``touched``). Every slot
-picks from the slides with none first, the strongest and the next bests by
-their rank, the between and the weakest from the untouched clips when any
-can fill the slot; a worked slide is used only when nothing else can, so a
-Take never shows fewer moments. Was: only a clip whose own words held the
-helper words gave way.
+A worked slide gives way, unless its moment stands out, and the praise and
+the fix spread over the talk (founder 2026-11-06, N546). A slide that had
+helper words when the Take was recorded was worked on (``touched``): its
+clips count ``TOUCHED_GIVE`` less in every slot. The Take is read in three
+parts by where each paragraph stands (``part``: its beginning, middle and
+ending); the fix counts ``PART_GIVE`` less in the strongest's part, the
+strongest in the part the last walk praised (``praised_last``) and the fix
+in the part it fixed (``fixed_last``). A give is a lower count, never a
+skip: a clip that clearly stands out, by more than the give, still wins,
+and a Take never shows fewer moments. What was trained stays skipped
+(``held``, ``worked``). Was (N543, 2026-11-06): a worked slide filled a
+slot only when no untouched slide could, however its moment read; and
+before it only a clip whose own words held the helper words gave way.
 
 A clip with no sound read is not dropped (founder 2026-10-17): its S is
 neutral and its words order it. It can be the strongest, never the weakest.
@@ -117,6 +123,15 @@ RELEVANCE_LIFT = 0.25
 VERBAL_LIFT = 0.5
 #: The two best, which the V3 policy gives a block each (N128, N246 item 1).
 PAIR = 2
+#: How much less a clip on a worked slide counts, in every slot (N546
+#: item 2): a clip there still wins when it stands out by more. A start
+#: value, tuned on real Takes; never shown.
+TOUCHED_GIVE = 0.2
+#: How much less the fix counts in their best's part of the talk, and each
+#: slot in the part the last walk gave it (N546 item 3). Never shown.
+PART_GIVE = 0.15
+#: The talk's parts (N546 item 3): its beginning, middle and ending.
+PARTS = 3
 
 EXERCISE_CLEARER = "clearer"
 EXERCISE_VOICE = "voice"
@@ -180,7 +195,10 @@ def pick(reads: list[dict], level: Optional[dict] = None) -> dict:
     ``word_count``, ``candidate_id``, ``read`` (from :func:`read`, or
     None), ``held`` (its words hold the slide's helper words; N246),
     ``touched`` (its slide had helper words when the Take was recorded;
-    N543) and ``worked`` (the tools whose fix worked on its slide last time; N359).
+    N543), ``part`` (where its paragraph stands in the Take, ``part_of``),
+    ``praised_last`` / ``fixed_last`` (the last walk praised or fixed that
+    part; N546) and ``worked`` (the tools whose fix worked on its slide last
+    time; N359).
 
     ``level``, on a plan (N289 item 8): ``{"candidate_id", "slot", "kind",
     "plan_level"}``, the clip where this week's level shows most and the
@@ -207,6 +225,7 @@ def pick(reads: list[dict], level: Optional[dict] = None) -> dict:
     used = {strongest["block_id"]}
     forced = _level_row(readable, level, strongest)
     shown = [_entry(strongest, SLOT_STRONGEST, praise=True, highest=True)]
+    praised_part = strongest.get("part")
     # The precise fix first: on a Take of two blocks, words that need help
     # get their clearer version before the AI clip gets the weakest.
     for slot, find, kind in ((SLOT_BETWEEN, _between, EXERCISE_CLEARER),
@@ -216,7 +235,8 @@ def pick(reads: list[dict], level: Optional[dict] = None) -> dict:
             marks = {"kind": forced[1]["kind"], "plan_level": forced[1]["plan_level"]}
         else:
             found = find([r for r in readable if r["block_id"] not in used
-                          and not (forced and r["block_id"] == forced[0]["block_id"])])
+                          and not (forced and r["block_id"] == forced[0]["block_id"])],
+                         praised_part)
             marks = {"kind": kind}
         if found is not None:
             used.add(found["block_id"])
@@ -243,7 +263,7 @@ def _entry(row: dict, slot: str, *, praise: bool = False, highest: bool = False,
     }
 
 
-def _weakest(rows: list[dict]) -> Optional[dict]:
+def _weakest(rows: list[dict], praised_part: Any = None) -> Optional[dict]:
     """The clip whose own voice shows the strongest problem the AI clip can
     teach (``voice``: pace, pause, stress or fillers against the speaker's
     own usual, at the clip's line, ``Config.AI_VOICE_MIN_SEVERITY``; founder
@@ -260,29 +280,51 @@ def _weakest(rows: list[dict]) -> Optional[dict]:
              and row["read"].get("sound", True) and not row.get("held")
              and not _fixed(row, EXERCISE_VOICE)
              and float(row.get("voice") or 0.0) >= floor]
-    return min(_untouched_first(heard), key=lambda row: (-float(row.get("voice") or 0.0) * (1 + RELEVANCE_LIFT * _relevance(row)),
+    return min(heard, key=lambda row: (-float(row.get("voice") or 0.0) * (1 + RELEVANCE_LIFT * _relevance(row))
+                                       * fix_give(row, praised_part),
                                        row["read"]["value"] * _damp(row), row["read"]["s"]),
                default=None)
 
 
-def _between(rows: list[dict]) -> Optional[dict]:
+def _between(rows: list[dict], praised_part: Any = None) -> Optional[dict]:
     """The clip whose words need help the most: the lowest W, then the
     lowest willfidence; never one that holds its slide's helper words, nor
     one on a slide where the Clearer version worked last time (N359). A
     moment the verbal read weighs reads lower (N326, ``_heard``)."""
     worded = [row for row in rows if _worded(row) and row["read"].get("words_help")
               and not row.get("held") and not _fixed(row, EXERCISE_CLEARER)]
-    return min(_untouched_first(worded), key=lambda row: (row["read"]["w"] * _damp(row) * _heard(row),
+    # How much the words need help, counted lower where the fix gives way
+    # (N546): the most help first.
+    return min(worded, key=lambda row: (-(1 - row["read"]["w"] * _damp(row) * _heard(row))
+                                        * fix_give(row, praised_part),
                                         row["read"]["value"]),
                default=None)
 
 
-def _untouched_first(rows: list[dict]) -> list[dict]:
-    """The clips on slides with no helper words when any is there, else
-    all of them (N543): a worked slide fills a slot only when nothing
-    untouched can."""
-    untouched = [row for row in rows if not row.get("touched")]
-    return untouched or rows
+def part_of(at: int, count: int) -> Optional[int]:
+    """The part of the talk (N546 item 3; 0 its beginning, ``PARTS`` - 1 its
+    ending) of the ``at``-th of ``count`` paragraphs in speech order; None
+    when there is nothing to place."""
+    if not isinstance(at, int) or not isinstance(count, int) or count <= 0 or not 0 <= at < count:
+        return None
+    return at * PARTS // count
+
+
+def praise_give(row: dict) -> float:
+    """How much a clip counts for their best and the next bests (N546): a
+    worked slide's a little less, and the part the last walk praised."""
+    give = 1 - TOUCHED_GIVE if row.get("touched") else 1.0
+    return give * (1 - PART_GIVE) if row.get("praised_last") else give
+
+
+def fix_give(row: dict, praised_part: Any = None) -> float:
+    """How much a clip counts for a fix (N546): a worked slide's a little
+    less, and in their best's part of the talk, and in the part the last
+    walk fixed."""
+    give = 1 - TOUCHED_GIVE if row.get("touched") else 1.0
+    if praised_part is not None and row.get("part") == praised_part:
+        give *= 1 - PART_GIVE
+    return give * (1 - PART_GIVE) if row.get("fixed_last") else give
 
 
 def _fixed(row: dict, kind: str) -> bool:
@@ -312,11 +354,13 @@ def best_two(reads: list[dict]) -> list[dict]:
 def _rank(row: dict) -> tuple:
     """The strongest's rank: clips with enough words first, whatever their
     voice (a three-word fragment is shown only when a Take has nothing
-    longer), then those on a slide with no helper words (N543), then those
-    that do not hold the slide's helper words (N246 item 2), then the willfidence, lifted by relevance (N293), then the
-    voice (N118)."""
-    return (not _worded(row), bool(row.get("touched")), bool(row.get("held")),
-            -row["read"]["value"] * (1 + RELEVANCE_LIFT * _relevance(row)), -row["read"]["s"])
+    longer), then those that do not hold the slide's helper words (N246
+    item 2), then the willfidence, lifted by relevance (N293), counted a
+    little less on a worked slide or in the part the last walk praised
+    (``praise_give``, N546), then the voice (N118)."""
+    return (not _worded(row), bool(row.get("held")),
+            -row["read"]["value"] * (1 + RELEVANCE_LIFT * _relevance(row)) * praise_give(row),
+            -row["read"]["s"])
 
 
 def _relevance(row: dict) -> float:

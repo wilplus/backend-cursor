@@ -911,8 +911,9 @@ def test_a_sentence_with_my_helper_words_gives_way_to_the_next():
     (top,) = [b for b in _clips_frame(take, held_words={1: ["q0x3 q0x4"]})["blocks"]
               if b["highest_moment"]]
     assert top["selected_candidate_id"] == _clip("q0")
-    # Slide 0 worked on, even with words q0 does not say: an untouched slide
-    # comes first (founder 2026-11-06, N543; was: no change).
+    # Slide 0 worked on, even with words q0 does not say: it counts a little
+    # less, and q1, close behind, is their best (founder 2026-11-06, N546;
+    # was N543, untouched first; before it, no change).
     (top,) = [b for b in _clips_frame(take, held_words={0: ["q0x10 · q0x3"]})["blocks"]
               if b["highest_moment"]]
     assert top["selected_candidate_id"] == _clip("q1")
