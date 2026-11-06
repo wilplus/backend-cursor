@@ -13545,3 +13545,22 @@ summary opened again) has none.
 No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1.
+
+**N534 · A question is the last bubble, right above its answers, everywhere
+in the app (founder, the Claude Code chat, 6 November 2026, on a screenshot
+of the chat after a Take: "Got it, thanks", "That's your 15 minutes for
+today.", "Some of my questions are personal…", "Good job. See you Monday.",
+the plan's bar, then "Not now" and "Yes, ask me": "the order is wrong if
+you are asking about smth it should be right before the buttons to answer
+it; And that should be a general rule for the whole app").** For N211,
+N319 item 7, N347 item 2:
+1. When Will asks something with answers to tap, nothing comes between the
+question and its buttons: the question is the last bubble.
+2. After a Take on a plan: "That's your 15 minutes for today.", the
+goodbye ("Good job. See you {day}."), the plan's bar, and only then the
+plan's question (its own yes, the ratings with their line before them, a
+new project's question), with its answers under it.
+No new words. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+B16, D4; [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+G13.
