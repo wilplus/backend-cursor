@@ -13665,3 +13665,29 @@ and the card already.
 No new words. No migration. The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 D1, H2.
+
+**N539 · Only the first opening of a Take's Feedback walk, right after the
+processing, goes step by step; every opening from the chat after it is a
+scroll, ending on Close (founder, the Claude Code chat, 6 November 2026, on
+a screenshot of a reopened walk ending on the helper words with no button:
+"there is no way to close it with a button at the bottom", and "only first
+feedback walk after the processing is the one that is step by step; the
+next ones that are openable from the conversational chat should be
+scrollable (make it a rule if it doesnt clash with anything else)").** For
+N259, N89, N532:
+1. **The first opening** is the walk that opens by itself when the Take's
+feedback is ready (N319 item 10): step by step, with its buttons, as
+before.
+2. **Every opening after it from the chat** (the Feedback walk bubble, a
+step's bubble) opens the whole walk as given, read only, as N259's scroll:
+no Next, no Continue, whatever still waits. Was: a Take not yet finished
+opened live, with Next (B10). N532 already lets an unfinished review hold
+nothing back. A changed coach word not yet seen still goes step by step
+from the word, so its Continue marks it seen (N80); the Ideal Text page's
+own doors (a paragraph, helper words) are unchanged.
+3. **A scroll ends on Close at the bottom**, besides the bar's ✕; both end
+the review as Close under "Lesson done." does (N309 item 4). The helper
+words stay editable after a tap (N259).
+No new words ("Close" is signed). No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+B9, B10.
