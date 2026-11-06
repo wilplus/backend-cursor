@@ -30,9 +30,14 @@ Rows of the one Lounge thread (``lounge_messages``, kind "text"), each with
   * the person's tap or words, role "user": {"step": "answer", "to": the
     question's client id}.
 
-No provider call and no recording: Will reads typed words by rules
-(``join_questions.ready`` and ``change`` here), so nothing passes the
-processing-authorization path.
+Under "What should change?" (N535) Will reads the person's words with the model
+(``understood``), under the caller's processing authorization (the route's
+scope, or one built the way the chat's is), so any wording works: the model
+returns the whole set as it should now be, checked by
+``join_questions.normalize``, and a new question about the work is still
+left out (N487 item 2). Not authorized, no provider, or nothing it could use:
+the rules (``change`` here) as before. Everything else Will reads by rules
+(``join_questions.ready``), with no provider call and no recording.
 """
 from __future__ import annotations
 
@@ -281,8 +286,107 @@ def _on_more(draft: dict, _picked: str, said: str) -> list[tuple]:
     return _peek(draft)
 
 
-def _on_change(draft: dict, _picked: str, said: str) -> list[tuple]:
-    draft["notes"] = [DONE if change(said, draft) else UNCLEAR]
+# ── The change, read by the model (N487 item 3, N535) ─────────────────────────
+
+_SURFACE = "join_setup_change"
+_SYSTEM = """You edit the short set of questions a person's new contacts are asked when they join.
+The person typed what should change. Apply exactly what they asked, nothing else.
+
+You get JSON: {"plan": "week" | "month" | "quarter" | null, "lines": [{"q": text, "answers": [..], "multi": bool}], "languages": [..], "said": their words}.
+- "plan" is how far ahead they plan; it adds two fixed lines ("Let's build our knowledge base ..." and "Are you in a hurry?"). Set it to null only when they ask to drop the plan, the hurry question or the deadline.
+- Each line is a question ending with "?" and 2 to 6 short answers (a word or two each) that someone taps, or a sentence without "?" and no answers.
+- "multi" is true when more than one answer may be tapped (languages).
+- Keep every line's wording and answers as they are unless the person asks to change that line. Write new answers and new questions in the person's own words, tidied (capitalised, a "?" at the end). Write in the language of the existing questions.
+- Answers they name replace or extend the answers as they say: "make the choices polish, english and french" sets those three; "add Polish" adds one.
+- "I also speak X" or similar adds X to the languages question.
+
+Reply with JSON only: {"understood": true, "plan": ..., "lines": [...]} with the whole set as it should now be, or {"understood": false} when you cannot tell what they want changed."""
+
+
+def _model_reply(said: str, draft: dict, user_id: Optional[str]) -> Optional[dict]:
+    import json
+    from services.llm import chat_complete
+    from services.llm_config import SPEC_JOIN_CHANGE
+    now = {"plan": draft.get("plan"), "languages": draft.get("languages") or [], "said": said,
+           "lines": [{"q": line.get("q"), "answers": line.get("answers") or [],
+                      "multi": bool(line.get("multi"))} for line in draft.get("lines") or []]}
+    result = chat_complete(spec=SPEC_JOIN_CHANGE, system=_SYSTEM, user=json.dumps(now, ensure_ascii=False),
+                           surface=_SURFACE, user_id=user_id)
+    parsed = getattr(result, "parsed", None) if result else None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _authorized(database: Any, user_id: str, said: str, draft: dict) -> Optional[dict]:
+    """The model's reply under the caller's processing authority: the
+    request's own scope when there is one, else one built the way the chat's
+    is. Not authorized: None, no call."""
+    from services.authorized_provider import (
+        AuthorizedProviderAdapter, ProviderCoordinates, protected_provider_scope, scoped_adapter)
+    from services.processing_authorization import (
+        ProcessingAuthorizationError, ProcessingAuthorizationService)
+    authorization = ProcessingAuthorizationService(database)
+    if scoped_adapter() is not None or not authorization.enforced:
+        return _model_reply(said, draft, user_id)
+    from services.rings import principal_for_user
+    owner = principal_for_user(user_id, database=database)
+    if not owner:
+        return None
+    try:
+        principal = authorization.resolve_acquisition_principal(owner, user_id=user_id)
+        authorization.require_current(principal, operation="ai_conversation")
+    except ProcessingAuthorizationError as error:
+        logger.info("join_setup: not authorized user=%s: %s", user_id, error.code)
+        return None
+    adapter = AuthorizedProviderAdapter(
+        database, ProviderCoordinates(principal, None, None), authorization=authorization)
+    with protected_provider_scope(adapter, idempotency_prefix=f"join-setup:{uuid.uuid4()}"):
+        return _model_reply(said, draft, user_id)
+
+
+def _reply_lines(reply: dict, draft: dict) -> Optional[dict]:
+    """The model's set, checked: what may be kept, and no new question about
+    the work (N487 item 2). None when it cannot be used."""
+    plan = reply.get("plan") if reply.get("plan") in J.SPANS else None
+    raw = reply.get("lines")
+    if not isinstance(raw, list):
+        return None
+    had = {str(line.get("q") or "") for line in draft.get("lines") or []}
+    lines = [line for line in raw if isinstance(line, dict)
+             and (str(line.get("q") or "") in had or J.practical(str(line.get("q") or "")))]
+    try:
+        value = J.normalize({"plan": plan, "lines": lines})
+    except JoinQuestionsError:
+        return None
+    return {"plan": plan, "lines": _own_lines(value)}
+
+
+def understood(database: Any, user_id: str, said: str, draft: dict) -> Optional[bool]:
+    """The change read by the model: True when the set changed, False when
+    the model could not tell, None when it was not asked or its answer could
+    not be used (then the rules read it)."""
+    try:
+        reply = _authorized(database, user_id, said, draft)
+    except Exception:  # noqa: BLE001 -- the rules read it instead
+        logger.warning("join_setup: the model could not read the change", exc_info=True)
+        return None
+    if not reply:
+        return None
+    if reply.get("understood") is False:
+        return False
+    out = _reply_lines(reply, draft)
+    if out is None:
+        return None
+    if out == _reply_lines({"plan": draft.get("plan"), "lines": draft.get("lines") or []}, draft):
+        return False
+    draft.update(out)
+    return True
+
+
+def _on_change(database: Any, user_id: str, draft: dict, said: str) -> list[tuple]:
+    done = understood(database, user_id, said, draft)
+    if done is None:
+        done = change(said, draft)
+    draft["notes"] = [DONE if done else UNCLEAR]
     return _peek(draft, NEW_VERSION)
 
 
@@ -295,7 +399,7 @@ def _on_peek(database: Any, user_id: str, draft: dict, picked: str) -> list[tupl
     return [(str(uuid.uuid4()), "bot", SET, {"step": "set"}), _say(PRACTISE)]
 
 
-STEPS = {"plan": _on_plan, "languages": _on_languages, "more": _on_more, "change": _on_change}
+STEPS = {"plan": _on_plan, "languages": _on_languages, "more": _on_more}
 
 
 # ── In and out ──────────────────────────────────────────────────────────
@@ -356,7 +460,11 @@ def answer(database: Any, user_id: str, payload: Any) -> dict:
     if (picked and picked not in chips) or not (picked or said) or (step == "peek" and not picked):
         raise JoinQuestionsError("PICK_ONE", "Tap one of the answers.")
     draft = {**_fresh([]), **(setup.get("draft") or {})}
-    rows = (_on_peek(database, user_id, draft, picked) if step == "peek"
-            else STEPS[step](draft, picked, "" if picked else said))
+    if step == "peek":
+        rows = _on_peek(database, user_id, draft, picked)
+    elif step == "change":
+        rows = _on_change(database, user_id, draft, said)
+    else:
+        rows = STEPS[step](draft, picked, "" if picked else said)
     mine_ = (_answer_id(to), "user", picked or said, {"step": "answer", "to": to})
     return {"messages": _write(database, user_id, [mine_, *rows])}

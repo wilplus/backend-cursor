@@ -1639,14 +1639,17 @@ summary shows what someone new will see; ""That's right"" keeps it, and
 the next time my link opens at once (N503).
 O8  Setting no questions is an answer too; later ""Your questions for
 people who join ›"" opens the summary again, ""Change it"" makes the
-change from my words or says it could not, and ""That's right"" saves.","O1 -> JoinQuestionsTest::test_my_questions_are_kept_and_checked
+change from my words or says it could not, and ""That's right"" saves.
+O9  ""Change it"" understands my words however I put them (the model, under
+my processing authorization), and never adds a question about the work.","O1 -> JoinQuestionsTest::test_my_questions_are_kept_and_checked
 O2 -> JoinQuestionsTest::test_whoever_joins_finds_my_first_lines_and_i_do_not
 O3 -> JoinQuestionsTest::test_they_answer_by_tapping_and_i_read_one_card
 O4 -> JoinQuestionsTest::test_a_tap_that_is_not_an_answer_is_refused
 O5 -> JoinQuestionsTest::test_joining_someone_with_no_questions_posts_nothing
 O6 -> ReadyTest::test_a_typed_question_is_kept_only_when_practical_with_answers
 O7 -> WillAsksTheSetupTest::test_will_asks_me_the_setup_the_first_time_i_share_my_link
-O8 -> WillAsksTheSetupTest::test_no_questions_is_an_answer_and_the_summary_opens_again","The founder, 4 November 2026, on the prototype ""Asked When They Join"": ""in the user set up, we need to ask you the questions on what questions should be asked to the people that will ask you for the knowledge""; ""they can only click through the answers they can not type""."
+O8 -> WillAsksTheSetupTest::test_no_questions_is_an_answer_and_the_summary_opens_again
+O9 -> WillAsksTheSetupTest::test_will_reads_my_change_in_any_words","The founder, 4 November 2026, on the prototype ""Asked When They Join"": ""in the user set up, we need to ask you the questions on what questions should be asked to the people that will ask you for the knowledge""; ""they can only click through the answers they can not type""."
 tests/test_journey_messages.py,Story,"As the founder, I want the messages after a speaker's first three Takes to say exactly the words I signed off, with their two actions, so that no unapproved words reach a speaker.","O1  The Take 1 message's text and its two actions (prepare Take 2, keep
 practising) equal the locked copy.
 O2  The Take 2 message's text and its two actions (prepare Take 3, keep
