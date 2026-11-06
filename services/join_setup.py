@@ -413,11 +413,17 @@ def _open_question(database: Any, user_id: str) -> Optional[dict]:
     return None
 
 
-def begin(database: Any, user_id: str) -> dict:
-    """The first time "Add someone to chat with" opens (N503 item 1): Will's
-    first lines, or his open question again at the bottom of his chat."""
+def is_set(database: Any, user_id: str) -> bool:
+    """Whether the "+" opens the link (N534): the questions are kept, none
+    included, or cannot be kept yet. False: the note asks for the setup."""
     can, value = J.kept(database, user_id)
-    if not can or value is not None:
+    return not can or value is not None
+
+
+def begin(database: Any, user_id: str) -> dict:
+    """"Set them" on the "+"'s note (N503 item 1, N534): Will's first lines,
+    or his open question again at the bottom of his chat."""
+    if is_set(database, user_id):
         return {"started": False}
     newest = (database.get_lounge_messages_page(str(user_id), limit=1) or [None])[0]
     if _setup_of(newest).get("step") in WAITS:
