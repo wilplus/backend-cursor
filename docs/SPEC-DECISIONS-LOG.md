@@ -13638,3 +13638,30 @@ No new words. No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 B16, D4; [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 G13.
+**N538 · On a plan already running, "Two quick taps before your plan."
+ends on the plan (founder, the Claude Code chat, 6 November 2026, on a
+phone screenshot of a new project's first Take: "Two quick taps before your
+plan.", the two ratings "Answered", then only "Record Take 2": "I got no
+plan … the plan didnt get updated with the new project appearing"; asked
+(a) the plan's line and card after the taps, (b) no intro line, (c) as it
+is: "go with A").** For D1, H2, I2, N178:
+1. **A plan made from Takes (A2) or "Keep practising" (I2)** gets its first
+two ratings after its first Take, under "Two quick taps before your plan."
+After the second tap, Will says "You're all set. Here's your plan." and
+the plan card follows, as after a new plan's questions (E1). The plan is
+not begun again: its start, its practices done and its deadline stay. Was:
+nothing after the second tap.
+2. **A new project's first Take asks "Is this for {date}?" (H2) on such a
+plan too,** and on a plan read from the first Take (N401): the projects of
+the speaker's earlier Takes are the plan's. Was: the plan knew no project
+until a Take of its own, so a new project's first Take was never asked
+about and the ratings came in its place (a bug against H2).
+3. **After Yes to "Is this for {date}?",** the ratings it came in place of
+follow (with the plan's own yes first, if not given yet, N211), then the
+plan as in 1 (founder, the same chat: "OK" to "ask them right after a Yes,
+then show the plan card"). Was: Yes kept the plan and the ratings were
+never asked. No goes to the new plan's questions, which end on the ratings
+and the card already.
+No new words. No migration. The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+D1, H2.

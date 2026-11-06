@@ -451,12 +451,18 @@ def _visit(database: Any, user_id: str, plan: dict, first_name: Optional[str]) -
                              _hello(database, user_id, plan, done, today, first_name)))
 
 
-def _latest_take(database: Any, user_id: str) -> dict:
+def _spoken(database: Any, user_id: str) -> list[dict]:
+    """The speaker's spoken Takes, oldest first (a read is a paired variant,
+    not a Take of its own); [] when they can't be read."""
     try:
         rows = database.takes.list_user_arc_sessions(str(user_id)) or []
-    except Exception:  # noqa: BLE001 -- the bubble keeps its words without the button
-        return {}
-    spoken = [r for r in rows if r.get("recording_kind") != "read" and not r.get("paired_session_id")]
+    except Exception:  # noqa: BLE001 -- no Takes read is no Take to act on
+        return []
+    return [r for r in rows if r.get("recording_kind") != "read" and not r.get("paired_session_id")]
+
+
+def _latest_take(database: Any, user_id: str) -> dict:
+    spoken = _spoken(database, user_id)
     return spoken[-1] if spoken else {}
 
 
@@ -961,7 +967,12 @@ def answer_rating(database: Any, user_id: str, value: Any) -> dict:
         plan, rows = _questions_done(database, user_id, plan, {}, _diagnose)
     else:
         plan = _save(database, user_id, plan, {"step": "done", "facts": {**facts, f"rated_{moment}": True}})
-        rows = []
+        # "Two quick taps before your plan." on a plan already running (one
+        # made from Takes or "Keep practising"): the plan, as promised, with
+        # the plan's own line and card; the plan itself is not begun again
+        # (N538).
+        rows = [_bot(P.COPY["all_set"], f"all_set:rated_{moment}"),
+                _bot("", f"card:rated_{moment}", plan_card=True)] if moment == "first" else []
     return {"plan": plan, "messages": _write(database, user_id, plan["id"], answered + rows)}
 
 
@@ -1691,27 +1702,43 @@ def _after_active_take(database: Any, user_id: str, plan: dict) -> list[dict]:
         rows.append(_bot(P.COPY["is_this_for"].format(date=P.fmt_day(deadline)),
                          f"same_event:{new_project}", plan_ask="same_event"))
     elif moment and plan.get("step") == "done" and not asking:  # never over ratings already being asked
-        if consent == C.GRANTED:
-            fields.update({"step": "stress", "facts": {**facts, "rating_moment": moment}})
-            rows += _ratings_rows(moment)
-        elif consent == C.DECLINED:  # no yes to them: they are not asked, nor asked again
-            fields["facts"] = {**facts, f"rated_{moment}": True}
-        else:
-            key = _ask_key(plan, moment)
-            fields["facts"] = {**facts, "rating_moment": moment, "awaiting": "consent",
-                               "resume": "stress", "pending_q": None, "ask_key": key}
-            rows += _ask_rows(key)
+        more_fields, more = _rate(plan, facts, moment, consent)
+        fields.update(more_fields)
+        rows += more
     if fields:
         plan = _save(database, user_id, plan, fields)
     return _write(database, user_id, plan["id"], rows)
 
 
+def _rate(plan: dict, facts: dict, moment: str, consent: str) -> tuple[dict, list[tuple]]:
+    """The ratings due after a Take: asked with the yes; with "Not now",
+    not asked nor asked again; with no answer yet, Will asks for the yes
+    first (N211)."""
+    if consent == C.GRANTED:
+        return {"step": "stress", "facts": {**facts, "rating_moment": moment}}, _ratings_rows(moment)
+    if consent == C.DECLINED:
+        return {"facts": {**facts, f"rated_{moment}": True}}, []
+    key = _ask_key(plan, moment)
+    return ({"facts": {**facts, "rating_moment": moment, "awaiting": "consent",
+                       "resume": "stress", "pending_q": None, "ask_key": key}},
+            _ask_rows(key))
+
+
 def _with_project(database: Any, user_id: str, facts: dict) -> tuple[dict, Optional[str]]:
     """The plan's projects, with this Take's: a new project's first Take,
-    after the plan already had one, is the arc to ask about (H2)."""
-    take = _latest_take(database, user_id)
+    after the plan already had one, is the arc to ask about (H2). A plan
+    that has seen no Take of its own yet (one made from Takes, A2; "Keep
+    practising", I2; or read from the first Take, N401) knows the projects
+    of the speaker's earlier Takes: without them, a new project's first
+    Take on such a plan was taken as the plan's own and never asked about."""
+    spoken = _spoken(database, user_id)
+    take = spoken[-1] if spoken else {}
     arc = str(take.get("arc_id") or "")
     arcs = [str(a) for a in facts.get("arcs") or []]
+    if not arcs:
+        arcs = list(dict.fromkeys(str(r["arc_id"]) for r in spoken[:-1] if r.get("arc_id")))
+        if arcs and (not arc or arc in arcs):
+            return {**facts, "arcs": arcs}, None
     if not arc or arc in arcs:
         return facts, None
     asked = bool(arcs) and take.get("take_index") == 1
@@ -1727,7 +1754,15 @@ def same_event(database: Any, user_id: str, yes: Any, *, tz: Any = None,
     _need_step(plan, "same_event")
     if yes is True:
         rows = [_me(P.COPY["yes"], f"same_event_yes:{_now().isoformat()}")]
-        plan = _save(database, user_id, plan, {"step": "done"})
+        fields: dict[str, Any] = {"step": "done"}
+        # The ratings the question came in place of follow the Yes (N538).
+        facts = _facts(plan)
+        moment = _ratings_due(plan, facts, _done(plan, _takes(database, user_id)))
+        if moment:
+            more_fields, more = _rate(plan, facts, moment, C.state(database, user_id))
+            fields.update(more_fields)
+            rows += more
+        plan = _save(database, user_id, plan, fields)
         return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
     written = _write(database, user_id, plan["id"], [_me(P.COPY["no"], f"same_event_no:{_now().isoformat()}")])
     _save(database, user_id, plan, {"status": "replaced", "ended_at": _now().isoformat(), "step": "done"})
@@ -1736,8 +1771,8 @@ def same_event(database: Any, user_id: str, yes: Any, *, tz: Any = None,
                                   "time_zone": zone_name, "facts": {"mode": "new", "again": True}})
     if not fresh:
         raise PlanError("V2_ERROR", "Failed to keep the plan", 500)
-    more = _write(database, user_id, fresh["id"], _opening(fresh, first_name))
-    return {"plan": fresh, "messages": written + more}
+    opened = _write(database, user_id, fresh["id"], _opening(fresh, first_name))
+    return {"plan": fresh, "messages": written + opened}
 
 
 def _ratings_due(plan: dict, facts: dict, done: int) -> Optional[str]:
