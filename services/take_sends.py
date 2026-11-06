@@ -43,6 +43,7 @@ from typing import Any, Optional
 from config import Config
 from services import chats
 from services.chats import MEMBERS, MESSAGES, RECORDINGS, SESSIONS, ChatsError, _rows, _table
+from services.rewrite_declines import instant
 
 logger = logging.getLogger(__name__)
 
@@ -231,15 +232,27 @@ def last(database: Any, user_id: Any) -> dict:
     return {"enabled": True, "choice": None}
 
 
+def _written_before(line: dict, recorded_at: Any) -> bool:
+    """The line was stored before the Take's row was: both times are the
+    database's own clock (``lounge_messages.created_at`` and
+    ``v2_sessions.created_at``, the row made at the upload), never the
+    phone's. False when either is unreadable."""
+    stored, recorded = instant(line.get("created_at")), instant(recorded_at)
+    return stored is not None and recorded is not None and stored <= recorded
+
+
 def _record_line(database: Any, user_id: str, take: str, everyone: bool,
-                 sent: list[dict]) -> None:
+                 sent: list[dict], recorded_at: Any) -> None:
     """The choice kept on the Take's line: the line naming this Take, else
-    the newest line when it names no Take (the one written before this
-    recording). Only ever adds people. Best-effort: the Take is sent
+    the newest line when it names no Take and was written before this
+    recording (``recorded_at``, the Take's ``created_at``), never one
+    written for a later Take: a late send (N541 item 2) can come after the
+    next Take's line. Only ever adds people. Best-effort: the Take is sent
     either way, and with no line to keep it on, nothing is written."""
     lines = _lines(database, user_id)
     line = next((r for r in lines if (r.get("metadata") or {}).get("take_session_id") == take), None)
-    if line is None and lines and not (lines[0].get("metadata") or {}).get("take_session_id"):
+    if line is None and lines and not (lines[0].get("metadata") or {}).get("take_session_id") \
+            and _written_before(lines[0], recorded_at):
         line = lines[0]
     if line is None or not line.get("client_id"):
         return
@@ -263,11 +276,11 @@ def _record_line(database: Any, user_id: str, take: str, everyone: bool,
 
 def _the_take(database: Any, user_id: str, take: Any) -> dict:
     """The caller's own Take, uploaded, and not an answer: {session, index,
-    project_title, duration_ms}; else 404 (an answer: 400)."""
+    project_title, duration_ms, created_at}; else 404 (an answer: 400)."""
     session = chats._uuid(take)
     if not session:
         raise chats._not_found()
-    rows = _rows(_table(database, SESSIONS).select("id,user_id,take_index,project_id")
+    rows = _rows(_table(database, SESSIONS).select("id,user_id,take_index,project_id,created_at")
                  .eq("id", session).limit(1))
     if not rows or str(rows[0].get("user_id")) != user_id:
         raise chats._not_found()
@@ -291,7 +304,8 @@ def _the_take(database: Any, user_id: str, take: Any) -> dict:
         ms = None
     index = rows[0].get("take_index")
     return {"session": session, "index": index if isinstance(index, int) else None,
-            "project_title": project_title, "duration_ms": ms}
+            "project_title": project_title, "duration_ms": ms,
+            "created_at": rows[0].get("created_at")}
 
 
 def _choice(body: Any) -> tuple[bool, list[str]]:
@@ -376,7 +390,7 @@ def send(database: Any, user_id: Any, take: Any, body: Any, token_payload: Any =
         sent.append({"user_id": person["user_id"], "chat_id": str(me["thread_id"]),
                      "message_id": _post_one(database, me, the_take), "name": person["name"]})
     if sent:
-        _record_line(database, user, the_take["session"], everyone, sent)
+        _record_line(database, user, the_take["session"], everyone, sent, the_take["created_at"])
     return {"enabled": True, "sent": [{k: s[k] for k in ("user_id", "chat_id", "message_id")}
                                       for s in sent]}
 

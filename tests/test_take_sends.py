@@ -19,7 +19,9 @@ OUTCOME
   O4  Sending is idempotent: sending again posts nothing twice and pushes
       nothing twice; adding people later only adds; nothing is unsent. The
       line under my recording keeps who it went to, and my last choice is
-      read back. Only my own Take, and never an answer.
+      read back. Only my own Take, and never an answer. A send that goes
+      late, after my next Take's line is written, never adds its people to
+      that newer line (N541 item 2).
   O5  Someone not in the chat cannot open a Take sent in it, not even
       through a chat of their own.
   O6  The person it is sent to sees "{name} sent you Take {n}", plays the
@@ -31,6 +33,7 @@ PROVES   O1 -> TakeSendsTest::test_while_sending_is_off_nothing_new_runs
          O3 -> TakeSendsTest::test_with_no_chat_with_a_person_the_founder_is_listed
          O3 -> TakeSendsTest::test_with_no_env_var_the_founder_is_the_admin_email_account
          O4 -> TakeSendsTest::test_sending_again_only_adds_people_and_is_kept_on_the_line
+         O4 -> TakeSendsTest::test_a_late_send_never_changes_a_newer_takes_line
          O5 -> TakeSendsTest::test_someone_not_in_the_chat_cannot_open_the_take
          O6 -> TakeSendsTest::test_the_receiver_hears_the_take_and_reads_its_words_only
 WHY      N470 and N479 (founder, the Claude Code chat, 4 November 2026): a
@@ -130,10 +133,13 @@ class TakeSendsTest(unittest.TestCase):
         self.store.table("projects").insert({"id": PROJECT, "display_name": "Board pitch"}).execute()
         return take
 
-    def _line(self, **meta):
-        """The line under the recording, as the app writes it before a Take."""
-        self.lines.append({"user_id": ME, "client_id": str(uuid.uuid4()), "body": "Maya",
-                           "metadata": {"step": "share", "author": "speaker", **meta}})
+    def _line(self, body="Maya", **meta):
+        """The line under the recording, as the app writes it before a Take,
+        stamped by the database's clock as it is stored (the Take's row is
+        stamped by the same clock at its upload)."""
+        self.lines.append(self.store.defaults("lounge_messages", {
+            "user_id": ME, "client_id": str(uuid.uuid4()), "body": body,
+            "metadata": {"step": "share", "author": "speaker", **meta}}))
 
     def _send(self, take, body):
         return self._post(f"/v2/user/takes/{take}/send", body)
@@ -241,10 +247,10 @@ class TakeSendsTest(unittest.TestCase):
     def test_sending_again_only_adds_people_and_is_kept_on_the_line(self):
         maya = self._chat_with(MAYA, "Maya Lindqvist")
         ariel = self._chat_with(SOMEONE, "Ariel")
-        take = self._take()
         self.assertEqual(self._get("/v2/user/takes/send/last").get_json(),
                          {"enabled": True, "choice": None})
         self._line()
+        take = self._take()
 
         first = self._send(take, {"all": False, "user_ids": [MAYA]})
         self.assertEqual(first.status_code, 200)
@@ -272,6 +278,37 @@ class TakeSendsTest(unittest.TestCase):
         self._post(f"/v2/chats/{maya}/answer", {"take": answered})
         self.assertEqual(self._send(answered, {"all": True}).get_json()["code"], "NOT_ALLOWED")
         self.assertEqual(len(self._messages()), 2)
+
+    def test_a_late_send_never_changes_a_newer_takes_line(self):
+        self._chat_with(MAYA, "Maya Lindqvist")
+        self._chat_with(SOMEONE, "Ariel")
+
+        def people(*pairs):
+            return {"kind": "people", "all": False,
+                    "user_ids": [i for i, _ in pairs], "names": [n for _, n in pairs]}
+
+        # Take 3 goes to Maya: its line, then its upload; its send fails.
+        self._line(body="Maya Lindqvist", share=people((MAYA, "Maya Lindqvist")))
+        take3 = self._take(index=3)
+        # Take 4 goes to Ariel: its line, then its upload.
+        self._line(body="Ariel", share=people((SOMEONE, "Ariel")))
+        take4 = self._take(index=4)
+
+        # At the next open Take 3's send goes through: Maya gets it, and
+        # Take 4's line still names Ariel alone, as does the last choice.
+        res = self._send(take3, {"all": False, "user_ids": [MAYA]})
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual([m["meta"]["take_session_id"] for m in self._messages()], [take3])
+        self.assertEqual([(line["body"], line["metadata"]["share"]) for line in self.lines], [
+            ("Maya Lindqvist", people((MAYA, "Maya Lindqvist"))),
+            ("Ariel", people((SOMEONE, "Ariel")))])
+        self.assertEqual(self._get("/v2/user/takes/send/last").get_json(),
+                         {"enabled": True, "choice": {"all": False, "user_ids": [SOMEONE]}})
+
+        # Take 4's own send, after its line, is kept on it.
+        self._send(take4, {"all": False, "user_ids": [SOMEONE, MAYA]})
+        self.assertEqual(self.lines[-1]["metadata"]["share"],
+                         people((SOMEONE, "Ariel"), (MAYA, "Maya Lindqvist")))
 
     # ── O5 ───────────────────────────────────────────────────────────────
 
