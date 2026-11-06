@@ -15,12 +15,16 @@ OUTCOME
       it was cut from the whole text under the Take's first clip: it names
       the clip its words were said in (founder 2026-11-06, N536: the walk
       showed "the closest one" in its place).
+  O5  When the walk's Clearer version is lost on the way all the same, the
+      voice fix kept behind it is walked in its place, with its AI clip; with
+      none, no moment is the fix (founder 2026-11-06, N547).
 PROVES   O1 -> test_a_row_on_this_takes_words_is_mapped_into_its_transcript
          O2 -> test_a_row_on_an_unspoken_slide_is_excluded
          O3 -> test_a_served_v3_payload_carries_no_internal_evidence_or_numbers
          O3 -> test_a_stray_mlc3_service_block_never_reaches_the_client
          O4 -> test_a_served_rewrite_rides_its_moments_block
          O4 -> test_a_rewrite_cut_from_the_whole_text_names_its_own_clip
+         O5 -> test_a_lost_clearer_version_with_no_voice_fix_leaves_no_fix
 WHY      N48.1 (Wave 1, E1), founder-approved 2026-10-05: from Take 2 on the
          served Ideal Text and the Take's transcript are two documents.
 """
@@ -305,3 +309,29 @@ def test_a_stray_mlc3_service_block_never_reaches_the_client():
     [row] = strip_internal_evidence([{**_praise(), "mlc3_service": stray}])
     assert "mlc3_service" not in row
     assert row["quote"]
+
+
+def test_a_lost_clearer_version_with_no_voice_fix_leaves_no_fix(monkeypatch):
+    monkeypatch.setattr("services.rewrite_gate.words_need_help",
+                        lambda *_a, **_k: "fillers")
+    monkeypatch.setattr("services.rewrite_gate.rewrite_refusal",
+                        lambda *_a, **_k: None)
+    document = _placed_document(parts=True)
+    frame = build_service_candidate_frame(
+        take_document=document, snippets=_snippets(), suggestions={},
+        feedback_candidates=exposure_snapshot([_praise(), _rewrite(snippet_id="s2b")]),
+        take_index=2, expected_recording_id=RECORDING, served_text=SERVED)
+    assert [b.get("exercise_kind") for b in frame["blocks"] if b.get("carries_exercise")] == ["clearer"]
+    # The Clearer version is lost on the way: the serving has no rewrite.
+    # With no voice fix kept behind it, no moment is the fix: their best
+    # stays, and the walk is their best and its helper words (N547; was the
+    # closest exercise on a moment whose voice may show nothing to teach).
+    inventory = prepare_v3_service_inventory(
+        frame=frame, take_document=document, served_text=SERVED,
+        feedback_candidates=exposure_snapshot([_praise()]))
+    assert inventory is not None
+    rows = [row for row in strip_internal_evidence(inventory["visible_rows"])
+            if row["feedback_family"] == "confident_voice"]
+    assert [row.get("walk_slot") for row in rows if row.get("walk_slot")] == ["strongest"]
+    assert not any(row.get("practice_prompt") or row.get("exercise_kind") for row in rows)
+    assert [row.get("one_fix") for row in rows if row.get("one_fix")] == ["none"]
