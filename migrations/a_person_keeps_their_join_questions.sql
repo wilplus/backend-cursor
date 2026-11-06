@@ -24,6 +24,24 @@
 -- table's grants (a_person_has_a_profile.sql) cover the new column. No
 -- environment variable is needed.
 --
+-- A CHECK keeps the value an object or NULL (the shape the code writes). It
+-- is added only if it is not there yet, so the file can run twice; the
+-- column is new and NULL in every row, so checking it reads nothing to fail.
+--
+-- lock_timeout: ADD COLUMN takes a brief ACCESS EXCLUSIVE lock; on a live
+-- table it gives up after 5 seconds rather than queue behind a long
+-- transaction and hold up every profile read. A timeout fails the file
+-- whole (one transaction) and the next release runs it again.
+--
+-- NOTIFY pgrst: the backend reaches this table through PostgREST, whose
+-- schema cache would otherwise miss the column until its next reload, and
+-- saving would keep failing. Delivered at COMMIT.
+--
+-- Reviewed outside (Grok, 6 November 2026): approved with changes, the
+-- lock_timeout, the CHECK and the schema reload, made here; the CHECK is
+-- guarded so a second run does not fail on it, and added in one step, as
+-- NOT VALID then VALIDATE in the same transaction gains nothing.
+--
 -- Idempotent and additive: ADD COLUMN IF NOT EXISTS, nullable, no default,
 -- so no row is rewritten; nothing is dropped and no row is written or
 -- removed. One transaction.
@@ -33,6 +51,24 @@
 
 BEGIN;
 
+SET LOCAL lock_timeout = '5s';
+
 ALTER TABLE public.people_profiles ADD COLUMN IF NOT EXISTS join_questions JSONB;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'public.people_profiles'::regclass
+          AND conname = 'people_profiles_join_questions_is_object'
+    ) THEN
+        ALTER TABLE public.people_profiles
+            ADD CONSTRAINT people_profiles_join_questions_is_object
+            CHECK (join_questions IS NULL OR jsonb_typeof(join_questions) = 'object');
+    END IF;
+END
+$$;
+
+NOTIFY pgrst, 'reload schema';
 
 COMMIT;
