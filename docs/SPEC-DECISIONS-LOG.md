@@ -13567,3 +13567,17 @@ Words to sign (Never 4): "Before you share your link, set the questions for
 people who join." and "Set them". No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1.
+**N535 · "Change it" in the join setup understands any wording (founder,
+the Claude Code chat, 6 November 2026, after "make the choices polish and
+english and french" got "I couldn't tell what to change": "please make it
+understand it wider, so that we avoid people being stuck on that level of
+set up").** For N487 item 3, N503:
+1. Under "What should change?" Will reads the person's words with the
+model, under their processing authorization, and returns the whole set as
+it should now be, checked as any kept set is. A new question about the
+work is still left out (N487 item 2).
+2. Not authorized, no provider, or a reply that can't be used: the rules
+read the words, as before.
+No new words. No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C, "Setting them, in Will's chat".
