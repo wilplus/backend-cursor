@@ -13725,7 +13725,7 @@ the Take had gone out: "Yes, fix it").** For the promise that every Take a
 speaker sends reaches the people they chose (CLAUDE.md, N470 item 8):
 1. **When adding people to a Take fails,** the share screen stays open and
 says "Couldn't share this take. Try again." (signed, already the community
-path's words on the same screen), so Send can be tapped again. Was: it
+path's words on the same screen), so Continue can be tapped again. Was: it
 closed as if the Take had gone out, and the line in the chat stayed as it
 was.
 2. A send that works, and the community path, are unchanged.
