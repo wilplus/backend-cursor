@@ -30,7 +30,7 @@ Rows of the one Lounge thread (``lounge_messages``, kind "text"), each with
   * the person's tap or words, role "user": {"step": "answer", "to": the
     question's client id}.
 
-Under "What should change?" (N533) Will reads the person's words with the model
+Under "What should change?" (N535) Will reads the person's words with the model
 (``understood``), under the caller's processing authorization (the route's
 scope, or one built the way the chat's is), so any wording works: the model
 returns the whole set as it should now be, checked by
@@ -286,7 +286,7 @@ def _on_more(draft: dict, _picked: str, said: str) -> list[tuple]:
     return _peek(draft)
 
 
-# ── The change, read by the model (N487 item 3, N533) ─────────────────────────
+# ── The change, read by the model (N487 item 3, N535) ─────────────────────────
 
 _SURFACE = "join_setup_change"
 _SYSTEM = """You edit the short set of questions a person's new contacts are asked when they join.

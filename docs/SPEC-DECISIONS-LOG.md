@@ -13567,6 +13567,7 @@ Words to sign (Never 4): "Before you share your link, set the questions for
 people who join." and "Set them". No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1.
+
 **N535 · "Change it" in the join setup understands any wording (founder,
 the Claude Code chat, 6 November 2026, after "make the choices polish and
 english and french" got "I couldn't tell what to change": "please make it
