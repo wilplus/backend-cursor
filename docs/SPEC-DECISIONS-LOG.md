@@ -13874,3 +13874,26 @@ land in the same part of the talk, Take after Take.
 No new words on screen. No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 H1 and the One thing walk's pick.
+
+**N547 · A lost Clearer version gives its place to the voice fix, never the
+closest exercise (founder, the Claude Code chat, 6 November 2026, on a walk
+showing "We don't have an exercise for exactly this yet, so here's the
+closest one.": "the AI audio still chooses the wrong out of the two moments
+for the correction and it ends up with an AI audio fallback"; "and actually
+the weak one wasn't that weak"; then, asked, "Switch to voice fix").**
+Amends N536 item 1. When the One thing walk's fix is a Clearer version and
+its rewrite does not reach the walk:
+1. The Take's weakest, a moment whose own voice shows a problem the AI clip
+teaches (N425), is the fix in its place, walked with its AI clip. The frame
+keeps it behind the Clearer version (`fix_backup`), and the serving swaps it
+in (`take_feedback_policy_v3_service._name_lost_clearer`).
+2. With no such moment, no moment is the fix: the walk is their best and its
+helper words (N374).
+3. The lost moment is no fix at all. It was chosen for its words, so its
+voice often shows nothing for the AI clip to teach; the clip could not be
+made, and the walk fell back to their best's clip and the tip in words.
+Was (N536): the closest exercise on the lost moment, with the coach asked to
+make one.
+No new words on screen. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2 and K.
