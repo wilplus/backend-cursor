@@ -13476,3 +13476,34 @@ the plan's earlier ratings stay comparable.
 is built. The study is on the frontend branch `study/voice-album-walk-look`
 (`twoMoments.tsx`, `WORDS`).
 No migration. No rules page.
+
+**N531 · A model's money: running costs at cost, a fixed platform fee,
+the founder's share, then the teachers by points fixed per version; the
+founder sets the price above a floor; monthly payouts (founder, the Claude
+Code chat, 6 November 2026: "how the money from the model trained is
+distributed to the contributors? Is there a portion that willpowerlab gets?
+... And how the price is set and by whom?"; four questions, each answered
+with the recommended option).** For N523 and N528; settles N528 item 6's
+open fee and payout:
+1. **Each API sale is split in this order:** the running costs (the AI
+company's bill and WillpowerLab's servers) passed on at cost; then
+WillpowerLab's platform fee, one percentage the founder of WillpowerLab
+sets for every model; then the model's founder's fixed share (N528 item 6);
+then the rest to the teachers. The fee is never voluntary, and neither are
+the costs.
+2. **A teacher's share is points:** one point for each answer that counted,
+weighed by the teacher's reliability, with a hard clip worth more than an
+easy one; rows of an uploaded dataset that passed the check earn points for
+whoever uploaded them. **Shares are fixed per version:** a version pays the
+people whose answers trained it; someone who joins later earns from the next
+version on.
+3. **The model's founder sets the price per answer,** never below what an
+answer costs to run; the app suggests a price from similar models.
+4. **Payouts are monthly, in money, above a minimum** (a starting point:
+EUR 20), through a payment provider that checks identity and tax, once the
+legal terms are signed. Until then teachers earn tokens (N523).
+**Open:** the fee's percentage; the minimum payout; the legal terms and the
+payment provider, for counsel.
+Not in force until built and merged. No migration in this entry.
+No rules page yet: [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md)
+F, when built.
