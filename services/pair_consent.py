@@ -219,3 +219,28 @@ def take_may_reach_a_coach_sheet(database: Any, take_session_id: Any) -> bool:
     from services.error_presence_audit import _objected
 
     return not _objected(database, str(take_session_id))
+
+
+def takes_may_reach_a_coach_sheet(database: Any, takes: Any) -> dict:
+    """``take_may_reach_a_coach_sheet`` for each distinct Take, keyed by
+    id, the reads side by side: each check is about five database calls
+    and a coach line holds up to the weekly cap of sheets (the panel's
+    5-second queues, 2026-11-06). A check that fails reads as no."""
+    import contextvars
+    from concurrent.futures import ThreadPoolExecutor
+    distinct = sorted({str(t or "") for t in (takes or [])} - {""})
+
+    def one(take: str) -> bool:
+        try:
+            return bool(take_may_reach_a_coach_sheet(database, take))
+        except Exception as e:  # noqa: BLE001 -- unknown reads as no
+            _log.warning("coach sheet consent read failed take=%s: %s", take, e)
+            return False
+
+    if len(distinct) <= 1:
+        return {t: one(t) for t in distinct}
+    with ThreadPoolExecutor(max_workers=min(8, len(distinct))) as pool:
+        # A copy of the request's context per check, so its database calls
+        # still count in the request's timing.
+        futures = {t: pool.submit(contextvars.copy_context().run, one, t) for t in distinct}
+        return {t: f.result() for t, f in futures.items()}

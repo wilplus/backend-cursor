@@ -72,7 +72,7 @@ class _Db:
     def get_snippet_by_id(self, sid):
         return {"id": sid, "audio_segment_path": f"s/{sid}.webm", "transcript": WORDS}
 
-    def get_snippet_playback_rows(self, ids):
+    def get_snippet_playback_rows(self, ids, with_transcript=False):
         return [self.get_snippet_by_id(sid) for sid in ids]
 
     # the error audit

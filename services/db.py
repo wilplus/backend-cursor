@@ -8310,9 +8310,11 @@ class DatabaseService:
                            len(ids), e)
             return []
 
-    def get_snippet_playback_rows(self, snippet_ids: Any) -> list:
+    def get_snippet_playback_rows(self, snippet_ids: Any, *,
+                                  with_transcript: bool = False) -> list:
         """Exactly the columns a clip player is resolved from
-        (``resolve_snippet_audio_url``), for exactly these snippets.
+        (``resolve_snippet_audio_url``), for exactly these snippets; with
+        ``with_transcript`` the clip's words too (V4's pick sheet shows them).
 
         The stored bookmarks re-sign their clips on every serve. That used
         to read EVERY snippet of the Take with its ``words`` JSONB (up to a
@@ -8326,7 +8328,8 @@ class DatabaseService:
             lambda: (self.client.table(SNIPPETS_TABLE)
                      .select("id, session_id, storage_path, "
                              "audio_segment_path, start_offset_ms, "
-                             "duration_ms")
+                             "duration_ms"
+                             + (", transcript" if with_transcript else ""))
                      .in_("id", ids)),
             label="snippet_playback_rows")
         return res.data or []

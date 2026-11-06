@@ -399,18 +399,27 @@ def _ms(value: Any) -> Optional[int]:
     return int(value) if isinstance(value, (int, float)) and value >= 0 else None
 
 
+def _admitted_rows(database: Any, sheets: Any) -> list[dict]:
+    """The pending sheets whose speaker still holds the training yes (3.5
+    E4), the consent reads for the distinct Takes side by side."""
+    pending = [r for r in sheets or []
+               if isinstance(r, dict) and not r.get("answered_at") and not r.get("cleared_week")]
+    admitted = pair_consent.takes_may_reach_a_coach_sheet(
+        database, [r.get("take_session_id") for r in pending])
+    return [r for r in pending if admitted.get(str(r.get("take_session_id") or ""))]
+
+
 def pick_queue(database: Any, *, rater_id: str) -> tuple[int, dict]:
     """Pending blocks: words, audio, letters. Nothing the machine chose."""
-    from services.snippet_audio_url import snippet_clip_playback
-    memo: dict = {}
-    rows = [r for r in database.list_v4_pick_sheets(rater_id) or []
-            if isinstance(r, dict) and not r.get("answered_at") and not r.get("cleared_week")
-            and _admitted(database, r.get("take_session_id"), memo)]
+    from services.snippet_audio_url import snippet_clip_playback, snippet_rows_by_id
+    rows = _admitted_rows(database, database.list_v4_pick_sheets(rater_id))
+    snippets = snippet_rows_by_id(
+        database, [c for r in rows for c in (r.get("clip_ids") or [])], with_transcript=True)
     items = []
     for n, row in enumerate(rows, start=1):
         moments = []
         for i, clip_id in enumerate(row.get("clip_ids") or []):
-            snippet = database.get_snippet_by_id(str(clip_id)) or {}
+            snippet = snippets.get(str(clip_id)) or {}
             moments.append({"clip_id": str(clip_id), "letter": "ABC"[i],
                             "words": str(snippet.get("transcript") or ""),
                             "audio_ref": snippet_clip_playback(snippet, database)["audio_ref"],
@@ -443,10 +452,7 @@ def pick_answer(database: Any, *, rater_id: str, sheet_id: str, body: Any) -> tu
 
 def surer_queue(database: Any, *, rater_id: str) -> tuple[int, dict]:
     """Pending pairs: the two texts, in a fixed order. No slice, no level."""
-    memo: dict = {}
-    rows = [r for r in database.list_v4_surer_sheets(rater_id) or []
-            if isinstance(r, dict) and not r.get("answered_at") and not r.get("cleared_week")
-            and _admitted(database, r.get("take_session_id"), memo)]
+    rows = _admitted_rows(database, database.list_v4_surer_sheets(rater_id))
     items = [{"sheet_id": str(r.get("id")), "said": str(r.get("said_text") or ""),
               "new": str(r.get("new_text") or ""), "n": n, "of": len(rows)}
              for n, r in enumerate(rows, start=1)]
