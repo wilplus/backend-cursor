@@ -1287,6 +1287,20 @@ def _review_card(row: dict) -> bool:
     return row.get("kind") == "walk_step" and (row.get("metadata") or {}).get("step") == "end"
 
 
+def waits(database: Any, user_id: str, take: str) -> bool:
+    """Will's question on ``take`` was asked and nothing has answered it yet
+    (N406 item 1, N544): more questions than closings among that Take's
+    rows, a closing being his reply to an answer ("thanks", for a tap, typed
+    words or the voice alike) or a Skip; a follow-up keeps it open. Read
+    without the rows' order, which a typed answer's phone clock can bend.
+    Unread: no."""
+    take = str(take)
+    steps = [(r.get("metadata") or {}).get("will_question_step")
+             for r in _thread(database, user_id, _SCAN)
+             if str((r.get("metadata") or {}).get("take_session_id") or "") == take]
+    return steps.count("ask") > steps.count("thanks") + steps.count("skip")
+
+
 def open_question(database: Any, user_id: str) -> Optional[dict]:
     """The newest bot row when it is Will's question or its follow-up, still
     open; None otherwise. The speaker's own rows are skipped (the client

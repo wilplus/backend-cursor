@@ -468,6 +468,10 @@ def release(database: Any, user_id: str, *, take: Optional[str] = None,
         row = held(database, user_id, take)
         if not row:
             return []
+        # Never past Will's open question, whoever asks (N406 item 1, N544):
+        # the goodbye and the plan's lines wait under it until it is answered.
+        if _will_waits(database, user_id, str((row.get("metadata") or {}).get("take_session_id") or "")):
+            return []
         from services.lounge_messages import thread_stamp
         at = thread_stamp(database, user_id)
         meta = dict(row.get("metadata") or {})
@@ -500,24 +504,21 @@ def release_from_lounge(database: Any, user_id: str) -> list[dict]:
     answer (N406 item 1). After a typed answer the Lounge asked before it
     read the thread again, and the goodbye came under his next question.
     The rows written, [] when nothing moved. Never raises."""
-    row = held(database, user_id)
-    take = str(((row or {}).get("metadata") or {}).get("take_session_id") or "")
-    if row and _will_waits(database, user_id, take):
-        return []
     return release(database, user_id)
 
 
 def _will_waits(database: Any, user_id: str, take: str) -> bool:
-    """Will's question (or its follow-up) on this Take is the newest thing
-    he said and still has no answer (N406 item 1). Unknown: it does not
-    wait."""
+    """Will's question (or its follow-up) on this Take was asked and has no
+    answer yet (N406 item 1, N544), whatever was written after it. Unknown:
+    it does not wait."""
+    if not take:
+        return False
     try:
-        from services.will_question import open_question
-        found = open_question(database, str(user_id))
+        from services.will_question import waits
+        return waits(database, str(user_id), take)
     except Exception as error:  # noqa: BLE001 -- the chain goes on as before
         logger.warning("after take: Will's question unread user=%s: %s", user_id, error)
         return False
-    return found is not None and str(found.get("take_session_id")) == take
 
 
 def release_older(database: Any, user_id: str, take: Optional[str] = None) -> None:

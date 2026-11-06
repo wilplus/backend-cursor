@@ -413,6 +413,8 @@ def test_will_says_who_from_my_side_and_the_goodbye_waits(monkeypatch):
     assert will_question.open_question(db, "u")["chips"] == []
     # The Lounge asks to let the goodbye go before it reads the thread again.
     assert after_take.release_from_lounge(db, "u") == [] and db.bodies()[-1] == will_question.GOAL_SELF
+    # Nor anyone else: the goodbye waits under his open question (N544).
+    assert after_take.release(db, "u") == [] and db.bodies()[-1] == will_question.GOAL_SELF
     resp = _typed(db, monkeypatch, "Feel calm")
     assert resp["answer"] == THANKS and db.bodies()[-1] == SEE_YOU
     assert will_question.key_line_question("Myself") == will_question.key_line_question(None)

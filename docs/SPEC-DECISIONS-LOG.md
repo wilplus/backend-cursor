@@ -13813,3 +13813,24 @@ written words. No new words ("Record your answer", "Not now" and "Stop" are
 signed). No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 E2, E3, J7.
+
+**N545 · A question is the last thing: the goodbye never comes past Will's
+open question (founder, the Claude Code chat, 6 November 2026, on a
+screenshot where "If Management remembers one sentence from you, what is
+it? Say it the way you'll say it." stood above "Good job. See you Monday."
+and "2 of 24 practices done.": "also please make sure about the order; if
+you ask let it be the last thing"; and "with all merge directly no checks
+or PRs or CIs anything go straight to merge").** For N406 item 1, N537:
+1. **While Will's question or its follow-up waits,** nothing after the Take
+is let go under it: not the goodbye, the plan's lines or the progress,
+whoever asks for it (the Lounge, a chat turn, the feedback check). It was
+guarded on the Lounge's own call only, and by the newest bot row.
+2. **It waits** while the Take has more questions than closings (Will's
+reply to an answer, or a Skip), read without the rows' order
+(`will_question.waits`).
+3. **Shipping (founder):** these changes merge at once, without waiting for
+a PR's checks. The release to production still takes only a green `main`
+(N426).
+No new words. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+D4.
