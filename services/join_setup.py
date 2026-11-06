@@ -25,7 +25,8 @@ Rows of the one Lounge thread (``lounge_messages``, kind "text"), each with
     question "peek"; it also carries "lines", the questions as someone new
     will see them;
   * the end: {"step": "set"} ("You're set.", with "Copy my link ›" and "Your
-    questions for people who join ›") or {"step": "saved"};
+    questions for people who join ›"), then "All is set. You can now start
+    practising." ({"step": "say"}, N533), or {"step": "saved"};
   * the person's tap or words, role "user": {"step": "answer", "to": the
     question's client id}.
 
@@ -72,6 +73,9 @@ UNCLEAR = ("I couldn't tell what to change, so it's as it was. "
            "Tap “Change it” and put it another way.")
 SET = ("You're set. Each question that comes to your chats, and each answer you give, "
        "builds a knowledge base you share.")
+# After "You're set." and its two links, Will's last line, over the bar's
+# "Record" (N533).
+PRACTISE = "All is set. You can now start practising."
 AGAIN = "Here are your questions for people who join:"
 SAVED = "Saved. Everyone who joins from now on will see these."
 
@@ -288,7 +292,7 @@ def _on_peek(database: Any, user_id: str, draft: dict, picked: str) -> list[tupl
     J.save(database, user_id, {"plan": draft.get("plan"), "lines": draft.get("lines") or []})
     if draft.get("later"):
         return [(str(uuid.uuid4()), "bot", SAVED, {"step": "saved"})]
-    return [(str(uuid.uuid4()), "bot", SET, {"step": "set"})]
+    return [(str(uuid.uuid4()), "bot", SET, {"step": "set"}), _say(PRACTISE)]
 
 
 STEPS = {"plan": _on_plan, "languages": _on_languages, "more": _on_more, "change": _on_change}
