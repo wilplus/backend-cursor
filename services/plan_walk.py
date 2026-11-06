@@ -165,4 +165,6 @@ def level_moment(level: str, rows: Sequence[dict], take_snippets: Sequence[dict]
         at = P.key_line_at([r.get("text") for _, r in showing], key_line)
         if at is not None:
             return showing[at][1].get("candidate_id")
-    return max(showing, key=lambda pair: pair[0])[1].get("candidate_id")
+    # A row's ``give`` (N546 item 4): it shows the level a little less on a
+    # worked slide or in a part the walk already gave; 1 when not given.
+    return max(showing, key=lambda pair: pair[0] * float(pair[1].get("give", 1.0)))[1].get("candidate_id")

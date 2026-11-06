@@ -750,7 +750,8 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
                   heard: Optional[dict] = None,
                   clearer_ok: Optional[Callable[[dict, dict], bool]] = None,
                   worked: frozenset = frozenset(),
-                  voice_medians: Optional[dict] = None) -> dict:
+                  voice_medians: Optional[dict] = None,
+                  last_parts: Optional[dict] = None) -> dict:
     """The Take's shown moments (three, N284): the strongest, the weakest and
     the between, one per block (founder 2026-10-30, N289, flow page C2 and
     H1; `services.moment_pick`).
@@ -782,13 +783,23 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
     tool passes over the clips on that slide (`moment_pick`), and this
     week's level's moment too when its tool is that one (`_level_pick`).
 
+    ``last_parts``, ``{"praise": part, "fix": {part, ...}}``: where in the
+    talk the walk of the Take before praised and fixed
+    (`take_progress.last_parts`, N546). Each block's ``part`` is where it
+    stands in this Take (`moment_pick.part_of`); the pick counts a slot a
+    little less in the part the last walk gave it, and the fix in their
+    best's part. None, or nothing read: the parts of this Take alone.
+
     Returns ``{"shown": [...], "values": {block_id: willfidence}}``."""
     from services import moment_pick
 
+    parts = {block["block_id"]: moment_pick.part_of(at, len(blocks))
+             for at, block in enumerate(blocks)}
     showable = [(block, candidate) for block in blocks
                 for candidate in _showable(block, clips, servability)]
-    reads = [_moment_read(candidate, block, snippet_map, clips, served_text, held_words, context,
-                          worked, voice_medians)
+    reads = [_with_parts(_moment_read(candidate, block, snippet_map, clips, served_text,
+                                      held_words, context, worked, voice_medians),
+                         parts.get(block["block_id"]), last_parts)
              for block, candidate in showable]
     picked = _level_pick(reads, showable, snippet_map, clips, served_text, plan) \
         or moment_pick.pick(reads)
@@ -808,6 +819,16 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
     values = {r["candidate_id"]: r["read"]["value"] for r in reads}
     return {"shown": picked["shown"],
             "values": {m["block_id"]: values.get(m["candidate_id"]) for m in picked["shown"]}}
+
+
+def _with_parts(row: dict, part: Optional[int], last_parts: Optional[dict]) -> dict:
+    """``row`` with where its paragraph stands in the talk and whether the
+    last walk praised or fixed that part (N546)."""
+    last = last_parts if isinstance(last_parts, dict) else {}
+    fixed = last.get("fix") or ()
+    return {**row, "part": part,
+            "praised_last": part is not None and last.get("praise") == part,
+            "fixed_last": part is not None and part in fixed}
 
 
 def _heard_pick(picked: dict, reads: list[dict], showable: list[tuple],
@@ -917,12 +938,17 @@ def _level_pick(reads: list[dict], showable: list[tuple], snippet_map: dict,
         return None
     shown = moment_pick.pick(reads)["shown"]
     strongest = shown[0]["block_id"] if shown else None
+    praised_part = next((r.get("part") for r in reads
+                         if shown and r["candidate_id"] == shown[0]["candidate_id"]), None)
     # Nor on a slide where the level's tool worked last time (N359).
     kind = plan_walk.practice_kind(level)
     rows = [{"candidate_id": candidate["candidate_id"],
              "word_count": candidate.get("word_count") or 0,
              "snippet": snippet_map.get(str(candidate["snippet_id"]), {}),
-             "text": _shown_words(candidate, clips, served_text)}
+             "text": _shown_words(candidate, clips, served_text),
+             # A worked slide, and their best's part or the part the last
+             # walk fixed, show the level a little less (N546 item 4).
+             "give": moment_pick.fix_give(read, praised_part)}
             for (block, candidate), read in zip(showable, reads)
             if block["block_id"] != strongest and kind not in read.get("worked", ())]
     try:
@@ -1960,6 +1986,7 @@ def build_shadow_frame(
     tempo_step: Any = False,
     verbal: Any = None,
     last_fixes: Any = None,
+    last_parts: Any = None,
 ) -> Optional[dict]:
     """Build the complete v3 frame; return None for an unusable Take.
 
@@ -1967,6 +1994,11 @@ def build_shadow_frame(
     (`take_progress.last_walk`): one that worked on this Take, its issue
     gone on that slide (`_worked`), is not given again there (N359). It
     never adds a key to the frame. None leaves the pick as it was.
+
+    ``last_parts`` are where in the talk that walk praised and fixed
+    (`take_progress.last_parts`): this walk's praise and fix count a little
+    less there, so the walks move through the talk (N546). It never adds a
+    key to the frame. None: the parts of this Take alone.
 
     ``verbal`` is the Take's verbal read for a speaker it reaches
     (`services.verbal_read.for_pick`, N326): the moments whose words matter
@@ -2072,7 +2104,8 @@ def build_shadow_frame(
                            plan=(plan_level, key_line), held_words=held_words,
                            context=context, heard=heard,
                            clearer_ok=_clearer_check(rewrite_ranked, feedback_rows),
-                           worked=worked, voice_medians=_voice_medians(snippets))
+                           worked=worked, voice_medians=_voice_medians(snippets),
+                           last_parts=last_parts)
 
     # THE ONLY PLACE THE REASON LAYER IS OBSERVABLE (24j). Everything else it
     # does is internal ordering that leaves no trace: the failure it can have

@@ -305,6 +305,52 @@ def last_walk(database: Any, arc_id: Any, take_id: Any) -> list[dict]:
     return walk_fixes(database, previous_take(sessions, take_id))
 
 
+def last_parts(database: Any, arc_id: Any, take_id: Any) -> dict:
+    """Where in the talk the walk of the Take before this one praised and
+    fixed (``walk_parts`` of ``previous_take``'s frame), so this Take's
+    praise and fix spread over the talk (founder 2026-11-06, N546 item 3).
+    {} for the first Take, or on any failure. Never raises."""
+    try:
+        sessions = database.takes.get_arc_sessions(str(arc_id)) or []
+        before = previous_take(sessions, take_id)
+        if not before:
+            return {}
+        frame = database.get_v4_dark_frame(str(before))
+        if not isinstance(frame, dict):
+            return {}
+        return walk_parts(frame, walk_gave(database, before, frame))
+    except Exception as error:  # noqa: BLE001 -- the walk picks as without it
+        logger.warning("take progress: last walk's parts unread take=%s: %s", take_id, error)
+        return {}
+
+
+def walk_parts(frame: Any, fixes: Any) -> dict:
+    """``{"praise": part, "fix": {part, ...}}``: the part of the talk
+    (`moment_pick.part_of`, by where each paragraph stands in the frame) of
+    the walk's best (``highest_moment``) and of each fix it gave (``fixes``,
+    `walk_gave`): a moment's own paragraph, the pace game's the middle one
+    of its slide. Keys with nothing are left out. Pure."""
+    from services.moment_pick import part_of
+    blocks = [b for b in (frame or {}).get("blocks") or [] if isinstance(b, dict)]
+    out: dict = {}
+    praised = next((at for at, b in enumerate(blocks) if b.get("highest_moment")), None)
+    if praised is not None:
+        out["praise"] = part_of(praised, len(blocks))
+    fixed = set()
+    for fix in fixes or []:
+        on_slide = [at for at, b in enumerate(blocks)
+                    if b.get("slide_index") == fix.get("slide_index")]
+        own = [at for at in on_slide if blocks[at].get("carries_exercise")
+               and blocks[at].get("exercise_kind") == fix.get("kind")]
+        chosen = own or on_slide
+        if chosen:
+            fixed.add(part_of(chosen[len(chosen) // 2], len(blocks)))
+    fixed.discard(None)
+    if fixed:
+        out["fix"] = fixed
+    return out
+
+
 def worked(fixes: Any, frame: Any, snippets: list[dict]) -> frozenset:
     """``{(slide_index, kind)}``: the fixes (``walk_fixes``) whose issue is
     gone on this Take's same slide (``outcome``), which this Take's walk

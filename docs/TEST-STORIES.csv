@@ -2032,17 +2032,22 @@ again: the next best is, and it comes back only when nothing else can
 be shown.
 O7  On a plan, my level takes the slot it is given, never the
 strongest's block, never as a fourth moment.
-O8  A slide I already gave helper words to gives way in every slot:
-my best, the clearer version and the AI clip come from slides I have
-not touched, and a worked slide fills a slot only when nothing else
-can (N543).","O1 -> test_the_strongest_is_praised_whatever_its_voice
+O8  A slide I already gave helper words to counts a little less in every
+slot, so my best and my fix come from slides I have not touched,
+unless a moment on the worked slide clearly stands out: clearly my
+best, or clearly my most serious problem (N546).
+O9  My best and my fix land in different parts of my talk: with my
+ending praised, my weak beginning is corrected rather than the
+ending's own error, unless that error is clearly worse; and the part
+my last walk praised or fixed counts a little less this time (N546).","O1 -> test_the_strongest_is_praised_whatever_its_voice
 O2 -> test_the_weakest_is_the_lowest_whole_thought_i_was_heard_saying
 O3 -> test_words_that_need_help_get_the_between_first
 O4 -> test_an_empty_slot_goes_to_the_next_best
 O5 -> test_a_clip_with_no_sound_read_is_never_the_weakest
 O6 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
 O7 -> test_my_level_takes_its_slot_never_the_strongest
-O8 -> test_my_moments_come_from_slides_i_have_not_touched_first","Founder 2026-10-30 (N289: ""the praise clips just get the praise"", ""a negative [word] has been spotted, or it was too fast, that's the second moment"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-28 (N246, ""go for the next confident moment""); 2026-10-30 (N284, three moments); 2026-11-03 (N425, ""go for A, B and C"": the AI clip only where the voice shows the problem); 2026-11-06 (N543, ""Untouched first"")."
+O8 -> test_a_worked_slide_gives_way_unless_its_moment_stands_out
+O9 -> test_my_praise_and_my_fix_spread_over_my_talk","Founder 2026-10-30 (N289: ""the praise clips just get the praise"", ""a negative [word] has been spotted, or it was too fast, that's the second moment"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-28 (N246, ""go for the next confident moment""); 2026-10-30 (N284, three moments); 2026-11-03 (N425, ""go for A, B and C"": the AI clip only where the voice shows the problem); 2026-11-06 (N546, ""I also don't want to skip the great and very poor moments"", ""if I had already the ending praised I should have the beginning corrected""; was N543, ""Untouched first"")."
 tests/test_moment_suggestions.py,Story,"As a speaker, I want my Ideal Text read to carry no star or suggestion outside the gated changes lane and no scores, so that I see only words and the latest text.","O1  Whatever lane a stored moment suggestion came from (replace,
 emphasize, structure), the GET serves the moment with its anchor and
 playback identity but no star and no suggestion.
@@ -3451,10 +3456,14 @@ with it as the last fix; slower but still outside the green, it came
 back and nothing is said (N347 item 3, N350 item 3). Where it worked,
 the walk offers no tempo step on that slide again (N359). A slow
 stretch off a pace or pause week was never the Sniper, so it is no
-fix the walk gave (N323 item 6).","O1 -> test_progress_is_read_against_my_first_takes
+fix the walk gave (N323 item 6).
+O5  The next walk knows where in the talk the last one praised and
+fixed, its beginning, middle or ending, so its own praise and fix
+move through the talk (N546).","O1 -> test_progress_is_read_against_my_first_takes
 O2 -> test_each_fix_is_marked_came_back_or_gone_on_the_next_take
 O3 -> test_last_time_plays_the_fix_that_rose_on_this_take
-O4 -> test_the_pace_fix_worked_when_that_slide_stays_inside_the_green","Founder 2026-10-31 (N291: ""yes""; ""ok go with the proposal""; N290: ""the next time it chooses a moment it should take into account what the user answered""; N309 item 1: ""Last time: {the tip}. You did.""; N347 item 3: ""Every fix gets its Last time, the pace game too""; N350 item 3: one rule for ""the pace fix worked""; N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back"")."
+O4 -> test_the_pace_fix_worked_when_that_slide_stays_inside_the_green
+O5 -> test_the_next_walk_knows_where_the_last_one_praised_and_fixed","Founder 2026-10-31 (N291: ""yes""; ""ok go with the proposal""; N290: ""the next time it chooses a moment it should take into account what the user answered""; N309 item 1: ""Last time: {the tip}. You did.""; N347 item 3: ""Every fix gets its Last time, the pace game too""; N350 item 3: one rule for ""the pace fix worked""; N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back""); 2026-11-06 (N546: ""if I had already the ending praised I should have the beginning corrected"")."
 tests/test_take_promotion_survives_a_dropped_connection.py,Story,"As a speaker, I want a dropped database connection at the last step to be retried, so that my Take is not thrown away and processed again.","O1  When the connection drops while the recording becomes a Take, the
 step is retried once and the Take is returned.",O1 -> PromotionRetryTests::test_a_dropped_connection_is_retried_and_the_take_returned,Founder's Takes of 2026-10-02 and 2026-10-03 were re-run from the start after one dropped call.
 tests/test_take_purge_postgres.py,Story,"As a speaker who deletes my account, I want everything I recorded erased, so that my Take, audio and project content are gone.","O1  The erasure finishes, with nothing left for manual review, and the

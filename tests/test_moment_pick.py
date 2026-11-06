@@ -24,10 +24,14 @@ OUTCOME
       be shown.
   O7  On a plan, my level takes the slot it is given, never the
       strongest's block, never as a fourth moment.
-  O8  A slide I already gave helper words to gives way in every slot:
-      my best, the clearer version and the AI clip come from slides I have
-      not touched, and a worked slide fills a slot only when nothing else
-      can (N543).
+  O8  A slide I already gave helper words to counts a little less in every
+      slot, so my best and my fix come from slides I have not touched,
+      unless a moment on the worked slide clearly stands out: clearly my
+      best, or clearly my most serious problem (N546).
+  O9  My best and my fix land in different parts of my talk: with my
+      ending praised, my weak beginning is corrected rather than the
+      ending's own error, unless that error is clearly worse; and the part
+      my last walk praised or fixed counts a little less this time (N546).
 PROVES   O1 -> test_the_strongest_is_praised_whatever_its_voice
          O2 -> test_the_weakest_is_the_lowest_whole_thought_i_was_heard_saying
          O3 -> test_words_that_need_help_get_the_between_first
@@ -35,14 +39,18 @@ PROVES   O1 -> test_the_strongest_is_praised_whatever_its_voice
          O5 -> test_a_clip_with_no_sound_read_is_never_the_weakest
          O6 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
          O7 -> test_my_level_takes_its_slot_never_the_strongest
-         O8 -> test_my_moments_come_from_slides_i_have_not_touched_first
+         O8 -> test_a_worked_slide_gives_way_unless_its_moment_stands_out
+         O9 -> test_my_praise_and_my_fix_spread_over_my_talk
 WHY      Founder 2026-10-30 (N289: "the praise clips just get the praise",
          "a negative [word] has been spotted, or it was too fast, that's
          the second moment", "the third moment, the weakest one, is where
          we display the AI audio"); 2026-10-28 (N246, "go for the next
          confident moment"); 2026-10-30 (N284, three moments); 2026-11-03
          (N425, "go for A, B and C": the AI clip only where the voice shows
-         the problem); 2026-11-06 (N543, "Untouched first").
+         the problem); 2026-11-06 (N546, "I also don't want to skip the
+         great and very poor moments", "if I had already the ending
+         praised I should have the beginning corrected"; was N543,
+         "Untouched first").
 """
 from services.moment_pick import pick, read
 
@@ -160,18 +168,44 @@ def test_my_level_takes_its_slot_never_the_strongest():
     assert pick(rows, level={**level, "candidate_id": "a-clip"}) == pick(rows)
 
 
-def test_my_moments_come_from_slides_i_have_not_touched_first():
+def test_a_worked_slide_gives_way_unless_its_moment_stands_out():
     def worked(row):
         return {**row, "touched": True}
-    # The best clip, the words that need help most and the loudest voice
-    # problem all sit on worked slides: every slot goes to untouched ones.
-    rows = [worked(_row("a", 0, 0.95)), _row("b", 1, 0.8),
-            worked(_row("c", 2, 0.3, w=0.3, help="undermining")),
-            _row("d", 3, 0.4, w=0.6, help="undermining"),
-            worked({**_row("e", 4, 0.2), "voice": 0.9}), _row("f", 5, 0.5)]
-    assert [(m["block_id"], m["slot"]) for m in pick(rows)["shown"]] == [
-        ("b", "strongest"), ("d", "between"), ("f", "weakest")]
+
+    def slots(rows):
+        return [(m["block_id"], m["slot"]) for m in pick(rows)["shown"]]
+    # A little better on a worked slide gives way to an untouched slide, for
+    # my best and for the AI clip's fix.
+    rows = [worked(_row("a", 0, 0.8, voice=0.1)), _row("b", 1, 0.75, voice=0.1),
+            worked(_row("c", 2, 0.5, voice=0.6)), _row("d", 3, 0.5, voice=0.55)]
+    assert slots(rows)[:2] == [("b", "strongest"), ("d", "weakest")]
+    # Clearly my best, and clearly my most serious problem: they still win.
+    rows = [worked(_row("a", 0, 0.98, voice=0.1)), _row("b", 1, 0.75, voice=0.1),
+            worked(_row("c", 2, 0.5, voice=0.9)), _row("d", 3, 0.5, voice=0.55)]
+    assert slots(rows)[:2] == [("a", "strongest"), ("c", "weakest")]
     # Every slide worked on: the pick is the one it always was, never fewer.
     every = [worked(row) for row in (_row("a", 0, 0.9), _row("b", 1, 0.6), _row("c", 2, 0.2))]
-    assert [m["block_id"] for m in pick(every)["shown"]] == [
-        m["block_id"] for m in pick([{**r, "touched": False} for r in every])["shown"]]
+    assert slots(every) == slots([{**r, "touched": False} for r in every])
+
+
+def test_my_praise_and_my_fix_spread_over_my_talk():
+    def at(row, part, **last):
+        return {**row, "part": part, **last}
+
+    def slots(rows):
+        return [(m["block_id"], m["slot"]) for m in pick(rows)["shown"]][:2]
+    # The ending is praised and has one real error; the beginning is weak:
+    # the beginning is corrected.
+    take = [at(_row("a", 0, 0.5, voice=0.55), 0), at(_row("b", 1, 0.6, voice=0.1), 1),
+            at(_row("c", 2, 0.5, voice=0.6), 2), at(_row("d", 3, 0.95, voice=0.1), 2)]
+    assert slots(take) == [("d", "strongest"), ("a", "weakest")]
+    # The ending's error clearly worse: it is the fix.
+    worse = [*take[:2], {**take[2], "voice": 0.9}, take[3]]
+    assert slots(worse) == [("d", "strongest"), ("c", "weakest")]
+    # The last walk praised the ending and fixed the beginning: this walk
+    # praises elsewhere when it can, and fixes elsewhere.
+    again = [at(_row("a", 0, 0.5, voice=0.55), 0, fixed_last=True),
+             at(_row("b", 1, 0.85, voice=0.1), 1),
+             at(_row("c", 2, 0.5, voice=0.5), 2, praised_last=True),
+             at(_row("d", 3, 0.95, voice=0.1), 2, praised_last=True)]
+    assert slots(again) == [("b", "strongest"), ("c", "weakest")]
