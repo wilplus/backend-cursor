@@ -513,6 +513,19 @@ SPEC_SALES_CHANGE = LLMSpec(
 stalled at, from Will's signed guide (services.sales_framing)."""
 
 
+SPEC_JOIN_CHANGE = LLMSpec(
+    model=STRONG_MODEL,
+    # Reads one typed change to a small set of questions; no writing of its own.
+    temperature=0.0,
+    max_tokens=700,
+    response_format={"type": "json_object"},
+    timeout_seconds=15.0,
+)
+"""Will's setup for a person who shares (N487 item 3): the set of questions
+for people who join, changed as the person's own words ask
+(services.join_setup)."""
+
+
 SPEC_YOUR_WHY_DRAFT = LLMSpec(
     model=STRONG_MODEL,
     # Their own words in three short lines; no room to invent.

@@ -31,7 +31,7 @@ OUTCOME
       bubble, so its answers stay; after my answer come the lines, then
       "Good job. See you {day}." with the plan's next practice day (N347
       item 2), then the plan's progress (N319 item 7); a question the plan
-      asks comes last, under them, right above its answers (N534).
+      asks comes last, under them, right above its answers (N537).
   O7  The WhatsApp ask waits for the next visit and comes in the bar at the
       top, never in the chat (N294 item 8, N295, N391): never before my
       second Take is done, one per Take, at most twice, opened with "It
@@ -233,7 +233,7 @@ def test_the_plans_lines_wait_for_the_ask_then_the_goodbye_the_progress_and_its_
     assert db.drawn() == [SUMMARY, feedback_check.COPY["ask"]]
 
     feedback_check.answer(db, user_id="u", arc_id="arc", take_session_id="take-1", choice="yes")
-    # A question is the last bubble, right above its answers (N534).
+    # A question is the last bubble, right above its answers (N537).
     assert db.drawn()[-4:] == [fifteen, "Good job. See you Wednesday.", done, personal]
 
 

@@ -71,7 +71,7 @@ closing message ("Good job. See you tomorrow." or "Good job. See you
 plan its progress, the plan's bar and "{n} of
 {total} practices done." (``plan_flow.progress``, N319 item 7). A question
 the plan asks there (its own yes, the ratings, a new project's) comes last,
-under the progress, right above its answers (founder 2026-11-06, N534). The Lounge
+under the progress, right above its answers (founder 2026-11-06, N537). The Lounge
 puts the tap "I want to continue my practice" under the last of them;
 tapping it, or typing that they want to practise, brings "Record Take N"
 under the chat (frontend ``afterTake.ts``). The plan's lines wait for the
@@ -414,7 +414,7 @@ def _split_ask(rows: list[dict]) -> tuple[list[dict], list[dict]]:
     """The plan's lines after a Take, split where its question begins: the
     first row with answers to tap (``metadata.plan_ask``), with the line
     that leads into it ("Two quick taps before your plan." before the scale). A question
-    is the last bubble, right above its answers (founder 2026-11-06, N534):
+    is the last bubble, right above its answers (founder 2026-11-06, N537):
     it goes under the goodbye and the progress, never over them."""
     first = next((i for i, r in enumerate(rows) if (r.get("metadata") or {}).get("plan_ask")), None)
     if first is None:

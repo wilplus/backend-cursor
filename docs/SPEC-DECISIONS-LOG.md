@@ -13546,7 +13546,81 @@ No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1.
 
-**N534 · A question is the last bubble, right above its answers, everywhere
+**N534 · Until the questions are set, the "+" shows a small note at the
+bottom, not Will's chat; the link opens only once they are set (founder, the
+Claude Code chat, 6 November 2026, after the "+" opened Will's chat instead
+of "Copy my link": "don't let them copy the link unless they set up the
+questions; just display the small notification from the bottom with a btn
+to it instead of the link; you click the link, set up the questions and
+then the link opens normally", on the prototype
+<https://claude.ai/artifact/8VjuTv7Ly3VB5uEtAUke7M>, "almost the same kind"
+as the notification bar at the top of Will's chat (N391)).** For N503 item 1:
+1. **Before the questions are set,** "Add someone to chat with" (the "+"
+and the list's row) opens no link and no chat: a small note comes up at
+the bottom, drawn as the bar at the top of Will's chat (N391), with one
+button and ✕ (Not now). Was (N503 item 1): Will's chat opened on his setup.
+2. **The button opens Will's setup in his chat** (N503), one question at a
+time; it ends on "You're set." with "Copy my link ›", and N533's bubble.
+3. **Once set** (no questions is an answer, N503 item 3), the "+" opens the
+add sheet as before, with no note.
+Signed (Never 4; founder, the Claude Code chat, 6 November 2026, "build
+it"): "Before you share your link, set the questions for people who join."
+and "Set them". No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1.
+
+**N535 · "Change it" in the join setup understands any wording (founder,
+the Claude Code chat, 6 November 2026, after "make the choices polish and
+english and french" got "I couldn't tell what to change": "please make it
+understand it wider, so that we avoid people being stuck on that level of
+set up").** For N487 item 3, N503:
+1. Under "What should change?" Will reads the person's words with the
+model, under their processing authorization, and returns the whole set as
+it should now be, checked as any kept set is. A new question about the
+work is still left out (N487 item 2).
+2. Not authorized, no provider, or a reply that can't be used: the rules
+read the words, as before.
+No new words. No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C, "Setting them, in Will's chat".
+
+**N536 · The fix the server chose is always walked; when its Clearer
+version is lost on the way, the closest exercise, and the coach is asked
+(founder, the Claude Code chat, 6 November 2026, after Take
+41dca1f0 walked their best, then the helper words, with no fix: "the
+intervention was not there at all", "it should inform the user what is the
+thing to improve and that we will serve the closest exercise we have and
+that the request for an exact personalised exercise has been sent to your
+speaking coach"; the two lines asked "as Steven Pinker would" and the
+proposal agreed: "I agree with your proposal, so please build it").** For
+N309 item 1, N381, N370:
+1. **What happened.** The server chose a between whose Clearer version
+passed the gate as the one fix (`one_fix: "moment"`), but its rewrite row
+did not reach the served rows; the walk, by N381's rule for a between with
+no Clearer version, left the fix out and gave their best's words as the
+helper words. The coach's queue heard one moment of two.
+2. **The fix the server chose is always walked.** A between with no Clearer
+version on a Take where the server chose a moment is that fix, walked with
+the closest exercise we have: the voice Exercise (the library's exercise
+when one is served, else the AI clip where the voice shows a problem it can
+teach, N425, else the tip in words, N370), then the try. N381 stands for a
+between whose Clearer version did not pass the gate: the server praises it
+as a next best, so it is never the fix.
+3. **Signed (Never 4):** above the closest exercise, after the moment's
+clip, "We don't have an exercise for exactly this yet, so here's the
+closest one."; under it, "I've asked your speaking coach to make one just
+for you." The chat says both. The coach request is the one that rises as
+the Exercise opens (F1, `judgement_follow_up.follow_up_for_open`), so the
+moment reaches the coach's queue.
+4. **Named in the log.** The server writes a warning when the chosen fix's
+Clearer version is not among the served rows (`fix_clearer_not_served`,
+`take_feedback_policy_v3_service`), so the next one says where its rewrite
+was lost.
+No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2.
+
+**N537 · A question is the last bubble, right above its answers, everywhere
 in the app (founder, the Claude Code chat, 6 November 2026, on a screenshot
 of the chat after a Take: "Got it, thanks", "That's your 15 minutes for
 today.", "Some of my questions are personal…", "Good job. See you Monday.",
