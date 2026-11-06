@@ -13834,3 +13834,43 @@ a PR's checks. The release to production still takes only a green `main`
 No new words. No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 D4.
+
+**N546 · The walk's moments: what was trained is skipped, a worked slide
+gives way unless its moment stands out, and the praise and the fix spread
+over the talk (founder, the Claude Code chat, 6 November 2026: "I also
+don't want to skip the great and very poor moments just because there is
+other slide without the text"; "the moments that has been already spotted
+and trained are locked so it makes no sense to go through them again";
+"if the ending was good but had one real error and the beginning really
+weak ... if I had already the ending praised I should have the beginning
+corrected"; then, on the proposal, "go").** Amends N543 items 1 and 2. For
+every pick of a Take's moments (`services/moment_pick.py`):
+1. **What was trained stays skipped**, as before: a sentence that holds its
+slide's helper words is never a fix, and is their best only when nothing
+else can be (N246 item 3); a fix that worked last time is not given again
+on that slide (N359).
+2. **A worked slide gives way, unless its moment stands out.** A slide that
+had helper words when the Take was recorded (N543) counts a little lower in
+every slot, no longer last. A moment on it that clearly stands out still
+wins: their best when it is clearly the Take's best, the fix when its
+problem is clearly the most serious. "Clearly" is a margin the code holds,
+never shown, tuned on real Takes.
+3. **The praise and the fix spread over the talk.** The Take is read in
+three parts, its beginning, middle and ending, by where each paragraph
+stands in it. The fix prefers a part other than their best's. Across
+Takes, the part praised in the last walk counts a little lower for their
+best, and the part fixed in the last walk a little lower for the fix, so
+the walks move through the talk. A moment that clearly stands out still
+wins (item 2's margin).
+4. **On a plan,** this week's level keeps its slot (N289 item 8); its
+moment goes to an untouched slide or another part when one shows the level
+nearly as much.
+5. **Unchanged:** a Take never shows fewer moments; clips of five words or
+more come first; the Sniper rule (N323 item 6); the One thing walk keeps
+their best and one fix (N309 item 1).
+Was (N543): a worked slide filled a slot only when no untouched slide
+could, however good or poor its moment, and the praise and the fix could
+land in the same part of the talk, Take after Take.
+No new words on screen. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+H1 and the One thing walk's pick.
