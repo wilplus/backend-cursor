@@ -13582,3 +13582,25 @@ read the words, as before.
 No new words. No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C, "Setting them, in Will's chat".
+
+**N536 · On a plan already running, "Two quick taps before your plan."
+ends on the plan (founder, the Claude Code chat, 6 November 2026, on a
+phone screenshot of a new project's first Take: "Two quick taps before your
+plan.", the two ratings "Answered", then only "Record Take 2": "I got no
+plan … the plan didnt get updated with the new project appearing"; asked
+(a) the plan's line and card after the taps, (b) no intro line, (c) as it
+is: "go with A").** For D1, H2, I2, N178:
+1. **A plan made from Takes (A2) or "Keep practising" (I2)** gets its first
+two ratings after its first Take, under "Two quick taps before your plan."
+After the second tap, Will says "You're all set. Here's your plan." and
+the plan card follows, as after a new plan's questions (E1). The plan is
+not begun again: its start, its practices done and its deadline stay. Was:
+nothing after the second tap.
+2. **A new project's first Take asks "Is this for {date}?" (H2) on such a
+plan too,** and on a plan read from the first Take (N401): the projects of
+the speaker's earlier Takes are the plan's. Was: the plan knew no project
+until a Take of its own, so a new project's first Take was never asked
+about and the ratings came in its place (a bug against H2).
+No new words. No migration. The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+D1, H2.
