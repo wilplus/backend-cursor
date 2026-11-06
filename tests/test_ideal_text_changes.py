@@ -18,6 +18,10 @@ OUTCOME
       read is served before the dark frame is written.
   O7  On a plan, the walk I see knows this week's level, and which helper
       words I had when I recorded (N246).
+  O8  My walk reads this Take's frame even when the Ideal Text was computed
+      live and its frame is not written yet: "Last time" plays the fix that
+      rose, and the tempo step knows the One thing walk, with the frame
+      written once.
 PROVES   O1 -> test_the_span_check_serving_none_is_a_named_fallback
          O2 -> test_a_failure_on_the_way_to_v3_serves_no_v2_rows
          O3 -> test_a_served_confident_voice_row_carries_its_recording
@@ -26,9 +30,11 @@ PROVES   O1 -> test_the_span_check_serving_none_is_a_named_fallback
          O6 -> test_the_block_is_the_same_block_and_no_row_is_read_twice
                test_the_live_read_serves_the_block_before_the_dark_frame_is_written
          O7 -> test_on_a_plan_the_walk_i_see_knows_my_level
+         O8 -> test_the_walk_reads_this_takes_frame_before_the_live_write_lands
 WHY      services.ideal_text_changes (audit Q-C1). O3: founder 2026-09-20
          "there is no playback on the overlay". O4 and O5 drive stages of
-         _ChangesRun directly; the rest go through build_changes_block.
+         _ChangesRun directly; the rest go through build_changes_block. O8:
+         founder 2026-11-06 "Go, fix both", through the walk's own readers.
 """
 from __future__ import annotations
 
@@ -473,3 +479,117 @@ def test_the_live_read_serves_the_block_before_the_dark_frame_is_written():
     assert live.writes == []                # served first ...
     go.set()
     assert done.wait(5) and live.writes == [T1]   # ... written after, once
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  THE WALK READS THIS TAKE'S FRAME, WRITTEN OR NOT (founder 2026-11-06)
+# ══════════════════════════════════════════════════════════════════════════
+#
+# The live read serves its block first and writes the frame after (O6). The
+# walk asks for "Last time" and the tempo step as soon as it knows the Take,
+# so on a Take computed live it read a Take with no frame: no "Last time",
+# and a topic call for a One thing walk that never says it.
+
+T0 = "55555555-5555-4555-8555-555555555555"
+HEARD = "66666666-6666-4666-8666-666666666666"
+#: The walk of the Take before fixed the voice on slide 0.
+_LAST_WALK = {"blocks": [{"slide_index": 0, "walk_slot": "weakest",
+                          "carries_exercise": True, "exercise_kind": "voice",
+                          "snippet_ids": ["old"]}]}
+#: This Take's frame, as the live read would write it: slide 0 is HEARD.
+_THIS_WALK = {"recording_id": "rec-1", "take_index": 2, "frame_hash": "h" * 64,
+              "blocks": [{"slide_index": 0, "walk_slot": "strongest",
+                          "snippet_ids": [HEARD]}]}
+
+
+class _WalkDb(FakeDB):
+    """Take 2, the document's latest, its Ideal Text computed live and the
+    live read's frame write not landed; on slide 0 the voice now clears the
+    floor."""
+
+    def __init__(self):
+        super().__init__()
+        heard = {"version": "voice-confidence-universal-v3", "score": 0.8}
+        self.snippets[1] = {**self.snippets[1], "id": HEARD,
+                            "audio_segment_path": "takes/heard.webm",
+                            "duration_ms": 3000,
+                            "metrics": {"piece": {"slide_index": 0}, "f0_sd": 30,
+                                        "dynamic_db": 12, "voice_confidence": heard}}
+        self.frames: dict = {T0: _LAST_WALK}
+        self.writes: list[str] = []
+
+    def v2_get_session_by_id(self, sid):
+        return {"id": sid, "arc_id": ARC, "user_id": "user-1", "take_index": 2,
+                "owner_principal_id": "owner-1", "recording_id": "rec-1"}
+
+    def get_ideal_text_document_snapshot(self, arc_id, actor_id):
+        return {"id": "snap-1", "payload": {"text": DOC, "version": None,
+                                            "latest_take_session_id": T1}}
+
+    def get_v4_dark_frame(self, take):
+        return self.frames.get(take)
+
+    def record_take_feedback_policy_v3_shadow(self, **kw):
+        self.writes.append(kw["take_session_id"])
+        self.frames[kw["take_session_id"]] = kw["frame"]
+        return {"outcome": "duplicate"}   # stops before the V4 draw
+
+
+class _Redis:
+    """The marks, shared by every web process."""
+
+    def __init__(self, *held):
+        self.keys = dict.fromkeys(held, "1")
+
+    def set(self, key, value, nx=False, ex=None):
+        if nx and key in self.keys:
+            return None
+        self.keys[key] = value
+        return True
+
+    def exists(self, *keys):
+        return sum(k in self.keys for k in keys)
+
+    def delete(self, *keys):
+        return sum(self.keys.pop(k, None) is not None for k in keys)
+
+
+def test_the_walk_reads_this_takes_frame_before_the_live_write_lands(monkeypatch):
+    import threading
+    import time
+    from routes.v2 import explore_ideal_text as route
+    from services import job_queue
+    from services.take_progress import last_fix
+    from services.tempo_stretch import walked_as_one_thing
+
+    monkeypatch.setattr(Config, "LIVING_TRANSCRIPT_ENABLED", True)
+    monkeypatch.setattr("services.take_feedback_policy_v3.dark_enabled", lambda _o: True)
+    monkeypatch.setattr("services.take_feedback_policy_v3.build_shadow_frame",
+                        lambda **_k: dict(_THIS_WALK))
+    monkeypatch.setattr("services.audio_ref_resolver.resolve_playable_ref",
+                        lambda ref, expires_in=None, **_: f"https://signed.example/{ref}")
+    db = _WalkDb()
+    monkeypatch.setattr(route, "_changes_deps", lambda: _deps(db))
+
+    # Nobody is writing it: "Last time" plays the fix that rose, and the
+    # frame it read is the one the live read would have written, once.
+    assert last_fix(db, T1, T0) == {
+        "kind": "voice", "slide_index": 0,
+        "clip": {"snippet_id": HEARD, "url": "https://signed.example/takes/heard.webm",
+                 "start_offset_ms": 10, "duration_ms": 3000}}
+    assert db.writes == [T1] and db.frames[T1]["blocks"] == _THIS_WALK["blocks"]
+
+    # The live read's thread is writing it in another process: the tempo
+    # step waits for that write, knows the One thing walk, writes nothing.
+    db = _WalkDb()
+    redis = _Redis(f"take-frame-writing:{T1}")
+    monkeypatch.setattr(job_queue, "queue_configured", lambda: True)
+    monkeypatch.setattr(job_queue, "get_redis", lambda **_k: redis)
+
+    def _the_live_write_lands():
+        time.sleep(0.3)
+        db.frames[T1] = dict(_THIS_WALK)
+        redis.delete(f"take-frame-writing:{T1}")
+    threading.Thread(target=_the_live_write_lands).start()
+    assert walked_as_one_thing(db, T1) is True
+    assert db.writes == []

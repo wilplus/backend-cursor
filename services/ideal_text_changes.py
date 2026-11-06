@@ -194,7 +194,8 @@ class _ChangesRun:
 
     def __init__(self, arc_id, served_text, user_id, take_session_id,
                  review_version, deps: ChangesDeps, log: DegradationLog,
-                 *, background_shadow: bool = False):
+                 *, background_shadow: bool = False,
+                 frame_only: bool = False):
         self.arc_id = arc_id
         self.served_text = served_text
         self.user_id = user_id
@@ -208,13 +209,18 @@ class _ChangesRun:
         # paragraph map all ask for the same list.
         self._parts: Optional[list] = None
         # THE SHADOW OFF THE SPEAKER'S PATH (founder 2026-10-15). The V3
-        # dark frame is a log nothing served reads (`_v3_shadow`); on the
-        # live read it measured 380-1,860 ms of the speaker's wait. With
+        # dark frame is not in the block this run serves (`_v3_shadow`); on
+        # the live read it measured 380-1,860 ms of the speaker's wait. With
         # this on, the stage snapshots its inputs and the write runs on a
         # scoped thread once the block is built (`deferred`). The bake
-        # worker keeps it inline: its job returns when the run does.
+        # worker keeps it inline: its job returns when the run does. The
+        # walk reads the frame, and a walk reader that comes before the
+        # thread writes it itself (`ideal_text_feedback_bake.walk_frame`).
         self.background_shadow = background_shadow
         self.deferred: list[Callable[[], None]] = []
+        # ONLY THE FRAME (`write_take_frame`): the run stops once the frame
+        # is written, inline, and serves, claims and picks nothing.
+        self.frame_only = frame_only
         # Milliseconds per stage, logged once per run (founder 2026-10-15:
         # find which part of the 20-40 s bake is slow).
         self.timings: dict[str, int] = {}
@@ -354,6 +360,8 @@ class _ChangesRun:
         self._stage("changes.prior_take", self._prior_take, degradable=True)
         self._stage("changes.feedback_set_and_fallbacks", self._feedback_set_and_fallbacks)
         self._stage("changes.v3_shadow", self._v3_shadow, degradable=True)
+        if self.frame_only:
+            return {}
         self._stage("changes.immutable_membership", self._immutable_membership)
         self._stage("changes.select", self._select)
         self._stage("changes.evidence_coordinates", self._evidence_coordinates)
@@ -783,14 +791,23 @@ class _ChangesRun:
         # these frames before any user-visible activation. Shadow evaluation
         # can never darken the current feedback product.
         #
-        # NOTHING SERVED READS IT. The frame is read by the V4 dark run
-        # (`get_v4_dark_frame`: willfidence, the reached-bar, the Take
-        # summary) and the coach sheets (`list_recent_v3_frames`); no later
-        # stage of this run and nothing in `mlc3_first_client_feedback` do.
-        # So on the live path it runs AFTER the block is built, on a thread
-        # that keeps the request's processing-authorization context
+        # NOTHING IN THIS BLOCK READS IT; THE WALK DOES (corrected
+        # 2026-11-06: this said "nothing served reads it"). No later stage of
+        # this run and nothing in `mlc3_first_client_feedback` read the
+        # frame, so on the live path it runs AFTER the block is built, on a
+        # thread that keeps the request's processing-authorization context
         # (`start_scoped_thread`), over copies of the inputs as they stand at
         # this stage — later stages replace and mark `changes` in place.
+        # But the Feedback walk reads this Take's frame — whether it is the
+        # One thing walk (`tempo_stretch.walked_as_one_thing`), whether the
+        # pace game worked (`take_progress.pace_worked`) and "Last time"
+        # (`take_progress.last_fix`) — as do the V4 dark run (willfidence,
+        # the reached-bar, the Take summary) and the coach sheets. The walk
+        # asks as soon as it knows the Take, which can be before this thread
+        # has written; so it reads through `walk_frame`, which writes the
+        # frame itself when it is missing. The mark taken here tells a
+        # reader in another process that this write is under way, and it
+        # waits for it rather than writing the frame a second time.
         from services.take_feedback_policy_v3 import dark_enabled
         _arm_sid = self.arm_sid
         _v3_session = (
@@ -803,6 +820,16 @@ class _ChangesRun:
             self._write_v3_shadow(_v3_session, self.review_doc,
                                   self.user_sugs, self.changes)
             return
+        from services.ideal_text_feedback_bake import (
+            claim_frame_writing, release_frame_writing,
+        )
+        if not claim_frame_writing(_arm_sid):
+            # Someone is writing this Take's frame right now (a walk reader,
+            # or an earlier read's thread), from the same stored reads; the
+            # frame is insert-once, so a second write would add nothing.
+            logger.info("take feedback v3 shadow already being written "
+                        "arc=%s take=%s", self.arc_id, _arm_sid)
+            return
         import copy
         session, doc = copy.deepcopy(_v3_session), copy.deepcopy(self.review_doc)
         sugs, changes = copy.deepcopy(self.user_sugs), copy.deepcopy(self.changes)
@@ -813,6 +840,8 @@ class _ChangesRun:
             except Exception as error:  # noqa: BLE001 -- a log, off the path
                 logger.warning("take feedback v3 shadow failed arc=%s take=%s: "
                                "%s", self.arc_id, _arm_sid, error, exc_info=True)
+            finally:
+                release_frame_writing(_arm_sid)
         self.deferred.append(_later)
 
     def _write_v3_shadow(self, _v3_session: dict, _v3_doc: Any,
@@ -1945,7 +1974,8 @@ def build_changes_block(arc_id, served_text, user_id="", take_session_id="",
     ``background_shadow``: the live read passes True, and the V3 dark frame
     is then written on a scoped thread after the block is built instead of
     inside the speaker's wait (see `_ChangesRun.__init__`). The served block
-    is the same either way.
+    is the same either way. The walk reads that frame, and writes it itself
+    when it comes first (`ideal_text_feedback_bake.walk_frame`).
     """
     own_log = degradation is None
     log = degradation if degradation is not None else DegradationLog(READ_PATH)
@@ -1976,10 +2006,30 @@ def build_changes_block(arc_id, served_text, user_id="", take_session_id="",
     return result
 
 
+def write_take_frame(arc_id, served_text, user_id, take_session_id,
+                     review_version, *, deps: ChangesDeps) -> None:
+    """Write the Take's V3 dark frame now, inline: the frame the live read
+    writes after its block, by the same stages up to it and no further
+    (`_ChangesRun.frame_only`). For a walk reader that found the frame
+    missing (`ideal_text_feedback_bake.walk_frame`). It serves nothing and
+    claims, picks and freezes nothing; it calls no model. A failing stage is
+    logged, as the shadow's always was; a failing run raises to the
+    caller."""
+    log = DegradationLog(READ_PATH)
+    run = _ChangesRun(arc_id, served_text, user_id, take_session_id,
+                      review_version, deps, log, frame_only=True)
+    started = perf_counter()
+    run.execute()
+    logger.info("take frame written for the walk arc=%s take=%s total=%dms "
+                "degraded=%d", arc_id, take_session_id,
+                int((perf_counter() - started) * 1000), len(log))
+
+
 def _start_deferred(run: _ChangesRun) -> None:
     """The work the run put off until the block was built (the V3 shadow on
     the live path), each on a thread that keeps this request's context. A
-    thread that cannot start is logged; the block is already served."""
+    thread that cannot start is logged; the block is already served, and the
+    frame mark its job took expires on its own."""
     from services.parallel import start_scoped_thread
     for job in run.deferred:
         try:
