@@ -227,6 +227,9 @@ class _PickDb(_Ledger):
     def get_snippet_by_id(self, clip):
         return {"id": clip, "audio_segment_path": None}
 
+    def get_snippet_playback_rows(self, ids):
+        return [self.get_snippet_by_id(c) for c in ids]
+
 
 def test_only_yes_speakers_reach_the_block_pick_and_a_withdrawal_empties_it():
     db = _PickDb()

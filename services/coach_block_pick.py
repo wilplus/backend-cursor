@@ -182,18 +182,57 @@ def sample_for_coach(database: Any, *, coach_id: str, week: str,
 
 # ── the sheet and the answer ──────────────────────────────────────────────
 
+def _admitted_takes(database: Any, takes: Iterable[Any]) -> dict:
+    """``_admitted`` for each distinct Take, the reads side by side: each
+    check is about five database calls, and a full line holds up to the
+    weekly cap of sheets (the panel's 5-second queue, 2026-11-06)."""
+    import contextvars
+    from concurrent.futures import ThreadPoolExecutor
+    distinct = sorted({str(t or "") for t in takes} - {""})
+    if len(distinct) <= 1:
+        return {t: _admitted(database, t) for t in distinct}
+    with ThreadPoolExecutor(max_workers=min(8, len(distinct))) as pool:
+        # Each check runs in a copy of the request's context, so its
+        # database calls still count in the request's timing.
+        futures = {t: pool.submit(contextvars.copy_context().run, _admitted, database, t)
+                   for t in distinct}
+        out = {}
+        for take, future in futures.items():
+            try:
+                out[take] = bool(future.result())
+            except Exception as e:  # noqa: BLE001 -- a check that fails keeps the sheet out
+                _log.warning("block pick consent read failed take=%s: %s", take, e)
+                out[take] = False
+        return out
+
+
+def _snippets(database: Any, clip_ids: Iterable[Any]) -> dict:
+    """The playback columns of every clip on the line, in one read."""
+    ids = sorted({str(c) for c in clip_ids if c})
+    if not ids:
+        return {}
+    try:
+        rows = database.get_snippet_playback_rows(ids) or []
+    except Exception as e:  # noqa: BLE001 -- no player rather than no line
+        _log.warning("block pick clip read failed (%d clips): %s", len(ids), e)
+        return {}
+    return {str(r.get("id")): r for r in rows if isinstance(r, dict)}
+
+
 def queue(database: Any, *, coach_id: str) -> tuple[int, dict]:
     """The coach's pending picks, audio only; the Manager's pick is never
     in the payload."""
     from services.snippet_audio_url import snippet_clip_playback
-    memo: dict = {}
-    rows = [r for r in (database.list_coach_block_picks_pending(str(coach_id)) or [])
-            if isinstance(r, dict) and _admitted(database, r.get("take_session_id"), memo)]
+    pending = [r for r in (database.list_coach_block_picks_pending(str(coach_id)) or [])
+               if isinstance(r, dict)]
+    admitted = _admitted_takes(database, (r.get("take_session_id") for r in pending))
+    rows = [r for r in pending if admitted.get(str(r.get("take_session_id") or ""))]
+    snippets = _snippets(database, (c for r in rows for c in (r.get("candidate_snippet_ids") or [])))
     items = []
     for n, row in enumerate(rows, start=1):
         clips = []
         for i, clip_id in enumerate(row.get("candidate_snippet_ids") or []):
-            snippet = database.get_snippet_by_id(str(clip_id)) or {}
+            snippet = snippets.get(str(clip_id)) or {}
             # Audio and its window only (BLIND COACH): the parent ref plays
             # only the clip once the offsets ride along.
             clips.append({"clip_id": str(clip_id), "letter": "ABC"[i] if i < 3 else str(i + 1),
