@@ -73,6 +73,14 @@ slot of that tool passes over the clips on that slide (``worked``: the
 weakest for the AI clip, the between for the Clearer version) and fills
 from everything else as it always does. Nothing worked, nothing changes.
 
+Untouched slides first (founder 2026-11-06, N543): a slide that had helper
+words when the Take was recorded was worked on (``touched``). Every slot
+picks from the slides with none first, the strongest and the next bests by
+their rank, the between and the weakest from the untouched clips when any
+can fill the slot; a worked slide is used only when nothing else can, so a
+Take never shows fewer moments. Was: only a clip whose own words held the
+helper words gave way.
+
 A clip with no sound read is not dropped (founder 2026-10-17): its S is
 neutral and its words order it. It can be the strongest, never the weakest.
 
@@ -170,8 +178,9 @@ def lift(read_: dict, weight: Any) -> dict:
 def pick(reads: list[dict], level: Optional[dict] = None) -> dict:
     """``reads``: one row per clip with ``block_id``, ``slide_index``,
     ``word_count``, ``candidate_id``, ``read`` (from :func:`read`, or
-    None), ``held`` (its words hold the slide's helper words; N246) and
-    ``worked`` (the tools whose fix worked on its slide last time; N359).
+    None), ``held`` (its words hold the slide's helper words; N246),
+    ``touched`` (its slide had helper words when the Take was recorded;
+    N543) and ``worked`` (the tools whose fix worked on its slide last time; N359).
 
     ``level``, on a plan (N289 item 8): ``{"candidate_id", "slot", "kind",
     "plan_level"}``, the clip where this week's level shows most and the
@@ -251,7 +260,7 @@ def _weakest(rows: list[dict]) -> Optional[dict]:
              and row["read"].get("sound", True) and not row.get("held")
              and not _fixed(row, EXERCISE_VOICE)
              and float(row.get("voice") or 0.0) >= floor]
-    return min(heard, key=lambda row: (-float(row.get("voice") or 0.0) * (1 + RELEVANCE_LIFT * _relevance(row)),
+    return min(_untouched_first(heard), key=lambda row: (-float(row.get("voice") or 0.0) * (1 + RELEVANCE_LIFT * _relevance(row)),
                                        row["read"]["value"] * _damp(row), row["read"]["s"]),
                default=None)
 
@@ -263,9 +272,17 @@ def _between(rows: list[dict]) -> Optional[dict]:
     moment the verbal read weighs reads lower (N326, ``_heard``)."""
     worded = [row for row in rows if _worded(row) and row["read"].get("words_help")
               and not row.get("held") and not _fixed(row, EXERCISE_CLEARER)]
-    return min(worded, key=lambda row: (row["read"]["w"] * _damp(row) * _heard(row),
+    return min(_untouched_first(worded), key=lambda row: (row["read"]["w"] * _damp(row) * _heard(row),
                                         row["read"]["value"]),
                default=None)
+
+
+def _untouched_first(rows: list[dict]) -> list[dict]:
+    """The clips on slides with no helper words when any is there, else
+    all of them (N543): a worked slide fills a slot only when nothing
+    untouched can."""
+    untouched = [row for row in rows if not row.get("touched")]
+    return untouched or rows
 
 
 def _fixed(row: dict, kind: str) -> bool:
@@ -295,10 +312,10 @@ def best_two(reads: list[dict]) -> list[dict]:
 def _rank(row: dict) -> tuple:
     """The strongest's rank: clips with enough words first, whatever their
     voice (a three-word fragment is shown only when a Take has nothing
-    longer), then those that do not hold the slide's helper words (N246
-    item 2), then the willfidence, lifted by relevance (N293), then the
+    longer), then those on a slide with no helper words (N543), then those
+    that do not hold the slide's helper words (N246 item 2), then the willfidence, lifted by relevance (N293), then the
     voice (N118)."""
-    return (not _worded(row), bool(row.get("held")),
+    return (not _worded(row), bool(row.get("touched")), bool(row.get("held")),
             -row["read"]["value"] * (1 + RELEVANCE_LIFT * _relevance(row)), -row["read"]["s"])
 
 
