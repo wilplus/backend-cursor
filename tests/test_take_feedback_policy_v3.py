@@ -907,11 +907,15 @@ def test_a_sentence_with_my_helper_words_gives_way_to_the_next():
     assert shown(held_words=held) == [_clip("q1"), _clip("q3")]
     (strongest,) = [b for b in _clips_frame(take, held_words=held)["blocks"] if b["highest_moment"]]
     assert strongest["selected_candidate_id"] == _clip("q1")
-    # The same words on another slide, or words it does not say in order,
-    # change nothing.
-    for other in ({1: ["q0x3 q0x4"]}, {0: ["q0x10 · q0x3"]}):
-        (top,) = [b for b in _clips_frame(take, held_words=other)["blocks"] if b["highest_moment"]]
-        assert top["selected_candidate_id"] == _clip("q0")
+    # Helper words on another slide change nothing for q0's.
+    (top,) = [b for b in _clips_frame(take, held_words={1: ["q0x3 q0x4"]})["blocks"]
+              if b["highest_moment"]]
+    assert top["selected_candidate_id"] == _clip("q0")
+    # Slide 0 worked on, even with words q0 does not say: an untouched slide
+    # comes first (founder 2026-11-06, N543; was: no change).
+    (top,) = [b for b in _clips_frame(take, held_words={0: ["q0x10 · q0x3"]})["blocks"]
+              if b["highest_moment"]]
+    assert top["selected_candidate_id"] == _clip("q1")
     # A sentence that holds its helper words is never the fix (N246 item 2)
     # and there is no next best (N309): the strongest alone.
     assert [clip for clip, _ in _moments(_clips_frame(take[:2], held_words=held))] == [

@@ -2031,13 +2031,18 @@ O6  A sentence that already has my helper words is not the strongest
 again: the next best is, and it comes back only when nothing else can
 be shown.
 O7  On a plan, my level takes the slot it is given, never the
-strongest's block, never as a fourth moment.","O1 -> test_the_strongest_is_praised_whatever_its_voice
+strongest's block, never as a fourth moment.
+O8  A slide I already gave helper words to gives way in every slot:
+my best, the clearer version and the AI clip come from slides I have
+not touched, and a worked slide fills a slot only when nothing else
+can (N543).","O1 -> test_the_strongest_is_praised_whatever_its_voice
 O2 -> test_the_weakest_is_the_lowest_whole_thought_i_was_heard_saying
 O3 -> test_words_that_need_help_get_the_between_first
 O4 -> test_an_empty_slot_goes_to_the_next_best
 O5 -> test_a_clip_with_no_sound_read_is_never_the_weakest
 O6 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
-O7 -> test_my_level_takes_its_slot_never_the_strongest","Founder 2026-10-30 (N289: ""the praise clips just get the praise"", ""a negative [word] has been spotted, or it was too fast, that's the second moment"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-28 (N246, ""go for the next confident moment""); 2026-10-30 (N284, three moments); 2026-11-03 (N425, ""go for A, B and C"": the AI clip only where the voice shows the problem)."
+O7 -> test_my_level_takes_its_slot_never_the_strongest
+O8 -> test_my_moments_come_from_slides_i_have_not_touched_first","Founder 2026-10-30 (N289: ""the praise clips just get the praise"", ""a negative [word] has been spotted, or it was too fast, that's the second moment"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-28 (N246, ""go for the next confident moment""); 2026-10-30 (N284, three moments); 2026-11-03 (N425, ""go for A, B and C"": the AI clip only where the voice shows the problem); 2026-11-06 (N543, ""Untouched first"")."
 tests/test_moment_suggestions.py,Story,"As a speaker, I want my Ideal Text read to carry no star or suggestion outside the gated changes lane and no scores, so that I see only words and the latest text.","O1  Whatever lane a stored moment suggestion came from (replace,
 emphasize, structure), the GET serves the moment with its anchor and
 playback identity but no star and no suggestion.

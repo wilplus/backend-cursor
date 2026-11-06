@@ -24,6 +24,10 @@ OUTCOME
       be shown.
   O7  On a plan, my level takes the slot it is given, never the
       strongest's block, never as a fourth moment.
+  O8  A slide I already gave helper words to gives way in every slot:
+      my best, the clearer version and the AI clip come from slides I have
+      not touched, and a worked slide fills a slot only when nothing else
+      can (N543).
 PROVES   O1 -> test_the_strongest_is_praised_whatever_its_voice
          O2 -> test_the_weakest_is_the_lowest_whole_thought_i_was_heard_saying
          O3 -> test_words_that_need_help_get_the_between_first
@@ -31,13 +35,14 @@ PROVES   O1 -> test_the_strongest_is_praised_whatever_its_voice
          O5 -> test_a_clip_with_no_sound_read_is_never_the_weakest
          O6 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
          O7 -> test_my_level_takes_its_slot_never_the_strongest
+         O8 -> test_my_moments_come_from_slides_i_have_not_touched_first
 WHY      Founder 2026-10-30 (N289: "the praise clips just get the praise",
          "a negative [word] has been spotted, or it was too fast, that's
          the second moment", "the third moment, the weakest one, is where
          we display the AI audio"); 2026-10-28 (N246, "go for the next
          confident moment"); 2026-10-30 (N284, three moments); 2026-11-03
          (N425, "go for A, B and C": the AI clip only where the voice shows
-         the problem).
+         the problem); 2026-11-06 (N543, "Untouched first").
 """
 from services.moment_pick import pick, read
 
@@ -153,3 +158,20 @@ def test_my_level_takes_its_slot_never_the_strongest():
         ("a", "strongest", None), ("b", "weakest", "voice_moves"), ("c", "next", None)]
     # On the strongest's block: the pick as off a plan.
     assert pick(rows, level={**level, "candidate_id": "a-clip"}) == pick(rows)
+
+
+def test_my_moments_come_from_slides_i_have_not_touched_first():
+    def worked(row):
+        return {**row, "touched": True}
+    # The best clip, the words that need help most and the loudest voice
+    # problem all sit on worked slides: every slot goes to untouched ones.
+    rows = [worked(_row("a", 0, 0.95)), _row("b", 1, 0.8),
+            worked(_row("c", 2, 0.3, w=0.3, help="undermining")),
+            _row("d", 3, 0.4, w=0.6, help="undermining"),
+            worked({**_row("e", 4, 0.2), "voice": 0.9}), _row("f", 5, 0.5)]
+    assert [(m["block_id"], m["slot"]) for m in pick(rows)["shown"]] == [
+        ("b", "strongest"), ("d", "between"), ("f", "weakest")]
+    # Every slide worked on: the pick is the one it always was, never fewer.
+    every = [worked(row) for row in (_row("a", 0, 0.9), _row("b", 1, 0.6), _row("c", 2, 0.2))]
+    assert [m["block_id"] for m in pick(every)["shown"]] == [
+        m["block_id"] for m in pick([{**r, "touched": False} for r in every])["shown"]]

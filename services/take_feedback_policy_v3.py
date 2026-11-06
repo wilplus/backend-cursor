@@ -957,6 +957,9 @@ def _moment_read(candidate: dict, block: dict, snippet_map: dict, clips: dict,
         "slide_index": block.get("slide_index"),
         "word_count": candidate.get("word_count") or 0,
         "held": holds(shown, held),
+        # Its slide had helper words when the Take was recorded: worked on,
+        # so it gives way to untouched slides in every slot (N543).
+        "touched": any(str(p or "").strip() for p in held) if isinstance(held, (list, tuple)) else bool(held),
         "worked": frozenset(kind for slide, kind in worked if slide == block.get("slide_index")),
         # The clip's strongest voice problem the AI clip can teach, against
         # the speaker's own usual on this Take (N425); 0 with none.
