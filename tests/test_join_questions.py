@@ -232,7 +232,7 @@ class WillAsksTheSetupTest(_App):
         self.assertEqual(self._say(said="Is a video call OK?"), ["Is a video call OK?", S.ADDED, S.PEEK])
         month = "Let's build our knowledge base a month at a time."
         self.assertEqual(self._summary(), [month, J.HURRY, J.LANGUAGES, "Is a video call OK?"])
-        self.assertEqual(self._say(picked="That's right"), ["That's right", S.SET])
+        self.assertEqual(self._say(picked="That's right"), ["That's right", S.SET, S.PRACTISE])
         self.assertEqual(self._kept(), [month, J.HURRY, J.LANGUAGES, "Is a video call OK?"])
         self.assertEqual(self._begin(), {"started": False})
 
@@ -240,7 +240,7 @@ class WillAsksTheSetupTest(_App):
         self._begin()
         self.assertEqual(self._say(picked="No deadline"), ["No deadline", S.MORE_Q])
         self.assertEqual(self._say(picked="That's all"), ["That's all", S.PEEK])
-        self.assertEqual((self._summary(), self._say(picked="That's right")), ([], ["That's right", S.SET]))
+        self.assertEqual((self._summary(), self._say(picked="That's right")), ([], ["That's right", S.SET, S.PRACTISE]))
         self.assertEqual((self._begin(), self._kept()), ({"started": False}, None))
         self._begin("/again")
         self.assertEqual(self._asked()["body"], S.AGAIN)
