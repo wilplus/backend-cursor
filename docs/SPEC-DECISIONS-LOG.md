@@ -13783,3 +13783,33 @@ No new words on screen. No migration.
 The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 H1 and the One thing walk's pick.
+
+**N544 · Will's key line is said, in a small recording bar, not the
+recording screens (founder, the Claude Code chat, 6 November 2026, on a
+screenshot of "If Management remembers one sentence from you, what is it?
+Say it the way you'll say it." over the box "Type your answer": "it asks to
+say it; but it doesnt give you the recorder; so maybe open a bottom bar
+recording without opening the offician recording slides just a small
+recording bar for this").** For N294 item 2, N483 items 2, 5 and 7:
+1. **While Will's key-line question waits** (N294 item 2), the bar's middle
+is "Record your answer", the black button with the red dot, and "Not now"
+is the grey word under the question (N483 items 1 and 2), as for the plan's
+spoken questions. The box "Type your answer" is not offered for it.
+2. **The tap records in the bar itself:** the small recording bar the plan's
+spoken answers use (N314: the time, the bin, "Stop") takes the bar's place.
+No recording screens and no slides: this answer is not a Take (N483 item 5
+and N481 stay for answers to people and to Takes).
+3. **What is said is the answer,** heard as before N483 (N294 items 2 and
+3, N319 item 1): transcribed under the caller's processing authorization by
+the existing route `/will-question/voice`, kept as the talk's key line,
+shown as the speaker's bubble with the words Will heard, then his reply and
+what comes after the Take. The recording is not kept.
+4. **"Not now"** leaves the question unanswered and gives the middle back to
+"Record Take N" until the chat is opened again; not answering ends the
+chain, as it always has (N294 item 4).
+Replaces N483 item 7's "a spoken answer to Will's question after the walk"
+for the key line only; every other question of Will's keeps taps and
+written words. No new words ("Record your answer", "Not now" and "Stop" are
+signed). No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E2, E3, J7.
