@@ -13545,3 +13545,25 @@ summary opened again) has none.
 No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1.
+
+**N534 · Until the questions are set, the "+" shows a small note at the
+bottom, not Will's chat; the link opens only once they are set (founder, the
+Claude Code chat, 6 November 2026, after the "+" opened Will's chat instead
+of "Copy my link": "don't let them copy the link unless they set up the
+questions; just display the small notification from the bottom with a btn
+to it instead of the link; you click the link, set up the questions and
+then the link opens normally", on the prototype
+<https://claude.ai/artifact/8VjuTv7Ly3VB5uEtAUke7M>, "almost the same kind"
+as the notification bar at the top of Will's chat (N391)).** For N503 item 1:
+1. **Before the questions are set,** "Add someone to chat with" (the "+"
+and the list's row) opens no link and no chat: a small note comes up at
+the bottom, drawn as the bar at the top of Will's chat (N391), with one
+button and ✕ (Not now). Was (N503 item 1): Will's chat opened on his setup.
+2. **The button opens Will's setup in his chat** (N503), one question at a
+time; it ends on "You're set." with "Copy my link ›", and N533's bubble.
+3. **Once set** (no questions is an answer, N503 item 3), the "+" opens the
+add sheet as before, with no note.
+Words to sign (Never 4): "Before you share your link, set the questions for
+people who join." and "Set them". No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1.
