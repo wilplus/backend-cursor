@@ -13717,3 +13717,18 @@ native screen (N506 item 5, frontend #1251) is unchanged. No new words. No
 migration. The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 T4 and T6.
+
+**N541 · A failed send to people keeps the share screen open, with "Couldn't
+share this take. Try again." (founder, the Claude Code chat, 6 November
+2026, on the overnight finding that a failed send closed the screen as if
+the Take had gone out: "Yes, fix it").** For the promise that every Take a
+speaker sends reaches the people they chose (CLAUDE.md, N470 item 8):
+1. **When adding people to a Take fails,** the share screen stays open and
+says "Couldn't share this take. Try again." (signed, already the community
+path's words on the same screen), so Send can be tapped again. Was: it
+closed as if the Take had gone out, and the line in the chat stayed as it
+was.
+2. A send that works, and the community path, are unchanged.
+No new words. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md),
+the share screen.
