@@ -970,7 +970,7 @@ def answer_rating(database: Any, user_id: str, value: Any) -> dict:
         # "Two quick taps before your plan." on a plan already running (one
         # made from Takes or "Keep practising"): the plan, as promised, with
         # the plan's own line and card; the plan itself is not begun again
-        # (N536).
+        # (N538).
         rows = [_bot(P.COPY["all_set"], f"all_set:rated_{moment}"),
                 _bot("", f"card:rated_{moment}", plan_card=True)] if moment == "first" else []
     return {"plan": plan, "messages": _write(database, user_id, plan["id"], answered + rows)}
@@ -1755,7 +1755,7 @@ def same_event(database: Any, user_id: str, yes: Any, *, tz: Any = None,
     if yes is True:
         rows = [_me(P.COPY["yes"], f"same_event_yes:{_now().isoformat()}")]
         fields: dict[str, Any] = {"step": "done"}
-        # The ratings the question came in place of follow the Yes (N536).
+        # The ratings the question came in place of follow the Yes (N538).
         facts = _facts(plan)
         moment = _ratings_due(plan, facts, _done(plan, _takes(database, user_id)))
         if moment:

@@ -69,7 +69,9 @@ Take (``plan_flow.after_take``, "That's your 15 minutes for today."), the
 closing message ("Good job. See you tomorrow." or "Good job. See you
 {weekday}." on a plan, by its next practice day, N347 item 2), then on a
 plan its progress, the plan's bar and "{n} of
-{total} practices done." (``plan_flow.progress``, N319 item 7). The Lounge
+{total} practices done." (``plan_flow.progress``, N319 item 7). A question
+the plan asks there (its own yes, the ratings, a new project's) comes last,
+under the progress, right above its answers (founder 2026-11-06, N537). The Lounge
 puts the tap "I want to continue my practice" under the last of them;
 tapping it, or typing that they want to practise, brings "Record Take N"
 under the chat (frontend ``afterTake.ts``). The plan's lines wait for the
@@ -403,7 +405,42 @@ def end_rows(database: Any, user_id: str, row: dict, *, glad: bool = False,
     else:
         closing = database.insert_lounge_messages(str(user_id), [{
             **row, "body": body, "client_created_at": at}]) or []
-    return plan_rows + closing + (_plan_progress(database, user_id) if closing else [])
+    end = closing + (_plan_progress(database, user_id) if closing else [])
+    said, asked = _split_ask(plan_rows)
+    return said + end + _to_bottom(database, user_id, asked if end else [])
+
+
+def _split_ask(rows: list[dict]) -> tuple[list[dict], list[dict]]:
+    """The plan's lines after a Take, split where its question begins: the
+    first row with answers to tap (``metadata.plan_ask``), with the line
+    that leads into it ("Two quick taps before your plan." before the scale). A question
+    is the last bubble, right above its answers (founder 2026-11-06, N537):
+    it goes under the goodbye and the progress, never over them."""
+    first = next((i for i, r in enumerate(rows) if (r.get("metadata") or {}).get("plan_ask")), None)
+    if first is None:
+        return rows, []
+    from services.plan import COPY
+    leads = {COPY.get("ratings_intro"), COPY.get("why_1")}
+    if first and rows[first - 1].get("role") == "bot" and rows[first - 1].get("body") in leads:
+        first -= 1
+    return rows[:first], rows[first:]
+
+
+def _to_bottom(database: Any, user_id: str, rows: list[dict]) -> list[dict]:
+    """``rows`` moved, in order, to the bottom of the thread. A row that
+    cannot be moved stays where it was written. Best-effort."""
+    from services.lounge_messages import thread_stamp
+    moved = []
+    for r in rows:
+        try:
+            again = database.rewrite_lounge_message(
+                str(user_id), r["client_id"], r.get("body") or "", r.get("metadata") or {},
+                at=thread_stamp(database, user_id))
+        except Exception as error:  # noqa: BLE001 -- the question stands where it was
+            logger.warning("after take: plan question not moved user=%s: %s", user_id, error)
+            again = None
+        moved.append(again or r)
+    return moved
 
 
 def _first_take(database: Any, user_id: str, take: str) -> bool:

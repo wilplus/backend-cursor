@@ -416,9 +416,12 @@ def v2_chats_join(token):
 @v2_bp.route("/chats/join-questions", methods=["GET"])
 @require_auth
 def v2_chats_join_questions():
-    """The questions I set for whoever joins through my link, or null."""
+    """The questions I set for whoever joins through my link, or null; "set":
+    whether the "+" opens the link (N534)."""
     from services.join_questions import mine
-    return _run("join-questions", lambda: {"questions": mine(db, str(request.user_id))})
+    from services.join_setup import is_set
+    uid = str(request.user_id)
+    return _run("join-questions", lambda: {"questions": mine(db, uid), "set": is_set(db, uid)})
 
 
 @v2_bp.route("/chats/join-questions", methods=["PUT"])
@@ -434,8 +437,8 @@ def v2_chats_join_questions_save():
 @limiter.limit("60 per hour", scope="chats_join_setup")
 @require_auth
 def v2_chats_join_setup():
-    """The first time "Add someone to chat with" opens: Will asks the setup
-    in his chat (N503). {"started"}: false opens the link at once."""
+    """"Set them" on the "+"'s note: Will asks the setup in his chat (N503,
+    N534). {"started"}: false opens the link at once."""
     from services.join_setup import begin
     return _run("join setup", lambda: begin(db, str(request.user_id)))
 

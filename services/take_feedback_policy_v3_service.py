@@ -7,10 +7,13 @@ Human answers and coach judgments are deliberately absent from its inputs.
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Iterable
 from typing import Any
 
 from services.take_feedback_policy_v3 import span_rejection, unservable
+
+logger = logging.getLogger(__name__)
 
 _FAMILIES = {"confident_voice", "rewrite_clarity", "great_formulation"}
 
@@ -544,6 +547,8 @@ def prepare_v3_service_inventory(
         pieces=pieces, inventory=inventory,
     )
 
+    _name_lost_clearer(blocks, inventory, closed, policy.get("take_id"))
+
     # THE ONE REMAINING FAIL-CLOSED GATE, and it is the right one: everything
     # above now excludes what it cannot prove and keeps what it can, so
     # reaching here with an incomplete inventory means nothing provable
@@ -558,6 +563,24 @@ def prepare_v3_service_inventory(
         )
         return None
     return _service_inventory_payload(inventory)
+
+
+def _name_lost_clearer(blocks: list, inventory: _V3ServiceInventory,
+                       closed: Callable[[str], None], take_id: Any) -> None:
+    """The walk's fix chosen as a Clearer version whose rewrite row is not
+    among the served rows (founder 2026-11-06, N536): the walk then shows
+    the closest exercise in its place. Named here, a warning in the log, so
+    the next one says where its rewrite was lost. Changes nothing."""
+    from services.moment_pick import EXERCISE_CLEARER
+    served = {str(row.get("block_id")) for row in inventory.visible
+              if row.get("feedback_family") == "rewrite_clarity"}
+    for block in blocks:
+        if (isinstance(block, dict) and block.get("carries_exercise")
+                and block.get("exercise_kind") == EXERCISE_CLEARER
+                and str(block.get("block_id")) not in served):
+            closed(f"fix_clearer_not_served:{block.get('block_id')}")
+            logger.warning("one thing: the fix's Clearer version was not served "
+                           "take=%s block=%s", take_id, block.get("block_id"))
 
 
 def _selected_confidence(policy: dict) -> dict[str, str]:

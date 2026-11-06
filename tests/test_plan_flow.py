@@ -74,9 +74,9 @@ OUTCOME
   O17 On a plan already running (made from Takes or "Keep practising"),
       "Two quick taps before your plan." after its first Take ends on
       "You're all set. Here's your plan." and the card; the plan is not
-      begun again (N536). A new project's first Take on such a plan asks
+      begun again (N538). A new project's first Take on such a plan asks
       "Is this for {date}?" (H2); after Yes, the ratings it came in place
-      of, then the plan (N536).
+      of, then the plan (N538).
 PROVES   O1 -> test_without_the_ring_nothing_happens
          O2 -> test_a_new_speaker_is_asked_once
          O3 -> test_no_date_gives_two_months_then_the_voice_message
@@ -449,7 +449,7 @@ def test_a_new_project_asks_whether_it_is_for_the_same_event(db, monkeypatch):
 def test_a_new_project_on_a_plan_made_after_earlier_takes_is_asked_about(db, monkeypatch):
     # A plan made from Takes has seen no Take of its own: the speaker's earlier
     # project is the plan's, so a new project's first Take asks (H2), and Yes
-    # brings the ratings it came in place of, then the plan (N536).
+    # brings the ratings it came in place of, then the plan (N538).
     monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: False)
     took = datetime.now(timezone.utc) - timedelta(days=3)
     db.takes.rows = [{"created_at": took.isoformat(), "arc_id": "arc-1", "take_index": 1}]
@@ -471,7 +471,7 @@ def test_a_new_project_on_a_plan_made_after_earlier_takes_is_asked_about(db, mon
 
 def test_the_first_ratings_on_a_running_plan_end_on_the_plan(db, monkeypatch):
     # A plan made from Takes (A2): "Two quick taps before your plan." after its
-    # first Take ends on the plan and its card (N536), and the plan is not
+    # first Take ends on the plan and its card (N538), and the plan is not
     # begun again: that Take stays its first practice.
     monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: False)
     took = datetime.now(timezone.utc) - timedelta(days=3)

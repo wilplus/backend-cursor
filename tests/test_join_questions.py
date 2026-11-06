@@ -224,12 +224,16 @@ class WillAsksTheSetupTest(_App):
     def _summary(self):
         return [line["q"] for line in self._asked()["metadata"]["join_setup"]["lines"]]
 
+    def _is_set(self):
+        return self.client.get("/v2/chats/join-questions", headers=self._as(TOMEK)).get_json()["set"]
+
     def _kept(self):
         kept = self.client.get("/v2/chats/join-questions", headers=self._as(TOMEK)).get_json()["questions"]
         return kept and [line["q"] for line in kept["lines"]]
 
     def test_will_asks_me_the_setup_the_first_time_i_share_my_link(self):
         self.store.tables["user_settings"] = [{"user_id": TOMEK, "profile_proficient_languages": ["pl", "en"]}]
+        self.assertFalse(self._is_set())
         self.assertEqual(self._begin(), {"started": True})
         self.assertEqual([r["body"] for r in self.lounge.page(TOMEK)][::-1], [S.INTRO, S.PLAN_Q])
         self.assertEqual(self._say(picked="A month at a time"),
@@ -240,14 +244,14 @@ class WillAsksTheSetupTest(_App):
         self.assertEqual(self._summary(), [month, J.HURRY, J.LANGUAGES, "Is a video call OK?"])
         self.assertEqual(self._say(picked="That's right"), ["That's right", S.SET, S.PRACTISE])
         self.assertEqual(self._kept(), [month, J.HURRY, J.LANGUAGES, "Is a video call OK?"])
-        self.assertEqual(self._begin(), {"started": False})
+        self.assertEqual((self._begin(), self._is_set()), ({"started": False}, True))
 
     def test_no_questions_is_an_answer_and_the_summary_opens_again(self):
         self._begin()
         self.assertEqual(self._say(picked="No deadline"), ["No deadline", S.MORE_Q])
         self.assertEqual(self._say(picked="That's all"), ["That's all", S.PEEK])
         self.assertEqual((self._summary(), self._say(picked="That's right")), ([], ["That's right", S.SET, S.PRACTISE]))
-        self.assertEqual((self._begin(), self._kept()), ({"started": False}, None))
+        self.assertEqual((self._begin(), self._kept(), self._is_set()), ({"started": False}, None, True))
         self._begin("/again")
         self.assertEqual(self._asked()["body"], S.AGAIN)
         self.assertEqual(self._say(picked="Change it"), ["Change it", S.CHANGE_Q])
