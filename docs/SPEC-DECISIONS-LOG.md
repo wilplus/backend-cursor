@@ -13601,6 +13601,12 @@ plan too,** and on a plan read from the first Take (N401): the projects of
 the speaker's earlier Takes are the plan's. Was: the plan knew no project
 until a Take of its own, so a new project's first Take was never asked
 about and the ratings came in its place (a bug against H2).
+3. **After Yes to "Is this for {date}?",** the ratings it came in place of
+follow (with the plan's own yes first, if not given yet, N211), then the
+plan as in 1 (founder, the same chat: "OK" to "ask them right after a Yes,
+then show the plan card"). Was: Yes kept the plan and the ratings were
+never asked. No goes to the new plan's questions, which end on the ratings
+and the card already.
 No new words. No migration. The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 D1, H2.
