@@ -13583,3 +13583,39 @@ read the words, as before.
 No new words. No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C, "Setting them, in Will's chat".
+
+**N536 · The fix the server chose is always walked; when its Clearer
+version is lost on the way, the closest exercise, and the coach is asked
+(founder, the Claude Code chat, 6 November 2026, after Take
+41dca1f0 walked their best, then the helper words, with no fix: "the
+intervention was not there at all", "it should inform the user what is the
+thing to improve and that we will serve the closest exercise we have and
+that the request for an exact personalised exercise has been sent to your
+speaking coach"; the two lines asked "as Steven Pinker would" and the
+proposal agreed: "I agree with your proposal, so please build it").** For
+N309 item 1, N381, N370:
+1. **What happened.** The server chose a between whose Clearer version
+passed the gate as the one fix (`one_fix: "moment"`), but its rewrite row
+did not reach the served rows; the walk, by N381's rule for a between with
+no Clearer version, left the fix out and gave their best's words as the
+helper words. The coach's queue heard one moment of two.
+2. **The fix the server chose is always walked.** A between with no Clearer
+version on a Take where the server chose a moment is that fix, walked with
+the closest exercise we have: the voice Exercise (the library's exercise
+when one is served, else the AI clip where the voice shows a problem it can
+teach, N425, else the tip in words, N370), then the try. N381 stands for a
+between whose Clearer version did not pass the gate: the server praises it
+as a next best, so it is never the fix.
+3. **Signed (Never 4):** above the closest exercise, after the moment's
+clip, "We don't have an exercise for exactly this yet, so here's the
+closest one."; under it, "I've asked your speaking coach to make one just
+for you." The chat says both. The coach request is the one that rises as
+the Exercise opens (F1, `judgement_follow_up.follow_up_for_open`), so the
+moment reaches the coach's queue.
+4. **Named in the log.** The server writes a warning when the chosen fix's
+Clearer version is not among the served rows (`fix_clearer_not_served`,
+`take_feedback_policy_v3_service`), so the next one says where its rewrite
+was lost.
+No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2.
