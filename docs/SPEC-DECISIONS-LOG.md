@@ -13761,3 +13761,25 @@ Replaces N539 item 2's "whatever still waits"; N539 items 1 and 3 stand.
 No new words. No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 B9, B10.
+
+**N543 · The walk's moments come from untouched slides first (founder, the
+Claude Code chat, 6 November 2026: "if the moment has been already analysed
+and there is a helper words on it - the confident moment or the weaker
+moment is smth from the paragraphs that are not yet touched", then, asked
+how, "Untouched first").** For every pick of a Take's moments (`services/moment_pick.py`):
+1. A slide that had helper words when the Take was recorded is a worked
+slide. Every slot (their best, the Clearer version's between, the AI
+clip's weakest and the next bests) picks from the slides with no helper
+words first.
+2. A worked slide is used only when the untouched slides have nothing for
+that slot, so a Take never shows fewer moments than before.
+3. Unchanged: a clip whose own words hold its slide's helper words is never
+a fix and is their best only last (N246 item 2); a fix that worked last
+time is not given again there (N359); clips of five words or more come
+first; this week's level still takes its slot on a plan (N289 item 8).
+Was: only a clip whose own words held the helper words gave way; another
+clip on the same worked slide was picked as if the slide were untouched.
+No new words on screen. No migration.
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+H1 and the One thing walk's pick.
