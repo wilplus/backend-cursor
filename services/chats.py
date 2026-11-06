@@ -227,10 +227,39 @@ def _held(row: dict) -> bool:
         return False
 
 
+#: What ``_last`` reads of a chat: its newest messages, these columns.
+_RECENT, _RECENT_COLUMNS = 20, "author_member_id,kind,body,meta,created_at"
+_THREAD_COLUMNS = "id,kind,title,created_at,link_id"
+
+
 def _recent(database: Any, thread_id: str) -> list[dict]:
     """The chat's 20 newest messages, newest first: where ``_last`` looks."""
-    return _rows(_table(database, MESSAGES).select("author_member_id,kind,body,meta,created_at")
-                 .eq("thread_id", thread_id).order("created_at", desc=True).limit(20))
+    return _rows(_table(database, MESSAGES).select(_RECENT_COLUMNS)
+                 .eq("thread_id", thread_id).order("created_at", desc=True).limit(_RECENT))
+
+
+def _threads_with_recent(database: Any, ids: list[str]) -> Optional[list[dict]]:
+    """The chats and each one's ``_recent`` messages in ONE read: PostgREST
+    embeds a thread's messages through ``chat_messages.thread_id`` (its
+    foreign key) and orders and limits them per thread, over the index on
+    (thread_id, created_at). The list used to read every chat's messages on
+    their own, one read per chat (N+1), up to eight at a time. Each thread
+    row comes back as the threads read gives it, with its messages under
+    ``MESSAGES``. None when the read fails or answers another shape; the
+    caller then reads as before."""
+    try:
+        rows = _rows(_table(database, THREADS)
+                     .select(f"{_THREAD_COLUMNS},{MESSAGES}({_RECENT_COLUMNS})")
+                     .in_("id", ids)
+                     .order("created_at", desc=True, foreign_table=MESSAGES)
+                     .limit(_RECENT, foreign_table=MESSAGES))
+    except Exception as e:  # noqa: BLE001 -- the reads one per chat follow
+        logger.warning("chats: one-read list failed, reading per chat: %s", e, exc_info=True)
+        return None
+    if not all(isinstance(r, dict) and isinstance(r.get(MESSAGES), list) for r in rows):
+        logger.warning("chats: one-read list answered another shape, reading per chat")
+        return None
+    return rows
 
 
 def _last(rows: list[dict], unheard: Any = None, me: str = "") -> Optional[dict]:
@@ -286,15 +315,22 @@ def list_chats(database: Any, user_id: Any) -> dict:
     ids = list(mine)
     # Every read below needs only the caller's memberships, so they run side
     # by side: the list waits for the slowest, not for all of them in turn.
-    spans, threads, members, *recent = _side_by_side([
+    spans, embedded, members = _side_by_side([
         # Whom the caller blocked, and what therefore never reaches them (N466).
         lambda: chat_safety.spans_by_member(database, list(mine.values())),
-        lambda: _rows(_table(database, THREADS).select("id,kind,title,created_at,link_id").in_("id", ids)),
+        lambda: _threads_with_recent(database, ids),
         lambda: _rows(_table(database, MEMBERS).select("id,thread_id,display_name,subtitle")
                       .in_("thread_id", ids)),
-        *[(lambda t=t: _recent(database, t)) for t in ids],
     ])
-    recent_of = dict(zip(ids, recent))
+    if embedded is not None:
+        threads = [{k: v for k, v in t.items() if k != MESSAGES} for t in embedded]
+        recent_of = {str(t["id"]): t[MESSAGES] for t in embedded}
+    else:
+        threads, *recent = _side_by_side([
+            lambda: _rows(_table(database, THREADS).select(_THREAD_COLUMNS).in_("id", ids)),
+            *[(lambda t=t: _recent(database, t)) for t in ids],
+        ])
+        recent_of = dict(zip(ids, recent))
     others: dict[str, dict] = {}
     for m in members:
         if str(m["id"]) != mine.get(str(m["thread_id"])):
