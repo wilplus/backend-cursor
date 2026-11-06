@@ -257,6 +257,21 @@ class WillAsksTheSetupTest(_App):
                                  json={"to": answered, "picked": "That's right"}, headers=self._as(TOMEK))
         self.assertEqual(again.status_code, 409)
 
+    def test_will_changes_the_answers_i_name_in_my_own_words(self):
+        self.store.tables["user_settings"] = [{"user_id": TOMEK, "profile_proficient_languages": ["en", "fr"]}]
+        self._begin()
+        self._say(picked="A month at a time")
+        self._say(picked="Yes")
+        self.assertEqual(self._say(said="i also speak polish"), ["i also speak polish", S.PEEK])
+        def langs():
+            return next(line["answers"] for line in self._asked()["metadata"]["join_setup"]["lines"]
+                        if line["q"] == J.LANGUAGES)
+        self.assertEqual(langs(), ["English", "French", "Polish"])
+        self._say(picked="Change it")
+        self.assertEqual(self._say(said="make the choices polish and english and french"),
+                         ["make the choices polish and english and french", S.DONE, S.NEW_VERSION])
+        self.assertEqual(langs(), ["Polish", "English", "French"])
+
 
 class ReadyTest(unittest.TestCase):
     def test_a_typed_question_is_kept_only_when_practical_with_answers(self):

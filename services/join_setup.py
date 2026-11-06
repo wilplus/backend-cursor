@@ -161,6 +161,8 @@ def _quote(questions: list[str]) -> str:
 def _own(draft: dict, said: str) -> None:
     """The person's own words: a question made ready for joiners, or left
     out with a word why (N487 item 2)."""
+    if not said.rstrip().endswith("?") and _SPEAK.search(said) and _add_answers(said, draft):
+        return
     out = J.ready([said], draft.get("languages") or [])
     draft["lines"] = (draft.get("lines") or []) + out["keep"]
     notes = draft.setdefault("notes", [])
@@ -207,10 +209,115 @@ def _answers(part: str, match: re.Match, draft: dict) -> bool:
     return True
 
 
+_LIST = re.compile(r"\b(?:choices|answers|options|languages)\b"
+                   r"(?:\s+(?:to be|should be|to|be|are|as))?\s*:?\s+(.+)$", re.I)
+_ADD = re.compile(r"^(?:please\s+)?(?:add|include|also)\s+(.+?)(?:\s+(?:to|as|in)\b.*)?$", re.I)
+_SPEAK = re.compile(r"\bi\s+(?:also\s+|can\s+)?(?:also\s+)?speak\s+(.+)$", re.I)
+
+
+def _items(text: str) -> list[str]:
+    """"polish and english, french too" -> ["Polish", "English", "French"]."""
+    text = re.sub(r"\b(too|as well|also|please)\b|[.!]", " ", text, flags=re.I)
+    out = []
+    for item in re.split(r",|/|&|\band\b|\bor\b", text, flags=re.I):
+        item = " ".join(item.split())
+        if item:
+            out.append(item[:1].upper() + item[1:])
+    return list(dict.fromkeys(out))
+
+
+def _is_language(item: str) -> bool:
+    from services.rater_languages import language_name
+    return bool(language_name(item))
+
+
+def _asking(draft: dict) -> list[dict]:
+    """The questions with answers of their own (not No / Yes)."""
+    return [line for line in draft.get("lines") or []
+            if str(line.get("q") or "").endswith("?") and line.get("answers") != [J.NO, J.YES]]
+
+
+def _named(said: str, lines: list[dict]) -> tuple[bool, Optional[dict]]:
+    """The question the words name ("for calls"): (named one, the line)."""
+    for named, line_re in _TOPICS:
+        if line_re is None or not named.search(said):
+            continue
+        hit = next((line for line in lines if line_re.search(line.get("q") or "")), None)
+        if hit or line_re.pattern != "language":
+            return True, hit
+    return False, None
+
+
+def _languages_line(draft: dict, lines: list[dict]) -> dict:
+    """The languages question, added when none is there yet."""
+    hit = next((line for line in lines if re.search("language", line.get("q") or "", re.I)), None)
+    if hit is None:
+        hit = {"q": J.LANGUAGES, "answers": [], "multi": True}
+        draft["lines"] = (draft.get("lines") or []) + [hit]
+    return hit
+
+
+def _target(said: str, items: list[str], draft: dict) -> Optional[dict]:
+    """The question a list of answers is for: the one the words name, the
+    languages one for languages, the one whose answers they share, or the
+    only one with answers of its own."""
+    lines = _asking(draft)
+    named, hit = _named(said, lines)
+    if named:
+        return hit
+    if items and all(_is_language(i) for i in items):
+        return _languages_line(draft, lines)
+    low = {i.lower() for i in items}
+    shared = [line for line in lines if low & {str(a).lower() for a in line.get("answers") or []}]
+    if shared:
+        return shared[0]
+    return lines[0] if len(lines) == 1 else None
+
+
+def _set_answers(said: str, draft: dict) -> bool:
+    """"make the choices polish and english and french": the answers, all
+    of them, in the person's order."""
+    match = _LIST.search(said)
+    items = _items(match[1]) if match else []
+    if not 2 <= len(items) <= J.MAX_ANSWERS:
+        return False
+    target = _target(said, items, draft)
+    if target is None:
+        return False
+    target["answers"] = items
+    return True
+
+
+def _add_answers(said: str, draft: dict) -> bool:
+    """"add polish" or "I also speak Polish": answers added to a question,
+    the ones it has kept."""
+    match = _SPEAK.search(said) or _ADD.search(said)
+    items = _items(match[1]) if match else []
+    if not items or (_SPEAK.search(said) and not all(_is_language(i) for i in items)):
+        return False
+    target = _target(said, items, draft)
+    if target is None:
+        return False
+    have = list(target.get("answers") or [])
+    for item in items:
+        if item.lower() not in {a.lower() for a in have}:
+            have.append(item)
+    if have == target.get("answers") or len(have) > J.MAX_ANSWERS:
+        return False
+    target["answers"] = have
+    if target.get("q") == J.LANGUAGES:
+        draft["languages"] = list(dict.fromkeys([*(draft.get("languages") or []), *items]))
+    return True
+
+
 def change(said: str, draft: dict) -> bool:
     """Will makes the change from the person's own words (N487 item 3), by
-    rules: drop a question, give one new answers ("weekdays or weekends for
-    calls"), or add a question. True when something changed."""
+    rules: name a question's answers ("make the choices Polish, English and
+    French"), add answers ("add Polish"), drop a question, give one new
+    answers ("weekdays or weekends for calls"), or add a question. True when
+    something changed."""
+    if not said.rstrip().endswith("?") and (_set_answers(said, draft) or _add_answers(said, draft)):
+        return True
     done = False
     for part in (p.strip() for p in re.split(r",|;|\band\b", said, flags=re.I)):
         if not part:
