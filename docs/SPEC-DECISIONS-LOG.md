@@ -13529,3 +13529,19 @@ No new words (one label leaves the screen). No migration. The rules:
 frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 B10, B14.
+
+**N533 · After "You're set.", Will says "All is set. You can now start
+practising." (founder, the Claude Code chat, 6 November 2026, on a phone
+screenshot of the end of the join setup, "You're set." with "Copy my link ›"
+and "Your questions for people who join ›" over "Continue review": "and one
+bubble that says "all is set you can now start practising " is missing").**
+For N487 item 3, N502 item 1, N503, N532:
+1. **Signed (Never 4):** "All is set. You can now start practising." Will's
+own bubble, right under "You're set." and its two links, at the end of the
+setup only; "Saved. Everyone who joins from now on will see these." (the
+summary opened again) has none.
+2. Under it, the bar's middle is the next recording ("Record Take N" or
+"Start your first recording"), never "Continue review" (N532).
+No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1.
