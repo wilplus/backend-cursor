@@ -30,6 +30,8 @@ OUTCOME
   O8  Setting no questions is an answer too; later "Your questions for
       people who join ›" opens the summary again, "Change it" makes the
       change from my words or says it could not, and "That's right" saves.
+  O9  "Change it" understands my words however I put them (the model, under
+      my processing authorization), and never adds a question about the work.
 PROVES   O1 -> JoinQuestionsTest::test_my_questions_are_kept_and_checked
          O2 -> JoinQuestionsTest::test_whoever_joins_finds_my_first_lines_and_i_do_not
          O3 -> JoinQuestionsTest::test_they_answer_by_tapping_and_i_read_one_card
@@ -38,6 +40,7 @@ PROVES   O1 -> JoinQuestionsTest::test_my_questions_are_kept_and_checked
          O6 -> ReadyTest::test_a_typed_question_is_kept_only_when_practical_with_answers
          O7 -> WillAsksTheSetupTest::test_will_asks_me_the_setup_the_first_time_i_share_my_link
          O8 -> WillAsksTheSetupTest::test_no_questions_is_an_answer_and_the_summary_opens_again
+         O9 -> WillAsksTheSetupTest::test_will_reads_my_change_in_any_words
 WHY      The founder, 4 November 2026, on the prototype "Asked When They
          Join": "in the user set up, we need to ask you the questions on what
          questions should be asked to the people that will ask you for the
@@ -198,7 +201,10 @@ class WillAsksTheSetupTest(_App):
     def setUp(self):
         super().setUp()
         self.lounge = _Lounge()
-        for p in (patch.object(db, "insert_lounge_messages", self.lounge.insert),
+        self.model = None  # the model's reply to "What should change?"; None: no provider
+        for p in (patch("services.llm.chat_complete",
+                        lambda **_: self.model and type("R", (), {"parsed": self.model})()),
+                  patch.object(db, "insert_lounge_messages", self.lounge.insert),
                   patch.object(db, "get_lounge_messages_page", self.lounge.page),
                   patch.object(db, "get_lounge_message_by_client_id", self.lounge.one)):
             p.start()
@@ -257,20 +263,25 @@ class WillAsksTheSetupTest(_App):
                                  json={"to": answered, "picked": "That's right"}, headers=self._as(TOMEK))
         self.assertEqual(again.status_code, 409)
 
-    def test_will_changes_the_answers_i_name_in_my_own_words(self):
+    def test_will_reads_my_change_in_any_words(self):
         self.store.tables["user_settings"] = [{"user_id": TOMEK, "profile_proficient_languages": ["en", "fr"]}]
         self._begin()
         self._say(picked="A month at a time")
         self._say(picked="Yes")
-        self.assertEqual(self._say(said="i also speak polish"), ["i also speak polish", S.PEEK])
-        def langs():
-            return next(line["answers"] for line in self._asked()["metadata"]["join_setup"]["lines"]
-                        if line["q"] == J.LANGUAGES)
-        self.assertEqual(langs(), ["English", "French", "Polish"])
+        self._say(picked="That's all")
         self._say(picked="Change it")
-        self.assertEqual(self._say(said="make the choices polish and english and french"),
-                         ["make the choices polish and english and french", S.DONE, S.NEW_VERSION])
-        self.assertEqual(langs(), ["Polish", "English", "French"])
+        self.model = {"understood": True, "plan": "month", "lines": [
+            {"q": J.LANGUAGES, "answers": ["Polish", "English", "French"], "multi": True},
+            {"q": "What are you preparing for?", "answers": ["A talk", "A pitch"]},
+            {"q": "Where do we meet?", "answers": ["Online", "In person"]}]}
+        said = "polish too please, and ask if we meet online or in person"
+        self.assertEqual(self._say(said=said), [said, S.DONE, S.NEW_VERSION])
+        month = "Let's build our knowledge base a month at a time."
+        self.assertEqual(self._summary(), [month, J.HURRY, J.LANGUAGES, "Where do we meet?"])
+        self._say(picked="Change it")
+        self.model = {"understood": False}
+        self.assertEqual(self._say(said="hmm"), ["hmm", S.UNCLEAR, S.NEW_VERSION])
+        self.assertEqual(self._summary(), [month, J.HURRY, J.LANGUAGES, "Where do we meet?"])
 
 
 class ReadyTest(unittest.TestCase):
