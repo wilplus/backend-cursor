@@ -71,6 +71,11 @@ OUTCOME
       end of the Take's processing, the voice message and the key line keep
       their own voice, and the coach's blind pick plays them (N213); the
       walk's end then keeps nothing twice.
+  O17 On a plan already running (made from Takes or "Keep practising"),
+      "Two quick taps before your plan." after its first Take ends on
+      "You're all set. Here's your plan." and the card; the plan is not
+      begun again (N536). A new project's first Take on such a plan asks
+      "Is this for {date}?" (H2).
 PROVES   O1 -> test_without_the_ring_nothing_happens
          O2 -> test_a_new_speaker_is_asked_once
          O3 -> test_no_date_gives_two_months_then_the_voice_message
@@ -78,7 +83,8 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
          O5 -> test_ratings_are_kept_quietly_and_the_plan_follows
          O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
          O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
-               test_a_new_project_on_a_plan_made_after_earlier_takes_is_asked_about
+         O17 -> test_the_first_ratings_on_a_running_plan_end_on_the_plan
+                test_a_new_project_on_a_plan_made_after_earlier_takes_is_asked_about
          O8 -> test_moving_the_deadline_keeps_the_practices_done
          O9 -> test_the_level_moves_on_after_two_takes_that_reach_it
                test_a_level_whose_time_ran_out_gives_way
@@ -454,6 +460,28 @@ def test_a_new_project_on_a_plan_made_after_earlier_takes_is_asked_about(db, mon
     deadline = F.P.fmt_day(date.fromisoformat(plan["deadline"]))
     assert bodies(db)[-1] == f"Is this for {deadline}?"
     assert "Two quick taps before your plan." not in bodies(db)[-3:]
+
+
+def test_the_first_ratings_on_a_running_plan_end_on_the_plan(db, monkeypatch):
+    # A plan made from Takes (A2): "Two quick taps before your plan." after its
+    # first Take ends on the plan and its card (N536), and the plan is not
+    # begun again: that Take stays its first practice.
+    monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: False)
+    took = datetime.now(timezone.utc) - timedelta(days=3)
+    db.takes.rows = [{"created_at": took.isoformat(), "arc_id": "arc-1", "take_index": 1}]
+    F.after_take(db, USER)
+    plan = F.answer_deadline(db, USER, (date.today() + timedelta(days=21)).isoformat(), tz="UTC")["plan"]
+    started = datetime.fromisoformat(plan["started_at"])
+    db.takes.rows.append({"created_at": (started + timedelta(minutes=5)).isoformat(),
+                          "arc_id": "arc-1", "take_index": 2})
+    F.after_take(db, USER)
+    assert bodies(db)[-2] == "Two quick taps before your plan."
+    F.answer_rating(db, USER, 6)
+    out = F.answer_rating(db, USER, 5)
+    assert [m["body"] for m in out["messages"]] == ["Answered", "You're all set. Here's your plan.", ""]
+    assert out["messages"][-1]["metadata"]["plan_card"] is True
+    assert out["plan"]["started_at"] == plan["started_at"]
+    assert F.view(db, USER, out["plan"])["done"] == 1
 
 
 def test_moving_the_deadline_keeps_the_practices_done(db, monkeypatch):

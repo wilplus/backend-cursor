@@ -2457,13 +2457,19 @@ deadline (N459 item 1): ""No date yet""'s two months, and the plan and
 its card above the goodbye. Kept at the
 end of the Take's processing, the voice message and the key line keep
 their own voice, and the coach's blind pick plays them (N213); the
-walk's end then keeps nothing twice.","O1 -> test_without_the_ring_nothing_happens
+walk's end then keeps nothing twice.
+O17 On a plan already running (made from Takes or ""Keep practising""),
+""Two quick taps before your plan."" after its first Take ends on
+""You're all set. Here's your plan."" and the card; the plan is not
+begun again (N536). A new project's first Take on such a plan asks
+""Is this for {date}?"" (H2).","O1 -> test_without_the_ring_nothing_happens
 O2 -> test_a_new_speaker_is_asked_once
 O3 -> test_no_date_gives_two_months_then_the_voice_message
 O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
 O5 -> test_ratings_are_kept_quietly_and_the_plan_follows
 O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
 O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
+O17 -> test_the_first_ratings_on_a_running_plan_end_on_the_plan
 test_a_new_project_on_a_plan_made_after_earlier_takes_is_asked_about
 O8 -> test_moving_the_deadline_keeps_the_practices_done
 O9 -> test_the_level_moves_on_after_two_takes_that_reach_it
