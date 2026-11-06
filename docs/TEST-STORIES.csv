@@ -2464,6 +2464,7 @@ O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
 O5 -> test_ratings_are_kept_quietly_and_the_plan_follows
 O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
 O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
+test_a_new_project_on_a_plan_made_after_earlier_takes_is_asked_about
 O8 -> test_moving_the_deadline_keeps_the_practices_done
 O9 -> test_the_level_moves_on_after_two_takes_that_reach_it
 test_a_level_whose_time_ran_out_gives_way

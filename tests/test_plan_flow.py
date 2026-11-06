@@ -78,6 +78,7 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
          O5 -> test_ratings_are_kept_quietly_and_the_plan_follows
          O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
          O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
+               test_a_new_project_on_a_plan_made_after_earlier_takes_is_asked_about
          O8 -> test_moving_the_deadline_keeps_the_practices_done
          O9 -> test_the_level_moves_on_after_two_takes_that_reach_it
                test_a_level_whose_time_ran_out_gives_way
@@ -436,6 +437,23 @@ def test_a_new_project_asks_whether_it_is_for_the_same_event(db, monkeypatch):
     _say(db, "It's our board pitch for two more hires.")
     _say(db, "We need the hires before spring.")
     assert len(db.get_open_plan(USER)["asked"]) == 2
+
+
+def test_a_new_project_on_a_plan_made_after_earlier_takes_is_asked_about(db, monkeypatch):
+    # A plan made from Takes, "Keep practising" or the first Take has seen no
+    # Take of its own: the speaker's earlier project is the plan's, so a new
+    # project's first Take asks, before the plan's first ratings (H2).
+    plan = _active(db)
+    started = datetime.fromisoformat(plan["started_at"])
+    db.update_plan(USER, plan["id"], {"facts": {**plan["facts"], "rate_after_first": True}})
+    monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: False)
+    db.takes.rows = [
+        {"created_at": (started - timedelta(days=3)).isoformat(), "arc_id": "arc-1", "take_index": 1},
+        {"created_at": (started + timedelta(days=1)).isoformat(), "arc_id": "arc-2", "take_index": 1}]
+    F.after_take(db, USER)
+    deadline = F.P.fmt_day(date.fromisoformat(plan["deadline"]))
+    assert bodies(db)[-1] == f"Is this for {deadline}?"
+    assert "Two quick taps before your plan." not in bodies(db)[-3:]
 
 
 def test_moving_the_deadline_keeps_the_practices_done(db, monkeypatch):

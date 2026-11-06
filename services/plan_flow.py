@@ -1708,10 +1708,23 @@ def _after_active_take(database: Any, user_id: str, plan: dict) -> list[dict]:
 
 def _with_project(database: Any, user_id: str, facts: dict) -> tuple[dict, Optional[str]]:
     """The plan's projects, with this Take's: a new project's first Take,
-    after the plan already had one, is the arc to ask about (H2)."""
-    take = _latest_take(database, user_id)
+    after the plan already had one, is the arc to ask about (H2). A plan
+    that has seen no Take of its own yet (one made from Takes, A2; "Keep
+    practising", I2; or read from the first Take, N401) knows the projects
+    of the speaker's earlier Takes: without them, a new project's first
+    Take on such a plan was taken as the plan's own and never asked about."""
+    try:
+        rows = database.takes.list_user_arc_sessions(str(user_id)) or []
+    except Exception:  # noqa: BLE001 -- no Takes read is no project asked about
+        rows = []
+    spoken = [r for r in rows if r.get("recording_kind") != "read" and not r.get("paired_session_id")]
+    take = spoken[-1] if spoken else {}
     arc = str(take.get("arc_id") or "")
     arcs = [str(a) for a in facts.get("arcs") or []]
+    if not arcs:
+        arcs = list(dict.fromkeys(str(r["arc_id"]) for r in spoken[:-1] if r.get("arc_id")))
+        if arcs and (not arc or arc in arcs):
+            return {**facts, "arcs": arcs}, None
     if not arc or arc in arcs:
         return facts, None
     asked = bool(arcs) and take.get("take_index") == 1
