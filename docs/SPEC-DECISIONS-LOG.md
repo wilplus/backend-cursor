@@ -13740,3 +13740,24 @@ No new words ("Couldn't share this take. Try again." is signed). No
 migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 G3, G4.
+
+**N542 · A walk opened again from the chat keeps what is left to do
+(founder, the Claude Code chat, 6 November 2026, on N539: "if you opened it
+once it should be marked as opened; if you didn't you can still practice",
+"you can show them only that what they practiced and if they stopped before
+the practice has been completed then you can still finish", then the four
+answers asked).** For N539 item 2, N458, N89:
+1. **What was done stays as it was**, read only: every answered step, every
+try as made, no Next on any of it.
+2. **What is left to do can still be done**: a step never reached, a choice
+not made (the Clearer version's Try it or Keep mine, the tempo game, other
+speakers' moment) and a practise stopped before it ended. The first of them
+stands at the bottom with its own buttons, the rest of the walk above to
+scroll; it goes on from there as the walk does. N458's "a walk closed
+during the Clearer version's try opens on it again" stands.
+3. **Close at the bottom** only once nothing is left (N539 item 3); while a
+step waits, its own buttons and the bar's ✕.
+Replaces N539 item 2's "whatever still waits"; N539 items 1 and 3 stand.
+No new words. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+B9, B10.
