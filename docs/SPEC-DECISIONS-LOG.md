@@ -14632,3 +14632,39 @@ and merged. No migration in this entry.
 The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 B8 to B13.
+
+**N570 · Starting a model sets the question its teachers answer and the
+list it picks from, and its founder answers the first 10 examples; the
+model reads them from day one and trains on each once a second teacher
+agrees (founder, the Claude Code chat, 9 November 2026, on the test drive
+"Launchpad Test Drive" <https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8>,
+told that the setup never asked for the teachers' question or the list:
+"the same questions that you set up during the onboarding, so that from the
+first day of your interactions the model can learn", said of the website
+chat in N569 item 3; then three questions on the setup, each answered with
+the recommended option).** For N520, N528, N563 and N566; amends N528
+item 4 and N566 item 2 (the setup's steps):
+1. **The question is set in the setup.** After the scale, the app drafts
+the question every teacher will be asked from the three answers ("How
+rushed does it sound?"), and the founder of the model corrects its words.
+It is the recipe card's question (N563 item 2), and the one the
+same-question rule compares (N566 item 7). Until now no step asked for it.
+2. **A model that picks names its list in the same step:** its founder
+types or pastes the options, at least two. Without them "It picks from a
+list" cannot work.
+3. **The founder answers the first 10 examples,** after the exam is set
+aside and the teachers' steps are chosen, on the same screen the teachers
+will use. None of the 10 is in the final exam. "Start with this, finish the
+rest later" leaves the question and the first 10 on the checklist.
+4. **From day one the model reads them; it trains on them later.** One vote
+never settles an example (`services/label_quorum.py`), and a single vote is
+kept only as a weak signal, never for training (N520 item 11). So from day
+one the founder's 10 are examples the model looks up before it answers (the
+first step of N520 item 9), and "Try it" answers like its founder; each one
+becomes a training example once a second teacher agrees. Nobody teaches a
+model alone.
+**Open:** the new words on these screens, shown in the test drive for the
+founder's OK (Never 4); then version 9 of the launchpad's prototype is
+locked (N566 item 1).
+Not in force until built and merged. No migration in this entry.
+No rules page yet: a page for the launchpad with its first part (N566).
