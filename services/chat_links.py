@@ -125,8 +125,17 @@ def _open(database: Any, token: Any) -> dict:
 
 
 def preview(database: Any, token: Any) -> dict:
-    """GET /v2/chats/join/<token>, no sign-in: {"name"}, whose link it is."""
-    return {"name": _open(database, token)["display_name"]}
+    """GET /v2/chats/join/<token>, no sign-in: {"name"}, whose link it is.
+    A link whose owner has the chat builder (N579 item 2) also says whose
+    assistant answers there (N578 item 1) and Will's line for the joiner's
+    own chat (N586 item 2): {"assistant", "will_line"}."""
+    from services import assistants, rings
+    link = _open(database, token)
+    out: dict = {"name": link["display_name"]}
+    if rings.feature_is_on_for_user(assistants.CHAT_BUILDER, str(link["user_id"]), database=database):
+        out["assistant"] = assistants.assistant_name(link["display_name"])
+        out["will_line"] = assistants.will_line()
+    return out
 
 
 def _pair_chat(database: Any, key: str) -> Optional[str]:
