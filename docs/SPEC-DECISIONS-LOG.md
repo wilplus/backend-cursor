@@ -14384,3 +14384,77 @@ N248, N319, N401, N459 and N559:
    never shown back (N178).
 No migration in this entry. The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
+
+**N565 · The model launchpad is locked, on its prototype: AI models under
+the chats, one queue, starting a model in three chapters, using one in a
+business, the price and the earnings, downloading the data; with the two
+reviews' refinements (founder, the Claude Code chat, 9 November 2026: "OK",
+to the prototype "The Model Launchpad"
+<https://claude.ai/artifact/UEa4jLwnKyuWz2sxz4df9H> (version 8), after two
+reviews by a data scientist and a UX designer, both applied, and the
+founder's own changes: "Make it also possible for the setup of the model to
+upload the existing dataset", "the grey one please call: infrastructure and
+include in it the willpowerlab", "give options to adjust the price").** For
+N520, N523, N526, N528, N531 and N563; amends them where they differ:
+1. **Locked:** the prototype above, version 8, kept as files in
+[`docs/design/model-launchpad-2026-11-09/`](design/model-launchpad-2026-11-09/)
+(its HTML and a PDF of every step, N229) and listed in
+[`docs/LOCKS.md`](LOCKS.md). Its words are signed (Never 4), written as
+N364 asks. A change needs the founder's OK with a prototype.
+2. **The setup** has three chapters, Describe · Shape · Share, with a thin
+bar that fills; optional steps say so; ✕ keeps a draft, shown in the list
+with Continue; a model can start right after its scale, the rest becoming
+a checklist on its page; "A model like yours already exists" slides up as a
+sheet over the third answer.
+3. **Each part gets the AI that fits it** (amends N528 item 4): a score from
+the voice is learned by WillpowerLab's own voice scorer, from the start;
+picking and answering in words use GPT-4o mini; GPT-4o, Mistral and Llama
+are shown as coming.
+4. **An existing dataset can be uploaded** (amends N520 item 2): a
+spreadsheet, a JSON file, or recordings with a sheet that describes them;
+the app maps its columns to the recipe card, leaves out any column that
+names a person, and checks it (usable rows, repeats and near repeats, rows
+with no score, rows that look mislabelled, names and places removed, how
+the scores spread). The uploader confirms they may use it and the people in
+it agreed. Teachers re-rate 60 of its examples before it counts; none of it
+goes into the final exam.
+5. **The final exam** is 100 cases, set aside first by two experts (amends
+N528 item 8's 50). A new version is compared with the last case by case on
+the same exam; "Release" appears only when the difference is clearly not
+luck, and releasing is the founder's choice (N563 item 5).
+6. **The numbers the owner sees:** an honest range for when it will be
+ready and which jar decides it; how often teachers agree, within one point
+and exactly, measured on 1 example in 10 picked at random; where they
+disagree, with the fix, in a "Needs you now" card on top; that the exam is
+fair (no speaker on both sides, every point of the scale covered); where
+its examples come from, examples teachers add capped at 1 in 5 of what it
+learns from; what runs by itself and what the founder decides.
+7. **One answer, two models** (refines N563 item 3): it counts for both
+only when both ask the same question on the same scale; otherwise the
+other model's question follows on the same example.
+8. **The model says when it is not sure,** and a teacher answers instead;
+its API returns "sure" with every answer. A written answer's quality is
+judged by coaches who do not know which answer was whose.
+9. **For a business:** a model card (good at, not so good at, not for, its
+exam result, its version); a free test key first, for every key (100
+answers); a monthly limit; its users' questions train the model only if it
+allows; versions pinned until it chooses to switch; code in JavaScript,
+Python and curl, and "Send it to your developer".
+10. **The money screens** (refine N531): the price is set with − and +,
+suggestions and a slider, the split shown live; one row, "Infrastructure",
+holds the running costs and WillpowerLab's part; WillpowerLab's part is
+taken from what is left after running costs, so at the lowest price all of
+it is infrastructure; a teacher's share is shown as a percentage of their
+version.
+11. **The list and the queue:** search, and "For you", "Ready to use",
+"Still learning"; one queue with Pause per model; empty states ("Nothing
+waits for you." and "No models here yet."); "What do I get?" as three
+short cards.
+**Open:** WillpowerLab's fee percentage and the founder's share; the
+minimum payout; the legal terms (co-ownership, payouts, the data licence,
+the data processing agreement covering uploads), for counsel; the line in
+the training yes about sharing speakers' de-identified words (N528 item 12).
+Not in force until built and merged. Its migrations (models, cards,
+queues, shares, keys, uploads) each get their outside review.
+No rules page yet: a page for the launchpad with its first part, on the
+founder's OK (N107).
