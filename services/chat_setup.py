@@ -224,7 +224,10 @@ def _on_peek(database: Any, user_id: str, draft: dict, picked: str, said: str) -
     if picked == START_AGAIN:
         name = draft.get("name")
         return [_ask("welcome", WELCOME_Q, [], {"name": name} if name else {})]
-    assistants.save(database, user_id, _recipe(str(draft.get("name") or "WillpowerLab"), draft))
+    recipe = _recipe(str(draft.get("name") or "WillpowerLab"), draft)
+    # The setup asks no first-Take questions: the ones set in the builder stay.
+    recipe["questions"] = (assistants.recipe_of(database, user_id) or {}).get("questions") or []
+    assistants.save(database, user_id, recipe)
     return [(str(uuid.uuid4()), "bot", LIVE, {"step": "live"})]
 
 

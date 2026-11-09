@@ -2200,7 +2200,7 @@
    "src/services/api/reviewSummaryText.test.ts"
   ],
   "evals": [],
-  "note": "Open in feedback-walk-and-chat.md §3: the summary is drawn nowhere (C9 has no summary step, D4 hides it in the chat), yet the chat after the walk waits on its model call."
+  "note": "Open in feedback-walk-and-chat.md §3: the summary is drawn nowhere (C9 has no summary step, D4 hides it in the chat), and nothing waits for it any more: the batch goes in at once with the signed line and GPT-4o's words take its place off the request."
  },
  {
   "id": "WILL-08",

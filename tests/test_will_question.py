@@ -351,6 +351,7 @@ def _summary(db, monkeypatch, takes=TAKES, take="t1", heard=None, carried=None):
     monkeypatch.setattr(will_question, "heard", lambda *a, **k: heard or {})
     monkeypatch.setattr(will_question, "vary", lambda *a, **k: None)
     monkeypatch.setattr(will_question, "carried_over", lambda *a, **k: carried)
+    monkeypatch.setattr("services.parallel.start_scoped_thread", lambda run, name=None: run())
     msg = take_summary.summary_message(db, user_id="u", arc_id="arc", takes=takes,
                                        take_session_id=take, body={"practice": "better"})
     return msg, seen

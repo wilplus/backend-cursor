@@ -30,7 +30,10 @@ OUTCOME
       start." (FT-14, N592 item 2).
   W8  A speaking coach's link meets none of the choice's beats; the way in
       is in the speaking chat only (N572, N590; WAYIN-N590-1).
+  W9  A first Take on which nothing was heard still gets its plan and
+      "You're set." once its walk is done; no card is checked (N459 item 1).
 PROVES   W1, W2, W3, W5, W6 -> test_a_talk_the_wait_and_what_comes_next
+         W9 -> test_a_take_with_nothing_heard_still_gets_its_plan
          W2 -> test_change_it_asks_what_to_change_and_draws_the_card_again
          W4 -> test_sharing_brings_the_join_questions_and_the_agreement
          W6, W7 -> test_learning_after_the_walk_and_record_take_2_waits
@@ -197,6 +200,17 @@ def test_learning_after_the_walk_and_record_take_2_waits(db):
     assert "When is it?" not in said(db) and "Do you accept it?" not in said(db)
     answer(db, "else", said="Maybe a book club")
     assert said(db)[-1] == "Maybe a book club"
+
+
+def test_a_take_with_nothing_heard_still_gets_its_plan(db):
+    step(db, known={"team": False})
+    answer(db, "choice", picked=["Learn from others"])
+    assert "You're set." not in said(db)  # the card waits for the reading
+    _processed(db)
+    F.after_take(db, USER, first_name="Anna")
+    assert said(db)[-2:] == ["You're set.", "Next, ask someone who knows. Tap + to start."]
+    assert "Here's how others will see you:" not in said(db)
+    assert F.state(db, USER, tz="UTC")["plan"]["way_in"]["record_next"] is True
 
 
 def test_several_choices_say_the_talk_first_then_sharing():
