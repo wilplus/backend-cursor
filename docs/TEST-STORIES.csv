@@ -232,7 +232,8 @@ the device.
 O5  An account that signs in with Google has no password to ask for: its
 email change needs none, Set a password sends the set email, and the
 saved password is logged as its first; a reset link's password is a
-change and gets the notice.
+change and gets the notice. One that signs in with Microsoft is called
+""Microsoft"" (N401 item 6), never Supabase's ""Azure"".
 O6  When the email doesn't go, the card is told so: nothing is reported
 as sent.","O1 -> test_an_email_change_waits_for_the_link_from_the_new_address
 O2 -> test_an_address_with_an_account_is_refused_before_any_link
@@ -2076,6 +2077,29 @@ re-apply as a no-op.","O1 -> test_permissions_rls_and_learning_boundaries_are_cl
 O2 -> test_the_candidate_set_writer_repairs_land_on_the_d4_body","Production 42702, 2026-09-21: the writer had never been called. O2 reads the function definition from the catalog; it does not call the writer with a bundle (that needs the full V3 inventory harness)."
 tests/test_mlc3_n1_source_pattern_postgres.py,Story,"As a speaker who asks for deletion, I want every practice-pattern row about me found under my identity, so that erasure misses nothing.","O1  The deletion list finds every row of each practice-pattern table (N1)
 under my identity, in the expected numbers.",O1 -> test_deletion_inventory_attributes_every_n1_row_to_acquisition_principal,Rehearsal database only; the N1 pattern feature is disabled.
+tests/test_model_launchpad.py,Story,"As a person in WillpowerLab, I want to find AI models, see how far each is, teach the ones in my field from one queue, and, as a model's founder, release a version only when it is clearly better (N528, N563, N566; the locked prototype ""The Model Launchpad"").","O1  The list puts my draft on top, then the most mature models, with
+search, the three filters, and an empty state that offers to start one.
+O2  A public model's page is in totals only; a private one is unseen by
+outsiders; nobody's page reads on a person.
+O3  Teaching follows the model's recipe card (rate, pick, answer in words),
+and nothing of the machine's read reaches the teacher.
+O4  A newcomer's answers count only once the quiet trust check admits
+them, and only then are they told, once.
+O5  One queue across my models, what helps most first, none starved, with
+Pause; an empty queue says so.
+O6  An answer counts for two models only on the same question and scale; a
+private example only for its own model; added examples count once a
+second teacher agrees and stay under 1 in 5.
+O7  Release appears only when the new version is clearly not better by
+luck.
+O8  A speaker's Takes reach teachers only while their training yes is on.","O1 -> test_mod05_the_list_puts_the_draft_on_top_then_the_most_mature
+O2 -> test_mod03_a_public_page_holds_totals_only_and_a_private_one_is_unseen
+O3 -> test_mod09_nothing_of_the_machine_reaches_the_teacher
+O4 -> test_mod10_a_newcomer_counts_only_after_20_answers_that_hear_what_experts_hear
+O5 -> test_mod15_one_queue_across_models_helpful_first_and_none_starved
+O6 -> test_mod16_same_question_same_scale_counts_for_both
+O7 -> test_mod22_a_close_result_has_no_release_button
+O8 -> test_mod02_only_takes_after_the_training_yes_reach_teachers","The model launchpad, locked on its prototype (N566); its rules live once in services/model_launchpad.py, before its tables."
 tests/test_moment_pick.py,Story,"As a speaker, I want each Take to show my strongest moment, praised, and my weakest, fixed with the tool its weakness needs (its words first, else its voice with the AI clip), so that I know what to keep and get one fix on the moment that needs it.","O1  The strongest is the Take's highest willfidence clip, a block's best
 clip standing for it and a clip with enough words before a short
 one; it is praised whatever its voice and called my most confident.

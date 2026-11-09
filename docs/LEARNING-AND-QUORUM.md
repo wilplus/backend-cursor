@@ -173,6 +173,40 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
   - The door constants were removed on 2026-10-12. Each door is now its
     per-surface set in `config.py`.
 
+- **F5** **The model launchpad's rules** (N520, N523, N526, N528, N563,
+  N566, N570, N577; the locked prototype
+  [`docs/design/model-launchpad-2026-11-09/`](design/model-launchpad-2026-11-09/)):
+  `services/model_launchpad.py`, one module with no tables of its own, so
+  the rules live once and the models' tables (their own migration, with its
+  outside review) only feed it rows.
+  - **How far a model is:** the slowest jar decides, against 500 counted
+    answers and a final exam of 100 cases (a model may carry its own
+    targets); "Passed its final exam" once ready.
+  - **Who sees a page:** the owner everything; a contributor the jars, the
+    recipe and their own part; anyone, for a public model, totals only; a
+    private, draft or archived model is in no list. No page carries a
+    person's reliability or anything about a speaker (N526 item 3).
+  - **Teaching follows the recipe card:** rate (a voice model on the
+    Judge), pick from its list, or answer in words, spoken. The machine's
+    read never reaches the teacher's screen (an allowlist, `TEACHER_FIELDS`: no machine read, no known answer, no speaker; Never 2).
+  - **The quiet trust check:** N520 item 12's numbers (20 answers, 5 known,
+    the cautious edge of an 80% range at 70% of the trusted median, never
+    below 0.20; removed under 50%); known clips 1 in 4 of the first 20, then
+    1 in 10. Nothing is said until the answers count, and a stop is never
+    announced.
+  - **One answer, which models:** a private example counts only for its own
+    model; a public one for every model asking the same question on the same
+    scale; another question follows on the same example.
+  - **Added examples** count once another teacher agrees, and are never more
+    than 1 in 5 of what a model learns from.
+  - **The one queue:** the kinds a model lacks first, then what it is least
+    sure about, each model in turn so none is starved; Pause per model, or
+    one model alone.
+  - **Release:** shown only when the exact two-sided sign test on the cases
+    either version won is under 5% (14 against 3 is; 9 against 6 is not).
+  - **A Take may teach** only while its speaker's training yes is on, and
+    only Takes recorded after it (N563 item 4, N575).
+
 ### G · What never becomes a label or training data
 
 - The speaker's own answers about their own voice (rule 2; contract 30; walk
@@ -396,6 +430,7 @@ still open.
 - `services/detector_candidates.py`: the detector fit
 - `services/willfidence.py` and `services/moment_pick.py`: willfidence
 - `services/speaker_memory.py`: Will's memory
+- `services/model_launchpad.py`: the model launchpad's rules (F5)
 - `config.py`: the doors' per-surface sets and `DETECTOR_TRAINING_AUTHORISED`
 
 **Docs:**
@@ -435,6 +470,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-11-09 · N528, N563, N566 · F5: the model launchpad's rules in one module, before its tables: the list, a model's page, teaching by the recipe card, the trust check, the one queue, release · BE
 - 2026-10-26 · N111 · §3 marks the founder's answers of 21 October: A1 to A10, A12, A13 and A15 decided, A11 and A14 held and asked again; B2 to B7 marked fixed, B1 still open · BE
 - 2026-10-26 · N172 · life goals, founder only (ring 6), asked once after the first # note and kept in the Life Panel, every version kept with its date, for step 3 of Will's learning plan · BE
 - 2026-10-26 · N166 · the tempo step's tries are kept for Will: each try's path, comment and summary, the path only, never the audio · BE
