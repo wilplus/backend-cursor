@@ -291,6 +291,8 @@ def view(database: Any, user_id: str, plan: dict) -> dict:
         # The talk's date, only for someone preparing a talk (N564 item 6).
         "deadline": deadline.isoformat() if deadline else None,
         "talk": bool(deadline),
+        # Always False since N564 (no date is ever given); kept for readers.
+        "deadline_given": False,
         "deadline_short": P.fmt_short(deadline) if deadline else None,
         "deadline_day": P.fmt_day(deadline) if deadline else None,
         "total": int(plan.get("total") or 0), "done": done,
@@ -315,7 +317,14 @@ def view(database: Any, user_id: str, plan: dict) -> dict:
         # N401: the first Take is the onboarding; its five slides, as the
         # recording screen shows them, while the plan waits for that Take.
         **_first_take_view(plan),
+        # The speaking way in while Take 1 is processed (N572, N592).
+        "way_in": _way_in_view(plan),
     }
+
+
+def _way_in_view(plan: dict) -> Optional[dict]:
+    from services import way_in
+    return way_in.view(plan)
 
 
 def _first_take_view(plan: dict) -> dict:
@@ -1193,8 +1202,15 @@ def after_processing(database: Any, payload: dict, audio: bytes) -> bool:
         return False
     user_id, take_id = str(payload.get("user_id") or ""), str(payload.get("session_id") or "")
     try:
-        if not user_id or not take_id or not enabled(database, user_id) \
-                or not _first_take_waits(database.get_open_plan(user_id)):
+        if not user_id or not take_id or not enabled(database, user_id):
+            return False
+        from services import way_in
+        if way_in.on(database.get_open_plan(user_id)):
+            # The speaking way in (N592 item 1): the walk is ready.
+            in_wait = _keep_in_wait(database, user_id, take_id, audio)
+            way_in.walk_ready(database, user_id)
+            return in_wait
+        if not _first_take_waits(database.get_open_plan(user_id)):
             return False
         slides = _first_take_slides(database.get_snippets_by_session(take_id) or [])
         said = _said(slides)
@@ -1212,6 +1228,29 @@ def after_processing(database: Any, payload: dict, audio: bytes) -> bool:
     except Exception as error:  # noqa: BLE001 -- the walk's end keeps them, without the voice
         logger.warning("plan: the first Take not kept take=%s: %s", take_id, error, exc_info=True)
         return False
+
+
+def _keep_in_wait(database: Any, user_id: str, take_id: str, audio: bytes) -> bool:
+    """``after_processing`` while the way in runs (N572): the plan may have
+    been made in the wait already, so its status is not asked; the answers
+    not yet kept are kept with their voice, once."""
+    plan = database.get_open_plan(user_id)
+    if plan is None or _facts(plan).get("first_take") != "waiting":
+        return False
+    slides = _first_take_slides(database.get_snippets_by_session(take_id) or [])
+    said = _said(slides)
+    if not any(said):
+        return False
+    voices = {i: v for i, (*_x, kind) in enumerate(P.FIRST_TAKE_SLIDES)
+              if kind in _COACH_HEARS and said[i] and (v := _cut_voice(audio, slides[i]))}
+    plan = database.get_open_plan(user_id)
+    if plan is None or _facts(plan).get("first_take") != "waiting":
+        return False
+    kept = _keep_first_take(database, user_id, plan, slides, said,
+                            _facts(plan).get("key_line") or said[P.FIRST_TAKE_KEY], voices)
+    _save(database, user_id, plan, {"facts": {
+        **_facts(plan), **kept, "first_take": "kept", "first_take_session": take_id}})
+    return True
 
 
 def _from_first_take(database: Any, user_id: str, plan: dict) -> list[dict]:
@@ -1596,6 +1635,11 @@ def after_take(database: Any, user_id: str, *, first_name: Optional[str] = None)
             if database.get_latest_plan(str(user_id)) is None:
                 return begin(database, user_id, tz=None, first_name=first_name, mode="takes")[1]
             return []
+        from services import way_in
+        if way_in.on(plan) and not (way_in.view(plan) or {}).get("walk_done"):
+            # The speaking way in (N572, N592): its beats go on, and after
+            # "You're set." one bubble says what comes next.
+            return way_in.after_walk(database, user_id, plan, first_name=first_name)
         if plan.get("status") == "asking" and _facts(plan).get("first_take") in ("waiting", "kept"):
             return _from_first_take(database, user_id, plan)
         if plan.get("status") == "asking" and _facts(plan).get("wait_take"):

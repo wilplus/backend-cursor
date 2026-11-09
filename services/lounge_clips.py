@@ -251,6 +251,49 @@ def attach_take_audio(messages: list, user_id: str, database: Any,
             meta["audio"] = {"src": url}
 
 
+def _slide_order(slide: dict) -> int:
+    index = slide.get("index")
+    return index if isinstance(index, int) else 0
+
+
+def take_words(slide_transcripts: Any) -> list[str]:
+    """A Take's words as its bubble shows them (N576 item 2): what was said,
+    one paragraph per slide, in the slides' order; slides with nothing said
+    are left out."""
+    slides = [s for s in slide_transcripts or [] if isinstance(s, dict)]
+    slides.sort(key=_slide_order)
+    return [w for w in (str(s.get("transcript") or "").strip() for s in slides) if w]
+
+
+def attach_take_words(messages: list, user_id: str, database: Any) -> None:
+    """"Read it" under a Take's bubble in Will's chat (N576): each "Your
+    Recording" bubble gets `metadata.words`, a list of paragraphs, one per
+    slide, from the reader's own Take. Unowned, unreadable or with nothing
+    said yet: no `words`, so nothing shows before there are words."""
+    wanted: dict = {}
+    for m in messages or []:
+        meta = m.get("metadata") if m.get("kind") == "recording_summary" else None
+        sid = meta.get("session_id") if isinstance(meta, dict) else None
+        if sid:
+            wanted.setdefault(str(sid), []).append(meta)
+    reader = getattr(getattr(database, "takes", None), "get_slide_transcripts_many", None)
+    if not wanted or not callable(reader):
+        return
+    try:
+        rows = reader(sorted(wanted))
+    except Exception:
+        logger.warning("lounge takes: words unreadable", exc_info=True)
+        return
+    for sid, metas in wanted.items():
+        row = (rows or {}).get(sid)
+        if not isinstance(row, dict) or str(row.get("user_id") or "") != str(user_id):
+            continue
+        words = take_words(row.get("slide_transcripts"))
+        if words:
+            for meta in metas:
+                meta["words"] = words
+
+
 def _take_id(value: Any) -> Optional[str]:
     try:
         return str(uuid.UUID(str(value)))
@@ -400,8 +443,8 @@ def enrich_page(page: dict, user_id: str, database: Any, *,
 
     Thread safety: each group writes keys no other group touches. Walk
     clips carry a ``snippet_id`` and practise clips a ``practice_id`` (never
-    both), decks write ``deck`` on cards, recordings write ``audio`` on
-    readouts, the coach's word writes ``video`` and ``unseen`` on coach
+    both), decks write ``deck`` on cards, recordings write ``audio`` and
+    ``words`` on readouts, the coach's word writes ``video`` and ``unseen`` on coach
     bubbles, and the flags are a return value. Clips and recordings share
     one read of the page's Takes, so they stay in one group, in order. The
     bubbles an older version of a word left are taken out of the page only
@@ -419,6 +462,8 @@ def enrich_page(page: dict, user_id: str, database: Any, *,
             refresh_walk_clips(messages, user_id, clips_db, resolve_snippet)
         with lap("audio"):
             attach_take_audio(messages, user_id, clips_db, resolve_ref)
+        with lap("words"):
+            attach_take_words(messages, user_id, database)
 
     def practice() -> None:
         with lap("practice"):
