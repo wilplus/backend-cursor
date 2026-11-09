@@ -14758,36 +14758,37 @@ The rules: frontend
 and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built.
 
-**N573 · The first choice while Take 1 is processed: "What would you like to
-do here first?" with four answers; the sharing setup is asked when it is
-needed, not in onboarding (founder, the Claude Code chat, 9 November 2026,
-on two drafts of the same choice, the proposal "Onboarding, Explained" and
-the hand-off of "Your chat on any website", with recommended answers:
-"Talk · Share · Learn"; and, for the sharing setup, "When they're
-needed").** For N401, N467, N487, N503, N534, N559, N564, N567 and N569:
-1. **The choice.** While Take 1 is processed, after "Here's how others will
-   see you", Will asks once: "What would you like to do here first?", with
+**N573 · The first choice's answers: "Something else", "Learn from others",
+"Share what I know" and "Prepare a talk", several then Send; the rest of the
+way in as N572's tree (founder, the Claude Code chat, 9 November 2026, on two
+drafts of the choice, the proposal "Onboarding, Explained" and the hand-off
+of "Your chat on any website": "Talk · Share · Learn"; then, shown N572,
+merged the same afternoon in another chat with other answers, "N573's words,
+several taps", and for the questions for people who join, "In the wait, for
+sharers (N572)").** Amends N572 item 2; for N467, N483, N487, N503, N534,
+N559, N564, N569 and N571:
+1. **The answers** to "What would you like to do here first?" are
    "Something else", "Learn from others", "Share what I know" and "Prepare
-   a talk", as taps on the speaker's side above the bar, the likely one last
-   and filled (N467); "Something else" opens the typing box. Signed (Never
-   4): the question and its four answers. Replaces the drafts "To learn
-   from others", "To share what I know", "Both" and "Ask my team
-   something".
-2. **What each answer leads to.** "Prepare a talk" asks "When is it?" once,
-   with "No date yet" (N564 item 1). What "Learn from others" and "Share
-   what I know" lead to is drawn on the proposal "Onboarding, Explained"
-   and waits for the founder's OK on its words.
-3. **Onboarding stays short.** After the choice: the business's community
-   (N559 item 1), the agreement, "You're set". Nothing is asked before Take
-   1 (Never 3), one question at a time, and the walk is never delayed.
-4. **The sharing setup comes when it is needed, never in onboarding:** the
-   join questions at the first share (N503, N534, as built); the website
-   chat's model card and its call-back scale when the website chat is
-   turned on (N569). Was: the widget hand-off's proposal to ask them while
-   Take 1 is processed.
+   a talk". "Something else" comes first and opens the typing box (N483
+   item 2, N467); several may be tapped, then "Send" in the bar's middle
+   (N572 item 3). Signed (Never 4). Replaces N572 item 2's "Ask my team
+   something", and the drafts "To learn from others", "To share what I
+   know" and "Both".
+2. **"Learn from others"** takes the place "Ask my team something" had in
+   N572's tree; where it leads, its new words wait for the founder's OK.
+3. **The rest of the way in is N572's tree:** its order (the business's
+   community, N559, before the choice); "Prepare a talk" asks "When is
+   it?" with "No date yet" (N564); the questions for people who join come
+   in the wait for those who share, once built, and until then at the
+   first share (N503, N534); the agreement for people in a team or sharing;
+   the plan card for everyone; one "You're set."; no model setup on the way
+   in, the website chat's model card and call-back scale belonging to
+   "Start your own" after the walk (N571, N569).
 No migration. The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md),
-the first Take as the onboarding.
+the first Take as the onboarding, and
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1.
 
 **N574 · The App Model is the developer's reference: pinned in the repo
 with every story, a generated list of what is left to build, and a check
