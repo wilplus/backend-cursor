@@ -363,6 +363,24 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # an_iphone_keeps_its_push_address, N385).
     PurgeDependency("push_devices", "push_devices", "user_id", "user",
                     "delete", "database_row", 60),
+    # The model launchpad (migration a_person_can_teach_and_start_ai_models,
+    # N528 item 11): a person's answers, teaching rows and invites go; the
+    # examples from their Takes or that they added go; a model they started
+    # stays for its other teachers, with no owner.
+    PurgeDependency("ai_model_answers", "ai_model_answers", "teacher_id", "user",
+                    "delete", "database_row", 55),
+    PurgeDependency("ai_model_examples_speaker", "ai_model_examples", "speaker_id", "user",
+                    "delete", "database_row", 56),
+    PurgeDependency("ai_model_examples_added_by", "ai_model_examples", "added_by", "user",
+                    "delete", "database_row", 56),
+    PurgeDependency("ai_model_teachers", "ai_model_teachers", "user_id", "user",
+                    "delete", "database_row", 57),
+    PurgeDependency("ai_model_invites_invitee", "ai_model_invites", "invitee_id", "user",
+                    "delete", "database_row", 57),
+    PurgeDependency("ai_model_invites_inviter", "ai_model_invites", "inviter_id", "user",
+                    "delete", "database_row", 57),
+    PurgeDependency("ai_models_owner", "ai_models", "owner_id", "user",
+                    "delete", "database_row", 58, clears_selector=True),
     # Email and password on Data & consent (WIL-95, N190, migration 0493):
     # the person's own security log goes with the account.
     PurgeDependency("account_security_events", "account_security_events",
