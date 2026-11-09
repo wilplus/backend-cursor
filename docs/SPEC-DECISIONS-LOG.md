@@ -14160,3 +14160,55 @@ locked flow; for N401.
    Microsoft sign-in.
 No new words on screen. No migration. The rules:
 [`docs/LOCKS.md`](LOCKS.md), the row for the way in and the first Take.
+
+**N559 · Matching, settled: the business is the pool, your own chats are
+ranked too, and the matcher learns only from answers and conversations
+(founder, the Claude Code chat, 9 November 2026, on eight questions with
+recommended answers: "Answered in a week" and "Kept talking"; "A step
+ahead"; "Keep them"; asked who can be suggested, "we need to have option
+for people to join the community during the onboarding; so people from the
+community can be suggested and the people from your private chat even if
+they are not from the community"; then "Their whole business", "Rank my
+chats", "Yes, the signed card" and "Retire it").** For N463, N465, N470,
+N471, N473, N477, N481 and N504:
+1. **Who can be suggested as someone new** (the page after a Take, N477):
+   the people in the speaker's business community. A newcomer is offered
+   the community of the business of the person whose link they came by,
+   once, while Take 1 is processed, with Join and Not now; joining is how a
+   person belongs to it. The question's words are drafted for the
+   founder's OK (Never 4). Amends N473 item 2 and, for matching only,
+   N471 item 6 (your community is the people who joined through your
+   link). The code's pool reads the passcode communities, which N471
+   retired (`services/take_match.py`, `pool`): a bug to fix (N95).
+2. **Your own chats count too.** On the screen of who hears a Take (N470),
+   the person in your chats who can best answer this Take comes first, by
+   the fit the matcher uses; "Last sent" stays under the name of whoever
+   you sent to last, and everyone stays ticked (N470 item 2). No new
+   words. Amends N470 item 1. Was: the person sent to last on top, then the
+   list's order.
+3. **What teaches the matcher.** A suggestion went well when the person
+   suggested answers within seven days, and better when the two keep
+   talking: three or more exchanges after the answer, within 14 days
+   (N477 item 3's day-14 check). Nobody is asked to rate anyone, and
+   nothing is shown as a score (Never 1). Each suggestion keeps the chance
+   its pick had (as built), so picks can be compared fairly.
+4. **By how people speak, once that is switched on** (N481 item 4, after
+   the Terms and Privacy are signed): a step ahead, someone a little
+   further along in what the speaker practises (the built "further along"
+   arm). The same-level and opposite-style arms are retired (N463 item 5),
+   and the same-level arm's code goes (one in, one out).
+5. **The numbers stay as built,** no longer proposed: a fit of at least
+   2.0; a Take in the last 14 days; at most 3 Takes waiting for one
+   person's answer and 5 suggestions a week to one person; the best fit 8
+   times in 10, otherwise the second or the third.
+6. **The off switch:** N465's signed Settings card "Matching by how you
+   speak", with Turn off, which deletes what Will learned from how you
+   speak; built before the speaking part is switched on.
+7. **Retired before it was built:** the rating "How was practising with
+   {name}?" with "Good match", "It was okay" and "Not for me" (N463 item 6,
+   N465); its words stay signed, unused.
+8. **Unchanged:** matching runs only on the page after a Take (N477 item
+   1); the founder's admin page shows a matched "Not now" (N504 item 2) and
+   matching gets its own rules page (N332), both still to build.
+No migration in this entry. No rules page yet: matching gets its rules
+page when this is built (N332).
