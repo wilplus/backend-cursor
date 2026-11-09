@@ -3859,6 +3859,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 - **O1** Words that may reach me are plain: no number, no word that says I am broken or names a measurement, no coaching idiom, at most two sentences, 220 characters and one question, and a quote is only ever my own words; anything else is refused (N557, N565, Never 1).
 - **O2** Will writes only for a speaker the writer is on for, on their own Take, at a step the walk has; otherwise the walk says its signed line.
+- **O5** My private note is never repeated back to me: a draft that quotes it, or carries a run of its words without quote marks, is refused; my own spoken words may still be quoted (N565 item 2, SPEAKER-MEMORY.md).
 - **O4** After a try, Will hears how it went (it landed, one try left, or the last) and is told what to offer for each; introducing the moment to try, what it will be walked with (a clearer way to say it, or the AI clip). A try the walk does not name gets no written reply.
 - **O3** A draft that fails the check gets another try, told what was refused and why, up to three in all; then, or after a failed call, the walk says its signed line.
 

@@ -4169,6 +4169,9 @@ sentences, 220 characters and one question, and a quote is only ever
 my own words; anything else is refused (N557, N565, Never 1).
 O2  Will writes only for a speaker the writer is on for, on their own
 Take, at a step the walk has; otherwise the walk says its signed line.
+O5  My private note is never repeated back to me: a draft that quotes it,
+or carries a run of its words without quote marks, is refused; my own
+spoken words may still be quoted (N565 item 2, SPEAKER-MEMORY.md).
 O4  After a try, Will hears how it went (it landed, one try left, or the
 last) and is told what to offer for each; introducing the moment to
 try, what it will be walked with (a clearer way to say it, or the AI
@@ -4178,7 +4181,8 @@ and why, up to three in all; then, or after a failed call, the walk
 says its signed line.","O1 -> test_only_plain_kind_words_reach_me
 O2 -> test_will_writes_only_for_me_on_my_take_when_it_is_on
 O3 -> test_a_refused_draft_gets_one_more_try_then_the_signed_line
-O4 -> test_will_hears_how_the_try_went_and_what_the_moment_is_walked_with","Founder 2026-11-09 (N565: ""make the answers smart. So not locked in, but smart... we can set the rules for those messages""; N557: ""It assumes that you're broken and we need to fix you""; the founder's ratings: ""to complex"", ""drawing in... this sounds wierd""). The style itself is graded by the golden set, tests/evals/golden/walk_voice.jsonl."
+O4 -> test_will_hears_how_the_try_went_and_what_the_moment_is_walked_with
+O5 -> test_my_private_note_is_never_repeated_back_to_me","Founder 2026-11-09 (N565: ""make the answers smart. So not locked in, but smart... we can set the rules for those messages""; N557: ""It assumes that you're broken and we need to fix you""; the founder's ratings: ""to complex"", ""drawing in... this sounds wierd""). The style itself is graded by the golden set, tests/evals/golden/walk_voice.jsonl."
 tests/test_way_in.py,Story,"As a newcomer in Artur's chat, while my first Take is processed, I want Will to check what he heard and ask what I'd like to do here, so that my plan and my next step are mine before the walk ends.","W1  Once Take 1 is sent: ""While your feedback is being prepared, check
 what I heard."", then ""What would you like to do here first?"" with
 ""Something else"" first, ""Learn from others"", ""Share what I know"",
