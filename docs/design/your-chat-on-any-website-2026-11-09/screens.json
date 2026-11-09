@@ -1,0 +1,146 @@
+[
+  {
+    "key": "onb.see",
+    "group": "Onboarding",
+    "shows": "Will's chat while Take 1 is processed: \"While your feedback is being prepared, check what I heard.\", \"Here's how others will see you:\" with Ariel's card (Seller · Invita, three topics); taps \"Change it\" / \"That's right\". The processing row on top; the bar's \"Record Take 2\" faded.",
+    "open": "showScreen(\"onb.see\") in the page's console, or the key's button in the row \"Onboarding\", or the address #onb-see; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "onb.first",
+    "group": "Onboarding",
+    "shows": "\"What would you like to do here first?\" with \"To learn from others\", \"To share what I know\", \"Both\" (drafted).",
+    "open": "showScreen(\"onb.first\") in the page's console, or the key's button in the row \"Onboarding\", or the address #onb-first; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "onb.plan",
+    "group": "Onboarding",
+    "shows": "Ariel tapped \"To share what I know\"; Will's join setup begins: \"Everyone who joins through your link builds a knowledge base with you. I'll ask them a few questions first.\" and \"How far ahead do you like to plan?\" with its four taps (built, N487).",
+    "open": "showScreen(\"onb.plan\") in the page's console, or the key's button in the row \"Onboarding\", or the address #onb-plan; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "onb.more",
+    "group": "Onboarding",
+    "shows": "\"Anything else practical you'd like to ask?\" with \"Something else\" and \"That's all\" (built).",
+    "open": "showScreen(\"onb.more\") in the page's console, or the key's button in the row \"Onboarding\", or the address #onb-more; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "onb.peek",
+    "group": "Onboarding",
+    "shows": "Ariel's spoken question, Will's \"They answer by tapping, so I've given it answers. Change them if you like.\", then \"This is what someone new will see when they open your chat:\" with \"Are you in a hurry?\" and \"Which shop is nearest?\"; \"Change it\" / \"That's right\"; a note that website visitors get the same questions (N569 item 3).",
+    "open": "showScreen(\"onb.peek\") in the page's console, or the key's button in the row \"Onboarding\", or the address #onb-peek; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "onb.model",
+    "group": "Onboarding",
+    "shows": "\"Your website chat teaches a model. From your five answers, here is what it will learn:\" with Invita's model card (the problem, how she solves it today, \"It picks from a list\", \"It gives a score on a scale\"); \"Change it\" / \"That's right\" (drafted).",
+    "open": "showScreen(\"onb.model\") in the page's console, or the key's button in the row \"Onboarding\", or the address #onb-model; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "onb.scale",
+    "group": "Onboarding",
+    "shows": "\"After each call back, you'll rate how it went…\" with the five steps \"Bought on the call\" to \"Not a fit\" (drafted).",
+    "open": "showScreen(\"onb.scale\") in the page's console, or the key's button in the row \"Onboarding\", or the address #onb-scale; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "onb.agree",
+    "group": "Onboarding",
+    "shows": "\"You're all set. Here's your plan.\" and the plan card, then the agreement: \"Before anyone's recordings reach you, please read this and accept it.\", the agreement's text, \"Do you accept it?\" with \"Not now\" / \"I agree\". A note: the community step (N559) is for joiners only.",
+    "open": "showScreen(\"onb.agree\") in the page's console, or the key's button in the row \"Onboarding\", or the address #onb-agree; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "onb.set",
+    "group": "Onboarding",
+    "shows": "\"Accepted · 9 November, 09:06\", then one \"You're set. Each question that comes to your chats, and each answer you give, builds a knowledge base you share.\" with \"Copy my link ›\" and \"Your questions for people who join ›\".",
+    "open": "showScreen(\"onb.set\") in the page's console, or the key's button in the row \"Onboarding\", or the address #onb-set; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "own.add",
+    "group": "Ariel shares",
+    "shows": "Ariel's list under the sheet \"Add someone to chat with\": the card \"Put this chat on your website\" (switch off), her link, \"Copy my link\", \"Only the two of you are in it.\", Cancel; a draft note on the card's line and that main hides the switch (N569 item 1).",
+    "open": "showScreen(\"own.add\") in the page's console, or the key's button in the row \"Ariel shares\", or the address #own-add; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "own.code",
+    "group": "Ariel shares",
+    "shows": "The same sheet with the switch on: the line of code, \"Paste this line just before </body>…\", \"Copy my code\", \"Each customer has a chat of their own with you.\"",
+    "open": "showScreen(\"own.code\") in the page's console, or the key's button in the row \"Ariel shares\", or the address #own-code; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "own.copied",
+    "group": "Ariel shares",
+    "shows": "\"✓ Copied\" in green; the pill \"Ask Ariel\" appears on the site.",
+    "open": "showScreen(\"own.copied\") in the page's console, or the key's button in the row \"Ariel shares\", or the address #own-copied; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "vis.pill",
+    "group": "A visitor",
+    "shows": "Invita's site with one pill at the bottom right: Ariel's circle and \"Ask Ariel\".",
+    "open": "showScreen(\"vis.pill\") in the page's console, or the key's button in the row \"A visitor\", or the address #vis-pill; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "vis.agree",
+    "group": "A visitor",
+    "shows": "The widget open: \"Hi, I'm Ariel. Tap a few answers, and I'll call you back.\" (drafted), then \"Your taps go to Ariel through WillpowerLab. Privacy\" and \"Agree and start\".",
+    "open": "showScreen(\"vis.agree\") in the page's console, or the key's button in the row \"A visitor\", or the address #vis-agree; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "vis.q1",
+    "group": "A visitor",
+    "shows": "\"Are you in a hurry?\" with \"No\" and \"Yes\" as taps.",
+    "open": "showScreen(\"vis.q1\") in the page's console, or the key's button in the row \"A visitor\", or the address #vis-q1; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "vis.q2",
+    "group": "A visitor",
+    "shows": "\"No\" sent; \"Which shop is nearest?\" with \"Gdańsk\", \"Warsaw\", \"Kraków\", \"Online\".",
+    "open": "showScreen(\"vis.q2\") in the page's console, or the key's button in the row \"A visitor\", or the address #vis-q2; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "vis.number",
+    "group": "A visitor",
+    "shows": "\"What number should I call?\", the number field, \"Ariel calls you about your answers and keeps your number for nothing else. Privacy\" and \"Call me back\" (drafted).",
+    "open": "showScreen(\"vis.number\") in the page's console, or the key's button in the row \"A visitor\", or the address #vis-number; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "vis.sent",
+    "group": "A visitor",
+    "shows": "The number sent, \"Thank you. I'll call you soon, usually within a day.\", the three emoji, \"Keep this chat ›\" and \"with WillpowerLab\"; on the phone the new row.",
+    "open": "showScreen(\"vis.sent\") in the page's console, or the key's button in the row \"A visitor\", or the address #vis-sent; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "own.list",
+    "group": "Ariel calls back",
+    "shows": "Ariel's list: Will, \"Widget / Visitor 7\" with \"From invitaheadspa.com\" and \"📞 Call back\", marked new; Lena.",
+    "open": "showScreen(\"own.list\") in the page's console, or the key's button in the row \"Ariel calls back\", or the address #own-list; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "own.chat",
+    "group": "Ariel calls back",
+    "shows": "The visitor's chat: \"Visitor 7's answers\" (the two answers and the number); the bar: \"+\" and \"Call +48 600 123 456\" in the middle (drafted).",
+    "open": "showScreen(\"own.chat\") in the page's console, or the key's button in the row \"Ariel calls back\", or the address #own-chat; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "own.call",
+    "group": "Ariel calls back",
+    "shows": "The phone's call screen, with the end button.",
+    "open": "showScreen(\"own.call\") in the page's console, or the key's button in the row \"Ariel calls back\", or the address #own-call; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "own.rate",
+    "group": "Ariel calls back",
+    "shows": "After the call: \"📞 You called · 4 min\" and the sheet \"How did the call go?\" with the five steps and \"Not now\" (drafted).",
+    "open": "showScreen(\"own.rate\") in the page's console, or the key's button in the row \"Ariel calls back\", or the address #own-rate; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "own.rated",
+    "group": "Ariel calls back",
+    "shows": "\"How did the call go? Will buy soon\" in the chat, the toast \"Saved. Your model learns from it.\"; the bar back to the emoji.",
+    "open": "showScreen(\"own.rated\") in the page's console, or the key's button in the row \"Ariel calls back\", or the address #own-rated; \"Next ›\" walks them in order"
+  },
+  {
+    "key": "vis.keep",
+    "group": "A visitor",
+    "shows": "On the site: the sheet \"Keep this chat\", \"Join WillpowerLab to keep it, and hear Ariel's answers on your phone.\", \"Continue with Google\", \"Not now\".",
+    "open": "showScreen(\"vis.keep\") in the page's console, or the key's button in the row \"A visitor\", or the address #vis-keep; \"Next ›\" walks them in order"
+  }
+]
