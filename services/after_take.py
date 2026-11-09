@@ -268,9 +268,9 @@ def next_take_client_id(user_id: Any, arc_id: Any, take_index: int) -> str:
 
 
 def closing_line(day: Optional[str] = None) -> str:
-    """The closing message: "Good job. See you {day}." with the plan's next
-    practice day ("tomorrow" or its weekday, ``plan.next_day_text``), else
-    "Good job. See you next time." Pure."""
+    """The closing message: "Good job. See you next time." Since N564 there
+    are no practice days, so no day is named; "Good job. See you {day}."
+    stays signed for a ``day`` given. Pure."""
     return SEE_YOU_ON.format(day=day) if day else SEE_YOU
 
 
@@ -387,17 +387,19 @@ def end_rows(database: Any, user_id: str, row: dict, *, glad: bool = False,
              plan_after: bool = True, written: bool = True) -> list[dict]:
     """The end of the chat after a Take, once nothing is asked (N294 item 6,
     N319 item 7): the plan's lines after the Take, then the closing message
-    under them ("Good job. See you {day}." on a plan), then the plan's
-    progress under it. ``row``: the closing message, let go where it was
+    under them ("Good job. See you next time.", N564 item 7), then the
+    plan's bar under it. ``row``: the closing message, let go where it was
     held (``written``) or written now; on the plan's first Take it says so
     (``metadata.first_take``). The rows written."""
     from services.lounge_messages import thread_stamp
-    from services.plan_flow import after_take as plan_after_take, next_day_text
+    from services.plan_flow import after_take as plan_after_take
     plan_rows = plan_after_take(database, user_id) if plan_after else []
     meta = row.get("metadata") or {}
     if not meta.get("first_take") and _first_take(database, user_id, str(meta.get("take_session_id") or "")):
         row = {**row, "metadata": {**meta, "first_take": True}}
-    body = closing_line(next_day_text(database, user_id))
+    # No practice days, so no day is named: "Good job. See you next time."
+    # (N564 item 7).
+    body = closing_line()
     at = thread_stamp(database, user_id)
     if written:
         gone = _let_go(database, user_id, row, glad=glad, at=at, body=body)

@@ -1,12 +1,14 @@
 """
-STORY    As a speaker with an event coming, I want the app to turn my
-         deadline and my voice into a plan, so that each practice works on
-         the one thing that will help most, in words, never a score.
+STORY    As a speaker, I want the app to turn my voice into a plan, so that
+         each Take works on the one thing that will help most, in words,
+         never a score.
 OUTCOME
-  O1  A deadline three weeks away gives three practices a week, nine in
-      all; two weeks or less gives every day; no date gives two months.
-  O2  The practice count reads the Takes done plus one and never passes the
-      total; after the last practice there is no next practice day.
+  O1  The plan is three levels of four Takes, twelve in all, with no
+      practice days (N564 item 2).
+  O2  The bar shows the level's name and its four marks, the done ones
+      filled, never more than four and never a points total, a score or a
+      percentage; after four Takes the next level starts, after the third
+      level the set is done (N564 items 3 and 5).
   O3  The level comes from what was measured today, strongest first: a key
       line said faster than the rest gives "Let your key line land"; with
       nothing measured it is "Make it yours", never a guess.
@@ -20,45 +22,39 @@ OUTCOME
       "Tuesday 27 October, 10:00").
   O7  A Take reaches its level when the check that picked it no longer
       fires; the next level is the next thing heard, never one the plan
-      already had, else "Make it yours"; a level runs a week, or two in a
-      longer plan, and a plan of two weeks or less keeps one level.
-PROVES   O1 -> test_the_deadline_sets_the_journey
-         O2 -> test_practice_count_and_next_day
+      already had, else "Make it yours".
+PROVES   O1 -> test_the_plan_is_three_levels_of_four_takes
+         O2 -> test_the_bar_is_the_level_and_its_marks_never_points
          O3 -> test_the_level_comes_from_what_was_measured
          O4 -> test_the_key_line_first_and_at_most_three
          O5 -> test_the_ai_question_must_keep_its_template
          O6 -> test_dates_read_as_the_chat_writes_them
          O7 -> test_a_level_is_reached_on_its_own_check
 WHY      The plan, built one to one with the prototype (founder 2026-10-26,
-         N203, N204); a level moving on, N134 items 3 and 4, N209; the rules
+         N203, N204); a level moving on, N134 items 3 and 4, N209; the
+         training as levels of four Takes, never points, N564; the rules
          are frontend docs/flows/the-plan.md §1.
 """
 from datetime import date, datetime
 
 from services import plan
 
-SAT = date(2026, 10, 24)
+
+def test_the_plan_is_three_levels_of_four_takes():
+    assert (plan.LEVEL_TAKES, plan.SET_LEVELS, plan.SET_TAKES) == (4, 3, 12)
+    for gone in ("journey", "given_deadline", "is_practice_day", "next_day_text", "level_days"):
+        assert not hasattr(plan, gone)  # no practice days, no two months (N564 item 7)
 
 
-def test_the_deadline_sets_the_journey():
-    j = plan.journey(SAT, date(2026, 11, 14))
-    assert (j.every_day, j.total) == (False, 9)
-    close = plan.journey(SAT, date(2026, 11, 3))
-    assert close.every_day and close.total == 10
-    given = plan.given_deadline(SAT)
-    assert given == date(2026, 12, 19)
-    assert plan.journey(SAT, given).total == 24
-
-
-def test_practice_count_and_next_day():
-    assert plan.practice_number(0, 9) == 1
-    assert plan.practice_number(1, 9) == 2
-    assert plan.practice_number(20, 9) == 9
-    deadline = date(2026, 11, 14)
-    assert plan.next_day_text(date(2026, 11, 13), deadline, (1, 3, 5), False) is None
-    assert plan.is_practice_day(date(2026, 10, 26), deadline, (1, 3, 5), False)
-    assert not plan.is_practice_day(date(2026, 10, 27), deadline, (1, 3, 5), False)
-    assert not plan.is_practice_day(deadline, deadline, (1, 3, 5), True)
+def test_the_bar_is_the_level_and_its_marks_never_points():
+    bar = plan.bar("pauses", 2, 1)
+    assert bar == {"level": "pauses", "level_name": "Pauses that hold the room", "marks": 2,
+                   "of": 4, "level_n": 1, "levels": 3}
+    assert plan.bar("key_line", 9, 7)["marks"] == 4 and plan.bar("key_line", 9, 7)["level_n"] == 3
+    assert plan.bar(None, None)["level_name"] == "Make it yours" and plan.bar(None, None)["marks"] == 0
+    assert not set(bar) & {"points", "score", "percent", "total"}
+    assert not plan.level_full(3) and plan.level_full(4)
+    assert not plan.set_full(["pauses", "say_once"]) and plan.set_full(["pauses", "say_once", "key_line"])
 
 
 def test_the_level_comes_from_what_was_measured():
@@ -109,8 +105,6 @@ def test_dates_read_as_the_chat_writes_them():
     assert plan.fmt_long(date(2026, 10, 26)) == "Monday 26 October"
     assert plan.fmt_when(datetime(2026, 10, 27, 10, 0)) == "Tuesday 27 October, 10:00"
     assert plan.fmt_when_short(datetime(2026, 10, 27, 10, 0)) == "Tue 27 Oct, 10:00"
-    assert plan.days_text((1, 3, 5)) == "Mon, Wed, Fri"
-    assert plan.days_text((5, 1, 3), joined=True) == "Mon, Wed and Fri"
 
 
 def test_a_level_is_reached_on_its_own_check():
@@ -123,9 +117,6 @@ def test_a_level_is_reached_on_its_own_check():
     assert plan.next_level(heard, ["key_line"]) == "pauses"
     assert plan.next_level(heard, ["key_line", "pauses"]) == "say_once"
     assert plan.next_level({}, ["pauses"]) == "make_it_yours"
-    assert plan.level_days(SAT, date(2026, 11, 14)) == 7
-    assert plan.level_days(SAT, date(2026, 12, 19)) == 14
-    assert plan.level_days(SAT, date(2026, 11, 3)) is None
     texts = ["Good morning, everyone.", "The window closes once the incumbents match our price."]
     assert plan.key_line_at(texts, "The window closes once incumbents match our price") == 1
     assert plan.key_line_at(texts, "We need two more hires") is None
