@@ -38,6 +38,15 @@ THE SHAPES (what a storage layer hands in):
     "kind": str | None,                 # the kind of case, for "kinds it lacks"
     # what the machine read; NEVER shown before the teacher answers (Never 2)
     "machine_label": ..., "machine_score": ..., "draft": ..., "what_happened": ...,
+    "content": {                        # the case itself, what a teacher's screen reads
+      "text": str,                      # always: the words of the case (a moment's
+                                        #   transcript, a written case, an uploaded row)
+      "label": str | None,              # optional: the line above the case
+                                        #   ("A client writes:"); none from Takes
+      "audio_url": str | None,          # not yet sent: no route plays a moment to a
+                                        #   teacher yet; a voice example carries
+                                        #   "snippet_id" and "take_id" instead
+    },
   }
 
 WHAT A SPEAKER SEES (N526 item 3, Never 1): every number here is about a
@@ -766,14 +775,14 @@ def profile_models(models: list[dict], person_id: Any, counted_this_month: dict[
                 [WORDS["archive"], WORDS["download_data"]]
             pct = percent_of_the_way(m)
             way = "passed its final exam" if m.get("status") == "ready" else f"{pct}% of the way"
-            rows.append({"name": m.get("name"), "badge": badge,
+            rows.append({"id": m.get("id"), "name": m.get("name"), "badge": badge,
                          "line": f"{WORDS['you_started_it']} · {way} · {teachers_words(int(m.get('teachers') or 0))}",
                          "actions": actions})
         elif pid in _ids(m.get("contributor_ids")):
             n = int(counted_this_month.get(str(m.get("id")), 0))
             counted = "1 answer counted" if n == 1 else f"{n} answers counted"
-            rows.append({"name": m.get("name"), "badge": badge,
+            rows.append({"id": m.get("id"), "name": m.get("name"), "badge": badge,
                          "line": f"{WORDS['you_teach_it']} · {counted} this month", "actions": []})
     if not rows:
         return None
-    return {"title": WORDS["profile_section"], "models": rows}
+    return {"title": WORDS["profile_section"], "user_id": pid, "models": rows}
