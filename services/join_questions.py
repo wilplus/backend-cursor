@@ -262,10 +262,13 @@ def _insert(database: Any, thread: str, member: str, body: str, meta: dict) -> O
     return rows[0] if rows else None
 
 
-def _deadline_known(database: Any, user_id: str) -> Optional[date]:
+def _deadline_known(database: Any, user_id: Optional[str]) -> Optional[date]:
     """A day the joiner already picked for their plan (N254: one project, one
-    deadline), or None."""
+    deadline), or None; always None for a widget's visitor, who has no plan
+    (N565)."""
     from services.plan_flow import _parse_day
+    if not user_id:
+        return None
     try:
         plan = database.get_open_plan(str(user_id)) or {}
     except Exception:
@@ -303,10 +306,27 @@ def begin(database: Any, thread: str, owner_id: str, joiner_id: str) -> None:
         logger.warning("join_questions: the questions did not begin in %s", thread, exc_info=True)
 
 
-def _advance(database: Any, thread: str, owner: str, joiner: str, joiner_id: str,
-             questions: dict, start: int, *, first: bool = False) -> list[dict]:
+def begin_for_visitor(database: Any, thread: str, owner_id: str, owner_member: str,
+                      visitor_member: str) -> list[dict]:
+    """A widget's chat just opened (N565 item 4): the owner's first lines to
+    the visitor, up to the first question, as ``begin`` does for someone who
+    joins; the rows posted. Best-effort: the widget opens either way."""
+    try:
+        questions = mine(database, owner_id)
+        if not questions:
+            return []
+        return _advance(database, thread, owner_member, visitor_member, None, questions, 0,
+                        first=True, closing=False)
+    except Exception:  # noqa: BLE001
+        logger.warning("join_questions: the questions did not begin in %s", thread, exc_info=True)
+        return []
+
+
+def _advance(database: Any, thread: str, owner: str, joiner: str, joiner_id: Optional[str],
+             questions: dict, start: int, *, first: bool = False, closing: bool = True) -> list[dict]:
     """Post lines from ``start``: sentences, then the next question; at the
-    end, the closing line and the card. Returns the rows posted."""
+    end, the closing line (not in a widget, whose visitor cannot tap "+",
+    N565) and the card. Returns the rows posted."""
     lines = questions["lines"]
     posted: list[dict] = []
     i = start
@@ -327,11 +347,12 @@ def _advance(database: Any, thread: str, owner: str, joiner: str, joiner_id: str
         if line["kind"] != "say":
             return posted
         i += 1
-    if start > 0:
+    if start > 0 and closing:
         row = _insert(database, thread, owner, CLOSING, {"setup": {"i": len(lines), "kind": "say",
                                                                     "answers": [], "multi": False}})
         if row:
             posted.append(row)
+    if start > 0:
         card = _card(database, thread, questions)
         if card:
             _insert(database, thread, joiner, "", {"setup_card": {"rows": card}})
@@ -419,6 +440,14 @@ def answer(database: Any, user_id: Any, thread_id: Any, message_id: Any, payload
     joiner now sees: their answer, then what follows]}."""
     from services import chats
     me = chats.member(database, user_id, thread_id)
+    return answer_as(database, me, str(user_id), message_id, payload)
+
+
+def answer_as(database: Any, me: dict, user_id: Optional[str], message_id: Any, payload: Any) -> dict:
+    """``answer`` for a seat in the chat: a member's (``user_id``, whose plan
+    takes the deadline) or a widget visitor's (no ``user_id``, no plan, no
+    closing line, N565)."""
+    from services import chats
     thread, my_member = str(me["thread_id"]), str(me["id"])
     rows = _setup_rows(database, thread)
     asked, setup = _question(rows, message_id, my_member)
@@ -434,12 +463,14 @@ def answer(database: Any, user_id: Any, thread_id: Any, message_id: Any, payload
         record["deadline"] = day.isoformat()
         if picked == [YES]:
             shown_body = _day_text(day)
-        _set_deadline(database, str(user_id), day)
+        if user_id:
+            _set_deadline(database, user_id, day)
     mine_row = _insert(database, thread, my_member, shown_body, {"setup_answer": record})
     if not mine_row:
         raise JoinQuestionsError("NOT_SAVED", "Could not send it.", 503)
     owner = str(asked["author_member_id"])
-    after = _advance(database, thread, owner, my_member, str(user_id), questions, int(setup["i"]) + 1)
+    after = _advance(database, thread, owner, my_member, user_id, questions, int(setup["i"]) + 1,
+                     closing=bool(user_id))
     authors = chats._authors(database, thread)
     return {"messages": [chats._shown(r, my_member, authors) for r in [mine_row, *after]]}
 
