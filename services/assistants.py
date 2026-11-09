@@ -141,7 +141,7 @@ def _line(value: Any, longest: int, field: str) -> str:
 def _question(raw: Any, i: int) -> dict:
     if not isinstance(raw, dict):
         raise RecipeError("RECIPE_INVALID", f"Question {i + 1} must be an object.")
-    out = {"q": _line(raw.get("q"), MAX_QUESTION, f"Question {i + 1}")}
+    out: dict[str, Any] = {"q": _line(raw.get("q"), MAX_QUESTION, f"Question {i + 1}")}
     for key, longest in (("title", MAX_TITLE), ("under", MAX_UNDER)):
         if raw.get(key):
             out[key] = _line(raw.get(key), longest, f"Question {i + 1}'s {key}")
