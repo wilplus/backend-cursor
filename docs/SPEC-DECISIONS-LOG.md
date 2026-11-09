@@ -14283,3 +14283,59 @@ a second try would get again throw it away: 400 no audio, 404 no notebook,
 No new words. No migration. The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 B4.
+
+**N563 · The plan: no deadline unless you prepare a talk, and the training
+is levels you record through, four Takes each, never points (founder, the
+Claude Code chat, 9 November 2026, on "When is your deadline?" in the first
+Take's prototype: "this comes out abrupt ... maybe we should ask that only
+after when they decide what they want to do: to prepare for smth, should
+they just source the knowledge from someone; is it necessary to add the
+deadline for the mvp of the app? maybe we should remove it to make it as
+neutral at first as it gets and keep the progress bar for everyone as 12
+takes training"; then, on questions with recommended answers, "Only
+'Prepare a talk'"; asked the pace, "or it could be simply like collecting
+points and going to the next levels not days to practice..."; told that
+points are a number Never 1 forbids, "Levels, no points"; "After 4 Takes";
+"Summary call, new levels"; no preference on what counts, so the
+recommended answer, every Take).** For N131 to N135, N140, N167, N209,
+N248, N319, N401, N459 and N559:
+1. **Nobody is asked "When is your deadline?"** Only someone who chooses
+   to prepare a talk, where they say what they want to do here (the choice
+   drafted on the onboarding proposal, its words awaiting the founder's
+   OK), is asked "When is it?" once, with "No date yet". Until that choice
+   is built, nobody is asked a date. Amends the deadline question of N319,
+   N401 item 3 and N459 item 1.
+2. **The training is levels, not days.** Everyone's plan is three levels of
+   four Takes, twelve Takes in all. Each level is one of the plan's five
+   (N132), picked from their Takes strongest first, skipping the ones this
+   plan had (`services/plan.py`, `next_level`, as built). There is no
+   schedule of practice days: progress moves with each Take, and nothing is
+   ever missed. Amends N134's journey table, N135's two months and the
+   practice days of N140 and N167.
+3. **The bar shows the level, never points.** Each Take fills one of the
+   current level's four marks; the plan's bar shows the level's name and its
+   marks, the done ones filled. No points, score or percentage about the
+   speaker (Never 1). Its words are drafted for the founder's OK (Never 4).
+   Was: "Today is practice {n} of {total}: {level}." and "{n} of {total}
+   practices done."
+4. **Every Take fills a mark:** practising a talk, answering a teammate and
+   asking a question.
+5. **After the third level:** the summary session with the coach (N248),
+   then a new set of three levels on the next skills their Takes show. Was:
+   the summary session after the deadline, then a new event or two more
+   months.
+6. **With a date** (someone preparing a talk): the plan card shows it and
+   the summary session is offered before it; nothing else depends on it.
+7. **What stops:** the plan's length from a deadline (`journey`,
+   `level_days`, `NO_DATE_DAYS`); "Your deadline is close, so you practise
+   every day."; the practice days, "Done. You'll practise on {days}." and
+   "That's your 15 minutes for today."; "Done. Your plan now runs to
+   {date}."; "Your deadline was {date}."; and the audience question naming
+   the date, which asks without it. Their words stay signed, unused. A
+   goodbye that names a day ("See you tomorrow.") is redrawn when this is
+   built.
+8. **Unchanged:** the kickoff session's ask; the five levels and how each is
+   picked; the coach's level wins, picked blind; stress and readiness are
+   never shown back (N178).
+No migration in this entry. The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
