@@ -1576,6 +1576,34 @@ class TakeRepository(TableRepository):
             return None
         return out
 
+    def get_slide_transcripts_many(self, session_ids) -> Optional[dict]:
+        """What was said on each slide, for many Takes in one read (N576: a
+        Take's bubble in Will's chat opens its words). {session_id: {"user_id",
+        "slide_transcripts"}} for the Takes found; None when unreadable, so
+        the bubble shows no words."""
+        ids = sorted({str(s) for s in (session_ids or []) if s})
+        if not ids:
+            return {}
+        out: dict = {}
+        try:
+            for i in range(0, len(ids), 50):
+                chunk = ids[i:i + 50]
+                res = self._execute(
+                    lambda chunk=chunk: (
+                        self.client.table("v2_sessions")
+                        .select("id, user_id, slide_transcripts")
+                        .in_("id", chunk)
+                    ),
+                    label="get_slide_transcripts_many",
+                )
+                for row in res.data or []:
+                    out[str(row.get("id"))] = row
+        except Exception as e:
+            logger.warning("get_slide_transcripts_many failed n=%d: %s",
+                           len(ids), e, exc_info=True)
+            return None
+        return out
+
     def list_user_arc_sessions(self, user_id: Optional[str], *,
                                strict: bool = False) -> list[dict]:
         """Every arc-linked session the user owns — the /user/trainings source

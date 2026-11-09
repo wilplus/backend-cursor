@@ -54,6 +54,15 @@ class _Takes:
                           "take_index": 1,
                           "intake_context": {"presentation_ref": "s3://b/deck.pdf"}}]}
 
+    def get_slide_transcripts_many(self, sids):
+        return {"t1": {"id": "t1", "user_id": "me", "slide_transcripts": [
+                    {"index": 1, "transcript": " Then the price. "},
+                    {"index": 0, "transcript": "Hello, I am Ana."},
+                    {"index": 2, "transcript": ""}]},
+                "t2": {"id": "t2", "user_id": "other", "slide_transcripts": [
+                    {"index": 0, "transcript": "Someone else's words."}]},
+                "t3": {"id": "t3", "user_id": "me", "slide_transcripts": None}}
+
 
 class _PageDb(_Db):
     """One read of every Take's recordings, one of every project's Takes,
@@ -86,8 +95,10 @@ def test_one_page_gets_fresh_links_decks_and_flags_from_batched_reads(monkeypatc
                         lambda ref: f"deck-{ref}")
     clip = _msg("s1")
     take = {"kind": "recording_summary", "metadata": {"session_id": "t1"}}
+    theirs = {"kind": "recording_summary", "metadata": {"session_id": "t2"}}
+    unsaid = {"kind": "recording_summary", "metadata": {"session_id": "t3"}}
     card = {"kind": "ideal_text", "metadata": {"arc_id": "arc1"}}
-    page = _page(clip, take, card)
+    page = _page(clip, take, theirs, unsaid, card)
     db = _PageDb()
     lounge_clips.enrich_page(
         page, "me", db,
@@ -95,9 +106,11 @@ def test_one_page_gets_fresh_links_decks_and_flags_from_batched_reads(monkeypatc
         resolve_ref=lambda ref: f"signed-{ref}", with_flags=True)
     assert clip["metadata"]["clip"]["src"] == "fresh-s1"
     assert take["metadata"]["audio"] == {"src": "signed-s3://b/take.webm"}
+    assert take["metadata"]["words"] == ["Hello, I am Ana.", "Then the price."]
+    assert "words" not in theirs["metadata"] and "words" not in unsaid["metadata"]
     assert card["metadata"]["deck"] == {"presentation_ref": "deck-s3://b/deck.pdf"}
     assert page["new_coach_feedback"] == {"arc1": True, "arc2": False}
-    assert db.calls == [("snippets", ("t1",))]
+    assert db.calls == [("snippets", ("t1", "t2", "t3"))]
 
 
 MINE = "11111111-1111-4111-8111-111111111111"
