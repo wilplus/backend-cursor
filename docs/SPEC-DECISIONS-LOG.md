@@ -14585,3 +14585,50 @@ comes back to it.
 No new words. No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 §1 C1, when built.
+
+**N569 · Your chat on a website is a way to be called back, not a spoken
+answer; it asks the questions set at onboarding, so the model learns from
+the first visitor; hidden until its new design is signed (founder, the
+Claude Code chat, 9 November 2026, on the prototype "Your chat, on any
+website" <https://claude.ai/artifact/E8Lt28gFBZbLCtLd1XFu2f> (version 5, as
+built): "it is not answering out loud - this is just a communication tool
+that allows you to answer certain questions and then get the call back; but
+first the company needs to decide what kind of model they will be training
+and how and what questions to ask!"; then four questions: hide it now, yes;
+the visitor leaves a phone number, yes; where the questions come from, "the
+same questions that you set up during the onboarding, so that from the
+first day of your interactions the model can learn"; the owner calls back,
+then rates, yes).** Amends N567:
+1. **Hidden until redesigned.** The switch "Put this chat on your website"
+leaves the add sheet, so nobody can copy the code; the add sheet keeps the
+link, Copy my link and "Only the two of you are in it." The backend of
+N567 stays in place, unused.
+2. **What it is.** The visitor answers the owner's questions with taps,
+then leaves a phone number to be called back. The owner does not answer
+out loud in the widget: N567's "Tap to answer, and I'll answer you out
+loud.", the three questions ("What do you do?", "How do you work with
+people?", "Can we talk?"), "{name} answers out loud when there's a moment.
+Come back here to listen." and the owner's "Record your answer" for a
+visitor's question go (N567 items 4 to 6).
+3. **The questions** are the ones the owner set up at onboarding, for
+whoever joins them (N487, N503, set in Will's chat), so every visitor's
+answers teach the owner's model from the first day. What kind of model it
+is and how it is taught are decided when the company sets it up (N566).
+4. **The call back.** After the taps, one field for the visitor's phone
+number, with its consent; then a line that they will be called. In the
+owner's list the chat shows the answers and **Call {number}**.
+5. **After the call, the owner rates how it went,** with one tap, and that
+rating teaches the model.
+6. **The answers card** reads "{Visitor n}'s answers" (and, once kept,
+"{name}'s answers"); it read "Widget's answers", taking the first word of
+"Widget / Visitor {n}" (a fix, as N567 item 6 has it).
+**Open, for a prototype and the founder's OK before it is built:** every
+new word (the number field, its consent, the line after it, Call, the
+rating); the rating's scale, from the model's recipe card or its own; which
+model the answers teach when the owner has several, or none yet; counsel on
+keeping a visitor's phone number.
+Item 1 and item 6 are built at once; the rest is not in force until built
+and merged. No migration in this entry.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+B8 to B13.
