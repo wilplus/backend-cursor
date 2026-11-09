@@ -478,7 +478,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O7** As a tester I keep my chat's recipe and read it back, with Artur's five to start from; without the ring the builder is 404; a locked field is 400 RECIPE_LOCKED and nothing is kept.
 - **O8** Someone who joins through my link meets my welcome first, as my assistant's messages, and my join page says who I am and what they can learn with me, in my own words (N586 item 1, N590 item 2).
 - **O9** In my chat, the person who joined reads whose assistant answers, my first Take's questions and how they may answer; a chat with someone who has no recipe is as it was.
-- **O10** In Will's chat, Will says what I know can earn tokens, with "Set up my chat"; then asks, one at a time, my welcome, how people answer, my specialization, what people learn, a skill or a topic and what I need to see, and "Do you want to automate your own chat?"; "Go live" keeps it, and the next person who joins meets it (N582 item 1, N586 item 5).
+- **O10** In Will's chat, Will says what I know can earn tokens, with "Set up my chat"; then asks, one at a time, my welcome, how people answer, my specialization, what people learn, a skill or a topic and what I need to see, and "Do you want to automate your own chat?"; "Go live" keeps it, with the first Take's questions set in the builder, and the next person who joins meets it (N582 item 1, N586 item 5).
 - **O11** A welcome that scores people is not kept: Will says why and asks again.
 
 *Why:* Every inviter has a coach chat of their own (N578); the builder's MVP is for the founder and a few testers first (N579).
@@ -2814,6 +2814,10 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O2** My one recording goes to everyone in the bundle, each privately in their own chat with me, under their own question quoted; nobody gets it twice.
 - **O3** Someone who asks the same thing later gets my answer at once, with its colour for how sure the match is.
 - **O4** Without the chat builder's ring nothing is bundled and the queue is 404.
+- **O5** My own voice replies in my chats are never bundled as questions.
+- **O6** A later asker's automatic answer reaches their iPhone like any answer.
+- **O7** "Record one answer" asks my recording consent again: withdrawn, nothing is sent.
+- **O8** When an asker's account is erased, their words leave the bundle: it reads as the next question, and nothing of theirs is kept.
 
 *Why:* "how do we bundle the people who have similar questions ... so that I can answer it to that whole group with my one recording?" (founder, 9 November 2026, N584).
 

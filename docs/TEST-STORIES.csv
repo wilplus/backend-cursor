@@ -463,7 +463,8 @@ O10 In Will's chat, Will says what I know can earn tokens, with ""Set up my
 chat""; then asks, one at a time, my welcome, how people answer, my
 specialization, what people learn, a skill or a topic and what I need
 to see, and ""Do you want to automate your own chat?""; ""Go live"" keeps
-it, and the next person who joins meets it (N582 item 1, N586 item 5).
+it, with the first Take's questions set in the builder, and the next
+person who joins meets it (N582 item 1, N586 item 5).
 O11 A welcome that scores people is not kept: Will says why and asks again.","O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
 O2 -> AssistantsTest::test_a_testers_join_page_names_the_assistant_and_wills_chat
 O3 -> RecipeTest::test_a_host_sets_welcome_questions_and_how_people_answer
@@ -2984,10 +2985,20 @@ their own chat with me, under their own question quoted; nobody gets
 it twice.
 O3  Someone who asks the same thing later gets my answer at once, with its
 colour for how sure the match is.
-O4  Without the chat builder's ring nothing is bundled and the queue is 404.","O1 -> BundlesTest::test_questions_that_ask_the_same_thing_gather_in_one_bundle
+O4  Without the chat builder's ring nothing is bundled and the queue is 404.
+O5  My own voice replies in my chats are never bundled as questions.
+O6  A later asker's automatic answer reaches their iPhone like any answer.
+O7  ""Record one answer"" asks my recording consent again: withdrawn, nothing
+is sent.
+O8  When an asker's account is erased, their words leave the bundle: it
+reads as the next question, and nothing of theirs is kept.","O1 -> BundlesTest::test_questions_that_ask_the_same_thing_gather_in_one_bundle
 O2 -> BundlesTest::test_one_recording_answers_everyone_in_the_bundle
 O3 -> BundlesTest::test_a_later_asker_gets_the_answer_at_once
-O4 -> BundlesTest::test_without_the_ring_nothing_is_bundled","""how do we bundle the people who have similar questions ... so that I can answer it to that whole group with my one recording?"" (founder, 9 November 2026, N584)."
+O4 -> BundlesTest::test_without_the_ring_nothing_is_bundled
+O5 -> BundlesTest::test_my_own_replies_are_never_bundled
+O6 -> BundlesTest::test_a_later_asker_gets_the_answer_at_once
+O7 -> BundlesTest::test_one_answer_asks_my_recording_consent_again
+O8 -> BundlesTest::test_an_erased_askers_words_leave_the_bundle","""how do we bundle the people who have similar questions ... so that I can answer it to that whole group with my one recording?"" (founder, 9 November 2026, N584)."
 tests/test_reacceptance_signal_postgres.py,Story,"As a returning speaker whose Terms changed, I want to be told the Terms moved instead of being shown a first-time screen, so that I re-accept knowing what changed (consent).","O1  Someone holding a receipt for an older policy only is flagged
 reacceptance_required, with the version they last agreed to.
 O2  A first-timer (no receipt at all) is not flagged and has no version:

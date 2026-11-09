@@ -87,6 +87,37 @@ def mark_of(score: float) -> str:
     return "green" if score >= SURE else "yellow" if score >= JOIN else "red"
 
 
+def _askers_of(database: Any, bundle_ids: list[str]) -> dict[str, list[dict]]:
+    """Each bundle's questions still kept, by bundle."""
+    out: dict[str, list[dict]] = {}
+    if not bundle_ids:
+        return out
+    for a in _rows(_table(database, ASKERS).select("bundle_id,words,created_at")
+                   .in_("bundle_id", bundle_ids)):
+        out.setdefault(str(a["bundle_id"]), []).append(a)
+    return out
+
+
+def _question(askers: list[dict]) -> str:
+    """A bundle reads as its earliest question still kept; a bundle whose
+    askers have all gone reads as nothing and matches nothing."""
+    kept = sorted(askers, key=lambda a: str(a.get("created_at") or ""))
+    return str(kept[0]["words"]) if kept else ""
+
+
+def host_of_chat(database: Any, thread_id: Any) -> Optional[str]:
+    """Whose chat this is: the owner of the link it was made through (N578
+    item 1: you meet the chat of whoever's link you came by). None for a
+    chat made otherwise, which bundles nothing."""
+    from services.chat_links import LINKS
+    rows = _rows(_table(database, "chat_threads").select("link_id").eq("id", str(thread_id)).limit(1))
+    link = rows[0].get("link_id") if rows else None
+    if not link:
+        return None
+    owners = _rows(_table(database, LINKS).select("user_id").eq("id", str(link)).limit(1))
+    return str(owners[0]["user_id"]) if owners else None
+
+
 def _host_member(database: Any, thread: str, host_id: str) -> Optional[str]:
     rows = _rows(_table(database, MEMBERS).select("id,user_id").eq("thread_id", thread))
     return next((str(m["id"]) for m in rows if str(m.get("user_id")) == host_id), None)
@@ -114,6 +145,9 @@ def _send(database: Any, host_id: str, asker: dict, bundle: dict,
     if not rows:
         return None
     sent = str(rows[0]["id"])
+    # The same push as any answer: the host's name over its line (N385).
+    from services.chats import _tell
+    _tell(database, {"id": host_member, "thread_id": str(asker["thread_id"])}, rows[0])
     _table(database, ASKERS).update({"answered_message_id": sent}).eq("id", str(asker["id"])).execute()
     return sent
 
@@ -129,15 +163,16 @@ def collect(database: Any, host_id: Any, asker_id: Any, thread_id: Any, message_
     if not said or not meaning(said) or not assistants.on(database, host_id):
         return None
     try:
-        bundles = _rows(_table(database, BUNDLES).select("id,question,answer_take")
+        bundles = _rows(_table(database, BUNDLES).select("id,answer_take")
                         .eq("host_id", str(host_id)).order("created_at", desc=True).limit(200))
+        asked = _askers_of(database, [str(b["id"]) for b in bundles])
         best, score = None, 0.0
         for b in bundles:
-            s = likeness(said, b["question"])
+            s = likeness(said, _question(asked.get(str(b["id"])) or []))
             if s > score:
                 best, score = b, s
         if best is None or score < JOIN:
-            best = _rows(_table(database, BUNDLES).insert({"host_id": str(host_id), "question": said}))[0]
+            best = _rows(_table(database, BUNDLES).insert({"host_id": str(host_id)}))[0]
             score = 1.0
         asker = _rows(_table(database, ASKERS).insert({
             "bundle_id": str(best["id"]), "asker_id": str(asker_id), "thread_id": str(thread_id),
@@ -163,7 +198,7 @@ def queue(database: Any, host_id: Any) -> dict:
     """GET /v2/chats/bundles: the host's bundles, those still waiting for an
     answer first, each with its line, its people's questions and "Record one
     answer" while it waits."""
-    bundles = _rows(_table(database, BUNDLES).select("id,question,answer_take,created_at")
+    bundles = _rows(_table(database, BUNDLES).select("id,answer_take,created_at")
                     .eq("host_id", str(host_id)).order("created_at", desc=True).limit(200))
     ids = [str(b["id"]) for b in bundles]
     askers = _rows(_table(database, ASKERS).select(
@@ -177,8 +212,9 @@ def queue(database: Any, host_id: Any) -> dict:
         if not mine:
             continue
         first = names.get((str(mine[0]["thread_id"]), str(mine[0]["asker_id"]))) or ""
-        line = (MANY_ASKED.format(n=len(mine), question=b["question"]) if len(mine) > 1
-                else ONE_ASKED.format(name=first or "Someone", question=b["question"]))
+        question = _question(mine)
+        line = (MANY_ASKED.format(n=len(mine), question=question) if len(mine) > 1
+                else ONE_ASKED.format(name=first or "Someone", question=question))
         out.append({"id": str(b["id"]), "line": line, "answered": bool(b.get("answer_take")),
                     "record": None if b.get("answer_take") else RECORD_ONE,
                     "questions": [{"id": str(a["id"]), "words": a["words"], "mark": a["mark"],
@@ -191,7 +227,7 @@ def queue(database: Any, host_id: Any) -> dict:
 
 def _own_bundle(database: Any, host_id: str, bundle_id: Any) -> dict:
     bid = _uuid(bundle_id)
-    rows = _rows(_table(database, BUNDLES).select("id,host_id,question,answer_take")
+    rows = _rows(_table(database, BUNDLES).select("id,host_id,answer_take")
                  .eq("id", bid).limit(1)) if bid else []
     if not rows or str(rows[0]["host_id"]) != host_id:
         raise _not_found()
@@ -233,7 +269,7 @@ def split(database: Any, host_id: Any, bundle_id: Any, body: Any) -> dict:
                              .eq("bundle_id", str(bundle["id"]))) if str(a["id"]) in picked]
     if not rows:
         raise ChatsError("PICK_ONE", "Pick the questions to move.")
-    new = _rows(_table(database, BUNDLES).insert({"host_id": host, "question": rows[0]["words"]}))[0]
+    new = _rows(_table(database, BUNDLES).insert({"host_id": host}))[0]
     for a in rows:
         _table(database, ASKERS).update({"bundle_id": str(new["id"])}).eq("id", str(a["id"])).execute()
     return {"bundle": str(new["id"])}

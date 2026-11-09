@@ -556,7 +556,15 @@ def v2_chats_bundles():
 def v2_chats_bundle_act(bundle_id, action):
     """"Record one answer" ({take, duration_ms}), split ({questions}) or
     merge ({into})."""
-    from services import question_bundles
+    from services import assistants, question_bundles
+    if not assistants.on(db, str(request.user_id)):
+        return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
+    if action == "answer":
+        # A recorded answer, as "Record an answer" is: the recording consent
+        # is asked again, so a host who withdrew it sends nothing.
+        refused = _recording_refused()
+        if refused is not None:
+            return refused
     work = {"answer": question_bundles.answer, "split": question_bundles.split,
             "merge": question_bundles.merge}.get(action)
     if work is None:

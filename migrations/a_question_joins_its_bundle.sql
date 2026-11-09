@@ -5,9 +5,11 @@
 -- (service role), behind the ring row chat_builder (N579 item 2):
 --
 --   question_bundles        A host's bundle of questions that ask the same
---                           thing (N584 item 1): its question as first
---                           asked, and, once the host records one answer,
---                           the Take that answer is (answer_take) and when.
+--                           thing (N584 item 1): once the host records one
+--                           answer, the Take that answer is (answer_take)
+--                           and when. It keeps no asker's words: a bundle
+--                           reads as its earliest question still kept, so
+--                           an asker's erasure takes their words with them.
 --   question_bundle_askers  Each question in a bundle: who asked, in which
 --                           chat, by which message, its words, and how sure
 --                           the match is, as a colour (N580 item 3, never a
@@ -37,11 +39,9 @@ SET LOCAL lock_timeout = '5s';
 CREATE TABLE IF NOT EXISTS public.question_bundles (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     host_id      UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    question     TEXT NOT NULL,
     answer_take  UUID,
     answered_at  TIMESTAMPTZ,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT question_bundles_question_len CHECK (char_length(question) BETWEEN 1 AND 2000)
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS question_bundles_host_idx
