@@ -14112,3 +14112,103 @@ invite a try; they never say the speaker is lacking or needs fixing.
 No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C2 and K.
+
+**N558 · Every locked prototype is kept in the repo, and the first Take's two
+are pinned redrawn to the decisions after them (founder, the Claude Code
+chat, 9 November 2026: "which prototype should I pin now?", then "source
+from the code the look of the bottom bar across the app; and the look of
+the presentations ... and look for other locked elements from the code that
+this prototype does differently", then "pin them with the fixes" and "also
+update the claude.ai artifacts with the fixes").** Extends N229 to every
+locked flow; for N401.
+1. **Every locked prototype is kept as files**, as N229 keeps customer
+   requests': its own HTML, which runs in any browser, and a PDF of every
+   step, in `docs/design/`. The claude.ai link is a convenience, never the
+   only copy. A prototype is pinned at the version that is built; a rules
+   page cites that version, not "the newest".
+2. **"The way in" and "The first Take" (N401) are pinned** in
+   [`docs/design/the-way-in-and-first-take-2026-11-09/`](design/the-way-in-and-first-take-2026-11-09/),
+   redrawn so they no longer disagree with the decisions after 3 November,
+   with the looks and words taken from the code on main:
+   - the bar, as N483, N498, N467 and N415 lock it: no mic, the stack on the
+     left, "Start your first recording" or "Record Take N" in the middle
+     with the red dot (faded while a Take is processed), "Something else"
+     the first answer, "Not now" and "Skip" grey words, the locked
+     recording strip;
+   - the slide, as N462 locks it: the centered poster with the five signed
+     slides; Will's welcome as N492's four bubbles; the recording screen's
+     top line, clock and buttons as N70 locks them;
+   - no guest path, no teams or codes (N471); the coach's row in the list
+     (N521); the new-row look (N500); the joiner's line (N496); the setup
+     note before "+" (N534); the ☰ icons (N367); the plan card (N319); the
+     live document versions; Will's mark; the app's own fonts.
+   - the screens around the Take, as the code draws them: sign-up and
+     sign-in, "How do you feel?" (N549), the set-up and "What are you
+     recording?"; and what happens after the Take: the walk (their best,
+     one fix by the kind of its weakness, N548), helper words, "Lesson
+     done.", Will's chat after it, the Ideal Text page, the sharing
+     question, then Take 2.
+   Each file's first notes panel lists the fixes, the sources and the
+   words still without a signature.
+3. **The claude.ai links** (<https://claude.ai/artifact/5RQsbVpt1F8NMtSbTs7wwB>,
+   <https://claude.ai/artifact/C78wBzWUKz7MaHjxrnsPVX>) show the pinned
+   versions. The 3 November versions, as N401 locked them, are kept beside
+   them as `history-*.html`.
+4. **Unchanged:** what N401 decided (the first Take is the onboarding, the
+   checks while it is processed, the walk, then "Record Take 2"). Still to
+   build, as N401 says: the processing row on top of Will's chat, the
+   Microsoft sign-in.
+No new words on screen. No migration. The rules:
+[`docs/LOCKS.md`](LOCKS.md), the row for the way in and the first Take.
+
+**N559 · Matching, settled: the business is the pool, your own chats are
+ranked too, and the matcher learns only from answers and conversations
+(founder, the Claude Code chat, 9 November 2026, on eight questions with
+recommended answers: "Answered in a week" and "Kept talking"; "A step
+ahead"; "Keep them"; asked who can be suggested, "we need to have option
+for people to join the community during the onboarding; so people from the
+community can be suggested and the people from your private chat even if
+they are not from the community"; then "Their whole business", "Rank my
+chats", "Yes, the signed card" and "Retire it").** For N463, N465, N470,
+N471, N473, N477, N481 and N504:
+1. **Who can be suggested as someone new** (the page after a Take, N477):
+   the people in the speaker's business community. A newcomer is offered
+   the community of the business of the person whose link they came by,
+   once, while Take 1 is processed, with Join and Not now; joining is how a
+   person belongs to it. The question's words are drafted for the
+   founder's OK (Never 4). Amends N473 item 2 and, for matching only,
+   N471 item 6 (your community is the people who joined through your
+   link). The code's pool reads the passcode communities, which N471
+   retired (`services/take_match.py`, `pool`): a bug to fix (N95).
+2. **Your own chats count too.** On the screen of who hears a Take (N470),
+   the person in your chats who can best answer this Take comes first, by
+   the fit the matcher uses; "Last sent" stays under the name of whoever
+   you sent to last, and everyone stays ticked (N470 item 2). No new
+   words. Amends N470 item 1. Was: the person sent to last on top, then the
+   list's order.
+3. **What teaches the matcher.** A suggestion went well when the person
+   suggested answers within seven days, and better when the two keep
+   talking: three or more exchanges after the answer, within 14 days
+   (N477 item 3's day-14 check). Nobody is asked to rate anyone, and
+   nothing is shown as a score (Never 1). Each suggestion keeps the chance
+   its pick had (as built), so picks can be compared fairly.
+4. **By how people speak, once that is switched on** (N481 item 4, after
+   the Terms and Privacy are signed): a step ahead, someone a little
+   further along in what the speaker practises (the built "further along"
+   arm). The same-level and opposite-style arms are retired (N463 item 5),
+   and the same-level arm's code goes (one in, one out).
+5. **The numbers stay as built,** no longer proposed: a fit of at least
+   2.0; a Take in the last 14 days; at most 3 Takes waiting for one
+   person's answer and 5 suggestions a week to one person; the best fit 8
+   times in 10, otherwise the second or the third.
+6. **The off switch:** N465's signed Settings card "Matching by how you
+   speak", with Turn off, which deletes what Will learned from how you
+   speak; built before the speaking part is switched on.
+7. **Retired before it was built:** the rating "How was practising with
+   {name}?" with "Good match", "It was okay" and "Not for me" (N463 item 6,
+   N465); its words stay signed, unused.
+8. **Unchanged:** matching runs only on the page after a Take (N477 item
+   1); the founder's admin page shows a matched "Not now" (N504 item 2) and
+   matching gets its own rules page (N332), both still to build.
+No migration in this entry. No rules page yet: matching gets its rules
+page when this is built (N332).
