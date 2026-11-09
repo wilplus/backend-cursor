@@ -398,8 +398,7 @@ def changes_block_for(
     )
     if is_a_bake(baked):
         logger.info("ideal-text bookmarks served from storage arc=%s", arc_id)
-        return _client_rows_only(
-            _with_fresh_coach_answers(database, _with_fresh_playback(baked)))
+        return _client_rows_only(_with_fresh_perishables(database, baked))
     # A BAKE ALREADY ON ITS WAY IS THIS ANSWER (founder 2026-10-14): the page
     # asks again rather than this request running the same Manager a second
     # time beside it, or holding a request thread while it waits.
@@ -490,7 +489,21 @@ def _unplayable(ref: Any) -> bool:
             and not ref.startswith(("http://", "https://")))
 
 
-def _with_fresh_playback(block: dict) -> dict:
+def _with_fresh_perishables(database: Any, block: dict) -> dict:
+    """A stored block with its clips re-signed and its coach answers as they
+    stand now. The two refreshes read different tables and touch different
+    fields of a row, so their reads go out side by side (founder's
+    stopwatch, 2026-11-09: they ran one after the other, and the coach read
+    once per Take, inside the `document_layers` lane)."""
+    from services.parallel import run_in_parallel
+    playback, requests = run_in_parallel(
+        lambda: _read_fresh_playback(block),
+        lambda: _read_fresh_coach_requests(database, block))
+    return _apply_fresh_coach_answers(
+        _apply_fresh_playback(block, playback), requests)
+
+
+def _read_fresh_playback(block: dict) -> dict | None:
     """Re-sign the clip URLs in a stored block. Never serve a stored one.
 
     FOUNDER, 2026-09-21: "audio unavailable" on a bookmark whose four marks
@@ -515,7 +528,7 @@ def _with_fresh_playback(block: dict) -> dict:
     """
     rows = block.get("changes")
     if not isinstance(rows, list):
-        return block
+        return None
     # ONLY THE CLIPS THESE ROWS SHOW (founder 2026-10-18, "optimise the
     # loading"): this used to read every piece of every Take named here, with
     # its word timings, and sign them all, to refresh the few bookmarks on
@@ -527,12 +540,20 @@ def _with_fresh_playback(block: dict) -> dict:
         and any(row.get(field) for field in _PERISHABLE)
     })
     if not wanted:
-        return block
+        return None
     try:
         from routes.v2.arcs import _snippet_playback_map
-        playback = _snippet_playback_map(wanted) or {}
+        return _snippet_playback_map(wanted) or {}
     except Exception as error:
         logger.warning("ideal-text bake playback refresh failed: %s", error)
+        return None
+
+
+def _apply_fresh_playback(block: dict, playback: dict | None) -> dict:
+    """The rows of `block` with the clips `_read_fresh_playback` signed.
+    None (nothing to refresh, or the read failed) returns it untouched."""
+    rows = block.get("changes")
+    if playback is None or not isinstance(rows, list):
         return block
     # A COPY, NOT AN UPDATE IN PLACE. Today's caller hands over a dict the
     # RPC just built, so mutating it would be harmless — and the first test
@@ -559,7 +580,8 @@ def _with_fresh_playback(block: dict) -> dict:
     return refreshed
 
 
-def _with_fresh_coach_answers(database: Any, block: dict) -> dict:
+def _read_fresh_coach_requests(database: Any,
+                               block: dict) -> dict[str, dict] | None:
     """The coach's answer on each row as it stands NOW, not as it was baked.
 
     FOUNDER, 2026-10-21: "the video was sent too with the coach feedback and
@@ -568,7 +590,7 @@ def _with_fresh_coach_answers(database: Any, block: dict) -> dict:
     and nothing a coach does retires a bake: `ideal_text_feedback_surface_touched_at_v1`
     reads only the speaker's own writes. So a video the coach added after
     the bake never reached the page, and a video baked in carried a
-    six-hour signature that `_with_fresh_playback` did not refresh.
+    six-hour signature that the clip refresh (`_read_fresh_playback`) did not refresh.
 
     THE SAME RULE AS THE CLIPS: the cache keeps what is expensive (the
     Manager) and never what is perishable or another party's to change. One
@@ -579,24 +601,35 @@ def _with_fresh_coach_answers(database: Any, block: dict) -> dict:
     """
     rows = block.get("changes")
     if not isinstance(rows, list):
-        return block
+        return None
     takes = sorted({
         str(row["take_session_id"]) for row in rows
         if isinstance(row, dict) and row.get("take_session_id") and row.get("snippet_id")
     })
     reader = getattr(database, "list_exercise_coach_requests_for_take", None)
     if not takes or not callable(reader):
-        return block
-    requests: dict[str, dict] = {}
+        return None
     try:
-        from services.confident_voice_practice import coach_shared_answer
-        for take in takes:
-            live = reader(take)
-            requests[take] = live if isinstance(live, dict) else {}
+        # One read per Take, side by side rather than one after another.
+        from services.parallel import run_in_parallel
+        found = run_in_parallel(*[
+            (lambda take=take: reader(take)) for take in takes])
     except Exception as error:  # noqa: BLE001 -- a stale answer beats no card
         logger.warning("ideal-text bake coach answers refresh failed: %s", error,
                        exc_info=True)
+        return None
+    return {take: (live if isinstance(live, dict) else {})
+            for take, live in zip(takes, found)}
+
+
+def _apply_fresh_coach_answers(block: dict,
+                               requests: dict[str, dict] | None) -> dict:
+    """The rows of `block` with the coach's answers `_read_fresh_coach_requests`
+    read. None (nothing to refresh, or the read failed) returns it untouched."""
+    rows = block.get("changes")
+    if requests is None or not isinstance(rows, list):
         return block
+    from services.confident_voice_practice import coach_shared_answer
     out: list[Any] = []
     for row in rows:
         if not isinstance(row, dict) or not row.get("snippet_id") or not row.get("take_session_id"):

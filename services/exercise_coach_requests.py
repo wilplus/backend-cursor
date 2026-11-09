@@ -268,7 +268,7 @@ def _rebake_for_speaker(database: Any, request: dict) -> None:
     """The speaker's page is served from a stored bake that only the
     speaker's own writes retire (founder 2026-10-21: the coach's video
     "didn't pass through"). The answer in words is re-read on every read
-    (`ideal_text_feedback_bake._with_fresh_coach_answers`); a shared
+    (`ideal_text_feedback_bake._read_fresh_coach_requests`); a shared
     exercise reaches the page through the bake, so the coach's answer asks
     for one, debounced. Best-effort, off the coach's request."""
     try:

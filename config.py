@@ -163,7 +163,7 @@ class Config:
     #   #589  the READER kept the guard #583 had just replaced, so the same
     #         empty block was served anyway -> `is_a_bake`, asked by both
     #   #590  a stored six-hour signed clip URL served long after it died
-    #         -> `_with_fresh_playback` re-signs on every serve
+    #         -> `_read_fresh_playback` re-signs on every serve
     #
     # The fourth was mine. #593 and #594 blamed a saturated worker queue for
     # processing the founder called stale. `processing_jobs` then showed
