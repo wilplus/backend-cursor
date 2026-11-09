@@ -14049,3 +14049,20 @@ px on phones too. On the locked consent screen the country drop-down goes
 from 15 px to 16 px on phones (founder's OK, this entry); elsewhere the
 booking time zone, the blog sort and the Life Panel's choice. No new
 words. No migration. No rules page.
+
+**N555 · In the iPhone app the bar never shows a lesson price, and Will's
+booking link opens Safari (founder, the Claude Code chat, 9 November 2026,
+on frontend #1280, which would have opened the booking page inside the
+app, and on the bar's lesson offer, which showed "Artur set a price for
+you: a 1-on-1 lesson for … instead of …" with "See times" in the app:
+"Close #1280; fix "See times"", then, told that opening Safari would still
+leave a price and a button to buy in the app, "Hide it in the app").** For
+N495 and N365 item 1:
+1. **The bar's lesson offer is the web only,** as the plan offer already
+is: in the iPhone app it never shows, so no price in money and no button
+leading to buying appear there. On the web it shows as before.
+2. **Will's booking link in a message keeps opening in Safari** from the
+app (frontend #1280 closed, not merged).
+No new words. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E1.
