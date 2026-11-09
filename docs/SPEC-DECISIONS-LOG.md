@@ -14569,3 +14569,19 @@ All the words above are signed. Not in force until built and merged.
 The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 §B, a person's widget.
+
+**N568 · Signed out, the iPhone app opens on the first page (founder, the
+Claude Code chat, 9 November 2026, told that N471 item 4 opens the app on
+the first page while N561 item 1 sent a signed-out person to sign-in, and
+asked where a signed-out person lands: "First page, as N471").** For N471
+item 4 and N561 item 1, in the iPhone app only; the website is unchanged:
+1. **Signed out, the app opens on the first page,** the same as the
+website's (N471 item 4): "Sign in" in the corner, "See an example", the
+link field and "No link yet? Join the waitlist". N471 item 4 stands as
+written. Amends N561 item 1, which sent a signed-out person to sign-in.
+2. **Unchanged:** signed in, the app opens straight on the chats (N561 item
+1); a link into a chat (a coach's feedback) still goes to sign-in first and
+comes back to it.
+No new words. No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 C1, when built.
