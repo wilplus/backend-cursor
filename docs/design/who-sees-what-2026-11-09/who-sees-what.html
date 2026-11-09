@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light}body{margin:0}[hidden]{display:none!important}</style>
+</head><body>
+<title>Who Sees What</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: the people across the top, the tree on the left, the chosen person's screens on the right; one column on a phone.
+   The App Model's tokens: the app's system font, its orange for the path taken, a violet for what is still a draft. */
+:root {
+  --bg: #EDEBE7; --fg: #141414; --muted: #6E6A64; --line: #E1DDD6; --panel: #FFFFFF;
+  --orange: #FF640A; --orange-soft: #FFF0E6; --green: #1F9D55; --green-soft: #E7F6EC;
+  --draft: #8A5A00; --draft-soft: #FFF4D6; --known: #1E4C99; --known-soft: #E4EDFB; --off: #B9B3AA;
+  --ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #161615; --fg: #F1EFEB; --muted: #A29E97; --line: #2F2D2A; --panel: #1D1C1B; --orange-soft: #33200F; --green-soft: #16321F; --draft: #F5C451; --draft-soft: #3A2E10; --known: #9DBBF2; --known-soft: #1A2740; --off: #5C5852; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #161615; --fg: #F1EFEB; --muted: #A29E97; --line: #2F2D2A; --panel: #1D1C1B; --orange-soft: #33200F; --green-soft: #16321F; --draft: #F5C451; --draft-soft: #3A2E10; --known: #9DBBF2; --known-soft: #1A2740; --off: #5C5852; color-scheme: dark }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--ui); margin: 0; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+@media (max-width: 920px) { .wrap { grid-template-columns: minmax(0, 1fr); } }
+.full { grid-column: 1 / -1; min-width: 0; }
+h1 { font: 800 clamp(28px, 5vw, 42px)/1.05 var(--ui); margin: 0; letter-spacing: -0.02em; }
+.lede { color: var(--muted); margin: 8px 0 0; max-width: 82ch; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; min-width: 0; }
+.panel h2 { font: 700 19px/1.25 var(--ui); margin: 0 0 4px; }
+.panel > p { margin: 0; color: var(--muted); font-size: 14px; }
+.people { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.people button { display: flex; align-items: center; gap: 9px; border: 1.5px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 99px; padding: 5px 14px 5px 5px; font: 600 14px var(--ui); cursor: pointer; text-align: left; }
+.people button small { display: block; font-weight: 500; font-size: 12px; color: var(--muted); }
+.people button.on { border-color: var(--orange); background: var(--orange-soft); }
+.av { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font: 700 14px var(--ui); flex: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; font-size: 13px; color: var(--muted); }
+.k { display: inline-flex; align-items: center; gap: 6px; } .k i { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+
+/* the tree */
+.tree { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
+.step { position: relative; padding: 0 0 14px 26px; }
+.step::before { content: ""; position: absolute; left: 9px; top: 22px; bottom: 0; width: 2px; background: var(--line); }
+.step:last-child::before { display: none; }
+.step .dot { position: absolute; left: 2px; top: 6px; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); background: var(--panel); }
+.step.always .dot { background: var(--fg); border-color: var(--fg); }
+.step.fork .dot { border-radius: 4px; transform: rotate(45deg); width: 14px; height: 14px; left: 3px; top: 7px; }
+.step.taken .dot { border-color: var(--orange); }
+.step.fork.taken .dot { background: var(--orange); }
+.step h3 { margin: 0; font: 650 15.5px/1.35 var(--ui); }
+.step .src { display: inline-block; margin-top: 3px; font: 700 10.5px var(--ui); letter-spacing: .05em; text-transform: uppercase; border-radius: 99px; padding: 2px 8px; }
+.src.knows { background: var(--known-soft); color: var(--known); } .src.asks { background: var(--orange-soft); color: #C2410C; } .src.all { background: var(--green-soft); color: var(--green); }
+.step .why { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+.br { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 8px; }
+@media (max-width: 520px) { .br { grid-template-columns: minmax(0, 1fr); } }
+.br > div { border: 1.5px solid var(--line); border-radius: 12px; padding: 8px 10px; font-size: 13.5px; min-width: 0; transition: opacity .2s, border-color .2s, background .2s; }
+.br b { display: block; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+.br ul { margin: 0; padding-left: 16px; } .br li { margin: 2px 0; }
+.br > div.go { border-color: var(--orange); background: var(--orange-soft); }
+.br > div.go b { color: #C2410C; }
+.br > div.no { opacity: .45; }
+.step.skip { opacity: .4; }
+.screen { margin-top: 6px; font-size: 13.5px; }
+.dr { display: inline-block; font: 700 9.5px var(--ui); letter-spacing: .05em; text-transform: uppercase; border-radius: 99px; padding: 1px 6px; background: var(--draft-soft); color: var(--draft); vertical-align: 1px; margin-left: 4px; }
+.bt { display: inline-block; font: 700 9.5px var(--ui); letter-spacing: .05em; text-transform: uppercase; border-radius: 99px; padding: 1px 6px; background: var(--green-soft); color: var(--green); vertical-align: 1px; margin-left: 4px; }
+
+/* the chosen person's screens */
+.who { display: flex; align-items: center; gap: 12px; }
+.who .av { width: 46px; height: 46px; font-size: 19px; }
+.who b { display: block; font-size: 18px; } .who small { color: var(--muted); font-size: 13.5px; }
+.facts { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 4px; }
+.fact { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+.fact span { flex: 1; min-width: 0; }
+.tog { display: inline-flex; border: 1px solid var(--line); border-radius: 99px; overflow: hidden; flex: none; }
+.tog button { border: 0; background: var(--panel); color: var(--muted); font: 600 12.5px var(--ui); padding: 4px 11px; cursor: pointer; }
+.tog button.on { background: var(--fg); color: var(--bg); }
+.seq { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; counter-reset: s; }
+.seq li { counter-increment: s; display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; font-size: 14px; }
+.seq li::before { content: counter(s); width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 700 12px var(--ui); background: var(--line); color: var(--fg); }
+.seq li.phase { border: 0; padding: 10px 0 0; font: 700 11px var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: block; counter-increment: none; }
+.seq li.phase::before { display: none; }
+.seq li small { display: block; color: var(--muted); font-size: 12.5px; }
+.seq q { font-weight: 600; }
+.cmp { overflow-x: auto; margin-top: 10px; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13.5px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+td.y { color: var(--green); font-weight: 700; } td.n { color: var(--off); }
+ol.dec { margin: 8px 0 0; padding-left: 20px; } ol.dec li { margin-bottom: 8px; } ol.dec em { font-style: normal; color: var(--muted); display: block; font-size: 13.5px; }
+button:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+  <header class="full">
+    <h1>Who sees what</h1>
+    <p class="lede">One tree decides every screen of the way in. Each fork is either something the app already knows (whose link brought them, a coach's link, their team, the languages they spoke in Take 1) or the one thing it asks: <q>What would you like to do here first?</q>. Nothing is asked before the first Take (Never 3), nothing is asked that the five slides answered, and nobody sees a screen that does not fit them. Pick a person to light up their path.</p>
+  </header>
+
+  <section class="panel full">
+    <h2>The App Model's people</h2>
+    <p>Pick one, or set the forks yourself under their name.</p>
+    <div class="people" id="people"></div>
+    <div class="legend">
+      <span class="k"><i style="background:var(--known-soft);border:1px solid var(--known)"></i>The app knows it</span>
+      <span class="k"><i style="background:var(--orange-soft);border:1px solid var(--orange)"></i>Asked, one tap</span>
+      <span class="k"><i style="background:var(--green-soft);border:1px solid var(--green)"></i>Everyone</span>
+      <span class="k"><span class="dr" style="margin:0">Draft</span> words wait for your OK</span>
+      <span class="k"><span class="bt" style="margin:0">Built</span> on main</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>The tree</h2>
+    <p>Read top to bottom. A diamond is a fork; the orange branch is the one the chosen person takes.</p>
+    <div class="tree" id="tree"></div>
+  </section>
+
+  <section class="panel">
+    <div class="who" id="who"></div>
+    <div class="facts" id="facts"></div>
+    <ol class="seq" id="seq"></ol>
+  </section>
+
+  <section class="panel full">
+    <h2>Everyone at once</h2>
+    <p>Which screen each person meets. A screen nobody would understand never reaches them.</p>
+    <div class="cmp"><table id="cmp"></table></div>
+  </section>
+
+  <section class="panel full">
+    <h2>What you decide</h2>
+    <ol class="dec">
+      <li><b>The choice's words.</b> Two drafts exist: the App Model's <q>Ask my team something</q> · <q>Share what I know</q> · <q>Prepare a talk</q> (its proposal "Onboarding, Explained"), and the widget hand-off's <q>To learn from others</q> · <q>To share what I know</q> · <q>Both</q>.
+        <em>Recommended: the App Model's three. They match N564 (a date only for "Prepare a talk"), and every answer opens a branch here. "To learn from others" opens nothing.</em></li>
+      <li><b>One answer or several.</b> Someone may both prepare a talk and share what they know.
+        <em>Recommended: several, as N487's languages question works (tap each, then "Send" in the bar's middle). The tree treats each answer as its own fork, so several just means more than one branch is lit.</em></li>
+      <li><b>Who sees the agreement.</b> N453 item 5 shows it to people in a team, before anyone's recordings reach them.
+        <em>Recommended: keep it, and add sharers outside a team. Whoever shares will hear recordings from the people who join them.</em></li>
+      <li><b>Where the model's setup goes.</b> N571 settled it: never in the way in. After the walk, "Start your own" under "AI models" opens filled from the five answers. The widget's call scale (N569) belongs to that setup, not to the onboarding.
+        <em>This replaces the model card and the scale I put inside the wait in the widget hand-off.</em></li>
+      <li><b>Only for sharers:</b> the join questions, "Copy my link ›", "Your questions for people who join ›", "AI models" → "Start your own", and the website switch once N569 is signed.
+        <em>Someone who only asks their team never sees any of them, so nothing about knowledge bases or models reaches a person it does not fit.</em></li>
+    </ol>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const TINTS = [["#FFE9DB", "#A33A00"], ["#E4EDFB", "#1E4C99"], ["#E3F3E8", "#1D6B3A"], ["#F1E6FB", "#5E2A99"], ["#FBE4EC", "#992A52"]];
+  const tintOf = (id) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return TINTS[h % TINTS.length]; };
+  const av = (n) => { const [bg, fg] = tintOf(n); return `<span class="av" style="background:${bg};color:${fg}">${esc(n[0])}</span>`; };
+  const D = '<span class="dr">Draft</span>', B = '<span class="bt">Built</span>';
+
+  /* The forks, in the order the app meets them. Each is yes or no. */
+  const FACTS = [
+    { k: "coach", q: "Came in by a speaking coach's link?", src: "knows", from: "the link" },
+    { k: "community", q: "Came by a member's link, and their business has a community here?", src: "knows", from: "the link and its owner's business (N559)" },
+    { k: "talk", q: "Chose “Prepare a talk”?", src: "asks", from: "“What would you like to do here first?”" },
+    { k: "share", q: "Chose “Share what I know”?", src: "asks", from: "the same question" },
+    { k: "langs", q: "Spoke two languages in Take 1?", src: "knows", from: "Take 1 (N487 item 2)" },
+    { k: "team", q: "Part of a team, or sharing?", src: "knows", from: "their business account, or the choice above (N453 item 5)" },
+    { k: "asked", q: "The person whose link brought them set questions?", src: "knows", from: "that person's setup (N487)" },
+  ];
+
+  const PEOPLE = [
+    { n: "Kasia", r: "Video editor · RASP", f: { coach: 0, community: 1, talk: 0, share: 0, langs: 0, team: 1, asked: 1 }, note: "Joined through Tomek's link to ask about AI cuts." },
+    { n: "Tomek", r: "AI ambassador · RASP", f: { coach: 0, community: 0, talk: 0, share: 1, langs: 1, team: 1, asked: 0 }, note: "Shares what he knows with the newsroom; speaks Polish and English." },
+    { n: "Ariel", r: "Seller · Invita", f: { coach: 0, community: 0, talk: 0, share: 1, langs: 0, team: 1, asked: 0 }, note: "Shares; later puts her chat on Invita's website." },
+    { n: "Lena", r: "Seller · Gdańsk · Invita", f: { coach: 0, community: 1, talk: 0, share: 0, langs: 0, team: 1, asked: 1 }, note: "Joined through Ariel's link." },
+    { n: "Anna", r: "Reporter · RASP", f: { coach: 0, community: 1, talk: 1, share: 0, langs: 0, team: 1, asked: 1 }, note: "Joined through Tomek's link; has a panel to prepare." },
+    { n: "Zofia", r: "Hairdresser · Kraków", f: { coach: 0, community: 0, talk: 1, share: 0, langs: 0, team: 0, asked: 0 }, note: "On her own, with a talk at a trade fair." },
+    { n: "Marta", r: "Speaking coach", f: { coach: 1, community: 0, talk: 0, share: 0, langs: 0, team: 1, asked: 0 }, note: "Hears speakers' Takes; came by a coach's link." },
+  ];
+  let who = PEOPLE[0];
+  let f = { ...who.f };
+
+  /* What each branch shows. */
+  const TREE = [
+    { always: true, h: "Will's welcome", why: "Four bubbles, then “Start your first recording”. Tells, never asks.", sc: [["Will's welcome (N492)", "“Hi {name}, and welcome. …”", B]] },
+    { always: true, h: "The first Take: the five slides", why: "Nothing is asked before it (Never 3). “Your field” and “Worth sharing” say what people can ask them about.", sc: [["The first Take (N462)", "Your field · Worth sharing · Who it's for · A moment · Your one thing", B]] },
+    { always: true, h: "While Take 1 is processed: what Will heard", why: "One at a time, taps above the bar; never delays the walk.", sc: [["“Here's how others will see you:” (N453)", "the card from slide 1; “That's right” or “Change it”", ""]] },
+    { k: "coach", yes: [["The coach's way (and nothing below)", "the agreement, then the coach's “You're set.”; after the walk, “Your queue” in the list (N521)", ""]], no: [] , stop: true },
+    { k: "community", yes: [["Join the community?", "“{inviter} is part of {biz}'s community on WillpowerLab. Would you like to join it? …” · Join · Not now (N559)", D]], no: [] },
+    { ask: true, h: "“What would you like to do here first?”", why: "The one question of the way in. Each answer is a fork below.", sc: [["“What would you like to do here first?”", "Ask my team something · Share what I know · Prepare a talk", D]] },
+    { k: "talk", yes: [["“When is it?”", "with “No date yet”; the plan card shows the date (N564)", D]], no: [] },
+    { k: "share", yes: [["Your questions for people who join (N487)", "“How far ahead do you like to plan?” → “Anything else practical you'd like to ask?” → “This is what someone new will see…”", B]], no: [] },
+    { k: "langs", only: "share", yes: [["The languages", "“Should I ask which languages to use: Polish and English or both?”", B]], no: [] },
+    { always: true, h: "The plan card", why: "Three levels of four Takes for everyone (N564); a date only after “Prepare a talk”.", sc: [["“You're all set. Here's your plan.”", "the plan card", ""]] },
+    { k: "team", yes: [["The agreement", "“Before anyone's recordings reach you, please read this and accept it.” · Not now · I agree", ""]], no: [] },
+    { always: true, h: "“You're set.”", why: "One line, then the walk. Sharers also get the two links.", sc: [["“You're set.”", "", ""]], shareExtra: [["… with “Copy my link ›” and “Your questions for people who join ›”", "", B]] },
+    { always: true, after: true, h: "After the walk", why: "The walk, then Will's chat and the list of chats.", sc: [["The walk, then Will's chat", "", B]] },
+    { k: "asked", after: true, yes: [["In the chat with whoever brought them", "their questions, one at a time, answered by taps (N487 item 4)", B]], no: [] },
+    { k: "share", after: true, label: "Sharers, after the walk", yes: [["“AI models” → “Start your own”, filled from the five answers (N571)", "and, once N569 is signed, “Put this chat on your website” in “Add someone to chat with”", D]], no: [] },
+  ];
+  const factOf = (k) => FACTS.find((x) => x.k === k);
+
+  function path() {
+    const out = [];
+    let stopped = false;
+    for (const s of TREE) {
+      if (stopped) { out.push({ s, state: "skip" }); continue; }
+      if (s.always || s.ask) {
+        if (s.ask && f.coach) { out.push({ s, state: "skip" }); continue; }
+        out.push({ s, state: "taken" });
+        continue;
+      }
+      if (s.only && !f[s.only]) { out.push({ s, state: "skip" }); continue; }
+      const yes = !!f[s.k];
+      out.push({ s, state: "taken", yes });
+      if (s.stop && yes) stopped = true;
+    }
+    return out;
+  }
+
+  function screens() {
+    const list = [];
+    let phase = "";
+    for (const p of path()) {
+      const s = p.s;
+      if (p.state === "skip") continue;
+      const ph = s.after ? "After the walk" : TREE.indexOf(s) < 2 ? "Before and during the first Take" : "While Take 1 is processed";
+      if (ph !== phase) { list.push({ phase: ph }); phase = ph; }
+      if (s.always || s.ask) {
+        if (s.k === undefined && s.h === "After the walk") { s.sc.forEach((x) => list.push({ x })); continue; }
+        s.sc.forEach((x) => list.push({ x }));
+        if (s.shareExtra && f.share) s.shareExtra.forEach((x) => list.push({ x }));
+        continue;
+      }
+      if (p.yes) s.yes.forEach((x) => list.push({ x }));
+      if (s.stop && p.yes) break;
+    }
+    return list;
+  }
+
+  function paint() {
+    $("#people").innerHTML = PEOPLE.map((p) => `<button type="button" data-p="${p.n}" class="${p === who ? "on" : ""}">${av(p.n)}<span>${esc(p.n)}<small>${esc(p.r)}</small></span></button>`).join("");
+    document.querySelectorAll("[data-p]").forEach((b) => b.onclick = () => { who = PEOPLE.find((p) => p.n === b.dataset.p); f = { ...who.f }; paint(); try { location.hash = who.n.toLowerCase(); } catch (e) {} });
+
+    $("#tree").innerHTML = path().map(({ s, state, yes }) => {
+      if (s.always || s.ask) {
+        return `<div class="step ${s.ask ? "fork" : "always"} ${state}"><span class="dot"></span><h3>${esc(s.h)}</h3><span class="src ${s.ask ? "asks" : "all"}">${s.ask ? "Asked, one tap" : "Everyone"}</span><p class="why">${esc(s.why)}</p>${s.sc.map(([a, b, t]) => `<div class="screen"><b>${esc(a)}</b>${t} ${b ? `<span style="color:var(--muted)">${esc(b)}</span>` : ""}</div>`).join("")}</div>`;
+      }
+      const fa = factOf(s.k);
+      const yesTxt = s.yes.map(([a, b, t]) => `<li>${esc(a)}${t}${b ? `<br><span style="color:var(--muted)">${esc(b)}</span>` : ""}</li>`).join("");
+      const noTxt = s.stop ? "the rest of the tree" : (s.no.length ? "" : "nothing more here");
+      const cls = state === "skip" ? "" : yes ? ["go", "no"] : ["no", "go"];
+      return `<div class="step fork ${state}"><span class="dot"></span><h3>${esc(s.label || fa.q)}</h3><span class="src ${fa.src}">${fa.src === "knows" ? "The app knows: " + esc(fa.from) : "Asked: " + esc(fa.from)}</span>
+        <div class="br"><div class="${cls[0] || ""}"><b>Yes</b><ul>${yesTxt}</ul></div><div class="${cls[1] || ""}"><b>No</b>${esc(noTxt)}</div></div></div>`;
+    }).join("");
+
+    $("#who").innerHTML = `${av(who.n)}<span><b>${esc(who.n)}</b><small>${esc(who.r)} · ${esc(who.note)}</small></span>`;
+    $("#facts").innerHTML = FACTS.map((x) => `<div class="fact"><span>${esc(x.q)}</span><span class="tog">${["No", "Yes"].map((l, i) => `<button type="button" data-f="${x.k}" data-v="${i}" class="${(f[x.k] ? 1 : 0) === i ? "on" : ""}">${l}</button>`).join("")}</span></div>`).join("");
+    document.querySelectorAll("[data-f]").forEach((b) => b.onclick = () => { f[b.dataset.f] = +b.dataset.v; paint(); });
+
+    $("#seq").innerHTML = screens().map((e) => e.phase ? `<li class="phase">${esc(e.phase)}</li>` : `<li><span><b>${esc(e.x[0])}</b>${e.x[2]}${e.x[1] ? `<small>${esc(e.x[1])}</small>` : ""}</span></li>`).join("");
+
+    /* everyone at once */
+    const rows = [
+      ["Here's how others will see you", () => 1],
+      ["Join the community? (N559)", (p) => !p.coach && p.community],
+      ["What would you like to do here first?", (p) => !p.coach],
+      ["When is it? (a talk's date)", (p) => !p.coach && p.talk],
+      ["Your questions for people who join", (p) => !p.coach && p.share],
+      ["The languages", (p) => !p.coach && p.share && p.langs],
+      ["The plan card", (p) => !p.coach],
+      ["The agreement", (p) => p.coach || p.team],
+      ["“Copy my link ›” after You're set", (p) => !p.coach && p.share],
+      ["Their inviter's questions, in that chat", (p) => !p.coach && p.asked],
+      ["AI models → Start your own, filled", (p) => !p.coach && p.share],
+      ["Your queue (the coach's row)", (p) => p.coach],
+    ];
+    $("#cmp").innerHTML = `<thead><tr><th>Screen</th>${PEOPLE.map((p) => `<th>${esc(p.n)}</th>`).join("")}</tr></thead><tbody>${rows.map(([t, fn]) => `<tr><td>${esc(t)}</td>${PEOPLE.map((p) => fn(p.f) ? `<td class="y">✓</td>` : `<td class="n">·</td>`).join("")}</tr>`).join("")}</tbody>`;
+  }
+  const start = PEOPLE.find((p) => p.n.toLowerCase() === location.hash.slice(1));
+  if (start) { who = start; f = { ...who.f }; }
+  paint();
+})();
+</script>
+
+</body></html>
