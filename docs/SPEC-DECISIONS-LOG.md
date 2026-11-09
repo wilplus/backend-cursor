@@ -15186,3 +15186,62 @@ universal").** For N103, N152, N470, N496, N567, N569 and N580:
    anyone the host chooses. Nobody gets a Take that is not for them. Amends
    N470 items 1 and 2 (everyone in the list, ticked).
 No migration. No rules page yet.
+
+**N585 · A host's model gets a head start before people answer: the signs
+first, then a dataset; one line with two cuts; how strict, in words
+(founder, the Claude Code chat, 9 November 2026: "it is based on the
+research and on the science behind it, so there are thresholds, so it gives
+somewhat good answers before the pairs and before the answers from the
+people come in, so before it's actually fine-tuned. So there should be an
+option to add a data set"; "first it would be needed to be designed, like
+what is that we are recognizing, and then the thresholds for it. So is it
+usually yes or no, and when is yes, when is no, at what, let's say,
+perimeter, and when it's unknown. It's mostly for linear regression
+thresholds, because for the shadowing, it's just you answering"; then, on
+four questions with recommended answers: "Signs first, dataset next",
+"Strictness in words", "Once it agrees with your 10" and "Rights, licence,
+no paid API if non-commercial").** For N566, N575, N577 and N580 to N583:
+1. **What it is for.** A host's simple recognizer (N582 item 2) can start
+   from the host's knowledge, as Willfidence started from research (its
+   sound read, fillers, hedges, slide fit and holding together,
+   `services/willfidence.py`), so it can answer from day one instead of
+   waiting for about 200 answers. Only recognizers have it: the assistant
+   that answers like you (N580) learns from your own answers.
+2. **One line, two cuts.** Every recognizer reads on one line from its No
+   answer to its Yes answer. Past the upper cut it gives the Yes answer,
+   below the lower cut the No answer; between them it can't tell, and the
+   item goes to the queue in Will's chat, where a person answers. How far
+   it is from the nearest cut is its colour: green far, yellow near, red
+   between (N580 item 3).
+3. **The signs come first.** In the setup, after what it recognises and its
+   three answers, Will asks when it is yes and when it is no, and turns
+   each sign into a rule on something the app already measures: for voice,
+   pace, pauses, filler words, hedges, flat pitch and the sound read; for
+   text, words and length. Each rule shows in words, with its unit and −/+
+   on its cut ("No when there are 10 or more fillers per 100 words"). A
+   sign the app can't measure, and every sign about an image, is judged by
+   a general model from the host's description. Will's words are drafted
+   for the founder's OK.
+4. **How strict, in words.** The host picks "Only when it's clear" or "When
+   it's fairly clear"; the app places the cuts from the signs, the dataset
+   and the host's 10, and moves them as people answer, to keep that
+   promise.
+5. **When it answers on its own.** The host answers their 10 without seeing
+   its guess. When the head start agrees with them and the host says go, it
+   answers from day one, with its colour; until then it only suggests in
+   Will's queue. Amends N582 item 5 for a model with a head start.
+6. **It stays honest.** Nobody who teaches it sees its guess before
+   answering, as coaches never do (Never 2); its queue also gets random
+   examples, not only the ones it can't tell, as Willfidence's random
+   moments do; the head start counts like a few dozen answers and fades as
+   people's answers outweigh it.
+7. **The dataset comes next:** examples already answered, a folder per
+   answer for voice or images, a sheet for texts. The host confirms the
+   people in it agreed and that its licence allows this use. It stays
+   private to that model, is never shown or sold, and can be deleted; it
+   goes through the processing-authorization path, like every recording. A
+   non-commercial licence keeps the model off the paid API (N583): free use
+   only.
+8. **Never 1 holds:** the numbers live only in the owner's setup; people
+   see the answer in words and its colour.
+No migration. No rules page yet.
