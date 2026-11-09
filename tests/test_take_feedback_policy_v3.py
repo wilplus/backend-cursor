@@ -385,29 +385,40 @@ def _practise_frame(rewrite, scores=(0.9, -0.2, -0.6), shown=_SHOWN_HEDGED):
 
 
 def test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate():
-    frame = _practise_frame({})
-    slots = [(b["slide_index"], b["walk_slot"], b["exercise_kind"]) for b in frame["blocks"]]
-    # Words come first (N309): the Clearer version is the one fix, and the
-    # weakest is not shown.
-    assert slots == [(0, "strongest", None), (1, "between", "clearer"), (2, None, None)]
+    # Slide 1 is the weakest (its voice runs on) and its words hedge.
+    scores = (0.9, -0.6, 0.5)
+    frame = _practise_frame({}, scores=scores)
+    slots = [(b["slide_index"], b["walk_slot"], b["exercise_kind"], b["voice_too"])
+             for b in frame["blocks"]]
+    # Its words first (N548): the Clearer version, its AI clip behind it on
+    # the same moment.
+    assert slots == [(0, "strongest", None, False), (1, "between", "clearer", True),
+                     (2, None, None, False)]
     assert frame["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"] == ["r-clip"]
 
-    # The tentative fallback never opens it: with nothing precise to offer,
-    # the fix is the weakest with its voice practise, and the between is
-    # not shown (N289 item 5, N309).
+    # The tentative fallback never opens it: with nothing precise to offer
+    # in words, the same moment's voice is the fix (N548).
     fallback = _practise_frame({"tentative": True,
-                                "_manager_evidence": {"specificity": 5, "fallback": True}})
+                                "_manager_evidence": {"specificity": 5, "fallback": True}},
+                               scores=scores)
     assert [(b["slide_index"], b["walk_slot"], b["most_confident"], b["exercise_kind"])
             for b in fallback["blocks"]] == [
-        (0, "strongest", True, None), (1, None, False, None), (2, "weakest", False, "voice")]
+        (0, "strongest", True, None), (1, "weakest", False, "voice"), (2, None, False, None)]
     assert fallback["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"] == []
 
     # Ums only the transcript heard (N121): the words on screen are clean,
-    # so they need no help and no rewrite opens; the weakest is the fix.
+    # so they need no help and no rewrite opens; its voice is the fix.
     clean = "We cut onboarding from three weeks to four days for all"
-    unseen = _practise_frame({"quote": clean, "proposed_text": clean + "."}, shown=clean)
+    unseen = _practise_frame({"quote": clean, "proposed_text": clean + "."}, shown=clean,
+                             scores=scores)
     assert [(b["slide_index"], b["walk_slot"]) for b in unseen["blocks"]] == [
-        (0, "strongest"), (1, None), (2, "weakest")]
+        (0, "strongest"), (1, "weakest"), (2, None)]
+
+    # Another moment's voice is weaker and its words are fine: the AI clip
+    # there is the fix; the hedging moment is not (N548).
+    other = _practise_frame({})
+    assert [(b["slide_index"], b["walk_slot"], b["exercise_kind"]) for b in other["blocks"]] == [
+        (0, "strongest", None), (1, None, None), (2, "weakest", "voice")]
     assert unseen["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"] == []
 
 
@@ -416,10 +427,11 @@ _HEDGED = "I think maybe we could kind of start the pilot in two cities and see 
 
 def _one_said_frame(said):
     """Three slides; the middle one's words are ``said`` and its voice
-    clears the floor; returns the frame and the rule rows."""
+    clears the floor; no voice shows a problem, so the words that need help
+    are the fix (N548); returns the frame and the rule rows."""
     from services.take_feedback_manager import evidence_backed_rewrite_candidates
     pieces, snippets, at = [], [], 0
-    for index, score in enumerate((0.9, 0.5, -0.6)):
+    for index, score in enumerate((0.9, 0.5, 0.4)):
         text = said if index == 1 else " ".join(f"w{index}x{n}" for n in range(75)) + "."
         pieces.append({"snippet_id": f"s{index}", "take_session_id": "take-2",
                        "slide_index": index, "start": at, "end": at + len(text),
@@ -667,35 +679,43 @@ def test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version():
     voices and one hedged, and no rule wrote its clearer version, so it was
     praised and the Take showed no rewrite."""
     from services.take_feedback_manager import evidence_backed_rewrite_candidates
-    pieces, snippets, at = [], [], 0
-    for index, score in enumerate((0.9, 0.5, -0.6)):
-        text = _HEDGED if index == 1 else " ".join(f"w{index}x{n}" for n in range(75)) + "."
-        pieces.append({"snippet_id": f"s{index}", "take_session_id": "take-2",
-                       "slide_index": index, "start": at, "end": at + len(text),
-                       "text": text, "recording_id": "recording-1",
-                       "start_offset_ms": index * 5000, "duration_ms": 5000})
-        at += len(text) + 1
-        snippets.append({"id": f"s{index}", "session_id": "take-2", "recording_id": "recording-1",
-                         "start_offset_ms": index * 5000, "duration_ms": 5000,
-                         "transcript": _HEDGED if index == 1 else None,
-                         "metrics": {"voice_confidence": {
-                             "version": "voice-confidence-universal-v3", "score": score}, "pause_ratio": _rushed(score)}})
-    served = " ".join(piece["text"] for piece in pieces)
-    rows = evidence_backed_rewrite_candidates(served, take_session_id="take-2", snippet_id="s0")
-    frame = build_shadow_frame(
-        take_document={"take_session_id": "take-2", "text": served, "pieces": pieces},
-        snippets=snippets, suggestions={}, feedback_candidates=rows,
-        take_index=2, expected_recording_id="recording-1", served_text=served)
 
+    def take(scores):
+        pieces, snippets, at = [], [], 0
+        for index, score in enumerate(scores):
+            text = _HEDGED if index == 1 else " ".join(f"w{index}x{n}" for n in range(75)) + "."
+            pieces.append({"snippet_id": f"s{index}", "take_session_id": "take-2",
+                           "slide_index": index, "start": at, "end": at + len(text),
+                           "text": text, "recording_id": "recording-1",
+                           "start_offset_ms": index * 5000, "duration_ms": 5000})
+            at += len(text) + 1
+            snippets.append({"id": f"s{index}", "session_id": "take-2", "recording_id": "recording-1",
+                             "start_offset_ms": index * 5000, "duration_ms": 5000,
+                             "transcript": _HEDGED if index == 1 else None,
+                             "metrics": {"voice_confidence": {
+                                 "version": "voice-confidence-universal-v3", "score": score},
+                                 "pause_ratio": _rushed(score)}})
+        served = " ".join(piece["text"] for piece in pieces)
+        rows = evidence_backed_rewrite_candidates(served, take_session_id="take-2", snippet_id="s0")
+        return build_shadow_frame(
+            take_document={"take_session_id": "take-2", "text": served, "pieces": pieces},
+            snippets=snippets, suggestions={}, feedback_candidates=rows,
+            take_index=2, expected_recording_id="recording-1", served_text=served), rows
+
+    # No voice shows a problem: the words that need help are the fix (N548).
+    frame, rows = take((0.9, 0.5, 0.4))
     assert [(b["slide_index"], b["exercise_kind"]) for b in frame["blocks"]
             if b["carries_exercise"]] == [(1, "clearer")]
-    # The voice fix kept behind it, for a Clearer version lost on the way:
-    # slide 2's weak voice, with its AI clip (N547).
     (fix,) = [b for b in frame["blocks"] if b["carries_exercise"]]
+    assert "fix_backup" not in fix
+    # Its own voice runs on too: the same moment's AI clip is kept behind
+    # its Clearer version, for a Clearer version lost on the way (N547, N548).
+    hedged_and_rushed, _ = take((0.9, -0.6, 0.4))
+    (fix,) = [b for b in hedged_and_rushed["blocks"] if b["carries_exercise"]]
+    assert (fix["slide_index"], fix["exercise_kind"]) == (1, "clearer")
     backup = fix["fix_backup"]
-    (weak,) = [b for b in frame["blocks"] if b["slide_index"] == 2]
     assert (backup["block_id"], backup["walk_slot"], backup["exercise_kind"]) == (
-        weak["block_id"], "weakest", "voice")
+        fix["block_id"], "weakest", "voice")
     (chosen,) = frame["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"]
     (row,) = [r for r in rows if r["id"] == chosen]
     assert (row["quote"], row["proposed_text"]) == (
@@ -710,7 +730,7 @@ def test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version():
 def test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_version():
     # Slide 1's voice reached the floor and its words carry fillers: the
     # Clearer version, and its helper words after it (founder 2026-10-22).
-    strong = _practise_frame({}, scores=(0.9, 0.5, -0.6))
+    strong = _practise_frame({}, scores=(0.9, 0.5, 0.4))
     offered = [(b["slide_index"], b["exercise_kind"]) for b in strong["blocks"] if b["helper_words_prompt"]]
     assert offered == [(0, None), (1, "clearer")]
     # The same words under a voice below the floor: the Clearer version only.
