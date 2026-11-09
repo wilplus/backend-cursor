@@ -1,0 +1,114 @@
+[
+ {
+  "kind": "praise",
+  "screen": "walk.best",
+  "context in words": "Summary slide; the sentence said slower than their usual; last Take it ran fast with no pause",
+  "reply": "Wow, to our ears, the slower pace this time made your summary clear. We heard each part, from \"learning profiles\" to \"learning bodies,\" come through with ease.",
+  "founder_mark": "right",
+  "source": "Claude Code chat test loop 2026-11-09, sample 1; golden set WV-07"
+ },
+ {
+  "kind": "praise",
+  "screen": "walk.best",
+  "context in words": "Summary slide; the sentence said slower than their usual",
+  "reply": "Wow, to our ears, that moment felt clear. The slower pace helped each idea stand out.",
+  "founder_mark": "right",
+  "source": "Claude Code chat test loop 2026-11-09, sample 2; golden set WV-07"
+ },
+ {
+  "kind": "praise",
+  "screen": "walk.best",
+  "context in words": "Summary slide; the sentence said slower than their usual",
+  "reply": "That sounded clear to us. The slower pace in \"To sum it up, it's about learning profiles\" gave each idea a moment to settle.",
+  "founder_mark": "wrong (\"settle\" is figurative)",
+  "source": "Claude Code chat test loop 2026-11-09, sample 3; golden set WV-07"
+ },
+ {
+  "kind": "praise",
+  "screen": "walk.best",
+  "context in words": "Opening slide; no sound read stood out, so the words say why",
+  "reply": "To our ears, \"Every one of us learns differently, and we built the first map of how\" came through clearly. It was short and clear, saying just one thing.",
+  "founder_mark": "right",
+  "source": "Claude Code chat test loop 2026-11-09, sample 6; golden set WV-08"
+ },
+ {
+  "kind": "praise",
+  "screen": "walk.best",
+  "context in words": "Opening slide; no sound read stood out",
+  "reply": "We heard those words with clarity and purpose. The way you connected \"every one of us learns differently\" to \"we built the first map of how\" came through strong and clear.",
+  "founder_mark": "right",
+  "source": "Claude Code chat test loop 2026-11-09, sample 5; golden set WV-08"
+ },
+ {
+  "kind": "try",
+  "screen": "walk.fix",
+  "context in words": "Matching slide; said faster than usual with few pauses; walked with the AI clip",
+  "reply": "In \"Second thing is that maybe there are people alike...\", it went faster with few pauses. Want to try it slower, to hear each part clearly?",
+  "founder_mark": null,
+  "source": "logged run 2026-11-09 (step try, tool voice); golden set WV-09"
+ },
+ {
+  "kind": "try",
+  "screen": "walk.fix",
+  "context in words": "Matching slide; said fast with few pauses; walked with a Clearer version",
+  "reply": "That sentence about \"people alike\" came out fast, with few pauses. Want to try saying it in a clearer way, in your own words?",
+  "founder_mark": null,
+  "source": "logged run 2026-11-09 (step try, tool clearer)"
+ },
+ {
+  "kind": "after_try",
+  "screen": "walk.practise",
+  "context in words": "their try landed; the pace moved",
+  "reply": "To our ears, the pace slowed down this time, making it clearer. It sounded more like the example.",
+  "founder_mark": null,
+  "source": "logged eval run 2026-11-09, golden set WV-10"
+ },
+ {
+  "kind": "after_try",
+  "screen": "walk.practise",
+  "context in words": "their try did not change much; one try left",
+  "reply": "The words \"so that you can learn together\" came quickly, with few pauses. Want to try it slower?",
+  "founder_mark": null,
+  "source": "logged run 2026-11-09 (step after_try, once_more)"
+ },
+ {
+  "kind": "reply",
+  "screen": "walk.practise",
+  "context in words": "their try did not change; the speaker wrote \"This is pointless, I can't do it.\"",
+  "reply": "Notice how your voice got a bit wider in loudness range this time. Want to try it once more, focusing on slowing down before \"learn together\"?",
+  "founder_mark": "right (a later rule refuses \"loudness range\")",
+  "source": "Claude Code chat test loop 2026-11-09, hard 2 v2; golden set WV-05"
+ },
+ {
+  "kind": "reply",
+  "screen": "walk.practise",
+  "context in words": "their try did not change; the speaker wrote \"This is pointless, I can't do it.\"",
+  "reply": "The idea of learning together is strong—want to give it one more go, just a bit slower, as if you're inviting someone to join you?",
+  "founder_mark": "wrong (\"too complex\")",
+  "source": "Claude Code chat test loop 2026-11-09, hard 2; golden set WV-05"
+ },
+ {
+  "kind": "good_take",
+  "screen": "walk.helpers",
+  "context in words": "a good Take; nothing about last time in the context",
+  "reply": "To our ears, the whole Take held together well. The moment about learning differently came out clear and strong.",
+  "founder_mark": null,
+  "source": "logged eval run 2026-11-09, golden set WV-03"
+ },
+ {
+  "kind": "reply",
+  "screen": "walk.coach",
+  "context in words": "no moment to try; a weak moment went to a coach, no answer yet; the speaker asked \"What did my coach say?\"",
+  "reply": "Your coach hasn't sent their thoughts yet. In the meantime, your pause after \"differently\" worked well. Want to try holding pauses like that in other parts of your talk?",
+  "founder_mark": "right (a later rule refuses three sentences)",
+  "source": "Claude Code chat test loop 2026-11-09, hard 3 v2; golden set WV-06"
+ },
+ {
+  "kind": "reply",
+  "screen": "walk.coach",
+  "context in words": "the speaker asked \"What did my coach say?\"",
+  "reply": "The coach's thoughts aren't in yet, but your clear words and steady pace are working well. Try drawing us in with pauses like you did in the opening. Interested in exploring that?",
+  "founder_mark": "wrong (\"drawing in… sounds weird\")",
+  "source": "Claude Code chat test loop 2026-11-09, hard 3; golden set WV-06"
+ }
+]
