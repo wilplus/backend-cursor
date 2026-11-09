@@ -16,8 +16,9 @@ said to move it here.
 """
 from __future__ import annotations
 
+import functools
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,16 @@ def load_review_queue(
     return rows, pieces, states
 
 
+def attempt(read: Callable[[], Any]) -> tuple[Any, Optional[Exception]]:
+    """``(answer, None)``, or ``(None, the failure)`` for the caller to raise
+    or log when its turn comes: the queue reads ahead, side by side, and a
+    failure must answer as it did when that read came alone."""
+    try:
+        return read(), None
+    except Exception as e:  # noqa: BLE001 -- handed back; the caller raises or logs it
+        return None, e
+
+
 def _talk_order(row: dict) -> tuple:
     """A snippet's place in its talk, as the batch read ordered it:
     ``start_offset_ms`` with nulls last, then ``id``."""
@@ -78,45 +89,101 @@ def _talk_order(row: dict) -> tuple:
     return (offset is None, offset if offset is not None else 0, str(row.get("id")))
 
 
-def bookmarks_for(
-    database: Any, rows: list,
-    bookmarked: Callable[[dict, str, Any], Optional[set]],
-) -> Callable[[dict], Optional[list]]:
+class Bookmarks:
     """The queue's ``moments_for``: a Take's bookmarked snippet ids in talk
     order, or None while its bookmarks are not frozen yet (the Take rides as
     "Waiting for the text", founder 2026-10-01, A1).
 
     ``bookmarked(row, session_id, feedback_sets)`` is the route's own reading
-    of a Take's frozen selection, handed in. On the first call, two reads
-    serve every row in ``rows``: their frozen sets, and the order of only
-    the bookmarked snippets, never every piece of every Take (founder
-    2026-10-21). Same set and order as before: the snippets that exist in
-    that Take, by ``start_offset_ms`` then ``id``."""
-    loaded: dict[str, Any] = {}
+    of a Take's frozen selection, handed in. Two reads serve every row in
+    ``rows``: their frozen sets, and the order of only the bookmarked
+    snippets, never every piece of every Take (founder 2026-10-21). Same set
+    and order as before: the snippets that exist in that Take, by
+    ``start_offset_ms`` then ``id``.
 
-    def load() -> None:
-        sets = database.get_ideal_text_feedback_sets(
-            [r.get("id") for r in rows if r.get("arc_id")])
-        marked = {str(r.get("id")): bookmarked(r, str(r.get("id")), sets)
-                  for r in rows if isinstance(r, dict)}
-        wanted = {i for m in marked.values() if m for i in m}
+    Both reads happen on the first call, or where a caller puts them beside
+    its own reads (founder 2026-11-09, the walk took 1.1 s): ``sets`` handed
+    in is the first read already made, ``snippet_ids`` names the bookmarked
+    clips once the sets are in, and ``order_reads`` is the second read, one
+    per chunk of ``ORDER_CHUNK`` clips, whose answers go to ``take_order``.
+    """
+
+    #: Clips per order read, as ``db.get_snippet_order_by_ids`` reads them:
+    #: an ``in`` filter rides the URL.
+    ORDER_CHUNK = 100
+
+    def __init__(self, database: Any, rows: list,
+                 bookmarked: Callable[[dict, str, Any], Optional[set]], *,
+                 sets: Optional[dict] = None) -> None:
+        self._database = database
+        self._rows = rows
+        self._bookmarked = bookmarked
+        self._sets = sets
+        self._marked: Optional[dict[str, Optional[set]]] = None
+        self._ordered: Optional[dict[str, list]] = None
+
+    def _marks(self) -> dict[str, Optional[set]]:
+        if self._marked is None:
+            if self._sets is None:
+                self._sets = self._database.get_ideal_text_feedback_sets(
+                    [r.get("id") for r in self._rows if r.get("arc_id")])
+            self._marked = {
+                str(r.get("id")): self._bookmarked(r, str(r.get("id")), self._sets)
+                for r in self._rows if isinstance(r, dict)}
+        return self._marked
+
+    def snippet_ids(self) -> set[str]:
+        """Every bookmarked snippet of every row (the frozen sets are read
+        first, unless they were handed in)."""
+        return {i for m in self._marks().values() if m for i in m}
+
+    def order_reads(self) -> list[Callable[[], list]]:
+        """The second read, one read per chunk of the bookmarked clips, for a
+        caller to run beside its own reads. Each raises when it fails."""
+        ids = sorted(self.snippet_ids())
+        return [functools.partial(self._database.get_snippet_order_by_ids,
+                                  ids[i:i + self.ORDER_CHUNK], strict=True)
+                for i in range(0, len(ids), self.ORDER_CHUNK)]
+
+    def take_order(self, answers: Iterable[tuple[Any, Optional[Exception]]]) -> None:
+        """The order reads' answers, ``(rows, failure)`` each, in any order.
+        One failed chunk lists no moments for any Take (the read logged it),
+        as the one read did: never a Take with some of its moments."""
+        pairs = list(answers)
+        failed = any(failure is not None for _rows, failure in pairs)
+        snippets = [] if failed else [row for rows, _f in pairs for row in rows or []]
+        marked = self._marks()
         ordered: dict[str, list] = {}
-        for snip in sorted(database.get_snippet_order_by_ids(wanted) or [],
-                           key=_talk_order):
+        for snip in sorted(snippets, key=_talk_order):
             sid, snip_id = str(snip.get("session_id")), str(snip.get("id"))
             if snip_id in (marked.get(sid) or ()):
                 ordered.setdefault(sid, []).append(snip_id)
-        loaded.update(sets=sets, marked=marked, ordered=ordered)
+        self._ordered = ordered
 
-    def moments_for(row: dict) -> Optional[list]:
-        if not loaded:
-            load()
+    def read_order(self) -> None:
+        """The second read, its chunks one after another, for a caller with
+        nothing to read beside it."""
+        if self._ordered is None:
+            self.take_order(attempt(read) for read in self.order_reads())
+
+    def __call__(self, row: dict) -> Optional[list]:
+        self.read_order()
+        marked = self._marks()
         sid = str(row.get("id"))
-        if sid not in loaded["marked"]:
-            loaded["marked"][sid] = bookmarked(row, sid, loaded["sets"])
-        if loaded["marked"][sid] is None:
+        if sid not in marked:
+            marked[sid] = self._bookmarked(row, sid, self._sets)
+        if marked[sid] is None:
             logger.info("coach queue: take waiting for the text sid=%s "
                         "filter=bookmarks_not_frozen", sid)
             return None
-        return list(loaded["ordered"].get(sid) or [])
-    return moments_for
+        return list((self._ordered or {}).get(sid) or [])
+
+
+def bookmarks_for(
+    database: Any, rows: list,
+    bookmarked: Callable[[dict, str, Any], Optional[set]], *,
+    sets: Optional[dict] = None,
+) -> Bookmarks:
+    """The queue's ``moments_for`` for ``rows`` (``Bookmarks``); ``sets``
+    when the caller has read the rows' frozen sets already."""
+    return Bookmarks(database, rows, bookmarked, sets=sets)
