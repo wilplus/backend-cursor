@@ -13983,3 +13983,45 @@ no tool reaches can be counted and the next exercises chosen from them.
 No new words on screen. No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C2.
+
+**N551 · Every locked prototype is kept in the repo, and the first Take's two
+are pinned redrawn to the decisions after them (founder, the Claude Code
+chat, 9 November 2026: "which prototype should I pin now?", then "source
+from the code the look of the bottom bar across the app; and the look of
+the presentations ... and look for other locked elements from the code that
+this prototype does differently", then "pin them with the fixes" and "also
+update the claude.ai artifacts with the fixes").** Extends N229 to every
+locked flow; for N401.
+1. **Every locked prototype is kept as files**, as N229 keeps customer
+   requests': its own HTML, which runs in any browser, and a PDF of every
+   step, in `docs/design/`. The claude.ai link is a convenience, never the
+   only copy. A prototype is pinned at the version that is built; a rules
+   page cites that version, not "the newest".
+2. **"The way in" and "The first Take" (N401) are pinned** in
+   [`docs/design/the-way-in-and-first-take-2026-11-09/`](design/the-way-in-and-first-take-2026-11-09/),
+   redrawn so they no longer disagree with the decisions after 3 November,
+   with the looks and words taken from the code on main:
+   - the bar, as N483, N498, N467 and N415 lock it: no mic, the stack on the
+     left, "Start your first recording" or "Record Take N" in the middle
+     with the red dot (faded while a Take is processed), "Something else"
+     the first answer, "Not now" and "Skip" grey words, the locked
+     recording strip;
+   - the slide, as N462 locks it: the centered poster with the five signed
+     slides; Will's welcome as N492's four bubbles; the recording screen's
+     top line, clock and buttons as N70 locks them;
+   - no guest path, no teams or codes (N471); the coach's row in the list
+     (N521); the new-row look (N500); the joiner's line (N496); the setup
+     note before "+" (N534); the ☰ icons (N367); the plan card (N319); the
+     live document versions; Will's mark; the app's own fonts.
+   Each file's first notes panel lists the fixes and the words still
+   without a signature.
+3. **The claude.ai links** (<https://claude.ai/artifact/5RQsbVpt1F8NMtSbTs7wwB>,
+   <https://claude.ai/artifact/C78wBzWUKz7MaHjxrnsPVX>) show the pinned
+   versions. The 3 November versions, as N401 locked them, are kept beside
+   them as `history-*.html`.
+4. **Unchanged:** what N401 decided (the first Take is the onboarding, the
+   checks while it is processed, the walk, then "Record Take 2"). Still to
+   build, as N401 says: the processing row on top of Will's chat, the
+   Microsoft sign-in.
+No new words on screen. No migration. The rules:
+[`docs/LOCKS.md`](LOCKS.md), the row for the way in and the first Take.

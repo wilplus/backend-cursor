@@ -1,0 +1,771 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The First Take</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!-- "The first Take" (N401), version 1, pinned 2026-11-09 (N551): redrawn to the later locked decisions. The app's own fonts (the system stack), so no web fonts are loaded. -->
+<style>
+/* Layout: the controls on top, the phone on the left, the notes beside it; stacks on a narrow screen */
+:root {
+  --bg: #EDEBE7; --fg: #141414; --muted: #6E6A64; --line: #E6E3DD; --panel: #FFFFFF;
+  --orange: #FF640A; --orange-soft: #FFF0E6; --ink: #121212; --green: #1F9D55;
+  /* the app's own type (frontend tailwind.config.ts: body font-sans, the system stack) */
+  --ui: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --display: var(--ui);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  /* the app's colours (frontend globals.css), fixed in both themes */
+  --fgc: #121212; --mutedc: #F5F5F5; --muted-fg: #737373; --border: #EBEBEB; --record: #E63C2D;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #161615; --fg: #F1EFEB; --muted: #A29E97; --line: #2D2C2A; --panel: #1D1C1B; --orange-soft: #2E1E14; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #161615; --fg: #F1EFEB; --muted: #A29E97; --line: #2D2C2A; --panel: #1D1C1B; --orange-soft: #2E1E14; color-scheme: dark }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--ui); margin: 0; }
+.wrap { max-width: 1160px; margin: 0 auto; padding-block: 28px 60px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 36px; align-items: start; }
+@media (max-width: 900px) { .wrap { grid-template-columns: minmax(0, 1fr); justify-items: center; } }
+header.top { grid-column: 1 / -1; justify-self: stretch; min-width: 0; }
+h1 { font: 800 clamp(30px, 5vw, 44px)/1.05 var(--display); margin: 0; letter-spacing: -0.02em; }
+.lede { color: var(--muted); margin: 8px 0 0; max-width: 72ch; }
+.ctl { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.ctl .lab { font: 600 11.5px var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.seg button { border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 99px; padding: 7px 14px; font: 600 13.5px var(--ui); cursor: pointer; }
+.seg button.on { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+.seg button small { font-weight: 500; opacity: .75; }
+.lockb { display: inline-flex; align-items: center; gap: 6px; margin: 10px 0 0; padding: 5px 12px; border-radius: 99px; background: var(--orange-soft); color: var(--fg); font: 600 13px var(--ui); border: 1px solid var(--orange); }
+.lockb svg { width: 13px; height: 13px; color: var(--orange); }
+
+/* ---------- the phone (always the app's own light look) ---------- */
+.phone { width: 390px; max-width: 100%; height: 800px; border-radius: 46px; border: 10px solid #111; background: #fff; position: relative; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.18); color: #121212; color-scheme: light; }
+.phone button { font: inherit; cursor: pointer; }
+#app { position: absolute; inset: 0; display: flex; flex-direction: column; font-family: var(--ui); font-size: 16px; line-height: 1.5; }
+.ic { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; display: block; flex: none; }
+/* the WillpowerLab bar, on the list only (N334 item 1) */
+.nav { height: 60px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--border); }
+.logo { display: flex; align-items: center; gap: 8px; font: 700 16px var(--ui); }
+.logo .mk3 { display: inline-flex; align-items: center; gap: 3px; } .logo .mk3 i { border-radius: 50%; background: #121212; }
+.menu { width: 40px; height: 40px; border: 1px solid #E5E5E5; border-radius: 10px; background: #fff; display: grid; place-items: center; color: #121212; }
+/* Will's mark (ChatList.tsx WillMark, N334): three dots, the middle one bigger, 5/7/5 */
+.wm { display: flex; flex: none; align-items: center; justify-content: center; gap: 3px; border-radius: 50%; background: var(--mutedc); }
+.wm i, .mk3 i { display: block; width: 5px; height: 5px; border-radius: 50%; background: #121212; }
+.wm i:nth-child(2), .mk3 i:nth-child(2) { width: 7px; height: 7px; }
+/* the list of chats (ChatList.tsx ChatListRow; the new-row look N500) */
+.list { flex: 1; overflow-y: auto; position: relative; }
+.row { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; height: 76px; border: 0; background: none; padding: 0 0 0 16px; text-align: left; color: inherit; }
+.row:hover { background: rgba(245,245,245,.5); }
+.row .mid { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 3px; border-bottom: 1px solid #F0F0F0; padding-right: 16px; }
+.row .t { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.row .t .nm { display: flex; align-items: baseline; gap: 6px; flex: 1; min-width: 0; }
+.row .t b { font-size: 16px; font-weight: 600; line-height: 1.375; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; max-width: 100%; }
+.row .t small { font-size: 12.5px; color: var(--muted-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.row .t em { font-style: normal; font-size: 12px; color: var(--muted-fg); flex: none; }
+.row .p { display: flex; align-items: center; gap: 8px; min-height: 20px; min-width: 0; }
+.row .p .ln { flex: 1; min-width: 0; font-size: 14px; line-height: 1.375; color: var(--muted-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row.new .t b { font-weight: 700; } .row.new .t em { font-weight: 600; color: #C2410C; } .row.new .p .ln { font-weight: 700; color: #C2410C; }
+.row .ndot { width: 10px; height: 10px; border-radius: 50%; background: var(--orange); flex: none; }
+.row .pin { width: 15px; height: 15px; color: #A3A3A3; flex: none; }
+.lc { width: 48px; height: 48px; border-radius: 50%; flex: none; display: grid; place-items: center; font-weight: 600; font-size: 20px; line-height: 1; }
+.ci { width: 48px; height: 48px; border-radius: 50%; flex: none; display: grid; place-items: center; background: var(--mutedc); color: #121212; }
+.fab { position: absolute; right: 16px; bottom: 20px; width: 48px; height: 48px; border-radius: 50%; border: 0; background: #121212; color: #fff; display: grid; place-items: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -4px rgba(0,0,0,.1); z-index: 2; }
+/* the "+"'s note until the questions for people who join are set (ChatList.tsx SetupNote, N534) */
+.snote { position: absolute; left: 10px; right: 10px; bottom: 20px; z-index: 3; display: flex; align-items: center; gap: 4px; border: 1px solid var(--border); background: #fff; border-radius: 16px; padding: 6px 4px 6px 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,.1), 0 2px 4px -2px rgba(0,0,0,.1); animation: drop .2s ease both; }
+.snote .go2 { flex: 1; min-height: 52px; display: flex; align-items: center; gap: 12px; border: 0; background: none; text-align: left; padding: 0; color: #121212; }
+.snote .sq { width: 36px; height: 36px; border-radius: 10px; background: var(--mutedc); display: grid; place-items: center; flex: none; }
+.snote .tx { display: flex; flex-direction: column; gap: 2px; }
+.snote .tx b { font-size: 15px; font-weight: 600; line-height: 1.375; }
+.snote .tx span { margin-top: 4px; align-self: flex-start; border-radius: 99px; background: var(--orange); color: #fff; padding: 8px 16px; font-size: 15px; font-weight: 600; line-height: 1.25; }
+.snote .cl { width: 44px; height: 44px; border: 0; background: none; color: var(--muted-fg); display: grid; place-items: center; flex: none; }
+/* a chat's own top bar (TopBar.tsx, N321, N334) */
+.chd { height: 60px; flex: none; display: flex; align-items: center; gap: 4px; padding: 0 16px 0 4px; border-bottom: 1px solid var(--border); }
+.chd .bk { width: 44px; height: 44px; border: 0; background: none; color: #121212; display: grid; place-items: center; border-radius: 50%; }
+.chd .bk .ic { width: 24px; height: 24px; }
+.chd .who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.chd .who b { font-size: 16px; font-weight: 600; line-height: 1.25; }
+/* Will's chat: the thread starts at the bottom (N467 item 1) */
+.thread { flex: 1; overflow-y: auto; padding: 12px 16px 6px; display: flex; flex-direction: column; gap: 8px; scrollbar-width: none; }
+.thread::-webkit-scrollbar { display: none; }
+.thread > :first-child { margin-top: auto; }
+.when { align-self: center; font-size: 12px; color: var(--muted-fg); padding: 4px 0; }
+.b { max-width: 82%; padding: 8px 12px; border-radius: 16px; font-size: 15px; line-height: 1.45; animation: drop .28s cubic-bezier(.2,.9,.3,1.2) both; }
+.b.will { background: #F3F3F3; align-self: flex-start; }
+.b.me { background: var(--orange); color: #fff; align-self: flex-end; }
+.b.typing { display: flex; gap: 4px; padding: 13px 14px; }
+.b.typing i { width: 7px; height: 7px; border-radius: 50%; background: #B5B5B5; animation: blink 1s infinite; }
+.b.typing i:nth-child(2) { animation-delay: .15s; } .b.typing i:nth-child(3) { animation-delay: .3s; }
+.voice { display: flex; align-items: center; gap: 8px; }
+.voice i { display: inline-block; width: 3px; border-radius: 2px; background: #fff; opacity: .9; }
+.voice em { font-style: normal; font-size: 13px; opacity: .9; font-variant-numeric: tabular-nums; }
+.b .said { display: block; margin-top: 6px; font-size: 14px; line-height: 1.4; opacity: .95; }
+.b .marks { display: flex; gap: 3px; margin-top: 6px; } .b .marks span { width: 26px; height: 18px; border-radius: 4px; background: #14213D; }
+/* "Here's how others will see you:" (N400, N453 item 2): a card shaped like the profile */
+.b.pcard { background: #fff; border: 1px solid #E5E5E5; width: 82%; padding: 12px 14px; }
+.b.pcard .pch { display: flex; align-items: center; gap: 10px; }
+.b.pcard .pch .lc { width: 42px; height: 42px; font-size: 17px; }
+.b.pcard .pch b { display: block; font-size: 16px; } .b.pcard .pch small { color: var(--muted-fg); font-size: 13px; }
+.b.pcard p { margin: 10px 0 0; font-size: 14.5px; }
+.b .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.b .chips span { background: #fff; border: 1px solid var(--orange); color: #C2410C; border-radius: 99px; padding: 4px 11px; font-size: 14px; font-weight: 600; }
+.b .chips span.new { background: var(--orange-soft); }
+.b .agt { display: block; margin-bottom: 4px; }
+.b .lnk { display: block; margin-top: 6px; color: #121212; text-decoration: underline; text-underline-offset: 3px; }
+/* the plan card (PlanCard.tsx, N319 item 6): "Plan", one part per practice, the days, the deadline */
+.plan { align-self: flex-start; width: 84%; display: flex; flex-direction: column; gap: 12px; border-radius: 18px; border: 1px solid #E6E6E6; background: #fff; padding: 16px; color: #121212; box-shadow: 0 6px 20px -14px rgba(0,0,0,.25); animation: drop .28s ease both; }
+.plan .hd { font-size: 15px; font-weight: 600; }
+.plan .pbar { display: flex; gap: 4px; } .plan .pbar i { flex: 1; height: 8px; border-radius: 4px; background: #EBEBEB; } .plan .pbar i.on { background: #FF640A; }
+.plan ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; line-height: 1.4; } .plan li::marker { color: #9A9A9A; }
+.plan li b { font-weight: 600; color: #C2410C; }
+.plan button { align-self: flex-start; border: 0; background: none; padding: 0; font-size: 13px; color: #6B6B6B; text-decoration: underline; text-underline-offset: 3px; }
+/* a Take's Feedback walk in the chat (Lounge.tsx FeedbackWalkBubble, N192): one grey bubble with › */
+.walkb { align-self: flex-start; width: 80%; max-width: 24rem; position: relative; display: flex; flex-direction: column; border: 0; border-radius: 16px; background: var(--mutedc); padding: 8px 30px 8px 12px; text-align: left; font-size: 15px; line-height: 1.45; color: #121212; animation: drop .28s ease both; }
+.walkb small { display: flex; justify-content: flex-end; margin-top: 2px; font-size: 11.5px; line-height: 1.3; color: var(--muted-fg); }
+.walkb .chev { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); font-size: 20px; color: var(--muted-fg); }
+/* Take 1's processing, a thin row on top of Will's chat (N401 item 3; signed, not built) */
+.procrow { flex: none; display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid #F0F0F0; background: #FAFAFA; font-size: 13px; font-weight: 500; color: #3F3F3F; }
+.procrow .pt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.procrow .pc { font-variant-numeric: tabular-nums; color: var(--muted-fg); }
+.procrow .pbr { width: 70px; height: 5px; border-radius: 3px; background: #E5E5E5; overflow: hidden; } .procrow .pbr i { display: block; height: 100%; width: 0; background: var(--orange); transition: width .3s linear; }
+.procrow.ready { width: 100%; border: 0; border-bottom: 1px solid #F0F0F0; background: var(--orange-soft); text-align: left; }
+.procrow.ready .pt b { font-weight: 700; color: #121212; }
+
+/* ===== LOCKED BAR (N483) ===== */
+/* Copied from backend docs/design/customer-requests-2026-10-28/the-bar/the-bar-clickable.html
+   (version 12, N483, N498): .taps/.tap/.leave, .bar, .ib, .pill, .box, .emoji, .status, .rec.
+   Only the --app-* tokens and the svg rule are carried over to make it stand alone. */
+:root { --app-bg: #FFFFFF; --app-fg: #121212; --app-muted: #737373; --app-line: #E8E8E8; --app-bubble: #F3F3F3; --app-orange: #FF640A; --app-red: #EF4444; --app-grey: #F2F2F2; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.bar svg, .taps svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; display: block; }
+.taps { align-self: flex-end; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; max-width: 86%; padding-top: 2px; }
+.tap { min-height: 44px; border-radius: 22px; border: 1.5px solid var(--app-orange); background: #FFFFFF; color: var(--app-orange); font-weight: 600; font-size: 15px; padding: 9px 16px; text-align: left; }
+.tap.goes { background: var(--app-orange); color: #FFFFFF; }
+.leave { min-height: 44px; border: 0; background: none; color: var(--app-muted); font-weight: 500; font-size: 15px; padding: 0 10px; }
+.bar { flex-shrink: 0; padding: 8px 14px 14px; display: flex; align-items: center; gap: 4px; min-height: 66px; }
+.ib { width: 40px; height: 40px; flex-shrink: 0; border: 0; background: none; color: var(--app-fg); display: flex; align-items: center; justify-content: center; border-radius: 999px; }
+.ib.x { width: 44px; height: 44px; color: var(--app-muted); }
+.ib.plus-new { background: var(--app-orange); color: #FFFFFF; }
+.pill { flex: 1; min-width: 0; height: 48px; border: 0; border-radius: 999px; background: #121212; color: #FFFFFF; font-size: 15px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.pill .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--app-red); }
+.pill[disabled] { opacity: .45; cursor: default; }
+.box { flex: 1; min-width: 0; position: relative; }
+.box input { width: 100%; height: 42px; border-radius: 24px; border: 1px solid var(--app-line); background: #FFFFFF; color: var(--app-fg); padding: 0 44px 0 14px; font: inherit; font-size: 15px; outline: none; }
+.box input:focus { border-color: var(--app-orange); }
+.box input::placeholder { color: #A3A3A3; }
+.box .go { position: absolute; right: 5px; top: 5px; width: 32px; height: 32px; border: 0; background: none; color: var(--app-fg); display: flex; align-items: center; justify-content: center; }
+.emoji { flex: 1; min-width: 0; height: 42px; border: 1px solid var(--app-line); border-radius: 24px; display: flex; align-items: center; justify-content: space-around; padding: 0 8px; }
+.emoji button { border: 0; background: none; font-size: 23px; width: 40px; height: 38px; border-radius: 999px; }
+.status { flex: 1; min-width: 0; height: 44px; border-radius: 999px; background: var(--app-grey); display: flex; align-items: center; justify-content: space-between; padding: 0 6px 0 18px; font-size: 14.5px; color: #5F5F5F; font-weight: 500; }
+.status button { border: 0; background: none; font-weight: 700; color: #121212; font-size: 14.5px; padding: 0 12px; height: 36px; }
+.rec { flex: 1; min-width: 0; height: 48px; border-radius: 999px; background: var(--app-grey); display: flex; align-items: center; gap: 10px; padding: 0 5px 0 14px; }
+.rec .d { width: 8px; height: 8px; border-radius: 999px; background: var(--app-red); animation: blink 1.2s infinite; }
+@media (prefers-reduced-motion: reduce) { .rec .d { animation: none; } }
+@keyframes blink { 50% { opacity: .3; } }
+.rec .t { font-family: var(--mono); font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; }
+.rec .tr { flex: 1; height: 3px; border-radius: 2px; background: #D9D9D9; position: relative; overflow: hidden; }
+.rec .tr i { position: absolute; inset: 0 auto 0 0; background: #121212; width: 0; }
+.rec .stop { height: 38px; border: 0; border-radius: 999px; background: var(--app-red); color: #FFFFFF; font-weight: 600; font-size: 14px; padding: 0 14px; display: flex; align-items: center; gap: 6px; }
+.rec .stop span { width: 10px; height: 10px; background: #FFFFFF; border-radius: 2px; }
+/* ===== END LOCKED BAR ===== */
+
+/* ===== LOCKED POSTER (N462) ===== */
+/* The recording screen (N70, re-locked 2026-10-12) with the slide as the centered poster (N462, the prototype "Your one thing").
+   From the frontend code: LabOverlay.tsx (the top bar 48px, RecordingWhere 13px semibold muted; the column px-4 pb-5;
+   the strip: rounded-2xl bg-muted px-4 py-3 gap-3, the dot record/50 pulsing 10px, the clock font-mono 17px semibold,
+   the bar h-1 bg-border, with no target (Take 1) full width muted-foreground/40 pulsing), SlideStage.tsx (the frame:
+   rounded-2xl, 1px border, bg-card), pdfSlides.tsx PosterSlide (tall: #14213d, centered, px 30 pb 64 pt 28; label 11px
+   bold uppercase .24em white 58%, mb 22; question 34px extrabold lh 1.07 -0.032em max 11.5em; hint mt 22 15px lh 1.45
+   white 62% max 24em; "1 2 3" as tiles size-11 18px radius 22% white 12%), RecordingRoadmap.tsx (the stage gap-3 pb-1;
+   five marks 5px, gap 4, on = primary, done = foreground, to come = muted; the strip wrapper -mx-3 px-1 pt-2; the buttons
+   mt-2.5 gap-2.5 h-12 rounded-2xl 15px semibold: Back border-[1.5px] white, disabled .35; Next slide black) and
+   FinishTakeButton.tsx (record red, gap-2, the 12px white stop square, radius 2). Colours: globals.css. */
+.rs { position: absolute; inset: 0; z-index: 5; background: #fff; display: flex; flex-direction: column; }
+.rs-top { height: 48px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+.rs-where { margin: 0; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: #737373; }
+.rs-close { width: 40px; height: 40px; margin-right: -8px; border: 0; background: none; color: #121212; display: grid; place-items: center; border-radius: 50%; }
+.rs-col { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 16px 20px; overflow: hidden; }
+.rs-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding-bottom: 4px; }
+.rs-frame { flex: 1; min-height: 0; width: 100%; overflow: hidden; border-radius: 16px; border: 1px solid #EBEBEB; background: #fff; }
+.poster { height: 100%; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #14213d; color: #fff; text-align: center; padding: 28px 30px 64px; }
+.poster .pin2 { display: flex; width: 100%; flex-direction: column; align-items: center; }
+.poster-label { margin-bottom: 22px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .24em; color: rgba(255,255,255,.58); }
+.poster-q { margin: 0; max-width: 11.5em; font-size: 34px; font-weight: 800; line-height: 1.07; letter-spacing: -0.032em; text-wrap: balance; }
+.poster-hint { margin: 22px 0 0; max-width: 24em; font-size: 15px; line-height: 1.45; color: rgba(255,255,255,.62); text-wrap: balance; }
+.poster-tiles { margin-top: 22px; display: flex; gap: 8px; }
+.poster-tiles span { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 22%; background: rgba(255,255,255,.12); font-size: 18px; font-weight: 700; color: rgba(255,255,255,.8); }
+.rs-marks { flex: none; display: flex; gap: 4px; }
+.rs-marks span { flex: 1; height: 5px; border-radius: 99px; background: #F5F5F5; }
+.rs-marks span.on { background: #FF640A; } .rs-marks span.done { background: #121212; }
+.rs-foot { flex: none; position: relative; z-index: 1; margin: 0 -12px; padding: 8px 4px 0; background: #fff; }
+.rs-strip { display: flex; align-items: center; gap: 12px; border-radius: 16px; background: #F5F5F5; padding: 12px 16px; }
+.rs-dot { width: 10px; height: 10px; flex: none; border-radius: 50%; background: rgba(230,60,45,.5); animation: pulse2 2s cubic-bezier(.4,0,.6,1) infinite; }
+.rs-clock { font-family: var(--mono); font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; color: #121212; }
+.rs-track { flex: 1; height: 4px; border-radius: 99px; background: #EBEBEB; overflow: hidden; }
+.rs-track i { display: block; height: 100%; border-radius: 99px; width: 100%; background: rgba(115,115,115,.4); animation: pulse2 2s cubic-bezier(.4,0,.6,1) infinite; }
+.rs-track i.target { background: #FF640A; animation: none; }
+@keyframes pulse2 { 50% { opacity: .5; } }
+.rs-btns { margin-top: 10px; display: flex; gap: 10px; }
+.rs-btns button { flex: 1; height: 48px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 16px; font-size: 15px; font-weight: 600; }
+.rs-back { border: 1.5px solid #EBEBEB; background: #fff; color: #121212; }
+.rs-back:disabled { opacity: .35; cursor: default; }
+.rs-next { border: 0; background: #121212; color: #fff; }
+.rs-finish { border: 0; background: var(--record, #E63C2D); color: #fff; }
+.rs-finish i { width: 12px; height: 12px; flex: none; border-radius: 2px; background: currentColor; }
+@media (prefers-reduced-motion: reduce) { .rs-dot, .rs-track i { animation: none; } }
+/* ===== END LOCKED POSTER ===== */
+
+/* "Getting your mic ready" (recordingCopy.ts micReady, micWhy) */
+.mic { position: absolute; inset: 0; z-index: 5; background: #fff; display: flex; flex-direction: column; }
+.mic .body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 24px; }
+.mic .mk3 { display: inline-flex; gap: 5px; align-items: center; }
+.mic .mk3 i { width: 10px; height: 10px; border-radius: 50%; background: #121212; animation: breathe 1.2s ease-in-out infinite; }
+.mic .mk3 i:nth-child(2) { width: 14px; height: 14px; animation-delay: .15s; } .mic .mk3 i:nth-child(3) { animation-delay: .3s; }
+@keyframes breathe { 50% { transform: scaleY(.6); } }
+.mic .body b { font-size: 16px; font-weight: 600; } .mic .body p { margin: 0; font-size: 14px; color: var(--muted-fg); max-width: 26em; }
+/* "Discard this take?" (DiscardTakeDialog.tsx) */
+.dlg { position: absolute; inset: 0; z-index: 9; background: rgba(18,18,18,.35); display: flex; align-items: flex-end; justify-content: center; padding: 16px; }
+.dlg > div { width: 100%; border-radius: 24px; background: #fff; padding: 20px; box-shadow: 0 20px 25px -5px rgba(0,0,0,.1), 0 8px 10px -6px rgba(0,0,0,.1); }
+.dlg h2 { margin: 0; font-size: 18px; font-weight: 600; } .dlg p { margin: 8px 0 0; font-size: 14px; color: var(--muted-fg); }
+.dlg .two2 { margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dlg .two2 button { height: 40px; border-radius: 99px; font-size: 14px; font-weight: 500; border: 1px solid #EBEBEB; background: #fff; color: #121212; }
+.dlg .two2 button.red { border: 0; background: var(--record); color: #fff; }
+/* the walk's door: a stand-in, the walk itself is locked and unchanged */
+.scr { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; background: #fff; overflow-y: auto; }
+.center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 24px; }
+.center h3 { margin: 0; font: 700 20px/1.25 var(--ui); } .center p { margin: 0; color: #5F5F5F; font-size: 14.5px; }
+.pnote { align-self: stretch; border: 1.5px dashed #CFC9C0; border-radius: 14px; padding: 9px 12px 10px; font-size: 13px; line-height: 1.45; color: #57534E; background: #FBFAF8; text-align: left; }
+.pnote > b { display: block; font: 700 10.5px var(--ui); letter-spacing: .08em; text-transform: uppercase; color: #A8A29E; margin-bottom: 2px; }
+.pback { height: 44px; border: 1.5px dashed #A8A29E; border-radius: 99px; background: #FBFAF8; color: #57534E; font-size: 14px; font-weight: 600; padding: 0 18px; }
+/* a prototype's own note, never app words */
+.toast { position: absolute; left: 50%; top: 70px; translate: -50% 0; background: #FBFAF8; color: #57534E; border: 1.5px dashed #A8A29E; border-radius: 12px; padding: 8px 14px; font-size: 13px; z-index: 10; width: max-content; max-width: 86%; text-align: center; animation: drop .2s ease both; }
+.toast b { display: block; font: 700 10px var(--ui); letter-spacing: .08em; text-transform: uppercase; color: #A8A29E; }
+/* the next tap */
+.row.cue { box-shadow: inset 0 0 0 2px var(--orange) !important; animation: none; }
+.cue { box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--orange) !important; animation: cue 1.5s ease-in-out infinite; }
+@keyframes cue { 50% { box-shadow: 0 0 0 3px #fff, 0 0 0 8px rgba(255,100,10,.35) !important; } }
+@keyframes drop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------- the notes beside the phone ---------- */
+aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 100%; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; min-width: 0; }
+.panel h2 { font: 700 20px/1.2 var(--display); margin: 0 0 6px; }
+.panel p { margin: 0; color: var(--muted); }
+.panel.pinned { border-color: var(--orange); }
+.panel h3 { margin: 14px 0 4px; font: 700 13px var(--ui); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.fixes { margin: 6px 0 0; padding-left: 18px; font-size: 14px; } .fixes li { margin-bottom: 4px; } .fixes li b { color: var(--fg); }
+.steps { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.steps li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding: 9px 10px; border-radius: 12px; border: 1px solid var(--line); }
+.steps li .n { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 700 12px var(--ui); background: var(--line); color: var(--fg); }
+.steps li b { display: block; font-size: 14.5px; } .steps li span.d { color: var(--muted); font-size: 13.5px; }
+.steps li.on { border-color: var(--orange); background: var(--orange-soft); } .steps li.on .n { background: var(--orange); color: #fff; }
+.steps li.done .n { background: var(--green); color: #fff; } .steps li.done .n::after { content: "✓"; } .steps li.done .n span { display: none; }
+.words { margin: 10px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.words li { font-size: 14px; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--line); }
+.words li q { font-weight: 600; quotes: "“" "”"; } .words li small { display: block; color: var(--muted); font-size: 12.5px; }
+.changes { margin: 10px 0 0; padding-left: 18px; } .changes li { margin-bottom: 6px; }
+.decide { margin: 10px 0 0; padding-left: 20px; } .decide li { margin-bottom: 10px; } .decide li em { font-style: normal; color: var(--muted); display: block; font-size: 13.5px; }
+.reset { align-self: flex-start; border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 99px; padding: 8px 16px; font: 600 14px var(--ui); cursor: pointer; }
+.tbl { overflow-x: auto; margin-top: 10px; }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+tr.on td { background: var(--orange-soft); } tr.on td:first-child { box-shadow: inset 3px 0 0 var(--orange); }
+td small { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>The first Take</h1>
+    <p class="lockb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Locked 2026-11-03 (N401) · pinned 2026-11-09 (N551)</p>
+    <p class="lede">Everyone's onboarding is their first official Take. After the acceptance screen, Will welcomes them in four bubbles (N492), and the middle of his bar is one black button, "Start your first recording". It opens the recording screen as it is locked, and the five questions (N462) are the slides, each drawn as the centered poster. They answer each one out loud, slide by slide, so Will hears their vocal and verbal cues from the first minute. While the Take is processed, Will shows what he heard for them to check. Then comes the walk, and "Record Take 2". The ringed button is the next tap.</p>
+    <div class="ctl">
+      <div class="seg" id="biz" role="group" aria-label="Business"><span class="lab">Business</span></div>
+      <div class="seg" id="who" role="group" aria-label="Who"><span class="lab">Who</span></div>
+    </div>
+  </header>
+
+  <div class="phone"><div id="app"></div></div>
+
+  <aside>
+    <div class="panel pinned">
+      <h2>Pinned 2026-11-09</h2>
+      <p>This is N401's prototype "The first Take" (version 1) as pinned in the repo (N551), redrawn to the decisions locked after it. Every look and every word on the phone is taken from the code on main and the locked bar file; the flow is N401's.</p>
+      <h3>What was redrawn</h3>
+      <ul class="fixes">
+        <li><b>N483, N498:</b> the bottom bar as locked: no mic and no right slot; the stack (Your projects) on the left of Will's chat, never "+"; the middle one black button, "Start your first recording" or "Record Take 2" with the red dot (#EF4444), faded while Take 1 is processed; never "Type here".</li>
+        <li><b>N483, N467:</b> when Will needs to hear you, "Record your answer" in the middle and "Not now" as grey words under his question; the recording strip is the locked one (trash, dot, clock, track, red Stop).</li>
+        <li><b>N483, N371:</b> "Something else" is the first of Will's tap answers, on your side, and opens the box "Type your answer" (the locked box; send only once there is text; empty, it closes when you tap away).</li>
+        <li><b>N467, N415:</b> answers on your side, 44px, orange outline, the likely one filled; "Not now" a grey word; the walk's door a grey bubble with ›, not a card with a picture.</li>
+        <li><b>N462:</b> the five slides' words (Your field, Worth sharing, Who it's for, A moment, Your one thing) and the poster: centered, no orange line, the five marks under it.</li>
+        <li><b>N492:</b> Will's welcome is the four signed bubbles. Gone: "Your first Take is five questions…" and "Hi {name}! {inviter} asked you to join {team}."</li>
+        <li><b>N70, N401 item 2:</b> the recording screen from the code: "Take 1 · Slide n of 5", the strip counting up with no target, Back, Next slide, and Finish take in record red with its stop square.</li>
+        <li><b>N471:</b> no path without a link: "{name}, signing up with no link" is gone, and with it "Which team are you in?", the codes and the team names (N471 item 2).</li>
+        <li><b>N521:</b> a coach's way in is a row under Will, named by the profile's job ("Your queue" until there is one), "Open your queue" in the new-row look; no bubble in Will's chat.</li>
+        <li><b>N500:</b> a new row: name bold, time and last line bold in #C2410C, the orange dot, never a number. The inviter's line is N496's.</li>
+        <li><b>N534:</b> the list's "+" shows the note "Before you share your link, set the questions for people who join." first.</li>
+        <li><b>N334, N456:</b> Will's mark is three dots, the middle one bigger; his pinned row ends in a grey pin icon.</li>
+        <li><b>N319 item 6:</b> the plan card as built: "Plan", one part per practice, the days, the deadline in #C2410C, "Change your plan".</li>
+        <li><b>N459, plan.py:</b> "No date yet" gives eight weeks (29 December), not 3 January.</li>
+        <li><b>Fonts:</b> the app's own system stack in place of Figtree and Bricolage; no web fonts load.</li>
+      </ul>
+      <h3>Drawn as the code draws it</h3>
+      <p>With no length chosen (Take 1), the strip's bar is full and grey, pulsing, not orange (LabOverlay.tsx); Finish take and the strip's dot are the record red (globals.css <code>--record</code>, #E63C2D), while the bar's dot and Stop are the locked #EF4444.</p>
+      <h3>Kept, signed but not built yet</h3>
+      <p>The processing row on top of Will's chat for Take 1, with its percentage (N401 item 3), and the checks during it (N401 item 3, N453).</p>
+      <h3>Still unsigned</h3>
+      <ul class="words" id="unsigned"></ul>
+    </div>
+
+    <div class="panel">
+      <h2>The five slides</h2>
+      <p>The same five for everyone, whatever the business: label, question and hint as signed in N462 (backend <code>plan.FIRST_TAKE_SLIDES</code>, frontend <code>firstTake.ts</code>). The row lights up on the slide you are on. What they say is an example.</p>
+      <div class="tbl"><table><thead><tr><th>Slide</th><th>On the big screen</th><th id="saysH">What they say</th><th>What Will takes from it</th></tr></thead><tbody id="slides"></tbody></table></div>
+    </div>
+
+    <div class="panel">
+      <h2 id="stepsH">Where you are</h2>
+      <ol class="steps" id="steps"></ol>
+    </div>
+
+    <div class="panel">
+      <h2>Before, and with this</h2>
+      <div class="tbl"><table><thead><tr><th></th><th>Before (N319, N378)</th><th>With this (N401)</th></tr></thead><tbody>
+        <tr><td><b>Before the first Take</b></td><td>The plan's questions in Will's chat, one at a time: the deadline (taps), the event, the one sentence and two more (voice). Then the setup's voice note.</td><td>Will's welcome, four bubbles (N492). Then one black button, "Start your first recording".</td></tr>
+        <tr><td><b>The first Take</b></td><td>The set-up (topic, length, slides), then the recording screen with stand-in slides: "Opening", "Main points", "Summary".</td><td>The recording screen straight away, with the five questions as its slides, each a poster (N462). No set-up: the questions are the deck.</td></tr>
+        <tr><td><b>While it is processed</b></td><td>The processing screen and its labels, about a minute.</td><td>Will's chat, with the processing labels in a thin row on top. Meanwhile Will shows what he heard, for one tap each.</td></tr>
+        <tr><td><b>After it</b></td><td>The Feedback walk.</td><td>The Feedback walk. Then "Record Take 2", for the real talk.</td></tr>
+        <tr><td><b>The Ideal Text</b></td><td>The talk.</td><td>Take 1's Ideal Text is their answers, one paragraph per question. From Take 2 it is their talk (Never 5 holds).</td></tr>
+      </tbody></table></div>
+    </div>
+
+    <div class="panel">
+      <h2>What this changes</h2>
+      <ul class="changes">
+        <li><b>The plan's questions (N319, locked)</b> move onto Take 1's slides. "When is your deadline?" is asked as taps only if Will didn't hear a date (N453 item 3); after the walk it is never asked (N459).</li>
+        <li><b>Never 3's wording:</b> "the plan's questions come once, inside the first Take, one slide at a time". Before any other Take, only the feelings check.</li>
+        <li><b>The setup's voice note (N378)</b> becomes slide 1, "Your field". Its card "Here's how others will see you" comes while the Take is processed.</li>
+        <li><b>The processing screen</b> stays for every other Take. For Take 1 alone, its labels move into a thin row at the top of Will's chat, so the wait is used for the checks.</li>
+        <li><b>The recording screen itself does not change:</b> the top line, the strip, Back, Next slide, Finish take. Its slides are the questions, drawn as the poster (N462).</li>
+        <li><b>The rest of the setup</b> (the agreement, "You're set") comes during the same wait, as one tap each. Nothing stands between the Take and its walk.</li>
+      </ul>
+    </div>
+
+    <div class="panel">
+      <h2>The words, and where they are signed</h2>
+      <ul class="words" id="words"></ul>
+    </div>
+
+    <div class="panel">
+      <h2>Decided since</h2>
+      <ol class="decide">
+        <li><b>The checks during the processing, or after the walk?</b><em>During the processing (N453 item 1). Nothing waits for them: the walk's row turns orange when it is ready.</em></li>
+        <li><b>The plan's personal questions.</b><em>The plan's own yes in the wait, then "What worries you most about it?" with taps; the two 1 to 10 taps stay at the last practice (N453 item 4). Not drawn here.</em></li>
+        <li><b>A clock for Take 1?</b><em>None: the strip counts up, with no length chosen (N401 item 2).</em></li>
+      </ol>
+    </div>
+    <button class="reset" type="button" id="reset">Start again</button>
+  </aside>
+</div>
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const lc = (t) => (t[1] && t[1] === t[1].toLowerCase() ? t[0].toLowerCase() + t.slice(1) : t);
+  const app = $("#app");
+  const STOP = new Error("stopped");
+  let gen = 0;
+  const wait = (ms) => { const g = gen; return new Promise((res, rej) => setTimeout(() => (g === gen ? res() : rej(STOP)), ms)); };
+  const fail = (e) => { if (e !== STOP) console.error(e); };
+
+  // ---------- icons (lucide, as the app draws them) ----------
+  const svg = (p, cls = "ic") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${p}</svg>`;
+  const I = {
+    back: svg('<path d="m15 18-6-6 6-6"/>'),
+    stack: '<svg viewBox="0 0 24 24"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>',
+    send: '<svg viewBox="0 0 24 24"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></svg>',
+    trash: '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
+    x: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
+    plus: svg('<path d="M5 12h14"/><path d="M12 5v14"/>'),
+    menu: svg('<path d="M4 7h16M4 12h16M4 17h16"/>'),
+    pin: svg('<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>', "ic pin"),
+    users: svg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'),
+    link: svg('<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'),
+  };
+  const MARK3 = `<span class="mk3"><i></i><i></i><i></i></span>`;
+  const willMark = (size) => `<span class="wm" style="width:${size}px;height:${size}px"><i></i><i></i><i></i></span>`;
+  // the list's letter circles (ChatList.tsx TINTS): a soft background, a dark letter, one per chat
+  const TINTS = [{ bg: "#FFE9DB", fg: "#A33A00" }, { bg: "#E4EDFB", fg: "#1E4C99" }, { bg: "#E3F3E8", fg: "#1D6B3A" }, { bg: "#F1E6FB", fg: "#5E2A99" }, { bg: "#FBE4EC", fg: "#992A52" }];
+  const tintOf = (id) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return TINTS[h % TINTS.length]; };
+  const letter = (id, name) => { const t = tintOf(id); return `<span class="lc" style="background:${t.bg};color:${t.fg}">${esc(name[0].toUpperCase())}</span>`; };
+  const secs = (n) => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
+  const wave = (n, sec) => { const h = [6, 12, 18, 9, 15, 20, 11, 7, 16, 13, 8, 18, 10, 6]; let out = ""; for (let i = 0; i < n; i++) out += `<i style="height:${h[i % h.length]}px"></i>`; return `<span class="voice">${out}<em>${secs(sec)}</em></span>`; };
+
+  // ---------- the words, each from its signed source ----------
+  // Will's welcome (N492; backend plan.COPY first_take_hi, first_take_hello, first_take, first_take_why, first_take_where)
+  const HI = (n) => `Hi ${n}, and welcome. We'd like to learn what you know and what you could teach others.`;
+  const WELCOME = [
+    "Your first Take is a short introduction: five questions, one slide each. Answer out loud, as you'd explain it to a friend. At the end, you'll get a few words on how you came across.",
+    "Wozniak built the computer; Jobs made the world want it. You're probably a Wozniak. We want you to be heard the way Jobs was.",
+    "Record somewhere quiet, where you'd usually take a call and no one will interrupt you. Passing knowledge from one mind to another is, after all, what civilization is made of.",
+  ];
+  const START_FIRST = "Start your first recording";          // planCopy.ts startFirst
+  const RECORD_TAKE = (n) => `Record Take ${n}`;              // planCopy.ts recordTake
+  const RECORD_ANSWER = "Record your answer";                 // planCopy.ts recordAnswer (N483 item 5)
+  const SOMETHING_ELSE = "Something else", TYPE_YOUR_ANSWER = "Type your answer"; // WillQuestion.tsx
+  const LEAVE = ["Not now", "Skip", "Cancel", "Close"];       // N467 rule 3
+  const HEARD = "While your feedback is being prepared, check what I heard."; // N401 item 7
+  const SEE_Q = "Here's how others will see you:";             // N400 item 11
+  const CHANGE_Q = "Tell me what to change.";                  // N400 item 11
+  const DEADLINE_Q = "When is your deadline?", NO_DATE = "No date yet", PICK_DATE = "Pick a date"; // plan.COPY
+  const TWO_MONTHS = (d) => `That's fine. Let's give it two months, until ${d}.`; // plan.COPY two_months
+  const ALL_SET = "You're all set. Here's your plan.";         // plan.COPY all_set
+  const JOINED_THANKS = (n) => `You joined thanks to ${n}. Your first question starts the knowledge base you build together.`; // joinCopy.ts joinedThanks (N496)
+  const SETUP_NOTE = "Before you share your link, set the questions for people who join.", SET_THEM = "Set them"; // joinCopy.ts (N534)
+  const QUEUE_TITLE = "Your queue", QUEUE_OPEN = "Open your queue"; // coachWalkCopy.ts (N521)
+  const LABELS = ["Processing your recording", "Transcribing your take", "Building your Ideal Text", "Finding feedback moments", "Finding your anchors"]; // ProcessingWait.tsx
+  // kept from the locked v1 with no signed source found in the code or the log: listed under "Still unsigned"
+  const AGREE_ASK = "Before anyone's recordings reach you, please read this and accept it.";
+  const AGREE = `<b class="agt">The data processing agreement</b>You hear people's recordings only to give them feedback here. You keep nothing outside WillpowerLab. You tell us at once if anything leaks.<a href="#" class="lnk" onclick="return false">Read the full agreement</a>`;
+  const AGREE_Q = "Do you accept it?";
+  const SET = "You're set. Questions about your work come to your chats. You can change this in Settings.";
+  const UNSIGNED = [
+    [AGREE_ASK + " · The data processing agreement · You hear people's recordings only to give them feedback here. You keep nothing outside WillpowerLab. You tell us at once if anything leaks. · Read the full agreement · " + AGREE_Q, "The agreement's ask and summary (N349 item 3 says it is shown; its words are in no entry and no code)."],
+    ["I agree", "Signed on the consent screens (Phase1AcceptanceFlow.tsx); here as an answer in Will's chat."],
+    ["Accepted · 3 November, 09:06", "The line under the agreement."],
+    ["Questions about your work come to your chats.", "Between \"You're set.\" (N352) and \"You can change this in Settings.\" (N400 item 6), both signed. Was, for a coach, \"Takes to review wait for you here\", gone with the bubble (N521)."],
+  ];
+
+  // the five slides (N462 item 2; backend plan.FIRST_TAKE_SLIDES) and what each feeds (N462 item 3)
+  const SLIDES = [
+    { k: "Your field", q: "What do you know better than most people you meet?", h: "The thing people come to you for.", takes: "Who the speaker is, in Will's notes and for the profile (N461 item 5): the card \"Here's how others will see you\" (N453 item 2)." },
+    { k: "Worth sharing", q: "What could you teach someone in five minutes that would save them a year?", h: "Something you learned the hard way.", takes: "Kept as the voice message the coach's blind pick plays (N213), and the profile's topics. The plan's answer \"why\"." },
+    { k: "Who it's for", q: "Who would be glad you told them?", h: "Picture one person: a colleague, a customer, a friend.", takes: "The audience. The plan's answer \"audience\"." },
+    { k: "A moment", q: "When did it make a difference? Take us to that day.", h: "Where you were, what happened, what changed.", takes: "The speaker's story, in Will's notes and the plan's facts." },
+    { k: "Your one thing", q: "If they remember one sentence from you, what should it be?", h: "Say it the way you'll say it.", takes: "The key line, which the coach's blind pick plays, found by its kind (\"key\"), no longer by its place." },
+  ];
+  const WORDS = [
+    ["Hi {name}, and welcome. We'd like to learn what you know and what you could teach others. · Your first Take is a short introduction… · Wozniak built the computer… · Record somewhere quiet…", "Will's welcome, four bubbles: N492 (backend plan.COPY)."],
+    [START_FIRST + " · " + RECORD_TAKE(2) + " · " + RECORD_ANSWER, "The bar's middle: N483 (planCopy.ts)."],
+    [SOMETHING_ELSE + " · " + TYPE_YOUR_ANSWER + " · Not now", "Will's tap answers and the box: N371, N483; the grey word: N467."],
+    [SLIDES.map((s) => s.k).join(" · "), "The five slides' labels, with their questions and hints: N462."],
+    ["Take 1 · Slide 1 of 5 · Back · Next slide · Finish take · Getting your mic ready · WillpowerLab uses the microphone to record your Takes.", "The recording screens: N70, N269 (recordingCopy.ts)."],
+    [LABELS.join(" · "), "The processing labels (ProcessingWait.tsx), in the thin row on top for Take 1 (N401 item 3)."],
+    [HEARD, "N401 item 7."],
+    [SEE_Q + " · That's right · Change it · " + CHANGE_Q + " · Ask about {topic}", "N400 item 11, N453 item 2."],
+    [DEADLINE_Q + " · " + NO_DATE + " · " + PICK_DATE + " · " + ALL_SET + " · Plan · Your deadline · Change your plan", "The plan: N319 (backend plan.COPY, planCopy.ts)."],
+    ["You're set.", "N352, N400."],
+    ["Feedback walk · Take 1 · Your first Take", "The walk's bubble (N192) and the first Take's project name (firstTake.ts)."],
+    [JOINED_THANKS("{name}") + " · " + SETUP_NOTE + " · " + SET_THEM + " · " + QUEUE_TITLE + " · " + QUEUE_OPEN, "The list: N496, N534, N521."],
+  ];
+
+  // ---------- two businesses, two ways in (N471: only through a person's link) ----------
+  const MARTA = { n: "Marta", role: "Speaking coach", topics: ["Starting a talk", "Slowing down", "Sounding sure"], about: "I help you start well, slow down, and sound sure when you speak to a room.", change: { said: "Add handling questions too.", topic: "Handling questions" },
+    says: ["How to open a talk and sound sure, even when you aren't. People come to me the week before they speak.", "Stand still for your first sentence. I learned it after years of pacing while I talked.", "A coach who runs workshops and feels the room drift away.", "A client froze on a stage in Warsaw. One breath, one step back, and she went on.", "Your first sentence decides how the room hears the rest."] };
+  const BIZ = {
+    rasp: { key: "rasp", label: "RASP", sub: "internal, AI ambassadors",
+      inviter: { n: "Tomek", role: "AI ambassador · Editorial" },
+      joiner: { n: "Kasia", role: "Video editor · News", topics: ["Short news cuts", "Video for social media"], about: "I edit short news videos for social media.", change: { said: "Add live streams too.", topic: "Live streams" },
+        says: ["Cutting short news videos for social media. I know what makes people stop scrolling.", "Let the AI find the quotes, and check every one yourself. I learned that the hard way.", "A new editor in my newsroom, on their first night shift.", "The night a wrong quote nearly went out under our name. I caught it two minutes before.", "Let the AI find the quotes, and check every one yourself."] } },
+    invita: { key: "invita", label: "Invita", sub: "sellers and their customers",
+      inviter: { n: "Ariel", role: "Seller" },
+      joiner: { n: "Lena", role: "Seller · Gdańsk", topics: ["Invita in Gdańsk"], about: "I'm a new Invita seller in Gdańsk.", change: { said: "Add salon bookings too.", topic: "Salon bookings" },
+        says: ["Our shampoos, and how to tell which one a scalp needs.", "One wash tells you more than the label. It took me a month of wrong advice to see it.", "A new seller in one of our salons.", "A customer came back after a week and said the itch was gone.", "One wash tells you more than the label."] } },
+  };
+  const ARTUR = { n: "Artur", role: "Speaking coach" };
+  const WHOS = [
+    { k: "link", label: (b) => `${b.joiner.n}, by ${b.inviter.n}'s link`, me: (b) => b.joiner, inv: (b) => b.inviter },
+    { k: "coach", label: () => "Marta, a speaking coach, by Artur's link", me: () => MARTA, inv: () => ARTUR },
+  ];
+  const STEPS = (w, b, p) => [
+    ["Will says hi", `Four bubbles (N492): "Hi ${p.n}, and welcome. …", the short introduction, the two Steves, where to record. Then "Start your first recording".`],
+    ["The first Take", "The recording screen as it is locked, the five questions as posters (N462). Back, Next slide, Finish take; the strip counts up."],
+    ["While it is processed", "The processing labels in a thin row on top. Will: \"While your feedback is being prepared, check what I heard.\" \"Record Take 2\" waits, faded."],
+    ["How others will see you", "From slide 1. Something else, Change it (said out loud: \"Record your answer\", or Not now) or That's right."],
+    ["Your plan", "No day was heard on the five slides, so \"When is your deadline?\" as taps (N453 item 3); then the plan card."],
+    ["The agreement, You're set", w === "coach" ? "One tap, then the line. Marta's queue is her row in the list, under Will (N521)." : "One tap, then the line."],
+    ["The Feedback walk", "It opens the moment the feedback is ready: its row on top turns orange. The walk works on how they answered."],
+    ["Take 2", "\"Record Take 2\", for the real talk: the feelings check with its Skip, then the set-up, its topic the plan's."],
+  ];
+
+  let bizKey = "rasp", whoKey = "link", S = null, screen = null, C = null;
+  const B = () => BIZ[bizKey];
+  const WHO = () => WHOS.find((x) => x.k === whoKey);
+  function fresh() {
+    const b = B(), w = WHO();
+    S = { me: w.me(b), inv: w.inv(b), topics: [...w.me(b).topics], log: [], beat: "hi", said: false, took: false, proc: 0, procDone: false, walked: false, roleSet: false, willSeen: false, invSeen: false, date: null, every: false, total: 0, mode: "rest", fresh: null };
+  }
+  function paintControls() {
+    $("#biz").innerHTML = `<span class="lab">Business</span>` + Object.values(BIZ).map((b) => `<button type="button" data-b="${b.key}" class="${b.key === bizKey ? "on" : ""}" aria-pressed="${b.key === bizKey}">${esc(b.label)} <small>· ${esc(b.sub)}</small></button>`).join("");
+    $("#who").innerHTML = `<span class="lab">Who</span>` + WHOS.map((w, i) => `<button type="button" data-w="${w.k}" class="${w.k === whoKey ? "on" : ""}" aria-pressed="${w.k === whoKey}">${i + 1}. ${esc(w.label(B()))}</button>`).join("");
+    $$("#biz [data-b]").forEach((x) => (x.onclick = () => { bizKey = x.dataset.b; start(); }));
+    $$("#who [data-w]").forEach((x) => (x.onclick = () => { whoKey = x.dataset.w; start(); }));
+    $("#saysH").textContent = `What ${S.me.n} says (an example)`;
+    $("#slides").innerHTML = SLIDES.map((s, i) => `<tr data-s="${i}"><td>${i + 1}</td><td><small>${esc(s.k)}</small><br><b>${esc(s.q)}</b><br><small>${esc(s.h)}</small></td><td>“${esc(S.me.says[i])}”</td><td>${esc(s.takes)}</td></tr>`).join("");
+    $("#stepsH").textContent = `Where you are: ${WHO().label(B())}`;
+    $("#steps").innerHTML = STEPS(whoKey, B(), S.me).map(([t, d], i) => `<li><span class="n"><span>${i + 1}</span></span><span><b>${esc(t)}</b><span class="d">${esc(d)}</span></span></li>`).join("");
+    $("#words").innerHTML = WORDS.map(([w, n]) => `<li><q>${esc(w)}</q><small>${esc(n)}</small></li>`).join("");
+    $("#unsigned").innerHTML = UNSIGNED.map(([w, n]) => `<li><q>${esc(w)}</q><small>${esc(n)}</small></li>`).join("");
+  }
+  const stepName = (t) => { const i = STEPS(whoKey, B(), S.me).findIndex(([x]) => x === t); if (i >= 0) $$("#steps li").forEach((li, j) => { li.classList.toggle("on", j === i); li.classList.toggle("done", j < i); }); };
+  const litSlide = (i) => $$("#slides tr").forEach((tr) => tr.classList.toggle("on", +tr.dataset.s === i));
+
+  // ---------- shared pieces ----------
+  function go(id) { gen++; C = null; screen = id; app.innerHTML = ""; SCREENS[id](); }
+  function toast(t) { $$(".toast", app).forEach((x) => x.remove()); app.insertAdjacentHTML("beforeend", `<div class="toast" role="status"><b>Prototype</b>${esc(t)}</div>`); const el = app.lastElementChild; setTimeout(() => el.remove(), 3200); }
+  const on = (sel, fn, cue = false) => { const el = typeof sel === "string" ? $(sel, app) : sel; if (!el) return null; el.onclick = (e) => { el.classList.remove("cue"); fn(e); }; if (cue) el.classList.add("cue"); return el; };
+  function put(html) { C.th.insertAdjacentHTML("beforeend", html); S.log.push(html); C.th.scrollTop = C.th.scrollHeight; const el = C.th.lastElementChild; if (el.className === "b will") S.willLast = el.textContent; return el; }
+  const W = (t) => `<div class="b will">${t}</div>`;
+  const D = (t) => `<div class="when">${esc(t)}</div>`;
+  const me = (t) => put(`<div class="b me">${esc(t)}</div>`);
+  async function say(lines) { for (const h of lines) { if (h.startsWith('<div class="b will')) { clearTaps(); C.th.insertAdjacentHTML("beforeend", `<div class="b will typing" aria-label="Will is writing"><i></i><i></i><i></i></div>`); const ty = C.th.lastElementChild; C.th.scrollTop = C.th.scrollHeight; await wait(600); ty.remove(); } put(h); } }
+  const clearTaps = () => { if (C) $$(".taps", C.th).forEach((x) => x.remove()); };
+
+  // ---------- the bar (N483; the locked file's markup) ----------
+  // Its middle, the first that holds: the box (Something else), "Record your answer" (Will needs to hear you),
+  // else "Start your first recording" before any Take, "Record Take 2" after it, faded while Take 1 is processed.
+  function paintBar(o = {}) {
+    if (!C) return;
+    const mode = o.mode || "rest";
+    S.mode = mode;
+    const stack = `<button type="button" class="ib" aria-label="Your projects" data-a="projects">${I.stack}</button>`;
+    let h = "";
+    if (mode === "rest") {
+      const held = S.took && !S.procDone;
+      const label = S.took ? RECORD_TAKE(2) : START_FIRST;
+      h = stack + `<button type="button" class="pill${o.cue ? " cue" : ""}" data-a="rest"${held ? " disabled" : ""}><span class="dot"></span>${esc(label)}</button>`;
+    } else if (mode === "hear") {
+      h = stack + `<button type="button" class="pill${o.cue ? " cue" : ""}" data-a="hear"><span class="dot"></span>${esc(RECORD_ANSWER)}</button>`;
+    } else if (mode === "words") {
+      h = stack + `<div class="box"><input id="draft" type="text" placeholder="${esc(TYPE_YOUR_ANSWER)}" autocomplete="off" aria-label="${esc(TYPE_YOUR_ANSWER)}"></div>`;
+    } else if (mode === "rec") {
+      h = `<button type="button" class="ib" aria-label="Throw it away" data-a="trash" style="color:#737373">${I.trash}</button><div class="rec"><span class="d"></span><span class="t" id="clock">0:00</span><span class="tr"><i id="track"></i></span><button type="button" class="stop${o.cue ? " cue" : ""}" data-a="stop"><span></span>Stop</button></div>`;
+    }
+    C.bar.innerHTML = h;
+    const pr = $("[data-a=projects]", C.bar); if (pr) pr.onclick = () => toast("Your projects opens, as today (N460 item 5).");
+    const rest = $("[data-a=rest]", C.bar);
+    if (rest) on(rest, () => { if (!S.took) go("rec"); else toast(`Take 2: "How do you feel?" with its Skip (Never 3), then the set-up for the real talk, its topic the plan's (N401 item 4, N449).`); }, !!o.cue);
+  }
+
+  // Will's tap answers, on your side under his question (N467, WillQuestion.tsx TapRow; the locked .taps)
+  function paintTaps(labels, cue, onTap) {
+    clearTaps();
+    const leaves = (l) => LEAVE.includes(l);
+    const goes = labels.length > 1 ? [...labels].reverse().find((l) => !leaves(l)) : undefined;
+    const html = `<div class="taps">${labels.map((l, i) => `<button type="button" class="${leaves(l) ? "leave" : "tap" + (l === goes ? " goes" : "")}${l === cue ? " cue" : ""}" data-i="${i}">${esc(l)}</button>`).join("")}</div>`;
+    C.th.insertAdjacentHTML("beforeend", html);
+    C.th.scrollTop = C.th.scrollHeight;
+    $$(".taps [data-i]", C.th).forEach((el) => (el.onclick = () => onTap(labels[+el.dataset.i])));
+  }
+
+  // One of Will's asks: taps, the box from "Something else", or a spoken answer (Record your answer / Not now)
+  function ask({ answers = [], cue = null, type = null, hear = null, echo = true }) {
+    const g = gen;
+    return new Promise((resolve) => {
+      const done = (r) => { if (g !== gen) return; clearTaps(); paintBar(); resolve(r); };
+      const openBox = () => {
+        clearTaps();
+        paintBar({ mode: "words" });
+        const input = $("#draft", C.bar), box = $(".box", C.bar);
+        const sendBtn = () => {
+          let b = $(".go", box);
+          if (input.value.trim() && !b) { box.insertAdjacentHTML("beforeend", `<button type="button" class="go" aria-label="Send">${I.send}</button>`); b = $(".go", box); b.onclick = send; }
+          if (!input.value.trim() && b) b.remove();
+          return b;
+        };
+        const send = () => { const v = input.value.trim(); if (!v) return; me(v); done({ k: "type", v }); };
+        input.addEventListener("input", sendBtn);
+        input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+        // empty, the box opened from "Something else" closes when you tap away (N483 item 2)
+        input.addEventListener("blur", () => setTimeout(() => { if (g === gen && S.mode === "words" && !input.value.trim()) { paintBar(); paintTaps(labels, cue, pick); } }, 150));
+        const value = type || "";
+        let i = 0;
+        setTimeout(() => { const t = setInterval(() => { if (g !== gen || S.mode !== "words") return clearInterval(t); if (input.value.length >= value.length) { clearInterval(t); const b = sendBtn(); if (b) b.classList.add("cue"); return; } i++; input.value = value.slice(0, i); sendBtn(); }, 36); }, 300);
+      };
+      const pick = (l) => {
+        if (l === SOMETHING_ELSE) return openBox();
+        if (LEAVE.includes(l)) return done({ k: "leave", l });
+        if (echo) me(l);
+        done({ k: "tap", l });
+      };
+      if (hear) {
+        // Will needs to hear you: "Record your answer" in the middle, "Not now" a grey word under his question
+        const rest = () => { paintBar({ mode: "hear", cue: true }); paintTaps(["Not now"], null, () => done({ k: "leave", l: "Not now" })); const b = $("[data-a=hear]", C.bar); b.onclick = record; };
+        const record = () => {
+          clearTaps();
+          paintBar({ mode: "rec", cue: true });
+          let s = 0;
+          const tm = $("#clock", C.bar), tr = $("#track", C.bar);
+          const t = setInterval(() => { if (g !== gen || S.mode !== "rec") return clearInterval(t); s++; tm.textContent = secs(s); tr.style.width = `${Math.min(100, s * 4)}%`; }, 1000);
+          $("[data-a=trash]", C.bar).onclick = () => { clearInterval(t); rest(); };
+          $("[data-a=stop]", C.bar).onclick = () => { clearInterval(t); put(`<div class="b me">${wave(14, Math.max(3, s))}<span class="said">${esc(hear.words)}</span></div>`); done({ k: "voice", v: hear.words }); };
+        };
+        rest();
+        return;
+      }
+      const labels = answers;
+      paintBar();
+      paintTaps(labels, cue, pick);
+    });
+  }
+
+  const seeCard = () => `<div class="b will pcard"><div class="pch">${letter("me", S.me.n)}<span><b>${esc(S.me.n)}</b><small>${esc(S.me.role)}</small></span></div><p>${esc(S.me.about)}</p><span class="chips">${S.topics.slice(0, 3).map((t) => `<span${t === S.fresh ? ' class="new"' : ""}>Ask about ${esc(lc(t))}</span>`).join("")}</span></div>`;
+  // PlanCard.tsx: "Plan", one part per practice (none done yet), the days, the deadline, "Change your plan"
+  const planCard = () => `<div class="plan"><span class="hd">Plan</span><span class="pbar">${Array.from({ length: S.total }, () => "<i></i>").join("")}</span><ul><li>${S.every ? "15 minutes every day" : "15 minutes, 3 times a week: Mon, Wed, Fri"}</li><li>Your deadline: <b>${esc(S.date)}</b></li></ul><button type="button" data-plan="1">Change your plan</button></div>`;
+  const walkBubble = () => `<button type="button" class="walkb" data-walk="1"><span>Feedback walk</span><small>Nov 3, 2026</small><span class="chev" aria-hidden="true">›</span></button>`;
+
+  // ---------- Will's chat, beat by beat ----------
+  const BEATS = {
+    hi: { lines: () => [D("Today 09:01"), W(esc(HI(S.me.n))), ...WELCOME.map((t) => W(esc(t)))],
+      dock: () => { stepName("Will says hi"); paintBar({ cue: true }); } },
+    heard: { lines: () => [W(esc(HEARD))], auto: () => "see" },
+    see: { lines: () => { stepName("How others will see you"); return [W(esc(SEE_Q)), seeCard()]; },
+      ask: () => ({ answers: [SOMETHING_ELSE, "Change it", "That's right"], type: S.me.change.said, cue: "That's right" }),
+      on: (r) => { if (r.k === "tap" && r.l === "That's right") { S.roleSet = true; return "plan"; } if (r.k === "tap") return "change"; addTopic(); return "see"; } },
+    change: { lines: () => [W(esc(CHANGE_Q))], ask: () => ({ hear: { words: S.me.change.said } }), on: (r) => { if (r.k === "voice") addTopic(); return "see"; } },
+    plan: { lines: () => { stepName("Your plan"); return [W(esc(DEADLINE_Q))]; },
+      ask: () => ({ answers: [NO_DATE, PICK_DATE], cue: PICK_DATE, echo: false }),
+      on: (r) => {
+        if (r.l === NO_DATE) { me(NO_DATE); put(W(esc(TWO_MONTHS("29 December")))); S.date = "Tue 29 Dec"; S.every = false; S.total = 24; }
+        else { toast("The calendar sheet opens. The prototype picks 14 November."); me("14 November"); S.date = "Sat 14 Nov"; S.every = true; S.total = 11; }
+        put(W(esc(ALL_SET))); put(planCard()); return "agree"; } },
+    agree: { lines: () => { stepName("The agreement, You're set"); return [W(esc(AGREE_ASK)), W(AGREE), W(esc(AGREE_Q))]; },
+      ask: () => ({ answers: ["Not now", "I agree"], cue: "I agree" }),
+      on: (r) => { if (r.k === "leave") { toast("Not now: no recordings reach you until you accept it. It comes back in Settings."); return "agree!"; } put(D("Accepted · 3 November, 09:06")); return "set"; } },
+    set: { lines: () => [W(esc(SET))], auto: () => "waitWalk" },
+    waitWalk: { lines: () => [], dock: () => {
+      if (S.walked) { S.beat = "after"; S.said = false; runWill().catch(fail); return; }
+      paintBar(); if (S.procDone) cueWalk(); } },
+    after: { lines: () => { stepName("Take 2"); return [D("Today 09:12"), walkBubble()]; },
+      dock: () => paintBar({ cue: true }) },
+  };
+  function addTopic() { if (!S.topics.includes(S.me.change.topic)) { S.topics.unshift(S.me.change.topic); S.fresh = S.me.change.topic; } }
+  async function runWill() {
+    const g = gen;
+    const b = BEATS[S.beat];
+    if (!S.said) { await say(b.lines()); S.said = true; }
+    if (g !== gen) return;
+    if (b.dock) { b.dock(); return; }
+    const q = b.ask ? b.ask() : null;
+    let next = q ? b.on(await ask(q)) : b.auto();
+    if (g !== gen || !next) return;
+    if (next.endsWith("!")) { next = next.slice(0, -1); } else S.said = false;
+    S.beat = next;
+    runWill().catch(fail);
+  }
+  // the processing, in a thin row on top of Will's chat (Take 1 only, N401 item 3)
+  let procTimer = null;
+  function runProc() {
+    if (procTimer) return;
+    procTimer = setInterval(() => {
+      if (S.procDone) return;
+      S.proc = Math.min(100, S.proc + 1);
+      if (S.proc >= 100) { S.procDone = true; clearInterval(procTimer); procTimer = null; if (screen === "will" && S.mode === "rest") paintBar(); }
+      paintProc();
+      if (S.procDone && screen === "will" && S.beat === "waitWalk") cueWalk();
+    }, 200);
+  }
+  function paintProc() {
+    const row = $("#procrow", app);
+    if (!row) return;
+    if (S.walked) { row.remove(); return; }
+    if (S.procDone) {
+      if (row.classList.contains("ready")) return;
+      row.outerHTML = `<button type="button" class="procrow ready" id="procrow"><span class="pt"><b>Feedback walk</b> · Take 1 · Your first Take</span><span>›</span></button>`;
+      on("#procrow", () => go("walk"), S.beat === "waitWalk");
+      return;
+    }
+    $(".pt", row).textContent = LABELS[Math.min(4, Math.floor(S.proc / 20))];
+    $(".pc", row).textContent = `${S.proc}%`;
+    $(".pbr i", row).style.width = `${S.proc}%`;
+  }
+  function cueWalk() { stepName("The Feedback walk"); const r = $("#procrow", app); if (r) r.classList.add("cue"); }
+
+  // ---------- the screens ----------
+  const SCREENS = {
+    list() {
+      const inv = S.inv;
+      const willNew = !S.willSeen;
+      const willLine = S.willLast || WELCOME[2];
+      const coach = whoKey === "coach"
+        ? `<button type="button" class="row new" data-id="coach"><span class="ci">${I.users}</span><span class="mid"><span class="t"><span class="nm"><b>${esc(S.roleSet ? S.me.role : QUEUE_TITLE)}</b></span></span><span class="p"><span class="ln">${esc(QUEUE_OPEN)}</span><span class="ndot"></span></span></span></button>`
+        : "";
+      app.innerHTML = `<div class="nav"><span class="logo">${MARK3}WillpowerLab</span><button type="button" class="menu" aria-label="Open menu">${I.menu}</button></div><div class="list" id="lst">
+        <button type="button" class="row${willNew ? " new cue" : ""}" data-id="w">${willMark(48)}<span class="mid"><span class="t"><span class="nm"><b>Will</b></span></span><span class="p"><span class="ln">${esc(willLine)}</span>${willNew ? '<span class="ndot"></span>' : I.pin}</span></span></button>
+        ${coach}
+        <button type="button" class="row${S.invSeen ? "" : " new"}" data-id="p">${letter("chat-" + inv.n, inv.n)}<span class="mid"><span class="t"><span class="nm"><b>${esc(inv.n)}</b><small>${esc(inv.role)}</small></span><em>09:01</em></span><span class="p"><span class="ln">${esc(JOINED_THANKS(inv.n))}</span>${S.invSeen ? "" : '<span class="ndot"></span>'}</span></span></button>
+      </div><button type="button" class="fab" data-add="1" aria-label="Add someone to chat with">${I.plus}</button>`;
+      $("[data-id=w]", app).onclick = () => { S.willSeen = true; go("will"); };
+      $("[data-id=p]", app).onclick = () => { S.invSeen = true; $("[data-id=p]", app).classList.remove("new"); toast(`${inv.n}'s chat, as locked (N483, N496). Will's chat comes first here.`); };
+      const co = $("[data-id=coach]", app); if (co) co.onclick = () => toast("Your queue opens: the coach panel as it is today (locked, N521).");
+      $(".menu", app).onclick = () => toast("The ☰ menu, as locked (N367).");
+      $("[data-add]", app).onclick = () => {
+        $$(".snote", app).forEach((x) => x.remove());
+        app.insertAdjacentHTML("beforeend", `<div class="snote" role="status"><button type="button" class="go2"><span class="sq">${I.link}</span><span class="tx"><b>${esc(SETUP_NOTE)}</b><span>${esc(SET_THEM)}</span></span></button><button type="button" class="cl" aria-label="Not now">${I.x}</button></div>`);
+        $(".snote .cl", app).onclick = () => $(".snote", app).remove();
+        $(".snote .go2", app).onclick = () => { $(".snote", app).remove(); toast("Will's questions for people who join open in his chat (N503, N534)."); };
+      };
+    },
+    will() {
+      app.innerHTML = `<div class="chd"><button type="button" class="bk" id="bk" aria-label="Back">${I.back}</button><span class="who">${willMark(36)}<b>Will</b></span></div>${S.took && !S.walked ? `<div class="procrow" id="procrow"><span class="pt">${LABELS[0]}</span><span class="pc">0%</span><span class="pbr"><i></i></span></div>` : ""}<div class="thread" id="th"></div><div class="bar" id="bar"></div>`;
+      C = { th: $("#th", app), bar: $("#bar", app) };
+      S.log.forEach((h) => C.th.insertAdjacentHTML("beforeend", h));
+      C.th.scrollTop = C.th.scrollHeight;
+      on("#bk", () => go("list"));
+      C.th.addEventListener("click", (e) => { if (e.target.closest("[data-plan]")) toast("Change your plan, as locked (N319)."); if (e.target.closest("[data-walk]")) go("walk"); });
+      paintProc();
+      paintBar();
+      runWill().catch(fail);
+    },
+    rec() {
+      let i = 0, t = 0;
+      const g = gen;
+      app.innerHTML = `<div class="mic"><div class="rs-top"><span></span><button type="button" class="rs-close" aria-label="Close">${I.x}</button></div><div class="body"><span class="mk3" aria-hidden="true"><i></i><i></i><i></i></span><b>Getting your mic ready</b><p>WillpowerLab uses the microphone to record your Takes.</p></div></div>`;
+      $(".rs-close", app).onclick = () => go("will");
+      setTimeout(() => {
+        if (g !== gen) return;
+        stepName("The first Take");
+        const iv = setInterval(() => { if (g !== gen) return clearInterval(iv); t++; const c = $("#rc", app); if (c) c.textContent = secs(t); }, 1000);
+        const paint = () => {
+          litSlide(i);
+          const s = SLIDES[i], last = i === SLIDES.length - 1;
+          app.innerHTML = `<div class="rs"><header class="rs-top"><p class="rs-where">Take 1 · Slide ${i + 1} of ${SLIDES.length}</p><button type="button" class="rs-close" id="rx" aria-label="Close">${I.x}</button></header>
+            <div class="rs-col"><div class="rs-stage"><div class="rs-frame"><div class="poster"><div class="pin2"><span class="poster-label">${esc(s.k)}</span><h3 class="poster-q">${esc(s.q)}</h3><p class="poster-hint">${esc(s.h)}</p></div></div></div>
+            <div class="rs-marks" aria-hidden="true">${SLIDES.map((_, k) => `<span class="${k === i ? "on" : k < i ? "done" : ""}"></span>`).join("")}</div></div>
+            <div class="rs-foot"><div class="rs-strip"><span class="rs-dot" aria-hidden="true"></span><span class="rs-clock" id="rc">${secs(t)}</span><div class="rs-track" aria-hidden="true"><i></i></div></div>
+            <div class="rs-btns"><button type="button" class="rs-back" id="rb"${i ? "" : " disabled"}>Back</button>${last ? `<button type="button" class="rs-finish cue" id="rn" aria-label="Finish take"><i aria-hidden="true"></i>Finish take</button>` : `<button type="button" class="rs-next cue" id="rn">Next slide</button>`}</div></div></div></div>`;
+          on("#rb", () => { if (i) { i--; paint(); } });
+          on("#rn", () => { if (!last) { i++; paint(); } else { clearInterval(iv); litSlide(-1); finishTake(); } });
+          on("#rx", () => {
+            $(".rs", app).insertAdjacentHTML("beforeend", `<div class="dlg" role="dialog" aria-modal="true"><div><h2>Discard this take?</h2><p>This recording has not been saved.</p><div class="two2"><button type="button" id="kr">Keep recording</button><button type="button" class="red" id="dt">Discard take</button></div></div></div>`);
+            on("#kr", () => $(".dlg", app).remove());
+            on("#dt", () => { clearInterval(iv); litSlide(-1); go("will"); });
+          });
+        };
+        paint();
+      }, 1200);
+    },
+    walk() {
+      S.walked = true;
+      stepName("The Feedback walk");
+      app.innerHTML = `<div class="scr"><div class="center"><div class="pnote"><b>Prototype</b>The Feedback walk opens here, as it is locked: the one thing from the Take, the helper words, the end. It works on how ${esc(S.me.n)} answered: the pace, the pauses, the words. Take 1's Ideal Text is the five answers, one paragraph per question. This prototype stops at the walk's door.</div><button type="button" class="pback cue" id="bw">Back to Will's chat</button></div></div>`;
+      on("#bw", () => { if (S.beat === "waitWalk") { S.beat = "after"; S.said = false; } go("will"); });
+    },
+  };
+  function finishTake() {
+    S.took = true;
+    S.log.push(`<div class="b me">${wave(14, 118)}<span class="marks">${SLIDES.map(() => "<span></span>").join("")}</span></div>`);
+    S.beat = "heard"; S.said = false;
+    stepName("While it is processed");
+    runProc();
+    go("will");
+  }
+
+  function start() {
+    gen++;
+    if (procTimer) { clearInterval(procTimer); procTimer = null; }
+    fresh();
+    paintControls();
+    litSlide(-1);
+    go("list");
+  }
+  $("#reset").onclick = start;
+  start();
+})();
+</script>
+</body></html>
