@@ -406,23 +406,32 @@ def opened(database: Any, user_id: Any, thread_id: Any, message_id: Any) -> dict
     if not is_on():
         return {"enabled": False}
     from services import chat_safety
-    me = chats.member(database, user_id, thread_id)
-    message = chats._uuid(message_id)
-    rows = _rows(_table(database, MESSAGES).select("id,kind,meta,author_member_id,created_at")
-                 .eq("id", message).eq("thread_id", str(me["thread_id"])).limit(1)) if message else []
+    user_id = chats._require(database, user_id)
+    thread, message = chats._uuid(thread_id), chats._uuid(message_id)
+    if not thread:
+        raise chats._not_found()
+    # Two rounds of reads side by side, not six in a row (founder
+    # 2026-11-09: 908 ms to open a Take, 6 calls one after another). The
+    # message is read beside the membership but never returned unless the
+    # caller is a member of its chat.
+    mine, rows = chats._side_by_side([
+        lambda: _rows(_table(database, MEMBERS).select("id,thread_id,blocked_spans")
+                      .eq("thread_id", thread).eq("user_id", user_id).limit(1)),
+        lambda: _rows(_table(database, MESSAGES)
+                      .select("id,kind,meta,author_member_id,created_at")
+                      .eq("id", message).eq("thread_id", thread).limit(1)) if message else []])
+    if not mine:
+        raise chats._not_found()
+    me = mine[0]
     row = rows[0] if rows else None
-    spans = chat_safety.spans_by_member(database, [str(me["id"])]).get(str(me["id"]), [])
-    if not row or row.get("kind") != "take" or chat_safety.unheard(str(me["id"]), spans)(row):
+    unheard = chat_safety.unheard(str(me["id"]), me.get("blocked_spans") or [])
+    if not row or row.get("kind") != "take" or unheard(row):
         raise chats._not_found()
     meta = row.get("meta") or {}
     session = chats._uuid(meta.get("take_session_id"))
-    authors = _rows(_table(database, MEMBERS).select("user_id")
-                    .eq("id", str(row["author_member_id"])).limit(1))
-    owner = str(authors[0].get("user_id") or "") if authors else ""
-    recordings = _rows(_table(database, RECORDINGS)
-                       .select("storage_path,audio_url,recording_origin,duration")
-                       .eq("session_v2_id", session).eq("user_id", owner).limit(1)) \
-        if session and owner else []
+    recordings, slides = chats._side_by_side([
+        lambda: _recording(database, row, session),
+        lambda: _slides(database, str(session)) if session else []])
     if not recordings or not (recordings[0].get("storage_path") or recordings[0].get("audio_url")):
         raise chats._not_found()
     from services.snippet_audio_url import recording_playback_url
@@ -432,7 +441,19 @@ def opened(database: Any, user_id: Any, thread_id: Any, message_id: Any) -> dict
         logger.warning("take_sends: no playable link for message %s", message, exc_info=True)
         audio_url = None
     return {"audio_url": audio_url, "duration_ms": meta.get("duration_ms"),
-            "slides": _slides(database, str(session))}
+            "slides": slides}
+
+
+def _recording(database: Any, row: dict, session: Optional[str]) -> list[dict]:
+    """The Take's recording, only when its author recorded it."""
+    authors = _rows(_table(database, MEMBERS).select("user_id")
+                    .eq("id", str(row["author_member_id"])).limit(1))
+    owner = str(authors[0].get("user_id") or "") if authors else ""
+    if not session or not owner:
+        return []
+    return _rows(_table(database, RECORDINGS)
+                 .select("storage_path,audio_url,recording_origin,duration")
+                 .eq("session_v2_id", session).eq("user_id", owner).limit(1))
 
 
 def _slides(database: Any, session: str) -> list[dict]:
