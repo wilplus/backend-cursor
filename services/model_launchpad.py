@@ -435,18 +435,18 @@ def take_consent(database: Any, owner_id: Any) -> dict:
 
 
 # ── Teaching screens follow the recipe card (MOD-08, MOD-09, MOD-19, MOD-20) ─
-#: Everything the machine read about an example. Never sent to a teacher
-#: before their answer is saved (Never 2, N518 item 4).
-MACHINE_FIELDS = frozenset({
-    "machine_label", "machine_score", "machine_value", "draft", "what_happened",
-    "sureness", "model_version_at_time", "prediction",
-})
+#: What a teacher's screen may receive about an example: the case itself and
+#: where it is from, nothing else. An allowlist, so the machine's read (its
+#: label, score, draft, "what happened", how sure it is), a known clip's
+#: hidden answer, whether it is in the exam, and the speaker it came from
+#: never reach a teacher before, or instead of, their answer (Never 2, N518
+#: item 4, N520 item 8).
+TEACHER_FIELDS = frozenset({"id", "model_id", "kind", "content", "private", "source"})
 
 
 def example_for_teacher(example: dict) -> dict:
-    """An example as a teacher's screen receives it: the machine's read is
-    left out entirely, so it cannot be shown or fetched before the answer."""
-    return {k: v for k, v in example.items() if k not in MACHINE_FIELDS}
+    """An example as a teacher's screen receives it: only ``TEACHER_FIELDS``."""
+    return {k: v for k, v in example.items() if k in TEACHER_FIELDS}
 
 
 def teaching_screen(model: dict, example: dict, step: int = 0) -> dict:

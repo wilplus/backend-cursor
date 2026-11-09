@@ -173,7 +173,9 @@ def test_mod08_a_voice_model_asks_on_the_judge():
 # MOD-09 · a teacher never sees the machine's guess before answering
 def test_mod09_nothing_of_the_machine_reaches_the_teacher():
     example = {"id": "e1", "model_id": "m-speak", "machine_label": "yes", "machine_score": 0.8,
-               "draft": "Sounded sure", "what_happened": "steady pitch", "sureness": 0.4}
+               "draft": "Sounded sure", "what_happened": "steady pitch", "sureness": 0.4,
+               "machine": {"label": "yes"}, "known_answer": "Yes", "in_exam": False,
+               "speaker_id": "u-kasia"}
     screen = ml.teaching_screen(SPEAKING, example)
     assert screen["example"] == {"id": "e1", "model_id": "m-speak"}
     queue = ml.build_queue([SPEAKING], [example], MARTA)

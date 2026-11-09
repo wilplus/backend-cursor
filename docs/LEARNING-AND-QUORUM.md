@@ -188,7 +188,7 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     person's reliability or anything about a speaker (N526 item 3).
   - **Teaching follows the recipe card:** rate (a voice model on the
     Judge), pick from its list, or answer in words, spoken. The machine's
-    read never reaches the teacher's screen (`MACHINE_FIELDS`, Never 2).
+    read never reaches the teacher's screen (an allowlist, `TEACHER_FIELDS`: no machine read, no known answer, no speaker; Never 2).
   - **The quiet trust check:** N520 item 12's numbers (20 answers, 5 known,
     the cautious edge of an 80% range at 70% of the trusted median, never
     below 0.20; removed under 50%); known clips 1 in 4 of the first 20, then
