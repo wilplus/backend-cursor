@@ -20,12 +20,17 @@ for the rules, services/model_launchpad_store.py for the tables).
   POST /v2/models/<id>/examples            {text | transcript, step?, answer?}: an example added
   POST /v2/models/<id>/archive             the owner's Archive
   POST /v2/models/<id>/make-public         {confirm: true}, after the disclaimer
-  GET  /v2/models/<id>/download            the teachers' ratings and answers
+  POST /v2/models/<id>/transcribe          a spoken answer or case (multipart ``audio``)
+                                           to its words: {transcript}
 
-Ring row ``ai_models`` (ring 6): anyone else gets 404 from every route. No
-provider call and no recording passes through here (an answer in words is
-recorded through the chats' own recording path, which takes the
-processing-authorization path, and only its words arrive here).
+Ring row ``ai_models`` (ring 6): anyone else gets 404 from every route. One
+provider call: ``/transcribe``, "Record your answer" (MOD-20) and "Record
+one" (MOD-21). It passes the path a chat's voice note does: the model is
+the caller's to teach (404), the caller's processing authorization
+(``phase1_provider_route``) and their recording consent (their refusal),
+then the recording is turned into words under that authorization. The
+recording is never kept: only its words come back, and only they reach a
+model (N528 item 10).
 """
 import logging
 
@@ -34,6 +39,8 @@ from flask import jsonify, request
 
 from auth import require_auth
 from routes.v2.blueprint import v2_bp
+from routes.v2.processing_authorization import phase1_provider_route
+from services.rate_limits import llm_limit
 from services.db import db
 
 logger = logging.getLogger(__name__)
@@ -188,8 +195,46 @@ def v2_models_make_public(model_id):
     return _run("public", lambda: store.make_public(db, _me(), model_id, body.get("confirm") is True))
 
 
-@v2_bp.route("/models/<model_id>/download", methods=["GET"])
+#: A spoken answer or case: two minutes at most, as a chat's voice note.
+_MAX_SPOKEN_BYTES = 12 * 1024 * 1024
+
+
+def _a_teacher_first(function):
+    """The ring and the model first: 404 unless the caller teaches it, before
+    the processing authorization is asked."""
+    from functools import wraps
+
+    @wraps(function)
+    def wrapped(model_id, *args, **kwargs):
+        from services import model_launchpad_store as store
+        from services.chats import ChatsError
+        try:
+            store.teaches(db, _me(), model_id)
+        except ChatsError as e:
+            return jsonify({"code": e.code, "error": str(e)}), e.status
+        return function(model_id, *args, **kwargs)
+    return wrapped
+
+
+@v2_bp.route("/models/<model_id>/transcribe", methods=["POST"])
 @require_auth
-def v2_models_download(model_id):
+@_a_teacher_first
+@phase1_provider_route
+@llm_limit
+def v2_models_transcribe(model_id):
+    """A spoken answer or case to its words, under the caller's processing
+    authorization and recording consent, as a chat's voice note is (N324)."""
+    from routes.v2.chats import _recording_refused
+    refused = _recording_refused()
+    if refused is not None:
+        return refused
+    from routes.v2.voice_notebook import _adapter
     from services import model_launchpad_store as store
-    return _run("download", lambda: store.download(db, _me(), model_id))
+    upload = request.files.get("audio")
+    audio = upload.stream.read(_MAX_SPOKEN_BYTES + 1) if upload is not None else b""
+    kind = upload.content_type if upload is not None else None
+    filename = (upload.filename if upload is not None else None) or "voice.webm"
+    user_id = _me()
+    return _run("transcribe", lambda: store.transcribe(
+        audio, kind, filename, adapter=_adapter(user_id), user_id=user_id, model_id=model_id,
+        most=_MAX_SPOKEN_BYTES))

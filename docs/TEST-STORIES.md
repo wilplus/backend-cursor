@@ -1978,13 +1978,14 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 *Why:* The model launchpad, locked on its prototype (N566); its rules live once in services/model_launchpad.py, before its tables.
 
-### As someone who teaches or owns an AI model, I want to put off an invite and find it again, accept it, add a case I know well, give a spoken answer as its words, and, as the owner, archive my model, make it public only after its disclaimer and download its data, so the launchpad's actions all work from the app (N528 items 3, 5 and 12, N563 item 4).
+### As someone who teaches or owns an AI model, I want to put off an invite and find it again, accept it, add a case I know well, give a spoken answer as its words, and, as the owner, archive my model, make it public only after its disclaimer, so the launchpad's actions all work from the app (N528 items 3, 5 and 12, N563 item 4).
 
 `tests/test_model_launchpad_actions.py` · Story
 
 - **O1** "Not now" keeps the invite in my list, saying I put it off; accepting makes me a teacher of the model.
 - **O2** An example I add is kept as mine, with my answer, and counts once another teacher agrees; a spoken answer arrives as its transcript.
-- **O3** Only the owner archives or makes a model public, and public needs the disclaimer's confirm; the download holds the teachers' answers with each teacher as a number, never the sealed exam; another person's profile names whose it is and each model's id.
+- **O3** Only the owner archives or makes a model public, and public needs the disclaimer's confirm; another person's profile names whose it is and each model's id.
+- **O4** "Record your answer" and "Record one" turn a recording into its words only under my processing authorization and recording consent; without them nothing is transcribed, and the recording is never kept.
 
 *Why:* routes/v2/learning_models.py over services/model_launchpad_store.py, for the screens built on #1863's routes.
 

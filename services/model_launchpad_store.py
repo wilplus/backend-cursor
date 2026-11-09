@@ -25,7 +25,8 @@ its words reach a model (N528 item 10).
   * ``invites_for``   the caller's invites, open or put off (MOD-49)
   * ``answer_invite`` "Not now" (it stays) or accept (MOD-49)
   * ``add_example``   "Add an example you know well" (MOD-21)
-  * ``archive``, ``make_public``, ``download``  the owner's actions (MOD-50, MOD-51)
+  * ``archive``, ``make_public``  the owner's actions (MOD-50, MOD-51)
+  * ``teaches``, ``transcribe``  a spoken answer or case to its words (MOD-20, MOD-21)
 """
 from __future__ import annotations
 
@@ -419,29 +420,30 @@ def make_public(database: Any, user_id: Any, model_id: Any, confirmed: bool) -> 
     return {"visibility": "public"}
 
 
-def download(database: Any, user_id: Any, model_id: Any) -> dict:
-    """ "Download its data" (N528 item 12): for its owner and its team, the
-    teachers' ratings and answers only, each teacher as a number, never a
-    name. Speakers' words are not in it until the training yes carries the
-    line that says so (for the founder's signature); recordings never leave."""
+def teaches(database: Any, user_id: Any, model_id: Any) -> dict:
+    """The model, when the caller is its owner or a teacher; else 404."""
     me = _require(database, user_id)
     model = _model(database, model_id)
     if rules.viewer_role(model, me) not in ("owner", "contributor"):
         raise _not_found()
-    answers = _rows(_table(database, ANSWERS).select("example_id,teacher_id,step,answer,counted,created_at")
-                    .eq("model_id", model["id"]))
-    exam = {str(e["id"]) for e in _rows(_table(database, EXAMPLES).select("id").eq("model_id", model["id"])
-                                        .eq("in_exam", True))}
-    teacher_no: dict[str, int] = {}
-    example_no: dict[str, int] = {}
-    rows = []
-    for a in sorted(answers, key=lambda a: str(a.get("created_at") or "")):
-        if str(a["example_id"]) in exam:
-            continue          # the sealed exam stays sealed
-        t = teacher_no.setdefault(str(a["teacher_id"]), len(teacher_no) + 1)
-        e = example_no.setdefault(str(a["example_id"]), len(example_no) + 1)
-        rows.append({"example": e, "teacher": t, "step": a.get("step"), "answer": a.get("answer"),
-                     "counted": bool(a.get("counted"))})
-    recipe = model.get("recipe") or {}
-    return {"model": model.get("name"), "question": recipe.get("question"), "scale": recipe.get("scale") or [],
-            "options": recipe.get("options") or [], "answers": rows}
+    return model
+
+
+def transcribe(audio: bytes, content_type: Any, filename: str, *, adapter: Any, user_id: str,
+               model_id: Any, most: int) -> dict:
+    """What was said, under the caller's authorization (``adapter``, bound by
+    the route's processing-authorization path). The recording is not kept
+    anywhere: only its words are returned (N528 item 10)."""
+    kind = str(content_type or "").strip()
+    if not audio:
+        raise ChatsError("NOT_ALLOWED", "No recording.")
+    if not kind.startswith("audio/"):
+        raise ChatsError("NOT_ALLOWED", "Only an audio recording.")
+    if len(audio) > most:
+        raise ChatsError("TOO_LARGE", "A recording is at most 12 MB.", 413)
+    result = adapter.transcribe_audio(audio, filename, usage_surface="model_spoken_answer",
+                                      usage_user_id=user_id, usage_session_id=str(model_id)) or {}
+    words = str(result.get("text") or "").strip()[:4000]
+    if not words:
+        raise ChatsError("NO_WORDS", "We could not hear any words. Try again.")
+    return {"transcript": words}
