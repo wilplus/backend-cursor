@@ -14000,3 +14000,98 @@ nothing new.
 No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C2 and K.
+
+**N552 · When the Ideal Text can't load, it tries again by itself and
+offers "Try again" (founder, the Claude Code chat, 9 November 2026, asked:
+"when the Ideal Text can't load, the page says "Couldn't load your ideal
+text. Try again in a moment." and stops there, with no button and no
+second attempt. The speaker has to close and reopen it. How should it
+recover?", answered "Both": quiet retries and a button).** For Never 3:
+1. **It tries again by itself,** quietly, 3 seconds and then 10 seconds
+after a failed load; a load that answers shows the page as usual. The
+line stays on screen while it tries.
+2. **Under the line, a "Try again" button** (signed: the walk's and the
+wallet's "Try again") reads the page again at once, whenever tapped.
+Was: the line alone, with no second read until the page was closed and
+opened again.
+No new words. No migration. The rules: frontend
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
+§1, "When the page can't load".
+
+**N553 · A Take is never lost silently between recording and the server
+having it (founder, the Claude Code chat, 9 November 2026, asked about a
+Take lost when the page is refreshed, closed or the app is killed before
+the server confirms it, with two protections: "(A) the browser's own
+"Leave page?" warning, small, but iPhone Safari and the iPhone app ignore
+it; (B) keep the Take saved on the phone until the server has it, then
+delete it, protecting the iPhone app too, but a bigger build and audio
+stays on the device for a moment, which may need a privacy line",
+answered "Both: A now, B next").** For Never 3:
+1. **While a Take is being recorded, and until its upload is accepted,**
+refreshing or closing the page in a browser shows the browser's own
+"Leave page?" warning (its words, not ours). Nothing else asks. iPhone
+Safari and the iPhone app do not show such a warning; item 2 is for them.
+2. **Next, its own change:** the Take is kept on the device until the
+server has it, then deleted, and sent again at the next open if its
+upload never finished. The privacy text is checked first, and any new
+line comes to the founder before this ships (Never 4). Not in force until
+built and merged.
+No new words. No migration. The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+§1, Amendments.
+
+**N554 · On a phone, a drop-down is 16 px, so tapping it never zooms the
+page (founder, the Claude Code chat, 9 November 2026, on frontend #1279:
+"Approve?", answered "Yes, merge it").** iPhone zooms the page in on any
+field under 16 px when it is tapped, and leaves it zoomed; text fields
+were already 16 px on phones, drop-downs were not. Drop-downs are now 16
+px on phones too. On the locked consent screen the country drop-down goes
+from 15 px to 16 px on phones (founder's OK, this entry); elsewhere the
+booking time zone, the blog sort and the Life Panel's choice. No new
+words. No migration. No rules page.
+
+**N555 · In the iPhone app the bar never shows a lesson price, and Will's
+booking link opens Safari (founder, the Claude Code chat, 9 November 2026,
+on frontend #1280, which would have opened the booking page inside the
+app, and on the bar's lesson offer, which showed "Artur set a price for
+you: a 1-on-1 lesson for … instead of …" with "See times" in the app:
+"Close #1280; fix "See times"", then, told that opening Safari would still
+leave a price and a button to buy in the app, "Hide it in the app").** For
+N495 and N365 item 1:
+1. **The bar's lesson offer is the web only,** as the plan offer already
+is: in the iPhone app it never shows, so no price in money and no button
+leading to buying appear there. On the web it shows as before.
+2. **Will's booking link in a message keeps opening in Safari** from the
+app (frontend #1280 closed, not merged).
+No new words. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+E1.
+
+**N556 · How a Take is kept on the device until the server has it (N553
+item 2) (founder, the Claude Code chat, 9 November 2026, asked three
+things: the privacy text, "Ship B; line in next version"; when to save,
+"At Finish only, for now"; the remaining rules as proposed, "Yes, all of
+them").** For N553 item 2 and Never 3:
+1. **Saved at Finish,** once, on the device, and deleted as soon as the
+server has the Take, when the speaker discards it, or after 7 days if it
+never reaches the server. A Take cut off before Finish is not saved (as
+today).
+2. **Sent again, at the next open and when the connection comes back,**
+through the same upload and the same processing authorization as the
+first try, with the same upload key, so the server never makes it twice.
+It then appears as processing, as any Take does; nothing new on screen.
+While it is going up, the record button waits with its signed line "One
+moment — finishing your last take.".
+3. **Not sent, and deleted, when** a newer Take of the same project has
+already reached the server (an older Take never becomes the Ideal Text,
+Never 5), or when recording consent was withdrawn. Kept through a sign-out
+and sent only when the same person signs back in, never under another.
+Answers and questions recorded in a chat are left out for now.
+4. **The privacy text:** B ships under the current version; the next
+privacy version adds, as approved here: "A take you have just recorded is
+kept on your device until it reaches us, so that closing the app or losing
+the connection does not lose it. That copy is deleted as soon as we have
+the take, when you discard it, or after 7 days if it never reaches us."
+No new words on screen. No migration. The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+§1, Amendments, when built.
