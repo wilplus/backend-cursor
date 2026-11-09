@@ -15391,3 +15391,36 @@ for N470, N471, N559 and N582:
    instead?", with "Record" and "Send anyway". The words are drafted for
    the founder's OK.
 No migration. No rules page yet.
+
+**N589 · Who hears a Take: you choose simply before you record; after the
+recording the same screen comes back with one recommendation for that Take
+(founder, the Claude Code chat, 9 November 2026, asked whether the screen of
+who hears it should move after the recording: "You just choose who you want
+to send it to, like very simple. And the recommendation comes afterwards,
+after you record the same screen appears, but with just a recommendation, one
+single recommendation for this, just this one take").** Amends N587 item 1;
+for N470, N584 and N588:
+1. **Before you record,** the screen of who hears it stays as N470 has it:
+   you choose who you send it to, your coach ticked. Nothing is suggested
+   there.
+2. **After the recording, the same screen comes back** with one single
+   recommendation for this Take only: the one person who fits it best by
+   N588's rule (a skill coach when the recording shows the skill, a topic
+   expert for its topic), with Will's one-line reason, to add or to leave.
+   Will's words are drafted for the founder's OK.
+3. **N587 item 1's "at most two more people" and its "Listen" to a saved
+   answer are not on this screen;** the answers still gather under the Take
+   as N587 items 3 to 5 have it.
+No migration. No rules page yet.
+
+**N590 · The speaking way in is Artur's chat alone; every other chat starts
+with its host's welcome and questions (founder, the Claude Code chat, 9
+November 2026, asked whether someone who joins a chat that is not about
+speaking should go through the way in: "Speaking way in only in Artur's").**
+For N572, N573, N580, N582 and N586:
+1. **Artur's chat keeps the whole way in** (N572's tree with N573's choice):
+   the first Take, the choice while it is processed, the plan card and
+   "You're set.".
+2. **Every other chat starts with its host's welcome and the host's own
+   questions** (N582 item 1), and none of the speaking way in's steps.
+No migration. No rules page yet.
