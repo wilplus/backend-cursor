@@ -14000,3 +14000,52 @@ nothing new.
 No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C2 and K.
+
+**N552 · When the Ideal Text can't load, it tries again by itself and
+offers "Try again" (founder, the Claude Code chat, 9 November 2026, asked:
+"when the Ideal Text can't load, the page says "Couldn't load your ideal
+text. Try again in a moment." and stops there, with no button and no
+second attempt. The speaker has to close and reopen it. How should it
+recover?", answered "Both": quiet retries and a button).** For Never 3:
+1. **It tries again by itself,** quietly, 3 seconds and then 10 seconds
+after a failed load; a load that answers shows the page as usual. The
+line stays on screen while it tries.
+2. **Under the line, a "Try again" button** (signed: the walk's and the
+wallet's "Try again") reads the page again at once, whenever tapped.
+Was: the line alone, with no second read until the page was closed and
+opened again.
+No new words. No migration. The rules: frontend
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
+§1, "When the page can't load".
+
+**N553 · A Take is never lost silently between recording and the server
+having it (founder, the Claude Code chat, 9 November 2026, asked about a
+Take lost when the page is refreshed, closed or the app is killed before
+the server confirms it, with two protections: "(A) the browser's own
+"Leave page?" warning, small, but iPhone Safari and the iPhone app ignore
+it; (B) keep the Take saved on the phone until the server has it, then
+delete it, protecting the iPhone app too, but a bigger build and audio
+stays on the device for a moment, which may need a privacy line",
+answered "Both: A now, B next").** For Never 3:
+1. **While a Take is being recorded, and until its upload is accepted,**
+refreshing or closing the page in a browser shows the browser's own
+"Leave page?" warning (its words, not ours). Nothing else asks. iPhone
+Safari and the iPhone app do not show such a warning; item 2 is for them.
+2. **Next, its own change:** the Take is kept on the device until the
+server has it, then deleted, and sent again at the next open if its
+upload never finished. The privacy text is checked first, and any new
+line comes to the founder before this ships (Never 4). Not in force until
+built and merged.
+No new words. No migration. The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+§1, Amendments.
+
+**N554 · On a phone, a drop-down is 16 px, so tapping it never zooms the
+page (founder, the Claude Code chat, 9 November 2026, on frontend #1279:
+"Approve?", answered "Yes, merge it").** iPhone zooms the page in on any
+field under 16 px when it is tapped, and leaves it zoomed; text fields
+were already 16 px on phones, drop-downs were not. Drop-downs are now 16
+px on phones too. On the locked consent screen the country drop-down goes
+from 15 px to 16 px on phones (founder's OK, this entry); elsewhere the
+booking time zone, the blog sort and the Life Panel's choice. No new
+words. No migration. No rules page.
