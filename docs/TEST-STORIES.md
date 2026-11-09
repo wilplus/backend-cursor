@@ -1984,7 +1984,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 - **O1** "Not now" keeps the invite in my list, saying I put it off; accepting makes me a teacher of the model.
 - **O2** An example I add is kept as mine, with my answer, and counts once another teacher agrees; a spoken answer arrives as its transcript.
-- **O3** Only the owner archives or makes a model public, and public needs the disclaimer's confirm; another person's profile names whose it is and each model's id.
+- **O3** Only the owner archives or makes a model public, and public needs the disclaimer's confirm; the download holds the teachers' answers with each teacher as a number, never the sealed exam; another person's profile names whose it is and each model's id.
 - **O4** "Record your answer" and "Record one" turn a recording into its words only under my processing authorization and recording consent; without them nothing is transcribed, and the recording is never kept.
 
 *Why:* routes/v2/learning_models.py over services/model_launchpad_store.py, for the screens built on #1863's routes.

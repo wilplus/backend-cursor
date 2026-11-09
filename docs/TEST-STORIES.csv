@@ -2090,13 +2090,14 @@ makes me a teacher of the model.
 O2  An example I add is kept as mine, with my answer, and counts once
 another teacher agrees; a spoken answer arrives as its transcript.
 O3  Only the owner archives or makes a model public, and public needs the
-disclaimer's confirm; another person's profile names whose it is and
-each model's id.
+disclaimer's confirm; the download holds the teachers' answers with
+each teacher as a number, never the sealed exam; another person's
+profile names whose it is and each model's id.
 O4  ""Record your answer"" and ""Record one"" turn a recording into its words
 only under my processing authorization and recording consent; without
 them nothing is transcribed, and the recording is never kept.","O1 -> ModelActionsTest::test_not_now_keeps_the_invite_and_accept_makes_a_teacher
 O2 -> ModelActionsTest::test_an_added_example_and_a_spoken_answer
-O3 -> ModelActionsTest::test_the_owners_actions_and_the_profile
+O3 -> ModelActionsTest::test_the_owners_actions_the_download_and_the_profile
 O4 -> ModelActionsTest::test_a_recording_becomes_words_only_with_authorization","routes/v2/learning_models.py over services/model_launchpad_store.py, for the screens built on #1863's routes."
 tests/test_model_launchpad_routes.py,Story,"As a person in WillpowerLab, I want the AI models' list, a model's page, the door, the one queue and teaching to answer from the models' tables through /v2/models, so the launchpad's rules reach me as they are written (N528, N563, N566).","O1  Without the ring row (ai_models, ring 6) every route is 404.
 O2  The list shows public models with how far each is, and never another
