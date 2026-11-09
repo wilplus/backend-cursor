@@ -2870,7 +2870,7 @@ tests/test_purge_settles_legacy_take_owners.py,Story,"As a speaker deleting my a
 O2  When they cannot be settled, the erasure still stops for review on
 them, exactly as before (fail-closed).","O1 -> test_older_takes_take_the_accounts_owner_before_the_freeze
 O2 -> test_an_erasure_that_cannot_settle_them_still_stops_for_review","Founder 2026-10-20 (option 1): three test accounts' Takes, and most real speakers' older Takes (348 of 367 had no owner copy on 2026-09-16), stopped every erasure with LEGACY_TAKE_OWNER_PRINCIPAL_UNRESOLVED. The SQL of 0485 is proved on the released lane by tests/test_phase1_deletion_completion_postgres.py (TestALegacyTakeTakesItsOwner); this covers the Python orchestrator, with test_purge_user_locators.PurgeDb."
-tests/test_purge_user_locators.py,Story,"As a speaker deleting my account, I want rows saved under my user id (coach readings, listener answers, votes, my chats) deleted too, so that nothing outlives my account (deletion).","O1  An account erasure whose principal id is not its user id deletes
+tests/test_purge_user_locators.py,Story,"As a speaker deleting my account, I want rows saved under my user id (coach readings, listener answers, votes, my chats, my website chats) deleted too, so that nothing outlives my account (deletion).","O1  An account erasure whose principal id is not its user id deletes
 exactly my rows in each user-keyed table and leaves everyone else's.
 O2  A project erasure leaves those rows: they belong to the account.
 O3  A `principal` locator addresses only a column that holds a principal,
@@ -4186,6 +4186,10 @@ O2 -> test_will_writes_only_for_me_on_my_take_when_it_is_on
 O3 -> test_a_refused_draft_gets_one_more_try_then_the_signed_line
 O4 -> test_will_hears_how_the_try_went_and_what_the_moment_is_walked_with
 O5 -> test_my_private_note_is_never_repeated_back_to_me","Founder 2026-11-09 (N565: ""make the answers smart. So not locked in, but smart... we can set the rules for those messages""; N557: ""It assumes that you're broken and we need to fix you""; the founder's ratings: ""to complex"", ""drawing in... this sounds wierd""). The style itself is graded by the golden set, tests/evals/golden/walk_voice.jsonl."
+tests/test_walk_voice_authority.py,Story,"As a speaker, I want Will's written walk message to be made only under my Take's processing authorization, so that no word of my Take reaches the AI provider without a permit we can record and delete.","O1  When the authorization mode enforces, the GPT-4o call that writes
+Will's message runs inside my Take's protected provider scope, bound
+to my principal and my Take; with no principal for the Take, no call
+is made and the walk says its signed line.",O1 -> test_wills_message_is_written_only_inside_my_takes_protected_scope,"CLAUDE.md How to ship: every provider call goes through the processing-authorization path (N565, services/walk_voice.py)."
 tests/test_way_in.py,Story,"As a newcomer in Artur's chat, while my first Take is processed, I want Will to check what he heard and ask what I'd like to do here, so that my plan and my next step are mine before the walk ends.","W1  Once Take 1 is sent: ""While your feedback is being prepared, check
 what I heard."", then ""What would you like to do here first?"" with
 ""Something else"" first, ""Learn from others"", ""Share what I know"",
