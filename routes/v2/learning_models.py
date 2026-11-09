@@ -20,7 +20,6 @@ for the rules, services/model_launchpad_store.py for the tables).
   POST /v2/models/<id>/examples            {text | transcript, step?, answer?}: an example added
   POST /v2/models/<id>/archive             the owner's Archive
   POST /v2/models/<id>/make-public         {confirm: true}, after the disclaimer
-  GET  /v2/models/<id>/download            the teachers' ratings and answers, never the exam
   POST /v2/models/<id>/transcribe          a spoken answer or case (multipart ``audio``)
                                            to its words: {transcript}
 
@@ -194,14 +193,6 @@ def v2_models_make_public(model_id):
     from services import model_launchpad_store as store
     body = request.get_json(silent=True) or {}
     return _run("public", lambda: store.make_public(db, _me(), model_id, body.get("confirm") is True))
-
-
-
-@v2_bp.route("/models/<model_id>/download", methods=["GET"])
-@require_auth
-def v2_models_download(model_id):
-    from services import model_launchpad_store as store
-    return _run("download", lambda: store.download(db, _me(), model_id))
 
 
 #: A spoken answer or case: two minutes at most, as a chat's voice note.

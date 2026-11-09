@@ -11,15 +11,14 @@ OUTCOME
   O2  An example I add is kept as mine, with my answer, and counts once
       another teacher agrees; a spoken answer arrives as its transcript.
   O3  Only the owner archives or makes a model public, and public needs the
-      disclaimer's confirm; the download holds the teachers' answers with
-      each teacher as a number, never the sealed exam; another person's
-      profile names whose it is and each model's id.
+      disclaimer's confirm; another person's profile names whose it is and
+      each model's id.
   O4  "Record your answer" and "Record one" turn a recording into its words
       only under my processing authorization and recording consent; without
       them nothing is transcribed, and the recording is never kept.
 PROVES   O1 -> ModelActionsTest::test_not_now_keeps_the_invite_and_accept_makes_a_teacher
          O2 -> ModelActionsTest::test_an_added_example_and_a_spoken_answer
-         O3 -> ModelActionsTest::test_the_owners_actions_the_download_and_the_profile
+         O3 -> ModelActionsTest::test_the_owners_actions_and_the_profile
          O4 -> ModelActionsTest::test_a_recording_becomes_words_only_with_authorization
 WHY      routes/v2/learning_models.py over services/model_launchpad_store.py,
          for the screens built on #1863's routes.
@@ -63,28 +62,13 @@ class ModelActionsTest(ModelRoutesTest):
         spoken = [a for a in self.store.tables["ai_model_answers"] if a["teacher_id"] == KASIA]
         self.assertEqual(spoken[0]["answer"], "Slow down before the ask.")
 
-    def test_the_owners_actions_the_download_and_the_profile(self):
+    def test_the_owners_actions_and_the_profile(self):
         self.assertEqual(self._post(f"/v2/models/{PITCH}/archive").status_code, 404)
         self.who = KASIA
         self.assertEqual(self._post(f"/v2/models/{PITCH}/make-public", {}).status_code, 400)
         secret = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
         self.assertEqual(self._post(f"/v2/models/{secret}/make-public", {"confirm": True}).get_json(),
                          {"visibility": "public"})
-        self.store.tables["ai_model_answers"] += [
-            {"id": "p1", "model_id": PITCH, "example_id": "e-a", "teacher_id": MARTA, "step": "rate",
-             "answer": "Calm", "counted": True, "created_at": "2026-11-02"},
-            {"id": "p2", "model_id": PITCH, "example_id": "x-exam", "teacher_id": MARTA, "step": "rate",
-             "answer": "Calm", "counted": False, "created_at": "2026-11-03"}]
-        self.store.tables["ai_model_examples"].append({"id": "x-exam", "model_id": PITCH, "in_exam": True})
-        data = self._get(f"/v2/models/{PITCH}/download").get_json()
-        self.assertEqual(data["answers"], [{"example": 1, "teacher": 1, "step": "rate", "answer": "Calm",
-                                            "counted": True}])
-        self.assertNotIn(MARTA, str(data))
-        self.who = MARTA
-        section = self._get(f"/v2/models/profile/{KASIA}").get_json()["section"]
-        self.assertEqual(section["user_id"], KASIA)
-        self.assertIn(PITCH, [m["id"] for m in section["models"]])
-        self.who = KASIA
         self.who = MARTA
         section = self._get(f"/v2/models/profile/{KASIA}").get_json()["section"]
         self.assertEqual(section["user_id"], KASIA)
