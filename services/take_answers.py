@@ -49,39 +49,45 @@ def _first_answer(rows: list[dict], sent_at: str, mine: str) -> Optional[dict]:
     return None
 
 
+def _sent(database: Any, me: str, session: str) -> list[dict]:
+    """My messages that carry this Take, the first sent first."""
+    mine = [str(m["id"]) for m in _rows(_table(database, MEMBERS).select("id").eq("user_id", me))]
+    if not mine:
+        return []
+    rows = _rows(_table(database, MESSAGES).select("id,thread_id,author_member_id,meta,created_at")
+                 .eq("kind", "take").in_("author_member_id", mine))
+    sent = [r for r in rows if str((r.get("meta") or {}).get("take_session_id")) == session]
+    return sorted(sent, key=lambda r: str(r.get("created_at") or ""))
+
+
+def _answer_in(database: Any, sent: dict, coach: bool) -> Optional[dict]:
+    """The answer to the Take in the chat ``sent`` was posted in, or None."""
+    thread = str(sent["thread_id"])
+    rows = _rows(_table(database, MESSAGES).select("id,author_member_id,kind,meta,created_at")
+                 .eq("thread_id", thread))
+    got = _first_answer(rows, str(sent.get("created_at") or ""), str(sent["author_member_id"]))
+    if not got:
+        return None
+    members = _rows(_table(database, MEMBERS).select("id,user_id,display_name").eq("thread_id", thread))
+    other = next((m for m in members if str(m["id"]) == str(got["author_member_id"])), {})
+    fit = (assistants.recipe_of(database, other.get("user_id")) or {}).get("fit") or {}
+    return {"message_id": str(got["id"]), "chat": thread, "coach": coach,
+            "name": str(other.get("display_name") or "").split(" ")[0] or None,
+            "title": ON_MATTER if fit.get("coaches") == "topic" else ON_SPEAKING,
+            "at": got.get("created_at")}
+
+
 def gathered(database: Any, user_id: Any, take: Any) -> dict:
     """{"bubble": {"shown": [answers], "faces": [names]}, "groups": [{"title",
     "answers"}]} for the caller's own Take; 404 when it was sent nowhere."""
-    me = str(user_id)
     session = _uuid(take)
-    if not session:
-        raise _not_found()
-    mine = {str(m["id"]): str(m["thread_id"]) for m in _rows(
-        _table(database, MEMBERS).select("id,thread_id").eq("user_id", me))}
-    sent = [r for r in _rows(_table(database, MESSAGES).select("id,thread_id,author_member_id,meta,created_at")
-                             .eq("kind", "take").in_("author_member_id", list(mine)))
-            if str((r.get("meta") or {}).get("take_session_id")) == session] if mine else []
+    sent = _sent(database, str(user_id), session) if session else []
     if not sent:
         raise _not_found()
-    sent.sort(key=lambda r: str(r.get("created_at") or ""))
-    answers: list[dict[str, Any]] = []
-    for i, s in enumerate(sent):
-        thread = str(s["thread_id"])
-        rows = _rows(_table(database, MESSAGES).select("id,author_member_id,kind,meta,created_at")
-                     .eq("thread_id", thread))
-        got = _first_answer(rows, str(s.get("created_at") or ""), str(s["author_member_id"]))
-        if not got:
-            continue
-        other = next((m for m in _rows(_table(database, MEMBERS).select("id,user_id,display_name")
-                                       .eq("thread_id", thread))
-                      if str(m["id"]) == str(got["author_member_id"])), {})
-        fit = (assistants.recipe_of(database, other.get("user_id")) or {}).get("fit") or {}
-        answers.append({"message_id": str(got["id"]), "chat": thread, "coach": i == 0,
-                        "name": str(other.get("display_name") or "").split(" ")[0] or None,
-                        "title": ON_MATTER if fit.get("coaches") == "topic" else ON_SPEAKING,
-                        "at": got.get("created_at")})
+    found = [_answer_in(database, s, i == 0) for i, s in enumerate(sent)]
+    answers: list[dict[str, Any]] = [a for a in found if a]
     groups: list[dict[str, Any]] = [{"title": t, "answers": [a for a in answers if a["title"] == t]}
-              for t in (ON_SPEAKING, ON_MATTER)]
+                                    for t in (ON_SPEAKING, ON_MATTER)]
     shown = [a for a in answers if a["coach"]]
     for g in groups:
         best = next((a for a in g["answers"] if not a["coach"]), None)
