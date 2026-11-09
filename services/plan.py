@@ -1,10 +1,10 @@
-"""The plan: from the first questions to the deadline (frontend
+"""The plan: from the first questions to its three levels (frontend
 docs/flows/the-plan.md; N129 onward, built one to one with the prototype,
 N203; ring row ``plan`` at ring 5, N204).
 
 This module is the plan's own logic, kept free of the database so it can be
-read and tested on its own: the journey a deadline gives, the levels and
-their signed lines, the order of the follow-up questions, the check on the
+read and tested on its own: the three levels of four Takes (N564), the
+levels and their signed lines, the order of the follow-up questions, the check on the
 AI's words, and the dates as the chat writes them. ``services/plan_flow.py``
 holds the conversation in the Lounge and the database calls.
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any, Mapping, Optional, Sequence
 
 FEATURE = "plan"
@@ -59,6 +59,8 @@ COPY = {
     "first_take_where": ("Record somewhere quiet, where you'd usually take a call and no one will "
                          "interrupt you. Passing knowledge from one mind to another is, after all, "
                          "what civilization is made of."),
+    # N564 item 1: nobody is asked "When is your deadline?"; the words stay
+    # signed, unused, for a plan still at that step (``_ask_again``).
     "deadline_q": "When is your deadline?",
     "pick_date": "Pick a date",
     "no_date": "No date yet",
@@ -86,6 +88,10 @@ COPY = {
                     "Would you like to choose it now?"),
     "booked": "Booked: {when}.",
     "all_set": "You're all set. Here's your plan.",
+    # N564 item 7: what stops. Each of the next lines stays signed, unused:
+    # "runs_to", "every_day", "days_done", "practice_n" (the hello shows the
+    # level's bar instead), "done_of" (the bar after the walk), "fifteen_1",
+    # "deadline_was" and "two_months".
     "runs_to": "Done. Your plan now runs to {date}.",
     "every_day": "Your deadline is close, so you practise every day.",
     "days_done": "Done. You'll practise on {days}.",
@@ -179,17 +185,9 @@ FACT_KEYS = ("event", "why", "topic", "audience", "length", "slides", "key_line"
 MONTHS = ("January", "February", "March", "April", "May", "June", "July",
           "August", "September", "October", "November", "December")
 DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-DEFAULT_DAYS = (1, 3, 5)  # Mon, Wed, Fri, as 0 = Sunday … 6 = Saturday
-NO_DATE_DAYS = 56          # "two months": eight weeks (N135, N140)
-EVERY_DAY_WITHIN = 14      # two weeks or less: every day (G1)
 
 
 # ── dates, as the chat writes them ─────────────────────────────────────────
-
-def _js_weekday(d: date) -> int:
-    """0 = Sunday … 6 = Saturday, as the app and the stored days count."""
-    return (d.weekday() + 1) % 7
-
 
 def fmt_day(d: date) -> str:
     """"14 November"."""
@@ -216,87 +214,47 @@ def fmt_when_short(at: datetime) -> str:
     return f"{fmt_short(at.date())}, {at:%H:%M}"
 
 
-def days_text(days: Sequence[int], *, joined: bool = False) -> str:
-    """"Mon, Wed, Fri", or "Mon, Wed and Fri" for "You'll practise on …"."""
-    order = (1, 2, 3, 4, 5, 6, 0)
-    names = [DAYS[(d - 1) % 7][:3] for d in order if d in set(days)]
-    if joined and len(names) > 1:
-        return f"{', '.join(names[:-1])} and {names[-1]}"
-    return ", ".join(names)
+# ── the training: three levels of four Takes (N564 items 2 to 5) ───────────
+
+#: Each Take fills one of the current level's four marks (N564 items 3, 4).
+LEVEL_TAKES = 4
+#: A plan is three levels; after the third, the summary session and a new set
+#: of three (N564 item 5).
+SET_LEVELS = 3
+#: Twelve Takes in all, which the last ratings (D1) come after.
+SET_TAKES = LEVEL_TAKES * SET_LEVELS
 
 
-def clean_days(raw: Any) -> Optional[tuple[int, ...]]:
-    """Three distinct weekdays (0 = Sunday … 6 = Saturday), or None."""
-    if not isinstance(raw, (list, tuple)):
-        return None
+def marks(takes_on_level: Any) -> int:
+    """The current level's marks filled: one a Take, never more than four.
+    A plan position, never a measure of the voice (Never 1)."""
     try:
-        days = tuple(sorted({int(x) for x in raw}))
+        n = int(takes_on_level)
     except (TypeError, ValueError):
-        return None
-    if len(days) != 3 or any(d < 0 or d > 6 for d in days):
-        return None
-    return days
+        return 0
+    return max(0, min(LEVEL_TAKES, n))
 
 
-# ── the journey (G1, N135, N140) ───────────────────────────────────────────
-
-@dataclass(frozen=True)
-class Journey:
-    every_day: bool
-    weeks: int
-    total: int
+def level_full(takes_on_level: Any) -> bool:
+    """Four Takes on a level: the next one starts."""
+    return marks(takes_on_level) >= LEVEL_TAKES
 
 
-def given_deadline(today: date) -> date:
-    """No date yet gives a date two months away (N135)."""
-    return today + timedelta(days=NO_DATE_DAYS)
+def set_full(levels_in_set: Sequence[Any]) -> bool:
+    """The third level of a set is the last before the summary session."""
+    return len(levels_in_set) >= SET_LEVELS
 
 
-def journey(today: date, deadline: date) -> Journey:
-    """Two weeks or less: every day; otherwise three practices a week. The
-    total counts practices from today; it is what "practice n of total"
-    reads (one practice is one Take with its walk, N131)."""
-    days = max(1, (deadline - today).days)
-    weeks = max(1, math.ceil(days / 7))
-    if days <= EVERY_DAY_WITHIN:
-        return Journey(every_day=True, weeks=weeks, total=days)
-    return Journey(every_day=False, weeks=weeks, total=weeks * 3)
-
-
-def is_practice_day(d: date, deadline: date, days: Sequence[int], every_day: bool) -> bool:
-    """A day before the deadline that is one of the plan's days."""
-    if d >= deadline:
-        return False
-    return every_day or _js_weekday(d) in set(days)
-
-
-def next_practice_day(after: date, deadline: date, days: Sequence[int],
-                      every_day: bool) -> Optional[date]:
-    """The plan's next practice day after ``after``, before the deadline."""
-    d = after + timedelta(days=1)
-    while d < deadline:
-        if every_day or _js_weekday(d) in set(days):
-            return d
-        d += timedelta(days=1)
-    return None
-
-
-def next_day_text(after: date, deadline: date, days: Sequence[int], every_day: bool) -> Optional[str]:
-    """The plan's next practice day as a person names it: "tomorrow" when it
-    is the day after ``after``, else its weekday ("Good job. See you
-    tomorrow." / "Good job. See you Wednesday.", N347 item 2). None after
-    the last practice. Pure."""
-    nxt = next_practice_day(after, deadline, days, every_day)
-    if nxt is None:
-        return None
-    if nxt == after + timedelta(days=1):
-        return "tomorrow"
-    return DAYS[nxt.weekday()]
-
-
-def practice_number(takes_done: int, total: int) -> int:
-    """"practice n of total": the Takes done plus one, never past the total."""
-    return max(1, min(total, takes_done + 1))
+def bar(level: Optional[str], takes_on_level: Any, level_n: Any = 1) -> dict:
+    """The plan's bar wherever it shows (N564 item 3): the level's name and its
+    four marks, the done ones filled; which of the plan's three levels it is.
+    No points, score or percentage about the speaker."""
+    try:
+        n = max(1, min(SET_LEVELS, int(level_n)))
+    except (TypeError, ValueError):
+        n = 1
+    return {"level": level or "make_it_yours", "level_name": level_name(level),
+            "marks": marks(takes_on_level), "of": LEVEL_TAKES, "level_n": n, "levels": SET_LEVELS}
 
 
 # ── the level (C, N132 to N134, N145) ──────────────────────────────────────
@@ -368,8 +326,6 @@ def pick_level(readings: Mapping[str, Any]) -> Diagnosis:
 
 # ── a level on each Take (G10; N134 items 3 and 4, N209) ──────────────────
 
-#: Two Takes in a row that reach the level start the next one.
-REACH_IN_A_ROW = 2
 #: Three Takes on a level without moving are noted for the coach's queue.
 STUCK_AFTER = 3
 
@@ -412,16 +368,6 @@ def key_line_at(texts: Sequence[Any], key_line: Any) -> Optional[int]:
         if share > best:
             best, at = share, i
     return at if best >= KEY_LINE_MATCH else None
-
-
-def level_days(start: date, deadline: date) -> Optional[int]:
-    """The longest a level runs, by the plan's length (the treatment
-    picker's journey table, N134): two weeks or less, one level for the
-    whole plan (None); up to six weeks, a week; longer, two weeks."""
-    days = (deadline - start).days
-    if days <= EVERY_DAY_WITHIN:
-        return None
-    return 7 if days <= 42 else 14
 
 
 def _num(v: Any) -> Optional[float]:

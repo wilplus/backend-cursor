@@ -5,26 +5,28 @@ at ring 5, N204). The pure rules are in ``services/plan.py``.
 What it writes, as rows of the one Lounge thread (``lounge_messages``,
 kind "text"; the app draws a row by its ``metadata``):
 
-  * the questions before the first Take (B): the deadline, the voice
-    message, up to three follow-ups (the key line first), the two ratings
+  * the questions before the first Take (B): the voice message, up to three follow-ups (the key line first), the two ratings
     (never shown back, N178), the two calls while they are on (the ring row
     ``plan_calls``, N315: hidden, not removed), then "You're all set.
     Here's your plan." and the plan card (``metadata.plan_card``);
-  * a practice day's hello and today's one thing (G4 to G6), once a day, the
-    first time the app opens on a practice day;
+  * the hello and today's one thing (G4 to G6), once a day, the first time
+    the app opens on a day with no Take yet, after the first Take: there
+    are no practice days and nothing is ever missed (N564 item 2);
   * after a Take's walk (``after_take``, called once per Take where the
-    walk's summary is written): "That's your 15 minutes for today." on a
-    practice day (G13), the last practice's ratings (D1), a new event's
-    questions, and a speaker with Takes but no plan asked "When is your
-    deadline?" (A2); then, under the chat's closing message ("Good job. See
-    you tomorrow." or "Good job. See you {weekday}.", ``next_day_text``,
-    N347 item 2), the plan's progress (``progress``, N319 item 7);
-  * no row, the level on each Take (G10, N209): the level's own check read
-    again on the Take; two in a row that reach it, or its time run out, and
-    the next thing heard becomes the level; three on a level without
-    moving, a ``stuck`` event for the coach's queue (Build 9);
-  * the plan's end (I): "Your deadline was …", "How did it go?" by voice,
-    the summary call (while the calls are on, N315), "What's next?".
+    walk's summary is written): the last ratings once the plan's twelfth
+    Take is in (D1), a new event's questions, and a speaker with Takes but
+    no plan gets the plan from them, never "When is your deadline?" (A2,
+    N564 item 1); then, under the chat's closing message ("Good job. See
+    you next time."), the plan's bar (``progress``, N319 item 7, N564 item
+    3): the level's name and its four marks;
+  * no row, the level on each Take (G10, N564): every Take fills one of the
+    current level's four marks; after four, the next thing heard on the
+    Takes becomes the level, never one the set already had; three on a
+    level that none reached, a ``stuck`` event for the coach's queue;
+  * the plan's end (I), now after the third level (N564 item 5): the
+    summary session (while the calls are on, N315), then a new set of
+    three levels. A plan already ending on its old deadline still answers
+    "How did it go?" and "What's next?".
 
 Every recording is transcribed under the caller's processing authorization
 (the route's ``phase1_provider_route``), and every AI call runs inside it.
@@ -213,8 +215,47 @@ def _deadline(plan: dict) -> Optional[date]:
     return _parse_day(plan.get("deadline"))
 
 
-def _days(plan: dict) -> tuple[int, ...]:
-    return P.clean_days(plan.get("practice_days")) or P.DEFAULT_DAYS
+def talk_date(plan: Optional[dict]) -> Optional[date]:
+    """The day of the talk the speaker is preparing, the plan's only date
+    (N564 items 1 and 6): a day they said, never one the plan gave them (a
+    plan made before N564 kept "No date yet"'s two months as
+    ``deadline_given``; that date is not shown)."""
+    if not plan or plan.get("deadline_given"):
+        return None
+    return _deadline(plan)
+
+
+def set_talk_date(database: Any, user_id: Any, day: Any) -> Optional[dict]:
+    """"Prepare a talk" → "When is it?" (N564 item 1, the way in's PLAN-16 /
+    FT-10): the day said (a ``date`` or "YYYY-MM-DD") is kept as the talk's
+    date on the speaker's open plan; "No date yet" (None) keeps none. Nothing
+    else depends on it but the card and the summary session's offer (item
+    6). Returns the plan, or None when there is no open plan."""
+    plan = database.get_open_plan(str(user_id))
+    if not plan:
+        return None
+    picked = day if isinstance(day, date) else _parse_day(day) if day else None
+    if day and picked is None:
+        raise PlanError("INVALID_DATE", "Pick a day after today.")
+    facts = {**_facts(plan), "talk": True}
+    return _save(database, user_id, plan, {
+        "deadline": picked.isoformat() if picked else None, "deadline_given": False, "facts": facts})
+
+
+def _set_levels(plan: dict, facts: dict) -> list[str]:
+    """The levels of the plan's current set of three, the current one last
+    (N564 item 2). A plan made before N564 starts its set at its level."""
+    got = facts.get("set_levels")
+    if isinstance(got, list) and got:
+        return [str(x) for x in got]
+    return [str(plan["level"])] if plan.get("level") else []
+
+
+def _bar(plan: dict) -> dict:
+    """The plan's bar as it stands: the current level and its marks."""
+    facts = _facts(plan)
+    return P.bar(plan.get("level"), len(_run(plan, facts).get("takes") or []),
+                 len(_set_levels(plan, facts)) or 1)
 
 
 def _calls(database: Any, user_id: str, plan: dict) -> dict:
@@ -238,10 +279,7 @@ def _calls(database: Any, user_id: str, plan: dict) -> dict:
 def view(database: Any, user_id: str, plan: dict) -> dict:
     """The plan as the app draws it."""
     facts = _facts(plan)
-    deadline = _deadline(plan)
-    days = _days(plan)
-    every_day = bool(plan.get("every_day"))
-    today = today_in(plan.get("time_zone"))
+    deadline = talk_date(plan)
     takes = _takes(database, user_id)
     done = _done(plan, takes)
     level = plan.get("level")
@@ -250,20 +288,21 @@ def view(database: Any, user_id: str, plan: dict) -> dict:
         "id": plan["id"], "status": plan["status"],
         "step": "consent" if facts.get("awaiting") == "consent" else plan["step"],
         "consent": C.state(database, user_id),
+        # The talk's date, only for someone preparing a talk (N564 item 6).
         "deadline": deadline.isoformat() if deadline else None,
-        "deadline_given": bool(plan.get("deadline_given")),
+        "talk": bool(deadline),
         "deadline_short": P.fmt_short(deadline) if deadline else None,
         "deadline_day": P.fmt_day(deadline) if deadline else None,
-        "days": list(days), "days_text": P.days_text(days), "every_day": every_day,
         "total": int(plan.get("total") or 0), "done": done,
         "level": level, "level_name": P.level_name(level) if level else None,
+        # The bar: the level's name and its four marks (N564 item 3).
+        "bar": _bar(plan) if level else None,
         "pace_week": level in P.PACE_LEVELS,
         "key_line": facts.get("key_line"),
         "why_line": P.why_line(level, facts.get("who")) if facts.get("key_line") else None,
         "key_answer_id": facts.get("key_answer_id"),
         "calls": _calls(database, user_id, plan),
         "first_take_done": done > 0,
-        "next_day": (P.next_day_text(today, deadline, days, every_day) if deadline else None),
         "topic": facts.get("topic") or facts.get("event"),
         # A new event's questions wait for the next Take (A3); a new
         # speaker's wait, after a Take recorded first, for that Take's walk,
@@ -394,19 +433,23 @@ def state(database: Any, user_id: str, *, tz: Any = None,
 def begin(database: Any, user_id: str, *, tz: Optional[str], first_name: Optional[str],
           mode: str = "new") -> tuple[Optional[dict], list[dict]]:
     """A new plan, asking: "Hi! A few quick questions before your first
-    practice." and "When is your deadline?" (B1, B2). A speaker who already
-    has Takes (``mode`` "takes", A2) is asked only the deadline."""
+    practice." and the voice message's question (B1, B3); nobody is asked
+    "When is your deadline?" (N564 item 1). A speaker who already has Takes
+    (``mode`` "takes", A2) is asked nothing: the plan from their Takes."""
     facts: dict[str, Any] = {"mode": mode, **({"rate_after_first": True} if mode == "takes" else {})}
     if mode == "new" and first_take_on(database, user_id):
         # N401: the questions are the first Take's slides; the plan is read
         # from what was said once the Take is processed (``after_take``).
         facts["first_take"] = "waiting"
     plan = database.insert_plan({
-        "user_id": str(user_id), "status": "asking", "step": "deadline",
+        "user_id": str(user_id), "status": "asking", "step": "why",
         "time_zone": tz, "facts": facts,
     })
     if not plan:
         return database.get_open_plan(str(user_id)), []
+    if mode == "takes":
+        plan, rows = _questions_done(database, user_id, plan, {}, _diagnose_from_takes)
+        return plan, _write(database, user_id, plan["id"], rows)
     return plan, _write(database, user_id, plan["id"], _opening(plan, first_name))
 
 
@@ -421,30 +464,21 @@ def _opening(plan: dict, first_name: Optional[str]) -> list[tuple]:
                 _bot(P.COPY["first_take_where"], "first_take_where")]
     first = _first_plan(plan)
     rows = [_bot(f"{_hi(first_name)} {P.COPY['hello_first']}", "hello")] if first else []
-    return rows + [_bot(P.COPY["deadline_q"], "deadline_q", plan_ask="deadline")]
+    # No "When is your deadline?" (N564 item 1): straight to the voice message.
+    return rows + [_bot(P.COPY["why_1"], "why_1"), _bot(P.COPY["why_2"], "why_2", plan_ask="voice")]
 
 
 def _visit(database: Any, user_id: str, plan: dict, first_name: Optional[str]) -> tuple[dict, bool]:
-    """An active plan, opened: its end after the deadline; else on a practice
-    day, after the first Take, today's hello and one thing, once a day, never
-    on a day a Take was already recorded (G4)."""
+    """An active plan, opened: after the first Take, the hello and today's
+    one thing, once a day, never on a day a Take was already recorded (G4).
+    There are no practice days and no deadline that ends the plan (N564
+    items 2 and 5): a day without a Take leaves no trace."""
     today = today_in(plan.get("time_zone"))
-    deadline = _deadline(plan)
-    if deadline and today > deadline:
-        return _end(database, user_id, plan, first_name), True
-    try:
-        moved = _level_time(database, user_id, plan, _facts(plan), today)
-    except Exception as error:  # noqa: BLE001 -- the level waits for the next open
-        logger.warning("plan: the level's time not read user=%s: %s", user_id, error)
-        moved = {}
-    if moved:
-        plan = _save(database, user_id, plan, moved)  # today's hello names the new level
     takes = _takes(database, user_id)
     done = _done(plan, takes)
     tz = zone(plan.get("time_zone"))
     took_today = any(t.astimezone(tz).date() == today for t in takes)
-    if (not deadline or done == 0 or took_today or str(plan.get("hello_on") or "") == today.isoformat()
-            or not P.is_practice_day(today, deadline, _days(plan), bool(plan.get("every_day")))):
+    if done == 0 or took_today or str(plan.get("hello_on") or "") == today.isoformat():
         return plan, False
     plan = _save(database, user_id, plan, {"hello_on": today.isoformat()})
     return plan, bool(_write(database, user_id, plan["id"],
@@ -468,16 +502,17 @@ def _latest_take(database: Any, user_id: str) -> dict:
 
 def _hello(database: Any, user_id: str, plan: dict, done: int, today: date,
            first_name: Optional[str]) -> list[tuple]:
-    total = int(plan.get("total") or 1)
-    n = P.practice_number(done, total)
-    level = P.level_name(plan.get("level"))
-    hello = f"{_greeting(first_name)} {P.COPY['practice_n'].format(n=n, total=total, level=level)}"
+    # The signed hello (N120) and, under it, the plan's bar: the level's name
+    # and its four marks, in place of "Today is practice {n} of {total}:
+    # {level}." (N564 item 3).
+    hello = _greeting(first_name)
     take = _latest_take(database, user_id)
     one: dict[str, Any] = {"plan_one": True}
     if take.get("arc_id") and isinstance(take.get("take_index"), int):
         one.update({"arc_id": str(take["arc_id"]), "take_index": int(take["take_index"])})
     day = today.isoformat()
-    return [_bot(hello, f"hello:{day}", plan_hello=True, day_line=P.fmt_long(today)),
+    return [_bot(hello, f"hello:{day}", plan_hello=True, day_line=P.fmt_long(today),
+                 plan_bar=_bar(plan)),
             _bot(P.today_one(plan.get("level")), f"one:{day}", **one)]
 
 
@@ -494,13 +529,10 @@ def answer_deadline(database: Any, user_id: str, raw: Any, *, tz: Any = None) ->
     picked = _parse_day(raw) if raw else None
     if raw and (picked is None or picked <= today):
         raise PlanError("INVALID_DATE", "Pick a day after today.")
-    deadline = picked or P.given_deadline(today)
-    j = P.journey(today, deadline)
-    rows = [_me(P.fmt_day(deadline) if picked else P.COPY["no_date"], "deadline_a")]
-    if not picked:
-        rows.append(_bot(P.COPY["two_months"].format(date=P.fmt_day(deadline)), "two_months"))
-    fields = {"deadline": deadline.isoformat(), "deadline_given": not picked,
-              "every_day": j.every_day, "total": j.total, "time_zone": zone_name}
+    # "No date yet" gives no date, and no two months (N564 items 1 and 2).
+    rows = [_me(P.fmt_day(picked) if picked else P.COPY["no_date"], "deadline_a")]
+    fields = {"deadline": picked.isoformat() if picked else None, "deadline_given": False,
+              "time_zone": zone_name}
     if _facts(plan).get("mode") == "takes":
         plan, more = _questions_done(database, user_id, plan, fields, _diagnose_from_takes)
         rows += more
@@ -719,13 +751,9 @@ def _transcript(database: Any, user_id: str, plan: dict,
                 answering: Optional[tuple[str, str]] = None) -> list[tuple[str, str]]:
     """What was asked and said so far, with what Will said back (so a
     correction of it can be heard, N262), and ``answering``: the question
-    and the answer being given now."""
-    deadline = _deadline(plan)
-    said = ("No date yet" if plan.get("deadline_given") else
-            P.fmt_day(deadline) if deadline else "No date yet")
-    lines = [("Will", P.COPY["deadline_q"]), ("Speaker", said)]
-    if plan.get("deadline_given") and deadline:
-        lines.append(("Will", P.COPY["two_months"].format(date=P.fmt_day(deadline))))
+    and the answer being given now. Nobody is asked a deadline (N564 item
+    1): a talk's date reaches the AI in its brief, not as a line said."""
+    lines: list[tuple[str, str]] = []
     from services.transcript_guard import without_video_lines
     back = dict(_facts(plan).get("will_said") or {})
     for a in database.list_plan_answers(str(user_id), plan["id"]):
@@ -750,7 +778,7 @@ def _turn(database: Any, user_id: str, plan: dict, asked: list[str],
     from services.llm import chat_complete
     from services.llm_config import SPEC_PLAN_TURN
     from services.processing_authorization import rethrow_processing_authorization
-    prompt = P.turn_prompt(deadline=_deadline(plan), deadline_given=bool(plan.get("deadline_given")),
+    prompt = P.turn_prompt(deadline=talk_date(plan), deadline_given=False,
                            transcript=_transcript(database, user_id, plan, answering), asked=asked)
     try:
         result = chat_complete(spec=SPEC_PLAN_TURN, system=prompt,
@@ -780,7 +808,7 @@ def _choose(turn: Optional[dict], asked: list[str], facts: dict, plan: dict,
     bank = P.next_plain_bank(asked, facts, skip)
     if not bank:
         return None
-    return {"bank": bank, "question": P.plain_question(bank, _deadline(plan), bool(plan.get("deadline_given"))),
+    return {"bank": bank, "question": P.plain_question(bank, talk_date(plan), False),
             "opener": None, "ai": False}
 
 
@@ -904,9 +932,9 @@ def _settle(database: Any, user_id: str, plan: dict, yes: bool) -> dict:
         moment = facts.get("rating_moment") or "last"
         if granted:
             plan = _save(database, user_id, plan, {"step": "stress", "facts": facts})
-            rows += _ratings_rows(moment)
+            rows += _ratings_rows(moment, _round(facts, moment))
         else:
-            plan = _save(database, user_id, plan, {"step": "done", "facts": {**facts, f"rated_{moment}": True}})
+            plan = _save(database, user_id, plan, {"step": "done", "facts": _rated(facts, moment)})
     elif resume == "how_it_went":
         if granted:
             plan = _save(database, user_id, plan, {"step": "how_it_went", "facts": facts})
@@ -926,14 +954,29 @@ def _settle(database: Any, user_id: str, plan: dict, yes: bool) -> dict:
     return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
 
 
-def _ratings_rows(moment: str) -> list[tuple]:
+def _round(facts: dict, moment: str) -> int:
+    """Which set's last ratings these are: the second set's and on are
+    written under their own keys, so each set's are asked (N564 item 5)."""
+    return int(facts.get("sets_done") or 0) if moment == "last" else 0
+
+
+def _rated(facts: dict, moment: str) -> dict:
+    """The ratings of ``moment`` answered or declined: not asked again."""
+    out = {**facts, f"rated_{moment}": True}
+    if moment == "last":
+        out["rated_sets"] = int(facts.get("sets_done") or 0)
+    return out
+
+
+def _ratings_rows(moment: str, rnd: int = 0) -> list[tuple]:
     intro = [_bot(P.COPY["ratings_intro"], "ratings_intro")] if moment == "first" else []
-    return intro + [_scale_row("stress", moment)]
+    return intro + [_scale_row("stress", moment, rnd)]
 
 
-def _scale_row(step: str, moment: str) -> tuple:
+def _scale_row(step: str, moment: str, rnd: int = 0) -> tuple:
     q, lo, hi = STEP_SCALE[step]
-    return _bot(P.COPY[q], f"{step}:{moment}", plan_ask="scale",
+    key = f"{step}:{moment}" + (f":{rnd}" if rnd > 1 else "")
+    return _bot(P.COPY[q], key, plan_ask="scale",
                 plan_scale={"lo": P.COPY[lo], "hi": P.COPY[hi]})
 
 
@@ -958,15 +1001,17 @@ def answer_rating(database: Any, user_id: str, value: Any) -> dict:
                                         "kind": plan["step"], "moment": moment,
                                         "question": P.COPY[q], "value": v}):
         raise PlanError("V2_ERROR", "Failed to keep the answer", 500)
-    answered = [_me(P.COPY["rating_answered"], f"{plan['step']}_answered:{moment}",
+    rnd = _round(facts, moment)
+    answered = [_me(P.COPY["rating_answered"],
+                    f"{plan['step']}_answered:{moment}" + (f":{rnd}" if rnd > 1 else ""),
                     plan_answered="rating")]
     if plan["step"] == "stress":
         plan = _save(database, user_id, plan, {"step": "ready"})
-        rows = [_scale_row("ready", moment)]
+        rows = [_scale_row("ready", moment, _round(facts, moment))]
     elif plan.get("status") == "asking":
         plan, rows = _questions_done(database, user_id, plan, {}, _diagnose)
     else:
-        plan = _save(database, user_id, plan, {"step": "done", "facts": {**facts, f"rated_{moment}": True}})
+        plan = _save(database, user_id, plan, {"step": "done", "facts": _rated(facts, moment)})
         # "Two quick taps before your plan." on a plan already running (one
         # made from Takes or "Keep practising"): the plan, as promised, with
         # the plan's own line and card; the plan itself is not begun again
@@ -1174,8 +1219,9 @@ def _from_first_take(database: Any, user_id: str, plan: dict) -> list[dict]:
     answers. The plan's facts come from them, each answer is kept as the
     plan answer it replaces and in Will's notes; with a day said, the plan
     and its card, as after the plan's last question (N319); with none, or
-    nothing heard, the same with "No date yet"'s two months, and no question
-    (N459 item 1: the deadline is set before the walk). Answers already kept
+    nothing heard, the same with no date and no question (N459 item 1, N564
+    items 1 and 2: three levels of four Takes, never two months). A talk's
+    date said in the wait ("When is it?", ``set_talk_date``) is kept. Answers already kept
     at the end of the Take's processing (``after_processing``) are not kept
     again."""
     kept = _facts(plan).get("first_take") == "kept"
@@ -1196,12 +1242,10 @@ def _from_first_take(database: Any, user_id: str, plan: dict) -> list[dict]:
     if not kept:
         facts.update(_keep_first_take(database, user_id, plan, slides, said, facts.get("key_line")))
     plan = _save(database, user_id, plan, {"facts": facts})
-    heard = _first_take_deadline((read or {}).get("deadline"), today)
-    deadline = heard or P.given_deadline(today)
-    j = P.journey(today, deadline)
+    heard = _first_take_deadline((read or {}).get("deadline"), today) or talk_date(plan)
     plan, rows = _questions_done(database, user_id, plan, {
-        "deadline": deadline.isoformat(), "deadline_given": heard is None,
-        "every_day": j.every_day, "total": j.total}, _diagnose_first_take)
+        "deadline": heard.isoformat() if heard else None, "deadline_given": False},
+        _diagnose_first_take)
     return _write(database, user_id, plan["id"], rows)
 
 
@@ -1303,42 +1347,42 @@ def _run(plan: dict, facts: dict) -> dict:
     return {"level": plan.get("level"), "since": since, "takes": [], "stuck": False}
 
 
-def _move_level(database: Any, user_id: str, plan: dict, facts: dict, readings: dict,
-                reason: str) -> dict:
-    """The next level: the next thing heard, never one this plan already
-    had (N209 item 3). The speaker just sees it, no words about their voice
-    (N134 item 3)."""
-    had = list(facts.get("levels_had") or [plan.get("level")])
-    nxt = P.next_level(readings, had)
-    _event(database, user_id, plan, nxt, reason,
-           "two Takes in a row reached the level" if reason == "reached" else "the level's time ran out")
-    logger.info("plan: the level moves on user=%s %s -> %s (%s)", user_id, plan.get("level"), nxt, reason)
+def _next_level(database: Any, user_id: str, plan: dict, facts: dict, readings: dict,
+                take_id: str) -> dict:
+    """The fourth mark is filled: the next level starts (N564 item 2), the
+    next thing heard on the Takes, strongest first, never one this set of
+    three already had (``next_level``, N209 item 3). After the third level,
+    a new set of three on the next skills the Takes show, skipping the set
+    just done (item 5). The speaker just sees it, no words about their voice
+    (N134 item 3). The bar after this Take's walk still shows the level just
+    filled (``level_done``)."""
+    had = _set_levels(plan, facts)
+    level = str(plan.get("level") or "make_it_yours")
+    done = {"level": level, "take": take_id, "level_n": min(len(had), P.SET_LEVELS) or 1}
+    new_set = P.set_full(had)
+    # A new set skips only the level just done, so it starts on what the
+    # Takes show now; within a set, never a level the set already had.
+    nxt = P.next_level(readings, [level] if new_set else had)
+    note = ("the third level's four Takes: a new set of three" if new_set
+            else "four Takes on the level")
+    _event(database, user_id, plan, nxt, "reached", note)
+    logger.info("plan: the level moves on user=%s %s -> %s (%s)", user_id, level, nxt, note)
     run = {"level": nxt, "since": _now().isoformat(), "takes": [], "stuck": False}
-    return {"level": nxt, "level_by": "machine",
-            "facts": {**facts, "levels_had": had + [nxt], "level_run": run}}
-
-
-def _level_time(database: Any, user_id: str, plan: dict, facts: dict, today: date) -> dict:
-    """A level whose time ran out gives way to the next thing heard on the
-    latest Take (N134 item 3, N209 item 3); with nothing heard yet, it
-    stays. Never a coach's level, never "Make it yours"."""
-    level, deadline, started = plan.get("level"), _deadline(plan), _parse_dt(plan.get("started_at"))
-    if level not in P.PICK_ORDER or plan.get("level_by") == "coach" or not deadline or not started:
-        return {}
-    tz = zone(plan.get("time_zone"))
-    step = P.level_days(started.astimezone(tz).date(), deadline)
-    since = _parse_dt(_run(plan, facts).get("since")) or started
-    readings = facts.get("take_readings")
-    if not step or not readings or (today - since.astimezone(tz).date()).days < step:
-        return {}
-    return _move_level(database, user_id, plan, facts, readings, "time")
+    facts = {**facts, "levels_had": list(facts.get("levels_had") or had) + [nxt],
+             "set_levels": [nxt] if new_set else had + [nxt], "level_run": run, "level_done": done}
+    if new_set:
+        facts.update({"set_done": take_id, "sets_done": int(facts.get("sets_done") or 0) + 1})
+    return {"level": nxt, "level_by": "machine", "facts": facts}
 
 
 def _level_on_take(database: Any, user_id: str, plan: dict, facts: dict, today: date) -> dict:
-    """After a Take on an active plan (G10): did it reach the level; two in a
-    row, the next level; three on a level without moving, noted for the
-    coach's queue; then the level's time. Returns the plan's fields to save,
-    ``facts`` among them, or {} when there is nothing to read."""
+    """After a Take on an active plan (G10, N564 item 4): every Take fills one
+    of the current level's four marks, whatever it was (a talk, an answer to
+    a teammate, a question); after four, the next level. Three on a level
+    that none reached, noted for the coach's queue. A coach's level runs its
+    four Takes too, then the next is the machine's again. Returns the plan's
+    fields to save, ``facts`` among them, or {} when there is nothing to
+    read."""
     take_id = str(_latest_take(database, user_id).get("id") or "")
     if not take_id or not plan.get("level") or facts.get("level_take") == take_id:
         return {}  # each Take is read once, whatever level it moved to
@@ -1348,24 +1392,25 @@ def _level_on_take(database: Any, user_id: str, plan: dict, facts: dict, today: 
     machine = plan.get("level_by") != "coach"
     if facts.get("mode") == "takes" and not facts.get("picked") and machine and readings:
         # A plan made from Takes starts at "Make it yours" until its next
-        # Take is read (A2): that Take picks its level.
+        # Take is read (A2): that Take picks its level, and fills its first mark.
         d = P.pick_level(readings)
         facts["picked"] = True
         if d.level != plan["level"]:
             _event(database, user_id, plan, d.level, "diagnosis", d.reason)
             return {"level": d.level, "level_by": "machine",
-                    "facts": {**facts, "levels_had": [d.level], "level_run": {
-                        "level": d.level, "since": _now().isoformat(), "takes": [], "stuck": False}}}
+                    "facts": {**facts, "levels_had": [d.level], "set_levels": [d.level], "level_run": {
+                        "level": d.level, "since": _now().isoformat(),
+                        "takes": [{"id": take_id, "reached": None}], "stuck": False}}}
     level = plan["level"]
     run["takes"].append({"id": take_id, "reached": P.reached(level, readings)})
-    last = [t.get("reached") for t in run["takes"][-P.REACH_IN_A_ROW:]]
-    if machine and len(last) == P.REACH_IN_A_ROW and all(r is True for r in last):
-        return _move_level(database, user_id, plan, facts, readings, "reached")
-    if level in P.PICK_ORDER and len(run["takes"]) >= P.STUCK_AFTER and not run.get("stuck"):
+    if (level in P.PICK_ORDER and len(run["takes"]) >= P.STUCK_AFTER and not run.get("stuck")
+            and not any(t.get("reached") is True for t in run["takes"])):
         run["stuck"] = True
         _event(database, user_id, plan, level, "stuck", "three Takes without moving")
-    facts = {**facts, "level_run": run}
-    return _level_time(database, user_id, plan, facts, today) or {"facts": facts}
+    facts = {**facts, "level_run": run, "set_levels": _set_levels(plan, facts)}
+    if not P.level_full(len(run["takes"])):
+        return {"facts": facts}
+    return _next_level(database, user_id, plan, facts, readings, take_id)
 
 
 # ── the two calls (F), hidden behind the ring row ``plan_calls`` (N315) ────
@@ -1421,12 +1466,12 @@ def call_slots(database: Any, user_id: str, which: str, start: datetime,
                                    end.astimezone(timezone.utc))
     except booking.BookingError as e:
         raise PlanError(e.code, str(e), e.status)
-    deadline = _deadline(plan)
+    deadline = talk_date(plan)
     tz = zone(plan.get("time_zone"))
 
     def fits(s: datetime) -> bool:
-        day = s.astimezone(tz).date()
-        return deadline is None or (day < deadline if which == "kickoff" else day > deadline)
+        # With a talk's date, both calls come before it (N564 item 6).
+        return deadline is None or s.astimezone(tz).date() < deadline
 
     return [s.isoformat().replace("+00:00", "Z") for s in slots if fits(s)]
 
@@ -1465,11 +1510,11 @@ def _book(database: Any, user_id: str, plan: dict, which: str, start: str, *, tz
           name: str, email: str) -> dict:
     from services import booking
     at = _parse_dt(start)
-    deadline = _deadline(plan)
+    deadline = talk_date(plan)
     if at is None:
         raise PlanError("INVALID_TIME", "That time is not valid.")
     day = at.astimezone(zone(plan.get("time_zone"))).date()
-    if deadline and ((which == "kickoff" and day >= deadline) or (which == "summary" and day <= deadline)):
+    if deadline and day >= deadline:
         raise PlanError("OUTSIDE_PLAN", "Pick a time that fits the deadline.")
     try:
         settings = booking.get_settings()
@@ -1489,16 +1534,13 @@ def _book(database: Any, user_id: str, plan: dict, which: str, start: str, *, tz
 
 def _all_set(database: Any, user_id: str, plan: dict) -> tuple[dict, list[tuple]]:
     """"You're all set. Here's your plan." and the card (E1); the plan
-    begins now."""
-    today = today_in(plan.get("time_zone"))
-    deadline = _deadline(plan) or P.given_deadline(today)
-    j = P.journey(today, deadline)
+    begins now: three levels of four Takes (N564 item 2)."""
     # A new speaker's first plan began with no Take, so a Take recorded
     # while its questions were asked is its first practice (N262 item 1).
     began = plan.get("created_at") if _first_plan(plan) and plan.get("created_at") else None
     plan = _save(database, user_id, plan, {
         "status": "active", "step": "done", "started_at": began or _now().isoformat(),
-        "total": j.total, "every_day": j.every_day})
+        "total": P.SET_TAKES, "every_day": False})
     return plan, [_bot(P.COPY["all_set"], "all_set"), _bot("", "card", plan_card=True)]
 
 
@@ -1506,24 +1548,17 @@ def _all_set(database: Any, user_id: str, plan: dict) -> tuple[dict, list[tuple]
 
 def change(database: Any, user_id: str, *, deadline: Any = None, days: Any = None,
            tz: Any = None) -> dict:
-    """The deadline (Edit, Change your plan) or the practice days; the plan
-    recalculates and Will says what changed."""
+    """Change your plan (H1): the talk's date, for someone preparing a talk
+    (N564 item 6). Nothing else depends on it, so nothing is said; the card
+    shows the new date. There are no practice days to change (N564 item 2):
+    ``days`` is no longer read."""
     plan = _open(database, user_id)
-    rows: list[tuple] = []
     if deadline is not None:
-        plan, more = _move_deadline(database, user_id, plan, deadline, tz)
-        rows += more
-    if days is not None:
-        picked = P.clean_days(days)
-        if picked is None:
-            raise PlanError("INVALID_DAYS", "Pick 3 days.")
-        plan = _save(database, user_id, plan, {"practice_days": list(picked)})
-        rows.append(_bot(P.COPY["days_done"].format(days=P.days_text(picked, joined=True)),
-                         f"days:{'-'.join(map(str, picked))}:{_now().isoformat()}"))
-    return {"plan": plan, "messages": _write(database, user_id, plan["id"], rows)}
+        plan = _move_deadline(database, user_id, plan, deadline, tz)
+    return {"plan": plan, "messages": []}
 
 
-def _move_deadline(database: Any, user_id: str, plan: dict, raw: Any, tz: Any) -> tuple[dict, list[tuple]]:
+def _move_deadline(database: Any, user_id: str, plan: dict, raw: Any, tz: Any) -> dict:
     zone_name = valid_zone(tz) or plan.get("time_zone")
     today = today_in(zone_name)
     new = _parse_day(raw)
@@ -1531,27 +1566,11 @@ def _move_deadline(database: Any, user_id: str, plan: dict, raw: Any, tz: Any) -
         raise PlanError("INVALID_DATE", "Pick a day after today.")
     calls = _calls(database, user_id, plan)
     tzi = zone(plan.get("time_zone"))
-    kick, summ = calls.get("kickoff"), calls.get("summary")
-    if kick and _parse_dt(kick["starts_at"]).astimezone(tzi).date() >= new:  # type: ignore[union-attr]
-        raise PlanError("OUTSIDE_PLAN", "The deadline stays after the kickoff call.")
-    if summ and _parse_dt(summ["starts_at"]).astimezone(tzi).date() <= new:  # type: ignore[union-attr]
-        raise PlanError("OUTSIDE_PLAN", "The deadline stays before the summary call.")
-    was_daily = bool(plan.get("every_day"))
-    j = P.journey(today, new)
-    takes = _takes(database, user_id) if plan.get("status") == "active" else []
-    done = _done(plan, takes)
-    # The practices done, then the ones still ahead. An every-day journey
-    # counts today, so a practice already done today is not counted twice.
-    started = _parse_dt(plan.get("started_at"))
-    today_done = j.every_day and any(started and t >= started and t.astimezone(zone(zone_name)).date() == today
-                                     for t in takes)
-    plan = _save(database, user_id, plan, {"deadline": new.isoformat(), "deadline_given": False,
-                                           "every_day": j.every_day,
-                                           "total": done + j.total - (1 if today_done else 0)})
-    rows = [_bot(P.COPY["runs_to"].format(date=P.fmt_day(new)), f"runs_to:{new.isoformat()}:{_now().isoformat()}")]
-    if j.every_day and not was_daily:
-        rows.append(_bot(P.COPY["every_day"], f"every_day:{new.isoformat()}:{_now().isoformat()}"))
-    return plan, rows
+    for call in (calls.get("kickoff"), calls.get("summary")):
+        if call and _parse_dt(call["starts_at"]).astimezone(tzi).date() >= new:  # type: ignore[union-attr]
+            raise PlanError("OUTSIDE_PLAN", "The deadline stays after the calls.")
+    return _save(database, user_id, plan, {"deadline": new.isoformat(), "deadline_given": False,
+                                           "facts": {**_facts(plan), "talk": True}})
 
 
 def ask_coach(database: Any, user_id: str) -> dict:
@@ -1600,40 +1619,28 @@ def _active(database: Any, user_id: str) -> Optional[dict]:
     return plan if plan and plan.get("status") == "active" else None
 
 
-def next_day_text(database: Any, user_id: str) -> Optional[str]:
-    """``plan.next_day_text`` for the speaker's running plan, today in the
-    plan's own time zone, for "Good job. See you {day}." (N347 item 2):
-    "tomorrow", else its weekday; None off a plan or after its last
-    practice. Best-effort: never raises."""
-    try:
-        plan = _active(database, user_id)
-        deadline = _deadline(plan) if plan else None
-        if not plan or not deadline:
-            return None
-        return P.next_day_text(today_in(plan.get("time_zone")), deadline, _days(plan),
-                               bool(plan.get("every_day")))
-    except Exception as error:  # noqa: BLE001 -- "See you next time."
-        logger.warning("plan: next day unread user=%s: %s", user_id, error)
-        return None
-
-
 def progress(database: Any, user_id: str) -> list[dict]:
-    """The plan's progress in the chat after a Take's walk, under the
-    closing message (N319 item 7): one bubble with the plan's bar and "{n}
-    of {total} practices done." (``metadata.plan_progress`` with ``done``
-    and ``total``, which the bar draws). What the speaker did, never a
-    measure of the voice (Never 1). Once per Take. Best-effort: never
-    raises; [] off a plan."""
+    """The plan's bar in the chat after a Take's walk, under the closing
+    message (N319 item 7, N564 item 3): one bubble with the level's name and
+    its four marks, the done ones filled (``metadata.plan_progress`` with
+    ``bar``); after the fourth Take of a level, that level full, though the
+    next has begun. What the speaker did, never a measure of the voice and
+    never points (Never 1). Once per Take. Best-effort: never raises; [] off
+    a plan."""
     try:
         plan = _active(database, user_id)
-        total = int((plan or {}).get("total") or 0)
         takes = _takes(database, user_id)
-        if not plan or total <= 0 or not takes:
+        if not plan or not plan.get("level") or not takes:
             return []
-        done = min(_done(plan, takes), total)
-        body = P.COPY["done_of"].format(n=done, total=total)
+        facts = _facts(plan)
+        latest = str(_latest_take(database, user_id).get("id") or "")
+        done = facts.get("level_done") or {}
+        if latest and done.get("take") == latest:
+            bar = P.bar(done.get("level"), P.LEVEL_TAKES, done.get("level_n"))
+        else:
+            bar = _bar(plan)
         return _write(database, user_id, plan["id"], [_bot(
-            body, f"progress:{takes[-1].isoformat()}", plan_progress=True, done=done, total=total)])
+            bar["level_name"], f"progress:{takes[-1].isoformat()}", plan_progress=True, bar=bar)])
     except Exception as error:  # noqa: BLE001 -- the closing message stands alone
         logger.warning("plan: progress not written user=%s: %s", user_id, error, exc_info=True)
         return []
@@ -1656,7 +1663,8 @@ def _ask_again(database: Any, user_id: str, plan: dict) -> list[dict]:
         last = asked[-1] if asked else {"bank": "key", "text": P.BANK["key"][0]}
         rows = [_bot(str(last.get("text") or ""), f"q:{last.get('bank')}", plan_ask="voice")]
     elif step in ("stress", "ready"):
-        rows = [_scale_row(str(step), str(facts.get("rating_moment") or "first"))]
+        moment = str(facts.get("rating_moment") or "first")
+        rows = [_scale_row(str(step), moment, _round(facts, moment))]
     elif step in CALL_STEPS and not calls_on(database, user_id):
         # The calls are hidden (N315): the plan, written once, as it is.
         plan, done = _all_set(database, user_id, plan)
@@ -1677,14 +1685,10 @@ def _after_active_take(database: Any, user_id: str, plan: dict) -> list[dict]:
     takes = _takes(database, user_id)
     done = _done(plan, takes)
     today = today_in(plan.get("time_zone"))
-    deadline = _deadline(plan)
+    deadline = talk_date(plan)
     rows: list[tuple] = []
     fields: dict[str, Any] = {}
-    practice_day = bool(deadline) and P.is_practice_day(today, deadline, _days(plan),  # type: ignore[arg-type]
-                                                       bool(plan.get("every_day")))
-    if practice_day and str(plan.get("done_on") or "") != today.isoformat():
-        rows.append(_bot(P.COPY["fifteen_1"], f"fifteen:{today.isoformat()}"))
-        fields["done_on"] = today.isoformat()
+    # No "That's your 15 minutes for today." (N564 item 7).
     facts, new_project = _with_project(database, user_id, facts)
     try:
         moved = _level_on_take(database, user_id, plan, facts, today)
@@ -1694,6 +1698,12 @@ def _after_active_take(database: Any, user_id: str, plan: dict) -> list[dict]:
     facts = moved.pop("facts", facts)
     fields.update(moved)
     fields["facts"] = facts
+    if facts.get("set_done") and facts.get("set_done") == facts.get("level_take") \
+            and calls_on(database, user_id):
+        # After the third level: the summary session with the coach (N564
+        # item 5, N248), while the calls are on (N315); the new set of three
+        # has begun.
+        rows.append(_bot("", f"summary_card:{facts['set_done']}", plan_summary_call=True))
     moment = _ratings_due(plan, facts, done)
     asking = _awaiting(plan)  # Will is waiting for the plan's yes: nothing new over it
     consent = C.state(database, user_id) if moment else C.GRANTED
@@ -1715,9 +1725,10 @@ def _rate(plan: dict, facts: dict, moment: str, consent: str) -> tuple[dict, lis
     not asked nor asked again; with no answer yet, Will asks for the yes
     first (N211)."""
     if consent == C.GRANTED:
-        return {"step": "stress", "facts": {**facts, "rating_moment": moment}}, _ratings_rows(moment)
+        return ({"step": "stress", "facts": {**facts, "rating_moment": moment}},
+                _ratings_rows(moment, _round(facts, moment)))
     if consent == C.DECLINED:
-        return {"facts": {**facts, f"rated_{moment}": True}}, []
+        return {"facts": _rated(facts, moment)}, []
     key = _ask_key(plan, moment)
     return ({"facts": {**facts, "rating_moment": moment, "awaiting": "consent",
                        "resume": "stress", "pending_q": None, "ask_key": key}},
@@ -1748,7 +1759,7 @@ def _with_project(database: Any, user_id: str, facts: dict) -> tuple[dict, Optio
 def same_event(database: Any, user_id: str, yes: Any, *, tz: Any = None,
                first_name: Optional[str] = None) -> dict:
     """"Is this for {date}?" on a new project (H2): Yes keeps the plan; No
-    starts "When is your deadline?" and the questions for a new plan, now,
+    starts the questions for a new plan (no deadline asked, N564), now,
     after the Take (N149, N178)."""
     plan = _open(database, user_id)
     _need_step(plan, "same_event")
@@ -1767,7 +1778,7 @@ def same_event(database: Any, user_id: str, yes: Any, *, tz: Any = None,
     written = _write(database, user_id, plan["id"], [_me(P.COPY["no"], f"same_event_no:{_now().isoformat()}")])
     _save(database, user_id, plan, {"status": "replaced", "ended_at": _now().isoformat(), "step": "done"})
     zone_name = valid_zone(tz) or plan.get("time_zone")
-    fresh = database.insert_plan({"user_id": str(user_id), "status": "asking", "step": "deadline",
+    fresh = database.insert_plan({"user_id": str(user_id), "status": "asking", "step": "why",
                                   "time_zone": zone_name, "facts": {"mode": "new", "again": True}})
     if not fresh:
         raise PlanError("V2_ERROR", "Failed to keep the plan", 500)
@@ -1776,38 +1787,22 @@ def same_event(database: Any, user_id: str, yes: Any, *, tz: Any = None,
 
 
 def _ratings_due(plan: dict, facts: dict, done: int) -> Optional[str]:
-    """The ratings after a Take: the last practice's (D1), and a plan made
-    from Takes or "Keep practising" gets its first ones after its first
-    Take (I2)."""
-    total = int(plan.get("total") or 0)
+    """The ratings after a Take: the last ones once a set of three levels
+    is done (D1, N564 item 5), once a set; and a plan made from Takes or
+    "Keep practising" gets its first ones after its first Take (I2)."""
     if facts.get("rate_after_first") and done == 1 and not facts.get("rated_first"):
         return "first"
-    if total and done >= total and not facts.get("rated_last"):
+    sets = int(facts.get("sets_done") or 0)
+    if sets and int(facts.get("rated_sets") or 0) < sets:
         return "last"
     return None
 
 
 # ── the plan's end (I) ─────────────────────────────────────────────────────
-
-def _end(database: Any, user_id: str, plan: dict, first_name: Optional[str]) -> dict:
-    deadline = _deadline(plan)
-    consent = C.state(database, user_id)
-    plan = _save(database, user_id, plan, {"status": "ending", "step": "how_it_went"})
-    was = P.COPY["deadline_was"].format(date=P.fmt_day(deadline)) if deadline else ""
-    rows = [_bot(f"{_greeting(first_name)} {was}".strip(), "deadline_was",
-                 day_line=P.fmt_long(today_in(plan.get("time_zone"))))]
-    if consent == C.GRANTED:
-        rows += [_bot(P.COPY["how_did_it_go"], "how_did_it_go", plan_ask="voice")]
-    elif consent == C.UNANSWERED:  # Will asks for the yes first (N211)
-        key = _ask_key(plan, "end")
-        plan = _park(database, user_id, plan, {}, resume="how_it_went", ask_key=key)
-        rows += _ask_rows(key)
-    else:  # no yes to it: the plan's end goes straight to what's next
-        plan, more = _after_how_it_went(database, user_id, plan, told=False)
-        rows += more
-    _write(database, user_id, plan["id"], rows)
-    return plan
-
+# Since N564 item 5 a plan no longer ends on a deadline: after its third level
+# the summary session is offered and a new set of three begins
+# (``_next_level``). A plan already ending on its old deadline still answers
+# "How did it go?" and "What's next?" here.
 
 def _after_how_it_went(database: Any, user_id: str, plan: dict, *,
                        told: bool = True) -> tuple[dict, list[tuple]]:
@@ -1840,7 +1835,7 @@ def next_plan(database: Any, user_id: str, choice: str, *, tz: Any = None,
 
 def _waiting_plan(database: Any, user_id: str, zone_name: Optional[str]) -> Optional[dict]:
     """A new event's plan: its questions come after the next Take (N178)."""
-    return database.insert_plan({"user_id": str(user_id), "status": "asking", "step": "deadline",
+    return database.insert_plan({"user_id": str(user_id), "status": "asking", "step": "why",
                                  "time_zone": zone_name,
                                  "facts": {"mode": "new", "again": True, "wait_take": True}})
 
@@ -1857,19 +1852,18 @@ def new_event(database: Any, user_id: str, *, tz: Any = None) -> dict:
 
 
 def _keep_practising(database: Any, user_id: str, old: dict, zone_name: Optional[str]) -> dict:
-    today = today_in(zone_name)
-    deadline = P.given_deadline(today)
-    j = P.journey(today, deadline)
+    """"Keep practising" on a plan that ended on its old deadline: a new plan
+    of three levels of four Takes from the next level (N564 item 2)."""
     order = list(P.LEVELS)
     level = old.get("level") or "make_it_yours"
     nxt = order[(order.index(level) + 1) % len(order)] if level in order else "make_it_yours"
     keep = {k: v for k, v in _facts(old).items() if k in ("key_line", "key_answer_id", "who", "event", "topic")}
     fresh = database.insert_plan({
         "user_id": str(user_id), "status": "active", "step": "done", "time_zone": zone_name,
-        "deadline": deadline.isoformat(), "deadline_given": True, "every_day": j.every_day,
-        "total": j.total, "practice_days": list(_days(old)), "level": nxt, "level_by": "machine",
+        "deadline": None, "deadline_given": False, "every_day": False,
+        "total": P.SET_TAKES, "level": nxt, "level_by": "machine",
         "started_at": _now().isoformat(),
-        "facts": {**keep, "mode": "keep", "rate_after_first": True}})
+        "facts": {**keep, "mode": "keep", "rate_after_first": True, "set_levels": [nxt]}})
     if not fresh:
         raise PlanError("V2_ERROR", "Failed to keep the plan", 500)
     database.insert_plan_level_event({"plan_id": fresh["id"], "user_id": str(user_id), "level": nxt,
