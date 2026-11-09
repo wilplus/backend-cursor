@@ -13958,3 +13958,28 @@ consent read, so the page under it showed for a moment before the check.
 No new words on screen. No migration. The rules: frontend
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 §6.
+
+**N550 · A weak moment no tool reaches goes to a coach (founder, the Claude
+Code chat, 9 November 2026, on the audit of the walk's cases, item 2.7: "now
+fix 2.7 send unfixable moments to the coach"; then, asked, "No migration"
+and "Nothing new" for the speaker).** For N548 item 4, N547 item 2:
+1. **Which moment.** When the One thing walk has no fix (no moment, no
+Sniper), the Take's least confident moment outside their best's block, a
+whole sentence with a sound read that does not hold its slide's helper
+words, when it reads below the floor (`moment_pick.unfixed`). A Take with
+nothing below the floor is a good Take: nothing goes.
+2. **To the coach, blind.** One coach request on it, insert-once, so it rides
+every coach's queue as a moment to judge, like any other (Never 2)
+(`judgement_follow_up.follow_up_without_tool`, raised from the serving
+path, `prepare_first_client_feedback`).
+3. **No migration.** It is stored as raised at the open (`raised_on`
+'open'), its trace naming it (`raised_for: "fix_without_tool"`); the
+coach-load count per opened moment includes these.
+4. **The speaker sees nothing new.** The walk stays their best, its helper
+words, "Lesson done."; a coach's answer comes back on its own screen in the
+walk, as coach answers do.
+5. **Counted.** The log names each one (`fix_without_tool`), so the problems
+no tool reaches can be counted and the next exercises chosen from them.
+No new words on screen. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2.

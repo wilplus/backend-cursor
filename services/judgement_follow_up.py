@@ -187,6 +187,40 @@ def follow_up_for_open(
     return now
 
 
+#: The request's trace names a moment no tool reached (N550):
+#: it rose with the Take, not at an open, though it is stored as one.
+WITHOUT_TOOL = "fix_without_tool"
+
+
+def follow_up_without_tool(
+    database: Any, *, take_session_id: str, snippet_id: str,
+    owner_user_id: str,
+) -> bool:
+    """The coach request for the Take's least confident moment when no tool
+    we have reaches it (founder 2026-11-09, N550): it rides every
+    coach's queue blind, as a moment to judge, like any other (Never 2), and
+    the coach's answer comes back on its own screen in the walk. The
+    speaker sees nothing new. Insert-once: a moment that already has a
+    request keeps it. Stored as raised at the open (no migration, founder's
+    choice); its trace says ``fix_without_tool``. Never raises."""
+    if not take_session_id or not snippet_id or not owner_user_id:
+        return False
+    try:
+        if _request_on_moment(database, take_session_id, snippet_id) is not None:
+            return False
+        clip = _clip_read(database, take_session_id, snippet_id)
+        if clip is None:
+            return False
+        return _raise_request(
+            database, take_session_id=take_session_id, snippet_id=snippet_id,
+            owner_user_id=owner_user_id, kind="error", clip=clip, matched=False,
+            raised_on="open", raised_for=WITHOUT_TOOL)
+    except Exception as e:  # noqa: BLE001 — the walk never waits on this
+        _log.warning("coach request without tool failed take=%s snip=%s: %s",
+                     take_session_id, snippet_id, e, exc_info=True)
+        return False
+
+
 def _answer_after_feedback(
     database: Any, *, take_session_id: str, snippet_id: str,
     owner_user_id: str, answer: Any,
@@ -409,7 +443,8 @@ def _request_on_moment(database: Any, take_session_id: str,
 
 def _raise_request(database: Any, *, take_session_id: str, snippet_id: str,
                    owner_user_id: str, kind: str, clip: dict,
-                   matched: bool, raised_on: str = "judgement") -> bool:
+                   matched: bool, raised_on: str = "judgement",
+                   raised_for: Optional[str] = None) -> bool:
     """Record the coach request for this moment, with its kind, what the
     detectors found, and where it rose (0408: at the judgement, or at the
     open under F1)."""
@@ -437,7 +472,8 @@ def _raise_request(database: Any, *, take_session_id: str, snippet_id: str,
                 vocabulary=clip["vocabulary"],
                 exercises=offerable_exercises(database), ranked=[],
                 fit=None, snippet=clip["snippet"],
-                take_session_id=take_session_id, snippet_id=snippet_id))
+                take_session_id=take_session_id, snippet_id=snippet_id,
+                ) | ({"raised_for": raised_for} if raised_for else {}))
         return True
     except Exception as e:  # noqa: BLE001 — never lose the answer
         _log.warning("judgement coach request failed take=%s snip=%s: %s",

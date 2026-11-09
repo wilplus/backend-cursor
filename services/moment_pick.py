@@ -283,6 +283,21 @@ def _shows_voice_problem(row: dict) -> bool:
     return _weakest([row]) is not None
 
 
+def unfixed(reads: list[dict], shown: list[dict]) -> Optional[dict]:
+    """The Take's least confident moment, for a walk with no fix (founder
+    2026-11-09, N550): the clip with the lowest willfidence
+    outside their best's block, a whole sentence with a sound read that
+    does not hold its slide's helper words, when it reads below the floor.
+    None on a Take with no such clip (a good Take: nothing to fix). The
+    caller asks it only when no tool reached a moment; it sends that moment
+    to a coach, blind."""
+    strongest = next((m["block_id"] for m in shown if m.get("slot") == SLOT_STRONGEST), None)
+    weak = [row for row in reads if row.get("read") and row["block_id"] != strongest
+            and _worded(row) and row["read"].get("sound", True) and not row.get("held")
+            and row["read"]["value"] < FLOOR]
+    return min(weak, key=lambda row: row["read"]["value"], default=None)
+
+
 def _words_need_help(row: dict, clearer_ok: Optional[Callable[[dict], bool]]) -> bool:
     """Its words need help and its Clearer version can be given: not one on
     a slide where the Clearer version worked last time (N359)."""
