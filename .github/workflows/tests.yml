@@ -131,6 +131,14 @@ jobs:
           git fetch -q --depth=1 origin main
           python scripts/doc_guard.py --base origin/main
 
+      # The App Model's stories (founder, 9 November 2026, N574): every
+      # backend code ref and test a story names exists, a story marked built
+      # names a test unless the baseline of the stories before N574 holds it
+      # (the baseline only shrinks against origin/main, fetched above), and
+      # docs/APP-MODEL-TO-DO.md is current. The frontend checks its own. Static.
+      - name: App Model stories
+        run: python scripts/app_model_stories.py --check
+
       - name: Run unit-tier tests
         env:
           # Minimal env so import-time guards don't hard-crash. These
