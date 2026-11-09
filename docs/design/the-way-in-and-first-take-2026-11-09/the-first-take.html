@@ -222,13 +222,130 @@ h1 { font: 800 clamp(30px, 5vw, 44px)/1.05 var(--display); margin: 0; letter-spa
 .dlg .two2 { margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .dlg .two2 button { height: 40px; border-radius: 99px; font-size: 14px; font-weight: 500; border: 1px solid #EBEBEB; background: #fff; color: #121212; }
 .dlg .two2 button.red { border: 0; background: var(--record); color: #fff; }
-/* the walk's door: a stand-in, the walk itself is locked and unchanged */
-.scr { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; background: #fff; overflow-y: auto; }
-.center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 24px; }
-.center h3 { margin: 0; font: 700 20px/1.25 var(--ui); } .center p { margin: 0; color: #5F5F5F; font-size: 14.5px; }
-.pnote { align-self: stretch; border: 1.5px dashed #CFC9C0; border-radius: 14px; padding: 9px 12px 10px; font-size: 13px; line-height: 1.45; color: #57534E; background: #FBFAF8; text-align: left; }
-.pnote > b { display: block; font: 700 10.5px var(--ui); letter-spacing: .08em; text-transform: uppercase; color: #A8A29E; margin-bottom: 2px; }
-.pback { height: 44px; border: 1.5px dashed #A8A29E; border-radius: 99px; background: #FBFAF8; color: #57534E; font-size: 14px; font-weight: 600; padding: 0 18px; }
+/* ===== AFTER THE TAKE (sourced from code) ===== */
+/* Every class is prefixed "at-" so the block can be lifted into "The way in" as is.
+   The lens: WalkThread.tsx (the bar min-h 44 px-2.5 pt-2; ‹ › 36px muted, the label 13.5px semibold; the thread
+   px-5 py-3.5, gap-4, starting at the bottom); OverlayCloseButton.tsx (28px bordered circle, 16px X);
+   WalkMessage.tsx (grey bubble, 18.5px/1.45, 22px corners, 13px 17px, max 94%); WalkPlayer.tsx (the speaker's
+   clip: orange, 90% wide, 22px corners, words 16px; the chip 62% wide, 18px corners, its label 13px semibold);
+   SnippetWavePlayer.tsx (play 42px white on orange, 44 bars h30 white/45, the time 12.5px white/85; compact 32px,
+   bars h22; the AI clip's bare player in ink); WalkAiVoice.tsx (the "AI" mark 17px, 5px corners, 9.5px bold;
+   its label 14px semibold); WalkFooter.tsx (the pill 54px black 16px semibold, the record dot 10px --record;
+   the grey link 40px 16px; bar-space 8px); WalkLoading.tsx (the dots bubble, padding 19px 17px). */
+.at-lens { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; background: #fff; color: #121212; font-size: 17px; line-height: 1.55; }
+.at-top { position: relative; z-index: 1; min-height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 8px 10px 0; }
+.at-nav { display: flex; min-width: 0; align-items: center; gap: 2px; font-size: 13.5px; font-weight: 600; }
+.at-nav button { width: 36px; height: 36px; flex: none; border: 0; background: none; border-radius: 50%; color: #737373; display: grid; place-items: center; }
+.at-nav button:disabled { opacity: .25; cursor: default; }
+.at-nav button svg { width: 20px; height: 20px; }
+.at-nav span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.at-x { width: 28px; height: 28px; flex: none; margin-right: 10px; border: 1px solid #EBEBEB; border-radius: 50%; background: #fff; color: #737373; display: grid; place-items: center; }
+.at-x svg { width: 16px; height: 16px; }
+.at-th { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 20px; display: flex; flex-direction: column; scrollbar-width: none; }
+.at-th::-webkit-scrollbar { display: none; }
+.at-in { margin-top: auto; display: flex; flex-direction: column; gap: 16px; }
+.at-lb { align-self: flex-start; max-width: 94%; display: flex; flex-direction: column; border-radius: 22px; background: #F5F5F5; padding: 13px 17px; font-size: 18.5px; line-height: 1.45; animation: drop .34s cubic-bezier(.2,.8,.2,1) both; }
+.at-lb.wide { align-self: stretch; max-width: 100%; }
+.at-lb .sb { font-weight: 600; }
+.at-typ { align-self: flex-start; display: flex; gap: 4px; border-radius: 22px; background: #F5F5F5; padding: 19px 17px; }
+.at-typ i { width: 7px; height: 7px; border-radius: 50%; background: #B5B5B5; animation: blink 1s infinite; }
+.at-typ i:nth-child(2) { animation-delay: .15s; } .at-typ i:nth-child(3) { animation-delay: .3s; }
+.at-me { margin-left: auto; width: 90%; display: flex; flex-direction: column; gap: 8px; border-radius: 22px; background: #FF640A; color: #fff; padding: 13px 17px; animation: drop .34s cubic-bezier(.2,.8,.2,1) both; }
+.at-me .w { font-size: 16px; line-height: 1.45; } .at-me .w strong { font-weight: 700; }
+.at-chip { margin-left: auto; width: 62%; display: flex; flex-direction: column; gap: 4px; border-radius: 18px; background: #FF640A; color: #fff; padding: 8px 12px; animation: drop .34s cubic-bezier(.2,.8,.2,1) both; }
+.at-chip > b { font-size: 13px; font-weight: 600; color: rgba(255,255,255,.85); }
+.at-pl { display: flex; min-width: 0; align-items: center; gap: 12px; }
+.at-pl .pb { width: 42px; height: 42px; flex: none; border: 0; border-radius: 50%; background: #fff; color: #FF640A; display: grid; place-items: center; }
+.at-pl .pb svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
+.at-pl .bs { flex: 1; min-width: 0; height: 30px; display: flex; align-items: center; gap: 2px; overflow: hidden; }
+.at-pl .bs i { flex: 1; min-width: 1px; border-radius: 2px; background: rgba(255,255,255,.45); }
+.at-pl .tm { flex: none; font-size: 12.5px; color: rgba(255,255,255,.85); font-variant-numeric: tabular-nums; }
+.at-pl.c .pb { width: 32px; height: 32px; } .at-pl.c .pb svg { width: 12px; height: 12px; } .at-pl.c .bs { height: 22px; }
+.at-pl.ink .pb { background: #121212; color: #fff; } .at-pl.ink .bs i { background: rgba(18,18,18,.2); } .at-pl.ink .tm { font-size: 10.5px; color: #737373; }
+.at-ai { margin-top: 8px; display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; }
+.at-ai em { width: 17px; height: 17px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; background: #121212; color: #fff; font-style: normal; font-size: 9.5px; font-weight: 700; }
+.at-lb .at-pl { margin-top: 8px; }
+.at-dock { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 8px; animation: walk-fade .24s ease both; }
+.at-dock:empty { display: none; }
+.at-dock:has(> .at-link:last-child) { padding-bottom: 0; }
+.at-dock > .bar { padding: 0; min-height: 54px; }
+.at-pill { width: 100%; height: 54px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 0; border-radius: 999px; background: #121212; color: #fff; font-size: 16px; font-weight: 600; }
+.at-pill .dt { width: 10px; height: 10px; border-radius: 50%; background: #E63C2D; }
+.at-link { width: 100%; height: 40px; border: 0; background: none; color: #737373; font-size: 16px; }
+@keyframes walk-fade { from { opacity: 0; } to { opacity: 1; } }
+/* Will's chat after the walk: IdealTextCard.tsx (white, 1px border, 18px corners, p-2.5 pr-7, 80% at most 384px,
+   the 72px 16:9 tile, the name 15px semibold, the "1.0" tag 12px semibold on muted, › 20px muted), 3px under its
+   Feedback walk (B3); PlanRows.tsx Progress (muted, 16px corners, px-3 py-2, 15px, min 70%) with PlanCard.tsx
+   PlanBar (8px bars, 4px apart, #FF640A done, #EBEBEB to come). */
+.at-card { position: relative; align-self: flex-start; width: 80%; max-width: 384px; margin-top: -5px; display: flex; align-items: center; gap: 10px; border: 1px solid #EBEBEB; border-radius: 18px; background: #fff; padding: 10px 28px 10px 10px; text-align: left; color: #121212; animation: drop .28s ease both; }
+.at-card .tl { width: 72px; flex: none; aspect-ratio: 16 / 9; border-radius: 6px; background: linear-gradient(to bottom right, #dde3ee, #c7d0e0); }
+.at-card b { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.at-card .vt { flex: none; border-radius: 99px; background: #F5F5F5; padding: 2px 10px; font-size: 12px; font-weight: 600; }
+.at-card .cv { position: absolute; right: 12px; top: 50%; translate: 0 -50%; font-size: 20px; color: #737373; }
+.b.will.at-prog { min-width: 70%; display: flex; flex-direction: column; gap: 8px; }
+.at-prog .pbar { display: flex; gap: 4px; } .at-prog .pbar i { flex: 1; height: 8px; border-radius: 4px; background: #EBEBEB; } .at-prog .pbar i.on { background: #FF640A; }
+/* The Ideal Text page, its door only: IdealTextHeading.tsx (the name 17px semibold), OverlayCloseButton.tsx (⋯ and ✕,
+   28px circles, 6px apart, F6), IdealTextActions.tsx ("Record Take N" the WalkPill with the dot, the grey "Close").
+   The text itself is drawn plainly: helper words orange (F3), one paragraph per question (N401 item 4). */
+.at-it { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; background: #fff; color: #121212; }
+.at-it .hd { height: 56px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 16px; }
+.at-it .hd b { flex: 1; min-width: 0; font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.at-it .hd button { width: 28px; height: 28px; border: 1px solid #EBEBEB; border-radius: 50%; background: #fff; color: #737373; display: grid; place-items: center; font-size: 15px; line-height: 1; }
+.at-it .hd button svg { width: 16px; height: 16px; }
+.at-it .tx { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 20px 16px; scrollbar-width: none; }
+.at-it .tx p { margin: 0 0 18px; font-size: 17px; line-height: 1.6; }
+.at-it .tx p mark { background: none; color: #FF640A; }
+/* "How do you feel?" and the set-up: FeelingsCheckIn.tsx, RecordingSetup.tsx, ui/wizard.tsx (WizardProgress: 64px
+   sides, dots 6px, the current 24×8 black, done black/40, to come muted/20, gap 6, mb 24; WizardCancel 44px, X 20px;
+   StepHead: 17px semibold, the mic 16px orange, the helper 14px muted, mb 20); the feelings 52px pills, 16px medium,
+   2 columns gap 10, the pick orange, Skip faded; the chips 40px 14px, chosen black; the input 48px, 12px corners;
+   the dropzone 152px dashed 16px corners; the button ui/button.tsx default (orange, 40px, 14px medium) rounded-full;
+   LabOverlay.tsx labColumnClass px-4 pt-6 pb-8. */
+.at-wz { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; background: #fff; color: #121212; padding: 24px 16px 32px; }
+.at-wp { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.at-wp .sl { width: 64px; flex: none; } .at-wp .sr { width: 64px; flex: none; display: flex; justify-content: flex-end; }
+.at-wp .bk { height: 32px; border: 0; background: none; border-radius: 99px; padding: 0 8px; font-size: 13px; color: #737373; }
+.at-wp .dts { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.at-wp .dts i { width: 6px; height: 6px; border-radius: 99px; background: rgba(115,115,115,.2); transition: all .2s; }
+.at-wp .dts i.d { background: rgba(18,18,18,.4); } .at-wp .dts i.c { width: 24px; height: 8px; background: #121212; }
+.at-wp .wx { margin-right: -10px; width: 44px; height: 44px; border: 0; background: none; border-radius: 99px; display: grid; place-items: center; color: #737373; }
+.at-wp .wx svg { width: 20px; height: 20px; }
+.at-sh { margin-bottom: 20px; }
+.at-sh h2 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; line-height: 1.375; }
+.at-sh h2 svg { width: 16px; height: 16px; flex: none; color: #FF640A; }
+.at-sh p { margin: 8px 0 0; font-size: 14px; line-height: 1.625; color: #737373; }
+.at-fg { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.at-fg button { height: 52px; border: 1px solid #EBEBEB; border-radius: 99px; background: #fff; font-size: 16px; font-weight: 500; color: #121212; }
+.at-fg button.on { background: #FF640A; border-color: #FF640A; color: #fff; }
+.at-fg button:disabled { opacity: .4; cursor: default; }
+.at-fg button.sk { border-color: rgba(235,235,235,.5); background: rgba(255,255,255,.5); color: rgba(115,115,115,.8); }
+.at-in2 { width: 100%; height: 48px; border: 1px solid rgba(18,18,18,.4); border-radius: 12px; padding: 0 16px; font: 15px var(--ui); color: #121212; background: #fff; outline: none; }
+.at-chp { display: flex; flex-wrap: wrap; gap: 8px; }
+.at-chp button { height: 40px; padding: 0 16px; border: 1px solid #EBEBEB; border-radius: 99px; background: #fff; font-size: 14px; color: #121212; }
+.at-chp button.on { background: #121212; border-color: #121212; color: #fff; }
+.at-nl { margin-top: 16px; border: 0; background: none; padding: 0; font-size: 13px; color: #737373; text-decoration: underline; text-underline-offset: 2px; }
+.at-dz { width: 100%; min-height: 152px; border: 1px dashed #EBEBEB; border-radius: 16px; background: #fff; padding: 0 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 14px; color: #121212; }
+.at-dz svg { width: 20px; height: 20px; color: #737373; }
+.at-body { flex: 1; }
+.at-cta { margin-top: auto; padding-top: 24px; }
+.at-cta button { width: 100%; height: 40px; border: 0; border-radius: 999px; background: #FF640A; color: #fff; font-size: 14px; font-weight: 500; }
+.at-cta button:disabled { opacity: .5; }
+/* The sharing question before the next Take (NextTakeShareScreen.tsx CommunityShareScreen, the backend's switch for
+   sending off, N479 item 1): WalkOverlay.tsx's top bar with its caption ("Take 1", 13.5px semibold) and ✕, the body
+   px-5 py-3.5 gap-4 from the top; WalkOptions.tsx rows (16px corners, 1.5px border, px-3.5 py-3; the tick box 22px,
+   7px corners, black when ticked; the label 16px semibold, the hint 13.5px muted); Continue the WalkFooter pill. */
+.at-sh2 { position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; background: #fff; color: #121212; font-size: 17px; line-height: 1.55; }
+.at-sh2 .cap { min-width: 0; padding: 0 8px; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.at-sh2 .bd { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 14px 20px; }
+.at-op { display: flex; flex-direction: column; gap: 8px; }
+.at-op button { width: 100%; display: flex; align-items: flex-start; gap: 12px; border: 1.5px solid #EBEBEB; border-radius: 16px; background: #fff; padding: 12px 14px; text-align: left; color: #121212; }
+.at-op button.on { border-color: #121212; }
+.at-op .tk { width: 22px; height: 22px; flex: none; margin-top: 1px; border: 1.5px solid rgba(18,18,18,.35); border-radius: 7px; display: grid; place-items: center; color: #fff; font-size: 13px; font-weight: 700; }
+.at-op button.on .tk { border-color: #121212; background: #121212; }
+.at-op b { display: block; font-size: 16px; font-weight: 600; } .at-op small { display: block; margin-top: 1px; font-size: 13.5px; color: #737373; }
+.at-pill:disabled { opacity: .3; cursor: default; }
+/* ===== END AFTER THE TAKE ===== */
+
 /* a prototype's own note, never app words */
 .toast { position: absolute; left: 50%; top: 70px; translate: -50% 0; background: #FBFAF8; color: #57534E; border: 1.5px dashed #A8A29E; border-radius: 12px; padding: 8px 14px; font-size: 13px; z-index: 10; width: max-content; max-width: 86%; text-align: center; animation: drop .2s ease both; }
 .toast b { display: block; font: 700 10px var(--ui); letter-spacing: .08em; text-transform: uppercase; color: #A8A29E; }
@@ -272,7 +389,7 @@ td small { color: var(--muted); }
   <header class="top">
     <h1>The first Take</h1>
     <p class="lockb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Locked 2026-11-03 (N401) · pinned 2026-11-09 (N551)</p>
-    <p class="lede">Everyone's onboarding is their first official Take. After the acceptance screen, Will welcomes them in four bubbles (N492), and the middle of his bar is one black button, "Start your first recording". It opens the recording screen as it is locked, and the five questions (N462) are the slides, each drawn as the centered poster. They answer each one out loud, slide by slide, so Will hears their vocal and verbal cues from the first minute. While the Take is processed, Will shows what he heard for them to check. Then comes the walk, and "Record Take 2". The ringed button is the next tap.</p>
+    <p class="lede">Everyone's onboarding is their first official Take. After the acceptance screen, Will welcomes them in four bubbles (N492), and the middle of his bar is one black button, "Start your first recording". It opens the recording screen as it is locked, and the five questions (N462) are the slides, each drawn as the centered poster. They answer each one out loud, slide by slide, so Will hears their vocal and verbal cues from the first minute. While the Take is processed, Will shows what he heard for them to check. Then comes the walk, Will's one question, and "Record Take 2": "How do you feel?", the set-up, the recording screen. The ringed button is the next tap.</p>
     <div class="ctl">
       <div class="seg" id="biz" role="group" aria-label="Business"><span class="lab">Business</span></div>
       <div class="seg" id="who" role="group" aria-label="Who"><span class="lab">Who</span></div>
@@ -302,11 +419,12 @@ td small { color: var(--muted); }
         <li><b>N319 item 6:</b> the plan card as built: "Plan", one part per practice, the days, the deadline in #C2410C, "Change your plan".</li>
         <li><b>N459, plan.py:</b> "No date yet" gives eight weeks (29 December), not 3 January.</li>
         <li><b>Fonts:</b> the app's own system stack in place of Figtree and Bricolage; no web fonts load.</li>
+        <li><b>N309, N546 to N550:</b> the walk's door is no longer a stand-in: the One thing walk as built (their best, one fix by the kind of its weakness, the practise in the locked bar, the helper words, "Lesson done."), Will's chat after it, the Ideal Text's door, and "Record Take 2" through "How do you feel?" (N549) and the set-up to Take 2's recording screen.</li>
       </ul>
       <h3>Drawn as the code draws it</h3>
       <p>With no length chosen (Take 1), the strip's bar is full and grey, pulsing, not orange (LabOverlay.tsx); Finish take and the strip's dot are the record red (globals.css <code>--record</code>, #E63C2D), while the bar's dot and Stop are the locked #EF4444.</p>
       <h3>Kept, signed but not built yet</h3>
-      <p>The processing row on top of Will's chat for Take 1, with its percentage (N401 item 3), and the checks during it (N401 item 3, N453).</p>
+      <p>The processing row on top of Will's chat for Take 1, with its percentage (N401 item 3), and the checks during it (N401 item 3, N453). The walk's row turning orange is that row's end; as built today, the walk opens by itself when the feedback is ready (A2).</p>
       <h3>Still unsigned</h3>
       <ul class="words" id="unsigned"></ul>
     </div>
@@ -320,6 +438,14 @@ td small { color: var(--muted); }
     <div class="panel">
       <h2 id="stepsH">Where you are</h2>
       <ol class="steps" id="steps"></ol>
+    </div>
+
+    <div class="panel">
+      <h2>After the Take</h2>
+      <p>From "Lesson done." back, every step is drawn from the code on main, each with the file it is built in. The walk is the One thing walk (N309) with the decisions to 9 November: two moments, their best praised and one fix on the less confident moment, its tool by the kind of its weakness (N548). Kasia and Marta get the AI clip, their voice the problem; Lena the Clearer version, her words too. What they say is an example.</p>
+      <div class="tbl"><table><thead><tr><th>Step</th><th>What the speaker meets</th><th>Built in</th></tr></thead><tbody id="afterSrc"></tbody></table></div>
+      <h3>Still open, or not as built</h3>
+      <ul class="fixes" id="afterOpen"></ul>
     </div>
 
     <div class="panel">
@@ -465,7 +591,7 @@ td small { color: var(--muted); }
     invita: { key: "invita", label: "Invita", sub: "sellers and their customers",
       inviter: { n: "Ariel", role: "Seller" },
       joiner: { n: "Lena", role: "Seller · Gdańsk", topics: ["Invita in Gdańsk"], about: "I'm a new Invita seller in Gdańsk.", change: { said: "Add salon bookings too.", topic: "Salon bookings" },
-        says: ["Our shampoos, and how to tell which one a scalp needs.", "One wash tells you more than the label. It took me a month of wrong advice to see it.", "A new seller in one of our salons.", "A customer came back after a week and said the itch was gone.", "One wash tells you more than the label."] } },
+        says: ["Our shampoos, and how to tell which one a scalp needs.", "I'd say one wash maybe tells you more than the label, kind of. It took me a month of wrong advice to see it.", "A new seller in one of our salons.", "A customer came back after a week and said the itch was gone.", "One wash tells you more than the label."] } },
   };
   const ARTUR = { n: "Artur", role: "Speaking coach" };
   const WHOS = [
@@ -479,8 +605,16 @@ td small { color: var(--muted); }
     ["How others will see you", "From slide 1. Something else, Change it (said out loud: \"Record your answer\", or Not now) or That's right."],
     ["Your plan", "No day was heard on the five slides, so \"When is your deadline?\" as taps (N453 item 3); then the plan card."],
     ["The agreement, You're set", w === "coach" ? "One tap, then the line. Marta's queue is her row in the list, under Will (N521)." : "One tap, then the line."],
-    ["The Feedback walk", "It opens the moment the feedback is ready: its row on top turns orange. The walk works on how they answered."],
-    ["Take 2", "\"Record Take 2\", for the real talk: the feelings check with its Skip, then the set-up, its topic the plan's."],
+    ["The Feedback walk", `Its row on top turns orange when it is ready. The lens: "Hi ${p.n}.", their best's clip and "This was your most confident moment." with why it worked; Next.`],
+    ["One thing to improve", AFTER.sample().fix.tool === "ai" ? `"And now, one thing to improve:": the less confident moment, its voice the problem, so the AI clip (N548): the phrase bold, "Say this one like your confident moment:", their best as a chip, the AI clip; Try it or Skip.` : `"And now, one thing to improve:": the less confident moment, its words and voice the problem, so the Clearer version first (N548): "Say it straight:" and the sentence in bold; Try it or Keep mine.`],
+    ["Practise it", "Try it: the locked recording bar in the dock, nothing in the thread. The try with its words, the dots, \"Close. Once more.\"; the second, \"Yes. That's it.\" and Next."],
+    ["Helper words, Lesson done.", "\"These are your helper words. …\" and the words in bold, saved; \"Lesson done.\" and Close."],
+    ["Back in Will's chat", "The pair (Feedback walk, the Take's card), the bridge, Will's one question on the moment with Something else first; \"Got it, thanks 🙏\", \"Good job. See you tomorrow.\", the plan's bar."],
+    ["The Ideal Text", "The card opens it: the five answers, one paragraph per question, the helper words orange; \"Record Take 2\" and Close."],
+    ["The sharing question", "From the page's \"Record Take 2\", once: \"How big you want your audience?\", three choices, Continue. The bar's \"Record Take 2\" goes past it."],
+    ["How do you feel?", "Opens at once (N549): four feelings and Skip, four marks; a pick turns orange, the rest fade, the set-up 450 ms later."],
+    ["The set-up", "The real talk's set-up afresh: the topic filled in from the plan, the length, the slides (\"Skip for now\")."],
+    ["Take 2 records", "\"Getting your mic ready\" and \"New slides\"; \"Take 2 · Slide 1 of 3\" on the stand-in deck, the clock counting down."],
   ];
 
   let bizKey = "rasp", whoKey = "link", S = null, screen = null, C = null;
@@ -488,7 +622,7 @@ td small { color: var(--muted); }
   const WHO = () => WHOS.find((x) => x.k === whoKey);
   function fresh() {
     const b = B(), w = WHO();
-    S = { me: w.me(b), inv: w.inv(b), topics: [...w.me(b).topics], log: [], beat: "hi", said: false, took: false, proc: 0, procDone: false, walked: false, roleSet: false, willSeen: false, invSeen: false, date: null, every: false, total: 0, mode: "rest", fresh: null };
+    S = { me: w.me(b), inv: w.inv(b), topics: [...w.me(b).topics], log: [], beat: "hi", said: false, took: false, proc: 0, procDone: false, walked: false, roleSet: false, willSeen: false, invSeen: false, date: null, every: false, total: 0, mode: "rest", fresh: null, walkLog: [], helper: null, moment: null, shared: null };
   }
   function paintControls() {
     $("#biz").innerHTML = `<span class="lab">Business</span>` + Object.values(BIZ).map((b) => `<button type="button" data-b="${b.key}" class="${b.key === bizKey ? "on" : ""}" aria-pressed="${b.key === bizKey}">${esc(b.label)} <small>· ${esc(b.sub)}</small></button>`).join("");
@@ -499,7 +633,9 @@ td small { color: var(--muted); }
     $("#slides").innerHTML = SLIDES.map((s, i) => `<tr data-s="${i}"><td>${i + 1}</td><td><small>${esc(s.k)}</small><br><b>${esc(s.q)}</b><br><small>${esc(s.h)}</small></td><td>“${esc(S.me.says[i])}”</td><td>${esc(s.takes)}</td></tr>`).join("");
     $("#stepsH").textContent = `Where you are: ${WHO().label(B())}`;
     $("#steps").innerHTML = STEPS(whoKey, B(), S.me).map(([t, d], i) => `<li><span class="n"><span>${i + 1}</span></span><span><b>${esc(t)}</b><span class="d">${esc(d)}</span></span></li>`).join("");
-    $("#words").innerHTML = WORDS.map(([w, n]) => `<li><q>${esc(w)}</q><small>${esc(n)}</small></li>`).join("");
+    $("#words").innerHTML = [...WORDS, ...AFTER.WORDS].map(([w, n]) => `<li><q>${esc(w)}</q><small>${esc(n)}</small></li>`).join("");
+    $("#afterSrc").innerHTML = AFTER.SOURCES.map(([a, b, c]) => `<tr><td><b>${esc(a)}</b></td><td>${esc(b)}</td><td><small><code>${esc(c)}</code></small></td></tr>`).join("");
+    $("#afterOpen").innerHTML = AFTER.OPEN.map((t) => `<li>${esc(t)}</li>`).join("");
     $("#unsigned").innerHTML = UNSIGNED.map(([w, n]) => `<li><q>${esc(w)}</q><small>${esc(n)}</small></li>`).join("");
   }
   const stepName = (t) => { const i = STEPS(whoKey, B(), S.me).findIndex(([x]) => x === t); if (i >= 0) $$("#steps li").forEach((li, j) => { li.classList.toggle("on", j === i); li.classList.toggle("done", j < i); }); };
@@ -539,7 +675,7 @@ td small { color: var(--muted); }
     C.bar.innerHTML = h;
     const pr = $("[data-a=projects]", C.bar); if (pr) pr.onclick = () => toast("Your projects opens, as today (N460 item 5).");
     const rest = $("[data-a=rest]", C.bar);
-    if (rest) on(rest, () => { if (!S.took) go("rec"); else toast(`Take 2: "How do you feel?" with its Skip (Never 3), then the set-up for the real talk, its topic the plan's (N401 item 4, N449).`); }, !!o.cue);
+    if (rest) on(rest, () => { if (!S.took) go("rec"); else if (S.procDone) go("feel"); }, !!o.cue);
   }
 
   // Will's tap answers, on your side under his question (N467, WillQuestion.tsx TapRow; the locked .taps)
@@ -609,6 +745,383 @@ td small { color: var(--muted); }
   const planCard = () => `<div class="plan"><span class="hd">Plan</span><span class="pbar">${Array.from({ length: S.total }, () => "<i></i>").join("")}</span><ul><li>${S.every ? "15 minutes every day" : "15 minutes, 3 times a week: Mon, Wed, Fri"}</li><li>Your deadline: <b>${esc(S.date)}</b></li></ul><button type="button" data-plan="1">Change your plan</button></div>`;
   const walkBubble = () => `<button type="button" class="walkb" data-walk="1"><span>Feedback walk</span><small>Nov 3, 2026</small><span class="chev" aria-hidden="true">›</span></button>`;
 
+  /* ===== AFTER THE TAKE (sourced from code) ===== */
+  // What happens after a Take, as the code on main builds it (frontend-cursor 7ee1476, backend-cursor 64812d2):
+  // the One thing walk in the lens, Will's chat after it, the Ideal Text's door, then "Record Take 2" →
+  // "How do you feel?" → the set-up → Take 2's recording screen. Portable: it reads nothing of the host but
+  // `env` (the host's wait, toast, steps list, screen switch and state), so "The way in" can take the group whole.
+  function afterTheTake(env) {
+    const { app, esc, wait, toast, stepName, fail } = env;
+    const $ = (s, r = app) => r.querySelector(s);
+    const S = () => env.state();
+    const ic = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+    const IC = {
+      left: ic('<path d="m15 18-6-6 6-6"/>'), right: ic('<path d="m9 18 6-6-6-6"/>'), x: ic('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
+      play: '<svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
+      mic: ic('<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>'),
+      upload: ic('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>'),
+      trash: '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
+    };
+
+    // ---- the words, each from its file ----
+    const T = {
+      hello: (n) => `Hi ${n}.`,                                         // idealEditCopy.ts:526 ONE_THING_COPY.hello
+      best: "This was your most confident moment.",                     // idealEditCopy.ts:537
+      why: (cue) => `Why it worked: ${cue}`,                            // idealEditCopy.ts:538; walkLines.ts:155 lowers the cue's first letter
+      one: "And now, one thing to improve:",                            // idealEditCopy.ts:540
+      sayStraight: "Say it straight:",                                  // idealEditCopy.ts:542
+      likeConfident: "Say this one like your confident moment:",        // idealEditCopy.ts:544
+      tryIt: "Try it", keepMine: "Keep mine", keepWords: "Your words it is.", // idealEditCopy.ts:547-552
+      skipped: "Okay, we'll skip this one.",                            // idealEditCopy.ts:560 (N405)
+      landed: "Yes. That's it.", onceMore: "Close. Once more.",         // idealEditCopy.ts:562-563
+      helperWords: "These are your helper words. They'll appear on screen during your next take, to remind you of what you learned here.", // :569
+      lessonDone: "Lesson done.",                                       // idealEditCopy.ts:572
+      next: "Next", close: "Close", skip: "Skip", stop: "Stop",         // CHUNK_SHEET_COPY.pagerNext :263, pillClose :134; WALK_COPY.skip; RecordingStrip
+      confident: "Your confident moment",                               // WALK_COPY.confidentReplay :461
+      aiLabel: "AI version of your voice", aiBadge: "AI",               // WALK_COPY :475-477
+      feedbackWalk: "Feedback walk",                                    // WALK_COPY.feedbackWalk (N192)
+      bridge: "Ok, now let's dive into the content for a bit.",         // backend after_take.py:128 BRIDGE[0], Take 1 (N94)
+      goal: "When you finish, what do you want them to do? Or feel? 🤔", // backend will_question.py:94
+      worked: (m) => `We just worked on “${m}”. `,                      // backend will_question.py:142 (N294 item 1)
+      goalChips: ["Say yes", "Trust me", "Get it"],                     // backend will_question.py:117
+      thanks: "Got it, thanks 🙏",                                      // backend will_question.py:130
+      seeYou: (day) => `Good job. See you ${day}.`,                     // backend after_take.py:111, plan.next_day_text → "tomorrow"
+      doneOf: (n, t) => `${n} of ${t} practices done.`,                 // backend plan.py:97 (N319 item 7)
+      project: "Your first Take",                                       // firstTake.ts FIRST_TAKE_TOPIC
+      recordTake: (n) => `Record Take ${n}`,                            // planCopy.ts recordTake; IdealTextActions.tsx:94
+      feel: "How do you feel?", feelHelp: "Before you step on stage",   // FeelingsCheckIn.tsx:90
+      feelings: ["Nervous", "Excited", "Calm", "Not sure"],             // FeelingsCheckIn.tsx:23
+      topicQ: "What is the topic?", topicPh: "e.g. my Q3 results pitch", // RecordingSetup.tsx:340
+      lengthQ: "How long should it run?", noLimit: "No limit",          // RecordingSetup.tsx:386, :405
+      lengths: ["1 min", "2 min", "3 min", "5 min", "30 min", "45 min", "60 min"], // RecordingSetup.tsx:39
+      slidesQ: "Have slides to go with it?", slidesHelp: "Adding slides makes the ideal text dramatically better.", // :414
+      upload: "Upload your deck (PDF)", skipForNow: "Skip for now", startRec: "Start recording", back: "← Back", // PresentationInput.tsx:105; RecordingSetup.tsx:310; wizard.tsx
+      micReady: "Getting your mic ready", newSlides: "New slides",      // recordingCopy.ts:21; presentationInPlay.ts:25 (N257)
+      where: (i, n) => `Take 2 · Slide ${i} of ${n}`,                   // LabOverlay.tsx RecordingWhere
+      backBtn: "Back", nextSlide: "Next slide", finish: "Finish take",  // RecordingRoadmap.tsx, FinishTakeButton.tsx
+      // the sharing question (NextTakeShareScreen.tsx:458; idealEditCopy.ts WALK_COPY :393, :417-430; CHUNK_SHEET_COPY.pillContinue :130, historyTake :255)
+      shareBefore: "Before we start the new take!", shareTitle: "After all, it's about speaking publicly!", shareAudience: "How big you want your audience?",
+      shareOpts: [["general", "General community", "Fastest improvement in speaking publicly"], ["mine", "Only my community", "Slower but steady growth"], ["none", "Only me", "Slowest progress, but safe"]],
+      cont: "Continue", take1: "Take 1",
+    };
+    // The stand-in deck a Take with no slides records on (defaultDeck.ts:36), drawn as the poster with no label
+    // (pdfSlides.tsx:338; RecordingRoadmap.tsx:39 stageLook: the default deck is a poster, tall with no helper words).
+    const DECK = [{ title: "Opening", body: "What you'll talk about, in one line." }, { title: "Main points", body: "1\n2\n3" }, { title: "Summary", body: "What you said, and what's next." }];
+    // The first Take's deck: each slide's title is its question (firstTake.ts KICKERS), which the walk's bar names (B6, N397).
+    const QUESTIONS = ["What do you know better than most people you meet?", "What could you teach someone in five minutes that would save them a year?", "Who would be glad you told them?", "When did it make a difference? Take us to that day.", "If they remember one sentence from you, what should it be?"];
+
+    // ---- sample content: their best and the one fix, the tool by the kind of the weakness (N548) ----
+    // The cue lines are signed B-lines (idealEditCopy.ts WALK_LINE_BANK); the AI tips are AI_CLIP_BANK's (N120).
+    const SAMPLE = {
+      Kasia: { best: { slide: 0, said: "I know what makes people stop scrolling.", cue: "Your voice was calm and smooth. It sounded like you were in charge!", secs: 4, bank: "B05" },
+        fix: { slide: 4, tool: "ai", said: "Let the AI find the quotes, and check every one yourself.", phrase: "check every one", tip: "Pause before “check every one”", bank: "AIpause", secs: 5, aiSecs: 5 },
+        topic: "Checking AI quotes before they go out" },
+      Lena: { best: { slide: 3, said: "A customer came back after a week and said the itch was gone.", cue: "Loud where it mattered, soft where it didn't. That landed!", secs: 5, bank: "B03" },
+        fix: { slide: 1, tool: "clearer", said: "I'd say one wash maybe tells you more than the label, kind of.", say: "One wash tells you more than the label.", secs: 6 },
+        topic: "Telling which shampoo a scalp needs" },
+      Marta: { best: { slide: 0, said: "People come to me the week before they speak.", cue: "You came in with energy from the very first word!", secs: 4, bank: "B08" },
+        fix: { slide: 3, tool: "ai", said: "One breath, one step back, and she went on.", phrase: "one step back", tip: "Lean on “one step back”", bank: "AIstress", secs: 4, aiSecs: 4 },
+        topic: "Standing still for your first sentence" },
+      Anna: { best: { slide: 0, said: "I can tell you where a bill will stall before it does.", cue: "Your voice was calm and smooth. It sounded like you were in charge!", secs: 4, bank: "B05" },
+        fix: { slide: 4, tool: "ai", said: "Read the last page of a bill first.", phrase: "the last page", tip: "Lean on “the last page”", bank: "AIstress", secs: 4, aiSecs: 4 },
+        topic: "Reading a bill from its last page" },
+      Zofia: { best: { slide: 3, said: "She saw her curls cut dry for the first time and smiled at the mirror.", cue: "Loud where it mattered, soft where it didn't. That landed!", secs: 5, bank: "B03" },
+        fix: { slide: 1, tool: "clearer", said: "I think you maybe shouldn't cut curls wet, sort of.", say: "Don't cut curls wet.", secs: 5 },
+        topic: "Cutting curly hair dry" },
+    };
+    const sample = () => SAMPLE[S().me.n] || SAMPLE.Kasia;
+    const lowerFirst = (l) => (/^I\b/.test(l) ? l : l.charAt(0).toLowerCase() + l.slice(1)); // walkLines.ts lowerFirst
+    const bare = (t) => t.trim().replace(/^[\s.,;:!?"“”']+|[\s.,;:!?"“”']+$/g, "");        // B7: no punctuation at either end; will_question.moment_of
+    const bold = (text, phrase) => { const at = phrase ? text.toLowerCase().indexOf(phrase.toLowerCase()) : -1; if (at < 0) return esc(text); return esc(text.slice(0, at)) + `<strong>${esc(text.slice(at, at + phrase.length))}</strong>` + esc(text.slice(at + phrase.length)); }; // walkLines.ts phrasePieces
+    const helperOf = (fx, choice) => (fx.tool === "ai" ? fx.phrase : choice === "accept" ? bare(fx.say) : bare(fx.said)); // C3
+    const clock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
+    // ---- the one player (SnippetWavePlayer.tsx), in its looks ----
+    const barsOf = (seed, n) => { let h = 0; for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0; const out = []; for (let i = 0; i < n; i++) { h = (h * 1103515245 + 12345) >>> 0; out.push(6 + (h % 23)); } return out; };
+    const player = (seed, secs, look = "me") => {
+      const n = look === "chip" ? 24 : 44, k = look === "me" ? 1 : 0.65;
+      const cls = look === "me" ? "" : look === "chip" ? " c" : " c ink";
+      return `<div class="at-pl${cls}"><button type="button" class="pb" aria-label="Play">${IC.play}</button><span class="bs" aria-hidden="true">${barsOf(seed, n).map((x) => `<i style="height:${Math.round(x * k)}px"></i>`).join("")}</span><span class="tm">${clock(secs)}</span></div>`;
+    };
+    const grey = (lines, cls = "") => `<div class="at-lb${cls}">${lines.map((l) => (typeof l === "string" ? `<span>${esc(l)}</span>` : l.html)).join("")}</div>`;
+    const meClip = (wordsHtml, secs, seed) => `<div class="at-me">${wordsHtml ? `<div class="w">${wordsHtml}</div>` : ""}${player(seed, secs)}</div>`;
+    const chip = (secs) => `<div class="at-chip"><b>${esc(T.confident)}</b>${player("best", secs, "chip")}</div>`;
+    const aiBubble = (fx) => `<div class="at-lb wide"><span>${bold(fx.tip, fx.phrase)}, like this:</span><span class="at-ai"><em>${T.aiBadge}</em>${esc(T.aiLabel)}</span>${player("ai", fx.aiSecs, "ink")}</div>`;
+
+    // ---- the lens (WalkThread.tsx): one chat that grows by taps ----
+    let L = null;
+    function lens() {
+      app.innerHTML = `<div class="at-lens" role="dialog" aria-modal="true" aria-label="${esc(T.feedbackWalk)}"><div class="at-top"><nav class="at-nav" aria-label="${esc(T.feedbackWalk)}"><button type="button" data-nb aria-label="Back">${IC.left}</button><span id="atLabel"></span><button type="button" data-nn aria-label="Next">${IC.right}</button></nav><button type="button" class="at-x" aria-label="Close">${IC.x}</button></div><div class="at-th" id="atTh"><div class="at-in" id="atIn"></div></div><div class="at-dock" id="atDock"></div></div>`;
+      L = { th: $("#atTh"), in: $("#atIn"), dock: $("#atDock"), parts: [], at: -1 };
+      $("[data-nb]").onclick = () => jump(-1);
+      $("[data-nn]").onclick = () => jump(1);
+      $(".at-x").onclick = () => env.go("will"); // ✕: back to the chat (B11); the walk still waits, its row orange
+      L.th.addEventListener("scroll", readBar);
+    }
+    function part(label) { L.parts.push({ label, el: null }); L.at = L.parts.length - 1; paintBar(); }
+    function paintBar() { $("#atLabel").textContent = L.parts[L.at]?.label ?? ""; $("[data-nb]").disabled = L.at <= 0; $("[data-nn]").disabled = L.at >= L.parts.length - 1; }
+    function jump(d) { const p = L.parts[L.at + d]; if (!p || !p.el) return; L.at += d; paintBar(); L.th.scrollTo({ top: p.el.offsetTop - 14, behavior: "smooth" }); }
+    function readBar() { const top = L.th.scrollTop + 60; let at = 0; L.parts.forEach((p, i) => { if (p.el && p.el.offsetTop <= top) at = i; }); if (at !== L.at && L.parts[at]?.el) { L.at = at; paintBar(); } }
+    const toEnd = () => { L.th.scrollTop = L.th.scrollHeight; };
+    // B7: each grey bubble behind the typing dots, 350 ms a bubble; the speaker's own bubble without them.
+    async function land(html, dots = true) {
+      if (dots) { L.in.insertAdjacentHTML("beforeend", `<div class="at-typ" aria-hidden="true"><i></i><i></i><i></i></div>`); const ty = L.in.lastElementChild; toEnd(); await wait(350); ty.remove(); }
+      L.in.insertAdjacentHTML("beforeend", html);
+      const el = L.in.lastElementChild;
+      const p = L.parts[L.parts.length - 1]; if (p && !p.el) p.el = el;
+      S().walkLog.push({ label: p?.label ?? "", html });
+      toEnd();
+      return el;
+    }
+    // The dock (WalkFooter.tsx): one black pill, grey links under it. Resolves with the tapped action.
+    function dock(pill, links = [], { dot = false, cue = true } = {}) {
+      return new Promise((res) => {
+        L.dock.innerHTML = `${pill ? `<button type="button" class="at-pill${cue ? " cue" : ""}" data-a="${esc(pill)}">${dot ? '<span class="dt" aria-hidden="true"></span>' : ""}${esc(pill)}</button>` : ""}${links.map((l) => `<button type="button" class="at-link" data-a="${esc(l)}">${esc(l)}</button>`).join("")}`;
+        L.dock.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => { L.dock.innerHTML = ""; res(b.dataset.a); }));
+        toEnd(); // the dock takes room from the thread: keep the newest bubble in view (B5)
+      });
+    }
+    // The one recording bar in the dock (LOCKED BAR N483 markup; RecordingBar.tsx: the trash "Delete", the strip, Stop).
+    // Nothing lands in the thread while it records (C7). The trash is the Skip on the One thing walk's fix (N435 item 3).
+    function recordTry() {
+      return new Promise((res) => {
+        L.dock.innerHTML = `<div class="bar"><button type="button" class="ib" aria-label="Delete" data-r="trash" style="color:#737373">${IC.trash}</button><div class="rec"><span class="d"></span><span class="t" id="atClock">0:00</span><span class="tr"><i id="atTrack"></i></span><button type="button" class="stop cue" data-r="stop"><span></span>${T.stop}</button></div></div>`;
+        toEnd();
+        let s = 0; const g = env.gen();
+        const t = setInterval(() => { if (env.gen() !== g || !$("#atClock")) return clearInterval(t); s++; $("#atClock").textContent = clock(s); $("#atTrack").style.width = `${Math.min(100, s * 4)}%`; }, 1000);
+        L.dock.querySelectorAll("[data-r]").forEach((b) => (b.onclick = () => { clearInterval(t); L.dock.innerHTML = ""; res({ r: b.dataset.r, s: Math.max(3, s) }); }));
+      });
+    }
+
+    // The One thing walk (walkPlan.ts:295 oneThing; Take 1 judges no one: useDeckFeedbackWalk.tsx:1087).
+    async function runWalk() {
+      const sm = sample(), b = sm.best, fx = sm.fix, me = S().me;
+      S().walkLog = [];
+      stepName("The Feedback walk");
+      // their best (FeedbackWalk.tsx:1043 walkTop, :1336 Best)
+      part(QUESTIONS[b.slide]);
+      await land(grey([T.hello(me.n)]));
+      await land(meClip(esc(b.said), b.secs, "best"), false);
+      await land(grey([T.best, T.why(lowerFirst(b.cue))]));
+      await dock(T.next);
+      // one thing to improve (FeedbackWalk.tsx:2210; :1677 OneExerciseBody or :1365 OneClearer)
+      stepName("One thing to improve");
+      part(QUESTIONS[fx.slide]);
+      await land(grey([T.one]));
+      let choice;
+      if (fx.tool === "ai") {
+        await land(meClip(bold(fx.said, fx.phrase), fx.secs, "fix"), false);
+        await land(grey([T.likeConfident]));
+        await land(chip(b.secs), false);
+        await land(aiBubble(fx));
+        choice = await dock(T.tryIt, [T.skip], { dot: true });       // FeedbackWalk.tsx:1832 ThreadFooter
+      } else {
+        await land(meClip(esc(fx.said), fx.secs, "fix"), false);
+        await land(grey([T.sayStraight, { html: `<span class="sb">${esc(fx.say)}</span>` }]));
+        choice = await dock(T.tryIt, [T.keepMine], { dot: true });   // FeedbackWalk.tsx:1377
+      }
+      const how = choice === T.keepMine ? "keep" : choice === T.skip ? "skip" : "accept";
+      if (how === "keep") await land(grey([T.keepWords]));            // WalkPractiseScreens.tsx:363
+      if (how === "skip") await land(grey([T.skipped]));
+      else {
+        stepName("Practise it");
+        const words = fx.tool === "ai" ? fx.said : how === "accept" ? fx.say : fx.said; // walkThread.ts oneThingTryWords
+        for (let n = 1; n <= 2; n++) {                                 // ONE_THING_TRIES = 2 (walkPlan.ts:42)
+          const t = await recordTry();
+          if (t.r === "trash") { await land(grey([T.skipped])); break; }
+          await land(meClip(esc(words), t.s, `try${n}`), false);       // WalkPractiseScreens.tsx:83 TryBubble
+          await land(grey([n === 1 ? T.onceMore : T.landed]));       // walkPractise.ts:237, :254 (the dots: the check, WalkLoading)
+          if (n === 1) { const c = await dock(T.tryIt, [T.skip], { dot: true }); if (c === T.skip) { await land(grey([T.skipped])); break; } }
+          else await dock(T.next);
+        }
+      }
+      // the helper words, on their own, then the end (FeedbackWalk.tsx:1437 WordsShown, :1468 Done)
+      stepName("Helper words, Lesson done.");
+      S().helper = helperOf(fx, how);
+      await land(grey([T.helperWords]));
+      await land(grey([{ html: `<span class="sb">${esc(S().helper)}</span>` }]));
+      await land(grey([T.lessonDone]));
+      await dock(T.close);
+      const st = S(); st.walked = true; st.moment = bare(fx.said); if (st.beat === "waitWalk") { st.beat = "after"; st.said = false; }
+      env.go("will");
+    }
+    // Opened again once done: a scroll, read only, Close at the bottom (B10, N259, N539).
+    function replay() {
+      lens();
+      let last = null;
+      for (const it of S().walkLog) { if (it.label !== last) { part(it.label); last = it.label; } L.in.insertAdjacentHTML("beforeend", it.html); const p = L.parts[L.parts.length - 1]; if (!p.el) p.el = L.in.lastElementChild; }
+      toEnd();
+      dock(T.close, [], { cue: false }).then(() => env.go("will"));
+    }
+    function walk() { if (S().walked && S().walkLog?.length) return replay(); lens(); runWalk().catch(fail); }
+
+    // ---- Will's chat after the walk (D4, E1-E3) ----
+    // The pair: the Feedback walk and the Take's Ideal Text card under it (B3); then the bridge (N94) and Will's one
+    // question, opened on the moment the walk worked on (N294 item 1). Take 1's audience is slide 3 and its key line
+    // slide 5, so the first that holds is "what they should do" (will_question.py:678 choose_key).
+    const card = () => `<button type="button" class="at-card" data-card="1"><span class="tl" aria-hidden="true"></span><b>${esc(T.project)}</b><span class="vt">1.0</span><span class="cv" aria-hidden="true">›</span></button>`;
+    const question = () => T.worked(S().moment || bare(sample().fix.said)) + T.goal;
+    const typed = () => ({ Kasia: "Check the quote first", Lena: "Ask before they buy", Marta: "Breathe first", Anna: "Read it right", Zofia: "Book a dry cut" }[S().me.n] || "Get it");
+    const progress = () => { const t = S().total || 11; return `<div class="b will at-prog"><span class="pbar" aria-hidden="true">${Array.from({ length: Math.min(t, 24) }, () => "<i></i>").join("")}</span><span>${esc(T.doneOf(0, t))}</span></div>`; };
+    const goodbye = () => T.seeYou("tomorrow");
+
+    // ---- the Ideal Text page's door (F1, F6; Take 1's text is the five answers, N401 item 4) ----
+    function ideal() {
+      stepName("The Ideal Text");
+      const me = S().me, h = S().helper;
+      const para = (t) => { if (!h) return esc(t); const at = t.toLowerCase().indexOf(h.toLowerCase()); return at < 0 ? esc(t) : esc(t.slice(0, at)) + `<mark>${esc(t.slice(at, at + h.length))}</mark>` + esc(t.slice(at + h.length)); };
+      const fixAt = sample().fix.slide;
+      app.innerHTML = `<div class="at-it"><div class="hd"><b>${esc(T.project)}</b><button type="button" aria-label="More" data-i="more">⋯</button><button type="button" aria-label="Close" data-i="x">${IC.x}</button></div><div class="tx">${me.says.map((t, k) => `<p>${k === fixAt ? para(t) : esc(t)}</p>`).join("")}</div><div class="at-dock"><button type="button" class="at-pill cue" data-i="rec"><span class="dt" aria-hidden="true"></span>${esc(T.recordTake(2))}</button><button type="button" class="at-link" data-i="close">${esc(T.close)}</button></div></div>`;
+      const back = () => { const st = S(); st.beat = "go2"; st.said = true; env.go("will"); };
+      $("[data-i=x]").onclick = back; $("[data-i=close]").onclick = back;
+      $("[data-i=more]").onclick = () => toast("⋯ holds the history (F6), as locked.");
+      // From this page "Record Take 2" asks the sharing question first, once (IdealTextActions.tsx:104 asksShare);
+      // remembered, it starts at once. Continue then opens the real talk (Lounge.tsx:2311 onReadAloud).
+      $("[data-i=rec]").onclick = () => (S().shared ? next2() : share());
+    }
+
+    // ---- the sharing question: only on the Ideal Text page's door; never on the chat's (Lounge.tsx:1557 skips it after
+    // the first Take). Nothing ticked; Continue waits for one choice, "Only me" counting; "Only me" stands alone.
+    // "Only my community" shows its communities inside it only when the speaker has saved one (none here). ✕ records nothing.
+    function share() {
+      stepName("The sharing question");
+      app.querySelectorAll(".cue").forEach((x) => x.classList.remove("cue"));
+      let ticks = [];
+      const paint = () => {
+        app.querySelector(".at-op").innerHTML = T.shareOpts.map(([v, l, h]) => `<button type="button" role="checkbox" aria-checked="${ticks.includes(v)}" data-o="${v}" class="${ticks.includes(v) ? "on" : ""}${!ticks.length && v === "general" ? " cue" : ""}"><span class="tk" aria-hidden="true">${ticks.includes(v) ? "✓" : ""}</span><span><b>${esc(l)}</b><small>${esc(h)}</small></span></button>`).join("");
+        const c = $("[data-s=go]"); c.disabled = !ticks.length; c.classList.toggle("cue", ticks.length > 0);
+        app.querySelectorAll("[data-o]").forEach((b) => (b.onclick = () => { const v = b.dataset.o; ticks = ticks.includes(v) ? ticks.filter((x) => x !== v) : v === "none" ? ["none"] : [...ticks.filter((x) => x !== "none"), v]; paint(); })); // WalkOptions.tsx exclusive
+      };
+      app.insertAdjacentHTML("beforeend", `<div class="at-sh2" role="dialog" aria-modal="true"><div class="at-top"><span class="cap">${esc(T.take1)}</span><button type="button" class="at-x" aria-label="Close" data-s="x">${IC.x}</button></div><div class="bd"><div class="at-lb">${esc(T.shareBefore)}</div><div class="at-lb">${esc(T.shareTitle)}</div><div class="at-lb">${esc(T.shareAudience)}</div><div class="at-op" role="group"></div></div><div class="at-dock"><button type="button" class="at-pill" data-s="go" disabled>${esc(T.cont)}</button></div></div>`);
+      $("[data-s=x]").onclick = () => { app.querySelector(".at-sh2").remove(); stepName("The Ideal Text"); };
+      $("[data-s=go]").onclick = () => { S().shared = ticks; next2(); };
+      paint();
+    }
+
+    // ---- "Record Take 2": the real talk, "How do you feel?" at once (N549), then the set-up afresh (N401 item 4) ----
+    // Lounge.tsx:1557 recordNext → WillabSurface.tsx:316 startRealTalk (firstTake.ts:111) → useWillabFlow.ts:291
+    // "lab_feelings". Nothing is restored (LabOverlay.tsx:390), so the set-up has its three steps and the dots are four.
+    const STEPS4 = 4;
+    // A host that already draws "How do you feel?" and the set-up from the same files (FeelingsCheckIn.tsx,
+    // RecordingSetup.tsx) passes env.recordNext, and the real talk opens there; without it, the drawing below.
+    const next2 = () => (env.recordNext ? env.recordNext() : feel());
+    const wp = (cur, back) => `<div class="at-wp"><div class="sl">${back ? `<button type="button" class="bk" data-w="back">${esc(T.back)}</button>` : ""}</div><div class="dts">${Array.from({ length: STEPS4 }, (_, i) => `<i class="${i === cur ? "c" : i < cur ? "d" : ""}"></i>`).join("")}</div><div class="sr"><button type="button" class="wx" aria-label="${cur === 0 ? "Close" : "Cancel setup"}" data-w="x">${IC.x}</button></div></div>`;
+    const head = (q, help) => `<div class="at-sh"><h2>${IC.mic}${esc(q)}</h2>${help ? `<p>${esc(help)}</p>` : ""}</div>`;
+    function feel() {
+      stepName("How do you feel?");
+      len = null; // each real talk's set-up starts afresh (N401 item 4)
+      app.innerHTML = `<div class="at-wz">${wp(0, false)}${head(T.feel, T.feelHelp)}<div class="at-fg">${T.feelings.map((f, i) => `<button type="button" data-f="${i}"${i === 0 ? ' class="cue"' : ""}>${esc(f)}</button>`).join("")}<button type="button" class="sk" data-f="skip">${esc(T.skip)}</button></div></div>`;
+      $("[data-w=x]").onclick = () => env.go("will");
+      const g = env.gen();
+      app.querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => {
+        if (b.dataset.f === "skip") return setup(0);
+        b.classList.remove("cue"); b.classList.add("on");
+        app.querySelectorAll("[data-f]").forEach((x) => { if (x !== b) x.disabled = true; });
+        setTimeout(() => { if (env.gen() === g) setup(0); }, 450);            // FeelingsCheckIn.tsx ADVANCE_MS
+      }));
+    }
+    let len = null;
+    function setup(step) {
+      stepName("The set-up");
+      const body = step === 0
+        ? `${head(T.topicQ)}<input class="at-in2" value="${esc(sample().topic)}" placeholder="${esc(T.topicPh)}" aria-label="${esc(T.topicQ)}">`
+        : step === 1
+          ? `${head(T.lengthQ)}<div class="at-chp">${T.lengths.map((l) => `<button type="button" data-l="${l}" class="${len === l ? "on" : ""}${l === "3 min" && len !== l ? " cue" : ""}">${l}</button>`).join("")}</div><button type="button" class="at-nl" data-l="none">${esc(T.noLimit)}</button>`
+          : `${head(T.slidesQ, T.slidesHelp)}<button type="button" class="at-dz" data-dz="1">${IC.upload}<span>${esc(T.upload)}</span></button>`;
+      const label = step === 2 ? T.skipForNow : T.next;
+      app.innerHTML = `<div class="at-wz">${wp(step + 1, step > 0)}<div class="at-body">${body}</div><div class="at-cta"><button type="button" class="${step === 1 ? "" : "cue"}" data-w="go">${esc(label)}</button></div></div>`;
+      $("[data-w=x]").onclick = () => env.go("will");
+      const bk = $("[data-w=back]"); if (bk) bk.onclick = () => setup(step - 1);
+      $("[data-w=go]").onclick = () => (step < 2 ? setup(step + 1) : mic());
+      const dz = $("[data-dz]"); if (dz) dz.onclick = () => toast("The file picker opens for a PDF. The prototype goes on with no slides.");
+      const g = env.gen();
+      app.querySelectorAll("[data-l]").forEach((b) => (b.onclick = () => {
+        len = b.dataset.l === "none" ? null : b.dataset.l;
+        app.querySelectorAll("[data-l]").forEach((x) => x.classList.toggle("on", x === b && b.dataset.l !== "none"));
+        b.classList.remove("cue");
+        if (b.dataset.l === "none") return toast("No limit: the long-take note opens first (RecordingSetup.tsx LongTakeCaution). Pick a length to go on.");
+        setTimeout(() => { if (env.gen() === g) setup(2); }, 180);           // RecordingSetup.tsx pickLength
+      }));
+    }
+    // "Getting your mic ready" with the line for a later Take (LabOverlay.tsx micWaitNote; presentationInPlay.ts).
+    function mic() {
+      stepName("Take 2 records");
+      app.innerHTML = `<div class="mic"><div class="rs-top"><span></span><button type="button" class="rs-close" aria-label="Close">${IC.x}</button></div><div class="body"><span class="mk3" aria-hidden="true"><i></i><i></i><i></i></span><b>${esc(T.micReady)}</b><p>${esc(T.newSlides)}</p></div></div>`;
+      $(".rs-close").onclick = () => env.go("will");
+      const g = env.gen();
+      setTimeout(() => { if (env.gen() === g) rec2(); }, 1200);
+    }
+    // Take 2's recording screen, as locked (N70, the LOCKED POSTER block): the stand-in deck, the clock counting down
+    // to the length chosen and the bar filling orange (LabOverlay.tsx:1994 strip).
+    function rec2() {
+      const target = len ? parseInt(len, 10) * 60 : null;
+      let i = 0, t = 0; const g = env.gen();
+      const iv = setInterval(() => { if (env.gen() !== g) return clearInterval(iv); t++; paintClock(); }, 1000);
+      const paintClock = () => { const c = $("#atRc"), tr = $("#atRt"); if (!c) return; c.textContent = target ? clock(Math.max(0, target - t)) : clock(t); if (tr && target) tr.style.width = `${Math.min(100, (t / target) * 100)}%`; };
+      const paint = () => {
+        const s = DECK[i], last = i === DECK.length - 1, lines = s.body.split("\n");
+        const tiles = lines.length > 1 && lines.every((l) => /^\d+$/.test(l));
+        app.innerHTML = `<div class="rs"><header class="rs-top"><p class="rs-where">${esc(T.where(i + 1, DECK.length))}</p><button type="button" class="rs-close" id="atRx" aria-label="Close">${IC.x}</button></header>
+          <div class="rs-col"><div class="rs-stage"><div class="rs-frame"><div class="poster"><div class="pin2"><h3 class="poster-q">${esc(s.title)}</h3>${tiles ? `<div class="poster-tiles">${lines.map((l) => `<span>${l}</span>`).join("")}</div>` : `<p class="poster-hint">${esc(lines.join(" "))}</p>`}</div></div></div>
+          <div class="rs-marks" aria-hidden="true">${DECK.map((_, k) => `<span class="${k === i ? "on" : k < i ? "done" : ""}"></span>`).join("")}</div></div>
+          <div class="rs-foot"><div class="rs-strip"><span class="rs-dot" aria-hidden="true"></span><span class="rs-clock" id="atRc"></span><div class="rs-track" aria-hidden="true"><i id="atRt" class="${target ? "target" : ""}" style="${target ? "width:0" : ""}"></i></div></div>
+          <div class="rs-btns"><button type="button" class="rs-back" id="atRb"${i ? "" : " disabled"}>${esc(T.backBtn)}</button>${last ? `<button type="button" class="rs-finish cue" id="atRn" aria-label="${esc(T.finish)}"><i aria-hidden="true"></i>${esc(T.finish)}</button>` : `<button type="button" class="rs-next cue" id="atRn">${esc(T.nextSlide)}</button>`}</div></div></div></div>`;
+        paintClock();
+        $("#atRb").onclick = () => { if (i) { i--; paint(); } };
+        $("#atRn").onclick = () => { if (!last) { i++; paint(); } else { clearInterval(iv); $("#atRn").classList.remove("cue"); env.steps("done"); toast("Take 2 goes to its processing screen, as locked, and its walk follows. This prototype ends here."); } };
+        $("#atRx").onclick = () => {
+          $(".rs").insertAdjacentHTML("beforeend", `<div class="dlg" role="dialog" aria-modal="true"><div><h2>Discard this take?</h2><p>This recording has not been saved.</p><div class="two2"><button type="button" id="atKr">Keep recording</button><button type="button" class="red" id="atDt">Discard take</button></div></div></div>`);
+          $("#atKr").onclick = () => $(".dlg").remove();
+          $("#atDt").onclick = () => { clearInterval(iv); env.go("will"); };
+        };
+      };
+      paint();
+    }
+
+    // ---- the notes: each step and where it is built ----
+    const SOURCES = [
+      ["The walk opens", "Take 1's walk row turns orange when ready (N401 item 3, signed, not built; as built the walk opens by itself, A2). The lens: ‹ the slide's title › and ✕; the slide is named by its deck title, which for Take 1 is the question (B6, N397).", "WalkThread.tsx:752; FeedbackWalk.tsx:1184 slideName; firstTake.ts KICKERS"],
+      ["Hi {name}.", "Once, first, as a grey bubble.", "FeedbackWalk.tsx:1043 walkTop; idealEditCopy.ts:526"],
+      ["Their best", "Their clip with its words (orange), then one bubble: \"This was your most confident moment.\" and \"Why it worked: {the signed cue line}\", lower-cased after the colon; Next.", "FeedbackWalk.tsx:1336 Best; walkLines.ts:155 bestBubble; idealEditCopy.ts:537-538, WALK_LINE_BANK B01-B09"],
+      ["One thing to improve", "\"And now, one thing to improve:\" over the fix: the less confident moment, its tool by the kind of its weakness (N548).", "FeedbackWalk.tsx:2210; walkPlan.ts:295 oneThing, :328 oneFix; backend moment_pick.py"],
+      ["… with the AI clip (voice)", "Their clip, the phrase bold; \"Say this one like your confident moment:\"; their best as the chip \"Your confident moment\"; the tip \", like this:\" with the AI mark and \"AI version of your voice\"; Try it (dot) and Skip.", "FeedbackWalk.tsx:1677 OneExerciseBody, :1832 ThreadFooter; walkLines.ts:86 oneThingAiLines; WalkAiVoice.tsx:262; idealEditCopy.ts:345 AI_CLIP_BANK"],
+      ["… or the Clearer version (words)", "Their words and clip; \"Say it straight:\" and the sentence in bold; Try it (dot) and \"Keep mine\" (then \"Your words it is.\").", "FeedbackWalk.tsx:1365 OneClearer; WalkPractiseScreens.tsx:363"],
+      ["Practise it", "Try it puts the locked recording bar in the dock (trash = Skip, N435 item 3); nothing in the thread while it records. Stop: the try with its words, the dots while it is checked, then \"Close. Once more.\" (Try it, Skip) or \"Yes. That's it.\" (Next). Two tries; a second miss is \"Good try. Take it with you.\"", "WalkPractiseScreens.tsx:83 TryBubble, :345 practiseThreadItem; walkPractise.ts:237-263; walkPlan.ts:42; RecordingBar.tsx"],
+      ["Helper words", "\"These are your helper words. …\" and the words alone in bold, saved as they land; then on by itself. The AI clip's phrase, the Clearer sentence after Try it, their own after Keep mine.", "FeedbackWalk.tsx:1437 WordsShown; flow page C3"],
+      ["Lesson done.", "\"Lesson done.\" and Close, back to the chat. No summary and no \"Record Take N\" in the walk. Take 1 judges no other speaker.", "FeedbackWalk.tsx:1468 Done; useDeckFeedbackWalk.tsx:1087"],
+      ["The pair", "In Will's chat: \"Feedback walk\" with its date and ›, and right under it the Take's card: \"Your first Take\", \"1.0\", ›.", "Lounge.tsx FeedbackWalkBubble (N192); IdealTextCard.tsx:94; flow page B3, D4"],
+      ["Will's one ask", "\"Ok, now let's dive into the content for a bit.\", then \"We just worked on “…”. When you finish, what do you want them to do? Or feel? 🤔\" with Something else, Say yes, Trust me, Get it on your side.", "backend after_take.py:128, will_question.py:94, :117, :142, :678 choose_key; WillQuestion.tsx"],
+      ["The goodbye", "\"Got it, thanks 🙏\", \"Good job. See you tomorrow.\", then the plan's bar and \"0 of {n} practices done.\"; the bar's middle \"Record Take 2\".", "backend will_question.py:130; after_take.py:111 end_rows; plan_flow.py:1620 progress; PlanRows.tsx:179"],
+      ["The Ideal Text", "The card opens the page: the five answers, one paragraph per question, the helper words orange; \"Record Take 2\" with the dot and the grey Close.", "IdealTextActions.tsx:126; IdealTextHeading.tsx; flow page F1, F3, F6; N401 item 4"],
+      ["The sharing question", "Only from the Ideal Text page's \"Record Take 2\", once (then remembered, at once): the top bar \"Take 1\" and ✕; \"Before we start the new take!\", \"After all, it's about speaking publicly!\", \"How big you want your audience?\"; General community, Only my community, Only me with their hints, nothing ticked; Continue waits for one. The chat's \"Record Take 2\" after the first Take never asks it. With sending on (N470, N479), the people screen in its place.", "IdealTextActions.tsx:104; NextTakeShareScreen.tsx:448-460; WalkOptions.tsx:35; Lounge.tsx:1557, :2304; flow page G1 (Was)"],
+      ["How do you feel?", "\"Record Take 2\" opens it at once, no fade (N549): four dots, ✕, the mic and \"How do you feel?\", \"Before you step on stage\", Nervous, Excited, Calm, Not sure, Skip.", "Lounge.tsx:1557; WillabSurface.tsx:316; firstTake.ts:111; FeelingsCheckIn.tsx:90; LabOverlay.tsx:1586"],
+      ["The set-up", "\"What is the topic?\" filled in from the plan; \"How long should it run?\" (1 min … 60 min, No limit); \"Have slides to go with it?\" with \"Upload your deck (PDF)\" and \"Skip for now\".", "RecordingSetup.tsx:39, :340, :386, :414; PresentationInput.tsx:105; LabOverlay.tsx:390, :2104"],
+      ["Take 2 records", "\"Getting your mic ready\" and \"New slides\"; then \"Take 2 · Slide 1 of 3\" on the stand-in deck (Opening, Main points, Summary) as posters, the clock counting down, the bar orange.", "presentationInPlay.ts:25; defaultDeck.ts:36; RecordingRoadmap.tsx:39; pdfSlides.tsx:338; LabOverlay.tsx:1994"],
+    ];
+    const OPEN = [
+      "The walk's door for Take 1 is N401's orange row (signed, not built); as built, the walk opens by itself the moment processing ends (A2).",
+      "The lens's bar names Take 1's parts by the slide's deck title, which is the question, not the small title (Your field…) the poster shows.",
+      "\"How do you feel?\" shows on a plan only after the plan's own yes (FeelingsCheckIn.tsx feelingsAllowed, N211, N217); the yes is not drawn in this prototype, so here it is assumed given.",
+      "The sharing question comes from the Ideal Text page's \"Record Take 2\" only; the chat's, after the first Take, goes straight to the real talk (Lounge.tsx:1557). Two doors, two paths; N549 item 3 says \"the sharing question still comes first when it asks\". With TAKE_SEND_ENABLED on, the people screen (N470) replaces it; drawn here with the switch off, as today.",
+      "The feelings pills are white with a border until picked; only the pick is orange (FeelingsCheckIn.tsx). The set-up's button is the orange ui/button default.",
+      "As built, the plan card is written after the walk (plan_flow.py:1172 _from_first_take); N401 moved it into the wait. Drawn here as N401 has it.",
+      "Whether Take 1's helper words show on Take 2's slides: the real talk is a new deck (N257).",
+      "N550: a weak moment no tool reaches goes to a coach, blind; the speaker sees nothing new, so nothing is drawn for it.",
+    ];
+    const WORDS = [
+      [`Hi {name}. · ${T.best} · Why it worked: {cue} · ${T.one} · ${T.likeConfident} · ${T.sayStraight} · ${T.tryIt} · ${T.keepMine} · ${T.keepWords} · ${T.skipped} · ${T.onceMore} · ${T.landed} · ${T.helperWords} · ${T.lessonDone}`, "The One thing walk: N309 item 6, N405, N435 (idealEditCopy.ts ONE_THING_COPY)."],
+      [`${T.confident} · ${T.aiLabel} · AI · Pause before “{phrase}”, like this: · Lean on “{phrase}”, like this:`, "N289 item 7; N71; N120 (AI_CLIP_BANK)."],
+      [`${T.bridge} · We just worked on “{moment}”. ${T.goal} · ${T.goalChips.join(" · ")} · ${T.thanks} · Good job. See you tomorrow. · {n} of {total} practices done.`, "N94; N294; flow page §1 K; N347 item 2; N319 item 7."],
+      [`${T.take1} · ${T.shareBefore} · ${T.shareTitle} · ${T.shareAudience} · ${T.shareOpts.map((o) => o[1] + " (" + o[2] + ")").join(" · ")} · ${T.cont}`, "The sharing question: founder 2026-10-14, 2026-10-21, WQ5 A (flow page G, Was)."],
+      [`${T.feel} · ${T.feelHelp} · ${T.feelings.join(" · ")} · Skip`, "N272, N392 (FeelingsCheckIn.tsx)."],
+      [`${T.topicQ} · ${T.lengthQ} · ${T.lengths.join(" · ")} · ${T.noLimit} · ${T.slidesQ} · ${T.slidesHelp} · ${T.upload} · ${T.skipForNow} · Next · ← Back · ${T.micReady} · ${T.newSlides} · Take 2 · Slide 1 of 3 · Opening · Main points · Summary`, "The set-up and the recording screens (RecordingSetup.tsx, N257, defaultDeck.ts), as in the locked \"The way in\"."],
+    ];
+
+    return { walk, ideal, feel, share, card, question, typed, progress, goodbye, T, sample, SOURCES, OPEN, WORDS };
+  }
+  /* ===== END AFTER THE TAKE ===== */
+  const AFTER = afterTheTake({ app, esc, wait, toast, fail, stepName: (t) => stepName(t), go: (id) => go(id), gen: () => gen, state: () => S, steps: (k) => { if (k === "done") $$("#steps li").forEach((li) => { li.classList.remove("on"); li.classList.add("done"); }); } });
+
   // ---------- Will's chat, beat by beat ----------
   const BEATS = {
     hi: { lines: () => [D("Today 09:01"), W(esc(HI(S.me.n))), ...WELCOME.map((t) => W(esc(t)))],
@@ -631,8 +1144,13 @@ td small { color: var(--muted); }
     waitWalk: { lines: () => [], dock: () => {
       if (S.walked) { S.beat = "after"; S.said = false; runWill().catch(fail); return; }
       paintBar(); if (S.procDone) cueWalk(); } },
-    after: { lines: () => { stepName("Take 2"); return [D("Today 09:12"), walkBubble()]; },
-      dock: () => paintBar({ cue: true }) },
+    // After the walk (AFTER THE TAKE group): the pair, the bridge and Will's one question, the goodbye, the door
+    after: { lines: () => { stepName("Back in Will's chat"); return [D("Today 09:12"), walkBubble(), AFTER.card(), W(esc(AFTER.T.bridge)), W(esc(AFTER.question()))]; },
+      ask: () => ({ answers: [SOMETHING_ELSE, ...AFTER.T.goalChips], type: AFTER.typed(), cue: AFTER.T.goalChips[2] }),
+      on: () => "bye" },
+    bye: { lines: () => [W(esc(AFTER.T.thanks)), W(esc(AFTER.goodbye())), AFTER.progress()], auto: () => "door" },
+    door: { lines: () => [], dock: () => { paintBar(); const c = $("[data-card]", C.th); if (c) { c.classList.add("cue"); c.scrollIntoView({ block: "nearest" }); } } },
+    go2: { lines: () => [], dock: () => paintBar({ cue: true }) },
   };
   function addTopic() { if (!S.topics.includes(S.me.change.topic)) { S.topics.unshift(S.me.change.topic); S.fresh = S.me.change.topic; } }
   async function runWill() {
@@ -707,7 +1225,7 @@ td small { color: var(--muted); }
       S.log.forEach((h) => C.th.insertAdjacentHTML("beforeend", h));
       C.th.scrollTop = C.th.scrollHeight;
       on("#bk", () => go("list"));
-      C.th.addEventListener("click", (e) => { if (e.target.closest("[data-plan]")) toast("Change your plan, as locked (N319)."); if (e.target.closest("[data-walk]")) go("walk"); });
+      C.th.addEventListener("click", (e) => { if (e.target.closest("[data-plan]")) toast("Change your plan, as locked (N319)."); if (e.target.closest("[data-walk]")) go("walk"); if (e.target.closest("[data-card]")) go("ideal"); });
       paintProc();
       paintBar();
       runWill().catch(fail);
@@ -740,12 +1258,10 @@ td small { color: var(--muted); }
         paint();
       }, 1200);
     },
-    walk() {
-      S.walked = true;
-      stepName("The Feedback walk");
-      app.innerHTML = `<div class="scr"><div class="center"><div class="pnote"><b>Prototype</b>The Feedback walk opens here, as it is locked: the one thing from the Take, the helper words, the end. It works on how ${esc(S.me.n)} answered: the pace, the pauses, the words. Take 1's Ideal Text is the five answers, one paragraph per question. This prototype stops at the walk's door.</div><button type="button" class="pback cue" id="bw">Back to Will's chat</button></div></div>`;
-      on("#bw", () => { if (S.beat === "waitWalk") { S.beat = "after"; S.said = false; } go("will"); });
-    },
+    // the walk, the Ideal Text's door and Take 2's start: the AFTER THE TAKE group
+    walk() { AFTER.walk(); },
+    ideal() { AFTER.ideal(); },
+    feel() { AFTER.feel(); },
   };
   function finishTake() {
     S.took = true;

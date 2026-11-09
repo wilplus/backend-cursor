@@ -14013,8 +14013,14 @@ locked flow; for N401.
      (N521); the new-row look (N500); the joiner's line (N496); the setup
      note before "+" (N534); the ☰ icons (N367); the plan card (N319); the
      live document versions; Will's mark; the app's own fonts.
-   Each file's first notes panel lists the fixes and the words still
-   without a signature.
+   - the screens around the Take, as the code draws them: sign-up and
+     sign-in, "How do you feel?" (N549), the set-up and "What are you
+     recording?"; and what happens after the Take: the walk (their best,
+     one fix by the kind of its weakness, N548), helper words, "Lesson
+     done.", Will's chat after it, the Ideal Text page, the sharing
+     question, then Take 2.
+   Each file's first notes panel lists the fixes, the sources and the
+   words still without a signature.
 3. **The claude.ai links** (<https://claude.ai/artifact/5RQsbVpt1F8NMtSbTs7wwB>,
    <https://claude.ai/artifact/C78wBzWUKz7MaHjxrnsPVX>) show the pinned
    versions. The 3 November versions, as N401 locked them, are kept beside

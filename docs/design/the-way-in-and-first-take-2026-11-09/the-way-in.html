@@ -561,6 +561,268 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
 .pinned { border-color: var(--orange); }
 .pinned ul { margin: 10px 0 0; padding-left: 18px; } .pinned li { margin-bottom: 4px; font-size: 14px; }
 .pinned h3 { margin: 12px 0 0; font: 700 14px var(--ui); }
+/* ===== Pinned 2026-11-09, part 2: the code's sign-in, set-up, feelings and projects ===== */
+/* the auth pages: (auth)/signup|login page.tsx, Card, WhatsAppAuth, OtherWays, PhoneNumberField */
+.au2 { justify-content: center; padding: 32px 16px; background: #fff; }
+.au2 .lg2 { display: flex; justify-content: center; align-items: center; gap: 8px; color: #121212; margin-bottom: 32px; }
+.au2.li .lg2 { margin-bottom: 24px; }
+.au2 .lg2 span { font: 600 24px/1 var(--ui); letter-spacing: -0.025em; }
+.au2 .cd { border: 1px solid #EBEBEB; border-radius: 12px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.05); padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+.au2 .cd.p5 { padding: 20px; } .au2 .cd.p4 { padding: 16px; }
+.au2 .pf { display: flex; height: 48px; border: 1px solid #EBEBEB; border-radius: 8px; background: #fff; }
+.au2 .pf .pcc { flex: none; display: flex; align-items: center; gap: 6px; border: 0; border-right: 1px solid #EBEBEB; border-radius: 8px 0 0 8px; background: none; padding: 0 10px 0 12px; font: 15px var(--ui); color: #121212; cursor: pointer; }
+.au2 .pf .pcc .fl { font-size: 20px; line-height: 1; } .au2 .pf .pcc b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.au2 .pf .pcc svg { width: 10px; height: 10px; color: #737373; }
+.au2 .pf .pnum { flex: 1; min-width: 0; display: flex; align-items: center; padding: 0 12px; font: 16px var(--ui); letter-spacing: .02em; font-variant-numeric: tabular-nums; color: rgba(115,115,115,.7); cursor: text; }
+.au2 .pf .pnum.on { color: #121212; }
+.au2 .pf.focus { border-color: #FF640A; }
+.au2 .bp { height: 40px; width: 100%; border: 0; border-radius: 6px; background: #FF640A; color: #fff; font: 500 14px var(--ui); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.au2 .bp:disabled { opacity: .5; cursor: default; }
+.au2 .bp.bw { height: 48px; border-radius: 12px; font: 600 15px var(--ui); }
+.au2 .bp.bw svg { width: 20px; height: 20px; flex: none; }
+.au2 .ordiv { display: flex; align-items: center; gap: 12px; font: 12px var(--ui); text-transform: uppercase; letter-spacing: .08em; color: #737373; }
+.au2 .ordiv span { flex: 1; height: 1px; background: #EBEBEB; }
+.au2 .ow { display: flex; flex-direction: column; gap: 16px; padding-top: 8px; }
+.au2 .g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.au2 .g3.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.au2 .ob { height: 48px; border: 1px solid #EBEBEB; border-radius: 12px; background: #fff; padding: 0 8px; display: flex; align-items: center; justify-content: center; gap: 8px; font: 500 14px var(--ui); color: #121212; cursor: pointer; min-width: 0; }
+.au2 .ob svg { width: 18px; height: 18px; flex: none; }
+.au2 .ob.gapb { border-style: dashed; border-color: #B9A6F5; color: #6741D9; }
+.au2 .apl { height: 48px; width: 100%; border: 0; border-radius: 12px; background: #000; color: #fff; font: 500 15px var(--ui); display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; }
+.au2 .apl svg { width: 18px; height: 18px; }
+.au2 .ln2 { margin: 0; text-align: center; font: 14px/1.4 var(--ui); color: #121212; }
+.au2 .ln2.m { color: #737373; } .au2 .ln2.big2 { font-size: 16px; }
+.au2 .ln2 a, .au2 .lg3 a, .au2 .er a, .au2 .tk a { color: #FF640A; font-weight: 500; text-decoration: none; cursor: pointer; }
+.au2 .ln2 a.o5 { color: #F97316; font-weight: 400; }
+.au2 .lg3 { margin: 0; text-align: center; font: 12px/1.6 var(--ui); color: #737373; }
+.au2 .er { margin: -8px 0 0; font: 14px/1.4 var(--ui); color: #EF4444; }
+.au2 .er.c { margin: 0; }
+.au2 .t1 { margin: 0; font: 600 16px/1.4 var(--ui); color: #121212; }
+.au2 .t2 { margin: 4px 0 0; font: 14px/1.4 var(--ui); color: #737373; }
+.au2 .lb { display: block; margin: 0 0 8px; font: 500 14px var(--ui); color: #121212; } .au2 .lb.big2 { font-size: 16px; }
+.au2 .in { height: 40px; border: 1px solid #EBEBEB; border-radius: 6px; padding: 0 12px; display: flex; align-items: center; font: 14px var(--ui); color: #737373; background: #fff; cursor: text; overflow: hidden; white-space: nowrap; }
+.au2 .in.on { color: #121212; }
+.au2 .in.code { height: 56px; justify-content: center; font-size: 24px; letter-spacing: .4em; }
+.au2 .row2 { display: flex; justify-content: space-between; }
+.au2 .row2 button, .au2 .bk3 { min-height: 44px; border: 0; background: none; padding: 0; font: 14px var(--ui); color: #737373; cursor: pointer; }
+.au2 .row2 button:disabled { opacity: .5; cursor: default; }
+.au2 .bk3 { align-self: flex-start; }
+.au2 .tk { display: flex; gap: 12px; align-items: flex-start; border: 1px solid #EBEBEB; border-radius: 8px; background: rgba(245,245,245,.3); padding: 12px; font: 14px/1.375 var(--ui); color: #737373; cursor: pointer; }
+.au2 .tk i { flex: none; margin-top: 2px; width: 16px; height: 16px; border: 1px solid #767676; border-radius: 3px; background: #fff; display: grid; place-items: center; font: normal 700 11px/1 var(--ui); color: #fff; }
+.au2 .tk.on i { background: #FF640A; border-color: #FF640A; }
+.au2 .tk a { text-decoration: underline; text-underline-offset: 2px; }
+.au2 .h2b { margin: 0; font: 600 16px var(--ui); color: #121212; }
+.au2 .lnk3 { border: 0; background: none; padding: 0; font: 14px var(--ui); color: #737373; cursor: pointer; text-align: center; }
+/* the set-up: RecordingSetup.tsx, FeelingsCheckIn.tsx, ui/wizard.tsx */
+.wz2 { padding: 24px 16px 32px; background: #fff; }
+.wz2 .wp { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.wz2 .wp .sl { width: 64px; flex: none; } .wz2 .wp .sr { width: 64px; flex: none; display: flex; justify-content: flex-end; }
+.wz2 .wp .wbk { height: 32px; border: 0; background: none; border-radius: 99px; padding: 0 8px; font: 13px var(--ui); color: #737373; cursor: pointer; }
+.wz2 .wp .dt { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.wz2 .wp .dt i { width: 6px; height: 6px; border-radius: 99px; background: rgba(115,115,115,.2); transition: all .2s; }
+.wz2 .wp .dt i.d { background: rgba(18,18,18,.4); } .wz2 .wp .dt i.c { width: 24px; height: 8px; background: #121212; }
+.wz2 .wp .wx { margin-right: -10px; width: 44px; height: 44px; border: 0; background: none; border-radius: 99px; display: grid; place-items: center; color: #737373; cursor: pointer; }
+.wz2 .wp .wx svg, .wz2 .ltc .lx svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.wz2 .sh { margin-bottom: 20px; }
+.wz2 .sh h2 { margin: 0; display: flex; align-items: center; gap: 8px; font: 600 17px/1.375 var(--ui); color: #121212; }
+.wz2 .sh h2 svg { width: 16px; height: 16px; flex: none; color: #FF640A; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.wz2 .sh p { margin: 8px 0 0; font: 14px/1.625 var(--ui); color: #737373; }
+.wz2 .fg { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.wz2 .fg button { height: 52px; border: 1px solid #EBEBEB; border-radius: 99px; background: #fff; font: 500 16px var(--ui); color: #121212; cursor: pointer; }
+.wz2 .fg button.on { background: #FF640A; border-color: #FF640A; color: #fff; }
+.wz2 .fg button:disabled { opacity: .4; cursor: default; }
+.wz2 .fg button.sk { border-color: rgba(235,235,235,.5); background: rgba(255,255,255,.5); color: rgba(115,115,115,.8); }
+.wz2 .tin { height: 48px; border: 1px solid #EBEBEB; border-radius: 12px; padding: 0 16px; display: flex; align-items: center; font: 15px var(--ui); color: #737373; cursor: text; overflow: hidden; white-space: nowrap; }
+.wz2 .tin.on { color: #121212; border-color: rgba(18,18,18,.4); }
+.wz2 .chp { display: flex; flex-wrap: wrap; gap: 8px; }
+.wz2 .chp button { height: 40px; padding: 0 16px; border: 1px solid #EBEBEB; border-radius: 99px; background: #fff; font: 14px var(--ui); color: #121212; cursor: pointer; }
+.wz2 .chp button.on { background: #121212; border-color: #121212; color: #fff; }
+.wz2 .nl { margin-top: 16px; border: 0; background: none; padding: 0; font: 13px var(--ui); color: #737373; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.wz2 .dz { width: 100%; min-height: 152px; border: 1px dashed #EBEBEB; border-radius: 16px; background: #fff; padding: 0 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font: 14px var(--ui); color: #121212; cursor: pointer; }
+.wz2 .dz svg { width: 20px; height: 20px; color: #737373; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.wz2 .dz.dzok svg { width: 24px; height: 24px; color: #121212; }
+.wz2 .dz:disabled { opacity: .6; }
+.wz2 .rpl { display: flex; justify-content: center; margin-top: 12px; } .wz2 .rpl button { min-height: 48px; border: 0; background: none; font: 16px var(--ui); color: #737373; cursor: pointer; }
+.wz2 .bdy { flex: 1; }
+.wz2 .ft { padding-top: 24px; }
+.wz2 .cta { width: 100%; height: 40px; border: 0; border-radius: 99px; background: #FF640A; color: #fff; font: 500 14px var(--ui); cursor: pointer; }
+.wz2 .cta:disabled { opacity: .5; cursor: default; }
+.wz2 .ltc { position: absolute; inset: 0; z-index: 9; display: flex; align-items: flex-end; justify-content: center; background: rgba(18,18,18,.2); }
+.wz2 .ltc .lc { margin: 12px; width: 100%; border: 1px solid #EBEBEB; border-radius: 24px; background: #fff; padding: 20px; box-shadow: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -4px rgba(0,0,0,.1); }
+.wz2 .ltc .lh { display: flex; justify-content: flex-end; }
+.wz2 .ltc .lx { margin: -6px -6px 0 0; width: 44px; height: 44px; border: 0; background: none; border-radius: 99px; display: grid; place-items: center; color: #737373; cursor: pointer; }
+.wz2 .ltc p { margin: 0; font: 15px/1.625 var(--ui); color: #121212; }
+.wz2 .ltc .lb2 { margin-top: 20px; display: flex; flex-direction: column; gap: 8px; }
+.wz2 .ltc .lq { height: 40px; border: 0; background: none; border-radius: 99px; font: 14px var(--ui); color: #737373; cursor: pointer; }
+/* "Getting your mic ready": LoadingState.tsx with the overlay's ✕ (OverlayCloseButton.tsx) */
+.mw2 { background: #fff; }
+.mw2 .hd { flex: none; height: 48px; display: flex; align-items: center; justify-content: flex-end; padding: 0 16px; }
+.ocx { width: 28px; height: 28px; border: 1px solid #EBEBEB; border-radius: 99px; background: #fff; display: grid; place-items: center; color: #737373; cursor: pointer; padding: 0; flex: none; }
+.ocx svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.mw2 .bd { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 24px 48px; text-align: center; }
+.mw2 .vm { width: 64px; height: 64px; }
+.mw2 .vm b { border-color: rgba(18,18,18,.1); } .mw2 .vm b:nth-child(2) { inset: 6px; border-color: rgba(18,18,18,.15); } .mw2 .vm b:nth-child(3) { inset: 12px; border-color: rgba(255,100,10,.3); }
+.mw2 .ml { margin: 16px 0 0; font: 15px var(--ui); color: #737373; }
+.mw2 .mn { margin: 4px 0 0; font: 13px var(--ui); color: #737373; }
+/* "What are you recording?": ProjectPicker.tsx, ProjectRowMenu.tsx, OneProjectQuestion.tsx */
+.pk2 { position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; background: #fff; }
+.pk2 .ph { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 0; }
+.pk2 .ph h2 { margin: 0; font: 600 17px var(--ui); color: #121212; }
+.pk2 .pmid { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 20px 64px; }
+.pk2 .lst { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; padding: 24px 20px; }
+.pk2 .nb { width: 100%; height: 48px; border: 0; border-radius: 99px; background: #121212; color: #fff; font: 500 15px var(--ui); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.pk2 .pmid .nb { max-width: 320px; }
+.pk2 .nb svg { width: 16px; height: 16px; margin-right: 8px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.pk2 .rows { display: flex; flex-direction: column; gap: 4px; }
+.pk2 .rows > p { margin: 0; padding: 0 4px 4px; font: 13px var(--ui); color: #737373; }
+.pk2 .pr { display: flex; align-items: center; gap: 4px; border-radius: 12px; position: relative; }
+.pk2 .pr .pt { flex: 1; min-width: 0; border: 0; background: none; padding: 12px; text-align: left; font: 16px/1.375 var(--ui); color: #121212; cursor: pointer; }
+.pk2 .pr .mo { width: 44px; height: 44px; border: 0; background: none; border-radius: 99px; display: grid; place-items: center; color: #737373; cursor: pointer; }
+.pk2 .pr .mo svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.pk2 .pr .mm { position: absolute; right: 0; top: 100%; z-index: 2; margin-top: 4px; min-width: 160px; border: 1px solid #EBEBEB; border-radius: 12px; background: #fff; padding: 4px 0; box-shadow: 0 10px 15px -3px rgba(0,0,0,.1); }
+.pk2 .pr .mm button { width: 100%; border: 0; background: none; padding: 10px 16px; text-align: left; font: 14px var(--ui); color: #121212; cursor: pointer; }
+.pk2 .opq { position: absolute; inset: 0; z-index: 9; display: flex; align-items: flex-end; background: rgba(18,18,18,.3); }
+.pk2 .opq .os { width: 100%; display: flex; flex-direction: column; gap: 12px; border-radius: 24px 24px 0 0; background: #fff; padding: 8px 20px 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,.1); }
+.pk2 .opq .gr { display: flex; justify-content: center; padding-bottom: 4px; } .pk2 .opq .gr span { width: 36px; height: 4px; border-radius: 99px; background: rgba(18,18,18,.2); }
+.pk2 .opq h2 { margin: 0; font: 600 18px var(--ui); color: #121212; }
+.pk2 .opq p { margin: 0; font: 14px/1.43 var(--ui); color: #737373; }
+.pk2 .opq .pair2 { padding-top: 4px; display: flex; gap: 12px; }
+.pk2 .opq .pair2 button { flex: 1; height: 44px; border-radius: 99px; font: 15px var(--ui); cursor: pointer; }
+.pk2 .opq .pair2 .c0 { border: 1px solid #EBEBEB; background: #fff; color: #121212; }
+.pk2 .opq .pair2 .c1 { border: 0; background: #121212; color: #fff; font-weight: 500; }
+/* ===== AFTER THE TAKE (sourced from code) ===== */
+/* Every class is prefixed "at-" so the block can be lifted into "The way in" as is.
+   The lens: WalkThread.tsx (the bar min-h 44 px-2.5 pt-2; ‹ › 36px muted, the label 13.5px semibold; the thread
+   px-5 py-3.5, gap-4, starting at the bottom); OverlayCloseButton.tsx (28px bordered circle, 16px X);
+   WalkMessage.tsx (grey bubble, 18.5px/1.45, 22px corners, 13px 17px, max 94%); WalkPlayer.tsx (the speaker's
+   clip: orange, 90% wide, 22px corners, words 16px; the chip 62% wide, 18px corners, its label 13px semibold);
+   SnippetWavePlayer.tsx (play 42px white on orange, 44 bars h30 white/45, the time 12.5px white/85; compact 32px,
+   bars h22; the AI clip's bare player in ink); WalkAiVoice.tsx (the "AI" mark 17px, 5px corners, 9.5px bold;
+   its label 14px semibold); WalkFooter.tsx (the pill 54px black 16px semibold, the record dot 10px --record;
+   the grey link 40px 16px; bar-space 8px); WalkLoading.tsx (the dots bubble, padding 19px 17px). */
+.at-lens { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; background: #fff; color: #121212; font-size: 17px; line-height: 1.55; }
+.at-top { position: relative; z-index: 1; min-height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 8px 10px 0; }
+.at-nav { display: flex; min-width: 0; align-items: center; gap: 2px; font-size: 13.5px; font-weight: 600; }
+.at-nav button { width: 36px; height: 36px; flex: none; border: 0; background: none; border-radius: 50%; color: #737373; display: grid; place-items: center; }
+.at-nav button:disabled { opacity: .25; cursor: default; }
+.at-nav button svg { width: 20px; height: 20px; }
+.at-nav span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.at-x { width: 28px; height: 28px; flex: none; margin-right: 10px; border: 1px solid #EBEBEB; border-radius: 50%; background: #fff; color: #737373; display: grid; place-items: center; }
+.at-x svg { width: 16px; height: 16px; }
+.at-th { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 20px; display: flex; flex-direction: column; scrollbar-width: none; }
+.at-th::-webkit-scrollbar { display: none; }
+.at-in { margin-top: auto; display: flex; flex-direction: column; gap: 16px; }
+.at-lb { align-self: flex-start; max-width: 94%; display: flex; flex-direction: column; border-radius: 22px; background: #F5F5F5; padding: 13px 17px; font-size: 18.5px; line-height: 1.45; animation: drop .34s cubic-bezier(.2,.8,.2,1) both; }
+.at-lb.wide { align-self: stretch; max-width: 100%; }
+.at-lb .sb { font-weight: 600; }
+.at-typ { align-self: flex-start; display: flex; gap: 4px; border-radius: 22px; background: #F5F5F5; padding: 19px 17px; }
+.at-typ i { width: 7px; height: 7px; border-radius: 50%; background: #B5B5B5; animation: blink 1s infinite; }
+.at-typ i:nth-child(2) { animation-delay: .15s; } .at-typ i:nth-child(3) { animation-delay: .3s; }
+.at-me { margin-left: auto; width: 90%; display: flex; flex-direction: column; gap: 8px; border-radius: 22px; background: #FF640A; color: #fff; padding: 13px 17px; animation: drop .34s cubic-bezier(.2,.8,.2,1) both; }
+.at-me .w { font-size: 16px; line-height: 1.45; } .at-me .w strong { font-weight: 700; }
+.at-chip { margin-left: auto; width: 62%; display: flex; flex-direction: column; gap: 4px; border-radius: 18px; background: #FF640A; color: #fff; padding: 8px 12px; animation: drop .34s cubic-bezier(.2,.8,.2,1) both; }
+.at-chip > b { font-size: 13px; font-weight: 600; color: rgba(255,255,255,.85); }
+.at-pl { display: flex; min-width: 0; align-items: center; gap: 12px; }
+.at-pl .pb { width: 42px; height: 42px; flex: none; border: 0; border-radius: 50%; background: #fff; color: #FF640A; display: grid; place-items: center; }
+.at-pl .pb svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
+.at-pl .bs { flex: 1; min-width: 0; height: 30px; display: flex; align-items: center; gap: 2px; overflow: hidden; }
+.at-pl .bs i { flex: 1; min-width: 1px; border-radius: 2px; background: rgba(255,255,255,.45); }
+.at-pl .tm { flex: none; font-size: 12.5px; color: rgba(255,255,255,.85); font-variant-numeric: tabular-nums; }
+.at-pl.c .pb { width: 32px; height: 32px; } .at-pl.c .pb svg { width: 12px; height: 12px; } .at-pl.c .bs { height: 22px; }
+.at-pl.ink .pb { background: #121212; color: #fff; } .at-pl.ink .bs i { background: rgba(18,18,18,.2); } .at-pl.ink .tm { font-size: 10.5px; color: #737373; }
+.at-ai { margin-top: 8px; display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; }
+.at-ai em { width: 17px; height: 17px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; background: #121212; color: #fff; font-style: normal; font-size: 9.5px; font-weight: 700; }
+.at-lb .at-pl { margin-top: 8px; }
+.at-dock { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 8px; animation: walk-fade .24s ease both; }
+.at-dock:empty { display: none; }
+.at-dock:has(> .at-link:last-child) { padding-bottom: 0; }
+.at-dock > .bar { padding: 0; min-height: 54px; }
+.at-pill { width: 100%; height: 54px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 0; border-radius: 999px; background: #121212; color: #fff; font-size: 16px; font-weight: 600; }
+.at-pill .dt { width: 10px; height: 10px; border-radius: 50%; background: #E63C2D; }
+.at-link { width: 100%; height: 40px; border: 0; background: none; color: #737373; font-size: 16px; }
+@keyframes walk-fade { from { opacity: 0; } to { opacity: 1; } }
+/* Will's chat after the walk: IdealTextCard.tsx (white, 1px border, 18px corners, p-2.5 pr-7, 80% at most 384px,
+   the 72px 16:9 tile, the name 15px semibold, the "1.0" tag 12px semibold on muted, › 20px muted), 3px under its
+   Feedback walk (B3); PlanRows.tsx Progress (muted, 16px corners, px-3 py-2, 15px, min 70%) with PlanCard.tsx
+   PlanBar (8px bars, 4px apart, #FF640A done, #EBEBEB to come). */
+.at-card { position: relative; align-self: flex-start; width: 80%; max-width: 384px; margin-top: -5px; display: flex; align-items: center; gap: 10px; border: 1px solid #EBEBEB; border-radius: 18px; background: #fff; padding: 10px 28px 10px 10px; text-align: left; color: #121212; animation: drop .28s ease both; }
+.at-card .tl { width: 72px; flex: none; aspect-ratio: 16 / 9; border-radius: 6px; background: linear-gradient(to bottom right, #dde3ee, #c7d0e0); }
+.at-card b { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.at-card .vt { flex: none; border-radius: 99px; background: #F5F5F5; padding: 2px 10px; font-size: 12px; font-weight: 600; }
+.at-card .cv { position: absolute; right: 12px; top: 50%; translate: 0 -50%; font-size: 20px; color: #737373; }
+.b.will.at-prog { min-width: 70%; display: flex; flex-direction: column; gap: 8px; }
+.at-prog .pbar { display: flex; gap: 4px; } .at-prog .pbar i { flex: 1; height: 8px; border-radius: 4px; background: #EBEBEB; } .at-prog .pbar i.on { background: #FF640A; }
+/* The Ideal Text page, its door only: IdealTextHeading.tsx (the name 17px semibold), OverlayCloseButton.tsx (⋯ and ✕,
+   28px circles, 6px apart, F6), IdealTextActions.tsx ("Record Take N" the WalkPill with the dot, the grey "Close").
+   The text itself is drawn plainly: helper words orange (F3), one paragraph per question (N401 item 4). */
+.at-it { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; background: #fff; color: #121212; }
+.at-it .hd { height: 56px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 16px; }
+.at-it .hd b { flex: 1; min-width: 0; font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.at-it .hd button { width: 28px; height: 28px; border: 1px solid #EBEBEB; border-radius: 50%; background: #fff; color: #737373; display: grid; place-items: center; font-size: 15px; line-height: 1; }
+.at-it .hd button svg { width: 16px; height: 16px; }
+.at-it .tx { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 20px 16px; scrollbar-width: none; }
+.at-it .tx p { margin: 0 0 18px; font-size: 17px; line-height: 1.6; }
+.at-it .tx p mark { background: none; color: #FF640A; }
+/* "How do you feel?" and the set-up: FeelingsCheckIn.tsx, RecordingSetup.tsx, ui/wizard.tsx (WizardProgress: 64px
+   sides, dots 6px, the current 24×8 black, done black/40, to come muted/20, gap 6, mb 24; WizardCancel 44px, X 20px;
+   StepHead: 17px semibold, the mic 16px orange, the helper 14px muted, mb 20); the feelings 52px pills, 16px medium,
+   2 columns gap 10, the pick orange, Skip faded; the chips 40px 14px, chosen black; the input 48px, 12px corners;
+   the dropzone 152px dashed 16px corners; the button ui/button.tsx default (orange, 40px, 14px medium) rounded-full;
+   LabOverlay.tsx labColumnClass px-4 pt-6 pb-8. */
+.at-wz { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; background: #fff; color: #121212; padding: 24px 16px 32px; }
+.at-wp { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.at-wp .sl { width: 64px; flex: none; } .at-wp .sr { width: 64px; flex: none; display: flex; justify-content: flex-end; }
+.at-wp .bk { height: 32px; border: 0; background: none; border-radius: 99px; padding: 0 8px; font-size: 13px; color: #737373; }
+.at-wp .dts { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.at-wp .dts i { width: 6px; height: 6px; border-radius: 99px; background: rgba(115,115,115,.2); transition: all .2s; }
+.at-wp .dts i.d { background: rgba(18,18,18,.4); } .at-wp .dts i.c { width: 24px; height: 8px; background: #121212; }
+.at-wp .wx { margin-right: -10px; width: 44px; height: 44px; border: 0; background: none; border-radius: 99px; display: grid; place-items: center; color: #737373; }
+.at-wp .wx svg { width: 20px; height: 20px; }
+.at-sh { margin-bottom: 20px; }
+.at-sh h2 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; line-height: 1.375; }
+.at-sh h2 svg { width: 16px; height: 16px; flex: none; color: #FF640A; }
+.at-sh p { margin: 8px 0 0; font-size: 14px; line-height: 1.625; color: #737373; }
+.at-fg { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.at-fg button { height: 52px; border: 1px solid #EBEBEB; border-radius: 99px; background: #fff; font-size: 16px; font-weight: 500; color: #121212; }
+.at-fg button.on { background: #FF640A; border-color: #FF640A; color: #fff; }
+.at-fg button:disabled { opacity: .4; cursor: default; }
+.at-fg button.sk { border-color: rgba(235,235,235,.5); background: rgba(255,255,255,.5); color: rgba(115,115,115,.8); }
+.at-in2 { width: 100%; height: 48px; border: 1px solid rgba(18,18,18,.4); border-radius: 12px; padding: 0 16px; font: 15px var(--ui); color: #121212; background: #fff; outline: none; }
+.at-chp { display: flex; flex-wrap: wrap; gap: 8px; }
+.at-chp button { height: 40px; padding: 0 16px; border: 1px solid #EBEBEB; border-radius: 99px; background: #fff; font-size: 14px; color: #121212; }
+.at-chp button.on { background: #121212; border-color: #121212; color: #fff; }
+.at-nl { margin-top: 16px; border: 0; background: none; padding: 0; font-size: 13px; color: #737373; text-decoration: underline; text-underline-offset: 2px; }
+.at-dz { width: 100%; min-height: 152px; border: 1px dashed #EBEBEB; border-radius: 16px; background: #fff; padding: 0 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 14px; color: #121212; }
+.at-dz svg { width: 20px; height: 20px; color: #737373; }
+.at-body { flex: 1; }
+.at-cta { margin-top: auto; padding-top: 24px; }
+.at-cta button { width: 100%; height: 40px; border: 0; border-radius: 999px; background: #FF640A; color: #fff; font-size: 14px; font-weight: 500; }
+.at-cta button:disabled { opacity: .5; }
+/* The sharing question before the next Take (NextTakeShareScreen.tsx CommunityShareScreen, the backend's switch for
+   sending off, N479 item 1): WalkOverlay.tsx's top bar with its caption ("Take 1", 13.5px semibold) and ✕, the body
+   px-5 py-3.5 gap-4 from the top; WalkOptions.tsx rows (16px corners, 1.5px border, px-3.5 py-3; the tick box 22px,
+   7px corners, black when ticked; the label 16px semibold, the hint 13.5px muted); Continue the WalkFooter pill. */
+.at-sh2 { position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; background: #fff; color: #121212; font-size: 17px; line-height: 1.55; }
+.at-sh2 .cap { min-width: 0; padding: 0 8px; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.at-sh2 .bd { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 14px 20px; }
+.at-op { display: flex; flex-direction: column; gap: 8px; }
+.at-op button { width: 100%; display: flex; align-items: flex-start; gap: 12px; border: 1.5px solid #EBEBEB; border-radius: 16px; background: #fff; padding: 12px 14px; text-align: left; color: #121212; }
+.at-op button.on { border-color: #121212; }
+.at-op .tk { width: 22px; height: 22px; flex: none; margin-top: 1px; border: 1.5px solid rgba(18,18,18,.35); border-radius: 7px; display: grid; place-items: center; color: #fff; font-size: 13px; font-weight: 700; }
+.at-op button.on .tk { border-color: #121212; background: #121212; }
+.at-op b { display: block; font-size: 16px; font-weight: 600; } .at-op small { display: block; margin-top: 1px; font-size: 13.5px; color: #737373; }
+.at-pill:disabled { opacity: .3; cursor: default; }
+/* ===== END AFTER THE TAKE ===== */
+
+/* "The way in" around the AFTER THE TAKE block: Will's progress bubble in this page's bubbles, and the notes table */
+.b.will { align-self: flex-start; border-bottom-left-radius: 6px; }
+.atp .tbl { overflow-x: auto; margin-top: 10px; }
+.atp table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 14px; }
+.atp th, .atp td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.atp th { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.atp td small { color: var(--muted); }
+.atp ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; } .atp li { margin-bottom: 4px; }
+.atp h3 { margin: 12px 0 0; font: 700 14px var(--ui); }
 </style>
 
 <div class="wrap">
@@ -606,6 +868,16 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
         <li>The ☰ icons are coloured squares (N367 item 4); the plan card's bar has one part per practice, its date orange (N319 item 6).</li>
         <li>Terms 3.10 and Privacy 3.12 on the acceptance screen (published 4 November); Will's mark with the middle dot bigger and the grey pin (N334); the app's own fonts.</li>
       </ul>
+      <h3>Redrawn to the code, part 2 (9 November)</h3>
+      <ul>
+        <li>"How do you feel?": sourced from <code>FeelingsCheckIn.tsx</code>, <code>ui/wizard.tsx</code>, <code>useWillabFlow.ts</code> and <code>LabOverlay.tsx</code> (N272, N392, N549): its own screen in the set-up's chrome, the mic and the helper line, four pills two by two and a faded Skip under Calm; a pick turns orange and the next screen opens half a second later; it opens at once on "Record Take N"; before a Take whose set-up is kept, two marks, then "Getting your mic ready" and the Take.</li>
+        <li>Sign-up and sign-in: sourced from <code>signup/page.tsx</code>, <code>login/page.tsx</code>, <code>SignupForm.tsx</code>, <code>LoginForm.tsx</code>, <code>WhatsAppAuth.tsx</code>, <code>OtherWays.tsx</code>, <code>PhoneNumberField.tsx</code>, <code>AppleAuthButton.tsx</code>: the logo over one card; the orange WhatsApp button; "or", then Email, LinkedIn, Google; the code and name steps inside the card; the email forms, word for word. Microsoft stays the dashed gap (N401).</li>
+        <li>The set-up and the projects: sourced from <code>RecordingSetup.tsx</code>, <code>PresentationInput.tsx</code>, <code>LoadingState.tsx</code>, <code>presentationInPlay.ts</code>, <code>ProjectPicker.tsx</code>, <code>OneProjectQuestion.tsx</code>, <code>firstTake.ts</code>: topic, length, slides with the dots, Back and ✕; the orange Next, "Skip for now", "Start recording"; the long-length sheet once; the full-screen "What are you recording?", "One project at a time" before a new project.</li>
+      </ul>
+      <h3>Redrawn to the code, part 3 (9 November)</h3>
+      <ul>
+        <li>After the first Take: the stand-in "The Feedback walk opens here" is gone. In every journey that reaches it, the walk is the One thing walk as built (their best, one fix by the kind of its weakness, the practise in the locked bar, the helper words, "Lesson done."), then Will's chat after it (the walk and the Ideal Text card, the bridge and his one question, the goodbye and the progress), the Ideal Text's page, the sharing question (only from that page's "Record Take 2"), then this page's own "How do you feel?" and set-up, "Getting your mic ready" and Take 2's recording screen. The same block as "The first Take" (AFTER THE TAKE, from the code); see "After the Take" below.</li>
+      </ul>
       <h3>Kept, signed but not built</h3>
       <ul>
         <li>Microsoft sign-in (N401 items 6 and 7).</li>
@@ -621,6 +893,15 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
       <p id="jP"></p>
     </div>
 
+
+    <div class="panel atp">
+      <h2>After the Take</h2>
+      <p>From "Lesson done." back, every step is drawn from the code on main, each with the file it is built in, the same block as "The first Take". The walk is the One thing walk (N309) with the decisions to 9 November: two moments, their best praised and one fix on the less confident moment, its tool by the kind of its weakness (N548). Kasia, Anna and Marta get the AI clip, their voice the problem; Lena and Zofia the Clearer version, their words too. What they say is an example. "How do you feel?" and the set-up are this page's own, drawn from the same files.</p>
+      <div class="tbl"><table><thead><tr><th>Step</th><th>What the speaker meets</th><th>Built in</th></tr></thead><tbody id="afterSrc"></tbody></table></div>
+      <h3>Still open, or not as built</h3>
+      <ul id="afterOpen"></ul>
+    </div>
+
     <div class="panel">
       <h2>What version 2 changes</h2>
       <p>Your note: "this is a part that we apply to everyone ... it should be your first official take ... whatever questions we have for the first timer, we need to put them into slides."</p>
@@ -628,7 +909,7 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
         <li><b>Will's welcome, then one big black button.</b> Four bubbles (N492): "Hi {name}, and welcome. …", what the first Take is, Wozniak and Jobs, where to record. The button is "Start your first recording".</li>
         <li><b>The first Take: five questions are the slides</b> on the recording screen, drawn as the poster (N462): Your field · Worth sharing · Who it's for · A moment · Your one thing. No set-up: the questions are the deck.</li>
         <li><b>While it is processed</b>, the labels sit in a thin row at the top of Will's chat. Will: "While your feedback is being prepared, check what I heard." Then, one tap each: "Here's how others will see you", the plan, the agreement, "You're set".</li>
-        <li><b>The walk opens when it's ready.</b> Its row on top turns orange. On Take 1, the walk works on how the questions were answered.</li>
+        <li><b>The walk opens when it's ready.</b> Its row on top turns orange. On Take 1, the walk works on how the questions were answered: their best moment, one thing to improve, the helper words, "Lesson done." Then Will's one question and the Ideal Text, one paragraph per question.</li>
         <li><b>Then "Record Take 2"</b> for the real talk: the feelings check with its Skip, then the set-up (the topic from the plan, length, slides).</li>
         <li><b>Moved:</b> the plan's questions in Will's chat (N319) are now slides. "When is your deadline?" comes as taps only if no date was heard.</li>
         <li><b>Gone:</b> gap 5, the two hellos. Will says hi once.</li>
@@ -743,17 +1024,22 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
   const ARTUR = { n: "Artur", c: "#121212", role: "Founder · WillpowerLab", about: "I build WillpowerLab." };
   const MARTA = { n: "Marta", c: "#495057", role: "Speaking coach",
     topics: ["Starting a talk", "Slowing down", "Sounding sure"], about: "I help you start well, slow down, and sound sure when you speak to a room.", change: { said: "Add handling questions too.", topic: "Handling questions" },
-    event: { topic: "My workshop for coaches" } };
+    event: { topic: "My workshop for coaches" },
+    says: ["How to open a talk and sound sure, even when you aren't. People come to me the week before they speak.", "Stand still for your first sentence. I learned it after years of pacing while I talked.", "A coach who runs workshops and feels the room drift away.", "A client froze on a stage in Warsaw. One breath, one step back, and she went on.", "Your first sentence decides how the room hears the rest."] };
   const BIZ = {
     rasp: { key: "rasp", label: "RASP", sub: "internal, AI ambassadors", acc: "#14213D",
       inviter: { n: "Tomek", role: "AI ambassador · Editorial", about: "I help editors use AI in their cuts: what the AI does well, and what you always check." },
-      joiner: { n: "Kasia", role: "Video editor · News", topics: ["Short news cuts", "Video for social media"], about: "I edit short news videos for social media.", change: { said: "Add live streams too.", topic: "Live streams" }, event: { topic: "My Meet & Learn talk" } },
-      solo: { n: "Anna", role: "Reporter · Politics", topics: ["Parliament", "How a bill becomes law"], about: "I report on politics: parliament, and how a bill becomes law.", change: { said: "Add election night too.", topic: "Election night" }, event: { topic: "My newsroom conference talk" } },
+      joiner: { n: "Kasia", role: "Video editor · News", topics: ["Short news cuts", "Video for social media"], about: "I edit short news videos for social media.", change: { said: "Add live streams too.", topic: "Live streams" }, event: { topic: "My Meet & Learn talk" },
+        says: ["Cutting short news videos for social media. I know what makes people stop scrolling.", "Let the AI find the quotes, and check every one yourself. I learned that the hard way.", "A new editor in my newsroom, on their first night shift.", "The night a wrong quote nearly went out under our name. I caught it two minutes before.", "Let the AI find the quotes, and check every one yourself."] },
+      solo: { n: "Anna", role: "Reporter · Politics", topics: ["Parliament", "How a bill becomes law"], about: "I report on politics: parliament, and how a bill becomes law.", change: { said: "Add election night too.", topic: "Election night" }, event: { topic: "My newsroom conference talk" },
+        says: ["Parliament, and how a bill becomes law. I can tell you where a bill will stall before it does.", "Read the last page of a bill first. That's where the dates and the money are.", "A young reporter in their first week in parliament.", "The night a vote moved at the last minute. I had the story because I'd read the last page.", "Read the last page of a bill first."] },
     },
     invita: { key: "invita", label: "Invita", sub: "sellers and their customers", team: "Invita", acc: "#8C3B5E", askLink: "willpowerlab.com/a/invita",
       inviter: { n: "Ariel", role: "Seller", about: "I help you find the shampoo that fits your scalp, and show you how to use it at home.", topics: ["Dry scalp", "Hair loss", "Choosing a shampoo", "Using it at home"] },
-      joiner: { n: "Lena", role: "Seller · Gdańsk", topics: ["Invita in Gdańsk"], about: "I'm a new Invita seller in Gdańsk.", change: { said: "Add salon bookings too.", topic: "Salon bookings" }, event: { topic: "The new shampoo, for the training day" } },
-      solo: { n: "Zofia", role: "Hairdresser · Kraków", topics: ["Colouring", "Curly hair"], about: "I colour and cut hair in Kraków, curly hair most of all.", change: { said: "Add bridal hair too.", topic: "Bridal hair" }, event: { topic: "My salon owners' talk" } },
+      joiner: { n: "Lena", role: "Seller · Gdańsk", topics: ["Invita in Gdańsk"], about: "I'm a new Invita seller in Gdańsk.", change: { said: "Add salon bookings too.", topic: "Salon bookings" }, event: { topic: "The new shampoo, for the training day" },
+        says: ["Our shampoos, and how to tell which one a scalp needs.", "I'd say one wash maybe tells you more than the label, kind of. It took me a month of wrong advice to see it.", "A new seller in one of our salons.", "A customer came back after a week and said the itch was gone.", "One wash tells you more than the label."] },
+      solo: { n: "Zofia", role: "Hairdresser · Kraków", topics: ["Colouring", "Curly hair"], about: "I colour and cut hair in Kraków, curly hair most of all.", change: { said: "Add bridal hair too.", topic: "Bridal hair" }, event: { topic: "My salon owners' talk" },
+        says: ["Colouring and cutting curly hair. I can see how a curl will fall before I cut it.", "I think you maybe shouldn't cut curls wet, sort of. A bride taught me that, in tears in my chair.", "A hairdresser who has just opened their own salon.", "She saw her curls cut dry for the first time and smiled at the mirror.", "Don't cut curls wet."] },
     },
   };
 
@@ -779,7 +1065,7 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
     ["Will's chat", [["hi", "Will's welcome", "four bubbles (N492), then the black button", "built"]]],
     ["The first Take", [["first", "Five questions, as slides", "the poster (N462)", "built"], ["take", "Set-up, recording, processing", "every Take 2", "built"]]],
     ["While it is processed", [["checks", "The checks", "how others see you · the plan · the agreement", "new"], ["plan", "The plan's questions", "moved onto the slides", "moved"]]],
-    ["After", [["walk", "The Feedback walk", "locked · then Take 2", "built"], ["chats", "The chats", "Will on top · the coach's row (N521)", "built"]]],
+    ["After", [["walk", "The Feedback walk", "the One thing walk · the Ideal Text · then Take 2", "built"], ["chats", "The chats", "Will on top · the coach's row (N521)", "built"]]],
   ];
 
   let bizKey = "rasp", jKey = "signup", S = null, screen = null, C = null;
@@ -791,16 +1077,16 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
       me: jKey === "join" ? b.joiner : jKey === "coach" ? MARTA : b.solo,
       inviter: jKey === "join" ? b.inviter : jKey === "coach" ? ARTUR : null,
       redirect: null, joined: false, take: 0, planDone: false, topics: null, fresh: null,
-      will: { log: [], beat: null, said: false }, willSeen: false, wizFrom: "will", length: 2, deck: false, took: false, proc: 0, procDone: false, walked: false,
-      metInviter: false, plusUsed: false, askedBefore: false, joinSet: false, sending: null, personLog: [], recMode: null };
+      will: { log: [], beat: null, said: false }, willSeen: false, wizFrom: "will", length: null, deck: false, took: false, proc: 0, procDone: false, walked: false,
+      restored: false, wizNew: false, deckSince: null, micNotes: null, projTopic: null, projArchived: false, metInviter: false, plusUsed: false, askedBefore: false, joinSet: false, sending: null, personLog: [], recMode: null, total: 9, walkLog: null, helper: null, moment: null, shared: null, laterWalk: false };
     S.topics = S.me.topics ? [...S.me.topics] : [];
   }
   const nodeOf = (id) => {
     if (id === "landing" || id === "example") return jKey === "app" ? "app" : "land";
     if (id === "signup") return jKey === "signup" ? "signup" : "auth";
     if (id === "join") return jKey === "coach" ? "coach" : "join";
-    if (id === "will") return !S.will.beat || S.will.beat === "hi" ? "hi" : S.will.beat === "afterWalk" ? "walk" : "checks";
-    return { waitlist: "wait", waiting: "wait", login: "auth", code: "auth", name: "auth", signupEmail: "auth", loginEmail: "auth", oauth: "auth", accept: "accept", notAgree: "accept", first: "first", wizard: "take", mic: "take", rec: S.recMode ? "chats" : "take", proc: "take", walk: "walk", list: "chats", person: "chats", ask: "ask" }[id];
+    if (id === "will") return !S.will.beat || S.will.beat === "hi" ? "hi" : AFTER_BEATS.includes(S.will.beat) ? "walk" : "checks";
+    return { waitlist: "wait", waiting: "wait", login: "auth", code: "auth", name: "auth", signupEmail: "auth", loginEmail: "auth", oauth: "auth", accept: "accept", notAgree: "accept", first: "first", wizard: "take", mic: "take", rec: S.recMode ? "chats" : "take", proc: "take", walk: S.laterWalk ? "take" : "walk", ideal: "walk", list: "chats", person: "chats", ask: "ask" }[id];
   };
   function paintControls() {
     $("#biz").innerHTML = `<span class="lab">Business</span>` + Object.values(BIZ).map((b) => `<button type="button" data-b="${b.key}" class="${b.key === bizKey ? "on" : ""}" aria-pressed="${b.key === bizKey}">${esc(b.label)} <small>· ${esc(b.sub)}</small></button>`).join("");
@@ -829,8 +1115,11 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
     if (id === "first") { go("first"); return; }
     if (id === "checks") { S.will = { log: welcomeLog(), beat: "hi", said: true }; finishTake(); return; }
     if (id === "plan") { toast("The plan's questions are now the first Take's slides."); go("first"); return; }
-    if (id === "take") { S.planDone = true; S.took = true; S.walked = true; S.procDone = true; S.take = Math.max(S.take, 1); S.wizFrom = "will"; S.will.beat = "afterWalk"; S.will.said = false; go("wizard"); return; }
-    if (id === "walk") { S.took = true; S.take = Math.max(S.take, 1); go("walk"); return; }
+    if (id === "take") { S.planDone = true; S.took = true; S.walked = true; S.procDone = true; S.take = Math.max(S.take, 1); S.restored = false; S.wizNew = false; S.wizFrom = "will"; S.will.beat = "go2"; S.will.said = true; go("wizard"); return; }
+    // the first Take's walk: as if the Take was recorded and the checks done, the walk's row orange
+    if (id === "walk") { S.planDone = true; S.took = true; S.take = Math.max(S.take, 1); S.proc = 100; S.procDone = true; S.laterWalk = false;
+      if (!AFTER_BEATS.includes(S.will.beat)) S.will = { log: S.will.log.length ? S.will.log : welcomeLog(), beat: "waitWalk", said: true };
+      go("walk"); return; }
     if (id === "chats") { go("list"); return; }
   }
 
@@ -955,6 +1244,391 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
   // The walk's door (Lounge.tsx FeedbackWalkBubble, N467 rule 4): one grey bubble, the date, and ›
   const walkDoor = () => `<button type="button" class="walkb" data-walk="1">Feedback walk<small>Nov 9, 2026</small><span class="gt" aria-hidden="true">›</span></button>`;
 
+  /* ===== AFTER THE TAKE (sourced from code) ===== */
+  // What happens after a Take, as the code on main builds it (frontend-cursor 7ee1476, backend-cursor 64812d2):
+  // the One thing walk in the lens, Will's chat after it, the Ideal Text's door, then "Record Take 2" →
+  // "How do you feel?" → the set-up → Take 2's recording screen. Portable: it reads nothing of the host but
+  // `env` (the host's wait, toast, steps list, screen switch and state), so "The way in" can take the group whole.
+  function afterTheTake(env) {
+    const { app, esc, wait, toast, stepName, fail } = env;
+    const $ = (s, r = app) => r.querySelector(s);
+    const S = () => env.state();
+    const ic = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+    const IC = {
+      left: ic('<path d="m15 18-6-6 6-6"/>'), right: ic('<path d="m9 18 6-6-6-6"/>'), x: ic('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
+      play: '<svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
+      mic: ic('<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>'),
+      upload: ic('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>'),
+      trash: '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
+    };
+
+    // ---- the words, each from its file ----
+    const T = {
+      hello: (n) => `Hi ${n}.`,                                         // idealEditCopy.ts:526 ONE_THING_COPY.hello
+      best: "This was your most confident moment.",                     // idealEditCopy.ts:537
+      why: (cue) => `Why it worked: ${cue}`,                            // idealEditCopy.ts:538; walkLines.ts:155 lowers the cue's first letter
+      one: "And now, one thing to improve:",                            // idealEditCopy.ts:540
+      sayStraight: "Say it straight:",                                  // idealEditCopy.ts:542
+      likeConfident: "Say this one like your confident moment:",        // idealEditCopy.ts:544
+      tryIt: "Try it", keepMine: "Keep mine", keepWords: "Your words it is.", // idealEditCopy.ts:547-552
+      skipped: "Okay, we'll skip this one.",                            // idealEditCopy.ts:560 (N405)
+      landed: "Yes. That's it.", onceMore: "Close. Once more.",         // idealEditCopy.ts:562-563
+      helperWords: "These are your helper words. They'll appear on screen during your next take, to remind you of what you learned here.", // :569
+      lessonDone: "Lesson done.",                                       // idealEditCopy.ts:572
+      next: "Next", close: "Close", skip: "Skip", stop: "Stop",         // CHUNK_SHEET_COPY.pagerNext :263, pillClose :134; WALK_COPY.skip; RecordingStrip
+      confident: "Your confident moment",                               // WALK_COPY.confidentReplay :461
+      aiLabel: "AI version of your voice", aiBadge: "AI",               // WALK_COPY :475-477
+      feedbackWalk: "Feedback walk",                                    // WALK_COPY.feedbackWalk (N192)
+      bridge: "Ok, now let's dive into the content for a bit.",         // backend after_take.py:128 BRIDGE[0], Take 1 (N94)
+      goal: "When you finish, what do you want them to do? Or feel? 🤔", // backend will_question.py:94
+      worked: (m) => `We just worked on “${m}”. `,                      // backend will_question.py:142 (N294 item 1)
+      goalChips: ["Say yes", "Trust me", "Get it"],                     // backend will_question.py:117
+      thanks: "Got it, thanks 🙏",                                      // backend will_question.py:130
+      seeYou: (day) => `Good job. See you ${day}.`,                     // backend after_take.py:111, plan.next_day_text → "tomorrow"
+      doneOf: (n, t) => `${n} of ${t} practices done.`,                 // backend plan.py:97 (N319 item 7)
+      project: "Your first Take",                                       // firstTake.ts FIRST_TAKE_TOPIC
+      recordTake: (n) => `Record Take ${n}`,                            // planCopy.ts recordTake; IdealTextActions.tsx:94
+      feel: "How do you feel?", feelHelp: "Before you step on stage",   // FeelingsCheckIn.tsx:90
+      feelings: ["Nervous", "Excited", "Calm", "Not sure"],             // FeelingsCheckIn.tsx:23
+      topicQ: "What is the topic?", topicPh: "e.g. my Q3 results pitch", // RecordingSetup.tsx:340
+      lengthQ: "How long should it run?", noLimit: "No limit",          // RecordingSetup.tsx:386, :405
+      lengths: ["1 min", "2 min", "3 min", "5 min", "30 min", "45 min", "60 min"], // RecordingSetup.tsx:39
+      slidesQ: "Have slides to go with it?", slidesHelp: "Adding slides makes the ideal text dramatically better.", // :414
+      upload: "Upload your deck (PDF)", skipForNow: "Skip for now", startRec: "Start recording", back: "← Back", // PresentationInput.tsx:105; RecordingSetup.tsx:310; wizard.tsx
+      micReady: "Getting your mic ready", newSlides: "New slides",      // recordingCopy.ts:21; presentationInPlay.ts:25 (N257)
+      where: (i, n) => `Take 2 · Slide ${i} of ${n}`,                   // LabOverlay.tsx RecordingWhere
+      backBtn: "Back", nextSlide: "Next slide", finish: "Finish take",  // RecordingRoadmap.tsx, FinishTakeButton.tsx
+      // the sharing question (NextTakeShareScreen.tsx:458; idealEditCopy.ts WALK_COPY :393, :417-430; CHUNK_SHEET_COPY.pillContinue :130, historyTake :255)
+      shareBefore: "Before we start the new take!", shareTitle: "After all, it's about speaking publicly!", shareAudience: "How big you want your audience?",
+      shareOpts: [["general", "General community", "Fastest improvement in speaking publicly"], ["mine", "Only my community", "Slower but steady growth"], ["none", "Only me", "Slowest progress, but safe"]],
+      cont: "Continue", take1: "Take 1",
+    };
+    // The stand-in deck a Take with no slides records on (defaultDeck.ts:36), drawn as the poster with no label
+    // (pdfSlides.tsx:338; RecordingRoadmap.tsx:39 stageLook: the default deck is a poster, tall with no helper words).
+    const DECK = [{ title: "Opening", body: "What you'll talk about, in one line." }, { title: "Main points", body: "1\n2\n3" }, { title: "Summary", body: "What you said, and what's next." }];
+    // The first Take's deck: each slide's title is its question (firstTake.ts KICKERS), which the walk's bar names (B6, N397).
+    const QUESTIONS = ["What do you know better than most people you meet?", "What could you teach someone in five minutes that would save them a year?", "Who would be glad you told them?", "When did it make a difference? Take us to that day.", "If they remember one sentence from you, what should it be?"];
+
+    // ---- sample content: their best and the one fix, the tool by the kind of the weakness (N548) ----
+    // The cue lines are signed B-lines (idealEditCopy.ts WALK_LINE_BANK); the AI tips are AI_CLIP_BANK's (N120).
+    const SAMPLE = {
+      Kasia: { best: { slide: 0, said: "I know what makes people stop scrolling.", cue: "Your voice was calm and smooth. It sounded like you were in charge!", secs: 4, bank: "B05" },
+        fix: { slide: 4, tool: "ai", said: "Let the AI find the quotes, and check every one yourself.", phrase: "check every one", tip: "Pause before “check every one”", bank: "AIpause", secs: 5, aiSecs: 5 },
+        topic: "Checking AI quotes before they go out" },
+      Lena: { best: { slide: 3, said: "A customer came back after a week and said the itch was gone.", cue: "Loud where it mattered, soft where it didn't. That landed!", secs: 5, bank: "B03" },
+        fix: { slide: 1, tool: "clearer", said: "I'd say one wash maybe tells you more than the label, kind of.", say: "One wash tells you more than the label.", secs: 6 },
+        topic: "Telling which shampoo a scalp needs" },
+      Marta: { best: { slide: 0, said: "People come to me the week before they speak.", cue: "You came in with energy from the very first word!", secs: 4, bank: "B08" },
+        fix: { slide: 3, tool: "ai", said: "One breath, one step back, and she went on.", phrase: "one step back", tip: "Lean on “one step back”", bank: "AIstress", secs: 4, aiSecs: 4 },
+        topic: "Standing still for your first sentence" },
+      Anna: { best: { slide: 0, said: "I can tell you where a bill will stall before it does.", cue: "Your voice was calm and smooth. It sounded like you were in charge!", secs: 4, bank: "B05" },
+        fix: { slide: 4, tool: "ai", said: "Read the last page of a bill first.", phrase: "the last page", tip: "Lean on “the last page”", bank: "AIstress", secs: 4, aiSecs: 4 },
+        topic: "Reading a bill from its last page" },
+      Zofia: { best: { slide: 3, said: "She saw her curls cut dry for the first time and smiled at the mirror.", cue: "Loud where it mattered, soft where it didn't. That landed!", secs: 5, bank: "B03" },
+        fix: { slide: 1, tool: "clearer", said: "I think you maybe shouldn't cut curls wet, sort of.", say: "Don't cut curls wet.", secs: 5 },
+        topic: "Cutting curly hair dry" },
+    };
+    const sample = () => SAMPLE[S().me.n] || SAMPLE.Kasia;
+    const lowerFirst = (l) => (/^I\b/.test(l) ? l : l.charAt(0).toLowerCase() + l.slice(1)); // walkLines.ts lowerFirst
+    const bare = (t) => t.trim().replace(/^[\s.,;:!?"“”']+|[\s.,;:!?"“”']+$/g, "");        // B7: no punctuation at either end; will_question.moment_of
+    const bold = (text, phrase) => { const at = phrase ? text.toLowerCase().indexOf(phrase.toLowerCase()) : -1; if (at < 0) return esc(text); return esc(text.slice(0, at)) + `<strong>${esc(text.slice(at, at + phrase.length))}</strong>` + esc(text.slice(at + phrase.length)); }; // walkLines.ts phrasePieces
+    const helperOf = (fx, choice) => (fx.tool === "ai" ? fx.phrase : choice === "accept" ? bare(fx.say) : bare(fx.said)); // C3
+    const clock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
+    // ---- the one player (SnippetWavePlayer.tsx), in its looks ----
+    const barsOf = (seed, n) => { let h = 0; for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0; const out = []; for (let i = 0; i < n; i++) { h = (h * 1103515245 + 12345) >>> 0; out.push(6 + (h % 23)); } return out; };
+    const player = (seed, secs, look = "me") => {
+      const n = look === "chip" ? 24 : 44, k = look === "me" ? 1 : 0.65;
+      const cls = look === "me" ? "" : look === "chip" ? " c" : " c ink";
+      return `<div class="at-pl${cls}"><button type="button" class="pb" aria-label="Play">${IC.play}</button><span class="bs" aria-hidden="true">${barsOf(seed, n).map((x) => `<i style="height:${Math.round(x * k)}px"></i>`).join("")}</span><span class="tm">${clock(secs)}</span></div>`;
+    };
+    const grey = (lines, cls = "") => `<div class="at-lb${cls}">${lines.map((l) => (typeof l === "string" ? `<span>${esc(l)}</span>` : l.html)).join("")}</div>`;
+    const meClip = (wordsHtml, secs, seed) => `<div class="at-me">${wordsHtml ? `<div class="w">${wordsHtml}</div>` : ""}${player(seed, secs)}</div>`;
+    const chip = (secs) => `<div class="at-chip"><b>${esc(T.confident)}</b>${player("best", secs, "chip")}</div>`;
+    const aiBubble = (fx) => `<div class="at-lb wide"><span>${bold(fx.tip, fx.phrase)}, like this:</span><span class="at-ai"><em>${T.aiBadge}</em>${esc(T.aiLabel)}</span>${player("ai", fx.aiSecs, "ink")}</div>`;
+
+    // ---- the lens (WalkThread.tsx): one chat that grows by taps ----
+    let L = null;
+    function lens() {
+      app.innerHTML = `<div class="at-lens" role="dialog" aria-modal="true" aria-label="${esc(T.feedbackWalk)}"><div class="at-top"><nav class="at-nav" aria-label="${esc(T.feedbackWalk)}"><button type="button" data-nb aria-label="Back">${IC.left}</button><span id="atLabel"></span><button type="button" data-nn aria-label="Next">${IC.right}</button></nav><button type="button" class="at-x" aria-label="Close">${IC.x}</button></div><div class="at-th" id="atTh"><div class="at-in" id="atIn"></div></div><div class="at-dock" id="atDock"></div></div>`;
+      L = { th: $("#atTh"), in: $("#atIn"), dock: $("#atDock"), parts: [], at: -1 };
+      $("[data-nb]").onclick = () => jump(-1);
+      $("[data-nn]").onclick = () => jump(1);
+      $(".at-x").onclick = () => env.go("will"); // ✕: back to the chat (B11); the walk still waits, its row orange
+      L.th.addEventListener("scroll", readBar);
+    }
+    function part(label) { L.parts.push({ label, el: null }); L.at = L.parts.length - 1; paintBar(); }
+    function paintBar() { $("#atLabel").textContent = L.parts[L.at]?.label ?? ""; $("[data-nb]").disabled = L.at <= 0; $("[data-nn]").disabled = L.at >= L.parts.length - 1; }
+    function jump(d) { const p = L.parts[L.at + d]; if (!p || !p.el) return; L.at += d; paintBar(); L.th.scrollTo({ top: p.el.offsetTop - 14, behavior: "smooth" }); }
+    function readBar() { const top = L.th.scrollTop + 60; let at = 0; L.parts.forEach((p, i) => { if (p.el && p.el.offsetTop <= top) at = i; }); if (at !== L.at && L.parts[at]?.el) { L.at = at; paintBar(); } }
+    const toEnd = () => { L.th.scrollTop = L.th.scrollHeight; };
+    // B7: each grey bubble behind the typing dots, 350 ms a bubble; the speaker's own bubble without them.
+    async function land(html, dots = true) {
+      if (dots) { L.in.insertAdjacentHTML("beforeend", `<div class="at-typ" aria-hidden="true"><i></i><i></i><i></i></div>`); const ty = L.in.lastElementChild; toEnd(); await wait(350); ty.remove(); }
+      L.in.insertAdjacentHTML("beforeend", html);
+      const el = L.in.lastElementChild;
+      const p = L.parts[L.parts.length - 1]; if (p && !p.el) p.el = el;
+      S().walkLog.push({ label: p?.label ?? "", html });
+      toEnd();
+      return el;
+    }
+    // The dock (WalkFooter.tsx): one black pill, grey links under it. Resolves with the tapped action.
+    function dock(pill, links = [], { dot = false, cue = true } = {}) {
+      return new Promise((res) => {
+        L.dock.innerHTML = `${pill ? `<button type="button" class="at-pill${cue ? " cue" : ""}" data-a="${esc(pill)}">${dot ? '<span class="dt" aria-hidden="true"></span>' : ""}${esc(pill)}</button>` : ""}${links.map((l) => `<button type="button" class="at-link" data-a="${esc(l)}">${esc(l)}</button>`).join("")}`;
+        L.dock.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => { L.dock.innerHTML = ""; res(b.dataset.a); }));
+        toEnd(); // the dock takes room from the thread: keep the newest bubble in view (B5)
+      });
+    }
+    // The one recording bar in the dock (LOCKED BAR N483 markup; RecordingBar.tsx: the trash "Delete", the strip, Stop).
+    // Nothing lands in the thread while it records (C7). The trash is the Skip on the One thing walk's fix (N435 item 3).
+    function recordTry() {
+      return new Promise((res) => {
+        L.dock.innerHTML = `<div class="bar"><button type="button" class="ib" aria-label="Delete" data-r="trash" style="color:#737373">${IC.trash}</button><div class="rec"><span class="d"></span><span class="t" id="atClock">0:00</span><span class="tr"><i id="atTrack"></i></span><button type="button" class="stop cue" data-r="stop"><span></span>${T.stop}</button></div></div>`;
+        toEnd();
+        let s = 0; const g = env.gen();
+        const t = setInterval(() => { if (env.gen() !== g || !$("#atClock")) return clearInterval(t); s++; $("#atClock").textContent = clock(s); $("#atTrack").style.width = `${Math.min(100, s * 4)}%`; }, 1000);
+        L.dock.querySelectorAll("[data-r]").forEach((b) => (b.onclick = () => { clearInterval(t); L.dock.innerHTML = ""; res({ r: b.dataset.r, s: Math.max(3, s) }); }));
+      });
+    }
+
+    // The One thing walk (walkPlan.ts:295 oneThing; Take 1 judges no one: useDeckFeedbackWalk.tsx:1087).
+    async function runWalk() {
+      const sm = sample(), b = sm.best, fx = sm.fix, me = S().me;
+      S().walkLog = [];
+      stepName("The Feedback walk");
+      // their best (FeedbackWalk.tsx:1043 walkTop, :1336 Best)
+      part(QUESTIONS[b.slide]);
+      await land(grey([T.hello(me.n)]));
+      await land(meClip(esc(b.said), b.secs, "best"), false);
+      await land(grey([T.best, T.why(lowerFirst(b.cue))]));
+      await dock(T.next);
+      // one thing to improve (FeedbackWalk.tsx:2210; :1677 OneExerciseBody or :1365 OneClearer)
+      stepName("One thing to improve");
+      part(QUESTIONS[fx.slide]);
+      await land(grey([T.one]));
+      let choice;
+      if (fx.tool === "ai") {
+        await land(meClip(bold(fx.said, fx.phrase), fx.secs, "fix"), false);
+        await land(grey([T.likeConfident]));
+        await land(chip(b.secs), false);
+        await land(aiBubble(fx));
+        choice = await dock(T.tryIt, [T.skip], { dot: true });       // FeedbackWalk.tsx:1832 ThreadFooter
+      } else {
+        await land(meClip(esc(fx.said), fx.secs, "fix"), false);
+        await land(grey([T.sayStraight, { html: `<span class="sb">${esc(fx.say)}</span>` }]));
+        choice = await dock(T.tryIt, [T.keepMine], { dot: true });   // FeedbackWalk.tsx:1377
+      }
+      const how = choice === T.keepMine ? "keep" : choice === T.skip ? "skip" : "accept";
+      if (how === "keep") await land(grey([T.keepWords]));            // WalkPractiseScreens.tsx:363
+      if (how === "skip") await land(grey([T.skipped]));
+      else {
+        stepName("Practise it");
+        const words = fx.tool === "ai" ? fx.said : how === "accept" ? fx.say : fx.said; // walkThread.ts oneThingTryWords
+        for (let n = 1; n <= 2; n++) {                                 // ONE_THING_TRIES = 2 (walkPlan.ts:42)
+          const t = await recordTry();
+          if (t.r === "trash") { await land(grey([T.skipped])); break; }
+          await land(meClip(esc(words), t.s, `try${n}`), false);       // WalkPractiseScreens.tsx:83 TryBubble
+          await land(grey([n === 1 ? T.onceMore : T.landed]));       // walkPractise.ts:237, :254 (the dots: the check, WalkLoading)
+          if (n === 1) { const c = await dock(T.tryIt, [T.skip], { dot: true }); if (c === T.skip) { await land(grey([T.skipped])); break; } }
+          else await dock(T.next);
+        }
+      }
+      // the helper words, on their own, then the end (FeedbackWalk.tsx:1437 WordsShown, :1468 Done)
+      stepName("Helper words, Lesson done.");
+      S().helper = helperOf(fx, how);
+      await land(grey([T.helperWords]));
+      await land(grey([{ html: `<span class="sb">${esc(S().helper)}</span>` }]));
+      await land(grey([T.lessonDone]));
+      await dock(T.close);
+      const st = S(); st.walked = true; st.moment = bare(fx.said); if (st.beat === "waitWalk") { st.beat = "after"; st.said = false; }
+      env.go("will");
+    }
+    // Opened again once done: a scroll, read only, Close at the bottom (B10, N259, N539).
+    function replay() {
+      lens();
+      let last = null;
+      for (const it of S().walkLog) { if (it.label !== last) { part(it.label); last = it.label; } L.in.insertAdjacentHTML("beforeend", it.html); const p = L.parts[L.parts.length - 1]; if (!p.el) p.el = L.in.lastElementChild; }
+      toEnd();
+      dock(T.close, [], { cue: false }).then(() => env.go("will"));
+    }
+    function walk() { if (S().walked && S().walkLog?.length) return replay(); lens(); runWalk().catch(fail); }
+
+    // ---- Will's chat after the walk (D4, E1-E3) ----
+    // The pair: the Feedback walk and the Take's Ideal Text card under it (B3); then the bridge (N94) and Will's one
+    // question, opened on the moment the walk worked on (N294 item 1). Take 1's audience is slide 3 and its key line
+    // slide 5, so the first that holds is "what they should do" (will_question.py:678 choose_key).
+    const card = () => `<button type="button" class="at-card" data-card="1"><span class="tl" aria-hidden="true"></span><b>${esc(T.project)}</b><span class="vt">1.0</span><span class="cv" aria-hidden="true">›</span></button>`;
+    const question = () => T.worked(S().moment || bare(sample().fix.said)) + T.goal;
+    const typed = () => ({ Kasia: "Check the quote first", Lena: "Ask before they buy", Marta: "Breathe first", Anna: "Read it right", Zofia: "Book a dry cut" }[S().me.n] || "Get it");
+    const progress = () => { const t = S().total || 11; return `<div class="b will at-prog"><span class="pbar" aria-hidden="true">${Array.from({ length: Math.min(t, 24) }, () => "<i></i>").join("")}</span><span>${esc(T.doneOf(0, t))}</span></div>`; };
+    const goodbye = () => T.seeYou("tomorrow");
+
+    // ---- the Ideal Text page's door (F1, F6; Take 1's text is the five answers, N401 item 4) ----
+    function ideal() {
+      stepName("The Ideal Text");
+      const me = S().me, h = S().helper;
+      const para = (t) => { if (!h) return esc(t); const at = t.toLowerCase().indexOf(h.toLowerCase()); return at < 0 ? esc(t) : esc(t.slice(0, at)) + `<mark>${esc(t.slice(at, at + h.length))}</mark>` + esc(t.slice(at + h.length)); };
+      const fixAt = sample().fix.slide;
+      app.innerHTML = `<div class="at-it"><div class="hd"><b>${esc(T.project)}</b><button type="button" aria-label="More" data-i="more">⋯</button><button type="button" aria-label="Close" data-i="x">${IC.x}</button></div><div class="tx">${me.says.map((t, k) => `<p>${k === fixAt ? para(t) : esc(t)}</p>`).join("")}</div><div class="at-dock"><button type="button" class="at-pill cue" data-i="rec"><span class="dt" aria-hidden="true"></span>${esc(T.recordTake(2))}</button><button type="button" class="at-link" data-i="close">${esc(T.close)}</button></div></div>`;
+      const back = () => { const st = S(); st.beat = "go2"; st.said = true; env.go("will"); };
+      $("[data-i=x]").onclick = back; $("[data-i=close]").onclick = back;
+      $("[data-i=more]").onclick = () => toast("⋯ holds the history (F6), as locked.");
+      // From this page "Record Take 2" asks the sharing question first, once (IdealTextActions.tsx:104 asksShare);
+      // remembered, it starts at once. Continue then opens the real talk (Lounge.tsx:2311 onReadAloud).
+      $("[data-i=rec]").onclick = () => (S().shared ? next2() : share());
+    }
+
+    // ---- the sharing question: only on the Ideal Text page's door; never on the chat's (Lounge.tsx:1557 skips it after
+    // the first Take). Nothing ticked; Continue waits for one choice, "Only me" counting; "Only me" stands alone.
+    // "Only my community" shows its communities inside it only when the speaker has saved one (none here). ✕ records nothing.
+    function share() {
+      stepName("The sharing question");
+      app.querySelectorAll(".cue").forEach((x) => x.classList.remove("cue"));
+      let ticks = [];
+      const paint = () => {
+        app.querySelector(".at-op").innerHTML = T.shareOpts.map(([v, l, h]) => `<button type="button" role="checkbox" aria-checked="${ticks.includes(v)}" data-o="${v}" class="${ticks.includes(v) ? "on" : ""}${!ticks.length && v === "general" ? " cue" : ""}"><span class="tk" aria-hidden="true">${ticks.includes(v) ? "✓" : ""}</span><span><b>${esc(l)}</b><small>${esc(h)}</small></span></button>`).join("");
+        const c = $("[data-s=go]"); c.disabled = !ticks.length; c.classList.toggle("cue", ticks.length > 0);
+        app.querySelectorAll("[data-o]").forEach((b) => (b.onclick = () => { const v = b.dataset.o; ticks = ticks.includes(v) ? ticks.filter((x) => x !== v) : v === "none" ? ["none"] : [...ticks.filter((x) => x !== "none"), v]; paint(); })); // WalkOptions.tsx exclusive
+      };
+      app.insertAdjacentHTML("beforeend", `<div class="at-sh2" role="dialog" aria-modal="true"><div class="at-top"><span class="cap">${esc(T.take1)}</span><button type="button" class="at-x" aria-label="Close" data-s="x">${IC.x}</button></div><div class="bd"><div class="at-lb">${esc(T.shareBefore)}</div><div class="at-lb">${esc(T.shareTitle)}</div><div class="at-lb">${esc(T.shareAudience)}</div><div class="at-op" role="group"></div></div><div class="at-dock"><button type="button" class="at-pill" data-s="go" disabled>${esc(T.cont)}</button></div></div>`);
+      $("[data-s=x]").onclick = () => { app.querySelector(".at-sh2").remove(); stepName("The Ideal Text"); };
+      $("[data-s=go]").onclick = () => { S().shared = ticks; next2(); };
+      paint();
+    }
+
+    // ---- "Record Take 2": the real talk, "How do you feel?" at once (N549), then the set-up afresh (N401 item 4) ----
+    // Lounge.tsx:1557 recordNext → WillabSurface.tsx:316 startRealTalk (firstTake.ts:111) → useWillabFlow.ts:291
+    // "lab_feelings". Nothing is restored (LabOverlay.tsx:390), so the set-up has its three steps and the dots are four.
+    const STEPS4 = 4;
+    // A host that already draws "How do you feel?" and the set-up from the same files (FeelingsCheckIn.tsx,
+    // RecordingSetup.tsx) passes env.recordNext, and the real talk opens there; without it, the drawing below.
+    const next2 = () => (env.recordNext ? env.recordNext() : feel());
+    const wp = (cur, back) => `<div class="at-wp"><div class="sl">${back ? `<button type="button" class="bk" data-w="back">${esc(T.back)}</button>` : ""}</div><div class="dts">${Array.from({ length: STEPS4 }, (_, i) => `<i class="${i === cur ? "c" : i < cur ? "d" : ""}"></i>`).join("")}</div><div class="sr"><button type="button" class="wx" aria-label="${cur === 0 ? "Close" : "Cancel setup"}" data-w="x">${IC.x}</button></div></div>`;
+    const head = (q, help) => `<div class="at-sh"><h2>${IC.mic}${esc(q)}</h2>${help ? `<p>${esc(help)}</p>` : ""}</div>`;
+    function feel() {
+      stepName("How do you feel?");
+      len = null; // each real talk's set-up starts afresh (N401 item 4)
+      app.innerHTML = `<div class="at-wz">${wp(0, false)}${head(T.feel, T.feelHelp)}<div class="at-fg">${T.feelings.map((f, i) => `<button type="button" data-f="${i}"${i === 0 ? ' class="cue"' : ""}>${esc(f)}</button>`).join("")}<button type="button" class="sk" data-f="skip">${esc(T.skip)}</button></div></div>`;
+      $("[data-w=x]").onclick = () => env.go("will");
+      const g = env.gen();
+      app.querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => {
+        if (b.dataset.f === "skip") return setup(0);
+        b.classList.remove("cue"); b.classList.add("on");
+        app.querySelectorAll("[data-f]").forEach((x) => { if (x !== b) x.disabled = true; });
+        setTimeout(() => { if (env.gen() === g) setup(0); }, 450);            // FeelingsCheckIn.tsx ADVANCE_MS
+      }));
+    }
+    let len = null;
+    function setup(step) {
+      stepName("The set-up");
+      const body = step === 0
+        ? `${head(T.topicQ)}<input class="at-in2" value="${esc(sample().topic)}" placeholder="${esc(T.topicPh)}" aria-label="${esc(T.topicQ)}">`
+        : step === 1
+          ? `${head(T.lengthQ)}<div class="at-chp">${T.lengths.map((l) => `<button type="button" data-l="${l}" class="${len === l ? "on" : ""}${l === "3 min" && len !== l ? " cue" : ""}">${l}</button>`).join("")}</div><button type="button" class="at-nl" data-l="none">${esc(T.noLimit)}</button>`
+          : `${head(T.slidesQ, T.slidesHelp)}<button type="button" class="at-dz" data-dz="1">${IC.upload}<span>${esc(T.upload)}</span></button>`;
+      const label = step === 2 ? T.skipForNow : T.next;
+      app.innerHTML = `<div class="at-wz">${wp(step + 1, step > 0)}<div class="at-body">${body}</div><div class="at-cta"><button type="button" class="${step === 1 ? "" : "cue"}" data-w="go">${esc(label)}</button></div></div>`;
+      $("[data-w=x]").onclick = () => env.go("will");
+      const bk = $("[data-w=back]"); if (bk) bk.onclick = () => setup(step - 1);
+      $("[data-w=go]").onclick = () => (step < 2 ? setup(step + 1) : mic());
+      const dz = $("[data-dz]"); if (dz) dz.onclick = () => toast("The file picker opens for a PDF. The prototype goes on with no slides.");
+      const g = env.gen();
+      app.querySelectorAll("[data-l]").forEach((b) => (b.onclick = () => {
+        len = b.dataset.l === "none" ? null : b.dataset.l;
+        app.querySelectorAll("[data-l]").forEach((x) => x.classList.toggle("on", x === b && b.dataset.l !== "none"));
+        b.classList.remove("cue");
+        if (b.dataset.l === "none") return toast("No limit: the long-take note opens first (RecordingSetup.tsx LongTakeCaution). Pick a length to go on.");
+        setTimeout(() => { if (env.gen() === g) setup(2); }, 180);           // RecordingSetup.tsx pickLength
+      }));
+    }
+    // "Getting your mic ready" with the line for a later Take (LabOverlay.tsx micWaitNote; presentationInPlay.ts).
+    function mic() {
+      stepName("Take 2 records");
+      app.innerHTML = `<div class="mic"><div class="rs-top"><span></span><button type="button" class="rs-close" aria-label="Close">${IC.x}</button></div><div class="body"><span class="mk3" aria-hidden="true"><i></i><i></i><i></i></span><b>${esc(T.micReady)}</b><p>${esc(T.newSlides)}</p></div></div>`;
+      $(".rs-close").onclick = () => env.go("will");
+      const g = env.gen();
+      setTimeout(() => { if (env.gen() === g) rec2(); }, 1200);
+    }
+    // Take 2's recording screen, as locked (N70, the LOCKED POSTER block): the stand-in deck, the clock counting down
+    // to the length chosen and the bar filling orange (LabOverlay.tsx:1994 strip).
+    function rec2() {
+      const target = len ? parseInt(len, 10) * 60 : null;
+      let i = 0, t = 0; const g = env.gen();
+      const iv = setInterval(() => { if (env.gen() !== g) return clearInterval(iv); t++; paintClock(); }, 1000);
+      const paintClock = () => { const c = $("#atRc"), tr = $("#atRt"); if (!c) return; c.textContent = target ? clock(Math.max(0, target - t)) : clock(t); if (tr && target) tr.style.width = `${Math.min(100, (t / target) * 100)}%`; };
+      const paint = () => {
+        const s = DECK[i], last = i === DECK.length - 1, lines = s.body.split("\n");
+        const tiles = lines.length > 1 && lines.every((l) => /^\d+$/.test(l));
+        app.innerHTML = `<div class="rs"><header class="rs-top"><p class="rs-where">${esc(T.where(i + 1, DECK.length))}</p><button type="button" class="rs-close" id="atRx" aria-label="Close">${IC.x}</button></header>
+          <div class="rs-col"><div class="rs-stage"><div class="rs-frame"><div class="poster"><div class="pin2"><h3 class="poster-q">${esc(s.title)}</h3>${tiles ? `<div class="poster-tiles">${lines.map((l) => `<span>${l}</span>`).join("")}</div>` : `<p class="poster-hint">${esc(lines.join(" "))}</p>`}</div></div></div>
+          <div class="rs-marks" aria-hidden="true">${DECK.map((_, k) => `<span class="${k === i ? "on" : k < i ? "done" : ""}"></span>`).join("")}</div></div>
+          <div class="rs-foot"><div class="rs-strip"><span class="rs-dot" aria-hidden="true"></span><span class="rs-clock" id="atRc"></span><div class="rs-track" aria-hidden="true"><i id="atRt" class="${target ? "target" : ""}" style="${target ? "width:0" : ""}"></i></div></div>
+          <div class="rs-btns"><button type="button" class="rs-back" id="atRb"${i ? "" : " disabled"}>${esc(T.backBtn)}</button>${last ? `<button type="button" class="rs-finish cue" id="atRn" aria-label="${esc(T.finish)}"><i aria-hidden="true"></i>${esc(T.finish)}</button>` : `<button type="button" class="rs-next cue" id="atRn">${esc(T.nextSlide)}</button>`}</div></div></div></div>`;
+        paintClock();
+        $("#atRb").onclick = () => { if (i) { i--; paint(); } };
+        $("#atRn").onclick = () => { if (!last) { i++; paint(); } else { clearInterval(iv); $("#atRn").classList.remove("cue"); env.steps("done"); toast("Take 2 goes to its processing screen, as locked, and its walk follows. This prototype ends here."); } };
+        $("#atRx").onclick = () => {
+          $(".rs").insertAdjacentHTML("beforeend", `<div class="dlg" role="dialog" aria-modal="true"><div><h2>Discard this take?</h2><p>This recording has not been saved.</p><div class="two2"><button type="button" id="atKr">Keep recording</button><button type="button" class="red" id="atDt">Discard take</button></div></div></div>`);
+          $("#atKr").onclick = () => $(".dlg").remove();
+          $("#atDt").onclick = () => { clearInterval(iv); env.go("will"); };
+        };
+      };
+      paint();
+    }
+
+    // ---- the notes: each step and where it is built ----
+    const SOURCES = [
+      ["The walk opens", "Take 1's walk row turns orange when ready (N401 item 3, signed, not built; as built the walk opens by itself, A2). The lens: ‹ the slide's title › and ✕; the slide is named by its deck title, which for Take 1 is the question (B6, N397).", "WalkThread.tsx:752; FeedbackWalk.tsx:1184 slideName; firstTake.ts KICKERS"],
+      ["Hi {name}.", "Once, first, as a grey bubble.", "FeedbackWalk.tsx:1043 walkTop; idealEditCopy.ts:526"],
+      ["Their best", "Their clip with its words (orange), then one bubble: \"This was your most confident moment.\" and \"Why it worked: {the signed cue line}\", lower-cased after the colon; Next.", "FeedbackWalk.tsx:1336 Best; walkLines.ts:155 bestBubble; idealEditCopy.ts:537-538, WALK_LINE_BANK B01-B09"],
+      ["One thing to improve", "\"And now, one thing to improve:\" over the fix: the less confident moment, its tool by the kind of its weakness (N548).", "FeedbackWalk.tsx:2210; walkPlan.ts:295 oneThing, :328 oneFix; backend moment_pick.py"],
+      ["… with the AI clip (voice)", "Their clip, the phrase bold; \"Say this one like your confident moment:\"; their best as the chip \"Your confident moment\"; the tip \", like this:\" with the AI mark and \"AI version of your voice\"; Try it (dot) and Skip.", "FeedbackWalk.tsx:1677 OneExerciseBody, :1832 ThreadFooter; walkLines.ts:86 oneThingAiLines; WalkAiVoice.tsx:262; idealEditCopy.ts:345 AI_CLIP_BANK"],
+      ["… or the Clearer version (words)", "Their words and clip; \"Say it straight:\" and the sentence in bold; Try it (dot) and \"Keep mine\" (then \"Your words it is.\").", "FeedbackWalk.tsx:1365 OneClearer; WalkPractiseScreens.tsx:363"],
+      ["Practise it", "Try it puts the locked recording bar in the dock (trash = Skip, N435 item 3); nothing in the thread while it records. Stop: the try with its words, the dots while it is checked, then \"Close. Once more.\" (Try it, Skip) or \"Yes. That's it.\" (Next). Two tries; a second miss is \"Good try. Take it with you.\"", "WalkPractiseScreens.tsx:83 TryBubble, :345 practiseThreadItem; walkPractise.ts:237-263; walkPlan.ts:42; RecordingBar.tsx"],
+      ["Helper words", "\"These are your helper words. …\" and the words alone in bold, saved as they land; then on by itself. The AI clip's phrase, the Clearer sentence after Try it, their own after Keep mine.", "FeedbackWalk.tsx:1437 WordsShown; flow page C3"],
+      ["Lesson done.", "\"Lesson done.\" and Close, back to the chat. No summary and no \"Record Take N\" in the walk. Take 1 judges no other speaker.", "FeedbackWalk.tsx:1468 Done; useDeckFeedbackWalk.tsx:1087"],
+      ["The pair", "In Will's chat: \"Feedback walk\" with its date and ›, and right under it the Take's card: \"Your first Take\", \"1.0\", ›.", "Lounge.tsx FeedbackWalkBubble (N192); IdealTextCard.tsx:94; flow page B3, D4"],
+      ["Will's one ask", "\"Ok, now let's dive into the content for a bit.\", then \"We just worked on “…”. When you finish, what do you want them to do? Or feel? 🤔\" with Something else, Say yes, Trust me, Get it on your side.", "backend after_take.py:128, will_question.py:94, :117, :142, :678 choose_key; WillQuestion.tsx"],
+      ["The goodbye", "\"Got it, thanks 🙏\", \"Good job. See you tomorrow.\", then the plan's bar and \"0 of {n} practices done.\"; the bar's middle \"Record Take 2\".", "backend will_question.py:130; after_take.py:111 end_rows; plan_flow.py:1620 progress; PlanRows.tsx:179"],
+      ["The Ideal Text", "The card opens the page: the five answers, one paragraph per question, the helper words orange; \"Record Take 2\" with the dot and the grey Close.", "IdealTextActions.tsx:126; IdealTextHeading.tsx; flow page F1, F3, F6; N401 item 4"],
+      ["The sharing question", "Only from the Ideal Text page's \"Record Take 2\", once (then remembered, at once): the top bar \"Take 1\" and ✕; \"Before we start the new take!\", \"After all, it's about speaking publicly!\", \"How big you want your audience?\"; General community, Only my community, Only me with their hints, nothing ticked; Continue waits for one. The chat's \"Record Take 2\" after the first Take never asks it. With sending on (N470, N479), the people screen in its place.", "IdealTextActions.tsx:104; NextTakeShareScreen.tsx:448-460; WalkOptions.tsx:35; Lounge.tsx:1557, :2304; flow page G1 (Was)"],
+      ["How do you feel?", "\"Record Take 2\" opens it at once, no fade (N549): four dots, ✕, the mic and \"How do you feel?\", \"Before you step on stage\", Nervous, Excited, Calm, Not sure, Skip.", "Lounge.tsx:1557; WillabSurface.tsx:316; firstTake.ts:111; FeelingsCheckIn.tsx:90; LabOverlay.tsx:1586"],
+      ["The set-up", "\"What is the topic?\" filled in from the plan; \"How long should it run?\" (1 min … 60 min, No limit); \"Have slides to go with it?\" with \"Upload your deck (PDF)\" and \"Skip for now\".", "RecordingSetup.tsx:39, :340, :386, :414; PresentationInput.tsx:105; LabOverlay.tsx:390, :2104"],
+      ["Take 2 records", "\"Getting your mic ready\" and \"New slides\"; then \"Take 2 · Slide 1 of 3\" on the stand-in deck (Opening, Main points, Summary) as posters, the clock counting down, the bar orange.", "presentationInPlay.ts:25; defaultDeck.ts:36; RecordingRoadmap.tsx:39; pdfSlides.tsx:338; LabOverlay.tsx:1994"],
+    ];
+    const OPEN = [
+      "The walk's door for Take 1 is N401's orange row (signed, not built); as built, the walk opens by itself the moment processing ends (A2).",
+      "The lens's bar names Take 1's parts by the slide's deck title, which is the question, not the small title (Your field…) the poster shows.",
+      "\"How do you feel?\" shows on a plan only after the plan's own yes (FeelingsCheckIn.tsx feelingsAllowed, N211, N217); the yes is not drawn in this prototype, so here it is assumed given.",
+      "The sharing question comes from the Ideal Text page's \"Record Take 2\" only; the chat's, after the first Take, goes straight to the real talk (Lounge.tsx:1557). Two doors, two paths; N549 item 3 says \"the sharing question still comes first when it asks\". With TAKE_SEND_ENABLED on, the people screen (N470) replaces it; drawn here with the switch off, as today.",
+      "The feelings pills are white with a border until picked; only the pick is orange (FeelingsCheckIn.tsx). The set-up's button is the orange ui/button default.",
+      "As built, the plan card is written after the walk (plan_flow.py:1172 _from_first_take); N401 moved it into the wait. Drawn here as N401 has it.",
+      "Whether Take 1's helper words show on Take 2's slides: the real talk is a new deck (N257).",
+      "N550: a weak moment no tool reaches goes to a coach, blind; the speaker sees nothing new, so nothing is drawn for it.",
+    ];
+    const WORDS = [
+      [`Hi {name}. · ${T.best} · Why it worked: {cue} · ${T.one} · ${T.likeConfident} · ${T.sayStraight} · ${T.tryIt} · ${T.keepMine} · ${T.keepWords} · ${T.skipped} · ${T.onceMore} · ${T.landed} · ${T.helperWords} · ${T.lessonDone}`, "The One thing walk: N309 item 6, N405, N435 (idealEditCopy.ts ONE_THING_COPY)."],
+      [`${T.confident} · ${T.aiLabel} · AI · Pause before “{phrase}”, like this: · Lean on “{phrase}”, like this:`, "N289 item 7; N71; N120 (AI_CLIP_BANK)."],
+      [`${T.bridge} · We just worked on “{moment}”. ${T.goal} · ${T.goalChips.join(" · ")} · ${T.thanks} · Good job. See you tomorrow. · {n} of {total} practices done.`, "N94; N294; flow page §1 K; N347 item 2; N319 item 7."],
+      [`${T.take1} · ${T.shareBefore} · ${T.shareTitle} · ${T.shareAudience} · ${T.shareOpts.map((o) => o[1] + " (" + o[2] + ")").join(" · ")} · ${T.cont}`, "The sharing question: founder 2026-10-14, 2026-10-21, WQ5 A (flow page G, Was)."],
+      [`${T.feel} · ${T.feelHelp} · ${T.feelings.join(" · ")} · Skip`, "N272, N392 (FeelingsCheckIn.tsx)."],
+      [`${T.topicQ} · ${T.lengthQ} · ${T.lengths.join(" · ")} · ${T.noLimit} · ${T.slidesQ} · ${T.slidesHelp} · ${T.upload} · ${T.skipForNow} · Next · ← Back · ${T.micReady} · ${T.newSlides} · Take 2 · Slide 1 of 3 · Opening · Main points · Summary`, "The set-up and the recording screens (RecordingSetup.tsx, N257, defaultDeck.ts), as in the locked \"The way in\"."],
+    ];
+
+    return { walk, ideal, feel, share, card, question, typed, progress, goodbye, T, sample, SOURCES, OPEN, WORDS };
+  }
+  /* ===== END AFTER THE TAKE ===== */
+
+  // "The way in" hands the block its own pieces. The block's state names "beat" and "said" are Will's chat's here.
+  const AFTER_STATE = new Proxy({}, {
+    get: (_, k) => (k === "beat" || k === "said" ? S.will[k] : S[k]),
+    set: (_, k, v) => { if (k === "beat" || k === "said") S.will[k] = v; else S[k] = v; return true; },
+  });
+  const AFTER = afterTheTake({ app, esc, wait, toast, fail: (e) => { if (e !== STOP) console.error(e); }, stepName: () => {}, go: (id) => go(id), gen: () => gen, state: () => AFTER_STATE, steps: () => {},
+    // the real talk: "How do you feel?" at once, then the set-up afresh (this page's wizard, as "Record Take 2" in the bar)
+    recordNext: () => { S.wizFrom = "will"; S.wizNew = false; S.restored = false; S.will.beat = "go2"; S.will.said = true; go("wizard"); } });
+
   // ---------- Will's chat, beat by beat: the welcome, the first Take is the onboarding, the checks while it is processed ----------
   const time = (m) => `09:${String(m).padStart(2, "0")}`;
   const HEARD = "While your feedback is being prepared, check what I heard.";
@@ -970,10 +1644,17 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
       on: () => { put(D(`Accepted · 9 November, ${time(6)}`)); return "set"; } },
     set: { lines: () => [W(esc(S.coach ? SET_COACH : SET_SPEC))], auto: () => "waitWalk" },
     waitWalk: { lines: () => [], dock: () => {
-      if (S.walked) { S.will.beat = "afterWalk"; S.will.said = false; runWill().catch((e) => { if (e !== STOP) console.error(e); }); return; }
+      if (S.walked) { S.will.beat = "after"; S.will.said = false; runWill().catch((e) => { if (e !== STOP) console.error(e); }); return; }
       willBar(); if (S.procDone) cueWalk(); } },
-    afterWalk: { lines: () => [D(`Today 09:${30 + S.take}`), walkDoor()], dock: () => willBar({ cue: true }) },
+    // After the walk (the AFTER THE TAKE group): the walk and its Ideal Text card, the bridge and Will's one question,
+    // the goodbye and the progress, then the card ringed: its page holds "Record Take 2" (and the chat's bar does too).
+    after: { lines: () => [D(`Today ${time(12)}`), walkDoor(), AFTER.card(), W(esc(AFTER.T.bridge)), W(esc(AFTER.question()))],
+      ask: () => ({ answers: AFTER.T.goalChips, type: AFTER.typed(), cue: AFTER.T.goalChips[2] }), on: () => "bye" },
+    bye: { lines: () => [W(esc(AFTER.T.thanks)), W(esc(AFTER.goodbye())), AFTER.progress()], auto: () => "door" },
+    door: { lines: () => [], dock: () => { willBar(); const c = $("[data-card]", C.th); if (c) { c.classList.add("cue"); c.scrollIntoView({ block: "nearest" }); } } },
+    go2: { lines: () => [], dock: () => willBar({ cue: true }) },
   };
+  const AFTER_BEATS = ["after", "bye", "door", "go2"];
   // the processing of the first Take, in a thin row on top of Will's chat (N401 item 3; labels from ProcessingWait.tsx)
   const LABELS = ["Processing your recording", "Transcribing your take", "Building your Ideal Text", "Finding feedback moments", "Finding your anchors"];
   let procTimer = null;
@@ -1057,7 +1738,26 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
     };
     paint();
   }
-  const micReady = (why) => `<div class="scr"><div class="center"><div class="loader" style="flex:none"><span></span></div><h3>Getting your mic ready</h3>${why ? "<p>WillpowerLab uses the microphone to record your Takes.</p>" : ""}</div></div>`;
+  // "Getting your mic ready" (LabOverlay.tsx LoadingState + micWaitNote; recordingCopy.ts, presentationInPlay.ts): the overlay's ✕, the 64px voice mark, the label and its grey lines
+  const micReady = (notes) => `<div class="scr mw2"><div class="hd"><button type="button" class="ocx" id="mx" aria-label="Close">${I.x}</button></div><div class="bd"><div class="vm" aria-hidden="true"><b></b><b></b><b></b><svg width="27" height="27" viewBox="0 0 56 56"><circle cx="12" cy="28" r="4" fill="#121212"/><circle cx="28" cy="28" r="6" fill="#121212"/><circle cx="44" cy="28" r="4" fill="#121212"/></svg></div><p class="ml" role="status">Getting your mic ready</p>${notes.map((n) => `<p class="mn">${esc(n)}</p>`).join("")}</div></div>`;
+  // lucide icons the set-up and the sign-in draw
+  const MIC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>';
+  const UPLOAD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>';
+  const CCHECK = '<svg viewBox="0 0 24 24" aria-label="Deck attached"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>';
+  const MORE = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>';
+  const LOGO2 = `<span class="lg2" aria-label="WillpowerLab"><svg width="30" height="30" viewBox="0 0 22 22" aria-hidden="true"><circle cx="3" cy="11" r="2.2" fill="currentColor"/><circle cx="11" cy="11" r="3.2" fill="currentColor"/><circle cx="19" cy="11" r="2.2" fill="currentColor"/></svg><span>WillpowerLab</span></span>`;
+  const WAGLYPH = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M12 1.6A10.4 10.4 0 0 0 3.05 17.3L1.6 22.4l5.25-1.38A10.4 10.4 0 1 0 12 1.6z"/><path fill="#FF640A" d="M8.6 6.7c-.25-.55-.5-.56-.74-.57h-.63c-.22 0-.57.08-.87.41-.3.33-1.14 1.11-1.14 2.71s1.17 3.15 1.33 3.36c.16.22 2.26 3.6 5.57 4.9 2.75 1.09 3.31.87 3.9.82.6-.05 1.93-.79 2.2-1.55.27-.76.27-1.41.19-1.55-.08-.13-.3-.22-.63-.38-.33-.16-1.93-.95-2.23-1.06-.3-.11-.52-.16-.74.17-.22.33-.85 1.06-1.04 1.28-.19.22-.38.25-.71.08-.33-.16-1.38-.51-2.63-1.62-.97-.87-1.63-1.94-1.82-2.27-.19-.33-.02-.5.14-.67.15-.15.33-.38.49-.57.16-.19.22-.33.33-.55.11-.22.05-.41-.03-.57-.08-.17-.72-1.78-1-2.42z"/></svg>`;
+  const MAIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6 8.5-6"/></svg>';
+  const LI_MONO = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>';
+  const G_MONO = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>';
+  const APPLE = '<svg viewBox="0 0 814 1000" fill="currentColor" aria-hidden="true"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57-155.5-127C46.7 790.7 0 663 0 541.8c0-194.4 126.4-297.5 250.8-297.5 66.1 0 121.2 43.4 162.7 43.4 39.5 0 101.1-46 176.3-46 28.5 0 130.9 2.6 198.3 99.2zm-234-181.5c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"/></svg>';
+  const CHEV = '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5"/></svg>';
+  // The legal line under the sign-up (SignupForm.tsx LegalConsent)
+  const LEGAL = '<p class="lg3">By signing up, you agree to our <a>Terms of Service</a> and <a>Privacy Policy</a>.</p>';
+  // The phone number field (PhoneNumberField.tsx): the flag, +48 and its chevron, then the number; Poland first
+  const PHONE = `<div class="pf" id="pf"><button type="button" class="pcc" id="cc" aria-label="Country: Poland, +48"><span class="fl" aria-hidden="true">🇵🇱</span><b>+48</b>${CHEV}</button><span class="pnum" id="num" aria-label="Your WhatsApp number">600 100 200</span></div>`;
+  // "or", Apple in the iPhone app only, then Email, LinkedIn, Google (OtherWays.tsx); Microsoft: the signed gap (N401), not built
+  const OTHER = (app) => `<div class="ow"><div class="ordiv"><span></span>or<span></span></div>${app ? `<button type="button" class="apl" id="ap">${APPLE}Sign in with Apple</button>` : ""}<div class="g3"><button type="button" class="ob" id="em">${MAIL}<span>Email</span></button><button type="button" class="ob" id="li">${LI_MONO}<span>LinkedIn</span></button><button type="button" class="ob" id="gg">${G_MONO}<span>Google</span></button></div><button type="button" class="ob gapb" id="ms">Microsoft</button></div>`;
 
   // ---------- the screens ----------
   const SCREENS = {
@@ -1088,78 +1788,98 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
     waiting() {
       app.innerHTML = `<div class="inv"><div class="body"><div class="mark" style="width:96px;height:96px;margin-bottom:32px" aria-hidden="true"><b></b><b style="inset:8px"></b><b style="inset:16px"></b></div><h1 class="wt">You’re on the waitlist</h1><p class="wline">If we say yes, we’ll email a link to ${esc(S.me.n.toLowerCase())}@example.com.</p><div class="lf" style="margin-top:28px"><span class="in" id="lin">Paste your link</span></div></div></div>`;
     },
+    // The sign-up page (signup/page.tsx, SignupForm.tsx): the logo, then the card that opens on the WhatsApp number (WhatsAppAuth.tsx first, N232)
     signup() {
-      app.innerHTML = `<div class="scr"><div class="auth">${LOGO}
-        <div class="phn"><button type="button" class="cc" id="cc" aria-label="Country: Poland, +48">🇵🇱 +48</button><span class="fld" id="num">600 100 200</span></div>
-        <button type="button" class="wa" id="wa" disabled>${WAG}Sign up with WhatsApp</button>
-        <div class="or">OR</div>
-        ${S.app ? `<button type="button" class="apple" id="ap"> Sign in with Apple</button>` : ""}
-        <div class="ways" style="grid-template-columns:repeat(4,minmax(0,1fr))"><button type="button" id="em">Email</button><button type="button" id="li">LinkedIn</button><button type="button" id="gg">Google</button><button type="button" class="gapb" id="ms">Microsoft</button></div>
-        <div class="alt">Already have an account? <button type="button" id="si">Sign in</button></div>
-        <p class="legal">By signing up, you agree to our Terms of Service and Privacy Policy.</p></div></div>`;
+      app.innerHTML = `<div class="scr au2"><h1 style="margin:0">${LOGO2}</h1><div class="cd">
+        ${PHONE}
+        <button type="button" class="bp bw" id="wa" disabled>${WAGLYPH}<span>Sign up with WhatsApp</span></button>
+        ${OTHER(S.app)}
+        <p class="ln2">Already have an account? <a id="si">Sign in</a></p>
+        ${LEGAL}</div></div>`;
       const num = $("#num", app), wa = $("#wa", app);
-      on(num, () => fill(num, "600 123 456", () => { wa.disabled = false; wa.classList.add("cue"); num.classList.remove("cue"); }), !S.app);
+      on(num, () => { $("#pf", app).classList.add("focus"); fill(num, "600 123 456", () => { wa.disabled = false; wa.classList.add("cue"); num.classList.remove("cue"); }); }, !S.app);
       on(wa, () => go("code"));
-      on("#cc", () => toast("Search country or code: the country list."));
+      on("#cc", () => toast("Search country or code: the country list, Poland and the United States first."));
       on("#em", () => go("signupEmail"));
       on("#li", () => oauth()); on("#gg", () => oauth()); on("#ap", () => oauth(), S.app);
       on("#ms", () => toast("Gap 9: there is no Microsoft sign-in yet. Signed (N401): this button, beside Google."));
       on("#si", () => go("login"));
     },
+    // The code (WhatsAppAuth.tsx step "code"): inside the same card, under the logo
     code() {
-      app.innerHTML = `<div class="scr"><div class="auth">${LOGO}<h3>Enter the code we sent you on WhatsApp</h3><p class="s">+48 600 123 456</p><div class="code6" id="c6">••••••</div><button type="button" class="btn wide" id="go" disabled>Continue</button><div class="alt"><button type="button" id="rs">Resend code</button> · <button type="button" id="dn">Use a different number</button></div></div></div>`;
+      app.innerHTML = `<div class="scr au2"><h1 style="margin:0">${LOGO2}</h1><div class="cd">
+        <div><p class="t1">Enter the code we sent you on WhatsApp</p><p class="t2">+48600123456</p></div>
+        <span class="in code" id="c6">••••••</span>
+        <div id="err"></div>
+        <button type="button" class="bp" id="go" disabled>Continue</button>
+        <div class="row2"><button type="button" id="rs" disabled>Resend code</button><button type="button" id="dn">Use a different number</button></div></div></div>`;
       const c6 = $("#c6", app), b = $("#go", app);
       on(c6, () => fill(c6, "482913", () => { b.disabled = false; b.classList.add("cue"); c6.classList.remove("cue"); }), true);
       on(b, () => go("name"));
-      on("#rs", () => toast("Resend code works after 60 seconds."));
-      on("#dn", () => go("signup"));
+      on("#dn", () => go(S.app ? "login" : "signup"));
     },
+    // The name, for a new account (WhatsAppAuth.tsx step "name")
     name() {
-      app.innerHTML = `<div class="scr"><div class="auth">${LOGO}<h3>What should we call you?</h3><p class="s">Will and your coach use it.</p><span class="fld" id="nm">Your name</span><button type="button" class="btn wide" id="go" disabled>Continue</button></div></div>`;
+      app.innerHTML = `<div class="scr au2"><h1 style="margin:0">${LOGO2}</h1><div class="cd">
+        <div><p class="t1">What should we call you?</p><p class="t2">Will and your coach use it.</p></div>
+        <span class="in" id="nm">Your name</span>
+        <button type="button" class="bp" id="go" disabled>Continue</button></div></div>`;
       const nm = $("#nm", app), b = $("#go", app);
       on(nm, () => fill(nm, S.me.n, () => { b.disabled = false; b.classList.add("cue"); nm.classList.remove("cue"); }), true);
       on(b, afterSignIn);
     },
+    // Sign up with email (SignupForm.tsx, the email form)
     signupEmail() {
-      app.innerHTML = `<div class="scr"><div class="auth" style="padding-top:40px">${LOGO}<h3>Sign up with email</h3>
-        <span class="lab2">Name</span><span class="fld" data-v="${esc(S.me.n)}">Your name</span><span class="lab2">Email</span><span class="fld" data-v="${esc(S.me.n.toLowerCase())}@example.com">you@example.com</span>
-        <span class="lab2">Password</span><span class="fld" data-v="••••••••">••••••••</span><span class="lab2">Confirm Password</span><span class="fld" data-v="••••••••">••••••••</span>
-        <button type="button" class="chk" id="tk"><i></i><span>I have read and agree to the Terms of Service and Privacy Policy.</span></button>
-        <button type="button" class="btn wide" id="go">Sign up</button>
-        <div class="alt"><button type="button" id="bk2">Back to sign up options</button></div><div class="alt">Already have an account? <button type="button" id="si">Sign in</button></div></div></div>`;
-      const f = $$(".fld", app);
-      f.forEach((x) => (x.onclick = () => f.forEach((y) => { if (!y.classList.contains("on")) fill(y, y.dataset.v); })));
+      app.innerHTML = `<div class="scr au2"><h1 style="margin:0">${LOGO2}</h1><div class="cd p5">
+        <h2 class="h2b">Sign up with email</h2>
+        <div><span class="lb">Name</span><span class="in" data-v="${esc(S.me.n)}">Your name</span></div>
+        <div><span class="lb">Email</span><span class="in" data-v="${esc(S.me.n.toLowerCase())}@example.com">you@example.com</span></div>
+        <div><span class="lb">Password</span><span class="in" data-v="••••••••">••••••••</span></div>
+        <div><span class="lb">Confirm Password</span><span class="in" data-v="••••••••">••••••••</span></div>
+        <button type="button" class="tk" id="tk"><i aria-hidden="true"></i><span>I have read and agree to the <a>Terms of Service</a> and <a>Privacy Policy</a>.</span></button>
+        <button type="button" class="bp" id="go" disabled>Sign up</button>
+        <button type="button" class="lnk3" id="bk2" style="margin-top:-4px">Back to sign up options</button>
+        <p class="ln2 m">Already have an account? <a id="si">Sign in</a></p></div></div>`;
+      const f = $$(".in", app), go2 = $("#go", app), tk = $("#tk", app);
+      f.forEach((x) => (x.onclick = () => { f[0].classList.remove("cue"); tk.classList.add("cue"); f.forEach((y) => { if (!y.classList.contains("on")) fill(y, y.dataset.v); }); }));
       f[0].classList.add("cue");
-      on("#tk", () => { $("#tk", app).classList.toggle("on"); $("#tk i", app).textContent = $("#tk", app).classList.contains("on") ? "✓" : ""; });
-      on("#go", () => {
+      on(tk, () => { tk.classList.toggle("on"); $("i", tk).textContent = tk.classList.contains("on") ? "✓" : ""; go2.disabled = !tk.classList.contains("on"); go2.classList.toggle("cue", tk.classList.contains("on")); });
+      on(go2, () => {
         if (!f[0].classList.contains("on")) return toast("Name is required.");
-        if (!$("#tk", app).classList.contains("on")) return toast("You must accept the Terms of Service and Privacy Policy to create an account.");
+        go2.textContent = "Creating account…"; go2.disabled = true;
         toast("Account created! Redirecting…"); setTimeout(() => { if (screen === "signupEmail") afterSignIn(); }, 900);
       });
       on("#bk2", () => go("signup")); on("#si", () => go("login"));
     },
+    // The sign-in page (login/page.tsx, LoginForm.tsx): the number and "Sign in with WhatsApp", then the other ways; no legal line
     login() {
-      app.innerHTML = `<div class="scr"><div class="auth">${LOGO}
-        <div class="phn"><button type="button" class="cc" aria-label="Country: Poland, +48">🇵🇱 +48</button><span class="fld" id="num">600 100 200</span></div>
-        <button type="button" class="wa" id="wa" disabled>${WAG}Sign in with WhatsApp</button>
+      app.innerHTML = `<div class="scr au2 li"><h1 style="margin:0">${LOGO2}</h1><div class="cd">
+        ${PHONE}
         <div id="err"></div>
-        <div class="or">OR</div>
-        ${S.app ? `<button type="button" class="apple" id="ap"> Sign in with Apple</button>` : ""}
-        <div class="ways"><button type="button" id="em">Email</button><button type="button" id="li">LinkedIn</button><button type="button" id="gg">Google</button></div>
-        <div class="alt">Don't have an account? <button type="button" id="su">Sign up</button></div></div></div>`;
+        <button type="button" class="bp bw" id="wa" disabled>${WAGLYPH}<span>Sign in with WhatsApp</span></button>
+        ${OTHER(S.app)}
+        <p class="ln2 big2">Don't have an account? <a class="o5" id="su">Sign up</a></p></div></div>`;
       const num = $("#num", app), wa = $("#wa", app);
-      on(num, () => fill(num, "600 123 456", () => { wa.disabled = false; }));
-      on(wa, () => { $("#err", app).innerHTML = `<p class="legal" style="color:#B42318">No account signs in with this number. Sign in another way, or <button type="button" id="suw" style="border:0;background:none;padding:0;color:#B42318;font:inherit;text-decoration:underline;cursor:pointer">sign up with WhatsApp</button>.</p>`; on("#suw", () => go("signup")); });
+      on(num, () => { $("#pf", app).classList.add("focus"); fill(num, "600 123 456", () => { wa.disabled = false; }); });
+      on(wa, () => { const er = $("#err", app); er.innerHTML = `<p class="er" role="alert">No account signs in with this number. Sign in another way, or <a id="suw">sign up with WhatsApp</a>.</p>`; on("#suw", () => go("signup")); });
+      on("#cc", () => toast("Search country or code: the country list, Poland and the United States first."));
       on("#em", () => go("loginEmail"));
-      on("#li", () => oauth()); on("#gg", () => oauth()); on("#ap", () => oauth());
+      on("#li", () => oauth()); on("#gg", () => oauth()); on("#ap", () => oauth(), S.app);
+      on("#ms", () => toast("Gap 9: there is no Microsoft sign-in yet. Signed (N401): this button, beside Google."));
       on("#su", () => go("signup"), true);
     },
+    // Sign in with email (LoginForm.tsx, the email form with WhatsApp on)
     loginEmail() {
-      app.innerHTML = `<div class="scr"><div class="auth" style="padding-top:40px"><div><button type="button" class="lnk" id="bk2">← Back</button></div>${LOGO}<h3>Sign in with email</h3><span class="lab2">Email</span><span class="fld" id="e1">you@example.com</span><span class="lab2">Password</span><span class="fld" id="e2">••••••••</span><button type="button" class="btn wide" id="go">Sign in</button><div class="alt">Don't have an account? <button type="button" id="su">Sign up</button></div><div class="alt"><button type="button" id="fp">Forgot password?</button></div></div></div>`;
+      app.innerHTML = `<div class="scr au2 li"><h1 style="margin:0">${LOGO2}</h1><div class="cd p4">
+        <div style="display:flex;flex-direction:column;gap:4px"><button type="button" class="bk3" id="bk2">← Back</button><h2 class="h2b">Sign in with email</h2></div>
+        <div><span class="lb big2">Email</span><span class="in" id="e1">you@example.com</span></div>
+        <div><span class="lb big2">Password</span><span class="in" id="e2">••••••••</span></div>
+        <button type="button" class="bp" id="go">Sign in</button>
+        <div style="display:flex;flex-direction:column;gap:8px"><p class="ln2 big2">Don't have an account? <a class="o5" id="su">Sign up</a></p><p class="ln2 big2"><a class="o5" id="fp">Forgot password?</a></p></div></div></div>`;
       on("#e1", () => fill($("#e1", app), `${S.me.n.toLowerCase()}@example.com`)); on("#e2", () => fill($("#e2", app), "••••••••"));
       on("#go", () => toast("Invalid email or password"));
       on("#su", () => go("signup"), true); on("#bk2", () => go("login"));
-      on("#fp", () => toast("Reset your password: you will receive an email from our provider Supabase with a link to reset your password."));
+      on("#fp", () => toast("Forgot password? opens the reset-password page."));
     },
     oauth() { app.innerHTML = `<div class="scr"><div class="loader"><span></span></div><p class="legal" style="padding-bottom:30px">Signing you in</p></div>`; },
     accept() {
@@ -1182,43 +1902,84 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
       app.innerHTML = `<div class="scr"><div class="center"><h3>Nothing was recorded</h3><p>You can read the documents again, and you can come back and agree at any time. Until then recording stays closed.</p><button type="button" class="btn" id="gb">Go back</button><button type="button" class="lnk" id="rd">Read the documents again</button></div></div>`;
       on("#gb", () => go("accept"), true); on("#rd", () => { go("accept"); $(".docs [data-d]", app).click(); });
     },
+    // Before a Take: "How do you feel?" (FeelingsCheckIn.tsx), then the set-up (RecordingSetup.tsx), in the wizard's chrome (ui/wizard.tsx).
+    //   Take 2, the real talk after the first Take (firstTake.ts startRealTalk, N449): the check, then the set-up afresh, the topic the plan's.
+    //   A new project (ProjectPicker.tsx onNewTopic): the check, then the set-up, blank.
+    //   A later Take with the project's setup restored: the check, two marks, then the Take at once (N392, N549).
     wizard() {
-      const steps = [...(S.take >= 1 ? ["feel"] : []), "topic", "length", "slides"];
-      let i = 0;
-      const paint = () => {
-        const st = steps[i];
-        const dots = steps.map((_, k) => `<i class="${k <= i ? "on" : ""}"></i>`).join("");
-        let body = "";
-        if (st === "feel") body = `<div class="feel"><span class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span><h3>How do you feel?</h3><p class="s">Before you step on stage</p><div class="chipsx">${["Nervous", "Excited", "Calm", "Not sure"].map((x) => `<button type="button" data-f="${x}">${x}</button>`).join("")}</div><button type="button" class="quiet" id="fs">Skip</button></div>`;
-        if (st === "topic") body = `<h3>What is the topic?</h3><span class="fld${S.planDone ? " on" : ""}" id="tp">${S.planDone ? esc(S.me.event.topic) : "e.g. my Q3 results pitch"}</span><div class="grow"></div><button type="button" class="btn wide" id="nx"${S.planDone ? "" : " disabled"}>Next</button>`;
-        if (st === "length") body = `<h3>How long should it run?</h3><div class="chipsx">${["1 min", "2 min", "3 min", "5 min", "30 min", "45 min", "60 min"].map((x) => `<button type="button" data-l="${x}">${x}</button>`).join("")}</div><div><button type="button" class="lnk" data-l="No limit">No limit</button></div>`;
-        if (st === "slides") body = `<h3>Have slides to go with it?</h3><p class="s">Adding slides makes the ideal text dramatically better.</p><button type="button" class="deck" id="dk">${S.deck ? "Deck attached<br><small>Replace the deck</small>" : "Upload your deck (PDF)"}</button><div class="grow"></div><button type="button" class="btn wide" id="st">${S.deck ? "<i></i>Start recording" : "Skip for now"}</button>`;
-        app.innerHTML = `<div class="scr wiz"><div class="wt"><button type="button" class="bkb" id="wb"${i ? "" : " disabled"}>Back</button><span class="wdots">${dots}</span><button type="button" class="x2" id="wx" aria-label="Cancel setup">✕</button></div>${body}</div>`;
-        on("#wb", () => { if (i) { i--; paint(); } });
-        on("#wx", () => go(S.wizFrom));
-        $$("[data-f]", app).forEach((x, k) => on(x, () => { i++; paint(); }, k === 3));
-        on("#fs", () => { i++; paint(); });
-        const tp = $("#tp", app), nx = $("#nx", app);
-        if (tp && !S.planDone) on(tp, () => fill(tp, "My first talk", () => { nx.disabled = false; nx.classList.add("cue"); tp.classList.remove("cue"); }), true);
-        if (nx) on(nx, () => { i++; paint(); }, S.planDone);
-        $$("[data-l]", app).forEach((x) => on(x, () => {
-          const l = x.dataset.l, mins = parseInt(l, 10);
-          if (l === "No limit" || mins >= 10) {
-            app.insertAdjacentHTML("beforeend", `<div class="dialog"><b>Preparing for a long workshop?</b><p>It's often better to practice just the beginning and the ending. Consider recording a few 2-3 minute takes to practice those vulnerable moments instead of focusing on a long speech. Note: Analysis of long speeches might take considerably longer.</p><div class="pair"><button type="button" id="lc">Continue with this length</button><button type="button" id="lp">Pick a different length</button></div></div>`);
-            on("#lc", () => { S.length = mins || 60; i++; paint(); }); on("#lp", () => $(".dialog", app).remove());
-            return;
-          }
-          S.length = mins; i++; paint();
-        }));
-        const two = $(`[data-l="2 min"]`, app); if (two) two.classList.add("cue");
-        on("#dk", () => { const d = $("#dk", app); d.innerHTML = "Reading your deck…"; setTimeout(() => { if (screen !== "wizard") return; S.deck = true; paint(); }, 800); });
-        on("#st", () => go("mic"), true);
+      const restored = S.restored && !S.wizNew;
+      const setup = restored ? [] : ["topic", "length", "slides"];
+      const W = { phase: "feel", step: 0, topic: S.wizNew ? "" : (S.planDone ? S.me.event.topic : ""), len: undefined, deck: false, reading: false, cautioned: false, picked: null };
+      const dotsHtml = (count, cur) => Array.from({ length: count }, (_, k) => `<i class="${k === cur ? "c" : k < cur ? "d" : ""}"></i>`).join("");
+      const progress = (count, cur, back, label) => `<div class="wp"><div class="sl">${back ? `<button type="button" class="wbk" id="wb">← Back</button>` : ""}</div><div class="dt" aria-hidden="true">${dotsHtml(count, cur)}</div><div class="sr"><button type="button" class="wx" id="wx" aria-label="${label}">${I.x}</button></div></div>`;
+      const head = (q, helper) => `<div class="sh"><h2>${MIC}${esc(q)}</h2>${helper ? `<p>${esc(helper)}</p>` : ""}</div>`;
+      const startTake = () => {
+        if (!restored) {
+          S.length = W.len === undefined ? null : W.len;
+          S.deck = W.deck;
+          if (S.wizNew) { S.take = 0; S.projTopic = W.topic; S.took = true; }
+          S.deckSince = W.deck ? S.take + 1 : null;
+          S.micNotes = S.take + 1 <= 1 ? ["WillpowerLab uses the microphone to record your Takes."] : ["New slides"];
+          S.pendRestore = true; S.wizNew = false;
+        } else {
+          S.micNotes = [S.deck ? `Same presentation as Take ${S.deckSince || 1}` : "Same stand-in presentation as Take 1"];
+        }
+        go("mic");
       };
+      const paint = () => {
+        if (W.phase === "feel") {
+          const count = setup.length ? setup.length + 1 : 2;
+          app.innerHTML = `<div class="scr wz2">${progress(count, 0, false, "Close")}${head("How do you feel?", "Before you step on stage")}<div class="fg">${[["nervous", "Nervous"], ["excited", "Excited"], ["calm", "Calm"], ["unsure", "Not sure"]].map(([k, l]) => `<button type="button" data-f="${k}" aria-pressed="false">${l}</button>`).join("")}<button type="button" class="sk" id="fs">Skip</button></div></div>`;
+          on("#wx", () => { S.wizNew = false; go(S.wizFrom); });
+          const next = () => { if (restored) { startTake(); return; } W.phase = "setup"; W.step = 0; paint(); };
+          $$("[data-f]", app).forEach((x) => on(x, () => {
+            if (W.picked) return;
+            W.picked = x.dataset.f; x.classList.add("on"); x.setAttribute("aria-pressed", "true");
+            $$(".fg button", app).forEach((y) => { if (y !== x) y.disabled = true; });
+            later(450, next);
+          }, x.dataset.f === "calm"));
+          on("#fs", next);
+          return;
+        }
+        const st = setup[W.step], last = W.step === setup.length - 1;
+        let body = "";
+        if (st === "topic") body = `${head("What is the topic?")}<span class="tin${W.topic ? " on" : ""}" id="tp">${W.topic ? esc(W.topic) : "e.g. my Q3 results pitch"}</span>`;
+        if (st === "length") body = `${head("How long should it run?")}<div class="chp">${[["1 min", 60], ["2 min", 120], ["3 min", 180], ["5 min", 300], ["30 min", 1800], ["45 min", 2700], ["60 min", 3600]].map(([l, sec]) => `<button type="button" data-l="${sec}" aria-pressed="${W.len === sec / 60}" class="${W.len === sec / 60 ? "on" : ""}">${l}</button>`).join("")}</div><button type="button" class="nl" data-l="none">No limit</button>`;
+        if (st === "slides") body = `${head("Have slides to go with it?", "Adding slides makes the ideal text dramatically better.")}<button type="button" class="dz${W.deck && !W.reading ? " dzok" : ""}" id="dk"${W.reading ? " disabled" : ""}>${W.deck && !W.reading ? CCHECK : UPLOAD}<span>${W.reading ? "Reading your deck…" : W.deck ? "Deck attached" : "Upload your deck (PDF)"}</span></button>${W.deck ? `<div class="rpl"><button type="button" id="rp"${W.reading ? " disabled" : ""}>Replace the deck</button></div>` : ""}`;
+        const cta = st === "slides" && !W.deck ? "Skip for now" : last ? "Start recording" : "Next";
+        app.innerHTML = `<div class="scr wz2">${progress(1 + setup.length, 1 + W.step, W.step > 0, "Cancel setup")}<div class="bdy">${body}</div><div class="ft"><button type="button" class="cta" id="nx"${st === "topic" && !W.topic ? " disabled" : ""}>${cta}</button></div></div>`;
+        on("#wx", () => { S.wizNew = false; go(S.wizFrom); });
+        on("#wb", () => { W.step = Math.max(0, W.step - 1); paint(); });
+        const nx = $("#nx", app);
+        on(nx, () => { if (st === "topic" && !W.topic) return; if (last) startTake(); else { W.step++; paint(); } }, (st === "topic" && !!W.topic) || st === "slides");
+        const tp = $("#tp", app);
+        if (tp && !W.topic) on(tp, () => fill(tp, "My first talk", () => { W.topic = "My first talk"; nx.disabled = false; nx.classList.add("cue"); tp.classList.remove("cue"); }), true);
+        // The length: a tap picks it and moves on after a beat; 10 minutes and over, and No limit, ask once (FE-5, the served 600 s)
+        $$("[data-l]", app).forEach((x) => on(x, () => {
+          const mins = x.dataset.l === "none" ? null : Number(x.dataset.l) / 60;
+          W.len = mins;
+          $$(".chp button", app).forEach((y) => { const on2 = y === x; y.classList.toggle("on", on2); y.setAttribute("aria-pressed", String(on2)); });
+          if ((mins === null || mins >= 10) && !W.cautioned) { W.cautioned = true; caution(); return; }
+          later(180, () => { if (setup[W.step] === "length") { W.step++; paint(); } });
+        }, x.dataset.l === "120"));
+        const pickDeck = () => { W.reading = true; paint(); later(800, () => { W.reading = false; W.deck = true; paint(); }); };
+        on("#dk", pickDeck); on("#rp", pickDeck);
+      };
+      const caution = () => {
+        $(".wz2", app).insertAdjacentHTML("beforeend", `<div class="ltc" id="ltc"><div class="lc" role="dialog" aria-modal="true" aria-label="About long takes"><div class="lh"><button type="button" class="lx" id="lx" aria-label="Dismiss">${I.x}</button></div><p>Preparing for a long workshop? It's often better to practice just the beginning and the ending. Consider recording a few 2-3 minute takes to practice those vulnerable moments instead of focusing on a long speech. Note: Analysis of long speeches might take considerably longer.</p><div class="lb2"><button type="button" class="cta" id="lc">Continue with this length</button><button type="button" class="lq" id="lp">Pick a different length</button></div></div></div>`);
+        const close = () => $("#ltc", app)?.remove();
+        $("#ltc", app).onclick = (e) => { if (e.target.id === "ltc") close(); };
+        on("#lx", close); on("#lp", close);
+        on("#lc", () => { close(); W.step++; paint(); }, true);
+      };
+      if (S.wizNew === undefined) S.wizNew = false;
       paint();
     },
+    // "Getting your mic ready" (LabOverlay.tsx micWaitNote), then the recording screen
     mic() {
-      app.innerHTML = micReady(false);
-      setTimeout(() => { if (screen === "mic") go("rec"); }, 1300);
+      app.innerHTML = micReady(S.micNotes || []);
+      on("#mx", () => { S.wizNew = false; go(S.wizFrom); });
+      later(1300, () => { if (screen === "mic") go("rec"); });
     },
     // A later Take on the default presentation (the poster, N462 item 5), or the uploaded deck drawn as itself;
     // or a question to someone: "To {name} · Slide n of 3" on the default presentation (N483 item 6).
@@ -1231,30 +1992,37 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
       }
       const deck = [{ k: "", q: "Why this matters", h: "Slide 1 of your deck" }, { k: "", q: "What I found", h: "Slide 2 of your deck" }, { k: "", q: "What's next", h: "Slide 3 of your deck" }];
       const slides = S.deck ? deck : DEFAULT_DECK;
-      recScreen({ slides, poster: !S.deck, where: (i) => `Take ${S.take + 1} · Slide ${i + 1} of ${slides.length}`, target: S.length * 60,
-        onFinish: () => go("proc"), onDiscard: () => go(S.wizFrom) });
+      recScreen({ slides, poster: !S.deck, where: (i) => `Take ${S.take + 1} · Slide ${i + 1} of ${slides.length}`, target: S.length ? S.length * 60 : null,
+        onFinish: () => { if (S.pendRestore) { S.restored = true; S.pendRestore = false; } go("proc"); }, onDiscard: () => { S.pendRestore = false; go(S.wizFrom); } });
     },
     proc() {
       app.innerHTML = `<div class="scr"><div class="center"><h3 id="pl">${LABELS[0]}</h3><div class="pct" id="pp">0%</div><div class="bar0"><i id="pb"></i></div><p>Usually about a minute.</p></div></div>`;
       let p = 0; const g = gen;
       const t = setInterval(() => { if (g !== gen) return clearInterval(t); p = Math.min(100, p + 4); $("#pp", app).textContent = `${p}%`; $("#pb", app).style.width = `${p}%`; $("#pl", app).textContent = LABELS[Math.min(4, Math.floor(p / 20))];
-        if (p >= 100) { clearInterval(t); S.take++; go("walk"); } }, 140);
+        if (p >= 100) { clearInterval(t); S.take++; S.laterWalk = true; go("walk"); } }, 140);
     },
     // The first Take (firstTake.ts): the five questions as the deck, no set-up, no feelings check, a strip that counts up
     first() {
       const g = gen;
-      app.innerHTML = micReady(true);
+      app.innerHTML = micReady(["WillpowerLab uses the microphone to record your Takes."]);
       setTimeout(() => {
         if (g !== gen) return;
         recScreen({ slides: SLIDES, poster: true, where: (i) => `Take 1 · Slide ${i + 1} of ${SLIDES.length}`, target: null,
           onFinish: () => finishTake(), onDiscard: () => go("will") });
       }, 1200);
     },
+    // The first Take's walk, Will's chat after it, the Ideal Text's door: the AFTER THE TAKE group.
+    // A later Take's walk (after the processing screen) is the same walk on that Take; the prototype ends at its door.
     walk() {
-      app.innerHTML = `<div class="scr"><div class="center"><h3>The Feedback walk opens here</h3><p>As it is locked: the one thing from your Take, the helper words, “Lesson done.”${S.took && S.take === 1 ? " On Take 1 it works on how the five questions were answered, and the Ideal Text is the five answers, one paragraph per question." : ""} This prototype stops at its door.</p>${pnoteHtml("Then the walk's chat, and the next Take's button (N319, N368).", { btn: "Back to Will's chat" })}</div></div>`;
-      S.walked = true;
-      on($(".pgo", app), () => { if (!S.took || ["waitWalk", "afterWalk"].includes(S.will.beat)) { S.will.beat = "afterWalk"; S.will.said = false; } go("will"); }, true);
+      if (S.laterWalk) {
+        app.innerHTML = `<div class="scr"><div class="center"><h3>Take ${S.take}'s Feedback walk</h3><p>It opens here, as Take 1's did, on this Take's own moments. This prototype ends here.</p>${pnoteHtml("Take 1's walk, Will's chat after it and the Ideal Text are drawn in full; open them from the map.", { btn: "Back to Will's chat" })}</div></div>`;
+        on($(".pgo", app), () => { S.laterWalk = false; go("will"); });
+        return;
+      }
+      S.took = true; S.take = Math.max(S.take, 1);
+      AFTER.walk();
     },
+    ideal() { AFTER.ideal(); },
     // The list of chats (ChatList.tsx): Will on top, pinned; the coach's row right under him (N521); the chat just
     // joined, new until opened (N357, N500); "Add someone to chat with" while there is nobody else (N534 note first).
     list() {
@@ -1281,7 +2049,7 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
       S.willSeen = true;
       chatFrame({ name: "Will", avHtml: WILL_AV, back: () => go("list"), log: S.will.log });
       if (S.took && !S.walked) { $(".chd", app).insertAdjacentHTML("afterend", `<div class="procrow" id="procrow"><span class="pt">${LABELS[0]}</span><span class="pc">0%</span><span class="pbar"><i></i></span></div>`); paintProc(); }
-      C.th.addEventListener("click", (e) => { if (e.target.closest("[data-walk]")) go("walk"); });
+      C.th.addEventListener("click", (e) => { if (e.target.closest("[data-walk]")) go("walk"); if (e.target.closest("[data-card]")) go("ideal"); });
       willBar();
       runWill().catch((e) => { if (e !== STOP) console.error(e); });
     },
@@ -1351,14 +2119,28 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
     if (S.redirect === "join") { S.redirect = null; S.joined = true; }
     go(S.accepted ? (S.joined ? "person" : "list") : "accept");
   }
-  // "What are you recording?" (ProjectPicker.tsx): the stack opens it
+  // "What are you recording?" (ProjectPicker.tsx): the stack opens it over everything. No project yet: one centred button.
+  // Else "Start a new project", then "Or another take of:" and the projects, each with its ⋯ (Archive). One project at a time (N254).
   function projects() {
-    const any = S.took;
-    app.insertAdjacentHTML("beforeend", `<div class="picker" id="pk"><div class="ph"><h2>What are you recording?</h2><button type="button" class="x2" id="px" aria-label="Close">✕</button></div>${any ? `<div class="pb"><button type="button" class="pbtn2" id="sp">${I.plus}Start a new project</button><div><p class="or2">Or another take of:</p><button type="button" class="prow" id="p1">Your first Take</button></div></div>` : `<div class="pb mid"><button type="button" class="pbtn2" id="sp">Start your first project</button></div>`}</div>`);
+    const rows = S.took && !S.projArchived ? [S.projTopic || "Your first Take"] : [];
+    const from = screen;
+    const startNew = () => { S.wizFrom = from; S.wizNew = true; go("wizard"); };
+    app.insertAdjacentHTML("beforeend", `<div class="pk2" id="pk"><div class="ph"><h2>What are you recording?</h2><button type="button" class="ocx" id="px" aria-label="Close">${I.x}</button></div>${rows.length ? `<div class="lst"><button type="button" class="nb" id="sp">${I.plus}Start a new project</button><div class="rows"><p>Or another take of:</p>${rows.map((r) => `<div class="pr"><button type="button" class="pt" id="p1">${esc(r)}</button><button type="button" class="mo" id="pm" aria-label="More options for ${esc(r)}">${MORE}</button></div>`).join("")}</div></div>` : `<div class="pmid"><button type="button" class="nb" id="sp">Start your first project</button></div>`}</div>`);
     const close = () => $("#pk", app)?.remove();
     on("#px", close);
-    on("#sp", () => { S.wizFrom = screen; go("wizard"); });
-    on("#p1", close);
+    on("#sp", () => {
+      if (!rows.length) { startNew(); return; }
+      $("#pk", app).insertAdjacentHTML("beforeend", `<div class="opq" id="opq" role="dialog" aria-modal="true" aria-labelledby="opt"><div class="os"><div class="gr" aria-hidden="true"><span></span></div><h2 id="opt">One project at a time</h2><p>“${esc(rows[0])}” will be archived. Its Takes and Ideal Text stay safe, and you can bring it back from Settings.</p><div class="pair2"><button type="button" class="c0" id="oc">Cancel</button><button type="button" class="c1" id="oo">Continue</button></div></div></div>`);
+      $("#opq", app).onclick = (e) => { if (e.target.id === "opq") $("#opq", app).remove(); };
+      on("#oc", () => $("#opq", app).remove());
+      on("#oo", () => { S.projArchived = false; startNew(); }, true);
+    });
+    on("#p1", () => { close(); toast("The project opens on its Ideal Text."); });
+    on("#pm", () => {
+      const r = $(".pr", app); if ($(".mm", r)) { $(".mm", r).remove(); return; }
+      r.insertAdjacentHTML("beforeend", `<div class="mm" role="menu"><button type="button" role="menuitem" id="pa">Archive</button></div>`);
+      on("#pa", () => { S.projArchived = true; close(); projects(); });
+    });
   }
   function openAdd() { if (!S.joinSet) setupNote(); else addSheet(); }
   // The "+"'s note until the questions for people who join are set (ChatList.tsx SetupNote, N534)
@@ -1385,9 +2167,11 @@ aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 1
     go(first);
   }
   $("#reset").onclick = start;
+  $("#afterSrc").innerHTML = AFTER.SOURCES.map(([a, b, c]) => `<tr><td><b>${esc(a)}</b></td><td>${esc(b)}</td><td><small><code>${esc(c)}</code></small></td></tr>`).join("");
+  $("#afterOpen").innerHTML = AFTER.OPEN.map((t) => `<li>${esc(t)}</li>`).join("");
   start();
   // For the checks: which screen the phone shows, and the journey's state.
-  window.__proto = { screen: () => screen, take: () => (S ? S.take : 0), journey: () => jKey, setJourney: (k, b) => { if (b) bizKey = b; jKey = k; start(); } };
+  window.__proto = { beat: () => (S ? S.will.beat : null), screen: () => screen, take: () => (S ? S.take : 0), journey: () => jKey, setJourney: (k, b) => { if (b) bizKey = b; jKey = k; start(); } };
 })();
 </script>
 
