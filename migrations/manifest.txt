@@ -551,4 +551,4 @@
 0513	a_take_can_reach_someone_new_after_it.sql
 0514	a_person_keeps_their_join_questions.sql
 0515	a_person_s_chat_opens_on_a_website.sql
-0516	a_business_has_a_community_people_join.sql
+0517	a_business_has_a_community_people_join.sql
