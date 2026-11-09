@@ -1,0 +1,1120 @@
+[
+  {
+    "id": "MOD-01",
+    "area": "AI models",
+    "title": "A newcomer meets nothing of the models while joining",
+    "given": "Kasia joins WillpowerLab through RASP's link and has never recorded",
+    "when": "she goes through the welcome, records Take 1, waits for it, and opens its walk",
+    "then": [
+      "no screen, question or tap about AI models, teaching or the training yes appears before, during or after Take 1",
+      "the acceptance screen offers nothing optional: the training choice is not on it"
+    ],
+    "rules": [
+      "Never 3",
+      "N518 item 5",
+      "N528 item 12"
+    ],
+    "code": [
+      "fe:src/components/willab/Phase1AcceptanceFlow.tsx::optionalPurposes: []"
+    ],
+    "tests": [],
+    "status": "built",
+    "screen": "meet"
+  },
+  {
+    "id": "MOD-02",
+    "area": "AI models",
+    "title": "The speaker's training yes decides whether her Takes can teach a voice model",
+    "given": "Kasia has recorded Takes and has not turned on the training yes",
+    "when": "a voice model (Speaking confidence) gathers examples from WillpowerLab Takes",
+    "then": [
+      "none of Kasia's Takes or moments is offered to any model's teachers",
+      "once she turns on \"Help improve WillpowerLab\" in Settings, her later Takes may be",
+      "\"Turn off training?\" takes them out again"
+    ],
+    "rules": [
+      "N518 item 5",
+      "N563 item 4",
+      "N528 item 10"
+    ],
+    "code": [
+      "fe:src/lib/legal/dataConsentCopy.ts::trainingTitle: \"Help improve WillpowerLab\"",
+      "fe:src/lib/legal/dataConsentCopy.ts::trainingOffTitle: \"Turn off training?\"",
+      "fe:src/components/account/TrainingConsentCard.tsx::export default function TrainingConsentCard",
+      "be:services/person_asks.py::CONSENT_KEYS = (\"processing\", \"personalised_practice\", \"sensitive_information\","
+    ],
+    "tests": [
+      "src/components/account/TrainingConsentCard.test.tsx",
+      "src/services/api/trainingConsent.test.ts",
+      "tests/test_training_consent_postgres.py",
+      "tests/test_person_asks.py"
+    ],
+    "status": "partly",
+    "screen": "meet",
+    "note": "The switch is built and asked in Settings or in a founder's consent ask in the chat; no model reads it yet, because no model gathers examples from Takes."
+  },
+  {
+    "id": "MOD-03",
+    "area": "AI models",
+    "title": "A speaker never sees a model's page or its numbers",
+    "given": "Kasia is a speaker who teaches no model",
+    "when": "she opens her list of chats",
+    "then": [
+      "she sees the \"AI models\" row like everyone, and no model's jars, stage, agreement or teacher numbers about her"
+    ],
+    "rules": [
+      "N526 item 3",
+      "Never 1"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "meet"
+  },
+  {
+    "id": "MOD-04",
+    "area": "AI models",
+    "title": "The AI models row sits under the people in the list of chats",
+    "given": "Marta's list of chats, with Will on top and her people under him",
+    "when": "she looks under the people",
+    "then": [
+      "a row \"AI models\" with the line \"Teach one, or start your own\"",
+      "above it, the coach's row \"Your queue\" with \"12 examples wait · 3 models\""
+    ],
+    "rules": [
+      "N528 item 1",
+      "N563 item 1",
+      "N566 item 11"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "d-1"
+  },
+  {
+    "id": "MOD-05",
+    "area": "AI models",
+    "title": "The list of models, the most mature first, with search and filters",
+    "given": "Marta taps \"AI models\"",
+    "when": "the list opens",
+    "then": [
+      "\"Each model learns one skill from people who know it well. The ones furthest along are at the top.\"",
+      "filters \"For you\", \"Ready to use\", \"Still learning\"",
+      "each model shows \"Started by …\" and how far it is, as \"62% of the way to its first training · 6 teachers\"",
+      "her own draft on top: \"Your draft\", \"You stopped at the scale. Nothing is lost.\", \"Continue\""
+    ],
+    "rules": [
+      "N528 item 1",
+      "N566 item 2",
+      "N566 item 11"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "d-2"
+  },
+  {
+    "id": "MOD-06",
+    "area": "AI models",
+    "title": "A public model's page in totals only",
+    "given": "Marta opens Speaking confidence from the list",
+    "when": "the page opens",
+    "then": [
+      "\"Speaking confidence is 62% of the way to its first training. Six people teach it.\"",
+      "\"Teach it\" and \"Try it\""
+    ],
+    "rules": [
+      "N526 item 2",
+      "N526 item 3",
+      "N528 item 1"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "d-3"
+  },
+  {
+    "id": "MOD-07",
+    "area": "AI models",
+    "title": "A disclaimer at the door before anyone teaches",
+    "given": "Marta taps \"Teach it\" on a public model",
+    "when": "the door opens",
+    "then": [
+      "\"Before you teach\"",
+      "\"Teach it only what you know well. If this is not your field, your answers would make it worse for all of us.\"",
+      "\"It learns from your ratings and the words of your answers. Your voice recordings stay with WillpowerLab.\"",
+      "\"This is my field\" and \"Not now\""
+    ],
+    "rules": [
+      "N528 item 2",
+      "N528 item 10"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "d-4"
+  },
+  {
+    "id": "MOD-08",
+    "area": "AI models",
+    "title": "Teaching a voice model looks like the coach panel's Judge",
+    "given": "Marta came through the door of Speaking confidence",
+    "when": "her first example opens",
+    "then": [
+      "\"Judge this moment\"",
+      "\"Does the speaker sound confident here?\"",
+      "\"Yes\", \"In-between\", \"No\", \"Audio unclear\", \"Skip\""
+    ],
+    "rules": [
+      "N563 item 2",
+      "N520 item 1",
+      "Never 2"
+    ],
+    "code": [
+      "fe:src/components/willab/coachpanel/CoachPanelScreens.tsx::export function JudgeScreen",
+      "be:services/label_quorum.py::def resolve("
+    ],
+    "tests": [
+      "src/components/willab/coachpanel/coachPanel.test.tsx",
+      "tests/test_label_quorum.py"
+    ],
+    "status": "partly",
+    "screen": "d-5",
+    "note": "Built as the coach panel's Judge for the speaking coaches' moments; no model joined through the AI models row reaches it yet."
+  },
+  {
+    "id": "MOD-09",
+    "area": "AI models",
+    "title": "A teacher never sees the machine's guess before answering",
+    "given": "Marta is on an example of any model",
+    "when": "she has not answered it yet",
+    "then": [
+      "nothing of the machine's read (its label, score, draft or \"what happened\") is shown or fetched until her answer is saved"
+    ],
+    "rules": [
+      "Never 2",
+      "N518 item 4"
+    ],
+    "code": [
+      "fe:src/components/willab/coachpanel/CoachPanelScreens.tsx::export function JudgeScreen"
+    ],
+    "tests": [
+      "src/components/willab/coachpanel/coachPanel.test.tsx"
+    ],
+    "status": "partly",
+    "screen": "d-5",
+    "note": "Holds today for the coach panel (the moment's read is asked for only after the rating saves); the launchpad's teaching screens are not built."
+  },
+  {
+    "id": "MOD-10",
+    "area": "AI models",
+    "title": "The quiet trust check: a newcomer's answers count once they hear what experts hear",
+    "given": "Marta has answered fewer than 20 examples of Speaking confidence",
+    "when": "her answers include hidden known clips",
+    "then": [
+      "no screen says she is on trial and no score is shown",
+      "once her reliability passes: \"Your answers now count.\" and \"You earn a token for each answer that counts.\""
+    ],
+    "rules": [
+      "N520 item 8",
+      "N520 item 12",
+      "N528 item 2",
+      "N523 item 2",
+      "Never 1"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "d-6"
+  },
+  {
+    "id": "MOD-11",
+    "area": "AI models",
+    "title": "Two matching votes settle an example; one vote never does",
+    "given": "an example has one teacher's answer",
+    "when": "a second teacher answers it the same way",
+    "then": [
+      "it settles and can train a model",
+      "with one answer it stays a weak signal, never for training",
+      "a clash goes to a third teacher"
+    ],
+    "rules": [
+      "N518 item 3",
+      "N520 item 11",
+      "N570 item 4",
+      "N563 item 4"
+    ],
+    "code": [
+      "be:services/label_quorum.py::QUORUM_N = 2",
+      "be:services/label_quorum.py::SINGLETON = \"singleton\""
+    ],
+    "tests": [
+      "tests/test_label_quorum.py"
+    ],
+    "status": "built",
+    "screen": "q-7"
+  },
+  {
+    "id": "MOD-12",
+    "area": "AI models",
+    "title": "\"What do I get?\" in three short cards",
+    "given": "Marta taps \"What do I get?\" on the list",
+    "when": "it opens",
+    "then": [
+      "\"Teach a model\", \"Start a model\", \"Use a model in your business\", each with one line",
+      "\"Back to the list\""
+    ],
+    "rules": [
+      "N566 item 11",
+      "N523 item 2",
+      "N531"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "d-7"
+  },
+  {
+    "id": "MOD-13",
+    "area": "AI models",
+    "title": "An empty search says so and offers to start one",
+    "given": "Marta searches for a field nobody has started a model about",
+    "when": "the list finds nothing",
+    "then": [
+      "\"No models here yet.\"",
+      "\"Nobody has started a model about this. You could be the first.\"",
+      "\"Start the first one\" and \"Clear the search\""
+    ],
+    "rules": [
+      "N566 item 11"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "d-8"
+  },
+  {
+    "id": "MOD-14",
+    "area": "AI models",
+    "title": "The coach's row is the one queue for every model a person teaches",
+    "given": "Marta teaches Speaking confidence, Pitch Coach and RASP sales replies",
+    "when": "she looks at her list of chats",
+    "then": [
+      "one row \"Your queue\", right under Will, with \"12 examples wait · 3 models\"",
+      "nothing of the queue sits at the bottom of Will's chat"
+    ],
+    "rules": [
+      "N563 item 1",
+      "N521 item 1",
+      "N521 item 7"
+    ],
+    "code": [
+      "fe:src/components/willab/coachwalk/CoachChatRow.tsx::export default function CoachChatRow",
+      "fe:src/components/willab/coachwalk/CoachChatRow.tsx::export function coachRowWords",
+      "fe:src/components/willab/chats/useChatsDoor.tsx::coachRow={isCoach ? <CoachChatRow /> : null}"
+    ],
+    "tests": [
+      "src/components/willab/coachwalk/coachChatRow.test.tsx"
+    ],
+    "status": "differs",
+    "screen": "q-1",
+    "note": "Built for the speaking coaches only: the row is named by the person's profile job (or \"Your queue\") with the line \"Open your queue\" or \"Nobody is waiting for you.\" (N521), and holds the speaking moments; no other model, no \"… examples wait · 3 models\" line."
+  },
+  {
+    "id": "MOD-15",
+    "area": "AI models",
+    "title": "The queue orders what helps most first, with Pause per model",
+    "given": "Marta opens Your queue",
+    "when": "the queue opens",
+    "then": [
+      "\"12 examples are waiting. The ones that help most come first.\"",
+      "one row per model with its count and \"Pause\", and \"Your company · you joined when Tomek invited the team\" on RASP's",
+      "\"Pause a model to stop its examples for a while. Tap a model to teach only it.\"",
+      "\"Start\" and \"Add an example you know well\""
+    ],
+    "rules": [
+      "N563 item 1",
+      "N566 item 11"
+    ],
+    "code": [
+      "fe:src/components/willab/coachpanel/CoachPanelScreens.tsx::export function QueueScreen"
+    ],
+    "tests": [
+      "src/components/willab/coachpanel/coachPanel.test.tsx"
+    ],
+    "status": "differs",
+    "screen": "q-2",
+    "note": "The built queue (coach panel B2) lists speakers, the one who sent most recently on top, for the speaking model only, with no Pause and no per-model rows."
+  },
+  {
+    "id": "MOD-16",
+    "area": "AI models",
+    "title": "One answer counts for two models only when both ask the same question on the same scale",
+    "given": "a public clip is wanted by Speaking confidence and Interview voice, which ask the same question on the same scale",
+    "when": "Marta answers it once",
+    "then": [
+      "\"Counts for Speaking confidence and Interview voice: both ask this question\"",
+      "her answer counts for both"
+    ],
+    "rules": [
+      "N566 item 7",
+      "N563 item 3"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "q-3"
+  },
+  {
+    "id": "MOD-17",
+    "area": "AI models",
+    "title": "Another model's question on the same clip follows right after",
+    "given": "Pitch Coach asks something else about the same public clip",
+    "when": "Marta has answered Speaking confidence's question",
+    "then": [
+      "\"Pitch Coach asks something else about the same clip: how rushed does it sound?\"",
+      "its own scale, 1 \"Calm\" to 5 \"Racing\", without loading the clip again"
+    ],
+    "rules": [
+      "N566 item 7"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "q-4"
+  },
+  {
+    "id": "MOD-18",
+    "area": "AI models",
+    "title": "A private example teaches only its company's model",
+    "given": "RASP's own example in Marta's queue",
+    "when": "she picks a reply",
+    "then": [
+      "\"Your company’s own example: it teaches only RASP sales replies.\"",
+      "the answer never counts for a public model"
+    ],
+    "rules": [
+      "N563 item 3",
+      "N563 item 6"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "q-5"
+  },
+  {
+    "id": "MOD-19",
+    "area": "AI models",
+    "title": "A recipe card that picks from a list shows the list",
+    "given": "RASP sales replies' recipe card asks for a pick, then an answer",
+    "when": "Marta opens its example",
+    "then": [
+      "\"Which first reply would you send?\" with the three replies"
+    ],
+    "rules": [
+      "N563 item 2",
+      "N570 item 2"
+    ],
+    "code": [
+      "fe:src/lib/willab/coachPanelCopy.ts::chooseExercise: \"Choose exercise\""
+    ],
+    "tests": [
+      "src/components/willab/coachpanel/coachPanel.test.tsx"
+    ],
+    "status": "partly",
+    "screen": "q-5",
+    "note": "Built only as the speaking coach's pick of an exercise (\"Choose exercise\", coach panel E3); no model's own list is."
+  },
+  {
+    "id": "MOD-20",
+    "area": "AI models",
+    "title": "A recipe card that asks for an answer in words takes it spoken",
+    "given": "the same example after the pick",
+    "when": "the next step opens",
+    "then": [
+      "\"Now say how you would answer them, in your own words.\"",
+      "\"Record your answer\" and \"Skip\""
+    ],
+    "rules": [
+      "N563 item 2",
+      "N520 item 7",
+      "N518 item 2"
+    ],
+    "code": [
+      "fe:src/lib/willab/planCopy.ts::recordAnswer: \"Record your answer\""
+    ],
+    "tests": [
+      "src/components/willab/chats/chats.test.tsx"
+    ],
+    "status": "partly",
+    "screen": "q-6",
+    "note": "\"Record your answer\" is built for answering a person's Take or question in their chat (N481); it does not feed a model."
+  },
+  {
+    "id": "MOD-21",
+    "area": "AI models",
+    "title": "A teacher adds an example; it counts once another teacher agrees",
+    "given": "Marta knows a case the model should learn from",
+    "when": "she taps \"Add an example you know well\"",
+    "then": [
+      "\"Do you know a case this model should learn from? Add it, then answer it yourself.\"",
+      "\"Record one\" and \"Upload a file\"",
+      "\"It counts once another teacher agrees with your answer.\"",
+      "added examples are never more than 1 in 5 of what a model learns from"
+    ],
+    "rules": [
+      "N563 item 4",
+      "N566 item 6"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "q-7"
+  },
+  {
+    "id": "MOD-22",
+    "area": "AI models",
+    "title": "Release is the founder's choice, and only when the gap is not luck",
+    "given": "version 2 of Pitch Coach finished its final exam",
+    "when": "Marta, its founder, opens it",
+    "then": [
+      "\"Version 2 is ready\"",
+      "\"On the 100 exam cases:\" with better, worse and the same",
+      "\"Version 2 is clearly better: a gap of 14 against 3 is very unlikely to be luck.\"",
+      "\"Releasing it is your choice. Businesses on version 1 keep it until they decide to switch.\"",
+      "\"Release version 2\" and \"Not yet\"",
+      "with a close result: \"Not clearly better yet\" and no Release button"
+    ],
+    "rules": [
+      "N566 item 5",
+      "N563 item 5",
+      "N566 item 9"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "q-8"
+  },
+  {
+    "id": "MOD-23",
+    "area": "AI models",
+    "title": "An empty queue says so",
+    "given": "nothing waits for Marta in any model",
+    "when": "she opens Your queue",
+    "then": [
+      "\"Nothing waits for you.\"",
+      "\"Thank you. New examples come when your models need you.\"",
+      "\"Back to your chats\""
+    ],
+    "rules": [
+      "N566 item 11"
+    ],
+    "code": [
+      "fe:src/lib/willab/coachWalkCopy.ts::queueEmpty: \"Nobody is waiting for you.\""
+    ],
+    "tests": [
+      "src/components/willab/coachwalk/coachChatRow.test.tsx"
+    ],
+    "status": "differs",
+    "screen": "q-9",
+    "note": "The built speaking queue says \"Nobody is waiting for you.\" (signed for the coach panel, J), on the row and in the queue."
+  },
+  {
+    "id": "MOD-24",
+    "area": "AI models",
+    "title": "Starting a model in three chapters, with a thin bar",
+    "given": "Marta taps \"Start your own\"",
+    "when": "the setup opens",
+    "then": [
+      "\"Describe · 1 of 3\" and the chapters \"Describe\", \"Shape\", \"Share\"",
+      "\"What problem should your model solve?\", then \"How do you solve it today?\", then \"How will you teach your model?\", one per screen",
+      "optional steps say \"Optional\""
+    ],
+    "rules": [
+      "N566 item 2",
+      "N528 item 4"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "s-1"
+  },
+  {
+    "id": "MOD-25",
+    "area": "AI models",
+    "title": "✕ keeps a draft, shown in the list with Continue",
+    "given": "Marta is partway through the setup",
+    "when": "she taps ✕",
+    "then": [
+      "the list shows \"Your draft\", \"You stopped at the scale. Nothing is lost.\" and \"Continue\""
+    ],
+    "rules": [
+      "N566 item 2"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "d-2"
+  },
+  {
+    "id": "MOD-26",
+    "area": "AI models",
+    "title": "A model like yours already exists",
+    "given": "a public model is close to what Marta described",
+    "when": "she answers the third question",
+    "then": [
+      "a sheet slides up: \"A model like yours already exists\", the model's card, \"If you teach it, it learns faster, and you share what it earns.\"",
+      "\"Teach this one\" and \"Set up mine anyway\""
+    ],
+    "rules": [
+      "N566 item 2",
+      "N528 item 4"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "s-4"
+  },
+  {
+    "id": "MOD-27",
+    "area": "AI models",
+    "title": "The app proposes what the model does; the founder unticks",
+    "given": "Marta finished Describe",
+    "when": "Shape opens",
+    "then": [
+      "\"From your answers, your model will do three things. Untick what it should not do.\"",
+      "\"It gives a score on a scale\", \"It picks from a list\", \"It learns to answer like you\"",
+      "\"That’s right\""
+    ],
+    "rules": [
+      "N528 item 4",
+      "N520 item 1"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "s-5"
+  },
+  {
+    "id": "MOD-28",
+    "area": "AI models",
+    "title": "One example and a scale with words for every point; a model can start right there",
+    "given": "the model gives a score",
+    "when": "the scale step opens",
+    "then": [
+      "\"One example is a pitch clip of about 30 seconds. Your teachers will rate each clip on this scale.\"",
+      "five points with words, 1 \"Calm\" to 5 \"Racing\"",
+      "\"Use this scale\" and \"Start with this, finish the rest later\""
+    ],
+    "rules": [
+      "N566 item 2",
+      "N563 item 5",
+      "N520 item 4"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "s-6"
+  },
+  {
+    "id": "MOD-29",
+    "area": "AI models",
+    "title": "Each part gets the AI that fits it",
+    "given": "the model scores a voice, picks from a list and answers in words",
+    "when": "the step opens",
+    "then": [
+      "\"Score how rushed it sounds\": \"WillpowerLab’s voice scorer\"",
+      "\"Pick the exercise\" and \"Answer like you\": \"GPT-4o mini\"",
+      "\"GPT-4o\", \"Mistral\", \"Llama\" marked \"Soon\""
+    ],
+    "rules": [
+      "N566 item 3"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "s-7"
+  },
+  {
+    "id": "MOD-30",
+    "area": "AI models",
+    "title": "Research sets starting rules, each checked against the first ratings",
+    "given": "Marta has a study",
+    "when": "she uploads it on the optional step",
+    "then": [
+      "each rule with its source and who it was measured on",
+      "\"We check each rule against your teachers’ first 50 ratings. If they disagree with a rule, we stop using it and tell you why.\"",
+      "\"Use these rules\" and \"Skip\""
+    ],
+    "rules": [
+      "N528 item 4",
+      "N566 item 2"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "s-8"
+  },
+  {
+    "id": "MOD-31",
+    "area": "AI models",
+    "title": "Uploading an existing dataset, mapping its columns and checking it",
+    "given": "Marta has 1,240 rated pitch clips",
+    "when": "she uploads them and confirms the columns",
+    "then": [
+      "\"We checked your data.\" with \"Rows we can use\", \"Repeats removed\", \"Near repeats removed\", \"Rows with no score, skipped\", \"Rows that look mislabelled\", \"Names and places removed\" and how the scores spread",
+      "a column that names a person: \"Left out: it names a person\"",
+      "\"Before your data counts, your teachers re-rate 60 of its examples.\" and none of it goes into the final exam",
+      "the tick \"I have the right to use this data, and the people in it agreed to its use for training.\" before \"Upload it\""
+    ],
+    "rules": [
+      "N566 item 4",
+      "N531 item 2"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "s-11"
+  },
+  {
+    "id": "MOD-32",
+    "area": "AI models",
+    "title": "Two experts set aside a final exam of 100 cases first",
+    "given": "Marta reaches the exam step",
+    "when": "it opens",
+    "then": [
+      "\"Before anyone teaches it, two experts set aside a final exam: 100 clips your model never learns from.\"",
+      "\"It can be sold only when it does clearly better on this exam than it does today.\"",
+      "\"Ask Daniel\" for the second expert"
+    ],
+    "rules": [
+      "N566 item 5",
+      "N528 item 8",
+      "N520 item 9"
+    ],
+    "code": [
+      "be:services/golden_set.py::SET_SIZE = 50",
+      "be:services/golden_set.py::def seal("
+    ],
+    "tests": [
+      "tests/test_golden_set_pool.py"
+    ],
+    "status": "differs",
+    "screen": "s-12",
+    "note": "Only the speaking golden set exists: 50 clips judged and sealed by the founder (N523 item 6 grows it toward 150); no per-model exam of 100 set aside by two experts."
+  },
+  {
+    "id": "MOD-33",
+    "area": "AI models",
+    "title": "The teachers' journey, shorter or longer",
+    "given": "the app generated what each teacher will do",
+    "when": "Marta opens the step",
+    "then": [
+      "\"Here is what each teacher will do. Make it shorter or longer.\"",
+      "\"Shorter\", \"Longer\", \"Looks good\""
+    ],
+    "rules": [
+      "N528 item 4"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "s-13"
+  },
+  {
+    "id": "MOD-34",
+    "area": "AI models",
+    "title": "Private or Public, with a disclaimer before going public",
+    "given": "Marta reaches Share",
+    "when": "she taps Public",
+    "then": [
+      "\"Who can see your model?\" with \"Private\" and \"Public\"",
+      "\"Anyone will be able to see your model and teach it.\" and \"Recordings never leave WillpowerLab.\"",
+      "\"Make it public\" and \"Keep it private\""
+    ],
+    "rules": [
+      "N528 item 5",
+      "N526 item 2"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "s-15"
+  },
+  {
+    "id": "MOD-35",
+    "area": "AI models",
+    "title": "Inviting teachers: each person chooses whether to join",
+    "given": "Marta's model is RASP's, or her own",
+    "when": "she reaches \"Who should teach it with you?\"",
+    "then": [
+      "\"Everyone in RASP sales team\" with \"14 people · each one chooses whether to join\"",
+      "people from her chats (Kasia, Tomek, Daniel)",
+      "\"Invite them\" and \"Copy an invite link\""
+    ],
+    "rules": [
+      "N563 item 6",
+      "N528 item 4"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "s-16"
+  },
+  {
+    "id": "MOD-36",
+    "area": "AI models",
+    "title": "The model is ready to learn, with what is left as a checklist",
+    "given": "Marta finished, or started after the scale",
+    "when": "the last step opens",
+    "then": [
+      "\"Pitch Coach is ready to learn. Today it answers from your starting rules and examples.\"",
+      "\"To finish setting it up\" with each part",
+      "\"Sell it through an API\": \"This opens once its first training beats today’s version on the final exam.\"",
+      "\"Try it\" and \"Back to the list\""
+    ],
+    "rules": [
+      "N566 item 2",
+      "N528 item 7"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "s-17"
+  },
+  {
+    "id": "MOD-37",
+    "area": "AI models",
+    "title": "The owner's page: Needs you now on top",
+    "given": "Pitch Coach has been taught for two weeks",
+    "when": "Marta opens it",
+    "then": [
+      "\"Needs you now\": where teachers disagree, with \"Make those two clearer\"",
+      "\"Pitch Coach is 36% of the way to its first training: about 4 to 6 weeks more. The slowest jar decides: different voices.\"",
+      "\"How often your teachers agree\": \"Within one point 9 times in 10 · exactly 6 in 10\"",
+      "\"Where its examples come from\" with the four sources",
+      "\"What runs by itself\""
+    ],
+    "rules": [
+      "N566 item 6",
+      "N563 item 4",
+      "N563 item 5",
+      "N526 item 3"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "s-18"
+  },
+  {
+    "id": "MOD-38",
+    "area": "AI models",
+    "title": "The founder sets the teachers' question and list and answers the first 10",
+    "given": "Marta set her model's scale",
+    "when": "the setup continues",
+    "then": [
+      "the app drafts the question every teacher is asked, and she corrects its words",
+      "a picking model names its list, at least two options",
+      "she answers the first 10 examples on the teachers' screen; none is in the exam"
+    ],
+    "rules": [
+      "N570 item 1",
+      "N570 item 2",
+      "N570 item 3",
+      "N570 item 4"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "s-6"
+  },
+  {
+    "id": "MOD-39",
+    "area": "AI models",
+    "title": "A model card before a business uses a model",
+    "given": "a careers website finds Job interview coach, ready to use",
+    "when": "it opens the model",
+    "then": [
+      "\"Good at\", \"Not so good at\", \"Not for\", \"On its final exam\", \"When it isn’t sure\", \"Version\"",
+      "\"Use it in your business\" and \"Try it\""
+    ],
+    "rules": [
+      "N566 item 9",
+      "N528 item 7"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "b-1"
+  },
+  {
+    "id": "MOD-40",
+    "area": "AI models",
+    "title": "Trying a model on its link; it says when it is not sure",
+    "given": "the business tries Job interview coach",
+    "when": "it asks something the model is not sure about",
+    "then": [
+      "\"I’m not sure about this one, so I won’t guess. One of the coaches who taught me will answer it here within a day.\"",
+      "\"Not sure · a coach will answer\""
+    ],
+    "rules": [
+      "N566 item 8",
+      "N528 item 9"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "b-2"
+  },
+  {
+    "id": "MOD-41",
+    "area": "AI models",
+    "title": "A free test key, a monthly limit, and the users' data not used without a yes",
+    "given": "the business taps \"Use it in your business\"",
+    "when": "the terms open",
+    "then": [
+      "\"€0.03 an answer\"",
+      "\"Start with a test key\": \"Free for your first 100 answers. It never bills you.\"",
+      "\"Set a monthly limit\"",
+      "\"Your users’ questions are not used to train it unless you allow it.\"",
+      "\"Create a key\""
+    ],
+    "rules": [
+      "N566 item 9",
+      "N528 item 7"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "b-3"
+  },
+  {
+    "id": "MOD-42",
+    "area": "AI models",
+    "title": "The key is shown once",
+    "given": "the business created a key",
+    "when": "it opens",
+    "then": [
+      "\"This is your secret key.\"",
+      "\"This is a test key: free for 100 answers. You see it only once.\"",
+      "\"Copy\" and \"I copied it\""
+    ],
+    "rules": [
+      "N566 item 9"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "b-4"
+  },
+  {
+    "id": "MOD-43",
+    "area": "AI models",
+    "title": "The code in three languages, with \"sure\" in every answer",
+    "given": "the key is copied",
+    "when": "the code screen opens",
+    "then": [
+      "\"JavaScript\", \"Python\", \"curl\"",
+      "\"Each answer comes with “sure”: true or false.\"",
+      "\"Send it to your developer\""
+    ],
+    "rules": [
+      "N566 item 8",
+      "N566 item 9"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "b-5"
+  },
+  {
+    "id": "MOD-44",
+    "area": "AI models",
+    "title": "Usage, the unsure questions back to the teachers, and pinned versions",
+    "given": "a month of use",
+    "when": "the business opens Your usage",
+    "then": [
+      "\"Job interview coach answered 1,240 questions for your users this month.\"",
+      "\"Send the questions it wasn’t sure about to its teachers\"",
+      "\"You use version 1. When version 2 passes the same exam, you choose when to switch.\"",
+      "\"Delete this key\""
+    ],
+    "rules": [
+      "N566 item 9",
+      "N563 item 4"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "b-6"
+  },
+  {
+    "id": "MOD-45",
+    "area": "AI models",
+    "title": "A model not yet for sale can be tried on its link",
+    "given": "Pitch Coach has not passed its final exam",
+    "when": "Marta opens it to try",
+    "then": [
+      "\"trying it · not for sale yet\"",
+      "a chat with the model, in text"
+    ],
+    "rules": [
+      "N528 item 7",
+      "N528 item 9"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "u-1"
+  },
+  {
+    "id": "MOD-46",
+    "area": "AI models",
+    "title": "Setting the price with − and +, with Infrastructure as one row",
+    "given": "Pitch Coach passed its exam",
+    "when": "Marta sets its price",
+    "then": [
+      "\"Set your price\"",
+      "\"−\" and \"+\" around \"for one answer\", suggestions \"€0.02\", \"€0.03\", \"€0.05\", and a slider for uses a month",
+      "\"Similar models charge €0.02 to €0.05. The lowest is €0.006, what an answer costs to run.\"",
+      "the split live: \"Infrastructure\", \"You, who started it\", \"The teachers, by their points\"",
+      "\"−\" stops at the running cost"
+    ],
+    "rules": [
+      "N566 item 10",
+      "N531 item 1",
+      "N531 item 3"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "u-2"
+  },
+  {
+    "id": "MOD-47",
+    "area": "AI models",
+    "title": "A teacher's earnings, fixed per version, paid monthly above a minimum",
+    "given": "version 1 of Pitch Coach earned money",
+    "when": "Marta opens Your earnings",
+    "then": [
+      "\"Your share of version 1\" as a percentage",
+      "\"Your answers that trained it\"",
+      "\"Next payout\"",
+      "\"We pay once a month when you have earned €20 or more.\""
+    ],
+    "rules": [
+      "N531 item 2",
+      "N531 item 4",
+      "N566 item 10",
+      "N523 item 2"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "u-3"
+  },
+  {
+    "id": "MOD-48",
+    "area": "AI models",
+    "title": "A model's own API key",
+    "given": "Pitch Coach is for sale",
+    "when": "Marta creates a key for her own product",
+    "then": [
+      "\"Use Pitch Coach in your own product.\"",
+      "\"This is a test key: free for 100 answers.\""
+    ],
+    "rules": [
+      "N528 item 7",
+      "N566 item 9"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "u-4"
+  },
+  {
+    "id": "MOD-49",
+    "area": "AI models",
+    "title": "An invite to teach stays in the chat after Not now",
+    "given": "Kasia invited Marta to teach, and Marta said not now",
+    "when": "Marta opens the chat with Kasia",
+    "then": [
+      "\"Kasia invited you to teach Pitch Coach with her.\"",
+      "\"You said not now. The invite stays here; open it whenever you like.\"",
+      "\"Open\""
+    ],
+    "rules": [
+      "N528 item 3"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "p-1"
+  },
+  {
+    "id": "MOD-50",
+    "area": "AI models",
+    "title": "The profile lists the models a person started and teaches",
+    "given": "Marta opens her profile",
+    "when": "she looks under About",
+    "then": [
+      "a section \"AI models\"",
+      "\"Pitch Coach\", \"Private\", \"You started it · 36% of the way · 3 teachers\" with \"Make public\", \"Archive\", \"Download its data\"",
+      "\"Speaking confidence\", \"Public\", \"You teach it · 86 answers counted this month\""
+    ],
+    "rules": [
+      "N528 item 1",
+      "N528 item 5"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "p-2"
+  },
+  {
+    "id": "MOD-51",
+    "area": "AI models",
+    "title": "Downloading a model's data",
+    "given": "Marta owns Pitch Coach",
+    "when": "she taps \"Download its data\"",
+    "then": [
+      "\"You get your teachers’ ratings and answers, and what speakers said with names and places removed. Recordings stay with WillpowerLab.\"",
+      "\"To sell a product built on it, you need a licence\"",
+      "\"Download the data\" and \"Not now\"",
+      "until the training yes carries its new line, the download holds the teachers' own ratings and answers only"
+    ],
+    "rules": [
+      "N528 item 12",
+      "N526 item 2"
+    ],
+    "code": [
+      "be:services/feedback_pairs.py::def exportable("
+    ],
+    "tests": [],
+    "status": "partly",
+    "screen": "p-3",
+    "note": "Only the founder's export of the speaking feedback pairs exists (feedback_pairs.exportable); no model owner can download anything."
+  },
+  {
+    "id": "MOD-52",
+    "area": "AI models",
+    "title": "Fine-tuning runs on enough settled pairs, as the founder's step",
+    "given": "a model's surface has enough trusted pairs",
+    "when": "the founder starts a training run",
+    "then": [
+      "a fine-tune runs and is evaluated before anything is served"
+    ],
+    "rules": [
+      "N528 item 8",
+      "N520 item 9"
+    ],
+    "code": [
+      "be:services/model_training.py::PAIRS_PER_RUN = 200",
+      "be:services/model_training.py::def run_training_pass("
+    ],
+    "tests": [],
+    "status": "differs",
+    "screen": "s-17",
+    "note": "Built for WillpowerLab's own feedback surfaces at 200 pairs a run (model_training.py), started by the founder; the launchpad's first training needs about 500 trusted ratings and the 100-case exam."
+  }
+]

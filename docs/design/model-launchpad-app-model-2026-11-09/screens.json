@@ -1,0 +1,247 @@
+[
+  {
+    "key": "meet",
+    "shows": "The panel above the tabs, \"Where the models meet each phone\": where the models appear for Kasia (a speaker), Tomek (the person she asks, RASP's inviter), Marta (a coach) and a business, each with links to its steps; nothing of the models in onboarding.",
+    "open": "Open the page; the panel is under the title. Its links (d-1, q-2, …) open each step."
+  },
+  {
+    "key": "d-1",
+    "shows": "Your list of chats. Under the people, one new row: AI models. Tap it.",
+    "open": "Open the page with #d-1 on its address (as v8 does), or tap the tab \"Find and teach\" then its dot 1; Back and Next move one step."
+  },
+  {
+    "key": "d-2",
+    "shows": "The list. The most mature first: one is ready to use, the others show how far they are from their first training, and who started each (the small crown). Tap What do I get?, Use it, Teach it, or Start your own.",
+    "open": "Open the page with #d-2 on its address (as v8 does), or tap the tab \"Find and teach\" then its dot 2; Back and Next move one step."
+  },
+  {
+    "key": "d-3",
+    "shows": "A public model’s page, as anyone sees it.",
+    "open": "Open the page with #d-3 on its address (as v8 does), or tap the tab \"Find and teach\" then its dot 3; Back and Next move one step."
+  },
+  {
+    "key": "d-4",
+    "shows": "The disclaimer at the door. Anyone may come in; the next screens check quietly.",
+    "open": "Open the page with #d-4 on its address (as v8 does), or tap the tab \"Find and teach\" then its dot 4; Back and Next move one step."
+  },
+  {
+    "key": "d-5",
+    "shows": "Teaching looks like the coach panel’s Judge. A few of the first 20 clips already have a known answer; that is the quiet trust check. Tap an answer.",
+    "open": "Open the page with #d-5 on its address (as v8 does), or tap the tab \"Find and teach\" then its dot 5; Back and Next move one step."
+  },
+  {
+    "key": "d-6",
+    "shows": "After the first 20 answers, if they hear what the experts hear.",
+    "open": "Open the page with #d-6 on its address (as v8 does), or tap the tab \"Find and teach\" then its dot 6; Back and Next move one step."
+  },
+  {
+    "key": "d-7",
+    "shows": "What each person gets, in plain words: teachers, founders of a model, and businesses.",
+    "open": "Open the page with #d-7 on its address (as v8 does), or tap the tab \"Find and teach\" then its dot 7; Back and Next move one step."
+  },
+  {
+    "key": "d-8",
+    "shows": "New, from the UX review: the list when a search or a filter finds nothing.",
+    "open": "Open the page with #d-8 on its address (as v8 does), or tap the tab \"Find and teach\" then its dot 8; Back and Next move one step."
+  },
+  {
+    "key": "q-1",
+    "shows": "Your list of chats. The coach’s row from N521 is now Your queue: everything you teach, in one place. Tap it.",
+    "open": "Open the page with #q-1 on its address (as v8 does), or tap the tab \"Teach · one queue\" then its dot 1; Back and Next move one step."
+  },
+  {
+    "key": "q-2",
+    "shows": "One queue across every model you teach: your company’s private one and the public ones. The system orders it so each model gets what helps it most; you can pause any of them.",
+    "open": "Open the page with #q-2 on its address (as v8 does), or tap the tab \"Teach · one queue\" then its dot 2; Back and Next move one step."
+  },
+  {
+    "key": "q-3",
+    "shows": "Fixed, from the data-science review: one answer counts for two models only when both ask the same question on the same scale, as Speaking confidence and Interview voice do here. The clip comes from a public source, WillpowerLab speakers who said yes. Tap an answer.",
+    "open": "Open the page with #q-3 on its address (as v8 does), or tap the tab \"Teach · one queue\" then its dot 3; Back and Next move one step."
+  },
+  {
+    "key": "q-4",
+    "shows": "Pitch Coach asks a different question about the same clip, on its own 1 to 5 scale, so it comes right after, without loading the clip again. Tap a point.",
+    "open": "Open the page with #q-4 on its address (as v8 does), or tap the tab \"Teach · one queue\" then its dot 4; Back and Next move one step."
+  },
+  {
+    "key": "q-5",
+    "shows": "A text example for your company’s private model. Its recipe card asks for a pick from a list, then your own answer, so the screen follows the card. Private data never feeds a public model. Tap a reply.",
+    "open": "Open the page with #q-5 on its address (as v8 does), or tap the tab \"Teach · one queue\" then its dot 5; Back and Next move one step."
+  },
+  {
+    "key": "q-6",
+    "shows": "The answer is spoken, as every answer in WillpowerLab is: the app’s black button with the red dot.",
+    "open": "Open the page with #q-6 on its address (as v8 does), or tap the tab \"Teach · one queue\" then its dot 6; Back and Next move one step."
+  },
+  {
+    "key": "q-7",
+    "shows": "Teachers can add examples they know well. Another teacher has to agree before it counts, so nobody can teach a model alone.",
+    "open": "Open the page with #q-7 on its address (as v8 does), or tap the tab \"Teach · one queue\" then its dot 7; Back and Next move one step."
+  },
+  {
+    "key": "q-8",
+    "shows": "Fixed, from the data-science review: versions are compared case by case on the same exam, and Release appears only when the difference is real, not luck. The founder makes one of their four decisions. (Sample numbers.)",
+    "open": "Open the page with #q-8 on its address (as v8 does), or tap the tab \"Teach · one queue\" then its dot 8; Back and Next move one step."
+  },
+  {
+    "key": "q-9",
+    "shows": "New, from the UX review: the queue when it is empty.",
+    "open": "Open the page with #q-9 on its address (as v8 does), or tap the tab \"Teach · one queue\" then its dot 9; Back and Next move one step."
+  },
+  {
+    "key": "s-1",
+    "shows": "Starting a model. Changed, from the UX review: the setup has three chapters, Describe · Shape · Share, with a thin bar that fills as you go; optional steps say so. ✕ keeps your draft; the list shows it with Continue. Three short answers first, one per screen.",
+    "open": "Open the page with #s-1 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 1; Back and Next move one step."
+  },
+  {
+    "key": "s-2",
+    "shows": "The second answer.",
+    "open": "Open the page with #s-2 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 2; Back and Next move one step."
+  },
+  {
+    "key": "s-3",
+    "shows": "The third answer.",
+    "open": "Open the page with #s-3 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 3; Back and Next move one step."
+  },
+  {
+    "key": "s-4",
+    "shows": "Changed, from the UX review: “A model like yours already exists” slides up over the third answer as a sheet, in the app’s own sheet style, instead of being a numbered step that only sometimes appears.",
+    "open": "Open the page with #s-4 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 4; Back and Next move one step."
+  },
+  {
+    "key": "s-5",
+    "shows": "The app proposes the kind of model: a prediction on a scale, a choice from a list, or learning to answer like you. One tap to accept.",
+    "open": "Open the page with #s-5 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 5; Back and Next move one step."
+  },
+  {
+    "key": "s-6",
+    "shows": "New, from the data-science review. What one example is, and a scale with words for every point. Teachers who share clear anchors agree far more often, and a model can only be as good as its teachers’ agreement.",
+    "open": "Open the page with #s-6 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 6; Back and Next move one step."
+  },
+  {
+    "key": "s-7",
+    "shows": "Changed, from the ML-engineering review. GPT-4o mini reads and writes text; it cannot hear a voice. So a score on how someone sounds needs a small model that learns from the voice itself, the way Speaking confidence does. The app picks the right AI for each part, and GPT-4o mini stays the one for words.",
+    "open": "Open the page with #s-7 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 7; Back and Next move one step."
+  },
+  {
+    "key": "s-8",
+    "shows": "Changed, from the data-science review. Each rule now shows who it was measured on, and the app tests every rule against the teachers’ first ratings before trusting it. (Sample file and numbers.)",
+    "open": "Open the page with #s-8 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 8; Back and Next move one step."
+  },
+  {
+    "key": "s-9",
+    "shows": "New. The setup accepts a dataset the person already has, so a model need not start from nothing. (Sample files.)",
+    "open": "Open the page with #s-9 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 9; Back and Next move one step."
+  },
+  {
+    "key": "s-10",
+    "shows": "The app maps the file onto the model’s three parts. A column that names a person is left out by default.",
+    "open": "Open the page with #s-10 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 10; Back and Next move one step."
+  },
+  {
+    "key": "s-11",
+    "shows": "New, with both reviews in mind. The check a data scientist would run first: what is usable, repeats, missing scores, how the scores spread across the scale (and where the model will be blind), and names removed. Uploaded labels come from unknown raters, so teachers re-rate a sample before they count, exactly as the starting rules are checked. The final exam never uses it. (Sample numbers.)",
+    "open": "Open the page with #s-11 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 11; Back and Next move one step."
+  },
+  {
+    "key": "s-12",
+    "shows": "New, from both reviews. The exam is written first and kept sealed, by two experts whose agreement is measured. Fifty cases can only show a big improvement; 100 shows a real one. The bar is to beat the model as it works today on its starting rules, not merely to exist.",
+    "open": "Open the page with #s-12 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 12; Back and Next move one step."
+  },
+  {
+    "key": "s-13",
+    "shows": "The journey the app generated. Shorter or longer switches parts off or on.",
+    "open": "Open the page with #s-13 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 13; Back and Next move one step."
+  },
+  {
+    "key": "s-14",
+    "shows": "One switch. Tap Public to see its disclaimer.",
+    "open": "Open the page with #s-14 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 14; Back and Next move one step."
+  },
+  {
+    "key": "s-15",
+    "shows": "The disclaimer before going public, now also saying what reaches the AI company.",
+    "open": "Open the page with #s-15 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 15; Back and Next move one step."
+  },
+  {
+    "key": "s-16",
+    "shows": "Invite people from your chats, or copy a link.",
+    "open": "Open the page with #s-16 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 16; Back and Next move one step."
+  },
+  {
+    "key": "s-17",
+    "shows": "Changed, from the UX review: a model can start right after its scale (“Start with this, finish the rest later” on the scale screen); what is left becomes a checklist on its page. The API opens after the first training beats today’s version.",
+    "open": "Open the page with #s-17 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 17; Back and Next move one step."
+  },
+  {
+    "key": "s-18",
+    "shows": "Changed, from both reviews: one card on top, Needs you now; agreement shown within one point and exactly; the details folded (tap to open). What the owner needs to steer. Earlier, from the data-science review: an honest range for when it will be ready and which jar decides it; where the teachers disagree on the scale, with the fix; proof the exam is fair (no speaker on both sides, every point covered); and the gaps, which the teachers already hear first. Totals only, never a person.",
+    "open": "Open the page with #s-18 on its address (as v8 does), or tap the tab \"Start your own\" then its dot 18; Back and Next move one step."
+  },
+  {
+    "key": "b-1",
+    "shows": "A business owner (say, a careers website) finds a model that is ready to use. New, from the data-science review: what it is good at, where it struggles, what it is not for, and its version. Tap Try it first.",
+    "open": "Open the page with #b-1 on its address (as v8 does), or tap the tab \"Use it in your business\" then its dot 1; Back and Next move one step."
+  },
+  {
+    "key": "b-2",
+    "shows": "Trying it on its link, in the same chat box as Will’s, from the app’s code. New, from the data-science review: when it isn’t sure, it says so instead of guessing, and a coach answers. When it convinces you, go back and tap Use it in your business.",
+    "open": "Open the page with #b-2 on its address (as v8 does), or tap the tab \"Use it in your business\" then its dot 2; Back and Next move one step."
+  },
+  {
+    "key": "b-3",
+    "shows": "Before the key: what it costs, who gets paid, and what the business may do. Changed, from the ML-engineering review: a free test key first, a monthly limit, and a promise about the business’s users’ data. (Sample price.)",
+    "open": "Open the page with #b-3 on its address (as v8 does), or tap the tab \"Use it in your business\" then its dot 3; Back and Next move one step."
+  },
+  {
+    "key": "b-4",
+    "shows": "The key, shown once, as at any AI company. Tap Copy. (Sample key.)",
+    "open": "Open the page with #b-4 on its address (as v8 does), or tap the tab \"Use it in your business\" then its dot 4; Back and Next move one step."
+  },
+  {
+    "key": "b-5",
+    "shows": "One request, ready to copy. Changed, from both reviews: tabs for the language the developer uses, “Send it to your developer”, and a “sure” field in every answer, so a product can treat an unsure answer as a draft. (The address is an example.)",
+    "open": "Open the page with #b-5 on its address (as v8 does), or tap the tab \"Use it in your business\" then its dot 5; Back and Next move one step."
+  },
+  {
+    "key": "b-6",
+    "shows": "What the business sees afterwards. New, from both reviews: the questions the model wasn’t sure about can go back to its teachers, with the business’s yes, which pays them and fills the model’s gaps; and versions are pinned, so an update never changes a business’s product without its choice. (Sample numbers.)",
+    "open": "Open the page with #b-6 on its address (as v8 does), or tap the tab \"Use it in your business\" then its dot 6; Back and Next move one step."
+  },
+  {
+    "key": "u-1",
+    "shows": "Trying a model on its link: a chat with an expert in one field. Text first.",
+    "open": "Open the page with #u-1 on its address (as v8 does), or tap the tab \"Try, price and earn\" then its dot 1; Back and Next move one step."
+  },
+  {
+    "key": "u-2",
+    "shows": "Try it: change the price with − and +, or tap a suggestion, and move the slider. The split follows. Infrastructure is one row now: the running costs and WillpowerLab’s part together. WillpowerLab’s part is taken from what is left after running costs, so at the lowest price everything goes to infrastructure. (Sample fee of 20% and founder’s share of 10%: both are yours to set.)",
+    "open": "Open the page with #u-2 on its address (as v8 does), or tap the tab \"Try, price and earn\" then its dot 2; Back and Next move one step."
+  },
+  {
+    "key": "u-3",
+    "shows": "New, from N531. What a teacher sees: their share of the version their answers trained, what it earned, and when it pays out. Money, monthly, above a minimum, once the legal terms are signed; tokens until then. (Sample numbers.)",
+    "open": "Open the page with #u-3 on its address (as v8 does), or tap the tab \"Try, price and earn\" then its dot 3; Back and Next move one step."
+  },
+  {
+    "key": "u-4",
+    "shows": "After the first training passes: create a secret key, as at any AI company. (Sample key.)",
+    "open": "Open the page with #u-4 on its address (as v8 does), or tap the tab \"Try, price and earn\" then its dot 4; Back and Next move one step."
+  },
+  {
+    "key": "p-1",
+    "shows": "An invite to teach stays in the chat after “Not now”. Scroll up, tap Open.",
+    "open": "Open the page with #p-1 on its address (as v8 does), or tap the tab \"Invites and profile\" then its dot 1; Back and Next move one step."
+  },
+  {
+    "key": "p-2",
+    "shows": "Your real profile screen, from the app’s code, with one new section in its own style: AI models, the ones you started (make public, archive, download its data) and the ones you teach. Tap Download its data.",
+    "open": "Open the page with #p-2 on its address (as v8 does), or tap the tab \"Invites and profile\" then its dot 2; Back and Next move one step."
+  },
+  {
+    "key": "p-3",
+    "shows": "Open on WillpowerLab, not open source: the data is free to download for owners and contributors; using the model through its API is paid, and selling something built on the data needs a licence. Speakers’ words are included only once the training yes says so.",
+    "open": "Open the page with #p-3 on its address (as v8 does), or tap the tab \"Invites and profile\" then its dot 3; Back and Next move one step."
+  }
+]
