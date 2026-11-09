@@ -14213,7 +14213,51 @@ N471, N473, N477, N481 and N504:
 No migration in this entry. No rules page yet: matching gets its rules
 page when this is built (N332).
 
-**N560 · A voice note left on the phone goes only under the person who said
+**N560 · Three more ways a Take was lost on the recording screens are
+closed (founder, the Claude Code chat, 9 November 2026, asked three things
+with recommended answers: what the phone's Back does while recording,
+"Ask, like the ✕"; "Try processing again" after "Record again", "Yes, fix
+it"; a notification or link tapped while recording, "Wait, then go").**
+For N553 and Never 3, on the locked recording screens:
+1. **Back while recording asks first.** The phone's Back (on an iPhone,
+the swipe from the left edge) asks the same signed "Discard this take?" as
+the ✕, with the same answers; it no longer throws the Take away without
+asking. Was: Back cancelled the recording and closed the screens.
+2. **"Try processing again" always means the Take on screen.** After a
+slow Take, "Record again" forgets the old Take, so a retry of the new one
+sends the new one again and never restarts the old one; the old one still
+finishes on the server and its "Processing" line keeps tracking it. Was:
+the retry could restart the old Take, and its text could come back as if
+it were the new one (Never 5).
+3. **A notification or a link tapped while a Take is at risk waits.** From
+the start of recording until the server has the Take or it is discarded
+(N553 item 1's moment), a tapped push notification, a WillpowerLab link
+opening the app, or a guest's first Take opening its review once their
+sign-up finishes waits, then goes. Was: it reloaded the page at once and the Take was lost.
+No new words. No migration. The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+§1, Amendments, when built.
+
+**N561 · The iPhone app opens on the chats, and its keyboard behaves like
+an app's (founder, the Claude Code chat, 9 November 2026, before the first
+build goes to Apple, asked two things with recommended answers: open
+straight on the chats, which saves a network round trip and a sign-in
+check on every open, "Open on the chat"; Capacitor's keyboard plugin,
+"Yes, add it").** For N354 and N267, in the iPhone app only; the website
+is unchanged:
+1. **The app opens on the chats.** A signed-in person goes straight to
+the list of chats, with no stop at sign-in. A signed-out person is still
+sent to sign-in (with its "Sign up"), and the check that sends them costs
+nothing for anyone signed in. Amends N354 item 1, which opened the app on
+sign-in. Takes effect with the next app build.
+2. **The keyboard plugin.** No grey bar with arrows and "Done" above the
+keyboard, and the text box stays above the keyboard instead of under it.
+Takes effect with the next app build.
+No new words. No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 C1, when built.
+
+**N562 · A voice note left on the phone goes only under the person who said
 it, and a refusal that can change keeps it (founder, the Claude Code chat,
 9 November 2026, on frontend #1312, which fixed a phone sending every
 waiting voice note under whoever was signed in and deleting a note on a 401
