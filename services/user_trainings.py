@@ -53,6 +53,10 @@ def _take(s: dict) -> dict:
         "session_id": str(s.get("id")),
         "take_index": s.get("take_index"),
         "created_at": s.get("created_at"),
+        # The upload key the Take was sent with (null for a Take made another
+        # way): a Take kept on the phone knows by it whether it arrived, and
+        # whether a newer Take of its project is on the server (N556 item 3).
+        "upload_key": s.get("upload_idempotency_key"),
         "has_slides": bool(_context(s).get("slides")),
         "coach_reviewed": published,
         # The take opens its FEEDBACK page once published (founder

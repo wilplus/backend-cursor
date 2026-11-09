@@ -3959,7 +3959,9 @@ take order.
 O2  A talk is ideal_ready once the coach has corrected every slide; a talk
 with a slide still uncorrected is not.
 O3  A coach's training import is never in the coach's own project list
-(it has no project to archive, so it blocked ""One project at a time"").","O1, O2 -> test_trainings_group_by_talk_and_mark_ideal_ready
+(it has no project to archive, so it blocked ""One project at a time"").
+O4  Each Take carries the upload key it was sent with, so a Take kept on
+the phone knows whether it arrived (N556 item 3).","O1, O2, O4 -> test_trainings_group_by_talk_and_mark_ideal_ready
 O3     -> test_a_training_import_is_not_a_project","Founder 2026-07-13 (arc-grouped trainings). The save-at-publish half (POST /v2/internal/publish-session-results) is retired and answers 410 (routes/v2/canonical_publish.py), so it has no test here."
 tests/test_v3_end_to_end_production_shape.py,Story,"As a speaker, I want my answer to Confident Voice feedback recorded as a valid decision on real production-shaped data, so that the feedback loop works outside tests.","O1  On production-shaped data (a transcript and a DIFFERENT, shorter Ideal
 Text, snapshot-bound), the chain runs end to end and serves a Confident
