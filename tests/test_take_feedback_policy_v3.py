@@ -54,6 +54,10 @@ OUTCOME
       (the same words, the same rule); a moment whose clip could not be
       made is never the fix, so the walk never promises an AI clip it then
       cannot play (the audit's 4.4, N425, N548).
+  O14 When no tool reaches a weak moment (the walk has no fix and my least
+      confident moment reads below the floor), the frame names it so it
+      goes to a coach; a good Take, or one with a fix, names none (the
+      audit's 2.7).
 PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O1 -> test_two_best_clips_in_one_block_get_a_block_each
          O1 -> test_a_one_block_take_is_split_for_two_moments
@@ -72,6 +76,7 @@ PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O12 -> test_a_fix_that_worked_on_a_slide_is_not_given_there_again
          O12 -> test_with_no_walk_before_mine_is_picked_as_it_always_was
          O13 -> test_a_moment_whose_ai_clip_cannot_be_made_is_never_the_fix
+         O14 -> test_a_weak_moment_no_tool_reaches_is_named_for_a_coach
 WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
          2026-10-18 ("words first, then voice"), 2026-10-21 (N108, "the
          voice decides"; N112, "There was no single rewrite in the take"), 2026-10-22 (N113, "After the
@@ -749,11 +754,11 @@ def test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_versio
 
 # ── on a plan, one moment is where the level shows (G7, N209) ────────────
 
-def _paced_frame(wpms, unsaid=(), **options):
+def _paced_frame(wpms, unsaid=(), scores=(0.95, 0.8, -0.2, 0.3), pause=None, **options):
     """Four slides, one clip each: p0 the best by far, p1 the second best,
     p3 the third, p2 the last; each clip said at its own pace. A clip in
-    ``unsaid`` has no transcript, so no practice can open on it."""
-    scores = (0.95, 0.8, -0.2, 0.3)
+    ``unsaid`` has no transcript, so no practice can open on it. ``pause``:
+    every clip's pause ratio (by default a weak voice runs on)."""
     pieces, snippets, at = [], [], 0
     for index, (score, wpm) in enumerate(zip(scores, wpms)):
         sid = f"p{index}"
@@ -767,7 +772,8 @@ def _paced_frame(wpms, unsaid=(), **options):
                          "start_offset_ms": index * 5000, "duration_ms": 5000,
                          "transcript": None if sid in unsaid else text,
                          "metrics": {"wpm": wpm, "voice_confidence": {
-                             "version": "voice-confidence-universal-v3", "score": score}, "pause_ratio": _rushed(score)}})
+                             "version": "voice-confidence-universal-v3", "score": score},
+                             "pause_ratio": _rushed(score) if pause is None else pause}})
     served = " ".join(piece["text"] for piece in pieces)
     return build_shadow_frame(
         take_document={"take_session_id": "take-2", "text": served, "pieces": pieces},
@@ -850,6 +856,22 @@ def test_a_moment_whose_ai_clip_cannot_be_made_is_never_the_fix():
     # With no words to practise, its clip cannot be made: it is not the fix.
     assert ("p3", "weakest", "voice", None) not in _slots(
         _paced_frame((140, 140, 140, 200), unsaid=("p3",)))
+
+
+def test_a_weak_moment_no_tool_reaches_is_named_for_a_coach():
+    from services.take_feedback_policy_v3 import FIX_WITHOUT_TOOL
+    even = (140, 140, 140, 140)
+    # p2 reads far below the floor, but its voice shows nothing the AI clip
+    # teaches and its words need no help: no fix, and p2 goes to a coach.
+    unfixed = _paced_frame(even, pause=0.15)
+    assert _slots(unfixed) == [("p0", "strongest", None, None)]
+    assert unfixed[FIX_WITHOUT_TOOL] == {"block_id": next(
+        b["block_id"] for b in unfixed["blocks"] if b["slide_index"] == 2), "snippet_id": "p2"}
+    # A good Take: nothing below the floor, nothing for a coach.
+    assert _paced_frame(even, scores=(0.95, 0.9, 0.85, 0.9), pause=0.15)[FIX_WITHOUT_TOOL] is None
+    # A Take with a fix: the walk gives it; nothing for a coach.
+    fixed = _paced_frame((140, 140, 140, 200))
+    assert _slots(fixed)[1][1] == "weakest" and fixed[FIX_WITHOUT_TOOL] is None
 
 
 def test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan(monkeypatch):

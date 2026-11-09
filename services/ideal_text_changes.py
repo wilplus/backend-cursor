@@ -1660,6 +1660,7 @@ class _ChangesRun:
             parts=_parts,
         )
         declined, frozen_ids = self._declined_rewrites(_service_session, _parts)
+        from services.judgement_follow_up import follow_up_without_tool
         return prepare_first_client_feedback(
             database=self.deps.first_client_repository,
             session=_service_session,
@@ -1673,6 +1674,11 @@ class _ChangesRun:
             declined_rewrites=declined,
             frozen_candidate_ids=frozen_ids,
             walk=self._walk_inputs(_service_session, _service_doc),
+            # A moment no tool reaches goes to a coach, blind (the audit's
+            # 2.7), raised with this run's database.
+            on_fix_without_tool=lambda snippet_id: follow_up_without_tool(
+                self.db, take_session_id=str((_service_session or {}).get("id") or _arm_sid or ""),
+                snippet_id=snippet_id, owner_user_id=str(self.user_id)),
         )
 
     def _walk_inputs(self, session: Any, doc: Any) -> dict:

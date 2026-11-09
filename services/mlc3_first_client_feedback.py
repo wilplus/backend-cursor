@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 from hashlib import sha256
-from typing import Any, NamedTuple, Optional
+from typing import Any, Callable, NamedTuple, Optional
 import uuid
 
 from services.coach_guidance_delivery import principal_is_allowlisted
@@ -633,6 +633,21 @@ def _frame_record(frame: dict) -> tuple[list, dict]:
     return exceptions, lanes
 
 
+def _send_without_tool(frame: Any, send: Optional[Callable[[str], Any]],
+                       take_id: str) -> None:
+    """The moment no tool reaches, to a coach (N550). Never
+    raises: the feedback never waits on the coach's queue."""
+    from services.take_feedback_policy_v3 import FIX_WITHOUT_TOOL
+    low = frame.get(FIX_WITHOUT_TOOL) if isinstance(frame, dict) else None
+    if send is None or not isinstance(low, dict) or not low.get("snippet_id"):
+        return
+    try:
+        send(str(low["snippet_id"]))
+    except Exception as error:  # noqa: BLE001 -- serving goes on
+        logger.warning("first_client: fix without tool not sent take=%s: %s",
+                       take_id, error, exc_info=True)
+
+
 def prepare_first_client_feedback(
     *,
     database: Any,
@@ -647,6 +662,7 @@ def prepare_first_client_feedback(
     declined_rewrites: Any = frozenset(),
     frozen_candidate_ids: Any = frozenset(),
     walk: Optional[dict] = None,
+    on_fix_without_tool: Optional[Callable[[str], Any]] = None,
 ) -> list[dict] | V3Unavailable | None:
     """Rows, a typed failure, or ``None`` when V3 does not apply here.
 
@@ -667,6 +683,11 @@ def prepare_first_client_feedback(
     database (``plan_level``, ``key_line``, ``held_words``;
     `IdealTextChanges._walk_inputs`, N246). Read there because this
     module's ``database`` cannot read a plan; {} off a plan.
+
+    ``on_fix_without_tool(snippet_id)``: called when the frame names the
+    Take's least confident moment no tool reaches (N550), so the
+    caller sends it to a coach with its own database. Never in the way:
+    a failure is logged and serving goes on.
     """
     take = session if isinstance(session, dict) else {}
     principal_id = str(take.get("owner_principal_id") or "")
@@ -711,6 +732,7 @@ def prepare_first_client_feedback(
         **(walk or {}),
     )
     _log_coverage(take_id, take.get("take_index"), frame)
+    _send_without_tool(frame, on_fix_without_tool, take_id)
     inventory_detail: list[str] = []
     inventory = prepare_v3_service_inventory(
         frame=frame,

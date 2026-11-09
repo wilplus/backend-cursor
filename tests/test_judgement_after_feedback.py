@@ -13,11 +13,16 @@ OUTCOME
   O4  A clip with no read, and an Audio unclear answer, send nothing.
   O5  A skipped bookmark, a landed or a dismissed practice settle the
       moment without an answer.
+  O6  A moment no tool we have reaches (the walk has no fix, and it reads
+      below the floor) still reaches a coach: one blind request, once,
+      named in its trace; one that already has a request keeps it (the
+      audit's 2.7).
 PROVES   O1 -> test_the_open_raises_one_request_of_the_machines_kind
          O2 -> test_the_judgement_after_the_praise_sets_the_answer_kind
          O3 -> test_a_practice_judgement_that_disagrees_is_an_ambiguity
          O4 -> test_no_read_and_audio_unclear_send_nothing
          O5 -> test_skips_and_closed_practices_settle_without_an_answer
+         O6 -> test_a_moment_no_tool_reaches_still_reaches_a_coach
 WHY      Founder 2026-10-01, F1: "Opening a bookmark never asks for a
          judgment first." (The coach's blind gate on the speaker's side is
          proven in tests/test_the_machine_heard.py.)
@@ -212,3 +217,20 @@ class OnTests(unittest.TestCase):
         _open(db, "confident", False)
         _answer(db, "in_between", "confident", False)
         self.assertEqual(db.request["answer_kind"], "praise")
+
+    def test_a_moment_no_tool_reaches_still_reaches_a_coach(self):
+        def send(db):
+            return _with_read("weak", False, lambda: jf.follow_up_without_tool(
+                db, take_session_id="take-1", snippet_id="snip-1", owner_user_id="owner-1"))
+        db = _Db()
+        self.assertTrue(send(db))
+        (raised,) = db.raised
+        self.assertEqual((raised["kind"], raised["raised_on"]), ("error", "open"))
+        self.assertEqual(raised["request_trace"]["raised_for"], jf.WITHOUT_TOOL)
+        # Once: the Take read again raises nothing more.
+        self.assertFalse(send(db))
+        self.assertEqual(len(db.raised), 1)
+        # A moment that already has a request keeps it.
+        kept = _Db(request={"id": "req-0"})
+        self.assertFalse(send(kept))
+        self.assertEqual(kept.raised, [])

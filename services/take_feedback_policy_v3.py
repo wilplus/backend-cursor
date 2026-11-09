@@ -818,8 +818,13 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
     for moment in picked["shown"]:
         _take_clip(by_id[moment["block_id"]], moment["candidate_id"], selections)
     values = {r["candidate_id"]: r["read"]["value"] for r in reads}
+    low = moment_pick.unfixed(reads, picked["shown"])
+    snippet_of = {candidate["candidate_id"]: candidate.get("snippet_id") for _block, candidate in showable}
     return {"shown": picked["shown"],
-            "values": {m["block_id"]: values.get(m["candidate_id"]) for m in picked["shown"]}}
+            "values": {m["block_id"]: values.get(m["candidate_id"]) for m in picked["shown"]},
+            "unfixed": ({"block_id": low["block_id"],
+                         "snippet_id": str(snippet_of.get(low["candidate_id"]) or "")}
+                        if low and snippet_of.get(low["candidate_id"]) else None)}
 
 
 def _row_clearer_ok(showable: list[tuple],
@@ -1232,6 +1237,25 @@ SHOWN_MARKS = ("most_confident", "highest_moment", "level_key", "practice_prompt
 #: The key on the One thing walk's Clearer fix that names its voice backup
 #: (N547). Never served.
 FIX_BACKUP = "fix_backup"
+
+
+#: The frame's key for the moment no tool reached (N550).
+FIX_WITHOUT_TOOL = "fix_without_tool"
+
+
+def _fix_without_tool(blocks: list[dict], picked: dict, take_id: Any) -> Optional[dict]:
+    """``{"block_id", "snippet_id"}`` of the Take's least confident moment
+    when the One thing walk has no fix (``one_fix`` "none") and that moment
+    reads below the floor (`moment_pick.unfixed`); None on a good Take, or
+    when the walk has a fix or the Sniper. Logged, so the moments no tool
+    reaches can be counted."""
+    strongest = next((b for b in blocks if b.get("walk_slot") == "strongest"), None)
+    low = picked.get("unfixed")
+    if strongest is None or strongest.get("one_fix") != "none" or not low:
+        return None
+    logger.info("one thing: fix_without_tool take=%s block=%s snippet=%s",
+                take_id, low["block_id"], low["snippet_id"])
+    return low
 
 
 def _sniper_first(pace: Optional[dict], fixes: list[dict], value_of: dict) -> bool:
@@ -2276,6 +2300,11 @@ def build_shadow_frame(
             "missing_or_weak_evidence_language": "tentative",
         },
         "coverage": coverage,
+        # The walk has no fix, and the Take's least confident moment reads
+        # below the floor: no tool we have reaches it, so it goes to a
+        # coach, blind (N550; `prepare_first_client_feedback`).
+        # Never served to the speaker.
+        FIX_WITHOUT_TOOL: _fix_without_tool(blocks, picked, take_id),
         "blocks": blocks,
         "selected_confidence": confidence_selections,
         "verbal_lanes": {

@@ -1673,11 +1673,16 @@ coaches who already judged it are asked to listen again, blind; an
 agreeing judgement confirms the kind once.
 O4  A clip with no read, and an Audio unclear answer, send nothing.
 O5  A skipped bookmark, a landed or a dismissed practice settle the
-moment without an answer.","O1 -> test_the_open_raises_one_request_of_the_machines_kind
+moment without an answer.
+O6  A moment no tool we have reaches (the walk has no fix, and it reads
+below the floor) still reaches a coach: one blind request, once,
+named in its trace; one that already has a request keeps it (the
+audit's 2.7).","O1 -> test_the_open_raises_one_request_of_the_machines_kind
 O2 -> test_the_judgement_after_the_praise_sets_the_answer_kind
 O3 -> test_a_practice_judgement_that_disagrees_is_an_ambiguity
 O4 -> test_no_read_and_audio_unclear_send_nothing
-O5 -> test_skips_and_closed_practices_settle_without_an_answer","Founder 2026-10-01, F1: ""Opening a bookmark never asks for a judgment first."" (The coach's blind gate on the speaker's side is proven in tests/test_the_machine_heard.py.)"
+O5 -> test_skips_and_closed_practices_settle_without_an_answer
+O6 -> test_a_moment_no_tool_reaches_still_reaches_a_coach","Founder 2026-10-01, F1: ""Opening a bookmark never asks for a judgment first."" (The coach's blind gate on the speaker's side is proven in tests/test_the_machine_heard.py.)"
 tests/test_lab_analysis_dispatch.py,Story,"As a speaker, I want my Take processed even when the job queue is down, the upload to return without waiting, and a first Take that could not build its Ideal Text reported as failed, so that record -> process -> Ideal Text never lies about where it stands.","O1  If the queue fails, the Take is processed right away instead.
 O2  In background mode the upload answers ""pending"" at once, and the Take
 is marked ready when the work finishes.
@@ -3361,7 +3366,11 @@ O13 A moment is my fix with the AI clip only when the clip can be made
 for it: the picker reads its voice problem with the clip's own choice
 (the same words, the same rule); a moment whose clip could not be
 made is never the fix, so the walk never promises an AI clip it then
-cannot play (the audit's 4.4, N425, N548).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
+cannot play (the audit's 4.4, N425, N548).
+O14 When no tool reaches a weak moment (the walk has no fix and my least
+confident moment reads below the floor), the frame names it so it
+goes to a coach; a good Take, or one with a fix, names none (the
+audit's 2.7).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O1 -> test_two_best_clips_in_one_block_get_a_block_each
 O1 -> test_a_one_block_take_is_split_for_two_moments
 O1 -> test_a_short_take_still_shows_two_moments
@@ -3378,7 +3387,8 @@ O10 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
 O11 -> test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan
 O12 -> test_a_fix_that_worked_on_a_slide_is_not_given_there_again
 O12 -> test_with_no_walk_before_mine_is_picked_as_it_always_was
-O13 -> test_a_moment_whose_ai_clip_cannot_be_made_is_never_the_fix","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level""); 2026-10-30 (N289: ""the praise clips just get the praise"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-31 (N309, the One thing walk: ""apply to it the one thing walk""); 2026-11-02 (N323 item 6: ""yes, the pace game for everyone when rushing is the issue""); 2026-11-02 (N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back"": ""go"")."
+O13 -> test_a_moment_whose_ai_clip_cannot_be_made_is_never_the_fix
+O14 -> test_a_weak_moment_no_tool_reaches_is_named_for_a_coach","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level""); 2026-10-30 (N289: ""the praise clips just get the praise"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-31 (N309, the One thing walk: ""apply to it the one thing walk""); 2026-11-02 (N323 item 6: ""yes, the pace game for everyone when rushing is the issue""); 2026-11-02 (N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back"": ""go"")."
 tests/test_take_match.py,Story,"As a speaker, after my Take, I want the page that chose who hears it to come back once with someone new who fits what I asked, so that the right person can answer; and as that person, I want to hear the Take before anyone knows who I am, so that answering is my yes (founder, 4 November 2026, N477, N478, N481, N485, N486, N493).","O1  With no ring row, or while sending a Take is off, nobody is ever
 suggested: the speaker's routes answer 404.
 O2  After a Take, one person is suggested: someone who shares a community
