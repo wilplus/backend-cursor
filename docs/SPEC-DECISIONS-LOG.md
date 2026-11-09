@@ -14668,3 +14668,33 @@ founder's OK (Never 4); then version 9 of the launchpad's prototype is
 locked (N566 item 1).
 Not in force until built and merged. No migration in this entry.
 No rules page yet: a page for the launchpad with its first part (N566).
+
+**N571 · A person's first Take fills the setup of their model: no setup
+questions before it; after the walk, "Start your own" opens already filled
+from the five answers, and the person corrects it (founder, the Claude Code
+chat, 9 November 2026, asked to rebuild the launchpad's test drive inside
+"The First Take" <https://claude.ai/artifact/C78wBzWUKz7MaHjxrnsPVX>: "and
+include the questions for the set up of the model at the beginning?"; told
+that Never 3 allows nothing before the first Take but Will's welcome and
+"Start your first recording" (N492), then asked where the setup's questions
+come, "From the first Take's answers", the recommended option; and where
+the launchpad goes in that prototype, "After the first Take", the
+recommended option).** For N401, N462, N528, N566 and N570; amends N528
+item 4 and N570 item 1 for a person who has recorded their first Take:
+1. **Nothing new comes before the first Take.** Never 3 and N492 stand: Will's
+welcome, then "Start your first recording".
+2. **The first Take's answers fill the setup's Describe chapter:** the
+problem from "Your field" (N462 slide 1), how they solve it today from
+"Worth sharing" (slide 2); the app drafts how they will teach it, the
+model's name and the teachers' question (N570 item 1) from all five. The
+person corrects any of it; nothing is asked twice.
+3. **"Start your own" opens filled after the walk,** from "AI models" in the
+list of chats (N528 item 1). Someone who has not recorded a first Take
+answers the three questions themselves, as before.
+4. **In the prototype,** the launchpad lives in "The First Take" after the
+first Take, in its own drawing, reached from the list: "AI models" under the
+people, and a coach's "Your queue" row is the one queue (N563 item 1). The
+first Take itself does not change.
+**Open:** the new words, for the founder's OK on the prototype (Never 4).
+Not in force until built and merged. No migration in this entry.
+No rules page yet: a page for the launchpad with its first part (N566).
