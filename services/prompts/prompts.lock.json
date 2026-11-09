@@ -449,7 +449,7 @@
     "walk_voice.system": {
       "kind": "static",
       "module": "walk_voice",
-      "sha256": "37a0a428779af8c33e8763861e79a25532746e3a14cd2f736909016766ad424a"
+      "sha256": "ed8a4cc087d598386270bcaed1da6ce5dd37f5d9d35e9cda7f13b45c7e7c705d"
     },
     "whisper_snippet.priming": {
       "kind": "source_ref",

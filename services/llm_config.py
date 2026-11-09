@@ -664,7 +664,7 @@ fitted to them. Code keeps a question only when it matches its template
 
 SPEC_WALK_VOICE = LLMSpec(
     model=STRONG_MODEL,
-    temperature=0.7,
+    temperature=0.5,
     max_tokens=160,
     timeout_seconds=6.0,
 )

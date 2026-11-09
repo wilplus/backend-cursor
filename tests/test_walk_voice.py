@@ -10,8 +10,9 @@ OUTCOME
       my own words; anything else is refused (N557, N560, Never 1).
   O2  Will writes only for a speaker the writer is on for, on their own
       Take, at a step the walk has; otherwise the walk says its signed line.
-  O3  A draft that fails the check gets one more try, told why; a second
-      failure, or a failed call, gives the walk its signed line.
+  O3  A draft that fails the check gets another try, told what was refused
+      and why, up to three in all; then, or after a failed call, the walk
+      says its signed line.
 PROVES   O1 -> test_only_plain_kind_words_reach_me
          O2 -> test_will_writes_only_for_me_on_my_take_when_it_is_on
          O3 -> test_a_refused_draft_gets_one_more_try_then_the_signed_line
@@ -103,7 +104,7 @@ def test_a_refused_draft_gets_one_more_try_then_the_signed_line(writer):
     answers.extend(["Let's fix it. Listen. Try.", "Want to try it slower?"])
     assert walk_voice.write(_Db(), "me", "t1", "try", "s1") == "Want to try it slower?"
     assert "was refused" in asked[1]
-    # Twice refused, or no answer at all: the walk says its signed line.
-    answers.extend(["You paused 3 times.", "You paused 4 times."])
+    # Refused every time, or no answer at all: the walk says its signed line.
+    answers.extend(["You paused 3 times.", "You paused 4 times.", "You paused 5 times."])
     assert walk_voice.write(_Db(), "me", "t1", "try", "s1") is None
     assert walk_voice.write(_Db(), "me", "t1", "try", "s1") is None

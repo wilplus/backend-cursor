@@ -66,7 +66,10 @@ BANNED_PHRASES: tuple[str, ...] = (
     "make it land", "makes it land", "land the", "make it stick",
     "made the idea stick", "give your words weight", "gave your words weight",
     "resonate", "space to breathe", "gives weight", "give weight", "gave weight",
-    "adds weight", "added weight", "as if you", "you should", "you need to",
+    "adds weight", "added weight", "gave it weight", "gives it weight", "weighty",
+    "brought the idea home", "bring it home", "brings it home", "hit home", "hits home",
+    "carried the idea", "carries the idea",
+    "moment to settle", "time to settle", "let it settle", "as if you", "you should", "you need to",
     "great job", "good job", "you've got this",
 )
 _WORD_RE = re.compile(r"[a-z']+")
@@ -145,12 +148,14 @@ def compose(context: dict, step: dict) -> Optional[str]:
         logger.info("walk voice: refused (%s) attempt=%d: %r", reason, attempt + 1, text[:240])
         # One more try, told what was refused (the walk's budget allows it:
         # a call takes about a second).
-        user += f"\n\nYour last draft was refused ({reason}). Write it again within the rules."
+        user += (f"\n\nYour draft \"{text[:240]}\" was refused ({reason}). "
+                 "Write it again within the rules, avoiding that.")
     return None
 
 
-#: Tries before the walk says its signed line.
-ATTEMPTS = 2
+#: Tries before the walk says its signed line: the checker refuses real
+#: idioms often enough that one retry is not always enough (2026-11-09).
+ATTEMPTS = 3
 
 
 def _unwrapped(text: str) -> str:

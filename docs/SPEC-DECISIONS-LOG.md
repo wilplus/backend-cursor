@@ -14240,6 +14240,16 @@ replies; a reply the founder turns down becomes a row.
 5. **Off until the founder turns it on** (`rings.WALK_VOICE`, the panel). The
 screens' layout and order stay locked; only their words are written.
 6. **Tests and evals in one doc:** `docs/TEST-STORIES.md`, generated.
+7. **Praise says how it sounded to us, never a verdict** (founder, the same
+chat: "maybe not always say this was your most confident moment, because we
+don't want to judge them. Say something like, wow, to our system, this
+sounded really confident. Let me tell you why"): Will's praise opens with
+how it sounded to us, in new words each time, then why; a sound only when
+it was measured; "to us" and "to our ears" interchangeably (founder: "or you
+can make 'to us' interchangeably with to our ears"). The signed line it
+stands in for becomes "To our ears, this one sounded really sure." or "To
+us, this one sounded really sure.", in turn (was "This was your most
+confident moment.").
 No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 K.
