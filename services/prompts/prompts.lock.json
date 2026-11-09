@@ -446,6 +446,11 @@
       "module": "verbal_read",
       "sha256": "14ec80153bf161150497b1658fe8e7573ba22360e3eaec48990074f1ef00c6e4"
     },
+    "walk_voice.system": {
+      "kind": "static",
+      "module": "walk_voice",
+      "sha256": "37a0a428779af8c33e8763861e79a25532746e3a14cd2f736909016766ad424a"
+    },
     "whisper_snippet.priming": {
       "kind": "source_ref",
       "module": "pending",

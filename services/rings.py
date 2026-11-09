@@ -87,10 +87,17 @@ WALK_INNER_CONTEXT = "walk_inner_context"
 #: person new to the speaker who fits it. No row until the founder makes one
 #: in the panel; until then it is off for everyone, the founder included.
 TAKE_MATCH = "take_match"
+#: Will writes the walk's messages from the Take's facts by rules the
+#: founder sets, not signed lines (founder 2026-11-09, N560;
+#: services/walk_voice.py). No row until the founder makes one in the
+#: panel; until then it is off for everyone, the founder included, and the
+#: walk says its signed lines.
+WALK_VOICE = "walk_voice"
 GATED_FEATURES: tuple[str, ...] = (
     CANONICAL_TAKE_ROWS, CONFIDENCE_LEARNING_WRITES, EXERCISE_SERVICE,
     EXERCISE_SERVICE_UI, COACH_INLINE_AUTHORING, CONFIDENT_MOMENT_BUNDLES,
     ROOTING_COVERAGE, TEMPO_STEP, PLAN_CALLS, WALK_INNER_CONTEXT, TAKE_MATCH,
+    WALK_VOICE,
 )
 
 CONSENT_PURPOSES: tuple[str, ...] = (

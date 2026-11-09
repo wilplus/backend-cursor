@@ -151,6 +151,13 @@ def _question_kind(inp: dict) -> Any:
     return {"mark": asks_about_a_product_or_treatment(str(inp.get("words") or ""), user_id=None)}
 
 
+def _walk_voice(inp: dict) -> Any:
+    """Will's walk message (N560): the production writer and its check, on
+    the row's context and step; None when the words fail ``check``."""
+    from services.walk_voice import compose
+    return compose(inp.get("context") or {}, inp.get("step") or {})
+
+
 ADAPTERS: dict[str, Callable[[dict], Any]] = {
     "praise_line": _coach_answer("praise_line"),
     "clearer_version": _coach_answer("clearer_version"),
@@ -166,4 +173,5 @@ ADAPTERS: dict[str, Callable[[dict], Any]] = {
     "emphasis_phrase": _emphasis_phrase,
     "will_question": _will_question,
     "question_kind": _question_kind,
+    "walk_voice": _walk_voice,
 }
