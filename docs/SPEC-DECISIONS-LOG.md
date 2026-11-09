@@ -15245,3 +15245,54 @@ no paid API if non-commercial").** For N566, N575, N577 and N580 to N583:
 8. **Never 1 holds:** the numbers live only in the owner's setup; people
    see the answer in words and its colour.
 No migration. No rules page yet.
+
+**N586 · The way in through someone's link says who they are and what you
+can learn with them; the list of chats invites people with other skills;
+Will tells you what you know can earn tokens (founder, the Claude Code
+chat, 9 November 2026: "show me on the prototype how Kasia can set up also
+her own chat"; "It's okay if she wants to. These questions, when she joins
+through Artur's link, but she would need to be introduced, like who he is,
+he's a speaking coach, and that in this chat, she has been invited by the
+speaking coach so she can practice the speaking. But if she wants someone
+else, some other skills, to share the skills with her, she can invite those
+persons to join WillpowerLab so that they can also create their own chats
+so that she can practice, for example, gymnastics, she can practice
+programming, she can practice languages ... And she should be guided to do
+that from the list of chats. And she should be informed that her skills can
+also be used to get the tokens and use the tokens to create her own chat and
+share her own knowledge with other people automatically if she wants to.
+Please rewrite it as Steven Pinker and introduce to the onboarding of a
+person invited through the link so that the specialization of the user that
+invited the new person is displayed in the onboarding as per the
+specialization of the user, like what they can learn from there").** For
+N308, N335, N496, N572, N573 and N578 to N583:
+1. **Who invited you, and what you can learn there.** The join page and
+   the first lines of the inviter's chat say who the inviter is, by the
+   specialization they gave in the setup (N582 item 1, step 3), and what a
+   person can learn in their chat. Will drafts the lines from that step and
+   the host confirms or changes them there; they are the host's own words
+   in their own chat (N578). For Artur: a speaking coach, whose chat is for
+   practising speaking. Written plainly, as Steven Pinker would; Will's
+   drafts wait for the founder's OK.
+2. **The join page's Will line changes:** "Your own chat with Will, your
+   speaking coach" (N310 item 3, N335 item 2) gives way to a line saying
+   that Will's chat is where you can set up a chat of your own (N580 item
+   2); its words are drafted for the founder's OK.
+3. **The inviter's questions are yours to take or leave.** Someone who
+   joins to share what they know is not made to answer them; whoever wants
+   to practise with the inviter answers them, in Artur's chat inside the
+   first Take, one slide at a time, as now (Never 3). The rest of the way
+   in is N572's tree with N573's choice.
+4. **The list of chats invites people with other skills.** Under the chats,
+   a short card says that anyone who knows something can teach it here
+   (gymnastics, programming, a language), and that when you invite them
+   they set up their own chat in their Will's chat, so you can learn with
+   them as you do with Artur; "Invite someone" opens the add sheet (N310).
+   Its words are drafted for the founder's OK.
+5. **Will tells you what you know is worth.** In your Will's chat, Will says
+   in plain words that what you know can earn tokens (by teaching models in
+   your field, N577 and N582 item 7), that tokens can go into your own chat,
+   and that your chat can share what you know while you are away (N580),
+   if you want it; "Set up my chat" starts the setup (N582). What a chat
+   costs in tokens is decided later.
+No migration. No rules page yet.
