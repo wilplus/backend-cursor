@@ -663,7 +663,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 *Why:* Founder 2026-10-15; Privacy 3.7 section 4.
 
-### As a person in WillpowerLab, I want my chat on my own website, so that a customer who taps "Ask {me}" asks me there, I answer here out loud, and they hear me there (N566).
+### As a person in WillpowerLab, I want my chat on my own website, so that a customer who taps "Ask {me}" asks me there, I answer here out loud, and they hear me there (N567).
 
 `tests/test_chat_widget.py` · Story
 

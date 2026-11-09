@@ -265,7 +265,7 @@ def _insert(database: Any, thread: str, member: str, body: str, meta: dict) -> O
 def _deadline_known(database: Any, user_id: Optional[str]) -> Optional[date]:
     """A day the joiner already picked for their plan (N254: one project, one
     deadline), or None; always None for a widget's visitor, who has no plan
-    (N566)."""
+    (N567)."""
     from services.plan_flow import _parse_day
     if not user_id:
         return None
@@ -308,7 +308,7 @@ def begin(database: Any, thread: str, owner_id: str, joiner_id: str) -> None:
 
 def begin_for_visitor(database: Any, thread: str, owner_id: str, owner_member: str,
                       visitor_member: str) -> list[dict]:
-    """A widget's chat just opened (N566 item 4): the owner's first lines to
+    """A widget's chat just opened (N567 item 4): the owner's first lines to
     the visitor, up to the first question, as ``begin`` does for someone who
     joins; the rows posted. Best-effort: the widget opens either way."""
     try:
@@ -326,7 +326,7 @@ def _advance(database: Any, thread: str, owner: str, joiner: str, joiner_id: Opt
              questions: dict, start: int, *, first: bool = False, closing: bool = True) -> list[dict]:
     """Post lines from ``start``: sentences, then the next question; at the
     end, the closing line (not in a widget, whose visitor cannot tap "+",
-    N566) and the card. Returns the rows posted."""
+    N567) and the card. Returns the rows posted."""
     lines = questions["lines"]
     posted: list[dict] = []
     i = start
@@ -446,7 +446,7 @@ def answer(database: Any, user_id: Any, thread_id: Any, message_id: Any, payload
 def answer_as(database: Any, me: dict, user_id: Optional[str], message_id: Any, payload: Any) -> dict:
     """``answer`` for a seat in the chat: a member's (``user_id``, whose plan
     takes the deadline) or a widget visitor's (no ``user_id``, no plan, no
-    closing line, N566)."""
+    closing line, N567)."""
     from services import chats
     thread, my_member = str(me["thread_id"]), str(me["id"])
     rows = _setup_rows(database, thread)

@@ -1,7 +1,7 @@
 """
 STORY    As a person in WillpowerLab, I want my chat on my own website, so that
          a customer who taps "Ask {me}" asks me there, I answer here out loud,
-         and they hear me there (N566).
+         and they hear me there (N567).
 OUTCOME
   O1  Before anything is agreed, the widget learns only whose chat it is
       and the three questions a visitor may ask; a wrong or replaced link
