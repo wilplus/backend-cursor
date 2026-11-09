@@ -613,6 +613,23 @@ O2 -> ChatSafetyTest::test_a_report_keeps_the_last_five_and_reaches_the_founder"
 tests/test_chat_talk.py,Story,"As a speaker, I want Will to read my whole talk slide by slide, so that his answers refer to what I actually said on each slide.","O1  Each slide lists its bullet points and what I said on it.
 O2  A slide I said nothing on reads ""(nothing yet)"".
 O3  Words not tied to a slide are listed on their own.","O1, O2, O3 -> test_each_slide_carries_its_points_and_what_they_said",Founder 2026-10-15; Privacy 3.7 section 4.
+tests/test_chat_widget.py,Story,"As a person in WillpowerLab, I want my chat on my own website, so that a customer who taps ""Ask {me}"" asks me there, I answer here out loud, and they hear me there (N567).","O1  Before anything is agreed, the widget learns only whose chat it is
+and the three questions a visitor may ask; a wrong or replaced link
+opens nothing, the same answer as the join page's.
+O2  ""Agree and start"" makes the visitor's own chat with me: in my list it
+is ""Widget / Visitor 1"" with ""From {site}"" under it, and it does not
+count toward the day's joins through my link.
+O3  The visitor taps through my join questions (with no closing line
+about ""+""), then one question, which reaches me marked for my spoken
+answer; a second question waits until I answer.
+O4  My answer reaches the visitor in the widget, and its voice plays for
+them; nobody without the visitor's secret reads or plays anything.
+O5  ""Keep this chat"": a signed-in person takes the visitor's seat, and my
+list names the chat after them, ""Widget / {name}"".","O1 -> ChatWidgetTest::test_the_widget_learns_only_whose_chat_it_is
+O2 -> ChatWidgetTest::test_agreeing_makes_a_chat_of_the_visitors_own
+O3 -> ChatWidgetTest::test_the_visitor_taps_my_questions_then_asks_one
+O4 -> ChatWidgetTest::test_my_answer_plays_for_the_visitor_and_no_one_else
+O5 -> ChatWidgetTest::test_keeping_the_chat_names_it_after_them","The founder's prototype ""Your chat, on any website"" (5 November 2026): one link, shared as a link or as a line of code."
 tests/test_chats.py,Story,"As the founder, I want my own chats with a colleague and a customer, apart from my chat with Will, where I answer with one of three emoji or a voice note, and start something new with a photo or a file, so that I can see the chats between people working before anyone else is in them.","O1  As a user, I have my chats with no ring at all: the list answers
 without the rings ever being read (N456; was ring 6 only). As a
 server, I answer nobody who is not signed in, and write nothing.

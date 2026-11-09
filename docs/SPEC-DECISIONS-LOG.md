@@ -14499,3 +14499,73 @@ Not in force until built and merged. Its migrations (models, cards,
 queues, shares, keys, uploads) each get their outside review.
 No rules page yet: a page for the launchpad with its first part, on the
 founder's OK (N107).
+
+**N567 · Your chat on any website: the same link, as one line of code
+(founder, the Claude Code chat, 5 November 2026, on the clickable prototype
+"Your chat, on any website" <https://claude.ai/artifact/E8Lt28gFBZbLCtLd1XFu2f>
+(version 4): "there should be a switch that normally have the link and just
+one tiny switch you can add that changes the link into the code and short
+explanation where to add it"; "copy my link should stay as it is and open
+the same what + button opens and only there is the tiny switch"; "you can
+remove or minimise the 3 columns ... into a single line ... Only the two of
+you are in it"; then "Please design the widget to make it real. You have my
+words and the new, you have my okay on the new words").** For N308, N335,
+N367, N471 and N487; a person's widget beside a client's (N223):
+1. **One link, two ways to share it.** "Add someone to chat with", opened by
+the list's "+" and now also by **Copy my link** in the ☰ menu (which opened
+nothing and copied at once, N367), has under its title one card with a
+small switch: **Put this chat on your website**, "Customers ask you there,
+and you answer here. Each answer teaches your chat, so it learns from real
+questions as they come in." Off, the sheet shows the link, **Copy my link**
+and "Only the two of you are in it." On, the link becomes one line of code,
+`<script src="https://willpowerlab.com/w.js" data-link="<token>" async></script>`,
+with "Paste this line just before </body> on your website, or send it to
+whoever builds your site.", **Copy my code** and "Each customer has a chat
+of their own with you." The three tiles (1. Paste it, 2. They open it, 3.
+You chat) are gone. Nothing else in the ☰ menu changes.
+2. **Where it opens.** On any site where the line is pasted: no list of
+sites, nothing to type. The code carries the link's token, so a new link,
+or a link switched off, stops every pasted line with it.
+3. **On the site.** `w.js` draws one pill at the bottom right, the owner's
+circle and **Ask {name}**, inside a shadow root, and opens the chat in an
+iframe to willpowerlab.com (`/w/<token>`), so the site's page and scripts
+never see what the visitor taps.
+4. **A guest door, tap only.** The visitor needs no account (an exception to
+N471's "no guest path", as N223 makes one for a client's customers). They
+cannot type, record or send files. They tap: **Agree and start** under
+"Your taps go to {name} through WillpowerLab. Privacy"; then the owner's
+join questions (N487), one at a time; then one of the owner's questions
+under "What would you like to ask {name}?"; then the three emoji. The
+widget opens with "Hi, I'm {name}. Tap to answer, and I'll answer you out
+loud." After the question: "{name} answers out loud when there's a moment.
+Come back here to listen." The browser keeps the visitor's chat on that
+site, so it is there when they come back.
+5. **The owner's questions.** Until Will's setup asks "What can people ask
+you from your website?", the owner's join questions stand in and the
+widget offers three: "What do you do?", "How do you work with people?",
+"Can we talk?". Not new words beyond this entry.
+6. **In the owner's list.** Each visitor is a chat of its own, named
+**Widget / Visitor {n}** with "From {site}" under the name ({n} counts the
+owner's widget visitors; {site} is the host the iframe was opened from),
+and, once the visitor has a name, **Widget / {name}**. Their answers arrive
+as "{name}'s answers" (N487 item 7); their question arrives marked to
+answer, so the bar's middle is **Record your answer**, and the answer goes
+as every answer does (Finish take, 5 seconds with Undo, Sent). The visitor
+hears it in the widget, with "Read it". Block and Report work as in every
+chat.
+7. **Keep this chat ›** (with "with WillpowerLab" beside it) opens a sheet,
+"Keep this chat", "Join WillpowerLab to keep it, and hear {name}'s answers
+on your phone.", **Continue with Google** and **Not now**; joining goes
+through the link's join page (`/c/<token>?from=widget`), and the chat
+becomes the new member's, under their name.
+8. **What makes "Each answer teaches your chat" true:** every widget
+question and the words of every answer are kept with the owner's chat, as
+the knowledge base the two build together (N496); nothing about a visitor
+is used beyond that chat.
+9. **Consent.** The consent line is signed by the founder. As for the
+client's widget (N223 item 8), counsel reads it before the widget is
+offered to everyone.
+All the words above are signed. Not in force until built and merged.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§B, a person's widget.

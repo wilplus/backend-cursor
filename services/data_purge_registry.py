@@ -334,6 +334,13 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "user", "delete", "database_row", 58),
     PurgeDependency("chat_demo_threads", "chat_threads", "demo_user_id",
                     "user", "delete", "database_row", 59),
+    # A person's website chats (N567, migration
+    # a_person_s_chat_opens_on_a_website): each visitor's chat with them;
+    # its messages, its visitor's seat and its guest row go with it.
+    PurgeDependency("chat_widget_threads", "chat_threads", "widget_owner_id",
+                    "user", "delete", "database_row", 59),
+    PurgeDependency("chat_widget_guests", "chat_widget_guests", "owner_user_id",
+                    "user", "delete", "database_row", 59),
     PurgeDependency("chat_members", "chat_members", "user_id", "user",
                     "delete", "database_row", 60),
     # The join link (migration a_person_has_a_link_to_join_them, N308): a
