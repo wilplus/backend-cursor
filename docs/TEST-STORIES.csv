@@ -3477,11 +3477,17 @@ stretch off a pace or pause week was never the Sniper, so it is no
 fix the walk gave (N323 item 6).
 O5  The next walk knows where in the talk the last one praised and
 fixed, its beginning, middle or ending, so its own praise and fix
-move through the talk (N546).","O1 -> test_progress_is_read_against_my_first_takes
+move through the talk (N546).
+O6  A fix counts as given only when the walk opened it on screen: Last
+time never names a fix I never saw, and names it by what I saw (the
+voice Exercise when its lost Clearer version gave it its place); with
+the walk's record unreadable, the frame's fixes stand (the audit's
+3.4).","O1 -> test_progress_is_read_against_my_first_takes
 O2 -> test_each_fix_is_marked_came_back_or_gone_on_the_next_take
 O3 -> test_last_time_plays_the_fix_that_rose_on_this_take
 O4 -> test_the_pace_fix_worked_when_that_slide_stays_inside_the_green
-O5 -> test_the_next_walk_knows_where_the_last_one_praised_and_fixed","Founder 2026-10-31 (N291: ""yes""; ""ok go with the proposal""; N290: ""the next time it chooses a moment it should take into account what the user answered""; N309 item 1: ""Last time: {the tip}. You did.""; N347 item 3: ""Every fix gets its Last time, the pace game too""; N350 item 3: one rule for ""the pace fix worked""; N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back""); 2026-11-06 (N546: ""if I had already the ending praised I should have the beginning corrected"")."
+O5 -> test_the_next_walk_knows_where_the_last_one_praised_and_fixed
+O6 -> test_a_fix_i_never_saw_is_not_one_the_walk_gave","Founder 2026-10-31 (N291: ""yes""; ""ok go with the proposal""; N290: ""the next time it chooses a moment it should take into account what the user answered""; N309 item 1: ""Last time: {the tip}. You did.""; N347 item 3: ""Every fix gets its Last time, the pace game too""; N350 item 3: one rule for ""the pace fix worked""; N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back""); 2026-11-06 (N546: ""if I had already the ending praised I should have the beginning corrected"")."
 tests/test_take_promotion_survives_a_dropped_connection.py,Story,"As a speaker, I want a dropped database connection at the last step to be retried, so that my Take is not thrown away and processed again.","O1  When the connection drops while the recording becomes a Take, the
 step is retried once and the Take is returned.",O1 -> PromotionRetryTests::test_a_dropped_connection_is_retried_and_the_take_returned,Founder's Takes of 2026-10-02 and 2026-10-03 were re-run from the start after one dropped call.
 tests/test_take_purge_postgres.py,Story,"As a speaker who deletes my account, I want everything I recorded erased, so that my Take, audio and project content are gone.","O1  The erasure finishes, with nothing left for manual review, and the
