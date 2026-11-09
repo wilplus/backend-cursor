@@ -27,6 +27,9 @@ OUTCOME
       and the people invited each get an invite (MOD-32, MOD-34, MOD-35).
   O9  When the processing authorization is not current, no provider call is
       made and the rules' draft stands.
+  O11 An erased person's id is nowhere in a model's setup: it never keeps
+      one, and the expert and the invited people come from rows the purge
+      registry deletes.
   O10 A host's model gathers the moments of Takes sent to them only from
       speakers whose training yes is on, recorded after it; turning it off
       takes them out again (MOD-02).
@@ -40,6 +43,7 @@ PROVES   O1 -> ModelSetupRoutesTest::test_without_the_ring_or_as_someone_else_no
          O8 -> ModelSetupRoutesTest::test_public_after_its_disclaimer_and_invites
          O9 -> ModelSetupRoutesTest::test_no_provider_call_without_authorization
          O10 -> ModelSetupRoutesTest::test_takes_teach_only_with_the_training_yes
+         O11 -> ModelSetupRoutesTest::test_an_erased_person_is_nowhere_in_the_setup
 WHY      routes/v2/model_setup.py over services/model_setup_store.py, and the
          job services/model_examples_from_takes.py.
 """
@@ -282,6 +286,36 @@ class ModelSetupRoutesTest(unittest.TestCase):
         self.assertEqual(invited, {(DANIEL, "open"), (TOMEK, "open")})
         link = self._get(f"/v2/models/{mid}/setup/invite-link").get_json()["link"]
         self.assertTrue(link.endswith(f"/models/{mid}"))
+
+    def test_an_erased_person_is_nowhere_in_the_setup(self):
+        from services.data_purge_registry import DEPENDENCIES
+        mid, _ = self._begin()
+        self._through_describe(mid)
+        self._post(f"/v2/models/{mid}/setup/kind", {"parts": {"score": True}, "name": "Pitch Coach"})
+        self._post(f"/v2/models/{mid}/setup/scale", {"scale": DRAFT["scale"]})
+        self._post(f"/v2/models/{mid}/setup/exam", {"expert": DANIEL})
+        self._post(f"/v2/models/{mid}/setup/share", {"visibility": "private"})
+        self._post(f"/v2/models/{mid}/setup/invite", {"people": [TOMEK]})
+        stored = str(self._model(mid)["setup"])
+        for person in (DANIEL, TOMEK, MARTA):
+            self.assertNotIn(person, stored)
+        exam = self._get(f"/v2/models/{mid}/setup?step=exam").get_json()["screen"]
+        self.assertEqual(exam["actions"], ["Ask Daniel"])
+        # Daniel's account is erased: the registry's rows for the models go.
+        for dep in DEPENDENCIES:
+            if dep.relation.startswith("ai_model"):
+                rows = self.store.tables.get(dep.relation, [])
+                if dep.clears_selector:
+                    for r in rows:
+                        if r.get(dep.selector_column) == DANIEL:
+                            r[dep.selector_column] = None
+                else:
+                    self.store.tables[dep.relation] = [r for r in rows if r.get(dep.selector_column) != DANIEL]
+        self.assertNotIn(DANIEL, str(self.store.tables["ai_models"]))
+        after = self._get(f"/v2/models/{mid}/setup?step=exam").get_json()["screen"]
+        self.assertEqual(after["actions"], ["Choose the second expert"])
+        invite = self._get(f"/v2/models/{mid}/setup?step=invite").get_json()["screen"]
+        self.assertEqual([c["key"] for c in invite["choices"] if c["check"]], [TOMEK])
 
     def test_no_provider_call_without_authorization(self):
         from services.processing_authorization import ProcessingAuthorizationError

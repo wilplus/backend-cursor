@@ -2026,6 +2026,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O7** The owner answers the first 10 on the teachers' screen, never an exam case, and their answers are kept like any teacher's (MOD-38, MOD-55).
 - **O8** Public shows its disclaimer before it goes public; the second expert and the people invited each get an invite (MOD-32, MOD-34, MOD-35).
 - **O9** When the processing authorization is not current, no provider call is made and the rules' draft stands.
+- **O11** An erased person's id is nowhere in a model's setup: it never keeps one, and the expert and the invited people come from rows the purge registry deletes.
 - **O10** A host's model gathers the moments of Takes sent to them only from speakers whose training yes is on, recorded after it; turning it off takes them out again (MOD-02).
 
 *Why:* routes/v2/model_setup.py over services/model_setup_store.py, and the job services/model_examples_from_takes.py.

@@ -24,11 +24,15 @@ THE DRAFT (``ai_models.setup``, what the owner said and chose):
     "strictness": "clear" | "fairly_clear",           # N585 item 4
     "rules_decided": bool,
     "data": {"name", "columns", "rows", "map", "check", "consent", "decided"},
-    "exam": {"experts": [owner_id, expert_id], "asked_at"},
+    "exam": {"invite_id", "asked_at"},             # the second expert's invite
+    # NO USER ID IS KEPT HERE (erasure, N523 item 5): the store adds
+    # "exam.experts" ([the owner, the expert]) and "invited" when it reads a
+    # draft, from ai_models.owner_id and ai_model_invites, which the purge
+    # registry clears and deletes, and strips them again before it writes.
     "journey": [str, ...], "journey_parts": [...],
     "first_ten": [{"example_id", "answer"}],
     "visibility": "private" | "public",
-    "invited": [user_id, ...], "invited_team": bool,
+    "invited_team": bool,
     "done": [step, ...],                              # steps the owner finished
   }
 

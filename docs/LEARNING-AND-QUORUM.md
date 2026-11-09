@@ -227,6 +227,9 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
   - **The final exam** is set aside from whole speakers, never an upload,
     and answered by the owner and one expert they ask; an exam answer never
     counts toward training.
+  - **No user id is kept in a model's setup:** the exam's expert and the
+    people invited are read from `ai_model_invites`, the owner from
+    `owner_id`, which erasure deletes and clears.
   - **The owner's first 10** are answered on the teachers' screen, never an
     exam case, and train the model once a second teacher agrees.
   - **A host's model gathers** the moments of Takes sent to its owner, only

@@ -197,9 +197,10 @@ def _exam_cases_for(database: Any, me: str, mids: list[str]) -> list[dict]:
     and for nobody else."""
     if not mids:
         return []
-    setups = _rows(_table(database, MODELS).select("id,setup").in_("id", mids))
+    from services.model_setup_store import with_people
+    setups = _rows(_table(database, MODELS).select("id,owner_id,setup").in_("id", mids))
     mine = [str(m["id"]) for m in setups
-            if me in [str(x) for x in ((m.get("setup") or {}).get("exam") or {}).get("experts") or []]]
+            if me in ((with_people(database, m).get("exam") or {}).get("experts") or [])]
     if not mine:
         return []
     return _rows(_table(database, EXAMPLES)

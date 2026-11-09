@@ -71,8 +71,41 @@ def _owned(database: Any, me: str, model_id: Any) -> dict:
     if not rows or str(rows[0].get("owner_id") or "") != me:
         raise _not_found()
     row = rows[0]
-    row["setup"] = row.get("setup") if isinstance(row.get("setup"), dict) else {}
+    row["setup"] = with_people(database, row)
     return row
+
+
+#: Keys of the draft that name people. They are never written to
+#: ai_models.setup (``_write`` strips them): they are read each time from
+#: ai_models.owner_id and ai_model_invites, which the purge registry clears
+#: and deletes when an account is erased, so an erased person's id is
+#: nowhere in a model's setup.
+_PEOPLE_KEYS = ("invited",)
+
+
+def with_people(database: Any, model: dict) -> dict:
+    """The stored draft, with the people it names read from their own rows:
+    ``exam.experts`` (the owner and the expert whose invite it keeps) and
+    ``invited`` (everyone the owner invited who has not left)."""
+    raw = model.get("setup")
+    draft = dict(raw) if isinstance(raw, dict) else {}
+    invites = _rows(_table(database, INVITES).select("id,invitee_id").eq("model_id", model["id"]))
+    draft["invited"] = sorted({str(i["invitee_id"]) for i in invites})
+    exam = dict(draft.get("exam") or {})
+    expert = next((str(i["invitee_id"]) for i in invites if str(i["id"]) == str(exam.get("invite_id") or "")), None)
+    owner = str(model.get("owner_id") or "")
+    if exam:
+        exam["experts"] = [x for x in (owner, expert) if x]
+        draft["exam"] = exam
+    return draft
+
+
+def _stored(draft: dict) -> dict:
+    """The draft as it is kept: no user id anywhere in it."""
+    out = {k: v for k, v in draft.items() if k not in _PEOPLE_KEYS}
+    if isinstance(out.get("exam"), dict):
+        out["exam"] = {k: v for k, v in out["exam"].items() if k != "experts"}
+    return out
 
 
 def _write(database: Any, model: dict, draft: dict, *, step: Optional[str] = None,
@@ -80,7 +113,7 @@ def _write(database: Any, model: dict, draft: dict, *, step: Optional[str] = Non
     """The draft kept, and the model's row kept in step with it: its name,
     what it is about, its recipe card, who can see it, where it stopped."""
     change: dict[str, Any] = {
-        "setup": draft, "updated_at": _now(),
+        "setup": _stored(draft), "updated_at": _now(),
         "name": (S._clean(draft.get("name"), 80) or model.get("name") or rules.WORDS["your_draft"]),
         "description": S._clean(draft.get("problem"), 600) or None,
         "recipe": S.recipe_of(draft) if S.parts_on(draft) else (model.get("recipe") or {}),
@@ -91,7 +124,7 @@ def _write(database: Any, model: dict, draft: dict, *, step: Optional[str] = Non
     if status is not None:
         change["status"] = status
     _table(database, MODELS).update(change).eq("id", model["id"]).execute()
-    model.update(change)
+    model.update({**change, "setup": draft})
 
 
 def _view(database: Any, me: str, model: dict, step: str, **extra: Any) -> dict:
@@ -374,8 +407,8 @@ def _exam(database: Any, me: str, model: dict, draft: dict, body: dict) -> None:
     expert = _uuid(body.get("expert"))
     if not expert or expert not in {p["id"] for p in people_for(database, me)}:
         raise _bad("NO_EXPERT", "Choose the second expert.")
-    draft["exam"] = {"experts": [me, expert], "asked_at": _now()}
-    _invite(database, me, model, expert)
+    draft["exam"] = {"invite_id": _invite(database, me, model, expert), "asked_at": _now(),
+                     "experts": [me, expert]}
     return None
 
 
@@ -414,12 +447,15 @@ def _invites(database: Any, me: str, model: dict, draft: dict, body: dict) -> No
     return None
 
 
-def _invite(database: Any, me: str, model: dict, invitee: str) -> None:
+def _invite(database: Any, me: str, model: dict, invitee: str) -> Optional[str]:
+    """The invite's id: the one that exists, or a new one."""
     found = _rows(_table(database, INVITES).select("id").eq("model_id", model["id"])
                   .eq("invitee_id", invitee).limit(1))
-    if not found:
-        _table(database, INVITES).insert({"model_id": model["id"], "inviter_id": me,
-                                          "invitee_id": invitee, "status": "open"}).execute()
+    if found:
+        return str(found[0]["id"])
+    made = _rows(_table(database, INVITES).insert({"model_id": model["id"], "inviter_id": me,
+                                                   "invitee_id": invitee, "status": "open"}))
+    return str(made[0]["id"]) if made else None
 
 
 _HANDLERS = {
@@ -635,9 +671,8 @@ def owner_view(database: Any, me: str, model: dict) -> Optional[dict]:
     """The owner's panel for their own model, or None for anyone else."""
     if str(model.get("owner_id") or "") != me:
         return None
-    rows = _rows(_table(database, MODELS).select("setup").eq("id", model["id"]).limit(1))
-    raw = rows[0].get("setup") if rows else None
-    draft: dict = raw if isinstance(raw, dict) else {}
+    rows = _rows(_table(database, MODELS).select("id,owner_id,setup").eq("id", model["id"]).limit(1))
+    draft = with_people(database, rows[0]) if rows else {}
     examples = _rows(_table(database, EXAMPLES).select(
         "id,source,in_exam,speaker_id,kind,machine,created_at,added_by").eq("model_id", model["id"]))
     answers = _rows(_table(database, ANSWERS).select(
