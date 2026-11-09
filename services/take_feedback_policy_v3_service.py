@@ -107,6 +107,10 @@ def _block_presentation(block: dict, block_id: str) -> dict:
         # walk that cannot draw its Clearer version walks the same moment's
         # AI clip instead. A flag, never a score.
         presentation["voice_too"] = True
+    if block.get("nothing_to_fix"):
+        # A good Take, on their best (N551): no fix and nothing below the
+        # floor; the walk says "Nothing to fix this time." A flag.
+        presentation["nothing_to_fix"] = True
     if block.get("one_fix"):
         # The One thing walk's one fix, on its strongest block (C-SNIPER):
         # "tempo" (the Sniper), "moment" or "none". The walk shows the
@@ -641,7 +645,7 @@ _NOT_SHOWN = {"most_confident": False, "highest_moment": False, "level_key": Non
 #: Every key `_block_presentation` may write on a visible row.
 _PRESENTATION_KEYS = ("bookmark_tier", "practice_prompt", "highest_moment", "level_key",
                       "exercise_kind", "helper_words_prompt", "walk_slot", "plan_level",
-                      "one_fix", "voice_too")
+                      "one_fix", "voice_too", "nothing_to_fix")
 
 
 def _present_again(inventory: _V3ServiceInventory, block: dict) -> None:

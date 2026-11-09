@@ -57,7 +57,8 @@ OUTCOME
   O14 When no tool reaches a weak moment (the walk has no fix and my least
       confident moment reads below the floor), the frame names it so it
       goes to a coach; a good Take, or one with a fix, names none (the
-      audit's 2.7).
+      audit's 2.7). A good Take, and only it, tells the walk so on my best,
+      which says "Nothing to fix this time." (N551).
 PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O1 -> test_two_best_clips_in_one_block_get_a_block_each
          O1 -> test_a_one_block_take_is_split_for_two_moments
@@ -867,11 +868,17 @@ def test_a_weak_moment_no_tool_reaches_is_named_for_a_coach():
     assert _slots(unfixed) == [("p0", "strongest", None, None)]
     assert unfixed[FIX_WITHOUT_TOOL] == {"block_id": next(
         b["block_id"] for b in unfixed["blocks"] if b["slide_index"] == 2), "snippet_id": "p2"}
-    # A good Take: nothing below the floor, nothing for a coach.
-    assert _paced_frame(even, scores=(0.95, 0.9, 0.85, 0.9), pause=0.15)[FIX_WITHOUT_TOOL] is None
+    # A good Take: nothing below the floor, nothing for a coach, and it
+    # says so on my best (N551).
+    good = _paced_frame(even, scores=(0.95, 0.9, 0.85, 0.9), pause=0.15)
+    assert good[FIX_WITHOUT_TOOL] is None
+    assert [b["slide_index"] for b in good["blocks"] if b.get("nothing_to_fix")] == [0]
     # A Take with a fix: the walk gives it; nothing for a coach.
     fixed = _paced_frame((140, 140, 140, 200))
     assert _slots(fixed)[1][1] == "weakest" and fixed[FIX_WITHOUT_TOOL] is None
+    # Neither the Take with a fix nor the one whose weak moment went to a
+    # coach is called good.
+    assert not any(b.get("nothing_to_fix") for f in (fixed, unfixed) for b in f["blocks"])
 
 
 def test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan(monkeypatch):
