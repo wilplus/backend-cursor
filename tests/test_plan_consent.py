@@ -18,8 +18,9 @@ OUTCOME
       Take; then it is kept. A step that fails leaves the yes on and says
       so, never "deleted".
   O5  A plan made before the switch is asked at its next personal moment:
-      the last practice's ratings and "How did it go?" at its end wait for
-      the yes; "Not now" skips them, and the end goes on to what's next.
+      the last ratings, once a set of three levels is done, wait for the
+      yes; "Not now" skips them. A plan no longer ends on a date (N564
+      item 5), so no "How did it go?" comes the day after one.
   O6  When the answer cannot be read, nothing personal is asked; a yes that
       cannot be kept is not a yes: Will asks again before the next personal
       question.
@@ -32,7 +33,7 @@ PROVES   O1 -> test_with_the_switch_off_the_plan_asks_as_before
          O4 -> test_turning_off_deletes_what_the_speaker_gave
                test_a_turn_off_that_fails_leaves_the_yes_on
          O5 -> test_the_last_ratings_wait_for_the_yes
-               test_the_plans_end_asks_for_the_yes_before_how_did_it_go
+               test_a_plan_no_longer_ends_on_a_date
          O6 -> test_a_doubt_means_nothing_personal_is_asked
                test_a_yes_that_cannot_be_kept_is_not_a_yes
          O7 -> test_how_do_you_feel_is_kept_on_a_plan_only_after_its_yes
@@ -134,7 +135,6 @@ def _say(db, text):
 
 def _to_the_ask(db):
     F.state(db, USER, tz="UTC", first_name="Artur")
-    F.answer_deadline(db, USER, (date.today() + timedelta(days=21)).isoformat(), tz="UTC")
     return _say(db, "It's our board pitch for two more hires.")
 
 
@@ -274,7 +274,8 @@ def test_a_yes_that_cannot_be_kept_is_not_a_yes(db):
 @pytest.mark.parametrize("yes", [True, False])
 def test_the_last_ratings_wait_for_the_yes(db, monkeypatch, yes):
     plan = _active_before_the_switch(db, monkeypatch)
-    db.update_plan(USER, plan["id"], {"total": 1})
+    # The set of three levels is done (N564 item 5): its last ratings are due.
+    db.update_plan(USER, plan["id"], {"facts": {**plan["facts"], "sets_done": 1}})
     started = datetime.fromisoformat(plan["started_at"])
     db.takes.rows = [{"created_at": (started + timedelta(minutes=5)).isoformat(),
                       "arc_id": "arc-1", "take_index": 1}]
@@ -290,24 +291,15 @@ def test_the_last_ratings_wait_for_the_yes(db, monkeypatch, yes):
         assert len(_asked(db)) == 1  # not asked again
 
 
-@pytest.mark.parametrize("yes", [True, False])
-def test_the_plans_end_asks_for_the_yes_before_how_did_it_go(db, monkeypatch, yes):
+def test_a_plan_no_longer_ends_on_a_date(db, monkeypatch):
+    # N564 item 5: the plan ends after its third level, never on a date, so
+    # the day after a date nothing about the plan's end is asked.
     plan = _active_before_the_switch(db, monkeypatch)
-    monkeypatch.setattr(F, "today_in", lambda name: date.fromisoformat(plan["deadline"]) + timedelta(days=1))
+    db.update_plan(USER, plan["id"], {"deadline": date.today().isoformat()})
+    monkeypatch.setattr(F, "today_in", lambda name: date.today() + timedelta(days=1))
     F.state(db, USER, tz="UTC", first_name="Artur")
-    assert bodies(db)[-1] == F.P.COPY["consent_ask"]
-    assert F.P.COPY["how_did_it_go"] not in bodies(db)
-    F.answer_consent(db, USER, yes)
-    if yes:
-        assert bodies(db)[-1] == F.P.COPY["how_did_it_go"]
-        assert db.get_open_plan(USER)["step"] == "how_it_went"
-    else:
-        assert F.P.COPY["how_did_it_go"] not in bodies(db)
-        assert F.P.COPY["thanks_told"] not in bodies(db)
-        assert bodies(db)[-1] == F.P.COPY["whats_next"]
-        assert db.get_open_plan(USER)["step"] == "whats_next"
-        # The summary call is one of the plan's calls, hidden (N315).
-        assert not any((r["metadata"] or {}).get("plan_summary_call") for r in db.thread)
+    assert F.P.COPY["consent_ask"] not in bodies(db) and F.P.COPY["how_did_it_go"] not in bodies(db)
+    assert db.get_open_plan(USER)["status"] == "active"
 
 
 def test_how_do_you_feel_is_kept_on_a_plan_only_after_its_yes(db, monkeypatch):

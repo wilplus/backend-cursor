@@ -292,11 +292,10 @@ stands.
 O5  After a distressed message the chat's safety reply comes and the asks
 wait: nothing lands under it until I write again (founder 2026-10-21,
 N94).
-O6  The plan's lines after a practice day's Take (""That's your 15
-minutes for today."") wait for the ask: the ask stays the newest
-bubble, so its answers stay; after my answer come the lines, then
-""Good job. See you {day}."" with the plan's next practice day (N347
-item 2), then the plan's progress (N319 item 7); a question the plan
+O6  The plan's lines after a Take wait for the ask: the ask stays the
+newest bubble, so its answers stay; after my answer come the lines,
+then ""Good job. See you next time."" (no practice day is named, N564),
+then the plan's bar (N319 item 7, N564 item 3); a question the plan
 asks comes last, under them, right above its answers (N537).
 O7  The WhatsApp ask waits for the next visit and comes in the bar at the
 top, never in the chat (N294 item 8, N295, N391): never before my
@@ -2374,10 +2373,12 @@ O2 -> test_a_healthy_job_result_is_the_old_shape
 test_a_job_that_fell_back_names_the_stage
 O3 -> test_a_failed_trailing_stage_still_saves_the_ideal_text
 O4 -> test_the_whole_assembly_failing_is_false_and_named",Audit Q-C1: best-effort stages were swallowed into log lines. The analysis worker's own stages are pinned in tests/test_analysis_worker.py.
-tests/test_plan.py,Story,"As a speaker with an event coming, I want the app to turn my deadline and my voice into a plan, so that each practice works on the one thing that will help most, in words, never a score.","O1  A deadline three weeks away gives three practices a week, nine in
-all; two weeks or less gives every day; no date gives two months.
-O2  The practice count reads the Takes done plus one and never passes the
-total; after the last practice there is no next practice day.
+tests/test_plan.py,Story,"As a speaker, I want the app to turn my voice into a plan, so that each Take works on the one thing that will help most, in words, never a score.","O1  The plan is three levels of four Takes, twelve in all, with no
+practice days (N564 item 2).
+O2  The bar shows the level's name and its four marks, the done ones
+filled, never more than four and never a points total, a score or a
+percentage; after four Takes the next level starts, after the third
+level the set is done (N564 items 3 and 5).
 O3  The level comes from what was measured today, strongest first: a key
 line said faster than the rest gives ""Let your key line land""; with
 nothing measured it is ""Make it yours"", never a guess.
@@ -2391,14 +2392,13 @@ O6  The dates read as the chat writes them (""14 November"", ""Sat 14 Nov"",
 ""Tuesday 27 October, 10:00"").
 O7  A Take reaches its level when the check that picked it no longer
 fires; the next level is the next thing heard, never one the plan
-already had, else ""Make it yours""; a level runs a week, or two in a
-longer plan, and a plan of two weeks or less keeps one level.","O1 -> test_the_deadline_sets_the_journey
-O2 -> test_practice_count_and_next_day
+already had, else ""Make it yours"".","O1 -> test_the_plan_is_three_levels_of_four_takes
+O2 -> test_the_bar_is_the_level_and_its_marks_never_points
 O3 -> test_the_level_comes_from_what_was_measured
 O4 -> test_the_key_line_first_and_at_most_three
 O5 -> test_the_ai_question_must_keep_its_template
 O6 -> test_dates_read_as_the_chat_writes_them
-O7 -> test_a_level_is_reached_on_its_own_check","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the rules are frontend docs/flows/the-plan.md §1."
+O7 -> test_a_level_is_reached_on_its_own_check","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the training as levels of four Takes, never points, N564; the rules are frontend docs/flows/the-plan.md §1."
 tests/test_plan_coach.py,Story,"As a coach, I want a speaker's plan to reach my queue when it needs me, so that I pick their level blind, or record my video for a level that hasn't moved, and the speaker's plan follows my answer.","O1  A plan reaches the queue on its speaker's card as a new plan, the
 speaker's ask, or a level three Takes without moving, the ask first;
 a speaker with no Take in the queue gets a card of their own; a coach
@@ -2432,8 +2432,9 @@ Will's memory of them (his note is cleared), the feelings before a
 Take; then it is kept. A step that fails leaves the yes on and says
 so, never ""deleted"".
 O5  A plan made before the switch is asked at its next personal moment:
-the last practice's ratings and ""How did it go?"" at its end wait for
-the yes; ""Not now"" skips them, and the end goes on to what's next.
+the last ratings, once a set of three levels is done, wait for the
+yes; ""Not now"" skips them. A plan no longer ends on a date (N564
+item 5), so no ""How did it go?"" comes the day after one.
 O6  When the answer cannot be read, nothing personal is asked; a yes that
 cannot be kept is not a yes: Will asks again before the next personal
 question.
@@ -2445,15 +2446,16 @@ O3 -> test_not_now_skips_the_personal_questions_and_keeps_the_plan
 O4 -> test_turning_off_deletes_what_the_speaker_gave
 test_a_turn_off_that_fails_leaves_the_yes_on
 O5 -> test_the_last_ratings_wait_for_the_yes
-test_the_plans_end_asks_for_the_yes_before_how_did_it_go
+test_a_plan_no_longer_ends_on_a_date
 O6 -> test_a_doubt_means_nothing_personal_is_asked
 test_a_yes_that_cannot_be_kept_is_not_a_yes
 O7 -> test_how_do_you_feel_is_kept_on_a_plan_only_after_its_yes","The plan's own yes, drawn and approved by the founder 2026-10-27 (N211; Privacy 3.9 section 4e, to be published); the rules are frontend docs/flows/the-plan.md."
 tests/test_plan_flow.py,Story,"As a new speaker on the plan's ring, I want Will to ask me a few questions in the Lounge before my first Take and give me a plan, so that my practice starts from my event and my own voice.","O1  Someone without the plan sees nothing of it: no plan, nothing written.
 O2  A new speaker with no Take is asked, once: ""Hi Artur! A few quick
-questions before your first practice."" and ""When is your deadline?"".
-O3  ""No date yet"" gives two months, said in words; then the voice
-message's two questions.
+questions before your first practice."" and the voice message's two
+questions; nobody is asked ""When is your deadline?"" (N564 item 1).
+O3  ""No date yet"", on a plan still at that step, gives no date and no
+two months (N564 items 1 and 7).
 O4  Each voice answer is transcribed under the caller's authorization,
 kept with its recording, kept for Will, and shown as the speaker's
 voice bubble; when the AI fails Will says the plain words, and the key
@@ -2467,24 +2469,25 @@ O15 With the calls on, they are asked as before: the kickoff call, then
 the summary call; skipping both still gives ""You're all set. Here's
 your plan."" and the card. A plan left at a call when they are hidden
 moves on to the plan when the Lounge opens, without a summary ask.
-O6  On a practice day after the first Take, the first open writes the
-hello and today's one thing, once; after a Take on a practice day
-""That's your 15 minutes for today."" comes, once, and nothing under it
-(N319 item 4); the chat's goodbye names the plan's next practice day
-as a person would, ""Good job. See you tomorrow."" when it is tomorrow,
-else ""Good job. See you {weekday}."" (N347 item 2), and the plan's
-progress comes as one bubble, ""1 of 9 practices done."" with what its
-bar draws, once per Take (N319 item 7).
-O7  A new project's first Take asks ""Is this for {date}?""; Yes keeps the
-plan, No starts ""When is your deadline?"" for a new one, the old plan
-kept in the history.
-O8  Moving the deadline keeps the practices done and counts the ones
-ahead: today's practice, already done, is not counted twice.
-O9  Two Takes in a row that reach the level start the next thing heard;
-three Takes on a level without moving are noted for the coach's
-queue, once; a coach's level is never moved; a level whose time ran
-out gives way at the next open, and that day's hello names the new
-level. Nothing about it is said in the chat.
+O6  There are no practice days (N564): after a Take nothing like ""That's
+your 15 minutes for today."" comes; the goodbye is ""Good job. See you
+next time.""; under it the plan's bar, once per Take: the level's name
+and its four marks, never ""{n} of {total} practices done.""; the first
+open on a later day without a Take writes ""Hi Artur, good to see you
+back!"" with the bar, and today's one thing, once.
+O7  A new project's first Take, on a plan with a talk's date, asks ""Is
+this for {date}?""; Yes keeps the plan, No starts a new plan's
+questions (no deadline asked), the old plan kept in the history.
+O8  Only a talk has a date: the card shows it, changing it says nothing,
+and there are no practice days to change (N564 item 6).
+O9  Every Take fills one of the level's four marks; after four, the next
+thing heard, never one the set had; three on a level none reached
+are noted for the coach's queue, once; a coach's level runs its four
+Takes too. Nothing about it is said in the chat; the bar after the
+fourth Take's walk shows that level full.
+O18 The twelfth Take ends the set of three levels: its last ratings, the
+summary session while the calls are on, and a new set of three on
+what the Takes show; the plan never ends on a date (N564 item 5).
 O10 A Take's walk reads the level the plan had when the Take was
 recorded, so it reads the same on every opening; off a plan, or on
 ""Make it yours"", the walk is as today.
@@ -2512,7 +2515,7 @@ message on slide 2, the audience, the key line on slide 5) and all
 five in Will's notes; the plan's facts and
 its topic come from what was said; a day said gives the plan and its
 card at once, that Take its first practice; no day said asks no
-deadline (N459 item 1): ""No date yet""'s two months, and the plan and
+deadline (N459 item 1) and gives no date (N564), and the plan and
 its card above the goodbye. Kept at the
 end of the Take's processing, the voice message and the key line keep
 their own voice, and the coach's blind pick plays them (N213); the
@@ -2524,16 +2527,16 @@ begun again (N538). A new project's first Take on such a plan asks
 ""Is this for {date}?"" (H2); after Yes, the ratings it came in place
 of, then the plan (N538).","O1 -> test_without_the_ring_nothing_happens
 O2 -> test_a_new_speaker_is_asked_once
-O3 -> test_no_date_gives_two_months_then_the_voice_message
+O3 -> test_nobody_is_asked_a_deadline_and_no_date_gives_no_two_months
 O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
 O5 -> test_ratings_are_kept_quietly_and_the_plan_follows
-O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
+O6 -> test_the_hello_and_the_bar_show_the_level_and_its_marks
 O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
 O17 -> test_the_first_ratings_on_a_running_plan_end_on_the_plan
 test_a_new_project_on_a_plan_made_after_earlier_takes_is_asked_about
-O8 -> test_moving_the_deadline_keeps_the_practices_done
-O9 -> test_the_level_moves_on_after_two_takes_that_reach_it
-test_a_level_whose_time_ran_out_gives_way
+O8 -> test_only_a_talk_has_a_date_and_changing_it_says_nothing
+O9 -> test_every_take_fills_a_mark_and_four_start_the_next_level
+O18 -> test_after_the_third_level_the_summary_session_then_new_levels
 O10 -> test_a_walk_reads_the_level_of_its_takes_time
 O11 -> test_the_principles_wait_while_the_speaker_is_onboarded
 O12 -> test_an_answer_with_nothing_heard_is_asked_again
@@ -2543,7 +2546,7 @@ O15 -> test_with_the_calls_on_they_are_asked_before_the_plan
 O16 -> test_with_the_first_take_on_the_questions_are_its_slides
 test_with_no_first_take_row_a_new_speaker_meets_the_first_take
 test_a_first_take_with_no_day_asks_no_deadline
-test_the_coach_hears_the_first_takes_voice_message_and_key_line","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the principles waiting for the onboarding, N243; record first, Will asking again and a correction taken, N262; the calls hidden, not removed, N315; the plan simplified, N319; the goodbye's day, N347; the rules are frontend docs/flows/the-plan.md §1."
+test_the_coach_hears_the_first_takes_voice_message_and_key_line","The plan, built one to one with the prototype (founder 2026-10-26, N203, N204); a level moving on, N134 items 3 and 4, N209; the principles waiting for the onboarding, N243; record first, Will asking again and a correction taken, N262; the calls hidden, not removed, N315; the plan simplified, N319; the goodbye's day, N347; three levels of four Takes, never points, no deadline but a talk's, N564; the rules are frontend docs/flows/the-plan.md §1."
 tests/test_playback_copy.py,Story,"As a speaker on iPhone or Safari, I want my recordings to play back, and the playback copy deleted with the recording, so that I can hear myself and deletion leaves nothing. (Record -> next Take: hearing the Take; and deletion.)","O1  A stored short recording gets its Safari-safe copy (.playback.m4a,
 audio/mp4) beside it at upload; the original is untouched.
 O2  The player is handed the original until the copy exists, and the copy
