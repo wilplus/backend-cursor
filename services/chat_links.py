@@ -135,6 +135,9 @@ def preview(database: Any, token: Any) -> dict:
     if rings.feature_is_on_for_user(assistants.CHAT_BUILDER, str(link["user_id"]), database=database):
         out["assistant"] = assistants.assistant_name(link["display_name"])
         out["will_line"] = assistants.will_line()
+        about = assistants.about_lines(database, str(link["user_id"]))
+        if about:
+            out["about"] = about
     return out
 
 
@@ -187,7 +190,14 @@ def join(database: Any, user_id: Any, token: Any, token_payload: Any) -> dict:
     thread, made = _open_pair(database, people, link["display_name"], link_id=str(link["id"]))
     if made:
         membership.admitted(user_id)
-        # The questions the link's owner set for whoever joins (N487).
+        # The host's welcome first (N590 item 2), then the questions the
+        # link's owner set for whoever joins (N487).
+        from services import assistants
+        owner_member = next((str(m["id"]) for m in _rows(_table(database, MEMBERS)
+                             .select("id,user_id").eq("thread_id", thread))
+                             if str(m.get("user_id")) == owner), None)
+        if owner_member:
+            assistants.welcome(database, thread, owner, owner_member)
         from services import join_questions
         join_questions.begin(database, thread, owner, user_id)
     return {"chat": {"id": thread}}

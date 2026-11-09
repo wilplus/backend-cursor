@@ -475,6 +475,11 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O4** A host's own words pass the checks Will's bubbles pass: a score or a verdict about the speaker is refused, their own numbers are not (N578 item 6, Never 1).
 - **O5** A simple recognizer reads on one line with two cuts: Yes past the upper, No below the lower, the queue between, coloured green, yellow or red, never a number (N580 item 3, N585 item 2).
 - **O6** A speaking coach is suggested only for a recording of you talking; a topic expert for their topic from any message; adding a coach your message doesn't suit brings one line with "Record" and "Send anyway" (N588).
+- **O7** As a tester I keep my chat's recipe and read it back, with Artur's five to start from; without the ring the builder is 404; a locked field is 400 RECIPE_LOCKED and nothing is kept.
+- **O8** Someone who joins through my link meets my welcome first, as my assistant's messages, and my join page says who I am and what they can learn with me, in my own words (N586 item 1, N590 item 2).
+- **O9** In my chat, the person who joined reads whose assistant answers, my first Take's questions and how they may answer; a chat with someone who has no recipe is as it was.
+- **O10** In Will's chat, Will says what I know can earn tokens, with "Set up my chat"; then asks, one at a time, my welcome, how people answer, my specialization, what people learn, a skill or a topic and what I need to see, and "Do you want to automate your own chat?"; "Go live" keeps it, and the next person who joins meets it (N582 item 1, N586 item 5).
+- **O11** A welcome that scores people is not kept: Will says why and asks again.
 
 *Why:* Every inviter has a coach chat of their own (N578); the builder's MVP is for the founder and a few testers first (N579).
 

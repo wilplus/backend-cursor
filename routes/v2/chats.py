@@ -471,6 +471,84 @@ def v2_chats_setup_answer(thread_id, message_id):
     return _run("setup answer", lambda: answer(db, str(request.user_id), thread_id, message_id, body))
 
 
+# ── The chat builder (services/assistants.py; N578, N579, N586, N588) ──
+
+def _builder_or_404(work):
+    """The chat builder's ring (N579 item 2): without it, 404, as a chat
+    route answers for what is not yours."""
+    from services import assistants
+    if not assistants.on(db, str(request.user_id)):
+        return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
+    return work()
+
+
+@v2_bp.route("/chats/recipe", methods=["GET"])
+@require_auth
+def v2_chats_recipe():
+    """My chat's recipe as kept, the builder's start and what stays locked."""
+    from services import assistants
+    from services.chat_links import name_of
+    payload = getattr(request, "token_payload", None)
+    return _builder_or_404(lambda: _run("recipe", lambda: assistants.builder(
+        db, str(request.user_id), name_of(payload))))
+
+
+@v2_bp.route("/chats/recipe", methods=["PUT"])
+@limiter.limit("60 per hour", scope="chats_recipe")
+@require_auth
+def v2_chats_recipe_save():
+    """My chat's welcome, first-Take questions and how people answer (N579)."""
+    from services import assistants
+    body = request.get_json(silent=True)
+    return _builder_or_404(lambda: _run("recipe save", lambda: assistants.save(
+        db, str(request.user_id), body)))
+
+
+@v2_bp.route("/chats/recipe/setup/offer", methods=["POST"])
+@limiter.limit("30 per hour", scope="chats_recipe_setup")
+@require_auth
+def v2_chats_recipe_offer():
+    """Will says what what you know is worth, with "Set up my chat" (N586 item 5)."""
+    from services import chat_setup
+    from services.chat_links import name_of
+    payload = getattr(request, "token_payload", None)
+    return _builder_or_404(lambda: _run("recipe offer", lambda: chat_setup.offer(
+        db, str(request.user_id), name_of(payload))))
+
+
+@v2_bp.route("/chats/recipe/setup", methods=["POST"])
+@limiter.limit("60 per hour", scope="chats_recipe_setup")
+@require_auth
+def v2_chats_recipe_setup():
+    """The setup of my chat in Will's chat, one question at a time (N582)."""
+    from services import chat_setup
+    from services.chat_links import name_of
+    payload = getattr(request, "token_payload", None)
+    return _builder_or_404(lambda: _run("recipe setup", lambda: chat_setup.begin(
+        db, str(request.user_id), name_of(payload))))
+
+
+@v2_bp.route("/chats/recipe/setup/answer", methods=["POST"])
+@limiter.limit("120 per hour", scope="chats_recipe_setup_answer")
+@require_auth
+def v2_chats_recipe_setup_answer():
+    """A tap, or typed words, under Will's setup question."""
+    from services import chat_setup
+    body = request.get_json(silent=True)
+    return _builder_or_404(lambda: _run("recipe setup answer", lambda: chat_setup.answer(
+        db, str(request.user_id), body)))
+
+
+@v2_bp.route("/chats/<thread_id>/host", methods=["GET"])
+@require_auth
+def v2_chats_host(thread_id):
+    """For someone in a host's chat: whose assistant answers, who the host
+    is, their first Take's questions and how people answer; {"host": null}
+    for a chat that is as it was."""
+    from services import assistants
+    return _run("host", lambda: {"host": assistants.host_of(db, str(request.user_id), thread_id)})
+
+
 @v2_bp.route("/me/access", methods=["GET"])
 @require_auth
 def v2_me_access():

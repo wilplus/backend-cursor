@@ -449,12 +449,32 @@ or red, never a number (N580 item 3, N585 item 2).
 O6  A speaking coach is suggested only for a recording of you talking; a
 topic expert for their topic from any message; adding a coach your
 message doesn't suit brings one line with ""Record"" and ""Send anyway""
-(N588).","O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
+(N588).
+O7  As a tester I keep my chat's recipe and read it back, with Artur's
+five to start from; without the ring the builder is 404; a locked
+field is 400 RECIPE_LOCKED and nothing is kept.
+O8  Someone who joins through my link meets my welcome first, as my
+assistant's messages, and my join page says who I am and what they
+can learn with me, in my own words (N586 item 1, N590 item 2).
+O9  In my chat, the person who joined reads whose assistant answers, my
+first Take's questions and how they may answer; a chat with someone
+who has no recipe is as it was.
+O10 In Will's chat, Will says what I know can earn tokens, with ""Set up my
+chat""; then asks, one at a time, my welcome, how people answer, my
+specialization, what people learn, a skill or a topic and what I need
+to see, and ""Do you want to automate your own chat?""; ""Go live"" keeps
+it, and the next person who joins meets it (N582 item 1, N586 item 5).
+O11 A welcome that scores people is not kept: Will says why and asks again.","O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
 O2 -> AssistantsTest::test_a_testers_join_page_names_the_assistant_and_wills_chat
 O3 -> RecipeTest::test_a_host_sets_welcome_questions_and_how_people_answer
 O4 -> RecipeTest::test_a_hosts_words_never_score_the_speaker
 O5 -> RecipeTest::test_a_recognizer_reads_on_one_line_with_two_cuts
-O6 -> RecipeTest::test_suggestions_are_sensible_and_anyone_can_still_be_asked",Every inviter has a coach chat of their own (N578); the builder's MVP is for the founder and a few testers first (N579).
+O6 -> RecipeTest::test_suggestions_are_sensible_and_anyone_can_still_be_asked
+O7 -> AssistantsTest::test_a_tester_keeps_their_recipe
+O8 -> AssistantsTest::test_someone_who_joins_meets_my_welcome_and_who_i_am
+O9 -> AssistantsTest::test_the_joiner_reads_what_my_chat_is
+O10 -> SetupInWillsChatTest::test_will_sets_up_my_chat_one_question_at_a_time
+O11 -> SetupInWillsChatTest::test_a_welcome_that_scores_people_is_asked_again",Every inviter has a coach chat of their own (N578); the builder's MVP is for the founder and a few testers first (N579).
 tests/test_authorization_status_read.py,Story,"As a speaker, I want the app to check my permission quickly every time I open it, and to show a deletion I asked for when my account is blocked, so that opening the app is fast and I always see my pending deletion.","O1  An ordinary open reads only the status; a blocked person also gets
 both deletion lists.
 O2  The status comes back in one database call, keeping the gate mode

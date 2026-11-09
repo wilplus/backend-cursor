@@ -23,12 +23,32 @@ OUTCOME
       topic expert for their topic from any message; adding a coach your
       message doesn't suit brings one line with "Record" and "Send anyway"
       (N588).
+  O7  As a tester I keep my chat's recipe and read it back, with Artur's
+      five to start from; without the ring the builder is 404; a locked
+      field is 400 RECIPE_LOCKED and nothing is kept.
+  O8  Someone who joins through my link meets my welcome first, as my
+      assistant's messages, and my join page says who I am and what they
+      can learn with me, in my own words (N586 item 1, N590 item 2).
+  O9  In my chat, the person who joined reads whose assistant answers, my
+      first Take's questions and how they may answer; a chat with someone
+      who has no recipe is as it was.
+  O10 In Will's chat, Will says what I know can earn tokens, with "Set up my
+      chat"; then asks, one at a time, my welcome, how people answer, my
+      specialization, what people learn, a skill or a topic and what I need
+      to see, and "Do you want to automate your own chat?"; "Go live" keeps
+      it, and the next person who joins meets it (N582 item 1, N586 item 5).
+  O11 A welcome that scores people is not kept: Will says why and asks again.
 PROVES   O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
          O2 -> AssistantsTest::test_a_testers_join_page_names_the_assistant_and_wills_chat
          O3 -> RecipeTest::test_a_host_sets_welcome_questions_and_how_people_answer
          O4 -> RecipeTest::test_a_hosts_words_never_score_the_speaker
          O5 -> RecipeTest::test_a_recognizer_reads_on_one_line_with_two_cuts
          O6 -> RecipeTest::test_suggestions_are_sensible_and_anyone_can_still_be_asked
+         O7 -> AssistantsTest::test_a_tester_keeps_their_recipe
+         O8 -> AssistantsTest::test_someone_who_joins_meets_my_welcome_and_who_i_am
+         O9 -> AssistantsTest::test_the_joiner_reads_what_my_chat_is
+         O10 -> SetupInWillsChatTest::test_will_sets_up_my_chat_one_question_at_a_time
+         O11 -> SetupInWillsChatTest::test_a_welcome_that_scores_people_is_asked_again
 WHY      Every inviter has a coach chat of their own (N578); the builder's MVP
          is for the founder and a few testers first (N579).
 """
@@ -73,6 +93,141 @@ class AssistantsTest(unittest.TestCase):
                 "will_line": "Will's chat is where you can set up a chat of your own."})
         with patch("services.rings.feature_is_on_for_user", _ring(set())):
             self.assertEqual(self._preview(token).get_json(), {"name": "Tomek"})
+
+
+    KASIA = {"welcome": ["Hi, I'm Kasia. Let's get you moving."],
+             "questions": [{"q": "Which move do you want first?",
+                            "answers": ["Handstand", "Cartwheel"]}],
+             "answer_with": {"tap": True, "type": False, "record": True},
+             "about": ["Tomek coaches gymnastics.",
+                       "In Tomek's chat you can practise your first handstand."],
+             "fit": {"coaches": "skill", "needs": "moving", "skill": "gymnastics"}}
+
+    def _keep(self, who, body):
+        return self.client.put("/v2/chats/recipe", headers=self._as(who), json=body)
+
+    def test_a_tester_keeps_their_recipe(self):
+        with patch("services.rings.feature_is_on_for_user", _ring(set())):
+            self.assertEqual(self.client.get("/v2/chats/recipe", headers=self._as(TOMEK)).status_code, 404)
+            self.assertEqual(self._keep(TOMEK, self.KASIA).status_code, 404)
+        with patch("services.rings.feature_is_on_for_user", _ring({TOMEK})):
+            got = self.client.get("/v2/chats/recipe", headers=self._as(TOMEK)).get_json()
+            self.assertEqual((got["assistant"], got["recipe"]), ("Tomek's assistant", None))
+            self.assertEqual(got["starting_questions"][4]["q"],
+                             "If they remember one sentence from you, what should it be?")
+            refused = self._keep(TOMEK, {"consent": "off"})
+            self.assertEqual((refused.status_code, refused.get_json()["code"]), (400, "RECIPE_LOCKED"))
+            self.assertEqual(self._keep(TOMEK, self.KASIA).status_code, 200)
+            kept = self.client.get("/v2/chats/recipe", headers=self._as(TOMEK)).get_json()["recipe"]
+            self.assertEqual(kept["welcome"], ["Hi, I'm Kasia. Let's get you moving."])
+            self.assertEqual(kept["fit"]["skill"], "gymnastics")
+
+    def test_someone_who_joins_meets_my_welcome_and_who_i_am(self):
+        token = self._link(TOMEK).get_json()["token"]
+        with patch("services.rings.feature_is_on_for_user", _ring({TOMEK})):
+            self._keep(TOMEK, self.KASIA)
+            self.assertEqual(self._preview(token).get_json()["about"], [
+                "Tomek coaches gymnastics.", "In Tomek's chat you can practise your first handstand."])
+            chat = self._join(PIOTR, token).get_json()["chat"]["id"]
+        seen = self.client.get(f"/v2/chats/{chat}/messages", headers=self._as(PIOTR)).get_json()["messages"]
+        self.assertEqual([m["body"] for m in seen], ["Hi, I'm Kasia. Let's get you moving."])
+        self.assertTrue(seen[0]["meta"]["assistant"])
+        mine = self.client.get(f"/v2/chats/{chat}/messages", headers=self._as(TOMEK)).get_json()["messages"]
+        self.assertEqual(mine, [])
+
+    def test_the_joiner_reads_what_my_chat_is(self):
+        token = self._link(TOMEK).get_json()["token"]
+        chat = self._join(PIOTR, token).get_json()["chat"]["id"]
+        with patch("services.rings.feature_is_on_for_user", _ring({TOMEK})):
+            host = self.client.get(f"/v2/chats/{chat}/host", headers=self._as(PIOTR)).get_json()["host"]
+            self.assertIsNone(host)
+            self._keep(TOMEK, self.KASIA)
+            host = self.client.get(f"/v2/chats/{chat}/host", headers=self._as(PIOTR)).get_json()["host"]
+            self.assertEqual(host["assistant"], "Tomek's assistant")
+            self.assertEqual(host["questions"][0]["answers"], ["Handstand", "Cartwheel"])
+            self.assertEqual(host["answer_with"], {"tap": True, "type": False, "record": True})
+            self.assertIsNone(self.client.get(f"/v2/chats/{chat}/host",
+                                              headers=self._as(TOMEK)).get_json()["host"])
+
+
+class SetupInWillsChatTest(unittest.TestCase):
+    setUp_ = ChatLinksTest.setUp
+    _as, _link, _join = ChatLinksTest._as, ChatLinksTest._link, ChatLinksTest._join
+
+    def setUp(self):
+        from services.db import db
+        from tests.test_join_questions import _Lounge
+        self.setUp_()
+        self.lounge = _Lounge()
+        for p in (patch.object(db, "insert_lounge_messages", self.lounge.insert),
+                  patch.object(db, "get_lounge_messages_page", self.lounge.page),
+                  patch.object(db, "get_lounge_message_by_client_id", self.lounge.one),
+                  patch.object(db, "get_open_plan", lambda _u: {"facts": {"topic": "speaking"}},
+                               create=True),
+                  patch("services.rings.feature_is_on_for_user", _ring({TOMEK}))):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _asked(self):
+        return self.lounge.page(TOMEK)[0]
+
+    def _say(self, **answer):
+        got = self.client.post("/v2/chats/recipe/setup/answer", headers=self._as(TOMEK),
+                               json={"to": self._asked()["client_id"], **answer})
+        return [m["body"] for m in got.get_json()["messages"]] if got.status_code == 200 else got.status_code
+
+    def _chips(self):
+        return self._asked()["metadata"]["chat_setup"]["chips"]
+
+    def test_will_sets_up_my_chat_one_question_at_a_time(self):
+        from services import chat_setup as C
+        self.client.post("/v2/chats/recipe/setup/offer", headers=self._as(TOMEK))
+        self.assertEqual(self._asked()["body"], (
+            "What you know can earn tokens: by teaching the models in your field, and you can spend "
+            "them on a chat of your own that shares what you know while you're away, if you want it."))
+        self.assertEqual(self._chips(), ["Set up my chat"])
+        self.assertEqual(self._say(picked="Set up my chat"), [
+            "Set up my chat", "Let's set up your chat. People who join through your link will meet it.",
+            "What should people read first when they open your chat? Write it as you'd greet them."])
+        self.assertEqual(self._say(said="Hi, I'm Tomek. Let's get you moving."),
+                         ["Hi, I'm Tomek. Let's get you moving.", "How should people answer you in your chat?"])
+        self.assertEqual(self._chips(), ["Record", "Type", "Tap answers", "Any of these"])
+        self.assertEqual(self._say(picked="Record"), ["Record", "What is your specialization?"])
+        self.assertEqual(self._chips(), ["Speaking", "Something else"])
+        self.assertEqual(self._say(picked="Something else"), ["Something else", "What is your specialization?"])
+        self.assertEqual(self._say(said="Gymnastics"),
+                         ["Gymnastics", "What can people learn in your chat? One sentence."])
+        self.assertEqual(self._say(said="Your first handstand, step by step."), [
+            "Your first handstand, step by step.",
+            "Do people come to you to be coached on how they do something, or with questions on a topic?"])
+        self.assertEqual(self._say(picked="How they do it"),
+                         ["How they do it", "What do you need to see to coach them?"])
+        self.assertEqual(self._say(picked="Them moving"), ["Them moving", C.AUTOMATE_WHY,
+                                                           "Do you want to automate your own chat?"])
+        self.assertEqual(self._chips(), ["Yes", "Not now", "Help train an existing model"])
+        self.assertEqual(self._say(picked="Not now")[1].split("\n"), [
+            "This is what someone new will meet in your chat:", "Tomek's assistant",
+            "Tomek's specialization: Gymnastics.", "Your first handstand, step by step.",
+            "Hi, I'm Tomek. Let's get you moving."])
+        self.assertEqual(self._say(picked="Go live"), [
+            "Go live", "Your assistant is live. Everyone who joins through your link meets it."])
+        kept = self.client.get("/v2/chats/recipe", headers=self._as(TOMEK)).get_json()["recipe"]
+        self.assertEqual((kept["answer_with"], kept["fit"], kept["model"]), (
+            {"tap": False, "type": False, "record": True},
+            {"coaches": "skill", "needs": "moving", "topics": [], "skill": "gymnastics"},
+            {"automate": "no"}))
+        token = self._link(TOMEK).get_json()["token"]
+        chat = self._join(PIOTR, token).get_json()["chat"]["id"]
+        seen = self.client.get(f"/v2/chats/{chat}/messages", headers=self._as(PIOTR)).get_json()["messages"]
+        self.assertEqual([m["body"] for m in seen], ["Hi, I'm Tomek. Let's get you moving."])
+
+    def test_a_welcome_that_scores_people_is_asked_again(self):
+        self.client.post("/v2/chats/recipe/setup", headers=self._as(TOMEK))
+        self.assertEqual(self._say(said="I rate everyone out of 10 points."), [
+            "I rate everyone out of 10 points.",
+            "I can't put that in your chat: it reads like a score or a verdict about someone.",
+            "What should people read first when they open your chat? Write it as you'd greet them."])
+        self.assertEqual(self._say(picked="Record"), 400)
 
 
 class RecipeTest(unittest.TestCase):
