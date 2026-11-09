@@ -1,0 +1,780 @@
+[
+ {
+  "id": "MOD-01",
+  "area": "AI models",
+  "title": "AI models is a row under the people in the list of chats",
+  "given": "Any person in the app (Kasia, Tomek or Marta)",
+  "when": "They open their list of chats",
+  "then": [
+   "Under the people, a section “AI models” with one row “AI models” and “Teach one, or start your own”"
+  ],
+  "rules": [
+   "N528 item 1",
+   "N566 item 11"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "chats"
+ },
+ {
+  "id": "MOD-02",
+  "area": "AI models",
+  "title": "The list shows the most mature models first, with who started each",
+  "given": "Six models, one ready to use",
+  "when": "They tap “AI models”",
+  "then": [
+   "“Each model learns one skill from people who know it well. The ones furthest along are at the top.”",
+   "The ready model first, with “Ready to use”, “Passed its final exam · 9 teachers”, “Use it” and “Teach it”",
+   "Each other model: “Started by …”, a bar, “… % of the way to its first training · … teachers”, “Teach it”, “Open”"
+  ],
+  "rules": [
+   "N528 item 1",
+   "N566 item 11"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "models"
+ },
+ {
+  "id": "MOD-03",
+  "area": "AI models",
+  "title": "Search and the three filters; an empty result says so",
+  "given": "The list of models",
+  "when": "They search for something no model covers",
+  "then": [
+   "Chips “For you”, “Ready to use”, “Still learning”",
+   "“No models here yet.”",
+   "“Nobody has started a model about this. You could be the first.”",
+   "“Start the first one”",
+   "“Clear the search”"
+  ],
+  "rules": [
+   "N566 item 11",
+   "N518 item 7"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "models-empty"
+ },
+ {
+  "id": "MOD-04",
+  "area": "AI models",
+  "title": "“For you” is chosen by the knowledge score, at 2.0 or more",
+  "given": "Marta’s profile words",
+  "when": "“For you” is on",
+  "then": [
+   "Only models whose words match her profile at 2.0 or more, and the ones she teaches"
+  ],
+  "rules": [
+   "N518 item 7",
+   "N520 item 7"
+  ],
+  "code": [
+   "be:services/take_match_knowledge.py::def score",
+   "be:services/take_match.py::MIN_FIT = 2.0"
+  ],
+  "tests": [
+   "tests/test_take_match.py"
+  ],
+  "status": "partly",
+  "screen": "models",
+  "note": "The score and the threshold are built for matching a Take to a person (take_match); matching a person to a model is not."
+ },
+ {
+  "id": "MOD-05",
+  "area": "AI models",
+  "title": "“What do I get?” in three short cards",
+  "given": "The list of models",
+  "when": "They tap “What do I get?”",
+  "then": [
+   "“Teach a model”",
+   "“Start a model”",
+   "“Use a model in your business”"
+  ],
+  "rules": [
+   "N566 item 11"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "whatget"
+ },
+ {
+  "id": "MOD-06",
+  "area": "AI models",
+  "title": "A public model’s door: teach only what you know well",
+  "given": "Kasia does not teach Pitch feedback for founders",
+  "when": "She taps “Teach it”",
+  "then": [
+   "“Everyone who uses this model relies on what it learns from you.”",
+   "“Teach it only what you know well. If this is not your field, your answers would make it worse for all of us.”",
+   "“It learns from your ratings and the words of your answers. Your voice recordings stay with WillpowerLab.”",
+   "“This is my field”",
+   "“Not now”"
+  ],
+  "rules": [
+   "N528 item 2",
+   "N528 item 10"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "door"
+ },
+ {
+  "id": "MOD-07",
+  "area": "AI models",
+  "title": "Teaching follows the recipe card: rate a clip",
+  "given": "Marta teaches Speaking confidence",
+  "when": "She opens her queue and taps “Start”",
+  "then": [
+   "“Judge this moment”",
+   "“Does the speaker sound confident here?”",
+   "“Yes”, “In-between”, “No”, “Audio unclear”, “Skip”",
+   "No machine guess, no Willfidence, no “Will would have said”"
+  ],
+  "rules": [
+   "N563 item 2",
+   "Never 2",
+   "N518 item 4"
+  ],
+  "code": [
+   "fe:src/components/willab/coachwalk/CoachChatRow.tsx::\"Open your queue\"",
+   "be:services/label_quorum.py::def resolve"
+  ],
+  "tests": [
+   "tests/test_label_quorum.py"
+  ],
+  "status": "partly",
+  "screen": "teach-judge",
+  "note": "The coach panel’s Judge is built for speaking confidence; the launchpad’s teaching screens for other models are not."
+ },
+ {
+  "id": "MOD-08",
+  "area": "AI models",
+  "title": "Teaching follows the recipe card: pick, then answer in your own words",
+  "given": "Kasia joined her company’s private model",
+  "when": "She answers one of its examples",
+  "then": [
+   "“A client writes:” and the example",
+   "The question and the options from the list",
+   "“Your company’s own example: it teaches only …”",
+   "“Now say how you would answer them, in your own words.”",
+   "“Record your answer”",
+   "“Skip”"
+  ],
+  "rules": [
+   "N563 item 2",
+   "N563 item 3",
+   "N520 item 7"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "teach-pick"
+ },
+ {
+  "id": "MOD-09",
+  "area": "AI models",
+  "title": "The one queue: every model a person teaches, the most helpful first, none starved, Pause",
+  "given": "Marta teaches Speaking confidence, Interview voice and Job interview coach",
+  "when": "She taps her row under Will, “Open your queue”",
+  "then": [
+   "“Your queue”",
+   "“… examples are waiting. The ones that help most come first.”",
+   "One row per model with its count and “Pause”",
+   "“Pause a model to stop its examples for a while. Tap a model to teach only it.”",
+   "“Start”",
+   "“Add an example you know well”"
+  ],
+  "rules": [
+   "N563 item 1",
+   "N521"
+  ],
+  "code": [
+   "fe:src/components/willab/coachwalk/CoachChatRow.tsx::\"Open your queue\""
+  ],
+  "tests": [],
+  "status": "partly",
+  "screen": "queue",
+  "note": "The coach’s row opens the coach panel’s queue for speaking only; the one queue across models is not built."
+ },
+ {
+  "id": "MOD-10",
+  "area": "AI models",
+  "title": "An empty queue",
+  "given": "Every model is paused, or nothing waits",
+  "when": "They tap “Start”",
+  "then": [
+   "“Nothing waits for you.”",
+   "“Thank you. New examples come when your models need you.”",
+   "“Back to your chats”"
+  ],
+  "rules": [
+   "N566 item 11"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "queue-empty"
+ },
+ {
+  "id": "MOD-11",
+  "area": "AI models",
+  "title": "One answer counts for two models only when both ask the same question on the same scale, on a public example",
+  "given": "A clip that Speaking confidence and Interview voice both ask about",
+  "when": "Marta answers it once",
+  "then": [
+   "“Counts for Speaking confidence and Interview voice: both ask this question”"
+  ],
+  "rules": [
+   "N566 item 7",
+   "N563 item 3"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "teach-counts-both"
+ },
+ {
+  "id": "MOD-12",
+  "area": "AI models",
+  "title": "A different question about the same clip follows right after",
+  "given": "A clip two models ask different questions about",
+  "when": "Marta answers the first",
+  "then": [
+   "“… asks something else about the same clip: …”"
+  ],
+  "rules": [
+   "N566 item 7"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "teach-follow"
+ },
+ {
+  "id": "MOD-13",
+  "area": "AI models",
+  "title": "A company’s own example never counts for a public model",
+  "given": "An example from Northwind’s own data",
+  "when": "It is answered",
+  "then": [
+   "It counts only for the company’s model"
+  ],
+  "rules": [
+   "N563 item 3",
+   "N523 item 1"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "teach-pick"
+ },
+ {
+  "id": "MOD-14",
+  "area": "AI models",
+  "title": "The quiet trust check: known examples 1 in 4 of the first 20, then 1 in 10; admitted at 70% of the trusted median, never below 0.20",
+  "given": "A newcomer on a public model",
+  "when": "They answer 20 examples",
+  "then": [
+   "“Your answers now count.”",
+   "“You earn a token for each answer that counts. When businesses start paying to use this model, you also get a share of what it earns.”",
+   "No number about the person"
+  ],
+  "rules": [
+   "N520 item 8",
+   "N520 item 12",
+   "N528 item 2",
+   "Never 1"
+  ],
+  "code": [
+   "be:services/label_quorum.py::def resolve"
+  ],
+  "tests": [
+   "tests/test_label_quorum.py"
+  ],
+  "status": "partly",
+  "screen": "admitted",
+  "note": "Known clips and the quorum exist for speaking confidence; the measured admission per model is not built."
+ },
+ {
+  "id": "MOD-15",
+  "area": "AI models",
+  "title": "Two matching votes settle an example; one never does; a clash calls a third",
+  "given": "An example with votes",
+  "when": "Its votes are read",
+  "then": [
+   "One vote waits for a second; two matching settle; two different go to a third teacher"
+  ],
+  "rules": [
+   "N518 item 3",
+   "N520 item 9"
+  ],
+  "code": [
+   "be:services/label_quorum.py::def resolve",
+   "be:services/label_quorum.py::MACHINE_VOTES = 0"
+  ],
+  "tests": [
+   "tests/test_label_quorum.py"
+  ],
+  "status": "built",
+  "screen": "teach-judge"
+ },
+ {
+  "id": "MOD-16",
+  "area": "AI models",
+  "title": "Starting a model in three chapters, Describe · Shape · Share, with a thin bar",
+  "given": "Someone taps “Start your own”",
+  "when": "They go through the setup",
+  "then": [
+   "“Describe · 1 of 3”",
+   "“What problem should your model solve?”",
+   "“How do you solve it today?”",
+   "“How will you teach your model?”"
+  ],
+  "rules": [
+   "N528 item 4",
+   "N566 item 2"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "setup-1"
+ },
+ {
+  "id": "MOD-17",
+  "area": "AI models",
+  "title": "After the first Take, the setup opens filled from its answers",
+  "given": "Kasia recorded her first Take",
+  "when": "She taps “Start your own”",
+  "then": [
+   "The problem from “Your field”, how she solves it today from “Worth sharing”",
+   "Drafted: “Filled from your first Take. Change any word.”"
+  ],
+  "rules": [
+   "N571 items 1 to 3",
+   "Never 3"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "setup-1"
+ },
+ {
+  "id": "MOD-18",
+  "area": "AI models",
+  "title": "✕ keeps a draft, shown in the list with Continue",
+  "given": "A setup half done",
+  "when": "They tap ✕",
+  "then": [
+   "“Your draft”",
+   "“You stopped at the scale. Nothing is lost.”",
+   "“Continue”"
+  ],
+  "rules": [
+   "N566 item 2"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "models"
+ },
+ {
+  "id": "MOD-19",
+  "area": "AI models",
+  "title": "“A model like yours already exists” slides up over the third answer",
+  "given": "Three answers that match a public model at 2.0 or more",
+  "when": "They tap Next on the third",
+  "then": [
+   "“A model like yours already exists”",
+   "“If you teach it, it learns faster, and you share what it earns.”",
+   "“Teach this one”",
+   "“Set up mine anyway”"
+  ],
+  "rules": [
+   "N528 item 4",
+   "N566 item 2",
+   "N518 item 7"
+  ],
+  "code": [
+   "be:services/take_match_knowledge.py::def score",
+   "be:services/take_match.py::MIN_FIT = 2.0"
+  ],
+  "tests": [
+   "tests/test_take_match.py"
+  ],
+  "status": "partly",
+  "screen": "setup-similar",
+  "note": "The score is built for Takes; the sheet and the matching of a setup to models are not."
+ },
+ {
+  "id": "MOD-20",
+  "area": "AI models",
+  "title": "What it will do, the scale, the question and the list",
+  "given": "The setup’s Shape chapter",
+  "when": "They confirm each step",
+  "then": [
+   "“From your answers, your model will do three things. Untick what it should not do.”",
+   "“Use this scale”",
+   "“Start with this, finish the rest later”",
+   "Drafted: “Your teachers will be asked this about each clip. We wrote it from your answers; change any word.”",
+   "Drafted: “Write at least two options.”"
+  ],
+  "rules": [
+   "N528 item 4",
+   "N566 item 2",
+   "N570 items 1 and 2"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "setup-20"
+ },
+ {
+  "id": "MOD-21",
+  "area": "AI models",
+  "title": "Each part gets the AI that fits it",
+  "given": "A model that scores a voice, picks and answers",
+  "when": "They reach the AI step",
+  "then": [
+   "“Each part of your model needs a different kind of AI. We chose one for each.”",
+   "“WillpowerLab’s voice scorer: it learns from how the voice sounds, not only from the words”",
+   "“GPT-4o mini”",
+   "“Soon” on GPT-4o, Mistral and Llama"
+  ],
+  "rules": [
+   "N566 item 3"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "setup-7"
+ },
+ {
+  "id": "MOD-22",
+  "area": "AI models",
+  "title": "Starting rules from research, each checked against the first 50 ratings",
+  "given": "A study uploaded",
+  "when": "They keep two rules",
+  "then": [
+   "“Do you have research your model should start from? It will work from day one on the rules you keep.”",
+   "“A study’s numbers may not fit your speakers. We check each rule against your teachers’ first 50 ratings. If they disagree with a rule, we stop using it and tell you why.”"
+  ],
+  "rules": [
+   "N528 item 4"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "setup-8"
+ },
+ {
+  "id": "MOD-23",
+  "area": "AI models",
+  "title": "Uploading a dataset: columns mapped, names left out, the checks, the consent, 60 re-rated before it counts, never in the exam",
+  "given": "A spreadsheet of 1,240 rows",
+  "when": "They upload it",
+  "then": [
+   "“→ Left out: it names a person”",
+   "“We checked your data.”",
+   "“Rows we can use”, “Repeats removed”, “Near repeats removed”, “Rows with no score, skipped”, “Rows that look mislabelled”, “Names and places removed”",
+   "“I have the right to use this data, and the people in it agreed to its use for training.”",
+   "“Upload it” off until ticked"
+  ],
+  "rules": [
+   "N566 item 4",
+   "N531 item 2"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "setup-11"
+ },
+ {
+  "id": "MOD-24",
+  "area": "AI models",
+  "title": "The final exam: 100 cases set aside by two experts",
+  "given": "The exam step",
+  "when": "They choose the second expert",
+  "then": [
+   "“Before anyone teaches it, two experts set aside a final exam: 100 clips your model never learns from.”",
+   "“It can be sold only when it does clearly better on this exam than it does today.”",
+   "“Ask Daniel”"
+  ],
+  "rules": [
+   "N566 item 5",
+   "N528 item 8"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "setup-12"
+ },
+ {
+  "id": "MOD-25",
+  "area": "AI models",
+  "title": "The founder answers the first 10; the model reads them from day one and trains on each once a second teacher agrees",
+  "given": "The setup’s last Shape step",
+  "when": "They answer 10 examples",
+  "then": [
+   "Drafted: “Now answer the first 10 yourself, the way your teachers will.”",
+   "Drafted: “None of these 10 goes into the final exam.”"
+  ],
+  "rules": [
+   "N570 items 3 and 4",
+   "N520 item 11"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "setup-21"
+ },
+ {
+  "id": "MOD-26",
+  "area": "AI models",
+  "title": "Private or public, with a disclaimer before public; invites",
+  "given": "The Share chapter",
+  "when": "They choose who can see it",
+  "then": [
+   "“Who can see your model?”",
+   "“Anyone will be able to see your model and teach it.”",
+   "“Make it public”",
+   "“Keep it private”",
+   "“Who should teach it with you?”",
+   "“Invite them”",
+   "“Copy an invite link”"
+  ],
+  "rules": [
+   "N528 item 5",
+   "N563 item 6"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "setup-14"
+ },
+ {
+  "id": "MOD-27",
+  "area": "AI models",
+  "title": "The owner’s page: “Needs you now”, an honest range, agreement on 1 example in 10, folds",
+  "given": "A model a few weeks old",
+  "when": "Its founder opens it",
+  "then": [
+   "“Needs you now”",
+   "“Your teachers disagree most between 3 (…) and 4 (…). Clearer words for those two points would help.”",
+   "“Make those two clearer”",
+   "“How often your teachers agree”",
+   "“Within one point … times in 10 · exactly … in 10”",
+   "“Where its examples come from”",
+   "“What runs by itself”",
+   "“A fair exam”"
+  ],
+  "rules": [
+   "N566 item 6",
+   "N526 item 3"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "owner-needs"
+ },
+ {
+  "id": "MOD-28",
+  "area": "AI models",
+  "title": "A version is released only when it is clearly better, and only by its founder",
+  "given": "A training compared case by case on the 100 exam cases",
+  "when": "It wins 14 and loses 3",
+  "then": [
+   "“Version 1 is ready”",
+   "“On the 100 exam cases:”",
+   "“… is clearly better: a gap of 14 against 3 is very unlikely to be luck.”",
+   "“Had it been closer, say 9 against 6, you would see “Not clearly better yet”, and no Release button.”",
+   "“Release version 1”",
+   "“Not yet”"
+  ],
+  "rules": [
+   "N566 item 5",
+   "N563 item 5"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "version"
+ },
+ {
+  "id": "MOD-29",
+  "area": "AI models",
+  "title": "The price with − and +, suggestions, the slider, and the split with Infrastructure",
+  "given": "A released model",
+  "when": "Its founder sets the price",
+  "then": [
+   "“Set your price”",
+   "“for one answer”",
+   "“Similar models charge €0.02 to €0.05. The lowest is €0.006, what an answer costs to run.”",
+   "“Infrastructure”",
+   "“The AI company, our servers and WillpowerLab”",
+   "“You, who started it”",
+   "“The teachers, by their points”"
+  ],
+  "rules": [
+   "N531 items 1 and 3",
+   "N566 item 10"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "price"
+ },
+ {
+  "id": "MOD-30",
+  "area": "AI models",
+  "title": "A teacher’s earnings: a share fixed per version, monthly payouts above €20, tokens until the legal terms",
+  "given": "A teacher of a sold model",
+  "when": "They open their earnings",
+  "then": [
+   "“Your share of version 1”",
+   "“Your answers that trained it”",
+   "“Next payout”",
+   "“We pay once a month when you have earned €20 or more. …”"
+  ],
+  "rules": [
+   "N531 items 2 and 4",
+   "N523 item 2"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "earnings"
+ },
+ {
+  "id": "MOD-31",
+  "area": "AI models",
+  "title": "A business: the model card, trying it, “sure”",
+  "given": "A careers website owner",
+  "when": "They open a ready model and try it",
+  "then": [
+   "“Good at”",
+   "“Not so good at”",
+   "“Not for”",
+   "“On its final exam”",
+   "“When it isn’t sure”",
+   "“I’m not sure about this one, so I won’t guess. One of the coaches who taught me will answer it here within a day.”",
+   "“Not sure · a coach will answer”"
+  ],
+  "rules": [
+   "N566 items 8 and 9",
+   "N528 item 9"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "card"
+ },
+ {
+  "id": "MOD-32",
+  "area": "AI models",
+  "title": "A business: the free test key, the monthly limit, the key shown once, the code",
+  "given": "A business that wants to use the model",
+  "when": "They create a key",
+  "then": [
+   "“Start with a test key”",
+   "“Free for your first 100 answers. It never bills you.”",
+   "“Set a monthly limit”",
+   "“This is your secret key. …”",
+   "“JavaScript”, “Python”, “curl”",
+   "“Send it to your developer”"
+  ],
+  "rules": [
+   "N566 item 9",
+   "N528 item 7"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "use"
+ },
+ {
+  "id": "MOD-33",
+  "area": "AI models",
+  "title": "A business: usage, the questions it was not sure about, and pinned versions",
+  "given": "A key in use; version 2 released",
+  "when": "They open “Your usage”",
+  "then": [
+   "“Send the questions it wasn’t sure about to its teachers”",
+   "“You use version 1. When version 2 passes the same exam, you choose when to switch.”",
+   "Drafted: “Switch to version 2”",
+   "Drafted: “Your test key used its 100 free answers.”"
+  ],
+  "rules": [
+   "N566 item 9"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "usage-pinned"
+ },
+ {
+  "id": "MOD-34",
+  "area": "AI models",
+  "title": "Downloading the data: ratings and answers, never recordings; speakers’ words only once the training yes says so",
+  "given": "A model’s owner",
+  "when": "They tap “Download its data”",
+  "then": [
+   "“You can download what … has learned from, and build your own on it.”",
+   "“You may build on it, test it and research with it for free. To sell a product built on it, you need a licence, and its teachers share what that earns.”",
+   "“Download the data”"
+  ],
+  "rules": [
+   "N528 item 12"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "download"
+ },
+ {
+  "id": "MOD-35",
+  "area": "AI models",
+  "title": "The speaker’s training yes decides whether their Takes feed any model",
+  "given": "Kasia, at the consent screens",
+  "when": "She leaves “Help improve WillpowerLab” on, or turns it off later",
+  "then": [
+   "“Help improve WillpowerLab”",
+   "“Turn off training?”"
+  ],
+  "rules": [
+   "N518 item 5",
+   "N79"
+  ],
+  "code": [
+   "fe:src/lib/legal/dataConsentCopy.ts::trainingTitle: \"Help improve WillpowerLab\""
+  ],
+  "tests": [],
+  "status": "built",
+  "screen": "chats"
+ },
+ {
+  "id": "MOD-36",
+  "area": "AI models",
+  "title": "An invite to teach stays in the chat after “Not now”",
+  "given": "Someone invited to a private model",
+  "when": "They tap “Not now”",
+  "then": [
+   "“… invited you to teach … with her.”",
+   "“You said not now. The invite stays here; open it whenever you like.”",
+   "“Open”"
+  ],
+  "rules": [
+   "N528 item 3",
+   "N563 item 6"
+  ],
+  "code": [],
+  "tests": [],
+  "status": "not built",
+  "screen": "invite"
+ }
+]

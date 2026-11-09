@@ -1,0 +1,252 @@
+[
+ {
+  "key": "chats",
+  "shows": "The list of chats: Will, the people, “Your queue” (12 examples, 2 models) and, under the people, “AI models”.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.go('chats')"
+ },
+ {
+  "key": "models",
+  "shows": "AI models: search, “For you”, “Ready to use”, “Still learning”, “What do I get?”, the models from most mature, each with “Started by” and how far it is.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.go('models')"
+ },
+ {
+  "key": "models-empty",
+  "shows": "A search that finds nothing: “No models here yet.” and “Start the first one”.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.ui.filter=''; LPA.ui.query='hair care'; LPA.api.go('models')"
+ },
+ {
+  "key": "whatget",
+  "shows": "“What do I get?”: three cards, for teachers, founders of a model and businesses.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.go('whatget')"
+ },
+ {
+  "key": "model-public",
+  "shows": "A public model's page as anyone sees it: how far it is, who teaches it, “Teach it” and “Try it”.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.go('model:pitch_ns')"
+ },
+ {
+  "key": "door",
+  "shows": "The door before teaching a public model: three bubbles and “This is my field”.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.go('door:pitch_ns')"
+ },
+ {
+  "key": "teach-judge",
+  "shows": "Teaching a confidence model: the coach panel's Judge, the clip, “Does the speaker sound confident here?”, Yes, In-between, No, Audio unclear. No machine guess.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.startTeach('speaking')"
+ },
+ {
+  "key": "teach-counts-both",
+  "shows": "One answer for two models: the same question on the same scale, with “Counts for Speaking confidence and Interview voice: both ask this question”.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.startTeach('speaking'); LPA.ui.teach.item = {ex:'c3', model:'speaking'}; LPA.api.render()"
+ },
+ {
+  "key": "teach-scale",
+  "shows": "A newcomer teaching a 1 to 5 model (the quiet trust check runs behind it).",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); W.join(LPA.w,'pitch_ns'); LPA.api.startTeach('pitch_ns')"
+ },
+ {
+  "key": "teach-follow",
+  "shows": "A different question about the same clip, right after: “Pitch feedback for founders asks something else about the same clip: …”.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); W.join(LPA.w,'pitch_ns'); LPA.w.models.pitch_ns.teachers.artur.status='counts'; LPA.w.models.pitch_ns.teachers.artur.reference=true; LPA.api.startTeach('speaking'); LPA.ui.teach.item = {ex:'c4', model:'speaking'}; LPA.api.answer('yes')"
+ },
+ {
+  "key": "teach-pick",
+  "shows": "A company's own text example: “A client writes:”, the question, three replies, “Your company’s own example: it teaches only Northwind sales replies.”",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); W.join(LPA.w,'nw_sales'); LPA.api.startTeach('nw_sales')"
+ },
+ {
+  "key": "teach-words",
+  "shows": "After the pick: “Now say how you would answer them, in your own words.” with “Record your answer”.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); W.join(LPA.w,'nw_sales'); LPA.api.startTeach('nw_sales'); LPA.api.answer('0')"
+ },
+ {
+  "key": "admitted",
+  "shows": "The trust check let them in: “Your answers now count.”",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.go('admitted:pitch_ns')"
+ },
+ {
+  "key": "not-yet",
+  "shows": "After 20 answers the trust check is not sure yet (drafted words).",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.go('notyet:pitch_ns')"
+ },
+ {
+  "key": "queue",
+  "shows": "Your queue: one row per model taught, its count, Pause; “Start” and “Add an example you know well”.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.go('queue')"
+ },
+ {
+  "key": "queue-empty",
+  "shows": "The queue with nothing waiting: “Nothing waits for you.”",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); Object.keys(LPA.w.models).forEach(function(k){LPA.w.paused[k]=true}); LPA.api.startTeach(null)"
+ },
+ {
+  "key": "add",
+  "shows": "Add an example: which model, “Record one”, “Upload a file”, “It counts once another teacher agrees with your answer.”",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.go('add')"
+ },
+ {
+  "key": "setup-1",
+  "shows": "Describe · 1 of 3: “What problem should your model solve?”",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; LPA.api.go('setup:1')"
+ },
+ {
+  "key": "setup-2",
+  "shows": "Describe · 2 of 3: “How do you solve it today?”",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; LPA.api.go('setup:2')"
+ },
+ {
+  "key": "setup-3",
+  "shows": "Describe · 3 of 3: “How will you teach your model?”",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; LPA.api.go('setup:3')"
+ },
+ {
+  "key": "setup-similar",
+  "shows": "The sheet over the third answer: “A model like yours already exists”, “Teach this one”, “Set up mine anyway”.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; LPA.ui.sheet = true; LPA.api.go('setup:3')"
+ },
+ {
+  "key": "setup-5",
+  "shows": "Shape: what it will do (a score, a pick, an answer) and its name.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; LPA.api.go('setup:5')"
+ },
+ {
+  "key": "setup-6",
+  "shows": "Shape: the scale, a word for every point; “Start with this, finish the rest later”.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; LPA.api.go('setup:6')"
+ },
+ {
+  "key": "setup-20",
+  "shows": "Shape: the teachers' question and the list to pick from (N570, drafted words).",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; d.question = W.suggestQuestion(d); LPA.api.go('setup:20')"
+ },
+ {
+  "key": "setup-7",
+  "shows": "Shape: the AI behind each part; GPT-4o, Mistral, Llama marked Soon.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; LPA.api.go('setup:7')"
+ },
+ {
+  "key": "setup-8",
+  "shows": "Shape, optional: starting rules from research, each with its source.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; LPA.api.go('setup:8')"
+ },
+ {
+  "key": "setup-9",
+  "shows": "Shape, optional: existing data to upload.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; LPA.api.go('setup:9')"
+ },
+ {
+  "key": "setup-10",
+  "shows": "Shape: what each column holds; a column that names a person is left out.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; d.data = LP.makeDataset(5,false); d.dataCheck = LP.checkDataset(d.data); LPA.api.go('setup:10')"
+ },
+ {
+  "key": "setup-11",
+  "shows": "Shape: “We checked your data.” The counts, how the scores spread, the consent box.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; d.data = LP.makeDataset(5,false); d.dataCheck = LP.checkDataset(d.data); LPA.api.go('setup:11')"
+ },
+ {
+  "key": "setup-12",
+  "shows": "Shape: the final exam, 100 clips set aside by two experts.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; d.expert = 'daniel'; LPA.api.go('setup:12')"
+ },
+ {
+  "key": "setup-13",
+  "shows": "Shape: the teachers' steps, Shorter and Longer.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; LPA.api.go('setup:13')"
+ },
+ {
+  "key": "setup-21",
+  "shows": "Shape: the founder answers the first 10 (N570, drafted words).",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; LPA.api.go('setup:21')"
+ },
+ {
+  "key": "setup-14",
+  "shows": "Share: “Who can see your model?” Private or Public.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; LPA.api.go('setup:14')"
+ },
+ {
+  "key": "setup-15",
+  "shows": "Share: the disclaimer before going public.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; LPA.api.go('setup:15')"
+ },
+ {
+  "key": "setup-16",
+  "shows": "Share: invite teachers, or the whole company team.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; LPA.api.go('setup:16')"
+ },
+ {
+  "key": "owner-new",
+  "shows": "A model just started: “ready to learn”, the checklist, “Sell it through an API” locked.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; var m = W.createFromDraft(LPA.w, d); LPA.api.go('owner:' + m.id)"
+ },
+ {
+  "key": "owner-needs",
+  "shows": "The owner's page weeks later: “Needs you now” (points 3 and 4), how far, agreement, the folds.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; d.rulesDecided = true; d.expert = 'daniel'; d.invited = true; var m = W.createFromDraft(LPA.w, d); for (var i=0;i<3;i++) W.week(LPA.w); LPA.api.go('owner:' + m.id)"
+ },
+ {
+  "key": "version",
+  "shows": "“Version 1 is ready”: the case-by-case comparison and “Release version 1”.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; d.rulesDecided = true; d.expert = 'daniel'; d.invited = true; var m = W.createFromDraft(LPA.w, d); m.clearer = true; for (var i=0;i<12 && !m.pending;i++) W.week(LPA.w); LPA.api.go('version:' + m.id)"
+ },
+ {
+  "key": "price",
+  "shows": "“Set your price”: − and +, suggestions, the split with Infrastructure, the slider.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; d.rulesDecided = true; d.expert = 'daniel'; d.invited = true; var m = W.createFromDraft(LPA.w, d); m.pending = {n:1, vs:{w:14,l:3,t:83}, shares:{}}; W.release(LPA.w, m.id); LPA.api.go('price:' + m.id)"
+ },
+ {
+  "key": "earnings",
+  "shows": "A teacher's earnings: their share of the version, the answers that trained it, the next payout.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); W.week(LPA.w); LPA.api.go('earn')"
+ },
+ {
+  "key": "card",
+  "shows": "A ready model's card: good at, not so good at, not for, its exam, when it isn't sure, its version.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.go('model:jobcoach')"
+ },
+ {
+  "key": "try",
+  "shows": "Trying a model: “I’m not sure about this one, so I won’t guess.” and “Not sure · a coach will answer”.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.w.chats.jobcoach=[{from:'me',text:'Why did I leave my last job after four months?'},{from:'model',text:'',unsure:true,pending:true}]; LPA.api.go('try:jobcoach')"
+ },
+ {
+  "key": "use",
+  "shows": "“Use it in your business”: the price, the free test key, the monthly limit.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.go('model-use:jobcoach')"
+ },
+ {
+  "key": "key",
+  "shows": "The secret key, shown once.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.go('model-use:jobcoach'); LPA.api.act('makekey','jobcoach')"
+ },
+ {
+  "key": "code",
+  "shows": "The code: JavaScript, Python, curl; “sure” in every answer.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); var k = W.makeKey(LPA.w,'jobcoach',50); LPA.api.go('code:' + k.id)"
+ },
+ {
+  "key": "usage-free-used",
+  "shows": "Usage after the test key's 100 free answers (drafted words).",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); var k = W.makeKey(LPA.w,'jobcoach',50); W.product(LPA.w, k.id, 120); LPA.api.go('usage:' + k.id)"
+ },
+ {
+  "key": "usage-pinned",
+  "shows": "Usage after version 2 passed: the key stays on version 1 until the business switches (drafted words).",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); var k = W.makeKey(LPA.w,'jobcoach',50); for (var i=0;i<3;i++) W.week(LPA.w); LPA.api.go('usage:' + k.id)"
+ },
+ {
+  "key": "profile",
+  "shows": "The profile's AI models: make public, archive, download its data.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; d.rulesDecided = true; d.expert = 'daniel'; d.invited = true; var m = W.createFromDraft(LPA.w, d); LPA.api.go('profile')"
+ },
+ {
+  "key": "download",
+  "shows": "Download its data: what it holds, and the licence.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.api.act('newdraft'); var d = LPA.ui.draft; d.rulesDecided = true; d.expert = 'daniel'; d.invited = true; var m = W.createFromDraft(LPA.w, d); LPA.api.go('download:' + m.id)"
+ },
+ {
+  "key": "invite",
+  "shows": "An invite stays in the chat after “Not now”.",
+  "open": "In the test drive (the-launchpad-test-drive.html, or https://claude.ai/artifact/Qfve4dQkWuHU3tGWNWpTE8), run in the page console: LPA.api.fresh(); LPA.w.invites[0].state = 'later'; LPA.api.go('invite')"
+ }
+]
