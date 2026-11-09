@@ -14698,3 +14698,34 @@ first Take itself does not change.
 **Open:** the new words, for the founder's OK on the prototype (Never 4).
 Not in force until built and merged. No migration in this entry.
 No rules page yet: a page for the launchpad with its first part (N566).
+
+**N572 · The first choice while Take 1 is processed: "What would you like to
+do here first?" with four answers; the sharing setup is asked when it is
+needed, not in onboarding (founder, the Claude Code chat, 9 November 2026,
+on two drafts of the same choice, the proposal "Onboarding, Explained" and
+the hand-off of "Your chat on any website", with recommended answers:
+"Talk · Share · Learn"; and, for the sharing setup, "When they're
+needed").** For N401, N467, N487, N503, N534, N559, N564, N567 and N569:
+1. **The choice.** While Take 1 is processed, after "Here's how others will
+   see you", Will asks once: "What would you like to do here first?", with
+   "Something else", "Learn from others", "Share what I know" and "Prepare
+   a talk", as taps on the speaker's side above the bar, the likely one last
+   and filled (N467); "Something else" opens the typing box. Signed (Never
+   4): the question and its four answers. Replaces the drafts "To learn
+   from others", "To share what I know", "Both" and "Ask my team
+   something".
+2. **What each answer leads to.** "Prepare a talk" asks "When is it?" once,
+   with "No date yet" (N564 item 1). What "Learn from others" and "Share
+   what I know" lead to is drawn on the proposal "Onboarding, Explained"
+   and waits for the founder's OK on its words.
+3. **Onboarding stays short.** After the choice: the business's community
+   (N559 item 1), the agreement, "You're set". Nothing is asked before Take
+   1 (Never 3), one question at a time, and the walk is never delayed.
+4. **The sharing setup comes when it is needed, never in onboarding:** the
+   join questions at the first share (N503, N534, as built); the website
+   chat's model card and its call-back scale when the website chat is
+   turned on (N569). Was: the widget hand-off's proposal to ask them while
+   Take 1 is processed.
+No migration. The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md),
+the first Take as the onboarding.
