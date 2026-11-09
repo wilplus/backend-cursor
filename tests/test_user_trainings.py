@@ -8,7 +8,9 @@ OUTCOME
       with a slide still uncorrected is not.
   O3  A coach's training import is never in the coach's own project list
       (it has no project to archive, so it blocked "One project at a time").
-PROVES   O1, O2 -> test_trainings_group_by_talk_and_mark_ideal_ready
+  O4  Each Take carries the upload key it was sent with, so a Take kept on
+      the phone knows whether it arrived (N556 item 3).
+PROVES   O1, O2, O4 -> test_trainings_group_by_talk_and_mark_ideal_ready
          O3     -> test_a_training_import_is_not_a_project
 WHY      Founder 2026-07-13 (arc-grouped trainings). The save-at-publish half
          (POST /v2/internal/publish-session-results) is retired and answers
@@ -34,7 +36,8 @@ def _take(sid, arc, index):
 
 
 def test_trainings_group_by_talk_and_mark_ideal_ready():
-    rows = [_take("s2", "ready", 2), _take("s1", "ready", 1), _take("s3", "half", 1)]
+    rows = [{**_take("s2", "ready", 2), "upload_idempotency_key": "k2"},
+            _take("s1", "ready", 1), _take("s3", "half", 1)]
     edits = {"ready": {0: "Edited.", 1: "Also edited."}, "half": {0: "Edited."}}
     with patch.object(db.takes, "list_user_arc_sessions", return_value=rows), \
             patch.object(db, "list_arc_batch_deliveries", return_value={}), \
@@ -49,6 +52,7 @@ def test_trainings_group_by_talk_and_mark_ideal_ready():
     cards = {t["arc_id"]: t for t in resp.get_json()["trainings"]}
     assert set(cards) == {"ready", "half"}
     assert [t["session_id"] for t in cards["ready"]["takes"]] == ["s1", "s2"]
+    assert [t["upload_key"] for t in cards["ready"]["takes"]] == [None, "k2"]
     assert cards["ready"]["take_count"] == 2
     assert cards["ready"]["ideal_ready"] is True
     assert cards["half"]["ideal_ready"] is False

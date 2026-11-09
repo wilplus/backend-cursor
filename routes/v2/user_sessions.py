@@ -861,8 +861,9 @@ def v2_user_list_trainings():
 
     Response 200 { trainings: [ { arc_id, topic, created_at, last_take_at,
         take_count,
-        takes_target, takes:[{session_id, take_index, created_at, has_slides,
-        coach_reviewed}], batch_verified, delivered_at, ideal_ready } ] }
+        takes_target, takes:[{session_id, take_index, created_at, upload_key,
+        has_slides, coach_reviewed}], batch_verified, delivered_at,
+        ideal_ready } ] }
     """
     from time import perf_counter
     from services.user_trainings import list_trainings
