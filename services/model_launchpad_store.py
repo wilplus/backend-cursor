@@ -133,6 +133,9 @@ def page_for(database: Any, user_id: Any, model_id: Any) -> dict:
     page = rules.model_page(model, me, own_part=own_part)
     if page is None:
         raise _not_found()
+    if rules.viewer_role(model, me) == "owner":
+        from services import model_setup_store
+        page["owner"] = model_setup_store.owner_view(database, me, model)
     return page
 
 
@@ -174,6 +177,10 @@ def queue_for(database: Any, user_id: Any, *, only: Any = None) -> dict:
     examples = _rows(_table(database, EXAMPLES)
                      .select("id,model_id,source,private,kind,content,sureness,speaker_id,added_by")
                      .in_("model_id", mids).eq("in_exam", False)) if mids else []
+    # An upload waits for its 60 re-rates; the rest of it never needs a
+    # teacher (N566 item 4).
+    examples = [e for e in examples if e.get("source") != "upload" or e.get("kind") == "rerate"]
+    examples += _exam_cases_for(database, me, mids)
     answered = {(str(a["example_id"]), str(a["model_id"])) for a in _rows(
         _table(database, ANSWERS).select("example_id,model_id").eq("teacher_id", me))} if mids else set()
     waiting = [e for e in examples
@@ -183,6 +190,21 @@ def queue_for(database: Any, user_id: Any, *, only: Any = None) -> dict:
         [m for m in models if m["id"] in mids], waiting, me,
         paused=[t["model_id"] for t in mine if t.get("paused_at")], only=_uuid(only) if only else None,
         company_line={str(t["model_id"]): t["company_line"] for t in mine if t.get("company_line")})
+
+
+def _exam_cases_for(database: Any, me: str, mids: list[str]) -> list[dict]:
+    """The exam's cases for the two experts who set it aside (N566 item 5),
+    and for nobody else."""
+    if not mids:
+        return []
+    setups = _rows(_table(database, MODELS).select("id,setup").in_("id", mids))
+    mine = [str(m["id"]) for m in setups
+            if me in [str(x) for x in ((m.get("setup") or {}).get("exam") or {}).get("experts") or []]]
+    if not mine:
+        return []
+    return _rows(_table(database, EXAMPLES)
+                 .select("id,model_id,source,private,kind,content,sureness,speaker_id,added_by")
+                 .in_("model_id", mine).eq("in_exam", True))
 
 
 def chat_rows_for(database: Any, user_id: Any) -> dict:
@@ -283,8 +305,13 @@ def _trust_after_answer(database: Any, me: str, model: dict) -> Optional[dict]:
         change["trust_told_at"] = _now()
     _table(database, TEACHERS).update(change).eq("model_id", model["id"]).eq("user_id", me).execute()
     if status == "counts":
-        _table(database, ANSWERS).update({"counted": True}).eq("model_id", model["id"]) \
-            .eq("teacher_id", me).execute()
+        # An answer on a sealed exam case never counts toward training.
+        exam = {str(e["id"]) for e in _rows(_table(database, EXAMPLES).select("id")
+                                            .eq("model_id", model["id"]).eq("in_exam", True))}
+        for a in _rows(_table(database, ANSWERS).select("id,example_id,counted")
+                       .eq("model_id", model["id"]).eq("teacher_id", me)):
+            if not a.get("counted") and str(a["example_id"]) not in exam:
+                _table(database, ANSWERS).update({"counted": True}).eq("id", a["id"]).execute()
     return screen
 
 

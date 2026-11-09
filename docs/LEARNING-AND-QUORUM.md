@@ -206,6 +206,34 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     either version won is under 5% (14 against 3 is; 9 against 6 is not).
   - **A Take may teach** only while its speaker's training yes is on, and
     only Takes recorded after it (N563 item 4, N575).
+- **F6** **Starting a model** (N528 item 4, N566 items 2 to 6, N570, N571,
+  N582, N585): `services/model_setup.py` holds the setup's steps and words,
+  `services/model_setup_store.py` keeps the draft in `ai_models.setup`
+  (0517).
+  - **Three chapters,** Describe · Shape · Share, one action a screen; ✕
+    keeps the draft; after a first Take, Describe opens filled from its
+    answers. A model can start right after its scale; the rest is a
+    checklist on its page.
+  - **The app drafts the rest** from the three answers (a provider call
+    under the owner's processing authorization, with a rule-based fallback):
+    the name, what one example is, the parts, the scale's words, the
+    teachers' question, the list, the journey. The owner changes any word.
+  - **Each part gets the AI that fits it:** a voice score WillpowerLab's own
+    voice scorer, picking and answering GPT-4o mini.
+  - **Uploaded data** is checked (repeats, near repeats, no score,
+    mislabelled, names removed), counts only after the owner's tick, stays
+    private to the model, and waits for 60 re-rates; its labels never reach
+    a teacher; none of it goes into the exam.
+  - **The final exam** is set aside from whole speakers, never an upload,
+    and answered by the owner and one expert they ask; an exam answer never
+    counts toward training.
+  - **The owner's first 10** are answered on the teachers' screen, never an
+    exam case, and train the model once a second teacher agrees.
+  - **A host's model gathers** the moments of Takes sent to its owner, only
+    from speakers whose training yes is on, recorded after it, whose
+    learning is not stopped and whose processing authorization is current;
+    a yes turned off takes them out on the next run
+    (`services/model_examples_from_takes.py`, MOD-02).
 
 ### G · What never becomes a label or training data
 
@@ -435,6 +463,10 @@ still open.
   `services/model_launchpad_store.py` and `routes/v2/learning_models.py`
   (`/v2/models`, ring row `ai_models`): the launchpad's tables, read into
   F5's rules
+- `migrations/a_model_keeps_its_setup.sql` (0517), `services/model_setup.py`,
+  `services/model_setup_store.py`, `routes/v2/model_setup.py`
+  (`/v2/models/setup`, `/v2/models/<id>/setup/*`) and
+  `services/model_examples_from_takes.py`: starting a model (F6)
 - `config.py`: the doors' per-surface sets and `DETECTOR_TRAINING_AUTHORISED`
 
 **Docs:**
@@ -474,6 +506,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-11-09 · N528, N566, N570, N571, N582, N585 · F6: starting a model, its draft kept (0517), the setup's routes behind the ring, and the job that gathers consented Takes (MOD-02); waits for its outside review · BE
 - 2026-11-09 · N528, N563, N566 · F5's tables (0516) and `/v2/models`, behind the ring row `ai_models` at ring 6; waits for its outside review · BE
 - 2026-11-09 · N528, N563, N566 · F5: the model launchpad's rules in one module, before its tables: the list, a model's page, teaching by the recipe card, the trust check, the one queue, release · BE
 - 2026-10-26 · N111 · §3 marks the founder's answers of 21 October: A1 to A10, A12, A13 and A15 decided, A11 and A14 held and asked again; B2 to B7 marked fixed, B1 still open · BE
