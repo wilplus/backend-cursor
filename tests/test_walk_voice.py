@@ -10,6 +10,9 @@ OUTCOME
       my own words; anything else is refused (N557, N565, Never 1).
   O2  Will writes only for a speaker the writer is on for, on their own
       Take, at a step the walk has; otherwise the walk says its signed line.
+  O5  My private note is never repeated back to me: a draft that quotes it,
+      or carries a run of its words without quote marks, is refused; my own
+      spoken words may still be quoted (N565 item 2, SPEAKER-MEMORY.md).
   O4  After a try, Will hears how it went (it landed, one try left, or the
       last) and is told what to offer for each; introducing the moment to
       try, what it will be walked with (a clearer way to say it, or the AI
@@ -21,6 +24,7 @@ PROVES   O1 -> test_only_plain_kind_words_reach_me
          O2 -> test_will_writes_only_for_me_on_my_take_when_it_is_on
          O3 -> test_a_refused_draft_gets_one_more_try_then_the_signed_line
          O4 -> test_will_hears_how_the_try_went_and_what_the_moment_is_walked_with
+         O5 -> test_my_private_note_is_never_repeated_back_to_me
 WHY      Founder 2026-11-09 (N565: "make the answers smart. So not locked
          in, but smart... we can set the rules for those messages"; N557:
          "It assumes that you're broken and we need to fix you"; the
@@ -58,6 +62,23 @@ def test_only_plain_kind_words_reach_me():
     # A quote of my words, with a full stop inside it, is one sentence.
     assert check('"So that you can learn together." came out slower. Want to try it once more?',
                  _CONTEXT) is None
+
+
+
+def test_my_private_note_is_never_repeated_back_to_me():
+    note = "Gets nervous when her boss is in the room; wants to sound calm before the price."
+    context = {**_CONTEXT, "speaker_note": note}
+    # Quoted, or its words carried over without quote marks: refused.
+    assert check('You said "nervous when her boss" before.', context) is not None
+    assert check("Your boss is in the room, so slow the opening.", context) is not None
+    assert check("Want to sound calm before the price? Try the pause.", context) is not None
+    # Kind words that do not repeat the note, and my own spoken words: fine.
+    assert check('Listen for the pause before "learn together". Want to try it slower?',
+                 context) is None
+    assert check("The opening was calm. Want to try the next slide?", context) is None
+    # A run the note shares with what I said in the Take may be quoted.
+    spoken_too = {**context, "speaker_note": "Wants people alike to learn together."}
+    assert check('"So that you can learn together." came out slower.', spoken_too) is None
 
 
 class _Db:
