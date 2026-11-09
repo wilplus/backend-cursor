@@ -298,7 +298,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O2** An address another account has is refused before any link goes, and the refusal is logged.
 - **O3** The link changes the email once and logs it; opened twice it changes nothing more. An older link after a newer request, an expired link and an unknown token change nothing.
 - **O4** Change password: a wrong current password or one under 6 characters changes nothing; the right one sets the new password, signs out the other devices, sends the notice and is logged with the IP address and the device.
-- **O5** An account that signs in with Google has no password to ask for: its email change needs none, Set a password sends the set email, and the saved password is logged as its first; a reset link's password is a change and gets the notice.
+- **O5** An account that signs in with Google has no password to ask for: its email change needs none, Set a password sends the set email, and the saved password is logged as its first; a reset link's password is a change and gets the notice. One that signs in with Microsoft is called "Microsoft" (N401 item 6), never Supabase's "Azure".
 - **O6** When the email doesn't go, the card is told so: nothing is reported as sent.
 
 *Why:* WIL-95 (founder 2026-10-26, N190: "approved, implement it"; rules in the frontend's docs/flows/consent-screens.md §1).
