@@ -44,6 +44,14 @@
 -- schema cache would otherwise miss the new column and table until its next
 -- reload, as 0514 does.
 --
+-- Reviewed outside (Grok, 9 November 2026): approved with one change,
+-- indexes on chat_widget_guests.thread_id and member_id so the deletes that
+-- cascade through them do not scan. They are there already: the UNIQUE
+-- constraints on both columns are unique btree indexes (checked with
+-- pg_indexes on PostgreSQL 16), so no second index is added; every foreign
+-- key a delete cascades through (link_id, owner_user_id, thread_id,
+-- member_id; chat_threads.widget_owner_id) has one.
+--
 -- Rollback (a new forward migration): leave them; dropping them is a
 -- separate, previewed retention operation.
 
