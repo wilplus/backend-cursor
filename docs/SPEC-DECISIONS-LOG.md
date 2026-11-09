@@ -14698,3 +14698,62 @@ first Take itself does not change.
 **Open:** the new words, for the founder's OK on the prototype (Never 4).
 Not in force until built and merged. No migration in this entry.
 No rules page yet: a page for the launchpad with its first part (N566).
+
+**N572 · Who sees what on the way in: one tree of facts the app knows and
+one question, "What would you like to do here first?", whose answers open
+the branches (founder, the Claude Code chat, 9 November 2026, on the page
+"Who sees what" <https://claude.ai/artifact/7biP6TD828ufmLxe3ZTAJE>, after
+two drafts of the same question met, the App Model's and the website
+widget's hand-off: "we need to come up with a way to sort it all out. Who
+should have displayed which screen ... some binary tree based on which we
+decide who gets what"; then "go with your recommendations, log it and send
+it").** For N401, N453, N462, N487, N492, N503, N534, N559, N564, N569 and
+N571:
+1. **One tree decides every screen of the way in.** Each fork is a fact the
+app already knows (a coach's link; a member's link whose business has a
+community; the languages spoken in Take 1; a team; whether the person whose
+link brought them set questions) or the one question it asks. Nothing is
+asked before the first Take (Never 3), and nothing the five slides
+answered. In order:
+   - everyone: Will's welcome (N492), the first Take (N462), then, while it
+     is processed, "Here's how others will see you:" (N453);
+   - a speaking coach's link: the coach's own way (the agreement, the
+     coach's "You're set.", then "Your queue", N521), and nothing below;
+   - a member's link whose business has a community: Join / Not now (N559);
+   - "What would you like to do here first?" (below);
+   - "Prepare a talk": "When is it?" with "No date yet" (N564);
+   - "Share what I know": the questions for people who join (N487), with
+     the languages for someone who spoke two;
+   - everyone: the plan card (N564);
+   - in a team, or sharing: the agreement (item 4);
+   - everyone: one "You're set.", for sharers with "Copy my link ›" and
+     "Your questions for people who join ›";
+   - after the walk: a person whose inviter set questions meets them in
+     that chat (N487 item 4); sharers find "AI models" → "Start your own",
+     filled from the five answers (N571), and later the website switch
+     (N569).
+2. **The question's words, signed (Never 4):** "What would you like to do
+here first?" with "Ask my team something", "Share what I know" and
+"Prepare a talk". The widget hand-off's draft ("To learn from others", "To
+share what I know", "Both") is not used.
+3. **Several answers may be tapped,** each then "Send" in the bar's middle,
+as N487's languages question works; each answer is its own fork, so a
+person who prepares a talk and shares gets both branches.
+4. **The agreement** comes to people in a team, as N453 item 5 has it, and
+also to anyone who chose "Share what I know", since the people who join
+them send them recordings. Amends N453 item 5.
+5. **No model setup on the way in** (N571): the widget hand-off's model
+card and its call scale (N569 item 5) belong to "Start your own" after the
+walk, not to the wait while Take 1 is processed.
+6. **Only sharers** see the questions for people who join, "Copy my link ›"
+after "You're set.", "Your questions for people who join ›", "AI models" →
+"Start your own" filled, and the website switch. Once this is built, the
+questions for people who join move from the first tap on "+" (N503, N534)
+into the wait; until then N503 and N534 stand.
+The page is kept in
+[`docs/design/who-sees-what-2026-11-09/`](design/who-sees-what-2026-11-09/).
+Not in force until built and merged. No migration in this entry.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built.
