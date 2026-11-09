@@ -1,0 +1,1274 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>The Way In</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&display=swap">
+<style>
+/* Layout: the controls on top, the phone on the left, the notes beside it; stacks on a narrow screen */
+:root {
+  --bg: #EDEBE7; --fg: #141414; --muted: #6E6A64; --line: #E6E3DD; --panel: #FFFFFF;
+  --orange: #FF640A; --orange-soft: #FFF0E6; --ink: #121212; --bubble: #F2F2F2; --green: #1F9D55; --red: #E5484D;
+  --int: #6741D9; --int-soft: #F1ECFF;
+  --ui: "Figtree", "Helvetica Neue", system-ui, sans-serif;
+  --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #161615; --fg: #F1EFEB; --muted: #A29E97; --line: #2D2C2A; --panel: #1D1C1B; --orange-soft: #2E1E14; --int: #B197FC; --int-soft: #251D3D; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #161615; --fg: #F1EFEB; --muted: #A29E97; --line: #2D2C2A; --panel: #1D1C1B; --orange-soft: #2E1E14; --int: #B197FC; --int-soft: #251D3D; color-scheme: dark }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--ui); margin: 0; }
+.wrap { max-width: 1160px; margin: 0 auto; padding-block: 28px 60px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 36px; align-items: start; }
+@media (max-width: 900px) { .wrap { grid-template-columns: minmax(0, 1fr); justify-items: center; } }
+header.top { grid-column: 1 / -1; justify-self: stretch; min-width: 0; }
+h1 { font: 800 clamp(30px, 5vw, 44px)/1.05 var(--display); margin: 0; letter-spacing: -0.02em; }
+.lede { color: var(--muted); margin: 8px 0 0; max-width: 72ch; }
+.ctl { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.ctl .lab { font: 600 11.5px var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.seg button { border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 99px; padding: 7px 14px; font: 600 13.5px var(--ui); cursor: pointer; }
+.seg button.on { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+.seg button:disabled { opacity: .45; cursor: not-allowed; }
+.seg button small { font-weight: 500; opacity: .75; }
+/* ---------- the phone (always the app's own light look) ---------- */
+.phone { width: 390px; max-width: 100%; height: 800px; border-radius: 46px; border: 10px solid #111; background: #fff; position: relative; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.18); color: #121212; color-scheme: light; }
+#app { position: absolute; inset: 0; display: flex; flex-direction: column; font-family: var(--ui); }
+.nav { height: 62px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 8px 18px 0; border-bottom: 1px solid #EBEBEB; }
+.logo { display: flex; align-items: center; gap: 8px; font: 700 16px var(--ui); }
+.dots { display: inline-flex; gap: 3px; } .dots i { width: 5px; height: 5px; border-radius: 50%; background: #121212; }
+.menu { width: 38px; height: 38px; border: 1px solid #E5E5E5; border-radius: 10px; background: #fff; display: grid; place-items: center; cursor: pointer; }
+.list { flex: 1; overflow-y: auto; }
+.row { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: none; padding: 0 0 0 16px; height: 76px; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.row:hover { background: #FAFAFA; }
+.row .mid { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 2px; border-bottom: 1px solid #F0F0F0; padding-right: 16px; }
+.row .t { display: flex; align-items: baseline; gap: 8px; } .row .t b { font-size: 16px; font-weight: 600; } .row .t small { color: #8A8A8A; font-size: 12.5px; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; } .row .t em { font-style: normal; font-size: 12px; color: #8A8A8A; }
+.row .p { display: flex; align-items: center; gap: 8px; } .row .p span:first-child { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #737373; font-size: 14px; }
+.row.new .t b { font-weight: 700; } .row.new .t em { color: #C2410C; font-weight: 600; } .row.new .p span { color: #121212; }
+.row .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--orange); flex: none; }
+.av { width: 48px; height: 48px; border-radius: 50%; flex: none; display: grid; place-items: center; font: 600 18px var(--ui); color: #fff; }
+.av.will { background: #F2F2F2; } .av.will .dots i { width: 6px; height: 6px; }
+.fab { position: absolute; right: 18px; bottom: 26px; width: 52px; height: 52px; border-radius: 50%; border: 0; background: #121212; color: #fff; font-size: 26px; cursor: pointer; box-shadow: 0 8px 18px rgba(0,0,0,.22); }
+/* chat */
+.chd { height: 62px; flex: none; display: flex; align-items: center; gap: 10px; padding: 8px 12px 0; border-bottom: 1px solid #EBEBEB; }
+.bk { width: 36px; height: 36px; border: 0; background: none; font-size: 26px; cursor: pointer; color: #121212; }
+.chd .av { width: 38px; height: 38px; font-size: 15px; }
+.chd b { display: block; font-size: 16px; } .chd small { color: #737373; font-size: 12.5px; }
+.thread { flex: 1; overflow-y: auto; padding: 14px 12px 8px; display: flex; flex-direction: column; gap: 8px; }
+.thread::before { content: ""; flex: 1; }
+.day { align-self: center; font-size: 12px; color: #8A8A8A; padding: 4px 0; }
+.b { max-width: 80%; padding: 9px 12px; border-radius: 18px; background: var(--bubble); font-size: 15px; line-height: 1.4; animation: drop .28s cubic-bezier(.2,.9,.3,1.2) both; }
+.b.me { align-self: flex-end; background: var(--orange); color: #fff; border-bottom-right-radius: 6px; }
+.b.them { align-self: flex-start; border-bottom-left-radius: 6px; }
+.b .fwd { display: block; font-size: 12.5px; opacity: .8; margin-bottom: 3px; }
+.b.big { background: none; font-size: 46px; padding: 0 4px; line-height: 1; } .b.big small { display: block; font-size: 11.5px; color: #8A8A8A; text-align: right; }
+.b.me.big small { color: #8A8A8A; }
+.voice { display: flex; align-items: center; gap: 8px; min-width: 190px; }
+.voice .pl { width: 30px; height: 30px; border-radius: 50%; background: #121212; color: #fff; display: grid; place-items: center; font-size: 11px; flex: none; }
+.b.me .voice .pl { background: #fff; color: var(--orange); }
+.voice .w { flex: 1; height: 22px; background: repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 5px); opacity: .35; border-radius: 2px; mask: linear-gradient(transparent 20%, #000 20% 80%, transparent 80%); }
+.voice small { font-size: 12px; opacity: .8; font-variant-numeric: tabular-nums; }
+.strip6 { display: flex; gap: 3px; margin-top: 6px; } .strip6 span { width: 26px; height: 18px; border-radius: 4px; }
+.status { align-self: flex-end; font-size: 12.5px; color: #737373; display: flex; align-items: center; gap: 4px; }
+.status .ok { color: var(--green); font-weight: 700; }
+.card { align-self: flex-start; width: 80%; border: 1px solid #EBEBEB; border-radius: 16px; padding: 10px 12px; background: #fff; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+.card b { font-size: 14.5px; }
+/* above the bar: suggestions, one tap each */
+.above { flex: none; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; padding: 4px 12px 6px; }
+.above:empty { display: none; }
+.sug { border: 1.5px solid var(--orange); color: var(--orange); background: #fff; border-radius: 99px; padding: 8px 14px; font: 600 14px var(--ui); cursor: pointer; animation: drop .25s ease both; }
+.sug.ask { border-color: #121212; color: #121212; }
+/* ---------- the one bar: three places that never move ---------- */
+.dock { flex: none; height: 76px; display: grid; grid-template-columns: 48px minmax(0, 1fr) 48px; align-items: center; gap: 8px; padding: 0 12px 10px; }
+.slot-l, .slot-r { width: 48px; height: 48px; border-radius: 50%; border: 0; background: none; display: grid; place-items: center; cursor: pointer; color: #121212; }
+.slot-l { font-size: 28px; font-weight: 400; }
+.slot-r { background: #F2F2F2; transition: background .2s, transform .2s; }
+.slot-r.hot { background: var(--orange); color: #fff; animation: pulse 1.6s ease-in-out infinite; }
+.slot-r svg { width: 22px; height: 22px; }
+.slot-m { height: 48px; border-radius: 99px; display: flex; align-items: center; justify-content: space-around; border: 1px solid #E5E5E5; animation: swap .25s ease both; }
+.slot-m button { border: 0; background: none; font-size: 24px; width: 56px; height: 44px; border-radius: 99px; cursor: pointer; }
+.slot-m button:active { transform: scale(1.2); }
+.slot-m.bigbtn { border: 0; background: #121212; color: #fff; font: 600 16px var(--ui); gap: 10px; justify-content: center; cursor: pointer; }
+.slot-m.bigbtn i { width: 10px; height: 10px; border-radius: 50%; background: var(--orange); }
+.slot-m.taps { border: 0; gap: 8px; justify-content: center; }
+.slot-m.taps button { width: auto; font: 600 15px var(--ui); padding: 0 18px; border: 1.5px solid var(--orange); color: var(--orange); background: #fff; }
+.slot-m.taps button.go { background: var(--orange); color: #fff; }
+.slot-m.sending { border: 0; background: #F2F2F2; justify-content: space-between; padding: 0 6px 0 18px; font: 500 14.5px var(--ui); }
+.slot-m.sending .bar { position: absolute; }
+.slot-m.sending button { width: auto; font: 600 14.5px var(--ui); padding: 0 16px; background: #fff; }
+.dock.rec { grid-template-columns: 48px minmax(0, 1fr); }
+.recstrip { height: 48px; border-radius: 99px; background: #F2F2F2; display: flex; align-items: center; gap: 10px; padding: 0 6px 0 16px; font: 500 15px var(--ui); font-variant-numeric: tabular-nums; }
+.recstrip .rd { width: 10px; height: 10px; border-radius: 50%; background: var(--red); animation: blink 1s infinite; }
+.recstrip .tr { flex: 1; height: 4px; border-radius: 2px; background: #DDD; overflow: hidden; } .recstrip .tr i { display: block; height: 100%; width: 0; background: var(--red); transition: width .3s linear; }
+.recstrip button { border: 0; background: var(--red); color: #fff; border-radius: 99px; height: 36px; padding: 0 16px; font: 600 14.5px var(--ui); cursor: pointer; }
+/* recording screen (the locked one, shortened) */
+.recs { position: absolute; inset: 0; background: #fff; display: flex; flex-direction: column; padding: 18px 16px 16px; gap: 12px; z-index: 5; }
+.recs .h { display: flex; justify-content: space-between; align-items: flex-start; } .recs .h b { font-size: 16px; } .recs .h small { display: block; color: #737373; font-size: 13px; }
+.recs .x { border: 0; background: none; font-size: 22px; cursor: pointer; }
+.slide { flex: 1; border-radius: 18px; padding: 22px; color: #fff; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; }
+.slide .mk { width: 26px; height: 4px; border-radius: 2px; background: var(--orange); }
+.slide h3 { margin: 0; font: 700 24px/1.2 var(--display); } .slide p { margin: 0; opacity: .85; }
+.recs .clock { display: flex; align-items: center; gap: 10px; background: #F5F5F5; border-radius: 12px; padding: 10px 12px; font-variant-numeric: tabular-nums; } .recs .clock .rd { width: 8px; height: 8px; border-radius: 50%; background: var(--red); animation: blink 1s infinite; }
+.recs .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.recs .pair button { height: 50px; border-radius: 99px; font: 600 15px var(--ui); cursor: pointer; border: 1px solid #E5E5E5; background: #fff; }
+.recs .pair button.go { background: #121212; color: #fff; border: 0; }
+/* sheet */
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: #fff; border-radius: 22px 22px 0 0; box-shadow: 0 -10px 30px rgba(0,0,0,.14); padding: 16px 16px 22px; z-index: 6; animation: up .25s ease both; }
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.grid4 button { border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 6px; font: 500 12.5px var(--ui); cursor: pointer; padding: 6px 0; }
+.grid4 i { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-style: normal; font-size: 22px; }
+.sheet .cancel { width: 100%; height: 40px; border: 0; background: none; color: #737373; font: 500 15px var(--ui); margin-top: 8px; cursor: pointer; }
+.toast { position: absolute; left: 50%; top: 74px; transform: translateX(-50%); background: #121212; color: #fff; border-radius: 12px; padding: 8px 14px; font-size: 13px; z-index: 9; max-width: 86%; text-align: center; animation: drop .2s ease both; }
+@keyframes drop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes swap { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,100,10,.45); } 50% { box-shadow: 0 0 0 9px rgba(255,100,10,0); } }
+@keyframes blink { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+/* a profile, as on WhatsApp: who they are, one description, and what you shared */
+.prof { position: absolute; inset: 0; background: #F4F4F4; z-index: 8; display: flex; flex-direction: column; animation: slide .25s ease both; }
+.prof .ptop { height: 56px; flex: none; display: flex; align-items: center; padding: 6px 8px 0; background: #fff; }
+.prof .scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-bottom: 20px; }
+.prof .hero { background: #fff; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 20px 20px; }
+.prof .hero .av { width: 112px; height: 112px; font-size: 44px; }
+.prof .hero h2 { margin: 6px 0 0; font: 700 24px/1.2 var(--display); color: #121212; }
+.prof .hero .role { color: #737373; font-size: 15px; }
+.prof .box { background: #fff; padding: 14px 18px; }
+.prof .lab { font: 600 12px var(--ui); letter-spacing: .05em; text-transform: uppercase; color: #8A8A8A; margin: 0 0 6px; display: flex; justify-content: space-between; align-items: center; }
+.prof .lab span { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.prof .desc { margin: 0; font-size: 15.5px; line-height: 1.5; color: #121212; }
+.prof .desc small { display: block; margin-top: 6px; color: #8A8A8A; font-size: 12.5px; }
+.prof .ph3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.prof .ph3 button { aspect-ratio: 1; border: 0; border-radius: 8px; cursor: pointer; padding: 0; }
+.prof .files button { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: none; padding: 10px 0; border-bottom: 1px solid #F0F0F0; text-align: left; cursor: pointer; font: inherit; color: #121212; }
+.prof .files button:last-child { border-bottom: 0; }
+.prof .files .fd { width: 34px; height: 40px; border-radius: 6px; color: #fff; font: 700 9px var(--ui); display: grid; place-items: center; flex: none; }
+.prof .files small { display: block; color: #8A8A8A; font-size: 12.5px; }
+.prof .empty { color: #8A8A8A; font-size: 14px; margin: 0; }
+.prof .redo { border: 1.5px solid var(--orange); color: var(--orange); background: #fff; border-radius: 99px; padding: 6px 12px; font: 600 13px var(--ui); cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.prof .redo svg { width: 14px; height: 14px; }
+.viewer { position: absolute; inset: 0; background: #000; z-index: 9; display: flex; flex-direction: column; animation: fade .2s ease both; }
+.viewer .vt { height: 56px; display: flex; align-items: center; padding: 6px 8px 0; color: #fff; gap: 8px; }
+.viewer .vt .bk { color: #fff; }
+.viewer .img { flex: 1; margin: 20px 0 60px; }
+.chd .who { cursor: pointer; display: flex; align-items: center; gap: 10px; }
+
+.prof .drow { display: flex; gap: 10px; align-items: flex-start; }
+.prof .drow .desc { flex: 1; min-width: 0; }
+.prof .pen { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--orange-soft); color: var(--orange); cursor: pointer; display: grid; place-items: center; flex: none; }
+#pedit { position: relative; }
+.prof .penlab { position: absolute; right: 10px; top: 10px; color: var(--orange); pointer-events: none; }
+.prof textarea { padding-right: 36px !important; }
+.prof textarea { width: 100%; min-height: 110px; border: 1.5px solid #121212; border-radius: 12px; padding: 10px 12px; font: 15.5px/1.5 var(--ui); color: #121212; resize: vertical; }
+.prof textarea:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
+.prof .pact { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.prof .pact span { flex: 1; font-size: 12.5px; color: #8A8A8A; font-variant-numeric: tabular-nums; }
+.prof .pact button { height: 38px; border-radius: 99px; padding: 0 16px; border: 1px solid #E5E5E5; background: #fff; font: 600 14px var(--ui); cursor: pointer; }
+.prof .pact button.go { background: #121212; color: #fff; border: 0; }
+/* ---------- suggested answers, one rule for the whole app ---------- */
+.answers { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding: 4px 12px 8px; }
+.answers .row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.ans { min-height: 44px; max-width: 86%; border: 1.5px solid var(--orange); color: var(--orange); background: #fff; border-radius: 22px; padding: 10px 16px; font: 600 15px/1.25 var(--ui); text-align: left; cursor: pointer; animation: drop .22s ease both; }
+.ans.go { background: var(--orange); color: #fff; }
+.ans.more { border-style: dashed; }
+.skip { align-self: flex-end; border: 0; background: none; color: #8A8A8A; font: 500 14px var(--ui); padding: 6px 8px; cursor: pointer; }
+.slot-m.else { border: 1px solid #E5E5E5; justify-content: flex-start; padding: 0 16px; color: #8A8A8A; font: 500 15px var(--ui); cursor: text; background: #fff; }
+.slot-m.typing { border: 1.5px solid #121212; padding: 0 6px 0 14px; justify-content: space-between; gap: 6px; }
+.slot-m.typing input { flex: 1; min-width: 0; border: 0; outline: none; font: 15px var(--ui); background: transparent; color: #121212; }
+.slot-m.typing .send { width: 36px; height: 36px; border-radius: 50%; border: 0; background: #121212; color: #fff; font-size: 16px; cursor: pointer; flex: none; }
+.slot-m.typing .send:disabled { background: #E5E5E5; color: #A3A3A3; cursor: default; }
+/* pieces of the locked One bar not in the base */
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.28); z-index: 6; animation: fade .2s ease both; }
+.linkbox { display: flex; align-items: center; gap: 10px; border: 1.5px solid #121212; border-radius: 14px; padding: 12px 14px; font: 600 15px var(--ui); word-break: break-all; }
+.linkbox .lk { width: 34px; height: 34px; border-radius: 10px; background: #FFF0E6; color: #FF640A; display: grid; place-items: center; flex: none; font-size: 16px; }
+.copy { height: 54px; border: 0; border-radius: 99px; background: #121212; color: #fff; font: 600 16px var(--ui); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background .2s; }
+.copy.done { background: var(--green); }
+.page { position: absolute; inset: 0; background: #fff; z-index: 8; display: flex; flex-direction: column; animation: slide .25s ease both; }
+.page .body { flex: 1; overflow-y: auto; }
+.prof .ptxt { border: 0; background: none; color: #FF640A; font: 600 16px var(--ui); padding: 8px 10px; cursor: pointer; }
+@keyframes fade { from { opacity: 0; } }
+@keyframes slide { from { transform: translateX(30px); opacity: 0; } }
+/* ---------- the setup's own pieces ---------- */
+.cue { box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--orange) !important; animation: cue 1.5s ease-in-out infinite; }
+@keyframes cue { 50% { box-shadow: 0 0 0 3px #fff, 0 0 0 8px rgba(255,100,10,.35) !important; } }
+.row .pin { font-size: 12px; color: #8A8A8A; }
+.b.typing { display: flex; gap: 4px; padding: 13px 14px; }
+.b.typing i { width: 7px; height: 7px; border-radius: 50%; background: #B5B5B5; animation: blink 1s infinite; }
+.b.typing i:nth-child(2) { animation-delay: .15s; } .b.typing i:nth-child(3) { animation-delay: .3s; }
+.b .said { display: block; margin-top: 6px; font-size: 14px; line-height: 1.4; }
+.b.me .said { color: #fff; opacity: .95; }
+.b .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.b .chips span { background: #fff; border: 1px solid #E0E0E0; border-radius: 99px; padding: 4px 11px; font: 600 14px var(--ui); }
+.b .chips span.new { border-color: var(--orange); color: #C2410C; }
+.b .quote { display: block; margin-top: 8px; padding: 8px 10px; background: #fff; border-radius: 12px; font-size: 14.5px; }
+.b .agt { display: block; margin-bottom: 4px; }
+.b .ln { display: block; margin-top: 6px; color: #121212; text-decoration: underline; text-underline-offset: 3px; }
+.b.codeb { font: 700 24px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .08em; padding: 14px 16px; background: #fff; border: 1.5px solid #121212; }
+.b .ph2 { display: flex; gap: 4px; margin: 2px 0 6px; } .b .ph2 i { width: 58px; height: 58px; border-radius: 10px; background: linear-gradient(135deg, #C9A27E, #7A5A43); }
+.b .ph2 i + i { background: linear-gradient(135deg, #D8C3A5, #8E6F52); }
+.lcard { align-self: flex-end; width: 74%; border: 1px solid #EBEBEB; border-radius: 16px; overflow: hidden; background: #fff; font-size: 14px; animation: drop .28s ease both; }
+.lcard .pic { height: 74px; }
+.lcard .tx { padding: 8px 12px 10px; } .lcard b { display: block; font-size: 14.5px; } .lcard small { color: #737373; font-size: 12.5px; }
+.outc { align-self: center; font-size: 12.5px; color: #5F5F5F; background: #F5F5F5; border-radius: 99px; padding: 5px 12px; animation: drop .28s ease both; }
+.pnote { align-self: stretch; border: 1.5px dashed #CFC9C0; border-radius: 14px; padding: 9px 12px 10px; font-size: 13px; line-height: 1.45; color: #57534E; background: #FBFAF8; animation: drop .28s ease both; }
+.pnote > b { display: block; font: 700 10.5px var(--ui); letter-spacing: .08em; text-transform: uppercase; color: #A8A29E; margin-bottom: 2px; }
+.pnote.int { border-color: #B9A6F5; background: #F7F4FF; color: #4B3A8C; } .pnote.int > b { color: #8B74E6; }
+.pnote .pgo { display: inline-flex; margin-top: 8px; border: 0; background: #121212; color: #fff; border-radius: 99px; padding: 7px 14px; font: 600 13px var(--ui); cursor: pointer; }
+.slot-m.else.idle { cursor: default; }
+.slot-m.typing .tx { flex: 1; min-width: 0; font: 15px var(--ui); color: #121212; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slot-m.typing .tx.ph { color: #A3A3A3; }
+.answers .arow { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.answers:empty { display: none; }
+.ans .lock, .grp .lock { width: 13px; height: 13px; vertical-align: -1px; margin-left: 4px; }
+.ans.go .lock { color: #fff; }
+/* the team's page */
+.tpage { background: #F4F4F4; }
+.tpage .body { padding: 10px 0 16px; display: flex; flex-direction: column; gap: 10px; }
+.tsec { background: #fff; padding: 14px 16px; }
+.tsec h4 { margin: 0 0 8px; font: 600 12px var(--ui); letter-spacing: .05em; text-transform: uppercase; color: #8A8A8A; }
+.grp { padding: 6px 0; border-bottom: 1px solid #F2F2F2; font-size: 15px; display: flex; justify-content: space-between; gap: 10px; }
+.grp:last-of-type { border-bottom: 0; } .grp b { font-weight: 600; } .grp span { color: #737373; text-align: right; }
+.addrow { display: block; width: 100%; border: 0; background: none; text-align: left; padding: 10px 0 2px; font: 600 15px var(--ui); color: #C2410C; cursor: pointer; border-radius: 10px; }
+.opts { display: flex; flex-direction: column; gap: 8px; }
+.opt { display: flex; align-items: center; gap: 10px; border: 1.5px solid #E5E5E5; background: #fff; border-radius: 14px; padding: 11px 12px; font: 600 15px var(--ui); color: #121212; cursor: pointer; text-align: left; }
+.opt .rd { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #CFCFCF; flex: none; display: grid; place-items: center; }
+.opt.on { border-color: #121212; } .opt.on .rd { border-color: var(--orange); } .opt.on .rd::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--orange); }
+.opt small { display: block; font-weight: 400; color: #737373; font-size: 13px; }
+.asklink { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; animation: drop .25s ease both; }
+.asklink p { margin: 0; font-size: 14px; color: #5F5F5F; }
+.asklink .linkbox { font-size: 14px; }
+.asklink .copy { height: 46px; font-size: 15px; }
+.shelf { display: flex; flex-direction: column; gap: 8px; }
+.shelf .it { display: flex; gap: 10px; align-items: center; border: 1px solid #EEE; border-radius: 12px; padding: 8px; animation: drop .25s ease both; }
+.shelf .it i { width: 46px; height: 46px; border-radius: 9px; flex: none; }
+.shelf .it b { display: block; font-size: 14.5px; } .shelf .it small { color: #737373; font-size: 12.5px; }
+.lfield { display: flex; gap: 8px; margin-top: 8px; animation: drop .25s ease both; }
+.lfield .in { flex: 1; min-width: 0; height: 44px; border: 1.5px solid #121212; border-radius: 12px; padding: 0 12px; display: flex; align-items: center; font: 15px var(--ui); color: #A3A3A3; cursor: text; background: #fff; overflow: hidden; white-space: nowrap; }
+.lfield .in.on { color: #121212; }
+.lfield .add { height: 44px; border: 0; border-radius: 12px; background: #121212; color: #fff; font: 600 15px var(--ui); padding: 0 16px; cursor: pointer; }
+.lfield .add:disabled { background: #E5E5E5; color: #A3A3A3; cursor: default; }
+.pfoot { flex: none; padding: 10px 16px 16px; background: #F4F4F4; }
+.pbtn { width: 100%; height: 52px; border: 0; border-radius: 99px; background: #121212; color: #fff; font: 600 16px var(--ui); cursor: pointer; }
+.tpage .pnote { margin: 0 12px; align-self: auto; }
+/* the ask page, in the customer's browser: no account, no app */
+.web { position: absolute; inset: 0; display: flex; flex-direction: column; background: #FAF7F4; }
+.web .url { height: 58px; flex: none; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; background: #F0EEEC; font-size: 13px; color: #5F5F5F; border-bottom: 1px solid #E3E0DC; }
+.web .url span { background: #fff; border-radius: 9px; padding: 4px 14px; }
+.web .wbody { flex: 1; overflow-y: auto; padding: 20px 18px 18px; display: flex; flex-direction: column; gap: 12px; }
+.web .wh { display: flex; align-items: center; gap: 10px; font: 700 17px var(--ui); }
+.web .wlogo { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; font: 700 16px var(--display); }
+.web h3 { margin: 4px 0 0; font: 800 26px/1.15 var(--display); color: #121212; }
+.web .wl { margin: 2px 0 0; font: 600 14px var(--ui); color: #57534E; }
+.web .wtopics { display: flex; flex-wrap: wrap; gap: 8px; }
+.web .wtopics button { border: 1.5px solid var(--acc, #121212); color: var(--acc, #121212); background: #fff; border-radius: 99px; padding: 9px 14px; font: 600 14.5px var(--ui); cursor: pointer; min-height: 44px; }
+.web .wtopics button.on { background: var(--acc, #121212); color: #fff; }
+.web .wtopics button:disabled:not(.on) { opacity: .45; cursor: default; }
+.web .wf { min-height: 46px; border: 1.5px solid #D6D3D1; border-radius: 12px; padding: 11px 12px; background: #fff; font: 15px/1.4 var(--ui); color: #A3A3A3; cursor: text; animation: drop .25s ease both; }
+.web .wf.on { color: #121212; border-color: #121212; }
+.web .wf.tall { min-height: 84px; }
+.web .wph { display: flex; align-items: center; gap: 10px; animation: drop .25s ease both; }
+.web .wph button { border: 1.5px dashed #A8A29E; background: #fff; border-radius: 12px; padding: 10px 14px; font: 600 14px var(--ui); cursor: pointer; color: #121212; }
+.web .wph small { color: #737373; font-size: 13px; }
+.web .tick { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; color: #44403C; border: 0; background: none; text-align: left; padding: 4px 0; cursor: pointer; animation: drop .25s ease both; }
+.web .tick i { width: 22px; height: 22px; border-radius: 6px; border: 2px solid #A8A29E; flex: none; display: grid; place-items: center; font-style: normal; font-size: 14px; color: #fff; }
+.web .tick.on i { background: var(--acc, #121212); border-color: var(--acc, #121212); }
+.web .wsend { height: 52px; border: 0; border-radius: 99px; background: var(--acc, #121212); color: #fff; font: 600 16px var(--ui); cursor: pointer; animation: drop .25s ease both; }
+.web .wsend:disabled { opacity: .4; cursor: default; }
+.web .wdone { text-align: center; padding: 40px 10px 10px; display: flex; flex-direction: column; gap: 8px; align-items: center; animation: drop .3s ease both; }
+.web .wdone .ok { width: 64px; height: 64px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; font-size: 30px; }
+.web .wdone h3 { margin: 6px 0 0; }
+.web .wdone p { margin: 0; color: #57534E; }
+.web .pw { margin: auto 0 0; text-align: center; font-size: 12px; color: #A8A29E; }
+.web .pnote { align-self: auto; }
+/* the ☰ menu, as locked (N367), shortened */
+.menuc { position: absolute; top: 58px; right: 12px; width: 280px; z-index: 7; background: #fff; border-radius: 18px; box-shadow: 0 16px 40px rgba(0,0,0,.2); padding: 8px; animation: drop .2s ease both; }
+.menuc .me { display: flex; align-items: center; gap: 10px; padding: 8px 10px 12px; border-bottom: 1px solid #F0F0F0; margin-bottom: 4px; }
+.menuc .me .av { width: 40px; height: 40px; font-size: 16px; }
+.menuc .me b { display: block; font-size: 15.5px; } .menuc .me small { color: #737373; font-size: 12.5px; }
+.mi { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: none; border-radius: 12px; padding: 11px 10px; font: 500 15px var(--ui); color: #121212; text-align: left; cursor: pointer; }
+.mi .ic { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: #F2F2F2; flex: none; font-size: 16px; }
+.mi.out { color: #B42318; }
+/* the coach panel's door, as today (locked) */
+.cw { align-self: flex-start; display: flex; align-items: center; gap: 10px; border: 1px solid #EBEBEB; border-radius: 16px; padding: 10px 14px; background: #fff; cursor: pointer; font: inherit; text-align: left; color: #121212; }
+.cw .nw { font: 700 11px var(--ui); color: #fff; background: var(--orange); border-radius: 99px; padding: 2px 7px; }
+.cw b { display: block; font-size: 15px; } .cw small { color: #737373; font-size: 13px; }
+/* ---------- the notes beside the phone ---------- */
+aside { min-width: 0; display: flex; flex-direction: column; gap: 18px; width: 100%; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; min-width: 0; }
+.panel h2 { font: 700 20px/1.2 var(--display); margin: 0 0 6px; }
+.panel p { margin: 0; color: var(--muted); }
+.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+@media (max-width: 520px) { .two { grid-template-columns: minmax(0, 1fr); } }
+.two > div { border: 1px solid var(--line); border-radius: 12px; padding: 12px; min-width: 0; }
+.two b.k { display: block; font-size: 12px; color: var(--orange); letter-spacing: .05em; text-transform: uppercase; margin-bottom: 4px; }
+.two ol { margin: 0; padding-left: 18px; } .two li { margin-bottom: 4px; }
+.steps { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.steps li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding: 9px 10px; border-radius: 12px; border: 1px solid var(--line); }
+.steps li .n { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 700 12px var(--ui); background: var(--line); color: var(--fg); }
+.steps li b { display: block; font-size: 14.5px; } .steps li span.d { color: var(--muted); font-size: 13.5px; }
+.steps li.on { border-color: var(--orange); background: var(--orange-soft); } .steps li.on .n { background: var(--orange); color: #fff; }
+.steps li.done .n { background: var(--green); color: #fff; } .steps li.done .n::after { content: "✓"; } .steps li.done .n span { display: none; }
+.rule { margin: 10px 0 0 !important; padding: 10px 12px; border-left: 3px solid var(--orange); background: var(--orange-soft); border-radius: 0 10px 10px 0; color: var(--fg) !important; font-weight: 600; }
+.lines { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+@media (max-width: 520px) { .lines { grid-template-columns: minmax(0, 1fr); } }
+.lines h3 { margin: 0 0 6px; font: 700 15px var(--ui); } .lines h3 small { display: block; font-weight: 500; color: var(--muted); font-size: 12.5px; }
+.lines ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.lines li { font-size: 13.5px; padding: 6px 9px; border-radius: 9px; border: 1px solid var(--line); transition: background .25s, border-color .25s; }
+.lines .app li.lit { background: var(--orange-soft); border-color: var(--orange); }
+.lines .int li { border-style: dashed; } .lines .int li.lit { background: var(--int-soft); border-color: var(--int); border-style: solid; }
+.lines .int h3 { color: var(--int); }
+.words { margin: 10px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.words li { font-size: 14px; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--line); }
+.words li q { font-weight: 600; quotes: "“" "”"; } .words li small { display: block; color: var(--muted); font-size: 12.5px; }
+.words h4 { margin: 8px 0 0; font: 600 11.5px var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.changes { margin: 10px 0 0; padding-left: 18px; } .changes li { margin-bottom: 6px; }
+.decide { margin: 10px 0 0; padding-left: 20px; } .decide li { margin-bottom: 10px; } .decide li em { font-style: normal; color: var(--muted); display: block; font-size: 13.5px; }
+.reset { align-self: flex-start; border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 99px; padding: 8px 16px; font: 600 14px var(--ui); cursor: pointer; }
+.lockb { display: inline-flex; align-items: center; gap: 6px; margin: 10px 0 0; padding: 5px 12px; border-radius: 99px; background: var(--orange-soft); color: var(--fg); font: 600 13px var(--ui); border: 1px solid var(--orange); }
+.lockb svg { width: 13px; height: 13px; color: var(--orange); }
+/* "Here's how others will see you": a card shaped like the profile */
+.b.pcard { background: #fff; border: 1px solid #E5E5E5; width: 82%; max-width: 82%; padding: 12px 14px; }
+.b.pcard .pch { display: flex; align-items: center; gap: 10px; }
+.b.pcard .pch .av { width: 42px; height: 42px; font-size: 17px; }
+.b.pcard .pch b { display: block; font-size: 16px; } .b.pcard .pch small { color: #737373; font-size: 13px; }
+.b.pcard p { margin: 10px 0 0; font-size: 14.5px; }
+.b.pcard .chips span { border-color: var(--orange); color: #C2410C; }
+.b.pcard .chips span.new { background: var(--orange-soft); }
+/* version 4: your topics on your own profile, your team's name, a link with who added it */
+.prof .tlink { border: 0; background: none; color: #C2410C; font: 600 14.5px var(--ui); cursor: pointer; padding: 4px 10px; border-radius: 99px; margin-top: 2px; }
+.prof .ptopics { display: flex; flex-wrap: wrap; gap: 6px; }
+.prof .ptopics span { border: 1px solid var(--orange); color: #C2410C; border-radius: 99px; padding: 4px 11px; font: 600 14px var(--ui); background: #fff; }
+.prof .pchg { margin-top: 10px; }
+.opt.ro { cursor: default; opacity: .75; }
+.shelf .it .by .av { width: 26px; height: 26px; font-size: 11px; }
+/* ---------- the whole way in: the map above the phone ---------- */
+.mapp { grid-column: 1 / -1; justify-self: stretch; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
+.mapp h2 { font: 700 20px/1.2 var(--display); margin: 0 0 4px; }
+.mapp > p { margin: 0 0 12px; color: var(--muted); }
+.map { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 1100px) { .map { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .map { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.mcol { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mcol h4 { margin: 0 0 2px; font: 600 11px var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.node { position: relative; text-align: left; border: 1.5px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 12px; padding: 8px 10px 8px 22px; font: 600 13.5px/1.25 var(--ui); cursor: pointer; min-width: 0; transition: border-color .2s, background .2s; }
+.node small { display: block; font-weight: 500; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.node::before { content: ""; position: absolute; left: 9px; top: 12px; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.node.new::before { background: var(--orange); } .node.gap { border-style: dashed; } .node.gap::before { background: var(--int); }
+.node .lk { font-size: 11px; font-weight: 600; color: var(--muted); }
+.node.path { border-color: var(--fg); }
+.node.here { background: var(--orange-soft); border-color: var(--orange); box-shadow: 0 0 0 2px var(--orange) inset; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; font-size: 13px; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--green); }
+.legend .n::before { background: var(--orange); } .legend .g::before { background: var(--int); } .legend .p::before { background: none; width: 14px; height: 8px; border: 1.5px solid var(--fg); border-radius: 4px; }
+/* ---------- the real screens ---------- */
+.scr { position: absolute; inset: 0; display: flex; flex-direction: column; background: #fff; overflow-y: auto; }
+.foot { margin-top: auto; padding: 14px 16px 18px; font-size: 12px; color: #8A8A8A; text-align: center; }
+.vm { width: 92px; height: 92px; margin: 0 auto; position: relative; display: grid; place-items: center; }
+.vm b { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid #F2D2BF; animation: breathe 3.2s ease-in-out infinite; }
+.vm b:nth-child(2) { inset: 14px; animation-delay: .3s; } .vm b:nth-child(3) { inset: 28px; animation-delay: .6s; border-color: #F0B48F; }
+.vm .dots i { width: 6px; height: 6px; }
+@keyframes breathe { 50% { transform: scale(1.06); opacity: .7; } }
+.land { padding: 70px 26px 0; text-align: center; display: flex; flex-direction: column; gap: 14px; flex: 1; }
+.land h2 { margin: 6px 0 0; font: 800 34px/1 var(--display); }
+.land p { margin: 0; font-size: 16px; line-height: 1.5; color: #3F3F3F; }
+.pill { height: 52px; border: 0; border-radius: 99px; background: #121212; color: #fff; font: 600 16px var(--ui); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 0 26px; }
+.pill i { width: 9px; height: 9px; border-radius: 50%; background: var(--orange); } .pill i.red { background: var(--red); }
+.pill:disabled { background: #E5E5E5; color: #A3A3A3; cursor: default; }
+.pill.wide { width: 100%; }
+.lnk { border: 0; background: none; font: 600 15px var(--ui); color: #121212; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px; }
+.lnk .play { width: 26px; height: 26px; border-radius: 50%; background: var(--orange); color: #fff; display: grid; place-items: center; font-size: 10px; }
+.jr { margin-top: 18px; display: flex; gap: 8px; } .jr span { flex: 1; height: 70px; border-radius: 12px; background: #F4F1EE; }
+.quiet { border: 0; background: none; color: #8A8A8A; font: 500 15px var(--ui); cursor: pointer; padding: 10px; }
+/* the example */
+.exo { padding: 18px 16px; gap: 10px; background: #fff; }
+.exo .xh { display: flex; justify-content: space-between; align-items: center; } .exo .xh small { font: 600 11px var(--ui); letter-spacing: .08em; text-transform: uppercase; color: #8A8A8A; }
+.exo .x { border: 0; background: none; font-size: 20px; cursor: pointer; }
+.exo .tag { display: inline-block; font: 700 10px var(--ui); background: #121212; color: #fff; border-radius: 6px; padding: 2px 6px; margin-right: 6px; }
+.exo .pace { height: 10px; border-radius: 6px; background: linear-gradient(90deg, #E5484D, #F5C451 30%, #1F9D55 45% 70%, #F5C451 85%, #E5484D); margin: 6px 4px 2px; position: relative; } .exo .pace::after { content: ""; position: absolute; left: 56%; top: -4px; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid #121212; }
+/* sign-up and sign-in */
+.auth { padding: 64px 22px 0; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+.auth .logo { justify-content: center; font-size: 22px; margin-bottom: 14px; } .auth .logo .dots i { width: 7px; height: 7px; }
+.auth h3 { margin: 0; font: 700 20px/1.2 var(--display); text-align: center; }
+.auth p.s { margin: 0; text-align: center; color: #5F5F5F; font-size: 14px; }
+.phn { display: flex; gap: 8px; }
+.phn .cc { height: 48px; border: 1.5px solid #D4D4D4; border-radius: 12px; background: #fff; padding: 0 10px; font: 600 15px var(--ui); cursor: pointer; }
+.fld { flex: 1; min-width: 0; height: 48px; border: 1.5px solid #D4D4D4; border-radius: 12px; padding: 0 12px; display: flex; align-items: center; font: 15px var(--ui); color: #A3A3A3; background: #fff; cursor: text; overflow: hidden; white-space: nowrap; }
+.fld.on { color: #121212; border-color: #121212; }
+.lab2 { font: 600 13px var(--ui); color: #3F3F3F; margin: 2px 0 -6px; }
+.wa { height: 50px; border: 0; border-radius: 99px; background: #1F9D55; color: #fff; font: 600 16px var(--ui); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.wa:disabled { opacity: .45; cursor: default; }
+.or { text-align: center; font: 600 12px var(--ui); color: #A3A3A3; letter-spacing: .1em; }
+.ways { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ways button, .apple { height: 44px; border: 1.5px solid #E5E5E5; border-radius: 12px; background: #fff; font: 600 14px var(--ui); cursor: pointer; color: #121212; }
+.ways button.gapb { border-style: dashed; border-color: #B9A6F5; color: #6741D9; }
+.apple { background: #000; color: #fff; border: 0; height: 48px; font-size: 15px; }
+.alt { text-align: center; font-size: 14px; color: #5F5F5F; } .alt button { border: 0; background: none; color: #121212; font: 600 14px var(--ui); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 0; }
+.legal { text-align: center; font-size: 12px; color: #8A8A8A; margin: 0; }
+.chk { display: flex; gap: 10px; align-items: flex-start; border: 0; background: none; text-align: left; font: 14px/1.4 var(--ui); color: #3F3F3F; cursor: pointer; padding: 2px 0; }
+.chk i { width: 22px; height: 22px; border-radius: 6px; border: 2px solid #A3A3A3; flex: none; display: grid; place-items: center; font-style: normal; color: #fff; font-size: 13px; }
+.chk.on i { background: #121212; border-color: #121212; }
+.code6 { height: 54px; border: 1.5px solid #D4D4D4; border-radius: 12px; display: grid; place-items: center; font: 600 24px ui-monospace, Menlo, monospace; letter-spacing: .3em; color: #A3A3A3; cursor: text; }
+.code6.on { color: #121212; border-color: #121212; }
+.loader { flex: 1; display: grid; place-items: center; } .loader span { width: 30px; height: 30px; border-radius: 50%; border: 3px solid #EEE; border-top-color: var(--orange); animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+/* the acceptance screen (locked) */
+.acc { padding: 34px 20px 18px; gap: 12px; }
+.acc .vm { width: 64px; height: 64px; }
+.acc .txt { font-size: 14.5px; line-height: 1.5; color: #262626; } .acc .txt p { margin: 0 0 8px; }
+.docs { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; }
+.docs button { border: 0; background: none; padding: 0; font: 500 14px var(--ui); color: #121212; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.docs button.read::after { content: " read ✓"; color: var(--green); text-decoration: none; display: inline-block; margin-left: 4px; }
+.sel { height: 48px; border: 1.5px solid #D4D4D4; border-radius: 12px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; font: 15px var(--ui); color: #737373; background: #fff; cursor: pointer; }
+.sel.on { color: #121212; border-color: #121212; }
+.docwin { position: absolute; inset: 40px 12px; z-index: 8; background: #fff; border-radius: 18px; box-shadow: 0 20px 50px rgba(0,0,0,.25); padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.docwin b { font-size: 17px; } .docwin small { color: #8A8A8A; } .docwin .tx { flex: 1; background: repeating-linear-gradient(#fff 0 18px, #EEE 18px 20px); border-radius: 8px; }
+/* the Lounge, a guest's chat with Will */
+.lounge-start { align-self: flex-start; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.lounge-start small { color: #8A8A8A; font-size: 12.5px; }
+/* the set-up wizard, the mic, processing */
+.wiz { padding: 18px 18px 18px; gap: 14px; }
+.wiz .wt { display: flex; align-items: center; justify-content: space-between; }
+.wiz .wdots { display: flex; gap: 6px; } .wiz .wdots i { width: 8px; height: 8px; border-radius: 50%; background: #E5E5E5; } .wiz .wdots i.on { background: #121212; }
+.wiz .bkb { border: 0; background: none; font: 600 15px var(--ui); cursor: pointer; color: #121212; padding: 6px 0; }
+.wiz .bkb:disabled { color: #D4D4D4; cursor: default; }
+.wiz h3 { margin: 36px 0 0; font: 700 26px/1.15 var(--display); }
+.wiz p.s { margin: 0; color: #5F5F5F; }
+.chipsx { display: flex; flex-wrap: wrap; gap: 8px; } .chipsx button { min-height: 44px; border: 1.5px solid #E5E5E5; background: #fff; border-radius: 99px; padding: 0 16px; font: 600 15px var(--ui); cursor: pointer; color: #121212; }
+.chipsx button.on { background: #121212; color: #fff; border-color: #121212; }
+.deck { border: 2px dashed #D4D4D4; border-radius: 14px; padding: 22px; text-align: center; color: #5F5F5F; font: 600 15px var(--ui); cursor: pointer; background: #FAFAFA; }
+.wiz .grow { flex: 1; }
+.feel { display: flex; flex-direction: column; gap: 10px; align-items: center; text-align: center; padding-top: 40px; }
+.feel .mic { width: 64px; height: 64px; border-radius: 50%; background: var(--orange-soft); color: var(--orange); display: grid; place-items: center; } .feel .mic svg { width: 28px; height: 28px; }
+.feel h3 { margin: 8px 0 0 !important; }
+.center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 24px; }
+.center h3 { margin: 0; font: 700 22px/1.2 var(--display); }
+.center p { margin: 0; color: #5F5F5F; }
+.bar0 { width: 80%; height: 8px; border-radius: 4px; background: #EEE; overflow: hidden; } .bar0 i { display: block; height: 100%; width: 0; background: var(--orange); transition: width .3s linear; }
+.pct { font: 700 30px var(--display); font-variant-numeric: tabular-nums; }
+.dialog { position: absolute; left: 20px; right: 20px; top: 34%; z-index: 9; background: #fff; border-radius: 18px; padding: 18px; box-shadow: 0 20px 50px rgba(0,0,0,.25); display: flex; flex-direction: column; gap: 8px; }
+.dialog b { font-size: 17px; } .dialog p { margin: 0; color: #5F5F5F; font-size: 14px; }
+.dialog .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; } .dialog .pair button { height: 44px; border-radius: 99px; border: 1px solid #E5E5E5; background: #fff; font: 600 14.5px var(--ui); cursor: pointer; } .dialog .pair button.red { background: var(--red); color: #fff; border: 0; }
+.recs .x2 { border: 0; background: none; font-size: 20px; cursor: pointer; }
+.pair button:disabled { color: #D4D4D4; cursor: default; }
+.go.red { background: var(--red) !important; }
+/* the plan card in Will's chat (locked, N319) */
+.plan { align-self: flex-start; width: 84%; border: 1px solid #EBEBEB; border-radius: 16px; padding: 12px 14px; background: #fff; display: flex; flex-direction: column; gap: 6px; font-size: 14px; animation: drop .28s ease both; }
+.plan b.h { font: 700 15px var(--ui); } .plan .pb { height: 6px; border-radius: 3px; background: #EEE; } .plan .pb i { display: block; height: 100%; width: 6%; background: var(--orange); border-radius: 3px; }
+.plan em { font-style: normal; color: var(--orange); font-weight: 600; } .plan button { align-self: flex-start; border: 0; background: none; padding: 0; color: #121212; font: 600 14px var(--ui); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.slot-m.faded { color: #C4C4C4; cursor: not-allowed; }
+/* the walk's door, the guest's Done */
+.wcard { align-self: flex-start; display: flex; align-items: center; gap: 10px; border: 1px solid #EBEBEB; border-radius: 16px; padding: 10px 14px; background: #fff; }
+.wcard i { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #14213D, #3A5A8C); flex: none; }
+.wcard b { display: block; font-size: 15px; } .wcard small { color: #737373; font-size: 13px; }
+.done .ok { width: 64px; height: 64px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; font-size: 30px; }
+.clip { width: 86%; display: flex; align-items: center; gap: 10px; background: var(--orange); color: #fff; border-radius: 18px; padding: 10px 12px; } .clip .w { flex: 1; height: 20px; background: repeating-linear-gradient(90deg, #fff 0 2px, transparent 2px 5px); opacity: .5; }
+/* the join page */
+.joinp { padding: 70px 22px 0; gap: 16px; text-align: center; }
+.joinp .big { width: 84px; height: 84px; margin: 0 auto; border-radius: 50%; background: #FFD8C2; color: #C2410C; display: grid; place-items: center; font: 700 34px var(--display); }
+.joinp h3 { margin: 0; font: 800 25px/1.15 var(--display); }
+.joinp ul { list-style: none; margin: 0; padding: 14px 16px; background: #F5F5F5; border-radius: 14px; text-align: left; display: flex; flex-direction: column; gap: 8px; font-size: 15px; }
+.joinp ul li::before { content: "✓"; color: var(--green); font-weight: 700; margin-right: 8px; }
+.joinp small { color: #8A8A8A; font-size: 13px; }
+.grey { align-self: stretch; text-align: center; background: #F5F5F5; color: #5F5F5F; border-radius: 12px; padding: 8px 12px; font-size: 13px; }
+.row .plus0 { width: 48px; height: 48px; border-radius: 50%; background: #F2F2F2; display: grid; place-items: center; font-size: 24px; color: #737373; flex: none; }
+.addsheet .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; } .addsheet .tiles div { background: #F6F6F6; border-radius: 12px; padding: 10px; font-size: 12.5px; color: #5F5F5F; } .addsheet .tiles b { display: block; color: #121212; font-size: 13px; margin-bottom: 2px; }
+.addsheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; background: #fff; border-radius: 24px 24px 0 0; padding: 10px 18px 24px; display: flex; flex-direction: column; gap: 14px; animation: up .28s cubic-bezier(.2,.9,.3,1) both; }
+.addsheet h3 { margin: 4px 0 0; font: 700 21px/1.2 var(--display); } .addsheet p { margin: 0; color: #5F5F5F; font-size: 15px; }
+.addsheet .grab { width: 40px; height: 5px; border-radius: 3px; background: #E0E0E0; align-self: center; }
+.addsheet .cancel { height: 40px; border: 0; background: none; color: #737373; font: 500 15px var(--ui); cursor: pointer; }
+/* the gaps */
+.gaps { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; counter-reset: g; }
+.gaps li { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 14px; counter-increment: g; }
+.gaps li b::before { content: counter(g) ". "; }
+.gaps li .cv { display: block; margin-top: 4px; color: var(--muted); font-size: 13.5px; }
+.chip { display: inline-block; font: 700 10.5px var(--ui); letter-spacing: .05em; text-transform: uppercase; border-radius: 99px; padding: 2px 8px; margin-left: 6px; vertical-align: 2px; }
+.chip.ok { background: #E3F5EA; color: #13703B; } .chip.dec { background: var(--orange-soft); color: #C2410C; } .chip.bld { background: var(--int-soft); color: var(--int); } .chip.sign { background: #FFF4D6; color: #8A5A00; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .chip.ok { background: #16321F; color: #7BD69B; } :root:not([data-theme="light"]) .chip.sign { background: #3A2E10; color: #F5C451; } }
+:root[data-theme="dark"] .chip.ok { background: #16321F; color: #7BD69B; } :root[data-theme="dark"] .chip.sign { background: #3A2E10; color: #F5C451; }
+.x2 { border: 0; background: none; font-size: 20px; cursor: pointer; color: #121212; }
+.sep { height: 1px; background: #F0F0F0; margin: 4px 6px; }
+.menuc .mi .t { flex: 1; } .menuc .mi small { display: block; color: #8A8A8A; font-size: 12.5px; font-weight: 400; }
+.scr .pnote { align-self: stretch; text-align: left; }
+.recs .clock { gap: 10px; }
+.auth > .fld { flex: none; }
+/* version 2: the first Take is the onboarding */
+.slide .kick { font: 700 12px var(--ui); letter-spacing: .08em; text-transform: uppercase; color: #FFB58A; }
+.recs .slide h3 { font-size: 26px; line-height: 1.18; }
+.thumbs { display: flex; gap: 4px; } .thumbs span { flex: 1; height: 5px; border-radius: 3px; background: #E5E5E5; } .thumbs span.on { background: var(--orange); } .thumbs span.done { background: #121212; }
+.recs .pnote { padding: 6px 10px; font-size: 12.5px; }
+.procrow { flex: none; display: flex; align-items: center; gap: 10px; padding: 8px 14px; border: 0; border-bottom: 1px solid #F0F0F0; background: #FAFAFA; font: 500 13px var(--ui); color: #3F3F3F; }
+.procrow .pt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.procrow .pc { font-variant-numeric: tabular-nums; color: #737373; }
+.procrow .pbar { width: 70px; height: 5px; border-radius: 3px; background: #E5E5E5; overflow: hidden; } .procrow .pbar i { display: block; height: 100%; width: 0; background: var(--orange); transition: width .3s linear; }
+.procrow.ready { background: var(--orange-soft); cursor: pointer; width: 100%; text-align: left; }
+.procrow.ready .pt b { font-weight: 700; color: #121212; }
+button.wcard { font: inherit; text-align: left; cursor: pointer; color: #121212; }
+.node.moved { opacity: .62; border-style: dashed; } .node.moved::before { background: #A8A29E; } .node.moved small { text-decoration: none; }
+.legend .m::before { background: #A8A29E; }
+.panel a { color: var(--orange); font-weight: 600; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>The way in</h1>
+    <p class="lockb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Version 2, for your OK: the first Take is the onboarding</p>
+    <p class="lede">Every way into WillpowerLab, from the real screens in the app today (frontend <code>main</code>, 3 November 2026), with the locked screens. Version 2 makes everyone's onboarding their first official Take: Will says hi, then the five questions are slides on the recording screen, then the checks while it is processed, then the walk. Pick a journey and tap anything. Every button goes where it goes in the app. The ringed one is the next step of the journey. Tap a box on the map to jump straight to that screen.</p>
+    <div class="ctl">
+      <div class="seg" id="biz" role="group" aria-label="Business"><span class="lab">Business</span></div>
+      <div class="seg" id="jr" role="group" aria-label="Journey"><span class="lab">Journey</span></div>
+    </div>
+  </header>
+
+  <section class="mapp" aria-label="The map">
+    <h2>The map</h2>
+    <p>Left to right is the order a new person meets things. The outlined boxes are the journey you picked; the orange one is where the phone is now.</p>
+    <div class="map" id="map"></div>
+    <div class="legend"><span>Built, in the app today</span><span class="n">New: the first Take and the setup</span><span class="m">Moved: the plan's questions are now slides</span><span class="g">A gap: not built, or to decide</span><span class="p">The journey you picked</span></div>
+  </section>
+
+  <div class="phone"><div id="app"></div></div>
+
+  <aside>
+    <div class="panel">
+      <h2 id="jH">The journey</h2>
+      <p id="jP"></p>
+    </div>
+
+    <div class="panel">
+      <h2>What version 2 changes</h2>
+      <p>Your note: "this is a part that we apply to everyone ... it should be your first official take ... whatever questions we have for the first timer, we need to put them into slides."</p>
+      <ol class="changes">
+        <li><b>Will says hi, in one line, then one big black button.</b> "Your first Take is five questions. Answer each one out loud, one slide at a time." The button is "Start your first recording".</li>
+        <li><b>The first Take: the five questions are the slides</b> on the recording screen, as it is locked. About you · Your talk · The room · Your one sentence · Your opening. No set-up: the questions are the deck.</li>
+        <li><b>While it is processed</b>, the labels sit in a thin row at the top of Will's chat. Will: "While your feedback is being prepared, check what I heard." Then, one tap each: "Here's how others will see you", the plan, "Which team are you in?" (only with no link and no code), the agreement, "You're set".</li>
+        <li><b>The walk opens when it's ready.</b> Its row on top turns orange. On Take 1, the walk works on how the questions were answered.</li>
+        <li><b>Then "Record Take 2"</b> for the real talk: the feelings check with its Skip, then the set-up (topic from slide 2, length, slides).</li>
+        <li><b>Moved:</b> the plan's questions in Will's chat (N319) are now slides 2 to 5. The setup's voice note (N378) is slide 1. "When is your deadline?" comes as taps only if no date was heard.</li>
+        <li><b>Gone:</b> gap 5, the two hellos. Will says hi once.</li>
+      </ol>
+      <p style="margin-top:8px">It changes locked rules (N319, and Never 3's wording: the questions come inside the first Take, one slide at a time), so it needs your OK. The step-by-step version is on its own page: <a href="https://claude.ai/artifact/C78wBzWUKz7MaHjxrnsPVX" target="_blank" rel="noopener">The first Take</a>.</p>
+    </div>
+
+    <div class="panel">
+      <h2>The gaps, and how each is covered</h2>
+      <p>What the map found in the code, each with its cover. The tag says what it needs.</p>
+      <ol class="gaps">
+        <li><b>The default ring.</b><span class="chip dec">To decide</span><span class="cv">A new account gets ring 2. The plan's questions need ring 5, and the chats and the join link need ring 6, so today a new person sees only the empty Lounge. Cover: you set the default ring for the launch. This prototype shows what ring 6 sees.</span></li>
+        <li><b>The welcome shows again after signing up on the web.</b><span class="chip bld">To build</span><span class="cv">Only "Enter the lab" marks it as seen, so someone who signs up at /signup meets it inside the chat. Cover: a signed-in person never sees the welcome. No words change.</span></li>
+        <li><b>A join link needs ring 6 from the person joining too.</b><span class="chip dec">To decide</span><span class="cv">Otherwise the join is refused without a word, no chat is made, and they land in the plain Lounge. Cover: the link brings its own access, so whoever joins through it gets the chats.</span></li>
+        <li><b>The setup isn't built.</b><span class="chip bld">To build</span><span class="cv">Nothing in the code yet: no teams, no codes, no voice-note card, no agreement in the setup. Cover: N378, version 3, slotted in as shown.</span></li>
+        <li><b>Two hellos in a row.</b><span class="chip ok">Gone in version 2</span><span class="cv">The plan's "Hi {name}! A few quick questions before your first practice." is no longer in Will's chat: the questions are slides. Will says hi once.</span></li>
+        <li><b>Signing up with no link and no code.</b><span class="chip ok">Covered here</span><span class="cv">"Which team are you in?" comes during the processing of the first Take, with Skip (N371). Skip goes on to the agreement.</span></li>
+        <li><b>A guest who signs up after Take 1.</b><span class="chip dec">To decide</span><span class="cv">They never get the plan's questions before a Take, and the setup can't come before Take 2 (Never 3). Cover: Will never asks them about a team. A team reaches them by a link or a code, or they tell Will "I want to add a team" and he asks the same questions.</span></li>
+        <li><b>The join page says "Join".</b><span class="chip ok">Covered here</span><span class="cv">The signed "Join with your {company} account" (N335) needs a company's own sign-in, which is an integration (N378 item 7). Cover: "Join" stays until a company has one.</span></li>
+        <li><b>No Microsoft sign-in.</b><span class="chip sign">Needs your OK</span><span class="cv">Built today: WhatsApp, Email, Google and LinkedIn, plus Apple in the app. RASP's people sign in with Microsoft. Cover: a "Microsoft" button beside Google. It is the app, not an integration. One new word: "Microsoft".</span></li>
+        <li><b>Demo chats for a real newcomer.</b><span class="chip dec">To decide</span><span class="cv">On the web, a ring-6 newcomer with an empty list gets two demo chats, "Sarah" and "Ariel", that aren't real. Cover: demo chats only for test accounts. A newcomer's list shows Will and "Add someone to chat with", as the iPhone app already does.</span></li>
+        <li><b>In the iPhone app, a join link opens Safari.</b><span class="chip bld">To build</span><span class="cv">There are no universal links yet. Cover: universal links for willpowerlab.com/c/, so the app opens on the join page.</span></li>
+        <li><b>The ask link has no page.</b><span class="chip bld">To build</span><span class="cv">Its words are signed (N313), but /a/ is not built. Cover: the page as on the setup prototype.</span></li>
+        <li><b>Coaches are still a list kept by hand.</b><span class="chip bld">To build</span><span class="cv">Cover: WillpowerLab's coach link, with the pass code inside, makes someone a speaking coach (N352).</span></li>
+        <li><b>Two kinds of code.</b><span class="chip dec">To decide</span><span class="cv">The community pass code after a Take ("+ Add a community with a passcode"), and a team's code (N353). Cover: one code. A team is a community, and its code is the pass code (N352 item 6).</span></li>
+      </ol>
+    </div>
+
+    <div class="panel">
+      <h2>What stays exactly as it is</h2>
+      <ul class="changes">
+        <li>The landing, "See an example", the sign-up and sign-in pages and the join page, word for word.</li>
+        <li>The acceptance screen (locked): the agreement, the three documents, the country, one tick, "Agree and continue", "Do not agree".</li>
+        <li>The plan's questions (locked, N319): one at a time, taps on the right, the mic, typing off, the plan card, "Start your first recording".</li>
+        <li>The recording screens (locked), the processing wait and the Feedback walk.</li>
+        <li>The chats (locked, One bar): Will on top, the inviter's chat marked new, the add sheet, the ☰ menu.</li>
+      </ul>
+    </div>
+    <button class="reset" type="button" id="reset">Start this journey again</button>
+  </aside>
+</div>
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const lc = (t) => (t[1] && t[1] === t[1].toLowerCase() ? t[0].toLowerCase() + t.slice(1) : t);
+  const app = $("#app");
+  const STOP = new Error("stopped");
+  let gen = 0;
+  const wait = (ms) => { const g = gen; return new Promise((res, rej) => setTimeout(() => (g === gen ? res() : rej(STOP)), ms)); };
+  const MIC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>`;
+  const LOCK = `<svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="locked"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
+  const MENU = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#121212" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>`;
+  const WAG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.3 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.5-3.9-4.7-4.1-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.9 2.1c.1.2.1.4 0 .5l-.3.5-.4.4c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.5.3.1.1.1.6-.1 1.2z"/></svg>`;
+  const LOGO = `<span class="logo"><span class="dots"><i></i><i></i><i></i></span>WillpowerLab</span>`;
+  const VM = `<div class="vm" aria-hidden="true"><b></b><b></b><b></b><span class="dots"><i></i><i></i><i></i></span></div>`;
+  const WILL_AV = `<span class="av will"><span class="dots"><i></i><i></i><i></i></span></span>`;
+  const av = (n, c) => `<span class="av" style="background:${c}">${esc(n[0])}</span>`;
+  const secs = (n) => `0:${String(n).padStart(2, "0")}`;
+  const voice = (n) => `<span class="voice"><span class="pl">▶</span><span class="w"></span><small>${secs(n)}</small></span>`;
+
+  // ---------- the words (signed; N378 version 3 where marked) ----------
+  const SET_SPEC = "You're set. Questions about your work come to your chats. You can change this in Settings.";
+  const SET_COACH = "You're set. Takes to review wait for you here; questions about your work come to your chats. You can change this in Settings.";
+  const WHO_Q = "Tell me in a voice note what you do and what you know best, so I can send you the right questions.";
+  const SEE_Q = "Here's how others will see you:";
+  const KIND_Q = "Open, so anyone can find it and join, or closed, so only people with its code can join?";
+  const AGREE = `<b class="agt">The data processing agreement</b>You hear people's recordings only to give them feedback here. You keep nothing outside WillpowerLab. You tell us at once if anything leaks.<a href="#" class="ln" onclick="return false">Read the full agreement</a>`;
+
+  // ---------- two businesses ----------
+  const ARTUR = { n: "Artur", c: "#121212", role: "Founder · WillpowerLab", about: "I build WillpowerLab." };
+  const MARTA = { n: "Marta", c: "#495057", role: "Speaking coach", voice: { secs: 15, words: "I'm a speaking coach. I help people who speak to a room: how to start, how to slow down, and how to sound sure when they are not." },
+    topics: ["Starting a talk", "Slowing down", "Sounding sure"], about: "I help you start well, slow down, and sound sure when you speak to a room.", change: { said: "Add handling questions too.", topic: "Handling questions" },
+    event: { secs: 12, words: "A workshop for coaches in Warsaw. I want them to try one exercise on the spot.", named: "Your workshop for coaches in Warsaw, where they try one exercise on the spot.", topic: "My workshop for coaches" },
+    key: "Try it now, not tomorrow." };
+  const BIZ = {
+    rasp: { key: "rasp", label: "RASP", sub: "internal, AI ambassadors", team: "RASP AI Ambassadors", code: "RASP-7K2M", newTeam: "RASP Politics Desk", acc: "#14213D", room: "About twenty people from the newsroom.",
+      inviter: { n: "Tomek", c: "#2F6FDE", role: "AI ambassador · Editorial", about: "I help editors use AI in their cuts: what the AI does well, and what you always check.", topics: ["AI quotes", "AI video cuts", "The newsroom AI guidelines"] },
+      joiner: { n: "Kasia", c: "#D9480F", role: "Video editor · News", voice: { secs: 9, words: "I edit news videos, mostly short cuts for social media." }, topics: ["Short news cuts", "Video for social media"], about: "I edit short news videos for social media.", change: { said: "Add live streams too.", topic: "Live streams" },
+        event: { secs: 11, words: "My first Meet & Learn talk, about AI in short news videos. It matters because my team will copy what I show them.", named: "Your first Meet & Learn talk, about AI in short news videos, for a team that will copy what you show.", topic: "My Meet & Learn talk" }, key: "Let the AI find the quotes, and check every one yourself." },
+      solo: { n: "Anna", c: "#0B7285", role: "Reporter · Politics", voice: { secs: 10, words: "I'm a reporter on the politics desk. I know parliament, and how a bill becomes law." }, topics: ["Parliament", "How a bill becomes law"], about: "I report on politics: parliament, and how a bill becomes law.", change: { said: "Add election night too.", topic: "Election night" },
+        event: { secs: 12, words: "A talk at the newsroom conference on 14 November. It matters because it's my first time on a stage.", named: "Your talk at the newsroom conference, your first time on a stage.", topic: "My newsroom conference talk" }, key: "A good story starts with one person, not with a number." },
+    },
+    invita: { key: "invita", label: "Invita", sub: "sellers and their customers", team: "Invita", code: "INV-4H9P", newTeam: "Invita Kraków", acc: "#8C3B5E", askLink: "willpowerlab.com/a/invita", room: "Twenty sellers from our salons.",
+      inviter: { n: "Ariel", c: "#C2255C", role: "Seller", about: "I help you find the shampoo that fits your scalp, and show you how to use it at home.", topics: ["Dry scalp", "Hair loss", "Choosing a shampoo", "Using it at home"] },
+      joiner: { n: "Lena", c: "#5C7CFA", role: "Seller · Gdańsk", voice: { secs: 8, words: "I'm a new seller at Invita, in Gdańsk. I'm still learning our shampoos." }, topics: ["Invita in Gdańsk"], about: "I'm a new Invita seller in Gdańsk.", change: { said: "Add salon bookings too.", topic: "Salon bookings" },
+        event: { secs: 11, words: "Our spring training day. I'll show our new shampoo to twenty sellers. It matters because I'm new.", named: "Our spring training day, where you show the new shampoo to twenty sellers, as someone new.", topic: "The new shampoo, for the training day" }, key: "One wash tells you more than the label." },
+      solo: { n: "Zofia", c: "#0B7285", role: "Hairdresser · Kraków", voice: { secs: 9, words: "I'm a hairdresser in Kraków. I know colouring, and curly hair." }, topics: ["Colouring", "Curly hair"], about: "I colour and cut hair in Kraków, curly hair most of all.", change: { said: "Add bridal hair too.", topic: "Bridal hair" },
+        event: { secs: 12, words: "I'm presenting at a salon owners' meeting on 14 November. It matters because I want them to stock Invita.", named: "Your talk at the salon owners' meeting, to get them to stock Invita.", topic: "My salon owners' talk" }, key: "Your clients notice the shine before the price." },
+    },
+  };
+
+  // ---------- the journeys and the map ----------
+  const JOURNEYS = [
+    { k: "guest", label: "A guest, from the landing", nodes: ["land", "accept", "lounge", "take", "guestup", "auth", "walk"],
+      desc: "As today. The landing has no sign-up button. Enter the lab opens Will's chat as a guest: the acceptance screen first, then Start your first recording, the Take with stand-in slides, and then Create an account (N30). Whether a guest's first Take is the five questions too is open (gap 7)." },
+    { k: "signup", label: "Signing up, in the browser", nodes: ["signup", "auth", "welcome", "accept", "chats", "hi", "first", "checks", "walk"],
+      desc: "Someone opens willpowerlab.com/signup and signs up with WhatsApp: number, code, name. After the acceptance screen, Will says hi, and the first Take is the five questions. While it is processed: the card, the plan, the team (no link, so Will asks; Join with a code here), the agreement. Then the walk." },
+    { k: "app", label: "The iPhone app", nodes: ["app", "auth", "accept", "chats", "hi", "first", "checks", "team", "walk"],
+      desc: "The app opens on sign-in (N354), with Sign in with Apple on top. No landing and no welcome. Will says hi, the first Take is the five questions, and during the processing this person adds a team, then opens the team's page." },
+    { k: "join", label: "By someone's link", nodes: ["join", "auth", "welcome", "accept", "chats", "hi", "first", "checks", "walk"],
+      desc: "The join page works before sign-in. After signing up the join happens without a second tap. The list opens with Will on top and the inviter's chat marked new (N357, N360). The link names the team, so Will never asks which one." },
+    { k: "coach", label: "A speaking coach's link", nodes: ["coach", "auth", "welcome", "accept", "chats", "hi", "first", "checks", "walk"],
+      desc: "The same join page. WillpowerLab's coach link has the pass code inside it, so Will knows the role (N352). The same five questions. After \"You're set\", the coach panel's door appears in the chat with Will, and Training corpus in the ☰ menu, both as they are today." },
+    { k: "ask", label: "A customer's ask link", only: "invita", nodes: ["ask"],
+      desc: "No account and no app (N312). The ask page with its signed words (N313) and the team's topics from the setup. It is not built yet (gap 12)." },
+  ];
+  const NODES = [
+    ["Ways in", [["land", "The landing", "willpowerlab.com · Enter the lab", "built"], ["signup", "The sign-up page", "/signup · no button on the landing", "built"], ["app", "The iPhone app", "opens on sign-in (N354)", "built"], ["join", "Someone's join link", "/c/… · ring 6", "built"], ["coach", "A speaking coach's link", "the pass code inside", "new"], ["ask", "A customer's ask link", "/a/… · not built", "gap"]]],
+    ["Sign in", [["auth", "WhatsApp, Email, Google, LinkedIn", "Apple in the app · no email check", "built"], ["ms", "Microsoft", "not built · gap 9", "gap"]]],
+    ["The agreement", [["welcome", "The welcome, again", "web, after signing up · gap 2", "gap"], ["accept", "The acceptance screen", "locked · guests too", "built"]]],
+    ["Will's chat", [["lounge", "Will, for a guest", "Start your first recording", "built"], ["hi", "Will says hi", "one line, then the big black button", "new"]]],
+    ["The first Take", [["first", "Five questions, as slides", "the recording screen, as locked", "new"], ["take", "Set-up, recording, processing", "a guest's Take 1 · every Take 2", "built"], ["guestup", "Create an account", "a guest, after Take 1", "built"]]],
+    ["While it is processed", [["checks", "The checks", "how others see you · the plan · the team · the agreement", "new"], ["team", "The team's page", "who can ask · what answers point to", "new"], ["plan", "The plan's questions", "moved onto the slides", "moved"]]],
+    ["After", [["walk", "The Feedback walk", "locked · then Take 2", "built"], ["chats", "The chats", "ring 6 · Will on top · locked (One bar)", "built"]]],
+  ];
+
+  let bizKey = "rasp", jKey = "signup", S = null, screen = null, C = null;
+  const B = () => BIZ[bizKey];
+  const J = () => JOURNEYS.find((j) => j.k === jKey);
+  function fresh() {
+    const b = B();
+    S = { app: jKey === "app", flag: jKey === "app", signedIn: false, accepted: false, coach: jKey === "coach",
+      me: jKey === "join" ? b.joiner : jKey === "coach" ? MARTA : b.solo,
+      inviter: jKey === "join" ? b.inviter : jKey === "coach" ? ARTUR : null,
+      redirect: null, joined: false, guestTake: false, take: 0, team: null, teamOwner: false, planDone: false, topics: null,
+      will: { log: [], beat: null, said: false, greeted: false }, wizFrom: "will", length: 2, deck: false, took: false, proc: 0, procDone: false, walked: false };
+    S.topics = S.me.topics ? [...S.me.topics] : [];
+  }
+  const nodeOf = (id) => {
+    if (id === "signup") return jKey === "signup" ? "signup" : "auth";
+    if (id === "login") return jKey === "app" && !S.signedIn ? "app" : "auth";
+    if (id === "join") return jKey === "coach" ? "coach" : "join";
+    if (id === "will") return !S.will.beat || S.will.beat === "hi" ? "hi" : S.will.beat === "afterWalk" ? "walk" : "checks";
+    if (id === "first") return "first";
+    return { landing: "land", example: "land", code: "auth", name: "auth", signupEmail: "auth", loginEmail: "auth", oauth: "auth", welcome: "welcome", accept: "accept", notAgree: "accept", lounge: "lounge", wizard: "take", mic: "take", rec: "take", proc: "take", ready: "guestup", walk: "walk", list: "chats", person: "chats", ask: "ask", team: "team" }[id];
+  };
+  function paintControls() {
+    $("#biz").innerHTML = `<span class="lab">Business</span>` + Object.values(BIZ).map((b) => `<button type="button" data-b="${b.key}" class="${b.key === bizKey ? "on" : ""}" aria-pressed="${b.key === bizKey}">${esc(b.label)} <small>· ${esc(b.sub)}</small></button>`).join("");
+    $("#jr").innerHTML = `<span class="lab">Journey</span>` + JOURNEYS.map((j, i) => { const off = j.only && j.only !== bizKey; return `<button type="button" data-j="${j.k}" class="${j.k === jKey ? "on" : ""}" aria-pressed="${j.k === jKey}"${off ? ` disabled title="Only Invita has customers who ask from outside"` : ""}>${i + 1}. ${esc(j.label)}</button>`; }).join("");
+    $$("#biz [data-b]").forEach((x) => (x.onclick = () => { bizKey = x.dataset.b; if (J().only && J().only !== bizKey) jKey = "signup"; start(); }));
+    $$("#jr [data-j]").forEach((x) => (x.onclick = () => { jKey = x.dataset.j; start(); }));
+    $("#jH").textContent = J().label;
+    $("#jP").textContent = J().desc;
+  }
+  function paintMap() {
+    const path = J().nodes, here = nodeOf(screen);
+    $("#map").innerHTML = NODES.map(([h, list]) => `<div class="mcol"><h4>${esc(h)}</h4>${list.map(([id, t, s, st]) => `<button type="button" class="node ${st}${path.includes(id) ? " path" : ""}${id === here ? " here" : ""}" data-n="${id}">${esc(t)}<small>${esc(s)}</small></button>`).join("")}</div>`).join("");
+    $$("#map [data-n]").forEach((x) => (x.onclick = () => jump(x.dataset.n)));
+  }
+  function signIn() { if (!S.signedIn) { S.signedIn = true; S.accepted = true; S.flag = true; } }
+  function jump(id) {
+    const starts = { land: "guest", signup: "signup", app: "app", join: "join", coach: "coach", ask: "ask" };
+    if (starts[id]) { if (id === "ask") bizKey = "invita"; jKey = starts[id]; start(); return; }
+    if (id === "ms") { toast("There is no Microsoft sign-in yet (gap 9). The sign-up page shows where it would go."); go(S.app ? "login" : "signup"); return; }
+    if (id === "auth") { go(S.app ? "login" : "signup"); return; }
+    if (id === "welcome") { go("welcome"); return; }
+    if (id === "accept") { S.accepted = false; go("accept"); return; }
+    if (id === "lounge" || id === "guestup") { S.signedIn = false; S.accepted = true; S.guestTake = id === "guestup"; go(id === "lounge" ? "lounge" : "ready"); return; }
+    signIn();
+    if (id === "hi") { S.will = { log: [], beat: "hi", said: false, greeted: false }; S.took = false; go("will"); return; }
+    if (id === "first") { go("first"); return; }
+    if (id === "checks") { if (S.coach || S.joined) S.team = B().team; S.will = { log: [], beat: null, said: false, greeted: false }; S.will.beat = "hi"; S.will.said = true; S.will.log.push(W(esc(hiLine())), W(esc(FIRST))); finishTake(); return; }
+    if (id === "plan") { toast("The plan's questions are now slides 2 to 5 of the first Take."); go("first"); return; }
+    if (id === "team") { S.team = B().newTeam; S.teamOwner = true; S.will.beat = "waitWalk"; S.will.said = false; go("team"); return; }
+    if (id === "take") { S.planDone = true; S.took = true; S.walked = true; S.take = Math.max(S.take, 1); S.wizFrom = "will"; S.will.beat = "afterWalk"; S.will.said = false; go("wizard"); return; }
+    if (id === "walk") { S.take = Math.max(S.take, 1); go("walk"); return; }
+    if (id === "chats") { go("list"); return; }
+  }
+
+  // ---------- the phone: shared pieces ----------
+  function go(id) { gen++; C = null; screen = id; app.innerHTML = ""; SCREENS[id](); paintMap(); }
+  function toast(t) { $$(".toast", app).forEach((x) => x.remove()); app.insertAdjacentHTML("beforeend", `<div class="toast" role="status">${esc(t)}</div>`); const el = app.lastElementChild; setTimeout(() => el.remove(), 2900); }
+  const on = (sel, fn, cue = false) => { const el = typeof sel === "string" ? $(sel, app) : sel; if (!el) return null; el.onclick = (e) => { el.classList.remove("cue"); fn(e); }; if (cue) el.classList.add("cue"); return el; };
+  const pnoteHtml = (html, { int = false, btn = null } = {}) => `<div class="pnote${int ? " int" : ""}"><b>${int ? "A gap" : "Prototype"}</b>${html}${btn ? `<br><button type="button" class="pgo">${esc(btn)}</button>` : ""}</div>`;
+  function fill(el, text, after) { if (el.classList.contains("on")) { if (after) after(); return; } el.classList.add("on"); el.textContent = ""; let i = 0; const g = gen; const t = setInterval(() => { if (g !== gen) return clearInterval(t); i++; el.textContent = text.slice(0, i); if (i >= text.length) { clearInterval(t); if (after) after(); } }, 24); }
+  const nav = () => `<div class="nav">${LOGO}<button type="button" class="menu" id="mn" aria-label="Open menu">${MENU}</button></div>`;
+  function bindMenu() { const m = $("#mn", app); if (m) m.onclick = openMenu; }
+  function openMenu() {
+    if ($(".menuc", app)) { closeMenu(); return; }
+    const me = S.me;
+    const rows = S.signedIn
+      ? `<button class="me mi" type="button" id="mprof">${av(me.n, me.c)}<span class="t"><b>${esc(me.n)}</b><small>${esc(me.n.toLowerCase())}@example.com</small></span><span>›</span></button>
+         <button class="mi" type="button" data-t="Copied. Whoever opens it joins you here."><span class="ic">🔗</span><span class="t">Copy my link<small>Whoever opens it joins you here</small></span></button>
+         <button class="mi" type="button" data-t="Settings: Data & consent, as locked."><span class="ic">⚙️</span><span class="t">Settings</span></button>
+         <button class="mi" type="button" data-t="${S.app ? "Tokens: the balance, and in the app it opens nothing (N365)." : "Tokens: the pricing page."}"><span class="ic">🪙</span><span class="t">Tokens</span></button>
+         ${S.coach ? `<button class="mi" type="button" data-t="The training corpus, as it is today: the imports, Import audio, the set-up and the blind judging."><span class="ic">🎙</span><span class="t">Training corpus</span></button>` : ""}
+         <div class="sep"></div><button class="mi out" type="button" id="mout"><span class="ic">↩</span><span class="t">Sign out</span></button>`
+      : `<button class="mi" type="button" id="mlog"><span class="ic">→</span><span class="t">Log in</span></button>`;
+    app.insertAdjacentHTML("beforeend", `<div class="scrim" id="scr"></div><div class="menuc" role="menu">${rows}</div>`);
+    on("#scr", closeMenu);
+    $$(".menuc [data-t]", app).forEach((x) => (x.onclick = () => { toast(x.dataset.t); closeMenu(); }));
+    on("#mlog", () => go("login"), jKey === "signup");
+    on("#mprof", () => { closeMenu(); openProfile({ ...S.me, role: S.team ? S.me.role : "", about: S.will.log.length && S.team ? S.me.about : "" }, true); });
+    on("#mout", () => { closeMenu(); toast("Signing out…"); setTimeout(() => { if (screen) { fresh(); go(S.app ? "login" : "landing"); } }, 700); });
+  }
+  function closeMenu() { $$(".menuc, #scr", app).forEach((x) => x.remove()); }
+  function openProfile(p, mine = false) {
+    const el = document.createElement("div");
+    el.className = "prof";
+    el.innerHTML = `<div class="ptop"><button type="button" class="bk" aria-label="Back">‹</button><span style="flex:1"></span>${mine ? '<button type="button" class="ptxt">Edit</button>' : ""}</div><div class="scroll"><div class="hero">${av(p.n, p.c)}<h2>${esc(p.n)}</h2>${p.role ? `<div class="role">${esc(p.role)}</div>` : ""}</div>${p.about ? `<div class="box"><p class="lab">About</p><p class="desc">${esc(p.about)}${mine ? `<small>From your setup, 3 November</small>` : ""}</p></div>` : ""}<div class="box"><p class="lab">Photos</p><p class="empty">No photos yet.</p></div><div class="box"><p class="lab">Files</p><p class="empty">No files yet.</p></div></div>`;
+    app.appendChild(el);
+    $(".bk", el).onclick = () => el.remove();
+    const e = $(".ptxt", el); if (e) e.onclick = () => toast("Edit: your name, who you are and your About (N366).");
+  }
+
+  // a chat's frame; in Will's chat every bubble is kept, so leaving and coming back resumes where you were
+  function chatFrame({ name, sub = "", avHtml, back, onWho, log = null }) {
+    app.innerHTML = `<div class="chd"><button type="button" class="bk" id="bk" aria-label="Back">‹</button><span class="who" id="whoh">${avHtml}<span><b>${esc(name)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</span></span></div><div class="thread" id="th"></div><div class="answers" id="ans"></div><div class="dock" id="dock"></div>`;
+    C = { th: $("#th", app), ans: $("#ans", app), dock: $("#dock", app), log };
+    on("#bk", back);
+    on("#whoh", onWho || (() => toast("This is Will's chat.")));
+    if (log) log.forEach((h) => C.th.insertAdjacentHTML("beforeend", h));
+    C.th.addEventListener("click", (e) => { const d = e.target.closest(".cw"); if (d) toast("The queue opens: the coach panel as it is today (locked). Blind first, then what happened, the cure, the coach's words."); const pl = e.target.closest(".plan button"); if (pl) toast("Change your plan: as locked (N319)."); });
+    C.th.scrollTop = C.th.scrollHeight;
+  }
+  function put(html) { C.th.insertAdjacentHTML("beforeend", html); if (C.log) C.log.push(html); C.th.scrollTop = C.th.scrollHeight; return C.th.lastElementChild; }
+  const W = (t) => `<div class="b them">${t}</div>`;
+  const D = (t) => `<div class="day">${esc(t)}</div>`;
+  const me = (t) => put(`<div class="b me">${esc(t)}</div>`);
+  async function say(lines) { for (const h of lines) { if (h.startsWith('<div class="b them')) { const t = C.th.insertAdjacentHTML("beforeend", `<div class="b them typing" aria-label="Will is writing"><i></i><i></i><i></i></div>`); const ty = C.th.lastElementChild; C.th.scrollTop = C.th.scrollHeight; await wait(600); ty.remove(); } put(h); } }
+  function dockWill() {
+    C.dock.className = "dock";
+    C.dock.innerHTML = `<button type="button" class="slot-l" aria-label="Your projects">+</button><div class="slot-m else idle">Type here</div><button type="button" class="slot-r" aria-label="Record">${MIC}</button>`;
+    on($(".slot-l", C.dock), () => toast("Your projects: each project with its last Take, and New project (N362)."));
+    on($(".slot-r", C.dock), () => toast("Will isn't waiting for your voice right now."));
+  }
+  function dockBig(label, fn) {
+    C.dock.className = "dock";
+    C.dock.innerHTML = `<button type="button" class="slot-l" aria-label="Your projects">+</button><button type="button" class="slot-m bigbtn cue" id="big"><i></i>${esc(label)}</button><button type="button" class="slot-r" aria-label="Record">${MIC}</button>`;
+    on($(".slot-l", C.dock), () => toast("Your projects (N362)."));
+    on($(".slot-r", C.dock), () => toast(`The ${label} button starts it.`));
+    on("#big", fn);
+  }
+  function recordStrip(n, onSend) {
+    const g = gen;
+    C.dock.className = "dock rec";
+    C.dock.innerHTML = `<button type="button" class="slot-l" aria-label="Delete">🗑</button><div class="recstrip"><span class="rd"></span><span class="tm">0:00</span><span class="tr"><i></i></span><button type="button" class="cue" id="rs">Stop</button></div>`;
+    let s = 0;
+    const tm = $(".tm", C.dock), bar = $(".tr i", C.dock);
+    const t = setInterval(() => { if (g !== gen) return clearInterval(t); if (s < n) { s++; tm.textContent = secs(s); bar.style.width = `${(s / n) * 100}%`; } }, 200);
+    on("#rs", () => { clearInterval(t); onSend(); });
+    on($(".slot-l", C.dock), () => toast("The trash deletes it, and the bar comes back."));
+  }
+  // N371: suggested answers above the bar on the right, least to most likely, the last filled
+  function paintAnswers(list, { skip = false, cue = null, onPick, onSkip }, all = false) {
+    const A = list.map((a) => (typeof a === "string" ? { l: a } : a));
+    const more = !all && A.length > 4;
+    const shown = more ? A.slice(-3) : A;
+    const btn = (a, i) => `<button type="button" class="ans${i === shown.length - 1 ? " go" : ""}${cue === a.l ? " cue" : ""}" data-i="${A.indexOf(a)}">${a.html || esc(a.l)}</button>`;
+    let h = skip ? `<button type="button" class="skip${cue === "skip" ? " cue" : ""}" data-skip="1">Skip</button>` : "";
+    if (more) h += `<button type="button" class="ans more" data-more="1">Show more</button>`;
+    h += shown.length <= 2 ? `<div class="arow">${shown.map(btn).join("")}</div>` : shown.map(btn).join("");
+    C.ans.innerHTML = h;
+    $$("[data-i]", C.ans).forEach((el) => (el.onclick = () => onPick(A[+el.dataset.i])));
+    const sk = $("[data-skip]", C.ans); if (sk) sk.onclick = onSkip;
+    const mo = $("[data-more]", C.ans); if (mo) mo.onclick = () => paintAnswers(list, { skip, cue, onPick, onSkip }, true);
+  }
+  // Will asks. Setup questions: "Something else" in the middle (N371). The plan's: a faded "Type here" (N319, typing off).
+  function ask({ answers = [], skip = false, type = null, voice: vo = null, hot = false, cue = null, secret = false, echo = true, accept = null, typing = true }) {
+    const g = gen;
+    return new Promise((resolve) => {
+      const A = answers.map((a) => (typeof a === "string" ? { l: a } : a));
+      const likely = A.find((a) => a.l === cue) || A[A.length - 1];
+      const done = (r) => { if (g !== gen) return; C.ans.innerHTML = ""; dockWill(); resolve(r); };
+      const ok = (l) => { if (!accept) return true; const why = accept(l); if (why === true) return true; toast(why); return false; };
+      const pick = (a) => { if (!ok(a.l)) return; if (echo) me(a.l); done({ k: "tap", l: a.l }); };
+      paintAnswers(A, { skip, cue, onPick: pick, onSkip: () => done({ k: "skip" }) });
+      C.dock.className = "dock";
+      const mid = typing ? `<button type="button" class="slot-m else${cue === "type" ? " cue" : ""}" id="else">Something else</button>` : `<button type="button" class="slot-m else faded" id="else" aria-disabled="true">Type here</button>`;
+      C.dock.innerHTML = `<button type="button" class="slot-l" aria-label="Your projects">+</button>${mid}<button type="button" class="slot-r${hot ? " hot" : ""}${cue === "voice" ? " cue" : ""}" id="mic" aria-label="Answer with your voice">${MIC}</button>`;
+      on($(".slot-l", C.dock), () => toast("Your projects (N362)."));
+      $("#else", C.dock).onclick = () => {
+        if (!typing) { toast(vo ? "We need to hear this in your voice. Tap the mic." : "Tap one of the answers above."); return; }
+        const value = type !== null ? type : likely ? likely.l : "";
+        const box = document.createElement("div");
+        box.className = "slot-m typing";
+        box.innerHTML = `<span class="tx ph">Type your answer</span><button type="button" class="send" disabled aria-label="Send">↑</button>`;
+        $("#else", C.dock).replaceWith(box);
+        const tx = $(".tx", box), send = $(".send", box);
+        let i = 0;
+        setTimeout(() => { const t = setInterval(() => { if (g !== gen) return clearInterval(t); i++; tx.classList.remove("ph"); tx.textContent = secret ? "•".repeat(i) : value.slice(0, i); if (i >= value.length) { clearInterval(t); send.disabled = false; send.classList.add("cue"); } }, 36); }, 300);
+        send.onclick = () => { if (type === null && likely) return pick(likely); if (echo && !secret) me(value); done({ k: "type", v: value }); };
+      };
+      $("#mic", C.dock).onclick = () => {
+        if (secret) { toast("Type the code: it never stays in the chat."); return; }
+        if (!vo && likely && !ok(likely.l)) return;
+        if (!vo && !likely && !typing) return;
+        const words = vo ? vo.words : likely ? likely.l : type || "";
+        const n = vo ? vo.secs : 3;
+        C.ans.innerHTML = "";
+        recordStrip(n, () => {
+          put(`<div class="b me">${voice(n)}<span class="said">${esc(words)}</span></div>`);
+          if (vo) done({ k: "voice", v: words }); else if (likely) done({ k: "tap", l: likely.l }); else done({ k: "type", v: words });
+        });
+      };
+    });
+  }
+  const seeCard = (p, topics, fresh) => `<div class="b them pcard"><div class="pch">${av(p.n, p.c)}<span><b>${esc(p.n)}</b><small>${esc(p.role)}</small></span></div><p>${esc(p.about)}</p><span class="chips">${topics.map((t) => `<span${t === fresh ? ' class="new"' : ""}>Ask about ${esc(lc(t))}</span>`).join("")}</span></div>`;
+  const planCard = () => `<div class="plan"><b class="h">Plan</b><span class="pb"><i></i></span><span>15 minutes, 3 times a week: Mon, Wed, Fri</span><span>Your deadline: <em>Sat 14 Nov</em></span><button type="button">Change your plan</button></div>`;
+
+  // ---------- Will's chat, beat by beat (version 2): Will says hi, the first Take is the onboarding, the checks while it is processed ----------
+  const time = (m) => `09:${String(m).padStart(2, "0")}`;
+  const FIRST = "Your first Take is five questions. Answer each one out loud, one slide at a time.";
+  const HEARD = "While your feedback is being prepared, check what I heard.";
+  const SLIDES = [
+    { k: "About you", q: "What do you do, and what do you know best?", h: "So I can send you the right questions." },
+    { k: "Your talk", q: "What are you practising for, and why does it matter?", h: "" },
+    { k: "The room", q: "When is it, and who will be in the room?", h: "" },
+    { k: "Your one sentence", q: "If they remember one sentence from you, what is it?", h: "Say it the way you'll say it." },
+    { k: "Your opening", q: "How will you open? Say your first sentence.", h: "" },
+  ];
+  const hiLine = () => (S.coach ? `Hi ${S.me.n}! Artur asked you to join ${B().team} as a speaking coach.` : S.joined ? `Hi ${S.me.n}! ${S.inviter.n} asked you to join ${B().team}.` : `Hi ${S.me.n}!`);
+  const BEATS = {
+    hi: { lines: () => { if (S.coach || S.joined) S.team = B().team; return [D(`Today ${time(1)}`), W(esc(hiLine())), ...(S.coach ? [D(`Speaking coach in ${B().team} · ${time(1)}`)] : []), W(esc(FIRST))]; },
+      dock: () => dockBig("Start your first recording", () => go("first")) },
+    heard: { lines: () => [W(esc(HEARD))], auto: () => "see" },
+    see: { lines: () => [W(esc(SEE_Q)), seeCard(S.me, S.topics, S.fresh)], ask: () => ({ answers: ["Change it", "That's right"], type: S.me.change.said, cue: "That's right" }),
+      on: (r) => { if (r.k === "tap" && r.l === "That's right") { if (S.team) put(D(`${S.me.role} in ${S.team} · ${time(4)}`)); return "plan"; } if (r.k === "tap") return "change"; addTopic(); return "see"; } },
+    change: { lines: () => [W("Tell me what to change.")], ask: () => ({ hot: true, voice: { secs: 3, words: S.me.change.said }, type: S.me.change.said, cue: "voice" }), on: () => { addTopic(); return "see"; } },
+    plan: { lines: () => { S.planDone = true; return [W("You're all set. Here's your plan."), planCard()]; }, auto: () => (S.coach || S.joined ? "agree" : "team") },
+    team: { lines: () => [W("Which team are you in?")],
+      ask: () => ({ answers: ["Artur's community", "Join with a code", "Add a team"], skip: true, cue: jKey === "app" ? "Add a team" : "Join with a code" }),
+      on: (r) => { if (r.k === "skip") return "agree"; if (r.l === "Join with a code") return "code"; if (r.l === "Add a team") return "teamName"; S.team = "Artur's community"; put(D(`Joined Artur's community · ${time(5)}`)); return "agree"; } },
+    code: { lines: () => [W("Your team's code, please.")], ask: () => ({ type: B().code, secret: true, cue: "type" }),
+      on: () => { S.team = B().team; put(D(`Joined ${S.team} · ${time(5)}`)); put(D(`${S.me.role} in ${S.team} · ${time(5)}`)); return "agree"; } },
+    teamName: { lines: () => [W("What is your team called?")], ask: () => ({ type: B().newTeam, cue: "type" }), on: () => { S.team = B().newTeam; S.teamOwner = true; return "teamKind"; } },
+    teamKind: { lines: () => [W(esc(KIND_Q))], ask: () => ({ answers: ["Open", "Closed"], cue: "Closed" }),
+      on: (r) => { if (r.l === "Open") { put(D(`${S.team} · open · ${time(5)}`)); put(W("It's on the list of open teams now.")); return "agree"; } return "teamCode"; } },
+    teamCode: { lines: () => [D(`${S.team} · closed · ${time(5)}`), W("Here is your team's code. Give it to the people you want in it."), `<div class="b them codeb">${esc(B().code.replace("RASP", "POL").replace("INV", "KRK"))}</div>`],
+      ask: () => ({ answers: ["Share the code"], cue: "Share the code", echo: false }), on: () => { toast("Your phone's share sheet opens: a link to join, with the code in it (N353)."); return "agree"; } },
+    agree: { lines: () => [W("Before anyone's recordings reach you, please read this and accept it."), W(AGREE), W("Do you accept it?")],
+      ask: () => ({ answers: ["Not now", "I agree"], cue: "I agree", accept: (l) => l === "I agree" || "No recordings reach you until you accept it. You can come back to it in Settings." }),
+      on: () => { put(D(`Accepted · 3 November, ${time(6)}`)); return "set"; } },
+    set: { lines: () => [W(esc(S.coach ? SET_COACH : SET_SPEC)), ...(S.coach ? [`<button type="button" class="cw"><span class="nw">new</span><span><b>2 speakers waiting</b><small>Open your queue</small></span></button>`] : []), ...(S.teamOwner ? [W("Your team is ready. On its page, say who can ask and what your answers can point to.")] : [])],
+      ask: () => (S.teamOwner ? { answers: ["Open your team's page"], cue: "Open your team's page", echo: false } : null),
+      auto: () => "waitWalk", on: () => { S.will.beat = "waitWalk"; S.will.said = false; go("team"); return null; } },
+    waitWalk: { lines: () => [], dock: () => {
+      if (S.walked) { S.will.beat = "afterWalk"; S.will.said = false; runWill().catch((e) => { if (e !== STOP) console.error(e); }); return; }
+      dockWill(); if (S.procDone) cueWalk(); } },
+    afterWalk: { lines: () => [D(`Today 09:${30 + S.take}`), `<button type="button" class="wcard" data-walk="1"><i></i><span><b>Feedback walk</b><small>Take ${S.take} · ${esc(S.took && S.take === 1 ? "Your first Take" : topic())}</small></span></button>`, ...(S.guestTake && !S.planDone ? [pnoteHtml("Gap 7. Someone who signed up after a guest's Take 1 gets no plan's questions before a Take. After the next Take Will asks only \"When is your deadline?\". The cover: Will never asks them about a team. A link or a code brings one, or they tell Will \"I want to add a team\" and he asks the same questions.", { int: true })] : [])],
+      dock: () => dockBig(`Record Take ${S.take + 1}`, () => { S.wizFrom = "will"; go("wizard"); }) },
+  };
+  // the processing of the first Take, in a thin row on top of Will's chat
+  const LABELS = ["Processing your recording", "Transcribing your take", "Building your Ideal Text", "Finding feedback moments", "Finding your anchors"];
+  let procTimer = null;
+  function runProc() {
+    if (procTimer) return;
+    procTimer = setInterval(() => {
+      if (!S || S.procDone) { clearInterval(procTimer); procTimer = null; return; }
+      S.proc = Math.min(100, (S.proc || 0) + 1);
+      if (S.proc >= 100) { S.procDone = true; clearInterval(procTimer); procTimer = null; }
+      paintProc();
+      if (S.procDone && screen === "will" && S.will.beat === "waitWalk") cueWalk();
+    }, 200);
+  }
+  function paintProc() {
+    const row = $("#procrow", app);
+    if (!row) return;
+    if (S.walked) { row.remove(); return; }
+    if (S.procDone) {
+      row.outerHTML = `<button type="button" class="procrow ready" id="procrow"><span class="pt"><b>Feedback walk</b> · Take 1 · Your first Take</span><span>›</span></button>`;
+      on("#procrow", () => go("walk"), S.will.beat === "waitWalk");
+      return;
+    }
+    $(".pt", row).textContent = LABELS[Math.min(4, Math.floor((S.proc || 0) / 20))];
+    $(".pc", row).textContent = `${S.proc || 0}%`;
+    $(".pbar i", row).style.width = `${S.proc || 0}%`;
+  }
+  function cueWalk() { const r = $("#procrow", app); if (r) r.classList.add("cue"); }
+  const OPENINGS = { Kasia: "Who here has cut an interview with AI?", Anna: "Last week, a bill changed my mind.", Lena: "Touch your scalp. Does it feel dry?", Zofia: "Look at the shine on this lock.", Marta: "Stand up, all of you." };
+  function finishTake() {
+    S.took = true; S.take = 1; S.proc = 0; S.procDone = false; S.walked = false;
+    S.will.log.push(`<div class="b me">${voice(58)}<span class="strip6">${SLIDES.map(() => '<span style="background:#14213D"></span>').join("")}</span></div>`);
+    S.will.beat = "heard"; S.will.said = false;
+    runProc();
+    go("will");
+  }
+  function addTopic() { if (!S.topics.includes(S.me.change.topic)) { S.topics.push(S.me.change.topic); S.fresh = S.me.change.topic; } }
+  const topic = () => (S.planDone ? S.me.event.topic : "My first talk");
+  async function runWill() {
+    const g = gen, Wl = S.will;
+    if (!Wl.beat) Wl.beat = "hi";
+    const b = BEATS[Wl.beat];
+    if (!Wl.said) { await say(b.lines()); Wl.said = true; }
+    if (g !== gen) return;
+    if (b.dock) { b.dock(); return; }
+    const q = b.ask ? b.ask() : null;
+    let nextBeat;
+    if (q) { const r = await ask(q); nextBeat = b.on(r); } else nextBeat = b.auto();
+    if (g !== gen || !nextBeat) return;
+    Wl.beat = nextBeat; Wl.said = false;
+    runWill().catch((e) => { if (e !== STOP) console.error(e); });
+  }
+
+  // ---------- the screens ----------
+  const SCREENS = {
+    landing() {
+      app.innerHTML = `<div class="scr"><div class="land">${VM}<h2>WillpowerLab</h2><p>Great presentations aren’t about slides.<br>They’re about a dream and the guts to deliver it.</p><p>You bring the dream.<br>We’ll help you sound brave until you are.</p><div><button type="button" class="pill" id="enter"><i></i>Enter the lab</button></div><div><button type="button" class="lnk" id="ex"><span class="play">▶</span>See an example</button></div><div class="jr"><span></span><span></span><span></span></div><div><button type="button" class="lnk" id="blog">Read all</button></div></div><div class="foot">WillpowerLab 2026 · About us · Blog · Privacy</div></div>`;
+      on("#enter", () => { S.flag = true; go(S.accepted ? "lounge" : "accept"); }, true);
+      on("#ex", () => go("example"));
+      on("#blog", () => toast("The journal, at /blog."));
+    },
+    example() {
+      app.innerHTML = `<div class="scr exo"><div class="xh"><small>An example</small><button type="button" class="x" id="x" aria-label="Close">✕</button></div>
+        <div class="b me">${voice(6)}<span class="said">“All around actors, their costumes, all that was really great.”</span></div>
+        <div class="b them">That was good. But what if you said it more like this?<span style="display:block;margin-top:6px"><span class="tag">AI</span><small>AI version of your voice</small></span><span style="display:block;margin-top:6px">${voice(5)}</span></div>
+        <div class="b them">That part slowed down, with long pauses. 🐢 Let's try a little game.</div>
+        <div class="b them">Tell me more about the actors, and keep the ball in the green.</div>
+        <div><small style="color:#8A8A8A">The pace scale</small><div class="pace"></div></div>
+        <div style="margin-top:auto"><button type="button" class="pill wide" id="try"><i></i>Try it with your talk</button></div></div>`;
+      on("#x", () => go("landing"));
+      on("#try", () => { S.flag = true; go(S.accepted ? "lounge" : "accept"); }, true);
+    },
+    signup() {
+      app.innerHTML = `<div class="scr"><div class="auth">${LOGO}
+        <div class="phn"><button type="button" class="cc" id="cc" aria-label="Country: Poland, +48">🇵🇱 +48</button><span class="fld" id="num">600 100 200</span></div>
+        <button type="button" class="wa" id="wa" disabled>${WAG}Sign up with WhatsApp</button>
+        <div class="or">OR</div>
+        ${S.app ? `<button type="button" class="apple" id="ap"> Sign in with Apple</button>` : ""}
+        <div class="ways" style="grid-template-columns:repeat(4,minmax(0,1fr))"><button type="button" id="em">Email</button><button type="button" id="li">LinkedIn</button><button type="button" id="gg">Google</button><button type="button" class="gapb" id="ms">Microsoft</button></div>
+        <div class="alt">Already have an account? <button type="button" id="si">Sign in</button></div>
+        <p class="legal">By signing up, you agree to our Terms of Service and Privacy Policy.</p></div></div>`;
+      const num = $("#num", app), wa = $("#wa", app);
+      on(num, () => fill(num, "600 123 456", () => { wa.disabled = false; wa.classList.add("cue"); num.classList.remove("cue"); }), !S.app);
+      on(wa, () => go("code"));
+      on("#cc", () => toast("Search country or code: the country list."));
+      on("#em", () => go("signupEmail"));
+      on("#li", () => oauth("LinkedIn")); on("#gg", () => oauth("Google")); on("#ap", () => oauth("Apple"), S.app);
+      on("#ms", () => toast("Gap 9: there is no Microsoft sign-in yet. Proposed: this button, beside Google."));
+      on("#si", () => go("login"));
+    },
+    code() {
+      app.innerHTML = `<div class="scr"><div class="auth">${LOGO}<h3>Enter the code we sent you on WhatsApp</h3><p class="s">+48 600 123 456</p><div class="code6" id="c6">••••••</div><button type="button" class="pill wide" id="go" disabled>Continue</button><div class="alt"><button type="button" id="rs">Resend code</button> · <button type="button" id="dn">Use a different number</button></div></div></div>`;
+      const c6 = $("#c6", app), b = $("#go", app);
+      on(c6, () => fill(c6, "482913", () => { b.disabled = false; b.classList.add("cue"); c6.classList.remove("cue"); }), true);
+      on(b, () => go("name"));
+      on("#rs", () => toast("Resend code works after 60 seconds."));
+      on("#dn", () => go("signup"));
+    },
+    name() {
+      app.innerHTML = `<div class="scr"><div class="auth">${LOGO}<h3>What should we call you?</h3><p class="s">Will and your coach use it.</p><span class="fld" id="nm">Your name</span><button type="button" class="pill wide" id="go" disabled>Continue</button></div></div>`;
+      const nm = $("#nm", app), b = $("#go", app);
+      on(nm, () => fill(nm, S.me.n, () => { b.disabled = false; b.classList.add("cue"); nm.classList.remove("cue"); }), true);
+      on(b, afterSignIn);
+    },
+    signupEmail() {
+      app.innerHTML = `<div class="scr"><div class="auth" style="padding-top:40px">${LOGO}<h3>Sign up with email</h3>
+        <span class="lab2">Name</span><span class="fld" data-v="${esc(S.me.n)}">Your name</span><span class="lab2">Email</span><span class="fld" data-v="${esc(S.me.n.toLowerCase())}@example.com">you@example.com</span>
+        <span class="lab2">Password</span><span class="fld" data-v="••••••••">••••••••</span><span class="lab2">Confirm Password</span><span class="fld" data-v="••••••••">••••••••</span>
+        <button type="button" class="chk" id="tk"><i></i><span>I have read and agree to the Terms of Service and Privacy Policy.</span></button>
+        <button type="button" class="pill wide" id="go">Sign up</button>
+        <div class="alt"><button type="button" id="bk2">Back to sign up options</button></div><div class="alt">Already have an account? <button type="button" id="si">Sign in</button></div></div></div>`;
+      const f = $$(".fld", app);
+      f.forEach((x) => (x.onclick = () => f.forEach((y) => { if (!y.classList.contains("on")) fill(y, y.dataset.v); })));
+      f[0].classList.add("cue");
+      on("#tk", () => { $("#tk", app).classList.toggle("on"); $("#tk i", app).textContent = $("#tk", app).classList.contains("on") ? "✓" : ""; });
+      on("#go", () => {
+        if (!f[0].classList.contains("on")) return toast("Name is required.");
+        if (!$("#tk", app).classList.contains("on")) return toast("You must accept the Terms of Service and Privacy Policy to create an account.");
+        toast("Account created! Redirecting…"); setTimeout(() => { if (screen === "signupEmail") afterSignIn(); }, 900);
+      });
+      on("#bk2", () => go("signup")); on("#si", () => go("login"));
+    },
+    login() {
+      app.innerHTML = `<div class="scr"><div class="auth">${LOGO}
+        <div class="phn"><button type="button" class="cc" aria-label="Country: Poland, +48">🇵🇱 +48</button><span class="fld" id="num">600 100 200</span></div>
+        <button type="button" class="wa" id="wa" disabled>${WAG}Sign in with WhatsApp</button>
+        <div id="err"></div>
+        <div class="or">OR</div>
+        ${S.app ? `<button type="button" class="apple" id="ap"> Sign in with Apple</button>` : ""}
+        <div class="ways"><button type="button" id="em">Email</button><button type="button" id="li">LinkedIn</button><button type="button" id="gg">Google</button></div>
+        <div class="alt">Don't have an account? <button type="button" id="su">Sign up</button></div></div></div>`;
+      const num = $("#num", app), wa = $("#wa", app);
+      on(num, () => fill(num, "600 123 456", () => { wa.disabled = false; }));
+      on(wa, () => { $("#err", app).innerHTML = `<p class="legal" style="color:#B42318">No account signs in with this number. Sign in another way, or <button type="button" id="suw" style="border:0;background:none;padding:0;color:#B42318;font:inherit;text-decoration:underline;cursor:pointer">sign up with WhatsApp</button>.</p>`; on("#suw", () => go("signup")); });
+      on("#em", () => go("loginEmail"));
+      on("#li", () => oauth("LinkedIn")); on("#gg", () => oauth("Google")); on("#ap", () => oauth("Apple"));
+      on("#su", () => go("signup"), true);
+    },
+    loginEmail() {
+      app.innerHTML = `<div class="scr"><div class="auth" style="padding-top:40px"><div><button type="button" class="lnk" id="bk2">← Back</button></div>${LOGO}<h3>Sign in with email</h3><span class="lab2">Email</span><span class="fld" id="e1">you@example.com</span><span class="lab2">Password</span><span class="fld" id="e2">••••••••</span><button type="button" class="pill wide" id="go">Sign in</button><div class="alt">Don't have an account? <button type="button" id="su">Sign up</button></div><div class="alt"><button type="button" id="fp">Forgot password?</button></div></div></div>`;
+      on("#e1", () => fill($("#e1", app), `${S.me.n.toLowerCase()}@example.com`)); on("#e2", () => fill($("#e2", app), "••••••••"));
+      on("#go", () => toast("Invalid email or password"));
+      on("#su", () => go("signup"), true); on("#bk2", () => go("login"));
+      on("#fp", () => toast("Reset your password: you will receive an email from our provider Supabase with a link to reset your password."));
+    },
+    oauth() { app.innerHTML = `<div class="scr"><div class="loader"><span></span></div><p class="legal" style="padding-bottom:30px">Signing you in</p></div>`; },
+    welcome() {
+      app.innerHTML = `<div class="scr"><div class="land" style="padding-top:40px">${pnoteHtml("Gap 2. On the web, only the landing's \"Enter the lab\" marks the welcome as seen, so someone who signs up at /signup meets it again here. The cover: a signed-in person never sees it.", { int: true })}${VM}<h2>WillpowerLab</h2><p>Great presentations aren’t about slides.<br>They’re about a dream and the guts to deliver it.</p><p>You bring the dream.<br>We’ll help you sound brave until you are.</p><div><button type="button" class="pill" id="enter"><i></i>Enter the lab</button></div><div><button type="button" class="lnk" id="ex"><span class="play">▶</span>See an example</button></div></div></div>`;
+      on("#enter", () => { S.flag = true; go("accept"); }, true);
+      on("#ex", () => toast("See an example: the same example as on the landing."));
+    },
+    accept() {
+      app.innerHTML = `<div class="scr acc">${VM}<div class="txt"><p>I have read the Terms of Service and the Privacy Policy and I agree to them.</p><p>I understand that WillpowerLab is hybrid coaching, and that a WillpowerLab coach — a person — may listen to my recordings in order to review my feedback. That is part of the service, not an extra I am switching on.</p></div>
+        <div class="docs"><button type="button" data-d="Terms of Service|Version terms-3.8-2026-10-28">Terms of Service</button><button type="button" data-d="Privacy Policy|Version privacy-3.9-2026-10-28">Privacy Policy</button><button type="button" data-d="How AI is used here|Version ai-notice-3.2-2026-10-15">How AI is used here</button></div>
+        <button type="button" class="sel" id="ctry" aria-label="Country of residence"><span>Choose your country *</span><span>▾</span></button>
+        <button type="button" class="chk" id="tick"><i></i><span>I agree that WillpowerLab may process my recordings. *</span></button>
+        <button type="button" class="pill wide" id="agree" disabled>Agree and continue</button>
+        <button type="button" class="quiet" id="no">Do not agree</button>
+        ${pnoteHtml(`Locked. ${S.signedIn ? "Signed in" : "A guest sees it too, under a guest identity"}. The texts are the live policy, 3.9 with agreement 3.1.`)}</div>`;
+      const ctry = $("#ctry", app), tick = $("#tick", app), agree = $("#agree", app);
+      const ready = () => { const okk = ctry.classList.contains("on") && tick.classList.contains("on"); agree.disabled = !okk; agree.classList.toggle("cue", okk); };
+      $$(".docs [data-d]", app).forEach((x) => (x.onclick = () => { const [t, v] = x.dataset.d.split("|"); x.classList.add("read"); app.insertAdjacentHTML("beforeend", `<div class="docwin"><b>${esc(t)}</b><small>${esc(v)}</small><div class="tx"></div><button type="button" class="pill wide" id="dc">Continue</button></div>`); on("#dc", () => $(".docwin", app).remove()); }));
+      on(ctry, () => { ctry.classList.add("on"); ctry.classList.remove("cue"); ctry.firstElementChild.textContent = "Poland"; tick.classList.add("cue"); ready(); toast("The list starts with Poland and United States (California), then the EU countries by name."); }, true);
+      on(tick, () => { tick.classList.toggle("on"); $("i", tick).textContent = tick.classList.contains("on") ? "✓" : ""; tick.classList.remove("cue"); ready(); });
+      on(agree, () => { agree.textContent = "Saving…"; agree.disabled = true; setTimeout(() => { if (screen !== "accept") return; S.accepted = true; go(S.signedIn ? "list" : "lounge"); }, 700); });
+      on("#no", () => go("notAgree"));
+    },
+    notAgree() {
+      app.innerHTML = `<div class="scr"><div class="center"><h3>Nothing was recorded</h3><p>You can read the documents again, and you can come back and agree at any time. Until then recording stays closed.</p><button type="button" class="pill" id="gb">Go back</button><button type="button" class="lnk" id="rd">Read the documents again</button></div></div>`;
+      on("#gb", () => go("accept"), true); on("#rd", () => { go("accept"); $(".docs [data-d]", app).click(); });
+    },
+    lounge() {
+      app.innerHTML = nav() + `<div class="thread" id="th"></div><div class="answers" id="ans"></div><div class="dock" id="dock"></div>`;
+      C = { th: $("#th", app), ans: $("#ans", app), dock: $("#dock", app), log: null };
+      bindMenu();
+      put(W("Hi, I'm Will. 👋 Record your first take, and I will help you with your presentation."));
+      put(`<div class="lounge-start"><button type="button" class="pill" id="sfr"><i class="red"></i>Start your first recording</button><small>About 2 minutes to record. Your feedback comes about a minute later.</small></div>`);
+      on("#sfr", () => { S.wizFrom = "lounge"; go("wizard"); }, true);
+      C.dock.className = "dock";
+      C.dock.innerHTML = `<button type="button" class="slot-l" aria-label="Your projects">+</button><button type="button" class="slot-m else" id="tb" aria-label="Message Will">Type here</button><span></span>`;
+      on($(".slot-l", C.dock), () => projects());
+      on("#tb", () => { me("Can you help me with my talk?"); setTimeout(() => { if (screen !== "lounge") return; put(W("Hi, I'm Will. 👋 Record your first take, and I will help you with your presentation.")); put(`<div class="lounge-start"><button type="button" class="ans go" id="sfr2">Start your first recording</button></div>`); on("#sfr2", () => { S.wizFrom = "lounge"; go("wizard"); }); }, 600); });
+    },
+    wizard() {
+      const steps = [...(S.take >= 1 ? ["feel"] : []), "topic", "length", "slides"];
+      let i = 0;
+      const paint = () => {
+        const st = steps[i];
+        const dots = steps.map((_, k) => `<i class="${k <= i ? "on" : ""}"></i>`).join("");
+        let body = "";
+        if (st === "feel") body = `<div class="feel"><span class="mic">${MIC}</span><h3>How do you feel?</h3><p class="s">Before you step on stage</p><div class="chipsx">${["Nervous", "Excited", "Calm", "Not sure"].map((x) => `<button type="button" data-f="${x}">${x}</button>`).join("")}</div><button type="button" class="quiet" id="fs">Skip</button></div>`;
+        if (st === "topic") body = `<h3>What is the topic?</h3><span class="fld${S.planDone ? " on" : ""}" id="tp">${S.planDone ? esc(S.me.event.topic) : "e.g. my Q3 results pitch"}</span><div class="grow"></div><button type="button" class="pill wide" id="nx"${S.planDone ? "" : " disabled"}>Next</button>`;
+        if (st === "length") body = `<h3>How long should it run?</h3><div class="chipsx">${["1 min", "2 min", "3 min", "5 min", "30 min", "45 min", "60 min"].map((x) => `<button type="button" data-l="${x}">${x}</button>`).join("")}</div><div><button type="button" class="lnk" data-l="No limit">No limit</button></div>`;
+        if (st === "slides") body = `<h3>Have slides to go with it?</h3><p class="s">Adding slides makes the ideal text dramatically better.</p><button type="button" class="deck" id="dk">${S.deck ? "Deck attached<br><small>Replace the deck</small>" : "Upload your deck (PDF)"}</button><div class="grow"></div><button type="button" class="pill wide" id="st">${S.deck ? '<i class="red"></i>Start recording' : "Skip for now"}</button>`;
+        app.innerHTML = `<div class="scr wiz"><div class="wt"><button type="button" class="bkb" id="wb"${i ? "" : " disabled"}>Back</button><span class="wdots">${dots}</span><button type="button" class="x2" id="wx" aria-label="Cancel setup">✕</button></div>${body}</div>`;
+        on("#wb", () => { if (i) { i--; paint(); } });
+        on("#wx", () => go(S.wizFrom));
+        $$("[data-f]", app).forEach((x, k) => on(x, () => { i++; paint(); }, k === 3));
+        on("#fs", () => { i++; paint(); });
+        const tp = $("#tp", app), nx = $("#nx", app);
+        if (tp && !S.planDone) on(tp, () => fill(tp, "My first talk", () => { nx.disabled = false; nx.classList.add("cue"); tp.classList.remove("cue"); }), true);
+        if (nx) on(nx, () => { i++; paint(); }, S.planDone);
+        $$("[data-l]", app).forEach((x) => on(x, () => {
+          const l = x.dataset.l, mins = parseInt(l, 10);
+          if (l === "No limit" || mins >= 10) {
+            app.insertAdjacentHTML("beforeend", `<div class="dialog"><b>Preparing for a long workshop?</b><p>It's often better to practice just the beginning and the ending. Consider recording a few 2-3 minute takes to practice those vulnerable moments instead of focusing on a long speech. Note: Analysis of long speeches might take considerably longer.</p><div class="pair"><button type="button" id="lc">Continue with this length</button><button type="button" id="lp">Pick a different length</button></div></div>`);
+            on("#lc", () => { S.length = mins || 60; i++; paint(); }); on("#lp", () => $(".dialog", app).remove());
+            return;
+          }
+          S.length = mins; i++; paint();
+        }));
+        const two = $(`[data-l="2 min"]`, app); if (two) two.classList.add("cue");
+        on("#dk", () => { const d = $("#dk", app); d.innerHTML = "Reading your deck…"; setTimeout(() => { if (screen !== "wizard") return; S.deck = true; paint(); }, 800); });
+        on("#st", () => go("mic"), true);
+      };
+      paint();
+    },
+    mic() {
+      app.innerHTML = `<div class="scr"><div class="center"><div class="loader" style="flex:none"><span></span></div><h3>Getting your mic ready</h3>${S.take === 0 ? "<p>WillpowerLab uses the microphone to record your Takes.</p>" : ""}</div></div>`;
+      setTimeout(() => { if (screen === "mic") go("rec"); }, 1300);
+    },
+    rec() {
+      const L = S.deck ? [["Why this matters", "Slide 1 of your deck"], ["What I found", "Slide 2 of your deck"], ["What's next", "Slide 3 of your deck"]] : [["Opening", "What you'll talk about, in one line."], ["Main points", "1 2 3"], ["Summary", "What you said, and what's next."]];
+      let i = 0, left = S.length * 60;
+      const g = gen;
+      const iv = setInterval(() => { if (g !== gen) return clearInterval(iv); left = Math.max(0, left - 1); const c = $("#rc", app); if (c) c.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`; const b = $("#rbar", app); if (b) b.style.width = `${100 - (left / (S.length * 60)) * 100}%`; }, 1000);
+      const paint = () => {
+        app.innerHTML = `<div class="recs"><div class="h"><span><b>Take ${S.take + 1} · Slide ${i + 1} of ${L.length}</b></span><button class="x2" type="button" id="rx" aria-label="Close">✕</button></div><div class="slide" style="background:#14213D"><span class="mk"></span><h3>${esc(L[i][0])}</h3><p>${esc(L[i][1])}</p></div><div class="clock"><span class="rd"></span><span id="rc">${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}</span><span class="tr" style="flex:1;height:4px;background:#DDD;border-radius:2px;overflow:hidden"><i id="rbar" style="display:block;height:100%;width:0;background:var(--red)"></i></span></div><div class="pair"><button type="button" id="rb"${i ? "" : " disabled"}>Back</button><button type="button" class="go cue${i === L.length - 1 ? " red" : ""}" id="rn">${i === L.length - 1 ? "■ Finish take" : "Next slide"}</button></div></div>`;
+        on("#rb", () => { if (i) { i--; paint(); } });
+        on("#rn", () => { if (i < L.length - 1) { i++; paint(); } else { clearInterval(iv); go("proc"); } });
+        on("#rx", () => { $(".recs", app).insertAdjacentHTML("beforeend", `<div class="dialog"><b>Discard this take?</b><p>This recording has not been saved.</p><div class="pair"><button type="button" id="kr">Keep recording</button><button type="button" class="red" id="dt">Discard take</button></div></div>`); on("#kr", () => $(".dialog", app).remove()); on("#dt", () => { clearInterval(iv); go(S.wizFrom); }); });
+      };
+      paint();
+    },
+    proc() {
+      const labels = ["Processing your recording", "Transcribing your take", "Building your Ideal Text", "Finding feedback moments", "Finding your anchors"];
+      app.innerHTML = `<div class="scr"><div class="center"><h3 id="pl">${labels[0]}</h3><div class="pct" id="pp">0%</div><div class="bar0"><i id="pb"></i></div><p>Usually about a minute.</p></div></div>`;
+      let p = 0; const g = gen;
+      const t = setInterval(() => { if (g !== gen) return clearInterval(t); p = Math.min(100, p + 4); $("#pp", app).textContent = `${p}%`; $("#pb", app).style.width = `${p}%`; $("#pl", app).textContent = labels[Math.min(4, Math.floor(p / 20))];
+        if (p >= 100) { clearInterval(t); S.take++; if (!S.signedIn) { S.guestTake = true; go("ready"); } else go("walk"); } }, 140);
+    },
+    ready() {
+      app.innerHTML = `<div class="scr done"><div class="center"><span class="ok">✓</span><h3>Done</h3><p>Your confidence moments and practice are ready!</p><div class="clip"><span class="pl" style="width:30px;height:30px;border-radius:50%;background:#fff;color:var(--orange);display:grid;place-items:center;font-size:11px">▶</span><span class="w"></span><small>0:07</small></div><p style="font-size:14px">This was your most confident moment.</p><button type="button" class="pill wide" id="ca">Create an account</button><button type="button" class="quiet" id="nn">Not now</button></div></div>`;
+      on("#ca", () => go("signup"), true);
+      on("#nn", () => go("lounge"));
+    },
+    first() {
+      let i = 0, t = 0;
+      const g = gen;
+      app.innerHTML = `<div class="scr"><div class="center"><div class="loader" style="flex:none"><span></span></div><h3>Getting your mic ready</h3><p>WillpowerLab uses the microphone to record your Takes.</p></div></div>`;
+      setTimeout(() => {
+        if (g !== gen) return;
+        const iv = setInterval(() => { if (g !== gen) return clearInterval(iv); t++; const c = $("#rc", app); if (c) c.textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; }, 1000);
+        const answers = [S.me.voice.words, S.me.event.words, `On 14 November. ${B().room}`, S.me.key, OPENINGS[S.me.n] || ""];
+        const paint = () => {
+          const sl = SLIDES[i];
+          app.innerHTML = `<div class="recs"><div class="h"><span><b>Take 1 · Slide ${i + 1} of ${SLIDES.length}</b></span><button class="x2" type="button" id="rx" aria-label="Close">✕</button></div>
+            <div class="slide" style="background:#14213D"><span class="kick">${esc(sl.k)}</span><span class="mk"></span><h3>${esc(sl.q)}</h3>${sl.h ? `<p>${esc(sl.h)}</p>` : ""}</div>
+            <div class="thumbs">${SLIDES.map((_, k) => `<span class="${k === i ? "on" : k < i ? "done" : ""}"></span>`).join("")}</div>
+            ${pnoteHtml(`${esc(S.me.n)} says: “${esc(answers[i])}”`)}
+            <div class="clock"><span class="rd"></span><span id="rc">${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}</span></div>
+            <div class="pair"><button type="button" id="rb"${i ? "" : " disabled"}>Back</button><button type="button" class="go cue${i === SLIDES.length - 1 ? " red" : ""}" id="rn">${i === SLIDES.length - 1 ? "■ Finish take" : "Next slide"}</button></div></div>`;
+          on("#rb", () => { if (i) { i--; paint(); } });
+          on("#rn", () => { if (i < SLIDES.length - 1) { i++; paint(); } else { clearInterval(iv); finishTake(); } });
+          on("#rx", () => { $(".recs", app).insertAdjacentHTML("beforeend", `<div class="dialog"><b>Discard this take?</b><p>This recording has not been saved.</p><div class="pair"><button type="button" id="kr">Keep recording</button><button type="button" class="red" id="dt">Discard take</button></div></div>`); on("#kr", () => $(".dialog", app).remove()); on("#dt", () => { clearInterval(iv); go("will"); }); });
+        };
+        paint();
+      }, 1200);
+    },
+    walk() {
+      app.innerHTML = `<div class="scr"><div class="center"><span class="wcard" style="align-self:center"><i></i><span><b>Feedback walk</b><small>Take ${Math.max(S.take, 1)} · ${esc(S.took && S.take === 1 ? "Your first Take" : topic())}</small></span></span><h3>The Feedback walk opens here</h3><p>As it is locked: the one thing from your Take, the helper words, “Lesson done.”${S.took && S.take === 1 ? " On Take 1 it works on how the five questions were answered, and the Ideal Text is the five answers, one paragraph per question." : ""} This prototype stops at its door.</p>${pnoteHtml("Then the walk's chat, and the next Take's button (N319, N368).", { btn: "Back to Will's chat" })}</div></div>`;
+      S.walked = true;
+      on($(".pgo", app), () => { if (!S.took || ["waitWalk", "afterWalk"].includes(S.will.beat)) { S.will.beat = "afterWalk"; S.will.said = false; } go("will"); }).classList.add("cue");
+    },
+    list() {
+      const inv = S.inviter && S.joined ? S.inviter : null;
+      const willLine = S.will.log.length ? "" : hiLine();
+      app.innerHTML = nav() + `<div class="list">
+        <button type="button" class="row${willLine ? " new" : ""}" data-id="w">${WILL_AV}<span class="mid"><span class="t"><b>Will</b><small></small><em>📌</em></span><span class="p"><span>${esc(willLine)}</span>${willLine ? '<span class="dot"></span>' : ""}</span></span></button>
+        ${inv ? `<button type="button" class="row${S.metInviter ? "" : " new"}" data-id="p">${av(inv.n, inv.c)}<span class="mid"><span class="t"><b>${esc(inv.n)}</b><small></small><em>09:01</em></span><span class="p"><span>You joined through ${esc(inv.n)}'s link. Only the two of you are in this chat.</span>${S.metInviter ? "" : '<span class="dot"></span>'}</span></span></button>`
+          : `<button type="button" class="row" data-id="add"><span class="plus0">+</span><span class="mid"><span class="t"><b>Add someone to chat with</b></span></span></button>`}
+        ${!inv && !S.app ? `<div style="padding:12px">${pnoteHtml("Gap 10. On the web, a ring-6 newcomer with an empty list gets two demo chats, Sarah and Ariel. The cover: Will and \"Add someone to chat with\", as the iPhone app already shows.", { int: true })}</div>` : ""}
+        ${inv && !S.app ? `<div style="padding:12px">${pnoteHtml("Gap 3. Today the person joining also needs ring 6. At the default ring 2 the join is refused without a word and they land in the plain Lounge. The cover: the link brings its own access.", { int: true })}</div>` : ""}
+      </div><button type="button" class="fab" id="fab" aria-label="Add someone to chat with">+</button>`;
+      bindMenu();
+      on($('[data-id="w"]', app), () => go("will"), !S.planDone || S.take >= 1);
+      on($('[data-id="p"]', app), () => go("person"));
+      on($('[data-id="add"]', app), addSheet);
+      on("#fab", addSheet);
+    },
+    will() {
+      chatFrame({ name: "Will", avHtml: WILL_AV, back: () => go("list"), log: S.will.log });
+      if (S.took && !S.walked) { $(".chd", app).insertAdjacentHTML("afterend", `<div class="procrow" id="procrow"><span class="pt">${LABELS[0]}</span><span class="pc">0%</span><span class="pbar"><i></i></span></div>`); paintProc(); }
+      C.th.addEventListener("click", (e) => { if (e.target.closest("[data-walk]")) go("walk"); });
+      if (S.coach && S.will.log.length) { /* the coach's door stays in the thread */ }
+      dockWill();
+      runWill().catch((e) => { if (e !== STOP) console.error(e); });
+    },
+    person() {
+      const inv = S.inviter; S.metInviter = true;
+      chatFrame({ name: inv.n, sub: S.coach ? "" : inv.role, avHtml: av(inv.n, inv.c), back: () => go("list"), onWho: () => openProfile(inv) });
+      put(`<div class="grey">You joined through ${esc(inv.n)}'s link. Only the two of you are in this chat.</div>`);
+      put(D("Today"));
+      C.dock.className = "dock";
+      C.dock.innerHTML = `<button type="button" class="slot-l" aria-label="Add">+</button><div class="slot-m">${[["👍", "It's good"], ["👀", "Seen, I'll answer"], ["🙏", "Thanks"]].map(([e, m]) => `<button type="button" aria-label="${m}" data-e="${e}">${e}</button>`).join("")}</div><button type="button" class="slot-r" aria-label="Talk">${MIC}</button>`;
+      on($(".slot-l", C.dock), () => toast("Photos, Camera, Files, Someone else, Cancel (N367)."));
+      $$("[data-e]", C.dock).forEach((x) => (x.onclick = () => put(`<div class="b big me" style="align-self:flex-end">${x.dataset.e}<small>${esc(x.getAttribute("aria-label"))}</small></div>`)));
+      on($(".slot-r", C.dock), () => toast("Tap the mic and say it. Your voice is turned into words (N335)."));
+      if (!S.coach && inv.topics) paintAnswers([...inv.topics].reverse().map((t) => `Ask about ${lc(t)}`), { onPick: (a) => toast(`${a.l}: one tap, then your voice (N368). Will's chat is the next step here.`) });
+    },
+    join() {
+      const inv = S.inviter;
+      app.innerHTML = `<div class="scr joinp"><div class="big">${esc(inv.n[0])}</div><h3>${esc(inv.n)} asks you to join them on WillpowerLab</h3><ul><li>A chat with ${esc(inv.n)}</li><li>Your own chat with Will, your speaking coach</li><li>Nobody else can reach you here unless you open their link too.</li></ul><button type="button" class="pill wide" id="jn">Join</button><small>Opens in your browser. Nothing to install.</small>
+        ${pnoteHtml(S.coach ? "WillpowerLab's coach link: the same join page. The pass code inside it makes Marta a speaking coach (N352). That replaces today's coach list, kept by hand (gap 13)." : "Gap 8, covered: the button stays \"Join\". The signed \"Join with your {company} account\" (N335) needs the company's own sign-in, which is an integration.")}
+        ${pnoteHtml("Gap 11. In the iPhone app this link opens Safari, not the app: there are no universal links yet.", { int: true })}</div>`;
+      on("#jn", () => { if (S.signedIn) { S.joined = true; go("list"); } else { S.redirect = "join"; go("login"); } }, true);
+    },
+    team() {
+      const b = B();
+      app.innerHTML = `<div class="page tpage"><div class="chd"><button type="button" class="bk" id="tbk" aria-label="Back">‹</button><span class="who">${av(S.team || b.newTeam, b.acc)}<span><b>${esc(S.team || b.newTeam)}</b><small>Closed: with its code</small></span></span></div>
+        <div class="body" id="tb"><div class="tsec"><h4>Who is who</h4><div class="grp"><b>${esc(S.me.n)} (you)</b><span>${esc(S.me.role)}</span></div></div>
+          <div class="tsec"><h4>Who can ask</h4><div class="opts"><button type="button" class="opt on" data-w="team"><span class="rd"></span><span>People in the team</span></button><button type="button" class="opt" data-w="customers"><span class="rd"></span><span>Customers too</span></button></div><div id="askl"></div></div>
+          <div class="tsec"><h4>What answers can point to</h4><div class="shelf" id="shelf"></div><button type="button" class="addrow" id="addL">+ Add a link</button><div id="lf"></div></div></div>
+        <div class="pfoot"><button type="button" class="pbtn" id="inv">Invite people</button></div></div>`;
+      on("#tbk", () => go("will"));
+      $$(".opt", app).forEach((x) => on(x, () => {
+        $$(".opt", app).forEach((y) => y.classList.toggle("on", y === x));
+        $("#askl", app).innerHTML = x.dataset.w === "customers" ? `<div class="asklink"><p>For customers, your ask link: they send you a question and photos, with no account.</p><div class="linkbox"><span class="lk">↗</span>willpowerlab.com/a/${esc((S.team || b.newTeam).toLowerCase().replace(/[^a-z]+/g, "-"))}</div><button type="button" class="copy" id="cpy">Copy the link</button></div>` : "";
+        on("#cpy", () => { const c = $("#cpy", app); c.textContent = "✓ Copied"; c.classList.add("done"); });
+      }, x.dataset.w === "customers" && bizKey === "invita"));
+      on("#addL", () => {
+        $("#lf", app).innerHTML = `<div class="lfield"><span class="in" id="lin">Paste a link</span><button type="button" class="add" id="ladd" disabled>Add</button></div>`;
+        on("#lin", () => { const l = $("#lin", app); l.classList.add("on"); l.textContent = bizKey === "rasp" ? "rasp.pl/meet-and-learn" : "invita.pl/szampon-skora-glowy"; $("#ladd", app).disabled = false; $("#ladd", app).classList.add("cue"); }, true);
+        on("#ladd", () => { $("#lf", app).innerHTML = ""; $("#shelf", app).insertAdjacentHTML("beforeend", `<div class="it"><i style="background:${bizKey === "rasp" ? "#3A5A8C" : "#7A4E36"}"></i><span><b>${bizKey === "rasp" ? "Meet & Learn: AI in the cut" : "Invita Scalp Shampoo"}</b><small>${bizKey === "rasp" ? "Thursday 10:00 · rasp.pl" : "250 ml · invita.pl"}</small></span></div>`); $("#inv", app).classList.add("cue"); });
+      }, true);
+      on("#inv", () => { toast("Your phone's share sheet opens: a link to join, with the code in it."); setTimeout(() => { if (screen === "team") { $("#tbk", app).classList.add("cue"); toast("‹ goes back to Will, and the plan's questions."); } }, 1500); });
+    },
+    ask() {
+      const b = B(), p = b.inviter;
+      app.innerHTML = `<div class="web" style="--acc:${b.acc}"><div class="url"><span>🔒 ${esc(b.askLink)}</span></div><div class="wbody" id="wb">
+        <div class="wh"><span class="wlogo" style="background:${b.acc}">${esc(b.team[0])}</span>${esc(b.team)}</div><h3>Ask our experts</h3><p class="wl">What is it about?</p>
+        <div class="wtopics" id="wt">${[...p.topics, "Something else"].map((t) => `<button type="button" data-t="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+        <div class="wf tall" id="fq">Your question</div><div class="wph"><button type="button" id="fph">+ Add photos</button><small>Only our experts see it.</small></div>
+        <div class="wf" id="fn">Your name</div><div class="wf" id="fw">Your WhatsApp number</div>
+        <button type="button" class="tick" id="ft"><i></i><span>${esc(b.team)} may use my photo and words to advise me, and text me the answer.</span></button>
+        <button type="button" class="wsend" id="fs" disabled>Send</button>${pnoteHtml("Gap 12. Not built: the ask page's words are signed (N313), but /a/ has no page yet. The topics come from the setup (N378).", { int: true })}<p class="pw">powered by WillpowerLab</p></div></div>`;
+      const check = () => { const okk = $$("#wt .on", app).length && $("#fq", app).classList.contains("on") && $("#fn", app).classList.contains("on") && $("#fw", app).classList.contains("on") && $("#ft", app).classList.contains("on"); $("#fs", app).disabled = !okk; $("#fs", app).classList.toggle("cue", !!okk); };
+      const cueNext = (id) => { const n = $(id, app); if (n && !n.classList.contains("on")) n.classList.add("cue"); };
+      $$("#wt button", app).forEach((x, k) => on(x, () => { $$("#wt button", app).forEach((y) => { y.classList.toggle("on", y === x); y.classList.remove("cue"); }); cueNext("#fq"); check(); }, k === 0));
+      on("#fq", () => fill($("#fq", app), "My scalp is dry and itchy after winter. Which shampoo should I use?", () => { cueNext("#fph"); check(); }));
+      on("#fph", () => { $("#fph", app).textContent = "2 photos added"; cueNext("#fn"); });
+      on("#fn", () => fill($("#fn", app), "Sarah", () => { cueNext("#fw"); check(); })); on("#fw", () => fill($("#fw", app), "+48 600 123 456", () => { cueNext("#ft"); check(); }));
+      on("#ft", () => { const t = $("#ft", app); t.classList.toggle("on"); $("i", t).textContent = t.classList.contains("on") ? "✓" : ""; check(); });
+      on("#fs", () => { $("#wb", app).innerHTML = `<div class="wh"><span class="wlogo" style="background:${b.acc}">${esc(b.team[0])}</span>${esc(b.team)}</div><div class="wdone"><span class="ok">✓</span><h3>Sent</h3><p>Our experts answer you by text.</p></div>${pnoteHtml(`Will matches it by topic, so it arrives in ${esc(p.n)}'s chats with Record an answer (N332, N361). The answer goes on WhatsApp from WillpowerLab's number (N230).`)}<p class="pw">powered by WillpowerLab</p>`; });
+    },
+  };
+  function oauth(who) { toast("Connecting..."); go("oauth"); setTimeout(() => { if (screen === "oauth") afterSignIn(); }, 1100); }
+  function afterSignIn() {
+    S.signedIn = true;
+    if (S.redirect === "join") { S.redirect = null; S.joined = true; }
+    if (S.guestTake) { go("walk"); return; }
+    if (!S.flag) { go("welcome"); return; }
+    go(S.accepted ? "list" : "accept");
+  }
+  function projects() {
+    app.insertAdjacentHTML("beforeend", `<div class="scrim" id="scr"></div><div class="addsheet"><span class="grab"></span><div style="display:flex;justify-content:space-between;align-items:center"><h3>What are you recording?</h3><button type="button" class="x2" id="px" aria-label="Close">✕</button></div><button type="button" class="pill wide" id="sp">Start your first project</button></div>`);
+    on("#scr", () => $$(".addsheet, #scr", app).forEach((x) => x.remove())); on("#px", () => $$(".addsheet, #scr", app).forEach((x) => x.remove()));
+    on("#sp", () => { S.wizFrom = screen; go("wizard"); }, true);
+  }
+  function addSheet() {
+    app.insertAdjacentHTML("beforeend", `<div class="scrim" id="scr"></div><div class="addsheet"><span class="grab"></span><h3>Add someone to chat with</h3><p>Send them your link, in any email or message. Whoever opens it joins you here.</p><div class="linkbox"><span class="lk">↗</span>https://www.willpowerlab.com/c/q3V8kR2mZ_x7</div><button type="button" class="copy" id="cpy">Copy my link</button>${S.app ? '<button type="button" class="copy" style="background:#fff;color:#121212;border:1.5px solid #121212" id="shr">Share</button>' : ""}<div class="tiles"><div><b>1. Paste it</b>in an email or a message you send anyway</div><div><b>2. They open it</b>and join with their account</div><div><b>3. You chat</b>Only the two of you are in it</div></div><button type="button" class="cancel" id="cn">Cancel</button></div>`);
+    const close = () => $$(".addsheet, #scr", app).forEach((x) => x.remove());
+    on("#scr", close); on("#cn", close);
+    on("#cpy", () => { const c = $("#cpy", app); c.textContent = "✓ Copied"; c.classList.add("done"); setTimeout(close, 700); });
+    on("#shr", () => toast("The phone's share sheet."));
+  }
+
+  function start() {
+    gen++;
+    if (procTimer) { clearInterval(procTimer); procTimer = null; }
+    fresh();
+    paintControls();
+    const first = { guest: "landing", signup: "signup", app: "login", join: "join", coach: "join", ask: "ask" }[jKey];
+    go(first);
+  }
+  $("#reset").onclick = start;
+  start();
+})();
+</script>
+
+</body></html>
