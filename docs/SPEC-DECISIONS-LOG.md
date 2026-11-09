@@ -14981,3 +14981,208 @@ first"; on four questions with recommended answers: "Name and welcome",
    plan, the profile and "Start your own", the data and the API, written up
    for the founder's review before the build starts.
 No migration in this entry. No rules page yet (N578).
+
+**N580 · Will's chat is your workspace; every other chat is a person,
+answered by their assistant with a coloured mark; the setup starts from
+zero, Artur's first (founder, the Claude Code chat, 9 November 2026: "the
+chat Will is where we set up our own chat and nothing connected to the
+speaking part is displayed in Will's chat it all goes to the Artur - who set
+this all up"; "take the feedback walk from will; do not display that there;
+artur is the only place where you display these speaking connected things";
+"we need to now remove the set up to zero and let Artur set this up again";
+"the Will's chat is for the management of your own model and there is the
+queue for answering and training your own defined model; rest are the chats
+with the people who are all some sort of specialists that you can learn from
+and share the knowledge with them too! each conversation is shadowed to the
+Will's chat where the answers that your chat gave can be corrected by you";
+then, on questions: "All, with their colour", "The asker and you", "There is
+no assistant there is just Will where I manage my model and chat and there
+is chats with other people who also have their assistants", and the queue
+"inside Will's chat"; then, asked how a Take reaches the community, "Keep one
+copy per person", and who answers a Take, "Tomek himself").** Amends N456,
+N521, N578 items 1 to 4 and N579 item 3:
+1. **The list is Will, then people.** No chat is named "{name}'s
+   assistant": every person has an assistant, which answers for them inside
+   the chat with that person. Will's chat is on top.
+2. **Will's chat is your workspace:** setting up your own chat, managing
+   your model, your queue for answering and training (the coach's "Your
+   queue", N521, moves inside it), and the shadow of every conversation your
+   assistant had, where you correct its answers; your corrections train the
+   model that answers like you. Nothing about speaking practice shows in
+   Will's chat. Will's personal things (principles, the Sunday note, life
+   goals) stay in it (N578 item 3).
+3. **An assistant's answer** goes out at once, labelled as the assistant's
+   ("{name}'s assistant", N578 item 1, for AI transparency) and marked green
+   (sure), yellow (in between) or red (unsure), never a number. The asker
+   sees the mark; the owner sees every answer in their Will's chat and
+   corrects it there.
+4. **Speaking practice happens in the chat with Artur,** whose chat is set
+   up as speaking coaching: the first Take, the recording, the walk, the
+   plan, the Ideal Text and the next Take.
+5. **The setup starts from zero:** nothing is set up until Artur sets up his
+   chat in his Will's chat; his finished setup is the first, and the
+   template for others (amends N578 item 2, which drew it from today's
+   chat).
+6. **Will's split comes with the MVP** (amends N579 item 3).
+7. **A Take is answered by the person it reaches,** in their own voice
+   (N481); their assistant only drafts a suggestion in their Will's chat.
+   The assistant answers questions in the chat, never a Take.
+8. **Sending to everyone stays one private copy per person** (N470, N471):
+   each ticked person gets the Take in their own chat with the sender, and
+   each answer comes back only to the sender.
+No migration. No rules page yet (N578).
+
+**N581 · WillpowerLab is a platform for sharing knowledge and launching
+models; speaking coaching is Artur's chat, the first case (founder, the
+Claude Code chat, 9 November 2026: "The willpowerlab platform is a knowledge
+dissemination and model launchpad tool not connected to speaking coaching
+it is just a coincidence that the founder does that but it's only used for
+the first case"; "willfidence is only Arthur s model and applies to his chat
+only!"; on a public model's three answers, "the owner during the set up, and
+they choose whatever is their area of expertise"; on what it looks at,
+"voice, images, text; but our base model is the willfidence recognition
+model that i train myself but others who use my chat contribute too! and any
+user can implement in their chat's leanring journey their model (whatever
+that is!)"; on the walk, "the walk needs to be constructed from the chat set
+up and the questions and there needs to be a structure that makes it always
+compelling to go through the feedback walk after no matter what chat have
+been set up - this is just like a summary of learning ... We need to think
+that through again ... we can do it later").** For N520, N563, N566 and
+N578:
+1. **What WillpowerLab is:** a platform for sharing knowledge between people
+   and launching the models they train. Speaking coaching is Artur's chat,
+   the first case.
+2. **Willfidence is Artur's model** and applies to his chat only; he trains
+   it, and the people who use his chat add to it.
+3. **Every chat can plug its own model into its learning journey.** A public
+   model recognises one thing (a sound, an image, a state, an error); its
+   owner names its three answers in setup, from their own area; it can look
+   at voice, images or text; other people train it, and when its owner makes
+   it available, others can use its API in their own apps (N566 item 9).
+4. **The walk becomes a summary of learning,** built from each chat's setup
+   and questions, with a structure that keeps it worth going through in any
+   chat. In Artur's chat it is today's walk (the confident moment by
+   Willfidence, the Sniper, the AI audio, the exercise picker, each of them
+   trained). How the walk is built for other chats is designed later.
+5. **CLAUDE.md** says, above "What we are building", that the loop it
+   describes is Artur's chat, the first case.
+No migration. No rules page yet.
+
+**N582 · The setup in Will's chat, step by step, and how a host's model
+learns (founder, the Claude Code chat, 9 November 2026, on a handwritten
+list: "SET UP: 1. Welcome message 2. Navigation 3. What is your
+specialization? Bubbles to choose 4. Model set-up, do you want your users to
+help you train a chat? (3 options question) If yes what would it be? (1
+thing recogn. model) Help train on existing model (make your chat smarter
+and earn from API) 5."; "To set up a model you don't only need a 3 questions
+you need more and we need to find exactly what to make the pipes work to
+make the model training work"; "this is for Artur of course but also for
+anyone else who wants to set up a model and their own chat in Will and Will
+is only for that to set it up there and then to manage it"; then, on eight
+questions with recommended answers: "How people answer and move", "Will
+suggests them", "A simple recognizer", "People using the chat" and
+"Teachers the host invites", "From the chat", "Your 10, then a check",
+"In the chat's summary", "Its questions join your chat"; and on the
+model's question: "explain as Steven Pinker would, that if you want to be
+available at all times, you can train your own model and make people use it
+as your avatar ... Do you want to automate your own chat? That should be
+the question").** For N520, N563,
+N566, N570, N571, N575 and N578 to N581:
+1. **The setup, one question at a time in Will's chat,** for Artur and for
+   anyone else: (1) the welcome; (2) navigation, how people answer and move
+   in the chat (record, type, tap answers, or a mix, and the order of its
+   steps: the welcome, the first recording, the summary after it); (3)
+   "What is your specialization?", with bubbles Will suggests from what the
+   host said so far, and "Something else"; (4) the model, asked in the
+   founder's words, "Do you want to automate your own chat?", after Will
+   says, in plain words, that an assistant trained on the host's own
+   answers answers people while they are away and brings every answer back
+   to them (drafted for the founder's OK); with yes, what it learns and
+   recognises, or "Help train an existing model"; (5) to decide. Will's chat is only for
+   setting this up and managing it afterwards. Its words are drafted for the
+   founder's OK.
+2. **A host's own model is a simple recognizer:** one question with three
+   answers the host names, looking at voice, an image or text; under it, a
+   small linear model on a shared reader for that kind of input, so every
+   setup choice has a pipe.
+3. **Who teaches it:** the people using the host's chat, with their
+   training yes (N575), and the teachers the host invites, through the one
+   queue in Will's chat (N580 item 2).
+4. **Its examples come from the chat:** moments of what people record or
+   send there, only from people who gave their training yes.
+5. **When it answers on its own:** the host answers the first 10, which
+   become its check; it learns once others have answered about 200 (two
+   matching answers settle one, as built); it answers by itself when it
+   passes the host's check and the host says go.
+6. **Where its answer shows:** in the chat's summary after someone records
+   or sends something, in words, never a number (Never 1).
+7. **"Help train an existing model"** (Willfidence, for one): its training
+   questions join the host's chat now and then; the host's chat can use its
+   answers; the host earns tokens for the answers their chat gives (N577,
+   N578 item 9).
+8. **For a host's own simple recognizer this amends** N528 item 8 (the first
+   training at 500 answers, by fine-tuning GPT-4o mini) and N570 item 3
+   (none of the first 10 in the final exam): its first 10 are its check,
+   and it learns at about 200 answers.
+No migration. No rules page yet.
+
+**N583 · Buying a model's API, its price and how the money is shared
+(founder, the Claude Code chat, 9 November 2026, asking to test "the setup
+and the API buying and sharing the price for bot API on the prototype ...
+end to end"; on four questions with recommended answers: "Anyone signed
+in", "Tokens, per answer", "Host sets it, split shown live", "Points per
+counted answer").** For N531, N566, N577 and N578:
+1. **Who buys:** anyone signed in, a person or a business. They find a
+   public model's card under "AI models", try it with the free test key
+   (100 answers, N566 item 9), then buy.
+2. **Paying:** tokens per answer. Each answer the API gives costs the host's
+   token price; the buyer tops up tokens as the app already allows and sets
+   a monthly limit.
+3. **The price and its split:** the host sets tokens per answer with − and
+   + above a floor, in Will's chat; the screen shows the split live:
+   running costs first, then WillpowerLab 20% of the margin, the host 10% of
+   what is left, the teachers the rest by points (N577).
+4. **Teachers' share:** a point for each answer that counted (it matched the
+   settled one); their share follows their points, paid as tokens (N578
+   item 9) and shown in each teacher's Will chat under the model they
+   teach.
+No migration. No rules page yet.
+
+**N584 · One recording answers everyone who asked the same thing (founder,
+the Claude Code chat, 9 November 2026: "why would I want to send it to them?
+I should be probably sending this to people that want to know the answer to
+my question. So how do we bundle the people who have similar questions, who
+ask me similar questions, so that I can answer it to that whole group with
+my one recording?"; on four questions with recommended answers: "By meaning,
+automatically", "In Will's queue", "Everyone in the bundle", "Suggest who it
+answers"; then: "so that the next time when people ask the question, the
+answer can be sent to them. So it's the same system like we have right now
+with exercises for the speaking coach. We need to make it just
+universal").** For N103, N152, N470, N496, N567, N569 and N580:
+1. **Bundles by meaning:** Will groups the questions that ask the same
+   thing, from everyone who asked a host, in their chat or on their website;
+   the host can split or merge a bundle.
+2. **In Will's queue:** a bundle shows as "{n} people asked: {question}",
+   with each person's question, the assistant's draft and "Record one
+   answer" (a count of people, not a score about a speaker; words drafted
+   for the founder's OK).
+3. **Who gets the answer:** everyone in the bundle, each privately in their
+   own chat with the host, under their own question quoted, the recording
+   with "Read it" (N576).
+4. **Later askers get it too:** when someone new asks the same thing, the
+   host's assistant sends the saved answer at once, with its coloured mark
+   for how sure the match is (N580 item 3), and the question joins the
+   bundle; every match reaches the host's Will's chat, where they correct
+   it.
+5. **One system, the speaking coach's exercises made universal:** a bundle
+   is what a kind of mistake is for exercises, and a recorded answer is
+   what an exercise video is. As N103 has it for exercises: nobody waits
+   for an answer that exists; the bundle stays in the host's queue for
+   another version until it has three; a person is never sent the same
+   version twice. The matching follows N152's rule, generalised. The
+   speaking coach's exercises in Artur's chat are its first case.
+6. **After a practice Take, the screen of who hears it** (N470) suggests who
+   it answers: the bundles whose questions this Take answers, ticked, and
+   anyone the host chooses. Nobody gets a Take that is not for them. Amends
+   N470 items 1 and 2 (everyone in the list, ticked).
+No migration. No rules page yet.

@@ -1,5 +1,9 @@
 # CLAUDE.md — WillpowerLab (one page)
 
+WillpowerLab is a platform for sharing knowledge and launching the models
+people train (N581). Speaking coaching, described below, is Artur's chat,
+the first case.
+
 ## What we are building
 
 A speaker records a Take. The app turns it into a transcript, one paragraph
