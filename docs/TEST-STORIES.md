@@ -691,17 +691,18 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 *Why:* Founder 2026-10-15; Privacy 3.7 section 4.
 
-### As a person in WillpowerLab, I want my chat on my own website, so that a customer who taps "Ask {me}" asks me there, I answer here out loud, and they hear me there (N567).
+### As a person in WillpowerLab, I want my own chat on my website, so that anyone there can write to me, I answer as in any chat, and they sign up after asking to get my answer (N591).
 
 `tests/test_chat_widget.py` · Story
 
-- **O1** Before anything is agreed, the widget learns only whose chat it is and the three questions a visitor may ask; a wrong or replaced link opens nothing, the same answer as the join page's.
-- **O2** "Agree and start" makes the visitor's own chat with me: in my list it is "Widget / Visitor 1" with "From {site}" under it, and it does not count toward the day's joins through my link.
-- **O3** The visitor taps through my join questions (with no closing line about "+"), then one question, which reaches me marked for my spoken answer; a second question waits until I answer.
-- **O4** My answer reaches the visitor in the widget, and its voice plays for them; nobody without the visitor's secret reads or plays anything.
-- **O5** "Keep this chat": a signed-in person takes the visitor's seat, and my list names the chat after them, "Widget / {name}".
+- **O1** Before anything is agreed, the website chat learns only whose chat it is and how a visitor may write, as my chat's setup says: no fixed questions; a wrong or replaced link opens nothing, the same answer as the join page's.
+- **O2** "Agree and start" makes the visitor's own chat with me: in my list it is "Widget / Visitor 1" with "From {site}" under it, like any other chat, and it does not count toward the day's joins through my link; my welcome and my own questions come first, as for anyone who joins.
+- **O3** The visitor taps my questions, then writes as my setup lets them: typed words when I allow typing, refused when I don't; no recording without an account.
+- **O4** I answer as in any chat, recorded or typed; the visitor gets my answer only after signing up, and nobody without the visitor's secret reads or plays anything.
+- **O5** Signing up after asking (phone, email, Google): the signed-in person takes the visitor's seat, my list names the chat after them, the chat is theirs in the app, and their questions join their bundles.
+- **O6** The first answer after the sign-up goes once to the email they signed up with, and only when its words are signed.
 
-*Why:* The founder's prototype "Your chat, on any website" (5 November 2026): one link, shared as a link or as a line of code.
+*Why:* The founder, 9 November 2026 (N591): "There's really no difference between the widget and the normal chat. It's just that the chat is placed on the public side."
 
 ### As the founder, I want my own chats with a colleague and a customer, apart from my chat with Will, where I answer with one of three emoji or a voice note, and start something new with a photo or a file, so that I can see the chats between people working before anyone else is in them.
 
