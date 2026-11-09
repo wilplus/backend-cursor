@@ -10,12 +10,17 @@ OUTCOME
       my own words; anything else is refused (N557, N565, Never 1).
   O2  Will writes only for a speaker the writer is on for, on their own
       Take, at a step the walk has; otherwise the walk says its signed line.
+  O4  After a try, Will hears how it went (it landed, one try left, or the
+      last) and is told what to offer for each; introducing the moment to
+      try, what it will be walked with (a clearer way to say it, or the AI
+      clip). A try the walk does not name gets no written reply.
   O3  A draft that fails the check gets another try, told what was refused
       and why, up to three in all; then, or after a failed call, the walk
       says its signed line.
 PROVES   O1 -> test_only_plain_kind_words_reach_me
          O2 -> test_will_writes_only_for_me_on_my_take_when_it_is_on
          O3 -> test_a_refused_draft_gets_one_more_try_then_the_signed_line
+         O4 -> test_will_hears_how_the_try_went_and_what_the_moment_is_walked_with
 WHY      Founder 2026-11-09 (N565: "make the answers smart. So not locked
          in, but smart... we can set the rules for those messages"; N557:
          "It assumes that you're broken and we need to fix you"; the
@@ -97,6 +102,19 @@ def test_will_writes_only_for_me_on_my_take_when_it_is_on(writer):
     assert walk_voice.write(_Db(owner="other"), "me", "t1", "try", "s1") is None
     assert walk_voice.write(_Db(), "me", "t1", "lecture", "s1") is None
     assert len(asked) == 1
+
+
+def test_will_hears_how_the_try_went_and_what_the_moment_is_walked_with(writer):
+    answers, asked = writer
+    answers.extend(["The pace slowed in your try.", "Want to hear it slower?"])
+    assert walk_voice.write(_Db(), "me", "t1", "after_try", "s1",
+                            their_try={"outcome": "landed", "moved": "pace"}) == "The pace slowed in your try."
+    assert "sounded the way the example did" in asked[0] and "offer no more tries" in asked[0]
+    assert walk_voice.write(_Db(), "me", "t1", "try", "s1", tool="voice") == "Want to hear it slower?"
+    assert "AI clip" in asked[1]
+    # After a try with no outcome the walk sends, nothing is asked.
+    assert walk_voice.write(_Db(), "me", "t1", "after_try", "s1", their_try={"outcome": "great"}) is None
+    assert len(asked) == 2
 
 
 def test_a_refused_draft_gets_one_more_try_then_the_signed_line(writer):
