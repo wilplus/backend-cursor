@@ -14956,3 +14956,28 @@ for a host's own chat:
     article 50.
 No migration in this entry. No rules page yet: hosted chats and their setup
 get one with their first built part, on the founder's OK (N107).
+
+**N579 · The chat builder's MVP: the name and welcome, the first Take's
+questions, and how people answer; for the founder and a few testers first;
+designed before it is built (founder, the Claude Code chat, 9 November 2026:
+"Please let's define it all on the prototype and build the missing mechanics
+for it all ... we need the builder of the chat in an mvp version to test it
+first"; on four questions with recommended answers: "Name and welcome",
+"First Take questions", "How people answer"; "You and a few testers";
+"Later, after the MVP"; "Yes, design first").** For N578:
+1. **What the MVP builder sets:** the assistant's name ("{name}'s
+   assistant", N578 item 1) and the welcome bubbles people meet first; the
+   first Take's questions, starting from Artur's five (N462): keep, change,
+   add or remove; and how people answer when the assistant asks something
+   in the chat: tap answers, and whether they may type, record, or both.
+   The profession, the style rules and the model come after the MVP.
+2. **Testers first:** behind a ring row, `chat_builder`: the founder and the
+   people the founder adds. Everyone else keeps today's chat until it is
+   proven.
+3. **Will's own chat** (N578 item 3) comes after the MVP; testers meet
+   "{name}'s assistant" with today's features inside it.
+4. **Designed first:** the recipe's contract (what a host may change and
+   what stays locked), how changed first-Take questions keep feeding the
+   plan, the profile and "Start your own", the data and the API, written up
+   for the founder's review before the build starts.
+No migration in this entry. No rules page yet (N578).
