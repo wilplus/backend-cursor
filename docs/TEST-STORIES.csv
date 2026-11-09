@@ -613,7 +613,7 @@ O2 -> ChatSafetyTest::test_a_report_keeps_the_last_five_and_reaches_the_founder"
 tests/test_chat_talk.py,Story,"As a speaker, I want Will to read my whole talk slide by slide, so that his answers refer to what I actually said on each slide.","O1  Each slide lists its bullet points and what I said on it.
 O2  A slide I said nothing on reads ""(nothing yet)"".
 O3  Words not tied to a slide are listed on their own.","O1, O2, O3 -> test_each_slide_carries_its_points_and_what_they_said",Founder 2026-10-15; Privacy 3.7 section 4.
-tests/test_chat_widget.py,Story,"As a person in WillpowerLab, I want my chat on my own website, so that a customer who taps ""Ask {me}"" asks me there, I answer here out loud, and they hear me there (N565).","O1  Before anything is agreed, the widget learns only whose chat it is
+tests/test_chat_widget.py,Story,"As a person in WillpowerLab, I want my chat on my own website, so that a customer who taps ""Ask {me}"" asks me there, I answer here out loud, and they hear me there (N566).","O1  Before anything is agreed, the widget learns only whose chat it is
 and the three questions a visitor may ask; a wrong or replaced link
 opens nothing, the same answer as the join page's.
 O2  ""Agree and start"" makes the visitor's own chat with me: in my list it
@@ -4153,6 +4153,17 @@ a Take that is not mine is refused (N268 item 3).","O1 -> test_a_doubt_gets_one_
 O2 -> test_nothing_that_fits_means_no_quote
 O3 -> test_not_here_lasts_until_the_switch_turns_it_on
 O4 -> test_no_ring_no_notebook_or_not_my_take","Founder 2026-10-29, the Claude Code chat (N268)."
+tests/test_walk_voice.py,Story,"As a speaker, I want Will's words in my walk written for my Take, plain and kind, so that they talk about what I said and how it sounded, never about me being broken, and the walk never waits on them.","O1  Words that may reach me are plain: no number, no word that says I am
+broken or names a measurement, no coaching idiom, at most two
+sentences, 220 characters and one question, and a quote is only ever
+my own words; anything else is refused (N557, N565, Never 1).
+O2  Will writes only for a speaker the writer is on for, on their own
+Take, at a step the walk has; otherwise the walk says its signed line.
+O3  A draft that fails the check gets another try, told what was refused
+and why, up to three in all; then, or after a failed call, the walk
+says its signed line.","O1 -> test_only_plain_kind_words_reach_me
+O2 -> test_will_writes_only_for_me_on_my_take_when_it_is_on
+O3 -> test_a_refused_draft_gets_one_more_try_then_the_signed_line","Founder 2026-11-09 (N565: ""make the answers smart. So not locked in, but smart... we can set the rules for those messages""; N557: ""It assumes that you're broken and we need to fix you""; the founder's ratings: ""to complex"", ""drawing in... this sounds wierd""). The style itself is graded by the golden set, tests/evals/golden/walk_voice.jsonl."
 tests/test_webm_remux.py,Story,"As a speaker, I want my recording made seekable without changing its timing, and kept as-is if that fails, so that playback works everywhere and my Take is never lost. (Critical path: record.)","O1  The remuxed file carries a seek index and exactly the same packets and
 timestamps as the recording (even one not starting at zero), so no
 stored offset moves.

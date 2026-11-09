@@ -14385,7 +14385,48 @@ N248, N319, N401, N459 and N559:
 No migration in this entry. The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
 
-**N565 · Your chat on any website: the same link, as one line of code
+**N565 · Will writes the walk's messages by rules the founder sets, not
+signed lines (founder, the Claude Code chat, 9 November 2026: "make the
+answers smart. So not locked in, but smart. Like use GPT-4o literally to
+write the answer. So it should have all the access to the acoustic data, to
+the progress, all the data that we store, and should craft messages. And we
+can set the rules for those messages, but we should not be locking in these
+messages... Steven Pinker's style should be maintained across all that";
+then, asked, "Real GPT-4o" for the test loop and "Rules you approve" in
+place of signed lines).** Amends Never 4 for the walk, N309 item 6, N557:
+1. **The rules are the founder's.** `services/prompts/walk_voice.py`: Steven
+Pinker's classic style, non-violent communication, the Nevers; literal
+words for sounds, no metaphors or coaching idioms; at most two sentences,
+220 characters and one question. The founder approves the rules and the
+golden set, not each line.
+2. **The words are written each time** by GPT-4o (`services/walk_voice.py`)
+from what is known about the Take, in words: the moment's own words, how it
+sounded against the speaker's own usual, the last Take's fix when it rose,
+this week's level, the speaker's private note. Never a number.
+3. **Checked in code** (`walk_voice.check`): no digit, no word that says the
+speaker is broken, no measurement name or idiom, the length, and a quote
+only of the speaker's own words. A refused draft gets one more try; then,
+or when late or off, the walk says its signed line (Never 3).
+4. **Graded** by `tests/evals/golden/walk_voice.jsonl`, the founder's rated
+replies; a reply the founder turns down becomes a row.
+5. **Off until the founder turns it on** (`rings.WALK_VOICE`, the panel). The
+screens' layout and order stay locked; only their words are written.
+6. **Tests and evals in one doc:** `docs/TEST-STORIES.md`, generated.
+7. **Praise says how it sounded to us, never a verdict** (founder, the same
+chat: "maybe not always say this was your most confident moment, because we
+don't want to judge them. Say something like, wow, to our system, this
+sounded really confident. Let me tell you why"): Will's praise opens with
+how it sounded to us, in new words each time, then why; a sound only when
+it was measured; "to us" and "to our ears" interchangeably (founder: "or you
+can make 'to us' interchangeably with to our ears"). The signed line it
+stands in for becomes "To our ears, this one sounded really sure." or "To
+us, this one sounded really sure.", in turn (was "This was your most
+confident moment.").
+No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+K.
+
+**N566 · Your chat on any website: the same link, as one line of code
 (founder, the Claude Code chat, 5 November 2026, on the clickable prototype
 "Your chat, on any website" <https://claude.ai/artifact/E8Lt28gFBZbLCtLd1XFu2f>
 (version 4): "there should be a switch that normally have the link and just

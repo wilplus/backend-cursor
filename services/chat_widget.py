@@ -1,18 +1,18 @@
 """Your chat on any website (founder, the Claude Code chat, 5 November 2026,
-N565): the join link, as one line of code. Table: chat_widget_guests and
+N566): the join link, as one line of code. Table: chat_widget_guests and
 chat_threads.widget_owner_id (migration a_person_s_chat_opens_on_a_website).
 
 The line a person pastes on their site, ``<script src=".../w.js"
 data-link="<token>">``, carries their link's token (services/chat_links.py),
 so a new link, or a link switched off, stops every pasted line with it. The
 widget runs in an iframe on willpowerlab.com (``/w/<token>``); its visitor is
-a guest with no account who can only tap (N565 item 4):
+a guest with no account who can only tap (N566 item 4):
 
   * ``preview``: whose chat it is ({"name"}) and the three questions a
     visitor may ask; 404 for a wrong, replaced or switched-off link.
   * ``start``: "Agree and start": one chat of the visitor's own with the
     link's owner, named "Widget / Visitor {n}" with "From {site}" in the
-    owner's list (N565 item 6); the owner's join questions begin (N487). The
+    owner's list (N566 item 6); the owner's join questions begin (N487). The
     answer carries the visitor's secret, ``<guest id>.<secret>``, which only
     their browser keeps; its hash is kept here.
   * ``read``: the visitor's chat, as a member's is read (an answer still in
@@ -23,7 +23,7 @@ a guest with no account who can only tap (N565 item 4):
     every answer does (services/chats.py ``post_answer``).
   * ``recording``: an answer's voice, for the visitor.
   * ``keep``: "Keep this chat": a signed-in person takes the visitor's seat,
-    and the chat is named after them, "Widget / {name}" (N565 item 7).
+    and the chat is named after them, "Widget / {name}" (N566 item 7).
 
 No provider call and no recording by the visitor: nothing here passes the
 processing-authorization path; the owner's answer passes it as every
@@ -52,9 +52,9 @@ logger = logging.getLogger(__name__)
 
 GUESTS = "chat_widget_guests"
 #: The questions a visitor may ask, the same three in every widget until
-#: Will's setup asks for the owner's own (N565 item 5; signed).
+#: Will's setup asks for the owner's own (N566 item 5; signed).
 ASKS = ("What do you do?", "How do you work with people?", "Can we talk?")
-#: How the visitor is named in the owner's list (N565 item 6; signed).
+#: How the visitor is named in the owner's list (N566 item 6; signed).
 VISITOR = "Widget / Visitor {n}"
 KEPT = "Widget / {name}"
 FROM = "From {site}"

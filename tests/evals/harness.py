@@ -99,6 +99,7 @@ _KNOWN_RUBRIC_KEYS = {
     "must_contain_polish_diacritic",
     "expect", "expect_contains", "substring_of_input",
     "allow_none_output",
+    "pass_k_of_n",
 }
 
 
@@ -379,10 +380,46 @@ def _attempt(surface: str, case: GoldenCase,
         known_failing=case.known_failing), not ok
 
 
+def _k_of_n(case: GoldenCase) -> Optional[tuple[int, int]]:
+    """The case's ``pass_k_of_n`` rubric, ``(k, n)`` with 1 <= k <= n, or
+    None. For a surface whose writer is meant to vary (founder 2026-11-09,
+    Will's voice: "best of three"): a case passes when k of up to n runs
+    pass, so one unlucky run neither blocks a merge nor hides a real
+    regression."""
+    raw = case.rubric.get("pass_k_of_n")
+    if (isinstance(raw, list) and len(raw) == 2 and all(isinstance(x, int) for x in raw)
+            and 1 <= raw[0] <= raw[1]):
+        return raw[0], raw[1]
+    return None
+
+
+def _run_k_of_n(surface: str, case: GoldenCase, adapter: Callable[[dict], Any],
+                k: int, n: int) -> Verdict:
+    """Up to ``n`` runs; stops once ``k`` passed or ``k`` can no longer be
+    reached. Every failure kind counts as a failed run."""
+    passed, runs, last = 0, 0, None
+    while runs < n and passed < k and passed + (n - runs) >= k:
+        runs += 1
+        last, _ = _attempt(surface, case, adapter)
+        if last.passed:
+            passed += 1
+        else:
+            print(f"  … {case.id}: run {runs}/{n} failed ({last.reason})", flush=True)
+    assert last is not None
+    ok = passed >= k
+    return replace(last, passed=ok,
+                   reason=(f"ok ({passed} of {runs} runs passed, {k} needed)" if ok
+                           else f"{passed} of {runs} runs passed, {k} needed; last: {last.reason}"))
+
+
 def run_surface(surface: str,
                 adapter: Callable[[dict], Any]) -> list[Verdict]:
     verdicts: list[Verdict] = []
     for case in load_golden(surface):
+        k_of_n = None if case.known_failing else _k_of_n(case)
+        if k_of_n:
+            verdicts.append(_run_k_of_n(surface, case, adapter, *k_of_n))
+            continue
         verdict, retryable = _attempt(surface, case, adapter)
         attempts = 1
         if case.known_failing:

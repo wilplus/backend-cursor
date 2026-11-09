@@ -1,12 +1,12 @@
 -- a_person_s_chat_opens_on_a_website (your chat on any website, the same link
--- as one line of code; founder, the Claude Code chat, 5 November 2026, N565)
+-- as one line of code; founder, the Claude Code chat, 5 November 2026, N566)
 --
 -- Two additions to the chats (people_chat_with_each_other, 0503; the join
 -- link, a_person_has_a_link_to_join_them, 0505):
 --
 --   chat_threads.widget_owner_id
 --                  The person whose website chat this is, for a chat a
---                  visitor opened through the widget (`w.js`, N565 item 3).
+--                  visitor opened through the widget (`w.js`, N566 item 3).
 --                  NULL for every other chat. With the account: a widget
 --                  chat goes when its owner's account goes (ON DELETE
 --                  CASCADE, and the purge registry names it), its messages,
@@ -14,14 +14,14 @@
 --
 --   chat_widget_guests
 --                  One row per visitor who tapped "Agree and start" in a
---                  person's widget (N565 item 4): the link it came through,
+--                  person's widget (N566 item 4): the link it came through,
 --                  the chat and the visitor's seat in it, a hash of the
 --                  visitor's secret (the secret itself lives only in the
 --                  visitor's browser, on willpowerlab.com), the site the
 --                  widget was opened on (a host name, for "From {site}"), the
 --                  visitor's number among the owner's ("Widget / Visitor
 --                  {n}"), when they agreed, and when they kept the chat by
---                  joining (N565 item 7). No name, no number, no email: the
+--                  joining (N566 item 7). No name, no number, no email: the
 --                  visitor can only tap.
 --
 -- The widget's chats do not set chat_threads.link_id, so they never count
