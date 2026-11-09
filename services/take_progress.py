@@ -251,7 +251,7 @@ def walk_gave(database: Any, take_id: Any, frame: Any,
     if not any("walk_slot" in block for block in blocks):
         return fixes_of(frame, clips())
     chosen = next((b["one_fix"] for b in blocks if b.get("one_fix") in _ONE_FIX), None)
-    moments = fixes_of(frame, [])
+    moments = _as_shown(database, take_id, blocks, fixes_of(frame, []))
     if chosen == "moment" or (chosen is None and moments):
         return moments
     if chosen == "none":
@@ -261,6 +261,47 @@ def walk_gave(database: Any, take_id: Any, frame: Any,
                     or _tempo_week(database, take_id)):
         return [stretch]
     return []
+
+
+#: What an "opened" moment event says the walk showed (``co_exposed.shown``,
+#: `moment_events`), as the fix's kind.
+_SHOWN_AS = {"rewrite": "clearer", "exercise": "voice"}
+
+
+def _as_shown(database: Any, take_id: Any, blocks: list[dict],
+              moments: list[dict]) -> list[dict]:
+    """The moments' fixes as the speaker met them (the audit's 3.4): a fix
+    counts only when the walk opened it, an "opened" event on its block's
+    clip, and its kind is what that screen showed (a Clearer version, or the
+    voice Exercise its lost Clearer version gave its place to, N547, N548);
+    an event that names nothing keeps the frame's kind. A fix the walk never
+    opened is not one the walk gave, so Last time never names it. The
+    frame's own fixes when the events cannot be read. Never raises."""
+    if not moments:
+        return moments
+    try:
+        events = database.list_moment_events_for_take(str(take_id)) or []
+    except Exception as error:  # noqa: BLE001 -- the frame's fixes then
+        logger.warning("take progress: walk events unread take=%s: %s", take_id, error)
+        return moments
+    shown: dict[str, set] = {}
+    for row in events:
+        if isinstance(row, dict) and row.get("event") == "opened" and row.get("snippet_id"):
+            seen = ((row.get("co_exposed") or {}).get("shown") or []) \
+                if isinstance(row.get("co_exposed"), dict) else []
+            shown.setdefault(str(row["snippet_id"]), set()).update(
+                _SHOWN_AS[s] for s in seen if s in _SHOWN_AS)
+    out = []
+    for fix in moments:
+        block = next((b for b in blocks if b.get("slide_index") == fix["slide_index"]
+                      and b.get("exercise_kind") == fix["kind"] and b.get("walk_slot")), None)
+        clips = [str(s) for s in (block or {}).get("snippet_ids") or []]
+        opened = [shown[c] for c in clips if c in shown]
+        if not opened:
+            continue
+        kinds = set().union(*opened)
+        out.append({**fix, "kind": next(iter(kinds)) if len(kinds) == 1 else fix["kind"]})
+    return out
 
 
 def _tempo_week(database: Any, take_id: Any) -> bool:

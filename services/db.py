@@ -13668,7 +13668,7 @@ class DatabaseService:
         """Every open and skip on this Take (0408), oldest first. Raises on
         failure."""
         res = (self.client.table("moment_events")
-               .select("snippet_id,event,created_at")
+               .select("snippet_id,event,created_at,co_exposed")
                .eq("take_session_id", str(take_session_id))
                .order("created_at").execute())
         return list(res.data or [])
