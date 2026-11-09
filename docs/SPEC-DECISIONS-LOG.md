@@ -13936,3 +13936,25 @@ Clearer version gave its place to the weakest.
 No new words on screen. No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C2 and K.
+
+**N549 · "How do you feel?" opens at once on "Record Take N" (founder, the
+Claude Code chat, 9 November 2026: "when you click to record the next take
+the ideal text appears for a second and then the emotions screen; please
+make it an instant open of the emotions assessment when you click the black
+CTA next time after the 1st time").** Amends N63 (Q-B14 A) for this one
+entry. Before a later Take, the black "Record Take N" opens "How do you
+feel?" on the tap:
+1. **No fade.** The Lab opens onto the feelings check with no 0.4 s fade;
+the fade stays for Recording Mode's own screens.
+2. **No wait for the door's read.** The Lab draws the check from the last
+"authorized" this tab read. Its own fresh read still runs as it opens: a
+pick or a Skip starts the Take only once that read agrees, and a read that
+says otherwise puts the acceptance flow in front (founder 2026-10-18).
+3. **Unchanged:** the sharing question still comes first when it asks
+(N309 item 5); the check itself, its Skip and who is asked (N151, N211,
+N272); Take 1.
+Was: the Lab faded in over 0.4 s and waited behind a loader for the
+consent read, so the page under it showed for a moment before the check.
+No new words on screen. No migration. The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+§6.
