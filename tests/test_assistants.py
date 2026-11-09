@@ -39,7 +39,8 @@ from unittest.mock import patch
 
 from services import assistants
 from services.assistants import RecipeError
-from tests.test_chat_links import PIOTR, TOMEK, ChatLinksTest
+from tests import test_chat_links as TL
+from tests.test_chat_links import PIOTR, TOMEK
 
 
 def _ring(on_for):
@@ -50,9 +51,9 @@ def _ring(on_for):
 
 
 class AssistantsTest(unittest.TestCase):
-    setUp = ChatLinksTest.setUp
-    _as, _link, _join, _preview = (ChatLinksTest._as, ChatLinksTest._link,
-                                   ChatLinksTest._join, ChatLinksTest._preview)
+    setUp = TL.ChatLinksTest.setUp
+    _as, _link, _join, _preview = (TL.ChatLinksTest._as, TL.ChatLinksTest._link,
+                                   TL.ChatLinksTest._join, TL.ChatLinksTest._preview)
 
     def _list(self, who):
         return self.client.get("/v2/chats", headers=self._as(who)).get_json()["chats"]
