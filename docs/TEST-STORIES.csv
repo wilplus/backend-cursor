@@ -3374,7 +3374,8 @@ cannot play (the audit's 4.4, N425, N548).
 O14 When no tool reaches a weak moment (the walk has no fix and my least
 confident moment reads below the floor), the frame names it so it
 goes to a coach; a good Take, or one with a fix, names none (the
-audit's 2.7).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
+audit's 2.7). A good Take, and only it, tells the walk so on my best,
+which says ""Nothing to fix this time."" (N551).","O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
 O1 -> test_two_best_clips_in_one_block_get_a_block_each
 O1 -> test_a_one_block_take_is_split_for_two_moments
 O1 -> test_a_short_take_still_shows_two_moments
