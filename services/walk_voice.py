@@ -57,6 +57,7 @@ BANNED_WORDS: tuple[str, ...] = (
     "mistakes", "weak", "weakness", "error", "errors", "problem", "problems",
     "score", "scores", "metric", "metrics", "cue", "cues", "willfidence",
     "perfect", "amazing", "awesome", "flawless",
+    "settle", "settled", "settles",
 )
 #: Measurement names and coaching idioms the founder turned down
 #: (2026-11-09: "too complex", "'drawing in' sounds weird").
@@ -166,10 +167,50 @@ def _unwrapped(text: str) -> str:
     return said
 
 
+#: The tool the moment to try is walked with, as the walk names it.
+_TOOLS = {
+    "clearer": "a clearer way to say the sentence, in their own words, for them to say",
+    "voice": "an AI clip: the same sentence in their own voice, said another way, for them to copy",
+}
+#: How a try went, as the walk read it (its practise loop: the try that
+#: lands, a miss with a try left, the last miss).
+#: What the step after a try asks for, by how it went: an offer only when
+#: a try is left.
+_AFTER_TRY_ASK = {
+    "landed": "respond to their try, which landed: say what moved; offer no more tries and ask nothing",
+    "once_more": "respond to their try: say what stayed the same, then offer the one try they have left",
+    "last": "respond to their last try: close it kindly; offer no more tries and ask nothing",
+}
+_TRY_OUTCOMES = {
+    "landed": "their try sounded the way the example did",
+    "once_more": "their try did not change much yet; they have one more try",
+    "last": "their last try did not change much; the walk moves on now, no more tries",
+}
+#: What the walk heard move in the try, when it names one.
+_TRY_MOVED = {
+    "pace": "the pace", "pause": "the pauses", "stress": "the loudness",
+    "fillers": "the fillers", "general": None,
+}
+
+
+def _their_try(raw: Any) -> Optional[str]:
+    """The try as words, from the walk's ``{"outcome", "moved"}``; None
+    when it is not one the walk sends."""
+    if not isinstance(raw, dict) or raw.get("outcome") not in _TRY_OUTCOMES:
+        return None
+    said = _TRY_OUTCOMES[raw["outcome"]]
+    moved = _TRY_MOVED.get(str(raw.get("moved") or ""))
+    return f"{said}; what moved: {moved}" if moved and raw["outcome"] == "landed" else said
+
+
 def write(database: Any, user_id: Any, take_id: Any, step: Any,
-          snippet_id: Any = None, conversation: Any = None) -> Optional[str]:
+          snippet_id: Any = None, conversation: Any = None,
+          tool: Any = None, their_try: Any = None) -> Optional[str]:
     """The walk's message for ``step``, or None (the walk says its signed
-    line). Never raises."""
+    line). ``tool``: the moment to try's tool ("clearer" or "voice");
+    ``their_try``: how the try went (``{"outcome": "landed" | "once_more"
+    | "last", "moved"?: "pace" | "pause" | "stress" | "fillers"}``), for
+    the step after a try. Anything else in them is ignored. Never raises."""
     try:
         from services import rings
         if step not in STEPS or not take_id:
@@ -180,7 +221,17 @@ def write(database: Any, user_id: Any, take_id: Any, step: Any,
         if str(take.get("user_id") or "") != str(user_id):
             return None
         context = context_for(database, user_id, take, snippet_id)
-        ask: dict[str, Any] = {"message": _STEP_ASK[step]}
+        if tool in _TOOLS:
+            context["exercise"] = _TOOLS[tool]
+        try_said = _their_try(their_try) if step == "after_try" else None
+        if step == "after_try" and not try_said:
+            return None
+        if try_said:
+            context["their_try"] = try_said
+        if step == "good_take":
+            context["good_take"] = True
+        ask: dict[str, Any] = {"message": _AFTER_TRY_ASK[their_try["outcome"]]
+                               if try_said else _STEP_ASK[step]}
         said = _conversation(conversation)
         if said:
             ask["conversation"] = said
