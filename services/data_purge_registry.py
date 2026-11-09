@@ -359,6 +359,15 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "delete", "database_row", 60),
     PurgeDependency("take_matches_suggested", "take_matches", "candidate_id", "user",
                     "delete", "database_row", 60),
+    # A business's community (migration a_business_has_a_community_people_join,
+    # N559 item 1): the person's place in it, their one offer, and a
+    # community they hold, whose members' rows go with it (ON DELETE CASCADE).
+    PurgeDependency("business_community_members", "business_community_members", "user_id",
+                    "user", "delete", "database_row", 55),
+    PurgeDependency("business_community_offers", "business_community_offers", "user_id",
+                    "user", "delete", "database_row", 55),
+    PurgeDependency("business_communities", "business_communities", "owner_id", "user",
+                    "delete", "database_row", 60),
     # Where Apple's push service reaches the person's iPhone (migration
     # an_iphone_keeps_its_push_address, N385).
     PurgeDependency("push_devices", "push_devices", "user_id", "user",

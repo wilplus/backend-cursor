@@ -30,6 +30,13 @@ The one suggested:
                                           {chat: {id}}
   POST /v2/take-matches/<id>/undo         the answer taken back in time
 
+The business's community (services/business_community.py, N559 item 1):
+  GET  /v2/me/community-offer             the newcomer's one offer: {offer:
+                                          {id, name, inviter} | null}
+  POST /v2/me/community-offer             {id, answer: "join" | "not_now"}:
+                                          {offer: null, joined}
+  POST /v2/admin/business-communities     founder only: {owner_id, name}
+
 Nothing here calls a provider: the ranking is word overlap. Reading the
 Take and hearing it are the speaker's choice, made with Send. The answer
 was recorded and uploaded through the processing-authorization path
@@ -53,6 +60,39 @@ from services.rate_limits import limiter
 def v2_take_match_suggest(session_id):
     from services.take_match import suggest
     return _run("match", lambda: suggest(db, str(request.user_id), session_id))
+
+
+@v2_bp.route("/me/community-offer", methods=["GET"])
+@require_auth
+def v2_community_offer():
+    from services.business_community import offer
+    return _run("community offer", lambda: offer(db, str(request.user_id)))
+
+
+@v2_bp.route("/me/community-offer", methods=["POST"])
+@limiter.limit("30 per hour", scope="community_offer_answer")
+@require_auth
+def v2_community_offer_answer():
+    from services.business_community import answer
+    body = request.get_json(silent=True) or {}
+    return _run("community offer answer",
+                lambda: answer(db, str(request.user_id), body.get("id"), body.get("answer")))
+
+
+@v2_bp.route("/admin/business-communities", methods=["POST"])
+@require_auth
+def v2_business_community_create():
+    from routes.admin import is_admin
+    from services.business_community import create
+    from services.chats import _not_found
+    user_id = str(request.user_id)
+    body = request.get_json(silent=True) or {}
+
+    def work():
+        if not is_admin(user_id):
+            raise _not_found()
+        return create(db, body.get("owner_id"), body.get("name"))
+    return _run("business community create", work)
 
 
 @v2_bp.route("/take-matches/<match_id>/send", methods=["POST"])
