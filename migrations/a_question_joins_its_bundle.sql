@@ -68,6 +68,11 @@ CREATE INDEX IF NOT EXISTS question_bundle_askers_bundle_idx
     ON public.question_bundle_askers (bundle_id);
 CREATE INDEX IF NOT EXISTS question_bundle_askers_asker_idx
     ON public.question_bundle_askers (asker_id);
+-- Deleting a chat message sets answered_message_id to NULL: indexed, so
+-- that delete never scans this table.
+CREATE INDEX IF NOT EXISTS question_bundle_askers_answered_idx
+    ON public.question_bundle_askers (answered_message_id)
+    WHERE answered_message_id IS NOT NULL;
 
 ALTER TABLE public.question_bundles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.question_bundle_askers ENABLE ROW LEVEL SECURITY;
