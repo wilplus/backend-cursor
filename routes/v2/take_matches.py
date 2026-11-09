@@ -11,6 +11,16 @@ The speaker:
                                           {id, status: "sent"}}, the same
                                           even after a Not now (never told)
   POST /v2/take-matches/<id>/close        Not now: {match: {id, status}}
+  GET  /v2/takes/<session_id>/match/chats your own chats for this Take, the
+                                          best fit first (N559 item 2):
+                                          {order: [chat id, ...]}; a chat not
+                                          listed fits nothing; never a score
+Everyone, in Settings (N465, N559 item 6):
+  GET  /v2/me/speaking-match              {on, available}: matching by how
+                                          you speak; the card shows only
+                                          while ``available``
+  POST /v2/me/speaking-match              {on: bool}; off deletes what Will
+                                          learned from how you speak
 The one suggested:
   GET  /v2/take-matches/inquiries         the inquiries waiting on them:
                                           {inquiries: [{id, state, pseudonym,
@@ -93,6 +103,30 @@ def v2_business_community_create():
             raise _not_found()
         return create(db, body.get("owner_id"), body.get("name"))
     return _run("business community create", work)
+
+
+@v2_bp.route("/takes/<session_id>/match/chats", methods=["GET"])
+@limiter.limit("120 per hour", scope="take_match_chats")
+@require_auth
+def v2_take_match_chats(session_id):
+    from services.take_match import rank_chats
+    return _run("match chats", lambda: rank_chats(db, str(request.user_id), session_id))
+
+
+@v2_bp.route("/me/speaking-match", methods=["GET"])
+@require_auth
+def v2_speaking_match():
+    from services.speaking_match import status
+    return _run("speaking match", lambda: status(str(request.user_id)))
+
+
+@v2_bp.route("/me/speaking-match", methods=["POST"])
+@limiter.limit("30 per hour", scope="speaking_match_turn")
+@require_auth
+def v2_speaking_match_turn():
+    from services.speaking_match import turn
+    on = (request.get_json(silent=True) or {}).get("on")
+    return _run("speaking match turn", lambda: turn(db, str(request.user_id), on))
 
 
 @v2_bp.route("/take-matches/<match_id>/send", methods=["POST"])

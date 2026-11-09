@@ -15,9 +15,10 @@ makes the chat between the two only when that person answers (N478):
     (``take_match_knowledge``): what the candidate knows (their profile)
     and practises (their Takes' topics, never shown) against what the Take
     needs, and what the speaker knows against what the candidate
-    practises; then, once skills are on (``take_match_signals``), speaking
-    skills by the experiment's arm (a similar level, or further along,
-    N481 item 3) and progress alike. Mostly the best, now and then the
+    practises; then, once skills are on (``take_match_signals``) and for
+    people who left it on (``services/speaking_match.py``), speaking skills
+    a step ahead and progress alike (N559 item 4); then what came of their
+    earlier suggestions: answered within a week, kept talking (N559 item 3). Mostly the best, now and then the
     second or third, each pick's chance kept. A pseudonym made for this
     match and their role, never a name. One per Take; none when nobody
     knows enough.
@@ -81,10 +82,12 @@ OPEN = ("sent", "accepted", "sending")
 #: How long an answer waits for its Undo before it counts (N486, N493 item
 #: 5), and a moment more, so an Undo pressed at the last instant lands.
 HOLD_MS, HOLD_GRACE_MS = 5_000, 1_500
-#: The experiment's arms on speaking skills (N481 item 3): someone at a
-#: similar level, or someone further along. "topics" is every suggestion
-#: made while skills are off.
-SKILL_ARMS = ("similar_level", "further_along")
+#: By how people speak, once that is switched on (N559 item 4, N481 item
+#: 4): a step ahead, someone a little further along in what the speaker
+#: practises. The same-level and opposite-style arms are retired (N463 item
+#: 5, N559 item 4). "topics" is every suggestion made while skills are off.
+SKILL_ARM = "further_along"
+#: Was, until N559 item 4: SKILL_ARMS = ("similar_level", "further_along")
 #: Proposed, for the founder's review of the first weeks: what skills and
 #: progress weigh beside knowledge (a word the candidate knows weighs 1),
 #: how far ahead "further along" aims, and how big a gap is no fit at all,
@@ -104,6 +107,13 @@ ACTIVE_DAYS, OPEN_CAP, WEEK_CAP = 14, 3, 5
 #: The pick: the best, or now and then the second or third, with these
 #: chances, each kept with the suggestion (its propensity).
 EXPLORE = (0.8, 0.1, 0.1)
+#: What teaches the matcher (N559 item 3): an answer within ``ANSWER_DAYS``,
+#: and the two still talking, ``KEPT_TALKING`` messages or more from both
+#: after the answer, within ``TALK_DAYS``. How much that history moves a fit
+#: (a known word weighs 1), and how many suggestions' worth it is pulled
+#: toward "answered" by. The weight and the prior are proposed.
+ANSWER_DAYS, TALK_DAYS, KEPT_TALKING = 7, 14, 3
+OUTCOME_WEIGHT, OUTCOME_PRIOR = 0.5, 2
 #: Ids per read, as ``db._chunks``; the most community members read; how
 #: many topics are kept per person.
 CHUNK, MAX_POOL, TOPICS_EACH = 100, 2000, 10
@@ -263,11 +273,6 @@ def _knows(profile: dict) -> str:
     return f"{profile.get('role') or ''} {profile.get('about') or ''}"
 
 
-def draw_arm() -> str:
-    """The experiment's arm for one suggestion, at random (N481 item 3)."""
-    return random.choice(SKILL_ARMS)
-
-
 def closeness(gap: Optional[float], target: float, span: float) -> float:
     """1 when ``gap`` is ``target``, down to 0 at ``span`` away; a half when
     it is not known yet. Pure."""
@@ -276,22 +281,20 @@ def closeness(gap: Optional[float], target: float, span: float) -> float:
     return max(0.0, 1.0 - abs(gap - target) / span)
 
 
-def weigh(arm: str, knowledge: float, speaker: dict, candidate: dict,
+def weigh(knowledge: float, speaker: dict, candidate: dict,
           spans: tuple[float, float] = (0.0, 0.0)) -> tuple[float, dict]:
-    """A candidate's whole fit in ``arm`` and what made it (N481 item 2):
-    knowledge, speaking skills by the arm, progress alike; the profiles'
-    distance is kept beside it for the style arms. Never shown. Pure."""
+    """A candidate's whole fit and what made it (N481 item 2, N559 item 4):
+    knowledge, then speaking skills a step ahead (``FURTHER_BY``) and
+    progress alike. Never shown. Pure."""
     skill_span, pace_span = spans[0] or SKILL_SPAN, spans[1] or PACE_SPAN
 
     def gap(key: str) -> Optional[float]:
         a, b = speaker.get(key), candidate.get(key)
         return None if a is None or b is None else round(b - a, 4)
-    skill = closeness(gap("skill"), FURTHER_BY if arm == "further_along" else 0.0, skill_span)
+    skill = closeness(gap("skill"), FURTHER_BY, skill_span)
     pace = closeness(gap("pace"), 0.0, pace_span)
     made = {"knowledge": knowledge, "skill": round(skill, 4), "pace": round(pace, 4),
-            "skill_gap": gap("skill"), "pace_gap": gap("pace"),
-            "profile_distance": signals.profile_distance(speaker.get("profile") or {},
-                                                         candidate.get("profile") or {})}
+            "skill_gap": gap("skill"), "pace_gap": gap("pace")}
     return round(knowledge + SKILL_WEIGHT * skill + PACE_WEIGHT * pace, 4), made
 
 
@@ -333,24 +336,92 @@ def _ranked(fits: list[dict[str, Any]], session: str, key: str = "fit") -> list[
     return sorted(fits, key=lambda f: (-f[key], tie(f)))
 
 
-def _with_skills(database: Any, speaker_id: str, fits: list[dict[str, Any]],
-                 session: str) -> None:
-    """Weigh skills and progress into each fit, in the arm drawn for this
-    Take, and note whether the other arm would have chosen someone else
-    (only those Takes tell the arms apart)."""
-    arm = draw_arm()
-    other = SKILL_ARMS[1 - SKILL_ARMS.index(arm)]
-    reads, spans = _steady(signals.of(database, [speaker_id] + [f["candidate_id"] for f in fits]))
+def _with_skills(database: Any, speaker_id: str, fits: list[dict[str, Any]]) -> None:
+    """Weigh skills and progress into each fit, a step ahead (N559 item 4),
+    for people who left matching by how they speak on (N559 item 6): anyone
+    who turned it off is weighed by knowledge alone, the speaker included."""
+    allowed = speaking_allowed([speaker_id] + [f["candidate_id"] for f in fits])
+    if speaker_id not in allowed:
+        return
+    reads, spans = _steady(signals.of(database, [speaker_id] + [
+        f["candidate_id"] for f in fits if f["candidate_id"] in allowed]))
     for f in fits:
-        f["other_fit"], _made = weigh(other, f["fit"], reads[speaker_id],
-                                      reads[f["candidate_id"]], spans)
-        f["fit"], f["signals"] = weigh(arm, f["fit"], reads[speaker_id],
+        if f["candidate_id"] not in allowed:
+            continue
+        f["fit"], f["signals"] = weigh(f["fit"], reads[speaker_id],
                                        reads[f["candidate_id"]], spans)
-        f["arm"] = arm
-    first, first_other = _ranked(fits, session)[0], _ranked(fits, session, "other_fit")[0]
-    for f in fits:
-        f["signals"]["other_arm_differs"] = first is not first_other
         f["signals"]["spans"] = [round(spans[0], 4), round(spans[1], 4)]
+        f["arm"] = SKILL_ARM
+
+
+def speaking_allowed(ids: list[str]) -> set[str]:
+    """Who left matching by how they speak on (N559 item 6, N465)."""
+    from services import speaking_match
+    return speaking_match.allowed(ids)
+
+
+def outcome(row: dict, after: list[dict], now: Optional[datetime] = None) -> Optional[int]:
+    """What one sent suggestion taught the matcher (N559 item 3, N477 item
+    3): 2 when the person suggested answered within ``ANSWER_DAYS`` and the
+    two kept talking (``KEPT_TALKING`` or more messages from both of them
+    after the answer, within ``TALK_DAYS``); 1 when they answered in time;
+    0 when they did not; None while it cannot be told yet. ``after`` is the
+    chat's messages. Nobody is asked to rate anyone. Pure."""
+    now = now or _when(_now()) or datetime.now(timezone.utc)
+    sent, answered = _when(row.get("sent_at")), _when(row.get("answered_at"))
+    if not sent:
+        return None
+    in_time = bool(answered and answered - sent <= timedelta(days=ANSWER_DAYS))
+    if not in_time or answered is None:
+        return 0 if now - sent > timedelta(days=ANSWER_DAYS) else None
+    until = answered + timedelta(days=TALK_DAYS)
+    talk = [m for m in after
+            if (at := _when(m.get("created_at"))) and answered < at <= until]
+    if len(talk) >= KEPT_TALKING and len({m.get("author_member_id") for m in talk}) >= 2:
+        return 2
+    return 1 if now > until else None
+
+
+def _outcomes(database: Any, ids: list[str]) -> dict[str, list[int]]:
+    """Each person's past suggestions, as the one suggested, and what came
+    of each that can be told (``outcome``)."""
+    rows: list[dict] = []
+    for part in _chunks(ids):
+        rows += [r for r in _rows(_table(database, MATCHES)
+                                  .select("candidate_id,sent_at,answered_at,thread_id")
+                                  .in_("candidate_id", part).limit(MAX_ROWS)) if r.get("sent_at")]
+    threads = sorted({str(r["thread_id"]) for r in rows if r.get("thread_id")})
+    said: dict[str, list[dict]] = {}
+    for part in _chunks(threads):
+        for m in _rows(_table(database, MESSAGES).select("thread_id,author_member_id,created_at")
+                       .in_("thread_id", part).limit(MAX_ROWS)):
+            said.setdefault(str(m["thread_id"]), []).append(m)
+    out: dict[str, list[int]] = {}
+    for r in rows:
+        got = outcome(r, said.get(str(r.get("thread_id") or ""), []))
+        if got is not None:
+            out.setdefault(str(r["candidate_id"]), []).append(got)
+    return out
+
+
+def learned(results: list[int]) -> float:
+    """How well suggesting this person has gone, from 0 to 2, pulled toward
+    "answered" (1) by ``OUTCOME_PRIOR`` suggestions' worth, so one quiet
+    week does not bury anyone. Pure."""
+    return (sum(results) + OUTCOME_PRIOR * 1.0) / (len(results) + OUTCOME_PRIOR)
+
+
+def _with_outcomes(database: Any, fits: list[dict[str, Any]]) -> None:
+    """Read what came of earlier suggestions back into each fit (N559 item
+    3): a person who answers, and keeps talking, rises; one who never
+    answers sinks. Kept beside the fit, never shown (Never 1)."""
+    past = _outcomes(database, [f["candidate_id"] for f in fits])
+    for f in fits:
+        results = past.get(f["candidate_id"], [])
+        made = learned(results)
+        f["fit"] = round(f["fit"] + OUTCOME_WEIGHT * (made - 1.0), 4)
+        f["signals"] = {**f.get("signals", {}), "outcomes": len(results),
+                        "learned": round(made, 4)}
 
 
 def _pick(fits: list[dict[str, Any]], session: str) -> dict[str, Any]:
@@ -409,8 +480,61 @@ def best(database: Any, speaker_id: str, take: dict) -> Optional[dict]:
     if not fits:
         return None
     if signals.is_on():
-        _with_skills(database, speaker_id, fits, session)
+        _with_skills(database, speaker_id, fits)
+    _with_outcomes(database, fits)
     return _pick(fits, session)
+
+
+# ── Your own chats, best fit first (N559 item 2) ─────────────────────────
+
+def _partners(database: Any, speaker_id: str) -> dict[str, str]:
+    """The speaker's chats with one other person: {thread id: their id}."""
+    threads = [str(r["thread_id"]) for r in _rows(
+        _table(database, MEMBERS).select("thread_id").eq("user_id", speaker_id).limit(MAX_ROWS))]
+    people: dict[str, set[str]] = {}
+    for part in _chunks(threads):
+        for r in _rows(_table(database, MEMBERS).select("thread_id,user_id").in_("thread_id", part)):
+            if r.get("user_id"):
+                people.setdefault(str(r["thread_id"]), set()).add(str(r["user_id"]))
+    return {t: next(iter(who - {speaker_id})) for t, who in people.items()
+            if speaker_id in who and len(who) == 2}
+
+
+def rank_chats(database: Any, speaker_id: Any, session_id: Any) -> dict:
+    """GET /v2/takes/<session_id>/match/chats: {"order": [chat id, ...]},
+    the speaker's chats whose person knows something of what this Take
+    needs, the best fit first, by the knowledge score the matcher uses
+    (``take_match_knowledge.score``). A chat not in the list fits nothing
+    and keeps the screen's own order after these. Only the order: never a
+    score (Never 1). 404 when matching is off for the speaker or the Take
+    is not theirs."""
+    from services import take_match_knowledge as knowledge
+    if not is_on(database, speaker_id):
+        raise _not_found()
+    speaker, session = str(speaker_id), _uuid(session_id)
+    take = _take(database, speaker, session) if session else None
+    if not take:
+        raise _not_found()
+    partners = _partners(database, speaker)
+    wanted = knowledge.take_words(topic_of(take), said(take))
+    if not partners or not wanted:
+        return {"order": []}
+    people = sorted(set(partners.values()))
+    topics, _last = _activity(database, people)
+    profiles = _profiles(database, people + [speaker])
+    knows = {p: knowledge.counts(_knows(profiles.get(p, {}))) for p in people}
+    practises = {p: knowledge.counts(" ".join(topics.get(p, []))) for p in people}
+    weight, _n = knowledge.weights(set(knows[p]) | set(practises[p]) for p in people)
+    average_know = sum(sum(c.values()) for c in knows.values()) / len(people)
+    average_practise = sum(sum(c.values()) for c in practises.values()) / len(people)
+    speaker_knows = set(knowledge.counts(_knows(profiles.get(speaker, {}))))
+    fits = []
+    for thread, who in partners.items():
+        fit, _terms = knowledge.score(wanted, knows[who], practises[who], speaker_knows,
+                                      weight, average_know, average_practise)
+        if fit > 0:
+            fits.append({"candidate_id": who, "thread": thread, "fit": fit})
+    return {"order": [f["thread"] for f in _ranked(fits, str(session))]}
 
 
 # ── The speaker's side ───────────────────────────────────────────────────
