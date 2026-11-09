@@ -192,6 +192,10 @@ doc_guard() {
 }
 step "Docs guard" doc_guard
 
+# The App Model's stories (N574). Right after the docs guard, as in the
+# workflow: its fetch gives the baseline origin/main to be compared with.
+step "App Model stories" "$PY" scripts/app_model_stories.py --check
+
 # Minimal placeholder env, same as the workflow: enough that import-time
 # guards don't hard-crash, and useless for reaching anything real.
 # CI=1 is what GitHub Actions exports on its own; tests marked CI-only (the

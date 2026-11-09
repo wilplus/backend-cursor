@@ -1036,10 +1036,10 @@
     "id": "MOD-49",
     "area": "AI models",
     "title": "An invite to teach stays in the chat after Not now",
-    "given": "Kasia invited Marta to teach, and Marta said not now",
+    "given": "Kasia started Short news cuts and invited Marta to teach it, and Marta said not now",
     "when": "Marta opens the chat with Kasia",
     "then": [
-      "\"Kasia invited you to teach Pitch Coach with her.\"",
+      "\"Kasia invited you to teach Short news cuts with her.\"",
       "\"You said not now. The invite stays here; open it whenever you like.\"",
       "\"Open\""
     ],
