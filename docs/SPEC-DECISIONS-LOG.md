@@ -15296,3 +15296,54 @@ N308, N335, N496, N572, N573 and N578 to N583:
    if you want it; "Set up my chat" starts the setup (N582). What a chat
    costs in tokens is decided later.
 No migration. No rules page yet.
+
+**N587 · One Take, its answers in one place: after a Take for your coach,
+Will suggests at most two more people; each answer lands in the chat with
+whoever answered and is gathered under the Take, where only you see it
+(founder, the Claude Code chat, 9 November 2026: "design in the prototype
+the mechanics ... when you are sending a message to your speaking coach to
+prepare for the presentation. And you are being suggested also another
+coach does the same thing, or someone after you already recorded that
+matches the topic of your speech, so that you can consult the
+technicalities of it. But that's a suggestion after the recording. And the
+bubbles should be smart bubbles"; "by default, you want to share the
+message with the one you are recording it for, but you might be also
+sharing it with someone else"; "where does it land? Does it land in your
+chat with the coach? But also, what if there is also an answer from
+someone on the technicalities? ... Maybe the way we have it right now, at
+the top of the chat ... what if you have three advices on the matter? What
+if you have two advices on the speaking? ... so it's a multi-party chat
+for a moment. But it all should be smart bubbles, so not every message
+should be displayed, only the best message, only the best advice. But if
+you send them the request and they all answered, you should be able to
+receive all of them to see at least that they texted you back"; then, on
+four questions with recommended answers: "Two at most, with reasons",
+"Their chat, gathered under the Take", "Coach always, plus the best other"
+and "Only if you share it").** For N470, N471, N477, N559, N580, N582 and
+N584:
+1. **After a Take for your coach, on the screen of who hears it** (N470),
+   your coach comes first, ticked. Under them, at most two more people,
+   unticked, each with a line Will writes from what you said: another
+   coach, a second ear on how you speak, and someone who knows your topic,
+   for the technical part, chosen from people's specializations (N582),
+   what they have answered and the matcher (N559). If someone already
+   recorded an answer on your topic that they keep for the people who ask
+   them (N584), "Listen" to it is offered too. Will's lines are drafted for
+   the founder's OK.
+2. **Each person gets their own copy** (N471), sees what you asked of them,
+   and answers in their chat with you, in their own voice (N580 item 7).
+3. **Each answer lands in the chat with whoever answered, and is gathered
+   under the Take:** in the chat you recorded it in, under your Take, one
+   smart bubble shows your coach's answer and the best of the others (the
+   best on your speaking and the best on the matter), with the faces of
+   everyone who answered. A tap opens all of them together, under "On your
+   speaking" and "On the matter", each with "Read it" and a way into that
+   person's chat. While any answer is new, a strip at the top of that chat
+   says so and opens the same list.
+4. **Only you see the gathering.** Your coach doesn't see what the others
+   advised unless you share it: "Share with {name}" on any answer forwards
+   it into your chat with them.
+5. **Nobody is hidden:** everyone who answered is named, with their face.
+   Which answers show in full is chosen by how directly each one answers
+   what you asked, never by a score anyone sees (Never 1).
+No migration. No rules page yet.
