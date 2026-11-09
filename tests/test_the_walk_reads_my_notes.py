@@ -59,13 +59,13 @@ _UMS = "um so um we looked at the um numbers again and um yeah the numbers"
 _DROP = "We will share the full staffing plan with the whole team next week."
 
 
-def _take(rewrite=None, clean=False, **options):
+def _take(rewrite=None, clean=False, drop=-0.6, **options):
     """Tomás's Take: his best (slide 0), a filler-heavy line with no
     Clearer version (1; ``clean``: said cleanly), the buried answer (2) and
-    a voice drop (3)."""
+    a voice drop (3, at ``drop``)."""
     second = (_DROP, _DROP) if clean else (_FILLED, _UMS)
     said = [(" ".join(f"w0x{n}" for n in range(75)) + ".", None, 0.9),
-            (*second, 0.5), (_BURIED, _BURIED, -0.2), (_DROP, _DROP, -0.6)]
+            (*second, 0.5), (_BURIED, _BURIED, -0.2), (_DROP, _DROP, drop)]
     pieces, snippets, at = [], [], 0
     for index, (text, transcript, score) in enumerate(said):
         pieces.append({"snippet_id": f"s{index}", "take_session_id": "take-2",
@@ -206,9 +206,9 @@ def _run_the_read(monkeypatch, snippets, read_answer, rewrite=_CLEARER):
 
 def test_no_ring_no_notes_or_a_failed_read_leave_the_walk_as_it_was(monkeypatch, mine):
     today, snippets = _take()
-    # Today: the filler line has no Clearer version, so the fix is the AI
-    # clip on the voice drop.
-    assert _walk(today) == [(0, "strongest", None), (3, "weakest", "voice")]
+    # Today: the filler line is the weakest (its fillers) and has no
+    # Clearer version, so the fix is its AI clip (N548).
+    assert _walk(today) == [(0, "strongest", None), (1, "weakest", "voice")]
 
     # No read reached the Take: what the frame gets changes nothing, on a
     # first read or a frozen one.
@@ -279,7 +279,7 @@ def test_my_note_makes_my_buried_answer_the_one_thing(monkeypatch, mine):
     # the walk is today's.
     failing, _ = _take({"proposed_text": "We should think about adding more shifts later on."},
                        verbal={"lifts": {"s2": 1.0}})
-    assert _walk(failing) == [(0, "strongest", None), (3, "weakest", "voice")]
+    assert _walk(failing) == [(0, "strongest", None), (1, "weakest", "voice")]
     # And such a rewrite is never stored over the Clearer version I had.
     landed, db, _seen = _run_the_read(monkeypatch, snippets, _flags,
                                       rewrite="We should think about adding more shifts later on.")
@@ -303,10 +303,11 @@ def test_a_coach_never_sees_my_notes_or_why_a_moment_was_picked(monkeypatch, min
     from services.tracked_changes import CLEARER_VERSION_REASONS
     _today, snippets = _take()
     _landed, db, _seen = _run_the_read(monkeypatch, snippets, _flags)
-    frame, _ = _take(verbal=verbal_read.for_pick(db, "u", {"id": "take-2"}))
-    # The same walk chosen without any read: the filler line said cleanly,
-    # so the buried answer is today's one thing too.
-    baseline, _ = _take(clean=True)
+    frame, _ = _take(verbal=verbal_read.for_pick(db, "u", {"id": "take-2"}), drop=0.4)
+    # The same walk chosen without any read: the filler line said cleanly
+    # and the drop's voice sound, so the buried answer, the weakest, is
+    # today's one thing too, with its Clearer version (N548).
+    baseline, _ = _take(clean=True, drop=0.4)
     assert _walk(baseline) == _walk(frame)
 
     def keys(value, out):

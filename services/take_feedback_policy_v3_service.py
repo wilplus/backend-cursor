@@ -102,6 +102,11 @@ def _block_presentation(block: dict, block_id: str) -> dict:
         # level's key, from which the walk says "This week's level:
         # {level}. Here's where it shows:". A word, never a score.
         presentation["plan_level"] = block["plan_level"]
+    if block.get("voice_too") and block.get("exercise_kind") == "clearer":
+        # The Clearer version's moment shows a voice problem too (N548): a
+        # walk that cannot draw its Clearer version walks the same moment's
+        # AI clip instead. A flag, never a score.
+        presentation["voice_too"] = True
     if block.get("one_fix"):
         # The One thing walk's one fix, on its strongest block (C-SNIPER):
         # "tempo" (the Sniper), "moment" or "none". The walk shows the
@@ -590,8 +595,8 @@ def _name_lost_clearer(blocks: list, inventory: _V3ServiceInventory,
     """The walk's fix chosen as a Clearer version whose rewrite row is not
     among the served rows (N536). The walk no longer shows the closest
     exercise in its place (founder 2026-11-06, N547): the voice fix the
-    frame kept behind it (`take_feedback_policy_v3.FIX_BACKUP`, the Take's
-    weakest, a moment whose own voice shows a problem the AI clip teaches)
+    frame kept behind it (`take_feedback_policy_v3.FIX_BACKUP`: the same
+    moment, when its own voice shows a problem the AI clip teaches, N548)
     is walked instead, with its AI clip; with none, no moment is the fix,
     and the walk is their best and its helper words. The served rows and
     the frame's blocks say the same. Named in the log either way."""
@@ -616,7 +621,8 @@ def _name_lost_clearer(blocks: list, inventory: _V3ServiceInventory,
         changed = [block]
         if stand_in is not None and backup is not None:
             stand_in.update({key: backup.get(key) for key in SHOWN_MARKS})
-            changed.append(stand_in)
+            if stand_in is not block:
+                changed.append(stand_in)
         else:
             strongest = next((b for b in by_id.values() if b.get("one_fix")), None)
             if strongest is not None:
@@ -631,11 +637,11 @@ def _name_lost_clearer(blocks: list, inventory: _V3ServiceInventory,
 _NOT_SHOWN = {"most_confident": False, "highest_moment": False, "level_key": None,
               "practice_prompt": False, "carries_exercise": False, "exercise_kind": None,
               "helper_words_prompt": False, "confident_practice": False,
-              "walk_slot": None, "plan_level": None}
+              "walk_slot": None, "plan_level": None, "voice_too": False}
 #: Every key `_block_presentation` may write on a visible row.
 _PRESENTATION_KEYS = ("bookmark_tier", "practice_prompt", "highest_moment", "level_key",
                       "exercise_kind", "helper_words_prompt", "walk_slot", "plan_level",
-                      "one_fix")
+                      "one_fix", "voice_too")
 
 
 def _present_again(inventory: _V3ServiceInventory, block: dict) -> None:

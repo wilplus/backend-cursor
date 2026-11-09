@@ -13897,3 +13897,42 @@ make one.
 No new words on screen. No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 C2 and K.
+
+**N548 · One fix, on one moment: its tool by the kind of its weakness
+(founder, the Claude Code chat, 9 November 2026, on a walk that praised one
+moment, fixed another with "We don't have an exercise for exactly this yet,
+so here's the closest one." and fell back from the AI audio: "2 moments with
+separate interventions", "give the intervention to the LESS confident
+moment (as per the picker function works)"; then, asked whether the voice
+fix should always win: "it shouldn't be decided based on the weakness of
+the moment but type of the weakness, so if it is the wording and voice,
+then fix the wording first, but when the wording is good but voice still
+bad then the ai audio").** Amends N309 item 1, N289 items 2 and 5, N547.
+For every pick of a Take's moments (`services/moment_pick.py`):
+1. **Two moments.** Their best, praised; and the one fix, the less
+confident moment: the weakest, whose own voice shows the problem the AI
+clip teaches (N425).
+2. **Its tool by the kind of its weakness.** When its words need help too
+and its Clearer version passes the gate, the Clearer version first; when
+its words are fine, its AI clip. Both on the same moment.
+3. **A Clearer version that does not reach the walk** gives its place to the
+same moment's AI clip (N547 item 1, now the same moment). The server flags
+such a Clearer version (`voice_too`), so the walk can do the same when it
+cannot draw it.
+4. **Only a Take where no moment's voice shows a problem** gives its fix to
+the moment whose words need help most, with its Clearer version; with none
+that passes the gate, no moment is the fix (N547 item 2).
+5. **Never again** the closest exercise, or an AI clip on a moment chosen
+for its words: "We don't have an exercise for exactly this yet, so here's
+the closest one." and "I've asked your speaking coach to make one just for
+you." leave the walk.
+6. **Unchanged:** the plan's level keeps its moment (N289 item 8); a moment
+the speaker's own notes weigh keeps its Clearer version as the fix when it
+passes the gate (N326); the Sniper (N323 item 6); what was trained stays
+skipped (N246, N359); the gives of N546.
+Was (N309, N547): the moment whose words needed help most was the fix,
+with its Clearer version, ahead of the weakest, on another moment; a lost
+Clearer version gave its place to the weakest.
+No new words on screen. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2 and K.

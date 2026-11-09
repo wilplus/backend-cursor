@@ -2012,7 +2012,7 @@ re-apply as a no-op.","O1 -> test_permissions_rls_and_learning_boundaries_are_cl
 O2 -> test_the_candidate_set_writer_repairs_land_on_the_d4_body","Production 42702, 2026-09-21: the writer had never been called. O2 reads the function definition from the catalog; it does not call the writer with a bundle (that needs the full V3 inventory harness)."
 tests/test_mlc3_n1_source_pattern_postgres.py,Story,"As a speaker who asks for deletion, I want every practice-pattern row about me found under my identity, so that erasure misses nothing.","O1  The deletion list finds every row of each practice-pattern table (N1)
 under my identity, in the expected numbers.",O1 -> test_deletion_inventory_attributes_every_n1_row_to_acquisition_principal,Rehearsal database only; the N1 pattern feature is disabled.
-tests/test_moment_pick.py,Story,"As a speaker, I want each Take to show my strongest moment, praised, my weakest, practised with the AI voice, and the one whose words need help, with a clearer version, so that I know what to keep and get the one fix each moment needs.","O1  The strongest is the Take's highest willfidence clip, a block's best
+tests/test_moment_pick.py,Story,"As a speaker, I want each Take to show my strongest moment, praised, and my weakest, fixed with the tool its weakness needs (its words first, else its voice with the AI clip), so that I know what to keep and get one fix on the moment that needs it.","O1  The strongest is the Take's highest willfidence clip, a block's best
 clip standing for it and a clip with enough words before a short
 one; it is praised whatever its voice and called my most confident.
 O2  The weakest is, from another block, the clip whose own voice shows
@@ -2020,9 +2020,11 @@ the strongest problem the AI clip can teach (pace, pauses, a flat
 loudness range, fillers, against my own usual), with a whole thought
 and a sound read; it is practised with the voice. A clip that shows no
 such problem is never the weakest, however low its read (N425).
-O3  The between is the clip whose words need help the most; it gets the
-clearer version, and it is picked before the weakest, so a Take of
-two blocks gets the precise fix.
+O3  One fix, on one moment, its tool by the kind of its weakness (N548):
+the weakest gets its Clearer version first when its words need help
+too (and the AI clip stays behind it), else the AI clip; my words on
+another moment are fixed only when no moment's voice shows a problem,
+and never with a Clearer version that cannot be given.
 O4  A slot nothing fills goes to the next best block, praised: three
 moments when the Take has three blocks, one per block, never fewer
 than two with two.
@@ -2041,13 +2043,13 @@ ending praised, my weak beginning is corrected rather than the
 ending's own error, unless that error is clearly worse; and the part
 my last walk praised or fixed counts a little less this time (N546).","O1 -> test_the_strongest_is_praised_whatever_its_voice
 O2 -> test_the_weakest_is_the_lowest_whole_thought_i_was_heard_saying
-O3 -> test_words_that_need_help_get_the_between_first
+O3 -> test_my_one_fix_is_on_my_weakest_with_the_tool_its_weakness_needs
 O4 -> test_an_empty_slot_goes_to_the_next_best
 O5 -> test_a_clip_with_no_sound_read_is_never_the_weakest
 O6 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
 O7 -> test_my_level_takes_its_slot_never_the_strongest
 O8 -> test_a_worked_slide_gives_way_unless_its_moment_stands_out
-O9 -> test_my_praise_and_my_fix_spread_over_my_talk","Founder 2026-10-30 (N289: ""the praise clips just get the praise"", ""a negative [word] has been spotted, or it was too fast, that's the second moment"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-28 (N246, ""go for the next confident moment""); 2026-10-30 (N284, three moments); 2026-11-03 (N425, ""go for A, B and C"": the AI clip only where the voice shows the problem); 2026-11-06 (N546, ""I also don't want to skip the great and very poor moments"", ""if I had already the ending praised I should have the beginning corrected""; was N543, ""Untouched first"")."
+O9 -> test_my_praise_and_my_fix_spread_over_my_talk","Founder 2026-10-30 (N289: ""the praise clips just get the praise"", ""a negative [word] has been spotted, or it was too fast, that's the second moment"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-28 (N246, ""go for the next confident moment""); 2026-10-30 (N284, three moments); 2026-11-03 (N425, ""go for A, B and C"": the AI clip only where the voice shows the problem); 2026-11-06 (N546, ""I also don't want to skip the great and very poor moments"", ""if I had already the ending praised I should have the beginning corrected""; was N543, ""Untouched first""); 2026-11-09 (N548, ""it shouldn't be decided based on the weakness of the moment but type of the weakness"")."
 tests/test_moment_suggestions.py,Story,"As a speaker, I want my Ideal Text read to carry no star or suggestion outside the gated changes lane and no scores, so that I see only words and the latest text.","O1  Whatever lane a stored moment suggestion came from (replace,
 emphasize, structure), the GET serves the moment with its anchor and
 playback identity but no star and no suggestion.

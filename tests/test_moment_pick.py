@@ -1,8 +1,8 @@
 """
 STORY    As a speaker, I want each Take to show my strongest moment, praised,
-         my weakest, practised with the AI voice, and the one whose words
-         need help, with a clearer version, so that I know what to keep and
-         get the one fix each moment needs.
+         and my weakest, fixed with the tool its weakness needs (its words
+         first, else its voice with the AI clip), so that I know what to
+         keep and get one fix on the moment that needs it.
 OUTCOME
   O1  The strongest is the Take's highest willfidence clip, a block's best
       clip standing for it and a clip with enough words before a short
@@ -12,9 +12,11 @@ OUTCOME
       loudness range, fillers, against my own usual), with a whole thought
       and a sound read; it is practised with the voice. A clip that shows no
       such problem is never the weakest, however low its read (N425).
-  O3  The between is the clip whose words need help the most; it gets the
-      clearer version, and it is picked before the weakest, so a Take of
-      two blocks gets the precise fix.
+  O3  One fix, on one moment, its tool by the kind of its weakness (N548):
+      the weakest gets its Clearer version first when its words need help
+      too (and the AI clip stays behind it), else the AI clip; my words on
+      another moment are fixed only when no moment's voice shows a problem,
+      and never with a Clearer version that cannot be given.
   O4  A slot nothing fills goes to the next best block, praised: three
       moments when the Take has three blocks, one per block, never fewer
       than two with two.
@@ -34,7 +36,7 @@ OUTCOME
       my last walk praised or fixed counts a little less this time (N546).
 PROVES   O1 -> test_the_strongest_is_praised_whatever_its_voice
          O2 -> test_the_weakest_is_the_lowest_whole_thought_i_was_heard_saying
-         O3 -> test_words_that_need_help_get_the_between_first
+         O3 -> test_my_one_fix_is_on_my_weakest_with_the_tool_its_weakness_needs
          O4 -> test_an_empty_slot_goes_to_the_next_best
          O5 -> test_a_clip_with_no_sound_read_is_never_the_weakest
          O6 -> test_a_sentence_with_my_helper_words_gives_way_to_the_next
@@ -50,7 +52,8 @@ WHY      Founder 2026-10-30 (N289: "the praise clips just get the praise",
          the problem); 2026-11-06 (N546, "I also don't want to skip the
          great and very poor moments", "if I had already the ending
          praised I should have the beginning corrected"; was N543,
-         "Untouched first").
+         "Untouched first"); 2026-11-09 (N548, "it shouldn't be decided
+         based on the weakness of the moment but type of the weakness").
 """
 from services.moment_pick import pick, read
 
@@ -106,15 +109,33 @@ def test_the_weakest_is_the_lowest_whole_thought_i_was_heard_saying():
     assert [m["slot"] for m in quiet["shown"]] == ["strongest", "next", "next"]
 
 
-def test_words_that_need_help_get_the_between_first():
-    picked = pick([_row("a", 0, 0.9), _row("b", 1, 0.7, w=0.4, help="hedges"),
-                   _row("c", 2, 0.3)])
-    assert _shown(picked) == [("a", "strongest", True, None, True),
-                              ("b", "between", False, "clearer", False),
-                              ("c", "weakest", False, "voice", False)]
-    # Two blocks: the clearer version, not the AI clip.
-    two = pick([_row("a", 0, 0.9), _row("b", 1, 0.2, w=0.5, help="undermining")])
-    assert _shown(two)[1] == ("b", "between", False, "clearer", False)
+def test_my_one_fix_is_on_my_weakest_with_the_tool_its_weakness_needs():
+    def fix(picked):
+        return [(m["block_id"], m["slot"], m["kind"], m.get("voice_too", False))
+                for m in picked["shown"] if not m["praise"]]
+    # Words fine, voice weak: the AI clip on the weakest. Another moment's
+    # words that need help are not the fix: it is a next best.
+    voice = pick([_row("a", 0, 0.9), _row("b", 1, 0.7, w=0.4, help="hedges"),
+                  _row("c", 2, 0.3)])
+    assert _shown(voice) == [("a", "strongest", True, None, True),
+                             ("c", "weakest", False, "voice", False),
+                             ("b", "next", True, None, False)]
+    # Words and voice both weak on the weakest: its Clearer version first,
+    # its AI clip behind it, on the same moment.
+    both = pick([_row("a", 0, 0.9), _row("b", 1, 0.7, w=0.4, help="hedges"),
+                 _row("c", 2, 0.3, help="undermining")])
+    assert fix(both) == [("c", "between", "clearer", True)]
+    # Its Clearer version cannot be given: the AI clip on the same moment.
+    gated = pick([_row("a", 0, 0.9), _row("c", 2, 0.3, help="undermining")],
+                 clearer_ok=lambda row: False)
+    assert fix(gated) == [("c", "weakest", "voice", False)]
+    # No moment's voice shows a problem: the words that need help most.
+    words = pick([_row("a", 0, 0.9), _row("b", 1, 0.7, w=0.4, help="hedges", voice=0.0),
+                  _row("c", 2, 0.5, voice=0.0)])
+    assert fix(words) == [("b", "between", "clearer", False)]
+    # ...only with a Clearer version that can be given; else no fix.
+    assert fix(pick([_row("a", 0, 0.9), _row("b", 1, 0.7, w=0.4, help="hedges", voice=0.0)],
+                    clearer_ok=lambda row: False)) == []
 
 
 def test_an_empty_slot_goes_to_the_next_best():

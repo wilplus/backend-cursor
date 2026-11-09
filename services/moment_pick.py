@@ -101,7 +101,7 @@ word and the slot's name.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from services import willfidence
 
@@ -190,7 +190,8 @@ def lift(read_: dict, weight: Any) -> dict:
     return {**read_, "verbal": bounded} if bounded > 0 else read_
 
 
-def pick(reads: list[dict], level: Optional[dict] = None) -> dict:
+def pick(reads: list[dict], level: Optional[dict] = None,
+         clearer_ok: Optional[Callable[[dict], bool]] = None) -> dict:
     """``reads``: one row per clip with ``block_id``, ``slide_index``,
     ``word_count``, ``candidate_id``, ``read`` (from :func:`read`, or
     None), ``held`` (its words hold the slide's helper words; N246),
@@ -205,13 +206,26 @@ def pick(reads: list[dict], level: Optional[dict] = None) -> dict:
     slot it takes; ignored when that clip has no read or sits in the
     strongest's block.
 
+    ``clearer_ok``: would this row's clip open on a Clearer version that
+    passes the gate (`take_feedback_policy_v3._clearer_check`)? None: its
+    words needing help is enough.
+
+    ONE FIX, ON ONE MOMENT, ITS TOOL BY THE KIND OF ITS WEAKNESS (founder
+    2026-11-09, N548): the fix is the less confident moment, the weakest
+    (its voice shows the problem the AI clip teaches, N425). When its words
+    need help too, its Clearer version comes first (``between``, kind
+    "clearer", ``voice_too``: the AI clip on the same moment stands behind
+    it); when its words are fine, the AI clip (``weakest``, kind "voice").
+    Only a Take where no moment's voice shows a problem gives its fix to the
+    moment whose words need help most (``between``). On a plan the level's
+    moment is the fix. Every other block is a next best, praised.
+
     Returns ``{"shown": [{"block_id", "candidate_id", "praise", "kind",
     "highest", "voice_clears", "slot"}, ...]}``, at most one per block:
-    the strongest (praised, ``highest``), the weakest (``kind`` "voice"),
-    the between (``kind`` "clearer"), each slot nothing fills taken by the
-    next best block (``slot`` "next", praised); ``plan_level`` on the
-    level's moment. ``voice_clears`` says the voice reached the floor
-    (N113)."""
+    the strongest (praised, ``highest``), the one fix, each slot nothing
+    fills taken by the next best block (``slot`` "next", praised);
+    ``plan_level`` on the level's moment. ``voice_clears`` says the voice
+    reached the floor (N113)."""
     readable = [row for row in reads if row.get("read")]
     best_per_block: dict[Any, dict] = {}
     for row in readable:
@@ -225,22 +239,14 @@ def pick(reads: list[dict], level: Optional[dict] = None) -> dict:
     used = {strongest["block_id"]}
     forced = _level_row(readable, level, strongest)
     shown = [_entry(strongest, SLOT_STRONGEST, praise=True, highest=True)]
-    praised_part = strongest.get("part")
-    # The precise fix first: on a Take of two blocks, words that need help
-    # get their clearer version before the AI clip gets the weakest.
-    for slot, find, kind in ((SLOT_BETWEEN, _between, EXERCISE_CLEARER),
-                             (SLOT_WEAKEST, _weakest, EXERCISE_VOICE)):
-        if forced and forced[1]["slot"] == slot:
-            found: Optional[dict] = forced[0]
-            marks = {"kind": forced[1]["kind"], "plan_level": forced[1]["plan_level"]}
-        else:
-            found = find([r for r in readable if r["block_id"] not in used
-                          and not (forced and r["block_id"] == forced[0]["block_id"])],
-                         praised_part)
-            marks = {"kind": kind}
-        if found is not None:
-            used.add(found["block_id"])
-            shown.append({**_entry(found, slot, kind=marks.pop("kind")), **marks})
+    fix = forced and {**_entry(forced[0], forced[1]["slot"], kind=forced[1]["kind"]),
+                      "plan_level": forced[1]["plan_level"]}
+    if not fix:
+        fix = _the_fix([r for r in readable if r["block_id"] not in used],
+                       strongest.get("part"), clearer_ok)
+    if fix:
+        used.add(fix["block_id"])
+        shown.append(fix)
     for row in ranked[1:]:
         if len(shown) >= SHOWN_LIMIT:
             break
@@ -248,6 +254,41 @@ def pick(reads: list[dict], level: Optional[dict] = None) -> dict:
             used.add(row["block_id"])
             shown.append(_entry(row, SLOT_NEXT, praise=True))
     return {"shown": shown}
+
+
+def _the_fix(rows: list[dict], praised_part: Any,
+             clearer_ok: Optional[Callable[[dict], bool]]) -> Optional[dict]:
+    """The Take's one fix (N548): the weakest moment, its Clearer version
+    first when its words need help too, else its AI clip; with no weakest,
+    the moment whose words need help most. A moment the speaker's own notes
+    weigh (N326, ``verbal``) whose Clearer version can be given stays the
+    fix: their words matter most there. None when nothing needs a fix."""
+    heard = _between([r for r in rows if float(r["read"].get("verbal") or 0.0) > 0
+                      and (clearer_ok is None or clearer_ok(r))], praised_part)
+    if heard is not None:
+        return {**_entry(heard, SLOT_BETWEEN, kind=EXERCISE_CLEARER),
+                "voice_too": _shows_voice_problem(heard)}
+    weakest = _weakest(rows, praised_part)
+    if weakest is not None:
+        if _words_need_help(weakest, clearer_ok):
+            return {**_entry(weakest, SLOT_BETWEEN, kind=EXERCISE_CLEARER), "voice_too": True}
+        return _entry(weakest, SLOT_WEAKEST, kind=EXERCISE_VOICE)
+    between = _between([r for r in rows if clearer_ok is None or clearer_ok(r)], praised_part)
+    return _entry(between, SLOT_BETWEEN, kind=EXERCISE_CLEARER) if between else None
+
+
+def _shows_voice_problem(row: dict) -> bool:
+    """Its own voice shows a problem the AI clip teaches (N425): it could
+    be the weakest."""
+    return _weakest([row]) is not None
+
+
+def _words_need_help(row: dict, clearer_ok: Optional[Callable[[dict], bool]]) -> bool:
+    """Its words need help and its Clearer version can be given: not one on
+    a slide where the Clearer version worked last time (N359)."""
+    return (_worded(row) and bool(row["read"].get("words_help"))
+            and not _fixed(row, EXERCISE_CLEARER)
+            and (clearer_ok is None or bool(clearer_ok(row))))
 
 
 def _entry(row: dict, slot: str, *, praise: bool = False, highest: bool = False,

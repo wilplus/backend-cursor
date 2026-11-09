@@ -801,12 +801,13 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
                                       held_words, context, worked, voice_medians),
                          parts.get(block["block_id"]), last_parts)
              for block, candidate in showable]
+    row_ok = _row_clearer_ok(showable, clearer_ok)
     picked = _level_pick(reads, showable, snippet_map, clips, served_text, plan) \
-        or moment_pick.pick(reads)
+        or moment_pick.pick(reads, clearer_ok=row_ok)
     picked = _heard_pick(picked, reads, showable, heard, clearer_ok,
                          lambda rows: _level_pick(rows, showable, snippet_map, clips,
                                                   served_text, plan)
-                         or moment_pick.pick(rows))
+                         or moment_pick.pick(rows, clearer_ok=row_ok))
     if reads and not any(r["read"]["sound"] for r in reads):
         # The words alone picked the moments: say so, so the next Take with
         # no sound read is read from the log, not guessed at (2026-10-17).
@@ -819,6 +820,26 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
     values = {r["candidate_id"]: r["read"]["value"] for r in reads}
     return {"shown": picked["shown"],
             "values": {m["block_id"]: values.get(m["candidate_id"]) for m in picked["shown"]}}
+
+
+def _row_clearer_ok(showable: list[tuple],
+                    clearer_ok: Optional[Callable[[dict, dict], bool]]
+                    ) -> Optional[Callable[[dict], bool]]:
+    """`moment_pick.pick`'s check on a read row: would its clip open on a
+    Clearer version that passes the gate (N548)? None without a check. A
+    check that fails reads as no."""
+    if clearer_ok is None:
+        return None
+    at = {candidate["candidate_id"]: (block, candidate) for block, candidate in showable}
+
+    def ok(row: dict) -> bool:
+        try:
+            pair = at.get(row.get("candidate_id"))
+            return pair is not None and bool(clearer_ok(*pair))
+        except Exception as error:  # noqa: BLE001 -- no Clearer version then
+            logger.warning("moment pick: the clearer check failed: %s", error)
+            return False
+    return ok
 
 
 def _with_parts(row: dict, part: Optional[int], last_parts: Optional[dict]) -> dict:
@@ -1106,15 +1127,20 @@ def _mark_moments(blocks: list[dict], picked: dict,
         _mark_shown(block, shown.get(block["block_id"]), value_of.get(block["block_id"]))
     pool = _gate_exercise(blocks, rewrite_ranked, rewrite_rows)
     # A between whose rewrite did not pass the gate has nothing precise to
-    # offer: it is walked as a next best, praised (N289 item 5). The
-    # level's moment is practised whatever passed (G7, N209 item 2).
+    # offer in words: when its own voice shows a problem (N548,
+    # ``voice_too``) it is the voice fix, with its AI clip; else it is
+    # walked as a next best, praised (N289 item 5). The level's moment is
+    # practised whatever passed (G7, N209 item 2).
     for block in blocks:
         moment = shown.get(block["block_id"])
         if (moment and moment["slot"] == moment_pick.SLOT_BETWEEN
                 and not moment.get("plan_level")
                 and block["exercise_kind"] == moment_pick.EXERCISE_VOICE):
-            _mark_shown(block, {**moment, "praise": True, "kind": None,
-                                "slot": moment_pick.SLOT_NEXT},
+            voice = {**moment, "kind": moment_pick.EXERCISE_VOICE,
+                     "slot": moment_pick.SLOT_WEAKEST, "voice_too": False}
+            praised = {**moment, "praise": True, "kind": None,
+                       "slot": moment_pick.SLOT_NEXT, "voice_too": False}
+            _mark_shown(block, voice if moment.get("voice_too") else praised,
                         value_of.get(block["block_id"]))
     _one_thing(blocks, pace, value_of)
     rewrite_blocks = [
@@ -1129,19 +1155,20 @@ def _one_thing(blocks: list[dict], pace: Optional[dict] = None,
                value_of: Optional[dict] = None) -> None:
     """The One thing walk (founder 2026-10-31, N309 item 1): the picker's
     strongest stays, "their best", and of its fixes only the one whose tool
-    fits: this week's level's moment (N289 item 8), else the between with
-    its Clearer version (words come first), else the weakest with the AI
-    clip. When the Sniper comes first (`_sniper_first`: a pace or pause
+    fits: this week's level's moment (N289 item 8), else the pick's one
+    fix (`moment_pick`, N548: the weakest, with its Clearer version when its
+    words need help too, else its AI clip). When the Sniper comes first (`_sniper_first`: a pace or pause
     week whose Take has a stretch, or, for everyone, rushing that is the
     Take's biggest issue) the tempo step is the fix and no moment is. Every
     other shown block, the next bests included, is written as not shown, so
     the walk, the Ideal Text's marks and the coach's queue hold the same
     two.
 
-    When the one fix is a Clearer version and the Take has a weakest, the
-    weakest's marks are kept on the fix as ``fix_backup`` (founder
-    2026-11-06, N547): the serving walks it in its place, with its AI clip,
-    when the Clearer version does not reach the walk. Never served.
+    When the one fix is a Clearer version whose moment's voice shows a
+    problem too, that moment's voice fix is kept on it as ``fix_backup``
+    (founder 2026-11-06, N547; the same moment since 2026-11-09, N548): the
+    serving walks it in its place, with its AI clip, when the Clearer
+    version does not reach the walk. Never served.
 
     The choice is written on the strongest block as ``one_fix`` (C-SNIPER):
     "tempo" when the Sniper is the fix, "moment" when a moment is, "none"
@@ -1158,7 +1185,7 @@ def _one_thing(blocks: list[dict], pace: Optional[dict] = None,
                     if b.get("walk_slot") == moment_pick.SLOT_WEAKEST), None)
     sniper = _sniper_first(pace, fixes, value_of or {})
     keep = None if sniper else (level or clearer or weakest)
-    backup = _fix_backup(keep, clearer if keep is not level else None, weakest)
+    backup = _fix_backup(keep, clearer if keep is not level else None)
     for block in blocks:
         block.pop("one_fix", None)
         block.pop(FIX_BACKUP, None)
@@ -1172,23 +1199,28 @@ def _one_thing(blocks: list[dict], pace: Optional[dict] = None,
         keep[FIX_BACKUP] = backup  # type: ignore[index]
 
 
-def _fix_backup(keep: Optional[dict], clearer: Optional[dict],
-                weakest: Optional[dict]) -> Optional[dict]:
-    """The voice fix behind the One thing walk's Clearer version: the
-    weakest's marks, which the serving walks in its place when the Clearer
-    version does not reach the walk (founder 2026-11-06, N547;
+def _fix_backup(keep: Optional[dict], clearer: Optional[dict]) -> Optional[dict]:
+    """The voice fix behind the One thing walk's Clearer version: the same
+    moment's AI clip, when its own voice shows a problem too (founder
+    2026-11-09, N548; ``voice_too``), which the serving walks in its place
+    when the Clearer version does not reach the walk (N547;
     `take_feedback_policy_v3_service`). None unless ``keep`` is that
-    Clearer version and there is a weakest."""
-    if keep is None or keep is not clearer or weakest is None:
+    Clearer version and its voice shows a problem. Was (N547): the Take's
+    weakest, another moment."""
+    from services import moment_pick
+    if keep is None or keep is not clearer or not keep.get("voice_too"):
         return None
-    return {"block_id": weakest["block_id"], **{key: weakest.get(key) for key in SHOWN_MARKS}}
+    return {"block_id": keep["block_id"],
+            **{key: keep.get(key) for key in SHOWN_MARKS},
+            "exercise_kind": moment_pick.EXERCISE_VOICE,
+            "walk_slot": moment_pick.SLOT_WEAKEST, "voice_too": False}
 
 
 #: The marks `_mark_shown` writes on a block: what a voice fix kept as a
 #: backup carries, so the serving can walk it as it was picked (N547).
 SHOWN_MARKS = ("most_confident", "highest_moment", "level_key", "practice_prompt",
                "carries_exercise", "exercise_kind", "helper_words_prompt",
-               "confident_practice", "walk_slot", "plan_level")
+               "confident_practice", "walk_slot", "plan_level", "voice_too")
 #: The key on the One thing walk's Clearer fix that names its voice backup
 #: (N547). Never served.
 FIX_BACKUP = "fix_backup"
@@ -1281,6 +1313,9 @@ def _mark_shown(block: dict, moment: Optional[dict], value: Any) -> None:
     block["confident_practice"] = False
     # The moment's job in the walk (N289): a word the walk orders by.
     block["walk_slot"] = moment.get("slot") if moment else None
+    # A Clearer version whose moment's voice shows a problem too (N548):
+    # its AI clip stands behind it, on the same moment. A flag.
+    block["voice_too"] = bool(moment and moment.get("voice_too") and corrected)
     # The moment where this week's level shows most (G7, N209 item 2): the
     # level's key, a word. Only on that block, so a walk off a plan keeps
     # its frame as it was.
