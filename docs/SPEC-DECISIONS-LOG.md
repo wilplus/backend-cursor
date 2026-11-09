@@ -14842,3 +14842,23 @@ built").** For N518 and N528:
    and turning it off works as built.
 No migration. The rules: frontend
 [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md).
+
+**N576 · Every voice bubble opens its words, a Take's in Will's chat too
+(founder, the Claude Code chat, 9 November 2026, on the first Take's
+recording in Will's chat, a voice bubble with its slides: "please help me
+expand the bubbles that are inquiry bubbles to see the text of the answer
+or the response!").** For N331:
+1. **"Read it" and "Hide"** (N331, signed) under every voice bubble that has
+   words: a Take in Will's chat, a Take sent to someone, an answer, a
+   question, a matched inquiry and the website chat. Closed by default, so
+   the voice is heard first; nothing is shown before there are words.
+2. **A Take's words** are what was said, one paragraph per slide in the
+   slides' order; an answer or a question shows its words as one paragraph,
+   as built.
+3. **What is new is Will's chat:** the chats with people, the matched
+   inquiry and the website chat have it already (N331); a Take's bubble in
+   Will's chat does not.
+No new words. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1.
