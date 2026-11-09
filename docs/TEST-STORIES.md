@@ -593,6 +593,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O3** Someone who came by no member's link, or by a link whose owner is in no community, is offered nothing; a failure is no offer, never an error, so the wait for Take 1 goes on.
 - **O4** Only people in the speaker's business community are suggested as someone new, never someone outside it, and never from the retired passcode communities.
 - **O5** Only the founder makes a business's community; its owner is its first member.
+- **O6** When the inviter's account is erased, their id goes from the newcomer's offer; the newcomer's offer and answer stay theirs.
 
 *Why:* N559 item 1: the business is the pool; joining is how a person belongs to it.
 

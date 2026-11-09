@@ -368,6 +368,12 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "user", "delete", "database_row", 55),
     PurgeDependency("business_communities", "business_communities", "owner_id", "user",
                     "delete", "database_row", 60),
+    # Whose link a newcomer's offer came by: the inviter's id on the
+    # newcomer's row, cleared with the inviter's account (the offer and its
+    # answer stay the newcomer's).
+    PurgeDependency("business_community_offers_inviter", "business_community_offers",
+                    "inviter_id", "user", "delete", "database_row", 54,
+                    clears_selector=True),
     # Where Apple's push service reaches the person's iPhone (migration
     # an_iphone_keeps_its_push_address, N385).
     PurgeDependency("push_devices", "push_devices", "user_id", "user",

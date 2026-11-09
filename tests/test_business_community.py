@@ -19,11 +19,14 @@ OUTCOME
       passcode communities.
   O5  Only the founder makes a business's community; its owner is its
       first member.
+  O6  When the inviter's account is erased, their id goes from the
+      newcomer's offer; the newcomer's offer and answer stay theirs.
 PROVES   O1 -> BusinessCommunityTest::test_a_newcomer_is_offered_once_and_join_makes_them_a_member
          O2 -> BusinessCommunityTest::test_not_now_is_never_asked_again
          O3 -> BusinessCommunityTest::test_no_member_link_no_offer
          O4 -> BusinessCommunityTest::test_someone_new_comes_from_the_speakers_business
          O5 -> BusinessCommunityTest::test_only_the_founder_makes_a_community
+         O6 -> test_erasing_the_inviter_clears_them_from_the_offer
 WHY      N559 item 1: the business is the pool; joining is how a person
          belongs to it.
 """
@@ -128,6 +131,21 @@ class BusinessCommunityTest(unittest.TestCase):
         self.assertIn({"community_id": made["id"], "user_id": TOMEK},
                       [{k: m[k] for k in ("community_id", "user_id")}
                        for m in self.store.tables["business_community_members"]])
+
+
+def test_erasing_the_inviter_clears_them_from_the_offer():
+    from tests.test_purge_user_locators import PurgeDb, erase
+    database = PurgeDb({"business_community_offers": [
+        {"id": "o1", "user_id": "newcomer", "community_id": TEAM, "inviter_id": "user-1",
+         "answer": "joined"},
+        {"id": "o2", "user_id": "other", "community_id": TEAM, "inviter_id": "user-2",
+         "answer": None}]})
+    erase(database)
+    rows = {r["id"]: r for r in database.tables["business_community_offers"]}
+    assert (rows["o1"]["user_id"], rows["o1"]["inviter_id"], rows["o1"]["answer"]) == (
+        "newcomer", None, "joined")
+    assert rows["o2"]["inviter_id"] == "user-2"
+    assert database.target("business_community_offers_inviter")["state"] == "deleted"
 
 
 if __name__ == "__main__":
