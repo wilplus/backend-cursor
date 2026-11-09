@@ -1,0 +1,472 @@
+[
+ {
+  "id": "VOICE-01",
+  "area": "Will's voice",
+  "title": "Their best is praised in Will's own words when his voice is on",
+  "given": "a One thing walk with their best, the walk_voice ring on for the speaker",
+  "when": "the praise step lands",
+  "then": [
+   "Will's written message stands in for \"To our ears, this one sounded really sure.\" / \"To us, this one sounded really sure.\" and \"Why it worked: …\"",
+   "it says how it sounded to us (\"to us\" or \"to our ears\"), never a verdict or a ranking such as \"your most confident moment\"",
+   "it was asked as the walk opened, so it is usually ready when the step lands"
+  ],
+  "rules": [
+   "N565 items 1, 2 and 7",
+   "N557",
+   "Never 1",
+   "Never 4"
+  ],
+  "code": [
+   "be:services/walk_voice.py::def write",
+   "be:services/prompts/walk_voice.py::SYSTEM",
+   "fe:src/components/willab/walk/useWalkVoice.ts::useBestSaid",
+   "fe:src/components/willab/walk/FeedbackWalk.tsx::function Best"
+  ],
+  "tests": [
+   "tests/test_walk_voice.py",
+   "tests/evals/golden/walk_voice.jsonl",
+   "src/components/willab/walk/oneThingWalk.test.tsx"
+  ],
+  "status": "built",
+  "screen": "walk.best"
+ },
+ {
+  "id": "VOICE-02",
+  "area": "Will's voice",
+  "title": "The signed line whenever Will's words are off, late or refused",
+  "given": "any step Will may write for (their best, the moment to try, a good Take, after a try)",
+  "when": "the walk_voice ring is off for the speaker, or his words do not come in time, or the check refuses every draft",
+  "then": [
+   "the walk shows the step's signed line exactly",
+   "with the ring off no request is made and nothing waits",
+   "the walk never waits longer than four seconds (three after a try's check)"
+  ],
+  "rules": [
+   "N565 items 3 and 5",
+   "Never 3"
+  ],
+  "code": [
+   "be:services/walk_voice.py::def write",
+   "fe:src/services/api/walkVoice.ts::askWalkVoice",
+   "fe:src/components/willab/walk/useWalkVoice.ts::useWalkSaid"
+  ],
+  "tests": [
+   "tests/test_walk_voice.py",
+   "tests/evals/golden/walk_voice.jsonl",
+   "src/components/willab/walk/oneThingWalk.test.tsx"
+  ],
+  "status": "built",
+  "screen": "walk.best"
+ },
+ {
+  "id": "VOICE-03",
+  "area": "Will's voice",
+  "title": "Only plain, kind words reach the speaker",
+  "given": "a message Will wrote",
+  "when": "the server checks it before it is sent",
+  "then": [
+   "no digit",
+   "none of: fix, improve, wrong, mistake, weak, error, problem, score, metric, cue, willfidence, perfect, amazing, settle",
+   "no measurement name (loudness range, pause ratio, words per minute, pitch) and no coaching idiom (draw us in, make it land, resonate, space to breathe, gives weight, as if you, you should, you need to, great job)",
+   "otherwise the draft is refused"
+  ],
+  "rules": [
+   "N565 item 3",
+   "N557",
+   "Never 1"
+  ],
+  "code": [
+   "be:services/walk_voice.py::def check"
+  ],
+  "tests": [
+   "tests/test_walk_voice.py"
+  ],
+  "status": "built",
+  "screen": "walk.best"
+ },
+ {
+  "id": "VOICE-04",
+  "area": "Will's voice",
+  "title": "Short: two sentences, 220 characters, one question",
+  "given": "a message Will wrote",
+  "when": "the server checks it",
+  "then": [
+   "at most two sentences, at most 220 characters, at most one question",
+   "a full stop inside a quotation of the speaker's words does not count as a sentence end",
+   "otherwise the draft is refused"
+  ],
+  "rules": [
+   "N565 items 1 and 3"
+  ],
+  "code": [
+   "be:services/walk_voice.py::def check",
+   "be:services/prompts/walk_voice.py::SYSTEM"
+  ],
+  "tests": [
+   "tests/test_walk_voice.py"
+  ],
+  "status": "built",
+  "screen": "walk.best"
+ },
+ {
+  "id": "VOICE-05",
+  "area": "Will's voice",
+  "title": "A quote is only ever the speaker's own words",
+  "given": "a message Will wrote that quotes something",
+  "when": "the server checks it",
+  "then": [
+   "every quoted phrase is found in the moment's words or the speaker's own turns",
+   "a slide name or anything else quoted is refused"
+  ],
+  "rules": [
+   "N565 item 3"
+  ],
+  "code": [
+   "be:services/walk_voice.py::def check"
+  ],
+  "tests": [
+   "tests/test_walk_voice.py"
+  ],
+  "status": "built",
+  "screen": "walk.best"
+ },
+ {
+  "id": "VOICE-06",
+  "area": "Will's voice",
+  "title": "A refused draft gets another try, then the signed line",
+  "given": "Will's draft fails the check",
+  "when": "the server writes the message",
+  "then": [
+   "up to three drafts in all, each told what was refused and why",
+   "after the third, or a failed call, the answer is null and the walk says its signed line"
+  ],
+  "rules": [
+   "N565 item 3",
+   "Never 3"
+  ],
+  "code": [
+   "be:services/walk_voice.py::def compose",
+   "be:services/walk_voice.py::ATTEMPTS"
+  ],
+  "tests": [
+   "tests/test_walk_voice.py"
+  ],
+  "status": "built",
+  "screen": "walk.best"
+ },
+ {
+  "id": "VOICE-07",
+  "area": "Will's voice",
+  "title": "Will reads the Take's facts in words, never numbers",
+  "given": "the walk asks Will for a message",
+  "when": "the server gathers what Will knows",
+  "then": [
+   "the moment's own words; how it sounded against the speaker's own usual on this Take (faster, few pauses, flatter, more fillers), only what stands out",
+   "the last Take's fix when it rose, this week's level, the speaker's private note",
+   "no number reaches the model's context as a fact to repeat"
+  ],
+  "rules": [
+   "N565 item 2",
+   "Never 1"
+  ],
+  "code": [
+   "be:services/walk_voice.py::def context_for",
+   "be:services/walk_voice.py::def sounded"
+  ],
+  "tests": [
+   "tests/test_walk_voice.py"
+  ],
+  "status": "built",
+  "screen": "walk.best"
+ },
+ {
+  "id": "VOICE-08",
+  "area": "Will's voice",
+  "title": "A sound is named only when it was measured",
+  "given": "a moment with no sound read that stands out",
+  "when": "Will praises it",
+  "then": [
+   "Will says why from the words themselves",
+   "he names no pace, pause or loudness"
+  ],
+  "rules": [
+   "N565 item 7"
+  ],
+  "code": [
+   "be:services/prompts/walk_voice.py::SYSTEM"
+  ],
+  "tests": [
+   "tests/evals/golden/walk_voice.jsonl"
+  ],
+  "status": "built",
+  "screen": "walk.best"
+ },
+ {
+  "id": "VOICE-09",
+  "area": "Will's voice",
+  "title": "The moment to try opens with Will's line, told its tool",
+  "given": "a One thing walk whose fix is a moment (a Clearer version or the AI clip), the ring on",
+  "when": "the fix step begins",
+  "then": [
+   "Will's line stands in for \"And here's one moment to try another way:\"",
+   "the request names what the moment is walked with: a clearer way to say it, or the AI clip",
+   "it is an invitation about the moment, never a correction of the speaker",
+   "the Sniper's opener is never replaced"
+  ],
+  "rules": [
+   "N565",
+   "N557 item 1",
+   "Never 4"
+  ],
+  "code": [
+   "be:services/walk_voice.py::_TOOLS",
+   "fe:src/components/willab/walk/FeedbackWalk.tsx::useWalkVoices"
+  ],
+  "tests": [
+   "tests/test_walk_voice.py",
+   "tests/evals/golden/walk_voice.jsonl",
+   "src/components/willab/walk/oneThingWalk.test.tsx"
+  ],
+  "status": "built",
+  "screen": "walk.fix"
+ },
+ {
+  "id": "VOICE-10",
+  "area": "Will's voice",
+  "title": "After a try, Will says how it went and offers a try only when one is left",
+  "given": "the speaker has just tried the moment, the ring on",
+  "when": "the walk's check answers (it landed, one more try, or the last)",
+  "then": [
+   "Will's reply stands in for \"Yes. That's it.\", \"Close. Once more.\" or \"Good try. Take it with you.\"",
+   "landed: what moved, no further try offered, nothing asked",
+   "one more: what stayed the same, then the one try left",
+   "last: a plain, kind close; a miss is never spun into praise",
+   "a try the walk does not name gets no written reply"
+  ],
+  "rules": [
+   "N565"
+  ],
+  "code": [
+   "be:services/walk_voice.py::_AFTER_TRY_ASK",
+   "be:services/walk_voice.py::def _their_try",
+   "fe:src/components/willab/walk/FeedbackWalk.tsx::afterTryRequest",
+   "fe:src/components/willab/walk/WalkPractiseScreens.tsx::OneTryLine"
+  ],
+  "tests": [
+   "tests/test_walk_voice.py",
+   "tests/evals/golden/walk_voice.jsonl"
+  ],
+  "status": "built",
+  "screen": "walk.practise"
+ },
+ {
+  "id": "VOICE-11",
+  "area": "Will's voice",
+  "title": "A good Take gets Will's line, and never an invented last time",
+  "given": "a One thing walk with no fix and no moment below the floor, the ring on",
+  "when": "the walk passes their best",
+  "then": [
+   "Will's line stands in for \"The rest of this Take held up just as well.\" before the helper words",
+   "he asks and suggests nothing",
+   "he mentions last time only when the context has the last Take"
+  ],
+  "rules": [
+   "N565",
+   "N557 item 2",
+   "N551"
+  ],
+  "code": [
+   "be:services/prompts/walk_voice.py::SYSTEM",
+   "fe:src/components/willab/walk/FeedbackWalk.tsx::useWalkVoices"
+  ],
+  "tests": [
+   "tests/evals/golden/walk_voice.jsonl"
+  ],
+  "status": "built",
+  "screen": "walk.helpers"
+ },
+ {
+  "id": "VOICE-12",
+  "area": "Will's voice",
+  "title": "Will never delays the walk, and a bubble lands once",
+  "given": "the ring on",
+  "when": "a step Will writes for is reached",
+  "then": [
+   "the typing dots while his words come, at most four seconds (three after a try's check)",
+   "his words or the signed line land once; the bubble is never swapped in place",
+   "while the page's ring read is still on its way, the walk waits rather than draw the signed line and swap it"
+  ],
+  "rules": [
+   "N565 item 3",
+   "Never 3",
+   "N377"
+  ],
+  "code": [
+   "fe:src/components/willab/walk/useWalkVoice.ts::useWalkSaid",
+   "fe:src/services/api/walkVoice.ts::WALK_VOICE_WAIT_MS"
+  ],
+  "tests": [
+   "src/components/willab/walk/oneThingWalk.test.tsx"
+  ],
+  "status": "built",
+  "screen": "walk.best"
+ },
+ {
+  "id": "VOICE-13",
+  "area": "Will's voice",
+  "title": "The chat says what the walk drew",
+  "given": "a step Will wrote for",
+  "when": "the walk tells the chat what it showed",
+  "then": [
+   "the chat records Will's words when the walk drew them, else the signed line",
+   "it waits for his words before telling, so the two never differ"
+  ],
+  "rules": [
+   "N565",
+   "D-FW-3"
+  ],
+  "code": [
+   "fe:src/components/willab/walk/FeedbackWalk.tsx::chatLine",
+   "fe:src/lib/willab/walkThread.ts::oneThingSaid"
+  ],
+  "tests": [
+   "src/components/willab/walk/oneThingWalk.test.tsx"
+  ],
+  "status": "built",
+  "screen": "will.after"
+ },
+ {
+  "id": "VOICE-14",
+  "area": "Will's voice",
+  "title": "Off for everyone until the founder turns it on",
+  "given": "any speaker",
+  "when": "they walk a Take",
+  "then": [
+   "Will writes only for a speaker the walk_voice ring reaches, on their own Take, at a step the walk has",
+   "no row in the panel: off for everyone, the founder included"
+  ],
+  "rules": [
+   "N565 item 5"
+  ],
+  "code": [
+   "be:services/rings.py::WALK_VOICE",
+   "be:services/walk_voice.py::def write",
+   "fe:src/components/willab/walk/useWalkVoice.ts::useWalkVoiceOn"
+  ],
+  "tests": [
+   "tests/test_walk_voice.py"
+  ],
+  "status": "built",
+  "screen": "walk.best"
+ },
+ {
+  "id": "VOICE-15",
+  "area": "Will's voice",
+  "title": "The founder sets the rules; their ratings grade them",
+  "given": "the founder edits the rules or marks a reply",
+  "when": "the rules change",
+  "then": [
+   "the rules live in one file the founder approves; no line is fixed in advance",
+   "a reply the founder turns down becomes a row of the golden set",
+   "each row passes when two of up to three runs pass (best of three)"
+  ],
+  "rules": [
+   "N565 items 1 and 4",
+   "Never 4"
+  ],
+  "code": [
+   "be:services/prompts/walk_voice.py::SYSTEM"
+  ],
+  "tests": [
+   "tests/evals/golden/walk_voice.jsonl"
+  ],
+  "status": "built",
+  "screen": "walk.best"
+ },
+ {
+  "id": "VOICE-16",
+  "area": "Will's voice",
+  "title": "Every provider call goes through the processing authorization",
+  "given": "the ring on",
+  "when": "Will's message is written",
+  "then": [
+   "the GPT-4o call runs inside the Take's protected provider scope when the authorization mode enforces"
+  ],
+  "rules": [
+   "CLAUDE.md How to ship"
+  ],
+  "code": [
+   "be:services/walk_voice.py::def _under_authority"
+  ],
+  "tests": [],
+  "status": "built",
+  "screen": "walk.best"
+ },
+ {
+  "id": "VOICE-17",
+  "area": "Will's voice",
+  "title": "The speaker's private note is never quoted",
+  "given": "the speaker's private note is in Will's context",
+  "when": "Will writes",
+  "then": [
+   "a quotation of the note is refused (only the speaker's spoken words may be quoted)",
+   "a paraphrase of the note is not yet prevented by a check"
+  ],
+  "rules": [
+   "N565 item 2",
+   "docs/SPEAKER-MEMORY.md"
+  ],
+  "code": [
+   "be:services/walk_voice.py::def check"
+  ],
+  "tests": [
+   "tests/test_walk_voice.py"
+  ],
+  "status": "partly",
+  "screen": "walk.best"
+ },
+ {
+  "id": "VOICE-18",
+  "area": "Will's voice",
+  "title": "A walk played again shows what Will wrote",
+  "given": "a walk Will wrote for, played again later",
+  "when": "the replay draws those steps",
+  "then": [
+   "the replay should show the words Will wrote; today it draws the signed lines (the written words are kept for the page's life only)"
+  ],
+  "rules": [
+   "N373 item 2",
+   "N565"
+  ],
+  "code": [
+   "fe:src/components/willab/walk/useWalkVoice.ts::walkVoiceSaidNow"
+  ],
+  "tests": [],
+  "status": "not built",
+  "screen": "walk.replay"
+ },
+ {
+  "id": "VOICE-19",
+  "area": "Will's voice",
+  "title": "Will replies to what the speaker says in the walk",
+  "given": "the speaker answers Will in the walk (\"That wasn't my best part.\", \"This is pointless, I can't do it.\", \"What did my coach say?\")",
+  "when": "Will replies",
+  "then": [
+   "he does not argue with the speaker's view; he says plainly what he knows and invites at most one try",
+   "he never invents the coach's words: when no answer has come, he says so",
+   "today the server can write this reply (step \"reply\", with the conversation), but no walk screen asks for it yet"
+  ],
+  "rules": [
+   "N565"
+  ],
+  "code": [
+   "be:services/walk_voice.py::def write",
+   "be:services/walk_voice.py::def _conversation"
+  ],
+  "tests": [
+   "tests/evals/golden/walk_voice.jsonl"
+  ],
+  "status": "partly",
+  "screen": "walk.coach"
+ }
+]

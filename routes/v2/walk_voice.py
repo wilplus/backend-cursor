@@ -1,7 +1,8 @@
 """Will's voice in the walk (founder 2026-11-09, N565).
 Service: services/walk_voice.py.
 
-  POST /v2/walk-voice   {take_id, step, snippet_id?, conversation?}:
+  POST /v2/walk-voice   {take_id, step, snippet_id?, conversation?, tool?,
+                         their_try?}:
                         Will's message for that step of the walk,
                         {text: "..." | null}. null: the walk says its
                         signed line (the writer is off for this speaker,
@@ -25,5 +26,6 @@ def v2_walk_voice():
     body = request.get_json(silent=True)
     body = body if isinstance(body, dict) else {}
     text = write(db, str(request.user_id), body.get("take_id"), body.get("step"),
-                 body.get("snippet_id"), body.get("conversation"))
+                 body.get("snippet_id"), body.get("conversation"),
+                 tool=body.get("tool"), their_try=body.get("their_try"))
     return jsonify({"text": text}), 200
