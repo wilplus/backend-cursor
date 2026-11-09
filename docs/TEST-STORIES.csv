@@ -232,7 +232,8 @@ the device.
 O5  An account that signs in with Google has no password to ask for: its
 email change needs none, Set a password sends the set email, and the
 saved password is logged as its first; a reset link's password is a
-change and gets the notice.
+change and gets the notice. One that signs in with Microsoft is called
+""Microsoft"" (N401 item 6), never Supabase's ""Azure"".
 O6  When the email doesn't go, the card is told so: nothing is reported
 as sent.","O1 -> test_an_email_change_waits_for_the_link_from_the_new_address
 O2 -> test_an_address_with_an_account_is_refused_before_any_link

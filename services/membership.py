@@ -222,7 +222,7 @@ def link_is_full(database: Any, owner_id: str, joiner_id: str) -> bool:
 
 def _provider(user: Any) -> str:
     meta = getattr(user, "app_metadata", None) or {}
-    names = {"google": "Google", "linkedin_oidc": "LinkedIn", "apple": "Apple",
+    names = {"google": "Google", "linkedin_oidc": "LinkedIn", "apple": "Apple", "azure": "Microsoft",
              "email": "Email", "phone": "WhatsApp"}
     raw = str(meta.get("provider") or "")
     return names.get(raw, raw.capitalize() or "Email")
