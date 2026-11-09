@@ -14757,3 +14757,88 @@ The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built.
+
+**N573 · The first choice's answers: "Something else", "Learn from others",
+"Share what I know" and "Prepare a talk", several then Send; the rest of the
+way in as N572's tree (founder, the Claude Code chat, 9 November 2026, on two
+drafts of the choice, the proposal "Onboarding, Explained" and the hand-off
+of "Your chat on any website": "Talk · Share · Learn"; then, shown N572,
+merged the same afternoon in another chat with other answers, "N573's words,
+several taps", and for the questions for people who join, "In the wait, for
+sharers (N572)").** Amends N572 item 2; for N467, N483, N487, N503, N534,
+N559, N564, N569 and N571:
+1. **The answers** to "What would you like to do here first?" are
+   "Something else", "Learn from others", "Share what I know" and "Prepare
+   a talk". "Something else" comes first and opens the typing box (N483
+   item 2, N467); several may be tapped, then "Send" in the bar's middle
+   (N572 item 3). Signed (Never 4). Replaces N572 item 2's "Ask my team
+   something", and the drafts "To learn from others", "To share what I
+   know" and "Both".
+2. **"Learn from others"** takes the place "Ask my team something" had in
+   N572's tree; where it leads, its new words wait for the founder's OK.
+3. **The rest of the way in is N572's tree:** its order (the business's
+   community, N559, before the choice); "Prepare a talk" asks "When is
+   it?" with "No date yet" (N564); the questions for people who join come
+   in the wait for those who share, once built, and until then at the
+   first share (N503, N534); the agreement for people in a team or sharing;
+   the plan card for everyone; one "You're set."; no model setup on the way
+   in, the website chat's model card and call-back scale belonging to
+   "Start your own" after the walk (N571, N569).
+No migration. The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md),
+the first Take as the onboarding, and
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1.
+
+**N574 · The App Model is the developer's reference: pinned in the repo
+with every story, a generated list of what is left to build, and a check
+that keeps the stories true (founder, the Claude Code chat, 9 November
+2026: "please connect all the prototypes into one prototype that will be
+the model for the docs and for the developer who will compare it with the
+source code and eventually correct if anything is different and in this
+prototype we want user stories like tests to answer all the mechanics";
+then "we need to integrate all that into our prototype and make it all
+clickable. Then we need to list all the tests and settle it all in the
+documentation so that the developer can compare it with the source code
+and see what needs to be done to match the prototype and the tests"; on
+questions with recommended answers, "Pinned in the repo", "Generated page"
+and "A CI check").** For N95, N106, N107, N229 and N558:
+1. **One model of the whole app.** "The App Model" joins every locked
+   prototype into one clickable phone, with the user stories beside it:
+   each story a Given, a When and a Then, the rule it comes from, the code
+   that does it, the test that proves it, and its state (built, partly, not
+   built, differs). It is pinned in `docs/design/app-model-<date>/` (its
+   page, a PDF of every step and the stories as `stories.json`), listed in
+   `docs/LOCKS.md`, and its claude.ai link shows the same version (N558).
+2. **What it is for.** A developer compares the code with it; where they
+   differ, the code is the bug to fix (N95). The model is drawn from the
+   rules, never above them: where the model and this log disagree, the log
+   wins and the model is redrawn. A session that changes a locked flow
+   hands its stories and screens to the model, as the hand-offs of 9
+   November did.
+3. **What is left to build** is one page generated from the stories, a new
+   doc, the founder's OK given here: every story not built, partly built or
+   differing, by area, with its rule, its code and its test, regenerated
+   with every change to the stories.
+4. **A check keeps the stories true.** CI fails when a story names code or
+   a test that no longer exists, and when a new story marked built names no
+   test; the stories before this keep a baseline that only shrinks. The
+   backend checks its own code and tests; the frontend checks its own,
+   reading the backend's stories.
+No migration. No rules page: the model and its stories are the reference,
+listed in `docs/LOCKS.md`.
+
+**N575 · The training yes is asked only in Settings, as built, never on
+joining (founder, the Claude Code chat, 9 November 2026, told that N518
+item 5 and N528 item 12 say the yes is given on joining while the
+acceptance screen stopped asking it on 18 October: "Settings only, as
+built").** For N518 and N528:
+1. **"Help improve WillpowerLab"** is asked only in Settings, on Data &
+   consent, or in a consent ask the founder sends one person
+   (`services/person_asks.py`); never at joining and never in onboarding
+   (Never 3). Amends N518 item 5 and N528 item 12, which said the yes is
+   given on joining.
+2. **Unchanged:** a Take reaches a model only with that yes (N563 item 4),
+   and turning it off works as built.
+No migration. The rules: frontend
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md).
