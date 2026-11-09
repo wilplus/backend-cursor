@@ -14284,7 +14284,52 @@ No new words. No migration. The rules: frontend
 [`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
 B4.
 
-**N563 · The plan: no deadline unless you prepare a talk, and the training
+**N563 · Teaching many models: one queue, an answer that counts twice
+only for a public example, four sources of examples, the system manages
+quality and the founder decides four things (founder, the Claude Code chat,
+9 November 2026: "How could someone contribute to a model? And say they are
+part of a community, let's say company community, and they are training the
+model of their own, and then they are training the model of someone else.
+They answer the same questions, where these questions are set up in the
+first place. Who runs the experiments to check the quality of the model? Who
+manages all that?"; six questions, each answered with the recommended
+option, the sources all four).** For N520, N521, N526, N528 and N531:
+1. **One queue for everything a person teaches.** The coach's row in the
+list of chats (N521) becomes the queue for every model they teach, their
+company's and public ones alike; each example says which model it is for.
+The "AI models" row is for finding, joining and starting models (N528 item
+1). The system orders the queue: first what helps most (the examples a
+model is least sure about and the kinds it lacks), so that no model a
+person teaches is starved; a person can pause any model, or open one to
+teach only it.
+2. **The questions come from the model's recipe card** (N520 item 3, filled
+in setup, N528 item 4): what one example is, and what a teacher does with
+it (rate it on the scale, pick from the list, answer it in their words). The
+teaching screen follows the card: a voice model shows the clip to rate, a
+text model shows the written question.
+3. **One example, two models:** an example from a public source is answered
+once and counts for every model that asks about it; an example from a
+private source (a company's own data) counts only for that company's model,
+never for a public one.
+4. **Where a model's examples come from:** WillpowerLab Takes and moments
+whose speakers said yes to training (for models that learn from voice); the
+founder's uploaded data, checked first; the questions it was not sure about,
+from businesses that allowed it, names removed; and examples teachers add
+themselves, which count once another teacher agrees.
+5. **Who manages quality:** the system runs every check and test by itself
+(the trust check, known clips, agreement, the sealed exam, the upgrade
+test, the alerts) and says in plain words what needs attention. The model's
+founder decides four things: the scale's words, who to invite, the price
+(N531 item 3), and releasing a version that passed. WillpowerLab runs the
+experiments across the platform and can take a model down (N528 item 5).
+6. **A company's private model:** its founder invites colleagues, or the
+whole company community; each person chooses whether to join, and nobody is
+made to teach. Their ratings go through the same trust check.
+Not in force until built and merged. No migration in this entry.
+No rules page yet: [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md)
+B and F, when built.
+
+**N564 · The plan: no deadline unless you prepare a talk, and the training
 is levels you record through, four Takes each, never points (founder, the
 Claude Code chat, 9 November 2026, on "When is your deadline?" in the first
 Take's prototype: "this comes out abrupt ... maybe we should ask that only
