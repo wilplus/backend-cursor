@@ -192,6 +192,7 @@ DRAFTED: dict[str, str] = {
                   "its exam and businesses use it."),
     "earn_when_minimum": "When you have earned {minimum}",
     "earn_next_month": "At the end of this month, in tokens",
+    "download_only_team": "Only its owner and its teachers can download its data.",
     "download_without_words": ("You get your teachers’ ratings and answers. What speakers said is "
                                "left out until the training yes says it may be shared. Recordings "
                                "stay with WillpowerLab."),
@@ -674,6 +675,46 @@ def download_screen(model: dict, *, speakers_words_allowed: bool = False) -> dic
                   WORDS["download_licence"]],
         "actions": [WORDS["download_go"], WORDS["not_now"]],
     }
+
+
+def may_download(model: dict, viewer_id: Any, answered: bool) -> bool:
+    """Its owner, its teachers who answered, and a private model's team."""
+    role = viewer_role(model, viewer_id)
+    if role == "owner":
+        return True
+    if role == "contributor":
+        return answered or model.get("visibility") == "private"
+    return False
+
+
+def download_rows(model: dict, answers: list[dict], examples: dict[str, dict]) -> list[dict]:
+    """The teachers' own ratings and answers, one row each, in the order
+    given. Each teacher and each example is a number within this download,
+    never an id or a name; an answer to an example in the sealed final exam
+    never leaves (N566 item 5). Until the training yes carries the line that
+    lets speakers' words be shared, a row holds only what the teacher gave
+    and the question asked: never a speaker, a Take, the example's content
+    or the machine's read (N528 item 12)."""
+    recipe = model.get("recipe") or {}
+    teacher_no: dict[str, int] = {}
+    example_no: dict[str, int] = {}
+    rows = []
+    for a in answers:
+        eid = str(a.get("example_id"))
+        ex = examples.get(eid) or {}
+        if ex.get("in_exam"):
+            continue          # the sealed exam stays sealed
+        rows.append({
+            "example": example_no.setdefault(eid, len(example_no) + 1),
+            "kind": ex.get("kind"),
+            "source": ex.get("source"),
+            "step": a.get("step"),
+            "question": recipe.get("pick_question") if a.get("step") == "pick" else recipe.get("question"),
+            "answer": a.get("answer"),
+            "counted": bool(a.get("counted")),
+            "teacher": teacher_no.setdefault(str(a.get("teacher_id")), len(teacher_no) + 1),
+        })
+    return rows
 
 
 # ── Names removed (N563 item 4: "from businesses that allowed it, names removed") ──

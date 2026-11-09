@@ -241,12 +241,13 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     per version, person and month; paid in tokens (N583 item 4) once a
     person's owed total reaches the minimum, each payout its own idempotent
     grant. WillpowerLab's founder runs it; nothing is scheduled.
-  - **The download** is one route, `GET /v2/models/<id>/download` in
-    `services/model_launchpad_store.py`: for the owner and the team, the
-    teachers' own ratings and answers, each teacher and example a number,
-    never the sealed exam, never a speaker's words, a Take or the machine's
-    read, until the training yes carries its line (N528 item 12); its
-    screen's words come from `services/model_api.py`.
+  - **The download** is one route, `GET /v2/models/<id>/download`
+    (`services/model_api_store.py` `download_for`): the screen, or with
+    `?rows=1` the data. For the owner, its teachers who answered and a
+    private model's team: the teachers' own ratings and answers, each teacher
+    and example a number, never the sealed exam, never a speaker's words, a
+    Take or the machine's read, until the training yes carries its line
+    (N528 item 12).
 
 ### G · What never becomes a label or training data
 
@@ -477,11 +478,11 @@ still open.
   (`/v2/models`, ring row `ai_models`): the launchpad's tables, read into
   F5's rules
 - `services/model_api.py` (the API's and the money's rules: the card, the
-  price and its split, keys, usage, points, payouts, the download screen's words),
+  price and its split, keys, usage, points, payouts, the download),
   `migrations/a_business_can_buy_a_model_s_answers.sql` (0521),
   `services/model_api_store.py` and `routes/v2/model_api.py` (a model's card,
-  "Try it", the price, keys, `/v2/models/<id>/answer`, earnings, behind
-  the same ring row): F5's API and money
+  "Try it", the price, keys, `/v2/models/<id>/answer`, earnings, the one
+  download route, behind the same ring row): F5's API and money
 - `config.py`: the doors' per-surface sets and `DETECTOR_TRAINING_AUTHORISED`
 
 **Docs:**

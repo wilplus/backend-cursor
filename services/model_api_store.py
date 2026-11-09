@@ -32,6 +32,7 @@ charged. Test keys never bill. Payouts are a founder's step
   * ``usage_for``, ``delete_key``, ``switch_key``, ``send_unsure``  usage (MOD-44)
   * ``key_for``, ``answer_with_key``   the API itself (MOD-43, MOD-44)
   * ``earnings_for``    a teacher's earnings (MOD-47)
+  * ``download_for``    downloading a model's data, the one route (MOD-51)
   * ``record_version``, ``release``, ``pay_month``  the founder's steps (MOD-52)
 """
 from __future__ import annotations
@@ -436,6 +437,30 @@ def earnings_for(database: Any, user_id: Any) -> dict:
         _table(database, PAYOUTS).select("units,status").eq("user_id", me).eq("status", "owed")))
     return rules.earnings_screen(model, int(version["number"]), share, int(row.get("answers") or 0),
                                  month_units, owed)
+
+
+# ── Downloading its data (MOD-51) ───────────────────────────────────────────
+def download_for(database: Any, user_id: Any, model_id: Any, *, rows: bool = False) -> dict:
+    """The one download route (#1866's shape, #1869's rules). The screen, or
+    with ``rows`` the data: the teachers' own ratings and answers only, each
+    teacher and example a number, never the sealed exam, until the training
+    yes carries the line that lets speakers' words be shared (N528 item 12)."""
+    me = models._require(database, user_id)
+    model = _model(database, me, model_id)
+    answered = bool(_rows(_table(database, models.ANSWERS).select("id").eq("model_id", model["id"])
+                          .eq("teacher_id", me).limit(1)))
+    if not rules.may_download(model, me, answered):
+        return {"title": rules.WORDS["download_title"], "refused": rules.DRAFTED["download_only_team"],
+                "actions": [rules.WORDS["back_to_list"]]}
+    if not rows:
+        return rules.download_screen(model)
+    answers = sorted(_rows(_table(database, models.ANSWERS)
+                           .select("example_id,teacher_id,step,answer,counted,created_at")
+                           .eq("model_id", model["id"])), key=lambda a: str(a.get("created_at") or ""))
+    ids = sorted({str(a["example_id"]) for a in answers})
+    examples = {str(e["id"]): e for e in (_rows(_table(database, models.EXAMPLES)
+                                                .select("id,kind,source,in_exam").in_("id", ids)) if ids else [])}
+    return {"model": model["name"], "rows": rules.download_rows(model, answers, examples)}
 
 
 # ── The founder's steps (MOD-52, N563 item 5) ───────────────────────────────

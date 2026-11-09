@@ -17,8 +17,8 @@ In the app (signed in; the ring row ``ai_models``, else 404):
   POST   /v2/models/keys/<key_id>/switch      move to the newest version
   POST   /v2/models/keys/<key_id>/unsure {on} "Send the questions it wasn't sure about"
   GET    /v2/models/earnings                  a teacher's earnings (MOD-47)
-  (Downloading its data is #1869's GET /v2/models/<id>/download, in
-   routes/v2/learning_models.py; its screen's words come from here.)
+  GET    /v2/models/<id>/download ?rows=1     downloading its data, the one route (MOD-51):
+                                              numbered, never the sealed exam
   POST   /v2/models/<id>/versions/<n>/release the model's founder releases a version
 
 The API (a key, not a sign-in):
@@ -172,6 +172,14 @@ def v2_model_send_unsure(key_id):
 def v2_model_earnings():
     from services import model_api_store as store
     return _run("earnings", lambda: store.earnings_for(db, _me()))
+
+
+@v2_bp.route("/models/<model_id>/download", methods=["GET"])
+@require_auth
+def v2_model_download(model_id):
+    from services import model_api_store as store
+    return _run("download", lambda: store.download_for(
+        db, _me(), model_id, rows=request.args.get("rows") in ("1", "true")))
 
 
 @v2_bp.route("/models/<model_id>/versions/<number>/release", methods=["POST"])

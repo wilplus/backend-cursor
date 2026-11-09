@@ -28,9 +28,10 @@ OUTCOME
   O7  A version fixes its teachers' shares; "Your share of version 1" is
       their part of it, and a month's earnings above the minimum are paid
       in tokens, once.
-  O8  "Download the data" (one route, #1869's) holds the teachers' own
-      ratings and answers with the screen's words, never what a speaker
-      said or the sealed exam; someone who never taught it cannot download it.
+  O8  "Download the data" (the one download route) holds the teachers' own
+      ratings and answers, each teacher and example a number, never what a
+      speaker said or the sealed exam; someone who never taught it is told
+      "Only its owner and its teachers can download its data."
   O9  An API answer runs under its buyer's processing authority: refused
       there, the model is never asked.
 PROVES   O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
@@ -305,14 +306,17 @@ class ModelApiTest(unittest.TestCase):
             {"id": "a3", "example_id": "x-exam", "model_id": JOB, "teacher_id": MARTA, "step": "words",
              "answer": "An exam answer", "counted": True})
         self.who = MARTA
-        out = self._get(f"/v2/models/{JOB}/download").get_json()
-        self.assertEqual(sorted(r["answer"] for r in out["answers"]), ["Keep it short.", "Say what you learned."])
-        self.assertEqual(out["screen"]["actions"], ["Download the data", "Not now"])
-        self.assertIn("To sell a product built on it, you need a licence", out["screen"]["lines"][2])
-        for never in ("What a speaker said", "An exam answer", MARTA):
+        screen = self._get(f"/v2/models/{JOB}/download").get_json()
+        self.assertEqual(screen["actions"], ["Download the data", "Not now"])
+        self.assertIn("To sell a product built on it, you need a licence", screen["lines"][2])
+        out = self._get(f"/v2/models/{JOB}/download?rows=1").get_json()
+        self.assertEqual(sorted((r["answer"], r["teacher"], r["example"]) for r in out["rows"]),
+                         [("Keep it short.", 2, 1), ("Say what you learned.", 1, 1)])
+        for never in ("What a speaker said", "An exam answer", MARTA, ARTUR):
             self.assertNotIn(never, str(out))
         self.who = BIZ
-        self.assertEqual(self._get(f"/v2/models/{JOB}/download").status_code, 404)
+        self.assertEqual(self._get(f"/v2/models/{JOB}/download").get_json()["refused"],
+                         "Only its owner and its teachers can download its data.")
 
     def test_an_api_answer_needs_the_buyers_authority(self):
         key = self._key()["key"]

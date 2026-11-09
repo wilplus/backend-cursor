@@ -1994,7 +1994,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O5** A business's unsure questions reach the teachers, names removed, only once the business allows it.
 - **O6** "Set your price": − and + preview a price and its split without saving; "Use {price}" saves it, never below what an answer costs to run; nobody else can.
 - **O7** A version fixes its teachers' shares; "Your share of version 1" is their part of it, and a month's earnings above the minimum are paid in tokens, once.
-- **O8** "Download the data" (one route, #1869's) holds the teachers' own ratings and answers with the screen's words, never what a speaker said or the sealed exam; someone who never taught it cannot download it.
+- **O8** "Download the data" (the one download route) holds the teachers' own ratings and answers, each teacher and example a number, never what a speaker said or the sealed exam; someone who never taught it is told "Only its owner and its teachers can download its data."
 - **O9** An API answer runs under its buyer's processing authority: refused there, the model is never asked.
 
 *Why:* The models' API and its money (migration a_business_can_buy_a_model_s_answers), served by services/model_api_store.py over services/model_api.py.

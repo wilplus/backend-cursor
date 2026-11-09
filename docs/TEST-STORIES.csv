@@ -2103,9 +2103,10 @@ run; nobody else can.
 O7  A version fixes its teachers' shares; ""Your share of version 1"" is
 their part of it, and a month's earnings above the minimum are paid
 in tokens, once.
-O8  ""Download the data"" (one route, #1869's) holds the teachers' own
-ratings and answers with the screen's words, never what a speaker
-said or the sealed exam; someone who never taught it cannot download it.
+O8  ""Download the data"" (the one download route) holds the teachers' own
+ratings and answers, each teacher and example a number, never what a
+speaker said or the sealed exam; someone who never taught it is told
+""Only its owner and its teachers can download its data.""
 O9  An API answer runs under its buyer's processing authority: refused
 there, the model is never asked.","O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
 O2 -> ModelApiTest::test_the_card_and_trying_a_model
