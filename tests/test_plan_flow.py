@@ -5,9 +5,10 @@ STORY    As a new speaker on the plan's ring, I want Will to ask me a few
 OUTCOME
   O1  Someone without the plan sees nothing of it: no plan, nothing written.
   O2  A new speaker with no Take is asked, once: "Hi Artur! A few quick
-      questions before your first practice." and "When is your deadline?".
-  O3  "No date yet" gives two months, said in words; then the voice
-      message's two questions.
+      questions before your first practice." and the voice message's two
+      questions; nobody is asked "When is your deadline?" (N564 item 1).
+  O3  "No date yet", on a plan still at that step, gives no date and no
+      two months (N564 items 1 and 7).
   O4  Each voice answer is transcribed under the caller's authorization,
       kept with its recording, kept for Will, and shown as the speaker's
       voice bubble; when the AI fails Will says the plain words, and the key
@@ -21,24 +22,25 @@ OUTCOME
       the summary call; skipping both still gives "You're all set. Here's
       your plan." and the card. A plan left at a call when they are hidden
       moves on to the plan when the Lounge opens, without a summary ask.
-  O6  On a practice day after the first Take, the first open writes the
-      hello and today's one thing, once; after a Take on a practice day
-      "That's your 15 minutes for today." comes, once, and nothing under it
-      (N319 item 4); the chat's goodbye names the plan's next practice day
-      as a person would, "Good job. See you tomorrow." when it is tomorrow,
-      else "Good job. See you {weekday}." (N347 item 2), and the plan's
-      progress comes as one bubble, "1 of 9 practices done." with what its
-      bar draws, once per Take (N319 item 7).
-  O7  A new project's first Take asks "Is this for {date}?"; Yes keeps the
-      plan, No starts "When is your deadline?" for a new one, the old plan
-      kept in the history.
-  O8  Moving the deadline keeps the practices done and counts the ones
-      ahead: today's practice, already done, is not counted twice.
-  O9  Two Takes in a row that reach the level start the next thing heard;
-      three Takes on a level without moving are noted for the coach's
-      queue, once; a coach's level is never moved; a level whose time ran
-      out gives way at the next open, and that day's hello names the new
-      level. Nothing about it is said in the chat.
+  O6  There are no practice days (N564): after a Take nothing like "That's
+      your 15 minutes for today." comes; the goodbye is "Good job. See you
+      next time."; under it the plan's bar, once per Take: the level's name
+      and its four marks, never "{n} of {total} practices done."; the first
+      open on a later day without a Take writes "Hi Artur, good to see you
+      back!" with the bar, and today's one thing, once.
+  O7  A new project's first Take, on a plan with a talk's date, asks "Is
+      this for {date}?"; Yes keeps the plan, No starts a new plan's
+      questions (no deadline asked), the old plan kept in the history.
+  O8  Only a talk has a date: the card shows it, changing it says nothing,
+      and there are no practice days to change (N564 item 6).
+  O9  Every Take fills one of the level's four marks; after four, the next
+      thing heard, never one the set had; three on a level none reached
+      are noted for the coach's queue, once; a coach's level runs its four
+      Takes too. Nothing about it is said in the chat; the bar after the
+      fourth Take's walk shows that level full.
+  O18 The twelfth Take ends the set of three levels: its last ratings, the
+      summary session while the calls are on, and a new set of three on
+      what the Takes show; the plan never ends on a date (N564 item 5).
   O10 A Take's walk reads the level the plan had when the Take was
       recorded, so it reads the same on every opening; off a plan, or on
       "Make it yours", the walk is as today.
@@ -66,7 +68,7 @@ OUTCOME
       five in Will's notes; the plan's facts and
       its topic come from what was said; a day said gives the plan and its
       card at once, that Take its first practice; no day said asks no
-      deadline (N459 item 1): "No date yet"'s two months, and the plan and
+      deadline (N459 item 1) and gives no date (N564), and the plan and
       its card above the goodbye. Kept at the
       end of the Take's processing, the voice message and the key line keep
       their own voice, and the coach's blind pick plays them (N213); the
@@ -79,16 +81,16 @@ OUTCOME
       of, then the plan (N538).
 PROVES   O1 -> test_without_the_ring_nothing_happens
          O2 -> test_a_new_speaker_is_asked_once
-         O3 -> test_no_date_gives_two_months_then_the_voice_message
+         O3 -> test_nobody_is_asked_a_deadline_and_no_date_gives_no_two_months
          O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
          O5 -> test_ratings_are_kept_quietly_and_the_plan_follows
-         O6 -> test_a_practice_day_hello_and_the_fifteen_minutes
+         O6 -> test_the_hello_and_the_bar_show_the_level_and_its_marks
          O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
          O17 -> test_the_first_ratings_on_a_running_plan_end_on_the_plan
                 test_a_new_project_on_a_plan_made_after_earlier_takes_is_asked_about
-         O8 -> test_moving_the_deadline_keeps_the_practices_done
-         O9 -> test_the_level_moves_on_after_two_takes_that_reach_it
-               test_a_level_whose_time_ran_out_gives_way
+         O8 -> test_only_a_talk_has_a_date_and_changing_it_says_nothing
+         O9 -> test_every_take_fills_a_mark_and_four_start_the_next_level
+         O18 -> test_after_the_third_level_the_summary_session_then_new_levels
          O10 -> test_a_walk_reads_the_level_of_its_takes_time
          O11 -> test_the_principles_wait_while_the_speaker_is_onboarded
          O12 -> test_an_answer_with_nothing_heard_is_asked_again
@@ -104,7 +106,8 @@ WHY      The plan, built one to one with the prototype (founder 2026-10-26,
          principles waiting for the onboarding, N243; record first, Will
          asking again and a correction taken, N262; the calls hidden, not
          removed, N315; the plan simplified, N319; the goodbye's day,
-         N347; the rules
+         N347; three levels of four Takes, never points, no deadline but a
+         talk's, N564; the rules
          are frontend docs/flows/the-plan.md §1.
 """
 import uuid
@@ -247,11 +250,12 @@ def test_without_the_ring_nothing_happens(monkeypatch):
 
 def test_a_new_speaker_is_asked_once(db):
     first = F.state(db, USER, tz="Europe/Warsaw", first_name="Artur")
-    assert first["wrote"] and first["plan"]["step"] == "deadline"
+    assert first["wrote"] and first["plan"]["step"] == "why"
     assert bodies(db) == ["Hi Artur! A few quick questions before your first practice.",
-                          "When is your deadline?"]
+                          "I assume you came here to practise for some important event in your life.",
+                          "Please tell me, why does it matter and what is it about?"]
     again = F.state(db, USER, tz="Europe/Warsaw", first_name="Artur")
-    assert not again["wrote"] and len(db.thread) == 2
+    assert not again["wrote"] and len(db.thread) == 3
 
 
 def test_with_no_first_take_row_a_new_speaker_meets_the_first_take(db, monkeypatch):
@@ -265,23 +269,22 @@ def test_with_no_first_take_row_a_new_speaker_meets_the_first_take(db, monkeypat
         P.COPY["first_take"], P.COPY["first_take_why"], P.COPY["first_take_where"]]
 
 
-def test_no_date_gives_two_months_then_the_voice_message(db):
+def test_nobody_is_asked_a_deadline_and_no_date_gives_no_two_months(db):
+    # N564 item 1: "When is your deadline?" is asked of nobody; a plan still
+    # at that step from before takes "No date yet" as no date, with no two
+    # months said (item 7).
     F.state(db, USER, tz="UTC", first_name=None)
-    F.answer_deadline(db, USER, None, tz="UTC")
-    given = F.P.fmt_day(datetime.now(timezone.utc).date() + timedelta(days=56))
-    assert bodies(db)[2:] == [
-        "No date yet",
-        f"That's fine. Let's give it two months, until {given}.",
-        "I assume you came here to practise for some important event in your life.",
-        "Please tell me, why does it matter and what is it about?",
-    ]
+    assert P.COPY["deadline_q"] not in bodies(db)
+    db.update_plan(USER, db.get_open_plan(USER)["id"], {"step": "deadline"})
+    out = F.answer_deadline(db, USER, None, tz="UTC")
+    assert "That's fine. Let's give it two months" not in " ".join(bodies(db))
+    assert out["plan"]["deadline"] is None and F.view(db, USER, out["plan"])["deadline"] is None
     with pytest.raises(F.PlanError):
         F.answer_deadline(db, USER, None, tz="UTC")  # asked once
 
 
 def _to_ratings(db):
     F.state(db, USER, tz="UTC", first_name="Artur")
-    F.answer_deadline(db, USER, (date.today() + timedelta(days=21)).isoformat(), tz="UTC")
     for said in ("It's our board pitch for two more hires.", "The window closes soon.",
                  "Five board members.", "About three minutes."):
         F.answer_voice(db, USER, _Adapter(said), b"audio", filename="a.webm",
@@ -332,13 +335,13 @@ def test_ratings_are_kept_quietly_and_the_plan_follows(db):
     assert _no_call_asked(db)
     plan = db.get_open_plan(USER)
     assert plan["status"] == "active" and plan["step"] == "done"
-    assert plan["total"] == 9 and plan["level"]
-    # A speaker with Takes (A2): the deadline, then the plan, no call.
+    assert plan["total"] == 12 and plan["level"]  # three levels of four Takes (N564)
+    # A speaker with Takes (A2): the plan from them, no deadline asked, no call.
     db.plans.clear()
     db.thread.clear()
     db.takes.rows = [{"created_at": datetime.now(timezone.utc).isoformat(), "arc_id": "arc-1", "take_index": 1}]
     F.after_take(db, USER)
-    F.answer_deadline(db, USER, None, tz="UTC")
+    assert P.COPY["deadline_q"] not in bodies(db)
     assert bodies(db)[-2:] == ["You're all set. Here's your plan.", ""] and _no_call_asked(db)
     assert db.get_open_plan(USER)["status"] == "active"
 
@@ -376,45 +379,53 @@ def test_with_the_calls_on_they_are_asked_before_the_plan(db, monkeypatch):
     assert P.COPY["summary_ask"] not in bodies(db)
 
 
-def test_a_practice_day_hello_and_the_fifteen_minutes(db, monkeypatch):
+def test_the_hello_and_the_bar_show_the_level_and_its_marks(db, monkeypatch):
     _to_ratings(db)
     F.answer_rating(db, USER, 7)
     F.answer_rating(db, USER, 4)
     plan = db.get_open_plan(USER)
+    level = P.level_name(plan["level"])
     started = datetime.fromisoformat(plan["started_at"])
-    db.takes.rows = [{"created_at": (started + timedelta(minutes=5)).isoformat(),
+    db.takes.rows = [{"id": "t1", "created_at": (started + timedelta(minutes=5)).isoformat(),
                       "arc_id": "arc-1", "take_index": 1}]
     today = datetime.now(timezone.utc).date()
-    monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: True)
-    F.after_take(db, USER)
-    assert bodies(db)[-1] == "That's your 15 minutes for today."
-    assert "Now go and live it, away from the phone." not in bodies(db)
     n = len(db.thread)
     F.after_take(db, USER)
-    assert len(db.thread) == n  # once a day
-    # Under the goodbye: the plan's progress, once per Take.
+    assert len(db.thread) == n  # no "That's your 15 minutes for today." (N564 item 7)
+    # Under the goodbye: the plan's bar, once per Take: the level's name and
+    # one of its four marks filled, never "1 of 9 practices done." (N564 item 3).
     progress = F.progress(db, USER)
-    assert [r["body"] for r in progress] == ["1 of 9 practices done."]
-    meta = progress[0]["metadata"]
-    assert (meta["plan_progress"], meta["done"], meta["total"]) == (True, 1, 9)
+    assert [r["body"] for r in progress] == [level]
+    bar = progress[0]["metadata"]["bar"]
+    assert progress[0]["metadata"]["plan_progress"] is True
+    assert (bar["level_name"], bar["marks"], bar["of"], bar["level_n"]) == (level, 1, 4, 1)
+    assert not any(ch.isdigit() for ch in progress[0]["body"])
     assert F.progress(db, USER) == []  # once per Take
-    # The goodbye names the next practice day (Mon, Wed, Fri) as a person
-    # would (N347 item 2): on a Sunday it is tomorrow; on a Monday, Wednesday.
-    sunday = today + timedelta(days=6 - today.weekday())
-    for day, said in ((sunday, "Good job. See you tomorrow."),
-                      (sunday + timedelta(days=1), "Good job. See you Wednesday.")):
-        monkeypatch.setattr(F, "today_in", lambda name, day=day: day)
-        assert after_take.closing_line(F.next_day_text(db, USER)) == said
-    # The next practice day: the hello and today's one thing, once.
-    monkeypatch.setattr(F, "today_in", lambda name: today + timedelta(days=2))
+    # The goodbye names no practice day: "Good job. See you next time." (N564).
+    goodbye = after_take.closing_row(user_id=USER, arc_id="arc-1", take_index=1, take="t1",
+                                     at=datetime.now(timezone.utc).isoformat(), asks=[])
+    after_take.end_rows(db, USER, goodbye, written=False)
+    assert "Good job. See you next time." in bodies(db)
+    assert not any(b.startswith("Good job. See you ") and b != "Good job. See you next time."
+                   for b in bodies(db))
+    # Any later day, there being no practice days: the hello, its bar and
+    # today's one thing, once (N564 item 2). A day without a Take leaves no trace.
+    monkeypatch.setattr(F, "today_in", lambda name: today + timedelta(days=5))
     out = F.state(db, USER, tz="UTC", first_name="Artur")
     assert out["wrote"]
     hello, one = db.thread[-2], db.thread[-1]
-    assert hello["body"].startswith("Hi Artur, good to see you back! Today is practice 2 of 9: ")
+    assert hello["body"] == "Hi Artur, good to see you back!"
+    assert hello["metadata"]["plan_bar"]["level_name"] == level and hello["metadata"]["plan_bar"]["marks"] == 1
     assert hello["metadata"]["day_line"]
+    assert "Today is practice" not in " ".join(bodies(db))
     assert one["body"].startswith("Today, one thing: ")
     assert one["metadata"]["arc_id"] == "arc-1" and one["metadata"]["take_index"] == 1
     assert not F.state(db, USER, tz="UTC", first_name="Artur")["wrote"]
+    # The card's view: the level and its marks; no practice days, no date
+    # for someone who is not preparing a talk (N564 items 2 and 6).
+    view = out["plan"]
+    assert view["bar"]["marks"] == 1 and view["deadline"] is None and not view["talk"]
+    assert "days" not in view and "every_day" not in view and "next_day" not in view
 
 
 def _active(db):
@@ -426,8 +437,9 @@ def _active(db):
 
 def test_a_new_project_asks_whether_it_is_for_the_same_event(db, monkeypatch):
     plan = _active(db)
+    talk = date.today() + timedelta(days=21)
+    plan = F.set_talk_date(db, USER, talk.isoformat())  # "Prepare a talk" → "When is it?" (N564)
     started = datetime.fromisoformat(plan["started_at"])
-    monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: False)
     db.takes.rows = [{"created_at": (started + timedelta(minutes=5)).isoformat(), "arc_id": "arc-1", "take_index": 1}]
     F.after_take(db, USER)
     assert "Is this for" not in " ".join(bodies(db))
@@ -436,11 +448,10 @@ def test_a_new_project_asks_whether_it_is_for_the_same_event(db, monkeypatch):
     deadline = F.P.fmt_day(date.fromisoformat(plan["deadline"]))
     assert bodies(db)[-1] == f"Is this for {deadline}?"
     out = F.same_event(db, USER, False, tz="UTC", first_name="Artur")
-    assert bodies(db)[-2:] == ["No", "When is your deadline?"]
+    assert bodies(db)[-3:] == ["No", P.COPY["why_1"], P.COPY["why_2"]]  # no deadline asked
     assert out["plan"]["status"] == "asking"
     assert [p["status"] for p in db.plans] == ["replaced", "asking"]
     # The new plan's questions take their answers like a first plan's (N276).
-    F.answer_deadline(db, USER, None, tz="UTC")
     _say(db, "It's our board pitch for two more hires.")
     _say(db, "We need the hires before spring.")
     assert len(db.get_open_plan(USER)["asked"]) == 2
@@ -449,12 +460,12 @@ def test_a_new_project_asks_whether_it_is_for_the_same_event(db, monkeypatch):
 def test_a_new_project_on_a_plan_made_after_earlier_takes_is_asked_about(db, monkeypatch):
     # A plan made from Takes has seen no Take of its own: the speaker's earlier
     # project is the plan's, so a new project's first Take asks (H2), and Yes
-    # brings the ratings it came in place of, then the plan (N538).
-    monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: False)
+    # brings the ratings it came in place of, then the plan (N538). Asked
+    # only of someone preparing a talk: a plan with no date has nothing to ask.
     took = datetime.now(timezone.utc) - timedelta(days=3)
     db.takes.rows = [{"created_at": took.isoformat(), "arc_id": "arc-1", "take_index": 1}]
     F.after_take(db, USER)
-    plan = F.answer_deadline(db, USER, (date.today() + timedelta(days=21)).isoformat(), tz="UTC")["plan"]
+    plan = F.set_talk_date(db, USER, (date.today() + timedelta(days=21)).isoformat())
     started = datetime.fromisoformat(plan["started_at"])
     db.takes.rows.append({"created_at": (started + timedelta(minutes=5)).isoformat(),
                           "arc_id": "arc-2", "take_index": 1})
@@ -473,11 +484,10 @@ def test_the_first_ratings_on_a_running_plan_end_on_the_plan(db, monkeypatch):
     # A plan made from Takes (A2): "Two quick taps before your plan." after its
     # first Take ends on the plan and its card (N538), and the plan is not
     # begun again: that Take stays its first practice.
-    monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: False)
     took = datetime.now(timezone.utc) - timedelta(days=3)
     db.takes.rows = [{"created_at": took.isoformat(), "arc_id": "arc-1", "take_index": 1}]
     F.after_take(db, USER)
-    plan = F.answer_deadline(db, USER, (date.today() + timedelta(days=21)).isoformat(), tz="UTC")["plan"]
+    plan = db.get_open_plan(USER)
     started = datetime.fromisoformat(plan["started_at"])
     db.takes.rows.append({"created_at": (started + timedelta(minutes=5)).isoformat(),
                           "arc_id": "arc-1", "take_index": 2})
@@ -491,16 +501,22 @@ def test_the_first_ratings_on_a_running_plan_end_on_the_plan(db, monkeypatch):
     assert F.view(db, USER, out["plan"])["done"] == 1
 
 
-def test_moving_the_deadline_keeps_the_practices_done(db, monkeypatch):
+def test_only_a_talk_has_a_date_and_changing_it_says_nothing(db):
+    # N564 item 6: the card shows a date only for someone preparing a talk;
+    # changing it is silent, and there are no practice days to change.
     plan = _active(db)
-    took = datetime.fromisoformat(plan["started_at"]) + timedelta(seconds=1)
-    db.takes.rows = [{"created_at": took.isoformat(), "arc_id": "arc-1", "take_index": 1}]
-    today = took.astimezone(timezone.utc).date()
-    monkeypatch.setattr(F, "today_in", lambda name: today)
-    out = F.change(db, USER, deadline=(today + timedelta(days=10)).isoformat(), tz="UTC")
-    # One practice done (today's); nine days ahead, every day: 1 + 9.
-    assert out["plan"]["every_day"] and out["plan"]["total"] == 10
-    assert F.P.practice_number(1, out["plan"]["total"]) == 2
+    assert F.view(db, USER, plan)["deadline"] is None
+    day = date.today() + timedelta(days=30)
+    plan = F.set_talk_date(db, USER, day)
+    view = F.view(db, USER, plan)
+    assert (view["deadline"], view["talk"], view["deadline_day"]) == (day.isoformat(), True, P.fmt_day(day))
+    later = day + timedelta(days=7)
+    n = len(db.thread)
+    out = F.change(db, USER, deadline=later.isoformat(), days=[0, 2, 4], tz="UTC")
+    assert out["messages"] == [] and len(db.thread) == n
+    assert out["plan"]["deadline"] == later.isoformat() and out["plan"]["practice_days"] == [1, 3, 5]
+    # "No date yet" keeps none.
+    assert F.view(db, USER, F.set_talk_date(db, USER, None))["deadline"] is None
 
 
 FEW_PAUSES = [{"transcript": "We need two more hires this quarter.", "duration_ms": 60000,
@@ -521,53 +537,72 @@ def _take(db, plan, n, clips):
     return db.get_open_plan(USER)
 
 
-def test_the_level_moves_on_after_two_takes_that_reach_it(db, monkeypatch):
+def test_every_take_fills_a_mark_and_four_start_the_next_level(db, monkeypatch):
+    # N564 items 2 to 4: each Take fills one of the level's four marks; after
+    # four, the next thing heard, never one this set had; a coach's level runs
+    # its four too. Nothing about it is said in the chat (N134 item 3).
     plan = _active(db)
-    monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: False)
     db.update_plan(USER, plan["id"], {"level": "pauses", "level_by": "machine"})
     said = len(db.thread)
-    plan = _take(db, plan, 1, FEW_PAUSES)
-    plan = _take(db, plan, 2, MANY_PAUSES)
-    assert plan["level"] == "pauses"
-    plan = _take(db, plan, 3, FILLERS)  # reached twice in a row; the fillers are heard next
-    assert plan["level"] == "say_once"
-    assert [e["reason"] for e in db.events][-1:] == ["reached"]
-    assert len(db.thread) == said  # the speaker just sees the next level (N134 item 3)
-    for n in (4, 5, 6, 7):
-        plan = _take(db, plan, n, FILLERS)
-    assert plan["level"] == "say_once"
-    assert [e["reason"] for e in db.events].count("stuck") == 1
-    db.update_plan(USER, plan["id"], {"level": "pauses", "level_by": "coach"})
-    for n in (8, 9):
-        plan = _take(db, plan, n, MANY_PAUSES)
-    assert plan["level"] == "pauses"  # a coach's level is never moved (C5)
-
-
-def test_a_level_whose_time_ran_out_gives_way(db, monkeypatch):
-    plan = _active(db)
-    monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: True)
-    db.update_plan(USER, plan["id"], {"level": "key_line", "level_by": "machine"})
-    plan = _take(db, plan, 1, FEW_PAUSES)  # no key line said: not read, still the level
-    assert plan["level"] == "key_line"
-    today = datetime.now(timezone.utc).date()
-    monkeypatch.setattr(F, "today_in", lambda name: today + timedelta(days=8))
-    F.state(db, USER, tz="UTC", first_name="Artur")
+    for n in (1, 2, 3):
+        plan = _take(db, plan, n, FEW_PAUSES)
+        assert plan["level"] == "pauses" and F.view(db, USER, plan)["bar"]["marks"] == n
+    assert [e["reason"] for e in db.events].count("stuck") == 1  # three, none reached it
+    plan = _take(db, plan, 4, FILLERS)  # the fourth mark: the fillers are heard next
+    assert plan["level"] == "say_once" and F.view(db, USER, plan)["bar"]["marks"] == 0
+    assert F.view(db, USER, plan)["bar"]["level_n"] == 2
+    assert db.events[-1]["reason"] == "reached"
+    assert len(db.thread) == said  # the speaker just sees the next level
+    # The bar after the fourth Take's walk shows the level just filled.
+    bar = F.progress(db, USER)[0]["metadata"]["bar"]
+    assert (bar["level"], bar["marks"], bar["level_n"]) == ("pauses", 4, 1)
+    db.update_plan(USER, plan["id"], {"level": "key_line", "level_by": "coach"})
     plan = db.get_open_plan(USER)
-    assert plan["level"] == "pauses" and db.events[-1]["reason"] == "time"
-    hello = next(r["body"] for r in reversed(db.thread) if r["metadata"].get("plan_hello"))
-    assert hello.endswith(": Pauses that hold the room.")
+    for n in (5, 6, 7):
+        plan = _take(db, plan, n, MANY_PAUSES)
+    assert plan["level"] == "key_line"  # a coach's level runs its four Takes (C5)
+    plan = _take(db, plan, 8, MANY_PAUSES)
+    assert plan["level_by"] == "machine" and plan["level"] not in ("pauses", "say_once", "key_line")
+
+
+def test_after_the_third_level_the_summary_session_then_new_levels(db, monkeypatch):
+    # N564 item 5: the twelfth Take ends the set of three levels: its last
+    # ratings, the summary session while the calls are on (N248, N315), and a
+    # new set of three begins on the next skills the Takes show.
+    _rings(monkeypatch, calls=True)
+    plan = _active(db)
+    F.book_call(db, USER, "kickoff", None)
+    F.book_call(db, USER, "summary", None)
+    plan = db.get_open_plan(USER)
+    db.update_plan(USER, plan["id"], {"level": "pauses", "level_by": "machine"})
+    for n in range(1, 12):
+        plan = _take(db, plan, n, FILLERS)
+        if plan["step"] != "done":  # nothing is asked before the twelfth
+            break
+    assert plan["step"] == "done" and len(plan["facts"]["set_levels"]) == 3
+    third = plan["level"]
+    plan = _take(db, plan, 12, FEW_PAUSES)
+    assert any(r["metadata"].get("plan_summary_call") for r in db.thread)
+    assert bodies(db)[-1] == "How stressed do you feel about it right now?"  # the last ratings (D1)
+    assert plan["facts"]["set_levels"] == [plan["level"]] and plan["level"] != third
+    assert F.view(db, USER, plan)["bar"]["level_n"] == 1
+    bar = F.progress(db, USER)[0]["metadata"]["bar"]
+    assert (bar["level"], bar["marks"], bar["level_n"]) == (third, 4, 3)
+    F.answer_rating(db, USER, 6)
+    F.answer_rating(db, USER, 5)
+    assert db.get_open_plan(USER)["status"] == "active"  # no end on a date, no "What's next?"
+    assert P.COPY["whats_next"] not in bodies(db)
 
 
 def test_a_walk_reads_the_level_of_its_takes_time(db, monkeypatch):
     from services import plan_walk
     plan = _active(db)
-    monkeypatch.setattr(F.P, "is_practice_day", lambda *a, **k: False)
     first = {"created_at": plan["started_at"]}
     assert plan_walk.level_for_take(db, USER, first) is None  # "Make it yours": as today
     db.update_plan(USER, plan["id"], {"level": "pauses", "level_by": "machine"})
     F._event(db, USER, plan, "pauses", "coach", "the coach's level")
     first = {"created_at": datetime.now(timezone.utc).isoformat()}
-    for n, clips in ((1, MANY_PAUSES), (2, FILLERS)):
+    for n, clips in ((1, MANY_PAUSES), (2, MANY_PAUSES), (3, MANY_PAUSES), (4, FILLERS)):
         plan = _take(db, plan, n, clips)
     assert plan["level"] == "say_once"
     later = {"created_at": (datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat()}
@@ -617,7 +652,6 @@ def test_the_principles_wait_while_the_speaker_is_onboarded(db, monkeypatch):
 
 def _to_why(db):
     F.state(db, USER, tz="UTC", first_name="Artur")
-    F.answer_deadline(db, USER, None, tz="UTC")
 
 
 def _say(db, said):
@@ -695,7 +729,6 @@ def test_a_correction_is_taken_and_the_question_asked_again(db, monkeypatch):
 def test_a_new_speaker_can_record_before_answering(db, monkeypatch):
     out = F.state(db, USER, tz="UTC", first_name="Artur")
     assert not out["plan"]["waiting"]  # the questions first (N319 item 2)
-    F.answer_deadline(db, USER, None, tz="UTC")
     _say(db, "It's our board pitch for two more hires.")
     key_q = bodies(db)[-1]
     plan = db.get_open_plan(USER)
@@ -776,7 +809,9 @@ def test_a_first_take_with_no_day_asks_no_deadline(db, monkeypatch):
     assert db.thread[card + 1]["metadata"].get("first_take") is True
     view = F.state(db, USER, tz="UTC")["plan"]
     assert view["status"] == "active" and view["step"] != "deadline"
-    assert view["deadline"] == P.given_deadline(date.today()).isoformat() and view["deadline_given"]
+    # No two months (N564); the first Take is the way in, so the card's four
+    # marks wait for the next Take (the App Model's card after Take 1).
+    assert view["deadline"] is None and view["bar"]["marks"] == 0
     assert P.COPY["why_1"] not in bodies(db)  # never the chat's questions
 
 

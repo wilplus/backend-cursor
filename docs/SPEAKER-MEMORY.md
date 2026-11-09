@@ -125,6 +125,9 @@ summary is written exactly as before. Guarded by `tests/test_take_summary.py`
 
 - Nobody but the founder sees the note. Will never quotes it, never repeats a
   speaker's answer back, never says it keeps one.
+  In the walk this is checked in code (`walk_voice.check`, N565 item 2): a
+  draft that shares four words in a row with the note, quoted or not, is
+  refused, unless the speaker also said those words in the Take.
 - No numbers, scores or verdicts in it (CLAUDE.md, Never 1): a rewrite with a
   digit is refused and the old note stays (`clean_note`).
 - Every AI call goes through the processing-authorization path, in the
