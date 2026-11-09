@@ -28,7 +28,9 @@ other file, which the frontend checks; N574 item 4).
   * an id in the baseline names a test now, is no longer marked built, or no
     longer exists (remove it from the baseline), or is not in the base's
     baseline (it only shrinks; the base is origin/main, as for the docs guard);
-  * docs/APP-MODEL-TO-DO.md is not what --write would write.
+  * docs/APP-MODEL-TO-DO.md is not what --write would write. The page names
+    this repo's code by file and literal, never by line, so it goes stale only
+    when a story, a ref, a test or a state changes, never when code moves.
 """
 from __future__ import annotations
 
@@ -196,17 +198,24 @@ def check(root: Path, base: set[str] | None) -> list[str]:
     return problems
 
 
-def _ref(root: Path, ref: str) -> str:
-    """A code ref as the page shows it: this repo's as `file:line`, the
-    frontend's as its path."""
+def _code(text: str) -> str:
+    """Text as a Markdown code span, whatever backticks it holds."""
+    fence = "`" * (max((len(run) for run in re.findall("`+", text)), default=0) + 1)
+    pad = " " if text.startswith("`") or text.endswith("`") else ""
+    return f"{fence}{pad}{text}{pad}{fence}"
+
+
+def _ref(ref: str) -> str:
+    """A code ref as the page shows it: this repo's as its file and the text
+    that finds the line, never a line number, so moving lines in the code
+    never makes the page stale; the frontend's as its path."""
     parsed = parse_ref(ref)
     if parsed is None:
-        return f"`{ref}`"
+        return _code(ref)
     side, path, literal = parsed
     if side == "fe":
-        return f"frontend `{path}`"
-    line = locate(root, path, literal)
-    return f"`{path}:{line}`" if line else f"`{path}`"
+        return f"frontend {_code(path)}"
+    return f"{_code(path)} · {_code(literal)}" if literal else _code(path)
 
 
 def _test(path: str) -> str:
@@ -227,8 +236,8 @@ def _rules(story: Story) -> str:
     return "; ".join(_text(r) for r in story.get("rules") or []) or "none named"
 
 
-def _entry(root: Path, story: Story) -> list[str]:
-    code = _unique([_ref(root, str(r)) for r in story.get("code") or []])
+def _entry(story: Story) -> list[str]:
+    code = _unique([_ref(str(r)) for r in story.get("code") or []])
     tests = _unique([_test(t) for t in tests_of(story)])
     lines = [f"- **{story.get('id')} · {_text(story.get('title'))}**",
              f"  - Rules: {_rules(story)}",
@@ -240,7 +249,8 @@ def _entry(root: Path, story: Story) -> list[str]:
 
 
 def render(root: Path) -> str:
-    """docs/APP-MODEL-TO-DO.md, from the stories and this repo's files."""
+    """docs/APP-MODEL-TO-DO.md, from the stories alone: no line numbers, so
+    only a change to the stories makes it stale, never code that moves."""
     folder = model_dir(root)
     if folder is None:
         return ""
@@ -258,8 +268,8 @@ def render(root: Path) -> str:
            f"**{len(stories)} stories:** {count['built']} built, {count['partly']} partly built, "
            f"{count['not built']} not built, {count['differs']} where the code disagrees with the rule. This page "
            f"lists the {len(left)} left to build, by state, then by area, each with its rules, its code (this "
-           "repo's as `file:line`, the frontend's as paths), its tests and its note; then the built stories "
-           f"that name no test yet, the baseline in `{BASELINE}`, which only shrinks."]
+           "repo's as the file and the text that finds the line, the frontend's as paths), its tests and its "
+           f"note; then the built stories that name no test yet, the baseline in `{BASELINE}`, which only shrinks."]
     areas = _unique([str(s.get("area")) for s in stories])
     for state, heading in LEFT.items():
         in_state = [s for s in left if s.get("status") == state]
@@ -269,7 +279,7 @@ def render(root: Path) -> str:
             if in_area:
                 out += ["", f"### {area} ({len(in_area)})", ""]
                 for story in in_area:
-                    out += _entry(root, story)
+                    out += _entry(story)
     out += ["", f"## Built, with no test yet ({len(untested)})", ""]
     out += [f"- **{s.get('id')} · {_text(s.get('title'))}** ({_rules(s)})" for s in untested]
     return "\n".join(out).rstrip() + "\n"

@@ -442,7 +442,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 - **C1** a story whose backend code ref names a missing file or a literal no line holds, or whose backend test is gone or unlisted, named by the story's id; the frontend's refs and tests are left to the frontend
 - **C2** a story marked built that names no test, unless the baseline holds it; a baselined story that names a test now, an id no story has, and an id new to the baseline (it only shrinks)
-- **C3** docs/APP-MODEL-TO-DO.md left stale after a story or its code moves
+- **C3** docs/APP-MODEL-TO-DO.md left stale after a story changes; code that only moves never makes it stale (it names no line numbers)
 
 *Why:* If removed: A developer compares the code with stories that point at code and tests that are gone, and a story marked built proves nothing.
 

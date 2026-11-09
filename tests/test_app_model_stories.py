@@ -8,7 +8,8 @@ CATCHES
   C2  a story marked built that names no test, unless the baseline holds it;
       a baselined story that names a test now, an id no story has, and an
       id new to the baseline (it only shrinks)
-  C3  docs/APP-MODEL-TO-DO.md left stale after a story or its code moves
+  C3  docs/APP-MODEL-TO-DO.md left stale after a story changes; code that
+      only moves never makes it stale (it names no line numbers)
 IF REMOVED A developer compares the code with stories that point at code and
            tests that are gone, and a story marked built proves nothing.
 PROVES     C1 -> test_a_missing_ref_fails_with_the_story_id
@@ -97,14 +98,12 @@ def test_a_stale_page_fails_until_it_is_written(tmp_path):
                                                                        "fe:src/PlanCard.tsx::PlanCard"])])
     page = (root / model.PAGE).read_text(encoding="utf-8")
     assert "- **PLAN-16 · Story PLAN-16**" in page
-    assert "Code: `services/plan.py:2`; frontend `src/PlanCard.tsx`" in page
+    assert "Code: `services/plan.py` · `return 'one plan'`; frontend `src/PlanCard.tsx`" in page
     stale = ["docs/APP-MODEL-TO-DO.md is out of date: run python scripts/app_model_stories.py --write"]
 
     plan = root / "services/plan.py"
     plan.write_text("# The plan.\n" + plan.read_text(encoding="utf-8"), encoding="utf-8")
-    assert model.check(root, None) == stale
-    model.write(root)
-    assert "`services/plan.py:3`" in (root / model.PAGE).read_text(encoding="utf-8")
+    assert model.check(root, None) == []
 
     (root / FOLDER / "stories.json").write_text(
         json.dumps([story("PLAN-16", tests=["tests/test_plan.py"])]), encoding="utf-8")

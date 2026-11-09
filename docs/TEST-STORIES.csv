@@ -417,7 +417,8 @@ story's id; the frontend's refs and tests are left to the frontend
 C2  a story marked built that names no test, unless the baseline holds it;
 a baselined story that names a test now, an id no story has, and an
 id new to the baseline (it only shrinks)
-C3  docs/APP-MODEL-TO-DO.md left stale after a story or its code moves","C1 -> test_a_missing_ref_fails_with_the_story_id
+C3  docs/APP-MODEL-TO-DO.md left stale after a story changes; code that
+only moves never makes it stale (it names no line numbers)","C1 -> test_a_missing_ref_fails_with_the_story_id
 C2 -> test_a_built_story_with_no_test_fails_unless_baselined
 C3 -> test_a_stale_page_fails_until_it_is_written","If removed: A developer compares the code with stories that point at code and tests that are gone, and a story marked built proves nothing."
 tests/test_arc_entitlement.py,Story,"As a paying speaker, I want my purchased audit unlocked for me and nobody else, and kept locked on any database hiccup, so that payment is honoured and never leaks (payments on the critical path).","O1  The owner's purchase means entitled.
