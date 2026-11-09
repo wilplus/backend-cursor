@@ -3694,7 +3694,12 @@ O5  The summary and the goodbye after it sort under the walk's last step,
 even when my browser's clock runs ahead of the server's.
 O7  Asked twice for the same Take (the page reloaded while the first ask
 was being written), the first ask's batch stands: nothing is written,
-remembered or let go again, so the goodbye stays under Will's question.
+remembered, let go or asked of the model again, so the goodbye stays
+under Will's question.
+O8  Nothing waits for the summary (WILL-07): the batch after the walk (the
+signed line, the goodbye, what Will remembers) is written at once, and
+GPT-4o's words take the signed line's place later, in the same spot
+of the thread.
 O6  The summary can point back to what I said in an older Take (the same
 project first), never this Take, never a Take whose processing
 authorization is not in force; a failing or slow lookup leaves the
@@ -3712,6 +3717,7 @@ test_a_coach_word_shared_after_the_review_is_its_own_bubble
 O4 -> test_the_summary_knows_the_talk_and_no_settings_ask_follows
 O5 -> test_the_summary_and_the_goodbye_sort_under_the_walk
 O7 -> test_a_second_ask_while_the_first_is_written_changes_nothing
+O8 -> test_the_chat_after_the_walk_never_waits_on_the_summary
 O6 -> test_the_summary_points_back_to_an_older_take_never_this_one,
 test_a_take_not_in_force_never_reaches_the_summary,
 test_a_failing_or_slow_lookup_leaves_the_summary_as_today,
@@ -4312,7 +4318,10 @@ stays faded until the walk is done (N592; WAYIN-N592-1..4).
 W7  ""Learn from others"" leads to ""Next, ask someone who knows. Tap + to
 start."" (FT-14, N592 item 2).
 W8  A speaking coach's link meets none of the choice's beats; the way in
-is in the speaking chat only (N572, N590; WAYIN-N590-1).","W1, W2, W3, W5, W6 -> test_a_talk_the_wait_and_what_comes_next
+is in the speaking chat only (N572, N590; WAYIN-N590-1).
+W9  A first Take on which nothing was heard still gets its plan and
+""You're set."" once its walk is done; no card is checked (N459 item 1).","W1, W2, W3, W5, W6 -> test_a_talk_the_wait_and_what_comes_next
+W9 -> test_a_take_with_nothing_heard_still_gets_its_plan
 W2 -> test_change_it_asks_what_to_change_and_draws_the_card_again
 W4 -> test_sharing_brings_the_join_questions_and_the_agreement
 W6, W7 -> test_learning_after_the_walk_and_record_take_2_waits
