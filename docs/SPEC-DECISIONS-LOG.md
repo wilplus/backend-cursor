@@ -15347,3 +15347,47 @@ N584:
    Which answers show in full is chosen by how directly each one answers
    what you asked, never by a score anyone sees (Never 1).
 No migration. No rules page yet.
+
+**N588 · Suggestions are sensible: a skill coach is suggested only for a
+message that shows the skill, a topic expert only for their topic; you can
+still send to anyone (founder, the Claude Code chat, 9 November 2026: "it's
+not only for the speaking of someone, for example, asking for a programming
+advice to the programmer, and they tick also to see the speaking coach, then
+they see it in the chat with the programmer, but also see the message from
+the speaking coach, because they wanted to see that too. But it is only
+possible if they record the message, because if they text someone, then it
+makes no sense. And it's the same with other coaches. So for example, if
+you're asking for a gym advice and you're not uploading a video of you
+exercising, then it makes no sense and should be prevented. Or if you're
+asking for a gym advice, you cannot be asking your speaking coach, because
+again, it makes no sense"; "there should be a suggestion, but if you are
+insensible, you can send it to whoever you want. But suggestions should be
+sensible"; then, on two questions with recommended answers: "Two lines in
+their setup" and "Allowed, with one line").** Amends N587 items 1 and 3;
+for N470, N471, N559 and N582:
+1. **Two kinds of people answer.** A skill coach judges how you do
+   something (speaking, a squat, handwriting) and needs to see or hear you
+   doing it, whatever the topic. A topic expert judges what it is about
+   (programming, AI law, hair care), from any message, typed or recorded.
+2. **Each person's setup says which:** in the setup (N582 item 1, after
+   step 3's specialization), Will drafts two lines and the host confirms
+   them: what they need to see (a recording of you talking, a video of you
+   moving, a photo, any message) and whether they coach a skill or answer a
+   topic. Will's words are drafted for the founder's OK.
+3. **Will suggests someone only when the message gives them what they
+   need:** a skill coach only for a message that shows the skill (a
+   recording of you talking for a speaking coach, a video of you exercising
+   for a gym coach), a topic expert only for a message on their topic. A
+   typed question never brings a speaking coach; a gym question without a
+   video brings no gym coach, and never a speaking coach.
+4. **N587 holds in every field:** whoever you send a message for is first
+   and ticked, and the answers gather under it in your chat with them. A
+   recorded programming question to the programmer, with the speaking coach
+   ticked too, shows both answers in the chat with the programmer; only you
+   see the gathering.
+5. **You can send to anyone yourself.** When you add someone your message
+   doesn't suit, Will says once that they need to see or hear you doing it,
+   e.g. "Artur coaches speaking; he'll need to hear you. Record it
+   instead?", with "Record" and "Send anyway". The words are drafted for
+   the founder's OK.
+No migration. No rules page yet.
