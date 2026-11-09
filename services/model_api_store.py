@@ -69,6 +69,40 @@ def _in_month(row: dict, month: str) -> bool:
     return str(row.get("created_at") or "")[:7] == month[:7]
 
 
+#: PostgREST answers at most this many rows to one request (Supabase's
+#: default max-rows); every read that can pass it goes through ``_all``.
+PAGE = 1000
+
+
+def _all(make_query: Any, page: int = PAGE) -> list[dict]:
+    """Every row a query matches, a page at a time, so no sum or payout is
+    ever cut off at the server's row cap. ``make_query`` builds a fresh query
+    for each page."""
+    out: list[dict] = []
+    start = 0
+    while True:
+        rows = _rows(make_query().range(start, start + page - 1))
+        out.extend(rows)
+        if len(rows) < page:
+            return out
+        start += page
+
+
+def _by_ids(database: Any, table: str, fields: str, ids: list[str], chunk: int = 200) -> list[dict]:
+    """Rows by id, a chunk of ids a request (a long ``in`` list would pass
+    the URL's length), each chunk read in full."""
+    out: list[dict] = []
+    for i in range(0, len(ids), chunk):
+        part = ids[i:i + chunk]
+        out.extend(_all(lambda part=part: _table(database, table).select(fields).in_("id", part)))
+    return out
+
+
+def _next_month(month: str) -> str:
+    y, m = int(month[:4]), int(month[5:7])
+    return f"{y + (m == 12):04d}-{1 if m == 12 else m + 1:02d}-01"
+
+
 def _model(database: Any, me: str, model_id: Any) -> dict:
     """The model, with its price, if the caller may see it; else 404."""
     model = models._model(database, model_id)
@@ -307,8 +341,9 @@ def usage_for(database: Any, user_id: Any, model_id: Any) -> dict:
     for k in keys:
         k["version_number"] = number.get(str(k.get("version_id")))
     month = _month_start()
-    calls = [c for c in _rows(_table(database, CALLS).select("price_units,sure,created_at")
-                              .eq("model_id", model["id"]).eq("buyer_id", me)) if _in_month(c, month)]
+    calls = [c for c in _all(lambda: _table(database, CALLS).select("price_units,sure,created_at")
+                             .eq("model_id", model["id"]).eq("buyer_id", me).gte("created_at", month))
+             if _in_month(c, month)]
     return rules.usage_screen(model, keys, calls, int(model.get("teachers") or 0), versions)
 
 
@@ -353,9 +388,14 @@ def _give_back_a_free_answer(database: Any, key: dict) -> None:
 
 def answer_with_key(database: Any, key: dict, model_id: Any, message: Any) -> dict:
     """One answer through the API: {answer, sure, version}. The key must be
-    this model's; its buyer must still have the ring and may buy it; a test
-    key spends a free answer; a live key stops before its monthly limit and
-    is charged the whole price before the answer is returned."""
+    this model's; its buyer must still have the ring and may buy it.
+
+    FAIL CLOSED BOTH WAYS: never an unpaid answer, never a charge with no
+    answer. What the answer costs is taken FIRST (a test key's free answer,
+    or a live key's whole price, charged atomically), the provider is asked
+    second, and if no answer comes back, for any reason, what was taken is
+    given back (the free answer, or the tokens, refunded idempotently on the
+    call's id)."""
     buyer = str(key["buyer_id"])
     if _uuid(model_id) != str(key["model_id"]):
         raise KeyRefused("INVALID_KEY", "This key is not for this model.", 401)
@@ -371,40 +411,69 @@ def answer_with_key(database: Any, key: dict, model_id: Any, message: Any) -> di
     if version is None or version.get("status") == "retired":
         raise KeyRefused("VERSION_RETIRED", "This key's version is retired. Switch to the newest.", 410)
     text = _clean_message(message)
-    price = int(model.get("price_units") or 0)
-    if key.get("kind") == "live":
-        from services import token_account
-        if not token_account.enabled():
-            raise KeyRefused("BILLING_OFF", "Live keys are not billing yet. Use a test key.", 503)
-        month = _month_start()
-        spent = sum(int(c.get("price_units") or 0) for c in _rows(
-            _table(database, CALLS).select("price_units,created_at").eq("key_id", key["id"]))
-            if _in_month(c, month))
-        why = rules.call_refusal(key, price, spent)
-        if why:
-            raise KeyRefused("MONTHLY_LIMIT", "This key reached its monthly limit.", 429)
-    elif not _take_a_free_answer(database, key):
-        raise KeyRefused("FREE_ANSWERS_USED", "This test key used its 100 free answers.", 402)
-
-    result = _ask(model, version, text)
-    if result is None:
-        if key.get("kind") == "test":
-            _give_back_a_free_answer(database, key)
-        raise KeyRefused("MODEL_UNAVAILABLE", "The model could not answer just now.", 503)
-
     call_id = str(uuid.uuid4())
-    row = rules.call_row(key, model, version, sure=result["sure"], base_model=_base_model([version]))
-    if not row["test"]:
-        from services import token_account
-        charged = token_account.charge_model_answer(buyer, row["price_units"], ref_id=call_id)
-        if charged.charged != row["price_units"]:
-            raise KeyRefused("NOT_ENOUGH_TOKENS", "Not enough tokens. Top up to go on.", 402)
-    _table(database, CALLS).insert({"id": call_id, "key_id": key["id"], "buyer_id": buyer,
-                                    "model_id": model["id"], "version_id": version["id"], **row}).execute()
+    row = rules.call_row(key, model, version, sure=False, base_model=_base_model([version]))
+    _reserve(database, key, buyer, row, call_id)
+    try:
+        result = _ask(model, version, text)
+    except Exception:
+        _release(database, key, buyer, row, call_id)
+        raise
+    if result is None:
+        _release(database, key, buyer, row, call_id)
+        raise KeyRefused("MODEL_UNAVAILABLE", "The model could not answer just now.", 503)
+    row["sure"] = bool(result["sure"])
+    try:
+        _table(database, CALLS).insert({"id": call_id, "key_id": key["id"], "buyer_id": buyer,
+                                        "model_id": model["id"], "version_id": version["id"], **row}).execute()
+    except Exception:
+        # Paid and answered, but the teachers' row is missing: loud, never silent.
+        logger.error("model_api: a paid answer's call row was not written call=%s model=%s",
+                     call_id, model["id"], exc_info=True)
     _table(database, KEYS).update({"last_used_at": _now().isoformat()}).eq("id", key["id"]).execute()
     if not result["sure"] and key.get("allow_training"):
         _queue_unsure(database, model, text, added_by=None)
     return {"answer": result["answer"], "sure": bool(result["sure"]), "version": int(version["number"])}
+
+
+def _reserve(database: Any, key: dict, buyer: str, row: dict, call_id: str) -> None:
+    """Take what one answer costs before the provider is asked: a test key's
+    free answer, or a live key's whole price (within its monthly limit)."""
+    if row["test"]:
+        if not _take_a_free_answer(database, key):
+            raise KeyRefused("FREE_ANSWERS_USED", "This test key used its 100 free answers.", 402)
+        return
+    from services import token_account
+    if not token_account.enabled():
+        raise KeyRefused("BILLING_OFF", "Live keys are not billing yet. Use a test key.", 503)
+    if rules.call_refusal(key, row["price_units"], _spent_this_month(database, key)):
+        raise KeyRefused("MONTHLY_LIMIT", "This key reached its monthly limit.", 429)
+    charged = token_account.charge_model_answer(buyer, row["price_units"], ref_id=call_id)
+    if charged.charged != row["price_units"]:
+        if charged.charged > 0:
+            token_account.refund_model_answer(buyer, charged.charged, ref_id=call_id)
+        raise KeyRefused("NOT_ENOUGH_TOKENS", "Not enough tokens. Top up to go on.", 402)
+
+
+def _release(database: Any, key: dict, buyer: str, row: dict, call_id: str) -> None:
+    """Give back what ``_reserve`` took, when no answer came back."""
+    if row["test"]:
+        _give_back_a_free_answer(database, key)
+        return
+    from services import token_account
+    done = token_account.refund_model_answer(buyer, row["price_units"], ref_id=call_id)
+    if not done.get("ok"):
+        logger.error("model_api: a charge for an answer that never came was not refunded "
+                     "call=%s reason=%s", call_id, done.get("reason"))
+
+
+def _spent_this_month(database: Any, key: dict) -> int:
+    """What a live key was billed this month: every row counted, past any
+    page size (``_all``)."""
+    month = _month_start()
+    return sum(int(c.get("price_units") or 0) for c in _all(
+        lambda: _table(database, CALLS).select("price_units,created_at").eq("key_id", key["id"])
+        .gte("created_at", month)) if _in_month(c, month))
 
 
 # ── Earnings (MOD-47) ───────────────────────────────────────────────────────
@@ -413,13 +482,14 @@ def earnings_for(database: Any, user_id: Any) -> dict:
     largest: their share, the answers that trained it, this month, and
     when it is paid."""
     me = models._require(database, user_id)
-    mine = _rows(_table(database, SHARES).select("version_id,user_id,points,answers").eq("user_id", me))
+    mine = _all(lambda: _table(database, SHARES).select("version_id,user_id,points,answers").eq("user_id", me))
     best: Optional[tuple[float, dict, dict]] = None
     for s in mine:
         v = _rows(_table(database, VERSIONS).select(_VERSION_FIELDS).eq("id", s["version_id"]).limit(1))
         if not v or v[0].get("status") not in ("released", "retired"):
             continue
-        everyone = _rows(_table(database, SHARES).select("user_id,points").eq("version_id", s["version_id"]))
+        everyone = _all(lambda: _table(database, SHARES).select("user_id,points")
+                        .eq("version_id", s["version_id"]))
         share = rules.share_of(everyone, me)
         if best is None or share > best[0]:
             best = (share, v[0], s)
@@ -428,13 +498,14 @@ def earnings_for(database: Any, user_id: Any) -> dict:
     share, version, row = best
     model = models._model(database, version["model_id"])
     month = _month_start()
-    calls = [c for c in _rows(_table(database, CALLS).select("founder_units,teachers_units,created_at")
-                              .eq("version_id", version["id"])) if _in_month(c, month)]
-    everyone = _rows(_table(database, SHARES).select("user_id,points").eq("version_id", version["id"]))
+    calls = [c for c in _all(lambda: _table(database, CALLS).select("founder_units,teachers_units,created_at")
+                             .eq("version_id", version["id"]).gte("created_at", month))
+             if _in_month(c, month)]
+    everyone = _all(lambda: _table(database, SHARES).select("user_id,points").eq("version_id", version["id"]))
     owed_now = rules.month_payouts(calls, everyone, version.get("founder_id"))
     month_units = sum(u for (uid, _role), u in owed_now.items() if uid == me)
-    owed = sum(int(p.get("units") or 0) for p in _rows(
-        _table(database, PAYOUTS).select("units,status").eq("user_id", me).eq("status", "owed")))
+    owed = sum(int(p.get("units") or 0) for p in _all(
+        lambda: _table(database, PAYOUTS).select("units,status").eq("user_id", me).eq("status", "owed")))
     return rules.earnings_screen(model, int(version["number"]), share, int(row.get("answers") or 0),
                                  month_units, owed)
 
@@ -454,12 +525,11 @@ def download_for(database: Any, user_id: Any, model_id: Any, *, rows: bool = Fal
                 "actions": [rules.WORDS["back_to_list"]]}
     if not rows:
         return rules.download_screen(model)
-    answers = sorted(_rows(_table(database, models.ANSWERS)
-                           .select("example_id,teacher_id,step,answer,counted,created_at")
-                           .eq("model_id", model["id"])), key=lambda a: str(a.get("created_at") or ""))
+    answers = sorted(_all(lambda: _table(database, models.ANSWERS)
+                          .select("example_id,teacher_id,step,answer,counted,created_at")
+                          .eq("model_id", model["id"])), key=lambda a: str(a.get("created_at") or ""))
     ids = sorted({str(a["example_id"]) for a in answers})
-    examples = {str(e["id"]): e for e in (_rows(_table(database, models.EXAMPLES)
-                                                .select("id,kind,source,in_exam").in_("id", ids)) if ids else [])}
+    examples = {str(e["id"]): e for e in _by_ids(database, models.EXAMPLES, "id,kind,source,in_exam", ids)}
     return {"model": model["name"], "rows": rules.download_rows(model, answers, examples)}
 
 
@@ -482,14 +552,13 @@ def record_version(database: Any, model_id: Any, *, provider_model: Optional[str
         "exam": dict(exam or {}),
     }))
     version = made[0]
-    answers = _rows(_table(database, models.ANSWERS).select("example_id,teacher_id,counted")
-                    .eq("model_id", model["id"]).eq("counted", True))
+    answers = _all(lambda: _table(database, models.ANSWERS).select("example_id,teacher_id,counted")
+                   .eq("model_id", model["id"]).eq("counted", True))
     ids = sorted({str(a["example_id"]) for a in answers})
-    sureness = {str(e["id"]): e.get("sureness") for e in (
-        _rows(_table(database, models.EXAMPLES).select("id,sureness").in_("id", ids)) if ids else [])}
+    sureness = {str(e["id"]): e.get("sureness") for e in _by_ids(database, models.EXAMPLES, "id,sureness", ids)}
     for a in answers:
         a["sureness"] = sureness.get(str(a["example_id"]))
-    team = _rows(_table(database, models.TEACHERS).select("user_id,trust_kappa").eq("model_id", model["id"]))
+    team = _all(lambda: _table(database, models.TEACHERS).select("user_id,trust_kappa").eq("model_id", model["id"]))
     reliability = {str(t["user_id"]): float(t["trust_kappa"]) for t in team if t.get("trust_kappa") is not None}
     pts = rules.points(answers, reliability)
     if pts:
@@ -516,16 +585,22 @@ def release(database: Any, user_id: Any, model_id: Any, number: Any) -> dict:
 
 
 def pay_month(database: Any, month: str, *, pay: bool = False) -> dict:
-    """The month's payouts, for every version that sold: written once per
-    (version, person, role, month) as owed. With ``pay``, everyone whose
-    owed total reaches the minimum is paid in tokens, each payout row its
-    own idempotent grant. Run by WillpowerLab's founder; never scheduled."""
+    """A finished month's payouts, for every version that sold: written once
+    per (version, person, role, month) as owed. Only a whole past month is
+    paid: answers keep landing in the current one, so running it mid-month
+    would freeze a partial month and skip the rest. With ``pay``, everyone
+    whose owed total reaches the minimum is paid in tokens, each payout row
+    its own idempotent grant. Run by WillpowerLab's founder; never scheduled."""
     import re
     if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])(-01)?", str(month or "")):
         raise ChatsError("BAD_MONTH", "A month is YYYY-MM.", 400)
     month = str(month)[:7] + "-01"
-    calls = [c for c in _rows(_table(database, CALLS)
-                              .select("version_id,founder_units,teachers_units,test,created_at"))
+    if month >= _month_start():
+        raise ChatsError("MONTH_NOT_FINISHED", "Only a finished month is paid out.", 400)
+    after = _next_month(month)
+    calls = [c for c in _all(lambda: _table(database, CALLS)
+                             .select("version_id,founder_units,teachers_units,test,created_at")
+                             .gte("created_at", month).lt("created_at", after))
              if _in_month(c, month) and not c.get("test")]
     by_version: dict[str, list[dict]] = defaultdict(list)
     for c in calls:
@@ -533,9 +608,9 @@ def pay_month(database: Any, month: str, *, pay: bool = False) -> dict:
     written = 0
     for vid, vcalls in sorted(by_version.items()):
         v = _rows(_table(database, VERSIONS).select("id,founder_id").eq("id", vid).limit(1))
-        shares = _rows(_table(database, SHARES).select("user_id,points").eq("version_id", vid))
-        have = {(str(p["user_id"]), p["role"]) for p in _rows(
-            _table(database, PAYOUTS).select("user_id,role").eq("version_id", vid).eq("month", month))}
+        shares = _all(lambda: _table(database, SHARES).select("user_id,points").eq("version_id", vid))
+        have = {(str(p["user_id"]), p["role"]) for p in _all(
+            lambda: _table(database, PAYOUTS).select("user_id,role").eq("version_id", vid).eq("month", month))}
         for (uid, role), units in sorted(rules.month_payouts(
                 vcalls, shares, (v[0] if v else {}).get("founder_id")).items()):
             if (uid, role) in have:
@@ -547,7 +622,7 @@ def pay_month(database: Any, month: str, *, pay: bool = False) -> dict:
     paid = 0
     if pay:
         from services import token_account
-        owed = _rows(_table(database, PAYOUTS).select("id,user_id,units,status").eq("status", "owed"))
+        owed = _all(lambda: _table(database, PAYOUTS).select("id,user_id,units,status").eq("status", "owed"))
         per: dict[str, list[dict]] = defaultdict(list)
         for p in owed:
             per[str(p["user_id"])].append(p)

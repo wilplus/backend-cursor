@@ -34,6 +34,10 @@ OUTCOME
       "Only its owner and its teachers can download its data."
   O9  An API answer runs under its buyer's processing authority: refused
       there, the model is never asked.
+  O10 Never an unpaid answer and never a charge with no answer: the price is
+      taken first, and refunded when the model gives no answer.
+  O11 A monthly limit and a month's payouts count every answer, past the
+      database's 1,000 rows an answer; only a finished month is paid.
 PROVES   O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
          O2 -> ModelApiTest::test_the_card_and_trying_a_model
          O3 -> ModelApiTest::test_a_test_key_is_shown_once_and_answers_100_times
@@ -43,6 +47,8 @@ PROVES   O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
          O7 -> ModelApiTest::test_a_version_fixes_shares_and_earnings_are_paid_in_tokens
          O8 -> ModelApiTest::test_the_download_holds_the_teachers_answers_only
          O9 -> ModelApiTest::test_an_api_answer_needs_the_buyers_authority
+         O10 -> ModelApiTest::test_no_answer_is_never_charged_and_a_charge_is_never_unanswered
+         O11 -> ModelApiTest::test_limits_and_payouts_count_past_a_thousand_rows
 WHY      The models' API and its money (migration
          a_business_can_buy_a_model_s_answers), served by
          services/model_api_store.py over services/model_api.py.
@@ -57,7 +63,45 @@ from unittest.mock import patch
 from services.db import db
 from services.processing_authorization import ProcessingAuthorizationError
 from services.token_account import ChargeResult
-from tests.test_chats import _Store
+from tests.test_chats import _Query, _Result, _Store
+
+
+class _CappedQuery(_Query):
+    """PostgREST as Supabase runs it: at most 1,000 rows an answer unless a
+    range asks for a page, and the gte/lt filters the money reads use."""
+
+    MAX_ROWS = 1000
+
+    def __init__(self, store, name):
+        super().__init__(store, name)
+        self.offset = 0
+
+    def range(self, start, end):
+        self.offset, self.cap = start, end - start + 1
+        return self
+
+    def gte(self, column, value):
+        self.filters.append(lambda r: str(r.get(column) or "") >= str(value))
+        return self
+
+    def lt(self, column, value):
+        self.filters.append(lambda r: str(r.get(column) or "") < str(value))
+        return self
+
+    def execute(self):
+        if self.write:
+            return super().execute()
+        rows = self.store.tables.setdefault(self.name, [])
+        hits = [dict(r) for r in rows if all(f(r) for f in self.filters)]
+        if self.sort:
+            hits.sort(key=lambda r: r[self.sort[0]], reverse=self.sort[1])
+        cap = min(self.cap or self.MAX_ROWS, self.MAX_ROWS)
+        return _Result(hits[self.offset:self.offset + cap])
+
+
+class _CappedStore(_Store):
+    def table(self, name):
+        return _CappedQuery(self, name)
 
 KASIA = "11111111-1111-4111-8111-111111111111"   # started Job interview coach
 MARTA = "22222222-2222-4222-8222-222222222222"   # teaches it; started Pitch Coach
@@ -85,7 +129,7 @@ class ModelApiTest(unittest.TestCase):
         app = Flask(__name__)
         app.register_blueprint(v2_bp, url_prefix="/v2")
         self.client = app.test_client()
-        self.store = _Store()
+        self.store = _CappedStore()
         self.who = BIZ
         self.ring = True
         self.reply = {"answer": "Name a real weakness, then what you changed.", "confidence": 0.9}
@@ -103,6 +147,12 @@ class ModelApiTest(unittest.TestCase):
             return ChargeResult(True, units if self.charge_ok else 0, 0,
                                 "" if self.charge_ok else "insufficient", "model_answer")
 
+        self.refunded: list[tuple] = []
+
+        def refund(user_id, units, *, ref_id, database=None):
+            self.refunded.append((user_id, units))
+            return {"ok": True, "reason": ""}
+
         def grant(user_id, units, *, ref_id, database=None):
             self.paid.append((user_id, units, ref_id))
             return {"ok": True, "reason": ""}
@@ -113,7 +163,8 @@ class ModelApiTest(unittest.TestCase):
                   patch("services.llm.chat_complete", complete),
                   patch("services.token_account.enabled", lambda: True),
                   patch("services.token_account.charge_model_answer", charge),
-                  patch("services.token_account.model_earnings_grant", grant)):
+                  patch("services.token_account.model_earnings_grant", grant),
+                  patch("services.token_account.refund_model_answer", refund)):
             p.start()
             self.addCleanup(p.stop)
         t = self.store.tables
@@ -290,14 +341,73 @@ class ModelApiTest(unittest.TestCase):
                                           "your first payout, we ask for your name and bank details, as "
                                           "every payment service must.")
 
-        month = store._month_start()[:7]
-        store.pay_month(db, month, pay=True)
-        store.pay_month(db, month, pay=True)  # a second run pays nobody twice
+        self.assertEqual(self._pay(store._month_start()[:7]), "MONTH_NOT_FINISHED")  # never mid-month
+        last = self._last_month()
+        for c in self.store.tables["ai_model_calls"]:
+            c["created_at"] = f"{last}-15T10:00:00+00:00"
+        store.pay_month(db, last, pay=True)
+        store.pay_month(db, last, pay=True)  # a second run pays nobody twice
         # 3000 an answer: 60 to run, 588 to WillpowerLab, 235 to Kasia, 2,117 to the
         # teachers. 130 answers: the teachers' 275,210 split 3:1, and only Marta's
         # part passes the 200,000 minimum; Artur's and Kasia's wait.
         self.assertEqual({(uid, units) for uid, units, _ref in self.paid}, {(MARTA, 206_408)})
         self.assertEqual(len(self.paid), 1)
+
+    @staticmethod
+    def _last_month():
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        return f"{now.year - (now.month == 1):04d}-{12 if now.month == 1 else now.month - 1:02d}"
+
+    def _pay(self, month):
+        from services import model_api_store as store
+        from services.chats import ChatsError
+        try:
+            store.pay_month(db, month, pay=True)
+        except ChatsError as e:
+            return e.code
+        return None
+
+    def test_no_answer_is_never_charged_and_a_charge_is_never_unanswered(self):
+        key = self._key({"kind": "live", "monthly_limit_units": 5000})["key"]
+        with patch("services.llm.chat_complete", lambda **_k: None):
+            out = self._ask(key)
+        self.assertEqual((out.status_code, out.get_json()["code"]), (503, "MODEL_UNAVAILABLE"))
+        self.assertEqual((self.charged, self.refunded), ([(BIZ, 300)], [(BIZ, 300)]))
+        self.assertEqual(self.store.tables.get("ai_model_calls", []), [])
+
+        def boom(**_k):
+            raise RuntimeError("provider down")
+        with patch("services.llm.chat_complete", boom):
+            self.assertEqual(self._ask(key).status_code, 500)
+        self.assertEqual(self.refunded, [(BIZ, 300)] * 2)
+
+        self.charge_ok = False
+        refused = self._ask(key)
+        self.assertEqual(refused.get_json()["code"], "NOT_ENOUGH_TOKENS")
+        self.assertEqual(self.asked, [])        # the provider is never asked unpaid
+
+    def test_limits_and_payouts_count_past_a_thousand_rows(self):
+        from services import model_api_store as store
+        made = self._key({"kind": "live", "monthly_limit_units": 330_000})
+        kid = self.store.tables["ai_model_api_keys"][-1]["id"]
+        now = store._month_start()
+        self.store.tables["ai_model_calls"] = [
+            {"id": f"c{i}", "key_id": kid, "buyer_id": BIZ, "model_id": JOB, "version_id": V1, "test": False,
+             "sure": True, "price_units": 300, "cost_units": 60, "fee_units": 48, "founder_units": 19,
+             "teachers_units": 173, "created_at": f"{now[:7]}-02T10:{i % 60:02d}:00+00:00"}
+            for i in range(1100)]
+        stopped = self._ask(made["key"])            # 1,100 × 300 already reaches 330,000
+        self.assertEqual(stopped.get_json()["code"], "MONTHLY_LIMIT")
+        self.assertEqual(self.charged, [])
+
+        last = self._last_month()
+        for c in self.store.tables["ai_model_calls"]:
+            c["created_at"] = f"{last}-02T10:00:00+00:00"
+        self.store.tables["ai_model_shares"] = [{"version_id": V1, "user_id": MARTA, "points": 1.0, "answers": 1}]
+        store.pay_month(db, last, pay=True)
+        owed = {(p["user_id"], p["role"]): p["units"] for p in self.store.tables["ai_model_payouts"]}
+        self.assertEqual(owed, {(MARTA, "teacher"): 1100 * 173, (KASIA, "founder"): 1100 * 19})
 
     def test_the_download_holds_the_teachers_answers_only(self):
         self.store.tables["ai_model_examples"].append(

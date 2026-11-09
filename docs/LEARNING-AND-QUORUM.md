@@ -206,7 +206,7 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     either version won is under 5% (14 against 3 is; 9 against 6 is not).
   - **A Take may teach** only while its speaker's training yes is on, and
     only Takes recorded after it (N563 item 4, N575).
-- **F6** **A model's API and its money** (N528 items 6, 7, 11 and 12, N531,
+- **F7** **A model's API and its money** (N528 items 6, 7, 11 and 12, N531,
   N566 items 8 to 10, N577, N583): `services/model_api.py`, the rules once,
   read by `services/model_api_store.py` over migration 0521. Not in force
   until it merges.
@@ -228,8 +228,10 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     stops before an answer that would pass it. Every key is pinned to the
     version it was made on until its buyer switches.
   - **An answer** runs under the buyer's processing authority, a permit for
-    each provider call, and is returned only when its whole price was
-    charged (unlike the live loop, it fails closed). "Sure" is the model's
+    each provider call. It fails closed both ways (unlike the live loop):
+    the price (or a test key's free answer) is taken first, the provider is
+    asked second, and if no answer comes it is given back, refunded once on
+    the call's id. Monthly limits and payouts count every row, page by page. "Sure" is the model's
     confidence of at least 0.70 on a choice its recipe offers. An unsure
     question reaches the teachers, names removed, only once the buyer allows
     it, as an example of that model alone.
@@ -237,8 +239,8 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     the teacher's reliability (0.2 to 1), a hard clip (the model 40 to 60%
     sure) worth 1.5. A share is a teacher's points over the version's; a
     teacher who leaves is no longer counted, so their part goes to the others.
-  - **Payouts:** a month's founder's and teachers' parts are written once
-    per version, person and month; paid in tokens (N583 item 4) once a
+  - **Payouts:** only a whole past month is paid; its founder's and
+    teachers' parts are written once per version, person and month; paid in tokens (N583 item 4) once a
     person's owed total reaches the minimum, each payout its own idempotent
     grant. WillpowerLab's founder runs it; nothing is scheduled.
   - **The download** is one route, `GET /v2/models/<id>/download`
@@ -482,7 +484,7 @@ still open.
   `migrations/a_business_can_buy_a_model_s_answers.sql` (0521),
   `services/model_api_store.py` and `routes/v2/model_api.py` (a model's card,
   "Try it", the price, keys, `/v2/models/<id>/answer`, earnings, the one
-  download route, behind the same ring row): F5's API and money
+  download route, behind the same ring row): a model's API and its money (F7)
 - `config.py`: the doors' per-surface sets and `DETECTOR_TRAINING_AUTHORISED`
 
 **Docs:**
@@ -522,7 +524,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
-- 2026-11-09 · N528, N531, N566, N577, N583 · F5's API and money (0521): a model's card, "Try it", the price above the running cost with its split, a key shown once and stored as a hash, test keys free for 100 answers, live keys paid in tokens up to a monthly limit, versions with fixed shares, earnings and payouts in tokens, the teachers' own data to download; waits for its outside review · BE
+- 2026-11-09 · N528, N531, N566, N577, N583 · F7: a model's API and its money (0521): a model's card, "Try it", the price above the running cost with its split, a key shown once and stored as a hash, test keys free for 100 answers, live keys paid in tokens up to a monthly limit, versions with fixed shares, earnings and payouts in tokens, the teachers' own data to download; waits for its outside review · BE
 - 2026-11-09 · N528, N563 · F5's actions on `/v2/models`: an invite put off or accepted, an example added, a spoken answer as its words, Archive, Make public after its disclaimer, the download (teachers' answers only), the profile naming whose it is · BE
 - 2026-11-09 · N528, N563, N566 · F5's tables (0516) and `/v2/models`, behind the ring row `ai_models` at ring 6; waits for its outside review · BE
 - 2026-11-09 · N528, N563, N566 · F5: the model launchpad's rules in one module, before its tables: the list, a model's page, teaching by the recipe card, the trust check, the one queue, release · BE

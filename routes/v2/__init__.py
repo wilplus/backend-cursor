@@ -22,13 +22,16 @@ DOMAIN_MODULES = (
     "processing_authorization", "lounge", "coach",
     "coach_exercises", "line_bank",
     "communities",
+    # A model's API and its money (N528, N531, N583); its own line, so other
+    # slices that add a module at the end of the tuple never conflict with it.
+    "model_api",
     "coach_preference", "coach_audit", "coach_words", "coach_plans",
     "coach_bubbles",
     "admin", "coaching", "canonical_publish", "auth_alias", "lab_recording",
     "projects", "learning_exposures", "user_sessions", "rings",
     "learning_admin", "research", "ai_voice", "voice_notebook", "life_goals", "your_why", "strengths", "walk_quote", "walk_voice", "plan",
     "account_security", "signup_count", "first_visit", "login_code", "whatsapp_webhook",
-    "roadmap_admin", "chats", "push_devices", "take_matches", "learning_models", "model_api",
+    "roadmap_admin", "chats", "push_devices", "take_matches", "learning_models",
 )
 
 

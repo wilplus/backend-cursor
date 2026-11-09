@@ -912,6 +912,25 @@ def model_earnings_grant(user_id: str, units: int, *, ref_id: str,
                          action=MODEL_EARNINGS, tier=None, database=database)
 
 
+#: A model answer's price given back when no answer came (the provider failed
+#: after the charge). Idempotent on the call's id, like the charge itself.
+MODEL_ANSWER_REFUND = "model_answer_refund"
+
+
+def refund_model_answer(user_id: str, units: int, *, ref_id: str,
+                        database=None) -> dict:
+    """Give back what ``charge_model_answer`` took for an answer that never
+    came, into ``bonus_balance`` (never reset, spent second), once per
+    ``ref_id``. Returns ``{"ok", "reason"}``; never raises."""
+    try:
+        return _credit_bonus(user_id, tokens=units, coach_reviews=0, ref_id=ref_id,
+                             action=MODEL_ANSWER_REFUND, tier=None, database=database)
+    except Exception as e:  # noqa: BLE001 — a refund failure is reported, never raised
+        logger.error("token_account: a model answer refund failed user=%s ref=%s err=%s",
+                     user_id, ref_id, e, exc_info=True)
+        return {"ok": False, "reason": "write_failed"}
+
+
 def _credit_bonus(user_id: str, *, tokens: int, coach_reviews: int,
                   ref_id: str, action: str, tier: Optional[str],
                   database=None) -> dict:
