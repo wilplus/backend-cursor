@@ -64,7 +64,7 @@ def gathered(database: Any, user_id: Any, take: Any) -> dict:
     if not sent:
         raise _not_found()
     sent.sort(key=lambda r: str(r.get("created_at") or ""))
-    answers = []
+    answers: list[dict[str, Any]] = []
     for i, s in enumerate(sent):
         thread = str(s["thread_id"])
         rows = _rows(_table(database, MESSAGES).select("id,author_member_id,kind,meta,created_at")
@@ -80,7 +80,7 @@ def gathered(database: Any, user_id: Any, take: Any) -> dict:
                         "name": str(other.get("display_name") or "").split(" ")[0] or None,
                         "title": ON_MATTER if fit.get("coaches") == "topic" else ON_SPEAKING,
                         "at": got.get("created_at")})
-    groups = [{"title": t, "answers": [a for a in answers if a["title"] == t]}
+    groups: list[dict[str, Any]] = [{"title": t, "answers": [a for a in answers if a["title"] == t]}
               for t in (ON_SPEAKING, ON_MATTER)]
     shown = [a for a in answers if a["coach"]]
     for g in groups:
