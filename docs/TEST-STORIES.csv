@@ -3674,7 +3674,12 @@ O5  The summary and the goodbye after it sort under the walk's last step,
 even when my browser's clock runs ahead of the server's.
 O7  Asked twice for the same Take (the page reloaded while the first ask
 was being written), the first ask's batch stands: nothing is written,
-remembered or let go again, so the goodbye stays under Will's question.
+remembered, let go or asked of the model again, so the goodbye stays
+under Will's question.
+O8  Nothing waits for the summary (WILL-07): the batch after the walk (the
+signed line, the goodbye, what Will remembers) is written at once, and
+GPT-4o's words take the signed line's place later, in the same spot
+of the thread.
 O6  The summary can point back to what I said in an older Take (the same
 project first), never this Take, never a Take whose processing
 authorization is not in force; a failing or slow lookup leaves the
@@ -3692,6 +3697,7 @@ test_a_coach_word_shared_after_the_review_is_its_own_bubble
 O4 -> test_the_summary_knows_the_talk_and_no_settings_ask_follows
 O5 -> test_the_summary_and_the_goodbye_sort_under_the_walk
 O7 -> test_a_second_ask_while_the_first_is_written_changes_nothing
+O8 -> test_the_chat_after_the_walk_never_waits_on_the_summary
 O6 -> test_the_summary_points_back_to_an_older_take_never_this_one,
 test_a_take_not_in_force_never_reaches_the_summary,
 test_a_failing_or_slow_lookup_leaves_the_summary_as_today,

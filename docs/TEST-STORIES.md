@@ -3381,7 +3381,8 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O3** A coach note rewrites the summary in place, keeping the first one however many notes follow, once per note; a note shared after the review is its own bubble, stored once.
 - **O4** Nothing is asked after the Take when nothing is off or missing: a speaker without a WhatsApp number is not asked for it (that waits for the next visit, N294 item 8), and the goodbye, "Good job. See you next time.", comes right after the summary (services/after_take.py).
 - **O5** The summary and the goodbye after it sort under the walk's last step, even when my browser's clock runs ahead of the server's.
-- **O7** Asked twice for the same Take (the page reloaded while the first ask was being written), the first ask's batch stands: nothing is written, remembered or let go again, so the goodbye stays under Will's question.
+- **O7** Asked twice for the same Take (the page reloaded while the first ask was being written), the first ask's batch stands: nothing is written, remembered, let go or asked of the model again, so the goodbye stays under Will's question.
+- **O8** Nothing waits for the summary (WILL-07): the batch after the walk (the signed line, the goodbye, what Will remembers) is written at once, and GPT-4o's words take the signed line's place later, in the same spot of the thread.
 - **O6** The summary can point back to what I said in an older Take (the same project first), never this Take, never a Take whose processing authorization is not in force; a failing or slow lookup leaves the summary as it was, and a number it brings in still falls back to the approved copy (founder 2026-10-20, step 3).
 
 *Why:* Never-rule 1; founder lock 2026-10-12 (section 3) and 2026-10-14; founder 2026-10-20 (the chat keeps the order it shows; one action at a time); 2026-10-31 (N294: no push, settings at the next visit).
