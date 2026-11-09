@@ -2975,6 +2975,19 @@ O4  An address Apple no longer knows is forgotten.","O1 -> PushDevicesTest::test
 O2 -> PushDevicesTest::test_without_apples_key_nothing_is_sent
 O3 -> PushDevicesTest::test_an_app_run_from_xcode_is_reached_on_apples_sandbox
 O4 -> PushDevicesTest::test_an_address_apple_no_longer_knows_is_forgotten","Push in the iPhone app (founder 2026-11-03, N385); Apple's service is stood in for (services/push_devices.py)."
+tests/test_question_bundles.py,Story,"As a host, I want one recording to answer everyone who asked me the same thing, so that I answer a question once and everyone who asks it, now or later, gets my answer in their own chat with me (N584).","O1  Questions that ask the same thing gather in one bundle in my queue:
+""Ariel asked: ..."", then ""2 people asked: ..."", each person's question
+with its colour, and ""Record one answer""; a different question starts
+its own bundle.
+O2  My one recording goes to everyone in the bundle, each privately in
+their own chat with me, under their own question quoted; nobody gets
+it twice.
+O3  Someone who asks the same thing later gets my answer at once, with its
+colour for how sure the match is.
+O4  Without the chat builder's ring nothing is bundled and the queue is 404.","O1 -> BundlesTest::test_questions_that_ask_the_same_thing_gather_in_one_bundle
+O2 -> BundlesTest::test_one_recording_answers_everyone_in_the_bundle
+O3 -> BundlesTest::test_a_later_asker_gets_the_answer_at_once
+O4 -> BundlesTest::test_without_the_ring_nothing_is_bundled","""how do we bundle the people who have similar questions ... so that I can answer it to that whole group with my one recording?"" (founder, 9 November 2026, N584)."
 tests/test_reacceptance_signal_postgres.py,Story,"As a returning speaker whose Terms changed, I want to be told the Terms moved instead of being shown a first-time screen, so that I re-accept knowing what changed (consent).","O1  Someone holding a receipt for an older policy only is flagged
 reacceptance_required, with the version they last agreed to.
 O2  A first-timer (no receipt at all) is not flagged and has no version:
