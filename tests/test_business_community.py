@@ -32,16 +32,19 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from tests.test_take_match import AMIRA, LEA, TEAM, TOMEK, TakeMatchTest
+from tests import test_take_match as matching
+from tests.test_take_match import AMIRA, LEA, TEAM, TOMEK
 
 NEW = "99999999-1111-4111-8111-999999999999"
 BIZ = "abababab-abab-4bab-8bab-abababababab"
 
 
 class BusinessCommunityTest(unittest.TestCase):
-    setUp = TakeMatchTest.setUp
-    _as, _get, _post, _suggested = (TakeMatchTest._as, TakeMatchTest._get,
-                                    TakeMatchTest._post, TakeMatchTest._suggested)
+    setUp = matching.TakeMatchTest.setUp
+    _as = matching.TakeMatchTest._as
+    _get = matching.TakeMatchTest._get
+    _post = matching.TakeMatchTest._post
+    _suggested = matching.TakeMatchTest._suggested
 
     def _came_by(self, inviter, newcomer=NEW):
         t = self.store.tables
