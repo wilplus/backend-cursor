@@ -463,7 +463,8 @@ O10 In Will's chat, Will says what I know can earn tokens, with ""Set up my
 chat""; then asks, one at a time, my welcome, how people answer, my
 specialization, what people learn, a skill or a topic and what I need
 to see, and ""Do you want to automate your own chat?""; ""Go live"" keeps
-it, and the next person who joins meets it (N582 item 1, N586 item 5).
+it, with the first Take's questions set in the builder, and the next
+person who joins meets it (N582 item 1, N586 item 5).
 O11 A welcome that scores people is not kept: Will says why and asks again.","O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
 O2 -> AssistantsTest::test_a_testers_join_page_names_the_assistant_and_wills_chat
 O3 -> RecipeTest::test_a_host_sets_welcome_questions_and_how_people_answer
@@ -2975,6 +2976,29 @@ O4  An address Apple no longer knows is forgotten.","O1 -> PushDevicesTest::test
 O2 -> PushDevicesTest::test_without_apples_key_nothing_is_sent
 O3 -> PushDevicesTest::test_an_app_run_from_xcode_is_reached_on_apples_sandbox
 O4 -> PushDevicesTest::test_an_address_apple_no_longer_knows_is_forgotten","Push in the iPhone app (founder 2026-11-03, N385); Apple's service is stood in for (services/push_devices.py)."
+tests/test_question_bundles.py,Story,"As a host, I want one recording to answer everyone who asked me the same thing, so that I answer a question once and everyone who asks it, now or later, gets my answer in their own chat with me (N584).","O1  Questions that ask the same thing gather in one bundle in my queue:
+""Ariel asked: ..."", then ""2 people asked: ..."", each person's question
+with its colour, and ""Record one answer""; a different question starts
+its own bundle.
+O2  My one recording goes to everyone in the bundle, each privately in
+their own chat with me, under their own question quoted; nobody gets
+it twice.
+O3  Someone who asks the same thing later gets my answer at once, with its
+colour for how sure the match is.
+O4  Without the chat builder's ring nothing is bundled and the queue is 404.
+O5  My own voice replies in my chats are never bundled as questions.
+O6  A later asker's automatic answer reaches their iPhone like any answer.
+O7  ""Record one answer"" asks my recording consent again: withdrawn, nothing
+is sent.
+O8  When an asker's account is erased, their words leave the bundle: it
+reads as the next question, and nothing of theirs is kept.","O1 -> BundlesTest::test_questions_that_ask_the_same_thing_gather_in_one_bundle
+O2 -> BundlesTest::test_one_recording_answers_everyone_in_the_bundle
+O3 -> BundlesTest::test_a_later_asker_gets_the_answer_at_once
+O4 -> BundlesTest::test_without_the_ring_nothing_is_bundled
+O5 -> BundlesTest::test_my_own_replies_are_never_bundled
+O6 -> BundlesTest::test_a_later_asker_gets_the_answer_at_once
+O7 -> BundlesTest::test_one_answer_asks_my_recording_consent_again
+O8 -> BundlesTest::test_an_erased_askers_words_leave_the_bundle","""how do we bundle the people who have similar questions ... so that I can answer it to that whole group with my one recording?"" (founder, 9 November 2026, N584)."
 tests/test_reacceptance_signal_postgres.py,Story,"As a returning speaker whose Terms changed, I want to be told the Terms moved instead of being shown a first-time screen, so that I re-accept knowing what changed (consent).","O1  Someone holding a receipt for an older policy only is flagged
 reacceptance_required, with the version they last agreed to.
 O2  A first-timer (no receipt at all) is not flagged and has no version:
@@ -3701,7 +3725,12 @@ O5  The summary and the goodbye after it sort under the walk's last step,
 even when my browser's clock runs ahead of the server's.
 O7  Asked twice for the same Take (the page reloaded while the first ask
 was being written), the first ask's batch stands: nothing is written,
-remembered or let go again, so the goodbye stays under Will's question.
+remembered, let go or asked of the model again, so the goodbye stays
+under Will's question.
+O8  Nothing waits for the summary (WILL-07): the batch after the walk (the
+signed line, the goodbye, what Will remembers) is written at once, and
+GPT-4o's words take the signed line's place later, in the same spot
+of the thread.
 O6  The summary can point back to what I said in an older Take (the same
 project first), never this Take, never a Take whose processing
 authorization is not in force; a failing or slow lookup leaves the
@@ -3719,6 +3748,7 @@ test_a_coach_word_shared_after_the_review_is_its_own_bubble
 O4 -> test_the_summary_knows_the_talk_and_no_settings_ask_follows
 O5 -> test_the_summary_and_the_goodbye_sort_under_the_walk
 O7 -> test_a_second_ask_while_the_first_is_written_changes_nothing
+O8 -> test_the_chat_after_the_walk_never_waits_on_the_summary
 O6 -> test_the_summary_points_back_to_an_older_take_never_this_one,
 test_a_take_not_in_force_never_reaches_the_summary,
 test_a_failing_or_slow_lookup_leaves_the_summary_as_today,
@@ -4319,7 +4349,10 @@ stays faded until the walk is done (N592; WAYIN-N592-1..4).
 W7  ""Learn from others"" leads to ""Next, ask someone who knows. Tap + to
 start."" (FT-14, N592 item 2).
 W8  A speaking coach's link meets none of the choice's beats; the way in
-is in the speaking chat only (N572, N590; WAYIN-N590-1).","W1, W2, W3, W5, W6 -> test_a_talk_the_wait_and_what_comes_next
+is in the speaking chat only (N572, N590; WAYIN-N590-1).
+W9  A first Take on which nothing was heard still gets its plan and
+""You're set."" once its walk is done; no card is checked (N459 item 1).","W1, W2, W3, W5, W6 -> test_a_talk_the_wait_and_what_comes_next
+W9 -> test_a_take_with_nothing_heard_still_gets_its_plan
 W2 -> test_change_it_asks_what_to_change_and_draws_the_card_again
 W4 -> test_sharing_brings_the_join_questions_and_the_agreement
 W6, W7 -> test_learning_after_the_walk_and_record_take_2_waits

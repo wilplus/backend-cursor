@@ -15505,3 +15505,101 @@ Not in force until built and merged. No migration in this entry.
 The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 §2, when built.
+
+**N593 · The overnight build's choices, 9 November 2026: where a logged
+decision left a detail open, each build took the recommended option,
+under the founder's standing instruction for the night (founder, the
+Claude Code chat, 9 November 2026: "don't get stale just go with your
+recommendations if something is unsure!"). Each item stands until the
+founder overrules it; overruling one is a new entry.** By slice, with
+the PR that built it:
+1. **The way in** (N453, N572, N573, N590, N592; backend #1854, frontend
+#1337):
+   - the choice does not wait for the Take's reading; "Here's how others
+     will see you:" comes as soon as the words are stored (N453 item 7);
+   - "Your feedback is almost ready…" is followed, when processing ends, by
+     "Your feedback is ready." with "Open your feedback ›";
+   - if the walk is done before "You're set.", N592 item 2's after-walk
+     bubble comes in place of the state bubble;
+   - the team and the coach's link are told to the way in by the app;
+     "Which team are you in?" and "How big you want your audience?" (N453
+     items 5 and 6) wait;
+   - the answer to "Tell me what you'd like to do, and I'll show you
+     where." is kept in Will's notes, with no reply line until one is
+     worded (Never 4);
+   - "I agree" is kept on the plan until a consent record for the data
+     processing agreement exists;
+   - for Take 1, the walk opens from the orange row at the top, not by
+     itself (N453 item 7).
+2. **The plan** (N564; backend #1853, frontend #1335):
+   - the first Take fills no mark; the twelve marks are the Takes after the
+     plan is drawn;
+   - a coach's level runs its own four Takes, then the machine picks the
+     next;
+   - a new set skips only the level just finished, and within a set a level
+     never repeats;
+   - the last ratings come once per set, after the twelfth Take;
+   - the hello comes once a day, the first time the app opens on a day with
+     no Take yet;
+   - a day said on the first Take's slides counts as the talk's date, and
+     with a talk's date both calls fall before it;
+   - "stuck", for the coach's queue, is three Takes on a level, none of
+     which reached it;
+   - the day line shows only in a chat that spans more than one day, in the
+     phone's time zone;
+   - "See your plan" is the same card, without "This week's level"; on the
+     card "Plan" is the small grey label and the level's name the bold
+     line;
+   - PLAN-14 (the practice-day reminder) is not built: with no practice
+     days, there is none to remind of (N155, N564).
+3. **Small fixes** (backend #1850, #1851, #1855, #1858; frontend #1332 to
+#1334, #1336):
+   - a draft of Will's "repeats the private note" when it shares four words
+     in a row with it, unless the speaker said them in the Take (N565);
+   - the "Microsoft" sign-in stays behind NEXT_PUBLIC_MICROSOFT_SIGNIN=on
+     until the Azure provider is on in Supabase; with it on, the four small
+     buttons sit two by two;
+   - the Training corpus row sits under Data, as N511 item 1 has it;
+   - WILL-13 gets no layout test (CLAUDE.md, How to test).
+4. **AI models, the core** (N520, N528, N563, N566; backend #1860, and
+#1863 waiting for its migration's review):
+   - a model's progress is its slowest jar, against 500 counted answers and
+     100 exam cases (N528 item 8, N566 item 5); a model may carry its own
+     targets;
+   - "clearly not luck" is an exact two-sided sign test on the cases either
+     version won, p < 0.05 (14 against 3 passes; 9 against 6 does not);
+   - the queue gives the kinds a model lacks first, then the examples it is
+     least sure of, with models taking turns;
+   - the trust check's 80% range is a Wilson interval on agreement, turned
+     into kappa; each teacher's kappa is stored for the trusted median and
+     never shown (Never 1);
+   - a teacher's example carries only its id, model, kind, content,
+     privacy and source: never the machine's read, the known answer or the
+     speaker;
+   - the launchpad starts at ring 6;
+   - when an owner's account is erased, their public model stays, with no
+     owner (N528 item 11);
+   - an answer to a shared public clip is stored once per model.
+5. **Matching** (N463, N559; backend #1861, and #1862 waiting for its
+migration's review):
+   - what a suggestion led to weighs 0.5, with a prior of two suggestions
+     pulled toward "answered"; knowledge still decides;
+   - "kept talking" is three or more messages after the answer within 14
+     days, from both people;
+   - matching by how you speak is off by default (N463 item 2) and kept on
+     the account, not in a table; turning it off deletes the speaking
+     reads kept with matching's suggestions, while the Takes' own feedback
+     stays;
+   - your own chats are ranked by the knowledge score alone;
+   - "For you" lists the models you teach first, then the fitting ones;
+   - a business's community is its own table, not a kind of the retired
+     passcode communities; the founder makes one from the admin route
+     until a screen does, and its owner is its first member;
+   - the community offered to a newcomer is the one of the owner of the
+     link that brought them, the first they joined if several; an offer
+     shown but not answered comes again until answered, then never again.
+Words drafted tonight wait for the founder's OK and are listed in the
+morning report; none is on screen without it (Never 4).
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+(items 1 and 2), the other items in their PRs' home docs.

@@ -36,7 +36,8 @@ OUTCOME
       chat"; then asks, one at a time, my welcome, how people answer, my
       specialization, what people learn, a skill or a topic and what I need
       to see, and "Do you want to automate your own chat?"; "Go live" keeps
-      it, and the next person who joins meets it (N582 item 1, N586 item 5).
+      it, with the first Take's questions set in the builder, and the next
+      person who joins meets it (N582 item 1, N586 item 5).
   O11 A welcome that scores people is not kept: Will says why and asks again.
 PROVES   O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
          O2 -> AssistantsTest::test_a_testers_join_page_names_the_assistant_and_wills_chat
@@ -209,6 +210,8 @@ class SetupInWillsChatTest(unittest.TestCase):
             "This is what someone new will meet in your chat:", "Tomek's assistant",
             "Tomek's specialization: Gymnastics.", "Your first handstand, step by step.",
             "Hi, I'm Tomek. Let's get you moving."])
+        self.client.put("/v2/chats/recipe", headers=self._as(TOMEK), json={
+            "questions": [{"q": "Which move do you want first?", "answers": ["Handstand"]}]})
         self.assertEqual(self._say(picked="Go live"), [
             "Go live", "Your assistant is live. Everyone who joins through your link meets it."])
         kept = self.client.get("/v2/chats/recipe", headers=self._as(TOMEK)).get_json()["recipe"]
@@ -216,6 +219,7 @@ class SetupInWillsChatTest(unittest.TestCase):
             {"tap": False, "type": False, "record": True},
             {"coaches": "skill", "needs": "moving", "topics": [], "skill": "gymnastics"},
             {"automate": "no"}))
+        self.assertEqual([q["q"] for q in kept["questions"]], ["Which move do you want first?"])
         token = self._link(TOMEK).get_json()["token"]
         chat = self._join(PIOTR, token).get_json()["chat"]["id"]
         seen = self.client.get(f"/v2/chats/{chat}/messages", headers=self._as(PIOTR)).get_json()["messages"]

@@ -539,6 +539,41 @@ def v2_chats_recipe_setup_answer():
         db, str(request.user_id), body)))
 
 
+# ── One recording answers everyone who asked (services/question_bundles.py; N584)
+
+@v2_bp.route("/chats/bundles", methods=["GET"])
+@require_auth
+def v2_chats_bundles():
+    """My bundles of questions, in Will's chat: the ones waiting first."""
+    from services import question_bundles
+    return _builder_or_404(lambda: _run("bundles", lambda: question_bundles.queue(
+        db, str(request.user_id))))
+
+
+@v2_bp.route("/chats/bundles/<bundle_id>/<action>", methods=["POST"])
+@limiter.limit("120 per hour", scope="chats_bundles")
+@require_auth
+def v2_chats_bundle_act(bundle_id, action):
+    """"Record one answer" ({take, duration_ms}), split ({questions}) or
+    merge ({into})."""
+    from services import assistants, question_bundles
+    if not assistants.on(db, str(request.user_id)):
+        return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
+    if action == "answer":
+        # A recorded answer, as "Record an answer" is: the recording consent
+        # is asked again, so a host who withdrew it sends nothing.
+        refused = _recording_refused()
+        if refused is not None:
+            return refused
+    work = {"answer": question_bundles.answer, "split": question_bundles.split,
+            "merge": question_bundles.merge}.get(action)
+    if work is None:
+        return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
+    body = request.get_json(silent=True)
+    return _builder_or_404(lambda: _run(f"bundle {action}", lambda: work(
+        db, str(request.user_id), bundle_id, body)))
+
+
 @v2_bp.route("/user/takes/<take_id>/answers", methods=["GET"])
 @require_auth
 def v2_take_answers(take_id):
