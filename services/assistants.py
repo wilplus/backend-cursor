@@ -178,32 +178,43 @@ def normalize(body: Any) -> dict:
             raise RecipeError("RECIPE_LOCKED", f"{key} is not yours to set.")
         if key not in DEFINABLE:
             raise RecipeError("RECIPE_INVALID", f"{key} cannot be set yet.")
-    welcome = body.get("welcome") or []
-    if not isinstance(welcome, list) or len(welcome) > MAX_WELCOME_LINES:
-        raise RecipeError("RECIPE_INVALID", f"The welcome is up to {MAX_WELCOME_LINES} lines.")
-    questions = body.get("questions") or []
-    if not isinstance(questions, list) or len(questions) > MAX_QUESTIONS:
-        raise RecipeError("RECIPE_INVALID", f"Up to {MAX_QUESTIONS} questions.")
-    raw_with = body.get("answer_with")
-    with_ = raw_with if isinstance(raw_with, dict) else {}
-    answer_with = {k: bool(with_.get(k, True)) for k in ANSWER_WITH}
-    if not (answer_with["type"] or answer_with["record"] or answer_with["tap"]):
-        raise RecipeError("RECIPE_INVALID", "People need at least one way to answer.")
-    about = body.get("about") or []
-    if not isinstance(about, list) or len(about) > MAX_ABOUT_LINES:
-        raise RecipeError("RECIPE_INVALID", f"Who you are is up to {MAX_ABOUT_LINES} lines.")
-    out = {"welcome": [_line(w, MAX_LINE, f"Welcome line {i + 1}") for i, w in enumerate(welcome)],
-           "questions": [_question(q, i) for i, q in enumerate(questions)],
-           "answer_with": answer_with,
-           "about": [_line(a, MAX_LINE, f"About line {i + 1}") for i, a in enumerate(about)]}
+    out = {"welcome": _lines(body.get("welcome"), MAX_WELCOME_LINES, "Welcome line"),
+           "questions": _questions(body.get("questions")),
+           "answer_with": _answer_with(body.get("answer_with")),
+           "about": _lines(body.get("about"), MAX_ABOUT_LINES, "About line")}
     if body.get("fit") is not None:
         out["fit"] = _fit(body.get("fit"))
     if body.get("model") is not None:
-        model = body.get("model")
-        if not isinstance(model, dict) or model.get("automate") not in AUTOMATE:
-            raise RecipeError("RECIPE_INVALID", "Say whether to automate your chat.")
-        out["model"] = {"automate": model["automate"]}
+        out["model"] = _model(body.get("model"))
     return out
+
+
+def _lines(raw: Any, most: int, field: str) -> list[str]:
+    lines = raw or []
+    if not isinstance(lines, list) or len(lines) > most:
+        raise RecipeError("RECIPE_INVALID", f"{field}s: up to {most}.")
+    return [_line(w, MAX_LINE, f"{field} {i + 1}") for i, w in enumerate(lines)]
+
+
+def _questions(raw: Any) -> list[dict]:
+    questions = raw or []
+    if not isinstance(questions, list) or len(questions) > MAX_QUESTIONS:
+        raise RecipeError("RECIPE_INVALID", f"Up to {MAX_QUESTIONS} questions.")
+    return [_question(q, i) for i, q in enumerate(questions)]
+
+
+def _answer_with(raw: Any) -> dict:
+    given = raw if isinstance(raw, dict) else {}
+    answer_with = {k: bool(given.get(k, True)) for k in ANSWER_WITH}
+    if not any(answer_with.values()):
+        raise RecipeError("RECIPE_INVALID", "People need at least one way to answer.")
+    return answer_with
+
+
+def _model(raw: Any) -> dict:
+    if not isinstance(raw, dict) or raw.get("automate") not in AUTOMATE:
+        raise RecipeError("RECIPE_INVALID", "Say whether to automate your chat.")
+    return {"automate": raw["automate"]}
 
 
 def _fit(raw: Any) -> dict:

@@ -151,8 +151,8 @@ class AssistantsTest(unittest.TestCase):
 
 
 class SetupInWillsChatTest(unittest.TestCase):
-    setUp_ = ChatLinksTest.setUp
-    _as, _link, _join = ChatLinksTest._as, ChatLinksTest._link, ChatLinksTest._join
+    setUp_ = TL.ChatLinksTest.setUp
+    _as, _link, _join = TL.ChatLinksTest._as, TL.ChatLinksTest._link, TL.ChatLinksTest._join
 
     def setUp(self):
         from services.db import db
