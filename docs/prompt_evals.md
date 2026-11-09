@@ -111,6 +111,7 @@ preferred wherever a rule CAN be deterministic):
 | `expect_contains` | object | `{"dotted.path": substring}` (case-insensitive) |
 | `substring_of_input` | list | `[{"path": "quote", "input": "transcript"}]` — output field must be a verbatim substring of an input field (anti-hallucination / L1 pins) |
 | `allow_none_output` | bool | a `None` return is a pass (for surfaces where declining is correct) |
+| `pass_k_of_n` | [k, n] | the case passes when k of up to n runs pass, every failure kind counted (for a surface meant to vary, such as Will's voice: founder 2026-11-09, "best of three" = `[2, 3]`); without it, one run with one semantic retry |
 | `semantic_intent` | string | ONE sentence; judged by the temperature-0 grader. Keep it a single outcome, not a three-clause aspiration (probe v2 lesson: less surface area, less grader hallucination) |
 
 Authoring guidance (from the probe's hard-won history):
