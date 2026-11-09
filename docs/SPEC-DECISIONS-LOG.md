@@ -15296,3 +15296,98 @@ N308, N335, N496, N572, N573 and N578 to N583:
    if you want it; "Set up my chat" starts the setup (N582). What a chat
    costs in tokens is decided later.
 No migration. No rules page yet.
+
+**N587 · One Take, its answers in one place: after a Take for your coach,
+Will suggests at most two more people; each answer lands in the chat with
+whoever answered and is gathered under the Take, where only you see it
+(founder, the Claude Code chat, 9 November 2026: "design in the prototype
+the mechanics ... when you are sending a message to your speaking coach to
+prepare for the presentation. And you are being suggested also another
+coach does the same thing, or someone after you already recorded that
+matches the topic of your speech, so that you can consult the
+technicalities of it. But that's a suggestion after the recording. And the
+bubbles should be smart bubbles"; "by default, you want to share the
+message with the one you are recording it for, but you might be also
+sharing it with someone else"; "where does it land? Does it land in your
+chat with the coach? But also, what if there is also an answer from
+someone on the technicalities? ... Maybe the way we have it right now, at
+the top of the chat ... what if you have three advices on the matter? What
+if you have two advices on the speaking? ... so it's a multi-party chat
+for a moment. But it all should be smart bubbles, so not every message
+should be displayed, only the best message, only the best advice. But if
+you send them the request and they all answered, you should be able to
+receive all of them to see at least that they texted you back"; then, on
+four questions with recommended answers: "Two at most, with reasons",
+"Their chat, gathered under the Take", "Coach always, plus the best other"
+and "Only if you share it").** For N470, N471, N477, N559, N580, N582 and
+N584:
+1. **After a Take for your coach, on the screen of who hears it** (N470),
+   your coach comes first, ticked. Under them, at most two more people,
+   unticked, each with a line Will writes from what you said: another
+   coach, a second ear on how you speak, and someone who knows your topic,
+   for the technical part, chosen from people's specializations (N582),
+   what they have answered and the matcher (N559). If someone already
+   recorded an answer on your topic that they keep for the people who ask
+   them (N584), "Listen" to it is offered too. Will's lines are drafted for
+   the founder's OK.
+2. **Each person gets their own copy** (N471), sees what you asked of them,
+   and answers in their chat with you, in their own voice (N580 item 7).
+3. **Each answer lands in the chat with whoever answered, and is gathered
+   under the Take:** in the chat you recorded it in, under your Take, one
+   smart bubble shows your coach's answer and the best of the others (the
+   best on your speaking and the best on the matter), with the faces of
+   everyone who answered. A tap opens all of them together, under "On your
+   speaking" and "On the matter", each with "Read it" and a way into that
+   person's chat. While any answer is new, a strip at the top of that chat
+   says so and opens the same list.
+4. **Only you see the gathering.** Your coach doesn't see what the others
+   advised unless you share it: "Share with {name}" on any answer forwards
+   it into your chat with them.
+5. **Nobody is hidden:** everyone who answered is named, with their face.
+   Which answers show in full is chosen by how directly each one answers
+   what you asked, never by a score anyone sees (Never 1).
+No migration. No rules page yet.
+
+**N588 · Suggestions are sensible: a skill coach is suggested only for a
+message that shows the skill, a topic expert only for their topic; you can
+still send to anyone (founder, the Claude Code chat, 9 November 2026: "it's
+not only for the speaking of someone, for example, asking for a programming
+advice to the programmer, and they tick also to see the speaking coach, then
+they see it in the chat with the programmer, but also see the message from
+the speaking coach, because they wanted to see that too. But it is only
+possible if they record the message, because if they text someone, then it
+makes no sense. And it's the same with other coaches. So for example, if
+you're asking for a gym advice and you're not uploading a video of you
+exercising, then it makes no sense and should be prevented. Or if you're
+asking for a gym advice, you cannot be asking your speaking coach, because
+again, it makes no sense"; "there should be a suggestion, but if you are
+insensible, you can send it to whoever you want. But suggestions should be
+sensible"; then, on two questions with recommended answers: "Two lines in
+their setup" and "Allowed, with one line").** Amends N587 items 1 and 3;
+for N470, N471, N559 and N582:
+1. **Two kinds of people answer.** A skill coach judges how you do
+   something (speaking, a squat, handwriting) and needs to see or hear you
+   doing it, whatever the topic. A topic expert judges what it is about
+   (programming, AI law, hair care), from any message, typed or recorded.
+2. **Each person's setup says which:** in the setup (N582 item 1, after
+   step 3's specialization), Will drafts two lines and the host confirms
+   them: what they need to see (a recording of you talking, a video of you
+   moving, a photo, any message) and whether they coach a skill or answer a
+   topic. Will's words are drafted for the founder's OK.
+3. **Will suggests someone only when the message gives them what they
+   need:** a skill coach only for a message that shows the skill (a
+   recording of you talking for a speaking coach, a video of you exercising
+   for a gym coach), a topic expert only for a message on their topic. A
+   typed question never brings a speaking coach; a gym question without a
+   video brings no gym coach, and never a speaking coach.
+4. **N587 holds in every field:** whoever you send a message for is first
+   and ticked, and the answers gather under it in your chat with them. A
+   recorded programming question to the programmer, with the speaking coach
+   ticked too, shows both answers in the chat with the programmer; only you
+   see the gathering.
+5. **You can send to anyone yourself.** When you add someone your message
+   doesn't suit, Will says once that they need to see or hear you doing it,
+   e.g. "Artur coaches speaking; he'll need to hear you. Record it
+   instead?", with "Record" and "Send anyway". The words are drafted for
+   the founder's OK.
+No migration. No rules page yet.
