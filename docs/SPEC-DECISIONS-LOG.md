@@ -14066,3 +14066,32 @@ app (frontend #1280 closed, not merged).
 No new words. No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 E1.
+
+**N556 · How a Take is kept on the device until the server has it (N553
+item 2) (founder, the Claude Code chat, 9 November 2026, asked three
+things: the privacy text, "Ship B; line in next version"; when to save,
+"At Finish only, for now"; the remaining rules as proposed, "Yes, all of
+them").** For N553 item 2 and Never 3:
+1. **Saved at Finish,** once, on the device, and deleted as soon as the
+server has the Take, when the speaker discards it, or after 7 days if it
+never reaches the server. A Take cut off before Finish is not saved (as
+today).
+2. **Sent again, at the next open and when the connection comes back,**
+through the same upload and the same processing authorization as the
+first try, with the same upload key, so the server never makes it twice.
+It then appears as processing, as any Take does; nothing new on screen.
+While it is going up, the record button waits with its signed line "One
+moment — finishing your last take.".
+3. **Not sent, and deleted, when** a newer Take of the same project has
+already reached the server (an older Take never becomes the Ideal Text,
+Never 5), or when recording consent was withdrawn. Kept through a sign-out
+and sent only when the same person signs back in, never under another.
+Answers and questions recorded in a chat are left out for now.
+4. **The privacy text:** B ships under the current version; the next
+privacy version adds, as approved here: "A take you have just recorded is
+kept on your device until it reaches us, so that closing the app or losing
+the connection does not lose it. That copy is deleted as soon as we have
+the take, when you discard it, or after 7 days if it never reaches us."
+No new words on screen. No migration. The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+§1, Amendments, when built.
