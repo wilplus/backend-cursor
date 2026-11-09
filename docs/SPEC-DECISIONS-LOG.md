@@ -15473,3 +15473,35 @@ Not in force until built and merged. No migration in this entry.
 The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 B8 to B13, when built.
+
+**N592 · After "You're set.", one bubble says what comes next, by the
+person's state and choice (founder, the Claude Code chat, 9 November 2026,
+on the end of the way in in The App Model, where nothing followed "You're
+set." and "Record Take 2" stood ready while the feedback was still being
+prepared: "What happens here? There should be some smart bubble follow
+up"; then "OK" to the proposal).** For N453 item 7, N533, N558, N572,
+N573, N578 and N590; in Artur's chat, the speaking way in (N590):
+1. **One bubble after "You're set.", never a question but the last case.**
+Its words follow the person's state:
+   - the feedback still being prepared: "Your feedback is almost ready. It
+     will appear at the top of this chat.";
+   - the feedback ready: "Your feedback is ready." with **Open your
+     feedback ›**, beside the orange row at the top (N453 item 7).
+2. **After the walk, by what they chose** (N573), one bubble:
+   - "Prepare a talk": "Next, record Take 2 of your talk.";
+   - "Share what I know": "Next, set up your assistant, so people who join
+     you are met your way.", opening the setup chat (N578 item 4);
+   - "Learn from others": "Next, ask someone who knows. Tap + to start."
+     (answers N573 item 2's open question for now);
+   - "Something else": "Tell me what you'd like to do, and I'll show you
+     where.", answered by voice or text;
+   - several choices: one bubble, the talk first, then sharing.
+3. **"Record Take 2" stays faded until the walk is done,** as N558 and
+N453 have it; the App Model's drawing that shows it ready during the wait
+is a slip to fix.
+4. **Words:** all drafted above are approved by the founder's "OK"; they
+are the app's own words (Never 4).
+Not in force until built and merged. No migration in this entry.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§2, when built.
