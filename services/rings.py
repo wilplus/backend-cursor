@@ -88,7 +88,7 @@ WALK_INNER_CONTEXT = "walk_inner_context"
 #: in the panel; until then it is off for everyone, the founder included.
 TAKE_MATCH = "take_match"
 #: Will writes the walk's messages from the Take's facts by rules the
-#: founder sets, not signed lines (founder 2026-11-09, N560;
+#: founder sets, not signed lines (founder 2026-11-09, N565;
 #: services/walk_voice.py). No row until the founder makes one in the
 #: panel; until then it is off for everyone, the founder included, and the
 #: walk says its signed lines.

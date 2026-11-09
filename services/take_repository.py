@@ -1597,7 +1597,10 @@ class TakeRepository(TableRepository):
             return []
         _legacy_cols = ("id, arc_id, take_index, status, created_at, "
                         "intake_context, results_published_at")
-        _full_cols = _legacy_cols + ", recording_kind, paired_session_id, source"
+        # upload_idempotency_key: a Take kept on the phone (N556 item 3) asks
+        # whether it arrived, and whether a newer Take of its project did.
+        _full_cols = (_legacy_cols + ", recording_kind, paired_session_id, source, "
+                      "upload_idempotency_key")
         try:
             try:
                 res = (
@@ -1614,7 +1617,8 @@ class TakeRepository(TableRepository):
                 _lowf = str(_ef).lower()
                 if not ("recording_kind" in _lowf
                         or "paired_session_id" in _lowf
-                        or "source" in _lowf):
+                        or "source" in _lowf
+                        or "upload_idempotency_key" in _lowf):
                     raise
             res = (
                 self.client.table("v2_sessions")

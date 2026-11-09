@@ -829,9 +829,10 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 - **O1** A Take's bookmarked moments come in talk order (start, then id), only those that exist in that Take; a Take whose bookmarks are not frozen yet waits for its text.
 - **O2** The queue reads only the bookmarked pieces, in one read for every Take, never every piece of every Take (the queue took 6.7 s).
-- **O3** A failed piece read lists no moments rather than failing the queue.
+- **O3** A failed piece read lists no moments rather than failing the queue, even when only one of its chunks failed: never some of a Take's moments.
+- **O4** The walk asks for the coach's languages, the queue and the waiting plans together, not one after another (the walk took 1.1 s).
 
-*Why:* Founder 2026-10-21 (N99): "please make sure it is smooth that it loads fast".
+*Why:* Founder 2026-10-21 (N99): "please make sure it is smooth that it loads fast"; 2026-11-09: the walk took 1.1 s.
 
 ### As a coach, I want to see who a speaker's talk is for and what they want the audience to do, in the speaker's own words, next to their goal, so that I judge and answer knowing what the talk is trying to do.
 
@@ -3673,6 +3674,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O1** GET /v2/user/trainings groups Takes by arc, one card per talk, Takes in take order.
 - **O2** A talk is ideal_ready once the coach has corrected every slide; a talk with a slide still uncorrected is not.
 - **O3** A coach's training import is never in the coach's own project list (it has no project to archive, so it blocked "One project at a time").
+- **O4** Each Take carries the upload key it was sent with, so a Take kept on the phone knows whether it arrived (N556 item 3).
 
 *Why:* Founder 2026-07-13 (arc-grouped trainings). The save-at-publish half (POST /v2/internal/publish-session-results) is retired and answers 410 (routes/v2/canonical_publish.py), so it has no test here.
 
@@ -3833,11 +3835,11 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 `tests/test_walk_voice.py` · Story
 
-- **O1** Words that may reach me are plain: no number, no word that says I am broken or names a measurement, no coaching idiom, at most two sentences, 220 characters and one question, and a quote is only ever my own words; anything else is refused (N557, N560, Never 1).
+- **O1** Words that may reach me are plain: no number, no word that says I am broken or names a measurement, no coaching idiom, at most two sentences, 220 characters and one question, and a quote is only ever my own words; anything else is refused (N557, N565, Never 1).
 - **O2** Will writes only for a speaker the writer is on for, on their own Take, at a step the walk has; otherwise the walk says its signed line.
 - **O3** A draft that fails the check gets another try, told what was refused and why, up to three in all; then, or after a failed call, the walk says its signed line.
 
-*Why:* Founder 2026-11-09 (N560: "make the answers smart. So not locked in, but smart... we can set the rules for those messages"; N557: "It assumes that you're broken and we need to fix you"; the founder's ratings: "to complex", "drawing in... this sounds wierd"). The style itself is graded by the golden set, tests/evals/golden/walk_voice.jsonl.
+*Why:* Founder 2026-11-09 (N565: "make the answers smart. So not locked in, but smart... we can set the rules for those messages"; N557: "It assumes that you're broken and we need to fix you"; the founder's ratings: "to complex", "drawing in... this sounds wierd"). The style itself is graded by the golden set, tests/evals/golden/walk_voice.jsonl.
 
 ### As a speaker, I want my recording made seekable without changing its timing, and kept as-is if that fails, so that playback works everywhere and my Take is never lost. (Critical path: record.)
 
@@ -4114,7 +4116,7 @@ the rules first (no digits, length, banned words), then a model grades the meani
 
 `tests/evals/golden/walk_voice.jsonl` · 8 cases
 
-> Will's voice in the walk (founder 2026-11-09, N560): the founder's rated replies. A reply the founder turns down becomes a row here.
+> Will's voice in the walk (founder 2026-11-09, N565): the founder's rated replies. A reply the founder turns down becomes a row here.
 > Each row: the Take's facts in production's context shape, the speaker's turn, and the founder's verdict. Format: docs/prompt_evals.md
 > Best of three (founder 2026-11-09): each case passes when 2 of up to 3 runs pass (pass_k_of_n), since Will's words are meant to vary.
 

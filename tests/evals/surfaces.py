@@ -152,7 +152,7 @@ def _question_kind(inp: dict) -> Any:
 
 
 def _walk_voice(inp: dict) -> Any:
-    """Will's walk message (N560): the production writer and its check, on
+    """Will's walk message (N565): the production writer and its check, on
     the row's context and step; None when the words fail ``check``."""
     from services.walk_voice import compose
     return compose(inp.get("context") or {}, inp.get("step") or {})

@@ -98,18 +98,29 @@ def _unclear_for(plan: dict, rater_id: str, since: str) -> bool:
     return bool(at and (start is None or at >= start))
 
 
+def level_events(database: Any, plans: list[dict]) -> list[dict]:
+    """The plans' "ask_coach" and "stuck" events, oldest first, in one read."""
+    return database.list_plans_level_events(
+        [p.get("id") for p in plans], _WAITING_REASONS) or []
+
+
 def queue_items(database: Any, *, rater_id: str, proficient: Iterable[str],
-                matched_users: set, queued_users: set) -> list[dict]:
+                matched_users: set, queued_users: set,
+                plans: Optional[list[dict]] = None,
+                events: Optional[list[dict]] = None) -> list[dict]:
     """Every plan waiting on this coach, oldest first: ``{plan, kind, since}``.
     ``matched_users``: the speakers with a Take in this coach's queue in a
-    language they understand; ``queued_users``: every speaker in the queue."""
-    plans = database.list_waiting_plans() or []
-    events: dict[str, list[dict]] = {}
-    for e in database.list_plans_level_events([p.get("id") for p in plans], _WAITING_REASONS) or []:
-        events.setdefault(str(e.get("plan_id")), []).append(e)
+    language they understand; ``queued_users``: every speaker in the queue.
+    ``plans`` and their ``events`` when the caller read them already (the
+    walk reads them beside its other reads)."""
+    if plans is None:
+        plans = database.list_waiting_plans() or []
+    by_plan: dict[str, list[dict]] = {}
+    for e in level_events(database, plans) if events is None else events:
+        by_plan.setdefault(str(e.get("plan_id")), []).append(e)
     out = []
     for plan in plans:
-        found = waiting(plan, events.get(str(plan.get("id")), []))
+        found = waiting(plan, by_plan.get(str(plan.get("id")), []))
         if not found:
             continue
         kind, since = found

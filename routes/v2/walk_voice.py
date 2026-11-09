@@ -1,4 +1,4 @@
-"""Will's voice in the walk (founder 2026-11-09, N560).
+"""Will's voice in the walk (founder 2026-11-09, N565).
 Service: services/walk_voice.py.
 
   POST /v2/walk-voice   {take_id, step, snippet_id?, conversation?}:

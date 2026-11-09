@@ -14213,7 +14213,179 @@ N471, N473, N477, N481 and N504:
 No migration in this entry. No rules page yet: matching gets its rules
 page when this is built (N332).
 
-**N560 · Will writes the walk's messages by rules the founder sets, not
+**N560 · Three more ways a Take was lost on the recording screens are
+closed (founder, the Claude Code chat, 9 November 2026, asked three things
+with recommended answers: what the phone's Back does while recording,
+"Ask, like the ✕"; "Try processing again" after "Record again", "Yes, fix
+it"; a notification or link tapped while recording, "Wait, then go").**
+For N553 and Never 3, on the locked recording screens:
+1. **Back while recording asks first.** The phone's Back (on an iPhone,
+the swipe from the left edge) asks the same signed "Discard this take?" as
+the ✕, with the same answers; it no longer throws the Take away without
+asking. Was: Back cancelled the recording and closed the screens.
+2. **"Try processing again" always means the Take on screen.** After a
+slow Take, "Record again" forgets the old Take, so a retry of the new one
+sends the new one again and never restarts the old one; the old one still
+finishes on the server and its "Processing" line keeps tracking it. Was:
+the retry could restart the old Take, and its text could come back as if
+it were the new one (Never 5).
+3. **A notification or a link tapped while a Take is at risk waits.** From
+the start of recording until the server has the Take or it is discarded
+(N553 item 1's moment), a tapped push notification, a WillpowerLab link
+opening the app, or a guest's first Take opening its review once their
+sign-up finishes waits, then goes. Was: it reloaded the page at once and the Take was lost.
+No new words. No migration. The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+§1, Amendments, when built.
+
+**N561 · The iPhone app opens on the chats, and its keyboard behaves like
+an app's (founder, the Claude Code chat, 9 November 2026, before the first
+build goes to Apple, asked two things with recommended answers: open
+straight on the chats, which saves a network round trip and a sign-in
+check on every open, "Open on the chat"; Capacitor's keyboard plugin,
+"Yes, add it").** For N354 and N267, in the iPhone app only; the website
+is unchanged:
+1. **The app opens on the chats.** A signed-in person goes straight to
+the list of chats, with no stop at sign-in. A signed-out person is still
+sent to sign-in (with its "Sign up"), and the check that sends them costs
+nothing for anyone signed in. Amends N354 item 1, which opened the app on
+sign-in. Takes effect with the next app build.
+2. **The keyboard plugin.** No grey bar with arrows and "Done" above the
+keyboard, and the text box stays above the keyboard instead of under it.
+Takes effect with the next app build.
+No new words. No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+§1 C1, when built.
+
+**N562 · A voice note left on the phone goes only under the person who said
+it, and a refusal that can change keeps it (founder, the Claude Code chat,
+9 November 2026, on frontend #1312, which fixed a phone sending every
+waiting voice note under whoever was signed in and deleting a note on a 401
+or 403, and left two choices to confirm, keeping a note on a 409 and
+holding back notes saved before notes named their owner: "Log the 409 and
+ownerless-note decisions in the backend decisions log").** For N194 item 3,
+the notebook's notes and the dump screen's (N506, N507):
+1. **A note is its speaker's.** Each note kept on the phone names the person
+who said it. Only they see it waiting and only they send it; another person
+signed in on the same phone neither sees nor sends it, and a sign-in never
+deletes it: it waits for its owner, as a Take does (N556 item 3).
+2. **A note saved before notes named their owner** (before frontend #1312)
+goes only under a sign-in that began before the note was said (the
+session's own sign-in time, with ten minutes allowed for the phone's
+clock): then nobody else can have been signed in on that phone since.
+Otherwise it waits on the phone, never sent, never shown and never deleted.
+There is no expiry: only delete throws a note away (N194 item 3).
+3. **409, the notebook's Yes not given, keeps the note,** as 401 (a sign-in
+run out) and 403 (a policy update to accept) do; it goes once the Yes is
+given again, the sign-in renewed or the update accepted. Only the refusals
+a second try would get again throw it away: 400 no audio, 404 no notebook,
+413 too long, 422 no words heard.
+No new words. No migration. The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+B4.
+
+**N563 · Teaching many models: one queue, an answer that counts twice
+only for a public example, four sources of examples, the system manages
+quality and the founder decides four things (founder, the Claude Code chat,
+9 November 2026: "How could someone contribute to a model? And say they are
+part of a community, let's say company community, and they are training the
+model of their own, and then they are training the model of someone else.
+They answer the same questions, where these questions are set up in the
+first place. Who runs the experiments to check the quality of the model? Who
+manages all that?"; six questions, each answered with the recommended
+option, the sources all four).** For N520, N521, N526, N528 and N531:
+1. **One queue for everything a person teaches.** The coach's row in the
+list of chats (N521) becomes the queue for every model they teach, their
+company's and public ones alike; each example says which model it is for.
+The "AI models" row is for finding, joining and starting models (N528 item
+1). The system orders the queue: first what helps most (the examples a
+model is least sure about and the kinds it lacks), so that no model a
+person teaches is starved; a person can pause any model, or open one to
+teach only it.
+2. **The questions come from the model's recipe card** (N520 item 3, filled
+in setup, N528 item 4): what one example is, and what a teacher does with
+it (rate it on the scale, pick from the list, answer it in their words). The
+teaching screen follows the card: a voice model shows the clip to rate, a
+text model shows the written question.
+3. **One example, two models:** an example from a public source is answered
+once and counts for every model that asks about it; an example from a
+private source (a company's own data) counts only for that company's model,
+never for a public one.
+4. **Where a model's examples come from:** WillpowerLab Takes and moments
+whose speakers said yes to training (for models that learn from voice); the
+founder's uploaded data, checked first; the questions it was not sure about,
+from businesses that allowed it, names removed; and examples teachers add
+themselves, which count once another teacher agrees.
+5. **Who manages quality:** the system runs every check and test by itself
+(the trust check, known clips, agreement, the sealed exam, the upgrade
+test, the alerts) and says in plain words what needs attention. The model's
+founder decides four things: the scale's words, who to invite, the price
+(N531 item 3), and releasing a version that passed. WillpowerLab runs the
+experiments across the platform and can take a model down (N528 item 5).
+6. **A company's private model:** its founder invites colleagues, or the
+whole company community; each person chooses whether to join, and nobody is
+made to teach. Their ratings go through the same trust check.
+Not in force until built and merged. No migration in this entry.
+No rules page yet: [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md)
+B and F, when built.
+
+**N564 · The plan: no deadline unless you prepare a talk, and the training
+is levels you record through, four Takes each, never points (founder, the
+Claude Code chat, 9 November 2026, on "When is your deadline?" in the first
+Take's prototype: "this comes out abrupt ... maybe we should ask that only
+after when they decide what they want to do: to prepare for smth, should
+they just source the knowledge from someone; is it necessary to add the
+deadline for the mvp of the app? maybe we should remove it to make it as
+neutral at first as it gets and keep the progress bar for everyone as 12
+takes training"; then, on questions with recommended answers, "Only
+'Prepare a talk'"; asked the pace, "or it could be simply like collecting
+points and going to the next levels not days to practice..."; told that
+points are a number Never 1 forbids, "Levels, no points"; "After 4 Takes";
+"Summary call, new levels"; no preference on what counts, so the
+recommended answer, every Take).** For N131 to N135, N140, N167, N209,
+N248, N319, N401, N459 and N559:
+1. **Nobody is asked "When is your deadline?"** Only someone who chooses
+   to prepare a talk, where they say what they want to do here (the choice
+   drafted on the onboarding proposal, its words awaiting the founder's
+   OK), is asked "When is it?" once, with "No date yet". Until that choice
+   is built, nobody is asked a date. Amends the deadline question of N319,
+   N401 item 3 and N459 item 1.
+2. **The training is levels, not days.** Everyone's plan is three levels of
+   four Takes, twelve Takes in all. Each level is one of the plan's five
+   (N132), picked from their Takes strongest first, skipping the ones this
+   plan had (`services/plan.py`, `next_level`, as built). There is no
+   schedule of practice days: progress moves with each Take, and nothing is
+   ever missed. Amends N134's journey table, N135's two months and the
+   practice days of N140 and N167.
+3. **The bar shows the level, never points.** Each Take fills one of the
+   current level's four marks; the plan's bar shows the level's name and its
+   marks, the done ones filled. No points, score or percentage about the
+   speaker (Never 1). Its words are drafted for the founder's OK (Never 4).
+   Was: "Today is practice {n} of {total}: {level}." and "{n} of {total}
+   practices done."
+4. **Every Take fills a mark:** practising a talk, answering a teammate and
+   asking a question.
+5. **After the third level:** the summary session with the coach (N248),
+   then a new set of three levels on the next skills their Takes show. Was:
+   the summary session after the deadline, then a new event or two more
+   months.
+6. **With a date** (someone preparing a talk): the plan card shows it and
+   the summary session is offered before it; nothing else depends on it.
+7. **What stops:** the plan's length from a deadline (`journey`,
+   `level_days`, `NO_DATE_DAYS`); "Your deadline is close, so you practise
+   every day."; the practice days, "Done. You'll practise on {days}." and
+   "That's your 15 minutes for today."; "Done. Your plan now runs to
+   {date}."; "Your deadline was {date}."; and the audience question naming
+   the date, which asks without it. Their words stay signed, unused. A
+   goodbye that names a day ("See you tomorrow.") is redrawn when this is
+   built.
+8. **Unchanged:** the kickoff session's ask; the five levels and how each is
+   picked; the coach's level wins, picked blind; stress and readiness are
+   never shown back (N178).
+No migration in this entry. The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
+
+**N565 · Will writes the walk's messages by rules the founder sets, not
 signed lines (founder, the Claude Code chat, 9 November 2026: "make the
 answers smart. So not locked in, but smart. Like use GPT-4o literally to
 write the answer. So it should have all the access to the acoustic data, to

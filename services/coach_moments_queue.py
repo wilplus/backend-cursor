@@ -15,8 +15,9 @@ coach has rated (BLIND COACH): before the rating the row says only that a
 judgement is waiting. It is the speaker's side of the request once they
 judged (`answer_kind`, 0408; Phase 2, F1), else the kind it rose under. Nothing here is a count of quality (AC-9); the
 pseudonym is the queue's own, never a name (L3, §B.4). Pure apart from
-`reached_for_sessions`, which makes the two reach reads, `queue_for_coach`,
-which makes the queue's reads side by side, and `close_moments`, the
+`reached_for_sessions`, which makes the two reach reads, `queue_reads` (and
+`queue_for_coach` over it), which makes the queue's reads side by side,
+`walk_for_coach`, the walk's reads in three steps, and `close_moments`, the
 founder's Delete; every other read is handed in by the route.
 
 ONLY MOMENTS THAT REACHED THE SPEAKER (founder 2026-10-05, N48.2, Q1 A;
@@ -75,10 +76,14 @@ are untouched.
 """
 from __future__ import annotations
 
+import functools
 import logging
 from collections import Counter
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Optional
+
+if TYPE_CHECKING:
+    from services.coach_queue import Bookmarks
 
 _log = logging.getLogger(__name__)
 
@@ -226,38 +231,32 @@ def reached_for_sessions(
 _LABEL_CHUNK = 150
 
 
-def remembered(moments_for: Callable[[dict], Optional[list[str]]]
-               ) -> Callable[[dict], Optional[list[str]]]:
-    """``moments_for`` asked once per take: the route reads the bookmarks
-    to fetch the labels, and the queue reads them again to list them."""
-    seen: dict[str, Optional[list[str]]] = {}
-
-    def once(row: dict) -> Optional[list[str]]:
-        key = str(row.get("id"))
-        if key not in seen:
-            seen[key] = moments_for(row)
-        return seen[key]
-    return once
-
-
-def labels_for_snippets(database: Any, snippet_ids: Iterable[Any]
-                        ) -> Callable[[str], Optional[list]]:
-    """The queue's ``labels_for``: every rater's confidence rows on the
-    listed clips, from batched reads. A read that fails routes on each
-    coach's own row alone (``labels_for`` answers None) and says so: an
-    extra listing costs a refused rating, a hidden moment an answer."""
+def label_reads(database: Any, snippet_ids: Iterable[Any]
+                ) -> list[Callable[[], dict]]:
+    """The panel's confidence rows on the bookmarked clips, one read per
+    chunk of ``_LABEL_CHUNK``, for the queue to run beside its other reads;
+    their answers go to ``labels_found``. Each raises when it fails."""
     ids = sorted({str(s) for s in snippet_ids or [] if s})
+    return [functools.partial(database.get_confidence_labels_by_snippet_ids,
+                              ids[i:i + _LABEL_CHUNK], strict=True)
+            for i in range(0, len(ids), _LABEL_CHUNK)]
+
+
+def labels_found(answers: Iterable[tuple[Any, Optional[Exception]]]
+                 ) -> Callable[[str], Optional[list]]:
+    """The queue's ``labels_for``, from the label reads' answers, ``(rows,
+    failure)`` each: every rater's confidence rows on a clip. A read that
+    failed routes on each coach's own row alone (``labels_for`` answers
+    None) and says so: an extra listing costs a refused rating, a hidden
+    moment an answer."""
     found: dict[str, list] = {}
-    try:
-        for i in range(0, len(ids), _LABEL_CHUNK):
-            chunk = database.get_confidence_labels_by_snippet_ids(
-                ids[i:i + _LABEL_CHUNK], strict=True) or {}
-            for sid, rows in chunk.items():
-                found.setdefault(str(sid), []).extend(rows or [])
-    except Exception as e:  # noqa: BLE001 -- routed on own rows, named
-        _log.warning("coach queue: label read failed, routing on own rows: %s",
-                     e, exc_info=True)
-        return lambda _sid: None
+    for chunk, failure in answers:
+        if failure is not None:
+            _log.warning("coach queue: label read failed, routing on own rows: %s",
+                         failure, exc_info=failure)
+            return lambda _sid: None
+        for sid, rows in (chunk or {}).items():
+            found.setdefault(str(sid), []).extend(rows or [])
     return lambda sid: list(found.get(str(sid)) or [])
 
 
@@ -564,44 +563,161 @@ def moments_queue(
     return out
 
 
-def queue_for_coach(
-    database: Any, rows: list, *, rater_id: Any,
-    moments_for: Callable[[dict], Optional[list[str]]],
-    pseudonym_for: Callable[[Any], str],
-    alarm: bool = True,
-) -> list[dict]:
-    """The walk's queue for one coach, every read batched: the moments'
-    requests, the reach (N48.2 Q1 A), this coach's own ratings, the
-    speakers' goals and the panel's rows on the listed clips (routing only,
-    K4, K5). ``rows`` are the review queue's rows this coach may see (the
-    language gate)."""
+def queue_reads(
+    database: Any, rows: list, *, rater_id: Any, bookmarks: Bookmarks,
+    goal_rows: Iterable[Any] = (),
+) -> dict[str, Any]:
+    """Every read the queue makes, side by side, as ``moments_queue``'s own
+    keyword arguments: the moments' requests, the reach (N48.2 Q1 A), this
+    coach's own ratings, the open asks to listen again, the speakers' goals,
+    the panel's rows on the bookmarked clips (routing only, K4, K5) and the
+    bookmarks' talk order. ``rows`` are the review queue's rows this coach
+    may see (the language gate); ``goal_rows`` more speakers whose goals
+    ride the same read (the walk's plans).
+
+    No read below needs another's answer, so they run side by side; the
+    results come back in this order and a failed read still raises here
+    (founder 2026-10-21: one after another, the queue took 6.7 s). Only the
+    frozen sets go first, unless the caller read them already: the labels
+    read needs to know which clips are bookmarked (founder 2026-11-09)."""
     from services.coach_listen_again import open_asks
+    from services.coach_queue import attempt
     from services.parallel import run_in_parallel
     ids = [str(r.get("id")) for r in rows if isinstance(r, dict)]
-    once = remembered(moments_for)
-    takes = [r for r in rows if isinstance(r, dict)]
-    # No read below needs another's answer, so they run side by side; the
-    # results come back in this order and a failed read still raises here
-    # (founder 2026-10-21: one after another, the queue took 6.7 s). The
-    # last one reads each Take's bookmarks, which the labels read needs.
-    requests, asks, ratings, events, answered, goal_for, moments = run_in_parallel(
+    clips = bookmarks.snippet_ids()
+    # The clips' two reads go out a chunk per read: one after another, each
+    # hundred clips was one more round trip (founder 2026-11-09).
+    order, labels = bookmarks.order_reads(), label_reads(database, clips)
+    answers = run_in_parallel(
         lambda: database.list_exercise_coach_requests_for_sessions(ids),
         lambda: open_asks(database, coach_id=rater_id, session_ids=ids),
         lambda: database.get_own_state_ratings_for_sessions(ids, rater_id) or {},
         lambda: database.list_moment_events_for_sessions(ids),
         lambda: database.list_confident_voice_answered_moments(ids),
-        lambda: speaker_goals(database, rows),
-        lambda: [once(r) for r in takes])
+        lambda: speaker_goals(database, [*rows, *goal_rows]),
+        *(functools.partial(attempt, read) for read in [*order, *labels]))
+    requests, asks, ratings, events, answered, goal_for = answers[:6]
+    bookmarks.take_order(answers[6:6 + len(order)])
+    labels_for = labels_found(answers[6 + len(order):])
     reached = reached_moments(events, answered, (requests or {}).keys())
+    return {
+        "reached_for": lambda sid: reached.get(str(sid), set()),
+        "ratings_for": lambda sid: ratings.get(str(sid)) or {},
+        "request_for": lambda sid, snip: requests.get((sid, snip)),
+        "labels_for": labels_for,
+        "goal_for": goal_for,
+        "listen_again_for": lambda sid: asks.get(str(sid), {}),
+    }
+
+
+def queue_for_coach(
+    database: Any, rows: list, *, rater_id: Any,
+    moments_for: Bookmarks,
+    pseudonym_for: Callable[[Any], str],
+    alarm: bool = True,
+) -> list[dict]:
+    """The walk's queue for one coach, every read batched (``queue_reads``).
+    ``rows`` are the review queue's rows this coach may see (the language
+    gate); ``moments_for`` their bookmarks (services.coach_queue)."""
     return moments_queue(
-        rows, moments_for=once,
-        reached_for=lambda sid: reached.get(str(sid), set()),
-        ratings_for=lambda sid: ratings.get(str(sid)) or {},
-        request_for=lambda sid, snip: requests.get((sid, snip)),
-        pseudonym_for=pseudonym_for,
-        labels_for=labels_for_snippets(
-            database, [s for m in moments for s in (m or [])]),
-        rater_id=rater_id,
-        goal_for=goal_for,
-        listen_again_for=lambda sid: asks.get(str(sid), {}),
-        alarm=alarm)
+        rows, moments_for=moments_for, pseudonym_for=pseudonym_for,
+        rater_id=rater_id, alarm=alarm,
+        **queue_reads(database, rows, rater_id=rater_id, bookmarks=moments_for))
+
+
+def _plan_items(database: Any, plans: tuple, events: tuple, *, rater_id: str,
+                proficient: list, matched: list, rows: list) -> list[dict]:
+    """The plans waiting on this coach (``plan_coach.queue_items``), from
+    the reads the walk already made. Best-effort, as before: a failed read
+    or step draws the queue without them."""
+    from services import plan_coach
+    try:
+        for _answer, failed in (plans, events):
+            if failed is not None:
+                raise failed
+        return plan_coach.queue_items(
+            database, rater_id=rater_id, proficient=proficient,
+            matched_users={str(r.get("user_id")) for r in matched},
+            queued_users={str(r.get("user_id")) for r in rows},
+            plans=plans[0], events=events[0])
+    except Exception as e:  # noqa: BLE001 -- the moments are drawn either way
+        _log.warning("coach queue: the plans not read: %s", e, exc_info=True)
+        return []
+
+
+def _with_plans(queue: list[dict], items: list[dict], *,
+                pseudonym_for: Callable[[Any], str],
+                goal_for: Callable[[Any], Optional[str]]) -> list[dict]:
+    """The queue with each plan waiting on this coach on its speaker's card
+    (N213; routes.v2.coach_plans opens it). A failure draws the queue as it
+    was."""
+    if not items:
+        return queue
+    from services import plan_coach
+    try:
+        return plan_coach.with_plans(queue, items, pseudonym_for=pseudonym_for,
+                                     goal_for=goal_for)
+    except Exception as e:  # noqa: BLE001 -- the moments are drawn either way
+        _log.warning("coach queue: the plans not read: %s", e, exc_info=True)
+        return queue
+
+
+def walk_for_coach(
+    database: Any, *, rater_id: str,
+    matched_rows: Callable[[list, dict, list], list],
+    bookmarked: Callable[[dict, str, Any], Optional[set]],
+    pseudonym_for: Callable[[Any], str],
+) -> Optional[list[dict]]:
+    """The coach's walk (GET /v2/coach/queue/moments): the queue of the
+    Takes this coach may hear, with each plan waiting on them on its
+    speaker's card (N213). None when the coach has not said which languages
+    they understand (the route answers 428).
+
+    Every read goes out as soon as what it needs is known, side by side
+    (founder 2026-11-09: the walk took 1.1 s, its reads one after another),
+    in three steps, each a named lap in Server-Timing:
+
+      queue_read     the coach's languages, the review queue, the plans;
+      language_gate  the language gate (the recordings' languages, when a
+                     Take declares none), the plans' events, and every
+                     queued Take's frozen set;
+      moment_reads   ``queue_reads``, the plans' speakers' goals in the
+                     queue's goals read;
+
+    then ``queue_build`` draws it. ``matched_rows(rows, snippets,
+    proficient)`` is the route's language gate and ``bookmarked`` its
+    reading of a frozen set, handed in. What is listed, and for whom, is
+    what the reads one after another gave (BLIND COACH; the reach alarm)."""
+    from services import plan_coach
+    from services.coach_queue import attempt, bookmarks_for, load_review_queue
+    from services.parallel import run_in_parallel
+    from services.request_context import timed
+
+    with timed("queue_read"):
+        proficient, queued, plans = run_in_parallel(
+            lambda: database.get_user_proficient_languages(rater_id),
+            lambda: attempt(lambda: load_review_queue(database, snippets=False)),
+            lambda: attempt(lambda: database.list_waiting_plans() or []))
+    if not proficient:
+        return None
+    if queued[1] is not None:
+        raise queued[1]
+    rows, snips, _states = queued[0]
+    with timed("language_gate"):
+        matched, events, sets = run_in_parallel(
+            lambda: matched_rows(rows, snips, proficient),
+            lambda: (attempt(lambda: plan_coach.level_events(database, plans[0]))
+                     if plans[1] is None else (None, None)),
+            lambda: database.get_ideal_text_feedback_sets(
+                [r.get("id") for r in rows if r.get("arc_id")]))
+    items = _plan_items(database, plans, events, rater_id=rater_id,
+                        proficient=proficient, matched=matched, rows=rows)
+    bookmarks = bookmarks_for(database, matched, bookmarked, sets=sets)
+    with timed("moment_reads"):
+        reads = queue_reads(database, matched, rater_id=rater_id, bookmarks=bookmarks,
+                            goal_rows=[item["plan"] for item in items])
+    with timed("queue_build"):
+        queue = moments_queue(matched, moments_for=bookmarks, pseudonym_for=pseudonym_for,
+                              rater_id=rater_id, **reads)
+        return _with_plans(queue, items, pseudonym_for=pseudonym_for,
+                           goal_for=reads["goal_for"])

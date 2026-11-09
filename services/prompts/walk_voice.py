@@ -1,5 +1,5 @@
 """Will's voice in the walk: the rules every walk message is written by
-(founder 2026-11-09, N560: "make the answers smart. So not locked in, but
+(founder 2026-11-09, N565: "make the answers smart. So not locked in, but
 smart... we can set the rules for those messages, but we should not be
 locking in these messages"; Steven Pinker's style with non-violent
 communication, N557).

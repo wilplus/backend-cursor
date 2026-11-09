@@ -7,7 +7,7 @@ OUTCOME
   O1  Words that may reach me are plain: no number, no word that says I am
       broken or names a measurement, no coaching idiom, at most two
       sentences, 220 characters and one question, and a quote is only ever
-      my own words; anything else is refused (N557, N560, Never 1).
+      my own words; anything else is refused (N557, N565, Never 1).
   O2  Will writes only for a speaker the writer is on for, on their own
       Take, at a step the walk has; otherwise the walk says its signed line.
   O3  A draft that fails the check gets another try, told what was refused
@@ -16,7 +16,7 @@ OUTCOME
 PROVES   O1 -> test_only_plain_kind_words_reach_me
          O2 -> test_will_writes_only_for_me_on_my_take_when_it_is_on
          O3 -> test_a_refused_draft_gets_one_more_try_then_the_signed_line
-WHY      Founder 2026-11-09 (N560: "make the answers smart. So not locked
+WHY      Founder 2026-11-09 (N565: "make the answers smart. So not locked
          in, but smart... we can set the rules for those messages"; N557:
          "It assumes that you're broken and we need to fix you"; the
          founder's ratings: "to complex", "drawing in... this sounds

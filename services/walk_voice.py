@@ -1,4 +1,4 @@
-"""Will's voice in the walk (founder 2026-11-09, N560).
+"""Will's voice in the walk (founder 2026-11-09, N565).
 
 Each walk message is written by GPT-4o from what we know about the Take,
 by the rules the founder sets (`services/prompts/walk_voice.py`), instead
