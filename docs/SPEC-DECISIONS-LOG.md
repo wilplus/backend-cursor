@@ -14095,3 +14095,20 @@ the take, when you discard it, or after 7 days if it never reaches us."
 No new words on screen. No migration. The rules: frontend
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 §1, Amendments, when built.
+
+**N557 · The walk speaks of a moment to try, never of a speaker to fix
+(founder, the Claude Code chat, 9 November 2026: "There shouldn't be
+something like nothing to fix this time. It assumes that you're broken and
+we need to fix you. This is not the right wording. Please rewrite those as
+Steven Pinker with non-violent communication techniques"; then chose both
+lines).** Amends N551 item 2, N309 item 6:
+1. **The fix opens with** "And here's one moment to try another way:" (was
+"And now, one thing to improve:").
+2. **A good Take says** "The rest of this Take held up just as well." (was
+"Nothing to fix this time.", N551), after their best and before its helper
+words.
+3. **The rule for new lines:** words to a speaker describe a moment and
+invite a try; they never say the speaker is lacking or needs fixing.
+No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+C2 and K.
