@@ -1258,6 +1258,25 @@ def _fix_without_tool(blocks: list[dict], picked: dict, take_id: Any) -> Optiona
     return low
 
 
+def _good_take_or_unfixed(blocks: list[dict], picked: dict, take_id: Any) -> Optional[dict]:
+    """The moment no tool reaches (`_fix_without_tool`, N550), or, on a walk
+    with no fix and no such moment, a good Take: their best's block says so
+    (``nothing_to_fix``, served, founder 2026-11-09, N551), and the walk
+    says "Nothing to fix this time." where the fix would be. Every block
+    is written, so a re-run leaves no stale mark."""
+    low = _fix_without_tool(blocks, picked, take_id)
+    for block in blocks:
+        block.pop(NOTHING_TO_FIX, None)
+    strongest = next((b for b in blocks if b.get("walk_slot") == "strongest"), None)
+    if strongest is not None and strongest.get("one_fix") == "none" and low is None:
+        strongest[NOTHING_TO_FIX] = True
+    return low
+
+
+#: Their best's mark on a good Take (N551): no fix, nothing below the floor.
+NOTHING_TO_FIX = "nothing_to_fix"
+
+
 def _sniper_first(pace: Optional[dict], fixes: list[dict], value_of: dict) -> bool:
     """Is the Sniper, the tempo step, the One thing walk's one fix?
 
@@ -2304,7 +2323,7 @@ def build_shadow_frame(
         # below the floor: no tool we have reaches it, so it goes to a
         # coach, blind (N550; `prepare_first_client_feedback`).
         # Never served to the speaker.
-        FIX_WITHOUT_TOOL: _fix_without_tool(blocks, picked, take_id),
+        FIX_WITHOUT_TOOL: _good_take_or_unfixed(blocks, picked, take_id),
         "blocks": blocks,
         "selected_confidence": confidence_selections,
         "verbal_lanes": {

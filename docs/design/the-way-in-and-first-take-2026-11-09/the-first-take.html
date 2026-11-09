@@ -1,7 +1,7 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>The First Take</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<!-- "The first Take" (N401), version 1, pinned 2026-11-09 (N551): redrawn to the later locked decisions. The app's own fonts (the system stack), so no web fonts are loaded. -->
+<!-- "The first Take" (N401), version 1, pinned 2026-11-09 (N558): redrawn to the later locked decisions. The app's own fonts (the system stack), so no web fonts are loaded. -->
 <style>
 /* Layout: the controls on top, the phone on the left, the notes beside it; stacks on a narrow screen */
 :root {
@@ -342,6 +342,12 @@ h1 { font: 800 clamp(30px, 5vw, 44px)/1.05 var(--display); margin: 0; letter-spa
 .at-op button.on { border-color: #121212; }
 .at-op .tk { width: 22px; height: 22px; flex: none; margin-top: 1px; border: 1.5px solid rgba(18,18,18,.35); border-radius: 7px; display: grid; place-items: center; color: #fff; font-size: 13px; font-weight: 700; }
 .at-op button.on .tk { border-color: #121212; background: #121212; }
+.at-run { display: flex; flex-direction: column; gap: 2px; } /* N513: one run, 2px apart, corners drawn in */
+.at-run .at-lb:not(:first-child) { border-top-left-radius: 8px; } .at-run .at-lb:not(:last-child) { border-bottom-left-radius: 8px; }
+.at-op button.at-all { border: 0; padding: 6px 14px; align-items: center; font-size: 16px; font-weight: 600; }
+.at-op button.at-pp { align-items: center; }
+.at-op .lc { width: 36px; height: 36px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 15px; font-weight: 600; line-height: 1; }
+.at-op .nm { min-width: 0; } .at-op .nm b, .at-op .nm small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .at-op b { display: block; font-size: 16px; font-weight: 600; } .at-op small { display: block; margin-top: 1px; font-size: 13.5px; color: #737373; }
 .at-pill:disabled { opacity: .3; cursor: default; }
 /* ===== END AFTER THE TAKE ===== */
@@ -388,7 +394,7 @@ td small { color: var(--muted); }
 <div class="wrap">
   <header class="top">
     <h1>The first Take</h1>
-    <p class="lockb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Locked 2026-11-03 (N401) · pinned 2026-11-09 (N551)</p>
+    <p class="lockb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Locked 2026-11-03 (N401) · pinned 2026-11-09 (N558)</p>
     <p class="lede">Everyone's onboarding is their first official Take. After the acceptance screen, Will welcomes them in four bubbles (N492), and the middle of his bar is one black button, "Start your first recording". It opens the recording screen as it is locked, and the five questions (N462) are the slides, each drawn as the centered poster. They answer each one out loud, slide by slide, so Will hears their vocal and verbal cues from the first minute. While the Take is processed, Will shows what he heard for them to check. Then comes the walk, Will's one question, and "Record Take 2": "How do you feel?", the set-up, the recording screen. The ringed button is the next tap.</p>
     <div class="ctl">
       <div class="seg" id="biz" role="group" aria-label="Business"><span class="lab">Business</span></div>
@@ -401,7 +407,7 @@ td small { color: var(--muted); }
   <aside>
     <div class="panel pinned">
       <h2>Pinned 2026-11-09</h2>
-      <p>This is N401's prototype "The first Take" (version 1) as pinned in the repo (N551), redrawn to the decisions locked after it. Every look and every word on the phone is taken from the code on main and the locked bar file; the flow is N401's.</p>
+      <p>This is N401's prototype "The first Take" (version 1) as pinned in the repo (N558), redrawn to the decisions locked after it. Every look and every word on the phone is taken from the code on main and the locked bar file; the flow is N401's.</p>
       <h3>What was redrawn</h3>
       <ul class="fixes">
         <li><b>N483, N498:</b> the bottom bar as locked: no mic and no right slot; the stack (Your projects) on the left of Will's chat, never "+"; the middle one black button, "Start your first recording" or "Record Take 2" with the red dot (#EF4444), faded while Take 1 is processed; never "Type here".</li>
@@ -611,7 +617,7 @@ td small { color: var(--muted); }
     ["Helper words, Lesson done.", "\"These are your helper words. …\" and the words in bold, saved; \"Lesson done.\" and Close."],
     ["Back in Will's chat", "The pair (Feedback walk, the Take's card), the bridge, Will's one question on the moment with Something else first; \"Got it, thanks 🙏\", \"Good job. See you tomorrow.\", the plan's bar."],
     ["The Ideal Text", "The card opens it: the five answers, one paragraph per question, the helper words orange; \"Record Take 2\" and Close."],
-    ["The sharing question", "From the page's \"Record Take 2\", once: \"How big you want your audience?\", three choices, Continue. The bar's \"Record Take 2\" goes past it."],
+    ["The sharing question", "From the page's \"Record Take 2\", once: who hears the next Take (N470): three bubbles, Select all, the people in your list, all ticked; Continue. The bar's \"Record Take 2\" goes past it."],
     ["How do you feel?", "Opens at once (N549): four feelings and Skip, four marks; a pick turns orange, the rest fade, the set-up 450 ms later."],
     ["The set-up", "The real talk's set-up afresh: the topic filled in from the plan, the length, the slides (\"Skip for now\")."],
     ["Take 2 records", "\"Getting your mic ready\" and \"New slides\"; \"Take 2 · Slide 1 of 3\" on the stand-in deck, the clock counting down."],
@@ -800,8 +806,10 @@ td small { color: var(--muted); }
       where: (i, n) => `Take 2 · Slide ${i} of ${n}`,                   // LabOverlay.tsx RecordingWhere
       backBtn: "Back", nextSlide: "Next slide", finish: "Finish take",  // RecordingRoadmap.tsx, FinishTakeButton.tsx
       // the sharing question (NextTakeShareScreen.tsx:458; idealEditCopy.ts WALK_COPY :393, :417-430; CHUNK_SHEET_COPY.pillContinue :130, historyTake :255)
-      shareBefore: "Before we start the new take!", shareTitle: "After all, it's about speaking publicly!", shareAudience: "How big you want your audience?",
-      shareOpts: [["general", "General community", "Fastest improvement in speaking publicly"], ["mine", "Only my community", "Slower but steady growth"], ["none", "Only me", "Slowest progress, but safe"]],
+      // who hears the next Take: the people you tick (N470, locked 4 Nov; replaces G1's "How big you want your audience?").
+      // NextTakeShareScreen.tsx PeopleSendScreen :128-229; idealEditCopy.ts WALK_COPY.sendBubbles :447, sendSelectAll, sendLastSent
+      sendBubbles: ["Your knowledge is worth sharing, and so are your questions.", "The people below are the ones you trust.", "Choose who can answer you best, or send it to all of them and practise speaking."],
+      sendSelectAll: "Select all", sendLastSent: "Last sent",
       cont: "Continue", take1: "Take 1",
     };
     // The stand-in deck a Take with no slides records on (defaultDeck.ts:36), drawn as the poster with no label
@@ -980,19 +988,28 @@ td small { color: var(--muted); }
       $("[data-i=rec]").onclick = () => (S().shared ? next2() : share());
     }
 
-    // ---- the sharing question: only on the Ideal Text page's door; never on the chat's (Lounge.tsx:1557 skips it after
-    // the first Take). Nothing ticked; Continue waits for one choice, "Only me" counting; "Only me" stands alone.
-    // "Only my community" shows its communities inside it only when the speaker has saved one (none here). ✕ records nothing.
+    // ---- who hears the next Take (N470, locked 4 Nov 2026; NextTakeShareScreen.tsx PeopleSendScreen, one to one):
+    // only from the Ideal Text page's door, once; never on the chat's (Lounge.tsx:1557). Three grey bubbles as one run
+    // (2px apart, N513); "Select all"; one row per person in your list of chats (36px letter circle, name, title), the tick
+    // box on the left; everyone ticked by default (N470 item 2); Continue waits only when nobody is. No "Only me", no
+    // community (N470 item 2). Nobody's list is empty: with no person, Artur, speaking coach (N470 item 3). ✕ records nothing.
+    const TINTS = [["#FFE9DB", "#A33A00"], ["#E4EDFB", "#1E4C99"], ["#E3F3E8", "#1D6B3A"], ["#F1E6FB", "#5E2A99"], ["#FBE4EC", "#992A52"]]; // ChatList.tsx:64
+    const tint = (id) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return TINTS[h % TINTS.length]; };
     function share() {
       stepName("The sharing question");
       app.querySelectorAll(".cue").forEach((x) => x.classList.remove("cue"));
-      let ticks = [];
+      const people = (env.people ? env.people() : null) || [{ id: "artur", n: "Artur", t: "Speaking coach" }];
+      let ticks = people.map((p) => p.id);
+      const box = (on) => `<span class="tk" aria-hidden="true">${on ? "✓" : ""}</span>`;
       const paint = () => {
-        app.querySelector(".at-op").innerHTML = T.shareOpts.map(([v, l, h]) => `<button type="button" role="checkbox" aria-checked="${ticks.includes(v)}" data-o="${v}" class="${ticks.includes(v) ? "on" : ""}${!ticks.length && v === "general" ? " cue" : ""}"><span class="tk" aria-hidden="true">${ticks.includes(v) ? "✓" : ""}</span><span><b>${esc(l)}</b><small>${esc(h)}</small></span></button>`).join("");
+        const all = people.every((p) => ticks.includes(p.id));
+        app.querySelector(".at-op").innerHTML = `<button type="button" role="checkbox" aria-checked="${all}" data-all="1" class="at-all${all ? " on" : ""}">${box(all)}${esc(T.sendSelectAll)}</button>` +
+          people.map((p) => { const on = ticks.includes(p.id); const [bg, fg] = tint(p.id); return `<button type="button" role="checkbox" aria-checked="${on}" data-o="${esc(p.id)}" class="at-pp${on ? " on" : ""}">${box(on)}<span class="lc" style="background:${bg};color:${fg}">${esc(p.n[0].toUpperCase())}</span><span class="nm"><b>${esc(p.n)}</b>${p.t ? `<small>${esc(p.t)}</small>` : ""}</span></button>`; }).join("");
         const c = $("[data-s=go]"); c.disabled = !ticks.length; c.classList.toggle("cue", ticks.length > 0);
-        app.querySelectorAll("[data-o]").forEach((b) => (b.onclick = () => { const v = b.dataset.o; ticks = ticks.includes(v) ? ticks.filter((x) => x !== v) : v === "none" ? ["none"] : [...ticks.filter((x) => x !== "none"), v]; paint(); })); // WalkOptions.tsx exclusive
+        app.querySelector("[data-all]").onclick = () => { ticks = all ? [] : people.map((p) => p.id); paint(); };
+        app.querySelectorAll("[data-o]").forEach((b) => (b.onclick = () => { const v = b.dataset.o; ticks = ticks.includes(v) ? ticks.filter((x) => x !== v) : [...ticks, v]; paint(); }));
       };
-      app.insertAdjacentHTML("beforeend", `<div class="at-sh2" role="dialog" aria-modal="true"><div class="at-top"><span class="cap">${esc(T.take1)}</span><button type="button" class="at-x" aria-label="Close" data-s="x">${IC.x}</button></div><div class="bd"><div class="at-lb">${esc(T.shareBefore)}</div><div class="at-lb">${esc(T.shareTitle)}</div><div class="at-lb">${esc(T.shareAudience)}</div><div class="at-op" role="group"></div></div><div class="at-dock"><button type="button" class="at-pill" data-s="go" disabled>${esc(T.cont)}</button></div></div>`);
+      app.insertAdjacentHTML("beforeend", `<div class="at-sh2" role="dialog" aria-modal="true"><div class="at-top"><span class="cap">${esc(T.take1)}</span><button type="button" class="at-x" aria-label="Close" data-s="x">${IC.x}</button></div><div class="bd"><div class="at-run">${T.sendBubbles.map((l) => `<div class="at-lb">${esc(l)}</div>`).join("")}</div><div class="at-op" role="group"></div></div><div class="at-dock"><button type="button" class="at-pill" data-s="go" disabled>${esc(T.cont)}</button></div></div>`);
       $("[data-s=x]").onclick = () => { app.querySelector(".at-sh2").remove(); stepName("The Ideal Text"); };
       $("[data-s=go]").onclick = () => { S().shared = ticks; next2(); };
       paint();
@@ -1093,7 +1110,7 @@ td small { color: var(--muted); }
       ["Will's one ask", "\"Ok, now let's dive into the content for a bit.\", then \"We just worked on “…”. When you finish, what do you want them to do? Or feel? 🤔\" with Something else, Say yes, Trust me, Get it on your side.", "backend after_take.py:128, will_question.py:94, :117, :142, :678 choose_key; WillQuestion.tsx"],
       ["The goodbye", "\"Got it, thanks 🙏\", \"Good job. See you tomorrow.\", then the plan's bar and \"0 of {n} practices done.\"; the bar's middle \"Record Take 2\".", "backend will_question.py:130; after_take.py:111 end_rows; plan_flow.py:1620 progress; PlanRows.tsx:179"],
       ["The Ideal Text", "The card opens the page: the five answers, one paragraph per question, the helper words orange; \"Record Take 2\" with the dot and the grey Close.", "IdealTextActions.tsx:126; IdealTextHeading.tsx; flow page F1, F3, F6; N401 item 4"],
-      ["The sharing question", "Only from the Ideal Text page's \"Record Take 2\", once (then remembered, at once): the top bar \"Take 1\" and ✕; \"Before we start the new take!\", \"After all, it's about speaking publicly!\", \"How big you want your audience?\"; General community, Only my community, Only me with their hints, nothing ticked; Continue waits for one. The chat's \"Record Take 2\" after the first Take never asks it. With sending on (N470, N479), the people screen in its place.", "IdealTextActions.tsx:104; NextTakeShareScreen.tsx:448-460; WalkOptions.tsx:35; Lounge.tsx:1557, :2304; flow page G1 (Was)"],
+      ["The sharing question", "Only from the Ideal Text page's \"Record Take 2\", once (then remembered, at once): who hears the next Take (N470, locked 4 Nov, which replaced \"How big you want your audience?\"): the top bar \"Take 1\" and ✕; three grey bubbles as one run; Select all; one row per person in your list of chats (letter circle, name, title), the tick box on the left; everyone ticked; Continue waits only when nobody is. The chat's \"Record Take 2\" never asks it.", "NextTakeShareScreen.tsx:128-229 PeopleSendScreen; idealEditCopy.ts:447-453; ChatList.tsx:64-93; IdealTextActions.tsx:104; NextTakeShareScreen.tsx:448-460; WalkOptions.tsx:35; Lounge.tsx:1557, :2304; flow page G1 (Was)"],
       ["How do you feel?", "\"Record Take 2\" opens it at once, no fade (N549): four dots, ✕, the mic and \"How do you feel?\", \"Before you step on stage\", Nervous, Excited, Calm, Not sure, Skip.", "Lounge.tsx:1557; WillabSurface.tsx:316; firstTake.ts:111; FeelingsCheckIn.tsx:90; LabOverlay.tsx:1586"],
       ["The set-up", "\"What is the topic?\" filled in from the plan; \"How long should it run?\" (1 min … 60 min, No limit); \"Have slides to go with it?\" with \"Upload your deck (PDF)\" and \"Skip for now\".", "RecordingSetup.tsx:39, :340, :386, :414; PresentationInput.tsx:105; LabOverlay.tsx:390, :2104"],
       ["Take 2 records", "\"Getting your mic ready\" and \"New slides\"; then \"Take 2 · Slide 1 of 3\" on the stand-in deck (Opening, Main points, Summary) as posters, the clock counting down, the bar orange.", "presentationInPlay.ts:25; defaultDeck.ts:36; RecordingRoadmap.tsx:39; pdfSlides.tsx:338; LabOverlay.tsx:1994"],
@@ -1112,7 +1129,7 @@ td small { color: var(--muted); }
       [`Hi {name}. · ${T.best} · Why it worked: {cue} · ${T.one} · ${T.likeConfident} · ${T.sayStraight} · ${T.tryIt} · ${T.keepMine} · ${T.keepWords} · ${T.skipped} · ${T.onceMore} · ${T.landed} · ${T.helperWords} · ${T.lessonDone}`, "The One thing walk: N309 item 6, N405, N435 (idealEditCopy.ts ONE_THING_COPY)."],
       [`${T.confident} · ${T.aiLabel} · AI · Pause before “{phrase}”, like this: · Lean on “{phrase}”, like this:`, "N289 item 7; N71; N120 (AI_CLIP_BANK)."],
       [`${T.bridge} · We just worked on “{moment}”. ${T.goal} · ${T.goalChips.join(" · ")} · ${T.thanks} · Good job. See you tomorrow. · {n} of {total} practices done.`, "N94; N294; flow page §1 K; N347 item 2; N319 item 7."],
-      [`${T.take1} · ${T.shareBefore} · ${T.shareTitle} · ${T.shareAudience} · ${T.shareOpts.map((o) => o[1] + " (" + o[2] + ")").join(" · ")} · ${T.cont}`, "The sharing question: founder 2026-10-14, 2026-10-21, WQ5 A (flow page G, Was)."],
+      [`${T.take1} · ${T.sendBubbles.join(" · ")} · ${T.sendSelectAll} · ${T.cont}`, "Who hears the next Take: signed in N470 item 6 (4 November 2026)."],
       [`${T.feel} · ${T.feelHelp} · ${T.feelings.join(" · ")} · Skip`, "N272, N392 (FeelingsCheckIn.tsx)."],
       [`${T.topicQ} · ${T.lengthQ} · ${T.lengths.join(" · ")} · ${T.noLimit} · ${T.slidesQ} · ${T.slidesHelp} · ${T.upload} · ${T.skipForNow} · Next · ← Back · ${T.micReady} · ${T.newSlides} · Take 2 · Slide 1 of 3 · Opening · Main points · Summary`, "The set-up and the recording screens (RecordingSetup.tsx, N257, defaultDeck.ts), as in the locked \"The way in\"."],
     ];
@@ -1120,7 +1137,7 @@ td small { color: var(--muted); }
     return { walk, ideal, feel, share, card, question, typed, progress, goodbye, T, sample, SOURCES, OPEN, WORDS };
   }
   /* ===== END AFTER THE TAKE ===== */
-  const AFTER = afterTheTake({ app, esc, wait, toast, fail, stepName: (t) => stepName(t), go: (id) => go(id), gen: () => gen, state: () => S, steps: (k) => { if (k === "done") $$("#steps li").forEach((li) => { li.classList.remove("on"); li.classList.add("done"); }); } });
+  const AFTER = afterTheTake({ people: () => (whoKey === "link" ? [{ id: "inv-" + B().inviter.n, n: B().inviter.n, t: B().inviter.role }] : [{ id: "artur", n: "Artur", t: "Speaking coach" }]), app, esc, wait, toast, fail, stepName: (t) => stepName(t), go: (id) => go(id), gen: () => gen, state: () => S, steps: (k) => { if (k === "done") $$("#steps li").forEach((li) => { li.classList.remove("on"); li.classList.add("done"); }); } });
 
   // ---------- Will's chat, beat by beat ----------
   const BEATS = {

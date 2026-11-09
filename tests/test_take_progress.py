@@ -25,11 +25,17 @@ OUTCOME
   O5  The next walk knows where in the talk the last one praised and
       fixed, its beginning, middle or ending, so its own praise and fix
       move through the talk (N546).
+  O6  A fix counts as given only when the walk opened it on screen: Last
+      time never names a fix I never saw, and names it by what I saw (the
+      voice Exercise when its lost Clearer version gave it its place); with
+      the walk's record unreadable, the frame's fixes stand (the audit's
+      3.4).
 PROVES   O1 -> test_progress_is_read_against_my_first_takes
          O2 -> test_each_fix_is_marked_came_back_or_gone_on_the_next_take
          O3 -> test_last_time_plays_the_fix_that_rose_on_this_take
          O4 -> test_the_pace_fix_worked_when_that_slide_stays_inside_the_green
          O5 -> test_the_next_walk_knows_where_the_last_one_praised_and_fixed
+         O6 -> test_a_fix_i_never_saw_is_not_one_the_walk_gave
 WHY      Founder 2026-10-31 (N291: "yes"; "ok go with the proposal"; N290:
          "the next time it chooses a moment it should take into account
          what the user answered"; N309 item 1: "Last time: {the tip}. You
@@ -44,7 +50,7 @@ from unittest.mock import patch
 
 from services.take_progress import (CAME_BACK, GONE, NOT_MEASURED, anchored_willfidence,
                                     fixes_of, frozen_reference, last_fix, outcome,
-                                    pace_worked, walk_parts)
+                                    pace_worked, walk_gave, walk_parts)
 
 _WORDS = "we made our plan clear and we will deliver it on time for everyone"
 
@@ -216,3 +222,36 @@ def test_the_next_walk_knows_where_the_last_one_praised_and_fixed():
     assert walk_parts({"blocks": blocks}, fixes) == {"praise": 2, "fix": {0, 1}}
     # Nothing given: nothing known, and the walk picks as it always did.
     assert walk_parts({"blocks": []}, []) == {}
+
+
+def test_a_fix_i_never_saw_is_not_one_the_walk_gave():
+    take = _frame({"slide_index": 1, "walk_slot": "strongest", "carries_exercise": False,
+                   "one_fix": "moment", "snippet_ids": ["a"]},
+                  {"slide_index": 2, "walk_slot": "between", "carries_exercise": True,
+                   "exercise_kind": "clearer", "snippet_ids": ["b", "b2"]})
+
+    class Db:
+        def __init__(self, events):
+            self.events = events
+
+        def list_moment_events_for_take(self, take_id):
+            if self.events is None:
+                raise RuntimeError("down")
+            return self.events
+
+    def opened(snippet, *shown):
+        return {"snippet_id": snippet, "event": "opened", "co_exposed": {"shown": list(shown)}}
+
+    # The walk never opened the fix: it gave none, so Last time says nothing.
+    assert walk_gave(Db([opened("a", "praise")]), "t1", take) == []
+    # Opened as its Clearer version: the Clearer version, as the frame says.
+    assert walk_gave(Db([opened("b2", "rewrite")]), "t1", take) == [
+        {"slide_index": 2, "kind": "clearer"}]
+    # Its Clearer version was lost and the voice Exercise took its place.
+    assert walk_gave(Db([opened("b", "exercise")]), "t1", take) == [
+        {"slide_index": 2, "kind": "voice"}]
+    # An older record that names nothing keeps the frame's kind.
+    assert walk_gave(Db([{"snippet_id": "b", "event": "opened"}]), "t1", take) == [
+        {"slide_index": 2, "kind": "clearer"}]
+    # The walk's record unreadable: the frame's fixes stand.
+    assert walk_gave(Db(None), "t1", take) == [{"slide_index": 2, "kind": "clearer"}]

@@ -72,6 +72,9 @@ OUTCOME
       once, with whose it was, what and the flow (N504 item 2), and the
       founder reads how often and the newest; "Not now" on my own message,
       or on one that asks for nothing, is refused.
+  O19 The list reads every chat's newest messages with the chats in one
+      read, never one read per chat, and answers what the reads one per
+      chat answer.
 PROVES   O1 -> ChatsTest::test_as_a_user_I_have_my_chats_without_any_ring,
                ChatsTest::test_as_a_server_I_answer_nobody_who_is_not_signed_in
          O2 -> ChatsTest::test_the_demo_is_made_once_and_listed
@@ -91,6 +94,7 @@ PROVES   O1 -> ChatsTest::test_as_a_user_I_have_my_chats_without_any_ring,
          O16 -> ChatsTest::test_an_answer_waits_its_five_seconds_and_undo_takes_it_back
          O17 -> ChatsTest::test_my_question_is_sent_as_an_answer_is_and_marked_for_them_to_answer
          O18 -> ChatsTest::test_not_now_tells_nobody_and_is_kept_once_for_the_founder
+         O19 -> ChatsTest::test_the_list_reads_every_chats_messages_in_one_read
 WHY      The chats between people, first slice (founder 2026-10-31, N298 to
          N316; the three emoji N311; the mic N321 item 2; its words N324,
          shown under the player N331; the photos and files of the "+" N351;
@@ -123,8 +127,15 @@ OTHER = "33333333-3333-4333-8333-333333333333"
 GATE = "PLF1_PROCESSING_AUTHORIZATION_MODE"
 
 
+#: The foreign keys an embed follows: (parent table, embedded table) -> the
+#: embedded table's column naming the parent's id.
+_EMBEDS = {("chat_threads", "chat_messages"): "thread_id"}
+
+
 class _Query:
-    """One PostgREST call on an in-memory table: filters, order, limit."""
+    """One PostgREST call on an in-memory table: filters, order, limit, and
+    an embedded table ordered and limited per parent row, as PostgREST does
+    (``select("...,chat_messages(...)")`` with ``foreign_table=``)."""
 
     def __init__(self, store: "_Store", name: str):
         self.store, self.name = store, name
@@ -132,8 +143,14 @@ class _Query:
         self.sort: tuple | None = None
         self.cap: int | None = None
         self.write: tuple | None = None
+        self.embed: str | None = None
+        self.embed_sort: tuple | None = None
+        self.embed_cap: int | None = None
 
-    def select(self, _columns):
+    def select(self, columns="*"):
+        for (parent, child) in _EMBEDS:
+            if parent == self.name and f"{child}(" in str(columns):
+                self.embed = child
         return self
 
     def eq(self, column, value):
@@ -149,12 +166,18 @@ class _Query:
         self.filters.append(lambda r: r.get(column) is None)
         return self
 
-    def order(self, column, desc=False):
-        self.sort = (column, desc)
+    def order(self, column, desc=False, foreign_table=None):
+        if foreign_table:
+            self.embed_sort = (column, desc)
+        else:
+            self.sort = (column, desc)
         return self
 
-    def limit(self, n):
-        self.cap = n
+    def limit(self, n, foreign_table=None):
+        if foreign_table:
+            self.embed_cap = n
+        else:
+            self.cap = n
         return self
 
     def insert(self, payload):
@@ -185,7 +208,17 @@ class _Query:
             return _Result(hits)
         if self.sort:
             hits.sort(key=lambda r: r[self.sort[0]], reverse=self.sort[1])
-        return _Result([dict(r) for r in hits[:self.cap]])
+        out = [dict(r) for r in hits[:self.cap]]
+        if self.embed:
+            key = _EMBEDS[(self.name, self.embed)]
+            children = self.store.tables.get(self.embed, [])
+            for row in out:
+                mine = [dict(c) for c in children if c.get(key) == row.get("id")]
+                if self.embed_sort:
+                    mine.sort(key=lambda c: c[self.embed_sort[0]], reverse=self.embed_sort[1])
+                row[self.embed] = mine[:self.embed_cap]
+        self.store.reads.append(self.name)
+        return _Result(out)
 
 
 class _Result:
@@ -199,6 +232,7 @@ class _Store:
     def __init__(self):
         self.tables: dict[str, list[dict]] = {}
         self.clock = datetime.now(timezone.utc)
+        self.reads: list[str] = []  # the tables read, one entry a read
 
     def table(self, name):
         return _Query(self, name)
@@ -331,6 +365,20 @@ class ChatsTest(unittest.TestCase):
                     self.client.post(f"/v2/chats/{thread}/messages", json={"kind": "emoji", "body": "👍"})):
             self.assertEqual(res.status_code, 401)
         self.assertEqual(self.store.tables, {})
+
+    def test_the_list_reads_every_chats_messages_in_one_read(self):
+        from services import chats
+        self._post("/v2/chats/demo")
+        self.store.reads.clear()
+        listed = self._get("/v2/chats").get_json()
+        self.assertEqual(len(listed["chats"]), 2)
+        self.assertNotIn("chat_messages", self.store.reads)
+        self.assertEqual(self.store.reads.count("chat_threads"), 1)
+        with patch.object(chats, "_threads_with_recent", lambda _db, _ids: None):
+            self.store.reads.clear()
+            one_per_chat = self._get("/v2/chats").get_json()
+        self.assertEqual(self.store.reads.count("chat_messages"), 2)
+        self.assertEqual(listed, one_per_chat)
 
     def test_the_demo_is_made_once_and_listed(self):
         first = self._post("/v2/chats/demo")
