@@ -14096,7 +14096,7 @@ No new words on screen. No migration. The rules: frontend
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 §1, Amendments, when built.
 
-**N552 · The walk speaks of a moment to try, never of a speaker to fix
+**N557 · The walk speaks of a moment to try, never of a speaker to fix
 (founder, the Claude Code chat, 9 November 2026: "There shouldn't be
 something like nothing to fix this time. It assumes that you're broken and
 we need to fix you. This is not the right wording. Please rewrite those as
