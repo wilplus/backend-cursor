@@ -823,8 +823,13 @@ those that exist in that Take; a Take whose bookmarks are not frozen
 yet waits for its text.
 O2  The queue reads only the bookmarked pieces, in one read for every
 Take, never every piece of every Take (the queue took 6.7 s).
-O3  A failed piece read lists no moments rather than failing the queue.","O1, O2 -> QueueBookmarksTests::test_bookmarks_in_talk_order_from_one_read_of_only_them
-O3 -> QueueBookmarksTests::test_a_failed_read_lists_no_moments","Founder 2026-10-21 (N99): ""please make sure it is smooth that it loads fast""."
+O3  A failed piece read lists no moments rather than failing the queue,
+even when only one of its chunks failed: never some of a Take's
+moments.
+O4  The walk asks for the coach's languages, the queue and the waiting
+plans together, not one after another (the walk took 1.1 s).","O1, O2 -> QueueBookmarksTests::test_bookmarks_in_talk_order_from_one_read_of_only_them
+O3 -> QueueBookmarksTests::test_a_failed_read_lists_no_moments
+O4 -> QueueBookmarksTests::test_the_walks_first_reads_go_out_together","Founder 2026-10-21 (N99): ""please make sure it is smooth that it loads fast""; 2026-11-09: the walk took 1.1 s."
 tests/test_coach_queue_talk_setup.py,Story,"As a coach, I want to see who a speaker's talk is for and what they want the audience to do, in the speaker's own words, next to their goal, so that I judge and answer knowing what the talk is trying to do.","O1  The queue carries, per Take, the setup's audience and its call to
 action as the speaker said them (filled by Will's questions), None
 when they have not said; never a name, never a score.

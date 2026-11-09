@@ -6,9 +6,10 @@ user_id; nothing about any moment, only counts.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from services.coach_moments_queue import queue_for_coach
+from services.coach_queue import Bookmarks
 
 
 def speakers_summary(queue: list[dict]) -> list[dict]:
@@ -53,7 +54,7 @@ def speakers_summary(queue: list[dict]) -> list[dict]:
 
 def speakers_for_coach(
     database: Any, rows: list, *, rater_id: Any,
-    moments_for: Callable[[dict], Optional[list[str]]],
+    moments_for: Bookmarks,
     pseudonym_for: Callable[[Any], str],
 ) -> list[dict]:
     """The Speakers button for one coach: the queue, then only counts."""
