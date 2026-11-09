@@ -170,7 +170,7 @@ def queue(database: Any, host_id: Any) -> dict:
         "id,bundle_id,asker_id,thread_id,message_id,words,mark,answered_message_id,created_at")
         .in_("bundle_id", ids)) if ids else []
     names = _names(database, askers)
-    out = []
+    out: list[dict[str, Any]] = []
     for b in bundles:
         mine = sorted((a for a in askers if str(a["bundle_id"]) == str(b["id"])),
                       key=lambda a: str(a.get("created_at") or ""))
