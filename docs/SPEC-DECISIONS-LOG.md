@@ -14887,3 +14887,97 @@ sample; they are now the rule.
 provider; the legal terms, for counsel.
 Not in force until built and merged. No migration in this entry.
 No rules page yet: a page for the launchpad with its first part (N566).
+
+**N578 · Every inviter has a coach chat of their own, "{name}'s assistant",
+started from Artur's locked setup; Will becomes your own chat and the engine
+under every assistant; a setup chat for whoever shares; one recipe per chat
+(founder, the Claude Code chat, 9 November 2026: "Will should not be a
+speaking chat, but Arthur, if you've been asked by Arthur. And you have all
+the questions set up by Arthur ... everyone can define their own entry
+message for people to see, and all the next steps ... define the buttons. Do
+you want to have a text input or voice input or text and voice? ... we need
+to build the configuration panel right now. And this configuration should
+be also through the chat, based on what right now is Will ... we needed a
+first user to be locked in so that the next user can use this locked in,
+transformed into a setup chat that then is gone after you set up"; "How is
+the share of your contribution transferred to you? At the beginning,
+through the tokens that you can spend on the services of other chats";
+then, on eight questions with recommended answers: "The inviter's chat",
+"Whoever shares", "Welcome and steps", "Questions and input", "Profession
+and style", "Use one or start one", "A separate chat, Will", "Tomek's, from
+the template", "\"Artur's assistant\"" and "One recipe per chat").** For
+N462, N471, N492, N563, N565, N569, N571, N572, N573 and N577; amends Never 4
+for a host's own chat:
+1. **The coach chat is the inviter's.** A person meets the chat of whoever's
+   link they came by, named "{name}'s assistant" (signed, Never 4), set up
+   that person's way. Will's engine writes and runs it underneath, with
+   N565's rules and checks; the name says plainly that an AI answers for that
+   person (AI Act article 50). Was: everyone's coach chat was "Will".
+2. **Artur's setup is the first, locked as the template.** Today's Will chat
+   (the welcome, N492; the five slides, N462; the way in, N572 and N573; the
+   walk; the plan, N564) becomes "Artur's assistant", his setup, and the
+   template every other chat starts from. Whoever invites people without
+   setting up a chat has the template under their own name ("Tomek's
+   assistant") until they change it.
+3. **Will becomes your own chat:** your principles, the Sunday note, life
+   goals and the private notes Will keeps about you. Will is also the engine
+   under every assistant and the setup chat, so the promise that Will learns
+   about each speaker holds (CLAUDE.md).
+4. **The setup chat.** Whoever chose "Share what I know" (N573) gets, after
+   their walk, a temporary setup chat: Artur's locked setup turned into
+   questions, one at a time. When they finish, their assistant goes live and
+   the setup chat is gone.
+5. **What a person defines, in the first version:** the welcome and the
+   steps people meet; the first Take's questions, the tap answers, and how
+   people answer (text, voice, or both); their profession, chosen from ones
+   Will suggests from their first Take; and the style rules Will writes
+   their bubbles by, on top of the founder's rules (N565), never past the
+   Nevers or the checks. Not definable: the Nevers, consent, the recording
+   screens, the walk's order, the bar (N483), and where the chat is offered,
+   only through the person's link for now (N471); a page and the website
+   chat come later (N569).
+6. **A host's own words** (their welcome, steps, questions and answers) are
+   theirs, in their own chat: they need no founder's OK, and they pass the
+   same checks as Will's written bubbles (no number or verdict about the
+   speaker, Never 1; nothing that says the speaker is broken). Amends Never
+   4 for a host's own chat; the app's own words keep it.
+7. **One recipe per chat.** A chat's setup is one recipe: welcome, steps,
+   questions, input, profession, style and the model it uses. The setup chat
+   writes it, the chat reads it, the model's recipe card (N563 item 2) is
+   part of it, and the API follows it, so every option has its pipe.
+8. **Models:** a chat uses an existing model (Speaking confidence, for one)
+   or starts its own (N571); nobody has to start one.
+9. **Earnings come first as tokens** to spend on other chats' services;
+   money payouts follow (N577: the minimum payout is still open).
+10. **Open:** where "Learn from others" leads (N573 item 2); how a host's
+    own first-Take questions keep feeding the plan, the profile and "Start
+    your own" (N571), which rely on the five slides; the API's mechanics;
+    the setup chat's words; counsel's reading of "{name}'s assistant" under
+    article 50.
+No migration in this entry. No rules page yet: hosted chats and their setup
+get one with their first built part, on the founder's OK (N107).
+
+**N579 · The chat builder's MVP: the name and welcome, the first Take's
+questions, and how people answer; for the founder and a few testers first;
+designed before it is built (founder, the Claude Code chat, 9 November 2026:
+"Please let's define it all on the prototype and build the missing mechanics
+for it all ... we need the builder of the chat in an mvp version to test it
+first"; on four questions with recommended answers: "Name and welcome",
+"First Take questions", "How people answer"; "You and a few testers";
+"Later, after the MVP"; "Yes, design first").** For N578:
+1. **What the MVP builder sets:** the assistant's name ("{name}'s
+   assistant", N578 item 1) and the welcome bubbles people meet first; the
+   first Take's questions, starting from Artur's five (N462): keep, change,
+   add or remove; and how people answer when the assistant asks something
+   in the chat: tap answers, and whether they may type, record, or both.
+   The profession, the style rules and the model come after the MVP.
+2. **Testers first:** behind a ring row, `chat_builder`: the founder and the
+   people the founder adds. Everyone else keeps today's chat until it is
+   proven.
+3. **Will's own chat** (N578 item 3) comes after the MVP; testers meet
+   "{name}'s assistant" with today's features inside it.
+4. **Designed first:** the recipe's contract (what a host may change and
+   what stays locked), how changed first-Take questions keep feeding the
+   plan, the profile and "Start your own", the data and the API, written up
+   for the founder's review before the build starts.
+No migration in this entry. No rules page yet (N578).
