@@ -21,7 +21,8 @@ OUTCOME
   O5  An account that signs in with Google has no password to ask for: its
       email change needs none, Set a password sends the set email, and the
       saved password is logged as its first; a reset link's password is a
-      change and gets the notice.
+      change and gets the notice. One that signs in with Microsoft is called
+      "Microsoft" (N401 item 6), never Supabase's "Azure".
   O6  When the email doesn't go, the card is told so: nothing is reported
       as sent.
 PROVES   O1 -> test_an_email_change_waits_for_the_link_from_the_new_address
@@ -213,6 +214,9 @@ def test_a_google_account_sets_its_first_password_with_a_link(ports):
                            "&token_hash=hash-for-alex%40example.com")
     assert acc.password_link_used(ports, CALLER) == {"event": "password_set"}
     assert len(ports.sent) == 1                       # a first password: no notice
+
+    ports.users[ALEX] = {"email": "alex@example.com", "providers": ["azure"]}
+    assert acc.state(ports, CALLER)["provider"] == "Microsoft"
 
     ports.users[ALEX]["password"] = "now-set"
     assert acc.send_password_link(ports, CALLER)["kind"] == "reset"
