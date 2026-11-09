@@ -539,6 +539,15 @@ def v2_chats_recipe_setup_answer():
         db, str(request.user_id), body)))
 
 
+@v2_bp.route("/user/takes/<take_id>/answers", methods=["GET"])
+@require_auth
+def v2_take_answers(take_id):
+    """The answers to my Take, gathered under it, for me only (N587)."""
+    from services import take_answers
+    return _builder_or_404(lambda: _run("take answers", lambda: take_answers.gathered(
+        db, str(request.user_id), take_id)))
+
+
 @v2_bp.route("/chats/<thread_id>/host", methods=["GET"])
 @require_auth
 def v2_chats_host(thread_id):
