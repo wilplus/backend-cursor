@@ -381,6 +381,21 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "delete", "database_row", 57),
     PurgeDependency("ai_models_owner", "ai_models", "owner_id", "user",
                     "delete", "database_row", 58, clears_selector=True),
+    # A model's API and its money (migration a_business_can_buy_a_model_s_answers,
+    # N528 item 11, N531, N583): a buyer's keys, a teacher's shares and payouts
+    # go with the account; the answers a buyer paid for stay, with no buyer,
+    # because they are what the model's teachers earned; a version keeps no
+    # founder once theirs is erased (their part then goes to the teachers).
+    PurgeDependency("ai_model_calls_buyer", "ai_model_calls", "buyer_id", "user",
+                    "delete", "database_row", 54, clears_selector=True),
+    PurgeDependency("ai_model_api_keys", "ai_model_api_keys", "buyer_id", "user",
+                    "delete", "database_row", 55),
+    PurgeDependency("ai_model_shares", "ai_model_shares", "user_id", "user",
+                    "delete", "database_row", 55),
+    PurgeDependency("ai_model_payouts", "ai_model_payouts", "user_id", "user",
+                    "delete", "database_row", 55),
+    PurgeDependency("ai_model_versions_founder", "ai_model_versions", "founder_id", "user",
+                    "delete", "database_row", 58, clears_selector=True),
     # Email and password on Data & consent (WIL-95, N190, migration 0493):
     # the person's own security log goes with the account.
     PurgeDependency("account_security_events", "account_security_events",

@@ -935,6 +935,12 @@ fi
 hard migrations/a_person_can_teach_and_start_ai_models.sql
 hard migrations/a_person_can_teach_and_start_ai_models.sql
 
+# 0521 (N528, N531, N566, N577, N583): a model's API and its money. Both lanes,
+# after 0516 (0517 to 0520 are other PRs), twice. Its cases are in
+# tests/test_a_business_can_buy_a_model_s_answers_postgres.py.
+hard migrations/a_business_can_buy_a_model_s_answers.sql
+hard migrations/a_business_can_buy_a_model_s_answers.sql
+
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"
 rm -f "$log"

@@ -138,6 +138,50 @@ def phase1_provider_route(function):
     return wrapped
 
 
+def user_provider_scope(user_id: str, *, operation: str, prefix: str):
+    """The same authority ``phase1_provider_route`` binds, for a person the
+    request names some other way than a sign-in: a model's API key names its
+    buyer (N583). Their membership, their current processing agreement and a
+    permit for every provider call, exactly as for their own requests.
+
+    A context manager. Raises ProcessingAuthorizationError (or a membership
+    refusal as one) when the person may not be processed for; inert while
+    the gate is off, as the route decorator is."""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def scope():
+        from services.membership import refusal
+        refused = refusal(db, user_id)
+        if refused is not None:
+            raise ProcessingAuthorizationError(
+                str(refused[0].get("code") or "WAITLIST"), str(refused[0].get("error") or ""),
+                int(refused[1]))
+        service = ProcessingAuthorizationService(db)
+        if not service.enforced:
+            yield
+            return
+        try:
+            principal = resolve_owner_principal(ProjectRepository(db), user_id=user_id,
+                                                guest_token=None)
+            principal_id = service.resolve_acquisition_principal(principal.id, user_id=user_id)
+        except (CreateTakeError, ProjectOwnershipError) as error:
+            raise ProcessingAuthorizationError(
+                "OWNER_REQUIRED", "A verified owner is required.", 403) from error
+        service.require_current(principal_id, operation=operation)
+        from services.authorized_provider import (
+            AuthorizedProviderAdapter,
+            ProviderCoordinates,
+            protected_provider_scope,
+        )
+        import uuid
+        adapter = AuthorizedProviderAdapter(
+            db, ProviderCoordinates(principal_id, None, None), authorization=service)
+        with protected_provider_scope(adapter, idempotency_prefix=f"{prefix}:{uuid.uuid4()}"):
+            yield
+    return scope()
+
+
 def speaker_provider_route(function):
     """Bind a coach's AI draft to the SPEAKER's current authority.
 

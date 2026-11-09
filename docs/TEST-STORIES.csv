@@ -21,6 +21,17 @@ O4 -> test_405_answers_json_not_html,
 test_413_handler_is_registered_and_answers_json
 O5 -> test_preflight_allows_every_header_the_fe_sends
 O6 -> test_provider_diagnostics_refuse_an_anonymous_caller","Incident 2026-07-15: big deck uploads failed at the browser's pre-upload (CORS) check. 2026-10-25: the provider diagnostics answered anyone, with the key's prefix and the deployed commit."
+tests/test_a_business_can_buy_a_model_s_answers_postgres.py,Story,"As a business that buys a model's answers, and as the teachers who earn from them, I want the API's tables to keep only a hash of my key, never let a test key bill, never let a sale's split stop adding up, and keep what the teachers earned when a buyer leaves (N528, N531, N566, N577, N583).","O1  The five new tables have RLS on and grant nothing to a browser role;
+ai_models has its price, which is never zero or below.
+O2  The tables refuse what the rules never allow: a key stored as
+anything but a SHA-256 hash, the same key twice, free answers on a
+live key, a billed test answer, a split that does not add up, a
+second version 1, a payout month that is not a month's first day.
+O3  Erasing a buyer deletes their keys and keeps their paid answers with
+no buyer; erasing a model's founder keeps the version with no
+founder; erasing a teacher takes their share and payouts.","O1 -> test_the_tables_are_locked_to_the_backend_and_a_price_is_positive
+O2 -> test_the_tables_refuse_what_the_rules_never_allow
+O3 -> test_a_buyers_paid_answers_stay_and_a_teachers_share_goes","Migration a_business_can_buy_a_model_s_answers (0521), applied twice in both rehearsal lanes (the reapply is its idempotency check)."
 tests/test_a_coach_is_asked_to_listen_again_postgres.py,Story,"As a coach, I want to be asked to listen again only for clips I judged blind, once at a time, with a fresh line each time, so that my second answer is still my own and not prompted by the machine.","O1  The flag opens one ask per coach with a blind judgment of record and
 none for a self-report, a peer, an abstention, an anonymous row or a
 coach whose rating was not blind; no second ask while one is open.
@@ -2062,6 +2073,49 @@ re-apply as a no-op.","O1 -> test_permissions_rls_and_learning_boundaries_are_cl
 O2 -> test_the_candidate_set_writer_repairs_land_on_the_d4_body","Production 42702, 2026-09-21: the writer had never been called. O2 reads the function definition from the catalog; it does not call the writer with a bundle (that needs the full V3 inventory harness)."
 tests/test_mlc3_n1_source_pattern_postgres.py,Story,"As a speaker who asks for deletion, I want every practice-pattern row about me found under my identity, so that erasure misses nothing.","O1  The deletion list finds every row of each practice-pattern table (N1)
 under my identity, in the expected numbers.",O1 -> test_deletion_inventory_attributes_every_n1_row_to_acquisition_principal,Rehearsal database only; the N1 pattern feature is disabled.
+tests/test_model_api.py,Story,"As a model's founder and its teachers, I want every answer sold to be split the same way for every model, running costs first, then WillpowerLab's 20% of the margin, then the founder's 10% of the rest, then the teachers by their points, with nothing lost to rounding, so the price screen and the payouts always agree (N531, N577, N583).","O1  At any price the parts add up; at the lowest price, what an answer
+costs to run, ""Infrastructure"" takes it all.
+O2  A teacher's points are their counted answers, weighed by reliability,
+a hard clip worth 1.5; a month's teachers' part is divided by them to
+the unit, and with no founder left the founder's part goes to them.
+O3  The model is ""sure"" only when it is confident and answers with a
+choice its recipe offers.","O1 -> ModelMoneyTest::test_the_split_adds_up_and_the_floor_is_all_infrastructure
+O2 -> ModelMoneyTest::test_points_and_a_month_divided_by_them
+O3 -> ModelMoneyTest::test_sure_needs_confidence_and_an_offered_choice","services/model_api.py holds the money's rules once, for the price screen, every API call and every payout."
+tests/test_model_api_routes.py,Story,"As a business, I want to read a model's card, try it, take a free test key that I see only once, and call its API, paying in tokens only for the answers I use and never more than my monthly limit; as a model's founder, I want to set its price above what an answer costs, with the split shown live; and as a teacher, I want my share of each version and my earnings paid in tokens (N528, N531, N566, N577, N583).","O1  Without the ring row (ai_models) the card, the terms and keys are 404.
+O2  A ready model's card says ""Good at"", ""Not so good at"", ""Not for"",
+""When it isn’t sure"" and ""Version"", with ""Use it in your business"" and
+""Try it""; a model not for sale says ""trying it · not for sale yet"",
+and when it is not sure it says ""I’m not sure about this one, so I
+won’t guess."" with ""Not sure · a coach will answer"".
+O3  ""Create a key"" shows the key once (""This is a test key: free for 100
+answers. You see it only once.""); only its hash is stored; the code
+comes in ""JavaScript"", ""Python"" and ""curl""; the key answers 100 free
+answers and then stops.
+O4  A live key pays the model's price in tokens, split as N577 sets it;
+it gets no answer when the tokens are not charged, and it stops before
+an answer that would pass its monthly limit.
+O5  A business's unsure questions reach the teachers, names removed, only
+once the business allows it.
+O6  ""Set your price"": − and + preview a price and its split without
+saving; ""Use {price}"" saves it, never below what an answer costs to
+run; nobody else can.
+O7  A version fixes its teachers' shares; ""Your share of version 1"" is
+their part of it, and a month's earnings above the minimum are paid
+in tokens, once.
+O8  ""Download the data"" (one route, #1869's) holds the teachers' own
+ratings and answers with the screen's words, never what a speaker
+said or the sealed exam; someone who never taught it cannot download it.
+O9  An API answer runs under its buyer's processing authority: refused
+there, the model is never asked.","O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
+O2 -> ModelApiTest::test_the_card_and_trying_a_model
+O3 -> ModelApiTest::test_a_test_key_is_shown_once_and_answers_100_times
+O4 -> ModelApiTest::test_a_live_key_pays_in_tokens_and_stops_at_its_limit
+O5 -> ModelApiTest::test_unsure_questions_reach_teachers_only_when_allowed
+O6 -> ModelApiTest::test_the_founder_sets_the_price_above_the_running_cost
+O7 -> ModelApiTest::test_a_version_fixes_shares_and_earnings_are_paid_in_tokens
+O8 -> ModelApiTest::test_the_download_holds_the_teachers_answers_only
+O9 -> ModelApiTest::test_an_api_answer_needs_the_buyers_authority","The models' API and its money (migration a_business_can_buy_a_model_s_answers), served by services/model_api_store.py over services/model_api.py."
 tests/test_model_launchpad.py,Story,"As a person in WillpowerLab, I want to find AI models, see how far each is, teach the ones in my field from one queue, and, as a model's founder, release a version only when it is clearly better (N528, N563, N566; the locked prototype ""The Model Launchpad"").","O1  The list puts my draft on top, then the most mature models, with
 search, the three filters, and an empty state that offers to start one.
 O2  A public model's page is in totals only; a private one is unseen by
