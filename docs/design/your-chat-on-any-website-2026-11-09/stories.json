@@ -1,0 +1,638 @@
+[
+  {
+    "id": "WID-01",
+    "area": "Your chat on any website",
+    "title": "The owner sets how far ahead they plan",
+    "given": "Ariel shares what she knows and has not set her questions for people who join",
+    "when": "Will asks the first of her questions",
+    "then": [
+      "Will says \"Everyone who joins through your link builds a knowledge base with you. I'll ask them a few questions first.\"",
+      "then \"How far ahead do you like to plan?\" with \"A month at a time\", \"A week at a time\", \"A quarter at a time\" and \"No deadline\" as taps"
+    ],
+    "rules": [
+      "N487 item 2",
+      "N503",
+      "N534",
+      "N569 item 3",
+      "customer-requests.md C1",
+      "Never 3"
+    ],
+    "code": [
+      "be:services/join_setup.py::PLAN_Q = \"How far ahead do you like to plan?\"",
+      "be:services/join_setup.py::INTRO = (\"Everyone who joins through your link builds a knowledge base with you. \""
+    ],
+    "tests": [
+      "tests/test_join_questions.py"
+    ],
+    "status": "built",
+    "screen": "onb.plan",
+    "note": "Built where N503 and N534 put it: the first time \"+\" is tapped, after the note \"Before you share your link, set the questions for people who join.\" The prototype shows it in the onboarding's wait (step c), as N487 item 1 placed it; that move waits for the founder's OK."
+  },
+  {
+    "id": "WID-02",
+    "area": "Your chat on any website",
+    "title": "The owner adds a practical question of their own",
+    "given": "Ariel has picked her plan",
+    "when": "Will asks \"Anything else practical you'd like to ask?\" and she taps \"Something else\" and says one",
+    "then": [
+      "her words appear as her message",
+      "Will says \"They answer by tapping, so I've given it answers. Change them if you like.\""
+    ],
+    "rules": [
+      "N487 item 2",
+      "N483 item 2"
+    ],
+    "code": [
+      "be:services/join_setup.py::MORE_Q = \"Anything else practical you'd like to ask?\"",
+      "be:services/join_setup.py::ADDED = \"They answer by tapping, so I've given it answers. Change them if you like.\""
+    ],
+    "tests": [
+      "tests/test_join_questions.py"
+    ],
+    "status": "built",
+    "screen": "onb.more"
+  },
+  {
+    "id": "WID-03",
+    "area": "Your chat on any website",
+    "title": "The owner sees what someone new will be asked",
+    "given": "Ariel has answered Will's setup",
+    "when": "Will shows the summary",
+    "then": [
+      "\"This is what someone new will see when they open your chat:\" with each question and its answers",
+      "\"Change it\" and \"That's right\" as taps; \"Change it\" asks \"What should change?\""
+    ],
+    "rules": [
+      "N487 item 3",
+      "N569 item 3"
+    ],
+    "code": [
+      "be:services/join_setup.py::PEEK = \"This is what someone new will see when they open your chat:\"",
+      "be:services/join_setup.py::CHANGE_Q = \"What should change?\""
+    ],
+    "tests": [
+      "tests/test_join_questions.py"
+    ],
+    "status": "built",
+    "screen": "onb.peek"
+  },
+  {
+    "id": "WID-04",
+    "area": "Your chat on any website",
+    "title": "The onboarding asks what the person wants to do first",
+    "given": "Take 1 is being processed and Ariel tapped \"That's right\" under \"Here's how others will see you:\"",
+    "when": "Will asks the next question",
+    "then": [
+      "\"What would you like to do here first?\" with \"To learn from others\", \"To share what I know\" and \"Both\" as taps",
+      "\"To share what I know\" or \"Both\" brings the questions for people who join"
+    ],
+    "rules": [
+      "N487 item 1",
+      "N453",
+      "Never 3",
+      "Never 4"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "onb.first",
+    "note": "Drafted words, for the founder's OK."
+  },
+  {
+    "id": "WID-05",
+    "area": "Your chat on any website",
+    "title": "The owner confirms what their model will learn, from the five slides",
+    "given": "Ariel shares what she knows and has set her questions",
+    "when": "Will shows her model",
+    "then": [
+      "\"Your website chat teaches a model. From your five answers, here is what it will learn:\"",
+      "a card: \"The problem\", \"How you solve it today\", \"It picks from a list\", \"It gives a score on a scale\"",
+      "\"Change it\" and \"That's right\" as taps"
+    ],
+    "rules": [
+      "N569 item 3",
+      "N566",
+      "Never 4"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "onb.model",
+    "note": "Drafted. Fills the launchpad's Describe and Shape (N566) from the slides \"Your field\" and \"Worth sharing\" instead of asking \"What problem should your model solve?\" and \"How do you solve it today?\"."
+  },
+  {
+    "id": "WID-06",
+    "area": "Your chat on any website",
+    "title": "The owner confirms the scale each call is rated on",
+    "given": "Ariel has confirmed her model",
+    "when": "Will shows the scale",
+    "then": [
+      "\"After each call back, you'll rate how it went. Clear words for each point help your model learn:\"",
+      "\"Bought on the call\", \"Will buy soon\", \"Wants to think\", \"Not for now\", \"Not a fit\"",
+      "\"Change it\" and \"That's right\""
+    ],
+    "rules": [
+      "N569 item 5",
+      "N566",
+      "Never 4"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "onb.scale",
+    "note": "Drafted words."
+  },
+  {
+    "id": "WID-07",
+    "area": "Your chat on any website",
+    "title": "The website switch is hidden until its new design is signed",
+    "given": "Ariel opens \"Add someone to chat with\"",
+    "when": "the sheet opens",
+    "then": [
+      "the title \"Add someone to chat with\", her link, \"Copy my link\" and \"Only the two of you are in it.\"",
+      "no \"Put this chat on your website\""
+    ],
+    "rules": [
+      "N569 item 1",
+      "customer-requests.md §B8 to B13"
+    ],
+    "code": [
+      "fe:src/components/willab/chats/AddSomeoneSheet.tsx::const WEBSITE_SWITCH_SHOWN = false;",
+      "fe:src/components/willab/chats/joinCopy.ts::export const ONLY_THE_TWO_OF_YOU = \"Only the two of you are in it.\";"
+    ],
+    "tests": [
+      "src/components/willab/chats/chats.test.tsx",
+      "src/components/AppMenu.test.tsx"
+    ],
+    "status": "built",
+    "screen": "own.add"
+  },
+  {
+    "id": "WID-08",
+    "area": "Your chat on any website",
+    "title": "The switch turns the link into one line of code",
+    "given": "the website switch is shown (once N569's design is signed)",
+    "when": "Ariel turns on \"Put this chat on your website\"",
+    "then": [
+      "the line `<script src=\"https://willpowerlab.com/w.js\" data-link=\"{token}\" async></script>`",
+      "\"Paste this line just before </body> on your website, or send it to whoever builds your site.\"",
+      "\"Copy my code\", then \"✓ Copied\"",
+      "\"Each customer has a chat of their own with you.\""
+    ],
+    "rules": [
+      "N567 item 1",
+      "N569 item 1",
+      "customer-requests.md §B8 to B13"
+    ],
+    "code": [
+      "fe:src/components/willab/chats/joinCopy.ts::export const COPY_MY_CODE = \"Copy my code\";",
+      "fe:src/components/willab/chats/joinCopy.ts::`<script src=\"${origin}/w.js\" data-link=\"${token}\" async></script>`;"
+    ],
+    "tests": [
+      "src/components/AppMenu.test.tsx"
+    ],
+    "status": "partly",
+    "screen": "own.code",
+    "note": "Built and hidden (WEBSITE_SWITCH_SHOWN = false). The card's line on main is N567's \"Customers ask you there, and you answer here. Each answer teaches your chat, so it learns from real questions as they come in.\"; N569's design draws \"Customers answer your questions there, and you call them back. Each call you rate teaches your model.\" (drafted)."
+  },
+  {
+    "id": "WID-09",
+    "area": "Your chat on any website",
+    "title": "Copy my link in the menu opens the same sheet as the +",
+    "given": "Ariel is signed in",
+    "when": "she taps \"Copy my link\" in the ☰ menu",
+    "then": [
+      "\"Add someone to chat with\" opens; nothing is copied until she taps \"Copy my link\" there"
+    ],
+    "rules": [
+      "N567 item 1",
+      "consent-screens.md §1"
+    ],
+    "code": [
+      "fe:src/components/AppMenu.tsx::{adding ? <AddSomeoneSheet fixed onClose={() => setAdding(false)} /> : null}"
+    ],
+    "tests": [
+      "src/components/AppMenu.test.tsx"
+    ],
+    "status": "built",
+    "screen": "own.add"
+  },
+  {
+    "id": "WID-10",
+    "area": "Your chat on any website",
+    "title": "A pasted line draws one pill on any site",
+    "given": "Invita's site has Ariel's line before </body>",
+    "when": "a visitor opens the page",
+    "then": [
+      "one pill at the bottom right: Ariel's circle and \"Ask Ariel\"",
+      "the chat opens in a frame from willpowerlab.com; the site's page never sees the taps"
+    ],
+    "rules": [
+      "N567 items 2 and 3",
+      "customer-requests.md §B8 to B13"
+    ],
+    "code": [
+      "fe:public/w.js::var root = host.attachShadow ? host.attachShadow({ mode: \"closed\" }) : host;",
+      "fe:src/components/willab/chats/joinCopy.ts::export const askName = (name: string) => `Ask ${name}`;"
+    ],
+    "tests": [
+      "src/components/willab/chats/WidgetChat.test.tsx"
+    ],
+    "status": "built",
+    "screen": "vis.pill"
+  },
+  {
+    "id": "WID-11",
+    "area": "Your chat on any website",
+    "title": "Only the widget's page may be framed",
+    "given": "any page of willpowerlab.com",
+    "when": "another site tries to frame it",
+    "then": [
+      "/w/{token} answers with frame-ancestors *",
+      "every other page answers with frame-ancestors 'none'"
+    ],
+    "rules": [
+      "N567 item 3",
+      "customer-requests.md §B8 to B13"
+    ],
+    "code": [
+      "fe:src/middleware.ts::export function framedAnywhere(pathname: string): boolean {"
+    ],
+    "tests": [
+      "src/lib/security/csp.test.ts"
+    ],
+    "status": "built",
+    "screen": "vis.pill"
+  },
+  {
+    "id": "WID-12",
+    "area": "Your chat on any website",
+    "title": "A wrong or replaced link opens nothing",
+    "given": "Ariel replaced her link",
+    "when": "an old pasted line loads",
+    "then": [
+      "no pill is drawn; the widget's read answers 404, the same as for a wrong link"
+    ],
+    "rules": [
+      "N567 item 2",
+      "customer-requests.md §B8 to B13"
+    ],
+    "code": [
+      "be:services/chat_widget.py::def _link(database: Any, token: Any) -> dict:",
+      "be:routes/v2/chats.py::def v2_chats_widget_preview(token):"
+    ],
+    "tests": [
+      "tests/test_chat_widget.py"
+    ],
+    "status": "built",
+    "screen": "vis.pill"
+  },
+  {
+    "id": "WID-13",
+    "area": "Your chat on any website",
+    "title": "Nothing is sent before the visitor agrees",
+    "given": "the visitor opened the pill",
+    "when": "the chat opens",
+    "then": [
+      "\"Your taps go to Ariel through WillpowerLab.\" with \"Privacy\"",
+      "\"Agree and start\"; only then is the visitor's chat made"
+    ],
+    "rules": [
+      "N567 item 4",
+      "N567 item 9",
+      "customer-requests.md §B8 to B13"
+    ],
+    "code": [
+      "fe:src/components/willab/chats/joinCopy.ts::export const widgetConsent = (name: string) => `Your taps go to ${name} through WillpowerLab.`;",
+      "be:services/chat_widget.py::def start(database: Any, token: Any, site: Any) -> dict:"
+    ],
+    "tests": [
+      "src/components/willab/chats/WidgetChat.test.tsx",
+      "tests/test_chat_widget.py"
+    ],
+    "status": "built",
+    "screen": "vis.agree"
+  },
+  {
+    "id": "WID-14",
+    "area": "Your chat on any website",
+    "title": "The widget's greeting says the visitor will be called back",
+    "given": "the visitor opened the chat",
+    "when": "it shows Ariel's first line",
+    "then": [
+      "\"Hi, I'm Ariel. Tap a few answers, and I'll call you back.\""
+    ],
+    "rules": [
+      "N569 item 2",
+      "Never 4"
+    ],
+    "code": [
+      "fe:src/components/willab/chats/joinCopy.ts::export const widgetHello = (name: string) => `Hi, I'm ${name}. Tap to answer, and I'll answer you out loud.`;"
+    ],
+    "tests": [
+      "src/components/willab/chats/WidgetChat.test.tsx"
+    ],
+    "status": "differs",
+    "screen": "vis.agree",
+    "note": "The code says \"Hi, I'm {name}. Tap to answer, and I'll answer you out loud.\" (N567); N569 item 2 removes it. The new line is drafted."
+  },
+  {
+    "id": "WID-15",
+    "area": "Your chat on any website",
+    "title": "The visitor taps the owner's own questions",
+    "given": "the visitor agreed",
+    "when": "Ariel's questions come",
+    "then": [
+      "\"Are you in a hurry?\" with \"No\" and \"Yes\" (\"Yes\" opens a date with \"Send\")",
+      "then Ariel's own question, \"Which shop is nearest?\", one at a time, answered by taps",
+      "no closing line about \"+\""
+    ],
+    "rules": [
+      "N569 item 3",
+      "N567 item 4",
+      "N487 item 4",
+      "customer-requests.md §B8 to B13"
+    ],
+    "code": [
+      "be:services/join_questions.py::def begin_for_visitor(database: Any, thread: str, owner_id: str, owner_member: str,",
+      "be:services/chat_widget.py::def answer_setup(database: Any, token: Any, guest: Any, message_id: Any, payload: Any) -> dict:"
+    ],
+    "tests": [
+      "tests/test_chat_widget.py",
+      "src/components/willab/chats/WidgetChat.test.tsx"
+    ],
+    "status": "built",
+    "screen": "vis.q1"
+  },
+  {
+    "id": "WID-16",
+    "area": "Your chat on any website",
+    "title": "No fixed questions are offered",
+    "given": "the visitor answered Ariel's questions",
+    "when": "the widget moves on",
+    "then": [
+      "it asks for a number (WID-17); no \"What would you like to ask Ariel?\" and no fixed questions"
+    ],
+    "rules": [
+      "N569 item 2"
+    ],
+    "code": [
+      "be:services/chat_widget.py::ASKS = (\"What do you do?\", \"How do you work with people?\", \"Can we talk?\")"
+    ],
+    "tests": [
+      "tests/test_chat_widget.py"
+    ],
+    "status": "differs",
+    "screen": "vis.number",
+    "note": "The code offers \"What would you like to ask {name}?\" with \"What do you do?\", \"How do you work with people?\" and \"Can we talk?\" (N567 item 5); N569 item 2 removes them."
+  },
+  {
+    "id": "WID-17",
+    "area": "Your chat on any website",
+    "title": "The visitor leaves a number to be called back",
+    "given": "the visitor answered Ariel's questions",
+    "when": "the widget asks for a number",
+    "then": [
+      "\"What number should I call?\"",
+      "one field for the number, \"Ariel calls you about your answers and keeps your number for nothing else.\" with \"Privacy\"",
+      "\"Call me back\""
+    ],
+    "rules": [
+      "N569 item 4",
+      "Never 4"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "vis.number",
+    "note": "Drafted words; counsel reads the consent line (N569, open)."
+  },
+  {
+    "id": "WID-18",
+    "area": "Your chat on any website",
+    "title": "The wait: the visitor is told they will be called",
+    "given": "the visitor tapped \"Call me back\"",
+    "when": "the widget answers",
+    "then": [
+      "their number as their message with \"Sent\"",
+      "\"Thank you. I'll call you soon, usually within a day.\"",
+      "the three emoji in the bar"
+    ],
+    "rules": [
+      "N569 item 4",
+      "N567 item 4"
+    ],
+    "code": [
+      "fe:src/components/willab/chats/joinCopy.ts::export const widgetWaits = (name: string) => `${name} answers out loud when there's a moment. Come back here to listen.`;"
+    ],
+    "tests": [
+      "src/components/willab/chats/WidgetChat.test.tsx"
+    ],
+    "status": "differs",
+    "screen": "vis.sent",
+    "note": "The code says \"{name} answers out loud when there's a moment. Come back here to listen.\" (N567); the new line is drafted."
+  },
+  {
+    "id": "WID-19",
+    "area": "Your chat on any website",
+    "title": "Each visitor is a chat of its own in the owner's list",
+    "given": "a visitor tapped \"Call me back\"",
+    "when": "Ariel opens her list",
+    "then": [
+      "a row \"Widget / Visitor 7\" with \"From invitaheadspa.com\" under the name, marked new",
+      "its line \"📞 Call back\""
+    ],
+    "rules": [
+      "N567 item 6",
+      "N569 item 4",
+      "customer-requests.md §B8 to B13"
+    ],
+    "code": [
+      "be:services/chat_widget.py::VISITOR = \"Widget / Visitor {n}\"",
+      "be:services/chat_widget.py::FROM = \"From {site}\""
+    ],
+    "tests": [
+      "tests/test_chat_widget.py"
+    ],
+    "status": "partly",
+    "screen": "own.list",
+    "note": "The row and its name are built; the line \"📞 Call back\" is not (the code shows the visitor's last message)."
+  },
+  {
+    "id": "WID-20",
+    "area": "Your chat on any website",
+    "title": "The visitor's answers carry the visitor's name",
+    "given": "Ariel opens the visitor's chat",
+    "when": "the answers card shows",
+    "then": [
+      "\"Visitor 7's answers\", each answer under its question",
+      "once kept, \"{name}'s answers\""
+    ],
+    "rules": [
+      "N569 item 6",
+      "N487 item 7"
+    ],
+    "code": [
+      "fe:src/components/willab/chats/ChatList.tsx::const visitor = /^Widget \\/ (.+)$/.exec(name.trim());"
+    ],
+    "tests": [
+      "src/components/willab/chats/chats.test.tsx"
+    ],
+    "status": "built",
+    "screen": "own.chat"
+  },
+  {
+    "id": "WID-21",
+    "area": "Your chat on any website",
+    "title": "The owner calls the visitor back from the chat",
+    "given": "a visitor left a number",
+    "when": "Ariel opens the chat",
+    "then": [
+      "the bar's middle is \"Call {number}\"",
+      "tapping it calls the number"
+    ],
+    "rules": [
+      "N569 item 4",
+      "N483",
+      "Never 4"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "own.chat",
+    "note": "Drafted words."
+  },
+  {
+    "id": "WID-22",
+    "area": "Your chat on any website",
+    "title": "The owner no longer records a spoken answer for a visitor",
+    "given": "a visitor's chat is open",
+    "when": "Ariel looks at the bar",
+    "then": [
+      "no \"Record your answer\" for the visitor; the call takes its place"
+    ],
+    "rules": [
+      "N569 item 2"
+    ],
+    "code": [
+      "be:services/chat_widget.py::return _post(database, me, \"text\", ASKS[i], {\"widget_ask\": i, \"record_answer\": True})"
+    ],
+    "tests": [
+      "tests/test_chat_widget.py"
+    ],
+    "status": "differs",
+    "screen": "own.chat",
+    "note": "The code marks the visitor's question for \"Record your answer\" and plays the answer in the widget (N567 item 6); N569 item 2 removes it."
+  },
+  {
+    "id": "WID-23",
+    "area": "Your chat on any website",
+    "title": "After the call, one tap teaches the model",
+    "given": "Ariel ended the call",
+    "when": "the chat asks how it went",
+    "then": [
+      "\"How did the call go?\" with the five steps set in the onboarding",
+      "a tap saves it: \"Saved. Your model learns from it.\"",
+      "\"Not now\" leaves it for later"
+    ],
+    "rules": [
+      "N569 item 5",
+      "Never 1",
+      "Never 4"
+    ],
+    "code": [],
+    "tests": [],
+    "status": "not built",
+    "screen": "own.rate",
+    "note": "Drafted words. The rating is the owner's own and never shown to the visitor."
+  },
+  {
+    "id": "WID-24",
+    "area": "Your chat on any website",
+    "title": "Keep this chat makes it the visitor's",
+    "given": "a visitor in the widget",
+    "when": "they tap \"Keep this chat ›\" and then \"Continue with Google\"",
+    "then": [
+      "\"Keep this chat\", \"Join WillpowerLab to keep it, and hear Ariel's answers on your phone.\", \"Continue with Google\", \"Not now\"",
+      "the join page opens; after Join the chat is theirs, and Ariel's list says \"Widget / {name}\""
+    ],
+    "rules": [
+      "N567 item 7",
+      "customer-requests.md §B8 to B13"
+    ],
+    "code": [
+      "fe:src/components/willab/chats/joinCopy.ts::export const keepLine = (name: string) => `Join WillpowerLab to keep it, and hear ${name}'s answers on your phone.`;",
+      "be:services/chat_widget.py::def keep(database: Any, user_id: Any, token: Any, guest: Any, token_payload: Any) -> dict:"
+    ],
+    "tests": [
+      "src/components/willab/chats/WidgetChat.test.tsx",
+      "tests/test_chat_widget.py"
+    ],
+    "status": "built",
+    "screen": "vis.keep"
+  },
+  {
+    "id": "WID-25",
+    "area": "Your chat on any website",
+    "title": "Only the visitor's browser holds their chat",
+    "given": "a visitor started a chat",
+    "when": "anyone reads or plays it",
+    "then": [
+      "only a request with the visitor's secret gets the messages or the answer's sound; the secret is kept only as a hash"
+    ],
+    "rules": [
+      "N567 item 4",
+      "customer-requests.md §B8 to B13"
+    ],
+    "code": [
+      "be:services/chat_widget.py::or not hmac.compare_digest(str(row[\"secret_hash\"]), _hash(secret)):"
+    ],
+    "tests": [
+      "tests/test_chat_widget.py"
+    ],
+    "status": "built",
+    "screen": "vis.sent"
+  },
+  {
+    "id": "WID-26",
+    "area": "Your chat on any website",
+    "title": "Website chats never fill the day's joins",
+    "given": "many visitors start chats",
+    "when": "someone joins through Ariel's link",
+    "then": [
+      "the join is not sent to the waitlist because of website chats"
+    ],
+    "rules": [
+      "N567 item 6",
+      "N471 item 7"
+    ],
+    "code": [
+      "be:services/chat_widget.py::\"kind\": \"team\", \"title\": link[\"display_name\"], \"widget_owner_id\": owner,"
+    ],
+    "tests": [
+      "tests/test_chat_widget.py"
+    ],
+    "status": "built",
+    "screen": "own.list"
+  },
+  {
+    "id": "WID-27",
+    "area": "Your chat on any website",
+    "title": "Website chats go with the owner's account",
+    "given": "Ariel deletes her account",
+    "when": "the purge runs",
+    "then": [
+      "every website chat of hers, its messages, its visitor's seat and its guest row are deleted"
+    ],
+    "rules": [
+      "N567",
+      "CLAUDE.md, deletion"
+    ],
+    "code": [
+      "be:services/data_purge_registry.py::PurgeDependency(\"chat_widget_threads\", \"chat_threads\", \"widget_owner_id\","
+    ],
+    "tests": [],
+    "status": "built",
+    "screen": "own.list"
+  }
+]
