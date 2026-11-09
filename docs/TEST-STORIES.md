@@ -3877,6 +3877,14 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 *Why:* Founder 2026-11-09 (N565: "make the answers smart. So not locked in, but smart... we can set the rules for those messages"; N557: "It assumes that you're broken and we need to fix you"; the founder's ratings: "to complex", "drawing in... this sounds wierd"). The style itself is graded by the golden set, tests/evals/golden/walk_voice.jsonl.
 
+### As a newcomer in Artur's chat, while my first Take is processed, I want Will to check what he heard and ask what I'd like to do here, so that my plan and my next step are mine before the walk ends.
+
+`tests/test_way_in.py` · Story
+
+- W1  Once Take 1 is sent: "While your feedback is being prepared, check what I heard.", then "What would you like to do here first?" with "Something else" first, "Learn from others", "Share what I know", "Prepare a talk", several then "Send" (FT-05, WID-04; N453, N573). W2  Once the Take's words are stored: "Here's how others will see you:" and the card from slide 1 (the role, About, topics as "Ask about {topic}", the name from sign-up); "That's right" keeps it, and only then may others see it; "Change it" brings "Tell me what to change." (FT-06; N453 item 2). W3  "Prepare a talk" alone asks "When is it?" with "No date yet", once; its date is the plan's; nobody is asked "When is your deadline?" (FT-10, PLAN-16; N564 item 1). W4  "Share what I know" brings the questions for people who join into the wait, then the agreement "Do you accept it?" with "I agree", and one "You're set." with "Copy my link ›" and "Your questions for people who join ›" (FT-11, FT-12, FT-13; N572). W5  Everyone gets the plan card and one "You're set."; nobody outside a team or sharing is asked the agreement (FT-12, FT-13). W6  After "You're set.": "Your feedback is almost ready. It will appear at the top of this chat." while it is prepared; "Your feedback is ready." with "Open your feedback ›" once it is; after the walk one bubble by the choice, the talk first, then sharing; "Record Take 2" stays faded until the walk is done (N592; WAYIN-N592-1..4). W7  "Learn from others" leads to "Next, ask someone who knows. Tap + to start." (FT-14, N592 item 2). W8  A speaking coach's link meets none of the choice's beats; the way in is in the speaking chat only (N572, N590; WAYIN-N590-1).
+
+*Why:* N453, N564, N572, N573, N590, N592; the rules are frontend docs/flows/the-plan.md §2.
+
 ### As a speaker, I want my recording made seekable without changing its timing, and kept as-is if that fails, so that playback works everywhere and my Take is never lost. (Critical path: record.)
 
 `tests/test_webm_remux.py` · Story

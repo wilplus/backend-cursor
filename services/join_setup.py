@@ -396,6 +396,9 @@ def _on_peek(database: Any, user_id: str, draft: dict, picked: str) -> list[tupl
     J.save(database, user_id, {"plan": draft.get("plan"), "lines": draft.get("lines") or []})
     if draft.get("later"):
         return [(str(uuid.uuid4()), "bot", SAVED, {"step": "saved"})]
+    from services import way_in
+    if way_in.in_share(database, user_id):
+        return []  # the way in goes on, to its one "You're set." (N572 item 1)
     return [(str(uuid.uuid4()), "bot", SET, {"step": "set"}), _say(PRACTISE)]
 
 
@@ -473,4 +476,8 @@ def answer(database: Any, user_id: str, payload: Any) -> dict:
     else:
         rows = STEPS[step](draft, picked, "" if picked else said)
     mine_ = (_answer_id(to), "user", picked or said, {"step": "answer", "to": to})
-    return {"messages": _write(database, user_id, [mine_, *rows])}
+    written = _write(database, user_id, [mine_, *rows])
+    if step == "peek" and picked != CHANGE_IT:
+        from services import way_in
+        written += way_in.after_share(database, user_id)
+    return {"messages": written}
