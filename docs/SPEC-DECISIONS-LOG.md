@@ -15424,3 +15424,52 @@ For N572, N573, N580, N582 and N586:
 2. **Every other chat starts with its host's welcome and the host's own
    questions** (N582 item 1), and none of the speaking way in's steps.
 No migration. No rules page yet.
+
+**N591 · The website chat is your chat, on the public side: anyone can
+write, you answer as in any chat, and a visitor signs up to get the answer
+(founder, the Claude Code chat, 9 November 2026, asked which of N569 (a
+call back, never a spoken answer) and N584 (one recorded answer for
+everyone who asked the same thing) a website visitor gets: "they leave
+their phone number and I call them back by recording or typing my answer.
+And if it's already automated, it goes automated just like for any other
+user in the chat. There's really no difference between the widget and the
+normal chat. It's just that the chat is placed on the public side, so anyone
+can text me, and I can see it in my list of chats. It came from the widget,
+and the user of the widget needs to leave their phone number to get the
+answer ... Or they can log in with an email or some other authentication.
+Basically, they need to just sign up ... they get the first notification on
+their email or on the phone. But everything else is just like in any other
+chat"; then, asked whether visitors type or tap and whether the host types
+or records, "Depends how you set up your chat" and "Depends on what you
+decide during the set up"; and on when a visitor signs up, "After asking").**
+For N471, N567, N569, N578, N580, N584 and N590; amends N567 items 4 and 5
+and N569 items 2, 4 and 5:
+1. **One chat, two doors.** The website chat is the host's own chat (N578),
+the same recipe, welcome and questions (N590), placed on the public side:
+anyone on the site can write to the host. Each visitor's conversation is a
+chat in the host's list like any other, marked as come from the website
+("From {site}", N567 item 6).
+2. **How visitors write and how the host answers follow the chat's setup**
+(N578 item 5): tap, text or voice, as the host chose for their chat. Was:
+tap only for the visitor (N567 item 4) and no spoken answer (N569 item 2).
+3. **The host answers as in any chat,** by recording or typing as their
+setup allows; an answer already saved goes automatically, and a question
+joins its bundle (N584, N580), exactly as for someone in the app. This
+settles N569 against N584: a website visitor is one more person who asked.
+4. **To get the answer, the visitor signs up, after asking:** a phone
+number, or email, Google or another sign-in. The first notice of the answer
+goes to that phone or email; after that the chat is theirs, as for anyone
+who joined through the host's link (N471). Was: a number for a phone call
+back (N569 item 4) and "Keep this chat" afterwards (N567 item 7).
+5. **No widget-only screens remain:** N567's three fixed questions (already
+retired by N569), N569's "Call {number}" and its rating after a call (item
+5) go. The rating of answers, if any, is the chat's own, as anywhere else.
+6. **Still hidden, and after the assistants** (N578 item 5): the switch
+stays off (N569 item 1) until the hosts' chats are built.
+**Open:** the words of the sign-up step in the widget and of the first
+notice (Never 4 for the app's own words); counsel on the visitor's
+consent and on keeping their phone number or email.
+Not in force until built and merged. No migration in this entry.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+B8 to B13, when built.
