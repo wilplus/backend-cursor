@@ -176,6 +176,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # voice notes they recorded in them (N321) and the photos and files they
     # sent (N351) belong to the account, never to a project.
     "chat_message_audio", "chat_message_files", "chat_demo_threads", "chat_members",
+    # A person's website chats (N567): each visitor's chat with them and its
+    # guest row belong to the account, never to a project.
+    "chat_widget_threads", "chat_widget_guests",
     # A person's join link (N308): the account's, never a project's.
     "chat_links",
     # A person's profile (N366): the account's, never a project's.

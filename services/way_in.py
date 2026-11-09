@@ -265,14 +265,13 @@ def _plan_card(database: Any, user_id: str, plan: dict, w: dict) -> tuple[dict, 
     """The plan and its card (N564): a date only from "When is it?"; no
     "You're all set." line, since the way in has one "You're set."."""
     F = _flow()
-    today = F.today_in(plan.get("time_zone"))
     talk = F._parse_day(w.get("talk_date")) if w.get("talk_date") else None
-    deadline = talk or P.given_deadline(today)
-    j = P.journey(today, deadline)
     plan = _save(database, user_id, plan, w)
+    # No date but the talk's, and no two months: three levels of four Takes
+    # (N564 items 1 and 2; ``plan_flow.set_talk_date`` keeps the same).
     plan, rows = F._questions_done(database, user_id, plan, {
-        "deadline": deadline.isoformat(), "deadline_given": talk is None,
-        "every_day": j.every_day, "total": j.total}, F._diagnose_first_take)
+        "deadline": talk.isoformat() if talk else None, "deadline_given": False},
+        F._diagnose_first_take)
     rows = [r for r in rows if r[3] != "all_set"]
     return plan, rows
 

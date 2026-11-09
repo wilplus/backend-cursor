@@ -107,6 +107,30 @@ def check(text: Optional[str], context: Optional[dict] = None) -> Optional[str]:
     for quoted in _QUOTE_RE.findall(said):
         if _norm(quoted) not in spoken:
             return f"quote not in their words: {quoted}"
+    echo = _note_echo(said, (context or {}).get("speaker_note"), spoken)
+    if echo:
+        return f"repeats their private note: {echo}"
+    return None
+
+
+#: Words in a row the private note and a draft may share before the draft
+#: counts as repeating the note (SPEAKER-MEMORY.md: Will never quotes it,
+#: never repeats it). Short common runs ("in front of the") stay allowed.
+NOTE_ECHO_WORDS = 4
+
+
+def _note_echo(said: str, note: Any, spoken: str) -> Optional[str]:
+    """The first run of NOTE_ECHO_WORDS words the draft shares with the
+    speaker's private note, quoted or not, unless the speaker also said that
+    run in their Take (their spoken words may be quoted); None otherwise."""
+    if not isinstance(note, str) or not note.strip():
+        return None
+    draft = f" {_norm(said)} "
+    words = _norm(note).split()
+    for i in range(len(words) - NOTE_ECHO_WORDS + 1):
+        run = " ".join(words[i:i + NOTE_ECHO_WORDS])
+        if f" {run} " in draft and run not in spoken:
+            return run
     return None
 
 
