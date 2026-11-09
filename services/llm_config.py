@@ -660,3 +660,15 @@ SPEC_PLAN_TURN = LLMSpec(
 speaker's event in their words, and the next follow-up as a signed template
 fitted to them. Code keeps a question only when it matches its template
 (services.plan.fitted_question); else Will says the plain template."""
+
+
+SPEC_WALK_VOICE = LLMSpec(
+    model=STRONG_MODEL,
+    temperature=0.5,
+    max_tokens=160,
+    timeout_seconds=6.0,
+)
+"""Will's message at one step of the walk (founder 2026-11-09, N565):
+written from the Take's facts by the rules in ``services/prompts/walk_voice``,
+checked in code (``services.walk_voice.check``). Short: the walk waits for
+it, and shows the signed line when it is late."""
