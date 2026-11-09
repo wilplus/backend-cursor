@@ -14256,3 +14256,30 @@ Takes effect with the next app build.
 No new words. No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 §1 C1, when built.
+
+**N562 · A voice note left on the phone goes only under the person who said
+it, and a refusal that can change keeps it (founder, the Claude Code chat,
+9 November 2026, on frontend #1312, which fixed a phone sending every
+waiting voice note under whoever was signed in and deleting a note on a 401
+or 403, and left two choices to confirm, keeping a note on a 409 and
+holding back notes saved before notes named their owner: "Log the 409 and
+ownerless-note decisions in the backend decisions log").** For N194 item 3,
+the notebook's notes and the dump screen's (N506, N507):
+1. **A note is its speaker's.** Each note kept on the phone names the person
+who said it. Only they see it waiting and only they send it; another person
+signed in on the same phone neither sees nor sends it, and a sign-in never
+deletes it: it waits for its owner, as a Take does (N556 item 3).
+2. **A note saved before notes named their owner** (before frontend #1312)
+goes only under a sign-in that began before the note was said (the
+session's own sign-in time, with ten minutes allowed for the phone's
+clock): then nobody else can have been signed in on that phone since.
+Otherwise it waits on the phone, never sent, never shown and never deleted.
+There is no expiry: only delete throws a note away (N194 item 3).
+3. **409, the notebook's Yes not given, keeps the note,** as 401 (a sign-in
+run out) and 403 (a policy update to accept) do; it goes once the Yes is
+given again, the sign-in renewed or the update accepted. Only the refusals
+a second try would get again throw it away: 400 no audio, 404 no notebook,
+413 too long, 422 no words heard.
+No new words. No migration. The rules: frontend
+[`docs/flows/principles.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md)
+B4.
