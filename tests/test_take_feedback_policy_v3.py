@@ -49,6 +49,11 @@ OUTCOME
       that worked leaves the fix a moment. When the issue came back, the
       same fix may be given again. With no walk before, or one that cannot
       be read, the frame is exactly the one it always was (N359).
+  O13 A moment is my fix with the AI clip only when the clip can be made
+      for it: the picker reads its voice problem with the clip's own choice
+      (the same words, the same rule); a moment whose clip could not be
+      made is never the fix, so the walk never promises an AI clip it then
+      cannot play (the audit's 4.4, N425, N548).
 PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O1 -> test_two_best_clips_in_one_block_get_a_block_each
          O1 -> test_a_one_block_take_is_split_for_two_moments
@@ -66,6 +71,7 @@ PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O11 -> test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan
          O12 -> test_a_fix_that_worked_on_a_slide_is_not_given_there_again
          O12 -> test_with_no_walk_before_mine_is_picked_as_it_always_was
+         O13 -> test_a_moment_whose_ai_clip_cannot_be_made_is_never_the_fix
 WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
          2026-10-18 ("words first, then voice"), 2026-10-21 (N108, "the
          voice decides"; N112, "There was no single rewrite in the take"), 2026-10-22 (N113, "After the
@@ -126,6 +132,7 @@ def _frame(take_index=2):
         "recording_id": "recording-1",
         "start_offset_ms": piece["start_offset_ms"],
         "duration_ms": piece["duration_ms"],
+        "transcript": piece["text"],
         "metrics": {
             "voice_confidence": {
                 "version": "voice-confidence-universal-v3",
@@ -252,7 +259,7 @@ def _deck_frame(take_index):
                 "id": f"s{index}", "session_id": "take-2",
                 "recording_id": "recording-1",
                 "start_offset_ms": index * 5000, "duration_ms": 5000,
-                "metrics": metrics,
+                "transcript": text, "metrics": metrics,
             })
     text = " ".join(piece["text"] for piece in pieces)
     # Block spans: slide 0 is 0-439, slide 3 is 1320-1759, slide 4 is
@@ -367,7 +374,7 @@ def _practise_frame(rewrite, scores=(0.9, -0.2, -0.6), shown=_SHOWN_HEDGED):
         at += len(text) + 1
         snippets.append({"id": f"s{index}", "session_id": "take-2", "recording_id": "recording-1",
                          "start_offset_ms": index * 5000, "duration_ms": 5000,
-                         "transcript": _UMS if index == 1 else None,
+                         "transcript": _UMS if index == 1 else text,
                          "metrics": {"voice_confidence": {
                              "version": "voice-confidence-universal-v3", "score": score}, "pause_ratio": _rushed(score)}})
     start = pieces[1]["start"] + 10
@@ -440,7 +447,7 @@ def _one_said_frame(said):
         at += len(text) + 1
         snippets.append({"id": f"s{index}", "session_id": "take-2", "recording_id": "recording-1",
                          "start_offset_ms": index * 5000, "duration_ms": 5000,
-                         "transcript": said if index == 1 else None,
+                         "transcript": said if index == 1 else text,
                          "metrics": {"voice_confidence": {
                              "version": "voice-confidence-universal-v3", "score": score}, "pause_ratio": _rushed(score)}})
     served = " ".join(piece["text"] for piece in pieces)
@@ -491,7 +498,7 @@ def _clips_frame(clips, **options):
             continue
         snippets.append({"id": sid, "session_id": "take-2", "recording_id": "recording-1",
                          "start_offset_ms": index * 5000, "duration_ms": 5000,
-                         "transcript": transcript,
+                         "transcript": transcript or text,
                          "metrics": {"voice_confidence": {
                              "version": "voice-confidence-universal-v3", "score": score}, "pause_ratio": _rushed(score)}})
     served = " ".join(piece["text"] for piece in pieces)
@@ -691,7 +698,7 @@ def test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version():
             at += len(text) + 1
             snippets.append({"id": f"s{index}", "session_id": "take-2", "recording_id": "recording-1",
                              "start_offset_ms": index * 5000, "duration_ms": 5000,
-                             "transcript": _HEDGED if index == 1 else None,
+                             "transcript": _HEDGED if index == 1 else text,
                              "metrics": {"voice_confidence": {
                                  "version": "voice-confidence-universal-v3", "score": score},
                                  "pause_ratio": _rushed(score)}})
@@ -742,9 +749,10 @@ def test_a_confident_voice_offers_its_helper_words_also_after_its_clearer_versio
 
 # ── on a plan, one moment is where the level shows (G7, N209) ────────────
 
-def _paced_frame(wpms, **options):
+def _paced_frame(wpms, unsaid=(), **options):
     """Four slides, one clip each: p0 the best by far, p1 the second best,
-    p3 the third, p2 the last; each clip said at its own pace."""
+    p3 the third, p2 the last; each clip said at its own pace. A clip in
+    ``unsaid`` has no transcript, so no practice can open on it."""
     scores = (0.95, 0.8, -0.2, 0.3)
     pieces, snippets, at = [], [], 0
     for index, (score, wpm) in enumerate(zip(scores, wpms)):
@@ -757,6 +765,7 @@ def _paced_frame(wpms, **options):
         at += len(text) + 1
         snippets.append({"id": sid, "session_id": "take-2", "recording_id": "recording-1",
                          "start_offset_ms": index * 5000, "duration_ms": 5000,
+                         "transcript": None if sid in unsaid else text,
                          "metrics": {"wpm": wpm, "voice_confidence": {
                              "version": "voice-confidence-universal-v3", "score": score}, "pause_ratio": _rushed(score)}})
     served = " ".join(piece["text"] for piece in pieces)
@@ -779,15 +788,16 @@ def _filler_frame(filled, **options):
     pieces, snippets, at = [], [], 0
     for index, score in enumerate(scores):
         sid = f"p{index}"
+        said = " ".join(f"{sid}x{n}" for n in range(60)) + "."
         text = ("um we think uh it matters a lot basically to us here and um now "
-                "basically uh we literally um need it " if sid == filled else "") + " ".join(f"{sid}x{n}" for n in range(60)) + "."
+                "basically uh we literally um need it " if sid == filled else "") + said
         pieces.append({"snippet_id": sid, "take_session_id": "take-2", "slide_index": index,
                        "start": at, "end": at + len(text), "text": text,
                        "recording_id": "recording-1", "start_offset_ms": index * 5000,
                        "duration_ms": 5000})
         at += len(text) + 1
         snippets.append({"id": sid, "session_id": "take-2", "recording_id": "recording-1",
-                         "start_offset_ms": index * 5000, "duration_ms": 5000,
+                         "start_offset_ms": index * 5000, "duration_ms": 5000, "transcript": said,
                          "metrics": {"voice_confidence": {
                              "version": "voice-confidence-universal-v3", "score": score}, "pause_ratio": _rushed(score)}})
     served = " ".join(piece["text"] for piece in pieces)
@@ -834,6 +844,14 @@ def test_on_a_plan_my_level_takes_the_slot_whose_tool_fits_it(monkeypatch):
     assert _slots(_paced_frame((140, 140, 140, 200), tempo_step=True)) == paced_plain
 
 
+def test_a_moment_whose_ai_clip_cannot_be_made_is_never_the_fix():
+    # p3, said far faster than my usual, is the fix with its AI clip.
+    assert _slots(_paced_frame((140, 140, 140, 200)))[1] == ("p3", "weakest", "voice", None)
+    # With no words to practise, its clip cannot be made: it is not the fix.
+    assert ("p3", "weakest", "voice", None) not in _slots(
+        _paced_frame((140, 140, 140, 200), unsaid=("p3",)))
+
+
 def test_rushing_as_my_biggest_issue_gets_the_pace_game_without_a_plan(monkeypatch):
     """Founder 2026-11-02 (N323 item 6): "yes, the pace game for everyone
     when rushing is the issue". The moment the walk could fix (p3, said far
@@ -878,7 +896,7 @@ def _served_walk(**options):
     document = with_served_spans({"take_session_id": "take-2", "text": served, "pieces": pieces},
                                  served_text=served, slide_regions={})
     snippets = [{"id": f"p{i}", "session_id": "take-2", "recording_id": "recording-1",
-                 "start_offset_ms": i * 5000, "duration_ms": 5000,
+                 "start_offset_ms": i * 5000, "duration_ms": 5000, "transcript": pieces[i]["text"],
                  "metrics": {"wpm": wpm, "voice_confidence": {
                      "version": "voice-confidence-universal-v3", "score": score},
                      "pause_ratio": _rushed(score)}}

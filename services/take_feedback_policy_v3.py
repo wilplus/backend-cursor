@@ -1031,17 +1031,25 @@ def _voice_medians(snippets: Any) -> dict:
 
 
 def _voice_problem(snippet: Any, medians: Optional[dict]) -> float:
-    """The clip's strongest voice problem the AI clip can teach (pace,
-    pause, stress, fillers), as the clip itself would measure it against the
-    speaker's own usual (`ai_voice_severity.severities`; N425): the weakest
-    needs one at the clip's line. 0 with no medians, no metrics, or on any
-    failure. Never raises."""
+    """The clip's voice problem the AI clip would teach, as the clip job
+    itself would choose it (`ai_voice_severity.select` with the One thing
+    walk's fix flags, the same words the practice says: its transcript;
+    N425): its severity, or 0 when the clip job would make no clip, so the
+    picker never makes a moment the fix whose AI clip cannot be made
+    (founder 2026-11-09, the audit's 4.4). 0 with no medians, no metrics,
+    no transcript, or on any failure. Never raises."""
     if medians is None or not isinstance(snippet, dict):
+        return 0.0
+    sentence = str(snippet.get("transcript") or "").strip()
+    if not sentence:
+        # No words to practise: the practice cannot open on this clip.
         return 0.0
     from services import ai_voice_severity
     try:
-        scores = ai_voice_severity.severities(snippet, medians, sentence=str(snippet.get("transcript") or ""))
-        return float(max(scores.values(), default=0.0))
+        chosen = ai_voice_severity.select(
+            snippet, medians, sentence=sentence, seed=str(snippet.get("id") or ""),
+            explore=False, allow_default=False, hold_back=False)
+        return float(chosen["severity"]) if chosen else 0.0
     except Exception as error:  # noqa: BLE001 -- no voice problem read
         logger.warning("voice problem not read snippet=%s: %s", snippet.get("id"), error)
         return 0.0
