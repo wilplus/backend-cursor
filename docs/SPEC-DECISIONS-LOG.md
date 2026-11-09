@@ -14862,3 +14862,28 @@ No new words. No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
 and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1.
+
+**N577 · WillpowerLab's payment for being the launchpad is stable: 20% of
+what is left after running costs, the same for every model; a model's
+founder keeps 10% of the rest (founder, the Claude Code chat, 9 November
+2026: "Yes, so the payment should be stable payment for being a launchpad.
+Just set some benchmark option."; then two questions, each answered with
+the recommended option: "20% of margin", "10%").** For N528 item 6, N531
+and N566 item 10; settles N531's open fee percentage and N528's and N566's
+open founder's share:
+1. **WillpowerLab's fee is 20% of the margin,** the price of an answer less
+its running costs (N531 item 1), the same for every model and every
+version: a stable payment for being the launchpad, never set per model and
+never voluntary. At the lowest price there is no margin, so everything goes
+to infrastructure (N566 item 10). The benchmark sits between the app stores
+(15 to 30%) and payment platforms (10 to 20%); the founder of WillpowerLab
+may change it later for every model at once, never for one.
+2. **A model's founder keeps 10% of what is left after the fee;** the rest
+goes to the teachers by their points, fixed per version (N531 item 2).
+3. **Nothing on screen changes:** the price screen of the locked prototype
+already splits at these numbers (version 8, step u-2), which were its
+sample; they are now the rule.
+**Open:** the minimum payout (EUR 20 as a starting point) and the payment
+provider; the legal terms, for counsel.
+Not in force until built and merged. No migration in this entry.
+No rules page yet: a page for the launchpad with its first part (N566).
