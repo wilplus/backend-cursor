@@ -17,6 +17,9 @@ services/plan_flow.py; its rules: services/plan.py.
   POST /v2/plan/consent          {on: bool}   the card's Turn on / Turn off (off deletes the
                                               personal answers) → {state, messages}
   GET  /v2/plan/answers/<id>/audio
+  POST /v2/plan/way-in           {chat?, known?: {coach_link, team}, answer?: {beat, picked?, said?, date?}, tz}
+                                 or multipart with audio (a spoken answer to "Tell me what to change.");
+                                 the speaking way in while Take 1 is processed (services/way_in.py)
 
 Every write answers ``{plan, messages}``: the plan as it now stands and the
 rows written to the Lounge thread. A person without the plan (the ring row
@@ -35,7 +38,7 @@ from auth import require_auth
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import phase1_provider_route
 from services.db import db
-from services.rate_limits import llm_limit
+from services.rate_limits import answering_llm_limit, llm_limit, poll_limit
 
 logger = logging.getLogger(__name__)
 
@@ -257,3 +260,53 @@ def v2_plan_answer_audio(answer_id):
     response = send_file(io.BytesIO(got["audio"]), mimetype=got["content_type"])
     response.headers["Cache-Control"] = "private, max-age=3600"
     return response
+
+
+@v2_bp.route("/plan/way-in", methods=["POST"])
+@phase1_provider_route
+@poll_limit
+@answering_llm_limit
+@require_auth
+def v2_plan_way_in():
+    """The speaking way in (N572, N573, N592): begins once Take 1 is sent,
+    takes the answer to the open beat, and writes the beats that are due.
+    The first Take's reading runs here, under the caller's processing
+    authorization."""
+    from services import way_in
+    from services.plan_flow import enabled, view
+    user_id = str(request.user_id)
+    if not enabled(db, user_id):
+        return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
+    upload = request.files.get("audio")
+    if upload is not None:
+        body = {k: request.form.get(k) for k in ("chat", "beat")}
+        answer = {"beat": body.get("beat") or "profile", "said": _spoken(user_id, upload)}
+    else:
+        body = request.get_json(silent=True) or {}
+        answer = body.get("answer")
+    try:
+        out = way_in.step(db, user_id, chat=body.get("chat"), known=body.get("known"),
+                          answer=answer, first_name=_first_name())
+        plan = out.get("plan")
+        return jsonify({"plan": view(db, user_id, plan) if plan else None,
+                        "messages": out.get("messages") or []}), 200
+    except way_in.WayInError as e:
+        return jsonify({"code": e.code, "error": str(e)}), e.status
+    except Exception as e:
+        logger.error("way in failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to keep the answer"}), 500
+
+
+def _spoken(user_id, upload):
+    """A spoken answer's words, transcribed under the caller's processing
+    authorization; "" when nothing was heard."""
+    from routes.v2.voice_notebook import _adapter
+    from services.plan_flow import _words
+    audio = upload.read()
+    if not audio:
+        return ""
+    result = _adapter(user_id).transcribe_audio(
+        audio, upload.filename or "answer.webm", usage_surface="way_in_answer",
+        usage_user_id=user_id) or {}
+    return _words(result)

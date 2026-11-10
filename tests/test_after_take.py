@@ -26,11 +26,10 @@ OUTCOME
   O5  After a distressed message the chat's safety reply comes and the asks
       wait: nothing lands under it until I write again (founder 2026-10-21,
       N94).
-  O6  The plan's lines after a practice day's Take ("That's your 15
-      minutes for today.") wait for the ask: the ask stays the newest
-      bubble, so its answers stay; after my answer come the lines, then
-      "Good job. See you {day}." with the plan's next practice day (N347
-      item 2), then the plan's progress (N319 item 7); a question the plan
+  O6  The plan's lines after a Take wait for the ask: the ask stays the
+      newest bubble, so its answers stay; after my answer come the lines,
+      then "Good job. See you next time." (no practice day is named, N564),
+      then the plan's bar (N319 item 7, N564 item 3); a question the plan
       asks comes last, under them, right above its answers (N537).
   O7  The WhatsApp ask waits for the next visit and comes in the bar at the
       top, never in the chat (N294 item 8, N295, N391): never before my
@@ -218,28 +217,26 @@ def test_each_ask_comes_under_what_closed_the_one_before_then_the_goodbye(monkey
 
 
 def test_the_plans_lines_wait_for_the_ask_then_the_goodbye_the_progress_and_its_question(monkeypatch):
-    fifteen, done = "That's your 15 minutes for today.", "1 of 9 practices done."
+    line, done = "Here's your next plan.", "Pauses that hold the room"
     personal = "Some of my questions are personal."
     monkeypatch.setattr("services.plan_flow.after_take", lambda db, u: db.insert_lounge_messages(u, [
-        {"client_id": "fifteen", "role": "bot", "kind": "text", "body": fifteen, "metadata": {}},
+        {"client_id": "line", "role": "bot", "kind": "text", "body": line, "metadata": {}},
         {"client_id": "consent", "role": "bot", "kind": "text", "body": personal,
          "metadata": {"plan_ask": "consent"}}]))
-    monkeypatch.setattr("services.plan_flow.next_day_text", lambda db, u: "Wednesday")
     monkeypatch.setattr("services.plan_flow.progress", lambda db, u: db.insert_lounge_messages(u, [
         {"client_id": "progress", "role": "bot", "kind": "text", "body": done,
-         "metadata": {"plan_progress": True, "done": 1, "total": 9}}]))
+         "metadata": {"plan_progress": True, "bar": {"level": "pauses", "marks": 1}}}]))
     db = _Db()
     _waiting(db, "take-1", ["feedback_check"])
     assert db.drawn() == [SUMMARY, feedback_check.COPY["ask"]]
 
     feedback_check.answer(db, user_id="u", arc_id="arc", take_session_id="take-1", choice="yes")
     # A question is the last bubble, right above its answers (N537).
-    assert db.drawn()[-4:] == [fifteen, "Good job. See you Wednesday.", done, personal]
+    assert db.drawn()[-4:] == [line, "Good job. See you next time.", done, personal]
 
 
 def test_the_first_takes_goodbye_says_so_on_any_device(monkeypatch):
     monkeypatch.setattr("services.plan_flow.after_take", lambda db, u: [])
-    monkeypatch.setattr("services.plan_flow.next_day_text", lambda db, u: None)
     monkeypatch.setattr("services.plan_flow.progress", lambda db, u: [])
     for take, first in (("take-1", True), ("take-2", None)):
         db = _Db()

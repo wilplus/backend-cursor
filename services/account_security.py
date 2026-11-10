@@ -50,6 +50,8 @@ MAX_PASSWORD = 72        # bcrypt reads no further; Supabase refuses longer
 MAX_EMAIL = 320
 _EMAIL = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 PROVIDER_NAMES = {"google": "Google", "linkedin_oidc": "LinkedIn", "linkedin": "LinkedIn",
+                  # Supabase's "azure" is the Microsoft sign-in (N401 item 6).
+                  "azure": "Microsoft",
                   # A WhatsApp account signs in with its phone (N214).
                   "phone": "WhatsApp"}
 

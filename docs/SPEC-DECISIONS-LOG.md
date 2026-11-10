@@ -15424,3 +15424,279 @@ For N572, N573, N580, N582 and N586:
 2. **Every other chat starts with its host's welcome and the host's own
    questions** (N582 item 1), and none of the speaking way in's steps.
 No migration. No rules page yet.
+
+**N591 · The website chat is your chat, on the public side: anyone can
+write, you answer as in any chat, and a visitor signs up to get the answer
+(founder, the Claude Code chat, 9 November 2026, asked which of N569 (a
+call back, never a spoken answer) and N584 (one recorded answer for
+everyone who asked the same thing) a website visitor gets: "they leave
+their phone number and I call them back by recording or typing my answer.
+And if it's already automated, it goes automated just like for any other
+user in the chat. There's really no difference between the widget and the
+normal chat. It's just that the chat is placed on the public side, so anyone
+can text me, and I can see it in my list of chats. It came from the widget,
+and the user of the widget needs to leave their phone number to get the
+answer ... Or they can log in with an email or some other authentication.
+Basically, they need to just sign up ... they get the first notification on
+their email or on the phone. But everything else is just like in any other
+chat"; then, asked whether visitors type or tap and whether the host types
+or records, "Depends how you set up your chat" and "Depends on what you
+decide during the set up"; and on when a visitor signs up, "After asking").**
+For N471, N567, N569, N578, N580, N584 and N590; amends N567 items 4 and 5
+and N569 items 2, 4 and 5:
+1. **One chat, two doors.** The website chat is the host's own chat (N578),
+the same recipe, welcome and questions (N590), placed on the public side:
+anyone on the site can write to the host. Each visitor's conversation is a
+chat in the host's list like any other, marked as come from the website
+("From {site}", N567 item 6).
+2. **How visitors write and how the host answers follow the chat's setup**
+(N578 item 5): tap, text or voice, as the host chose for their chat. Was:
+tap only for the visitor (N567 item 4) and no spoken answer (N569 item 2).
+3. **The host answers as in any chat,** by recording or typing as their
+setup allows; an answer already saved goes automatically, and a question
+joins its bundle (N584, N580), exactly as for someone in the app. This
+settles N569 against N584: a website visitor is one more person who asked.
+4. **To get the answer, the visitor signs up, after asking:** a phone
+number, or email, Google or another sign-in. The first notice of the answer
+goes to that phone or email; after that the chat is theirs, as for anyone
+who joined through the host's link (N471). Was: a number for a phone call
+back (N569 item 4) and "Keep this chat" afterwards (N567 item 7).
+5. **No widget-only screens remain:** N567's three fixed questions (already
+retired by N569), N569's "Call {number}" and its rating after a call (item
+5) go. The rating of answers, if any, is the chat's own, as anywhere else.
+6. **Still hidden, and after the assistants** (N578 item 5): the switch
+stays off (N569 item 1) until the hosts' chats are built.
+**Open:** the words of the sign-up step in the widget and of the first
+notice (Never 4 for the app's own words); counsel on the visitor's
+consent and on keeping their phone number or email.
+Not in force until built and merged. No migration in this entry.
+The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+B8 to B13, when built.
+
+**N592 · After "You're set.", one bubble says what comes next, by the
+person's state and choice (founder, the Claude Code chat, 9 November 2026,
+on the end of the way in in The App Model, where nothing followed "You're
+set." and "Record Take 2" stood ready while the feedback was still being
+prepared: "What happens here? There should be some smart bubble follow
+up"; then "OK" to the proposal).** For N453 item 7, N533, N558, N572,
+N573, N578 and N590; in Artur's chat, the speaking way in (N590):
+1. **One bubble after "You're set.", never a question but the last case.**
+Its words follow the person's state:
+   - the feedback still being prepared: "Your feedback is almost ready. It
+     will appear at the top of this chat.";
+   - the feedback ready: "Your feedback is ready." with **Open your
+     feedback ›**, beside the orange row at the top (N453 item 7).
+2. **After the walk, by what they chose** (N573), one bubble:
+   - "Prepare a talk": "Next, record Take 2 of your talk.";
+   - "Share what I know": "Next, set up your assistant, so people who join
+     you are met your way.", opening the setup chat (N578 item 4);
+   - "Learn from others": "Next, ask someone who knows. Tap + to start."
+     (answers N573 item 2's open question for now);
+   - "Something else": "Tell me what you'd like to do, and I'll show you
+     where.", answered by voice or text;
+   - several choices: one bubble, the talk first, then sharing.
+3. **"Record Take 2" stays faded until the walk is done,** as N558 and
+N453 have it; the App Model's drawing that shows it ready during the wait
+is a slip to fix.
+4. **Words:** all drafted above are approved by the founder's "OK"; they
+are the app's own words (Never 4).
+Not in force until built and merged. No migration in this entry.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§2, when built.
+
+**N593 · The overnight build's choices, 9 November 2026: where a logged
+decision left a detail open, each build took the recommended option,
+under the founder's standing instruction for the night (founder, the
+Claude Code chat, 9 November 2026: "don't get stale just go with your
+recommendations if something is unsure!"). Each item stands until the
+founder overrules it; overruling one is a new entry.** By slice, with
+the PR that built it:
+1. **The way in** (N453, N572, N573, N590, N592; backend #1854, frontend
+#1337):
+   - the choice does not wait for the Take's reading; "Here's how others
+     will see you:" comes as soon as the words are stored (N453 item 7);
+   - "Your feedback is almost ready…" is followed, when processing ends, by
+     "Your feedback is ready." with "Open your feedback ›";
+   - if the walk is done before "You're set.", N592 item 2's after-walk
+     bubble comes in place of the state bubble;
+   - the team and the coach's link are told to the way in by the app;
+     "Which team are you in?" and "How big you want your audience?" (N453
+     items 5 and 6) wait;
+   - the answer to "Tell me what you'd like to do, and I'll show you
+     where." is kept in Will's notes, with no reply line until one is
+     worded (Never 4);
+   - "I agree" is kept on the plan until a consent record for the data
+     processing agreement exists;
+   - for Take 1, the walk opens from the orange row at the top, not by
+     itself (N453 item 7).
+2. **The plan** (N564; backend #1853, frontend #1335):
+   - the first Take fills no mark; the twelve marks are the Takes after the
+     plan is drawn;
+   - a coach's level runs its own four Takes, then the machine picks the
+     next;
+   - a new set skips only the level just finished, and within a set a level
+     never repeats;
+   - the last ratings come once per set, after the twelfth Take;
+   - the hello comes once a day, the first time the app opens on a day with
+     no Take yet;
+   - a day said on the first Take's slides counts as the talk's date, and
+     with a talk's date both calls fall before it;
+   - "stuck", for the coach's queue, is three Takes on a level, none of
+     which reached it;
+   - the day line shows only in a chat that spans more than one day, in the
+     phone's time zone;
+   - "See your plan" is the same card, without "This week's level"; on the
+     card "Plan" is the small grey label and the level's name the bold
+     line;
+   - PLAN-14 (the practice-day reminder) is not built: with no practice
+     days, there is none to remind of (N155, N564).
+3. **Small fixes** (backend #1850, #1851, #1855, #1858; frontend #1332 to
+#1334, #1336):
+   - a draft of Will's "repeats the private note" when it shares four words
+     in a row with it, unless the speaker said them in the Take (N565);
+   - the "Microsoft" sign-in stays behind NEXT_PUBLIC_MICROSOFT_SIGNIN=on
+     until the Azure provider is on in Supabase; with it on, the four small
+     buttons sit two by two;
+   - the Training corpus row sits under Data, as N511 item 1 has it;
+   - WILL-13 gets no layout test (CLAUDE.md, How to test).
+4. **AI models, the core** (N520, N528, N563, N566; backend #1860, and
+#1863 waiting for its migration's review):
+   - a model's progress is its slowest jar, against 500 counted answers and
+     100 exam cases (N528 item 8, N566 item 5); a model may carry its own
+     targets;
+   - "clearly not luck" is an exact two-sided sign test on the cases either
+     version won, p < 0.05 (14 against 3 passes; 9 against 6 does not);
+   - the queue gives the kinds a model lacks first, then the examples it is
+     least sure of, with models taking turns;
+   - the trust check's 80% range is a Wilson interval on agreement, turned
+     into kappa; each teacher's kappa is stored for the trusted median and
+     never shown (Never 1);
+   - a teacher's example carries only its id, model, kind, content,
+     privacy and source: never the machine's read, the known answer or the
+     speaker;
+   - the launchpad starts at ring 6;
+   - when an owner's account is erased, their public model stays, with no
+     owner (N528 item 11);
+   - an answer to a shared public clip is stored once per model.
+5. **Matching** (N463, N559; backend #1861, and #1862 waiting for its
+migration's review):
+   - what a suggestion led to weighs 0.5, with a prior of two suggestions
+     pulled toward "answered"; knowledge still decides;
+   - "kept talking" is three or more messages after the answer within 14
+     days, from both people;
+   - matching by how you speak is off by default (N463 item 2) and kept on
+     the account, not in a table; turning it off deletes the speaking
+     reads kept with matching's suggestions, while the Takes' own feedback
+     stays;
+   - your own chats are ranked by the knowledge score alone;
+   - "For you" lists the models you teach first, then the fitting ones;
+   - a business's community is its own table, not a kind of the retired
+     passcode communities; the founder makes one from the admin route
+     until a screen does, and its owner is its first member;
+   - the community offered to a newcomer is the one of the owner of the
+     link that brought them, the first they joined if several; an offer
+     shown but not answered comes again until answered, then never again.
+Words drafted tonight wait for the founder's OK and are listed in the
+morning report; none is on screen without it (Never 4).
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+(items 1 and 2), the other items in their PRs' home docs.
+
+**N594 · The overnight build's choices, second batch, 9 to 10 November
+2026: as N593, each build took the recommended option where a logged
+decision left a detail open, under the founder's standing instruction for
+the night ("just go with your recommendations if something is unsure!").
+Each item stands until the founder overrules it; overruling one is a new
+entry. Items on a PR still waiting for its migration's review come into
+force only when that PR merges.** By slice:
+1. **Hosts' chats** (N578 to N588; backend #1852 merged; #1856, #1857 and
+#1859 waiting; frontend #1343, #1346, #1348, #1349):
+   - a host's words are refused when they read as a score or a verdict (a
+     digit with %, "/n", "out of", points, stars, verdict words); other
+     numbers are allowed (Never 1);
+   - the join page's new lines show only for links whose owner is on the
+     ring row chat_builder (N579 item 2, testers first);
+   - the recipe is one per person, on people_profiles.chat_recipe (N578
+     item 7), and keeps only whether to automate; a model's own setup is
+     the launchpad's;
+   - specialization bubbles come from the plan's topic, by rules; the join
+     page's line is "{name}'s specialization: {spec}." plus the host's own
+     sentence;
+   - questions join a bundle by rules first (shared meaning words, joining
+     at 0.5, green from 0.75); only askers' notes are bundled; a bundle
+     with one asker reads "{name} asked: {question}"; the best answer
+     under a heading is the first one in until a model ranks them;
+   - a person with no recipe is a skill coach; a Take's coach is the chat
+     it was first sent to.
+2. **The website chat** (N591; backend #1868 waiting, with frontend #1344):
+   - a visitor records only after signing up, since a guest has no
+     processing authorization; a record-only chat asks for sign-up first;
+   - the host's answers are held until the visitor signs up; the visitor's
+     questions join their bundle at sign-up;
+   - typing is offered only where the chat's setup allows it; the host may
+     always type there;
+   - the first notice goes once, by email before phone;
+   - the one-question limit is dropped; the per-address limits stay;
+   - the public pages answer only for a host on the ring row website_chat,
+     off by default (N591 item 5).
+3. **AI models, starting one** (N566, N570, N571, N582; backend #1867 and
+#1869 waiting; frontend #1341, #1347):
+   - a host's model learns only from Takes sent to its owner in a chat, and
+     only while the speaker's training yes, learning and processing
+     authorization all hold; a yes turned off removes that speaker's
+     examples, and a deleted Take's examples go with it;
+   - an upload is private to its model and its labels are never shown to a
+     teacher; it counts at 7 in 10 agreement; a starting rule is kept at 35
+     in 50; "Needs you now" shows once 10 pairs are measured and exact
+     agreement is under 7 in 10;
+   - an answer counts only once another trusted teacher gives the same one,
+     or it matches the known answer; the owner's first 10 set the known
+     answers; the owner never agrees with themself;
+   - the final exam takes whole speakers, 1 in 5, until it holds 100; never
+     uploads, added examples or the first 10;
+   - a scale has 3 to 7 points, a list 2 to 12 options; uploads are CSV or
+     JSON up to 2 MB and 5,000 rows;
+   - the drafting model is GPT-4o mini;
+   - when an owner's account is erased, their model keeps its name and
+     card; its description and the setup's words are cleared, and a draft
+     is archived.
+4. **AI models, the API and the money** (N531, N577, N583; backend #1866
+waiting; frontend #1342, #1345, #1351):
+   - money is kept in token units; one token shown is one cent (€0.03 an
+     answer is "3 tokens an answer"; the €20 minimum is 200,000 units);
+   - the running cost floor is 60 units; the split is in whole units, the
+     fee and the founder's part rounded down, the rest to the teachers;
+   - an answer is charged before the model is called and refunded if no
+     answer comes back; live keys answer nothing while token pricing is
+     off;
+   - one test key per buyer and model; a live key always has a monthly
+     limit and stops before the answer that would pass it;
+   - "sure" means the model's confidence is at least 0.70 on a choice its
+     recipe offers;
+   - payouts are in tokens above the minimum, run by the founder, for whole
+     past months only;
+   - when a model's founder is erased, their 10% goes to the teachers; a
+     buyer's paid answers stay after their erasure, with the buyer cleared;
+   - a business's unsure questions reach the teachers, names removed, only
+     once the business turns it on;
+   - the one download route holds the teachers' own answers, numbered, and
+     never the final exam;
+   - the API's address is /v2/models/<id>/answer; the prototype's
+     api.willpowerlab.com address is open.
+5. **The summary after a Take** (WILL-07; backend #1865, frontend #1350):
+the summary is written at once with its signed line, and GPT-4o's words
+replace it in place off the request; nothing after the walk waits for the
+model. Whether to draw the summary on screen, or retire it, is open for
+the founder.
+6. **The way in's poll** (backend #1871): the way in's read has its own
+limit (60 a minute); the model's limit counts only calls that carry an
+answer or a recording.
+Words drafted tonight wait for the founder's OK and are listed in the
+morning report; none is on screen without it (Never 4).
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+(item 5) and
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+(item 2), the other items in their PRs' home docs.
