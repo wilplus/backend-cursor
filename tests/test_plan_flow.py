@@ -31,6 +31,8 @@ OUTCOME
   O7  A new project's first Take, on a plan with a talk's date, asks "Is
       this for {date}?"; Yes keeps the plan, No starts a new plan's
       questions (no deadline asked), the old plan kept in the history.
+      A day the speaker never chose (a join link's "No") is never shown on
+      the card nor asked about as theirs (N631).
   O8  Only a talk has a date: the card shows it, changing it says nothing,
       and there are no practice days to change (N564 item 6).
   O9  Every Take fills one of the level's four marks; after four, the next
@@ -86,6 +88,7 @@ PROVES   O1 -> test_without_the_ring_nothing_happens
          O5 -> test_ratings_are_kept_quietly_and_the_plan_follows
          O6 -> test_the_hello_and_the_bar_show_the_level_and_its_marks
          O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
+         O7 -> test_a_day_never_chosen_is_never_shown_or_asked_about
          O17 -> test_the_first_ratings_on_a_running_plan_end_on_the_plan
                 test_a_new_project_on_a_plan_made_after_earlier_takes_is_asked_about
          O8 -> test_only_a_talk_has_a_date_and_changing_it_says_nothing
@@ -504,6 +507,23 @@ def test_the_first_ratings_on_a_running_plan_end_on_the_plan(db, monkeypatch):
     assert out["messages"][-1]["metadata"]["plan_card"] is True
     assert out["plan"]["started_at"] == plan["started_at"]
     assert F.view(db, USER, out["plan"])["done"] == 1
+
+
+def test_a_day_never_chosen_is_never_shown_or_asked_about(db, monkeypatch):
+    # N631 items 1, 3 and 4: a join link's "No" leaves a day one step of the
+    # plan away that the speaker never chose (``deadline_given``): the card
+    # shows no "Your deadline:", and a new project never asks "Is this for
+    # {date}?" about it.
+    plan = _active(db)
+    given = date.today() + timedelta(days=30)
+    db.update_plan(USER, plan["id"], {"deadline": given.isoformat(), "deadline_given": True})
+    plan = db.get_open_plan(USER)
+    assert (F.view(db, USER, plan)["deadline"], F.view(db, USER, plan)["deadline_day"]) == (None, None)
+    started = datetime.fromisoformat(plan["started_at"])
+    db.takes.rows = [{"created_at": (started + timedelta(minutes=5)).isoformat(), "arc_id": "arc-1", "take_index": 1},
+                     {"created_at": (started + timedelta(days=2)).isoformat(), "arc_id": "arc-2", "take_index": 1}]
+    F.after_take(db, USER)
+    assert "Is this for" not in " ".join(bodies(db)) and P.fmt_day(given) not in " ".join(bodies(db))
 
 
 def test_only_a_talk_has_a_date_and_changing_it_says_nothing(db):
