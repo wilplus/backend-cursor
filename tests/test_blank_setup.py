@@ -147,8 +147,9 @@ class SetupTest(_Base):
         self.assertEqual(self._put("out", "verdict").status_code, 400)
 
     def test_the_hello_questions_and_taps_pass_the_hosts_checks(self):
-        """FIRST-06: the hello, up to three questions, three taps and
-        "Something else" always there; a score or a verdict is refused."""
+        """FIRST-06: the hello, up to three questions, one to three taps
+        ("Type my own" makes one) and "Something else" always there; a score
+        or a verdict is refused."""
         self._start()
         self.assertEqual(self._put("hello", "Welcome. Show me.").status_code, 200)
         bad = self._put("hello", "I'll give you a score out of 10.")
@@ -156,6 +157,9 @@ class SetupTest(_Base):
         self.assertEqual(self._put("questions", [{"q": "A?"}, {"q": "B?"}, {"q": "C?"}]).status_code, 200)
         self.assertEqual(self._put("questions", [{"q": "A?"}] * 4).status_code, 400)
         self.assertEqual(self._put("taps", ["One", "Two", "Three"]).status_code, 200)
+        self.assertEqual(self._put("taps", ["Look at my scalp"]).status_code, 200)
+        self.assertEqual(self._put("taps", []).status_code, 400)
+        self.assertEqual(self._put("taps", ["A", "B", "C", "D"]).status_code, 400)
         self.assertEqual(self._put("taps", ["One", "Two", "Something else"]).status_code, 400)
 
     def test_a_model_is_one_question_with_three_answers(self):
@@ -256,7 +260,10 @@ class SetupTest(_Base):
         self.assertEqual(self.provider.calls, ["chat_reply"])
         self.assertEqual(self.store.tables.get("chat_messages", []), [])
         own = self._read()["own_chat"]
-        self.assertEqual(own, {"title": "Tomek", "line": "Hi. Send me a photo of your scalp, and tell me what worries you."})
+        link = self._link(TOMEK).get_json()
+        self.assertEqual(own, {"title": "Tomek", "line": "Hi. Send me a photo of your scalp, and tell me what worries you.",
+                               "link": link})
+        self.assertEqual(link["path"], f"/c/{link['token']}")
 
     def test_to_change_the_chat_tell_will(self):
         """FIRST-21: any words open the chat's parts again."""
