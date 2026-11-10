@@ -16125,3 +16125,20 @@ and N612:
    screen, which wait for the founder's OK (Never 4).
 No migration in this entry. No rules page yet: hosted chats and their setup
 get one with their first built part (N578).
+
+**N614 · Payouts are not available yet and are not built now (founder, the
+Claude Code chat, 10 November 2026: "actually payouts are not yet available,
+should not be yet available. Let's not build it"; and, on tokens: "Right now
+we do it that you can just top up with the existing top up system. And in
+the app, you simply pay with the tokens").** For N531, N577, N583 and N607:
+1. **No payouts for now.** Nothing pays out what a model earned, and no
+   screen or line offers it. Was: payouts in tokens above a minimum, run by
+   the founder for whole past months (N577, N611).
+2. **Tokens come from the existing top-up, and in the app people pay with
+   tokens** (N583, N607): no second payment system.
+3. **The pull request for a model's API and its money** (backend #1866)
+   merges without its payout route; what it counts as earned stays counted.
+**Open:** whether a teacher's or an owner's earned tokens are still credited
+to them to spend in the app (N577 item 9, N607), or wait with the payouts.
+No migration in this entry. No rules page yet: a page for the launchpad with
+its first part (N566).
