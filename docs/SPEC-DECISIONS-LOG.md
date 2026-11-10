@@ -16145,3 +16145,41 @@ the app, you simply pay with the tokens").** For N531, N577, N583 and N607:
    tokens to spend").
 No migration in this entry. No rules page yet: a page for the launchpad with
 its first part (N566).
+
+**N615 · The model pipes are tightened before the launchpad opens to anyone
+else; three lines of the model's setup stay as they are (founder, the Claude
+Code chat, 10 November 2026, on an audit of the launchpad's code read from
+the source: "Continue."; then "Please fix the leakages. And you have my go
+for any merges, and all the wording is okay").** For N520, N528, N563, N566,
+N570, N582, N594 and N614:
+1. **The waiting pull requests merge as they are** (backend #1867, #1869,
+   #1866), and the leaks found are fixed before the ring `ai_models` is
+   opened to anyone but the founder.
+2. **What is fixed, as rules:**
+   - an answer on an exam example, or on an example the teacher added, is
+     refused, not only left uncounted;
+   - a newcomer is measured against trusted teachers only, never against
+     other newcomers;
+   - a speaker who turns the training yes off is taken out of every model,
+     however many models there are;
+   - a private example is never sent to someone who joins after the model
+     went public;
+   - counts read every row, not the first thousand;
+   - the people set aside for one model's exam are not the same people in
+     every model, and a moment sealed in one model's exam is not taught in
+     another by the same teacher.
+3. **Before anything is sold:** each version records which examples and
+   answers it learned from, so a deletion finds every version it touches;
+   "passed its exam" is computed on the exam, never entered by hand; a paid
+   answer is charged once however often it is retried, and the monthly
+   limit cannot be passed by two answers at once. These need a migration
+   and its outside review.
+4. **Three lines stay as written:** "you share what it earns", "Today it
+   answers from your starting rules and examples.", and the speaking
+   examples inside the prompt that drafts a model's setup.
+**Open:** what trains a model. Today a model's answer is one question to a
+general model from the model's name, question and options; the teachers'
+answers do not reach it (N582 item 2 names "a small linear model on a
+shared reader", which is not built). No image reader exists.
+No migration in this entry. The rules: docs/LEARNING-AND-QUORUM.md, with
+the pull request that fixes them.
