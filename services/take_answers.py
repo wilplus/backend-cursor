@@ -1,5 +1,6 @@
 """One Take, its answers in one place (founder, the Claude Code chat, 9
-November 2026, N587 items 3 to 5, with N588 item 4).
+November 2026, N587 items 3 to 5, with N588 item 4); a recorded question
+too, since every recording now ends on the screen of who hears it (N596).
 
 A Take sent to several people (N470, N471) is one private copy in each chat;
 each person answers in their chat with the sender, in their own voice (N580
@@ -41,22 +42,32 @@ def _first_answer(rows: list[dict], sent_at: str, mine: str) -> Optional[dict]:
         if str(r.get("created_at") or "") <= sent_at:
             continue
         if str(r.get("author_member_id")) == mine:
-            if r.get("kind") == "take":
-                return None
+            if r.get("kind") == "take" or (r.get("meta") or {}).get("asked"):
+                return None  # my next recording: what follows answers that one
             continue
         if r.get("kind") == "voice" and not (r.get("meta") or {}).get("held_until"):
             return r
     return None
 
 
+def _carries(row: dict, session: str) -> bool:
+    """Does this message of mine carry the recording: a Take sent (N470), or
+    a recorded question (N483 item 4), each now ending on the screen of who
+    hears it (N596)?"""
+    meta = row.get("meta") or {}
+    if row.get("kind") == "take":
+        return str(meta.get("take_session_id")) == session
+    return bool(meta.get("asked")) and str(meta.get("take")) == session
+
+
 def _sent(database: Any, me: str, session: str) -> list[dict]:
-    """My messages that carry this Take, the first sent first."""
+    """My messages that carry this recording, the first sent first."""
     mine = [str(m["id"]) for m in _rows(_table(database, MEMBERS).select("id").eq("user_id", me))]
     if not mine:
         return []
-    rows = _rows(_table(database, MESSAGES).select("id,thread_id,author_member_id,meta,created_at")
-                 .eq("kind", "take").in_("author_member_id", mine))
-    sent = [r for r in rows if str((r.get("meta") or {}).get("take_session_id")) == session]
+    rows = _rows(_table(database, MESSAGES).select("id,thread_id,author_member_id,kind,meta,created_at")
+                 .in_("kind", ["take", "voice"]).in_("author_member_id", mine))
+    sent = [r for r in rows if _carries(r, session)]
     return sorted(sent, key=lambda r: str(r.get("created_at") or ""))
 
 

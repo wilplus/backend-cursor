@@ -10,8 +10,11 @@ OUTCOME
       with the way into that person's chat.
   O2  Someone who has not answered is not listed; a Take I never sent is 404,
       and so is anyone else's Take.
+  O3  A question I recorded and sent to more than one person (N596) gathers
+      its answers the same way.
 PROVES   O1 -> TakeAnswersTest::test_the_answers_gather_under_my_take
          O2 -> TakeAnswersTest::test_only_answers_to_my_own_sent_take
+         O3 -> TakeAnswersTest::test_a_recorded_questions_answers_gather_too
 WHY      "if you send them the request and they all answered, you should be
          able to receive all of them" (founder, 9 November 2026, N587).
 """
@@ -74,6 +77,16 @@ class TakeAnswersTest(unittest.TestCase):
         self.assertEqual(got["bubble"]["faces"], ["Artur", "Ola", "Ariel"])
         self.assertEqual([(g["title"], [a["name"] for a in g["answers"]]) for g in got["groups"]],
                          [("On your speaking", ["Artur", "Ariel"]), ("On the matter", ["Ola"])])
+
+    def test_a_recorded_questions_answers_gather_too(self):
+        for who, name in ((SOMEONE, "Artur"), (OTHER, "Ola")):
+            thread, members = self._chat(who, name)
+            self._write(thread, members[ME], "voice",
+                        {"answer": True, "take": TAKE, "asked": True, "question": True})
+            self._write(thread, members[who], "voice", {"duration_ms": 2000})
+        got = self._get(f"/v2/user/takes/{TAKE}/answers").get_json()
+        self.assertEqual(got["bubble"]["faces"], ["Artur", "Ola"])
+        self.assertEqual([g["title"] for g in got["groups"]], ["On your speaking", "On the matter"])
 
     def test_only_answers_to_my_own_sent_take(self):
         self._sent(SOMEONE, "Artur")

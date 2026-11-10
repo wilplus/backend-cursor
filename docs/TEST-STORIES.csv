@@ -3414,8 +3414,11 @@ answer under each heading, with the names of everyone who answered;
 all of them open under ""On your speaking"" and ""On the matter"", each
 with the way into that person's chat.
 O2  Someone who has not answered is not listed; a Take I never sent is 404,
-and so is anyone else's Take.","O1 -> TakeAnswersTest::test_the_answers_gather_under_my_take
-O2 -> TakeAnswersTest::test_only_answers_to_my_own_sent_take","""if you send them the request and they all answered, you should be able to receive all of them"" (founder, 9 November 2026, N587)."
+and so is anyone else's Take.
+O3  A question I recorded and sent to more than one person (N596) gathers
+its answers the same way.","O1 -> TakeAnswersTest::test_the_answers_gather_under_my_take
+O2 -> TakeAnswersTest::test_only_answers_to_my_own_sent_take
+O3 -> TakeAnswersTest::test_a_recorded_questions_answers_gather_too","""if you send them the request and they all answered, you should be able to receive all of them"" (founder, 9 November 2026, N587)."
 tests/test_take_comparison.py,Story,"As a speaker, I never want to see my pitch, pace or pauses as numbers, so that feedback stays in words (Never rule 1).","O1  The retired take comparison (GET /v2/explore/arc/<id>/take-comparison,
 founder 2026-10-19) answers 410 GONE, reads nothing, sends no
 measurement number, and logs retired_route_called so any caller left
