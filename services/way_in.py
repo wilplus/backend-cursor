@@ -88,6 +88,9 @@ AFTER_WALK = {
     LEARN: "Next, ask someone who knows. Tap + to start.",
     SOMETHING_ELSE: "Tell me what you'd like to do, and I'll show you where.",
 }
+#: The same choice for a person with the chat builder, whose chat is set up
+#: from "Your chat" in Will's lines (N634 item 3; N632 item 5 left it none).
+SHARE_IN_YOUR_CHAT = "Next, open Your chat below, and set it up."
 AFTER_WALK_ORDER = (TALK, SHARE, LEARN, SOMETHING_ELSE)
 #: Under "Tell me what you'd like to do, and I'll show you where.", the
 #: choices not taken yet, as taps; one tap brings that choice's next line
@@ -213,23 +216,23 @@ def _setup_in_your_chat(database: Any, user_id: str) -> bool:
         return False
 
 
+def _next_line(choice: str, ring: bool) -> str:
+    return SHARE_IN_YOUR_CHAT if ring and choice == SHARE else AFTER_WALK[choice]
+
+
 def _after_walk_row(chosen: list, *, ring: bool = False) -> Optional[tuple]:
     """The one bubble after the walk. ``ring``: the person has the chat
-    builder, so "Share what I know"'s sentence is left out and nothing
-    opens the earlier setup (N632 item 5); the other sentences stay as
-    signed. None when nothing is left to say."""
+    builder, so "Share what I know" says "Next, open Your chat below, and
+    set it up." and nothing opens the earlier setup (N634 item 3, N632
+    item 5); the other sentences stay as signed."""
     picked = [c for c in AFTER_WALK_ORDER if c in set(chosen or [])] or [SOMETHING_ELSE]
-    if ring:
-        picked = [c for c in picked if c != SHARE]
-        if not picked:
-            return None
-    body = " ".join(AFTER_WALK[c] for c in picked)
+    body = " ".join(_next_line(c, ring) for c in picked)
     meta: dict[str, Any] = {"way_in_next": picked}
-    if SHARE in picked:
+    if SHARE in picked and not ring:
         meta["opens"] = "setup_chat"  # N578 item 4
     if picked[-1] == SOMETHING_ELSE:
         meta["way_in_asks"] = "else"  # answered by voice or text, or a tap (N604)
-        taps = [c for c in ELSE_TAPS if c not in picked and not (ring and c == SHARE)]
+        taps = [c for c in ELSE_TAPS if c not in picked]
         if taps:
             meta["chips"] = taps
     return _bot(body, "after_walk", "next", **meta)
@@ -563,12 +566,13 @@ def _on_else(database: Any, user_id: str, said: str, picked: Any = None) -> list
     speaker_memory.record(database, str(user_id), "answer",
                           {"question": AFTER_WALK[SOMETHING_ELSE], "said": tap or said})
     at = datetime.now(timezone.utc).isoformat()
-    if not tap or (tap == SHARE and _setup_in_your_chat(database, user_id)):
-        return [_me(tap or said, f"else:{at}", "next")]  # N632 item 5: "Your chat" is the way
+    if not tap:
+        return [_me(said, f"else:{at}", "next")]
+    ring = tap == SHARE and _setup_in_your_chat(database, user_id)
     meta: dict[str, Any] = {"way_in_next": [tap]}
-    if tap == SHARE:
+    if tap == SHARE and not ring:
         meta["opens"] = "setup_chat"  # N578 item 4
-    return [_me(tap, f"else:{at}", "next"), _bot(AFTER_WALK[tap], f"else_next:{at}", "next", **meta)]
+    return [_me(tap, f"else:{at}", "next"), _bot(_next_line(tap, ring), f"else_next:{at}", "next", **meta)]
 
 
 def _answer(database: Any, user_id: str, plan: dict, answer: Any,

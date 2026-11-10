@@ -90,6 +90,13 @@ def _model(raw: Any, i: int) -> dict:
     if out["own"] and raw.get("model_id"):
         # Kept only when it is the one made for this card (``_real_models``).
         out["model_id"] = str(raw["model_id"])[:64]
+    if out["own"]:
+        # What the host's own model is built on (N634 item 1): only a base
+        # that is ready is taken; none given is GPT, the one connected today.
+        base = raw.get("base") or "gpt"
+        if base not in READY_BASES:
+            raise RecipeError("RECIPE_INVALID", f"Model {i + 1} can be built on GPT only, for now.")
+        out["base"] = base
     if not out["own"]:
         out["model_id"] = str(raw.get("model_id") or "")[:64]
         if not out["model_id"]:
@@ -97,6 +104,21 @@ def _model(raw: Any, i: int) -> dict:
         out["by"] = _words(raw.get("by"), 60, f"Model {i + 1}'s owner")
         out["price"] = _whole(raw.get("price"), 0, 100000, f"Model {i + 1}'s price")
     return out
+
+
+#: The bases a host's own model may be built on (N634 item 1): GPT is ready;
+#: "claude" and "own" (WillpowerLab's own) are not yet, and are refused.
+READY_BASES = ("gpt",)
+
+
+def _with_base(recipe: Optional[dict]) -> Optional[dict]:
+    """A recipe as GET reads it: an own model's card saved before N634 reads
+    as built on GPT, as it is."""
+    if not recipe:
+        return recipe
+    models = [{**m, "base": m.get("base") or "gpt"} if m.get("own", True) else m
+              for m in recipe.get("models") or []]
+    return {**recipe, "models": models} if recipe.get("models") else recipe
 
 
 def _one_of(allowed: Any, message: str) -> Any:
@@ -359,7 +381,7 @@ def read(database: Any, user_id: Any, token_payload: Any) -> dict:
     chat = own_chat(recipe, name_of(token_payload))
     if chat is not None:
         chat["link"] = my_link(database, user_id, token_payload)
-    return {"recipe": recipe, "parts": parts(recipe) if recipe else [],
+    return {"recipe": _with_base(recipe), "parts": parts(recipe) if recipe else [],
             "own_chat": chat, "cost": cost(recipe), "skipped_models": skipped_models(database, user_id, recipe),
             "price_changes": price_changes(database, recipe), "spec_guess": spec_guess(database, user_id)}
 
