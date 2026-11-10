@@ -16621,3 +16621,20 @@ the full width like the rest of the app").
 
 No migration in this entry. The rules: the frontend's
 `docs/flows/coach-panel.md`.
+
+**N628 · On a computer, the list of chats and a person's chat are as wide
+as Will's chat** (founder, the Claude Code chat, 10 November 2026, on the
+list drawn in a narrow column beside Will's wider chat: "fix the width of
+the app to fit the width of the chat").
+
+This changes N321 and N322 ("on a computer, a phone-wide column";
+frontend customer-requests.md C1) and follows N618 item 10 (the AI models
+overlay as wide as Will's chat).
+
+1. On a computer, the list of chats and a person's chat fill the column
+   Will's chat and its bar fill, in place of the 480 px column in the
+   middle. On a phone nothing changes: all are the window's width.
+2. Sheets that rise from the bottom (Add someone) keep their own width.
+
+No new words. No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
