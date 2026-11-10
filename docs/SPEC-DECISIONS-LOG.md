@@ -16355,3 +16355,63 @@ For N606, N607, N610, N612, N616 and N617:
 kind, shown once, a test key or a paid one (N583); the founder named a
 secret key and a public key.
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N619 · The build of the blank setup is locked into six steps, and the
+speaking loop stays live on its own track** (founder, the Claude Code chat,
+10 November 2026: "prepare a plan and lock it in to steps; set aside the
+updates that we are going to be making to the existing speaking loop (it
+stays active while the build happens, and we are going to be making the
+updates there) and use the prototype for it and the docs; and the tests").
+
+**Two tracks, never mixed in one pull request.**
+
+- **Track A, the build:** the blank setup and what a visitor meets (N612 to
+  N618). Its source is the pinned prototype and its stories
+  (`docs/design/the-blank-setup-2026-11-10/`).
+- **Track B, the speaking loop:** it stays live for every speaker while
+  track A is built. Changes to it are made on this track only, each in its
+  own pull request.
+
+**Track A, in six steps.**
+
+1. **Ready.** N612 to N618 are merged, the prototype and its stories are
+   pinned, and the stories match the code on main. Nothing is spawned
+   before the founder says "green light".
+2. **The contract first.** The setup's backend builder publishes the shape
+   of a chat's recipe and its routes before it writes anything else. The
+   other builders build against that, not against a guess.
+3. **Round one, six builds at once:** 1 the setup, backend; 2 the setup,
+   frontend; 3 what a visitor meets, backend; 4 what a visitor meets,
+   frontend; 5 the leak fixes that need no migration (N615); 6 a model
+   that learns from its examples. Build 6 has a migration: the founder
+   gets the Grok prompt before it merges (N616 item 14).
+4. **Round two, two builds:** 9 the leak fixes that need a migration
+   (N615; Grok prompt to the founder); 10 tokens in a chat (N614, N617).
+5. **Joined.** One test in code walks the whole journey: a first person
+   sets up a chat with Will, tests it, opens it, and a second person gets
+   an answer in it. Every story of the build has a test that passes.
+6. **Opened by the founder.** The rings `chat_builder`, `ai_models` and
+   `website_chat` stay off for everyone but the founder until the founder
+   tries it in the live app and opens them.
+
+**What every pull request of track A carries.** The ids of the stories it
+makes pass, each with its test; the prototype screen it builds, word for
+word; green local checks. Merge order: backend 1, 3, 5, 6, then 9, 10;
+frontend 2, 4. A builder that finds the prototype, a story and a decision
+disagreeing stops and asks; it does not choose.
+
+**Track A does not change what a speaker meets.** It adds beside the
+speaking loop, behind the rings. Where it must touch a file the speaking
+loop shares (the thread, the bar), the speaking loop's tests pass
+unchanged and the pull request says so. No pull request of track A
+changes a locked screen.
+
+**Track B, each change in this order:** the founder decides, and it is
+logged here; the prototype shows it; its rules page in the frontend's
+`docs/flows/` gets its line; its story is written as a test; then the
+code. The two small pieces that touch the speaking loop move here from
+the build: the training-yes card and "Record Take 2" faded until the walk
+is done (N616). Making the setup able to produce the speaking chat's own
+steps is not part of this build; it is planned after step 6.
+
+No migration in this entry. No rules page: this is the order of work.
