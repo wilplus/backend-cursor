@@ -15806,3 +15806,63 @@ don't ask").** Amends N597 items 1 and 2 for the hosts' chats; for N582:
 No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built.
+
+**N601 · The join page is three lines: who invited you, what you'll learn,
+and that only the two of you are in the chat (founder, the Claude Code
+chat, 10 November 2026, on the prototype's join page of Kasia's link: "we
+need to shorten that massively; as steven pinker would; please suggest
+smth"; then, of three drafts, "Three lines").** Amends N586 items 1 and 2,
+and the join page's words of N310 item 3 and N335 item 2; for N401 and N471
+(the way in, locked: this is the founder's change to it):
+1. **The join page of anyone's link:** "{name} invited you"; one sentence
+   of what you'll learn in their chat, under about fifteen words, which
+   Will drafts from the host's setup and the host confirms (N586 item 1);
+   "Only the two of you are in this chat."; and "Join". Nothing under it.
+2. **Gone from the page:** "{name} asks you to join them on WillpowerLab",
+   "A chat with {name}", the line about Will's chat (N586 item 2; Will
+   greets a newcomer inside the app, N586 item 5), "Nobody else can reach
+   you here unless you open their link too." and "Opens in your browser.
+   Nothing to install.".
+3. **Signed (Never 4):** "{name} invited you"; for Artur's link, "Record a
+   short talk. He'll tell you what landed and what to try next." Other
+   hosts' sentences are theirs (N578); the prototype's samples are Kasia's
+   "She'll show you how to check a quote, a number or a photo before you
+   trust it." and Lena's "Ask her what to use on your hair, and why."
+No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built.
+
+**N602 · A bundle in Will is one card: the question, who asked, one action
+(founder, the Claude Code chat, 10 November 2026, on the prototype's bundle
+card, which listed every asker with their question and the assistant's
+answer: "we also need to simplify this; either just show one or smth; like
+a single screen so that person is not overloaded; as the best designer in
+the world come up with a scandinavian design"; then, of two drafts, "A: one
+question, one action").** Amends N584 item 2's card; for N580, N584 item 1
+and N597:
+1. **One card in Will:** "{n} people asked"; the question, large; the faces
+   of who asked with "{name}, {name} and {n} more"; one quiet line, "Your
+   assistant has answered them for now." The bar's middle is "Record one
+   answer" (N597).
+2. **"See who asked ›"** opens a sheet, "Who asked": each person's own words,
+   their name and where they asked ("in your chat", "on your website"), and
+   "Split them up ›" at the end (N584 item 1).
+3. **Gone from the card:** the list of every asker with their question and
+   the assistant's answer, and the line "Record one answer: each of them gets
+   it in their own chat with you, under their own question."
+4. **Words:** "{n} people asked", "See who asked", "Who asked", "Split them
+   up" and "Your assistant has answered them for now." are signed with the
+   founder's choice (Never 4).
+No migration. No rules page yet.
+
+**N603 · When a chat asks for a photo, an image button takes the mic's place
+on the right (founder, the Claude Code chat, 10 November 2026, asked where
+the photo goes in the bar of N600: "An image button on the right").**
+Amends N597 item 2's "Upload a photo" in the middle; for N600:
+1. **While a chat asks for a photo,** a small image button stands on the
+   right, where the mic is (N600); the box stays in the middle. It opens the
+   phone's own picker; its name for screen readers is "Add a photo".
+2. **"Upload a photo" no longer takes the middle.**
+No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built.
