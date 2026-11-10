@@ -22,6 +22,13 @@ joiner is done (N487 item 7).
   * ``answer``: the joiner's tap; then the next question, or the closing
     line and the card.
   * ``hidden``: which of these messages a member does not see.
+  * A question that asks for a photo (N610 item 4): a question of the
+    host's recipe marked ``photo`` (``assistants.photo_asks``, the chat
+    builder's ring) is asked after the owner's own, its ``setup.kind``
+    "photo", the one field the bar reads for "Add a photo". ``answer_photo``
+    takes the photo, from a member only; the owner sees it, as any photo.
+  * ``answer_typed``: a typed answer to a question with answers to tap, in
+    a chat that takes typing (N610 item 4, "Type your answer").
 
 What a message carries, in ``chat_messages.meta``:
   * a question or a sentence, written by the owner's member:
@@ -29,12 +36,16 @@ What a message carries, in ``chat_messages.meta``:
     keeps the whole set as it stood (``"all"``, ``"plan"``), so a change the
     owner makes later reaches only people who join later;
   * an answer, written by the joiner's member:
-    ``{"setup_answer": {"to", "i", "picked", "deadline"?}}``;
+    ``{"setup_answer": {"to", "i", "picked", "deadline"?, "typed"?}}``; a
+    photo asked for, kind ``photo``: ``{"setup_answer": {"to", "i", "photo":
+    true}, "question": true}``;
   * the card, written by the joiner's member, shown only to the owner:
     ``{"setup_card": {"rows": [{"k", "v"}]}}``.
 
 No provider call, no recording: nothing here passes the processing-
-authorization path. Nothing is pushed: the joiner is in the chat when it
+authorization path, but the asked-for photo's route, which does, as every
+upload a chat asks for (routes/v2/chats.py). Nothing is pushed, but that
+photo, as any photo: the joiner is in the chat when it
 begins, and the owner learns from the card's row in their list.
 """
 from __future__ import annotations
@@ -68,7 +79,7 @@ CARD_DEADLINE, CARD_LANGUAGES = "Deadline", "Languages"
 SPANS = {"week": ("a week at a time", 7), "month": ("a month at a time", 30),
          "quarter": ("a quarter at a time", 91)}
 
-KINDS = ("say", "hurry", "date", "languages", "tap")
+KINDS = ("say", "hurry", "date", "languages", "tap", "photo")
 
 
 from services.chats import ChatsError  # noqa: E402  (services.chats imports this module lazily)
@@ -245,7 +256,8 @@ def hidden(row: dict, me: str) -> bool:
     if "setup" in meta or "welcome" in meta:  # the host's welcome, N590
         return mine_
     if "setup_answer" in meta:
-        return not mine_
+        # A photo the owner asked for is theirs to see (N610 item 4).
+        return not mine_ and row.get("kind") != "photo"
     if "setup_card" in meta:
         return mine_
     return False
@@ -290,11 +302,26 @@ def _set_deadline(database: Any, user_id: str, day: date) -> None:
         logger.warning("join_questions: the plan kept no deadline", exc_info=True)
 
 
+def _asked_of_joiners(database: Any, owner_id: str) -> Optional[dict]:
+    """What whoever joins is asked: the owner's own questions (``mine``),
+    then the questions of their chat's recipe that ask for a photo (N610
+    item 4), each a line of kind "photo" with no answers to tap. None when
+    there is nothing to ask."""
+    from services import assistants
+    questions = mine(database, owner_id)
+    photos = [{"q": q, "answers": [], "multi": False, "kind": "photo"}
+              for q in assistants.photo_asks(database, owner_id)]
+    if not photos:
+        return questions
+    return {"v": 1, "plan": (questions or {}).get("plan"),
+            "lines": [*(questions or {}).get("lines", []), *photos]}
+
+
 def begin(database: Any, thread: str, owner_id: str, joiner_id: str) -> None:
     """A chat just made through a link: the owner's first lines, up to the
     first question. Best-effort: joining never fails on it."""
     try:
-        questions = mine(database, owner_id)
+        questions = _asked_of_joiners(database, owner_id)
         if not questions:
             return
         members = {str(m.get("user_id")): str(m["id"]) for m in _members(database, thread)}
@@ -312,7 +339,7 @@ def begin_for_visitor(database: Any, thread: str, owner_id: str, owner_member: s
     the visitor, up to the first question, as ``begin`` does for someone who
     joins; the rows posted. Best-effort: the widget opens either way."""
     try:
-        questions = mine(database, owner_id)
+        questions = _asked_of_joiners(database, owner_id)
         if not questions:
             return []
         return _advance(database, thread, owner_member, visitor_member, None, questions, 0,
@@ -381,6 +408,8 @@ def _card(database: Any, thread: str, questions: dict) -> list[dict]:
         a = (r.get("meta") or {}).get("setup_answer")
         if not isinstance(a, dict):
             continue
+        if a.get("photo"):
+            continue  # the photo is in the chat itself
         i = a.get("i")
         line = questions["lines"][i] if isinstance(i, int) and 0 <= i < len(questions["lines"]) else {}
         if a.get("deadline"):
@@ -449,13 +478,9 @@ def answer_as(database: Any, me: dict, user_id: Optional[str], message_id: Any, 
     closing line, N567)."""
     from services import chats
     thread, my_member = str(me["thread_id"]), str(me["id"])
-    rows = _setup_rows(database, thread)
-    asked, setup = _question(rows, message_id, my_member)
+    asked, setup, questions = _waiting(database, me, message_id)
     body = payload if isinstance(payload, dict) else {}
     picked = _picked(setup, body)
-    questions = _snapshot(rows)
-    if not questions:
-        raise JoinQuestionsError("NOT_FOUND", "No such question.", 404)
     record: dict = {"to": str(asked["id"]), "i": setup["i"], "picked": picked}
     shown_body = ", ".join(picked)
     if setup["kind"] == "hurry":
@@ -468,11 +493,69 @@ def answer_as(database: Any, me: dict, user_id: Optional[str], message_id: Any, 
     mine_row = _insert(database, thread, my_member, shown_body, {"setup_answer": record})
     if not mine_row:
         raise JoinQuestionsError("NOT_SAVED", "Could not send it.", 503)
-    owner = str(asked["author_member_id"])
-    after = _advance(database, thread, owner, my_member, user_id, questions, int(setup["i"]) + 1,
-                     closing=bool(user_id))
+    after = _after(database, me, user_id, asked, setup, questions)
     authors = chats._authors(database, thread)
     return {"messages": [chats._shown(r, my_member, authors) for r in [mine_row, *after]]}
+
+
+def _after(database: Any, me: dict, user_id: Optional[str], asked: dict, setup: dict,
+           questions: dict) -> list[dict]:
+    """What follows an answer: the owner's next lines, as ``_advance``."""
+    return _advance(database, str(me["thread_id"]), str(asked["author_member_id"]), str(me["id"]),
+                    user_id, questions, int(setup["i"]) + 1, closing=bool(user_id))
+
+
+def _waiting(database: Any, me: dict, message_id: Any) -> tuple[dict, dict, dict]:
+    """The owner's question that waits for this member, its setup, and the
+    set as it stood when the chat began."""
+    rows = _setup_rows(database, str(me["thread_id"]))
+    asked, setup = _question(rows, message_id, str(me["id"]))
+    questions = _snapshot(rows)
+    if not questions:
+        raise JoinQuestionsError("NOT_FOUND", "No such question.", 404)
+    return asked, setup, questions
+
+
+def answer_typed(database: Any, me: dict, user_id: str, message_id: Any, words: str) -> dict:
+    """A typed answer to one of the owner's questions with answers to tap
+    (N610 item 4: "Type your answer"), for a member of a chat that takes
+    typing (the caller has checked, ``assistants.may_type``). The words are
+    the answer, on the owner's card as a tap would be. A question that
+    needs a day, the languages or a photo is still answered its own way.
+    {"messages"}, as ``answer``."""
+    from services import chats
+    asked, setup, questions = _waiting(database, me, message_id)
+    if setup.get("kind") != "tap":
+        raise JoinQuestionsError("PICK_ONE", "Tap one of the answers.")
+    record = {"to": str(asked["id"]), "i": setup["i"], "picked": [words], "typed": True}
+    mine_row = _insert(database, str(me["thread_id"]), str(me["id"]), words, {"setup_answer": record})
+    if not mine_row:
+        raise JoinQuestionsError("NOT_SAVED", "Could not send it.", 503)
+    after = _after(database, me, user_id, asked, setup, questions)
+    authors = chats._authors(database, str(me["thread_id"]))
+    return {"messages": [chats._shown(r, str(me["id"]), authors) for r in [mine_row, *after]]}
+
+
+def answer_photo(database: Any, user_id: Any, thread_id: Any, message_id: Any, data: bytes, *,
+                 content_type: Any, file_name: Any) -> dict:
+    """POST /v2/chats/<id>/setup/<message_id>/photo: the photo a question
+    asked for (N610 item 4), from a member of the chat; the route has
+    passed the processing-authorization path. Kept as any photo in a chat
+    (``chats.post_file``: one of PHOTO_TYPES, up to 10 MB, a new question
+    for the owner, who sees it and is told), and it answers the question:
+    the owner's next lines follow. 404 for a question that asks for no
+    photo, 409 for one already answered. {"messages"}, as ``answer``."""
+    from services import chats
+    me = chats.member(database, user_id, thread_id)
+    asked, setup, questions = _waiting(database, me, message_id)
+    if setup.get("kind") != "photo":
+        raise JoinQuestionsError("NOT_FOUND", "No such question.", 404)
+    record = {"to": str(asked["id"]), "i": setup["i"], "photo": True}
+    sent = chats.post_file(database, user_id, thread_id, "photo", data, content_type=content_type,
+                           file_name=file_name, meta={"setup_answer": record})["message"]
+    after = _after(database, me, str(user_id), asked, setup, questions)
+    authors = chats._authors(database, str(me["thread_id"]))
+    return {"messages": [sent, *[chats._shown(r, str(me["id"]), authors) for r in after]]}
 
 
 def asks(database: Any, thread: str) -> bool:
