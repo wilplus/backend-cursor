@@ -13,9 +13,12 @@ OUTCOME
   O3  (PIPE-03) A speaker whose Takes are examples in more than twenty models
       turns the training yes off: at the next run their examples leave
       every model.
+  O4  (PIPE-04) A model with more than a thousand counted answers shows every
+      one of them in its counts.
 PROVES   O1 -> ModelPipesTest::test_an_exam_example_or_your_own_cannot_be_answered
          O2 -> ModelPipesTest::test_a_newcomer_is_measured_against_trusted_teachers_only
          O3 -> SweepTest::test_turning_the_training_yes_off_reaches_every_model
+         O4 -> ModelPipesTest::test_counts_read_every_row
 WHY      The audit of the launchpad's code (N615); the build's stories
          PIPE-01 to PIPE-09 (docs/design/the-blank-setup-2026-11-10).
 """
@@ -24,10 +27,20 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from tests.test_chats import _Store
+from tests.test_chats import _Query, _Result, _Store
 from tests.test_model_launchpad_routes import ARTUR, KASIA, MARTA, SPEAK, ModelRoutesTest
 
 EXAM = "e5000000-0000-4000-8000-0000000000ee"
+SERVER_CAP = 1000
+
+
+class _CappedQuery(_Query):
+    """PostgREST as it answers: at most a thousand rows a read; a range
+    reads the page it names."""
+
+    def execute(self):
+        out = super().execute()
+        return out if self.write else _Result(out.data[:SERVER_CAP])
 
 
 class ModelPipesTest(ModelRoutesTest):
@@ -80,6 +93,17 @@ class ModelPipesTest(ModelRoutesTest):
                   if t["model_id"] == SPEAK}
         self.assertNotEqual(status[MARTA], "counts")
         self.assertNotEqual(status[KASIA], "counts")
+
+
+    def test_counts_read_every_row(self):
+        self.store.table = lambda name: _CappedQuery(self.store, name)
+        self.store.tables["ai_model_answers"] += [
+            {"id": f"y{i}", "model_id": SPEAK, "example_id": "old", "teacher_id": ARTUR, "step": "rate",
+             "answer": "Yes", "counted": True, "created_at": "2026-11-02"} for i in range(1500)]
+        self.who = ARTUR
+        page = self._get(f"/v2/models/{SPEAK}").get_json()
+        self.assertEqual(page["jars"]["counted_answers"], 1505)
+        self.assertEqual(page["own_part"]["answers_counted"], 1505)
 
 
 class SweepTest(unittest.TestCase):

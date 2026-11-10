@@ -576,6 +576,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-11-10 · N615 · PIPE-04: the launchpad's counts (counted answers, exam cases, teachers, a teacher's own part) read every row, page by page, never the server's first thousand · BE
 - 2026-11-10 · N615 · PIPE-03: a speaker whose training yes is off leaves every model on the next run, however many models hold their Takes (the let-go pass reads every model, page by page; only the gathering stays bounded) · BE
 - 2026-11-10 · N615 · PIPE-02: the quiet trust check measures a newcomer against trusted teachers' answers and known answers only, never against other newcomers · BE
 - 2026-11-10 · N615 · PIPE-01: an answer on an exam case is refused for anyone but the two experts who set the exam aside, and a teacher's second answer on an example they added is refused; neither is stored · BE

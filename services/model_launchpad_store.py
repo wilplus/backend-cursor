@@ -77,10 +77,15 @@ def _models(database: Any, ids: Optional[list[str]] = None) -> list[dict]:
     if not models:
         return []
     mids = [str(m["id"]) for m in models]
-    teachers = _rows(_table(database, TEACHERS).select("model_id,user_id,role,trust_status")
-                     .in_("model_id", mids))
-    counted = _rows(_table(database, ANSWERS).select("model_id").in_("model_id", mids).eq("counted", True))
-    exam = _rows(_table(database, EXAMPLES).select("model_id").in_("model_id", mids).eq("in_exam", True))
+    # Counts read every row, page by page, never the server's first
+    # thousand (N615 item 2).
+    from services.model_api_store import _all
+    teachers = _all(lambda: _table(database, TEACHERS).select("model_id,user_id,role,trust_status")
+                    .in_("model_id", mids))
+    counted = _all(lambda: _table(database, ANSWERS).select("model_id").in_("model_id", mids)
+                   .eq("counted", True))
+    exam = _all(lambda: _table(database, EXAMPLES).select("model_id").in_("model_id", mids)
+                .eq("in_exam", True))
     by_model: dict[str, list[dict]] = defaultdict(list)
     for t in teachers:
         by_model[str(t["model_id"])].append(t)
@@ -132,8 +137,9 @@ def page_for(database: Any, user_id: Any, model_id: Any) -> dict:
     model = _model(database, model_id)
     own_part = None
     if rules.viewer_role(model, me) in ("owner", "contributor"):
-        mine = _rows(_table(database, ANSWERS).select("id").eq("model_id", model["id"])
-                     .eq("teacher_id", me).eq("counted", True))
+        from services.model_api_store import _all
+        mine = _all(lambda: _table(database, ANSWERS).select("id").eq("model_id", model["id"])
+                    .eq("teacher_id", me).eq("counted", True))
         own_part = {"answers_counted": len(mine)}
     page = rules.model_page(model, me, own_part=own_part)
     if page is None:
