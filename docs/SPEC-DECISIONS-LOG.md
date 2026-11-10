@@ -16067,3 +16067,43 @@ Still open: the walk's voices on replay (VOICE-18), which changes a locked
 walk file and waits for the founder's own yes.
 No migration in this entry. No rules page: these settle builds already in
 their pull requests.
+
+**N612 · No chat is a template: WillpowerLab is the launchpad, and Artur's is
+only the first chat set up on it; what people get back is each chat's own
+output, the Ideal Text being a speaking coach's (founder, the Claude Code
+chat, 10 November 2026: "It's not a template. The template is the
+application, it's the willpower lab, it's the launch pad for models, for
+charts, automated charts. Arthur is just the first chart to be set up"; "a
+house with no walk steps gives the people just the answer. It doesn't have
+to be the ideal text ... For a speaking coach, this is the ideal text ...
+for someone who is a dermatologist, the output is simply the output, the
+message ... it needs to be configured on a universal setup. And the
+configuration needs to be detailed enough and broad enough and universal
+enough and smart enough to suggest the outputs that are fitting what the
+specialist does. The rest of the points are good").** For N578, N579, N580,
+N581 and N590; replaces N578 item 2:
+1. **WillpowerLab is the launchpad.** Every chat, Artur's included, is set
+   up on it from zero. No chat is another chat's template, and no screen or
+   line calls one a template. Was: Artur's setup was locked as the template
+   every other chat starts from (N578 item 2).
+2. **A new host's setup starts blank.** Will asks and drafts from what that
+   host said, never from Artur's welcome or questions.
+3. **What people get back is the chat's own output,** chosen in the setup.
+   For a speaking coach it is the Ideal Text; for another specialist it is
+   an answer, a message in words. A host with no steps gives their people
+   that output alone.
+4. **The setup is universal and suggests the outputs that fit the
+   specialist,** from the host's specialization (N588's sensible
+   suggestions); the host picks one.
+5. **Someone who invites people without setting up a chat has no
+   assistant:** questions asked of them wait for them. Was: they had the
+   template under their own name (N578 item 2).
+6. **The Nevers of the speaking loop** (the Ideal Text, record to next Take)
+   hold in a chat whose output is the Ideal Text, Artur's first.
+**Open:** the list of outputs and their words (drafted on the prototype: the
+Ideal Text, an answer, what to do next, nothing first); whether Never 1 (no
+verdicts) binds a specialist's chat whose answer is a judgement; the walk as
+a list of steps, each one a model, drawn on the prototype and not yet
+decided.
+No migration in this entry. No rules page yet: hosted chats and their setup
+get one with their first built part (N578).
