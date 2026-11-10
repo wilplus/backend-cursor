@@ -30,8 +30,9 @@ THE EXAM (N566 item 5, N615 item 3). Computed by the app, never entered by
 hand: the head's answers on the exam cases both experts settled, compared
 case by case with the version before (the exact sign test,
 ``model_launchpad.sign_test``). Passed when the exam is full, the head agrees
-with the experts on at least ``SURE_AT`` of the cases, and it is not clearly
-worse than the version before. Only a passed exam opens gate two: shared for
+with the experts on at least ``EXAM_AGREE`` of the cases, and it beats the
+untrained version (the first version, N528 item 8) or is not clearly worse
+than the version before (a later one). Only a passed exam opens gate two: shared for
 tokens, or sold.
 """
 from __future__ import annotations
@@ -44,11 +45,18 @@ import numpy as np
 
 from services.model_api import SURE_AT
 
+# ── The defaults the founder is asked about (one place each) ───────────────
+#: A head needs this many settled examples, and this many of each answer.
 MIN_SETTLED = 10
 MIN_PER_ANSWER = 2
+#: The owner's check: this many unseen examples; passed with this many kept.
 CHECK_SIZE = 10
 CHECK_KEEP = 7
-#: A new fit when the settled examples grew by half since the last one.
+#: The exam: the head agrees with the experts on at least this share of
+#: the cases (the threshold "sure" uses today).
+EXAM_AGREE = SURE_AT
+#: A new fit when the settled examples grew by this factor since the last one
+#: (also: when the founder queues one, or a version is marked to retrain).
 REFIT_GROWTH = 1.5
 #: The probability levels of the confidence table.
 LEVELS = (0.0, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
@@ -223,10 +231,15 @@ def check_passed(items: list[dict]) -> bool:
 
 
 # ── The exam (LEARN-05) ─────────────────────────────────────────────────────
-def exam_result(cases: list[dict], target: int, before: Optional[dict] = None) -> dict:
+def exam_result(cases: list[dict], target: int, before: Optional[dict] = None, *,
+                first: bool = False) -> dict:
     """``cases``: [{"example_id", "truth", "guess"}] for the exam cases both
-    experts settled. ``before``: the previous version's exam, with its own
-    guesses. The app's result; nobody enters it."""
+    experts settled. ``before``: the version before, as {"right": {id: bool}}:
+    the previous head's exam, or, for the FIRST version, the untrained
+    version's answers on the same cases. The first version must beat the
+    untrained one (N528 item 8: more cases won than lost); a later one must
+    not be clearly worse than the version before (N566 item 5). The app's
+    result; nobody enters it."""
     from services.model_launchpad import RELEASE_ALPHA, sign_test
     right = {c["example_id"]: c["guess"] == c["truth"] for c in cases}
     agree = (sum(right.values()) / len(cases)) if cases else 0.0
@@ -246,7 +259,9 @@ def exam_result(cases: list[dict], target: int, before: Optional[dict] = None) -
     return {"computed": True, "cases": len(cases), "full": full,
             "as_good_in_ten": int(round(10 * agree)) if cases else None,
             "better": better, "worse": worse, "same": same,
-            "passed": bool(full and agree >= SURE_AT and not clearly_worse),
+            "first": first,
+            "passed": bool(full and agree >= EXAM_AGREE and not clearly_worse
+                           and (better > worse if first else True)),
             "right": right}
 
 

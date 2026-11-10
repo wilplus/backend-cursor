@@ -256,6 +256,8 @@ class ModelLearnsTest(unittest.TestCase):
         self.assertEqual((v["exam"]["cases"], v["exam"]["as_good_in_ten"]), (3, 10))
         self.assertTrue(v["exam"]["passed"])
         self.assertEqual(v["status"], "passed")
+        # The first version beat the untrained one, asked once a case (N528 item 8).
+        self.assertEqual((v["exam"]["first"], v["exam"]["better"], v["exam"]["worse"]), (True, 2, 0))
         # The next version is compared case by case with this one.
         self.store.tables["ai_models"][0]["retrain_at"] = "2026-11-10T00:00:00+00:00"
         self._fit()
@@ -265,6 +267,9 @@ class ModelLearnsTest(unittest.TestCase):
                             {"right": {str(i): True for i in range(14)}})
         self.assertFalse(worse["passed"])
         self.assertEqual(worse["worse"], 14)
+        tie = exam_result([{"example_id": "a", "truth": "Calm", "guess": "Calm"}], 1, {"right": {"a": True}},
+                          first=True)
+        self.assertFalse(tie["passed"])                 # not beating the untrained version fails
 
     def test_no_photo_model_is_offered(self):
         from services import model_head_store

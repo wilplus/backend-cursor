@@ -343,7 +343,12 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
   - **The exam:** computed by the app on the cases both experts settled,
     compared case by case with the version before (the sign test). It passes
     when the exam is full, the head agrees with the experts on at least 0.70
-    of the cases, and it is not clearly worse than the version before. No
+    of the cases (`EXAM_AGREE`), and it beats the untrained version (a
+    first version, N528 item 8: the recipe card's answer, asked once a case
+    at that fit) or is not clearly worse than the version before (a later
+    one). The defaults are named once in `services/model_head.py`:
+    `MIN_SETTLED`, `MIN_PER_ANSWER`, `CHECK_KEEP`, `EXAM_AGREE` and
+    `REFIT_GROWTH`, until the founder sets them. No
     route takes "passed" by hand. Only a passed exam opens gate two: shared
     for tokens ("Models you can use") or sold through the API.
   - **In a chat:** a recipe model with a head and an open gate answers from

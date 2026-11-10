@@ -212,7 +212,28 @@ def _exam(database: Any, model: dict, head_version: dict, before: Optional[dict]
         if a is not None:
             scored.append({"example_id": str(c["id"]), "truth": truth[str(c["id"])], "guess": a["answer"]})
     target = int((model.get("targets") or {}).get("exam") or S.EXAM_CASES)
-    return rules.exam_result(scored, target, (before or {}).get("exam"))
+    if before is None:
+        # The first version must beat the untrained one (N528 item 8): the
+        # recipe card's answer on the same cases, asked once, at this fit.
+        return rules.exam_result(scored, target, {"right": untrained(model, settled_cases, truth)}, first=True)
+    return rules.exam_result(scored, target, before.get("exam"))
+
+
+def untrained(model: dict, cases: list[dict], truth: dict[str, str]) -> dict[str, bool]:
+    """The untrained version on the exam: the recipe card's answer (one
+    cheap-model call a case, once per model, under the owner's authority
+    bound by the sweep). A case it gives no answer to counts as wrong."""
+    from services.model_api_store import _ask
+    out: dict[str, bool] = {}
+    for c in cases:
+        try:
+            got = _ask(model, None, _text(c))
+        except Exception:  # noqa: BLE001 -- no answer: wrong
+            logger.warning("model head: the untrained answer failed example=%s", c["id"], exc_info=True)
+            got = None
+        said = str((got or {}).get("answer") or "").strip().lower()
+        out[str(c["id"])] = bool(said) and said == truth[str(c["id"])].lower()
+    return out
 
 
 def fit_model(database: Any, model: dict) -> Optional[dict]:
