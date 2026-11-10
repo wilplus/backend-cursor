@@ -18,7 +18,9 @@ OUTCOME
             it is not shared for tokens or sold before a passed exam.
   LEARN-05  A version's exam is computed by the app, with the sign test
             against the version before; nobody enters "passed" by hand.
-  LEARN-06  No model that reads a photo starts, learns or is offered.
+  LEARN-06  No model reads a photo: a photo model is never fitted, never
+            answers from a head and is never offered to other hosts; the
+            host sees the photo and answers it.
   PIPE-06   A withdrawn person's examples mark every version that learned
             from them to retrain, and the next fit leaves them out.
 PROVES   LEARN-01 -> ModelLearnsTest::test_a_head_learns_from_settled_examples_only
@@ -258,12 +260,12 @@ class ModelLearnsTest(unittest.TestCase):
 
     def test_no_photo_model_is_offered(self):
         from services import model_head_store
-        from services import model_setup as S
         photo = {**RECIPE, "input": "image"}
         self.store.tables["ai_models"][0]["recipe"] = photo
-        self.assertEqual(self._fit()["fitted"], 0)
-        self.assertFalse(S.can_start({"name": "Skin check", "input": "image", "parts": {"pick": True}}))
-        self.assertTrue(S.can_start({"name": "Skin check", "input": "text", "parts": {"pick": True}}))
+        self.assertEqual(self._fit()["fitted"], 0)          # no reader, no head
+        self.read.clear()
+        self.assertIsNone(model_head_store.head_answer(self.store.tables["ai_models"][0], None, "x",
+                                                       surface="t"))
         self.assertEqual(model_head_store.chat_answers(db, KASIA, [{"model_id": PACE}], "a photo"), {})
         from services.chat_recipes import shared_models
         self.store.tables["ai_models"][0].update({"price_units": 300})

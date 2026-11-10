@@ -150,7 +150,9 @@ LEARN-04  After the owner's check the model answers in its owner's chat;
 it is not shared for tokens or sold before a passed exam.
 LEARN-05  A version's exam is computed by the app, with the sign test
 against the version before; nobody enters ""passed"" by hand.
-LEARN-06  No model that reads a photo starts, learns or is offered.
+LEARN-06  No model reads a photo: a photo model is never fitted, never
+answers from a head and is never offered to other hosts; the
+host sees the photo and answers it.
 PIPE-06   A withdrawn person's examples mark every version that learned
 from them to retrain, and the next fit leaves them out.","LEARN-01 -> ModelLearnsTest::test_a_head_learns_from_settled_examples_only
 LEARN-02 -> ModelLearnsTest::test_the_answer_comes_from_the_head
@@ -577,6 +579,7 @@ FIRST-04 -> SetupTest::test_what_people_send_several_ticked
 FIRST-05 -> SetupTest::test_they_get_back_an_answer_unless_will_suggests_otherwise
 FIRST-06 -> SetupTest::test_the_hello_questions_and_taps_pass_the_hosts_checks
 FIRST-07 -> SetupTest::test_a_model_is_one_question_with_three_answers
+FIRST-08 -> SetupTest::test_a_model_made_here_is_a_real_model_teach_it_opens
 FIRST-09 -> SetupTest::test_who_answers_is_three_plain_choices
 FIRST-10 -> SetupTest::test_sharing_keeps_a_price_in_tokens
 FIRST-11 -> VisitorTest::test_not_yet_keeps_it_saved_and_yes_opens_it

@@ -309,7 +309,10 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     (`ai_model_example_vectors`). Text goes through the shared reader
     (`llm_config.READER_MODEL`). A voice clip's words go through the same
     reader, with the voice measures already stored for the clip appended.
-    There is no photo reader. Every reader call is one provider call with a
+    There is no photo reader: a photo model (a photo chat's own card still
+    gets one, FIRST-07) is taught by people, never fitted, never answers
+    from a head and is never offered to another host; the host sees the
+    photo and answers it (LEARN-06). Every reader call is one provider call with a
     maximum length (`llm.embed`), under a processing authority.
   - **The head:** one per version, a multinomial logistic regression over
     the model's answers, fitted with numpy in the periodic sweep, never in
@@ -628,7 +631,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
-- 2026-11-10 · N615, N616 · LEARN-01 to LEARN-06, PIPE-06: a model answers from a small head fitted on its own settled examples (F8); "sure" from the head's measured confidence; the owner's check of ten unseen examples opens its owner's chat; the exam is computed by the app, never entered, and only a passed one opens sharing and selling; no photo model starts or is offered; a version keeps what it learned from and is marked to retrain when an example goes; migration 0522 · BE #1898
+- 2026-11-10 · N615, N616 · LEARN-01 to LEARN-06, PIPE-06: a model answers from a small head fitted on its own settled examples (F8); "sure" from the head's measured confidence; the owner's check of ten unseen examples opens its owner's chat; the exam is computed by the app, never entered, and only a passed one opens sharing and selling; no photo model is fitted, answers from a head or is offered; a version keeps what it learned from and is marked to retrain when an example goes; migration 0522 · BE #1898
 - 2026-11-10 · N615 · PIPE-09: the moment a model first goes public is kept in its setup (`setup.public_at`, no new column); a teacher invited after it is never sent, and cannot answer or download, the examples that were private; a model that went public before the moment was kept opens them to no invited teacher · BE
 - 2026-11-10 · N615 · PIPE-04: the launchpad's counts (counted answers, exam cases, teachers, a teacher's own part) read every row, page by page, never the server's first thousand · BE
 - 2026-11-10 · N615 · PIPE-03: a speaker whose training yes is off leaves every model on the next run, however many models hold their Takes (the let-go pass reads every model, page by page; only the gathering stays bounded) · BE
