@@ -34,11 +34,7 @@ class JourneyTest(_Base):
         self.assertEqual((refused.status_code, refused.get_json()["code"]), (400, "RECIPE_INVALID"))
         self.assertEqual(self._put("care", False).status_code, 200)
         self.assertEqual(self._put("who", "assistant").status_code, 200)
-        # Will's first send suggestion alone does not let a visitor type (a
-        # trichologist's is photo only); the founder is asked whether "A
-        # message" should be ticked by default. Until then the host ticks text.
-        send = list(first["send"]) + [t for t in ("text",) if t not in first["send"]]
-        for part, value in (("line", first["suggest"]["line"][0]), ("send", send),
+        for part, value in (("line", first["suggest"]["line"][0]), ("send", first["send"]),
                             ("out", first["out"]), ("hello", first["hello"]),
                             ("questions", first["questions"]), ("taps", first["taps"]), ("smart", False)):
             res = self._put(part, value)
