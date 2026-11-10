@@ -65,13 +65,14 @@
    "Change shows Will's next suggestion",
    "“Type my own” goes to Will's chat for the words and comes back to the same screen",
    "on “People come to you for this:” a line under the card says “New people read this before they join your chat.”",
-   "when the host's own words are refused, the screen stays and says “Try other words. Your chat can't show scores or verdicts.”"
+   "when the host's own words read as a score or a number about a person, the screen stays and says “Try other words. Your chat can't show a score or a number about someone.”; a judgement in words passes"
   ],
   "rules": [
    "N612 item 4",
    "N578 item 6",
    "N622 item 2",
-   "N622 item 3"
+   "N623 items 2 and 3",
+   "N616 item 12"
   ],
   "code": [],
   "tests": [],
@@ -89,12 +90,14 @@
   "when": "the screen opens",
   "then": [
    "a recording, a message, a photo, a file, each with a tick; Will's first suggestion comes ticked",
-   "several can be ticked; Done keeps them"
+   "several can be ticked; Done keeps them",
+   "“A message” is ticked from the start, beside Will's first suggestion; the host can untick it"
   ],
   "rules": [
    "N612 item 3",
    "N610 item 4",
-   "N611 item 8"
+   "N611 item 8",
+   "N623 item 1"
   ],
   "code": [
    "be:services/assistants.py::def may_type"
