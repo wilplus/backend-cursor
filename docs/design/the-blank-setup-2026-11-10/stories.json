@@ -71,7 +71,7 @@
    "N612 item 4",
    "N578 item 6",
    "N622 item 2",
-   "N623 items 2 and 3",
+   "N625 items 2 and 3",
    "N616 item 12"
   ],
   "code": [],
@@ -97,7 +97,7 @@
    "N612 item 3",
    "N610 item 4",
    "N611 item 8",
-   "N623 item 1"
+   "N625 item 1"
   ],
   "code": [
    "be:services/assistants.py::def may_type"
