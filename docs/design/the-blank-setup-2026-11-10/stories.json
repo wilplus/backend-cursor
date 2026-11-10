@@ -296,7 +296,7 @@
   "then": [
    "one list shows each model: its question, its three answers, who made it, and its price per use as its owner set it",
    "a model that does not fit what this host's people send is greyed out and says what it needs",
-   "“Make my own” is at the bottom"
+   "“Train your own” is under the list"
   ],
   "rules": [
    "N607",
