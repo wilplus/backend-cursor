@@ -36,7 +36,8 @@ What a message carries, in ``chat_messages.meta``:
     keeps the whole set as it stood (``"all"``, ``"plan"``), so a change the
     owner makes later reaches only people who join later;
   * an answer, written by the joiner's member:
-    ``{"setup_answer": {"to", "i", "picked", "deadline"?, "typed"?}}``; a
+    ``{"setup_answer": {"to", "i", "picked", "deadline"?, "deadline_chosen"?,
+    "typed"?}}`` (``deadline_chosen``: the person picked the day, N631); a
     photo asked for, kind ``photo``: ``{"setup_answer": {"to", "i", "photo":
     true}, "question": true}``;
   * the card, written by the joiner's member, shown only to the owner:
@@ -290,14 +291,17 @@ def _deadline_known(database: Any, user_id: Optional[str]) -> Optional[date]:
     return day if day and not plan.get("deadline_given") else None
 
 
-def _set_deadline(database: Any, user_id: str, day: date) -> None:
+def _set_deadline(database: Any, user_id: str, day: date, *, chosen: bool) -> None:
     """The joiner's plan takes the day, unless they picked one already.
+    ``chosen``: they picked it ("Yes" and a date). "No"'s day, one step of
+    the plan away, is one they never chose: kept as ``deadline_given``, so
+    the plan never speaks of it or shows it as theirs (N631 item 1).
     Best-effort: the answer is kept in the chat either way."""
     try:
         plan = database.get_open_plan(str(user_id))
         if plan and not _deadline_known(database, user_id):
             database.update_plan(str(user_id), plan["id"],
-                                 {"deadline": day.isoformat(), "deadline_given": False})
+                                 {"deadline": day.isoformat(), "deadline_given": not chosen})
     except Exception:  # noqa: BLE001
         logger.warning("join_questions: the plan kept no deadline", exc_info=True)
 
@@ -412,7 +416,9 @@ def _card(database: Any, thread: str, questions: dict) -> list[dict]:
             continue  # the photo is in the chat itself
         i = a.get("i")
         line = questions["lines"][i] if isinstance(i, int) and 0 <= i < len(questions["lines"]) else {}
-        if a.get("deadline"):
+        if a.get("deadline") and a.get("deadline_chosen", True):
+            # Only a day the person picked is their deadline (N631 item 1);
+            # after "No" the row is the question and the tap, as any other.
             out.append({"k": CARD_DEADLINE, "v": _day_text(date.fromisoformat(a["deadline"]))})
         elif line.get("kind") == "languages":
             out.append({"k": CARD_LANGUAGES, "v": ", ".join(a.get("picked") or [])})
@@ -486,10 +492,13 @@ def answer_as(database: Any, me: dict, user_id: Optional[str], message_id: Any, 
     if setup["kind"] == "hurry":
         day = _hurry_day(picked, body, questions.get("plan"))
         record["deadline"] = day.isoformat()
+        # Whether the person picked the day (N631 item 2): "Your deadline:
+        # {date}" is drawn only under a day they picked, never under "No".
+        record["deadline_chosen"] = picked == [YES]
         if picked == [YES]:
             shown_body = _day_text(day)
         if user_id:
-            _set_deadline(database, user_id, day)
+            _set_deadline(database, user_id, day, chosen=picked == [YES])
     mine_row = _insert(database, thread, my_member, shown_body, {"setup_answer": record})
     if not mine_row:
         raise JoinQuestionsError("NOT_SAVED", "Could not send it.", 503)
