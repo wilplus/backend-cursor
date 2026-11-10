@@ -26,6 +26,9 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          FIRST-20 -> SetupTest::test_test_my_chat_answers_as_my_people_would
          FIRST-21 -> SetupTest::test_to_change_the_chat_tell_will
          FIRST-22 -> SetupTest::test_who_answers_is_three_plain_choices
+         N632.2   -> SetupTest::test_what_the_first_take_said_opens_what_you_do
+         N632.3   -> SetupTest::test_a_chat_that_takes_a_recording_is_a_skill_chat
+         N632.4   -> SetupTest::test_start_again_begins_blank_and_keeps_only_the_same_model
          VIS-01   -> VisitorTest::test_the_hosts_hello_first_questions_and_taps
          VIS-02   -> VisitorTest::test_the_bar_follows_what_the_host_takes
          VIS-03   -> VisitorTest::test_they_get_back_the_output_the_host_chose
@@ -226,6 +229,48 @@ class SetupTest(_Base):
         kept = [a for a in self.store.tables.get("ai_model_answers", []) if a.get("example_id") == eid]
         self.assertEqual([(a["teacher_id"], a["answer"]) for a in kept], [(TOMEK, "Yes")])
         self.assertEqual(stranger.status_code, 404)
+
+    def test_what_the_first_take_said_opens_what_you_do(self):
+        """N632 item 2: the field the person's first Take told the app is
+        "What do you do?"'s first answer, to keep or change; none heard,
+        none given. No provider call."""
+        from services.db import db
+        with patch.object(db, "get_open_plan", lambda _u: {"facts": {"topic": "hair loss"}}, create=True):
+            self.assertEqual(self._read()["spec_guess"], "Hair loss")
+        with patch.object(db, "get_open_plan", lambda _u: {"facts": {}}, create=True):
+            self.assertIsNone(self._read()["spec_guess"])
+        self.assertEqual(self.provider.calls, [])
+
+    def test_a_chat_that_takes_a_recording_is_a_skill_chat(self):
+        """N632 item 3: "coached, or a topic" is never asked: a chat whose
+        people send a recording is a skill chat, any other a topic chat,
+        on every save."""
+        self._start("Voice coach")
+        fit = self._put("send", ["rec", "text"]).get_json()["recipe"]["fit"]
+        self.assertEqual(fit, {"coaches": "skill", "needs": "talking", "topics": [], "skill": "voice coach"})
+        fit = self._put("send", ["text"]).get_json()["recipe"]["fit"]
+        self.assertEqual(fit, {"coaches": "topic", "needs": "any", "topics": ["Voice coach"]})
+
+    def test_start_again_begins_blank_and_keeps_only_the_same_model(self):
+        """N632 item 4: "Start again" begins again from "What do you do?",
+        the chat not open, nothing of the old answers kept; the host's own
+        model kept again is the same real model, never a second."""
+        def rings(feature, user_id, database=None):
+            del database
+            return feature in ("chat_builder", "ai_models") and str(user_id) == TOMEK
+        with patch("services.rings.feature_is_on_for_user", rings):
+            self._start()
+            card = self._put("models", [self._model()]).get_json()["recipe"]["models"][0]
+            self._put("hello", "Hi, show me your scalp.")
+            self._put("care", False)
+            self._put("live", True)
+            again = self._start("Barber").get_json()["recipe"]
+            self.assertEqual((again["spec"], again["live"], again["models"]), ("Barber", False, []))
+            self.assertNotEqual(again["hello"], "Hi, show me your scalp.")
+            self.assertTrue(again["sensitive"])
+            kept = self._put("models", [self._model()]).get_json()["recipe"]["models"][0]
+        self.assertEqual(kept["model_id"], card["model_id"])
+        self.assertEqual(len(self.store.tables["ai_models"]), 1)
 
     def test_who_answers_is_three_plain_choices(self):
         """FIRST-09, FIRST-22: "I draft, you send" first, then "Only you"

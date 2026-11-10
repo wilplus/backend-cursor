@@ -537,13 +537,12 @@ can learn with me, in my own words (N586 item 1, N590 item 2).
 O9  In my chat, the person who joined reads whose assistant answers, my
 first Take's questions and how they may answer; a chat with someone
 who has no recipe is as it was.
-O10 In Will's chat, Will says what I know can earn tokens, with ""Set up my
-chat""; then asks, one at a time, my welcome, how people answer, my
-specialization, what people learn, a skill or a topic and what I need
-to see, and ""Do you want to automate your own chat?""; ""Go live"" keeps
-it, with the first Take's questions set in the builder, and the next
-person who joins meets it (N582 item 1, N586 item 5).
-O11 A welcome that scores people is not kept: Will says why and asks again.","O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
+O10 With the new setup (N632 item 1), Will's chat gets none of the
+earlier setup: no offer line, no ""Set up my chat"", no questions as
+bubbles; one it left waiting answers nothing more. A recipe made
+with it is kept and read as before. (Was: N582 item 1, N586 item 5,
+Will's questions one at a time, and a welcome that scores people
+asked again; the overlay's checks are tests/test_blank_setup.py.)","O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
 O2 -> AssistantsTest::test_the_join_page_is_three_lines
 O3 -> RecipeTest::test_a_host_sets_welcome_questions_and_how_people_answer
 O4 -> RecipeTest::test_a_hosts_words_never_score_the_speaker
@@ -552,8 +551,7 @@ O6 -> RecipeTest::test_suggestions_are_sensible_and_anyone_can_still_be_asked
 O7 -> AssistantsTest::test_a_tester_keeps_their_recipe
 O8 -> AssistantsTest::test_someone_who_joins_meets_my_welcome_and_who_i_am
 O9 -> AssistantsTest::test_the_joiner_reads_what_my_chat_is
-O10 -> SetupInWillsChatTest::test_will_sets_up_my_chat_one_question_at_a_time
-O11 -> SetupInWillsChatTest::test_a_welcome_that_scores_people_is_asked_again",Every inviter has a coach chat of their own (N578); the builder's MVP is for the founder and a few testers first (N579).
+O10 -> SetupInWillsChatTest::test_the_earlier_setup_writes_nothing_in_wills_chat",Every inviter has a coach chat of their own (N578); the builder's MVP is for the founder and a few testers first (N579).
 tests/test_authorization_status_read.py,Story,"As a speaker, I want the app to check my permission quickly every time I open it, and to show a deletion I asked for when my account is blocked, so that opening the app is fast and I always see my pending deletion.","O1  An ordinary open reads only the status; a blocked person also gets
 both deletion lists.
 O2  The status comes back in one database call, keeping the gate mode
@@ -612,6 +610,9 @@ FIRST-18 -> SetupTest::test_two_ways_use_one_or_train_your_own
 FIRST-20 -> SetupTest::test_test_my_chat_answers_as_my_people_would
 FIRST-21 -> SetupTest::test_to_change_the_chat_tell_will
 FIRST-22 -> SetupTest::test_who_answers_is_three_plain_choices
+N632.2   -> SetupTest::test_what_the_first_take_said_opens_what_you_do
+N632.3   -> SetupTest::test_a_chat_that_takes_a_recording_is_a_skill_chat
+N632.4   -> SetupTest::test_start_again_begins_blank_and_keeps_only_the_same_model
 VIS-01   -> VisitorTest::test_the_hosts_hello_first_questions_and_taps
 VIS-02   -> VisitorTest::test_the_bar_follows_what_the_host_takes
 VIS-03   -> VisitorTest::test_they_get_back_the_output_the_host_chose
@@ -4721,12 +4722,16 @@ start."" (FT-14, N592 item 2).
 W8  A speaking coach's link meets none of the choice's beats; the way in
 is in the speaking chat only (N572, N590; WAYIN-N590-1).
 W9  A first Take on which nothing was heard still gets its plan and
-""You're set."" once its walk is done; no card is checked (N459 item 1).","W1, W2, W3, W5, W6 -> test_a_talk_the_wait_and_what_comes_next
+""You're set."" once its walk is done; no card is checked (N459 item 1).
+W10 With the chat builder (N632 item 5), Will no longer sends a person to
+""set up your assistant"" after the walk: that sentence and its tap are
+left out; the other signed sentences stay as they are.","W1, W2, W3, W5, W6 -> test_a_talk_the_wait_and_what_comes_next
 W9 -> test_a_take_with_nothing_heard_still_gets_its_plan
 W2 -> test_change_it_asks_what_to_change_and_draws_the_card_again
 W4 -> test_sharing_brings_the_join_questions_and_the_agreement
 W6, W7 -> test_learning_after_the_walk_and_record_take_2_waits
-W8 -> test_a_coachs_link_and_another_chat_meet_none_of_it","N453, N564, N572, N573, N590, N592; the rules are frontend docs/flows/the-plan.md §2."
+W8 -> test_a_coachs_link_and_another_chat_meet_none_of_it
+W10 -> test_with_the_new_setup_will_no_longer_sends_them_to_set_up_an_assistant","N453, N564, N572, N573, N590, N592; the rules are frontend docs/flows/the-plan.md §2."
 tests/test_way_in_limit.py,Story,"As a newcomer waiting for my first Take, I want Will's chat to keep answering while the app checks every few seconds what is due, so that the way in never stops with ""too many requests"" in the wait.","L1  The way in's poll (no answer, no audio) is not counted against the
 model's limit: more polls than that limit allows in a minute all
 pass, under the poll's own, higher limit.
