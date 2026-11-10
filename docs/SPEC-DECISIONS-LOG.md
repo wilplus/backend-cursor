@@ -16605,3 +16605,19 @@ comes before a Take.
 
 No new words. No migration. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+
+**N627 · On a wide screen the coach panel is as wide as Will's chat**
+(founder, the Claude Code chat, 10 November 2026, on a screenshot of "Your
+queue" drawn as a narrow strip: "just for the coach panel make sure it holds
+the full width like the rest of the app").
+
+1. **The coach panel fills the column Will's chat fills,** on every one of
+   its screens: the queue, a speaker, the blind Judge and the rest. Was: a
+   narrow strip in the middle, the width of the list of chats. This is
+   what N618 item 10 did for the AI models overlay.
+2. **Nothing else about the panel changes:** no word, no order, no spacing
+   between its elements, no motion. On a phone it is the window's width,
+   as today.
+
+No migration in this entry. The rules: the frontend's
+`docs/flows/coach-panel.md`.
