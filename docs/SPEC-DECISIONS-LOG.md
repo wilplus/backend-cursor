@@ -16537,3 +16537,22 @@ This changes N564 item 3 for the bar after the walk (the-plan.md E3, G13).
 
 No migration in this entry. The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+
+**N624 · The One thing walk's fix no longer plays their confident moment
+again when it has its own example** (founder, the Claude Code chat, 10
+November 2026, on a screenshot of the fix with "Your confident moment"
+crossed out: "the one I crossed on the image is the repetition of the
+first most confident moment"; "please fix that").
+
+This changes N379 item 1 (the chip) and N377 item 2 (the line before it).
+
+1. When the fix has its own example (the AI clip of their voice, or the
+   exercise's video), "Your confident moment", the small chip that played
+   their best moment again, is gone. "Say this one like your confident
+   moment:" stands right above that example ("Pause before ..., like
+   this:" with the AI clip), in the walk and the chat.
+2. With no example of its own, their best moment's clip stays, full, after
+   the line, as before: it is then the one example to copy.
+
+No new words. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
