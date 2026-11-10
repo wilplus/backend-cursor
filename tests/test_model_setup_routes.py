@@ -30,6 +30,12 @@ OUTCOME
   O11 An erased person's id is nowhere in a model's setup: it never keeps
       one, and the expert and the invited people come from rows the purge
       registry deletes.
+  O12 The owner's first 10 become the model's known answers; an answer
+      counts only once another trusted teacher gives the same one, and two
+      matching trusted answers settle an example (N570 item 4).
+  O13 A teacher hears a voice example by a signed link, and never receives
+      the speaker, the Take or the snippet.
+  O14 A deleted Take leaves every model it taught.
   O10 A host's model gathers the moments of Takes sent to them only from
       speakers whose training yes is on, recorded after it; turning it off
       takes them out again (MOD-02).
@@ -44,6 +50,9 @@ PROVES   O1 -> ModelSetupRoutesTest::test_without_the_ring_or_as_someone_else_no
          O9 -> ModelSetupRoutesTest::test_no_provider_call_without_authorization
          O10 -> ModelSetupRoutesTest::test_takes_teach_only_with_the_training_yes
          O11 -> ModelSetupRoutesTest::test_an_erased_person_is_nowhere_in_the_setup
+         O12 -> ModelSetupRoutesTest::test_nobody_teaches_a_model_alone
+         O13 -> ModelSetupRoutesTest::test_a_voice_example_plays_by_a_signed_link_only
+         O14 -> ModelSetupRoutesTest::test_a_deleted_take_leaves_every_model
 WHY      routes/v2/model_setup.py over services/model_setup_store.py, and the
          job services/model_examples_from_takes.py.
 """
@@ -316,6 +325,81 @@ class ModelSetupRoutesTest(unittest.TestCase):
         self.assertEqual(after["actions"], ["Choose the second expert"])
         invite = self._get(f"/v2/models/{mid}/setup?step=invite").get_json()["screen"]
         self.assertEqual([c["key"] for c in invite["choices"] if c["check"]], [TOMEK])
+
+    def _learning_model(self):
+        mid, _ = self._begin()
+        self._through_describe(mid)
+        self._post(f"/v2/models/{mid}/setup/kind", {"parts": {"score": True}, "name": "Pitch Coach"})
+        self._post(f"/v2/models/{mid}/setup/start-now", {"scale": DRAFT["scale"]})
+        return mid
+
+    def _examples(self, mid, n, **more):
+        self.store.tables["ai_model_examples"] = [
+            {"id": f"e{i:07d}-0000-4000-8000-000000000000", "model_id": mid, "source": "takes",
+             "private": False, "kind": None, "content": {"text": f"moment {i}"}, "in_exam": False,
+             "known_answer": None, "speaker_id": KASIA, "machine": None, "sureness": None,
+             "added_by": None, "snippet_id": f"clip-{i}", "take_id": "take-1", **more} for i in range(n)]
+        return [e["id"] for e in self.store.tables["ai_model_examples"]]
+
+    def _counted(self, who):
+        return {a["example_id"] for a in self.store.tables["ai_model_answers"]
+                if a["teacher_id"] == who and a.get("counted")}
+
+    def test_nobody_teaches_a_model_alone(self):
+        mid = self._learning_model()
+        first, other = self._examples(mid, 2)
+        self._post(f"/v2/models/{mid}/setup/first-ten/{first}", {"step": "rate", "answer": "Rushed"})
+        ex = {e["id"]: e for e in self.store.tables["ai_model_examples"]}
+        self.assertEqual(ex[first]["known_answer"], "Rushed")
+        self.assertEqual(self._counted(MARTA), set())          # one vote never trains it
+        self.store.tables["ai_model_teachers"] += [
+            {"model_id": mid, "user_id": u, "role": "contributor", "trust_status": "counts",
+             "paused_at": None, "company_line": None, "trust_kappa": None, "trust_told_at": "x"}
+            for u in (DANIEL, TOMEK)]
+        self.who = DANIEL
+        self._post(f"/v2/models/{mid}/examples/{first}/answer", {"step": "rate", "answer": "Rushed"})
+        self._post(f"/v2/models/{mid}/examples/{other}/answer", {"step": "rate", "answer": "Calm"})
+        self.assertEqual(self._counted(DANIEL), {first})
+        self.assertEqual(self._counted(MARTA), {first})
+        self.who = TOMEK
+        self._post(f"/v2/models/{mid}/examples/{other}/answer", {"step": "rate", "answer": "Calm"})
+        self.assertEqual(self._counted(DANIEL), {first, other})
+        ex = {e["id"]: e for e in self.store.tables["ai_model_examples"]}
+        self.assertEqual(ex[other]["known_answer"], "Calm")
+
+    def test_a_voice_example_plays_by_a_signed_link_only(self):
+        mid = self._learning_model()
+        self._examples(mid, 1)
+        self.store.tables["ai_model_teachers"].append(
+            {"model_id": mid, "user_id": DANIEL, "role": "contributor", "trust_status": "learning",
+             "paused_at": None, "company_line": None})
+        self.who = DANIEL
+        with patch.object(db, "get_snippet_playback_rows",
+                          lambda ids, **_: [{"id": i, "storage_path": "takes/x.webm",
+                                             "start_offset_ms": 1000, "duration_ms": 4000} for i in ids],
+                          create=True), \
+                patch("services.snippet_audio_url.resolve_snippet_audio_url",
+                      lambda row, database=None: "https://signed.example/clip?token=short"):
+            queue = self._get(f"/v2/models/queue?only={mid}").get_json()
+        content = queue["examples"][0]["content"]
+        self.assertEqual(content["audio_url"], "https://signed.example/clip?token=short")
+        self.assertEqual((content["start_offset_ms"], content["duration_ms"]), (1000, 4000))
+        for hidden in (KASIA, "take-1", "clip-0", "speaker_id", "snippet_id", "take_id"):
+            self.assertNotIn(hidden, str(queue))
+
+    def test_a_deleted_take_leaves_every_model(self):
+        from services.data_purge_registry import DEPENDENCIES
+        mid = self._learning_model()
+        self._examples(mid, 3)
+        self.store.tables["ai_model_examples"].append(
+            {"id": "e9999999-0000-4000-8000-000000000000", "model_id": mid, "source": "takes",
+             "take_id": "take-2", "speaker_id": KASIA, "in_exam": False})
+        takes = [d for d in DEPENDENCIES if d.relation == "ai_model_examples" and d.locator_kind == "take"]
+        self.assertEqual([(d.selector_column, d.disposition) for d in takes], [("take_id", "delete")])
+        for d in takes:
+            self.store.tables[d.relation] = [r for r in self.store.tables[d.relation]
+                                             if r.get(d.selector_column) != "take-1"]
+        self.assertEqual([e["take_id"] for e in self.store.tables["ai_model_examples"]], ["take-2"])
 
     def test_no_provider_call_without_authorization(self):
         from services.processing_authorization import ProcessingAuthorizationError

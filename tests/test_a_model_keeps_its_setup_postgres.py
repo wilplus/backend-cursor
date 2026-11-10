@@ -8,8 +8,12 @@ OUTCOME
       made before it, and the column is locked to the backend as the table is.
   O2  The same moment of a Take goes into one model once; a second model may
       take it too, and an upload's rows are never held to it.
+  O3  When the owner's account is erased, the model keeps its name and its
+      card for its teachers, and loses what the owner wrote: the
+      description, their name, the setup's words; a draft is archived.
 PROVES   O1 -> test_a_model_keeps_its_setup_and_it_is_an_object
          O2 -> test_a_moment_goes_into_a_model_once
+         O3 -> test_an_erased_owners_words_leave_the_model
 WHY      Migration a_model_keeps_its_setup (0517), applied twice in both
          rehearsal lanes after 0516 (the reapply is its idempotency check).
 """
@@ -87,3 +91,23 @@ def test_a_moment_goes_into_a_model_once(db):
         _run(db, "INSERT INTO public.ai_model_examples(model_id, source, snippet_id) VALUES (%s, 'upload', 'row-1')",
              (first,))
     assert _one(db, "SELECT count(*) FROM public.ai_model_examples WHERE snippet_id = 'clip-1'") == 2
+
+
+def test_an_erased_owners_words_leave_the_model(db):
+    owner = _user(db)
+    setup = ('{"problem": "Founders rush their pitch", "today": "I listen", "teach": "I rate clips",'
+             ' "data": {"name": "pitch-ratings.csv"}, "first_ten": [{"example_id": "x", "answer": "4"}],'
+             ' "question": "How rushed does it sound?", "parts": {"score": true}}')
+    live = _one(db, "INSERT INTO public.ai_models(name, owner_id, owner_name, description, status, visibility, setup) "
+                    "VALUES ('Pitch Coach', %s, 'Marta Nowak', 'Founders rush their pitch', 'learning', 'public', "
+                    "%s::jsonb) RETURNING id", (owner, setup))
+    draft = _one(db, "INSERT INTO public.ai_models(name, owner_id, owner_name, status, setup) "
+                     "VALUES ('Half done', %s, 'Marta Nowak', 'draft', %s::jsonb) RETURNING id", (owner, setup))
+    _run(db, "DELETE FROM auth.users WHERE id = %s", (owner,))
+    with db.cursor() as cur:
+        cur.execute("SELECT name, owner_id, owner_name, description, setup, status FROM public.ai_models "
+                    "WHERE id = %s", (live,))
+        name, owner_id, owner_name, description, kept, status = cur.fetchone()
+    assert (name, owner_id, owner_name, description, status) == ("Pitch Coach", None, None, None, "learning")
+    assert kept == {"question": "How rushed does it sound?", "parts": {"score": True}}
+    assert _one(db, "SELECT status FROM public.ai_models WHERE id = %s", (draft,)) == "archived"

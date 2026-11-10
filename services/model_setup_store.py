@@ -553,7 +553,7 @@ def read_data(database: Any, user_id: Any, model_id: Any, name: str, data: bytes
 # ── The first 10 (MOD-38, MOD-55; N570 items 3 and 4) ───────────────────────
 def _first_pool(database: Any, model: dict) -> list[dict]:
     examples = _rows(_table(database, EXAMPLES).select(
-        "id,model_id,source,private,kind,content,in_exam,known_answer,created_at,speaker_id")
+        "id,model_id,source,private,kind,content,in_exam,known_answer,created_at,speaker_id,snippet_id")
         .eq("model_id", model["id"]))
     done = [f.get("example_id") for f in model["setup"].get("first_ten") or []]
     return S.first_ten_pool(examples, done)
@@ -569,7 +569,8 @@ def first_ten(database: Any, user_id: Any, model_id: Any) -> dict:
     pool = _first_pool(database, model)
     if not pool:
         return _view(database, me, model, "first10", first={"available": False})
-    screen = rules.teaching_screen({**model, "recipe": model.get("recipe") or {}}, pool[0])
+    screen = rules.teaching_screen({**model, "recipe": model.get("recipe") or {}},
+                                   lp.with_clips(database, pool[:1])[0])
     return _view(database, me, model, "first10", first={"available": True, "example": screen})
 
 
@@ -588,6 +589,13 @@ def first_ten_answer(database: Any, user_id: Any, model_id: Any, example_id: Any
         raise _bad("BAD_STEP", "Unknown step.")
     answer = None if body.get("answer") is None else str(body.get("answer"))[:4000]
     lp._save_answer(database, eid, str(model["id"]), me, step, answer)
+    if step in ("rate", "pick") and answer:
+        # The owner's answer is the model's reference (N523 item 6): a known
+        # answer the quiet trust check measures newcomers against. It trains
+        # the model only once a second teacher agrees (``recount``).
+        _table(database, EXAMPLES).update({"known_answer": answer}).eq("id", eid) \
+            .eq("model_id", model["id"]).eq("in_exam", False).execute()
+    lp.recount(database, str(model["id"]), [eid])
     draft = dict(model["setup"])
     first = list(draft.get("first_ten") or [])
     if eid not in {f.get("example_id") for f in first}:

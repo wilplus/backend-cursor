@@ -4,9 +4,10 @@
 Which Takes: those a speaker sent to the model's owner in their chat (a
 message of kind ``take``, services/take_sends.py), so a model learns only
 from what reaches its host's chat (N582 item 4). Which moments: each
-moment of the Take (its snippets), as words and a reference to its clip;
-no recording is copied, and recordings never leave WillpowerLab (N528 item
-10).
+moment of the Take (its snippets), as its words; its clip is played to a
+teacher by a short-lived signed link when it is served
+(``model_launchpad_store.with_clips``). No recording is copied, and
+recordings never leave WillpowerLab (N528 item 10).
 
 THE CONSENT AND PROCESSING-AUTHORIZATION PATH, checked for every speaker on
 every run, before anything is written:
@@ -143,9 +144,10 @@ def _let_go(database: Any, model: dict, have: list[dict], path: dict[str, dict])
 def _example(model: dict, speaker: str, take_id: str, clip: dict) -> dict:
     return {"model_id": model["id"], "source": "takes", "private": False, "speaker_id": speaker,
             "take_id": take_id, "snippet_id": str(clip["id"]), "kind": None,
-            "content": {"text": str(clip.get("transcript") or "").strip()[:4000],
-                        "snippet_id": str(clip["id"]), "take_id": take_id,
-                        "duration_ms": clip.get("duration_ms")}}
+            # What a teacher's screen reads: the words, and (added when it is
+            # served, signed and short-lived) the clip. Never the Take, the
+            # snippet or the speaker: those are columns no teacher receives.
+            "content": {"text": str(clip.get("transcript") or "").strip()[:4000]}}
 
 
 def _new_moments(database: Any, model: dict, takes: list[dict], path: dict[str, dict],

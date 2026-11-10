@@ -130,6 +130,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 - **O1** ai_models has a setup that is always an object, empty for a model made before it, and the column is locked to the backend as the table is.
 - **O2** The same moment of a Take goes into one model once; a second model may take it too, and an upload's rows are never held to it.
+- **O3** When the owner's account is erased, the model keeps its name and its card for its teachers, and loses what the owner wrote: the description, their name, the setup's words; a draft is archived.
 
 *Why:* Migration a_model_keeps_its_setup (0517), applied twice in both rehearsal lanes after 0516 (the reapply is its idempotency check).
 
@@ -2027,6 +2028,9 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O8** Public shows its disclaimer before it goes public; the second expert and the people invited each get an invite (MOD-32, MOD-34, MOD-35).
 - **O9** When the processing authorization is not current, no provider call is made and the rules' draft stands.
 - **O11** An erased person's id is nowhere in a model's setup: it never keeps one, and the expert and the invited people come from rows the purge registry deletes.
+- **O12** The owner's first 10 become the model's known answers; an answer counts only once another trusted teacher gives the same one, and two matching trusted answers settle an example (N570 item 4).
+- **O13** A teacher hears a voice example by a signed link, and never receives the speaker, the Take or the snippet.
+- **O14** A deleted Take leaves every model it taught.
 - **O10** A host's model gathers the moments of Takes sent to them only from speakers whose training yes is on, recorded after it; turning it off takes them out again (MOD-02).
 
 *Why:* routes/v2/model_setup.py over services/model_setup_store.py, and the job services/model_examples_from_takes.py.

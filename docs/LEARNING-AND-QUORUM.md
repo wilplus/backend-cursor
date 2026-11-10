@@ -227,6 +227,18 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
   - **The final exam** is set aside from whole speakers, never an upload,
     and answered by the owner and one expert they ask; an exam answer never
     counts toward training.
+  - **Nobody teaches a model alone:** an answer counts only once another
+    trusted teacher gives the same one, or it matches the example's known
+    answer; the owner's first 10 set those known answers, and two matching
+    trusted answers settle the rest, so the quiet trust check can admit
+    teachers (`model_launchpad_store.recount`).
+  - **A voice example plays by a short-lived signed link** with its window,
+    through `services/snippet_audio_url.py`; a teacher never receives the
+    speaker, the Take or the snippet.
+  - **Deletion:** a deleted Take's examples go (`ai_model_examples_take`);
+    an erased owner's description, name and the setup's own words go, the
+    model's name and card stay, and a draft is archived (trigger
+    `ai_models_owner_left`, 0517).
   - **No user id is kept in a model's setup:** the exam's expert and the
     people invited are read from `ai_model_invites`, the owner from
     `owner_id`, which erasure deletes and clears.

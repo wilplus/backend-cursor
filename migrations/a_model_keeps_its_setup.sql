@@ -25,13 +25,26 @@
 --                       (MOD-02's job, services/model_examples_from_takes.py),
 --                       so a rerun adds nothing twice.
 --
+--   ai_models_owner_left
+--                       When a model's owner is erased (owner_id set to NULL
+--                       by the purge or by the foreign key), what they wrote
+--                       goes: the description, their name, and the setup's
+--                       own words (the three answers, a study's name, an
+--                       uploaded file's rows and name, their first answers).
+--                       The model's name, its recipe card and the setup's
+--                       structure stay, for the teachers it serves (N528
+--                       item 11). A draft that loses its owner is archived:
+--                       nobody else could finish it.
+--
 -- Read and written by the backend (service role) only, as 0516's tables.
--- No environment variable needed. Account erasure: unchanged; the setup goes
--- with its model, and the model's owner is cleared as 0516 has it.
+-- No environment variable needed. The setup keeps no user id
+-- (services/model_setup_store.py); a deleted Take's examples go through the
+-- purge registry (ai_model_examples_take).
 --
 -- Idempotent and additive: ADD COLUMN IF NOT EXISTS, a guarded constraint,
--- CREATE UNIQUE INDEX IF NOT EXISTS. Nothing is dropped, no existing row is
--- rewritten (the new column's default fills it). One transaction.
+-- CREATE UNIQUE INDEX IF NOT EXISTS, CREATE OR REPLACE FUNCTION, and the
+-- trigger made only when it is missing. Nothing is dropped, no existing row is rewritten
+-- (the new column's default fills it). One transaction.
 --
 -- Rollback (a new forward migration): leave the column and the index.
 
@@ -53,5 +66,37 @@ END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS ai_model_examples_take_moment_once
     ON public.ai_model_examples (model_id, snippet_id)
     WHERE source = 'takes' AND snippet_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.ai_models_owner_left() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF OLD.owner_id IS NOT NULL AND NEW.owner_id IS NULL THEN
+        NEW.description := NULL;
+        NEW.owner_name := NULL;
+        NEW.setup := COALESCE(NEW.setup, '{}'::jsonb)
+            - ARRAY['problem', 'today', 'teach', 'from_first_take', 'study_name', 'data',
+                    'first_ten', 'similar_seen', 'part_lines'];
+        IF NEW.status = 'draft' THEN
+            NEW.status := 'archived';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.ai_models_owner_left() FROM PUBLIC, anon, authenticated;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger
+                    WHERE tgname = 'ai_models_owner_left'
+                      AND tgrelid = 'public.ai_models'::regclass) THEN
+        CREATE TRIGGER ai_models_owner_left
+            BEFORE UPDATE OF owner_id ON public.ai_models
+            FOR EACH ROW EXECUTE FUNCTION public.ai_models_owner_left();
+    END IF;
+END $$;
 
 COMMIT;
