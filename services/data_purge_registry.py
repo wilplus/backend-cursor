@@ -341,6 +341,13 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "user", "delete", "database_row", 59),
     PurgeDependency("chat_widget_guests", "chat_widget_guests", "owner_user_id",
                     "user", "delete", "database_row", 59),
+    # One recording answers everyone who asked the same thing (N584,
+    # migration a_question_joins_its_bundle): the person's questions in
+    # anyone's bundles, then the bundles of the questions asked of them.
+    PurgeDependency("question_bundle_askers", "question_bundle_askers", "asker_id",
+                    "user", "delete", "database_row", 57),
+    PurgeDependency("question_bundles", "question_bundles", "host_id",
+                    "user", "delete", "database_row", 58),
     PurgeDependency("chat_members", "chat_members", "user_id", "user",
                     "delete", "database_row", 60),
     # The join link (migration a_person_has_a_link_to_join_them, N308): a
