@@ -341,6 +341,13 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "user", "delete", "database_row", 59),
     PurgeDependency("chat_widget_guests", "chat_widget_guests", "owner_user_id",
                     "user", "delete", "database_row", 59),
+    # One recording answers everyone who asked the same thing (N584,
+    # migration a_question_joins_its_bundle): the person's questions in
+    # anyone's bundles, then the bundles of the questions asked of them.
+    PurgeDependency("question_bundle_askers", "question_bundle_askers", "asker_id",
+                    "user", "delete", "database_row", 57),
+    PurgeDependency("question_bundles", "question_bundles", "host_id",
+                    "user", "delete", "database_row", 58),
     PurgeDependency("chat_members", "chat_members", "user_id", "user",
                     "delete", "database_row", 60),
     # The join link (migration a_person_has_a_link_to_join_them, N308): a
@@ -359,6 +366,23 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "delete", "database_row", 60),
     PurgeDependency("take_matches_suggested", "take_matches", "candidate_id", "user",
                     "delete", "database_row", 60),
+    # A business's community (migration a_business_has_a_community_people_join,
+    # N559 item 1): the person's place in it and their one offer go with
+    # the account. A community outlives its owner: the owner's id is cleared,
+    # the community and its members stay. The table's foreign keys to
+    # auth.users keep the same rule in the database.
+    PurgeDependency("business_community_members", "business_community_members", "user_id",
+                    "user", "delete", "database_row", 55),
+    PurgeDependency("business_community_offers", "business_community_offers", "user_id",
+                    "user", "delete", "database_row", 55),
+    PurgeDependency("business_communities", "business_communities", "owner_id", "user",
+                    "delete", "database_row", 60, clears_selector=True),
+    # Whose link a newcomer's offer came by: the inviter's id on the
+    # newcomer's row, cleared with the inviter's account (the offer and its
+    # answer stay the newcomer's).
+    PurgeDependency("business_community_offers_inviter", "business_community_offers",
+                    "inviter_id", "user", "delete", "database_row", 54,
+                    clears_selector=True),
     # Where Apple's push service reaches the person's iPhone (migration
     # an_iphone_keeps_its_push_address, N385).
     PurgeDependency("push_devices", "push_devices", "user_id", "user",
@@ -372,6 +396,11 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("ai_model_examples_speaker", "ai_model_examples", "speaker_id", "user",
                     "delete", "database_row", 56),
     PurgeDependency("ai_model_examples_added_by", "ai_model_examples", "added_by", "user",
+                    "delete", "database_row", 56),
+    # A deleted Take leaves every model it taught (migration
+    # a_model_keeps_its_setup; MOD-02): its moments go, with the answers on
+    # them.
+    PurgeDependency("ai_model_examples_take", "ai_model_examples", "take_id", "take",
                     "delete", "database_row", 56),
     PurgeDependency("ai_model_teachers", "ai_model_teachers", "user_id", "user",
                     "delete", "database_row", 57),

@@ -375,6 +375,9 @@ _DRAFT_STEPS = {
     "problem": "the problem", "today": "how you solve it today", "teach": "how you will teach it",
     "kind": "the kind of model", "scale": "the scale", "question": "the question",
     "exam": "the final exam", "share": "who can see it",
+    "ai": "the AI for each part", "rules": "the starting rules", "data": "your data",
+    "columns": "your data", "check": "your data", "journey": "the teachers’ steps",
+    "first10": "your first 10", "public": "who can see it", "invite": "who teaches it",
 }
 
 
