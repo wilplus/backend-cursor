@@ -9043,16 +9043,17 @@
    "be:services/chat_recipes.py::def set_part("
   ],
   "tests": [
-   "tests/test_blank_setup.py"
+   "tests/test_blank_setup.py",
+   "src/components/willab/chats/hostsetup/hostSetup.test.tsx"
   ],
   "evals": [],
-  "note": "Will's suggestions are kept with the recipe, so Change needs no new call; each part is saved with PUT /v2/chats/setup/<part> (backend #1893)."
+  "note": "Will's suggestions are kept with the recipe, so Change needs no new call; each part is saved with PUT /v2/chats/setup/<part> (backend #1893). Every step has Back and Back returns to the step before (frontend #1380); the refused-words line is N625."
  },
  {
   "id": "FIRST-04",
   "area": "The first person ever sets up a chat",
   "title": "What people send: tick all that apply",
-  "status": "partly",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the setup reaches what people send",
@@ -9069,15 +9070,17 @@
   "code": [
    "be:services/assistants.py::def may_type",
    "be:services/assistants.py::def photo_asks",
-   "be:services/chat_recipes.py::def set_part("
+   "be:services/chat_recipes.py::def set_part(",
+   "fe:src/components/willab/chats/hostsetup/hostSetupCopy.ts::file: [\"A file\""
   ],
   "tests": [
    "tests/test_assistants.py",
    "tests/test_the_bar.py",
-   "tests/test_blank_setup.py"
+   "tests/test_blank_setup.py",
+   "src/components/willab/chats/hostsetup/hostSetup.test.tsx"
   ],
   "evals": [],
-  "note": "Several can be ticked and the recipe keeps them (backend #1893). A photo upload is #1880; a file sent to a host is not built."
+  "note": "Frontend #1380: A recording, A message, A photo, A file each with a tick; several can be ticked, the last tick cannot be unticked, Done keeps them; a new chat starts with A message ticked (backend #1905). Sending a file to a host is a separate thing and is not claimed here."
  },
  {
   "id": "FIRST-05",
@@ -9277,7 +9280,7 @@
    "src/components/willab/chats/hostsetup/hostSetup.test.tsx"
   ],
   "evals": [],
-  "note": "Not yet keeps it saved and nobody meets it; Yes opens it; the host's line is what a newcomer reads before joining, as \"People come to {name} ...\" (N622 item 2; backend #1893, #1894). See it, the play-through, is the frontend's. Frontend: Yes makes it live and the list holds the chat (tested); no 'See it' play-through screen is on main."
+  "note": "Not yet keeps it saved and nobody meets it; Yes opens it; the host's line is what a newcomer reads before joining, as \"People come to {name} ...\" (N622 item 2; backend #1893, #1894). See it, the play-through, is the frontend's. Frontend #1380: the join card on \"Open your chat to people?\" shows what newcomers read before they join (tested); Yes makes it live and Will's chat then shows the chat. Still untrue: the first \"then\" line, the play-through of the chat as a newcomer (hello, questions, what they send, each model's line, \"Was this useful?\"); no such screen is on main."
  },
  {
   "id": "FIRST-12",
@@ -9407,10 +9410,11 @@
    "be:services/chat_suggestions.py::def generic("
   ],
   "tests": [
-   "tests/test_blank_setup.py"
+   "tests/test_blank_setup.py",
+   "src/components/willab/chats/hostsetup/hostSetup.test.tsx"
   ],
   "evals": [],
-  "note": "Nothing comes from Artur's chat; with no provider answer the generic suggestions stand (backend #1893)."
+  "note": "Nothing comes from Artur's chat; with no provider answer the generic suggestions stand (backend #1893). A recipe with nothing suggested starts at What do you do?, never an empty step (frontend #1380)."
  },
  {
   "id": "VIS-01",
@@ -9550,7 +9554,7 @@
   "id": "VIS-06",
   "area": "What a visitor meets",
   "title": "Before the minimum, the question waits for the host",
-  "status": "partly",
+  "status": "built",
   "screen": "chat.person",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host's assistant has fewer than 20 of the host's own answers",
@@ -9565,20 +9569,22 @@
   ],
   "code": [
    "be:services/question_bundles.py::def _assistant_sends",
-   "be:services/chat_replies.py::MINIMUM"
+   "be:services/chat_replies.py::MINIMUM",
+   "fe:src/components/willab/chats/hostsetup/HostDrafts.tsx::export default function HostDrafts"
   ],
   "tests": [
    "tests/test_question_bundles.py",
-   "tests/test_blank_setup.py"
+   "tests/test_blank_setup.py",
+   "src/components/willab/chats/hostsetup/needsYou.test.tsx"
   ],
   "evals": [],
-  "note": "Before the host's 20 own answers the question waits for the host, with Will's draft in their Will (backend #1893). Missing: no frontend screen shows the assistant's drafted answer in the host's Will (GET /v2/chats/setup/drafts is not called anywhere in the frontend), so the host cannot yet see the waiting question there."
+  "note": "Before the host's 20 own answers the question waits for the host, with Will's draft in their Will (backend #1893). The host's Will lists what needs them and opens each drafted answer on its own screen (frontend #1378, backend N629)."
  },
  {
   "id": "VIS-07",
   "area": "What a visitor meets",
   "title": "In a health, law or money chat the model only suggests to the host",
-  "status": "partly",
+  "status": "built",
   "screen": "chat.person",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host answered yes to health, law or money",
@@ -9591,13 +9597,15 @@
    "N616 item 13"
   ],
   "code": [
-   "be:services/chat_replies.py::def drafts("
+   "be:services/chat_replies.py::def drafts(",
+   "fe:src/components/willab/chats/hostsetup/HostDrafts.tsx::export default function HostDrafts"
   ],
   "tests": [
-   "tests/test_blank_setup.py"
+   "tests/test_blank_setup.py",
+   "src/components/willab/chats/hostsetup/needsYou.test.tsx"
   ],
   "evals": [],
-  "note": "In a health, law or money chat the person gets nothing from a model; the host sees the suggestion in their Will (backend #1893, #1894; N622 item 1). Missing: no frontend screen shows the model's suggestion to the host (GET /v2/chats/setup/drafts is not called anywhere in the frontend), so the host cannot yet send their own answer from it."
+  "note": "In a health, law or money chat the person gets nothing from a model; the host sees the suggestion in their Will (backend #1893, #1894; N622 item 1). The drafts screen shows the model's line and Change sends the host's own words (frontend #1378). The frontend test uses non-sensitive drafts only; the sensitive case is the backend's (tests/test_blank_setup.py)."
  },
  {
   "id": "LEARN-01",
@@ -10008,7 +10016,7 @@
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "The host pays the owner's price as set now, through the ledger's model_answer charge on an id made from the visitor's message and the model, so a message delivered again is charged once; the owner is credited by pay_month from an ai_model_calls row; the host's own model and \"Test my chat\" are free (backend, this build)."
+  "note": "The host pays the owner's price as set now, through the ledger's model_answer charge on an id made from the visitor's message and the model, so a message delivered again is charged once; the owner is credited by pay_month from an ai_model_calls row; the host's own model and \"Test my chat\" are free (backend #1910). The host pays the price saved on the recipe's card when they added the model; the owner's newer price does not move it until the host keeps the model at the new price (backend #1914, N630 item 3)."
  },
  {
   "id": "TOK-02",
