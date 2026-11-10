@@ -41,6 +41,14 @@ STRONG_MODEL = "gpt-4o"
 """For graders, judges, critical reasoning, and anything where the
 quality bar justifies the higher per-token cost. Use sparingly."""
 
+READER_MODEL = "text-embedding-3-small"
+"""The shared reader of a model that learns (N616 item 8): an example's
+words read once into a vector, kept, and a small head fitted on the vectors
+(services/model_head.py). Never writes words."""
+
+READER_MAX_CHARS = 4000
+"""The longest text the reader is sent, per example or message (N620)."""
+
 
 # ── LLMSpec dataclass ────────────────────────────────────────────
 

@@ -1007,6 +1007,10 @@ def can_start(draft: dict) -> bool:
     it does when it gives no score."""
     if not _clean(draft.get("name"), 80) or not parts_on(draft):
         return False
+    if draft.get("input") == "image":
+        # No model reads a photo yet (N616 item 9, LEARN-06): the host sees
+        # the photo and answers it; a photo model never starts.
+        return False
     if (draft.get("parts") or {}).get("score"):
         return scale_ok(clean_scale(draft.get("scale")))
     return True

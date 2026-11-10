@@ -9593,7 +9593,7 @@
   "id": "LEARN-01",
   "area": "A model that learns",
   "title": "Settled answers train a small head on a shared reader",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a model with a question and three answers has settled answers",
@@ -9608,15 +9608,21 @@
    "N582 item 2",
    "N615 item 2"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/model_head_store.py::def settled_examples",
+   "be:services/model_head_store.py::def vectors_for",
+   "be:services/model_head.py::def fit"
+  ],
+  "tests": [
+   "tests/test_a_model_that_learns.py"
+  ],
   "evals": []
  },
  {
   "id": "LEARN-02",
   "area": "A model that learns",
   "title": "The model's answer comes from its head",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a model has a trained head",
@@ -9629,15 +9635,21 @@
    "N616 item 8",
    "N594"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/model_head_store.py::def head_answer",
+   "be:services/model_head.py::def is_sure",
+   "be:services/model_api_store.py::model_head_store.head_answer"
+  ],
+  "tests": [
+   "tests/test_a_model_that_learns.py"
+  ],
   "evals": []
  },
  {
   "id": "LEARN-03",
   "area": "A model that learns",
   "title": "The owner's check is ten unseen examples",
-  "status": "not built",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the owner answered the first 10",
@@ -9650,15 +9662,21 @@
   "rules": [
    "N616 item 23"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/model_head_store.py::def check_for",
+   "be:services/model_head_store.py::def check_answer",
+   "be:services/model_head.py::def check_pool"
+  ],
+  "tests": [
+   "tests/test_a_model_that_learns.py"
+  ],
   "evals": []
  },
  {
   "id": "LEARN-04",
   "area": "A model that learns",
   "title": "Two gates",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a model passed its owner's check",
@@ -9670,15 +9688,22 @@
   "rules": [
    "N616 item 10"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/model_head.py::def gates",
+   "be:services/model_head_store.py::def chat_answers",
+   "be:services/model_api.py::def exam_passed",
+   "be:services/chat_recipes.py::def _shared_for_tokens"
+  ],
+  "tests": [
+   "tests/test_a_model_that_learns.py"
+  ],
   "evals": []
  },
  {
   "id": "LEARN-05",
   "area": "A model that learns",
   "title": "A version is scored on the exam by the app",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a new version is trained",
@@ -9690,15 +9715,20 @@
   "rules": [
    "N615 item 3"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/model_head.py::def exam_result",
+   "be:services/model_api_store.py::def admin_version"
+  ],
+  "tests": [
+   "tests/test_a_model_that_learns.py"
+  ],
   "evals": []
  },
  {
   "id": "LEARN-06",
   "area": "A model that learns",
   "title": "No photo model is offered",
-  "status": "not built",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a host's people send photos",
@@ -9710,8 +9740,14 @@
   "rules": [
    "N616 item 9"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/model_head_store.py::def readable",
+   "be:services/model_setup.py::if draft.get(\"input\") == \"image\":",
+   "be:services/chat_recipes.py::continue  # no model reads a photo yet"
+  ],
+  "tests": [
+   "tests/test_a_model_that_learns.py"
+  ],
   "evals": []
  },
  {
@@ -9832,7 +9868,7 @@
   "id": "PIPE-06",
   "area": "Tight model pipes",
   "title": "A version knows what it learned from",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a version is recorded",
@@ -9843,8 +9879,15 @@
   "rules": [
    "N615 item 3"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/model_head_store.py::def mark_retrain",
+   "be:services/model_examples_from_takes.py::def _retrain",
+   "be:migrations/a_model_learns_from_its_settled_examples.sql::CREATE TRIGGER ai_model_examples_mark_retrain"
+  ],
+  "tests": [
+   "tests/test_a_model_that_learns.py",
+   "tests/test_a_model_learns_from_its_settled_examples_postgres.py"
+  ],
   "evals": []
  },
  {

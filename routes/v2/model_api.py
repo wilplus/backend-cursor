@@ -20,13 +20,19 @@ In the app (signed in; the ring row ``ai_models``, else 404):
   GET    /v2/models/<id>/download ?rows=1     downloading its data, the one route (MOD-51):
                                               numbered, never the sealed exam
   POST   /v2/models/<id>/versions/<n>/release the model's founder releases a version
+  GET    /v2/models/<id>/check                the owner's check: ten unseen examples, the
+                                              head's guess first (LEARN-03)
+  POST   /v2/models/<id>/check {example_id, keep, answer?}  Keep or Change on one
+  GET    /v2/models/<id>/learning             its head and its two gates (LEARN-04)
 
 The API (a key, not a sign-in):
   POST   /v2/models/<id>/answer  {message}    Authorization: Bearer wpl_sk_...
                                               -> {answer, sure, version}
 
 WillpowerLab's founder only:
-  POST   /v2/admin/models/<id>/versions       record a version that passed (MOD-52)
+  POST   /v2/admin/models/<id>/versions {card?} queue a new fit (202 {queued}); a status
+                                              or an exam is refused, 409 EXAM_IS_COMPUTED:
+                                              the app computes it (LEARN-05)
   POST   /v2/admin/models/payouts {month, pay}  a month's payouts, in tokens
 
 Provider calls: "Try it" runs under the caller's own authority
@@ -51,7 +57,7 @@ from services.rate_limits import llm_limit
 logger = logging.getLogger(__name__)
 
 
-def _run(label: str, work):
+def _run(label: str, work, status: int = 200):
     from services.chats import ChatsError
     try:
         result = work()
@@ -65,7 +71,7 @@ def _run(label: str, work):
         return jsonify({"code": "V2_ERROR", "error": "Failed to reach the model"}), 500
     resp = jsonify(result)
     resp.headers["Cache-Control"] = "no-store"
-    return resp, 200
+    return resp, status
 
 
 def _me() -> str:
@@ -213,11 +219,7 @@ def v2_model_answer(model_id):
 @require_founder
 def v2_admin_model_version(model_id):
     from services import model_api_store as store
-    b = _body()
-    return _run("version", lambda: store.record_version(
-        db, model_id, provider_model=(str(b["provider_model"]) if b.get("provider_model") else None),
-        card=b.get("card") or {}, exam=b.get("exam") or {},
-        base_model=str(b.get("base_model") or "gpt-4o-mini")))
+    return _run("version", lambda: store.admin_version(db, model_id, _body()), status=202)
 
 
 @v2_bp.route("/admin/models/payouts", methods=["POST"])
@@ -227,3 +229,22 @@ def v2_admin_model_payouts():
     b = _body()
     return _run("payouts", lambda: store.pay_month(db, str(b.get("month") or ""),
                                                    pay=bool(b.get("pay"))))
+
+
+@v2_bp.route("/models/<model_id>/check", methods=["GET", "POST"])
+@require_auth
+@phase1_provider_route
+def v2_model_check(model_id):
+    """The owner's check (LEARN-03). The first GET reads its ten examples
+    once, under the owner's own processing authority."""
+    from services import model_head_store as heads
+    if request.method == "POST":
+        return _run("check", lambda: heads.check_answer(db, _me(), model_id, _body()))
+    return _run("check", lambda: heads.check_for(db, _me(), model_id))
+
+
+@v2_bp.route("/models/<model_id>/learning", methods=["GET"])
+@require_auth
+def v2_model_learning(model_id):
+    from services import model_head_store as heads
+    return _run("learning", lambda: heads.learning_for(db, _me(), model_id))
