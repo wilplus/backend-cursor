@@ -38,8 +38,6 @@ WHY      The founder, 9 November 2026 (N591): "There's really no difference
 from __future__ import annotations
 
 import os
-import sys
-import types
 import unittest
 from unittest.mock import patch
 
@@ -59,14 +57,7 @@ def _ring(feature, user_id, **_):
 
 
 def _collect_as(collect):
-    """``question_bundles.collect`` stood in: patched where the module is
-    (backend PR #1857 merged), else the module put in place for the hook."""
-    try:
-        import services.question_bundles  # type: ignore[import-not-found]  # noqa: F401
-    except ImportError:
-        bundles = types.ModuleType("services.question_bundles")
-        bundles.collect = collect  # type: ignore[attr-defined]
-        return patch.dict(sys.modules, {"services.question_bundles": bundles})
+    """``question_bundles.collect`` stood in."""
     return patch("services.question_bundles.collect", collect)
 
 

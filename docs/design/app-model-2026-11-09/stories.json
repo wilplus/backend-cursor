@@ -8812,5 +8812,35 @@
   ],
   "evals": [],
   "note": "Built (BE #1854, FE #1337) with N592's approved bubble; \"Record Take 2\" stays faded until the walk is done."
+ },
+ {
+  "id": "FT-15",
+  "area": "The first Take",
+  "title": "\"Something else\" after the walk: the other choices as taps",
+  "status": "built",
+  "screen": "first.else",
+  "prototype": null,
+  "given": "a newcomer who chose \"Something else\" at \"What would you like to do here first?\"",
+  "when": "the walk of Take 1 ends",
+  "then": [
+   "Will says \"Tell me what you'd like to do, and I'll show you where.\"",
+   "under it, as taps: \"Prepare a talk\", \"Share what I know\", \"Learn from others\", leaving out any already chosen",
+   "one tap shows as their answer and Will says that choice's next line (\"Next, record Take 2 of your talk.\", \"Next, set up your assistant, so people who join you are met your way.\", \"Next, ask someone who knows. Tap + to start.\")",
+   "their own words still answer it, typed or said; the answer is kept in Will's notes"
+  ],
+  "rules": [
+   "N592 item 2",
+   "N604"
+  ],
+  "code": [
+   "be:services/way_in.py::ELSE_TAPS = (TALK, SHARE, LEARN)",
+   "fe:src/components/willab/plan/WayIn.tsx"
+  ],
+  "tests": [
+   "tests/test_way_in.py",
+   "src/components/willab/plan/wayIn.test.tsx"
+  ],
+  "evals": [],
+  "note": "Built with N604: no new words, the taps and lines are N573's and N592's."
  }
 ]

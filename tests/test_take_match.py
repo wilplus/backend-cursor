@@ -7,8 +7,8 @@ STORY    As a speaker, after my Take, I want the page that chose who hears it
 OUTCOME
   O1  With no ring row, or while sending a Take is off, nobody is ever
       suggested: the speaker's routes answer 404.
-  O2  After a Take, one person is suggested: someone who shares a community
-      with the speaker, has no chat with them, and fits what the Take is
+  O2  After a Take, one person is suggested: someone in the speaker's
+      business community (N559 item 1), has no chat with them, and fits what the Take is
       about; shown as a pseudonym made for this match and their role, never
       a name, never the name the coach queue gives them, and never what
       their own Takes are about. Asking again gives the same one; someone
@@ -165,7 +165,10 @@ class TakeMatchTest(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
         t = self.store.tables
-        t["community_members"] = [{"community_id": TEAM, "user_id": u} for u in (AMIRA, LEA, TOMEK)]
+        t["business_communities"] = [{"id": TEAM, "owner_id": AMIRA, "name": "Ember Air"}]
+        t["business_community_members"] = [
+            {"community_id": TEAM, "user_id": u, "joined_at": "2026-11-01T00:00:00Z"}
+            for u in (AMIRA, LEA, TOMEK)]
         t["people_profiles"] = [
             {"user_id": AMIRA, "name": None, "role": "Account executive",
              "about": "I sell software to banks."},
@@ -380,7 +383,7 @@ class TakeMatchTest(unittest.TestCase):
 
     def test_the_arm_picks_by_speaking_skills_and_progress(self):
         t = self.store.tables
-        t["community_members"].append({"community_id": TEAM, "user_id": MAYA})
+        t["business_community_members"].append({"community_id": TEAM, "user_id": MAYA})
         t["people_profiles"].append(
             {"user_id": MAYA, "name": None, "role": "Pitch trainer",
              "about": "I help founders open an investor pitch with numbers that stick."})
@@ -409,7 +412,8 @@ class TakeMatchTest(unittest.TestCase):
         # Maya turned it off: weighed by what she knows alone, and nothing of
         # how she speaks is kept.
         t["take_matches"] = []
-        t["community_members"] = [m for m in t["community_members"] if m["user_id"] != LEA]
+        t["business_community_members"] = [
+            m for m in t["business_community_members"] if m["user_id"] != LEA]
         with patch.dict(os.environ, {"TAKE_MATCH_SKILLS": "1"}), \
                 patch("services.take_match.speaking_allowed", lambda ids: set(ids) - {MAYA}):
             self._suggested()
@@ -429,7 +433,7 @@ class TakeMatchTest(unittest.TestCase):
     def _twin(self):
         """Maya knows exactly what Lea knows."""
         t = self.store.tables
-        t["community_members"].append({"community_id": TEAM, "user_id": MAYA})
+        t["business_community_members"].append({"community_id": TEAM, "user_id": MAYA})
         t["people_profiles"].append(
             {"user_id": MAYA, "name": None, "role": "Speaking coach",
              "about": "I help founders open an investor pitch with numbers that stick."})
@@ -476,7 +480,7 @@ class TakeMatchTest(unittest.TestCase):
 
     def test_your_own_chats_best_fit_first(self):
         t = self.store.tables
-        t["community_members"] = []
+        t["business_community_members"] = []
         t["chat_members"] = [
             {"id": "a1", "thread_id": "with-tomek", "user_id": AMIRA},
             {"id": "a2", "thread_id": "with-tomek", "user_id": TOMEK},
@@ -533,7 +537,7 @@ class TakeMatchTest(unittest.TestCase):
 
     def _person(self, who, role, about, active=True):
         t = self.store.tables
-        t["community_members"].append({"community_id": TEAM, "user_id": who})
+        t["business_community_members"].append({"community_id": TEAM, "user_id": who})
         t["people_profiles"].append({"user_id": who, "name": None, "role": role, "about": about})
         t["v2_sessions"].append({"id": f"{who[:8]}-1111-4111-8111-{who[-12:]}", "user_id": who,
                                  "created_at": "2026-11-03T08:00:00Z" if active else
@@ -542,13 +546,13 @@ class TakeMatchTest(unittest.TestCase):
 
     def test_words_that_say_nothing_make_no_match(self):
         t = self.store.tables
-        t["community_members"] = [{"community_id": TEAM, "user_id": AMIRA}]
+        t["business_community_members"] = [{"community_id": TEAM, "user_id": AMIRA}]
         self._only_take("prezentacja dla inwestorów",
                         "Nasza prezentacja zaczyna się od liczb, które zapadają w pamięć.")
         self._person(TOMEK, "Księgowa", "Zajmuję się podatkami dla firm i jest to dla mnie ważne.")
         self.assertIsNone(self._suggested())
 
-        t["community_members"] = [{"community_id": TEAM, "user_id": AMIRA}]
+        t["business_community_members"] = [{"community_id": TEAM, "user_id": AMIRA}]
         t["take_matches"] = []
         self._only_take("presentation", "I want to speak about my presentation with confidence.")
         for i in range(24):

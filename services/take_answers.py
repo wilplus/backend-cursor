@@ -1,0 +1,108 @@
+"""One Take, its answers in one place (founder, the Claude Code chat, 9
+November 2026, N587 items 3 to 5, with N588 item 4); a recorded question
+too, since every recording now ends on the screen of who hears it (N596).
+
+A Take sent to several people (N470, N471) is one private copy in each chat;
+each person answers in their chat with the sender, in their own voice (N580
+item 7). This gathers those answers under the Take, for the sender only:
+
+  * ``gathered``: GET /v2/user/takes/<take>/answers. The smart bubble under
+    the Take, in the chat it was first sent in (your coach's): your coach's
+    answer and the best of the others, with the faces (names) of everyone who
+    answered; and all of them, under "On your speaking" (skill coaches,
+    N588 item 1) and "On the matter" (topic experts), each with a way into
+    that person's chat (its chat id). Nobody is hidden (item 5): everyone who
+    answered is named.
+
+Which answer shows in full, first version: the first to come in under each
+heading. N587 item 5 asks for the one that answers most directly what was
+asked; a model's reading can take its place later, never a score anyone sees
+(Never 1). Whose heading: the person's recipe (``assistants``, N588 item 2);
+a person with none is a skill coach, as every coach is today.
+
+An answer is the other person's first answer or voice note after the Take in
+that chat, before the sender's next Take there. Only the sender reads this;
+the people who answered never see each other's (N587 item 4). Behind the
+ring row ``chat_builder``. No provider call, no recording, nothing written.
+"""
+from __future__ import annotations
+
+from typing import Any, Optional
+
+from services import assistants
+from services.chats import MEMBERS, MESSAGES, _not_found, _rows, _table, _uuid
+
+#: The two headings (N587 item 3; the founder's words in the entry).
+ON_SPEAKING, ON_MATTER = "On your speaking", "On the matter"
+
+
+def _first_answer(rows: list[dict], sent_at: str, mine: str) -> Optional[dict]:
+    """The other member's first answer after the Take, before my next Take."""
+    for r in sorted(rows, key=lambda r: str(r.get("created_at") or "")):
+        if str(r.get("created_at") or "") <= sent_at:
+            continue
+        if str(r.get("author_member_id")) == mine:
+            if r.get("kind") == "take" or (r.get("meta") or {}).get("asked"):
+                return None  # my next recording: what follows answers that one
+            continue
+        if r.get("kind") == "voice" and not (r.get("meta") or {}).get("held_until"):
+            return r
+    return None
+
+
+def _carries(row: dict, session: str) -> bool:
+    """Does this message of mine carry the recording: a Take sent (N470), or
+    a recorded question (N483 item 4), each now ending on the screen of who
+    hears it (N596)?"""
+    meta = row.get("meta") or {}
+    if row.get("kind") == "take":
+        return str(meta.get("take_session_id")) == session
+    return bool(meta.get("asked")) and str(meta.get("take")) == session
+
+
+def _sent(database: Any, me: str, session: str) -> list[dict]:
+    """My messages that carry this recording, the first sent first."""
+    mine = [str(m["id"]) for m in _rows(_table(database, MEMBERS).select("id").eq("user_id", me))]
+    if not mine:
+        return []
+    rows = _rows(_table(database, MESSAGES).select("id,thread_id,author_member_id,kind,meta,created_at")
+                 .in_("kind", ["take", "voice"]).in_("author_member_id", mine))
+    sent = [r for r in rows if _carries(r, session)]
+    return sorted(sent, key=lambda r: str(r.get("created_at") or ""))
+
+
+def _answer_in(database: Any, sent: dict, coach: bool) -> Optional[dict]:
+    """The answer to the Take in the chat ``sent`` was posted in, or None."""
+    thread = str(sent["thread_id"])
+    rows = _rows(_table(database, MESSAGES).select("id,author_member_id,kind,meta,created_at")
+                 .eq("thread_id", thread))
+    got = _first_answer(rows, str(sent.get("created_at") or ""), str(sent["author_member_id"]))
+    if not got:
+        return None
+    members = _rows(_table(database, MEMBERS).select("id,user_id,display_name").eq("thread_id", thread))
+    other = next((m for m in members if str(m["id"]) == str(got["author_member_id"])), {})
+    fit = (assistants.recipe_of(database, other.get("user_id")) or {}).get("fit") or {}
+    return {"message_id": str(got["id"]), "chat": thread, "coach": coach,
+            "name": str(other.get("display_name") or "").split(" ")[0] or None,
+            "title": ON_MATTER if fit.get("coaches") == "topic" else ON_SPEAKING,
+            "at": got.get("created_at")}
+
+
+def gathered(database: Any, user_id: Any, take: Any) -> dict:
+    """{"bubble": {"shown": [answers], "faces": [names]}, "groups": [{"title",
+    "answers"}]} for the caller's own Take; 404 when it was sent nowhere."""
+    session = _uuid(take)
+    sent = _sent(database, str(user_id), session) if session else []
+    if not sent:
+        raise _not_found()
+    found = [_answer_in(database, s, i == 0) for i, s in enumerate(sent)]
+    answers: list[dict[str, Any]] = [a for a in found if a]
+    groups: list[dict[str, Any]] = [{"title": t, "answers": [a for a in answers if a["title"] == t]}
+                                    for t in (ON_SPEAKING, ON_MATTER)]
+    shown = [a for a in answers if a["coach"]]
+    for g in groups:
+        best = next((a for a in g["answers"] if not a["coach"]), None)
+        if best:
+            shown.append(best)
+    return {"bubble": {"shown": shown, "faces": [a["name"] for a in answers]},
+            "groups": [g for g in groups if g["answers"]]}

@@ -38,8 +38,9 @@ site can write to the host (N591 item 1):
 
 The host answers as in any chat (N591 item 3): by recording
 (routes/v2/chats.py ``/answer``) or by typing (``/messages`` with a text,
-``assistants.writes_in``); an answer already saved goes automatically through
-the bundles (services/question_bundles.py, N584, when it is merged).
+``assistants.may_type``). A question joins its bundle
+(services/question_bundles.py, N584) and waits there for the host: until the
+minimum is reached the assistant sends nothing (N606 item 1).
 
 Every recording and provider call goes through the processing-authorization
 path: a visitor without an account has no principal to authorize, so they
@@ -420,7 +421,7 @@ def notice_to(token_payload: Any) -> Optional[str]:
 def _bundle_asked(database: Any, me: dict, uid: str) -> None:
     """The visitor's typed questions, asked before the sign-up, join their
     bundles now that they have an account to answer (N584 item 4, N591 item
-    3); an answer already saved comes at once."""
+    3); each waits there for the host (N606 item 1)."""
     try:
         rows = _rows(_table(database, MESSAGES).select("id,kind,body,meta")
                      .eq("thread_id", me["thread_id"]).eq("author_member_id", me["id"])
@@ -436,14 +437,9 @@ def _bundle_asked(database: Any, me: dict, uid: str) -> None:
 def bundle(database: Any, host: str, asker: str, thread: str, message_id: str,
            words: Any) -> Optional[dict]:
     """A question asked of ``host`` joins its bundle (N584, N591 item 3):
-    ``question_bundles.collect`` (backend PR #1857, branch
-    claude/assistants-bundles). Until that module is merged this is the
-    hook, and nothing happens. Best-effort: the question is sent either
-    way."""
-    try:
-        from services import question_bundles  # type: ignore[attr-defined]
-    except ImportError:
-        return None
+    ``question_bundles.collect``, where it waits for the host (N606 item
+    1). Best-effort: the question is sent either way."""
+    from services import question_bundles
     try:
         return question_bundles.collect(database, host, asker, thread, message_id, words)
     except Exception:  # noqa: BLE001
