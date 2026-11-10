@@ -15804,3 +15804,26 @@ and the join page's words of N310 item 3 and N335 item 2; for N401 and N471
 No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built.
+
+**N601 · A bundle in Will is one card: the question, who asked, one action
+(founder, the Claude Code chat, 10 November 2026, on the prototype's bundle
+card, which listed every asker with their question and the assistant's
+answer: "we also need to simplify this; either just show one or smth; like
+a single screen so that person is not overloaded; as the best designer in
+the world come up with a scandinavian design"; then, of two drafts, "A: one
+question, one action").** Amends N584 item 2's card; for N580, N584 item 1
+and N597:
+1. **One card in Will:** "{n} people asked"; the question, large; the faces
+   of who asked with "{name}, {name} and {n} more"; one quiet line, "Your
+   assistant has answered them for now." The bar's middle is "Record one
+   answer" (N597).
+2. **"See who asked ›"** opens a sheet, "Who asked": each person's own words,
+   their name and where they asked ("in your chat", "on your website"), and
+   "Split them up ›" at the end (N584 item 1).
+3. **Gone from the card:** the list of every asker with their question and
+   the assistant's answer, and the line "Record one answer: each of them gets
+   it in their own chat with you, under their own question."
+4. **Words:** "{n} people asked", "See who asked", "Who asked", "Split them
+   up" and "Your assistant has answered them for now." are signed with the
+   founder's choice (Never 4).
+No migration. No rules page yet.
