@@ -15700,3 +15700,82 @@ The rules: frontend
 (item 5) and
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 (item 2), the other items in their PRs' home docs.
+
+**N595 · The website chat has no consent card before a visitor writes; its
+words are signed (founder, the Claude Code chat, 10 November 2026, on
+screenshots of the prototype: of the card "What you send goes to Kasia
+through WillpowerLab." with "Agree and start", "drop!"; then, on the
+drafted words of the sign-up card, the line after it and the notice, "OK
+as drafted").** For N591:
+1. **No card before a visitor writes:** they write at once. Agreeing comes
+   with signing up, whose line "By signing up, you agree to our Terms of
+   Service and Privacy Policy." stays. Counsel's view on the visitor's
+   consent stays open (N591, Open).
+2. **Signed (Never 4),** settling N591's open words: "To get {name}'s
+   answer, sign up."; "The first notice of the answer comes to your phone or
+   email. After that, this chat is yours."; after signing up, "Signed up. The
+   first notice of the answer comes to your phone." (or "… to your
+   email."); the notice, "{name} answered your question. Open it in
+   WillpowerLab."
+No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+B8 to B13, when built.
+
+**N596 · Every recording, a Take or a question, ends on the screen of who
+hears it, with Will's one recommendation (founder, the Claude Code chat, 10
+November 2026, on screenshots of a recorded question that went at once and
+of the same kind of question ending on that screen: "Same screen after every
+recording").** Extends N589 item 2 to recorded questions; for N587 and
+N588:
+1. **After any recording,** a Take or a recorded question, the screen of
+   who hears it comes back with Will's one recommendation for that
+   recording, then Send.
+2. **A typed question has no such screen;** N588 item 5's one line still
+   comes when someone is added by hand whom it doesn't suit.
+No migration. No rules page yet.
+
+**N597 · The bottom bar stays the same whether or not the chat asks
+something; Record or Upload take its middle only when a recording or an
+image is asked for (founder, the Claude Code chat, 10 November 2026: "when
+nothing is asked keep the same bottom bar as when your chat asks something;
+all the way it stays the same unless you demand a audio or image then there
+appears the record button or upload button in the place of main btn cta";
+then, asked what sits in the middle the rest of the time, "The chat's own
+default").** Amends N483 items 2 and 3 for the hosts' chats; for N578, N582
+and N591:
+1. **One bar, at rest and while a question waits:** "+" on the left; the
+   middle is the chat's own default, a typing box when the host's chat takes
+   words, the three emoji when it doesn't.
+2. **The middle becomes "Record your answer" only when the chat asks for a
+   recording, and "Upload a photo" only when it asks for an image;** after
+   the answer it goes back. Answers to tap sit above the bar (N483).
+3. **In Artur's chat** the next Take is a recording asked for, so "Record
+   Take N" keeps the middle (Never 3). Will's chat keeps its own bar (N369).
+4. **"Upload a photo"** is signed with the founder's choice (Never 4).
+No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built.
+
+**N598 · Teachers are invited with your chat's own link (founder, the Claude
+Code chat, 10 November 2026: "by inviting teachers, you just share your own
+chat - not a new link just a link to your own chat - cause only way to train
+it is to use it, so you invite them to use it!").** Amends N582 item 3; for
+N471, N575 and N577:
+1. **Inviting a teacher is sharing your own chat's link,** the one anyone
+   gets (N471); there is no separate link for teachers.
+2. **Teachers teach your model by using your chat;** their answers count as
+   anyone's with the training yes (N575), and earn points as N577 has it.
+No migration. No rules page yet.
+
+**N599 · For the MVP, Will's chat has no principles, Sunday note or life
+goals (founder, the Claude Code chat, 10 November 2026, on the prototype's
+Will chat: "remove those we will be showing this to just a small group on a
+testing ring, for the mvp we don't do it! Your principles › The Sunday note
+› Your life goals ›").** Amends N580 item 2 and N578 item 3 for the MVP:
+1. **The MVP's Will chat holds** the setup, managing your model, your queue
+   and the shadow of your conversations (N580 item 2); "Your principles",
+   "The Sunday note" and "Your life goals" don't show in it.
+2. **The MVP goes to a small group on a testing ring.** Whether the built
+   code behind those three stays behind a ring or goes is decided when the
+   MVP is built, by CLAUDE.md's "Replacing a feature".
+No migration. No rules page yet.
