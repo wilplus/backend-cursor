@@ -30,7 +30,10 @@ call:
   * ``suits`` and ``nudge``: Will suggests a skill coach only for a message
     that shows the skill and a topic expert only for their topic; anyone may
     still be sent to, with one line (N588).
-  * ``will_line``: the join page's line about Will's chat (N586 item 2).
+  * ``join_page``: the join page of anyone's link, in three lines (N601):
+    "{name} invited you", one sentence of what you'll learn there, and
+    "Only the two of you are in this chat."; N586 item 2's line about
+    Will's chat is gone from it (N601 item 2).
 
 Behind the ring row ``chat_builder`` (N579 item 2): the founder and the
 people the founder adds. Everyone else keeps today's chat.
@@ -55,7 +58,13 @@ CHAT_BUILDER = "chat_builder"
 ASSISTANT = "{name}'s assistant"
 #: Drafted for the founder's OK (N586 item 2): replaces "Your own chat with
 #: Will, your speaking coach" on the join page.
-WILL_LINE = "Will's chat is where you can set up a chat of your own."
+#: The join page (N601, signed).
+INVITED = "{name} invited you"
+ONLY_TWO = "Only the two of you are in this chat."
+#: Artur's sentence of what you'll learn in his chat (N601 item 3, signed).
+ARTUR_LEARNS = "Record a short talk. He'll tell you what landed and what to try next."
+#: What you'll learn: one sentence, "under about fifteen words" (N601 item 1).
+MAX_LEARN_WORDS = 20
 #: Drafted for the founder's OK (N588 item 5); "Record" and "Send anyway".
 NUDGE_HEAR = "{name} coaches {skill} and will need to hear you. Record it instead?"
 NUDGE_SEE = "{name} coaches {skill} and will need to see you doing it. Record a video instead?"
@@ -71,7 +80,8 @@ RECORD, SEND_ANYWAY = "Record", "Send anyway"
 #: models' (MOD-*).
 DEFINABLE: tuple[str, ...] = ("welcome", "questions", "answer_with", "about", "fit", "model")
 AUTOMATE: tuple[str, ...] = ("yes", "no", "help")
-MAX_ABOUT_LINES = 2
+#: ``about`` is the join page's one sentence of what you'll learn (N601).
+MAX_ABOUT_LINES = 1
 MAX_TOPICS = 6
 #: What comes after the MVP (N579 item 1); its fields are read but not set.
 LATER: tuple[str, ...] = ("profession", "style")
@@ -182,6 +192,10 @@ def normalize(body: Any) -> dict:
            "questions": _questions(body.get("questions")),
            "answer_with": _answer_with(body.get("answer_with")),
            "about": _lines(body.get("about"), MAX_ABOUT_LINES, "About line")}
+    for line in out["about"]:
+        problem = learn_sentence_problem(line)
+        if problem:
+            raise RecipeError("RECIPE_INVALID", problem)
     if body.get("fit") is not None:
         out["fit"] = _fit(body.get("fit"))
     if body.get("model") is not None:
@@ -295,9 +309,13 @@ def nudge(name: str, person: dict, message: dict) -> Optional[dict]:
     return {"line": line, "chips": [RECORD, SEND_ANYWAY]}
 
 
-def will_line() -> str:
-    """The join page's line about Will's chat (N586 item 2)."""
-    return WILL_LINE
+def learn_sentence_problem(text: Any) -> Optional[str]:
+    """None when ``text`` is one sentence short enough for the join page
+    (N601 item 1), else why not."""
+    words = str(text or "").split()
+    if len(words) > MAX_LEARN_WORDS:
+        return f"One sentence of about fifteen words (this has {len(words)})."
+    return None
 
 
 # ── The recipe, kept (people_profiles.chat_recipe,
@@ -389,7 +407,13 @@ def welcome(database: Any, thread: str, owner_id: str, owner_member: str) -> lis
         return []
 
 
-def about_lines(database: Any, owner_id: Any) -> list[str]:
-    """The join page's lines on who the host is and what you can learn with
-    them (N586 item 1): the host's own, from their recipe."""
-    return list((recipe_of(database, owner_id) or {}).get("about") or [])
+def learns(database: Any, owner_id: Any, own: bool = True) -> Optional[str]:
+    """The join page's one sentence of what you'll learn in the host's chat
+    (N601 item 1): the host's own, from their recipe (only with ``own``, the
+    chat builder's ring); for Artur's link without one, his signed sentence
+    (N601 item 3); else None."""
+    about = ((recipe_of(database, owner_id) or {}).get("about") or []) if own else []
+    if about:
+        return str(about[0])
+    from services.take_sends import _founder
+    return ARTUR_LEARNS if owner_id and str(owner_id) == str(_founder(database) or "") else None

@@ -13,7 +13,7 @@ onboarding (N335 item 1).
     for. Its secret is ``token``; the page is ``/c/<token>``.
   * ``renew``: the caller's link replaced; the old one stops working.
   * ``preview``: for the join page, before anyone signs in: the first name
-    of whose link it is, and nothing else. A wrong, replaced or switched-off
+    of whose link it is, in the page's three lines (N601). A wrong, replaced or switched-off
     link is 404, the same answer for each.
   * ``join``: the signed-in caller joins: one chat with the link's owner,
     made once for the two of them (chat_threads.pair_key), however often
@@ -125,19 +125,20 @@ def _open(database: Any, token: Any) -> dict:
 
 
 def preview(database: Any, token: Any) -> dict:
-    """GET /v2/chats/join/<token>, no sign-in: {"name"}, whose link it is.
-    A link whose owner has the chat builder (N579 item 2) also says whose
-    assistant answers there (N578 item 1) and Will's line for the joiner's
-    own chat (N586 item 2): {"assistant", "will_line"}."""
-    from services import assistants, rings
+    """GET /v2/chats/join/<token>, no sign-in: the join page in three lines
+    (N601): {"name", "invited": "{name} invited you", "learn": one sentence
+    of what you'll learn, or null, "only_two": "Only the two of you are in
+    this chat."}. A link whose owner has the chat builder (N579 item 2) also
+    says whose assistant answers there (N578 item 1): {"assistant"}."""
+    from services import assistants
     link = _open(database, token)
-    out: dict = {"name": link["display_name"]}
-    if rings.feature_is_on_for_user(assistants.CHAT_BUILDER, str(link["user_id"]), database=database):
-        out["assistant"] = assistants.assistant_name(link["display_name"])
-        out["will_line"] = assistants.will_line()
-        about = assistants.about_lines(database, str(link["user_id"]))
-        if about:
-            out["about"] = about
+    owner, name = str(link["user_id"]), link["display_name"]
+    on = assistants.on(database, owner)
+    out: dict = {"name": name, "invited": assistants.INVITED.format(name=name),
+                 "learn": assistants.learns(database, owner, own=on),
+                 "only_two": assistants.ONLY_TWO}
+    if on:
+        out["assistant"] = assistants.assistant_name(name)
     return out
 
 
