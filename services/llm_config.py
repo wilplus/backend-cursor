@@ -595,6 +595,19 @@ SPEC_STRENGTHS_READ = LLMSpec(
 at work in it, a strength shown on two different days, and a talk date the
 note names (services.strengths)."""
 
+SPEC_MODEL_API_ANSWER = LLMSpec(
+    model=CHEAP_MODEL,
+    # One answer from a launchpad model, sold through its API or tried on its
+    # link (N528 items 7 and 9). The version's own trained model replaces
+    # ``model`` at the call (services.model_api_store._ask); the base is
+    # GPT-4o mini (N566 item 3).
+    temperature=0.2,
+    max_tokens=500,
+    response_format={"type": "json_object"},
+    timeout_seconds=30.0,
+)
+"""A launchpad model's answer, with its confidence for "sure" (N566 item 8)."""
+
 
 
 SPEC_WALK_QUOTE = LLMSpec(
