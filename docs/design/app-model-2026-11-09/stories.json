@@ -9718,7 +9718,7 @@
   "id": "PIPE-01",
   "area": "Tight model pipes",
   "title": "An exam example, or your own, cannot be answered",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a teacher knows the id of an exam example, or added an example",
@@ -9729,16 +9729,20 @@
   "rules": [
    "N615 item 2"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/model_launchpad_store.py::OWN_EXAMPLE"
+  ],
+  "tests": [
+   "tests/test_model_pipes.py"
+  ],
   "evals": [],
-  "note": "Today an answer on an exam example is kept and never counts (#1867); it is not refused."
+  "note": "An answer on an exam case is 404 to anyone but the exam's two experts; a second answer on an example the teacher added is 409 OWN_EXAMPLE; nothing is stored (backend #1893)."
  },
  {
   "id": "PIPE-02",
   "area": "Tight model pipes",
   "title": "A newcomer is measured against trusted teachers only",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "two new teachers answer the same examples",
@@ -9750,14 +9754,17 @@
    "N615 item 2"
   ],
   "code": [],
-  "tests": [],
-  "evals": []
+  "tests": [
+   "tests/test_model_pipes.py"
+  ],
+  "evals": [],
+  "note": "A newcomer is measured only against trusted teachers' answers and known answers, never other newcomers (backend #1893)."
  },
  {
   "id": "PIPE-03",
   "area": "Tight model pipes",
   "title": "Turning the training yes off reaches every model",
-  "status": "not built",
+  "status": "built",
   "screen": "settings",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a person's Takes are examples in more than twenty models",
@@ -9770,14 +9777,17 @@
    "N575"
   ],
   "code": [],
-  "tests": [],
-  "evals": []
+  "tests": [
+   "tests/test_model_pipes.py"
+  ],
+  "evals": [],
+  "note": "Every run first takes the examples of anyone whose training yes is off out of every model, reading every page (backend #1893). Gathering new examples still takes 20 models a run."
  },
  {
   "id": "PIPE-04",
   "area": "Tight model pipes",
   "title": "Counts read every row",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a model has more than a thousand answers",
@@ -9792,10 +9802,11 @@
    "be:services/model_api_store.py::def _all("
   ],
   "tests": [
-   "tests/test_model_api_routes.py"
+   "tests/test_model_api_routes.py",
+   "tests/test_model_pipes.py"
   ],
   "evals": [],
-  "note": "The API's sums and limits already read every row (#1866). The launchpad's own counts are not checked. Status as the build's stories give it."
+  "note": "The launchpad's counts read every row, page by page (backend #1893)."
  },
  {
   "id": "PIPE-05",
@@ -9878,7 +9889,7 @@
   "id": "PIPE-09",
   "area": "Tight model pipes",
   "title": "Invited after going public does not open private examples",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a model went public",
@@ -9893,10 +9904,11 @@
    "be:services/model_launchpad_store.py::def _sees_private("
   ],
   "tests": [
-   "tests/test_model_launchpad_actions.py"
+   "tests/test_model_launchpad_actions.py",
+   "tests/test_model_pipes.py"
   ],
   "evals": [],
-  "note": "#1869 keeps a private example from someone who joins at the door after the model went public. A teacher invited after it went public is still sent them: no time is stored for going public."
+  "note": "The time a model first goes public is kept in its setup; an invite made after it opens no private example (backend #1893). Models public before this have no time: their private examples open to no invited teacher."
  },
  {
   "id": "TOK-01",
