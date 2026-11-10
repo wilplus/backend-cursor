@@ -266,17 +266,30 @@ def _open_question(database: Any, user_id: str) -> Optional[dict]:
     return None
 
 
+def retired(database: Any, user_id: str) -> bool:
+    """N632 item 1: for a person with the chat builder, the chat is set up in
+    the overlay (services/chat_recipes.py), one decision per screen; Will's
+    chat no longer gets this setup's offer line or its questions as
+    bubbles. A chat already made here keeps working (its recipe stays and is
+    read as before) until its owner sets it up again."""
+    return assistants.on(database, user_id)
+
+
 def offer(database: Any, user_id: str, name: str) -> dict:
     """Will's line on what you know is worth, with "Set up my chat" (N586
-    item 5), once while no setup waits."""
-    if _open_question(database, user_id):
+    item 5), once while no setup waits. Never for a person with the new
+    setup (N632 item 1)."""
+    if retired(database, user_id) or _open_question(database, user_id):
         return {"offered": False}
     _write(database, user_id, [_ask("offer", WORTH, [SET_UP_MY_CHAT], {"name": name})])
     return {"offered": True}
 
 
 def begin(database: Any, user_id: str, name: str) -> dict:
-    """The setup's first lines, or its open question again at the bottom."""
+    """The setup's first lines, or its open question again at the bottom.
+    Nothing for a person with the new setup (N632 item 1)."""
+    if retired(database, user_id):
+        return {"started": False}
     waiting = _open_question(database, user_id)
     if waiting:
         items = [(str(uuid.uuid4()), "bot", waiting.get("body") or "", _setup_of(waiting))]
@@ -288,7 +301,10 @@ def begin(database: Any, user_id: str, name: str) -> dict:
 
 def answer(database: Any, user_id: str, payload: Any) -> dict:
     """The person's tap, or their words, under Will's question; then his next
-    lines. {"messages": the rows written}."""
+    lines. {"messages": the rows written}. For a person with the new setup
+    no question of this setup waits any more (N632 item 1): 404."""
+    if retired(database, user_id):
+        raise RecipeError("NOT_FOUND", "No such question.", 404)
     body = payload if isinstance(payload, dict) else {}
     to = str(body.get("to") or "")
     setup = _setup_of(database.get_lounge_message_by_client_id(str(user_id), to) if to else None)

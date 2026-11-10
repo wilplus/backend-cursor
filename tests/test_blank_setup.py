@@ -3,7 +3,8 @@ STORY    As someone who knows a field, I want to set up a chat with Will from
          a blank start, one decision per screen, and open it; and as a person
          who comes to it, I want to get back what that host chose (N612 to
          N618; the locked prototype docs/design/the-blank-setup-2026-11-10/,
-         its stories FIRST-*, VIS-* and TOK-*; the contract in backend PR #1893).
+         its stories FIRST-*, VIS-* and TOK-*; the contract in backend PR #1893; N633
+         items 1, 2 and 4).
 OUTCOME  One test per story, on the public routes; the story id leads each
          test's docstring.
 PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_choices
@@ -26,6 +27,10 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          FIRST-20 -> SetupTest::test_test_my_chat_answers_as_my_people_would
          FIRST-21 -> SetupTest::test_to_change_the_chat_tell_will
          FIRST-22 -> SetupTest::test_who_answers_is_three_plain_choices
+         N632.2   -> SetupTest::test_what_the_first_take_said_opens_what_you_do
+         N632.3   -> SetupTest::test_a_chat_that_takes_a_recording_is_a_skill_chat
+         N632.4   -> SetupTest::test_start_again_begins_blank_and_keeps_only_the_same_model
+         N632.6   -> SetupTest::test_not_now_is_never_final
          VIS-01   -> VisitorTest::test_the_hosts_hello_first_questions_and_taps
          VIS-02   -> VisitorTest::test_the_bar_follows_what_the_host_takes
          VIS-03   -> VisitorTest::test_they_get_back_the_output_the_host_chose
@@ -38,6 +43,13 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          TOK-02   -> TokensTest::test_out_of_tokens_the_model_is_skipped_and_the_chat_goes_on
          TOK-02   -> TokensTest::test_with_token_pricing_off_nothing_is_charged_or_skipped
          N630.3   -> TokensTest::test_a_host_pays_the_price_shown_when_they_added_the_model
+         FIRST-24 -> LearningTest::test_a_model_still_learning_is_listed_free_and_its_host_teaches_it
+         FIRST-24 -> LearningTest::test_it_says_nothing_costs_nothing_and_the_hosts_own_words_teach_it
+         FIRST-24 -> LearningTest::test_once_it_passes_the_host_keeps_it_at_the_price_they_see
+         FIRST-24 -> LearningTest::test_one_that_passes_free_answers_without_a_price_to_accept
+         VIS-08   -> MeetTest::test_the_hello_shows_once_in_the_chat_they_share
+         VIS-08   -> MeetTest::test_each_writes_to_the_others_chat_both_ways
+         VIS-08   -> MeetTest::test_without_the_other_persons_open_chat_nothing_changes
 WHY      The build succeeds when a stranger sets up a chat with Will and a
          second person gets a useful answer in it (N620).
 """
@@ -227,6 +239,74 @@ class SetupTest(_Base):
         self.assertEqual([(a["teacher_id"], a["answer"]) for a in kept], [(TOMEK, "Yes")])
         self.assertEqual(stranger.status_code, 404)
 
+    def test_what_the_first_take_said_opens_what_you_do(self):
+        """N632 item 2: the field the person's first Take told the app is
+        "What do you do?"'s first answer, to keep or change; none heard,
+        none given. No provider call."""
+        from services.db import db
+        with patch.object(db, "get_open_plan", lambda _u: {"facts": {"topic": "hair loss"}}, create=True):
+            self.assertEqual(self._read()["spec_guess"], "Hair loss")
+        with patch.object(db, "get_open_plan", lambda _u: {"facts": {}}, create=True):
+            self.assertIsNone(self._read()["spec_guess"])
+        self.assertEqual(self.provider.calls, [])
+
+    def test_a_chat_that_takes_a_recording_is_a_skill_chat(self):
+        """N632 item 3: "coached, or a topic" is never asked: a chat whose
+        people send a recording is a skill chat, any other a topic chat,
+        on every save."""
+        self._start("Voice coach")
+        fit = self._put("send", ["rec", "text"]).get_json()["recipe"]["fit"]
+        self.assertEqual(fit, {"coaches": "skill", "needs": "talking", "topics": [], "skill": "voice coach"})
+        fit = self._put("send", ["text"]).get_json()["recipe"]["fit"]
+        self.assertEqual(fit, {"coaches": "topic", "needs": "any", "topics": ["Voice coach"]})
+
+    def test_start_again_begins_blank_and_keeps_only_the_same_model(self):
+        """N632 item 4: "Start again" begins again from "What do you do?",
+        the chat not open, nothing of the old answers kept; the host's own
+        model kept again is the same real model, never a second."""
+        def rings(feature, user_id, database=None):
+            del database
+            return feature in ("chat_builder", "ai_models") and str(user_id) == TOMEK
+        with patch("services.rings.feature_is_on_for_user", rings):
+            self._start()
+            card = self._put("models", [self._model()]).get_json()["recipe"]["models"][0]
+            self._put("hello", "Hi, show me your scalp.")
+            self._put("care", False)
+            self._put("live", True)
+            again = self._start("Barber").get_json()["recipe"]
+            self.assertEqual((again["spec"], again["live"], again["models"]), ("Barber", False, []))
+            self.assertNotEqual(again["hello"], "Hi, show me your scalp.")
+            self.assertTrue(again["sensitive"])
+            kept = self._put("models", [self._model()]).get_json()["recipe"]["models"][0]
+        self.assertEqual(kept["model_id"], card["model_id"])
+        self.assertEqual(len(self.store.tables["ai_models"]), 1)
+
+    def test_not_now_is_never_final(self):
+        """N632 item 6: after "Not now" and with the chat live, every part
+        stays changeable: the host turns models on, makes one (it gets its
+        real model), shares at a price and changes the rest, and the chat
+        stays live; only /live itself closes it."""
+        def rings(feature, user_id, database=None):
+            del database
+            return feature in ("chat_builder", "ai_models") and str(user_id) == TOMEK
+        with patch("services.rings.feature_is_on_for_user", rings):
+            self._start()
+            self._put("smart", False)                            # "Not now"
+            self._put("care", False)
+            self.assertTrue(self._put("live", True).get_json()["recipe"]["live"])
+            for part, value in (("smart", True), ("way", "own"), ("models", [self._model()]),
+                                ("share", True), ("price", 3), ("who", "assistant"), ("send", ["rec", "text"]),
+                                ("hello", "Hi. Show me your scalp."), ("questions", [{"q": "What worries you?"}]),
+                                ("taps", ["Ask for advice"]), ("line", "People come to you about their hair.")):
+                got = self._put(part, value)
+                self.assertEqual(got.status_code, 200, part)
+                recipe = got.get_json()["recipe"]
+                self.assertTrue(recipe["live"], part)
+            self.assertTrue(recipe["models"][0].get("model_id"))
+            self.assertEqual((recipe["smart"], recipe["share"], recipe["price"], recipe["who"]),
+                             (True, True, 3, "assistant"))
+            self.assertFalse(self._put("live", False).get_json()["recipe"]["live"])
+
     def test_who_answers_is_three_plain_choices(self):
         """FIRST-09, FIRST-22: "I draft, you send" first, then "Only you"
         and "I answer at once"; one tap chooses."""
@@ -266,7 +346,8 @@ class SetupTest(_Base):
         with patch("services.token_prices.display_unit", lambda: 100):
             models = self.client.get("/v2/chats/setup/models", headers=self._as(TOMEK)).get_json()["models"]
         self.assertEqual(models, [{"model_id": "m1", "q": "Is it rushed?", "opts": ["Yes", "Somewhat", "No"],
-                                   "by": "Piotr", "price": 3, "needs": "rec", "fits": False}])
+                                   "by": "Piotr", "price": 3, "needs": "rec", "fits": False,
+                                   "learning": False}])
 
     def test_two_ways_use_one_or_train_your_own(self):
         """FIRST-18: the way is kept; a used model carries its owner and
@@ -274,6 +355,8 @@ class SetupTest(_Base):
         self._start()
         self.assertEqual(self._put("way", "use").get_json()["recipe"]["way"], "use")
         self.store.tables["ai_models"] = [{"id": "m1", "owner_id": PIOTR, "price_units": 3}]  # Piotr's price
+        self.store.tables["ai_model_versions"] = [  # passed its exam: priced, not still learning (N633)
+            {"model_id": "m1", "status": "released", "exam": {"computed": True, "passed": True}}]
         used = {**self._model("Is the skin red?"), "own": False, "model_id": "m1", "by": "Piotr", "price": 3}
         recipe = self._put("models", [used, self._model()]).get_json()["recipe"]
         self.assertEqual([m["own"] for m in recipe["models"]], [False, True])
@@ -287,6 +370,8 @@ class SetupTest(_Base):
         self._put("models", [self._model()])
         self.assertTrue(self._put("cost", {"people": 10, "sends": 2}).get_json()["cost"]["nothing"])
         self.store.tables["ai_models"] = [{"id": "m1", "owner_id": PIOTR, "price_units": 3}]  # Piotr's price
+        self.store.tables["ai_model_versions"] = [  # passed its exam: priced, not still learning (N633)
+            {"model_id": "m1", "status": "released", "exam": {"computed": True, "passed": True}}]
         used = {**self._model("Is the skin red?"), "own": False, "model_id": "m1", "by": "Piotr", "price": 3}
         cost = self._put("models", [used, self._model()]).get_json()["cost"]
         self.assertEqual(cost, {"lines": [{"q": "Is the skin red?", "by": "Piotr", "price": 3},
@@ -493,9 +578,8 @@ JOB = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 V1 = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 
 
-class TokensTest(_Base):
-    """Tokens in a chat (TOK-01, TOK-02): Tomek's chat has his own model and
-    Kasia's, at her price of 300 a use."""
+class _Tokens(_Base):
+    """The ledger and a model of Kasia's, at her price of 300 a use."""
     _host, _send, _messages, _answers = VisitorTest._host, VisitorTest._send, VisitorTest._messages, \
         VisitorTest._answers
 
@@ -542,15 +626,20 @@ class TokensTest(_Base):
                                    "base_model": "gpt-4o-mini", "founder_id": KASIA, "created_at": "2026-11-01",
                                    "exam": {"computed": True, "passed": True}, "card": {}}]
 
+    def _lines(self, reply):
+        return [(m["body"], m["meta"]["model_line"]["by"]) for m in reply["messages"] if "model_line" in m["meta"]]
+
+
+class TokensTest(_Tokens):
+    """Tokens in a chat (TOK-01, TOK-02): Tomek's chat has his own model and
+    Kasia's, at her price of 300 a use."""
+
     def _chat(self):
         chat = self._host(who="assistant", sensitive=False)
         self._put("models", [self._model(), {"q": "Are there flakes?", "opts": ["Yes", "Somewhat", "No"],
                                              "own": False, "model_id": JOB, "by": "Kasia", "price": 3}])
         self._answers(20)
         return chat
-
-    def _lines(self, reply):
-        return [(m["body"], m["meta"]["model_line"]["by"]) for m in reply["messages"] if "model_line" in m["meta"]]
 
     def test_a_host_pays_when_someone_elses_model_runs_in_their_chat(self):
         """TOK-01: Kasia's model's line costs Tomek her price, once; Piotr,
@@ -636,3 +725,199 @@ class TokensTest(_Base):
         reply = self._send(chat).get_json()["reply"]
         self.assertEqual(len(self._lines(reply)), 2)
         self.assertEqual((self.ledger, self._read()["skipped_models"]), ([], []))
+
+
+OLA = "33333333-3333-4333-8333-333333333333"
+LM = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+
+
+class LearningTest(_Tokens):
+    """N633 item 1: Ola's model is still learning (no passed exam); Tomek,
+    with the chat builder and the AI models, adds it to his chat."""
+
+    def setUp(self):
+        super().setUp()
+        def rings(feature, user_id, database=None):
+            del database
+            return feature in ("chat_builder", "ai_models") and str(user_id) == TOMEK
+        p = patch("services.rings.feature_is_on_for_user", rings)
+        p.start()
+        self.addCleanup(p.stop)
+        t = self.store.tables
+        t["ai_models"].append({"id": LM, "name": "Flakes", "owner_id": OLA, "owner_name": "Ola",
+                               "visibility": "public", "status": "learning", "field": "hair",
+                               "description": "", "draft_step": None, "targets": {}, "price_units": 300,
+                               "recipe": {"input": "text", "question": "Are there flakes?",
+                                          "scale": ["Yes", "Somewhat", "No"]}})
+        t["ai_model_teachers"].append({"model_id": LM, "user_id": OLA, "role": "owner", "trust_status": "counts"})
+        self.olas = {"q": "Are there flakes?", "opts": ["Yes", "Somewhat", "No"], "own": False,
+                     "model_id": LM, "by": "Ola"}
+
+    def _chat(self):
+        chat = self._host(who="assistant", sensitive=False)
+        self._answers(20)
+        self.assertEqual(self._put("models", [self._model(), {**self.olas, "price": 0}]).status_code, 200)
+        return chat
+
+    def _passes(self):
+        self.store.tables["ai_model_versions"].append(
+            {"id": "v-lm", "model_id": LM, "number": 1, "status": "released", "base_model": "gpt-4o-mini",
+             "founder_id": OLA, "created_at": "2026-11-09", "exam": {"computed": True, "passed": True},
+             "card": {}})
+
+    def test_a_model_still_learning_is_listed_free_and_its_host_teaches_it(self):
+        """FIRST-24: "Models you can use" lists it as learning, at 0; added,
+        it is free (any price is refused) and Tomek joins its teachers. A
+        host without the AI models is offered none still learning."""
+        self._start()
+        listed = {m["model_id"]: m for m in self.client.get(
+            "/v2/chats/setup/models", headers=self._as(TOMEK)).get_json()["models"]}
+        self.assertEqual((listed[LM]["learning"], listed[LM]["price"]), (True, 0))
+        self.assertEqual(self._put("models", [{**self.olas, "price": 3}]).status_code, 400)
+        card = self._put("models", [{**self.olas, "price": 0}]).get_json()["recipe"]["models"][0]
+        self.assertEqual((card["learning"], card["price"]), (True, 0))
+        self.assertIn((LM, TOMEK, "contributor"), [(r["model_id"], r["user_id"], r["role"])
+                                                   for r in self.store.tables["ai_model_teachers"]])
+        self.assertEqual(self._read()["cost"]["per_send"], 0)
+        with patch("services.rings.feature_is_on_for_user", _ring({TOMEK})):
+            listed = self.client.get("/v2/chats/setup/models", headers=self._as(TOMEK)).get_json()["models"]
+        self.assertNotIn(LM, [m["model_id"] for m in listed])
+
+    def test_it_says_nothing_costs_nothing_and_the_hosts_own_words_teach_it(self):
+        """FIRST-24: a person who writes gets no line of it and Tomek pays
+        nothing; a draft Tomek changes before sending becomes its example,
+        in his words only (never what the person sent), as does a question
+        he answers by typing; a draft sent unchanged teaches nothing."""
+        chat = self._chat()
+        self._put("who", "shadow")
+        self.assertEqual(self._send(chat).get_json()["reply"], {"waits": True})
+        self.assertEqual(self.ledger, [])
+        drafts = self.client.get("/v2/chats/setup/drafts", headers=self._as(TOMEK)).get_json()["drafts"]
+        self.assertEqual([x["by"] for x in drafts[0]["lines"]], ["Tomek's model"])
+        self.client.post(f"/v2/chats/setup/drafts/{drafts[0]['message_id']}/send",
+                         json={"body": "Wash it gently, twice a week."}, headers=self._as(TOMEK))
+        self._send(chat, "And the ends?")
+        later = self.client.get("/v2/chats/setup/drafts", headers=self._as(TOMEK)).get_json()["drafts"]
+        self.client.post(f"/v2/chats/setup/drafts/{later[0]['message_id']}/send", json={},
+                         headers=self._as(TOMEK))
+        self._put("who", "you")
+        asked = self._send(chat, "Is it the water?").get_json()["message"]["id"]
+        self.client.post(f"/v2/chats/{chat}/messages", json={"kind": "text", "body": "Maybe, try filtered.",
+                                                             "to": asked}, headers=self._as(TOMEK))
+        made = [e for e in self.store.tables.get("ai_model_examples", []) if e["model_id"] == LM]
+        self.assertEqual([(e["source"], e["added_by"], e["content"]) for e in made],
+                         [("teacher", TOMEK, {"text": "Wash it gently, twice a week."}),
+                          ("teacher", TOMEK, {"text": "Maybe, try filtered."})])
+        host = self.client.get(f"/v2/chats/{chat}/host", headers=self._as(PIOTR)).get_json()["host"]
+        self.assertEqual([m["by"] for m in host["models"]], ["Tomek's model"])
+
+    def test_once_it_passes_the_host_keeps_it_at_the_price_they_see(self):
+        """FIRST-24, N630 item 3: when it passes, its price shows as a change
+        from 0; until Tomek keeps it, it gives no line and costs nothing.
+        Kept at Ola's price, it answers and he pays that."""
+        chat = self._chat()
+        self._passes()
+        self.assertEqual(self._read()["price_changes"],
+                         [{"model_id": LM, "q": "Are there flakes?", "by": "Ola", "was": 0, "now": 3}])
+        self.assertEqual(self._lines(self._send(chat).get_json()["reply"]),
+                         [("Your scalp looks dry here.", "Tomek's model")])
+        self.assertEqual(self.ledger, [])
+        self.assertEqual(self._put("models", [self._model(), {**self.olas, "price": 3}]).status_code, 200)
+        self.assertEqual(self._read()["price_changes"], [])
+        self.assertIn(("There are some flakes.", "Ola's model"),
+                      self._lines(self._send(chat, "And the ends?").get_json()["reply"]))
+        self.assertEqual([(u, n) for u, n, _r in self.ledger], [(TOMEK, 300)])
+
+    def test_one_that_passes_free_answers_without_a_price_to_accept(self):
+        """FIRST-24: when it passes and Ola's price is 0, Tomek has nothing
+        to accept: on the next read it is a used card at 0, it gives its
+        line and nothing is charged."""
+        chat = self._chat()
+        self._passes()
+        next(m for m in self.store.tables["ai_models"] if m["id"] == LM)["price_units"] = 0
+        self.assertEqual(self._lines(self._send(chat).get_json()["reply"]),
+                         [("Your scalp looks dry here.", "Tomek's model"), ("There are some flakes.", "Ola's model")])
+        self.assertEqual(self.ledger, [])
+        card = self._read()["recipe"]["models"][1]
+        self.assertEqual((card.get("learning"), card["price"]), (None, 0))
+        self.assertEqual(self._read()["price_changes"], [])
+
+
+class MeetTest(_Base):
+    """N633 item 2: Tomek joined through Piotr's link; later Tomek opens his
+    own chat. Piotr meets it in the chat the two already share."""
+
+    def setUp(self):
+        super().setUp()
+        p = patch("services.rings.feature_is_on_for_user", _ring({TOMEK, PIOTR}))
+        p.start()
+        self.addCleanup(p.stop)
+
+    def _open(self, who, **parts):
+        self._start(who=who)
+        self._put("send", ["text"], who=who)
+        for part, value in parts.items():
+            self._put(part, value, who=who)
+        self._put("live", True, who=who)
+
+    def _messages(self, chat, who):
+        return self.client.get(f"/v2/chats/{chat}/messages", headers=self._as(who)).get_json()["messages"]
+
+    def _hellos(self, chat, who):
+        return [m for m in self.store.tables["chat_messages"] if m["thread_id"] == chat
+                and "welcome" in (m.get("meta") or {}) and m["author_member_id"] == self._member(chat, who)]
+
+    def _member(self, chat, who):
+        return next(m["id"] for m in self.store.tables["chat_members"]
+                    if m["thread_id"] == chat and m["user_id"] == who)
+
+    def _send(self, chat, who, body="My scalp itches."):
+        return self.client.post(f"/v2/chats/{chat}/messages", json={"kind": "text", "body": body},
+                                headers=self._as(who))
+
+    def _drafts(self, who):
+        return self.client.get("/v2/chats/setup/drafts", headers=self._as(who)).get_json()["drafts"]
+
+    def test_the_hello_shows_once_in_the_chat_they_share(self):
+        """VIS-08: nothing while Tomek's chat is not open, nor when Tomek
+        reads his own chat; Piotr's first read after it opens writes
+        Tomek's hello, once; GET /host gives Piotr Tomek's taps."""
+        chat = self._join(TOMEK, self._link(PIOTR).get_json()["token"]).get_json()["chat"]["id"]
+        self._start(who=TOMEK)
+        self._messages(chat, PIOTR)
+        self._put("live", True)
+        self._messages(chat, TOMEK)
+        self.assertEqual(self._hellos(chat, TOMEK), [])
+        shown = self._messages(chat, PIOTR)
+        self._messages(chat, PIOTR)
+        self.assertEqual(len(self._hellos(chat, TOMEK)), 1)
+        self.assertEqual(shown[-1]["body"], self._read()["recipe"]["hello"])
+        host = self.client.get(f"/v2/chats/{chat}/host", headers=self._as(PIOTR)).get_json()["host"]
+        self.assertEqual(host["taps"][-1], "Something else")
+
+    def test_each_writes_to_the_others_chat_both_ways(self):
+        """VIS-08: Piotr's words are answered by Tomek's chat as a
+        visitor's (here drafted for Tomek); Tomek's words in the same chat
+        are never answered by his own chat, and go to Piotr's chat once
+        Piotr's is open too, whose hello was written when Tomek joined."""
+        self._open(PIOTR)
+        chat = self._join(TOMEK, self._link(PIOTR).get_json()["token"]).get_json()["chat"]["id"]
+        self._open(TOMEK)
+        self._messages(chat, PIOTR)
+        self._messages(chat, TOMEK)
+        self.assertEqual((len(self._hellos(chat, PIOTR)), len(self._hellos(chat, TOMEK))), (1, 1))
+        self.assertEqual(self._send(chat, PIOTR).get_json()["reply"], {"waits": True})
+        self.assertEqual(self._send(chat, TOMEK, "Thanks, and you?").get_json()["reply"], {"waits": True})
+        self.assertEqual([d["said"] for d in self._drafts(TOMEK)], ["My scalp itches."])
+        self.assertEqual([d["said"] for d in self._drafts(PIOTR)], ["Thanks, and you?"])
+
+    def test_without_the_other_persons_open_chat_nothing_changes(self):
+        """VIS-08: Tomek's words to Piotr, who has no chat of his own, are
+        answered by nobody's chat, as before."""
+        chat = self._join(TOMEK, self._link(PIOTR).get_json()["token"]).get_json()["chat"]["id"]
+        self._open(TOMEK)
+        self._messages(chat, PIOTR)
+        sent = self._send(chat, TOMEK, "Hello?").get_json()
+        self.assertNotIn("reply", sent)
+        self.assertEqual(self._drafts(TOMEK), [])
+
