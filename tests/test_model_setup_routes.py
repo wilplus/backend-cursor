@@ -24,7 +24,8 @@ OUTCOME
   O7  The owner answers the first 10 on the teachers' screen, never an exam
       case, and their answers are kept like any teacher's (MOD-38, MOD-55).
   O8  Public shows its disclaimer before it goes public; the second expert
-      and the people invited each get an invite (MOD-32, MOD-34, MOD-35).
+      and the people invited each get an invite, and "Copy an invite link"
+      is the owner's own chat link (MOD-32, MOD-34, MOD-35, N598).
   O9  When the processing authorization is not current, no provider call is
       made and the rules' draft stands.
   O11 An erased person's id is nowhere in a model's setup: it never keeps
@@ -293,8 +294,12 @@ class ModelSetupRoutesTest(unittest.TestCase):
         self.assertEqual(done["status"], "learning")
         invited = {(i["invitee_id"], i["status"]) for i in self.store.tables["ai_model_invites"]}
         self.assertEqual(invited, {(DANIEL, "open"), (TOMEK, "open")})
-        link = self._get(f"/v2/models/{mid}/setup/invite-link").get_json()["link"]
-        self.assertTrue(link.endswith(f"/models/{mid}"))
+        # N598: the invite link is the owner's own chat link, none of its own.
+        self.store.tables["chat_links"] = [{"id": "l1", "user_id": MARTA, "token": "marta-chat",
+                                            "display_name": "Marta", "revoked_at": None}]
+        again = self._get(f"/v2/models/{mid}/setup?step=invite").get_json()["screen"]
+        self.assertEqual(again["chat_link"], "/c/marta-chat")
+        self.assertEqual(self._get(f"/v2/models/{mid}/setup/invite-link").status_code, 405)
 
     def test_an_erased_person_is_nowhere_in_the_setup(self):
         from services.data_purge_registry import DEPENDENCIES

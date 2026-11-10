@@ -11,10 +11,11 @@ services/model_setup_store.py for the tables).
   POST /v2/models/<id>/setup/data                existing data (multipart ``file``)
   GET  /v2/models/<id>/setup/first-ten           the next of the owner's first 10
   POST /v2/models/<id>/setup/first-ten/<eid>     {step, answer}
-  GET  /v2/models/<id>/setup/invite-link         "Copy an invite link"
 
 Every answer is {model_id, status, screen}; ``screen`` is one step as the
-owner's screen shows it. Ring row ``ai_models`` (ring 6): anyone else gets
+owner's screen shows it. "Copy an invite link" is the owner's own chat link
+(N598): the invite step carries ``chat_link``, and GET /v2/chats/link makes
+it when there is none yet; there is no separate teacher link. Ring row ``ai_models`` (ring 6): anyone else gets
 404 from every route, and a draft is 404 to anyone but its owner. The two
 provider calls (the draft and a study's rules) pass the caller's
 processing authorization in the store.
@@ -119,13 +120,6 @@ def v2_model_setup_first_ten_answer(model_id, example_id):
     from services import model_setup_store as store
     body = _body()
     return _run("first-ten answer", lambda: store.first_ten_answer(db, _me(), model_id, example_id, body))
-
-
-@v2_bp.route("/models/<model_id>/setup/invite-link", methods=["GET"])
-@require_auth
-def v2_model_setup_invite_link(model_id):
-    from services import model_setup_store as store
-    return _run("invite-link", lambda: store.invite_link(db, _me(), model_id))
 
 
 @v2_bp.route("/models/<model_id>/setup/<step>", methods=["POST"])

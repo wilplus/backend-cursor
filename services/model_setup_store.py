@@ -18,6 +18,11 @@ and ``ai_models.recipe`` (0516); the rules and words are
   * ``first_ten``     the owner's first 10, on the teachers' screen (MOD-38, MOD-55)
   * ``owner_view``    the owner's part of a model's page (MOD-36, MOD-37)
 
+Inviting teachers (N598): "Copy an invite link" is the owner's own chat link
+(``chat_link`` on the invite step; GET /v2/chats/link makes it), never a
+link of its own; the people ticked from the owner's chats get an invite in
+the list, which they accept or put off.
+
 Ring row ``ai_models`` (ring 6): anyone else gets 404, as for the list. A
 draft is the owner's alone: anyone else gets 404 for it.
 
@@ -136,6 +141,9 @@ def _view(database: Any, me: str, model: dict, step: str, **extra: Any) -> dict:
         kw["first"] = {"available": bool(_first_pool(database, model))}
     kw.update(extra)
     screen = S.step_screen(draft, step, **kw)
+    if step == "invite":
+        # "Copy an invite link" copies the owner's own chat link (N598).
+        screen["chat_link"] = _chat_link(database, me)
     if step == "ready":
         screen.update(S.ready_screen(model.get("name") or "", draft,
                                      ratings_target=_targets(model)["ratings"]))
@@ -466,14 +474,17 @@ _HANDLERS = {
 }
 
 
-def invite_link(database: Any, user_id: Any, model_id: Any) -> dict:
-    """"Copy an invite link": the model's page; a private model opens only
-    for the people its owner invited."""
-    me = lp._require(database, user_id)
-    model = _owned(database, me, model_id)
-    from config import Config
-    base = (getattr(Config, "FRONTEND_URL", "") or "https://willpowerlab.com").rstrip("/")
-    return {"link": f"{base}/models/{model['id']}"}
+def _chat_link(database: Any, me: str) -> Optional[str]:
+    """The owner's own chat link (N598 item 1: inviting a teacher is sharing
+    it; there is no separate link for teachers), when they have one; the app
+    makes it with GET /v2/chats/link, as everywhere."""
+    try:
+        from services.chat_links import _live
+        link = _live(database, me)
+    except Exception:
+        logger.warning("model setup: the chat link could not be read", exc_info=True)
+        return None
+    return f"/c/{link['token']}" if link else None
 
 
 # ── "Start with this, finish the rest later" (MOD-28, MOD-36) ───────────────

@@ -2025,7 +2025,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O5** "Start with this, finish the rest later" starts the model learning after its scale; the rest is a checklist on its page (MOD-28, MOD-36).
 - **O6** Existing data counts only after the tick: its rows become the model's private examples, their labels never sent to a teacher, and only the 60 re-rates reach the queue (MOD-31).
 - **O7** The owner answers the first 10 on the teachers' screen, never an exam case, and their answers are kept like any teacher's (MOD-38, MOD-55).
-- **O8** Public shows its disclaimer before it goes public; the second expert and the people invited each get an invite (MOD-32, MOD-34, MOD-35).
+- **O8** Public shows its disclaimer before it goes public; the second expert and the people invited each get an invite, and "Copy an invite link" is the owner's own chat link (MOD-32, MOD-34, MOD-35, N598).
 - **O9** When the processing authorization is not current, no provider call is made and the rules' draft stands.
 - **O11** An erased person's id is nowhere in a model's setup: it never keeps one, and the expert and the invited people come from rows the purge registry deletes.
 - **O12** The owner's first 10 become the model's known answers; an answer counts only once another trusted teacher gives the same one, and two matching trusted answers settle an example (N570 item 4).
