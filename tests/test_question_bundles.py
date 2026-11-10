@@ -12,22 +12,23 @@ OUTCOME
   O2  My one recording goes to everyone in the bundle, each privately in
       their own chat with me, under their own question quoted; nobody gets
       it twice.
-  O3  Someone who asks the same thing later gets my answer at once, with its
-      colour for how sure the match is.
+  O3  Someone who asks the same thing later joins the bundle and waits for
+      me: my assistant sends nothing by itself yet (N606). The card is back
+      with "Record one answer", and my next recording reaches only them.
   O4  Without the chat builder's ring nothing is bundled and the queue is 404.
   O5  My own voice replies in my chats are never bundled as questions.
-  O6  A later asker's automatic answer reaches their iPhone like any answer.
+  O6  My recorded answer reaches each asker's iPhone like any answer.
   O7  "Record one answer" asks my recording consent again: withdrawn, nothing
       is sent.
   O8  When an asker's account is erased, their words leave the bundle: it
       reads as the next question, and nothing of theirs is kept.
 PROVES   O1 -> BundlesTest::test_questions_that_ask_the_same_thing_gather_in_one_bundle
          O2 -> BundlesTest::test_one_recording_answers_everyone_in_the_bundle
-         O3 -> BundlesTest::test_a_later_asker_gets_the_answer_at_once
+         O3 -> BundlesTest::test_a_later_asker_waits_for_me
          O4 -> BundlesTest::test_without_the_ring_nothing_is_bundled
          O1 -> BundlesTest::test_the_card_names_two_and_how_many_more_and_where_they_asked
          O5 -> BundlesTest::test_my_own_replies_are_never_bundled
-         O6 -> BundlesTest::test_a_later_asker_gets_the_answer_at_once
+         O6 -> BundlesTest::test_a_later_asker_waits_for_me
          O7 -> BundlesTest::test_one_answer_asks_my_recording_consent_again
          O8 -> BundlesTest::test_an_erased_askers_words_leave_the_bundle
 WHY      "how do we bundle the people who have similar questions ... so that I
@@ -140,20 +141,27 @@ class BundlesTest(unittest.TestCase):
                          {"sent": 0})
         self.assertEqual(self._queue()[0]["record"], None)
 
-    def test_a_later_asker_gets_the_answer_at_once(self):
+    def test_a_later_asker_waits_for_me(self):
         ariel = self._chat_with(SOMEONE, "Ariel")
         self._ask(SOMEONE, ariel, UM)
         self.store.table("recordings").insert({"session_v2_id": TAKE, "user_id": ME,
                                                "storage_path": "lab/a.webm", "duration": 40}).execute()
+        bundle = self._queue()[0]["id"]
         self.who = ME
-        self._post(f"/v2/chats/bundles/{self._queue()[0]['id']}/answer", {"take": TAKE})
+        self._post(f"/v2/chats/bundles/{bundle}/answer", {"take": TAKE})
         later = self._chat_with(THIRD, "Kasia")
+        self._ask(THIRD, later, "How do I stop saying um in my meetings?")
+        self.assertEqual(self._answers_in(THIRD, later), [])  # N606: nothing by itself
+        card = self._queue()[0]
+        self.assertEqual((card["title"], card["answered"], card["record"]),
+                         ("2 people asked", False, "Record one answer"))
+        self.who = ME
         with patch("services.push_devices.push_later") as push:
-            self._ask(THIRD, later, "How do I stop saying um in my meetings?")
+            self.assertEqual(self._post(f"/v2/chats/bundles/{bundle}/answer",
+                                        {"take": TAKE}).get_json(), {"sent": 1})
         self.assertIn(THIRD, [c.args[1] for c in push.call_args_list])
-        got = self._answers_in(THIRD, later)
-        self.assertEqual([m["meta"]["mark"] for m in got], ["green"])
-        self.assertEqual(self._queue()[0]["title"], "2 people asked")
+        self.assertEqual([m["meta"]["mark"] for m in self._answers_in(THIRD, later)], ["green"])
+        self.assertEqual(len(self._answers_in(SOMEONE, ariel)), 1)
 
     def test_the_card_names_two_and_how_many_more_and_where_they_asked(self):
         people = [(SOMEONE, "Ariel", False), (OTHER, "Ola", False), (THIRD, "Kasia", True),

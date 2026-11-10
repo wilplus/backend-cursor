@@ -5,13 +5,15 @@ a_question_joins_its_bundle).
 
   * ``collect``: a voice question someone sends a host, once its words are
     known, joins the host's bundle that asks the same thing, or starts one
-    (N584 item 1). When that bundle already has the host's answer, the asker
-    gets it at once in their own chat, under their question, with its
-    coloured mark for how sure the match is (N584 item 4, N580 item 3).
+    (N584 item 1), with its coloured mark for how sure the match is. When
+    that bundle already has the host's answer, the question waits for the
+    host all the same: until the minimum is reached the assistant sends
+    nothing (N606 item 1), and the minimum is still open (N606 item 3). Once
+    it is set, the saved answer goes at once (N584 item 4, N580 item 3).
   * ``queue``: the host's bundles in Will's chat, one card each (N602):
     "{n} people asked", the question, the faces of who asked with "{name},
-    {name} and {n} more", "See who asked" and the bar's "Record one answer";
-    the ones still waiting first. ``who_asked``: the sheet "Who asked", each
+    {name} and {n} more", "See who asked" and "Record one answer"; the ones
+    with someone still waiting first. ``who_asked``: the sheet "Who asked", each
     person's own words, name and where they asked, then "Split them up".
   * ``answer``: the host's one recording, a Take of their own, goes to
     everyone in the bundle, each privately in their own chat with the host,
@@ -55,15 +57,15 @@ JOIN = 0.5
 SURE = 0.75
 MAX_WORDS = 2000
 
-# ── The words (drafted for the founder's OK, N584 item 2) ───────────────
-#: The card and its sheet (N602, signed with the founder's choice).
+# ── The words ───────────────────────────────────────────────────────────
+#: The card and its sheet (N602 item 4, signed with the founder's choice).
 ASKED = "{n} people asked"
 SEE_WHO = "See who asked"
 WHO_ASKED = "Who asked"
 SPLIT = "Split them up"
 ASSISTANT_ANSWERED = "Your assistant has answered them for now."
 RECORD_ONE = "Record one answer"
-#: Drafted for the founder's OK: a bundle of one, and where it was asked.
+#: A bundle of one, and where it was asked (signed, N610 item 7).
 ONE_ASKED = "{name} asked"
 IN_CHAT, ON_WEBSITE = "in your chat", "on your website"
 
@@ -165,11 +167,20 @@ def _send(database: Any, host_id: str, asker: dict, bundle: dict,
     return sent
 
 
+def _assistant_sends(database: Any, host_id: str) -> bool:
+    """Whether the host's assistant may send a saved answer by itself. Not
+    yet for anyone: it answers only once a minimum is reached, and what the
+    minimum is stays open (N606 items 1 and 3)."""
+    del database, host_id
+    return False
+
+
 def collect(database: Any, host_id: Any, asker_id: Any, thread_id: Any, message_id: Any,
             words: Any) -> Optional[dict]:
     """A question just asked of ``host_id``, with its words: into its bundle.
     {"bundle", "mark", "answered": message id or None}; None when the host
-    has no chat builder or nothing could be kept. Best-effort: the question
+    has no chat builder or nothing could be kept. A saved answer is sent only
+    once the assistant may send (N606); until then the question waits. Best-effort: the question
     is sent either way."""
     from services import assistants
     said = " ".join(str(words or "").split())[:MAX_WORDS]
@@ -190,7 +201,8 @@ def collect(database: Any, host_id: Any, asker_id: Any, thread_id: Any, message_
         asker = _rows(_table(database, ASKERS).insert({
             "bundle_id": str(best["id"]), "asker_id": str(asker_id), "thread_id": str(thread_id),
             "message_id": str(message_id), "words": said, "mark": mark_of(score)}))[0]
-        sent = _send(database, str(host_id), asker, best) if best.get("answer_take") else None
+        sent = (_send(database, str(host_id), asker, best)
+                if best.get("answer_take") and _assistant_sends(database, str(host_id)) else None)
         return {"bundle": str(best["id"]), "mark": asker["mark"], "answered": sent}
     except Exception:  # noqa: BLE001 -- the question is sent either way
         logger.warning("question_bundles: a question was not bundled (message %s)", message_id,
@@ -228,7 +240,9 @@ def _bundle_rows(database: Any, host_id: str) -> tuple[list[dict], list[dict]]:
 
 def queue(database: Any, host_id: Any) -> dict:
     """GET /v2/chats/bundles: one card per bundle in Will's chat (N602): the
-    ones still waiting for an answer first."""
+    ones with someone still waiting for an answer first. A bundle is answered
+    once everyone in it has been sent the host's recording; someone who asks
+    later waits for the host again (N606 item 1)."""
     bundles, askers = _bundle_rows(database, str(host_id))
     names = _names(database, askers)
     out: list[dict[str, Any]] = []
@@ -236,16 +250,16 @@ def queue(database: Any, host_id: Any) -> dict:
         mine = [a for a in askers if str(a["bundle_id"]) == str(b["id"])]
         if not mine:
             continue
+        answered = bool(b.get("answer_take")) and all(a.get("answered_message_id") for a in mine)
         who = [names.get((str(a["thread_id"]), str(a["asker_id"]))) or "" for a in mine]
         out.append({"id": str(b["id"]),
                     "title": ASKED.format(n=len(mine)) if len(mine) > 1
                     else ONE_ASKED.format(name=who[0] or "Someone"),
                     "question": _question(mine), "faces": who, "who": _faces(who),
                     # Only true once the assistant has answered each of them;
-                    # it doesn't yet, so the line waits (N602 item 1).
-                    "note": None, "see": SEE_WHO,
-                    "answered": bool(b.get("answer_take")),
-                    "record": None if b.get("answer_take") else RECORD_ONE})
+                    # it sends nothing yet, so the line waits (N602 item 1, N606).
+                    "note": None, "see": SEE_WHO, "answered": answered,
+                    "record": None if answered else RECORD_ONE})
     out.sort(key=lambda b: b["answered"])
     return {"bundles": out}
 
