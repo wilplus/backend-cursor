@@ -28,8 +28,10 @@ processing authorization of the person who sent it (``user_provider_scope``)
 or, for "Test my chat", of the host (the route's ``phase1_provider_route``).
 Behind the host's ring row ``chat_builder``.
 
-TOKENS (TOK-01, TOK-02). A line of another person's model in a visitor's
-message is paid by the host, the owner's price, once per message
+TOKENS (TOK-01, TOK-02, N630 item 3). A line of another person's model in
+a visitor's message is paid by the host, at the price saved on the
+recipe's card when they added the model (never the owner's newer price),
+once per message
 (``model_api_store.pay_for_chat_line``); a host with too few tokens has
 that line left out and the rest is sent. The person pays nothing and sees
 no price. "Test my chat" is not charged. No provider call is added.
@@ -259,11 +261,12 @@ def on_question(database: Any, host_id: Any, asker_id: Any, thread_id: Any, mess
 
 
 def _payer(database: Any, host: str, message: str) -> Callable[[dict], bool]:
-    """Another person's model in this host's chat: the host pays its owner's
-    price for this message, once (``model_api_store.pay_for_chat_line``)."""
+    """Another person's model in this host's chat: the host pays the price
+    saved on its card when they added it (N630 item 3), for this message,
+    once (``model_api_store.pay_for_chat_line``)."""
     def pay(model: dict) -> bool:
         from services.model_api_store import pay_for_chat_line
-        return pay_for_chat_line(database, host, message, model.get("model_id"))
+        return pay_for_chat_line(database, host, message, model.get("model_id"), price=model.get("price"))
     return pay
 
 

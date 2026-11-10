@@ -562,9 +562,13 @@ def chat_use_id(message_id: Any, model_id: Any) -> str:
     return str(uuid.uuid5(_CHAT_USE, f"{message_id}:{model_id}"))
 
 
-def pay_for_chat_line(database: Any, host_id: Any, message_id: Any, model_id: Any) -> bool:
+def pay_for_chat_line(database: Any, host_id: Any, message_id: Any, model_id: Any,
+                      price: Any = None) -> bool:
     """May another person's model give its line in this host's chat? The
-    host pays the owner's price, once (N607 item 3, N617 item 2): charged
+    host pays, once (N607 item 3, N617 item 2), the price saved on the
+    recipe's card when they added the model (``price``, in shown tokens; N630
+    item 3): the owner's newer price never moves it by itself. A card with
+    no saved price pays the owner's price. Charged
     through the same atomic ledger charge as an API answer, on an id made
     from the visitor's message and the model, so the same message delivered
     again is charged nothing more. The owner and the teachers are credited
@@ -586,6 +590,9 @@ def pay_for_chat_line(database: Any, host_id: Any, message_id: Any, model_id: An
         version = next((v for v in reversed(rules.released(versions)) if rules.exam_passed(v)), None)
         if version is None or rules.refusal(model, versions, host):
             return False
+        if price is not None:
+            from services.token_prices import stored
+            model["price_units"] = stored(int(price))   # the owner is credited what the host pays
         row = rules.call_row({"kind": "live"}, model, version, sure=True,
                              base_model=str(version.get("base_model") or "gpt-4o-mini"))
         call_id = chat_use_id(message_id, model["id"])
