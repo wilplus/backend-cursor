@@ -10201,7 +10201,7 @@
   "id": "FIRST-23",
   "area": "The first person ever sets up a chat",
   "title": "Teach it with an example of your own",
-  "status": "not built",
+  "status": "partly",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host is teaching a model",
@@ -10214,9 +10214,14 @@
    "N618 item 3",
    "N563 item 3"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad_store.py::def add_example("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "On the model made in the setup the host adds an example of their own in words (POST /v2/models/<id>/examples) and answers it as the first of their first ten; it stays private to that model (backend #1896). A photo or a file as the example is not built."
  },
  {
   "id": "SMALL-04",
