@@ -558,3 +558,4 @@
 0520	a_model_keeps_its_setup.sql
 0521	a_business_can_buy_a_model_s_answers.sql
 0522	a_model_learns_from_its_settled_examples.sql
+0523	a_paid_answer_is_charged_once_within_its_limit.sql
