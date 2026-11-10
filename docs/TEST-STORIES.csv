@@ -1859,7 +1859,9 @@ messages, and is told a few questions come first; in my own view of
 the chat I see neither the questions nor their taps, only that they
 joined through my link.
 O3  They answer by tapping: ""No"" to ""Are you in a hurry?"" puts the
-deadline one step of my plan away and moves on; a question that takes
+deadline one step of my plan away and moves on, a day they never
+chose, never shown as theirs (N631: ``deadline_chosen`` false, the
+plan's ``deadline_given``, the card's row the question and ""No""); a question that takes
 more than one answer takes several; then my closing line; I see one
 card with the deadline and the languages.
 O4  A tap that is not one of the answers, two answers to a one-answer
@@ -1881,6 +1883,7 @@ O9  ""Change it"" understands my words however I put them (the model, under
 my processing authorization), and never adds a question about the work.","O1 -> JoinQuestionsTest::test_my_questions_are_kept_and_checked
 O2 -> JoinQuestionsTest::test_whoever_joins_finds_my_first_lines_and_i_do_not
 O3 -> JoinQuestionsTest::test_they_answer_by_tapping_and_i_read_one_card
+O3 -> JoinQuestionsTest::test_a_day_picked_is_theirs
 O4 -> JoinQuestionsTest::test_a_tap_that_is_not_an_answer_is_refused
 O5 -> JoinQuestionsTest::test_joining_someone_with_no_questions_posts_nothing
 O6 -> ReadyTest::test_a_typed_question_is_kept_only_when_practical_with_answers
@@ -2890,6 +2893,8 @@ back!"" with the bar, and today's one thing, once.
 O7  A new project's first Take, on a plan with a talk's date, asks ""Is
 this for {date}?""; Yes keeps the plan, No starts a new plan's
 questions (no deadline asked), the old plan kept in the history.
+A day the speaker never chose (a join link's ""No"") is never shown on
+the card nor asked about as theirs (N631).
 O8  Only a talk has a date: the card shows it, changing it says nothing,
 and there are no practice days to change (N564 item 6).
 O9  Every Take fills one of the level's four marks; after four, the next
@@ -2944,6 +2949,7 @@ O4 -> test_voice_answers_are_kept_and_the_key_line_comes_first
 O5 -> test_ratings_are_kept_quietly_and_the_plan_follows
 O6 -> test_the_hello_and_the_bar_show_the_level_and_its_marks
 O7 -> test_a_new_project_asks_whether_it_is_for_the_same_event
+O7 -> test_a_day_never_chosen_is_never_shown_or_asked_about
 O17 -> test_the_first_ratings_on_a_running_plan_end_on_the_plan
 test_a_new_project_on_a_plan_made_after_earlier_takes_is_asked_about
 O8 -> test_only_a_talk_has_a_date_and_changing_it_says_nothing
