@@ -160,10 +160,14 @@ def _other(database: Any, user_id: Any, thread_id: Any) -> dict:
 
 def theirs(database: Any, user_id: Any, thread_id: Any) -> dict:
     """GET /v2/chats/<id>/profile: the other person's profile, with the
-    photos and files the two of you shared in this chat."""
+    photos and files the two of you shared in this chat, and their account
+    id, which their AI models are read by (/v2/models/profile/<user_id>
+    still shows only the models the caller may see). The id is no read on
+    anyone (Never 1); "Send to" already names it for the same chats."""
     other = _other(database, user_id, thread_id)
     out = _shown(_row(database, str(other["user_id"])), other.get("display_name") or "",
                  other.get("subtitle"))
+    out["user_id"] = str(other["user_id"])
     out.update(_shared(database, [], [other["thread_id"]]))
     return out
 
