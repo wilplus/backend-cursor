@@ -8982,14 +8982,15 @@
   ],
   "code": [
    "be:services/way_in.py::ELSE_TAPS = (TALK, SHARE, LEARN)",
-   "fe:src/components/willab/plan/WayIn.tsx"
+   "fe:src/components/willab/plan/WayIn.tsx",
+   "be:services/way_in.py::SHARE_IN_YOUR_CHAT = "
   ],
   "tests": [
    "tests/test_way_in.py",
    "src/components/willab/plan/wayIn.test.tsx"
   ],
   "evals": [],
-  "note": "Built with N604: no new words, the taps and lines are N573's and N592's."
+  "note": "Built with N604: no new words, the taps and lines are N573's and N592's. With the ring row chat_builder, \"Share what I know\" says \"Next, open Your chat below, and set it up.\" and opens nothing (N634 item 3; backend way_in.SHARE_IN_YOUR_CHAT); without it the line is as above."
  },
  {
   "id": "FIRST-02",
@@ -9160,13 +9161,14 @@
   ],
   "code": [
    "be:services/chat_recipes.py::def _model(",
-   "be:services/model_setup_store.py::def begin_from_chat("
+   "be:services/model_setup_store.py::def begin_from_chat(",
+   "be:services/chat_recipes.py::READY_BASES = "
   ],
   "tests": [
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "The recipe keeps each model as one question with three answers, and a model made there is a real model, the host's and private (backend #1893, #1894). A used model's key is not built."
+  "note": "The recipe keeps each model as one question with three answers, and a model made there is a real model, the host's and private (backend #1893, #1894). A used model's key is not built. A host's own model card keeps what it is built on, \"base\": \"gpt\" the only one ready; \"claude\" and \"own\" are refused, and a card with none reads as \"gpt\" (N634 item 1; backend chat_recipes.READY_BASES)."
  },
  {
   "id": "FIRST-08",

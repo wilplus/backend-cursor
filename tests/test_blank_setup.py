@@ -31,6 +31,7 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          N632.3   -> SetupTest::test_a_chat_that_takes_a_recording_is_a_skill_chat
          N632.4   -> SetupTest::test_start_again_begins_blank_and_keeps_only_the_same_model
          N632.6   -> SetupTest::test_not_now_is_never_final
+         N634.1   -> SetupTest::test_an_own_model_is_built_on_gpt
          VIS-01   -> VisitorTest::test_the_hosts_hello_first_questions_and_taps
          VIS-02   -> VisitorTest::test_the_bar_follows_what_the_host_takes
          VIS-03   -> VisitorTest::test_they_get_back_the_output_the_host_chose
@@ -306,6 +307,21 @@ class SetupTest(_Base):
             self.assertEqual((recipe["smart"], recipe["share"], recipe["price"], recipe["who"]),
                              (True, True, 3, "assistant"))
             self.assertFalse(self._put("live", False).get_json()["recipe"]["live"])
+
+    def test_an_own_model_is_built_on_gpt(self):
+        """N634 item 1: an own model's card keeps what it is built on; only
+        "gpt" is ready, "claude" and "own" are refused, and a card saved
+        with none reads as built on GPT."""
+        self._start()
+        self.assertEqual(self._put("models", [{**self._model(), "base": "gpt"}]).get_json()
+                         ["recipe"]["models"][0]["base"], "gpt")
+        for not_ready in ("claude", "own", "llama"):
+            got = self._put("models", [{**self._model(), "base": not_ready}])
+            self.assertEqual((got.status_code, got.get_json()["code"]), (400, "RECIPE_INVALID"))
+        self.assertEqual(self._put("models", [self._model()]).get_json()["recipe"]["models"][0]["base"], "gpt")
+        row = next(r for r in self.store.tables["people_profiles"] if r["user_id"] == TOMEK)
+        row["chat_recipe"]["models"][0].pop("base")             # a card saved before N634
+        self.assertEqual(self._read()["recipe"]["models"][0]["base"], "gpt")
 
     def test_who_answers_is_three_plain_choices(self):
         """FIRST-09, FIRST-22: "I draft, you send" first, then "Only you"
