@@ -1900,12 +1900,12 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O4** A coach's video plays only while it is their word's current one; a video they replaced or removed never plays, an older "Later · from your coach" bubble is left out, and each bubble says whether it is new.
 - **O5** My practice tries from several practices on one page all get fresh links, and the practices are read side by side, not one after another.
 
-### As a person with the chat builder, I want Will's chat to hold only my model, my chat's setup and what needs me, and the speaking chat to hold everything about my Takes, without anything being stored differently (N635).
+### As a person with the chat builder, I want Will's chat to hold only my model, my chat's setup and what needs me, the speaking chat to hold everything about my Takes, and "Principles" the principles coaching, without anything being stored differently (N635, widened to three places).
 
 `tests/test_lounge_place.py` · Story
 
 - **O1** Every writer of the Lounge is named here, and each kind of row it writes is placed in exactly one chat; a new writer that this list does not name fails the test.
-- **O2** GET /v2/user/lounge/messages?place=speaking returns only the speaking chat's rows, ?place=will only Will's, and no place every row as before; each row says its place, and a place reads older pages until it has a page of its own.
+- **O2** GET /v2/user/lounge/messages?place=speaking returns only the speaking chat's rows, ?place=principles only the principles chat's, ?place=will only Will's, and no place every row as before; each row says its place, and a place reads older pages until it has a page of its own.
 
 *Why:* services/lounge_messages.place_of is the one list (N635 item 4: the rows stay where they are written; each chat shows its own).
 

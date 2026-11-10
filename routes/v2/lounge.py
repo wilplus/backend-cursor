@@ -53,11 +53,11 @@ def v2_user_lounge_messages_get():
       limit  (default 50, max 200)  — page size
       before (ISO-8601, optional)   — cursor; rows strictly older than
                                       this. Absent → latest page.
-      place  ("speaking"|"will", optional) — only the rows of that chat
+      place  ("speaking"|"principles"|"will", optional) — only the rows of that chat
                                       (N635, for the chat builder's ring;
                                       services/lounge_messages.place_of).
                                       Absent → every row, as before.
-    Every message carries "place": "speaking" | "will".
+    Every message carries "place": "speaking" | "principles" | "will".
 
     Response 200 (BE contract §3.15):
       {

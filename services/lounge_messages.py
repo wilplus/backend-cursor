@@ -275,16 +275,19 @@ def shape_lounge_page(rows_desc: list[dict], limit: int) -> dict:
 # ── Which chat a Lounge row shows in (N635) ─────────────────────────────
 #
 # For whoever has the ring row ``chat_builder``, the Lounge's rows are shown
-# in two chats: what belongs to speaking only in the speaking chat (N590:
+# in three chats: what belongs to speaking only in the speaking chat (N590:
 # the Take's rows, "Your feedback is ready.", the way into the Feedback
 # walk, the plan's questions and its card, the feelings check, the line
-# after the walk), and the rest in Will's chat (the model, the chat's
-# setup, what needs you). Nothing is stored differently: a row is placed by
+# after the walk); the principles coaching in its own chat, "Principles"
+# (the # notebook and what Will reads in it: the Sunday note, strengths,
+# what is in your control, the sales step, your why, life goals; frontend
+# docs/flows/principles.md); and the rest in Will's chat (the model, the
+# chat's setup, what needs you). Nothing is stored differently: a row is placed by
 # what it already carries. THIS IS THE ONE LIST; tests/test_lounge_place.py
 # names every writer of the Lounge and fails on one this list does not place.
 
-SPEAKING, WILL = "speaking", "will"
-PLACES = (SPEAKING, WILL)
+SPEAKING, PRINCIPLES, WILL = "speaking", "principles", "will"
+PLACES = (SPEAKING, PRINCIPLES, WILL)
 
 #: Kinds that only a Take makes: its readout, the walk's steps, the coach's
 #: feedback and Ideal Text bubbles, the cadence after a Take.
@@ -304,10 +307,21 @@ SPEAKING_KEYS = frozenset({
 SPEAKING_OFFERS = frozenset({"joke", "feedback_check", "will_question", "whatsapp"})
 #: Notes about the coach's feedback.
 SPEAKING_NOTES = frozenset({"feedback_digest"})
+#: The principles coaching (frontend docs/flows/principles.md): the offers
+#: of the voice notebook, the Sunday note, life goals, the sales step, your
+#: why and strengths, and the keys their rows carry.
+PRINCIPLES_OFFERS = frozenset({
+    "voice_notebook", "sunday_note", "life_goals", "life_goals_quarter", "life_goals_change",
+    "sales_step", "your_why", "strengths",
+})
+PRINCIPLES_KEYS = frozenset({
+    "sunday_note_id", "sunday_step", "sales_note", "life_goal_quarter", "life_goal_change",
+    "strength_id", "strength_talk", "in_control", "your_why_ask", "your_why_answer", "held_note",
+})
 
 
 def place_of(row: dict) -> str:
-    """"speaking" or "will" for one Lounge row (N635)."""
+    """"speaking", "principles" or "will" for one Lounge row (N635)."""
     if row.get("kind") in SPEAKING_KINDS:
         return SPEAKING
     meta = row.get("metadata")
@@ -317,15 +331,18 @@ def place_of(row: dict) -> str:
         return SPEAKING
     if meta.get("offer") in SPEAKING_OFFERS or meta.get("note") in SPEAKING_NOTES:
         return SPEAKING
+    if meta.get("offer") in PRINCIPLES_OFFERS or any(meta.get(k) not in (None, "", False)
+                                                     for k in PRINCIPLES_KEYS):
+        return PRINCIPLES
     return WILL
 
 
 def parse_place(raw: Optional[str]) -> Optional[str]:
-    """``?place=``: "speaking", "will", or none (every row, as before)."""
+    """``?place=``: "speaking", "principles", "will", or none (every row, as before)."""
     if raw is None or raw == "":
         return None
     if raw not in PLACES:
-        raise LoungeValidationError("place: must be speaking or will")
+        raise LoungeValidationError("place: must be speaking, principles or will")
     return raw
 
 

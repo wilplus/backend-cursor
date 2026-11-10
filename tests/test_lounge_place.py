@@ -1,14 +1,16 @@
 """
 STORY    As a person with the chat builder, I want Will's chat to hold only
-         my model, my chat's setup and what needs me, and the speaking chat
-         to hold everything about my Takes, without anything being stored
-         differently (N635).
+         my model, my chat's setup and what needs me, the speaking chat
+         to hold everything about my Takes, and "Principles" the
+         principles coaching, without anything being stored differently
+         (N635, widened to three places).
 OUTCOME
   O1  Every writer of the Lounge is named here, and each kind of row it
       writes is placed in exactly one chat; a new writer that this list
       does not name fails the test.
   O2  GET /v2/user/lounge/messages?place=speaking returns only the
-      speaking chat's rows, ?place=will only Will's, and no place every
+      speaking chat's rows, ?place=principles only the principles chat's,
+      ?place=will only Will's, and no place every
       row as before; each row says its place, and a place reads older
       pages until it has a page of its own.
 PROVES   O1 -> LoungePlaceTest::test_every_lounge_writer_places_its_rows
@@ -23,7 +25,7 @@ import unittest
 from unittest.mock import patch
 from urllib.parse import quote
 
-from services.lounge_messages import SPEAKING, WILL, place_of
+from services.lounge_messages import PRINCIPLES, SPEAKING, WILL, place_of
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -63,18 +65,18 @@ WRITERS: dict[str, list[tuple[dict, str]]] = {
     "services/chats.py": [({"role": "bot", "kind": "text", "metadata": {"answer_taken_back": True}}, WILL)],
     "services/goal_history.py": [
         ({"role": "bot", "kind": "text", "metadata": {"card": "goal_change", "speaker": "S1"}}, WILL)],
-    "services/in_control.py": [({"role": "bot", "kind": "text", "metadata": {"in_control": "x"}}, WILL)],
+    "services/in_control.py": [({"role": "bot", "kind": "text", "metadata": {"in_control": "x"}},PRINCIPLES)],
     "services/life_goals.py": [
-        ({"role": "bot", "kind": "text", "metadata": {"offer": "life_goals"}}, WILL),
-        ({"role": "bot", "kind": "text", "metadata": {"life_goal_quarter": "g"}}, WILL)],
+        ({"role": "bot", "kind": "text", "metadata": {"offer": "life_goals"}},PRINCIPLES),
+        ({"role": "bot", "kind": "text", "metadata": {"life_goal_quarter": "g"}},PRINCIPLES)],
     "services/sales_framing.py": [
-        ({"role": "bot", "kind": "text", "metadata": {"offer": "sales_step", "sales_note": "n"}}, WILL)],
+        ({"role": "bot", "kind": "text", "metadata": {"offer": "sales_step", "sales_note": "n"}},PRINCIPLES)],
     "services/strengths.py": [
-        ({"role": "bot", "kind": "text", "metadata": {"offer": "strengths", "strength_id": "s"}}, WILL)],
+        ({"role": "bot", "kind": "text", "metadata": {"offer": "strengths", "strength_id": "s"}},PRINCIPLES)],
     "services/sunday_note.py": [
-        ({"role": "bot", "kind": "text", "metadata": {"offer": "sunday_note", "sunday_note_id": "n"}}, WILL)],
-    "services/voice_notebook.py": [({"role": "bot", "kind": "text", "metadata": {"offer": "voice_notebook"}}, WILL)],
-    "services/your_why.py": [({"role": "bot", "kind": "text", "metadata": {"offer": "your_why"}}, WILL)],
+        ({"role": "bot", "kind": "text", "metadata": {"offer": "sunday_note", "sunday_note_id": "n"}},PRINCIPLES)],
+    "services/voice_notebook.py": [({"role": "bot", "kind": "text", "metadata": {"offer": "voice_notebook"}},PRINCIPLES)],
+    "services/your_why.py": [({"role": "bot", "kind": "text", "metadata": {"offer": "your_why"}},PRINCIPLES)],
     # The app's own rows (POST /v2/user/lounge/messages): a Take's readout,
     # the walk's steps, a typed line to Will, an offer the app makes.
     "routes/v2/lounge.py": [
@@ -103,7 +105,7 @@ class LoungePlaceTest(unittest.TestCase):
                          "and name it here")
         for writer, rows in WRITERS.items():
             for row, place in rows:
-                self.assertIn(place_of(row), (SPEAKING, WILL))
+                self.assertIn(place_of(row), (SPEAKING, PRINCIPLES, WILL))
                 self.assertEqual(place_of(row), place, f"{writer}: {row}")
 
     def test_the_read_returns_one_place(self):
@@ -121,9 +123,10 @@ class LoungePlaceTest(unittest.TestCase):
         rows = []
         for i in range(12):
             speaking = i % 3 == 0
+            meta = {"plan": "p"} if speaking else {"offer": "sunday_note"} if i == 4 else {"chat_setup": {}}
             rows.append({"id": str(i), "client_id": f"c{i}", "role": "bot", "kind": "text",
                          "body": f"row {i}", "client_created_at": f"2026-11-10T10:00:{i:02d}+00:00",
-                         "metadata": {"plan": "p"} if speaking else {"chat_setup": {}}})
+                         "metadata": meta})
 
         def page(_user, *, limit, before=None):
             older = [r for r in rows if before is None or r["client_created_at"] < before]
@@ -135,14 +138,15 @@ class LoungePlaceTest(unittest.TestCase):
                 return client.get(f"/v2/user/lounge/messages?{q}", headers={"Authorization": "Bearer t"}).get_json()
             everything = get("limit=50")
             self.assertEqual(len(everything["messages"]), 12)
-            self.assertEqual({m["place"] for m in everything["messages"]}, {SPEAKING, WILL})
+            self.assertEqual({m["place"] for m in everything["messages"]}, {SPEAKING, PRINCIPLES, WILL})
             speaking = get("place=speaking&limit=2")
             self.assertEqual([m["body"] for m in speaking["messages"]], ["row 6", "row 9"])
             self.assertTrue(speaking["has_more"])
             older = get(f"place=speaking&limit=2&before={quote(speaking['oldest_cursor'])}")
             self.assertEqual([m["body"] for m in older["messages"]], ["row 0", "row 3"])
+            self.assertEqual([m["body"] for m in get("place=principles&limit=50")["messages"]], ["row 4"])
             will = get("place=will&limit=50")
-            self.assertEqual(len(will["messages"]), 8)
+            self.assertEqual(len(will["messages"]), 7)
             self.assertTrue(all(m["place"] == WILL for m in will["messages"]))
             self.assertEqual(client.get("/v2/user/lounge/messages?place=coach",
                                         headers={"Authorization": "Bearer t"}).status_code, 400)
