@@ -576,14 +576,15 @@ def _post_text(database: Any, user_id: str, me: dict, said: Any) -> dict:
     words = " ".join(str(said or "").split())
     if not words or len(words) > MAX_TEXT:
         raise ChatsError("NOT_ALLOWED", f"Write 1 to {MAX_TEXT} characters.")
+    host, _ = assistants.whose(database, thread)
+    asks = bool(host) and host != user_id
     rows = _rows(_table(database, MESSAGES).insert({
         "thread_id": thread, "author_member_id": str(me["id"]), "kind": "text",
-        "body": words, "meta": {}}))
+        "body": words, "meta": dict(chat_widget.QUESTION) if asks else {}}))
     if not rows:
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
     _tell(database, me, rows[0])
-    host, _ = assistants.whose(database, thread)
-    if host and host != user_id:
+    if asks and host:
         chat_widget.bundle(database, host, user_id, thread, str(rows[0]["id"]), words)
     return {"message": _shown(rows[0], str(me["id"]), _authors(database, thread))}
 

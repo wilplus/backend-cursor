@@ -5,8 +5,8 @@ STORY    As a person in WillpowerLab, I want my own chat on my website, so that
 OUTCOME
   O1  Before anything is agreed, the website chat learns only whose chat it
       is and how a visitor may write, as my chat's setup says: no fixed
-      questions; a wrong or replaced link opens nothing, the same answer as
-      the join page's.
+      questions; a wrong or replaced link, or the switch still off (the
+      default), opens nothing, the same answer as the join page's.
   O2  "Agree and start" makes the visitor's own chat with me: in my list it
       is "Widget / Visitor 1" with "From {site}" under it, like any other chat, and
       it does not count toward the day's joins through my link; my welcome
@@ -52,7 +52,19 @@ TAKE = "44444444-4444-4444-8444-444444444444"
 
 
 def _ring(feature, user_id, **_):
-    return feature == "chat_builder" and str(user_id) == TOMEK
+    return feature in ("chat_builder", "website_chat") and str(user_id) == TOMEK
+
+
+def _collect_as(collect):
+    """``question_bundles.collect`` stood in: patched where the module is
+    (backend PR #1857 merged), else the module put in place for the hook."""
+    try:
+        import services.question_bundles  # type: ignore[import-not-found]  # noqa: F401
+    except ImportError:
+        bundles = types.ModuleType("services.question_bundles")
+        bundles.collect = collect  # type: ignore[attr-defined]
+        return patch.dict(sys.modules, {"services.question_bundles": bundles})
+    return patch("services.question_bundles.collect", collect)
 
 
 class ChatWidgetTest(unittest.TestCase):
@@ -131,6 +143,12 @@ class ChatWidgetTest(unittest.TestCase):
         self.assertEqual(got, {"name": "Tomek", "writes": {"tap": True, "type": False, "record": False}})
         self.assertNotIn("asks", got)
         self.assertEqual(self.client.get("/v2/chats/widget/not-a-real-token-at-all").status_code, 404)
+        with patch("services.rings.feature_is_on_for_user",
+                   lambda feature, user_id, **kw: feature != "website_chat" and _ring(feature, user_id)):
+            # The switch off (no ring row, the default): nothing opens.
+            self.assertEqual(self.client.get(f"/v2/chats/widget/{self.token}").status_code, 404)
+            self.assertEqual(self.client.post(f"/v2/chats/widget/{self.token}/start",
+                                              json={"site": "a.com"}).status_code, 404)
         self.client.post("/v2/chats/link", headers=self._as(TOMEK))
         self.assertEqual(self.client.get(f"/v2/chats/widget/{self.token}").status_code, 404)
 
@@ -167,7 +185,8 @@ class ChatWidgetTest(unittest.TestCase):
         chat = self._my_list()[0]["id"]
         mine = self.client.get(f"/v2/chats/{chat}/messages", headers=self._as(TOMEK)).get_json()["messages"]
         self.assertEqual(mine[-1]["body"], "Do you open on Sundays?")
-        self.assertNotIn("record_answer", mine[-1]["meta"])
+        # Typed, it is still a question the host answers (N591 item 3).
+        self.assertTrue(mine[-1]["meta"]["record_answer"])
         self._recipe(type=False)
         self.assertEqual(self._write(started, "And on Mondays?").status_code, 400)
 
@@ -208,10 +227,10 @@ class ChatWidgetTest(unittest.TestCase):
         started = self._start()
         self._write(started, "Do you open on Sundays?")
         bundled = []
-        bundles = types.ModuleType("services.question_bundles")
-        bundles.collect = lambda _db, host, asker, thread, message, words: bundled.append(  # type: ignore[attr-defined]
-            (host, asker, words))
-        with patch.dict(sys.modules, {"services.question_bundles": bundles}):
+
+        def collect(_db, host, asker, thread, message, words):
+            bundled.append((host, asker, words))
+        with _collect_as(collect):
             signed = self._sign_up(started)
         self.assertEqual(signed.status_code, 200, signed.get_json())
         self.assertEqual(bundled, [(TOMEK, ANNA, "Do you open on Sundays?")])

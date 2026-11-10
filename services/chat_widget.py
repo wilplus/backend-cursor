@@ -67,6 +67,13 @@ from services.chats import (
 logger = logging.getLogger(__name__)
 
 GUESTS = "chat_widget_guests"
+#: The hidden switch (ring row; see ``shown``).
+WEBSITE_CHAT = "website_chat"
+#: A visitor's typed words are a question for the host, answerable however it
+#: arrived (N591 item 3): marked as the app marks a question
+#: (services/chats.py ``post_answer`` with ``asks``), so the host's thread
+#: offers its answer.
+QUESTION = {"question": True, "record_answer": True}
 #: How the visitor is named in the host's list (N567 item 6, signed; N591
 #: item 1 keeps "From {site}"): before the sign-up, then by their own name.
 VISITOR = "Widget / Visitor {n}"
@@ -97,13 +104,26 @@ def _site(value: Any) -> Optional[str]:
     return host if _SITE.match(host) else None
 
 
+def shown(database: Any, owner: Any) -> bool:
+    """Is the website chat switched on for this host? The ring row
+    ``website_chat``: no row until the founder makes one, so it is off for
+    everyone (N569 item 1, N591 item 6: hidden until its words are signed,
+    Never 4). Off, every public route answers 404, as for a wrong link."""
+    from services import rings
+    try:
+        return bool(owner) and rings.feature_is_on_for_user(WEBSITE_CHAT, str(owner), database=database)
+    except Exception:  # noqa: BLE001 -- a failed read keeps it hidden
+        logger.warning("chat_widget: the switch could not be read; hidden", exc_info=True)
+        return False
+
+
 def _link(database: Any, token: Any) -> dict:
-    """The live link with this token, its owner a member (N471); else 404,
-    as the join page answers."""
+    """The live link with this token, its owner a member (N471) with the
+    website chat switched on; else 404, as the join page answers."""
     from services import membership
     from services.chat_links import _open
     link = _open(database, token)
-    if not membership.is_member(database, str(link["user_id"])):
+    if not shown(database, link["user_id"]) or not membership.is_member(database, str(link["user_id"])):
         raise _not_found()
     return link
 
@@ -254,7 +274,7 @@ def write(database: Any, token: Any, guest: Any, payload: Any) -> dict:
         words = " ".join(str(sent or "").split())
         if not words or len(words) > MAX_TEXT:
             raise ChatsError("NOT_ALLOWED", f"Write 1 to {MAX_TEXT} characters.")
-        message = _post(database, me, "text", words, {})
+        message = _post(database, me, "text", words, dict(QUESTION))
         if me["signed_up"]:
             asker = _seat_user(database, me["id"])
             if asker:

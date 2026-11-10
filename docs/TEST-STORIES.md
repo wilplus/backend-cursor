@@ -695,7 +695,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 `tests/test_chat_widget.py` · Story
 
-- **O1** Before anything is agreed, the website chat learns only whose chat it is and how a visitor may write, as my chat's setup says: no fixed questions; a wrong or replaced link opens nothing, the same answer as the join page's.
+- **O1** Before anything is agreed, the website chat learns only whose chat it is and how a visitor may write, as my chat's setup says: no fixed questions; a wrong or replaced link, or the switch still off (the default), opens nothing, the same answer as the join page's.
 - **O2** "Agree and start" makes the visitor's own chat with me: in my list it is "Widget / Visitor 1" with "From {site}" under it, like any other chat, and it does not count toward the day's joins through my link; my welcome and my own questions come first, as for anyone who joins.
 - **O3** The visitor taps my questions, then writes as my setup lets them: typed words when I allow typing, refused when I don't; no recording without an account.
 - **O4** I answer as in any chat, recorded or typed; the visitor gets my answer only after signing up, and nobody without the visitor's secret reads or plays anything.
