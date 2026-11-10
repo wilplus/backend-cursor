@@ -15780,7 +15780,7 @@ testing ring, for the mvp we don't do it! Your principles › The Sunday note
    MVP is built, by CLAUDE.md's "Replacing a feature".
 No migration. No rules page yet.
 
-**N600 · The join page is three lines: who invited you, what you'll learn,
+**N601 · The join page is three lines: who invited you, what you'll learn,
 and that only the two of you are in the chat (founder, the Claude Code
 chat, 10 November 2026, on the prototype's join page of Kasia's link: "we
 need to shorten that massively; as steven pinker would; please suggest
@@ -15805,7 +15805,7 @@ No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built.
 
-**N601 · A bundle in Will is one card: the question, who asked, one action
+**N602 · A bundle in Will is one card: the question, who asked, one action
 (founder, the Claude Code chat, 10 November 2026, on the prototype's bundle
 card, which listed every asker with their question and the assistant's
 answer: "we also need to simplify this; either just show one or smth; like
