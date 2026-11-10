@@ -11,7 +11,19 @@ Service: services/chats.py.
                                    Take's words and slides (each slide's
                                    start in ms, N355)
   POST /v2/chats/<id>/messages    {kind: "emoji", body: "👍" | "👀" | "🙏"};
-                                   {message: {...}}
+                                   {message: {...}}. Or {kind: "text", body,
+                                   to?}: typed words, only in a chat whose
+                                   host's recipe takes typing (N591, N610);
+                                   with to, the id of the other person's
+                                   question that waits, they are its answer
+  POST /v2/chats/<id>/setup/<message_id>/photo
+                                   multipart: file (a photo, as /photo takes
+                                   it): the photo a waiting question asked
+                                   for (its meta.setup.kind is "photo", N610
+                                   item 4); {messages: [the photo, then the
+                                   host's next lines]}. Signed in, a member
+                                   (N471), through the processing-
+                                   authorization path
   POST /v2/chats/<id>/voice       multipart: audio (the recording; its type is
                                    kept as it came, e.g. audio/webm;codecs=opus),
                                    duration_ms (1 to 120000); {message: {...,
@@ -85,6 +97,14 @@ call: nothing reads it but the chat's two members, so its routes take the
 ring and the chat (404) and the file (400, 413), and no processing
 authorization. It is served with ``nosniff`` and a sandbox, a photo inline and
 a file as an attachment, so nothing sent can run as a page of ours.
+
+A photo the chat asked for (N610 item 4) is an upload the chat's setup
+demands of the person, so its route passes the processing-authorization path
+as a voice note's does (``phase1_provider_route``: a member with current
+authority, else their refusal and nothing written), after the ring and the
+chat (404). It asks no recording consent: a photo is no recording. A website
+visitor has no account to authorize, so there is no such route for them:
+they add the photo after signing up.
 """
 import io
 import logging
@@ -138,6 +158,7 @@ def v2_chats_read(thread_id):
 
 
 @v2_bp.route("/chats/<thread_id>/messages", methods=["POST"])
+@limiter.limit("600 per hour", scope="chats_post")
 @require_auth
 def v2_chats_post(thread_id):
     from services.chats import post
@@ -192,10 +213,10 @@ def _a_member_first(view):
     processing authorization: the ring and the chat, else 404, as every
     route here answers."""
     @wraps(view)
-    def wrapped(thread_id):
+    def wrapped(thread_id, **rest):
         from services.chats import member
         return _run("membership", lambda: member(db, str(request.user_id), thread_id),
-                    answer=lambda _membership: view(thread_id))
+                    answer=lambda _membership: view(thread_id, **rest))
     return wrapped
 
 
@@ -469,6 +490,27 @@ def v2_chats_setup_answer(thread_id, message_id):
     from services.join_questions import answer
     body = request.get_json(silent=True)
     return _run("setup answer", lambda: answer(db, str(request.user_id), thread_id, message_id, body))
+
+
+@v2_bp.route("/chats/<thread_id>/setup/<message_id>/photo", methods=["POST"])
+@limiter.limit("60 per hour", scope="chats_setup_photo")
+@require_auth
+@_a_member_first
+@phase1_provider_route
+def v2_chats_setup_photo(thread_id, message_id):
+    """The photo a waiting question asked for (N610 item 4), multipart
+    ``file``. Its checks in order: the ring and the chat (404); a member
+    with current processing authority (``phase1_provider_route``, their
+    refusal); the question (404, 409) and the photo (400, 413)."""
+    from services.chats import MAX_FILE_BYTES
+    from services.join_questions import answer_photo
+    upload = request.files.get("file")
+    # One byte past the limit is enough to know it is over (413).
+    data = upload.stream.read(MAX_FILE_BYTES + 1) if upload is not None else b""
+    return _run("setup photo", lambda: answer_photo(
+        db, str(request.user_id), thread_id, message_id, data,
+        content_type=upload.content_type if upload is not None else None,
+        file_name=upload.filename if upload is not None else None))
 
 
 # ── The chat builder (services/assistants.py; N578, N579, N586, N588) ──

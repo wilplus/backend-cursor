@@ -3865,6 +3865,32 @@ tests/test_the_arousal_capture_does_not_hold_the_wait.py,Story,"As a speaker, I 
 the same value, before the feedback moments go on.
 O2  The stores go out together, not one database round trip after
 another (a five-minute Take has about thirty pieces).","O1, O2 -> test_every_arousal_read_is_stored_and_the_stores_overlap","2026-11-05, the wait. Driven through the public generate_for_session; only the Take's readout and the speaker's cross-Take cue baseline are faked, and the store itself."
+tests/test_the_bar.py,Story,"As someone in a host's chat, I want to type to them where their chat takes typing and to add the photo their chat asks for, so that the bar's middle is always the one thing to do now (N610).","O1  BAR-N610-1. Where my host's chat takes typing, I type to them and
+they type back; the three emoji stay as they are; what I type after
+they block me does not reach them. Where typing is off, typed words
+are refused, mine and the host's, and so they are in a chat that is
+nobody's own chat.
+O2  BAR-N610-2. Typed to the question that waits, my words are its
+answer: one of the host's own questions moves on to their next line
+and my words are on their card; a question a person sent is answered
+with a message that asks nothing back. A message that asks for
+nothing, or a second answer, is refused.
+O3  BAR-N610-3. A question of my recipe can ask for a photo: it takes no
+answers to tap, it is asked in the chat of whoever joins, after my
+own questions, and their read says so on the question that waits; it
+is not one of my first Take's questions. Without the chat builder's
+ring nothing is asked.
+O4  BAR-N610-4. The photo answers the question: it is kept as any photo,
+I (the host) see it and can open it, my next line follows; a file
+that is no photo, a tap, a second photo, or a photo for a question
+that asks for none is refused.
+O5  BAR-N610-5. Only a signed-in member with current processing authority
+adds the photo: a website visitor has no way to before signing up,
+nobody signed out does, and a refused authority writes nothing.","O1 -> TheBarTest::test_people_type_only_where_the_hosts_chat_takes_typing
+O2 -> TheBarTest::test_typed_to_the_question_that_waits_my_words_are_its_answer
+O3 -> TheBarTest::test_a_question_of_my_recipe_asks_for_a_photo_and_the_read_says_so
+O4 -> TheBarTest::test_the_photo_answers_the_question_and_the_host_sees_it
+O5 -> TheBarTest::test_only_a_signed_in_member_with_authority_adds_the_photo","The founder, 10 November 2026 (N610): ""if someone has typing on, then you can literally type to them thank you""; ""A photo asked for: the middle is 'Add a photo'""."
 tests/test_the_chain_hears_the_training_yes_postgres.py,Story,"As a speaker, I want my recordings used for training only after my own training yes, so that an old bundled yes or a withdrawal is respected. (Critical path: consent.)","O1  The ring's consent door says yes only for an active training yes with
 a bound speaker.
 O2  It says no before the speaker is bound, after a withdrawal, and for an
