@@ -16107,3 +16107,21 @@ a list of steps, each one a model, drawn on the prototype and not yet
 decided.
 No migration in this entry. No rules page yet: hosted chats and their setup
 get one with their first built part (N578).
+
+**N613 · A wish list: what a host asks for that no piece of the app does yet
+is kept and sent to the founder by email as a design element request
+(founder, the Claude Code chat, 10 November 2026: "I think the wish list
+would be nice, by the way. That's something like, so that we know, and it's
+sent by email, like, oh, design element request to me").** For N578, N579
+and N612:
+1. **When a host asks, in the setup, for something no piece of the app does
+   yet,** the request is kept: what was asked, by whom and when.
+2. **Each request is sent to the founder by email,** as a design element
+   request. The address is kept in the environment settings, never in the
+   code.
+3. **Drafted on the prototype, not yet decided:** Will tells the host
+   plainly that it isn't available yet and offers the nearest piece that
+   exists; the app never builds a new piece for one host; the words on
+   screen, which wait for the founder's OK (Never 4).
+No migration in this entry. No rules page yet: hosted chats and their setup
+get one with their first built part (N578).
