@@ -24,11 +24,14 @@ they read today. Behind the ring row ``chat_builder``.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 from services import assistants, chat_suggestions
 from services.assistants import RecipeError
+
+logger = logging.getLogger(__name__)
 
 V = 2
 #: The prototype's "Something else", always the last tap (N604).
@@ -221,6 +224,7 @@ def set_part(database: Any, user_id: Any, part: str, body: Any) -> dict:
         raise RecipeError("NOT_STARTED", "Say what you do first.", 409)
     value = _clean_part(part, (body or {}).get("value") if isinstance(body, dict) else None)
     if part == "models":
+        _agreed_prices(database, recipe, value)
         value = _real_models(database, str(user_id), recipe, value)
     if part == "who" and value == "assistant" and recipe.get("sensitive") is not False:
         # Health, law or money, or not answered yet: nothing goes out until
@@ -336,7 +340,57 @@ def read(database: Any, user_id: Any, token_payload: Any) -> dict:
     if chat is not None:
         chat["link"] = my_link(database, user_id, token_payload)
     return {"recipe": recipe, "parts": parts(recipe) if recipe else [],
-            "own_chat": chat, "cost": cost(recipe), "skipped_models": skipped_models(database, user_id, recipe)}
+            "own_chat": chat, "cost": cost(recipe), "skipped_models": skipped_models(database, user_id, recipe),
+            "price_changes": price_changes(database, recipe)}
+
+
+def _owner_prices(database: Any, model_ids: list[str]) -> dict[str, Optional[int]]:
+    """Each model's price as its owner set it now, in shown tokens."""
+    from services.token_prices import shown
+    if not model_ids:
+        return {}
+    try:
+        rows = (database.client.table("ai_models").select("id,price_units")
+                .in_("id", model_ids).execute().data or [])
+    except Exception:  # noqa: BLE001 -- unknown: nothing is offered or changed
+        logger.warning("chat_recipes: owners' prices could not be read", exc_info=True)
+        return {}
+    return {str(r["id"]): shown(r.get("price_units")) for r in rows}
+
+
+def _used(recipe: Optional[dict]) -> list[dict]:
+    return [m for m in (recipe or {}).get("models") or [] if not m.get("own", True) and m.get("model_id")]
+
+
+def price_changes(database: Any, recipe: Optional[dict]) -> list[dict]:
+    """[{"model_id", "q", "by", "was", "now"}]: another person's model in
+    this host's chat whose owner's price ("now", tokens) is no longer the one
+    saved when the host added it ("was"), which the host still pays (N630
+    item 3). Keeping it at "now" is saving its card with that price; dropping
+    it is saving the cards without it. Will's words for it wait for the
+    founder; this is only what changed."""
+    used = _used(recipe)
+    now = _owner_prices(database, [str(m["model_id"]) for m in used])
+    return [{"model_id": m["model_id"], "q": m.get("q"), "by": m.get("by"),
+             "was": int(m.get("price") or 0), "now": now[str(m["model_id"])]}
+            for m in used if now.get(str(m["model_id"])) is not None
+            and now[str(m["model_id"])] != int(m.get("price") or 0)]
+
+
+def _agreed_prices(database: Any, recipe: dict, models: list[dict]) -> None:
+    """A card of another person's model carries the price the host agreed
+    to: its owner's price now, or the one already saved on this host's card
+    for that model (N630 item 3). Never any other number."""
+    saved = {str(m["model_id"]): int(m.get("price") or 0) for m in _used(recipe)}
+    theirs = [m for m in models if not m.get("own", True)]
+    now = _owner_prices(database, [str(m["model_id"]) for m in theirs])
+    for i, m in enumerate(models):
+        if m.get("own", True):
+            continue
+        mid = str(m["model_id"])
+        allowed = {p for p in (now.get(mid), saved.get(mid)) if p is not None}
+        if int(m["price"]) not in allowed:
+            raise RecipeError("RECIPE_INVALID", f"Model {i + 1}'s price is its owner's price.")
 
 
 #: How far back "skipped_models" looks.

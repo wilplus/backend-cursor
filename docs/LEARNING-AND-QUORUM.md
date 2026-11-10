@@ -292,7 +292,15 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     version it was made on until its buyer switches.
   - **In a host's chat** (TOK-01, TOK-02; N607, N617, N618 item 1): a line
     of another person's model in a visitor's message is paid by the host,
-    the owner's price as set now, through the same ledger charge
+    at the price saved on the recipe's card when they added the model
+    (N630 item 3; was: the owner's price as set now), and the owner and
+    teachers are credited that same price. When the owner's price changes,
+    the host's does not move by itself: GET /v2/chats/setup lists it in
+    `price_changes` ([{model_id, q, by, was, now}], in tokens; Will's words
+    for it wait for the founder). The host keeps the model at the new price
+    by saving its card with it (PUT /v2/chats/setup/models takes only the
+    owner's price now or the price already saved, never another number), or
+    drops it by saving the cards without it. Charged through the same ledger charge
     (`model_answer`), on an id made from the message and the model
     (`pay_for_chat_line`), so the same message delivered again is charged
     nothing more. The owner and teachers are credited from an
@@ -667,6 +675,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-11-10 · N630 item 3 · A host pays the price saved when they added another person's model, never the owner's newer price by itself; `price_changes` on GET /v2/chats/setup lists each difference; saving a card takes only the owner's price now or the saved one · BE (this PR)
 - 2026-11-10 · N607, N617, N618, N620 · TOK-01, TOK-02: another person's model in a host's chat is paid by the host, the owner's price, once per message; out of tokens its line is left out, the chat goes on and the host's setup lists it (`skipped_models`); TOK-03 was already built (`pay_month`, every finished month, no minimum, tokens only) · BE (this PR)
 - 2026-11-10 · N615 · PIPE-05, PIPE-07, PIPE-08: each model deals its own exam (the pick salted with the model's id) and a moment sealed in one model's exam is not taught by its experts in another; a paid answer is charged once per `Idempotency-Key`; a key's monthly limit is checked and taken in one database step under the key's row lock; the examples sweep reaches every model over successive runs; migration 0523 · BE #1903
 
