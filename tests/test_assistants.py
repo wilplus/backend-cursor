@@ -29,7 +29,7 @@ OUTCOME
       five to start from; without the ring the builder is 404; a locked
       field is 400 RECIPE_LOCKED and nothing is kept.
   O8  Someone who joins through my link meets my welcome first, as my
-      assistant's messages, and my join page says who I am and what they
+      own words (no assistant's mark, N606), and my join page says who I am and what they
       can learn with me, in my own words (N586 item 1, N590 item 2).
   O9  In my chat, the person who joined reads whose assistant answers, my
       first Take's questions and how they may answer; a chat with someone
@@ -140,7 +140,7 @@ class AssistantsTest(unittest.TestCase):
             chat = self._join(PIOTR, token).get_json()["chat"]["id"]
         seen = self.client.get(f"/v2/chats/{chat}/messages", headers=self._as(PIOTR)).get_json()["messages"]
         self.assertEqual([m["body"] for m in seen], ["Hi, I'm Kasia. Let's get you moving."])
-        self.assertTrue(seen[0]["meta"]["assistant"])
+        self.assertNotIn("assistant", seen[0]["meta"])  # N606: the host's own words
         mine = self.client.get(f"/v2/chats/{chat}/messages", headers=self._as(TOMEK)).get_json()["messages"]
         self.assertEqual(mine, [])
 
@@ -225,7 +225,7 @@ class SetupInWillsChatTest(unittest.TestCase):
         self.client.put("/v2/chats/recipe", headers=self._as(TOMEK), json={
             "questions": [{"q": "Which move do you want first?", "answers": ["Handstand"]}]})
         self.assertEqual(self._say(picked="Go live"), [
-            "Go live", "Your assistant is live. Everyone who joins through your link meets it."])
+            "Go live", "Your chat is live. Everyone who joins through your link meets it."])
         kept = self.client.get("/v2/chats/recipe", headers=self._as(TOMEK)).get_json()["recipe"]
         self.assertEqual((kept["answer_with"], kept["fit"], kept["model"]), (
             {"tap": False, "type": False, "record": True},

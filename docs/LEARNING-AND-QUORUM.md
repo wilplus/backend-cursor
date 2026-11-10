@@ -431,6 +431,10 @@ still open.
 - `services/willfidence.py` and `services/moment_pick.py`: willfidence
 - `services/speaker_memory.py`: Will's memory
 - `services/model_launchpad.py`: the model launchpad's rules (F5)
+- `migrations/a_person_can_teach_and_start_ai_models.sql` (0516),
+  `services/model_launchpad_store.py` and `routes/v2/learning_models.py`
+  (`/v2/models`, ring row `ai_models`): the launchpad's tables, read into
+  F5's rules
 - `config.py`: the doors' per-surface sets and `DETECTOR_TRAINING_AUTHORISED`
 
 **Docs:**
@@ -470,6 +474,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-11-09 · N528, N563, N566 · F5's tables (0516) and `/v2/models`, behind the ring row `ai_models` at ring 6; waits for its outside review · BE
 - 2026-11-09 · N528, N563, N566 · F5: the model launchpad's rules in one module, before its tables: the list, a model's page, teaching by the recipe card, the trust check, the one queue, release · BE
 - 2026-10-26 · N111 · §3 marks the founder's answers of 21 October: A1 to A10, A12, A13 and A15 decided, A11 and A14 held and asked again; B2 to B7 marked fixed, B1 still open · BE
 - 2026-10-26 · N172 · life goals, founder only (ring 6), asked once after the first # note and kept in the Life Panel, every version kept with its date, for step 3 of Will's learning plan · BE

@@ -603,7 +603,7 @@ def post_voice(database: Any, user_id: Any, thread_id: Any, audio: bytes, *,
         message = _marked(database, message, said, str(user_id))
     if said:
         # A question to a host with the chat builder joins its bundle (N584);
-        # an answer already recorded for it comes back at once.
+        # it waits there for the host (N606 item 1).
         _bundle(database, thread, str(user_id), str(message["id"]), said)
     return {"message": _shown(message, str(me["id"]), _authors(database, thread),
                               {str(message["id"]): said} if said else None)}

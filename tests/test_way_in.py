@@ -198,8 +198,25 @@ def test_learning_after_the_walk_and_record_take_2_waits(db):
                              "Next, ask someone who knows. Tap + to start. "
                              "Tell me what you'd like to do, and I'll show you where."]
     assert "When is it?" not in said(db) and "Do you accept it?" not in said(db)
+    # The choices not taken yet wait under it as taps (N604).
+    assert db.thread[-1]["metadata"]["chips"] == ["Prepare a talk", "Share what I know"]
     answer(db, "else", said="Maybe a book club")
     assert said(db)[-1] == "Maybe a book club"
+
+
+def test_something_else_after_the_walk_offers_taps_that_say_what_comes_next(db):
+    _words_stored(db)
+    step(db, known={"team": False})
+    answer(db, "profile", picked="That's right")
+    _processed(db)
+    F.after_take(db, USER, first_name="Anna")
+    answer(db, "choice", picked=["Something else"], said="Not sure yet")
+    assert said(db)[-1] == "Tell me what you'd like to do, and I'll show you where."
+    assert db.thread[-1]["metadata"]["chips"] == ["Prepare a talk", "Share what I know", "Learn from others"]
+    answer(db, "else", picked="Share what I know")
+    assert said(db)[-2:] == ["Share what I know",
+                             "Next, set up your assistant, so people who join you are met your way."]
+    assert db.thread[-1]["metadata"]["opens"] == "setup_chat"
 
 
 def test_a_take_with_nothing_heard_still_gets_its_plan(db):
