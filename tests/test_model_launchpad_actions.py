@@ -7,7 +7,8 @@ STORY    As someone who teaches or owns an AI model, I want to put off an
          12, N563 item 4).
 OUTCOME
   O1  "Not now" keeps the invite in my list, saying I put it off; accepting
-      makes me a teacher of the model.
+      makes me a teacher of the model; the invite goes through the
+      inviter's own chat link, none of its own (N598).
   O2  An example I add is kept as mine, with my answer, and counts once
       another teacher agrees; a spoken answer arrives as its transcript.
   O3  Only the owner archives or makes a model public, and public needs the
@@ -43,7 +44,11 @@ class ModelActionsTest(ModelRoutesTest):
         self.who = KASIA
         self.assertEqual(self._post(f"/v2/models/invites/{INVITE}/accept").status_code, 404)
         self.who = MARTA
-        self._post(f"/v2/models/invites/{INVITE}/accept")
+        self.store.tables["chat_links"] = [{"id": "l1", "user_id": ARTUR, "token": "artur-chat",
+                                            "display_name": "Artur", "revoked_at": None}]
+        self.assertEqual(self._get("/v2/models/invites").get_json()["invites"][0]["chat_link"], "/c/artur-chat")
+        accepted = self._post(f"/v2/models/invites/{INVITE}/accept").get_json()
+        self.assertEqual(accepted["chat_link"], "/c/artur-chat")      # N598: teach by using their chat
         self.assertIn((SPEAK, MARTA), {(t["model_id"], t["user_id"]) for t in self.store.tables["ai_model_teachers"]})
 
     def test_an_added_example_and_a_spoken_answer(self):

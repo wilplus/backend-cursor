@@ -329,8 +329,23 @@ def invite_for(database: Any, user_id: Any, invite_id: Any) -> dict:
     prof = _rows(_table(database, "people_profiles").select("name").eq("user_id", str(inv["inviter_id"])).limit(1))
     who = (prof[0].get("name") if prof else None) or (
         model.get("owner_name") if str(model.get("owner_id")) == str(inv["inviter_id"]) else None) or "Someone"
-    return rules.invite_card(who, model["name"],
-                             said_not_now=inv.get("status") == "not_now")
+    card = rules.invite_card(who, model["name"], said_not_now=inv.get("status") == "not_now")
+    card["chat_link"] = _chat_link_of(database, str(inv["inviter_id"]))
+    return card
+
+
+def _chat_link_of(database: Any, user_id: str) -> Optional[str]:
+    """The inviter's own chat link: an invitation to teach goes through it,
+    and the teacher teaches by using that chat (N598 items 1 and 2). Opening
+    it joins the chat the two already share (services/chat_links.py, one
+    chat a pair). None when the inviter has no live link."""
+    try:
+        from services.chat_links import _live
+        link = _live(database, user_id)
+    except Exception:
+        logger.warning("ai_models: the inviter's chat link could not be read", exc_info=True)
+        return None
+    return f"/c/{link['token']}" if link else None
 
 
 # ── The invites (MOD-49; N528 item 3) ───────────────────────────────────────
@@ -349,7 +364,8 @@ def answer_invite(database: Any, user_id: Any, invite_id: Any, accept: bool) -> 
     admits them, as at the door."""
     me = _require(database, user_id)
     iid = _uuid(invite_id)
-    rows = _rows(_table(database, INVITES).select("id,model_id,invitee_id,status").eq("id", iid).limit(1)) if iid else []
+    rows = _rows(_table(database, INVITES).select("id,model_id,inviter_id,invitee_id,status")
+                 .eq("id", iid).limit(1)) if iid else []
     if not rows or str(rows[0]["invitee_id"]) != me:
         raise _not_found()
     inv = rows[0]
@@ -359,7 +375,8 @@ def answer_invite(database: Any, user_id: Any, invite_id: Any, accept: bool) -> 
                             .eq("user_id", me).limit(1)):
         _table(database, TEACHERS).insert({"model_id": inv["model_id"], "user_id": me, "role": "contributor",
                                            "door_accepted_at": _now()}).execute()
-    return {"status": "accepted" if accept else "not_now", "model_id": str(inv["model_id"])}
+    return {"status": "accepted" if accept else "not_now", "model_id": str(inv["model_id"]),
+            "chat_link": _chat_link_of(database, str(inv["inviter_id"])) if accept else None}
 
 
 # ── Add an example (MOD-21; N563 item 4, N566 item 6) ───────────────────────
