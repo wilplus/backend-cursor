@@ -133,6 +133,9 @@ def page_for(database: Any, user_id: Any, model_id: Any) -> dict:
     page = rules.model_page(model, me, own_part=own_part)
     if page is None:
         raise _not_found()
+    if rules.viewer_role(model, me) == "owner":
+        from services import model_setup_store
+        page["owner"] = model_setup_store.owner_view(database, me, model)
     return page
 
 
@@ -172,17 +175,61 @@ def queue_for(database: Any, user_id: Any, *, only: Any = None) -> dict:
     models = _models(database, [str(t["model_id"]) for t in mine])
     mids = [m["id"] for m in models if m.get("status") in ("learning", "ready")]
     examples = _rows(_table(database, EXAMPLES)
-                     .select("id,model_id,source,private,kind,content,sureness,speaker_id,added_by")
+                     .select("id,model_id,source,private,kind,content,sureness,speaker_id,added_by,snippet_id")
                      .in_("model_id", mids).eq("in_exam", False)) if mids else []
+    # An upload waits for its 60 re-rates; the rest of it never needs a
+    # teacher (N566 item 4).
+    examples = [e for e in examples if e.get("source") != "upload" or e.get("kind") == "rerate"]
+    examples += _exam_cases_for(database, me, mids)
     answered = {(str(a["example_id"]), str(a["model_id"])) for a in _rows(
         _table(database, ANSWERS).select("example_id,model_id").eq("teacher_id", me))} if mids else set()
     waiting = [e for e in examples
                if (str(e["id"]), str(e["model_id"])) not in answered
                and str(e.get("speaker_id") or "") != me and str(e.get("added_by") or "") != me]
     return rules.build_queue(
-        [m for m in models if m["id"] in mids], waiting, me,
+        [m for m in models if m["id"] in mids], with_clips(database, waiting), me,
         paused=[t["model_id"] for t in mine if t.get("paused_at")], only=_uuid(only) if only else None,
         company_line={str(t["model_id"]): t["company_line"] for t in mine if t.get("company_line")})
+
+
+def _exam_cases_for(database: Any, me: str, mids: list[str]) -> list[dict]:
+    """The exam's cases for the two experts who set it aside (N566 item 5),
+    and for nobody else."""
+    if not mids:
+        return []
+    from services.model_setup_store import with_people
+    setups = _rows(_table(database, MODELS).select("id,owner_id,setup").in_("id", mids))
+    mine = [str(m["id"]) for m in setups
+            if me in ((with_people(database, m).get("exam") or {}).get("experts") or [])]
+    if not mine:
+        return []
+    return _rows(_table(database, EXAMPLES)
+                 .select("id,model_id,source,private,kind,content,sureness,speaker_id,added_by,snippet_id")
+                 .in_("model_id", mine).eq("in_exam", True))
+
+
+def with_clips(database: Any, examples: list[dict]) -> list[dict]:
+    """A voice example's clip for the teacher's screen (MOD-08): a short-lived
+    signed link and the moment's window, through the path the blind coach
+    sheets use (``services/snippet_audio_url.py``), audio and offsets only.
+    The speaker, the Take and the snippet are never in what the teacher
+    receives; recordings never leave WillpowerLab (N528 item 10)."""
+    ids = [str(e["snippet_id"]) for e in examples if e.get("snippet_id") and e.get("source") == "takes"]
+    if not ids:
+        return examples
+    from services.snippet_audio_url import snippet_clip_playback, snippet_rows_by_id
+    rows = snippet_rows_by_id(database, ids)
+    out = []
+    for e in examples:
+        row = rows.get(str(e.get("snippet_id") or ""))
+        if row is not None:
+            play = snippet_clip_playback(row, database)
+            if play.get("audio_ref"):
+                e = {**e, "content": {**(e.get("content") or {}), "audio_url": play["audio_ref"],
+                                      "start_offset_ms": play["start_offset_ms"],
+                                      "duration_ms": play["duration_ms"]}}
+        out.append(e)
+    return out
 
 
 def chat_rows_for(database: Any, user_id: Any) -> dict:
@@ -226,6 +273,8 @@ def answer(database: Any, user_id: Any, example_id: Any, model_id: Any, step: st
         ex_id = str(example["id"]) if m["id"] == model["id"] else twin_ids[m["id"]]
         _save_answer(database, ex_id, m["id"], me, step, text)
     told = _trust_after_answer(database, me, model)
+    for m in plan["counts_for"]:
+        recount(database, m["id"], [str(example["id"]) if m["id"] == model["id"] else twin_ids[m["id"]]])
     return {"saved": True, "note": plan["note"],
             "follow": [{"model_id": f["model"]["id"], "line": f["line"],
                         "screen": rules.teaching_screen(f["model"], {"id": twin_ids.get(f["model"]["id"])})}
@@ -243,7 +292,8 @@ def _save_answer(database: Any, example_id: str, model_id: str, me: str, step: s
         _table(database, ANSWERS).update({"answer": text}).eq("id", found[0]["id"]).execute()
     else:
         _table(database, ANSWERS).insert({"example_id": example_id, "model_id": model_id,
-                                          "teacher_id": me, "step": step, "answer": text}).execute()
+                                          "teacher_id": me, "step": step, "answer": text,
+                                          "counted": False}).execute()
 
 
 def _trust_after_answer(database: Any, me: str, model: dict) -> Optional[dict]:
@@ -282,10 +332,66 @@ def _trust_after_answer(database: Any, me: str, model: dict) -> Optional[dict]:
     if screen:
         change["trust_told_at"] = _now()
     _table(database, TEACHERS).update(change).eq("model_id", model["id"]).eq("user_id", me).execute()
-    if status == "counts":
-        _table(database, ANSWERS).update({"counted": True}).eq("model_id", model["id"]) \
-            .eq("teacher_id", me).execute()
+    if just and status == "counts":
+        recount(database, model["id"], [str(a["example_id"]) for a in mine])
     return screen
+
+
+def _agrees(a: dict, answers: list[dict], trusted: set[str], known: Any, owner: str) -> bool:
+    """Another trusted teacher gave the same answer, or it is the known one
+    (the owner's own answer never agrees with itself: their first 10 set it)."""
+    if a.get("answer") is None:
+        return False
+    if known is not None and str(a["answer"]) == str(known) and str(a.get("teacher_id")) != owner:
+        return True
+    return any(str(o.get("teacher_id")) != str(a.get("teacher_id")) and str(o.get("teacher_id")) in trusted
+               and o.get("step") == a.get("step") and str(o.get("answer")) == str(a["answer"]) for o in answers)
+
+
+def recount(database: Any, model_id: str, example_ids: list[str]) -> None:
+    """Which answers on these examples count (N523 item 2, N570 item 4): a
+    trusted teacher's, once another trusted teacher gave the same answer or
+    it matches the example's known answer; a spoken answer in words, once
+    its teacher is trusted. Never an answer on a sealed exam case. Nobody
+    teaches a model alone. Two matching trusted answers also settle an
+    example: its known answer, which the quiet trust check then measures
+    newcomers against (N520 items 8 and 12)."""
+    ids = sorted({str(e) for e in example_ids if e})
+    if not ids:
+        return
+    examples = {str(e["id"]): e for e in _rows(_table(database, EXAMPLES).select("id,in_exam,known_answer")
+                                                .in_("id", ids))}
+    trusted = {str(t["user_id"]) for t in _rows(_table(database, TEACHERS).select("user_id,trust_status")
+                                                 .eq("model_id", model_id)) if t.get("trust_status") == "counts"}
+    answers = _rows(_table(database, ANSWERS).select("id,example_id,teacher_id,step,answer,counted")
+                    .eq("model_id", model_id).in_("example_id", ids))
+    found = _rows(_table(database, MODELS).select("owner_id").eq("id", model_id).limit(1))
+    owner = str((found[0].get("owner_id") if found else "") or "")
+    by_example: dict[str, list[dict]] = defaultdict(list)
+    for a in answers:
+        by_example[str(a["example_id"])].append(a)
+    for eid, theirs in by_example.items():
+        example = examples.get(eid) or {}
+        known = example.get("known_answer")
+        for a in theirs:
+            ok = (not example.get("in_exam") and str(a.get("teacher_id")) in trusted
+                  and (a.get("step") == "words" or _agrees(a, theirs, trusted, known, owner)))
+            if bool(a.get("counted")) != ok:
+                _table(database, ANSWERS).update({"counted": ok}).eq("id", a["id"]).execute()
+        if known is None and not example.get("in_exam"):
+            settled = _settled(theirs, trusted)
+            if settled is not None:
+                _table(database, EXAMPLES).update({"known_answer": settled}).eq("id", eid).execute()
+
+
+def _settled(answers: list[dict], trusted: set[str]) -> Optional[str]:
+    """Two trusted teachers' matching rating or pick (label_quorum's two votes)."""
+    votes: dict[str, set[str]] = defaultdict(set)
+    for a in answers:
+        if a.get("step") in ("rate", "pick") and a.get("answer") is not None and str(a.get("teacher_id")) in trusted:
+            votes[str(a["answer"])].add(str(a["teacher_id"]))
+    agreed = [v for v, who in votes.items() if len(who) >= 2]
+    return agreed[0] if len(agreed) == 1 else None
 
 
 def profile_for(database: Any, user_id: Any, person_id: Any) -> Optional[dict]:

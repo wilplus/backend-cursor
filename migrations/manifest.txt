@@ -555,3 +555,4 @@
 0517	a_business_has_a_community_people_join.sql
 0518	a_person_keeps_their_chat_recipe.sql
 0519	a_question_joins_its_bundle.sql
+0520	a_model_keeps_its_setup.sql

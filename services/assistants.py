@@ -173,12 +173,18 @@ def _question(raw: Any, i: int) -> dict:
     if not isinstance(answers, list) or len(answers) > MAX_ANSWERS:
         raise RecipeError("RECIPE_INVALID", f"Question {i + 1} takes up to {MAX_ANSWERS} answers.")
     out["answers"] = [_line(a, MAX_ANSWER, f"An answer to question {i + 1}") for a in answers]
+    if raw.get("photo") is True:
+        # The question asks for a photo (N610 item 4): asked in the chat, not
+        # inside a Take, and answered with the photo, so it has no taps.
+        if out["answers"]:
+            raise RecipeError("RECIPE_INVALID", f"Question {i + 1} asks for a photo, so it takes no answers.")
+        out["photo"] = True
     return out
 
 
 def normalize(body: Any) -> dict:
     """What a host sends to the builder, as a recipe: ``{"welcome": [lines],
-    "questions": [{"q", "title"?, "under"?, "answers"}], "answer_with":
+    "questions": [{"q", "title"?, "under"?, "answers", "photo"?}], "answer_with":
     {"tap", "type", "record"}}``. A locked or later field is refused, so
     nothing a host sends reaches what is not theirs."""
     if not isinstance(body, dict):
@@ -383,7 +389,10 @@ def host_of(database: Any, user_id: Any, thread_id: Any) -> Optional[dict]:
     if not recipe:
         return None
     return {"assistant": assistant_name(host.get("display_name")),
-            "about": recipe.get("about") or [], "questions": recipe.get("questions") or [],
+            "about": recipe.get("about") or [],
+            # A question that asks for a photo is asked in the chat itself
+            # (``photo_asks``), never inside the first Take.
+            "questions": [q for q in recipe.get("questions") or [] if not q.get("photo")],
             "answer_with": recipe.get("answer_with") or {k: True for k in ANSWER_WITH}}
 
 
@@ -420,3 +429,62 @@ def learns(database: Any, owner_id: Any, own: bool = True) -> Optional[str]:
         return str(about[0])
     from services.take_sends import _founder
     return ARTUR_LEARNS if owner_id and str(owner_id) == str(_founder(database) or "") else None
+
+
+# ── How people write in a host's chat (N578 item 5, N591 items 2 and 3) ─
+
+def answer_with_of(database: Any, owner_id: Any) -> dict:
+    """How people answer in this host's chat, from their recipe: {"tap",
+    "type", "record"}. A host without the chat builder, or without a recipe,
+    is read as the recipe's own default, every way open (``normalize``)."""
+    recipe = recipe_of(database, owner_id) if on(database, owner_id) else None
+    given = (recipe or {}).get("answer_with")
+    return _answer_with(given if isinstance(given, dict) else None)
+
+
+def whose(database: Any, thread_id: Any) -> tuple[Optional[str], bool]:
+    """Whose chat this is, and whether it is a website chat: the website
+    chat's owner (N591 item 1), or the owner of the link it was made
+    through; (None, False) for any other chat."""
+    rows = (database.client.table("chat_threads").select("id,link_id,widget_owner_id")
+            .eq("id", str(thread_id)).limit(1).execute().data or [])
+    if not rows:
+        return None, False
+    if rows[0].get("widget_owner_id"):
+        return str(rows[0]["widget_owner_id"]), True
+    link = rows[0].get("link_id")
+    if not link:
+        return None, False
+    links = (database.client.table("chat_links").select("user_id")
+             .eq("id", str(link)).limit(1).execute().data or [])
+    return (str(links[0]["user_id"]) if links else None), False
+
+
+def may_type(database: Any, thread_id: Any, user_id: Any) -> bool:
+    """May this member send typed words in this chat? In a website chat,
+    and in a chat made through the link of a host with the chat builder,
+    when the host's recipe takes typing: the others type to the host (N591
+    item 2), and the host answers in typing, as their setup allows (N591
+    item 3). Where the recipe's typing is off, nobody types there, the host
+    included: the bar's middle is never a box in such a chat (N610 item 2).
+    Every other chat is as it was: no typing."""
+    del user_id  # the host and the others alike (N610 items 2 and 5)
+    host, website = whose(database, thread_id)
+    if not host or (not website and not on(database, host)):
+        return False
+    return bool(answer_with_of(database, host)["type"])
+
+
+def photo_asks(database: Any, owner_id: Any) -> list[str]:
+    """The questions of this host's recipe that ask for a photo (N610 item
+    4), in order: asked in the chat of whoever joins, after the host's
+    welcome and their own questions (``join_questions.begin``). None for a
+    host without the chat builder or without a recipe. Best-effort: a
+    failed read asks nothing."""
+    try:
+        recipe = recipe_of(database, owner_id) if on(database, owner_id) else None
+    except Exception:  # noqa: BLE001
+        logger.warning("assistants: the photo questions could not be read", exc_info=True)
+        return []
+    return [str(q["q"]) for q in (recipe or {}).get("questions") or []
+            if isinstance(q, dict) and q.get("photo") is True and q.get("q")]

@@ -109,6 +109,15 @@ O2  On Take 2 the ""more than on Take 1"" line appears only when that cue
 was weaker on Take 1.
 O3  That line is never said twice in a row; the rotation carries on
 after it.","O1, O2, O3 -> test_two_takes_rotate_and_say_the_later_line_only_when_true","D-FW-3; signed line bank, ""Rotation"" (migration 0438)."
+tests/test_a_model_keeps_its_setup_postgres.py,Story,"As someone starting a model, I want my setup kept with the model from step to step, and a moment of a Take gathered into my model only once, so ✕ loses nothing and a rerun of the gathering adds nothing twice (N566 item 2, MOD-02, MOD-25).","O1  ai_models has a setup that is always an object, empty for a model
+made before it, and the column is locked to the backend as the table is.
+O2  The same moment of a Take goes into one model once; a second model may
+take it too, and an upload's rows are never held to it.
+O3  When the owner's account is erased, the model keeps its name and its
+card for its teachers, and loses what the owner wrote: the
+description, their name, the setup's words; a draft is archived.","O1 -> test_a_model_keeps_its_setup_and_it_is_an_object
+O2 -> test_a_moment_goes_into_a_model_once
+O3 -> test_an_erased_owners_words_leave_the_model","Migration a_model_keeps_its_setup (0520), applied twice in both rehearsal lanes after 0516 (the reapply is its idempotency check)."
 tests/test_a_model_learns_only_from_the_yes_postgres.py,Story,"As a speaker, I want the model trained only on my coached pairs that I said yes to and that were released, and only once, so that my ""no"" is respected.","O1  A released pair that is still allowed is marked trained, once.
 O2  A pair that is not released, no longer allowed, or already trained
 is refused.
@@ -703,23 +712,33 @@ O2 -> ChatSafetyTest::test_a_report_keeps_the_last_five_and_reaches_the_founder"
 tests/test_chat_talk.py,Story,"As a speaker, I want Will to read my whole talk slide by slide, so that his answers refer to what I actually said on each slide.","O1  Each slide lists its bullet points and what I said on it.
 O2  A slide I said nothing on reads ""(nothing yet)"".
 O3  Words not tied to a slide are listed on their own.","O1, O2, O3 -> test_each_slide_carries_its_points_and_what_they_said",Founder 2026-10-15; Privacy 3.7 section 4.
-tests/test_chat_widget.py,Story,"As a person in WillpowerLab, I want my chat on my own website, so that a customer who taps ""Ask {me}"" asks me there, I answer here out loud, and they hear me there (N567).","O1  Before anything is agreed, the widget learns only whose chat it is
-and the three questions a visitor may ask; a wrong or replaced link
-opens nothing, the same answer as the join page's.
-O2  ""Agree and start"" makes the visitor's own chat with me: in my list it
-is ""Widget / Visitor 1"" with ""From {site}"" under it, and it does not
-count toward the day's joins through my link.
-O3  The visitor taps through my join questions (with no closing line
-about ""+""), then one question, which reaches me marked for my spoken
-answer; a second question waits until I answer.
-O4  My answer reaches the visitor in the widget, and its voice plays for
-them; nobody without the visitor's secret reads or plays anything.
-O5  ""Keep this chat"": a signed-in person takes the visitor's seat, and my
-list names the chat after them, ""Widget / {name}"".","O1 -> ChatWidgetTest::test_the_widget_learns_only_whose_chat_it_is
-O2 -> ChatWidgetTest::test_agreeing_makes_a_chat_of_the_visitors_own
-O3 -> ChatWidgetTest::test_the_visitor_taps_my_questions_then_asks_one
-O4 -> ChatWidgetTest::test_my_answer_plays_for_the_visitor_and_no_one_else
-O5 -> ChatWidgetTest::test_keeping_the_chat_names_it_after_them","The founder's prototype ""Your chat, on any website"" (5 November 2026): one link, shared as a link or as a line of code."
+tests/test_chat_widget.py,Story,"As a person in WillpowerLab, I want my own chat on my website, so that anyone there can write to me, I answer as in any chat, and they sign up after asking to get my answer (N591).","O1  Before the visitor writes, with no card in the way, the website chat
+learns only whose chat it is, my welcome and how a visitor may write,
+as my chat's setup says: no fixed questions; a wrong or replaced link,
+or the switch still off (the default), opens nothing, the same answer
+as the join page's.
+O2  The visitor's first message makes their own chat with me: in my list
+it is ""Widget / Visitor 1"" with ""From {site}"" under it, like any other
+chat, and it does not count toward the day's joins through my link;
+my welcome and my own questions come first, as for anyone who joins;
+a first message the chat does not take makes nothing.
+O3  The visitor taps my questions, then writes as my setup lets them:
+typed words when I allow typing, refused when I don't; no recording
+without an account.
+O4  I answer as in any chat, recorded or typed; the visitor gets my answer
+only after signing up, and nobody without the visitor's secret reads
+or plays anything.
+O5  Signing up after asking (phone, email, Google): the signed-in person
+takes the visitor's seat, my list names the chat after them, the chat
+is theirs in the app, their questions join their bundles, and the
+widget, in its own tab too, learns where the first notice goes.
+O6  The first answer after the sign-up goes once to the email they signed
+up with, in the signed words.","O1 -> ChatWidgetTest::test_the_widget_learns_only_whose_chat_it_is_and_how_to_write
+O2 -> ChatWidgetTest::test_the_first_message_makes_a_chat_in_my_list_like_any_other
+O3 -> ChatWidgetTest::test_the_visitor_taps_my_questions_then_writes_as_my_setup_allows
+O4 -> ChatWidgetTest::test_my_answer_waits_for_the_sign_up_and_no_one_else_reads_it
+O5 -> ChatWidgetTest::test_signing_up_after_asking_makes_the_chat_theirs
+O6 -> ChatWidgetTest::test_the_first_answer_after_the_sign_up_is_noticed_once","The founder, 9 November 2026 (N591): ""There's really no difference between the widget and the normal chat. It's just that the chat is placed on the public side."""
 tests/test_chats.py,Story,"As the founder, I want my own chats with a colleague and a customer, apart from my chat with Will, where I answer with one of three emoji or a voice note, and start something new with a photo or a file, so that I can see the chats between people working before anyone else is in them.","O1  As a user, I have my chats with no ring at all: the list answers
 without the rings ever being read (N456; was ring 6 only). As a
 server, I answer nobody who is not signed in, and write nothing.
@@ -2176,6 +2195,78 @@ teach, whatever their score; nothing else, and never a score.
 O2  An answer feeds the one model that fits the profile best at 2.0 or
 more; below it, no model.","O1 -> ModelMatchTest::test_for_you_is_chosen_by_the_knowledge_score
 O2 -> ModelMatchTest::test_an_answer_feeds_the_best_model_or_none","The person-to-model matching reuses the score and threshold of the person-to-Take matching (N518 item 7: ""Yes, reuse the score and threshold"")."
+tests/test_model_setup.py,Story,"As someone starting a model, I want the setup to walk me through three chapters one step at a time, propose what my model does and which AI does each part, check my data the way a data scientist would, keep the final exam fair, and show me afterwards what needs me, in plain words, so a model I start can learn from day one (N528 item 4, N566 items 2 to 6, N570, N585).","O1  The setup has three chapters with a thin bar; the caption says where
+I am and optional steps say so (MOD-24).
+O2  From my three answers the app proposes what the model does, and each
+part gets the AI that fits it: a voice score is WillpowerLab's voice
+scorer, picking and answering GPT-4o mini; others say ""Soon""
+(MOD-27, MOD-29).
+O3  The scale step says what one example is, with a word for every point,
+and a model can start right there; what is left becomes a checklist
+(MOD-28, MOD-36).
+O4  Uploaded data is checked: repeats and near repeats removed, rows with
+no score skipped, mislabelled rows flagged, names removed, a column
+naming a person left out; 60 rows are re-rated first (MOD-31).
+O5  The exam takes whole speakers, never an upload, never one of my first
+10; it is set aside by two experts (MOD-32).
+O6  Shorter and Longer switch the teachers' steps; Public shows its
+disclaimer first (MOD-33, MOD-34).
+O7  My page puts ""Needs you now"" on top where teachers disagree, gives an
+honest range and the slowest jar, and agreement within one point and
+exactly; a starting rule is kept or dropped on the first 50 ratings
+(MOD-30, MOD-37).","O1 -> SetupRulesTest::test_three_chapters_with_a_thin_bar
+O2 -> SetupRulesTest::test_what_it_does_and_the_ai_for_each_part
+O3 -> SetupRulesTest::test_the_scale_and_starting_early_leave_a_checklist
+O4 -> SetupRulesTest::test_uploaded_data_is_checked_before_it_counts
+O5 -> SetupRulesTest::test_the_exam_is_fair
+O6 -> SetupRulesTest::test_shorter_longer_and_the_public_disclaimer
+O7 -> SetupRulesTest::test_the_owners_page_says_what_needs_them","services/model_setup.py holds the setup's rules and signed words (the locked prototype, version 8)."
+tests/test_model_setup_routes.py,Story,"As someone starting a model, I want ""Start your own"" to keep my draft at every step, fill itself from my first Take, tell me when a model like mine exists, let me start right after the scale, take my existing data only with my tick, have me answer the first 10, and let me invite people who each choose; and as a speaker, I want my Takes to teach someone's model only while my training yes is on (N528 item 4, N563 item 4, N566, N570, N571, N575, N582).","O1  Without the ring row every setup route is 404, and a draft is 404 to
+anyone but its owner.
+O2  Three answers, one per screen; ✕ keeps the draft, which the list shows
+with ""You stopped at the scale. Nothing is lost."" and Continue
+(MOD-24, MOD-25).
+O3  ""A model like yours already exists"" slides up over the third answer,
+once; ""Set up mine anyway"" goes on (MOD-26).
+O4  After a first Take, Describe opens filled from its answers, with
+""Filled from your first Take. Change any word."" (MOD-54).
+O5  ""Start with this, finish the rest later"" starts the model learning
+after its scale; the rest is a checklist on its page (MOD-28, MOD-36).
+O6  Existing data counts only after the tick: its rows become the model's
+private examples, their labels never sent to a teacher, and only the
+60 re-rates reach the queue (MOD-31).
+O7  The owner answers the first 10 on the teachers' screen, never an exam
+case, and their answers are kept like any teacher's (MOD-38, MOD-55).
+O8  Public shows its disclaimer before it goes public; the second expert
+and the people invited each get an invite, and ""Copy an invite link""
+is the owner's own chat link (MOD-32, MOD-34, MOD-35, N598).
+O9  When the processing authorization is not current, no provider call is
+made and the rules' draft stands.
+O11 An erased person's id is nowhere in a model's setup: it never keeps
+one, and the expert and the invited people come from rows the purge
+registry deletes.
+O12 The owner's first 10 become the model's known answers; an answer
+counts only once another trusted teacher gives the same one, and two
+matching trusted answers settle an example (N570 item 4).
+O13 A teacher hears a voice example by a signed link, and never receives
+the speaker, the Take or the snippet.
+O14 A deleted Take leaves every model it taught.
+O10 A host's model gathers the moments of Takes sent to them only from
+speakers whose training yes is on, recorded after it; turning it off
+takes them out again (MOD-02).","O1 -> ModelSetupRoutesTest::test_without_the_ring_or_as_someone_else_nothing_is_shown
+O2 -> ModelSetupRoutesTest::test_three_answers_and_the_draft_kept
+O3 -> ModelSetupRoutesTest::test_a_model_like_yours_slides_up_once
+O4 -> ModelSetupRoutesTest::test_the_first_take_fills_describe
+O5 -> ModelSetupRoutesTest::test_start_after_the_scale_leaves_a_checklist
+O6 -> ModelSetupRoutesTest::test_existing_data_counts_only_with_the_tick
+O7 -> ModelSetupRoutesTest::test_the_owner_answers_the_first_ten
+O8 -> ModelSetupRoutesTest::test_public_after_its_disclaimer_and_invites
+O9 -> ModelSetupRoutesTest::test_no_provider_call_without_authorization
+O10 -> ModelSetupRoutesTest::test_takes_teach_only_with_the_training_yes
+O11 -> ModelSetupRoutesTest::test_an_erased_person_is_nowhere_in_the_setup
+O12 -> ModelSetupRoutesTest::test_nobody_teaches_a_model_alone
+O13 -> ModelSetupRoutesTest::test_a_voice_example_plays_by_a_signed_link_only
+O14 -> ModelSetupRoutesTest::test_a_deleted_take_leaves_every_model","routes/v2/model_setup.py over services/model_setup_store.py, and the job services/model_examples_from_takes.py."
 tests/test_moment_pick.py,Story,"As a speaker, I want each Take to show my strongest moment, praised, and my weakest, fixed with the tool its weakness needs (its words first, else its voice with the AI clip), so that I know what to keep and get one fix on the moment that needs it.","O1  The strongest is the Take's highest willfidence clip, a block's best
 clip standing for it and a clip with enough words before a short
 one; it is praised whatever its voice and called my most confident.
@@ -3457,6 +3548,16 @@ O4 -> test_the_lens_walks_me_through_it_and_adds_only_on_my_yes
 O5 -> test_not_now_under_the_case
 O6 -> test_will_reads_my_last_case
 O7 -> test_a_sales_week_asks_the_step_not_the_bug","Will learning plan, step 2: the Sunday note as a lens (locked 2026-10-26, N158, N170; rules in the frontend's principles.md §1 L)."
+tests/test_take_answers.py,Story,"As a speaker who sent a Take to my coach and to others, I want their answers gathered under my Take, so that I see my coach's answer and the best of the others in one place, and only I see the gathering (N587 items 3 to 5, N588 item 4).","O1  Under my Take, one bubble shows my coach's answer and the best other
+answer under each heading, with the names of everyone who answered;
+all of them open under ""On your speaking"" and ""On the matter"", each
+with the way into that person's chat.
+O2  Someone who has not answered is not listed; a Take I never sent is 404,
+and so is anyone else's Take.
+O3  A question I recorded and sent to more than one person (N596) gathers
+its answers the same way.","O1 -> TakeAnswersTest::test_the_answers_gather_under_my_take
+O2 -> TakeAnswersTest::test_only_answers_to_my_own_sent_take
+O3 -> TakeAnswersTest::test_a_recorded_questions_answers_gather_too","""if you send them the request and they all answered, you should be able to receive all of them"" (founder, 9 November 2026, N587)."
 tests/test_take_comparison.py,Story,"As a speaker, I never want to see my pitch, pace or pauses as numbers, so that feedback stays in words (Never rule 1).","O1  The retired take comparison (GET /v2/explore/arc/<id>/take-comparison,
 founder 2026-10-19) answers 410 GONE, reads nothing, sends no
 measurement number, and logs retired_route_called so any caller left
@@ -3845,6 +3946,32 @@ tests/test_the_arousal_capture_does_not_hold_the_wait.py,Story,"As a speaker, I 
 the same value, before the feedback moments go on.
 O2  The stores go out together, not one database round trip after
 another (a five-minute Take has about thirty pieces).","O1, O2 -> test_every_arousal_read_is_stored_and_the_stores_overlap","2026-11-05, the wait. Driven through the public generate_for_session; only the Take's readout and the speaker's cross-Take cue baseline are faked, and the store itself."
+tests/test_the_bar.py,Story,"As someone in a host's chat, I want to type to them where their chat takes typing and to add the photo their chat asks for, so that the bar's middle is always the one thing to do now (N610).","O1  BAR-N610-1. Where my host's chat takes typing, I type to them and
+they type back; the three emoji stay as they are; what I type after
+they block me does not reach them. Where typing is off, typed words
+are refused, mine and the host's, and so they are in a chat that is
+nobody's own chat.
+O2  BAR-N610-2. Typed to the question that waits, my words are its
+answer: one of the host's own questions moves on to their next line
+and my words are on their card; a question a person sent is answered
+with a message that asks nothing back. A message that asks for
+nothing, or a second answer, is refused.
+O3  BAR-N610-3. A question of my recipe can ask for a photo: it takes no
+answers to tap, it is asked in the chat of whoever joins, after my
+own questions, and their read says so on the question that waits; it
+is not one of my first Take's questions. Without the chat builder's
+ring nothing is asked.
+O4  BAR-N610-4. The photo answers the question: it is kept as any photo,
+I (the host) see it and can open it, my next line follows; a file
+that is no photo, a tap, a second photo, or a photo for a question
+that asks for none is refused.
+O5  BAR-N610-5. Only a signed-in member with current processing authority
+adds the photo: a website visitor has no way to before signing up,
+nobody signed out does, and a refused authority writes nothing.","O1 -> TheBarTest::test_people_type_only_where_the_hosts_chat_takes_typing
+O2 -> TheBarTest::test_typed_to_the_question_that_waits_my_words_are_its_answer
+O3 -> TheBarTest::test_a_question_of_my_recipe_asks_for_a_photo_and_the_read_says_so
+O4 -> TheBarTest::test_the_photo_answers_the_question_and_the_host_sees_it
+O5 -> TheBarTest::test_only_a_signed_in_member_with_authority_adds_the_photo","The founder, 10 November 2026 (N610): ""if someone has typing on, then you can literally type to them thank you""; ""A photo asked for: the middle is 'Add a photo'""."
 tests/test_the_chain_hears_the_training_yes_postgres.py,Story,"As a speaker, I want my recordings used for training only after my own training yes, so that an old bundled yes or a withdrawal is respected. (Critical path: consent.)","O1  The ring's consent door says yes only for an active training yes with
 a bound speaker.
 O2  It says no before the speaker is bound, after a withdrawal, and for an

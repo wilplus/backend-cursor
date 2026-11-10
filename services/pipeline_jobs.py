@@ -1269,7 +1269,18 @@ def sweep_stale_jobs(max_rows: int = 100) -> Dict[str, int]:
     except Exception as e:
         logger.warning("pipeline_jobs: training copy sweep failed: %s", e)
         counts["training_erasure_people"] = 0
+    counts.update(_gather_model_examples(min(max_rows, 20)))
     return counts
+
+
+def _gather_model_examples(limit: int) -> Dict[str, int]:
+    """A host's model gathers the Takes sent to them, only from speakers
+    whose training yes is on, and lets go of the rest (MOD-02). The job
+    never raises; this only keeps the sweep's counts."""
+    from services.model_examples_from_takes import sweep as gather
+
+    gathered = gather(database=db, limit=limit)
+    return {f"model_examples_{key}": value for key, value in gathered.items()}
 
 
 def orphan_stale_minutes() -> int:
