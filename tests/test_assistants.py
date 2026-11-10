@@ -282,6 +282,10 @@ class RecipeTest(unittest.TestCase):
         for refused in ("You scored 7/10 on balance.", "That's 80% there.",
                         "Your landing was wrong.", "Let's fix your posture."):
             self.assertIsNotNone(assistants.check_host_words(refused), refused)
+        # A host's own words in their own chat may judge in words (N616 item 12);
+        # a number about the person is still refused there.
+        self.assertIsNone(assistants.check_host_words("I'll show you the one thing to fix.", verdicts=False))
+        self.assertIsNotNone(assistants.check_host_words("You scored 7/10.", verdicts=False))
         with self.assertRaises(RecipeError) as words:
             assistants.normalize({"welcome": ["I rate you out of 10 points."]})
         self.assertEqual(words.exception.code, "RECIPE_WORDS")

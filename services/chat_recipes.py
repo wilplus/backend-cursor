@@ -54,7 +54,7 @@ def _words(value: Any, most: int, field: str, *, empty: bool = False) -> str:
         return ""
     if not text or len(text) > most:
         raise RecipeError("RECIPE_INVALID", f"{field} must be 1 to {most} characters.")
-    reason = assistants.check_host_words(text)
+    reason = assistants.check_host_words(text, verdicts=False)
     if reason:
         raise RecipeError("RECIPE_WORDS", f"{field}: {reason}.")
     return text
@@ -203,7 +203,9 @@ def start(database: Any, user_id: Any, body: Any) -> dict:
     spec = spec[0].upper() + spec[1:]
     sug, _calls = chat_suggestions.suggest(spec, user_id=str(user_id))
     first_out = sug["out"][0]
-    recipe = {"spec": spec, "suggest": sug, "line": sug["line"][0], "send": [sug["send"][0]],
+    # "A message" is ticked by default, so a visitor can type (N625 item 1).
+    send = [sug["send"][0], *(["text"] if sug["send"][0] != "text" else [])]
+    recipe = {"spec": spec, "suggest": sug, "line": sug["line"][0], "send": send,
               "out": first_out, "hello": sug["hello"][0], "questions": [{"q": sug["qs"][0]}],
               "taps": list(sug["taps"][0])[:3], "smart": False, "models": [], "who": WHO[0],
               "share": False, "sensitive": True, "live": False}
