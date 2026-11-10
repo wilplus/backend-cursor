@@ -16291,3 +16291,67 @@ my setup costs me rational amount of money"; then, on the two screens drawn:
 (drawn as free); what happens in a chat when the host has too few tokens
 (drawn: that model's line is left out and the host is told).
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N618 · The locked setup, corrected by the founder while using it: your own
+model is free; a story before the models; test your own chat; tell Will to
+edit it; and nine smaller things (founder, the Claude Code chat, 10 November
+2026, on the prototype, screen by screen: "here I am using my own model
+that I will be training why do I have to pay?"; "this is stupid screen; what
+else could they get if not an answer?"; "make it possible to add the file or
+the photo at this stage"; "explain from where the examples come (are they
+generated?)"; "when the text is longer, it gets taller"; "show there at
+least the three dots at the bottom so that we know that smth is actually
+loading"; "here we should show them the list of models they can use ... or
+that they can set up their own model that is free that requires more
+training and time before it is functional but might generate you money
+later on ... you use the API key of that model and you implement it to your
+chat ... right now your chat isn't really specialist in anything; do you
+want to make it domain smart?"; "explain what it means that you will have a
+specialist model and why it is useful and why it is not worth it"; "here are
+your models that you can share with others through the secret api key and
+the public api key and publish them for others on the platform to use";
+"ask them if they want to test it and talk to their own model and it opens
+their own chat with their name ... if they want to edit it they should go
+to will and simply type I want to edit my chat"; "it is just like another
+chat in the list of chats"; on who answers: "i don't get this; like what is
+the reason for it to exist?"; "please show the overlay on the full page
+like this with Will"; "apply to the prototype and the docs and tests").**
+For N606, N607, N610, N612, N616 and N617:
+1. **Your own model is free to run in your own chat.** A host pays only
+   when someone else's model runs in their chat (N617 Open, settled).
+2. **"They get back" is asked only when it is not simply an answer.** Where
+   Will's suggestion is an answer, the screen is skipped and people get an
+   answer; the host can change it later (amends N616 item 5).
+3. **Teaching with your own example.** At "Teach it" a host can add a photo
+   or a file of their own; it stays private to that model. The screen says
+   where examples come from: what the host's people send, once they say yes
+   to training. No example is generated.
+4. **The typing box grows with the text, and three dots show while Will
+   works something out.**
+5. **The cost is typed:** how many people, and how often each sends; the
+   month's total follows. With only the host's own models the screen says
+   the chat costs nothing.
+6. **A story before the models.** Will says the chat isn't a specialist in
+   anything yet and asks "Want to make it {profession}-smart?". Then two
+   ways: use a model that exists (ready now, paid per use; the chat gets a
+   key to it) or train your own (free, needs the host's answers and time,
+   may earn later). Before the first own model, one screen says what it is,
+   when it is worth it and when it is not.
+7. **Sharing says "These are your models"** and shows two ways: on
+   WillpowerLab, where others add a model to their chats, and with a key,
+   for a business's own software.
+8. **Test my chat opens the host's own chat,** under their name, like any
+   chat in the list; what can be tapped shows as the orange bubbles of any
+   chat. After the setup the list of chats holds Will and that chat. To
+   change anything the host tells Will, in their own words ("I want to edit
+   my chat"), and the chat's parts open again.
+9. **Who answers is three plain choices on one screen:** "I draft, you
+   send", "Only you", "I answer at once", each with what follows.
+10. **On a wide screen an overlay is as wide as Will's chat,** not a narrow
+    strip in the middle: the AI models page and the setup's screens.
+11. **The pinned prototype and its stories are updated**
+    (`docs/design/the-blank-setup-2026-11-10/`).
+**Open:** a public key that is safe to put on a website: today a key is one
+kind, shown once, a test key or a paid one (N583); the founder named a
+secret key and a public key.
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
