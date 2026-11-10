@@ -40,6 +40,10 @@ OUTCOME
       taken first, and refunded when the model gives no answer.
   O11 A monthly limit and a month's payouts count every answer, past the
       database's 1,000 rows an answer; only a finished month is paid.
+  O12 (PIPE-07) A call sent again with the same Idempotency-Key is charged
+      once and gets the first answer, the model asked once; the same key with
+      another question is refused; a call without a key is a new answer, as
+      before; a new key after an answer that never came is a new try.
 PROVES   O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
          O2 -> ModelApiTest::test_the_card_and_trying_a_model
          O3 -> ModelApiTest::test_a_test_key_is_shown_once_and_answers_100_times
@@ -51,6 +55,7 @@ PROVES   O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
          O9 -> ModelApiTest::test_an_api_answer_needs_the_buyers_authority
          O10 -> ModelApiTest::test_no_answer_is_never_charged_and_a_charge_is_never_unanswered
          O11 -> ModelApiTest::test_limits_and_payouts_count_past_a_thousand_rows
+         O12 -> ModelApiTest::test_a_paid_answer_is_charged_once
 WHY      The models' API and its money (migration
          a_business_can_buy_a_model_s_answers), served by
          services/model_api_store.py over services/model_api.py.
@@ -104,6 +109,49 @@ class _CappedQuery(_Query):
 class _CappedStore(_Store):
     def table(self, name):
         return _CappedQuery(self, name)
+
+    def rpc(self, name, params):
+        """ai_model_answer_reserve as the migration writes it, for the unit
+        tier; the real function, and its race, are proved in
+        tests/test_a_paid_answer_is_charged_once_within_its_limit_postgres.py."""
+        assert name == "ai_model_answer_reserve"
+        store = self
+
+        class _Call:
+            def execute(self):
+                return _Result([store._reserve(**params)])
+        return _Call()
+
+    def _reserve(self, p_key_id, p_units, p_idempotency_key=None, p_request_hash=None):
+        key = next((k for k in self.tables.get("ai_model_api_keys", [])
+                    if k["id"] == p_key_id and not k.get("revoked_at")), None)
+        if key is None:
+            return {"outcome": "no_key", "charge_id": None, "reply": None}
+        charges = self.tables.setdefault("ai_model_charges", [])
+        if p_idempotency_key is not None:
+            for c in charges:
+                if (c["key_id"], c["idempotency_key"]) == (p_key_id, p_idempotency_key) \
+                        and c["status"] != "released":
+                    outcome = ("mismatch" if c["request_hash"] != p_request_hash else
+                               "replay" if c["status"] == "answered" else "in_flight")
+                    return {"outcome": outcome, "charge_id": c["id"],
+                            "reply": c.get("reply") if outcome == "replay" else None}
+        month = self.clock.strftime("%Y-%m-01")
+        limit = key.get("monthly_limit_units")
+        if limit is not None and p_units > 0:
+            ids = {c["id"] for c in charges}
+            spent = sum(c["units"] for c in charges if c["key_id"] == p_key_id
+                        and c["status"] != "released" and c["created_at"] >= month)
+            spent += sum(c["price_units"] for c in self.tables.get("ai_model_calls", [])
+                         if c.get("key_id") == p_key_id and str(c.get("created_at")) >= month
+                         and c["id"] not in ids)
+            if spent + p_units > limit:
+                return {"outcome": "limit", "charge_id": None, "reply": None}
+        made = self.defaults("ai_model_charges", {
+            "key_id": p_key_id, "units": p_units, "idempotency_key": p_idempotency_key,
+            "request_hash": p_request_hash, "status": "reserved", "reply": None})
+        charges.append(made)
+        return {"outcome": "reserved", "charge_id": made["id"], "reply": None}
 
 KASIA = "11111111-1111-4111-8111-111111111111"   # started Job interview coach
 MARTA = "22222222-2222-4222-8222-222222222222"   # teaches it; started Pitch Coach
@@ -389,6 +437,34 @@ class ModelApiTest(unittest.TestCase):
         refused = self._ask(key)
         self.assertEqual(refused.get_json()["code"], "NOT_ENOUGH_TOKENS")
         self.assertEqual(self.asked, [])        # the provider is never asked unpaid
+
+    def test_a_paid_answer_is_charged_once(self):
+        key = self._key({"kind": "live", "monthly_limit_units": 5000})["key"]
+
+        def ask(once, message="How do I answer: what is your biggest weakness?"):
+            return self.client.post(f"/v2/models/{JOB}/answer", json={"message": message},
+                                    headers={"Authorization": f"Bearer {key}", "Idempotency-Key": once})
+
+        first = ask("order-7")
+        self.reply = {"answer": "A different answer.", "confidence": 0.9}
+        again = ask("order-7")
+        self.assertEqual((first.status_code, again.status_code), (200, 200))
+        self.assertEqual(again.get_json(), first.get_json())
+        self.assertEqual(self.charged, [(BIZ, 300)])
+        self.assertEqual(len(self.asked), 1)
+        self.assertEqual(len(self.store.tables["ai_model_calls"]), 1)
+        reused = ask("order-7", "Another question entirely?")
+        self.assertEqual((reused.status_code, reused.get_json()["code"]), (422, "IDEMPOTENCY_KEY_REUSED"))
+        self.assertEqual(ask("order-8").get_json()["answer"], "A different answer.")
+        self.assertEqual(self._ask(key).status_code, 200)              # no key: a new answer, as before
+        self.assertEqual(self.charged, [(BIZ, 300)] * 3)
+        self.assertEqual(ask("bad key \u00e9").status_code, 400)
+
+        with patch("services.llm.chat_complete", lambda **_k: None):  # no answer came: a retry is a new try
+            self.assertEqual(ask("order-9").status_code, 503)
+        self.assertEqual(ask("order-9").status_code, 200)
+        self.assertEqual(self.refunded, [(BIZ, 300)])
+        self.assertEqual(self.charged, [(BIZ, 300)] * 5)
 
     def test_limits_and_payouts_count_past_a_thousand_rows(self):
         from services import model_api_store as store

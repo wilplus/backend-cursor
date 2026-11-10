@@ -226,7 +226,12 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     a teacher; none of it goes into the exam.
   - **The final exam** is set aside from whole speakers, never an upload,
     and answered by the owner and one expert they ask; an exam answer never
-    counts toward training.
+    counts toward training. Each model deals its own exam: the pick is
+    salted with the model's id, so the same people are not set aside in
+    every model, and a speaker already on one side stays there (PIPE-05,
+    N615 item 2). A moment sealed in an exam is neither served to nor
+    answerable by that exam's experts as a teaching example in another
+    model (404, as an exam case is to anyone else).
   - **Nobody teaches a model alone:** an answer counts only once another
     trusted teacher gives the same one, or it matches the example's known
     answer; the owner's first 10 set those known answers, and two matching
@@ -250,7 +255,9 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     from speakers whose training yes is on, recorded after it, whose
     learning is not stopped and whose processing authorization is current;
     a yes turned off takes them out on the next run
-    (`services/model_examples_from_takes.py`, MOD-02).
+    (`services/model_examples_from_takes.py`, MOD-02). Twenty models gather
+    a run, those gathered longest ago first (`ai_models.examples_gathered_at`,
+    0523), so every model takes its turn.
 - **F7** **A model's API and its money** (N528 items 6, 7, 11 and 12, N531,
   N566 items 8 to 10, N577, N583): `services/model_api.py`, the rules once,
   read by `services/model_api_store.py` over migration 0521. Not in force
@@ -270,7 +277,18 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
   - **Keys:** shown once; only the SHA-256 hash and the last four characters
     are stored; never logged. One test key per buyer and model, ever, free
     for 100 answers and never billing. A live key has a monthly limit and
-    stops before an answer that would pass it. Every key is pinned to the
+    stops before an answer that would pass it. The check and the take are
+    one database step (`ai_model_answer_reserve`, 0523), under the key's
+    row lock, so two answers at the limit's edge cannot both pass
+    (PIPE-08).
+  - **Charged once** (PIPE-07): a call may send an `Idempotency-Key`
+    header (1 to 255 visible ASCII characters). The same key and question
+    again get the first answer, charged nothing, the model not asked; while
+    the first is still being answered, 409 `IDEMPOTENCY_KEY_IN_USE`; the
+    same key with another question, 422 `IDEMPOTENCY_KEY_REUSED`; after an
+    answer that never came, the same key is a new try. The answer is kept
+    only for a call that sent a key, for 24 hours. Without a key, every call
+    is a new answer, as before. Every key is pinned to the
     version it was made on until its buyer switches.
   - **An answer** runs under the buyer's processing authority, a permit for
     each provider call. It fails closed both ways (unlike the live loop):
@@ -635,6 +653,8 @@ own dates and are left as they are. The legal files are counsel's to change.
 ## 6. Changes
 
 One line each, newest first: `date · N · what changed · PR`.
+
+- 2026-11-10 · N615 · PIPE-05, PIPE-07, PIPE-08: each model deals its own exam (the pick salted with the model's id) and a moment sealed in one model's exam is not taught by its experts in another; a paid answer is charged once per `Idempotency-Key`; a key's monthly limit is checked and taken in one database step under the key's row lock; the examples sweep reaches every model over successive runs; migration 0523 · BE #1903
 
 - 2026-11-10 · N615, N616 · LEARN-01 to LEARN-06, PIPE-06: a model answers from a small head fitted on its own settled examples (F8); "sure" from the head's measured confidence; the owner's check of ten unseen examples opens its owner's chat; the exam is computed by the app, never entered, and only a passed one opens sharing and selling; no photo model is fitted, answers from a head or is offered; a version keeps what it learned from and is marked to retrain when an example goes; migration 0522 · BE #1898
 - 2026-11-10 · N615 · PIPE-09: the moment a model first goes public is kept in its setup (`setup.public_at`, no new column); a teacher invited after it is never sent, and cannot answer or download, the examples that were private; a model that went public before the moment was kept opens them to no invited teacher · BE

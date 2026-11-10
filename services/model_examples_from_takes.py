@@ -32,8 +32,10 @@ model's exam until it holds 100 cases, so no speaker is on both sides.
 
 Runs from the periodic sweep (``services/pipeline_jobs.py``): a withdrawn
 yes is let go in every model each run, however many models there are
-(N615 item 2); the gathering is a bounded number of models a run. It is
-safe to run twice: a moment goes into a
+(N615 item 2); the gathering is a bounded number of models a run, those
+gathered longest ago first (``ai_models.examples_gathered_at``, migration
+a_paid_answer_is_charged_once_within_its_limit), so every model is reached
+over successive runs. It is safe to run twice: a moment goes into a
 model once (0520's ``ai_model_examples_take_moment_once``).
 """
 from __future__ import annotations
@@ -189,7 +191,7 @@ def _insert(database: Any, model: dict, have: list[dict], new: list[dict]) -> in
     exam_speakers = {str(e["speaker_id"]) for e in have if e.get("in_exam")}
     seen_speakers = {str(e["speaker_id"]) for e in have}
     fresh = [{**e, "id": e["snippet_id"]} for e in new if e["speaker_id"] not in seen_speakers]
-    to_exam = S.exam_split(fresh, sum(1 for e in have if e.get("in_exam")))
+    to_exam = S.exam_split(fresh, sum(1 for e in have if e.get("in_exam")), model_id=model["id"])
     added = 0
     for e in new:
         row = {**e, "in_exam": e["snippet_id"] in to_exam or e["speaker_id"] in exam_speakers}
@@ -217,6 +219,17 @@ def gather_for_model(database: Any, model: dict) -> dict:
     kept = [e for e in have if path.get(str(e.get("speaker_id")), {}).get("ok")]
     new = _new_moments(database, model, takes, path, {str(e["snippet_id"]) for e in kept if e.get("snippet_id")})
     return {"added": _insert(database, model, kept, new) if new else 0, "removed": removed}
+
+
+def _taken_its_turn(database: Any, model: dict) -> None:
+    """The model had its turn this run (a failed run too, so one broken
+    model never holds the others back)."""
+    from datetime import datetime, timezone
+    try:
+        _table(database, MODELS).update({"examples_gathered_at": datetime.now(timezone.utc).isoformat()}) \
+            .eq("id", model["id"]).execute()
+    except Exception:
+        logger.warning("model examples: the turn was not kept model=%s", model.get("id"), exc_info=True)
 
 
 #: Rows read a request: PostgREST answers at most a thousand without a range.
@@ -260,8 +273,9 @@ def let_go_everywhere(database: Any) -> int:
 
 
 def sweep(*, database: Any = None, limit: int = 20) -> dict:
-    """First every withdrawn yes, in every model; then every model that
-    learns gathers, up to ``limit`` a run. Never raises."""
+    """First every withdrawn yes, in every model; then the models that
+    learn gather, up to ``limit`` a run, the ones gathered longest ago (or
+    never) first, so every model takes its turn. Never raises."""
     if database is None:
         from services.db import db as database
     out = {"models": 0, "added": 0, "removed": 0}
@@ -270,8 +284,11 @@ def sweep(*, database: Any = None, limit: int = 20) -> dict:
     except Exception:
         logger.warning("model examples: a withdrawn yes could not be let go everywhere", exc_info=True)
     try:
-        models = [m for m in _all(lambda: _table(database, MODELS).select("id,owner_id,status,recipe"))
-                  if m.get("status") in ("learning", "ready")][:limit]
+        models = sorted((m for m in _all(lambda: _table(database, MODELS)
+                                         .select("id,owner_id,status,recipe,examples_gathered_at"))
+                         if m.get("status") in ("learning", "ready")),
+                        key=lambda m: (m.get("examples_gathered_at") is not None,
+                                       str(m.get("examples_gathered_at") or ""), str(m["id"])))[:limit]
     except Exception:
         logger.warning("model examples: the models could not be read", exc_info=True)
         return out
@@ -280,6 +297,9 @@ def sweep(*, database: Any = None, limit: int = 20) -> dict:
             got = gather_for_model(database, m)
         except Exception:
             logger.warning("model examples: a run failed model=%s", m.get("id"), exc_info=True)
+            got = None
+        _taken_its_turn(database, m)
+        if got is None:
             continue
         out["models"] += 1
         out["added"] += got["added"]
