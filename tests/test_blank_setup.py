@@ -29,6 +29,7 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          N632.2   -> SetupTest::test_what_the_first_take_said_opens_what_you_do
          N632.3   -> SetupTest::test_a_chat_that_takes_a_recording_is_a_skill_chat
          N632.4   -> SetupTest::test_start_again_begins_blank_and_keeps_only_the_same_model
+         N632.6   -> SetupTest::test_not_now_is_never_final
          VIS-01   -> VisitorTest::test_the_hosts_hello_first_questions_and_taps
          VIS-02   -> VisitorTest::test_the_bar_follows_what_the_host_takes
          VIS-03   -> VisitorTest::test_they_get_back_the_output_the_host_chose
@@ -271,6 +272,32 @@ class SetupTest(_Base):
             kept = self._put("models", [self._model()]).get_json()["recipe"]["models"][0]
         self.assertEqual(kept["model_id"], card["model_id"])
         self.assertEqual(len(self.store.tables["ai_models"]), 1)
+
+    def test_not_now_is_never_final(self):
+        """N632 item 6: after "Not now" and with the chat live, every part
+        stays changeable: the host turns models on, makes one (it gets its
+        real model), shares at a price and changes the rest, and the chat
+        stays live; only /live itself closes it."""
+        def rings(feature, user_id, database=None):
+            del database
+            return feature in ("chat_builder", "ai_models") and str(user_id) == TOMEK
+        with patch("services.rings.feature_is_on_for_user", rings):
+            self._start()
+            self._put("smart", False)                            # "Not now"
+            self._put("care", False)
+            self.assertTrue(self._put("live", True).get_json()["recipe"]["live"])
+            for part, value in (("smart", True), ("way", "own"), ("models", [self._model()]),
+                                ("share", True), ("price", 3), ("who", "assistant"), ("send", ["rec", "text"]),
+                                ("hello", "Hi. Show me your scalp."), ("questions", [{"q": "What worries you?"}]),
+                                ("taps", ["Ask for advice"]), ("line", "People come to you about their hair.")):
+                got = self._put(part, value)
+                self.assertEqual(got.status_code, 200, part)
+                recipe = got.get_json()["recipe"]
+                self.assertTrue(recipe["live"], part)
+            self.assertTrue(recipe["models"][0].get("model_id"))
+            self.assertEqual((recipe["smart"], recipe["share"], recipe["price"], recipe["who"]),
+                             (True, True, 3, "assistant"))
+            self.assertFalse(self._put("live", False).get_json()["recipe"]["live"])
 
     def test_who_answers_is_three_plain_choices(self):
         """FIRST-09, FIRST-22: "I draft, you send" first, then "Only you"

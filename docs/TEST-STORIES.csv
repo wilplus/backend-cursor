@@ -613,6 +613,7 @@ FIRST-22 -> SetupTest::test_who_answers_is_three_plain_choices
 N632.2   -> SetupTest::test_what_the_first_take_said_opens_what_you_do
 N632.3   -> SetupTest::test_a_chat_that_takes_a_recording_is_a_skill_chat
 N632.4   -> SetupTest::test_start_again_begins_blank_and_keeps_only_the_same_model
+N632.6   -> SetupTest::test_not_now_is_never_final
 VIS-01   -> VisitorTest::test_the_hosts_hello_first_questions_and_taps
 VIS-02   -> VisitorTest::test_the_bar_follows_what_the_host_takes
 VIS-03   -> VisitorTest::test_they_get_back_the_output_the_host_chose
