@@ -16846,3 +16846,42 @@ Settles N633 item 5 and what N632 item 5 left without a line.
    who join you are met your way."
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N635 · Will's chat is for managing your model and your chat; recordings
+live in the speaking chat** (founder, the Claude Code chat, 10 November
+2026, after the live trial: "why the recording with my speaking coach are
+being shown in Will chat - they should be only in the chat with your
+speaking coach if you have one and the Will stays exclusively to manage
+your model and your chat for others only"; "the bar there should be the txt
+input not the recording"). Follows N632 item 1 (Will stays a chat in
+words). For N590 and N592.
+
+For whoever has the ring row `chat_builder`:
+
+1. **What belongs to speaking shows only in the speaking chat** (N590):
+   the Take's rows, "Your feedback is ready.", the way into the Feedback
+   walk, the plan's questions and its card, the feelings check, and the
+   line after the walk. Will's chat shows none of them.
+2. **Will's chat shows the rest:** the model, the chat's setup, and what
+   needs you (N629). Its bar is the text field, always. It has no record
+   button and no plan dock.
+3. **The record button lives in the speaking chat:** "Start your first
+   recording", "Record Take {n}" and "Record your answer" are there and
+   nowhere in Will's chat. The loop is unchanged: record, process, Ideal
+   Text, next Take.
+4. **Nothing is stored differently.** The rows stay where they are written
+   today; each chat shows its own kind. What is unread is counted the same
+   way, so a new speaking row marks the speaking chat and not Will.
+5. **The speaking chat is Artur's chat for everyone** (N590), until another
+   speaking coach's chat can hold a person's Takes; that is a later
+   decision.
+
+**What stops for people on the ring:** Takes, feedback notices and the
+record button in Will's chat.
+
+**Open:** where the line after the walk "Next, open Your chat below, and
+set it up." (N634 item 3) points, now that it shows in the speaking chat
+and "Your chat" is in Will's chat.
+
+No migration in this entry. No new words. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
