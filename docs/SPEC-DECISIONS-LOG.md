@@ -16781,3 +16781,41 @@ thread; a model that is still learning in "Models you can use".
 No migration in this entry. No new words: "Start again" is the earlier
 builder's signed button. The rules: docs/LOCKS.md (the blank setup); the
 frontend's `docs/flows/feedback-walk-and-chat.md` for item 7.
+
+**N633 · Models still learning can be added to a chat; a person meets
+someone's chat in the thread they already share; the first person comes
+through a link; Will's words for a changed price; and a model's base is
+chosen** (founder, the Claude Code chat, 10 November 2026: "show models
+that are in the progress too"; "when setting up your model add there an
+option to choose on top of which model you want to build: gpt, Claude, own
+model (future), spec in behavioral analysis"; "for the rest let's go with
+your recommendations").
+
+1. **A model that is still learning shows in "Models you can use"** and can
+   be added to a chat. It is marked "Still learning", the words the AI
+   models page already uses. Added to a chat, it says nothing to the
+   people who write there; the host's answers and corrections teach it. It
+   costs nothing while it learns. Passing its exam is still what lets it
+   answer in other hosts' chats and be sold (N616 item 10). Was: only a
+   model that had passed a computed exam was listed, so the list was empty.
+2. **A person meets someone's chat in the thread they already share.** The
+   first time they open that thread after the other person opened their
+   chat, the chat's hello and what can be tapped show there, once. Was:
+   only someone who joined through that person's link met their chat.
+3. **The first person comes through a link** (N471 stands: nobody gets in
+   without one). The blank setup's "first person ever" is someone who
+   joined through a link and has no chat of their own yet; their list
+   holds the chat they joined and Will, and "Your chat" in Will's lines
+   opens the setup (N629, N632). The pinned prototype's opening and its
+   stories say so.
+4. **When an owner changes a model's price, Will tells each host who uses
+   it:** "{name} changed the price of their model. Keep it at the new
+   price, or drop it?" with Keep and Drop (N630 item 3). It shows under
+   "This needs you:" and counts there.
+5. **A model's base is chosen when it is made.** The setup asks what the
+   model is built on: GPT, Claude, or WillpowerLab's own model for reading
+   how people behave, which is shown as not ready yet. The words of that
+   screen and what each choice changes are not settled: they are shown on
+   the prototype first.
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
