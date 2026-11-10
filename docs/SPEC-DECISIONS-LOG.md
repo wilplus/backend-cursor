@@ -16494,3 +16494,27 @@ This changes steps 3 and 4 of N619. The rest of N619 and all of N620 stand.
    prototypes and coordinates.
 
 No migration in this entry. No rules page: this is the order of work.
+
+**N622 · The health, law or money question gets its words and its place;
+the host's line is what a newcomer reads; and a line for refused words**
+(founder, the Claude Code chat, 10 November 2026, on the two screens shown
+in the prototype and the drafted line: "you have my OK").
+
+1. **Health, law or money (N616 items 13 and 22).** It is the first screen
+   after the host types what they do. Will asks "Is your work about health,
+   law or money?", with No and Yes. Under it: "If yes, I only suggest
+   answers to you, and you send each one. Not sure? Say yes." With Yes,
+   "Who answers" does not offer "I answer at once" and says "Your work is
+   about health, law or money, so nothing goes out until you send it."
+2. **"Why people come" is what a newcomer reads before they join.** The
+   screen says so: "New people read this before they join your chat." And
+   "Open your chat to people?" shows that card: "{name}'s chat" with the
+   line as "People come to {name} ...", under "Anyone with your link can
+   use it. This is what they read before they join:".
+3. **When a host's own words are refused,** the screen stays and says "Try
+   other words. Your chat can't show scores or verdicts."
+4. **The pinned prototype and its stories are updated**
+   (`docs/design/the-blank-setup-2026-11-10/`): FIRST-03, FIRST-11,
+   FIRST-15, VIS-07.
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).

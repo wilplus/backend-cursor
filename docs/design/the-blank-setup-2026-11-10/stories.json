@@ -63,11 +63,15 @@
   "then": [
    "it shows one line from Will, one thing, and two buttons: Change and Keep",
    "Change shows Will's next suggestion",
-   "“Type my own” goes to Will's chat for the words and comes back to the same screen"
+   "“Type my own” goes to Will's chat for the words and comes back to the same screen",
+   "on “People come to you for this:” a line under the card says “New people read this before they join your chat.”",
+   "when the host's own words are refused, the screen stays and says “Try other words. Your chat can't show scores or verdicts.”"
   ],
   "rules": [
    "N612 item 4",
-   "N578 item 6"
+   "N578 item 6",
+   "N622 item 2",
+   "N622 item 3"
   ],
   "code": [],
   "tests": [],
@@ -251,12 +255,14 @@
   "when": "the person taps “See it”",
   "then": [
    "the chat plays one screen at a time as someone who came to it: the hello, the first questions, what they send, what they get back, each model's line, “Was this useful?”",
+   "“Open your chat to people?” shows the card a new person reads before they join: “{name}'s chat” and the host's line as “People come to {name} …”",
    "“Open your chat to people?” Yes makes it live; Not yet keeps it saved",
    "Will's chat then shows the link to the chat's parts, each open to change"
   ],
   "rules": [
    "N612",
-   "N578 item 7"
+   "N578 item 7",
+   "N622 item 2"
   ],
   "code": [],
   "tests": [],
@@ -342,14 +348,17 @@
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a host is setting up",
-  "when": "Will asks whether the chat is about health, law or money",
+  "when": "the host has typed what they do",
   "then": [
-   "one yes-or-no question; in doubt, yes",
-   "with yes, the host's models only suggest to the host and never answer a person themselves"
+   "the next screen is Will's one question: “Is your work about health, law or money?” with No and Yes",
+   "under it: “If yes, I only suggest answers to you, and you send each one. Not sure? Say yes.”",
+   "with Yes, “Who answers” does not offer “I answer at once” and says “Your work is about health, law or money, so nothing goes out until you send it.”",
+   "with Yes, the host's models only suggest to the host and never answer a person themselves"
   ],
   "rules": [
    "N616 item 13",
-   "N616 item 22"
+   "N616 item 22",
+   "N622 item 1"
   ],
   "code": [],
   "tests": [],
@@ -528,7 +537,8 @@
    "the host sees the model's suggestion in their Will and sends their own answer"
   ],
   "rules": [
-   "N616 item 13"
+   "N616 item 13",
+   "N622 item 1"
   ],
   "code": [],
   "tests": [],
