@@ -1,5 +1,5 @@
 """Starting a model: the store behind the setup (N528 item 4, N566 items 2 to
-6, N570, N571, N582, N585). It reads and writes ``ai_models.setup`` (0517)
+6, N570, N571, N582, N585). It reads and writes ``ai_models.setup`` (0520)
 and ``ai_models.recipe`` (0516); the rules and words are
 ``services/model_setup.py``.
 

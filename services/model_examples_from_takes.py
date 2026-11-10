@@ -32,7 +32,7 @@ model's exam until it holds 100 cases, so no speaker is on both sides.
 
 Runs from the periodic sweep (``services/pipeline_jobs.py``), a bounded
 number of models a run, and is safe to run twice: a moment goes into a
-model once (0517's ``ai_model_examples_take_moment_once``).
+model once (0520's ``ai_model_examples_take_moment_once``).
 """
 from __future__ import annotations
 

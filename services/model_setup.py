@@ -5,7 +5,7 @@ for N570's and N571's drafted steps).
 
 Like ``services/model_launchpad.py``, this module has no storage of its own:
 every function takes plain dicts and returns plain dicts.
-``services/model_setup_store.py`` reads and writes ``ai_models.setup`` (0517)
+``services/model_setup_store.py`` reads and writes ``ai_models.setup`` (0520)
 and ``ai_models.recipe`` (0516) and hands them here.
 
 THE DRAFT (``ai_models.setup``, what the owner said and chose):

@@ -934,7 +934,7 @@ fi
 # cases are in tests/test_a_person_can_teach_and_start_ai_models_postgres.py.
 hard migrations/a_person_can_teach_and_start_ai_models.sql
 hard migrations/a_person_can_teach_and_start_ai_models.sql
-# 0517 (N566, MOD-02): a model keeps its setup; a Take's moment goes into a
+# 0520 (N566, MOD-02): a model keeps its setup; a Take's moment goes into a
 # model once. After 0516, twice. Its cases are in
 # tests/test_a_model_keeps_its_setup_postgres.py.
 hard migrations/a_model_keeps_its_setup.sql

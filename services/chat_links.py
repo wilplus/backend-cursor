@@ -13,8 +13,8 @@ onboarding (N335 item 1).
     for. Its secret is ``token``; the page is ``/c/<token>``.
   * ``renew``: the caller's link replaced; the old one stops working.
   * ``preview``: for the join page, before anyone signs in: the first name
-    of whose link it is, and nothing else. A wrong, replaced or switched-off
-    link is 404, the same answer for each.
+    of whose link it is, in the page's three lines (N601). A wrong,
+    replaced or switched-off link is 404, the same answer for each.
   * ``join``: the signed-in caller joins: one chat with the link's owner,
     made once for the two of them (chat_threads.pair_key), however often
     either opens a link. Your own link is refused. By invitation (N471):
@@ -125,16 +125,20 @@ def _open(database: Any, token: Any) -> dict:
 
 
 def preview(database: Any, token: Any) -> dict:
-    """GET /v2/chats/join/<token>, no sign-in: {"name"}, whose link it is.
-    A link whose owner has the chat builder (N579 item 2) also says whose
-    assistant answers there (N578 item 1) and Will's line for the joiner's
-    own chat (N586 item 2): {"assistant", "will_line"}."""
-    from services import assistants, rings
+    """GET /v2/chats/join/<token>, no sign-in: the join page in three lines
+    (N601): {"name", "invited": "{name} invited you", "learn": one sentence
+    of what you'll learn, or null, "only_two": "Only the two of you are in
+    this chat."}. A link whose owner has the chat builder (N579 item 2) also
+    says whose assistant answers there (N578 item 1): {"assistant"}."""
+    from services import assistants
     link = _open(database, token)
-    out: dict = {"name": link["display_name"]}
-    if rings.feature_is_on_for_user(assistants.CHAT_BUILDER, str(link["user_id"]), database=database):
-        out["assistant"] = assistants.assistant_name(link["display_name"])
-        out["will_line"] = assistants.will_line()
+    owner, name = str(link["user_id"]), link["display_name"]
+    on = assistants.on(database, owner)
+    out: dict = {"name": name, "invited": assistants.INVITED.format(name=name),
+                 "learn": assistants.learns(database, owner, own=on),
+                 "only_two": assistants.ONLY_TWO}
+    if on:
+        out["assistant"] = assistants.assistant_name(name)
     return out
 
 
@@ -187,7 +191,14 @@ def join(database: Any, user_id: Any, token: Any, token_payload: Any) -> dict:
     thread, made = _open_pair(database, people, link["display_name"], link_id=str(link["id"]))
     if made:
         membership.admitted(user_id)
-        # The questions the link's owner set for whoever joins (N487).
+        # The host's welcome first (N590 item 2), then the questions the
+        # link's owner set for whoever joins (N487).
+        from services import assistants
+        owner_member = next((str(m["id"]) for m in _rows(_table(database, MEMBERS)
+                             .select("id,user_id").eq("thread_id", thread))
+                             if str(m.get("user_id")) == owner), None)
+        if owner_member:
+            assistants.welcome(database, thread, owner, owner_member)
         from services import join_questions
         join_questions.begin(database, thread, owner, user_id)
     return {"chat": {"id": thread}}

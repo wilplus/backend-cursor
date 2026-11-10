@@ -238,7 +238,7 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
   - **Deletion:** a deleted Take's examples go (`ai_model_examples_take`);
     an erased owner's description, name and the setup's own words go, the
     model's name and card stay, and a draft is archived (trigger
-    `ai_models_owner_left`, 0517).
+    `ai_models_owner_left`, 0520).
   - **Inviting teachers is sharing your own chat’s link** (N598): the
     invite step carries the owner's chat link; there is no teacher link.
   - **No user id is kept in a model's setup:** the exam's expert and the
@@ -480,7 +480,7 @@ still open.
   `services/model_launchpad_store.py` and `routes/v2/learning_models.py`
   (`/v2/models`, ring row `ai_models`): the launchpad's tables, read into
   F5's rules
-- `migrations/a_model_keeps_its_setup.sql` (0517), `services/model_setup.py`,
+- `migrations/a_model_keeps_its_setup.sql` (0520), `services/model_setup.py`,
   `services/model_setup_store.py`, `routes/v2/model_setup.py`
   (`/v2/models/setup`, `/v2/models/<id>/setup/*`) and
   `services/model_examples_from_takes.py`: starting a model (F6)
@@ -523,7 +523,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
-- 2026-11-09 · N528, N566, N570, N571, N582, N585 · F6: starting a model, its draft kept (0517), the setup's routes behind the ring, and the job that gathers consented Takes (MOD-02); waits for its outside review · BE
+- 2026-11-09 · N528, N566, N570, N571, N582, N585 · F6: starting a model, its draft kept (0520), the setup's routes behind the ring, and the job that gathers consented Takes (MOD-02); waits for its outside review · BE
 - 2026-11-09 · N528, N563, N566 · F5's tables (0516) and `/v2/models`, behind the ring row `ai_models` at ring 6; waits for its outside review · BE
 - 2026-11-09 · N528, N563, N566 · F5: the model launchpad's rules in one module, before its tables: the list, a model's page, teaching by the recipe card, the trust check, the one queue, release · BE
 - 2026-10-26 · N111 · §3 marks the founder's answers of 21 October: A1 to A10, A12, A13 and A15 decided, A11 and A14 held and asked again; B2 to B7 marked fixed, B1 still open · BE

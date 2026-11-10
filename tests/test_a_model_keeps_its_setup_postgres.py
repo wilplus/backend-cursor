@@ -14,7 +14,7 @@ OUTCOME
 PROVES   O1 -> test_a_model_keeps_its_setup_and_it_is_an_object
          O2 -> test_a_moment_goes_into_a_model_once
          O3 -> test_an_erased_owners_words_leave_the_model
-WHY      Migration a_model_keeps_its_setup (0517), applied twice in both
+WHY      Migration a_model_keeps_its_setup (0520), applied twice in both
          rehearsal lanes after 0516 (the reapply is its idempotency check).
 """
 from __future__ import annotations

@@ -7,8 +7,8 @@ People are matched in one place only: after a Take, when someone new fits
 it (N477). This module finds that one person, keeps what came of it, and
 makes the chat between the two only when that person answers (N478):
 
-  * ``suggest``  for the speaker, after the walk: one person who shares one
-    of their communities, is a member (N471), has no chat with them, was
+  * ``suggest``  for the speaker, after the walk: one person in their
+    business community (N559 item 1), is a member (N471), has no chat with them, was
     never suggested to them before, recorded a Take lately and is not
     already asked enough; who fits the Take best (N481 item 2). Knowledge
     first, by its words, both ways, rare words weighing most
@@ -69,7 +69,6 @@ from services.rings import TAKE_MATCH as FEATURE
 logger = logging.getLogger(__name__)
 
 MATCHES = "take_matches"
-COMMUNITY_MEMBERS = "community_members"
 PROFILES = "people_profiles"
 #: The least fit worth a suggestion: two words of what the Take is about
 #: that the candidate knows, or as much from what they practise. Proposed,
@@ -159,20 +158,12 @@ def _chunks(ids: list[str]) -> list[list[str]]:
 
 
 def pool(database: Any, speaker_id: str) -> list[str]:
-    """Everyone who shares a community with the speaker (a private one: the
-    general community has no member rows), minus whoever already has a chat
-    with them and whoever was suggested to them before; read in id order, so
-    a very large community is cut the same way every time, and sorted."""
-    communities = [str(r["community_id"]) for r in _rows(
-        _table(database, COMMUNITY_MEMBERS).select("community_id")
-        .eq("user_id", speaker_id).limit(MAX_ROWS))]
-    people: set[str] = set()
-    for part in _chunks(sorted(set(communities))):
-        people |= {str(r["user_id"]) for r in _rows(
-            _table(database, COMMUNITY_MEMBERS).select("user_id")
-            .in_("community_id", part).order("user_id").limit(MAX_POOL)) if r.get("user_id")}
-    if len(people) >= MAX_POOL:
-        logger.warning("take_match: the pool of %s is cut at %s people", speaker_id, MAX_POOL)
+    """Everyone in the speaker's business community (N559 item 1: joining is
+    how a person belongs to it), minus whoever already has a chat with them
+    and whoever was suggested to them before (N485 item 3); sorted. Not the
+    passcode communities, which N471 retired."""
+    from services import business_community
+    people = business_community.people(database, speaker_id, cap=MAX_POOL)
     return sorted(people - _in_chats_with(database, speaker_id)
                   - _suggested_before(database, speaker_id) - {speaker_id})
 

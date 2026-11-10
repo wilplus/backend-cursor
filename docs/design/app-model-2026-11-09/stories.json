@@ -7648,30 +7648,31 @@
  {
   "id": "WID-13",
   "area": "Your chat on any website",
-  "title": "Nothing is sent before the visitor agrees",
-  "status": "built",
+  "title": "The visitor writes at once, with no card before it",
+  "status": "partly",
   "screen": "web.vis.agree",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/your-chat-on-any-website-2026-11-09/your-chat-on-any-website.html",
   "given": "the visitor opened the pill",
   "when": "the chat opens",
   "then": [
-   "\"Your taps go to Ariel through WillpowerLab.\" with \"Privacy\"",
-   "\"Agree and start\"; only then is the visitor's chat made"
+   "no card before the visitor writes; they write at once",
+   "the chat is made with their first message or tap",
+   "agreeing comes with the sign-up: \"By signing up, you agree to our Terms of Service and Privacy Policy.\""
   ],
   "rules": [
-   "N567 item 4",
-   "N567 item 9",
+   "N595 item 1",
+   "N591",
    "customer-requests.md §B8 to B13"
   ],
   "code": [
-   "fe:src/components/willab/chats/joinCopy.ts::export const widgetConsent = (name: string) => `Your taps go to ${name} through WillpowerLab.`;",
-   "be:services/chat_widget.py::def start(database: Any, token: Any, site: Any) -> dict:"
+   "be:services/chat_widget.py::def start(database: Any, token: Any, site: Any, first: Any = None) -> dict:"
   ],
   "tests": [
    "src/components/willab/chats/WidgetChat.test.tsx",
    "tests/test_chat_widget.py"
   ],
-  "evals": []
+  "evals": [],
+  "note": "Backend built in #1868 (N595 item 1); the widget's \"Agree and start\" card goes when the frontend follows. Counsel's view on the visitor's consent stays open."
  },
  {
   "id": "WID-14",
@@ -7732,25 +7733,24 @@
   "id": "WID-16",
   "area": "Your chat on any website",
   "title": "No fixed questions are offered",
-  "status": "differs",
+  "status": "partly",
   "screen": "web.vis.number",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/your-chat-on-any-website-2026-11-09/your-chat-on-any-website.html",
   "given": "the visitor answered Ariel's questions",
   "when": "the widget moves on",
   "then": [
-   "it asks for a number (WID-17); no \"What would you like to ask Ariel?\" and no fixed questions"
+   "no \"What would you like to ask Ariel?\" and no fixed questions; the visitor writes as Ariel's chat is set up (N591 item 2)"
   ],
   "rules": [
+   "N591 item 5",
    "N569 item 2"
   ],
-  "code": [
-   "be:services/chat_widget.py::ASKS = (\"What do you do?\", \"How do you work with people?\", \"Can we talk?\")"
-  ],
+  "code": [],
   "tests": [
    "tests/test_chat_widget.py"
   ],
   "evals": [],
-  "note": "The code offers \"What would you like to ask {name}?\" with \"What do you do?\", \"How do you work with people?\" and \"Can we talk?\" (N567 item 5); N569 item 2 removes them."
+  "note": "Backend: the fixed questions are gone (#1868, N591 item 5); the widget still shows them until the frontend follows."
  },
  {
   "id": "WID-17",
@@ -7881,26 +7881,28 @@
  {
   "id": "WID-22",
   "area": "Your chat on any website",
-  "title": "The owner no longer records a spoken answer for a visitor",
-  "status": "differs",
+  "title": "The owner answers a visitor as in any chat",
+  "status": "partly",
   "screen": "web.own.chat",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/your-chat-on-any-website-2026-11-09/your-chat-on-any-website.html",
   "given": "a visitor's chat is open",
   "when": "Ariel looks at the bar",
   "then": [
-   "no \"Record your answer\" for the visitor; the call takes its place"
+   "the visitor's question is marked to answer, however it arrived",
+   "Ariel answers by recording or typing, as her setup allows"
   ],
   "rules": [
+   "N591 item 3",
    "N569 item 2"
   ],
   "code": [
-   "be:services/chat_widget.py::return _post(database, me, \"text\", ASKS[i], {\"widget_ask\": i, \"record_answer\": True})"
+   "be:services/chats.py::def _post_text"
   ],
   "tests": [
    "tests/test_chat_widget.py"
   ],
   "evals": [],
-  "note": "The code marks the visitor's question for \"Record your answer\" and plays the answer in the widget (N567 item 6); N569 item 2 removes it."
+  "note": "Backend built in #1868 (a typed question carries record_answer; the host may type); the bar's typing waits for the founder's OK (N483)."
  },
  {
   "id": "WID-23",
@@ -7930,7 +7932,7 @@
   "id": "WID-24",
   "area": "Your chat on any website",
   "title": "Keep this chat makes it the visitor's",
-  "status": "built",
+  "status": "differs",
   "screen": "web.vis.keep",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/your-chat-on-any-website-2026-11-09/your-chat-on-any-website.html",
   "given": "a visitor in the widget",
@@ -7940,18 +7942,18 @@
    "the join page opens; after Join the chat is theirs, and Ariel's list says \"Widget / {name}\""
   ],
   "rules": [
-   "N567 item 7",
-   "customer-requests.md §B8 to B13"
+   "N591 item 4",
+   "N567 item 7"
   ],
   "code": [
-   "fe:src/components/willab/chats/joinCopy.ts::export const keepLine = (name: string) => `Join WillpowerLab to keep it, and hear ${name}'s answers on your phone.`;",
-   "be:services/chat_widget.py::def keep(database: Any, user_id: Any, token: Any, guest: Any, token_payload: Any) -> dict:"
+   "fe:src/components/willab/chats/joinCopy.ts::export const keepLine = (name: string) => `Join WillpowerLab to keep it, and hear ${name}'s answers on your phone.`;"
   ],
   "tests": [
    "src/components/willab/chats/WidgetChat.test.tsx",
    "tests/test_chat_widget.py"
   ],
-  "evals": []
+  "evals": [],
+  "note": "Retired by N591 item 4: replaced by WID-29, the sign-up after asking. The backend's keep is now sign_up (#1868); the frontend's Keep this chat remains until it follows."
  },
  {
   "id": "WID-25",
@@ -8614,6 +8616,34 @@
   "evals": []
  },
  {
+  "id": "WID-29",
+  "area": "Your chat on any website",
+  "title": "The visitor signs up after asking, to get the answer",
+  "status": "partly",
+  "screen": "web.vis.keep",
+  "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/your-chat-on-any-website-2026-11-09/your-chat-on-any-website.html",
+  "given": "a visitor has asked Ariel something on her website",
+  "when": "they sign up with a phone, email, Google or another sign-in",
+  "then": [
+   "\"To get {name}'s answer, sign up.\" and \"The first notice of the answer comes to your phone or email. After that, this chat is yours.\"",
+   "after signing up, \"Signed up. The first notice of the answer comes to your phone.\" (or \"… to your email.\"), and the chat becomes theirs as for anyone who joined through Ariel's link",
+   "the first notice: \"{name} answered your question. Open it in WillpowerLab.\""
+  ],
+  "rules": [
+   "N591 item 4",
+   "N595 item 2",
+   "N471"
+  ],
+  "code": [
+   "be:services/chat_widget.py::def sign_up"
+  ],
+  "tests": [
+   "tests/test_chat_widget.py"
+  ],
+  "evals": [],
+  "note": "Backend built in #1868, in the signed words (N595 item 2); the sign-up card is the frontend's."
+ },
+ {
   "id": "WILL-14",
   "area": "Will's chat",
   "title": "A Take's bubble in Will's chat opens its words",
@@ -8782,5 +8812,35 @@
   ],
   "evals": [],
   "note": "Built (BE #1854, FE #1337) with N592's approved bubble; \"Record Take 2\" stays faded until the walk is done."
+ },
+ {
+  "id": "FT-15",
+  "area": "The first Take",
+  "title": "\"Something else\" after the walk: the other choices as taps",
+  "status": "built",
+  "screen": "first.else",
+  "prototype": null,
+  "given": "a newcomer who chose \"Something else\" at \"What would you like to do here first?\"",
+  "when": "the walk of Take 1 ends",
+  "then": [
+   "Will says \"Tell me what you'd like to do, and I'll show you where.\"",
+   "under it, as taps: \"Prepare a talk\", \"Share what I know\", \"Learn from others\", leaving out any already chosen",
+   "one tap shows as their answer and Will says that choice's next line (\"Next, record Take 2 of your talk.\", \"Next, set up your assistant, so people who join you are met your way.\", \"Next, ask someone who knows. Tap + to start.\")",
+   "their own words still answer it, typed or said; the answer is kept in Will's notes"
+  ],
+  "rules": [
+   "N592 item 2",
+   "N604"
+  ],
+  "code": [
+   "be:services/way_in.py::ELSE_TAPS = (TALK, SHARE, LEARN)",
+   "fe:src/components/willab/plan/WayIn.tsx"
+  ],
+  "tests": [
+   "tests/test_way_in.py",
+   "src/components/willab/plan/wayIn.test.tsx"
+  ],
+  "evals": [],
+  "note": "Built with N604: no new words, the taps and lines are N573's and N592's."
  }
 ]
