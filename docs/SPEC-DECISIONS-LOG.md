@@ -16819,3 +16819,30 @@ your recommendations").
    the prototype first.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N634 · The words for what a model is built on, for a model still
+learning, and for what comes after a Take when someone came to share what
+they know** (founder, the Claude Code chat, 10 November 2026, on the three
+proposals put to him after N633: "Use recommended voice and finish").
+Settles N633 item 5 and what N632 item 5 left without a line.
+
+1. **What a model is built on.** When a person trains their own model, the
+   setup asks, before the model's question: "What should it be built on?"
+   with three choices, each with a line under it:
+   - "GPT" · "A general model from OpenAI. Ready now."
+   - "Claude" · "A general model from Anthropic. Not ready yet."
+   - "WillpowerLab's own" · "Made for reading how people behave. Not ready
+     yet."
+   Only a choice that is ready can be tapped. The choice is kept on the
+   model's card. Today it changes nothing in how answers are written,
+   because GPT is the one general model the app is connected to.
+   Connecting Claude is a later decision of its own.
+2. **A model still learning says so about itself.** In "Models you can
+   use.", under "Still learning": "It says nothing yet. Your answers teach
+   it." The list's caption stays.
+3. **After a Take, for someone who chose to share what they know** and has
+   the ring row `chat_builder`: "Next, open Your chat below, and set it
+   up." Was, before N632 item 5: "Next, set up your assistant, so people
+   who join you are met your way."
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
