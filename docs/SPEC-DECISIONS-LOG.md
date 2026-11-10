@@ -16471,3 +16471,26 @@ evidence. A step with a no does not close.
   setup and one answer used. That figure is the cost of a chat.
 
 No migration in this entry. No rules page: this is the order of work.
+
+**N621 · The green light: the build starts as two builds, one per repo, not
+six** (founder, the Claude Code chat, 10 November 2026: "the point is to
+make it work as cheap as possible when it comes to compute of the
+development session and to finish it so I can send it to the customer";
+"can't it be done simpler?"; then, on the two-build route: "GO, you have my
+green light"; "for the build you can use opus and smaller models").
+
+This changes steps 3 and 4 of N619. The rest of N619 and all of N620 stand.
+
+1. **Build A, backend:** the setup, what a visitor meets, and the leak
+   fixes that need no migration (N615), by one builder. It publishes the
+   contract first (N619 step 2).
+2. **Build B, frontend:** the setup's screens and the visitor's screens, by
+   one builder, started when Build A's contract exists and merged after
+   Build A.
+3. **Later, not needed for a first customer who runs their own model:** a
+   model that learns, the leak fixes that need a migration, and tokens in a
+   chat. Until they land, sharing a model between hosts stays off.
+4. **The builders run on a smaller model** than the one that plans,
+   prototypes and coordinates.
+
+No migration in this entry. No rules page: this is the order of work.
