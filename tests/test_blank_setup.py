@@ -12,6 +12,7 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          FIRST-05 -> SetupTest::test_they_get_back_an_answer_unless_will_suggests_otherwise
          FIRST-06 -> SetupTest::test_the_hello_questions_and_taps_pass_the_hosts_checks
          FIRST-07 -> SetupTest::test_a_model_is_one_question_with_three_answers
+         FIRST-08 -> SetupTest::test_a_model_made_here_is_a_real_model_teach_it_opens
          FIRST-09 -> SetupTest::test_who_answers_is_three_plain_choices
          FIRST-10 -> SetupTest::test_sharing_keeps_a_price_in_tokens
          FIRST-11 -> VisitorTest::test_not_yet_keeps_it_saved_and_yes_opens_it
@@ -169,6 +170,28 @@ class SetupTest(_Base):
         two = {"q": "Is it dry?", "opts": ["Yes", "No"]}
         self.assertEqual(self._put("models", [two]).status_code, 400)
         self.assertEqual(self._put("models", [self._model()] * 4).status_code, 400)
+
+    def test_a_model_made_here_is_a_real_model_teach_it_opens(self):
+        """FIRST-07, FIRST-08: the model a host makes gets the real model
+        behind it, theirs and private, ready for "Teach it"; kept again, it
+        is the same model."""
+        def rings(feature, user_id, database=None):
+            del database
+            return feature in ("chat_builder", "ai_models") and str(user_id) == TOMEK
+        with patch("services.rings.feature_is_on_for_user", rings):
+            self._start()
+            card = self._put("models", [self._model()]).get_json()["recipe"]["models"][0]
+            again = self._put("models", [card, self._model("Are there flakes?")]).get_json()["recipe"]["models"]
+            self._put("models", [self._model(), again[1]])
+            teach = self.client.get(f"/v2/models/{card['model_id']}/setup/first-ten", headers=self._as(TOMEK))
+        self.assertEqual(again[0]["model_id"], card["model_id"])
+        rows = self.store.tables["ai_models"]
+        self.assertEqual(len(rows), 2)
+        mine = next(r for r in rows if r["id"] == card["model_id"])
+        self.assertEqual((mine["owner_id"], mine["visibility"], mine["status"], mine["recipe"]["scale"]),
+                         (TOMEK, "private", "learning", ["Yes", "Somewhat", "No"]))
+        self.assertEqual(teach.status_code, 200)
+        self.assertEqual(self.provider.calls, [])
 
     def test_who_answers_is_three_plain_choices(self):
         """FIRST-09, FIRST-22: "I draft, you send" first, then "Only you"

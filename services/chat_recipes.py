@@ -80,6 +80,9 @@ def _model(raw: Any, i: int) -> dict:
                            "opts": [_words(o, 22, f"An answer of model {i + 1}") for o in opts],
                            "says": _words(raw.get("says"), 200, f"Model {i + 1}'s line", empty=True),
                            "own": raw.get("own", True) is not False}
+    if out["own"] and raw.get("model_id"):
+        # Kept only when it is the one made for this card (``_real_models``).
+        out["model_id"] = str(raw["model_id"])[:64]
     if not out["own"]:
         out["model_id"] = str(raw.get("model_id") or "")[:64]
         if not out["model_id"]:
@@ -213,6 +216,8 @@ def set_part(database: Any, user_id: Any, part: str, body: Any) -> dict:
     if recipe is None:
         raise RecipeError("NOT_STARTED", "Say what you do first.", 409)
     value = _clean_part(part, (body or {}).get("value") if isinstance(body, dict) else None)
+    if part == "models":
+        value = _real_models(database, str(user_id), recipe, value)
     recipe = {**recipe, part: value}
     if part == "smart" and value is False:
         recipe["models"] = []
@@ -220,6 +225,34 @@ def set_part(database: Any, user_id: Any, part: str, body: Any) -> dict:
         recipe.pop("price", None)
     stored = _store(database, str(user_id), recipe)
     return {"recipe": stored, "cost": cost(stored)}
+
+
+def _real_models(database: Any, user_id: str, recipe: dict, models: list[dict]) -> list[dict]:
+    """Each model the host makes here gets the real model behind it, made by
+    the models' own "Start your own" (``model_setup_store.begin_from_chat``):
+    owned by the host, private, ready for "Teach it". The same card kept
+    again keeps its model: by the id it carries, or by its question. Only
+    for a host with the AI models (ring ``ai_models``); without it the card
+    stays as it is, with no ``model_id``."""
+    from services import model_launchpad_store, model_setup_store
+    before = [m for m in recipe.get("models") or [] if m.get("own", True) and m.get("model_id")]
+    ids = {str(m["model_id"]) for m in before}
+    by_q = {m["q"]: str(m["model_id"]) for m in before}
+    sends = (recipe.get("send") or ["text"])[0]
+    out = []
+    for m in models:
+        if not m.get("own", True):
+            out.append(m)
+            continue
+        made = m.get("model_id") if m.get("model_id") in ids else by_q.get(m["q"])
+        if not made and model_launchpad_store.enabled(database, user_id):
+            made = model_setup_store.begin_from_chat(
+                database, user_id, question=m["q"], answers=m["opts"], sends=sends)["model_id"]
+            ids.add(made)
+            by_q[m["q"]] = made
+        out.append({**{k: v for k, v in m.items() if k != "model_id"},
+                    **({"model_id": made} if made else {})})
+    return out
 
 
 def parts(recipe: dict) -> list[dict]:

@@ -9156,19 +9156,20 @@
    "N607"
   ],
   "code": [
-   "be:services/chat_recipes.py::def _model("
+   "be:services/chat_recipes.py::def _model(",
+   "be:services/model_setup_store.py::def begin_from_chat("
   ],
   "tests": [
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "The recipe keeps each model as one question with three answers (backend #1893). Making the model itself is MOD-*; a used model's key is not built."
+  "note": "The recipe keeps each model as one question with three answers, and a model made there is a real model, the host's and private (backend #1893, #1894). A used model's key is not built."
  },
  {
   "id": "FIRST-08",
   "area": "The first person ever sets up a chat",
   "title": "You teach it, then it guesses and you check",
-  "status": "not built",
+  "status": "partly",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the person kept a model",
@@ -9182,9 +9183,14 @@
    "N585",
    "N582 item 5"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_setup_store.py::def begin_from_chat("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "The model made in the setup is ready for \"Teach it\": its first ten open on the existing routes (backend #1894). Its examples come from what the host's people send, once they say yes to training."
  },
  {
   "id": "FIRST-09",

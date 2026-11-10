@@ -551,6 +551,7 @@ FIRST-04 -> SetupTest::test_what_people_send_several_ticked
 FIRST-05 -> SetupTest::test_they_get_back_an_answer_unless_will_suggests_otherwise
 FIRST-06 -> SetupTest::test_the_hello_questions_and_taps_pass_the_hosts_checks
 FIRST-07 -> SetupTest::test_a_model_is_one_question_with_three_answers
+FIRST-08 -> SetupTest::test_a_model_made_here_is_a_real_model_teach_it_opens
 FIRST-09 -> SetupTest::test_who_answers_is_three_plain_choices
 FIRST-10 -> SetupTest::test_sharing_keeps_a_price_in_tokens
 FIRST-11 -> VisitorTest::test_not_yet_keeps_it_saved_and_yes_opens_it
