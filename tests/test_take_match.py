@@ -27,11 +27,12 @@ OUTCOME
       Take message) and the answer in it, under their names.
   O7  Nobody else can open or answer it, the one suggested cannot before it
       was sent, and a Take recorded before it reached them is no answer.
-  O8  Once skills are on, the experiment's arm decides among people who
-      know as much: someone at a similar level, or someone further along,
-      progressing alike; the arm, what made the fit, whether the other arm
-      would have chosen someone else and how likely the pick was are kept,
-      never another person's id, and the speaker sees none of it.
+  O8  Once skills are on, among people who know as much and left matching
+      by how they speak on, the one a step ahead is chosen, progressing
+      alike, never someone for being at the same level (N559 item 4); what
+      made the fit and how likely the pick was are kept, never another
+      person's id, and the speaker sees none of it. Someone who turned it
+      off is weighed by what they know alone.
   O9  Words that say nothing about the subject make no match: Polish
       function words ("dla", "się"), or words everyone in the community
       uses ("presentation", "speak").
@@ -50,6 +51,22 @@ OUTCOME
       nothing in the speaker's list. Undo leaves no trace. Once the time is
       up the chat is made exactly once, even if the timer was lost, and
       Undo is too late.
+  O14 While matching by how people speak is off, the match weighs what
+      people know against what the Take needs, and nothing else: the arm is
+      "topics", no speaking read is kept, nothing is shown (MATCH-03).
+  O15 The matcher learns from answers and conversations only (N559 item
+      3): of two people who know as much, the one who answered earlier
+      suggestions within a week and kept talking comes first; one who never
+      answered sinks. Nobody is asked to rate anyone; nothing is shown.
+  O16 On the screen of who hears a Take, your own chats come best fit
+      first: the person who can best answer this Take is first, a chat that
+      fits nothing is left to the screen's order, and no score is sent
+      (N559 item 2).
+  O17 Settings, "Matching by how you speak": off by default; Turn off
+      deletes what Will learned from how you speak, and your chats stay
+      (N465, N559 item 6).
+  O18 Nobody is asked to rate a person: no line anywhere asks "How was
+      practising with {name}?" (N559 item 7, MATCH-12).
 PROVES   O1 -> TakeMatchTest::test_with_no_ring_nobody_is_suggested
          O2 -> TakeMatchTest::test_one_new_person_who_fits_is_suggested_as_a_pseudonym
          O3 -> TakeMatchTest::test_nobody_in_a_chat_waiting_or_suggested_before
@@ -63,6 +80,11 @@ PROVES   O1 -> TakeMatchTest::test_with_no_ring_nobody_is_suggested
          O11 -> TakeMatchTest::test_progress_is_counted_within_each_talk
          O12 -> TakeMatchTest::test_not_now_removes_it_tells_nobody_and_never_again
          O13 -> TakeMatchTest::test_an_answer_waits_for_undo_and_counts_once
+         O14 -> TakeMatchTest::test_with_skills_off_only_knowledge_counts
+         O15 -> TakeMatchTest::test_answers_and_conversations_teach_the_matcher
+         O16 -> TakeMatchTest::test_your_own_chats_best_fit_first
+         O17 -> TakeMatchTest::test_turning_off_matching_by_how_you_speak
+         O18 -> TakeMatchTest::test_nobody_is_asked_to_rate_a_person
 WHY      Matching people happens in one place only, after the Take (N477);
          a knock in the chats, opened or turned down, anonymous until the
          answer, which alone opens the chats (N478, N485, N493);
@@ -373,20 +395,136 @@ class TakeMatchTest(unittest.TestCase):
                 t["v4_willfidence_takes"].append({
                     "take_session_id": take, "read_version": "willfidence-v1-machine",
                     "status": "measured", "willfidence": round(start + 0.02 * i, 2)})
-        with patch.dict(os.environ, {"TAKE_MATCH_SKILLS": "1"}):
-            for arm, chosen in (("similar_level", LEA), ("further_along", MAYA)):
-                t["take_matches"] = []
-                with patch("services.take_match.draw_arm", lambda arm=arm: arm):
-                    match = self._suggested()
-                self.assertEqual(set(match), {"id", "pseudonym", "role"})
-                row = t["take_matches"][0]
-                self.assertEqual((row["candidate_id"], row["arm"]), (chosen, arm))
-                kept = row["signals"]
-                self.assertTrue({"knowledge", "skill", "pace", "rank", "propensity"} <= set(kept))
-                self.assertTrue(kept["other_arm_differs"])
-                self.assertEqual((kept["rank"], kept["propensity"]), (1, 1.0))
-                self.assertNotIn(LEA, json.dumps(kept))
-                self.assertNotIn(MAYA, json.dumps(kept))
+        with patch.dict(os.environ, {"TAKE_MATCH_SKILLS": "1"}), \
+                patch("services.take_match.speaking_allowed", lambda ids: set(ids)):
+            match = self._suggested()
+        self.assertEqual(set(match), {"id", "pseudonym", "role"})
+        row = t["take_matches"][0]
+        self.assertEqual((row["candidate_id"], row["arm"]), (MAYA, "further_along"))
+        kept = row["signals"]
+        self.assertTrue({"knowledge", "skill", "pace", "rank", "propensity"} <= set(kept))
+        self.assertEqual((kept["rank"], kept["propensity"]), (1, 1.0))
+        self.assertNotIn(LEA, json.dumps(kept))
+        self.assertNotIn(MAYA, json.dumps(kept))
+        # Maya turned it off: weighed by what she knows alone, and nothing of
+        # how she speaks is kept.
+        t["take_matches"] = []
+        t["community_members"] = [m for m in t["community_members"] if m["user_id"] != LEA]
+        with patch.dict(os.environ, {"TAKE_MATCH_SKILLS": "1"}), \
+                patch("services.take_match.speaking_allowed", lambda ids: set(ids) - {MAYA}):
+            self._suggested()
+        row = t["take_matches"][0]
+        self.assertEqual((row["candidate_id"], row["arm"]), (MAYA, "topics"))
+        self.assertNotIn("skill", row["signals"])
+
+    def test_with_skills_off_only_knowledge_counts(self):
+        with patch("services.take_match.speaking_allowed", lambda ids: set(ids)):
+            match = self._suggested()
+        self.assertEqual(set(match), {"id", "pseudonym", "role"})
+        row = self.store.tables["take_matches"][0]
+        self.assertEqual((row["candidate_id"], row["arm"]), (LEA, "topics"))
+        self.assertEqual(set(row["signals"]) & {"skill", "pace", "skill_gap", "pace_gap"}, set())
+        self.assertGreaterEqual(row["signals"]["knowledge"], 2.0)
+
+    def _twin(self):
+        """Maya knows exactly what Lea knows."""
+        t = self.store.tables
+        t["community_members"].append({"community_id": TEAM, "user_id": MAYA})
+        t["people_profiles"].append(
+            {"user_id": MAYA, "name": None, "role": "Speaking coach",
+             "about": "I help founders open an investor pitch with numbers that stick."})
+        t["v2_sessions"].append({"id": "77777777-1111-4111-8111-777777777777", "user_id": MAYA,
+                                 "created_at": "2026-11-03T09:00:00Z", "intake_context": {},
+                                 "slide_transcripts": []})
+
+    def test_answers_and_conversations_teach_the_matcher(self):
+        from services import take_match
+        self._twin()
+        t = self.store.tables
+        others = [f"{i:08d}-4444-4444-8444-444444444444" for i in range(4)]
+        # Lea never answered two earlier suggestions; Maya answered both in a
+        # day and the two kept talking.
+        t["take_matches"] = [
+            {"id": "l1", "session_id": "s1", "speaker_id": others[0], "candidate_id": LEA,
+             "status": "sent", "sent_at": "2026-10-01T10:00:00+00:00"},
+            {"id": "l2", "session_id": "s2", "speaker_id": others[1], "candidate_id": LEA,
+             "status": "declined", "sent_at": "2026-10-02T10:00:00+00:00"},
+            {"id": "m1", "session_id": "s3", "speaker_id": others[2], "candidate_id": MAYA,
+             "status": "answered", "sent_at": "2026-10-01T10:00:00+00:00",
+             "answered_at": "2026-10-02T10:00:00+00:00", "thread_id": "tm1"},
+            {"id": "m2", "session_id": "s4", "speaker_id": others[3], "candidate_id": MAYA,
+             "status": "answered", "sent_at": "2026-10-03T10:00:00+00:00",
+             "answered_at": "2026-10-03T12:00:00+00:00", "thread_id": "tm2"}]
+        t["chat_messages"] = [
+            {"id": f"x{i}", "thread_id": thread, "author_member_id": f"{thread}-{i % 2}",
+             "created_at": f"2026-10-0{4 + i}T09:00:00+00:00"}
+            for thread in ("tm1", "tm2") for i in range(3)]
+        self._suggested()
+        row = t["take_matches"][-1]
+        self.assertEqual(row["candidate_id"], MAYA)
+        self.assertEqual(row["signals"]["outcomes"], 2)
+        # What each kind of outcome counts: kept talking, answered, nothing.
+        sent = {"sent_at": "2026-10-01T10:00:00+00:00", "answered_at": "2026-10-02T10:00:00+00:00"}
+        talk = [{"author_member_id": a, "created_at": f"2026-10-0{3 + i}T09:00:00+00:00"}
+                for i, a in enumerate("aba")]
+        now = take_match._when("2026-11-04T10:30:00+00:00")
+        self.assertEqual(take_match.outcome(sent, talk, now), 2)
+        self.assertEqual(take_match.outcome(sent, talk[:2], now), 1)
+        self.assertEqual(take_match.outcome({**sent, "answered_at": "2026-10-09T10:00:00+00:00"},
+                                            talk, now), 0)
+        self.assertIsNone(take_match.outcome({"sent_at": "2026-11-03T10:00:00+00:00"}, [], now))
+
+    def test_your_own_chats_best_fit_first(self):
+        t = self.store.tables
+        t["community_members"] = []
+        t["chat_members"] = [
+            {"id": "a1", "thread_id": "with-tomek", "user_id": AMIRA},
+            {"id": "a2", "thread_id": "with-tomek", "user_id": TOMEK},
+            {"id": "b1", "thread_id": "with-lea", "user_id": AMIRA},
+            {"id": "b2", "thread_id": "with-lea", "user_id": LEA}]
+        response = self._get(f"/v2/takes/{TAKE}/match/chats")
+        self.assertEqual(response.status_code, 200, response.get_json())
+        self.assertEqual(response.get_json(), {"order": ["with-lea"]})
+        self.assertEqual(self.store.count("take_matches"), 0)
+        self.ring = False
+        self.assertEqual(self._get(f"/v2/takes/{TAKE}/match/chats").status_code, 404)
+
+    def test_turning_off_matching_by_how_you_speak(self):
+        from types import SimpleNamespace
+        accounts: dict = {AMIRA: {}}
+
+        class Admin:
+            def get_user_by_id(self, who):
+                return SimpleNamespace(user=SimpleNamespace(app_metadata=accounts[who]))
+
+            def update_user_by_id(self, who, change):
+                accounts[who] = dict(change["app_metadata"])
+
+        t = self.store.tables
+        t["chat_members"] = [{"id": "a1", "thread_id": "t1", "user_id": AMIRA},
+                             {"id": "a2", "thread_id": "t1", "user_id": LEA}]
+        t["take_matches"] = [{"id": "m1", "session_id": "s1", "speaker_id": TOMEK,
+                              "candidate_id": AMIRA, "status": "answered",
+                              "signals": {"knowledge": 3.0, "skill": 0.8, "pace": 0.5,
+                                          "skill_gap": 0.1, "pace_gap": 0.0, "rank": 1}}]
+        with patch("services.speaking_match._admin", Admin), \
+                patch.dict(os.environ, {"TAKE_MATCH_SKILLS": "1"}):
+            self.assertEqual(self._get("/v2/me/speaking-match").get_json(),
+                             {"on": False, "available": True})
+            self.assertEqual(self._post("/v2/me/speaking-match", {"on": True}).get_json()["on"], True)
+            off = self._post("/v2/me/speaking-match", {"on": False}).get_json()
+            self.assertEqual(off, {"on": False, "available": True})
+            self.assertEqual(self._post("/v2/me/speaking-match", {"on": "no"}).status_code, 400)
+        self.assertEqual(t["take_matches"][0]["signals"], {"knowledge": 3.0, "rank": 1})
+        self.assertEqual(len(t["chat_members"]), 2)
+
+    def test_nobody_is_asked_to_rate_a_person(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        asking = [str(p.relative_to(root)) for folder in ("services", "routes")
+                  for p in (root / folder).rglob("*.py")
+                  if "How was practising with" in p.read_text(encoding="utf-8")]
+        self.assertEqual(asking, [])
 
     def _only_take(self, topic, words):
         self.store.tables["v2_sessions"][0].update(

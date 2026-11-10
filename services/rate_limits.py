@@ -112,6 +112,9 @@ def _limit_string(name: str, default: str) -> str:
 DEFAULT_WHISPER_LIMIT = "20 per minute;200 per hour"
 DEFAULT_LLM_LIMIT = "30 per minute;400 per hour"
 DEFAULT_HEAVY_LIMIT = "10 per minute;100 per hour"
+#: A read the app repeats while it waits (the speaking way in polls every
+#: few seconds while Take 1 is processed): no provider call per request.
+DEFAULT_POLL_LIMIT = "60 per minute;2000 per hour"
 #: The live words of a voice note being said (N194): a few-second piece
 #: about every second and a half, for up to five minutes.
 DEFAULT_LIVE_NOTE_LIMIT = "60 per minute;1200 per hour"
@@ -141,6 +144,10 @@ def llm_limit_value() -> str:
 
 def heavy_limit_value() -> str:
     return _limit_string("RATE_LIMIT_HEAVY", DEFAULT_HEAVY_LIMIT)
+
+
+def poll_limit_value() -> str:
+    return _limit_string("RATE_LIMIT_POLL", DEFAULT_POLL_LIMIT)
 
 
 def live_note_limit_value() -> str:
@@ -440,6 +447,35 @@ def heavy_limit(fn):
     return _transparent(
         limiter.limit(heavy_limit_value, key_func=identity_key,
                       scope="heavy")(fn), fn)
+
+
+def _not_answering() -> bool:
+    """No ``answer`` in the JSON body and no audio: a poll that only reads
+    and writes what is due, with no provider call of its own."""
+    try:
+        if request.files:
+            return False
+        body = request.get_json(silent=True) or {}
+        return not (isinstance(body, dict) and body.get("answer") is not None)
+    except Exception:
+        logger.warning("rate_limits: the body could not be read; counted as an answer",
+                       exc_info=True)
+        return False
+
+
+def poll_limit(fn):
+    """A read the app repeats while it waits (the way in, N572)."""
+    return _transparent(
+        limiter.limit(poll_limit_value, key_func=identity_key,
+                      scope="poll")(fn), fn)
+
+
+def answering_llm_limit(fn):
+    """``llm_limit``, counted only for a request that carries an answer
+    (which may call the model); a poll with none is ``poll_limit``'s."""
+    return _transparent(
+        limiter.limit(llm_limit_value, key_func=identity_key, scope="llm",
+                      exempt_when=_not_answering)(fn), fn)
 
 
 def live_note_limit(fn):

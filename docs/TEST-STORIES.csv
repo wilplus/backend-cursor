@@ -440,6 +440,30 @@ O3 -> test_no_purchase_or_a_failed_read_keeps_the_paywall_up
 O4 -> test_missing_ids_are_never_entitled","services/arc_entitlement.py: ""a failure keeps the paywall up, never opens it""."
 tests/test_arc_notifications.py,Story,"As a speaker, I want the ""your voice album is ready"" chat message to speak in words, never counts or rankings, so that it encourages rather than grades.","O1  The message has no digits and none of: score, best, top, rank, %,
 points.",O1 -> VoiceAlbumBubbleTests::test_ac9_it_never_counts_or_grades,Never-rule 1; founder 2026-08-15 (post the album bubble once it is available).
+tests/test_assistants.py,Story,"As someone who invites people, I want my own chat answered by ""{name}'s assistant"", so that whoever joins through my link meets my chat, set up my way, and knows an AI answers for me (N578, N579, N580, N585, N586, N588).","O1  With the chat builder's ring, each chat with a person in my list says
+whose assistant answers there: ""Tomek's assistant""; without the ring,
+nothing changes (N579 item 2, N580 items 1 and 3).
+O2  The join page of a tester's link says ""Tomek's assistant"" and ""Will's
+chat is where you can set up a chat of your own.""; anyone else's link
+shows only the name, as before (N586 item 2).
+O3  A host sets the welcome, the first Take's questions and how people
+answer; the builder starts from Artur's five; a locked field (the
+Nevers, consent, the bar...) is refused (N578 item 5, N579 item 1).
+O4  A host's own words pass the checks Will's bubbles pass: a score or a
+verdict about the speaker is refused, their own numbers are not
+(N578 item 6, Never 1).
+O5  A simple recognizer reads on one line with two cuts: Yes past the
+upper, No below the lower, the queue between, coloured green, yellow
+or red, never a number (N580 item 3, N585 item 2).
+O6  A speaking coach is suggested only for a recording of you talking; a
+topic expert for their topic from any message; adding a coach your
+message doesn't suit brings one line with ""Record"" and ""Send anyway""
+(N588).","O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
+O2 -> AssistantsTest::test_a_testers_join_page_names_the_assistant_and_wills_chat
+O3 -> RecipeTest::test_a_host_sets_welcome_questions_and_how_people_answer
+O4 -> RecipeTest::test_a_hosts_words_never_score_the_speaker
+O5 -> RecipeTest::test_a_recognizer_reads_on_one_line_with_two_cuts
+O6 -> RecipeTest::test_suggestions_are_sensible_and_anyone_can_still_be_asked",Every inviter has a coach chat of their own (N578); the builder's MVP is for the founder and a few testers first (N579).
 tests/test_authorization_status_read.py,Story,"As a speaker, I want the app to check my permission quickly every time I open it, and to show a deletion I asked for when my account is blocked, so that opening the app is fast and I always see my pending deletion.","O1  An ordinary open reads only the status; a blocked person also gets
 both deletion lists.
 O2  The status comes back in one database call, keeping the gate mode
@@ -2086,7 +2110,8 @@ O6 -> test_mod16_same_question_same_scale_counts_for_both
 O7 -> test_mod22_a_close_result_has_no_release_button
 O8 -> test_mod02_only_takes_after_the_training_yes_reach_teachers","The model launchpad, locked on its prototype (N566); its rules live once in services/model_launchpad.py, before its tables."
 tests/test_model_launchpad_actions.py,Story,"As someone who teaches or owns an AI model, I want to put off an invite and find it again, accept it, add a case I know well, give a spoken answer as its words, and, as the owner, archive my model, make it public only after its disclaimer, so the launchpad's actions all work from the app (N528 items 3, 5 and 12, N563 item 4).","O1  ""Not now"" keeps the invite in my list, saying I put it off; accepting
-makes me a teacher of the model.
+makes me a teacher of the model; the invite goes through the
+inviter's own chat link, none of its own (N598).
 O2  An example I add is kept as mine, with my answer, and counts once
 another teacher agrees; a spoken answer arrives as its transcript.
 O3  Only the owner archives or makes a model public, and public needs the
@@ -2112,6 +2137,12 @@ O2 -> ModelRoutesTest::test_the_list_and_a_private_page
 O3 -> ModelRoutesTest::test_the_door_the_queue_and_pause
 O4 -> ModelRoutesTest::test_one_answer_counts_for_both_and_the_other_question_follows
 O5 -> ModelRoutesTest::test_the_profile_and_the_invite","The model launchpad's first tables (migration a_person_can_teach_and_start_ai_models), served by services/model_launchpad_store.py over services/model_launchpad.py."
+tests/test_model_match.py,Story,"As someone on the models page, I want ""For you"" to show the models that need what I know and the ones I teach, so that my answers go where they count (founder, 5 November 2026, N518 items 7 and 8, N520 item 7; App Model MOD-53).","O1  ""For you"" shows only the models whose words match the person's
+profile at the matching's threshold (2.0) or more, and the ones they
+teach, whatever their score; nothing else, and never a score.
+O2  An answer feeds the one model that fits the profile best at 2.0 or
+more; below it, no model.","O1 -> ModelMatchTest::test_for_you_is_chosen_by_the_knowledge_score
+O2 -> ModelMatchTest::test_an_answer_feeds_the_best_model_or_none","The person-to-model matching reuses the score and threshold of the person-to-Take matching (N518 item 7: ""Yes, reuse the score and threshold"")."
 tests/test_moment_pick.py,Story,"As a speaker, I want each Take to show my strongest moment, praised, and my weakest, fixed with the tool its weakness needs (its words first, else its voice with the AI clip), so that I know what to keep and get one fix on the moment that needs it.","O1  The strongest is the Take's highest willfidence clip, a block's best
 clip standing for it and a clip with enough words before a short
 one; it is praised whatever its voice and called my most confident.
@@ -3511,11 +3542,12 @@ a Take, makes the chat between the two, with the speaker's Take (a
 Take message) and the answer in it, under their names.
 O7  Nobody else can open or answer it, the one suggested cannot before it
 was sent, and a Take recorded before it reached them is no answer.
-O8  Once skills are on, the experiment's arm decides among people who
-know as much: someone at a similar level, or someone further along,
-progressing alike; the arm, what made the fit, whether the other arm
-would have chosen someone else and how likely the pick was are kept,
-never another person's id, and the speaker sees none of it.
+O8  Once skills are on, among people who know as much and left matching
+by how they speak on, the one a step ahead is chosen, progressing
+alike, never someone for being at the same level (N559 item 4); what
+made the fit and how likely the pick was are kept, never another
+person's id, and the speaker sees none of it. Someone who turned it
+off is weighed by what they know alone.
 O9  Words that say nothing about the subject make no match: Polish
 function words (""dla"", ""się""), or words everyone in the community
 uses (""presentation"", ""speak"").
@@ -3533,7 +3565,23 @@ again, whichever of them asks.
 O13 An answer waits five seconds for Undo and nobody sees it: no chat,
 nothing in the speaker's list. Undo leaves no trace. Once the time is
 up the chat is made exactly once, even if the timer was lost, and
-Undo is too late.","O1 -> TakeMatchTest::test_with_no_ring_nobody_is_suggested
+Undo is too late.
+O14 While matching by how people speak is off, the match weighs what
+people know against what the Take needs, and nothing else: the arm is
+""topics"", no speaking read is kept, nothing is shown (MATCH-03).
+O15 The matcher learns from answers and conversations only (N559 item
+3): of two people who know as much, the one who answered earlier
+suggestions within a week and kept talking comes first; one who never
+answered sinks. Nobody is asked to rate anyone; nothing is shown.
+O16 On the screen of who hears a Take, your own chats come best fit
+first: the person who can best answer this Take is first, a chat that
+fits nothing is left to the screen's order, and no score is sent
+(N559 item 2).
+O17 Settings, ""Matching by how you speak"": off by default; Turn off
+deletes what Will learned from how you speak, and your chats stay
+(N465, N559 item 6).
+O18 Nobody is asked to rate a person: no line anywhere asks ""How was
+practising with {name}?"" (N559 item 7, MATCH-12).","O1 -> TakeMatchTest::test_with_no_ring_nobody_is_suggested
 O2 -> TakeMatchTest::test_one_new_person_who_fits_is_suggested_as_a_pseudonym
 O3 -> TakeMatchTest::test_nobody_in_a_chat_waiting_or_suggested_before
 O4 -> TakeMatchTest::test_send_knocks_as_a_new_chat_not_through_will
@@ -3545,7 +3593,12 @@ O9 -> TakeMatchTest::test_words_that_say_nothing_make_no_match
 O10 -> TakeMatchTest::test_nobody_quiet_or_already_asked_enough
 O11 -> TakeMatchTest::test_progress_is_counted_within_each_talk
 O12 -> TakeMatchTest::test_not_now_removes_it_tells_nobody_and_never_again
-O13 -> TakeMatchTest::test_an_answer_waits_for_undo_and_counts_once","Matching people happens in one place only, after the Take (N477); a knock in the chats, opened or turned down, anonymous until the answer, which alone opens the chats (N478, N485, N493); every answer is a Take, and the matching weighs how people speak and progress (N481)."
+O13 -> TakeMatchTest::test_an_answer_waits_for_undo_and_counts_once
+O14 -> TakeMatchTest::test_with_skills_off_only_knowledge_counts
+O15 -> TakeMatchTest::test_answers_and_conversations_teach_the_matcher
+O16 -> TakeMatchTest::test_your_own_chats_best_fit_first
+O17 -> TakeMatchTest::test_turning_off_matching_by_how_you_speak
+O18 -> TakeMatchTest::test_nobody_is_asked_to_rate_a_person","Matching people happens in one place only, after the Take (N477); a knock in the chats, opened or turned down, anonymous until the answer, which alone opens the chats (N478, N485, N493); every answer is a Take, and the matching weighs how people speak and progress (N481)."
 tests/test_take_names_its_recording_postgres.py,Story,"As a speaker, I want a retry of my Ideal Text to find my recording whatever the column is called, so that a retry never fails. (Critical path: record -> process -> Ideal Text.)","O1  New code writing only `recording_id` fills `recording_1_id`, and old
 code writing only `recording_1_id` fills `recording_id`.
 O2  Changing either name carries over to the other; clearing either name
@@ -3658,7 +3711,12 @@ O5  The summary and the goodbye after it sort under the walk's last step,
 even when my browser's clock runs ahead of the server's.
 O7  Asked twice for the same Take (the page reloaded while the first ask
 was being written), the first ask's batch stands: nothing is written,
-remembered or let go again, so the goodbye stays under Will's question.
+remembered, let go or asked of the model again, so the goodbye stays
+under Will's question.
+O8  Nothing waits for the summary (WILL-07): the batch after the walk (the
+signed line, the goodbye, what Will remembers) is written at once, and
+GPT-4o's words take the signed line's place later, in the same spot
+of the thread.
 O6  The summary can point back to what I said in an older Take (the same
 project first), never this Take, never a Take whose processing
 authorization is not in force; a failing or slow lookup leaves the
@@ -3676,6 +3734,7 @@ test_a_coach_word_shared_after_the_review_is_its_own_bubble
 O4 -> test_the_summary_knows_the_talk_and_no_settings_ask_follows
 O5 -> test_the_summary_and_the_goodbye_sort_under_the_walk
 O7 -> test_a_second_ask_while_the_first_is_written_changes_nothing
+O8 -> test_the_chat_after_the_walk_never_waits_on_the_summary
 O6 -> test_the_summary_points_back_to_an_older_take_never_this_one,
 test_a_take_not_in_force_never_reaches_the_summary,
 test_a_failing_or_slow_lookup_leaves_the_summary_as_today,
@@ -4276,11 +4335,18 @@ stays faded until the walk is done (N592; WAYIN-N592-1..4).
 W7  ""Learn from others"" leads to ""Next, ask someone who knows. Tap + to
 start."" (FT-14, N592 item 2).
 W8  A speaking coach's link meets none of the choice's beats; the way in
-is in the speaking chat only (N572, N590; WAYIN-N590-1).","W1, W2, W3, W5, W6 -> test_a_talk_the_wait_and_what_comes_next
+is in the speaking chat only (N572, N590; WAYIN-N590-1).
+W9  A first Take on which nothing was heard still gets its plan and
+""You're set."" once its walk is done; no card is checked (N459 item 1).","W1, W2, W3, W5, W6 -> test_a_talk_the_wait_and_what_comes_next
+W9 -> test_a_take_with_nothing_heard_still_gets_its_plan
 W2 -> test_change_it_asks_what_to_change_and_draws_the_card_again
 W4 -> test_sharing_brings_the_join_questions_and_the_agreement
 W6, W7 -> test_learning_after_the_walk_and_record_take_2_waits
 W8 -> test_a_coachs_link_and_another_chat_meet_none_of_it","N453, N564, N572, N573, N590, N592; the rules are frontend docs/flows/the-plan.md §2."
+tests/test_way_in_limit.py,Story,"As a newcomer waiting for my first Take, I want Will's chat to keep answering while the app checks every few seconds what is due, so that the way in never stops with ""too many requests"" in the wait.","L1  The way in's poll (no answer, no audio) is not counted against the
+model's limit: more polls than that limit allows in a minute all
+pass, under the poll's own, higher limit.
+L2  An answer, which may call the model, is still counted against it.","L1, L2 -> test_polls_pass_the_models_limit_and_answers_do_not","The app polls POST /v2/plan/way-in every 5 s while Take 1 waits (N572, N592); under the model's 400 per hour it got 429s after about half an hour (coordinator's end-to-end review, 9 Nov 2026)."
 tests/test_webm_remux.py,Story,"As a speaker, I want my recording made seekable without changing its timing, and kept as-is if that fails, so that playback works everywhere and my Take is never lost. (Critical path: record.)","O1  The remuxed file carries a seek index and exactly the same packets and
 timestamps as the recording (even one not starting at zero), so no
 stored offset moves.

@@ -33,6 +33,11 @@ rules or drifts from the signed lines) falls back to the signed journey
 copy, so the speaker always gets the bubble. Stored once per Take (a
 fixed client id).
 
+Nothing waits for it (WILL-07): the batch is written at once with the signed
+line, and GPT-4o's summary is written off the request and takes that line's
+place in place (``writing`` in its metadata until then). Until 2026-11-09
+the chat after the walk waited on the model's call.
+
 A coach update: when a coach shares a word on a Take whose summary is
 already stored (``coach_update``, called from the coach's share), or the
 walk's summary step brings a coach note the stored summary was not written
@@ -521,18 +526,63 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
     asks, lead_ins = _chain_plan(database, user_id=str(user_id), arc_id=str(arc_id), take=take,
                                  take_index=take_index, practice=practice, moved=moved, will=will,
                                  facts=facts, held=held is not None)
-    text = _written(database, take, anchor, facts, practice, words,
-                    note, str(arc_id), str(user_id),
-                    signed=signed_lines(now, before, take_index),
-                    names=talk_names(takes))
     meta = {"summary": True, "arc_id": str(arc_id), "take_index": take_index,
-            "take_session_id": take, "written": bool(text), "coach_noted": note is not None,
+            "take_session_id": take, "written": False, "coach_noted": note is not None,
             "coach_note_key": _note_key(note), "practice": practice, "helper_words": words,
             "moved": moved}
+
+    def write() -> Optional[str]:
+        return _written(database, take, anchor, facts, practice, words, note, str(arc_id),
+                        str(user_id), signed=signed_lines(now, before, take_index),
+                        names=talk_names(takes))
     if held:
-        return _rewritten(database, str(user_id), client_id, held, text, meta)
-    return _first_written(database, str(user_id), client_id, text or anchor, meta,
-                          asks=asks, lead_ins=lead_ins(), will=will)
+        _off_request(lambda: _rewritten(database, str(user_id), client_id, held, write(),
+                                        {**meta, "written": True}), take)
+        return held
+    row, ours = _first_written(database, str(user_id), client_id, anchor,
+                               {**meta, "writing": True}, asks=asks, lead_ins=lead_ins(),
+                               will=will)
+    if ours:
+        _off_request(lambda: _written_in_place(database, str(user_id), client_id, write()), take)
+    return row
+
+
+def _off_request(run, take: str) -> None:
+    """GPT-4o's summary is written off the request (WILL-07): the chat after
+    the walk never waits on it. Never raises; a write that cannot start
+    leaves the signed line in place."""
+    def guarded() -> None:
+        try:
+            run()
+        except Exception as error:  # noqa: BLE001 -- the signed line stays
+            logger.warning("take summary not written take=%s: %s", take, error, exc_info=True)
+    try:
+        from services.parallel import start_scoped_thread
+        start_scoped_thread(guarded, name="take-summary-write")
+    except Exception as error:  # noqa: BLE001 -- the signed line stays
+        logger.warning("take summary write not started take=%s: %s", take, error)
+
+
+def _written_in_place(database: Any, user_id: str, client_id: str,
+                      text: Optional[str]) -> None:
+    """GPT-4o's words take the signed line's place, in place: the row keeps
+    its spot in the thread and whatever the chain has done to it since
+    (let go, "glad"). A coach's note that rewrote it first wins; these
+    words are then its first version (``earlier``, N80). No words: the
+    signed line stays, marked not written."""
+    row = database.get_lounge_message_by_client_id(user_id, client_id)
+    if not row:
+        return
+    from services import after_take
+    meta = {k: v for k, v in (row.get("metadata") or {}).items() if k != "writing"}
+    body = row.get("body") or ""
+    if meta.get("coach_update"):
+        if text:
+            meta["earlier"] = text
+    elif text:
+        meta["written"] = True
+        body = after_take.glad_body(text) if meta.get("glad") else text
+    database.rewrite_lounge_message(user_id, client_id, body, meta)
 
 
 def _before_outcome(database: Any, user_id: str, arc_id: str, take_index: int) -> Optional[tuple]:
@@ -619,12 +669,13 @@ def _chain_plan(database: Any, *, user_id: str, arc_id: str, take: str, take_ind
 
 
 def _first_written(database: Any, user_id: str, client_id: str, text: str, meta: dict,
-                   *, asks: list[str], lead_ins: dict, will: Any = None) -> Optional[dict]:
+                   *, asks: list[str], lead_ins: dict, will: Any = None) -> tuple:
     """The summary's batch, once per Take (founder 2026-10-20, N89): the
     summary, drawn at once; the closing message, held back behind the chain
     of asks (``after_take``) when there is one; then the first ask. With no
     ask, the end comes at once (``after_take.end_rows``): the plan's lines,
-    the closing message, the plan's progress."""
+    the closing message, the plan's progress. Returns (the summary's row,
+    whether this ask wrote the batch)."""
     from services import after_take
     from services.lounge_messages import stamp_after, thread_stamp
     take, practice, moved = meta["take_session_id"], meta["practice"], meta["moved"]
@@ -632,7 +683,7 @@ def _first_written(database: Any, user_id: str, client_id: str, text: str, meta:
     # the first ask's batch stands, and nothing is written or let go again.
     stored = database.get_lounge_message_by_client_id(user_id, client_id)
     if stored:
-        return stored
+        return stored, False
     after_take.release_older(database, user_id, take)
     # Under the walk it closes: the walk's steps carry the browser's time.
     at = thread_stamp(database, user_id)
@@ -670,7 +721,7 @@ def _first_written(database: Any, user_id: str, client_id: str, text: str, meta:
             after_take.end_rows(database, user_id, closing, written=False)
         except Exception as error:  # noqa: BLE001 -- the summary is written either way
             logger.warning("take summary: end not written take=%s: %s", take, error, exc_info=True)
-    return persisted[0] if persisted else None
+    return (persisted[0] if persisted else None), bool(persisted)
 
 
 def _rewrite_for_coach(database: Any, take: str, note: str) -> None:
