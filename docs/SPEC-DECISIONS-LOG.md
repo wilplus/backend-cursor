@@ -16953,3 +16953,37 @@ small grey text" holds for the rest of the setup.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup);
 frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) for items 1 to 5.
+
+**N637 · The setup has no small grey text, and it says where it leads
+before it starts** (founder, the Claude Code chat, 11 November 2026:
+"adjust the design and the user flow with a design that fits our app and is
+action per screen, without the small words, minimalistic, but each step is
+clearly explained and you know what you are doing and what is the end goal
+of it, you know it before you start"; "Please build this"). Settles what
+N636 left open about small grey text. The words below were written by the
+coordinator under the founder's standing "all the wording is okay" and
+shown to him the next morning.
+
+For whoever has the ring row `chat_builder`, in the setup overlay and its
+model steps:
+
+1. **No small grey text.** A line that explained a screen in small grey
+   letters is one of Will's lines, the same size as the rest, with its
+   words unchanged. The second line of a choice ("I draft, you send" and
+   what it means) is the same size as its first, in the same colour. A
+   choice that cannot be tapped stays lighter.
+2. **The setup says where it leads before it starts.** Its first screen:
+   "Hi {name}. I'm Will. Let's set up your chat, so people can come to you
+   through one link." and "I ask one thing at a time. You tap Keep or
+   Change. It takes about five minutes." Was: "Hi {name}. I'm Will. I ask
+   one thing at a time. You tap Keep or Change."
+3. **So does making a model.** Its first screen's second line: "Four
+   choices, then you teach it by answering examples. It needs about 200 to
+   get good." Was (N636 item 6): "You teach it by answering examples. It
+   needs about 200 to get good."
+4. **One action per screen stays** (N616): nothing here adds a second.
+
+Not covered: a chat's header (the name with what the person does under
+it), which is the chat's own design.
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
