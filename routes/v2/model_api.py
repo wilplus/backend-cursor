@@ -27,7 +27,12 @@ In the app (signed in; the ring row ``ai_models``, else 404):
 
 The API (a key, not a sign-in):
   POST   /v2/models/<id>/answer  {message}    Authorization: Bearer wpl_sk_...
+                                              Idempotency-Key: <1-255 visible ASCII>, optional
                                               -> {answer, sure, version}
+                                              The same Idempotency-Key and question again
+                                              get the first answer, charged nothing (PIPE-07);
+                                              a key's monthly limit is checked and taken in
+                                              one database step, so it cannot be raced (PIPE-08)
 
 WillpowerLab's founder only:
   POST   /v2/admin/models/<id>/versions {card?} queue a new fit (202 {queued}); a status
@@ -208,10 +213,11 @@ def v2_model_answer(model_id):
     if key is None:
         return jsonify({"code": "INVALID_KEY", "error": "This key is not valid."}), 401
     message = _body().get("message")
+    once = request.headers.get("Idempotency-Key")
 
     def work():
         with user_provider_scope(str(key["buyer_id"]), operation="ai_conversation", prefix="model-api"):
-            return store.answer_with_key(db, key, model_id, message)
+            return store.answer_with_key(db, key, model_id, message, idempotency_key=once)
     return _run("answer", work)
 
 

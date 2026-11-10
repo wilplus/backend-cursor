@@ -9823,7 +9823,7 @@
    "tests/test_model_pipes.py"
   ],
   "evals": [],
-  "note": "Every run first takes the examples of anyone whose training yes is off out of every model, reading every page (backend #1893). Gathering new examples still takes 20 models a run."
+  "note": "Every run first takes the examples of anyone whose training yes is off out of every model, reading every page (backend #1893). Gathering takes 20 models a run, those gathered longest ago first, so every model takes its turn (backend #1903)."
  },
  {
   "id": "PIPE-04",
@@ -9854,7 +9854,7 @@
   "id": "PIPE-05",
   "area": "Tight model pipes",
   "title": "Each model's exam has its own people",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the same person's Takes reach two models",
@@ -9866,9 +9866,15 @@
   "rules": [
    "N615 item 2"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_setup.py::def deal(",
+   "be:services/model_launchpad_store.py::def _sealed_to("
+  ],
+  "tests": [
+   "tests/test_model_pipes.py"
+  ],
+  "evals": [],
+  "note": "Each model's exam pick is salted with its id; a speaker already on a side stays there, so no exam with answers is re-dealt. A moment sealed in an exam is not served to, or answerable by, that exam's experts in another model (404) (backend #1903)."
  },
  {
   "id": "PIPE-06",
@@ -9900,7 +9906,7 @@
   "id": "PIPE-07",
   "area": "Tight model pipes",
   "title": "A paid answer is charged once",
-  "status": "not built",
+  "status": "built",
   "screen": "tokens",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a buyer's call is retried with the same key",
@@ -9911,15 +9917,22 @@
   "rules": [
    "N615 item 3"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_api_store.py::RESERVE_RPC",
+   "be:migrations/a_paid_answer_is_charged_once_within_its_limit.sql::CREATE UNIQUE INDEX IF NOT EXISTS ai_model_charges_idempotency_once"
+  ],
+  "tests": [
+   "tests/test_model_api_routes.py",
+   "tests/test_a_paid_answer_is_charged_once_within_its_limit_postgres.py"
+  ],
+  "evals": [],
+  "note": "The API takes an Idempotency-Key header; the same key and question again get the first answer, charged nothing; the answer is kept 24 hours, only when a key was sent (backend #1903, migration 0523)."
  },
  {
   "id": "PIPE-08",
   "area": "Tight model pipes",
   "title": "The monthly limit cannot be raced",
-  "status": "not built",
+  "status": "built",
   "screen": "tokens",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "two answers arrive at once at the limit's edge",
@@ -9930,9 +9943,14 @@
   "rules": [
    "N615 item 3"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:migrations/a_paid_answer_is_charged_once_within_its_limit.sql::FOR UPDATE"
+  ],
+  "tests": [
+   "tests/test_a_paid_answer_is_charged_once_within_its_limit_postgres.py"
+  ],
+  "evals": [],
+  "note": "The monthly limit is checked and taken in one database function under the key's row lock; two reserves at the edge on two connections: only one passes (backend #1903, migration 0523)."
  },
  {
   "id": "PIPE-09",

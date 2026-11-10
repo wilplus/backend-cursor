@@ -953,6 +953,13 @@ hard migrations/a_business_can_buy_a_model_s_answers.sql
 hard migrations/a_model_learns_from_its_settled_examples.sql
 hard migrations/a_model_learns_from_its_settled_examples.sql
 
+# 0523 (N615 item 3): a paid answer is charged once, within its limit: the
+# charges, the reserve function under the key's row lock, and the sweep's
+# turn. Both lanes, after 0522, twice. Its cases are in
+# tests/test_a_paid_answer_is_charged_once_within_its_limit_postgres.py.
+hard migrations/a_paid_answer_is_charged_once_within_its_limit.sql
+hard migrations/a_paid_answer_is_charged_once_within_its_limit.sql
+
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"
 rm -f "$log"

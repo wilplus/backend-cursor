@@ -16580,3 +16580,61 @@ found: "OK").
    (`docs/design/the-blank-setup-2026-11-10/`): FIRST-03, FIRST-04.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N626 · A Take goes to nobody unless the speaker sends it; no choice is
+remembered** (founder, the Claude Code chat, 10 November 2026, on a chat
+with a user holding Takes 2, 3, 6 and 10 the founder had not meant to send:
+"involuntarily I am sending my takes from Will to one of the users"; "I
+don't want to send it to others now"; of three ways offered, "Nothing by
+default").
+
+This replaces N479 item 5 and the remembered choice of N309 item 5 and
+N470 (feedback-walk-and-chat.md G1, G2, G4). Never 3 stands: nothing new
+comes before a Take.
+
+1. "Record Take N" records at once, with nothing sent and nothing shared.
+   "Who hears this Take" is never asked before a Take, and no earlier
+   choice is reused.
+2. Each new Take's line in Will's chat reads "Only me" (signed with the
+   sharing screen, N309) and opens "Who hears this Take" for that Take,
+   with nobody ticked: the speaker picks the people, and Continue sends it
+   to them (G3 unchanged). A Take already sent still opens to add people,
+   never to unsend.
+3. Sends already chosen before this change and still waiting on the
+   phone keep going: they were chosen.
+
+No new words. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+
+**N627 · On a wide screen the coach panel is as wide as Will's chat**
+(founder, the Claude Code chat, 10 November 2026, on a screenshot of "Your
+queue" drawn as a narrow strip: "just for the coach panel make sure it holds
+the full width like the rest of the app").
+
+1. **The coach panel fills the column Will's chat fills,** on every one of
+   its screens: the queue, a speaker, the blind Judge and the rest. Was: a
+   narrow strip in the middle, the width of the list of chats. This is
+   what N618 item 10 did for the AI models overlay.
+2. **Nothing else about the panel changes:** no word, no order, no spacing
+   between its elements, no motion. On a phone it is the window's width,
+   as today.
+
+No migration in this entry. The rules: the frontend's
+`docs/flows/coach-panel.md`.
+
+**N628 · On a computer, the list of chats and a person's chat are as wide
+as Will's chat** (founder, the Claude Code chat, 10 November 2026, on the
+list drawn in a narrow column beside Will's wider chat: "fix the width of
+the app to fit the width of the chat").
+
+This changes N321 and N322 ("on a computer, a phone-wide column";
+frontend customer-requests.md C1) and follows N618 item 10 (the AI models
+overlay as wide as Will's chat).
+
+1. On a computer, the list of chats and a person's chat fill the column
+   Will's chat and its bar fill, in place of the 480 px column in the
+   middle. On a phone nothing changes: all are the window's width.
+2. Sheets that rise from the bottom (Add someone) keep their own width.
+
+No new words. No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
