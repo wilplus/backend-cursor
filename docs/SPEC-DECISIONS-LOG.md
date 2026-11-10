@@ -16256,8 +16256,13 @@ specialist's own chat:
     is never a visitor's first message.
 21. **Both prototypes stay:** the whole app's, which is the source, and
     "Build Your Chat", the same setup alone.
-**Open:** which chats count as health, law or money, and who says so; what
-the owner's own check is for a model with three answers, now that the first
-10 are the known answers (N615); counsel on item 13.
+22. **Whether a chat is about health, law or money is asked in the setup:**
+    Will asks the host one yes-or-no question, and when in doubt the answer
+    is yes (founder, the same chat, on both proposals: "Okay, I agree with
+    both").
+23. **The owner's own check is ten new examples the model has not seen.**
+    The first 10 set the model's known answers; they are never also its
+    test (N582 item 8, N585 item 4, N615).
+**Open:** counsel on item 13.
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup); a
 rules page for hosted chats with its first built part (N578).
