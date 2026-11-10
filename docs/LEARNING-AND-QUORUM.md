@@ -576,6 +576,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-11-10 · N615 · PIPE-02: the quiet trust check measures a newcomer against trusted teachers' answers and known answers only, never against other newcomers · BE
 - 2026-11-10 · N615 · PIPE-01: an answer on an exam case is refused for anyone but the two experts who set the exam aside, and a teacher's second answer on an example they added is refused; neither is stored · BE
 
 - 2026-11-10 · N563 · After Make public, a private example is sent only to the owner and the teachers invited to the model, never to someone who came in at the door (the queue and the answer route) · BE

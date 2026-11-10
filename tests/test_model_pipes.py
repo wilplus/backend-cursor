@@ -7,13 +7,17 @@ STORY    As the founder, I want the model pipes tight before the launchpad
 OUTCOME
   O1  (PIPE-01) An answer on an exam example, or on an example the teacher
       added themself, is refused and nothing is stored.
+  O2  (PIPE-02) Two new teachers who answer the same examples alike are not
+      admitted on each other's answers: a newcomer is measured against
+      trusted teachers and known answers only.
 PROVES   O1 -> ModelPipesTest::test_an_exam_example_or_your_own_cannot_be_answered
+         O2 -> ModelPipesTest::test_a_newcomer_is_measured_against_trusted_teachers_only
 WHY      The audit of the launchpad's code (N615); the build's stories
          PIPE-01 to PIPE-09 (docs/design/the-blank-setup-2026-11-10).
 """
 from __future__ import annotations
 
-from tests.test_model_launchpad_routes import KASIA, SPEAK, ModelRoutesTest
+from tests.test_model_launchpad_routes import KASIA, MARTA, SPEAK, ModelRoutesTest
 
 EXAM = "e5000000-0000-4000-8000-0000000000ee"
 
@@ -41,3 +45,30 @@ class ModelPipesTest(ModelRoutesTest):
         self._post(f"/v2/models/{SPEAK}/enter")
         self.assertEqual(self._answer(SPEAK, added["example_id"]).status_code, 200)
         self.assertEqual([a["teacher_id"] for a in self._answers_on(added["example_id"])], [KASIA])
+
+    def test_a_newcomer_is_measured_against_trusted_teachers_only(self):
+        scale = ["Yes", "In-between", "No"]
+        known = [f"e6000000-0000-4000-8000-{i:012d}" for i in range(10)]
+        fresh = [f"e7000000-0000-4000-8000-{i:012d}" for i in range(30)]
+        for i, eid in enumerate(known + fresh):
+            self.store.tables["ai_model_examples"].append({
+                "id": eid, "model_id": SPEAK, "source": "teacher", "private": False, "snippet_id": None,
+                "in_exam": False, "speaker_id": None, "added_by": None, "content": {"text": f"case {i}"},
+                "known_answer": scale[i % 3] if eid in known else None})
+
+        def teach(who):
+            self.who = who
+            self._post(f"/v2/models/{SPEAK}/enter")
+            for i, eid in enumerate(known):               # half of the known clips right
+                self._answer(SPEAK, eid, scale[i % 3] if i % 2 == 0 else scale[(i + 1) % 3])
+            for i, eid in enumerate(fresh):               # the two newcomers agree on every new one
+                self._answer(SPEAK, eid, scale[(i * 7) % 3])
+
+        teach(KASIA)
+        teach(MARTA)
+        self.who = KASIA                                  # Kasia's trust, read again after Marta's answers
+        self._answer(SPEAK, fresh[0], scale[0])
+        status = {t["user_id"]: t.get("trust_status") for t in self.store.tables["ai_model_teachers"]
+                  if t["model_id"] == SPEAK}
+        self.assertNotEqual(status[MARTA], "counts")
+        self.assertNotEqual(status[KASIA], "counts")

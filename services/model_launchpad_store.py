@@ -340,9 +340,15 @@ def _trust_after_answer(database: Any, me: str, model: dict) -> Optional[dict]:
     ids = [str(a["example_id"]) for a in mine]
     known = {str(e["id"]): e.get("known_answer") for e in _rows(
         _table(database, EXAMPLES).select("id,known_answer").in_("id", ids))}
+    team = _rows(_table(database, TEACHERS).select("user_id,trust_status,trust_kappa,trust_told_at")
+                 .eq("model_id", model["id"]))
+    # A newcomer is measured against trusted teachers only, never against
+    # other newcomers (N615 item 2): two who agree with each other are not
+    # admitted on each other's word.
+    trusted = {str(t["user_id"]) for t in team if t.get("trust_status") == "counts"} - {me}
     others = [o for o in _rows(_table(database, ANSWERS).select("example_id,answer,teacher_id")
                                .in_("example_id", ids).eq("model_id", model["id"]).eq("step", "rate"))
-              if str(o.get("teacher_id")) != me]
+              if str(o.get("teacher_id")) in trusted]
     votes: dict[str, dict[Any, int]] = defaultdict(lambda: defaultdict(int))
     for o in others:
         votes[str(o["example_id"])][o.get("answer")] += 1
@@ -351,8 +357,6 @@ def _trust_after_answer(database: Any, me: str, model: dict) -> Optional[dict]:
         eid = str(a["example_id"])
         consensus = known.get(eid) or (max(votes[eid].items(), key=lambda kv: kv[1])[0] if votes.get(eid) else None)
         scored.append({"answer": a.get("answer"), "consensus": consensus, "known": bool(known.get(eid))})
-    team = _rows(_table(database, TEACHERS).select("user_id,trust_status,trust_kappa,trust_told_at")
-                 .eq("model_id", model["id"]))
     me_row = next((t for t in team if str(t["user_id"]) == me), {})
     ref = [float(t["trust_kappa"]) for t in team
            if t.get("trust_status") == "counts" and t.get("trust_kappa") is not None and str(t["user_id"]) != me]
