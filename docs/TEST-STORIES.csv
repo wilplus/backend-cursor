@@ -463,7 +463,8 @@ O10 In Will's chat, Will says what I know can earn tokens, with ""Set up my
 chat""; then asks, one at a time, my welcome, how people answer, my
 specialization, what people learn, a skill or a topic and what I need
 to see, and ""Do you want to automate your own chat?""; ""Go live"" keeps
-it, and the next person who joins meets it (N582 item 1, N586 item 5).
+it, with the first Take's questions set in the builder, and the next
+person who joins meets it (N582 item 1, N586 item 5).
 O11 A welcome that scores people is not kept: Will says why and asks again.","O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
 O2 -> AssistantsTest::test_a_testers_join_page_names_the_assistant_and_wills_chat
 O3 -> RecipeTest::test_a_host_sets_welcome_questions_and_how_people_answer
