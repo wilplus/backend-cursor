@@ -16727,3 +16727,57 @@ For N135, N149, N401, N459, N462 and N487 item 4; amends N459 item 1.
 
 Signed words only, no new ones. No migration. The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
+
+**N632 · One setup: Will stays a chat in words, and the setup is the
+overlay. The earlier builder's questions in Will's chat are retired for
+whoever has the new setup** (founder, the Claude Code chat, 10 November
+2026, after trying both in the live app: "Will should stay textual cause it
+is for managing my model"; "if I have an overlay to set up my chat, action
+per screen ... why then are you asking me about things at all in the chat";
+"the good thing: it infers what should my chat be about from my Take"; "it
+asks me about things but later on I can not go and see my chat"; "I have
+just an option to go live, no other option to use somebody else's model";
+"a topic or how they do it is unclear"; on the AI models page: "this should
+be like a chat with an arrow back, no navbar needed"; and "when I tap to
+answer or type, the bubble ... does not display the posted bubble right
+away").
+
+For whoever has the ring row `chat_builder`:
+
+1. **One setup.** A chat is set up in the overlay, one decision per screen
+   (N616 to N618, N622, N625). Will's chat no longer asks the earlier
+   builder's questions as bubbles, shows no "Set up my chat" link and no
+   offer line, and opens no "{name}'s assistant" form. The way in is "Your
+   chat" in Will's lines (N629).
+2. **What the first Take said fills the first answer.** Where the person's
+   first Take told the app their field, "What do you do?" opens with it as
+   the answer to keep or change. Was: the earlier builder did this; the
+   new setup asked blank.
+3. **"Coached, or a topic" is not asked.** A chat that takes a recording is
+   a skill chat; any other is a topic chat (N588's suggestions read that).
+   Was: "Do people come to you to be coached on how they do something, or
+   with questions on a topic?".
+4. **"Start again" stays,** on the chat's parts: it begins the setup again
+   from "What do you do?" and the chat is not open until it is finished.
+5. **After a Take, Will's "what next" line no longer sends the person to
+   "set up your assistant";** "Your chat" in Will's lines is the way.
+6. **The AI models page opens like a chat:** a back arrow on its left and
+   no site bar above it. Was: the site's bar above it and a close button on
+   the right.
+7. **A person's own bubble shows the moment they tap or type,** everywhere
+   in the app, and stays while the answer is on its way. Was: it vanished
+   and came back with the answer.
+
+**What stops for people on the ring:** the earlier builder's offer line
+about earning tokens; its "Help train an existing model" choice (teaching a
+model stays on the AI models page); its hand-editing form with several
+welcome lines and questions with titles and tap answers. A chat already
+made with the earlier builder keeps working until its owner sets it up
+again.
+
+**Open:** how a person meets someone's chat when the two already share a
+thread; a model that is still learning in "Models you can use".
+
+No migration in this entry. No new words: "Start again" is the earlier
+builder's signed button. The rules: docs/LOCKS.md (the blank setup); the
+frontend's `docs/flows/feedback-walk-and-chat.md` for item 7.
