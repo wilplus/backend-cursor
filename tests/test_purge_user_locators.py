@@ -57,6 +57,11 @@ USER_KEYED = {
     # visitor's seat go with the chat (ON DELETE CASCADE).
     "chat_widget_threads": ("chat_threads", "widget_owner_id"),
     "chat_widget_guests": ("chat_widget_guests", "owner_user_id"),
+    # A business's community (a_business_has_a_community_people_join, N559):
+    # my place in it and my one offer. A community I hold stays, without me
+    # (tests/test_business_community.py).
+    "business_community_members": ("business_community_members", "user_id"),
+    "business_community_offers": ("business_community_offers", "user_id"),
 }
 
 #: A real account: its owner principal's id is not its user id.

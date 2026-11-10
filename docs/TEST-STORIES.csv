@@ -143,6 +143,15 @@ O2  A pair leaves once: a released pair cannot be released again.
 O3  Withdrawing voids the release that carried my pair and returns the
 pair; the release keeps its record.","O1 -> test_a_pair_is_releasable_only_under_an_active_yes
 O2, O3 -> test_a_withdrawal_voids_the_release_and_returns_the_pair_to_waiting","Founder 2026-09-30, L1, L2, L5 (migration 0405)."
+tests/test_a_person_can_teach_and_start_ai_models_postgres.py,Story,"As a person who starts or teaches an AI model, I want the models' tables to keep my model, my teaching and my answers safely, so that a public model outlives its owner's account, my own rows leave with mine, and no browser reaches any of it (N528, N563, N566).","O1  The five tables exist with RLS on, and no browser role is granted
+anything on them; the ring row ai_models sits at ring 6.
+O2  The tables refuse what the rules never allow: an added example with
+no adder, an example from Takes with no speaker, a known clip in the
+sealed exam, an unknown stage, the same answer twice.
+O3  Erasing the owner's account keeps their public model, with no owner;
+erasing a teacher's account takes their teaching and answers.","O1 -> test_the_tables_are_locked_to_the_backend_and_the_ring_is_six
+O2 -> test_the_tables_refuse_what_the_rules_never_allow
+O3 -> test_an_owners_model_outlives_their_account_and_a_teachers_rows_go","Migration a_person_can_teach_and_start_ai_models (0516), applied twice in both rehearsal lanes (the reapply is its idempotency check)."
 tests/test_a_practise_try_is_read_fast_postgres.py,Story,"As a speaker practising, I want each try read once, quickly, against my own practice and Take, so that feedback on the try arrives fast, belongs to me, and its number never reaches me.","O1  One stored read per try; the database takes the owner, practice and
 Take from the try itself and computes W and S*W; a repeat is a no-op.
 O2  A read that fails (services.v4_practice_read.record) still keeps its
@@ -456,7 +465,7 @@ O7  As a tester I keep my chat's recipe and read it back, with Artur's
 five to start from; without the ring the builder is 404; a locked
 field is 400 RECIPE_LOCKED and nothing is kept.
 O8  Someone who joins through my link meets my welcome first, as my
-assistant's messages, and my join page says who I am and what they
+own words (no assistant's mark, N606), and my join page says who I am and what they
 can learn with me, in my own words (N586 item 1, N590 item 2).
 O9  In my chat, the person who joined reads whose assistant answers, my
 first Take's questions and how they may answer; a chat with someone
@@ -577,6 +586,30 @@ O3  A provider error while checking raises (it is never read as
 ""absent""), and nothing is recorded for it.","O1 -> test_preview_keeps_and_execute_deletes_then_confirms
 O2 -> test_a_file_still_there_raises_unrecorded
 O3 -> test_a_provider_error_raises_unrecorded",F4 storage step (scripts/bundled_era_erasure_storage.py drives services.bundled_era_storage.run). Storage and the database are replaced by in-memory fakes.
+tests/test_business_community.py,Story,"As a newcomer who came by the link of someone at a business, I want to be offered that business's community once, while my first Take is processed, so that people there can be suggested to me and I to them; and as a speaker, I want someone new after a Take to come only from my business (founder, 9 November 2026, N559 item 1, N572).","O1  A newcomer whose inviter is in a business's community is offered it
+once, with the inviter's first name; asked again it is the same offer
+until answered, and never after. Join makes them a member.
+O2  Not now is kept and the offer never comes back on its own; the
+newcomer is not in the community. An offer never made cannot be
+answered.
+O3  Someone who came by no member's link, or by a link whose owner is in
+no community, is offered nothing; a failure is no offer, never an
+error, so the wait for Take 1 goes on.
+O4  Only people in the speaker's business community are suggested as
+someone new, never someone outside it, and never from the retired
+passcode communities.
+O5  Only the founder makes a business's community; its owner is its
+first member.
+O6  When the inviter's account is erased, their id goes from the
+newcomer's offer; the newcomer's offer and answer stay theirs.
+O7  A community outlives its owner: when the owner's account is erased
+the community and its other members stay, with no owner.","O1 -> BusinessCommunityTest::test_a_newcomer_is_offered_once_and_join_makes_them_a_member
+O2 -> BusinessCommunityTest::test_not_now_is_never_asked_again
+O3 -> BusinessCommunityTest::test_no_member_link_no_offer
+O4 -> BusinessCommunityTest::test_someone_new_comes_from_the_speakers_business
+O5 -> BusinessCommunityTest::test_only_the_founder_makes_a_community
+O6 -> test_erasing_the_inviter_clears_them_from_the_offer
+O7 -> test_a_community_outlives_its_owner",N559 item 1: the business is the pool; joining is how a person belongs to it.
 tests/test_canonical_tables_are_rpc_only_postgres.py,Story,"As the founder, I want the learning-evidence tables written only through the checked database functions, so that no process holding the service key can slip unchecked data into training.","O1  With the service key, a direct insert is refused on every listed
 table.
 O2  The two checked functions every Take's feedback is written through
@@ -2133,6 +2166,20 @@ O5 -> test_mod15_one_queue_across_models_helpful_first_and_none_starved
 O6 -> test_mod16_same_question_same_scale_counts_for_both
 O7 -> test_mod22_a_close_result_has_no_release_button
 O8 -> test_mod02_only_takes_after_the_training_yes_reach_teachers","The model launchpad, locked on its prototype (N566); its rules live once in services/model_launchpad.py, before its tables."
+tests/test_model_launchpad_routes.py,Story,"As a person in WillpowerLab, I want the AI models' list, a model's page, the door, the one queue and teaching to answer from the models' tables through /v2/models, so the launchpad's rules reach me as they are written (N528, N563, N566).","O1  Without the ring row (ai_models, ring 6) every route is 404.
+O2  The list shows public models with how far each is, and never another
+person's private model; its page is 404 to an outsider.
+O3  ""This is my field"" makes me a teacher; the queue then holds the
+model's examples without the machine's read, and Pause empties it.
+O4  One answer to a public clip is saved for both models that ask the
+same question, and the other model's different question follows; the
+answer returns nothing of the machine's read.
+O5  The profile lists the models a person started and teaches; an invite
+I put off says so and stays.","O1 -> ModelRoutesTest::test_without_the_ring_nothing_is_shown
+O2 -> ModelRoutesTest::test_the_list_and_a_private_page
+O3 -> ModelRoutesTest::test_the_door_the_queue_and_pause
+O4 -> ModelRoutesTest::test_one_answer_counts_for_both_and_the_other_question_follows
+O5 -> ModelRoutesTest::test_the_profile_and_the_invite","The model launchpad's first tables (migration a_person_can_teach_and_start_ai_models), served by services/model_launchpad_store.py over services/model_launchpad.py."
 tests/test_model_match.py,Story,"As someone on the models page, I want ""For you"" to show the models that need what I know and the ones I teach, so that my answers go where they count (founder, 5 November 2026, N518 items 7 and 8, N520 item 7; App Model MOD-53).","O1  ""For you"" shows only the models whose words match the person's
 profile at the matching's threshold (2.0) or more, and the ones they
 teach, whatever their score; nothing else, and never a score.
@@ -2988,6 +3035,33 @@ O4  An address Apple no longer knows is forgotten.","O1 -> PushDevicesTest::test
 O2 -> PushDevicesTest::test_without_apples_key_nothing_is_sent
 O3 -> PushDevicesTest::test_an_app_run_from_xcode_is_reached_on_apples_sandbox
 O4 -> PushDevicesTest::test_an_address_apple_no_longer_knows_is_forgotten","Push in the iPhone app (founder 2026-11-03, N385); Apple's service is stood in for (services/push_devices.py)."
+tests/test_question_bundles.py,Story,"As a host, I want one recording to answer everyone who asked me the same thing, so that I answer a question once and everyone who asks it, now or later, gets my answer in their own chat with me (N584).","O1  Questions that ask the same thing gather in one card in Will's chat
+(N602): ""2 people asked"", the question large, ""Ariel and Ola"", ""See
+who asked"" and ""Record one answer""; ""See who asked"" opens ""Who asked"",
+each person's own words, name and where they asked (""in your chat"",
+""on your website""), then ""Split them up""; a different question starts
+its own card.
+O2  My one recording goes to everyone in the bundle, each privately in
+their own chat with me, under their own question quoted; nobody gets
+it twice.
+O3  Someone who asks the same thing later joins the bundle and waits for
+me: my assistant sends nothing by itself yet (N606). The card is back
+with ""Record one answer"", and my next recording reaches only them.
+O4  Without the chat builder's ring nothing is bundled and the queue is 404.
+O5  My own voice replies in my chats are never bundled as questions.
+O6  My recorded answer reaches each asker's iPhone like any answer.
+O7  ""Record one answer"" asks my recording consent again: withdrawn, nothing
+is sent.
+O8  When an asker's account is erased, their words leave the bundle: it
+reads as the next question, and nothing of theirs is kept.","O1 -> BundlesTest::test_questions_that_ask_the_same_thing_gather_in_one_bundle
+O2 -> BundlesTest::test_one_recording_answers_everyone_in_the_bundle
+O3 -> BundlesTest::test_a_later_asker_waits_for_me
+O4 -> BundlesTest::test_without_the_ring_nothing_is_bundled
+O1 -> BundlesTest::test_the_card_names_two_and_how_many_more_and_where_they_asked
+O5 -> BundlesTest::test_my_own_replies_are_never_bundled
+O6 -> BundlesTest::test_a_later_asker_waits_for_me
+O7 -> BundlesTest::test_one_answer_asks_my_recording_consent_again
+O8 -> BundlesTest::test_an_erased_askers_words_leave_the_bundle","""how do we bundle the people who have similar questions ... so that I can answer it to that whole group with my one recording?"" (founder, 9 November 2026, N584)."
 tests/test_reacceptance_signal_postgres.py,Story,"As a returning speaker whose Terms changed, I want to be told the Terms moved instead of being shown a first-time screen, so that I re-accept knowing what changed (consent).","O1  Someone holding a receipt for an older policy only is flagged
 reacceptance_required, with the version they last agreed to.
 O2  A first-timer (no receipt at all) is not flagged and has no version:
@@ -3393,6 +3467,16 @@ O4 -> test_the_lens_walks_me_through_it_and_adds_only_on_my_yes
 O5 -> test_not_now_under_the_case
 O6 -> test_will_reads_my_last_case
 O7 -> test_a_sales_week_asks_the_step_not_the_bug","Will learning plan, step 2: the Sunday note as a lens (locked 2026-10-26, N158, N170; rules in the frontend's principles.md §1 L)."
+tests/test_take_answers.py,Story,"As a speaker who sent a Take to my coach and to others, I want their answers gathered under my Take, so that I see my coach's answer and the best of the others in one place, and only I see the gathering (N587 items 3 to 5, N588 item 4).","O1  Under my Take, one bubble shows my coach's answer and the best other
+answer under each heading, with the names of everyone who answered;
+all of them open under ""On your speaking"" and ""On the matter"", each
+with the way into that person's chat.
+O2  Someone who has not answered is not listed; a Take I never sent is 404,
+and so is anyone else's Take.
+O3  A question I recorded and sent to more than one person (N596) gathers
+its answers the same way.","O1 -> TakeAnswersTest::test_the_answers_gather_under_my_take
+O2 -> TakeAnswersTest::test_only_answers_to_my_own_sent_take
+O3 -> TakeAnswersTest::test_a_recorded_questions_answers_gather_too","""if you send them the request and they all answered, you should be able to receive all of them"" (founder, 9 November 2026, N587)."
 tests/test_take_comparison.py,Story,"As a speaker, I never want to see my pitch, pace or pauses as numbers, so that feedback stays in words (Never rule 1).","O1  The retired take comparison (GET /v2/explore/arc/<id>/take-comparison,
 founder 2026-10-19) answers 410 GONE, reads nothing, sends no
 measurement number, and logs retired_route_called so any caller left
@@ -3518,8 +3602,8 @@ O13 -> test_a_moment_whose_ai_clip_cannot_be_made_is_never_the_fix
 O14 -> test_a_weak_moment_no_tool_reaches_is_named_for_a_coach","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level""); 2026-10-30 (N289: ""the praise clips just get the praise"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-31 (N309, the One thing walk: ""apply to it the one thing walk""); 2026-11-02 (N323 item 6: ""yes, the pace game for everyone when rushing is the issue""); 2026-11-02 (N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back"": ""go"")."
 tests/test_take_match.py,Story,"As a speaker, after my Take, I want the page that chose who hears it to come back once with someone new who fits what I asked, so that the right person can answer; and as that person, I want to hear the Take before anyone knows who I am, so that answering is my yes (founder, 4 November 2026, N477, N478, N481, N485, N486, N493).","O1  With no ring row, or while sending a Take is off, nobody is ever
 suggested: the speaker's routes answer 404.
-O2  After a Take, one person is suggested: someone who shares a community
-with the speaker, has no chat with them, and fits what the Take is
+O2  After a Take, one person is suggested: someone in the speaker's
+business community (N559 item 1), has no chat with them, and fits what the Take is
 about; shown as a pseudonym made for this match and their role, never
 a name, never the name the coach queue gives them, and never what
 their own Takes are about. Asking again gives the same one; someone

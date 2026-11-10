@@ -397,9 +397,11 @@ def host_of(database: Any, user_id: Any, thread_id: Any) -> Optional[dict]:
 
 
 def welcome(database: Any, thread: str, owner_id: str, owner_member: str) -> list[dict]:
-    """A chat just made through a host's link: the host's welcome, first,
-    as their assistant's messages (N590 item 2, N580 item 3), before their
-    join questions. Best-effort: joining never fails on it; nothing for a
+    """A chat just made through a host's link: the host's welcome, first
+    (N590 item 2), before their join questions. It is the host's own
+    words, not an assistant's answer: until the minimum is reached the
+    assistant sends nothing (N606 item 1), so it carries no assistant's
+    mark. Best-effort: joining never fails on it; nothing for a
     host without the ring or without a welcome."""
     try:
         if not on(database, owner_id):
@@ -409,7 +411,7 @@ def welcome(database: Any, thread: str, owner_id: str, owner_member: str) -> lis
         for i, line in enumerate(recipe.get("welcome") or []):
             rows = (database.client.table(MESSAGES).insert({
                 "thread_id": thread, "author_member_id": owner_member, "kind": "text",
-                "body": line, "meta": {"welcome": {"i": i}, "assistant": True}}).execute().data or [])
+                "body": line, "meta": {"welcome": {"i": i}}}).execute().data or [])
             posted.extend(rows)
         return posted
     except Exception:  # noqa: BLE001

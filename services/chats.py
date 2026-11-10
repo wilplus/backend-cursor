@@ -674,8 +674,25 @@ def post_voice(database: Any, user_id: Any, thread_id: Any, audio: bytes, *,
     said = _keep_words(database, adapter, str(message["id"]), str(user_id), audio, filename)
     if meta.get("question") and said:
         message = _marked(database, message, said, str(user_id))
+    if said:
+        # A question to a host with the chat builder joins its bundle (N584);
+        # it waits there for the host (N606 item 1).
+        _bundle(database, thread, str(user_id), str(message["id"]), said)
     return {"message": _shown(message, str(me["id"]), _authors(database, thread),
                               {str(message["id"]): said} if said else None)}
+
+
+def _bundle(database: Any, thread: str, user_id: str, message_id: str, said: str) -> None:
+    """A voice note asked of the chat's host, never one of the host's own
+    (their replies are answers, not questions), joins its bundle (N584)."""
+    from services import question_bundles
+    try:
+        host = question_bundles.host_of_chat(database, thread)
+    except Exception:  # noqa: BLE001 -- the note is sent either way
+        logger.warning("chats: the bundle's host could not be read (message %s)", message_id)
+        return
+    if host and host != user_id:
+        question_bundles.collect(database, host, user_id, thread, message_id, said)
 
 
 def read_kind(text: Any) -> Optional[bool]:
