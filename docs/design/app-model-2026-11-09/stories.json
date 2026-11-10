@@ -9156,19 +9156,20 @@
    "N607"
   ],
   "code": [
-   "be:services/chat_recipes.py::def _model("
+   "be:services/chat_recipes.py::def _model(",
+   "be:services/model_setup_store.py::def begin_from_chat("
   ],
   "tests": [
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "The recipe keeps each model as one question with three answers (backend #1893). Making the model itself is MOD-*; a used model's key is not built."
+  "note": "The recipe keeps each model as one question with three answers, and a model made there is a real model, the host's and private (backend #1893, #1894). A used model's key is not built."
  },
  {
   "id": "FIRST-08",
   "area": "The first person ever sets up a chat",
   "title": "You teach it, then it guesses and you check",
-  "status": "not built",
+  "status": "partly",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the person kept a model",
@@ -9182,9 +9183,14 @@
    "N585",
    "N582 item 5"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_setup_store.py::def begin_from_chat("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "The model made in the setup is ready for \"Teach it\": its first ten open on the existing routes (backend #1894). Its examples come from what the host's people send, once they say yes to training."
  },
  {
   "id": "FIRST-09",
@@ -9270,7 +9276,7 @@
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "Not yet keeps it saved and nobody meets it; Yes opens it (backend #1893). See it, the play-through, is the frontend's."
+  "note": "Not yet keeps it saved and nobody meets it; Yes opens it; the host's line is what a newcomer reads before joining, as \"People come to {name} ...\" (N622 item 2; backend #1893, #1894). See it, the play-through, is the frontend's."
  },
  {
   "id": "FIRST-12",
@@ -9354,7 +9360,7 @@
   "id": "FIRST-15",
   "area": "The first person ever sets up a chat",
   "title": "Health, law or money is asked once",
-  "status": "partly",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a host is setting up",
@@ -9368,13 +9374,14 @@
    "N616 item 22"
   ],
   "code": [
-   "be:services/chat_recipes.py::\"sensitive\""
+   "be:services/chat_recipes.py::\"sensitive\"",
+   "be:services/chat_recipes.py::\"care\""
   ],
   "tests": [
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "The recipe keeps the answer, yes until the host says no (backend #1893). Will's question waits for the founder's words and its place in the setup (N616 item 22)."
+  "note": "\"Is your work about health, law or money?\" is the part care, asked right after what the host does; until it is answered, yes; with yes, \"I answer at once\" is refused and falls back to \"I draft, you send\" (N622 item 1; backend #1894)."
  },
  {
   "id": "FIRST-16",
@@ -9568,7 +9575,7 @@
   "id": "VIS-07",
   "area": "What a visitor meets",
   "title": "In a health, law or money chat the model only suggests to the host",
-  "status": "partly",
+  "status": "built",
   "screen": "chat.person",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host answered yes to health, law or money",
@@ -9587,7 +9594,7 @@
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "In a health, law or money chat the person gets nothing from a model; the host sees the suggestion (backend #1893). Will's question in the setup waits for the founder's words and its place (N616 item 22)."
+  "note": "In a health, law or money chat the person gets nothing from a model; the host sees the suggestion in their Will (backend #1893, #1894; N622 item 1)."
  },
  {
   "id": "LEARN-01",
