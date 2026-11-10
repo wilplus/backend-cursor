@@ -109,12 +109,12 @@
   "given": "the setup reaches what people get back",
   "when": "the screen opens",
   "then": [
-   "an answer, their own words tidied, what to do next, or a mark on what they sent",
-   "for a speaking coach Will suggests their own words tidied (the Ideal Text); for another specialist, an answer"
+   "asked only when Will's suggestion is not simply an answer (for a speaking coach: their own words, tidied)",
+   "otherwise people get an answer, and the host can change it from their chat's parts"
   ],
   "rules": [
    "N612 item 3",
-   "N612 item 4"
+   "N618 item 2"
   ],
   "code": [],
   "tests": [],
@@ -318,20 +318,22 @@
   "given": "the host has chosen their models",
   "when": "the setup reaches the cost",
   "then": [
-   "each model is listed with its cost: its owner's price per use, or “Yours · free in your own chat”",
-   "the total per thing a person sends, and an estimate per month for 10, 50 or 200 people",
-   "“You pay. Your people pay nothing.”; everything in tokens, never in money"
+   "each model is listed with its cost: its owner's price per use, or Free for the host's own",
+   "the host types how many people and how often each sends; the month's total follows",
+   "with only the host's own models: “Your chat costs you nothing.”; everything in tokens"
   ],
   "rules": [
    "N607",
    "N611 item 5",
-   "N617"
+   "N617",
+   "N618 item 1",
+   "N618 item 5"
   ],
   "code": [],
   "tests": [],
   "evals": [],
   "status": "not built",
-  "note": "Whether a host's own model is free in their own chat is drafted, not decided."
+  "note": null
  },
  {
   "id": "FIRST-15",
@@ -970,6 +972,199 @@
   "rules": [
    "N613",
    "N616 item 16"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "FIRST-17",
+  "area": "The first person ever sets up a chat",
+  "title": "“Want to make it {profession}-smart?”",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the host's chat has its hello, questions and taps",
+  "when": "the setup reaches the models",
+  "then": [
+   "Will says: “Right now your chat isn't a specialist in anything.” and asks “Want to make it {profession}-smart?”",
+   "Yes goes on; Not now leaves the chat without models and goes to who answers"
+  ],
+  "rules": [
+   "N618 item 6"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "FIRST-18",
+  "area": "The first person ever sets up a chat",
+  "title": "Two ways: use a model that exists, or train your own",
+  "screen": "np",
+  "prototype": "Jump to… A second person sets up: models to choose from, and what it costs",
+  "given": "the host said yes",
+  "when": "the two ways are shown",
+  "then": [
+   "“Use a model that exists”: ready now, its owner is paid a few tokens each time it runs; greyed out with “Nobody has shared one yet. Yours can be the first.” when none exists",
+   "“Train your own”: free, needs the host's answers and some time, and later others can pay to use it",
+   "the list of models says what adding one does: the chat gets a key to it, asks it each time someone sends something, and says what it found"
+  ],
+  "rules": [
+   "N618 item 6",
+   "N607",
+   "N617"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "FIRST-19",
+  "area": "The first person ever sets up a chat",
+  "title": "Your own model: what it is, when it is worth it, when it is not",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the host chose to train their own",
+  "when": "before the first model is drafted",
+  "then": [
+   "three short cards: what it is; worth it; not worth it",
+   "“Train my own” goes on; “Not now” goes back without a model"
+  ],
+  "rules": [
+   "N618 item 6"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "FIRST-20",
+  "area": "The first person ever sets up a chat",
+  "title": "Test my chat opens my own chat",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "every part is decided",
+  "when": "the host taps “Test my chat”",
+  "then": [
+   "their own chat opens under their name, like any chat in the list",
+   "what can be tapped shows as the orange bubbles of any chat; they send something and get the answer and each model's line",
+   "after the setup the list of chats holds Will and that chat"
+  ],
+  "rules": [
+   "N618 item 8"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "FIRST-21",
+  "area": "The first person ever sets up a chat",
+  "title": "To change the chat, tell Will",
+  "screen": "will",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the host's chat is set up",
+  "when": "they type “I want to edit my chat” to Will, in their own words",
+  "then": [
+   "the chat's parts open again, each one tap to change"
+  ],
+  "rules": [
+   "N618 item 8"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "FIRST-22",
+  "area": "The first person ever sets up a chat",
+  "title": "Who answers is three plain choices on one screen",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the setup reaches who answers",
+  "when": "the screen opens",
+  "then": [
+   "“I draft, you send”, “Only you” and “I answer at once”, each with one line saying what follows",
+   "one tap chooses"
+  ],
+  "rules": [
+   "N618 item 9",
+   "N606"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "FIRST-23",
+  "area": "The first person ever sets up a chat",
+  "title": "Teach it with an example of your own",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the host is teaching a model",
+  "when": "they tap “Add a photo or a file of your own”",
+  "then": [
+   "their photo or file becomes the example and stays private to that model",
+   "the screen says where examples come from: what the host's people send, once they say yes to training; none is generated"
+  ],
+  "rules": [
+   "N618 item 3",
+   "N563 item 3"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "SMALL-04",
+  "area": "Small pieces",
+  "title": "An overlay is as wide as Will's chat",
+  "screen": "models",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the app is open in a wide browser window",
+  "when": "an overlay opens (AI models, the setup's screens)",
+  "then": [
+   "it uses the same column as Will's chat, not a narrow strip in the middle"
+  ],
+  "rules": [
+   "N618 item 10"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "SMALL-05",
+  "area": "Small pieces",
+  "title": "The typing box grows, and Will shows he is thinking",
+  "screen": "will",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a person types several lines, or Will is working something out",
+  "when": "the text passes one line, or the wait begins",
+  "then": [
+   "the box grows so the whole text shows",
+   "three dots show until Will answers"
+  ],
+  "rules": [
+   "N618 item 4"
   ],
   "code": [],
   "tests": [],
