@@ -614,6 +614,7 @@ N632.2   -> SetupTest::test_what_the_first_take_said_opens_what_you_do
 N632.3   -> SetupTest::test_a_chat_that_takes_a_recording_is_a_skill_chat
 N632.4   -> SetupTest::test_start_again_begins_blank_and_keeps_only_the_same_model
 N632.6   -> SetupTest::test_not_now_is_never_final
+N634.1   -> SetupTest::test_an_own_model_is_built_on_gpt
 VIS-01   -> VisitorTest::test_the_hosts_hello_first_questions_and_taps
 VIS-02   -> VisitorTest::test_the_bar_follows_what_the_host_takes
 VIS-03   -> VisitorTest::test_they_get_back_the_output_the_host_chose
@@ -1893,6 +1894,9 @@ my processing authorization), and never adds a question about the work.","O1 -> 
 O2 -> JoinQuestionsTest::test_whoever_joins_finds_my_first_lines_and_i_do_not
 O3 -> JoinQuestionsTest::test_they_answer_by_tapping_and_i_read_one_card
 O3 -> JoinQuestionsTest::test_a_day_picked_is_theirs
+O3 -> JoinQuestionsTest::test_an_answer_kept_before_n631_is_chosen_only_after_yes
+O3 -> JoinQuestionsTest::test_a_card_kept_before_n631_is_corrected_when_read
+O3 -> JoinQuestionsTest::test_a_plan_kept_before_n631_never_reads_no_as_chosen
 O4 -> JoinQuestionsTest::test_a_tap_that_is_not_an_answer_is_refused
 O5 -> JoinQuestionsTest::test_joining_someone_with_no_questions_posts_nothing
 O6 -> ReadyTest::test_a_typed_question_is_kept_only_when_practical_with_answers
@@ -4737,15 +4741,15 @@ W8  A speaking coach's link meets none of the choice's beats; the way in
 is in the speaking chat only (N572, N590; WAYIN-N590-1).
 W9  A first Take on which nothing was heard still gets its plan and
 ""You're set."" once its walk is done; no card is checked (N459 item 1).
-W10 With the chat builder (N632 item 5), Will no longer sends a person to
-""set up your assistant"" after the walk: that sentence and its tap are
-left out; the other signed sentences stay as they are.","W1, W2, W3, W5, W6 -> test_a_talk_the_wait_and_what_comes_next
+W10 With the chat builder, ""Share what I know"" is followed by ""Next, open
+Your chat below, and set it up."" (N634 item 3), never ""set up your
+assistant"", and nothing opens the earlier setup.","W1, W2, W3, W5, W6 -> test_a_talk_the_wait_and_what_comes_next
 W9 -> test_a_take_with_nothing_heard_still_gets_its_plan
 W2 -> test_change_it_asks_what_to_change_and_draws_the_card_again
 W4 -> test_sharing_brings_the_join_questions_and_the_agreement
 W6, W7 -> test_learning_after_the_walk_and_record_take_2_waits
 W8 -> test_a_coachs_link_and_another_chat_meet_none_of_it
-W10 -> test_with_the_new_setup_will_no_longer_sends_them_to_set_up_an_assistant","N453, N564, N572, N573, N590, N592; the rules are frontend docs/flows/the-plan.md §2."
+W10 -> test_with_the_new_setup_sharing_points_to_your_chat","N453, N564, N572, N573, N590, N592; the rules are frontend docs/flows/the-plan.md §2."
 tests/test_way_in_limit.py,Story,"As a newcomer waiting for my first Take, I want Will's chat to keep answering while the app checks every few seconds what is due, so that the way in never stops with ""too many requests"" in the wait.","L1  The way in's poll (no answer, no audio) is not counted against the
 model's limit: more polls than that limit allows in a minute all
 pass, under the poll's own, higher limit.
