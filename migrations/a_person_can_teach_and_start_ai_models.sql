@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS public.ai_model_examples (
     source         TEXT        NOT NULL,
     private        BOOLEAN     NOT NULL DEFAULT false,
     speaker_id     UUID        NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    take_id        UUID        NULL,
+    take_id        UUID        NULL,  -- no FK by design; Takes live elsewhere
     snippet_id     TEXT        NULL,
     added_by       UUID        NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     kind           TEXT        NULL,
@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS public.ai_model_examples (
     CONSTRAINT ai_model_examples_takes_have_speaker CHECK (source <> 'takes' OR speaker_id IS NOT NULL),
     CONSTRAINT ai_model_examples_content_object CHECK (jsonb_typeof(content) = 'object'),
     CONSTRAINT ai_model_examples_sureness CHECK (sureness IS NULL OR (sureness >= 0 AND sureness <= 1)),
-    CONSTRAINT ai_model_examples_known_not_exam CHECK (NOT (in_exam AND known_answer IS NOT NULL))
+    CONSTRAINT ai_model_examples_known_not_exam CHECK (NOT (in_exam IS TRUE AND known_answer IS NOT NULL))
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_model_examples_model ON public.ai_model_examples (model_id, created_at);
