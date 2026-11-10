@@ -188,13 +188,31 @@ def queue_for(database: Any, user_id: Any, *, only: Any = None) -> dict:
     examples += _exam_cases_for(database, me, mids)
     answered = {(str(a["example_id"]), str(a["model_id"])) for a in _rows(
         _table(database, ANSWERS).select("example_id,model_id").eq("teacher_id", me))} if mids else set()
+    sees = _sees_private(database, me, models)
     waiting = [e for e in examples
                if (str(e["id"]), str(e["model_id"])) not in answered
-               and str(e.get("speaker_id") or "") != me and str(e.get("added_by") or "") != me]
+               and str(e.get("speaker_id") or "") != me and str(e.get("added_by") or "") != me
+               and (not e.get("private") or str(e["model_id"]) in sees)]
     return rules.build_queue(
         [m for m in models if m["id"] in mids], with_clips(database, waiting), me,
         paused=[t["model_id"] for t in mine if t.get("paused_at")], only=_uuid(only) if only else None,
         company_line={str(t["model_id"]): t["company_line"] for t in mine if t.get("company_line")})
+
+
+def _sees_private(database: Any, me: str, models: list[dict]) -> set[str]:
+    """The models whose private examples (a company's own data, N563 item 3)
+    the caller may be sent: every model that is still private, and of the
+    public ones, those the caller owns or was invited to teach. Someone who
+    came in at the door of a public model is never sent a private example,
+    whenever the model went public."""
+    out = {m["id"] for m in models
+           if m.get("visibility") != "public" or rules.viewer_role(m, me) == "owner"}
+    rest = [m["id"] for m in models if m["id"] not in out]
+    if rest:
+        out |= {str(i["model_id"]) for i in _rows(
+            _table(database, INVITES).select("model_id,status").eq("invitee_id", me).in_("model_id", rest))
+            if i.get("status") == "accepted"}
+    return out
 
 
 def _exam_cases_for(database: Any, me: str, mids: list[str]) -> list[dict]:
@@ -264,6 +282,8 @@ def answer(database: Any, user_id: Any, example_id: Any, model_id: Any, step: st
     if not rows:
         raise _not_found()
     example = rows[0]
+    if example.get("private") and model["id"] not in _sees_private(database, me, [model]):
+        raise _not_found()
     wanting: list[dict] = []
     twins: list[dict] = []
     if not example.get("private") and example.get("snippet_id"):
