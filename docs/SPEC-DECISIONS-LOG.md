@@ -15987,3 +15987,50 @@ morning, "OK").** For N95, N558 and N574:
    with this log.
 4. **The coordinator says where the journey has a gap** before it is built.
 No migration. No rules page: this is how the work is run.
+
+**N610 · The bar is two places, locked: "+", and the one thing to do now
+(founder, the Claude Code chat, 10 November 2026, after a morning of drafts
+in two chats: "there should be no difference when they ask and when they
+don't ask"; "when there is a recording, there should be big recording.
+Button in the middle"; "the plus button should not be moving. It needs to be
+really smart - so aligned with the action you would want"; "do we really
+need to have it on 3 not two?"; "just two, not two nested in one"; on the
+emoji, "when someone has only recordings on, then the emojis appear, because
+you would not be recording just to say thank you ... if someone has typing
+on, then you can literally type to them thank you"; then, on the page "The
+Bar, To Lock" <https://claude.ai/artifact/4YVTpZppV6oViDYiyGBAXg> and its
+five rules, "ok lock that", and of its drafted words and the bundle card's,
+"lines signed").** Replaces N597, N600 and N603, and for a host's chat and a
+chat between people the three emoji in the bar of N483 item 3; for N582,
+N584, N602 and N609:
+1. **"+" never moves.** While you record, the bin takes its place.
+2. **The middle is the one thing to do now.** A black button records; a box
+   types. Nothing else ever sits in the bar, and the middle is never grey.
+3. **Nothing asked: the middle asks.** "Ask {name}" is a button in a chat
+   that takes recordings and a box in a chat that takes typing (with both
+   on, the box). In a speaking coach's chat it is "Record Take N" (Never 3).
+4. **The chat asks: the middle answers.** "Record your answer" when the
+   chat takes recordings ("Type your answer" then sits behind "+" where
+   typing is on too); the box "Type your answer" when it takes only typing;
+   when it takes only taps, the middle stays "Ask {name}". Answers to tap
+   sit above the bar, "Not now" under them. A photo asked for: the middle
+   is "Add a photo"; sending one unasked is behind "+".
+5. **Thanks is one tap.** After a person's answer in a chat without typing,
+   three taps come above the bar (👀, 👍 and 🙏, the last filled, nearest
+   the thumb); one tap sends it big in the chat and they go. Never after
+   Will or a machine, never twice for one answer. In a chat with typing,
+   you type your thanks.
+6. **Will's chat keeps its own bar** (N369), and the recording strip is as
+   locked (N483).
+7. **Signed (Never 4):** "Record your question", "Send a photo", "Add a
+   photo", "Answer {name}", "Asked. {name} answers here."; and for N602's
+   card and sheet, "{name}, {name} and {n} more", "in your chat", "on your
+   website", "{name} asked".
+8. **Locked:** the page is kept in
+   [`docs/design/the-bar-2026-11-10/`](design/the-bar-2026-11-10/) and
+   listed in [`docs/LOCKS.md`](LOCKS.md). What it needs that is not built: a
+   typed message between people (the backend takes only the emoji today),
+   and a chat's way to ask for a photo, with the photo's upload.
+No migration in this entry. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built.
