@@ -2978,10 +2978,12 @@ O4  An address Apple no longer knows is forgotten.","O1 -> PushDevicesTest::test
 O2 -> PushDevicesTest::test_without_apples_key_nothing_is_sent
 O3 -> PushDevicesTest::test_an_app_run_from_xcode_is_reached_on_apples_sandbox
 O4 -> PushDevicesTest::test_an_address_apple_no_longer_knows_is_forgotten","Push in the iPhone app (founder 2026-11-03, N385); Apple's service is stood in for (services/push_devices.py)."
-tests/test_question_bundles.py,Story,"As a host, I want one recording to answer everyone who asked me the same thing, so that I answer a question once and everyone who asks it, now or later, gets my answer in their own chat with me (N584).","O1  Questions that ask the same thing gather in one bundle in my queue:
-""Ariel asked: ..."", then ""2 people asked: ..."", each person's question
-with its colour, and ""Record one answer""; a different question starts
-its own bundle.
+tests/test_question_bundles.py,Story,"As a host, I want one recording to answer everyone who asked me the same thing, so that I answer a question once and everyone who asks it, now or later, gets my answer in their own chat with me (N584).","O1  Questions that ask the same thing gather in one card in Will's chat
+(N602): ""2 people asked"", the question large, ""Ariel and Ola"", ""See
+who asked"" and ""Record one answer""; ""See who asked"" opens ""Who asked"",
+each person's own words, name and where they asked (""in your chat"",
+""on your website""), then ""Split them up""; a different question starts
+its own card.
 O2  My one recording goes to everyone in the bundle, each privately in
 their own chat with me, under their own question quoted; nobody gets
 it twice.
@@ -2997,6 +2999,7 @@ reads as the next question, and nothing of theirs is kept.","O1 -> BundlesTest::
 O2 -> BundlesTest::test_one_recording_answers_everyone_in_the_bundle
 O3 -> BundlesTest::test_a_later_asker_gets_the_answer_at_once
 O4 -> BundlesTest::test_without_the_ring_nothing_is_bundled
+O1 -> BundlesTest::test_the_card_names_two_and_how_many_more_and_where_they_asked
 O5 -> BundlesTest::test_my_own_replies_are_never_bundled
 O6 -> BundlesTest::test_a_later_asker_gets_the_answer_at_once
 O7 -> BundlesTest::test_one_answer_asks_my_recording_consent_again

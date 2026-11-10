@@ -3,10 +3,12 @@ STORY    As a host, I want one recording to answer everyone who asked me the
          same thing, so that I answer a question once and everyone who asks it,
          now or later, gets my answer in their own chat with me (N584).
 OUTCOME
-  O1  Questions that ask the same thing gather in one bundle in my queue:
-      "Ariel asked: ...", then "2 people asked: ...", each person's question
-      with its colour, and "Record one answer"; a different question starts
-      its own bundle.
+  O1  Questions that ask the same thing gather in one card in Will's chat
+      (N602): "2 people asked", the question large, "Ariel and Ola", "See
+      who asked" and "Record one answer"; "See who asked" opens "Who asked",
+      each person's own words, name and where they asked ("in your chat",
+      "on your website"), then "Split them up"; a different question starts
+      its own card.
   O2  My one recording goes to everyone in the bundle, each privately in
       their own chat with me, under their own question quoted; nobody gets
       it twice.
@@ -23,6 +25,7 @@ PROVES   O1 -> BundlesTest::test_questions_that_ask_the_same_thing_gather_in_one
          O2 -> BundlesTest::test_one_recording_answers_everyone_in_the_bundle
          O3 -> BundlesTest::test_a_later_asker_gets_the_answer_at_once
          O4 -> BundlesTest::test_without_the_ring_nothing_is_bundled
+         O1 -> BundlesTest::test_the_card_names_two_and_how_many_more_and_where_they_asked
          O5 -> BundlesTest::test_my_own_replies_are_never_bundled
          O6 -> BundlesTest::test_a_later_asker_gets_the_answer_at_once
          O7 -> BundlesTest::test_one_answer_asks_my_recording_consent_again
@@ -62,7 +65,15 @@ class BundlesTest(unittest.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-    def _chat_with(self, who, name):
+    def _chat_with(self, who, name, website=False):
+        if website:
+            # A website visitor's chat with me (N591 item 1).
+            thread = self.store.table("chat_threads").insert(
+                {"kind": "team", "title": name, "widget_owner_id": ME}).execute().data[0]["id"]
+            self.store.table("chat_members").insert([
+                {"thread_id": thread, "user_id": ME, "display_name": "Artur"},
+                {"thread_id": thread, "user_id": who, "display_name": name}]).execute()
+            return thread
         # A chat made through my link: I am its host (N578 item 1).
         if not self.store.tables.get("chat_links"):
             self.store.table("chat_links").insert({"user_id": ME, "token": "t" * 24,
@@ -92,16 +103,22 @@ class BundlesTest(unittest.TestCase):
         ariel, ola = self._chat_with(SOMEONE, "Ariel"), self._chat_with(OTHER, "Ola")
         self._ask(SOMEONE, ariel, UM)
         queue = self._queue()
-        self.assertEqual([(b["line"], b["record"]) for b in queue],
-                         [(f"Ariel asked: {UM}", "Record one answer")])
+        self.assertEqual([(b["title"], b["question"], b["record"]) for b in queue],
+                         [("Ariel asked", UM, "Record one answer")])
         self._ask(OTHER, ola, "How can I stop saying um when I present?")
         self._ask(OTHER, ola, "Which slide template do you use?")
-        lines = sorted(b["line"] for b in self._queue())
-        self.assertEqual(lines, [f"2 people asked: {UM}",
-                                 "Ola asked: Which slide template do you use?"])
-        both = next(b for b in self._queue() if b["line"].startswith("2 people"))
-        self.assertEqual([(q["name"], q["mark"]) for q in both["questions"]],
-                         [("Ariel", "green"), ("Ola", "yellow")])
+        cards = sorted((b["title"], b["question"]) for b in self._queue())
+        self.assertEqual(cards, [("2 people asked", UM),
+                                 ("Ola asked", "Which slide template do you use?")])
+        both = next(b for b in self._queue() if b["title"] == "2 people asked")
+        self.assertEqual((both["who"], both["see"], both["record"]),
+                         ("Ariel and Ola", "See who asked", "Record one answer"))
+        self.assertNotIn("questions", both)
+        sheet = self._get(f"/v2/chats/bundles/{both['id']}").get_json()
+        self.assertEqual((sheet["title"], sheet["split"]), ("Who asked", "Split them up"))
+        self.assertEqual([(p["name"], p["words"], p["where"], p["mark"]) for p in sheet["people"]],
+                         [("Ariel", UM, "in your chat", "green"),
+                          ("Ola", "How can I stop saying um when I present?", "in your chat", "yellow")])
         self.assertGreaterEqual(likeness(UM, "How can I stop saying um when I present?"), 0.5)
 
     def test_one_recording_answers_everyone_in_the_bundle(self):
@@ -136,7 +153,19 @@ class BundlesTest(unittest.TestCase):
         self.assertIn(THIRD, [c.args[1] for c in push.call_args_list])
         got = self._answers_in(THIRD, later)
         self.assertEqual([m["meta"]["mark"] for m in got], ["green"])
-        self.assertEqual(self._queue()[0]["line"], f"2 people asked: {UM}")
+        self.assertEqual(self._queue()[0]["title"], "2 people asked")
+
+    def test_the_card_names_two_and_how_many_more_and_where_they_asked(self):
+        people = [(SOMEONE, "Ariel", False), (OTHER, "Ola", False), (THIRD, "Kasia", True),
+                  ("66666666-6666-4666-8666-666666666666", "Lena", False)]
+        for who, name, website in people:
+            self._ask(who, self._chat_with(who, name, website), UM)
+        card = self._queue()[0]
+        self.assertEqual((card["title"], card["who"]), ("4 people asked", "Ariel, Ola and 2 more"))
+        sheet = self._get(f"/v2/chats/bundles/{card['id']}").get_json()
+        self.assertEqual([(p["name"], p["where"]) for p in sheet["people"]],
+                         [("Ariel", "in your chat"), ("Ola", "in your chat"),
+                          ("Kasia", "on your website"), ("Lena", "in your chat")])
 
     def test_my_own_replies_are_never_bundled(self):
         ariel = self._chat_with(SOMEONE, "Ariel")
@@ -165,8 +194,8 @@ class BundlesTest(unittest.TestCase):
                          ("question_bundle_askers", "asker_id", "delete"))
         rows = self.store.tables["question_bundle_askers"]
         self.store.tables["question_bundle_askers"] = [r for r in rows if r["asker_id"] != SOMEONE]
-        self.assertEqual([b["line"] for b in self._queue()],
-                         ["Ola asked: How can I stop saying um when I present?"])
+        self.assertEqual([(b["title"], b["question"]) for b in self._queue()],
+                         [("Ola asked", "How can I stop saying um when I present?")])
         self.assertNotIn(UM, repr(self.store.tables["question_bundles"]))
 
     def test_without_the_ring_nothing_is_bundled(self):

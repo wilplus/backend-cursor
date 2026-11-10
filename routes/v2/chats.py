@@ -550,6 +550,15 @@ def v2_chats_bundles():
         db, str(request.user_id))))
 
 
+@v2_bp.route("/chats/bundles/<bundle_id>", methods=["GET"])
+@require_auth
+def v2_chats_bundle_who(bundle_id):
+    """"See who asked ›": the sheet "Who asked" (N602 item 2)."""
+    from services import question_bundles
+    return _builder_or_404(lambda: _run("bundle who", lambda: question_bundles.who_asked(
+        db, str(request.user_id), bundle_id)))
+
+
 @v2_bp.route("/chats/bundles/<bundle_id>/<action>", methods=["POST"])
 @limiter.limit("120 per hour", scope="chats_bundles")
 @require_auth
