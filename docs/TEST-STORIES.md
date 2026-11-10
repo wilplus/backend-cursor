@@ -480,11 +480,16 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 `tests/test_assistants.py` · Story
 
 - **O1** With the chat builder's ring, each chat with a person in my list says whose assistant answers there: "Tomek's assistant"; without the ring, nothing changes (N579 item 2, N580 items 1 and 3).
-- **O2** The join page of a tester's link says "Tomek's assistant" and "Will's chat is where you can set up a chat of your own."; anyone else's link shows only the name, as before (N586 item 2).
+- **O2** The join page of anyone's link is three lines: "Tomek invited you", one sentence of what you'll learn, "Only the two of you are in this chat."; Artur's link says his signed sentence; a tester's link also names "Tomek's assistant"; the old line about Will's chat is gone (N601).
 - **O3** A host sets the welcome, the first Take's questions and how people answer; the builder starts from Artur's five; a locked field (the Nevers, consent, the bar...) is refused (N578 item 5, N579 item 1).
 - **O4** A host's own words pass the checks Will's bubbles pass: a score or a verdict about the speaker is refused, their own numbers are not (N578 item 6, Never 1).
 - **O5** A simple recognizer reads on one line with two cuts: Yes past the upper, No below the lower, the queue between, coloured green, yellow or red, never a number (N580 item 3, N585 item 2).
 - **O6** A speaking coach is suggested only for a recording of you talking; a topic expert for their topic from any message; adding a coach your message doesn't suit brings one line with "Record" and "Send anyway" (N588).
+- **O7** As a tester I keep my chat's recipe and read it back, with Artur's five to start from; without the ring the builder is 404; a locked field is 400 RECIPE_LOCKED and nothing is kept.
+- **O8** Someone who joins through my link meets my welcome first, as my own words (no assistant's mark, N606), and my join page says who I am and what they can learn with me, in my own words (N586 item 1, N590 item 2).
+- **O9** In my chat, the person who joined reads whose assistant answers, my first Take's questions and how they may answer; a chat with someone who has no recipe is as it was.
+- **O10** In Will's chat, Will says what I know can earn tokens, with "Set up my chat"; then asks, one at a time, my welcome, how people answer, my specialization, what people learn, a skill or a topic and what I need to see, and "Do you want to automate your own chat?"; "Go live" keeps it, with the first Take's questions set in the builder, and the next person who joins meets it (N582 item 1, N586 item 5).
+- **O11** A welcome that scores people is not kept: Will says why and asks again.
 
 *Why:* Every inviter has a coach chat of their own (N578); the builder's MVP is for the founder and a few testers first (N579).
 
@@ -670,7 +675,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 `tests/test_chat_links.py` · Story
 
 - **O1** My link is made the first time I ask and stays the same after; replacing it makes a new one, and the old one opens nothing.
-- **O2** Before signing in, the join page learns only the first name of whose link it is. A wrong link and a replaced one answer 404, the same answer.
+- **O2** Before signing in, the join page learns only the first name of whose link it is, in its three lines (N601). A wrong link and a replaced one answer 404, the same answer.
 - **O3** Joining makes one chat between the two of us, each named for the other; opening a link again, from either side, finds the same chat.
 - **O4** My own link is refused (400 OWN_LINK), and nothing is made.
 - **O5** As a user with no ring at all, I get my link and someone joins me through it (N456; was ring 6 only).
