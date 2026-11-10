@@ -589,10 +589,9 @@ def v2_chats_recipe_setup_answer():
 def v2_chats_blank_setup():
     """My chat as the blank setup keeps it, its parts, my own chat and its cost."""
     from services import chat_recipes
-    from services.chat_links import name_of
     payload = getattr(request, "token_payload", None)
     return _builder_or_404(lambda: _run("setup read", lambda: chat_recipes.read(
-        db, str(request.user_id), name_of(payload))))
+        db, str(request.user_id), payload)))
 
 
 @v2_bp.route("/chats/setup/start", methods=["POST"])
