@@ -513,6 +513,9 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
     user_id = _require(database, user_id)
     me = _member_of(database, user_id, thread_id)
     thread = str(me["thread_id"])
+    # The other person's own chat, met here once (N633 item 2).
+    from services import assistants
+    assistants.meet(database, user_id, thread)
     newest = _rows(_table(database, MESSAGES)
                    .select("id,author_member_id,kind,body,meta,created_at")
                    .eq("thread_id", thread).order("created_at", desc=True)
@@ -586,7 +589,7 @@ def _post_text(database: Any, user_id: str, me: dict, said: Any, to: Any = None)
         raise ChatsError("NOT_ALLOWED", f"Write 1 to {MAX_TEXT} characters.")
     if to is not None:
         return _typed_answer(database, user_id, me, words, to)
-    host, _ = assistants.whose(database, thread)
+    host = assistants.writes_to(database, thread, user_id)
     asks = bool(host) and host != user_id
     rows = _rows(_table(database, MESSAGES).insert({
         "thread_id": thread, "author_member_id": str(me["id"]), "kind": "text",
@@ -635,6 +638,14 @@ def _typed_answer(database: Any, user_id: str, me: dict, words: str, to: Any) ->
     if not sent:
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
     _tell(database, me, sent[0])
+    if meta.get("question") is True:
+        # The host's own words answering someone in their chat teach the
+        # models still learning on their cards (N633 item 1).
+        from services import chat_recipes
+        try:
+            chat_recipes.teach(database, user_id, words)
+        except Exception:  # noqa: BLE001 -- the answer is sent either way
+            logger.warning("chats: the answer taught nothing (message %s)", message, exc_info=True)
     return {"message": _shown(sent[0], str(me["id"]), _authors(database, thread))}
 
 
@@ -700,7 +711,11 @@ def _bundle(database: Any, thread: str, user_id: str, message_id: str, said: str
     (their replies are answers, not questions), joins its bundle (N584)."""
     from services import question_bundles
     try:
+        from services import assistants
         host = question_bundles.host_of_chat(database, thread)
+        if not host or host == user_id:
+            # A chat met in a chat the two already share (N633 item 2).
+            host = assistants.writes_to(database, thread, user_id)
     except Exception:  # noqa: BLE001 -- the note is sent either way
         logger.warning("chats: the bundle's host could not be read (message %s)", message_id)
         return

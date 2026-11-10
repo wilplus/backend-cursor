@@ -28,6 +28,11 @@ processing authorization of the person who sent it (``user_provider_scope``)
 or, for "Test my chat", of the host (the route's ``phase1_provider_route``).
 Behind the host's ring row ``chat_builder``.
 
+A model still learning on the host's cards (N633 item 1) is left out of
+the call: no line, no charge. The host's own words, when they answer a
+question by typing or change a draft before sending it, become an example
+of it (``chat_recipes.teach``).
+
 TOKENS (TOK-01, TOK-02, N630 item 3). A line of another person's model in
 a visitor's message is paid by the host, at the price saved on the
 recipe's card when they added the model (never the owner's newer price),
@@ -119,6 +124,9 @@ def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str],
     TOK-02). The host's own models are free (N618 item 1)."""
     from services.llm import chat_complete
     from services.llm_config import SPEC_CHAT_REPLY
+    # A model still learning says nothing to the people who write and costs
+    # nothing (N633 item 1): it is not in the call at all.
+    recipe = {**recipe, "models": [m for m in recipe.get("models") or [] if not m.get("learning")]}
     heads = _heads(database, host_id, recipe, said)
     try:
         result = chat_complete(spec=SPEC_CHAT_REPLY, system=prompt(recipe, heads),
@@ -321,6 +329,7 @@ def send_draft(database: Any, host_id: Any, message_id: Any, body: Any) -> dict:
     row, draft = found
     own = (body or {}).get("body") if isinstance(body, dict) else None
     reply = dict(draft)
+    words = None
     if own is not None:
         words = " ".join(str(own).split())
         if not words or len(words) > MAX_SAID:
@@ -335,6 +344,10 @@ def send_draft(database: Any, host_id: Any, message_id: Any, body: Any) -> dict:
     made = _post(database, thread, member, reply, message, "host", _first(name))
     meta = {**(row.get("meta") or {}), "draft": {**draft, "sent": True}}
     _table(database, MESSAGES).update({"meta": meta}).eq("id", message).execute()
+    if words and words != draft.get("answer"):
+        # Changed before sending: the host's own words teach the models
+        # still learning on their cards (N633 item 1).
+        chat_recipes.teach(database, host, words)
     return {"message": made[0] if made else None, "messages": made}
 
 

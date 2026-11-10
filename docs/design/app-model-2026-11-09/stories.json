@@ -9328,7 +9328,7 @@
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "GET /v2/chats/setup/models lists public, priced models of others, greyed out when they do not fit (backend #1893)."
+  "note": "GET /v2/chats/setup/models lists public, priced models of others, greyed out when they do not fit (backend #1893). Each entry says learning: a model still learning (no passed exam), public or one the host teaches, is listed too for a host with the AI models, at price 0 (N633 item 1, FIRST-24)."
  },
  {
   "id": "FIRST-14",
@@ -9608,6 +9608,34 @@
   "note": "In a health, law or money chat the person gets nothing from a model; the host sees the suggestion in their Will (backend #1893, #1894; N622 item 1). The drafts screen shows the model's line and Change sends the host's own words (frontend #1378). The frontend test uses non-sensitive drafts only; the sensitive case is the backend's (tests/test_blank_setup.py)."
  },
  {
+  "id": "VIS-08",
+  "area": "What a visitor meets",
+  "title": "Meeting someone's chat in the chat you already share",
+  "status": "built",
+  "screen": "chat.person",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "two people already share a chat, and one of them opens their own chat",
+  "when": "the other opens that shared chat",
+  "then": [
+   "the chat's hello is written there once, and what can be tapped shows",
+   "what they write is then answered as a visitor's is",
+   "where both have a chat open, each writes to the other's chat"
+  ],
+  "rules": [
+   "N633 item 2",
+   "N616 item 4"
+  ],
+  "code": [
+   "be:services/assistants.py::def meet(",
+   "be:services/assistants.py::def writes_to("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "On reading the shared chat (GET /v2/chats/<id>/messages) the other person's welcome row is written, meta.welcome, as joining writes it; that row is the mark, so it is written once (two reads at the same moment keep the earliest). Never in a website chat, never for one's own chat, never while it is not live."
+ },
+ {
   "id": "LEARN-01",
   "area": "A model that learns",
   "title": "Settled answers train a small head on a shared reader",
@@ -9763,7 +9791,7 @@
   ],
   "code": [
    "be:services/model_head_store.py::def readable",
-   "be:services/chat_recipes.py::continue  # no model reads a photo yet"
+   "be:services/chat_recipes.py::return False  # no model reads a photo yet"
   ],
   "tests": [
    "tests/test_a_model_that_learns.py"
@@ -10318,6 +10346,37 @@
   ],
   "evals": [],
   "note": "On the model made in the setup the host adds an example of their own in words (POST /v2/models/<id>/examples) and answers it as the first of their first ten; it stays private to that model (backend #1896). A photo or a file as the example is not built."
+ },
+ {
+  "id": "FIRST-24",
+  "area": "The first person ever sets up a chat",
+  "title": "A model still learning can be added to a chat",
+  "status": "built",
+  "screen": "np",
+  "prototype": "Jump to… A second person sets up: models to choose from, and what it costs",
+  "given": "someone else's model is still learning (it has not passed its exam)",
+  "when": "the host adds it in “Models you can use”",
+  "then": [
+   "it is marked “Still learning” and costs nothing",
+   "it says nothing to the people who write in the chat",
+   "the host's own words, when they answer someone or change a draft, become its examples, and the host joins its teachers",
+   "once it passes its exam, its price shows as a change from 0, and it answers only after the host keeps it at that price"
+  ],
+  "rules": [
+   "N633 item 1",
+   "N616 item 10",
+   "N630 item 3"
+  ],
+  "code": [
+   "be:services/chat_recipes.py::def _agreed_prices(",
+   "be:services/chat_recipes.py::def teach(",
+   "be:services/chat_replies.py::if not m.get(\"learning\")"
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "GET /v2/chats/setup/models gives learning true and price 0; the card is saved with learning true; the host joins through the models' own door (model_launchpad_store.enter) and each answer in their own words is an example through “Add an example” (model_launchpad_store.add_example), answered by the model's other teachers. A voice answer teaches nothing yet."
  },
  {
   "id": "SMALL-04",

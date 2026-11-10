@@ -35,6 +35,9 @@ call:
     "Only the two of you are in this chat."; N586 item 2's line about
     Will's chat is gone from it (N601 item 2).
 
+A person also meets someone's chat in the chat the two already share
+(N633 item 2): ``meet`` writes its hello there once, on reading it, and
+``writes_to`` says whose chat a person's words go to.
 Behind the ring row ``chat_builder`` (N579 item 2): the founder and the
 people the founder adds. Everyone else keeps today's chat.
 """
@@ -415,7 +418,8 @@ def host_of(database: Any, user_id: Any, thread_id: Any) -> Optional[dict]:
             return f"{parts[0] if parts else 'WillpowerLab'}'s model"
         out.update({"hello": recipe.get("hello"), "taps": taps_of(recipe),
                     "send": recipe.get("send") or [], "out": recipe.get("out") or "answer",
-                    "models": [{"q": m.get("q"), "by": whose(m)} for m in recipe.get("models") or []]})
+                    "models": [{"q": m.get("q"), "by": whose(m)} for m in recipe.get("models") or []
+                               if not m.get("learning")]})
     return out
 
 
@@ -490,6 +494,77 @@ def whose(database: Any, thread_id: Any) -> tuple[Optional[str], bool]:
     return (str(links[0]["user_id"]) if links else None), False
 
 
+# ── Meeting a chat in a thread two people already share (N633 item 2) ──
+
+def _other_chat(database: Any, thread_id: Any, user_id: Any) -> Optional[dict]:
+    """In a chat of two, the other person's own chat when they have the
+    chat builder and their blank-setup chat is open (``live``):
+    {"user_id", "member", "name", "recipe"}; None otherwise, and never in a
+    website chat."""
+    from services.chat_recipes import V
+    members = (database.client.table(MEMBERS).select("id,user_id,display_name")
+               .eq("thread_id", str(thread_id)).execute().data or [])
+    if len(members) != 2 or str(user_id) not in {str(m.get("user_id")) for m in members}:
+        return None
+    other = next((m for m in members if m.get("user_id") and str(m["user_id"]) != str(user_id)), None)
+    if not other:
+        return None
+    recipe = recipe_of(database, other["user_id"])
+    if not recipe or recipe.get("v") != V or recipe.get("live") is not True:
+        return None
+    if not on(database, other["user_id"]) or whose(database, thread_id)[1]:
+        return None
+    return {"user_id": str(other["user_id"]), "member": str(other["id"]),
+            "name": other.get("display_name"), "recipe": recipe}
+
+
+def _welcomes(database: Any, thread: str, member: str) -> list[dict]:
+    rows = (database.client.table(MESSAGES).select("id,meta,created_at").eq("thread_id", thread)
+            .eq("author_member_id", member).order("created_at").limit(5000).execute().data or [])
+    return [r for r in rows if isinstance(r.get("meta"), dict) and "welcome" in r["meta"]]
+
+
+def meet(database: Any, user_id: Any, thread_id: Any) -> list[dict]:
+    """A person opens a chat they share with someone whose own chat is open
+    (N633 item 2): that person's hello is written into it as the row joining
+    writes (``welcome``, meta.welcome), once. The welcome row is the mark:
+    a chat that holds one of theirs, written when joining through their link
+    or here, is never written again; two reads at the same moment keep the
+    earliest. Never for one's own chat; never while it is not open. Called
+    on reading the chat (GET /v2/chats/<id>/messages). Best-effort: the
+    chat reads either way."""
+    try:
+        other = _other_chat(database, thread_id, user_id)
+        if not other or _welcomes(database, str(thread_id), other["member"]):
+            return []
+        posted = welcome(database, str(thread_id), other["user_id"], other["member"])
+        kept = _welcomes(database, str(thread_id), other["member"])
+        seen: set = set()
+        for row in kept:
+            i = (row.get("meta") or {}).get("welcome")
+            key = str(i.get("i") if isinstance(i, dict) else i)
+            if key in seen:
+                database.client.table(MESSAGES).delete().eq("id", str(row["id"])).execute()
+            seen.add(key)
+        return posted
+    except Exception:  # noqa: BLE001
+        logger.warning("assistants: no meeting in %s", thread_id, exc_info=True)
+        return []
+
+
+def writes_to(database: Any, thread_id: Any, user_id: Any) -> Optional[str]:
+    """Whose chat this person writes to here: the owner of the link or
+    website the chat was made through, when that is someone else (as
+    before); else the other person, when their own chat is open (N633 item
+    2: met in the chat the two already share). In a chat where B joined
+    through A's link, A writes to B's chat and B to A's: both hold."""
+    host, _ = whose(database, thread_id)
+    if host and host != str(user_id):
+        return host
+    other = _other_chat(database, thread_id, user_id)
+    return other["user_id"] if other else host
+
+
 def may_type(database: Any, thread_id: Any, user_id: Any) -> bool:
     """May this member send typed words in this chat? In a website chat,
     and in a chat made through the link of a host with the chat builder,
@@ -497,12 +572,23 @@ def may_type(database: Any, thread_id: Any, user_id: Any) -> bool:
     item 2), and the host answers in typing, as their setup allows (N591
     item 3). Where the recipe's typing is off, nobody types there, the host
     included: the bar's middle is never a box in such a chat (N610 item 2).
-    Every other chat is as it was: no typing."""
+    A chat met in a chat two people already share (N633 item 2) is read
+    the same way. Every other chat is as it was: no typing."""
     del user_id  # the host and the others alike (N610 items 2 and 5)
     host, website = whose(database, thread_id)
-    if not host or (not website and not on(database, host)):
+    if host and (website or on(database, host)) and answer_with_of(database, host)["type"]:
+        return True
+    if website:
         return False
-    return bool(answer_with_of(database, host)["type"])
+    # A chat met in a chat the two already share (N633 item 2): its recipe
+    # says whether people type there, for both of them, as above.
+    members = (database.client.table(MEMBERS).select("user_id").eq("thread_id", str(thread_id))
+               .execute().data or [])
+    for viewer in {str(m["user_id"]) for m in members if m.get("user_id")}:
+        other = _other_chat(database, thread_id, viewer)
+        if other and other["user_id"] != host and answer_with_of(database, other["user_id"])["type"]:
+            return True
+    return False
 
 
 def photo_asks(database: Any, owner_id: Any) -> list[str]:

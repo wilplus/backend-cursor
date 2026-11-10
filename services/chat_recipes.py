@@ -13,7 +13,9 @@ field with the prototype step that fills it, is in backend PR #1893.
     (N618 item 8).
   * ``cost``: what the chat costs its host, in tokens (N617 item 2, N618
     items 1 and 5).
-  * ``shared_models``: "Models you can use." (N617 item 1).
+  * ``shared_models``: "Models you can use." (N617 item 1), and the models
+    still learning, free, which the host's own answers teach (N633 item 1:
+    ``teach``; ``price_changes`` once one passes its exam).
   * ``skipped_models``: someone else's models left out of a person's
     answer because the host had too few tokens (TOK-02), in ``read``.
 
@@ -241,7 +243,7 @@ def set_part(database: Any, user_id: Any, part: str, body: Any) -> dict:
         raise RecipeError("NOT_STARTED", "Say what you do first.", 409)
     value = _clean_part(part, (body or {}).get("value") if isinstance(body, dict) else None)
     if part == "models":
-        _agreed_prices(database, recipe, value)
+        value = _agreed_prices(database, str(user_id), recipe, value)
         value = _real_models(database, str(user_id), recipe, value)
     if part == "who" and value == "assistant" and recipe.get("sensitive") is not False:
         # Health, law or money, or not answered yet: nothing goes out until
@@ -395,31 +397,94 @@ def price_changes(database: Any, recipe: Optional[dict]) -> list[dict]:
     """[{"model_id", "q", "by", "was", "now"}]: another person's model in
     this host's chat whose owner's price ("now", tokens) is no longer the one
     saved when the host added it ("was"), which the host still pays (N630
-    item 3). Keeping it at "now" is saving its card with that price; dropping
-    it is saving the cards without it. Will's words for it wait for the
-    founder; this is only what changed."""
+    item 3). A model added while still learning shows here once it passed
+    its exam and has a price, with "was" 0; until the host keeps it, it
+    gives no line (N633 item 1). Keeping it at "now" is saving its card with
+    that price; dropping it is saving the cards without it. This is only
+    what changed; Will's words for it are N633 item 4's."""
     used = _used(recipe)
     now = _owner_prices(database, [str(m["model_id"]) for m in used])
+    passed = _shared_for_tokens(database, [str(m["model_id"]) for m in used if m.get("learning")])
     return [{"model_id": m["model_id"], "q": m.get("q"), "by": m.get("by"),
              "was": int(m.get("price") or 0), "now": now[str(m["model_id"])]}
             for m in used if now.get(str(m["model_id"])) is not None
+            and (not m.get("learning") or str(m["model_id"]) in passed)
             and now[str(m["model_id"])] != int(m.get("price") or 0)]
 
 
-def _agreed_prices(database: Any, recipe: dict, models: list[dict]) -> None:
+def _agreed_prices(database: Any, user_id: str, recipe: dict, models: list[dict]) -> list[dict]:
     """A card of another person's model carries the price the host agreed
     to: its owner's price now, or the one already saved on this host's card
-    for that model (N630 item 3). Never any other number."""
-    saved = {str(m["model_id"]): int(m.get("price") or 0) for m in _used(recipe)}
+    for that model (N630 item 3). Never any other number. A model still
+    learning (no passed exam) is free: its card is saved with price 0 and
+    ``learning`` true, and the host joins its teachers (N633 item 1). Once
+    it passes, a card still learning stays so (no line, nothing charged)
+    until the host keeps it at its owner's price (``price_changes``)."""
+    saved = {str(m["model_id"]): m for m in _used(recipe)}
     theirs = [m for m in models if not m.get("own", True)]
-    now = _owner_prices(database, [str(m["model_id"]) for m in theirs])
+    ids = [str(m["model_id"]) for m in theirs]
+    now = _owner_prices(database, ids)
+    passed = _shared_for_tokens(database, ids)
+    out = []
     for i, m in enumerate(models):
         if m.get("own", True):
+            out.append(m)
             continue
-        mid = str(m["model_id"])
-        allowed = {p for p in (now.get(mid), saved.get(mid)) if p is not None}
-        if int(m["price"]) not in allowed:
+        mid, price = str(m["model_id"]), int(m["price"])
+        before = saved.get(mid) or {}
+        if mid not in passed or (before.get("learning") and price == 0):
+            if price != 0 or (mid not in passed and not before.get("learning")
+                              and not _may_learn_here(database, user_id, mid)):
+                raise RecipeError("RECIPE_INVALID", f"Model {i + 1}'s price is its owner's price.")
+            if mid not in saved:
+                _join_teachers(database, user_id, mid)
+            out.append({**m, "price": 0, "learning": True})
+            continue
+        allowed = {p for p in (now.get(mid), None if before.get("learning") else before.get("price"))
+                   if p is not None}
+        if price not in {int(p) for p in allowed}:
             raise RecipeError("RECIPE_INVALID", f"Model {i + 1}'s price is its owner's price.")
+        out.append({k: v for k, v in m.items() if k != "learning"})
+    return out
+
+
+def _join_teachers(database: Any, user_id: str, model_id: str) -> None:
+    """The host joins a model still learning as one of its teachers, by its
+    own door (``model_launchpad_store.enter``, "This is my field"); one
+    already teaching it stays as they are."""
+    from services import model_launchpad_store
+    from services.model_launchpad import viewer_role
+    if viewer_role(model_launchpad_store._model(database, model_id), user_id) == "public":
+        model_launchpad_store.enter(database, user_id, model_id)
+
+
+def learning_models(recipe: Optional[dict]) -> list[str]:
+    """The ids of the models still learning on this host's cards (N633 item
+    1): they give no line and cost nothing; the host's answers teach them."""
+    return [str(m["model_id"]) for m in _used(recipe) if m.get("learning")]
+
+
+def teach(database: Any, host_id: Any, words: Any) -> list[str]:
+    """The host answered someone in their own chat in their own words (a
+    question answered by typing, or a draft they changed before sending):
+    those words become an example of each model still learning on their
+    cards, through the AI models' own "Add an example"
+    (``model_launchpad_store.add_example``, source "teacher", added by the
+    host), which the model's other teachers answer. Only the host's own
+    words: nothing the person who wrote sent. Best-effort; the ids of the
+    examples made."""
+    from services import model_launchpad_store
+    said = " ".join(str(words or "").split())
+    made: list[str] = []
+    if not said:
+        return made
+    recipe = mine(database, host_id)
+    for mid in learning_models(recipe):
+        try:
+            made.append(model_launchpad_store.add_example(database, str(host_id), mid, {"text": said})["example_id"])
+        except Exception:  # noqa: BLE001 -- the answer is sent either way
+            logger.warning("chat_recipes: no example for model %s", mid, exc_info=True)
+    return made
 
 
 #: How far back "skipped_models" looks.
@@ -473,36 +538,95 @@ def for_visitors(recipe: Optional[dict]) -> Optional[dict]:
 
 def shared_models(database: Any, user_id: Any) -> dict:
     """GET /v2/chats/setup/models: "Models you can use." (N617 item 1):
-    every public model someone else priced, with its question, three
-    answers, owner and price per use in tokens; one that does not fit
-    what this host's people send is greyed out (``fits`` false) and says
-    what it needs."""
+    every public model someone else priced that passed its exam, with its
+    question, three answers, owner and price per use in tokens; one that
+    does not fit what this host's people send is greyed out (``fits``
+    false) and says what it needs. Each says ``learning``: false for those;
+    true for a public model, or one the host already teaches, that is
+    still learning (N633 item 1), listed for a host with the AI models
+    (ring ``ai_models``), whose ``price`` is 0: free while it learns. Never
+    a photo model, never the host's own."""
     from services import model_launchpad_store as models
-    from services.token_prices import shown
+    teaching = _teaching(database, user_id)
+    fields = "id,owner_id,owner_name,visibility,status,recipe,price_units"
     try:
-        rows = (database.client.table(models.MODELS)
-                .select("id,owner_id,owner_name,visibility,status,recipe,price_units")
+        rows = (database.client.table(models.MODELS).select(fields)
                 .eq("visibility", "public").limit(200).execute().data or [])
+        extra = sorted((teaching or set()) - {str(r["id"]) for r in rows})
+        if extra:
+            rows += (database.client.table(models.MODELS).select(fields)
+                     .in_("id", extra).execute().data or [])
     except Exception:  # noqa: BLE001 -- none listed
         return {"models": []}
     send = set((mine(database, user_id) or {}).get("send") or [])
     shared = _shared_for_tokens(database, [str(r["id"]) for r in rows])
     out = []
     for row in rows:
-        if str(row.get("owner_id")) == str(user_id) or row.get("price_units") is None \
-                or row.get("status") == "archived" or str(row["id"]) not in shared:
-            continue
-        card = row.get("recipe") if isinstance(row.get("recipe"), dict) else {}
-        if str(card.get("input") or "text") in ("image", "photo"):
-            continue  # no model reads a photo yet (N616 item 9, LEARN-06)
-        opts = card.get("scale") or card.get("options") or []
-        needs = {"voice": "rec", "audio": "rec", "text": "text", "image": "photo",
-                 "photo": "photo", "file": "file"}.get(str(card.get("input") or "text"), "text")
-        out.append({"model_id": str(row["id"]), "q": card.get("question") or "",
-                    "opts": [str(o.get("label") if isinstance(o, dict) else o) for o in opts][:3],
-                    "by": row.get("owner_name") or "", "price": shown(row.get("price_units")),
-                    "needs": needs, "fits": needs in send})
+        learning = str(row["id"]) not in shared
+        if _offered(row, str(user_id), teaching, learning):
+            out.append(_offer(row, learning, send))
     return {"models": out}
+
+
+def _card(row: dict) -> dict:
+    found = row.get("recipe")
+    return found if isinstance(found, dict) else {}
+
+
+def _offered(row: dict, user_id: str, teaching: Optional[set[str]], learning: bool) -> bool:
+    """Is this model in the host's "Models you can use"? Not theirs, not
+    archived or a draft, never a photo model (N616 item 9, LEARN-06); one
+    that passed: public and priced; one still learning: public or one they
+    teach, for a host with the AI models (N633 item 1)."""
+    card = _card(row)
+    if str(card.get("input") or "text") in ("image", "photo"):
+        return False  # no model reads a photo yet (N616 item 9, LEARN-06)
+    if str(row.get("owner_id")) == user_id or row.get("status") in ("archived", "draft"):
+        return False
+    if learning:
+        return teaching is not None and (row.get("visibility") == "public" or str(row["id"]) in teaching)
+    return row.get("price_units") is not None and row.get("visibility") == "public"
+
+
+def _offer(row: dict, learning: bool, send: set) -> dict:
+    from services.token_prices import shown
+    card = _card(row)
+    opts = card.get("scale") or card.get("options") or []
+    needs = {"voice": "rec", "audio": "rec", "text": "text", "image": "photo",
+             "photo": "photo", "file": "file"}.get(str(card.get("input") or "text"), "text")
+    return {"model_id": str(row["id"]), "q": card.get("question") or "",
+            "opts": [str(o.get("label") if isinstance(o, dict) else o) for o in opts][:3],
+            "by": row.get("owner_name") or "", "price": 0 if learning else shown(row.get("price_units")),
+            "needs": needs, "fits": needs in send, "learning": learning}
+
+
+def _teaching(database: Any, user_id: Any) -> Optional[set[str]]:
+    """The models this host teaches, by id; None for a host
+    without the AI models (ring ``ai_models``), who is offered no model
+    still learning: teaching one needs that ring."""
+    from services import model_launchpad_store as models
+    if not models.enabled(database, user_id):
+        return None
+    try:
+        return {str(t["model_id"]) for t in database.client.table(models.TEACHERS).select("model_id,user_id")
+                .eq("user_id", str(user_id)).execute().data or []}
+    except Exception:  # noqa: BLE001 -- public ones only
+        return set()
+
+
+def _may_learn_here(database: Any, user_id: str, model_id: str) -> bool:
+    """May this host add this model still learning (N633 item 1)? As it is
+    offered in "Models you can use" (``_offered``)."""
+    from services import model_launchpad_store as models
+    teaching = _teaching(database, user_id)
+    if teaching is None:
+        return False
+    try:
+        rows = (database.client.table(models.MODELS).select("id,owner_id,visibility,status,recipe")
+                .eq("id", model_id).limit(1).execute().data or [])
+    except Exception:  # noqa: BLE001 -- not added
+        return False
+    return bool(rows) and _offered(rows[0], user_id, teaching, learning=True)
 
 
 def _shared_for_tokens(database: Any, model_ids: list[str]) -> set[str]:
