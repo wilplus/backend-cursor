@@ -1894,6 +1894,9 @@ my processing authorization), and never adds a question about the work.","O1 -> 
 O2 -> JoinQuestionsTest::test_whoever_joins_finds_my_first_lines_and_i_do_not
 O3 -> JoinQuestionsTest::test_they_answer_by_tapping_and_i_read_one_card
 O3 -> JoinQuestionsTest::test_a_day_picked_is_theirs
+O3 -> JoinQuestionsTest::test_an_answer_kept_before_n631_is_chosen_only_after_yes
+O3 -> JoinQuestionsTest::test_a_card_kept_before_n631_is_corrected_when_read
+O3 -> JoinQuestionsTest::test_a_plan_kept_before_n631_never_reads_no_as_chosen
 O4 -> JoinQuestionsTest::test_a_tap_that_is_not_an_answer_is_refused
 O5 -> JoinQuestionsTest::test_joining_someone_with_no_questions_posts_nothing
 O6 -> ReadyTest::test_a_typed_question_is_kept_only_when_practical_with_answers
