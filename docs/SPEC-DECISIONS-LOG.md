@@ -15866,3 +15866,124 @@ Amends N597 item 2's "Upload a photo" in the middle; for N600:
 No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built.
+
+**N604 · "Tell me what you'd like to do, and I'll show you where." gets
+taps (founder, the Claude Code chat, 10 November 2026, on a screenshot of
+it answered with a voice note: "give them options to click on ... cause it
+feels confusing"; then "Reuse the 3 choices").** For N592 item 2, in
+Artur's chat, the speaking way in (N590):
+1. **Under that bubble, the first choice's other answers are taps:**
+"Prepare a talk", "Share what I know", "Learn from others", in that order,
+leaving out any the person already chose; none are drawn if they chose all
+three.
+2. **One tap answers it:** the tap shows as the person's answer, and Will
+says that choice's line from N592 item 2 ("Next, record Take 2 of your
+talk.", "Next, set up your assistant, so people who join you are met your
+way." opening the setup chat, or "Next, ask someone who knows. Tap + to
+start."). The answer is kept in Will's notes as before.
+3. **Words still answer it,** typed or said, as N592 has it.
+4. **Words:** no new words; the taps and lines are N573's and N592's.
+No migration.
+The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+§2.
+
+**N605 · The training yes is made easy to give, so that everybody turns it
+on (founder, the Claude Code chat, 10 November 2026, told that a host's
+model needs the training yes of the people who use the chat while it is
+asked only in Settings: "we need to make it available so everybody will
+turn it on").** Amends N575 (asked only in Settings); for N582 and N598:
+1. **The training yes is offered where it matters,** plainly and with one
+   tap, and no longer found only in Settings; its switch in Settings stays
+   (N575).
+2. **Open:** where and how it is offered (drawn in the prototype first, for
+   the founder's OK), and counsel on its words, as for the consent screens:
+   it is a consent, a yes the person gives.
+No migration. No rules page yet.
+
+**N606 · A host's assistant answers only once a minimum is reached
+(founder, the Claude Code chat, 10 November 2026, told that a new host's
+assistant knows almost nothing yet answers at once in the host's name:
+"let's hold it untill minimum is reached").** Amends N580 item 3 (an
+assistant's answer goes out at once); for N582 and N584:
+1. **Until the minimum is reached the assistant sends nothing:** every
+   question waits for the host in Will's queue, and the asker is told that
+   the host will answer.
+2. **Once it is reached,** the assistant answers at once, with its mark
+   (N580 item 3).
+3. **Open:** what the minimum is, a number of the host's own answers, and
+   the words; both drafted in the prototype for the founder's OK.
+No migration. No rules page yet.
+
+**N607 · Tokens pay for using models: through the API, or a model you add
+to your own chat (founder, the Claude Code chat, 10 November 2026, told
+that Will promises tokens while nothing costs tokens yet: "the price of
+using the API is decided during the set up of the model; and you can also
+introduce somebody's model into your own chat if that suits you e.g. other
+people can use willfidence if they find it useful and if the model is
+available publicly or they are from the same community and the model was
+shared to that community; and they pay per click (per model usage) with
+their own tokens that they can buy paying money or training other people's
+models and getting a shared pay from them if someone else uses it - like
+they use someone else's").** For N559, N577, N581 item 3, N582 item 7 and
+N583; answers part of N586 item 5:
+1. **A model's price for each use** is set in its setup (N583 item 3).
+2. **Anyone can add someone else's model to their own chat** when it is
+   public, or when it was shared with a community they belong to (N559).
+   Willfidence is the first.
+3. **Each use is paid by whoever added it,** from their own tokens.
+4. **Tokens come two ways:** bought with money, or earned by teaching other
+   people's models, as a share of what those models earn when they are used
+   (N577, N583 item 4).
+5. **So tokens buy the use of models,** in your own chat or through the
+   API. Whether a chat itself costs tokens stays open (N586 item 5).
+No migration. No rules page yet.
+
+**N608 · Will's chat for someone without a model: ask about the app and
+the models, find a specialist, invite one (founder, the Claude Code chat,
+10 November 2026, told that Will's chat is empty for someone who never sets
+up a chat: "will is a place to manage your model if you set up one if not
+it is just a place where you can ask about the models about the app and it
+gives you the links insider links) to find hte model or set up your own,
+you can ask about a specialist to match with and it can point someone or
+give you a link to share it with that person so that they can build their
+own chat on will too! if you e..g have your coach you can invite them").**
+Amends N580 item 2 and N586 item 5; for N559 and N599:
+1. **With a model,** Will's chat is where you manage it (N580 item 2).
+2. **Without one,** Will's chat is where you ask about the app and about
+   models; Will answers and gives links inside the app, to a model or to
+   setting up your own chat.
+3. **You can ask Will for a specialist:** Will points to someone you can
+   reach (N559), or gives you your link to send to a person you know, your
+   coach for one, so that they set up a chat of their own.
+4. **Words:** Will's answers are his own, under rules the founder approves,
+   as N565 has for the walk; the fixed lines are drafted in the prototype
+   for the founder's OK.
+No migration. No rules page yet.
+
+**N609 · One chat coordinates the builders, and a builder builds only what
+the founder has locked (founder, the Claude Code chat, 10 November 2026: "I
+want you to coordinate the work of the agents ... it starts with the manager
+and the prototype - then needs to be translated into tests and docs and then
+into code; and I want you to coordinate and make sure that what we agree on
+the prototype and in the tests gets cleanly written in the docs and then
+executed precisely and in simple ways built in the code; if there are any
+logical gaps or holes in the user journey the value proposition is lost
+along the way you need to point that out"; "I want from here to coordinate
+all the builders ... if we decide smth here they know what to do and are
+being spawned and archived automatically; and you ask me here what they
+would ask, the order of the merges and all that is managed from here"; then,
+told that the overnight builders had built from decisions changed the next
+morning, "OK").** For N95, N558 and N574:
+1. **One chat coordinates.** Decisions are made and logged there; it starts
+   the builders' sessions, asks the founder what they would ask, sets the
+   order of the merges, and archives a builder's session when its work is
+   merged.
+2. **The order of the work:** the prototype; then its stories and docs (the
+   decision here, the stories in the App Model, the rules page); then the
+   code, story by story, each with its test.
+3. **A builder starts only on what the founder has locked in the
+   prototype.** Pull requests already open are finished and brought in line
+   with this log.
+4. **The coordinator says where the journey has a gap** before it is built.
+No migration. No rules page: this is how the work is run.
