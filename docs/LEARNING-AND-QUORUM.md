@@ -251,6 +251,53 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     learning is not stopped and whose processing authorization is current;
     a yes turned off takes them out on the next run
     (`services/model_examples_from_takes.py`, MOD-02).
+- **F7** **A model's API and its money** (N528 items 6, 7, 11 and 12, N531,
+  N566 items 8 to 10, N577, N583): `services/model_api.py`, the rules once,
+  read by `services/model_api_store.py` over migration 0521. Not in force
+  until it merges.
+  - **For sale** only once a version passed its final exam and its founder
+    released it, and only with a price; anyone signed in may buy a public
+    model, only the team a private one. Before that it can be tried on its
+    link, free, in text.
+  - **Money is tokens** (N583 item 2), in the stored units of
+    `services/token_prices.py`. The prototype's euros translate at one shown
+    token to one cent: €0.006 to run an answer is 60 units, €0.03 is 300,
+    a €20 monthly limit 200,000.
+  - **The split, per answer:** running costs at cost; WillpowerLab 20% of
+    the margin; the founder 10% of the rest; the teachers the remainder.
+    Whole units, the fee and the founder's part rounded down, so the parts
+    always add up; at the lowest price it is all infrastructure.
+  - **Keys:** shown once; only the SHA-256 hash and the last four characters
+    are stored; never logged. One test key per buyer and model, ever, free
+    for 100 answers and never billing. A live key has a monthly limit and
+    stops before an answer that would pass it. Every key is pinned to the
+    version it was made on until its buyer switches.
+  - **An answer** runs under the buyer's processing authority, a permit for
+    each provider call. It fails closed both ways (unlike the live loop):
+    the price (or a test key's free answer) is taken first, the provider is
+    asked second, and if no answer comes it is given back, refunded once on
+    the call's id. Monthly limits and payouts count every row, page by page. "Sure" is the model's
+    confidence of at least 0.70 on a choice its recipe offers. An unsure
+    question reaches the teachers, names removed, only once the buyer allows
+    it, as an example of that model alone.
+  - **Shares are fixed per version:** a point per counted answer, weighed by
+    the teacher's reliability (0.2 to 1), a hard clip (the model 40 to 60%
+    sure) worth 1.5. A share is a teacher's points over the version's; a
+    teacher who leaves is no longer counted, so their part goes to the others.
+  - **Earned tokens, never money** (N614): nothing is paid out in money
+    and no line offers it. Only a whole past month is credited; its founder's and
+    teachers' parts are written once per version, person and month; credited in tokens (N583 item 4) for every finished month, with no
+    minimum (founder, 10 November 2026: "Every month, no minimum"), each
+    payout its own idempotent grant. WillpowerLab's founder runs it; nothing is scheduled.
+  - **The download** is one route, `GET /v2/models/<id>/download`
+    (`services/model_api_store.py` `download_for`): the screen, or with
+    `?rows=1` the data. For the owner, its teachers who answered and a
+    private model's team: the teachers' own ratings and answers, each teacher
+    and example a number, never the sealed exam, a private example's answers
+    only for the owner and the teachers invited to the model (N615 item 2),
+    an answer whose example cannot be read left out, never a speaker's words, a
+    Take or the machine's read, until the training yes carries its line
+    (N528 item 12).
 
 ### G · What never becomes a label or training data
 
@@ -484,6 +531,12 @@ still open.
   `services/model_setup_store.py`, `routes/v2/model_setup.py`
   (`/v2/models/setup`, `/v2/models/<id>/setup/*`) and
   `services/model_examples_from_takes.py`: starting a model (F6)
+- `services/model_api.py` (the API's and the money's rules: the card, the
+  price and its split, keys, usage, points, payouts, the download),
+  `migrations/a_business_can_buy_a_model_s_answers.sql` (0521),
+  `services/model_api_store.py` and `routes/v2/model_api.py` (a model's card,
+  "Try it", the price, keys, `/v2/models/<id>/answer`, earnings, the one
+  download route, behind the same ring row): a model's API and its money (F7)
 - `config.py`: the doors' per-surface sets and `DETECTOR_TRAINING_AUTHORISED`
 
 **Docs:**
@@ -524,6 +577,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 One line each, newest first: `date · N · what changed · PR`.
 
 - 2026-11-10 · N563 · After Make public, a private example is sent only to the owner and the teachers invited to the model, never to someone who came in at the door (the queue and the answer route) · BE
+- 2026-11-09 · N528, N531, N566, N577, N583 · F7: a model's API and its money (0521): a model's card, "Try it", the price above the running cost with its split, a key shown once and stored as a hash, test keys free for 100 answers, live keys paid in tokens up to a monthly limit, versions with fixed shares, earnings and payouts in tokens, the teachers' own data to download (outside review: approved as written, N611 item 7) · BE
 - 2026-11-09 · N528, N563 · F5's actions on `/v2/models`: an invite put off or accepted, through the inviter's own chat link (N598), an example added, a spoken answer as its words, Archive, Make public after its disclaimer, a recording to its words under the processing authorization and recording consent (never kept), the profile naming whose it is · BE
 - 2026-11-09 · N528, N566, N570, N571, N582, N585 · F6: starting a model, its draft kept (0520), the setup's routes behind the ring, and the job that gathers consented Takes (MOD-02); waits for its outside review · BE
 - 2026-11-09 · N528, N563, N566 · F5's tables (0516) and `/v2/models`, behind the ring row `ai_models` at ring 6; waits for its outside review · BE

@@ -621,6 +621,32 @@ def charge(user_id: str, action: str, *, ref_id: Optional[str] = None,
     # ``quantity`` prices an action by the unit, as the coach's time is by the
     # cent of its booking (N198); everything else is one.
     price = price_of(action) * max(0, int(quantity or 0))
+    return _charge_price(user_id, action, price, ref_id=ref_id, database=database)
+
+
+#: A model's answer sold through its API (N583 item 2): the buyer pays the
+#: price its founder set, in tokens. Not in the flat price list, because the
+#: price is the model's, published on its card before anyone buys.
+MODEL_ANSWER = "model_answer"
+
+
+def charge_model_answer(user_id: str, units: int, *, ref_id: str,
+                        database=None) -> ChargeResult:
+    """Charge one model answer at the model's own published price, through
+    the same atomic path as every other charge. NEVER raises.
+
+    Unlike the live loop this is not fail-open for the CALLER: the model's
+    API (services/model_api_store.py) gives the answer only when
+    ``charged`` equals the price, so a disabled wallet, an unreadable account
+    or a short balance means no answer, never a free one."""
+    if not enabled():
+        return ChargeResult(True, 0, 0, "disabled", MODEL_ANSWER)
+    return _charge_price(user_id, MODEL_ANSWER, max(0, int(units or 0)),
+                         ref_id=ref_id, database=database)
+
+
+def _charge_price(user_id: str, action: str, price: int, *,
+                  ref_id: Optional[str], database=None) -> ChargeResult:
     db = database or _db()
 
     acct = ensure_period_current(user_id, database=db)
@@ -867,6 +893,48 @@ def package_grant(user_id: str, *, tokens: int, coach_reviews: int,
     so a concurrent spend is never overwritten; a lost race answers
     ``no_row`` and the webhook asks Stripe to deliver again.
     """
+    return _credit_bonus(user_id, tokens=tokens, coach_reviews=coach_reviews,
+                         ref_id=ref_id, action=PACKAGE_PURCHASE, tier=package,
+                         database=database)
+
+
+#: A model's earnings paid out as tokens (N583 item 4, N531 item 4): the
+#: founder's part and the teachers' parts of a version's month.
+MODEL_EARNINGS = "model_earnings"
+
+
+def model_earnings_grant(user_id: str, units: int, *, ref_id: str,
+                         database=None) -> dict:
+    """Pay one month of a model's earnings into ``bonus_balance``, which
+    never resets. Idempotent on ``ref_id`` (the payout row's id), exactly as
+    a package is on its Checkout Session. Returns ``{"ok", "reason"}``."""
+    return _credit_bonus(user_id, tokens=units, coach_reviews=0, ref_id=ref_id,
+                         action=MODEL_EARNINGS, tier=None, database=database)
+
+
+#: A model answer's price given back when no answer came (the provider failed
+#: after the charge). Idempotent on the call's id, like the charge itself.
+MODEL_ANSWER_REFUND = "model_answer_refund"
+
+
+def refund_model_answer(user_id: str, units: int, *, ref_id: str,
+                        database=None) -> dict:
+    """Give back what ``charge_model_answer`` took for an answer that never
+    came, into ``bonus_balance`` (never reset, spent second), once per
+    ``ref_id``. Returns ``{"ok", "reason"}``; never raises."""
+    try:
+        return _credit_bonus(user_id, tokens=units, coach_reviews=0, ref_id=ref_id,
+                             action=MODEL_ANSWER_REFUND, tier=None, database=database)
+    except Exception as e:  # noqa: BLE001 — a refund failure is reported, never raised
+        logger.error("token_account: a model answer refund failed user=%s ref=%s err=%s",
+                     user_id, ref_id, e, exc_info=True)
+        return {"ok": False, "reason": "write_failed"}
+
+
+def _credit_bonus(user_id: str, *, tokens: int, coach_reviews: int,
+                  ref_id: str, action: str, tier: Optional[str],
+                  database=None) -> dict:
+    package = tier
     db = database or _db()
     try:
         tokens = max(0, int(tokens))
@@ -875,7 +943,7 @@ def package_grant(user_id: str, *, tokens: int, coach_reviews: int,
         return {"ok": False, "reason": "invalid_amount"}
     if not user_id or not ref_id or (tokens == 0 and coach_reviews == 0):
         return {"ok": False, "reason": "invalid_amount"}
-    if _already_charged(user_id, PACKAGE_PURCHASE, ref_id, database=db):
+    if _already_charged(user_id, action, ref_id, database=db):
         return {"ok": True, "reason": "already_applied"}
     # A buyer who never opened the wallet has no account row yet.
     if ensure_period_current(str(user_id), database=db) is None:
@@ -908,10 +976,10 @@ def package_grant(user_id: str, *, tokens: int, coach_reviews: int,
     acct = get_account(str(user_id), database=db)
     _ledger(str(user_id), tokens,
             int((acct or {}).get("balance") or update["bonus_balance"]),
-            PACKAGE_PURCHASE, ref_id=ref_id, tier=package, database=db)
-    logger.info("token_account: package granted user=%s package=%s tokens=%d "
-                "reviews=%d ref=%s", user_id, package, tokens, coach_reviews,
-                ref_id)
+            action, ref_id=ref_id, tier=package, database=db)
+    logger.info("token_account: %s granted user=%s package=%s tokens=%d "
+                "reviews=%d ref=%s", action, user_id, package, tokens,
+                coach_reviews, ref_id)
     return {"ok": True, "reason": ""}
 
 
