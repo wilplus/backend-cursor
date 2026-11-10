@@ -92,6 +92,7 @@ class PeopleProfilesTest(unittest.TestCase):
         theirs = self.client.get(f"/v2/chats/{chat}/profile", headers=self._as(PIOTR)).get_json()
         self.assertEqual((theirs["name"], theirs["role"], theirs["about"]),
                          ("Tomasz", "AI ambassador · Editorial", "I help colleagues use AI in their editing."))
+        self.assertEqual(theirs["user_id"], TOMEK)
         titles = [c["title"] for c in self.client.get("/v2/chats", headers=self._as(PIOTR)).get_json()["chats"]]
         self.assertEqual(titles, ["Tomasz"])
 

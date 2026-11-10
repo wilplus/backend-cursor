@@ -523,6 +523,8 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-11-10 · N563 · After Make public, a private example is sent only to the owner and the teachers invited to the model, never to someone who came in at the door (the queue and the answer route) · BE
+- 2026-11-09 · N528, N563 · F5's actions on `/v2/models`: an invite put off or accepted, through the inviter's own chat link (N598), an example added, a spoken answer as its words, Archive, Make public after its disclaimer, a recording to its words under the processing authorization and recording consent (never kept), the profile naming whose it is · BE
 - 2026-11-09 · N528, N566, N570, N571, N582, N585 · F6: starting a model, its draft kept (0520), the setup's routes behind the ring, and the job that gathers consented Takes (MOD-02); waits for its outside review · BE
 - 2026-11-09 · N528, N563, N566 · F5's tables (0516) and `/v2/models`, behind the ring row `ai_models` at ring 6; waits for its outside review · BE
 - 2026-11-09 · N528, N563, N566 · F5: the model launchpad's rules in one module, before its tables: the list, a model's page, teaching by the recipe card, the trust check, the one queue, release · BE

@@ -374,10 +374,11 @@ def test_mod50_the_profile_section():
     pitch = {**PITCH, "jars": {"counted_answers": 180, "exam_cases": 36}}
     out = ml.profile_models([pitch, SPEAKING], MARTA, {"m-speak": 86})
     assert out["title"] == "AI models"
+    assert out["user_id"] == MARTA
     assert out["models"] == [
-        {"name": "Pitch Coach", "badge": "Private", "line": "You started it · 36% of the way · 3 teachers",
+        {"id": "m-pitch", "name": "Pitch Coach", "badge": "Private", "line": "You started it · 36% of the way · 3 teachers",
          "actions": ["Make public", "Archive", "Download its data"]},
-        {"name": "Speaking confidence", "badge": "Public",
+        {"id": "m-speak", "name": "Speaking confidence", "badge": "Public",
          "line": "You teach it · 86 answers counted this month", "actions": []},
     ]
     assert ml.profile_models([SPEAKING], KASIA, {}) is None

@@ -22,6 +22,11 @@ its words reach a model (N528 item 10).
   * ``chat_rows_for`` the rows under the people (MOD-04, MOD-14)
   * ``profile_for``   the profile's section (MOD-50)
   * ``invite_for``    an invite to teach as it stays in the chat (MOD-49)
+  * ``invites_for``   the caller's invites, open or put off (MOD-49)
+  * ``answer_invite`` "Not now" (it stays) or accept (MOD-49)
+  * ``add_example``   "Add an example you know well" (MOD-21)
+  * ``archive``, ``make_public``  the owner's actions (MOD-50, MOD-51)
+  * ``teaches``, ``transcribe``  a spoken answer or case to its words (MOD-20, MOD-21)
 """
 from __future__ import annotations
 
@@ -183,13 +188,31 @@ def queue_for(database: Any, user_id: Any, *, only: Any = None) -> dict:
     examples += _exam_cases_for(database, me, mids)
     answered = {(str(a["example_id"]), str(a["model_id"])) for a in _rows(
         _table(database, ANSWERS).select("example_id,model_id").eq("teacher_id", me))} if mids else set()
+    sees = _sees_private(database, me, models)
     waiting = [e for e in examples
                if (str(e["id"]), str(e["model_id"])) not in answered
-               and str(e.get("speaker_id") or "") != me and str(e.get("added_by") or "") != me]
+               and str(e.get("speaker_id") or "") != me and str(e.get("added_by") or "") != me
+               and (not e.get("private") or str(e["model_id"]) in sees)]
     return rules.build_queue(
         [m for m in models if m["id"] in mids], with_clips(database, waiting), me,
         paused=[t["model_id"] for t in mine if t.get("paused_at")], only=_uuid(only) if only else None,
         company_line={str(t["model_id"]): t["company_line"] for t in mine if t.get("company_line")})
+
+
+def _sees_private(database: Any, me: str, models: list[dict]) -> set[str]:
+    """The models whose private examples (a company's own data, N563 item 3)
+    the caller may be sent: every model that is still private, and of the
+    public ones, those the caller owns or was invited to teach. Someone who
+    came in at the door of a public model is never sent a private example,
+    whenever the model went public."""
+    out = {m["id"] for m in models
+           if m.get("visibility") != "public" or rules.viewer_role(m, me) == "owner"}
+    rest = [m["id"] for m in models if m["id"] not in out]
+    if rest:
+        out |= {str(i["model_id"]) for i in _rows(
+            _table(database, INVITES).select("model_id,status").eq("invitee_id", me).in_("model_id", rest))
+            if i.get("status") == "accepted"}
+    return out
 
 
 def _exam_cases_for(database: Any, me: str, mids: list[str]) -> list[dict]:
@@ -259,6 +282,8 @@ def answer(database: Any, user_id: Any, example_id: Any, model_id: Any, step: st
     if not rows:
         raise _not_found()
     example = rows[0]
+    if example.get("private") and model["id"] not in _sees_private(database, me, [model]):
+        raise _not_found()
     wanting: list[dict] = []
     twins: list[dict] = []
     if not example.get("private") and example.get("snippet_id"):
@@ -400,7 +425,9 @@ def profile_for(database: Any, user_id: Any, person_id: Any) -> Optional[dict]:
     if not pid:
         raise _not_found()
     mine = _rows(_table(database, TEACHERS).select("model_id").eq("user_id", pid))
-    models = [m for m in _models(database, [str(t["model_id"]) for t in mine])
+    owned = _rows(_table(database, MODELS).select("id").eq("owner_id", pid))
+    ids = sorted({str(t["model_id"]) for t in mine} | {str(m["id"]) for m in owned})
+    models = [m for m in _models(database, ids)
               if pid == me or rules.viewer_role(m, me) is not None]
     month = datetime.now(timezone.utc).strftime("%Y-%m-01")
     counted = [a for a in _rows(_table(database, ANSWERS).select("model_id,created_at")
@@ -428,5 +455,138 @@ def invite_for(database: Any, user_id: Any, invite_id: Any) -> dict:
     prof = _rows(_table(database, "people_profiles").select("name").eq("user_id", str(inv["inviter_id"])).limit(1))
     who = (prof[0].get("name") if prof else None) or (
         model.get("owner_name") if str(model.get("owner_id")) == str(inv["inviter_id"]) else None) or "Someone"
-    return rules.invite_card(who, model["name"],
-                             said_not_now=inv.get("status") == "not_now")
+    card = rules.invite_card(who, model["name"], said_not_now=inv.get("status") == "not_now")
+    card["chat_link"] = _chat_link_of(database, str(inv["inviter_id"]))
+    return card
+
+
+def _chat_link_of(database: Any, user_id: str) -> Optional[str]:
+    """The inviter's own chat link: an invitation to teach goes through it,
+    and the teacher teaches by using that chat (N598 items 1 and 2). Opening
+    it joins the chat the two already share (services/chat_links.py, one
+    chat a pair). None when the inviter has no live link."""
+    try:
+        from services.chat_links import _live
+        link = _live(database, user_id)
+    except Exception:
+        logger.warning("ai_models: the inviter's chat link could not be read", exc_info=True)
+        return None
+    return f"/c/{link['token']}" if link else None
+
+
+# ── The invites (MOD-49; N528 item 3) ───────────────────────────────────────
+def invites_for(database: Any, user_id: Any) -> dict:
+    """The caller's invites, open or put off ("Not now" keeps them)."""
+    me = _require(database, user_id)
+    rows = [r for r in _rows(_table(database, INVITES).select("id,model_id,status").eq("invitee_id", me))
+            if r.get("status") in ("open", "not_now")]
+    return {"invites": [{"id": str(r["id"]), "model_id": str(r["model_id"]),
+                         **invite_for(database, me, r["id"])} for r in rows]}
+
+
+def answer_invite(database: Any, user_id: Any, invite_id: Any, accept: bool) -> dict:
+    """ "Not now": the invite stays and can be opened at any time. Accept: the
+    caller teaches the model; their answers count once the quiet trust check
+    admits them, as at the door."""
+    me = _require(database, user_id)
+    iid = _uuid(invite_id)
+    rows = _rows(_table(database, INVITES).select("id,model_id,inviter_id,invitee_id,status")
+                 .eq("id", iid).limit(1)) if iid else []
+    if not rows or str(rows[0]["invitee_id"]) != me:
+        raise _not_found()
+    inv = rows[0]
+    _table(database, INVITES).update({"status": "accepted" if accept else "not_now", "answered_at": _now()}) \
+        .eq("id", inv["id"]).execute()
+    if accept and not _rows(_table(database, TEACHERS).select("user_id").eq("model_id", inv["model_id"])
+                            .eq("user_id", me).limit(1)):
+        _table(database, TEACHERS).insert({"model_id": inv["model_id"], "user_id": me, "role": "contributor",
+                                           "door_accepted_at": _now()}).execute()
+    return {"status": "accepted" if accept else "not_now", "model_id": str(inv["model_id"]),
+            "chat_link": _chat_link_of(database, str(inv["inviter_id"])) if accept else None}
+
+
+# ── Add an example (MOD-21; N563 item 4, N566 item 6) ───────────────────────
+MAX_ADDED_TEXT = 4000
+
+
+def add_example(database: Any, user_id: Any, model_id: Any, body: Any) -> dict:
+    """A case a teacher knows well, in words: typed, a written file's text,
+    or what they said in "Record one" (recorded through the chats' recording
+    path, which takes the processing-authorization path; only its words
+    arrive here). The adder answers it at once; it counts once another
+    teacher agrees (``rules.added_example_counts``)."""
+    me = _require(database, user_id)
+    model = _model(database, model_id)
+    if rules.viewer_role(model, me) not in ("owner", "contributor"):
+        raise _not_found()
+    body = body if isinstance(body, dict) else {}
+    text = str(body.get("text") or body.get("transcript") or "").strip()[:MAX_ADDED_TEXT]
+    if not text:
+        raise ChatsError("EMPTY", "Write or say the case first.")
+    step = str(body.get("step") or "rate")
+    if step not in ("rate", "pick", "words"):
+        raise ChatsError("BAD_STEP", "Unknown step.")
+    made = _rows(_table(database, EXAMPLES).insert({
+        "model_id": model["id"], "source": "teacher", "private": model.get("visibility") == "private",
+        "added_by": me, "in_exam": False, "content": {"text": text}}))
+    if not made:
+        raise ChatsError("V2_ERROR", "The example could not be kept.", 500)
+    if body.get("answer") is not None:
+        _save_answer(database, str(made[0]["id"]), model["id"], me, step, str(body["answer"])[:4000])
+    return {"example_id": str(made[0]["id"]), "note": rules.WORDS["add_counts_once"]}
+
+
+# ── The owner's actions (MOD-50, MOD-51; N528 items 5 and 12) ───────────────
+def _owner(database: Any, me: str, model_id: Any) -> dict:
+    model = _model(database, model_id)
+    if rules.viewer_role(model, me) != "owner":
+        raise _not_found()
+    return model
+
+
+def archive(database: Any, user_id: Any, model_id: Any) -> dict:
+    """Archive hides a model from every list and deletes nothing (N528 item 5)."""
+    me = _require(database, user_id)
+    model = _owner(database, me, model_id)
+    _table(database, MODELS).update({"status": "archived", "updated_at": _now()}).eq("id", model["id"]).execute()
+    return {"status": "archived"}
+
+
+def make_public(database: Any, user_id: Any, model_id: Any, confirmed: bool) -> dict:
+    """Public at once, but only after its disclaimer (N528 item 5): without
+    ``confirm`` nothing changes."""
+    me = _require(database, user_id)
+    model = _owner(database, me, model_id)
+    if not confirmed:
+        raise ChatsError("CONFIRM", "Read what making it public means first.")
+    _table(database, MODELS).update({"visibility": "public", "updated_at": _now()}).eq("id", model["id"]).execute()
+    return {"visibility": "public"}
+
+
+def teaches(database: Any, user_id: Any, model_id: Any) -> dict:
+    """The model, when the caller is its owner or a teacher; else 404."""
+    me = _require(database, user_id)
+    model = _model(database, model_id)
+    if rules.viewer_role(model, me) not in ("owner", "contributor"):
+        raise _not_found()
+    return model
+
+
+def transcribe(audio: bytes, content_type: Any, filename: str, *, adapter: Any, user_id: str,
+               model_id: Any, most: int) -> dict:
+    """What was said, under the caller's authorization (``adapter``, bound by
+    the route's processing-authorization path). The recording is not kept
+    anywhere: only its words are returned (N528 item 10)."""
+    kind = str(content_type or "").strip()
+    if not audio:
+        raise ChatsError("NOT_ALLOWED", "No recording.")
+    if not kind.startswith("audio/"):
+        raise ChatsError("NOT_ALLOWED", "Only an audio recording.")
+    if len(audio) > most:
+        raise ChatsError("TOO_LARGE", "A recording is at most 12 MB.", 413)
+    result = adapter.transcribe_audio(audio, filename, usage_surface="model_spoken_answer",
+                                      usage_user_id=user_id, usage_session_id=str(model_id)) or {}
+    words = str(result.get("text") or "").strip()[:4000]
+    if not words:
+        raise ChatsError("NO_WORDS", "We could not hear any words. Try again.")
+    return {"transcript": words}
