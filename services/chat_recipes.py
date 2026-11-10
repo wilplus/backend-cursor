@@ -52,7 +52,7 @@ def _words(value: Any, most: int, field: str, *, empty: bool = False) -> str:
         return ""
     if not text or len(text) > most:
         raise RecipeError("RECIPE_INVALID", f"{field} must be 1 to {most} characters.")
-    reason = assistants.check_host_words(text)
+    reason = assistants.check_host_words(text, verdicts=False)
     if reason:
         raise RecipeError("RECIPE_WORDS", f"{field}: {reason}.")
     return text

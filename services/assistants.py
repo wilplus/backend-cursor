@@ -133,18 +133,23 @@ _VERDICTS: tuple[str, ...] = (
     "wrong", "mistake", "mistakes", "weak", "weakness", "broken", "bad", "worst",
     "fail", "failed", "failing", "failure", "fix", "fixing",
 )
-_SCORE = re.compile(r"\d\s*(%|/\s*\d|out of\b|points?\b|pts\b|stars?\b)", re.I)
+_SCORE = re.compile(r"\d\s*(%|/\s*\d|out of\b|points?\b|pts\b|stars?\b)|\bout of\s+\d", re.I)
 _WORD = re.compile(r"[a-z']+")
 
 
-def check_host_words(text: Any) -> Optional[str]:
+def check_host_words(text: Any, *, verdicts: bool = True) -> Optional[str]:
     """None when a host's own line may reach the people in their chat, else
-    the reason. Pure."""
+    the reason. Pure. ``verdicts=False`` is for words the host wrote for
+    their own chat: a specialist's judgement in words is allowed there
+    (N616 item 12 overruled N594), a score or number about a person is not.
+    Text from a model or from the speaker's data keeps the verdict words."""
     said = str(text or "").strip()
     if not said:
         return "empty"
     if _SCORE.search(said):
         return "a score (Never 1)"
+    if not verdicts:
+        return None
     words = set(_WORD.findall(said.lower()))
     for word in _VERDICTS:
         if word in words:
@@ -156,7 +161,7 @@ def _line(value: Any, longest: int, field: str) -> str:
     text = " ".join(str(value or "").split())
     if not text or len(text) > longest:
         raise RecipeError("RECIPE_INVALID", f"{field} must be 1 to {longest} characters.")
-    reason = check_host_words(text)
+    reason = check_host_words(text, verdicts=False)
     if reason:
         raise RecipeError("RECIPE_WORDS", f"{field}: {reason}.")
     return text

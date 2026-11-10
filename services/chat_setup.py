@@ -134,7 +134,7 @@ def _field(database: Any, user_id: str) -> list[str]:
 def _own(said: str, step: str, body: str, draft: dict) -> Optional[list[tuple]]:
     """The person's own words checked (N578 item 6): None when they may be
     kept, else Will's line why and the same question again."""
-    if assistants.check_host_words(said) is None:
+    if assistants.check_host_words(said, verdicts=False) is None:
         return None
     return [_say(NOT_KEPT), _ask(step, body, [], draft)]
 
