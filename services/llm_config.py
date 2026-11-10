@@ -526,6 +526,19 @@ for people who join, changed as the person's own words ask
 (services.join_setup)."""
 
 
+SPEC_MODEL_SETUP = LLMSpec(
+    model=CHEAP_MODEL,
+    # Drafts a model's setup from three short answers, or reads a study into
+    # a few rules; the owner corrects every word.
+    temperature=0.2,
+    max_tokens=1200,
+    response_format={"type": "json_object"},
+    timeout_seconds=25.0,
+)
+"""Starting a model (N528 item 4, N570, N571, N585): the setup drafted from
+the owner's answers, and a study's starting rules (services.model_setup_store)."""
+
+
 SPEC_YOUR_WHY_DRAFT = LLMSpec(
     model=STRONG_MODEL,
     # Their own words in three short lines; no room to invent.

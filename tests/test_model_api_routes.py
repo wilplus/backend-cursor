@@ -30,7 +30,9 @@ OUTCOME
       in tokens, once.
   O8  "Download the data" (the one download route) holds the teachers' own
       ratings and answers, each teacher and example a number, never what a
-      speaker said or the sealed exam; someone who never taught it is told
+      speaker said or the sealed exam, and a private example's answers only
+      for its owner and the teachers invited to it; someone who never taught
+      it is told
       "Only its owner and its teachers can download its data."
   O9  An API answer runs under its buyer's processing authority: refused
       there, the model is never asked.
@@ -337,9 +339,8 @@ class ModelApiTest(unittest.TestCase):
         earn = self._get("/v2/models/earnings").get_json()
         self.assertEqual(earn["rows"][0], {"label": "Your share of version 1", "value": "75%"})
         self.assertEqual(earn["rows"][1], {"label": "Your answers that trained it", "value": "3"})
-        self.assertEqual(earn["minimum"], "We pay once a month when you have earned €20 or more. Before "
-                                          "your first payout, we ask for your name and bank details, as "
-                                          "every payment service must.")
+        for never in ("€", "bank"):  # nothing is paid out in money (N614)
+            self.assertNotIn(never, str(earn))
 
         self.assertEqual(self._pay(store._month_start()[:7]), "MONTH_NOT_FINISHED")  # never mid-month
         last = self._last_month()
@@ -423,6 +424,21 @@ class ModelApiTest(unittest.TestCase):
         self.assertEqual(sorted((r["answer"], r["teacher"], r["example"]) for r in out["rows"]),
                          [("Keep it short.", 2, 1), ("Say what you learned.", 1, 1)])
         for never in ("What a speaker said", "An exam answer", MARTA, ARTUR):
+            self.assertNotIn(never, str(out))
+        # A private example (a company's own data): Marta came in at the door
+        # of this public model, so its answers never reach her; the owner's do.
+        self.store.tables["ai_model_examples"].append(
+            {"id": "x-private", "model_id": JOB, "source": "upload", "private": True, "in_exam": False,
+             "content": {"text": "The company's own row"}})
+        self.store.tables["ai_model_answers"].append(
+            {"id": "a4", "example_id": "x-private", "model_id": JOB, "teacher_id": KASIA, "step": "words",
+             "answer": "On the company's row", "counted": True})
+        out = self._get(f"/v2/models/{JOB}/download?rows=1").get_json()
+        self.assertNotIn("On the company's row", str(out))
+        self.who = KASIA
+        out = self._get(f"/v2/models/{JOB}/download?rows=1").get_json()
+        self.assertIn("On the company's row", str(out))
+        for never in ("The company's own row", "An exam answer"):
             self.assertNotIn(never, str(out))
         self.who = BIZ
         self.assertEqual(self._get(f"/v2/models/{JOB}/download").get_json()["refused"],

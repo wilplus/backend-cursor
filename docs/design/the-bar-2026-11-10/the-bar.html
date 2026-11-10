@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Bar, To Lock</title>
+<style>
+:root {
+  --bg: #FAFAF8; --fg: #161514; --muted: #6D6963; --line: #E4E1DC;
+  --ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --fg: #F1EFEB; --muted: #A29E97; --line: #2E2D2B; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #151514; --fg: #F1EFEB; --muted: #A29E97; --line: #2E2D2B; color-scheme: dark }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 16px/1.55 var(--ui); margin: 0; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 72px 16px 120px; }
+@media (min-width: 700px) { .wrap { padding-inline: 32px; } }
+h1 { margin: 0; font: 600 clamp(34px, 6vw, 52px)/1.05 var(--ui); letter-spacing: -0.03em; }
+.lede { margin: 16px 0 0; font-size: 19px; color: var(--muted); max-width: 60ch; text-wrap: balance; }
+section { border-top: 1px solid var(--line); margin-top: 64px; padding-top: 28px; }
+h2 { margin: 0 0 28px; font: 600 13px/1.3 var(--ui); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.rules { margin: 0; padding: 0; list-style: none; counter-reset: r; max-width: 78ch; }
+.rules li { counter-increment: r; display: grid; grid-template-columns: 34px minmax(0, 1fr); padding: 14px 0; border-top: 1px solid var(--line); }
+.rules li:first-child { border-top: 0; padding-top: 0; }
+.rules li::before { content: counter(r); color: var(--muted); font-variant-numeric: tabular-nums; }
+.rules b { font-weight: 600; }
+
+/* the table */
+.scroll { overflow-x: auto; margin-inline: -16px; padding-inline: 16px; }
+table { border-collapse: collapse; width: 100%; min-width: 940px; font-size: 13px; }
+th, td { text-align: left; vertical-align: top; padding: 16px 14px 16px 0; border-top: 1px solid var(--line); font-weight: 400; }
+thead th { border-top: 0; color: var(--muted); padding-top: 0; white-space: nowrap; }
+tbody th { font-weight: 600; font-size: 14px; white-space: nowrap; padding-right: 22px; }
+td small { display: block; color: var(--muted); font-size: 12px; line-height: 1.35; margin-top: 6px; }
+.mp, .mb, .mr { display: inline-flex; align-items: center; gap: 6px; height: 30px; border-radius: 999px; padding: 0 12px; font: 500 12.5px var(--ui); white-space: nowrap; }
+.mp { background: #121212; color: #fff; border: 1px solid #121212; }
+.mp i { width: 7px; height: 7px; border-radius: 50%; background: #EF4444; }
+.mp svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.mb { background: #fff; color: #A3A3A3; border: 1px solid #E8E8E8; min-width: 132px; }
+.mr { background: #F2F2F2; color: #121212; padding: 0 3px 0 10px; font: 700 12px var(--mono); }
+.mr i { width: 6px; height: 6px; border-radius: 50%; background: #EF4444; }
+.mr u { width: 26px; height: 3px; border-radius: 2px; background: linear-gradient(90deg, #121212 40%, #D9D9D9 40%); }
+.mr em { height: 24px; border-radius: 999px; background: #EF4444; color: #fff; font: 600 11.5px var(--ui); display: inline-flex; align-items: center; padding: 0 9px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mp { border-color: #4A4845; } }
+:root[data-theme="dark"] .mp { border-color: #4A4845; }
+.none { color: var(--muted); }
+
+/* the phones */
+.frames { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 300px)); gap: 48px 56px; justify-content: space-between; }
+@media (max-width: 1010px) { .frames { justify-content: center; } }
+.frame { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.frame > p { margin: 0; font-size: 14px; color: var(--fg); }
+
+/* the phone: always the app's own light look (fixed colours by design) */
+.phone { flex: 1; width: 100%; border: 8px solid #111; border-radius: 30px; background: #FFFFFF; color: #121212; overflow: hidden; display: flex; flex-direction: column; color-scheme: light; position: relative; font: 15px/1.5 var(--ui); }
+.hd { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #EBEBEB; font: 600 14.5px var(--ui); }
+.av { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: #fff; font: 600 12px var(--ui); background: #C2410C; }
+.av.a { background: #1F2937; } .av.m { background: #0F766E; }
+.th { flex: 1; padding: 12px 10px 4px; display: flex; flex-direction: column; gap: 7px; min-height: 176px; justify-content: flex-end; }
+.b { max-width: 84%; padding: 7px 11px; border-radius: 16px; background: #F2F2F2; font-size: 13.5px; line-height: 1.38; align-self: flex-start; border-bottom-left-radius: 5px; }
+.b.me { align-self: flex-end; background: #FF640A; color: #fff; border-bottom-left-radius: 16px; border-bottom-right-radius: 5px; }
+.taps { align-self: flex-end; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.tap { border: 1.5px solid #FF640A; color: #FF640A; background: #fff; border-radius: 18px; padding: 5px 12px; font: 600 13px var(--ui); }
+.tap.goes { background: #FF640A; color: #fff; }
+.leave { color: #737373; font: 500 13px var(--ui); padding: 2px 8px; }
+/* the bar: two fixed places, always the same widths */
+.bar { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 4px; padding: 6px 8px 12px; min-height: 58px; }
+.s { position: relative; display: flex; align-items: center; justify-content: center; min-height: 44px; min-width: 0; }
+.ib { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; color: #121212; }
+.ib svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ib.trash { color: #737373; }
+.pill { width: 100%; height: 44px; border-radius: 999px; background: #121212; color: #fff; font: 500 14px var(--ui); display: flex; align-items: center; justify-content: center; gap: 9px; white-space: nowrap; }
+.pill i { width: 9px; height: 9px; border-radius: 50%; background: #EF4444; }
+.pill svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pill.ask { gap: 0; }
+.box { width: 100%; height: 40px; border-radius: 22px; border: 1px solid #E8E8E8; display: flex; align-items: center; padding: 0 12px; font-size: 14px; color: #A3A3A3; }
+.box.on { border-color: #FF640A; color: #121212; }
+.box.on::after { content: ""; width: 1.5px; height: 18px; background: #FF640A; margin-left: 1px; }
+.box.on.ph { color: #A3A3A3; } .box.on.ph::after { display: none; } .box.on.ph::before { content: ""; width: 1.5px; height: 18px; background: #FF640A; margin-right: 2px; }
+.rec { width: 100%; height: 44px; border-radius: 999px; background: #F2F2F2; display: flex; align-items: center; gap: 8px; padding: 0 4px 0 12px; }
+.rec .d { width: 7px; height: 7px; border-radius: 50%; background: #EF4444; }
+.rec .t { font: 700 13px var(--mono); }
+.rec .tr { flex: 1; height: 3px; border-radius: 2px; background: #D9D9D9; position: relative; overflow: hidden; }
+.rec .tr::after { content: ""; position: absolute; inset: 0 60% 0 0; background: #121212; }
+.rec .stop { height: 34px; border-radius: 999px; background: #EF4444; color: #fff; font: 600 13px var(--ui); display: flex; align-items: center; gap: 5px; padding: 0 12px; }
+.rec .stop::before { content: ""; width: 9px; height: 9px; background: #fff; border-radius: 2px; }
+.mid { position: relative; width: 100%; display: flex; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: #fff; border-radius: 20px 20px 0 0; box-shadow: 0 -10px 30px rgba(0,0,0,.18); padding: 8px 14px 12px; display: flex; flex-direction: column; gap: 8px; }
+.sheet .grab { width: 36px; height: 4px; border-radius: 3px; background: #E0E0E0; align-self: center; }
+.sheet b { font: 700 16px var(--ui); }
+.sheet .row { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; border-radius: 12px; background: #F5F5F5; font: 600 14px var(--ui); }
+.sheet .row.big { justify-content: center; background: #121212; color: #fff; border-radius: 999px; }
+.sheet .row.big i { width: 9px; height: 9px; border-radius: 50%; background: #EF4444; }
+.sheet .ri svg { width: 18px; height: 18px; fill: none; stroke: #121212; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; display: block; }
+.sheet .cancel { text-align: center; color: #737373; font: 500 14px var(--ui); padding: 4px; }
+.th .taps.emo { flex-direction: row; gap: 6px; }
+.th .taps.emo .tap { font-size: 20px; padding: 3px 12px; line-height: 1.3; }
+.b.big { background: none; font-size: 40px; padding: 0 4px; line-height: 1; }
+.b.vb { display: flex; align-items: center; gap: 8px; min-width: 150px; }
+.b.vb .pl { width: 24px; height: 24px; border-radius: 50%; background: #121212; color: #fff; display: grid; place-items: center; font-size: 9px; flex: none; }
+.b.me.vb .pl { background: #fff; color: #FF640A; }
+.b.vb .w { flex: 1; height: 16px; background: repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 5px); opacity: .35; }
+.b.vb small { font-size: 11.5px; opacity: .8; }
+
+/* words, replaces */
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 40px 64px; }
+.cols h3 { margin: 0 0 12px; font: 600 16px var(--ui); }
+.plain { margin: 0; padding: 0; list-style: none; }
+.plain li { padding: 9px 0; border-top: 1px solid var(--line); }
+.plain li:first-child { border-top: 0; padding-top: 0; }
+.replaces { max-width: 78ch; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header id="top-head">
+    <h1>The bar</h1>
+    <p class="lede">Two places, always the same: "+", and the one thing to do now.</p>
+  </header>
+
+  <section id="rules">
+    <h2>Five rules</h2>
+    <ol class="rules">
+      <li><span><b>"+" never moves.</b> While you record, the bin takes its place.</span></li>
+      <li><span><b>The middle is the one thing to do now.</b> A black button records; a box types. Nothing else ever sits in the bar.</span></li>
+      <li><span><b>Nothing asked: the middle asks.</b> "Ask Kasia" is a button in a chat that takes recordings, a box in a chat that takes typing. In a speaking coach's chat it is "Record Take 2".</span></li>
+      <li><span><b>The chat asks: the middle answers.</b> "Record your answer" when the chat takes recordings; the box "Type your answer" when it takes only typing; when it takes only taps, the middle stays "Ask Kasia". Answers to tap sit above the bar, "Not now" under them. A photo asked for: the middle is "Add a photo".</span></li>
+      <li><span><b>Thanks is one tap.</b> After a person's answer in a chat without typing, three taps appear above the bar (🙏 filled, 👍, 👀); one tap sends it and they go. In a chat with typing, you type your thanks.</span></li>
+    </ol>
+  </section>
+
+  <section id="table">
+    <h2>What the middle is</h2>
+    <div class="scroll"><table id="tbl"></table></div>
+  </section>
+
+  <div id="groups"></div>
+
+  <section id="words">
+    <h2>Words</h2>
+    <div class="cols">
+      <div><h3>Signed already</h3><ul class="plain"><li>"Record Take N"</li><li>"Record your answer"</li><li>"Type your answer"</li><li>"Not now"</li><li>"Stop"</li><li>"Ask {name}"</li></ul></div>
+      <div><h3>Drafts for the founder's OK</h3><ul class="plain"><li>"Record your question"</li><li>"Send a photo"</li><li>"Add a photo"</li><li>"Answer {name}"</li><li>"Asked. {name} answers here."</li></ul></div>
+    </div>
+  </section>
+
+  <section id="replaces">
+    <h2>What this replaces</h2>
+    <ul class="plain replaces">
+      <li>The three emoji in the bar (N483) become thanks taps.</li>
+      <li>N597 and N600, the box and the small mic on the right, give way to two places.</li>
+      <li>N603's image button on the right becomes "Add a photo" in the middle.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+const I = {
+  plus: '<svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>',
+  mic: '<svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>',
+  kb: '<svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M9 16h6"/></svg>',
+  img: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>',
+  trash: '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>'
+};
+const icon = (k, label) => `<span class="ib${k === "trash" ? " trash" : ""}" role="img" aria-label="${label}">${I[k]}</span>`;
+const pill = (t) => `<span class="pill"><i></i>${t}</span>`;
+const askPill = (n) => `<span class="pill ask">Ask ${n}</span>`;
+const photoPill = `<span class="pill">${I.img}Add a photo</span>`;
+const box = (t, on) => `<span class="box${on ? " on" : ""}">${t}</span>`;
+const recStrip = `<span class="rec"><span class="d"></span><span class="t">0:07</span><span class="tr"></span><span class="stop">Stop</span></span>`;
+const bar = (left, mid) => `<div class="bar"><span class="s">${left}</span><span class="s"><span class="mid">${mid}</span></span></div>`;
+const sheet = (title, rows) => `<div class="sheet"><span class="grab"></span><b>${title}</b>${rows.map(([k, t, big]) => `<span class="row${big ? " big" : ""}">${big ? "<i></i>" : `<span class="ri">${I[k]}</span>`}${t}</span>`).join("")}<span class="cancel">Cancel</span></div>`;
+const PLUS = icon("plus", "Add");
+const EMO = ["👀", "👍", "🙏"];
+
+function phone({ who, av = "", thread, taps = [], leave = false, barHtml, over = "" }) {
+  const t = taps.length || leave ? `<div class="taps${taps.every((x) => EMO.includes(x)) && taps.length ? " emo" : ""}">${taps.map((x, i) => `<span class="tap${i === taps.length - 1 ? " goes" : ""}">${x}</span>`).join("")}${leave ? `<span class="leave">Not now</span>` : ""}</div>` : "";
+  return `<div class="phone"><div class="hd"><span class="av ${av}">${who[0]}</span>${who}</div><div class="th">${thread}${t}</div>${barHtml}${over}</div>`;
+}
+const say = (t, me) => `<div class="b${me ? " me" : ""}">${t}</div>`;
+const voice = (secs, me) => `<div class="b${me ? " me" : ""} vb"><span class="pl">▶</span><span class="w"></span><small>${secs}</small></div>`;
+const big = (e) => `<div class="b big me">${e}</div>`;
+const Q = say("What do you know better than most people you meet?");
+const TAPS = ["A hobby", "Something I lived through"];
+const HELLO = say("Ask me anything about running your first workshop.");
+const MQ = say("What should my first offer cost?", 1) + say("Start with what one client would happily pay twice. Raise it after the third yes.");
+
+const GROUPS = [
+  { id: "nothing-asked", title: "Nothing asked", frames: [
+    { c: "Kasia: records only", p: { who: "Kasia", thread: HELLO, barHtml: bar(PLUS, askPill("Kasia")) } },
+    { c: "Marta: types only", p: { who: "Marta", av: "m", thread: say("Hi, I'm Marta. I help with pricing your first offer."), barHtml: bar(PLUS, box("Ask Marta")) } },
+    { c: "Artur: the next Take", p: { who: "Artur", av: "a", thread: say("Your Ideal Text is ready. Next Take whenever you are."), barHtml: bar(PLUS, pill("Record Take 2")) } }
+  ] },
+  { id: "asked", title: "The chat asks", frames: [
+    { c: "Records: record your answer", p: { who: "Kasia", thread: Q, taps: TAPS, leave: true, barHtml: bar(PLUS, pill("Record your answer")) } },
+    { c: "Types: the box opens", p: { who: "Marta", av: "m", thread: Q, taps: TAPS, leave: true, barHtml: bar(PLUS, `<span class="box on ph">Type your answer</span>`) } },
+    { c: "Taps only: the middle stays", p: { who: "Kasia", thread: Q, taps: TAPS, leave: true, barHtml: bar(PLUS, askPill("Kasia")) } }
+  ] },
+  { id: "thanks", title: "Thanks", frames: [
+    { c: "Her answer arrives: three taps", p: { who: "Kasia", thread: voice("0:18", 1) + voice("1:04"), taps: EMO, barHtml: bar(PLUS, askPill("Kasia")) } },
+    { c: "One tap sent it", p: { who: "Kasia", thread: voice("0:18", 1) + voice("1:04") + big("🙏"), barHtml: bar(PLUS, askPill("Kasia")) } },
+    { c: "With typing: type your thanks", p: { who: "Marta", av: "m", thread: MQ, barHtml: bar(PLUS, box("Thank you, that helps!", true)) } }
+  ] },
+  { id: "rest", title: "The rest", frames: [
+    { c: "\"+\" when nothing is asked", p: { who: "Kasia", thread: HELLO, barHtml: bar(PLUS, askPill("Kasia")), over: sheet("Ask Kasia", [["mic", "Record your question", true], ["img", "Send a photo"]]) } },
+    { c: "\"+\" when asked: records and types", p: { who: "Kasia", thread: Q, barHtml: bar(PLUS, pill("Record your answer")), over: sheet("Answer Kasia", [["kb", "Type your answer"], ["img", "Send a photo"]]) } },
+    { c: "Recording: bin, timer, Stop", p: { who: "Kasia", thread: Q, barHtml: bar(icon("trash", "Throw it away"), recStrip) } },
+    { c: "A photo is asked for", p: { who: "Lena", av: "m", thread: say("Send me a photo of your hair."), barHtml: bar(PLUS, photoPill) } }
+  ] }
+];
+document.getElementById("groups").innerHTML = GROUPS.map((g) => `<section id="${g.id}"><h2>${g.title}</h2><div class="frames">${g.frames.map((f) => `<div class="frame"><p>${f.c}</p>${phone(f.p)}</div>`).join("")}</div></section>`).join("");
+
+// the table: the middle's words, drawn small
+const mp = (t, dot) => `<span class="mp">${dot ? "<i></i>" : ""}${t}</span>`;
+const mb = (t) => `<span class="mb">${t}</span>`;
+const mPhoto = `<span class="mp">${I.img}Add a photo</span>`;
+const mRec = `<span class="mr"><i></i>0:07<u></u><em>Stop</em></span>`;
+const note = (t) => `<small>${t}</small>`;
+const COLS = ["Records only", "Types only", "Records and types", "Taps only", "A speaking coach (Artur)"];
+const ROWS = [
+  ["Nothing asked", [mp("Ask Kasia"), mb("Ask Kasia"), mb("Ask Kasia"), mp("Ask Kasia"), mp("Record Take 2", 1)]],
+  ["The chat asks", [mp("Record your answer", 1), mb("Type your answer"), mp("Record your answer", 1) + note("\"Type your answer\" is behind \"+\"."), mp("Ask Kasia") + note("The answers are the taps above."), mp("Record your answer", 1)]],
+  ["A photo is asked for", [mPhoto, mPhoto, mPhoto, mPhoto, mPhoto]],
+  ["You're recording", [mRec, `<span class="none">No recording here</span>`, mRec, mRec, mRec]]
+];
+document.getElementById("tbl").innerHTML = `<thead><tr><th></th>${COLS.map((c) => `<th scope="col">${c}</th>`).join("")}</tr></thead><tbody>${ROWS.map(([h, cells]) => `<tr><th scope="row">${h}</th>${cells.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody>`;
+</script>
+</body>
+</html>

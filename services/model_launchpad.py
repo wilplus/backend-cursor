@@ -43,9 +43,10 @@ THE SHAPES (what a storage layer hands in):
                                         #   transcript, a written case, an uploaded row)
       "label": str | None,              # optional: the line above the case
                                         #   ("A client writes:"); none from Takes
-      "audio_url": str | None,          # not yet sent: no route plays a moment to a
-                                        #   teacher yet; a voice example carries
-                                        #   "snippet_id" and "take_id" instead
+      "audio_url": str | None,          # a voice example: a short-lived signed link,
+      "start_offset_ms": int | None,    #   with the moment's window, added when it is
+      "duration_ms": int | None,        #   served (model_launchpad_store.with_clips,
+                                        #   #1867); never the speaker, Take or snippet
     },
   }
 
@@ -374,6 +375,9 @@ _DRAFT_STEPS = {
     "problem": "the problem", "today": "how you solve it today", "teach": "how you will teach it",
     "kind": "the kind of model", "scale": "the scale", "question": "the question",
     "exam": "the final exam", "share": "who can see it",
+    "ai": "the AI for each part", "rules": "the starting rules", "data": "your data",
+    "columns": "your data", "check": "your data", "journey": "the teachers’ steps",
+    "first10": "your first 10", "public": "who can see it", "invite": "who teaches it",
 }
 
 

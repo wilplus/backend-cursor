@@ -514,8 +514,10 @@ def earnings_for(database: Any, user_id: Any) -> dict:
 def download_for(database: Any, user_id: Any, model_id: Any, *, rows: bool = False) -> dict:
     """The one download route (#1866's shape, #1869's rules). The screen, or
     with ``rows`` the data: the teachers' own ratings and answers only, each
-    teacher and example a number, never the sealed exam, until the training
-    yes carries the line that lets speakers' words be shared (N528 item 12)."""
+    teacher and example a number, never the sealed exam, and a private
+    example's answers only for the owner and the teachers invited to the
+    model (N615 item 2), until the training yes carries the line that lets
+    speakers' words be shared (N528 item 12)."""
     me = models._require(database, user_id)
     model = _model(database, me, model_id)
     answered = bool(_rows(_table(database, models.ANSWERS).select("id").eq("model_id", model["id"])
@@ -529,8 +531,11 @@ def download_for(database: Any, user_id: Any, model_id: Any, *, rows: bool = Fal
                           .select("example_id,teacher_id,step,answer,counted,created_at")
                           .eq("model_id", model["id"])), key=lambda a: str(a.get("created_at") or ""))
     ids = sorted({str(a["example_id"]) for a in answers})
-    examples = {str(e["id"]): e for e in _by_ids(database, models.EXAMPLES, "id,kind,source,in_exam", ids)}
-    return {"model": model["name"], "rows": rules.download_rows(model, answers, examples)}
+    examples = {str(e["id"]): e for e in _by_ids(database, models.EXAMPLES,
+                                                 "id,kind,source,in_exam,private", ids)}
+    sees = model["id"] in models._sees_private(database, me, [model])
+    return {"model": model["name"],
+            "rows": rules.download_rows(model, answers, examples, sees_private=sees)}
 
 
 # ── The founder's steps (MOD-52, N563 item 5) ───────────────────────────────

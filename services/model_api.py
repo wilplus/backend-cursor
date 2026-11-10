@@ -53,7 +53,9 @@ FREE_TEST_ANSWERS = 100
 #: The monthly limits offered (the prototype's €20, €50, €100).
 MONTHLY_LIMITS_UNITS = (200_000, 500_000, 1_000_000)
 DEFAULT_MONTHLY_LIMIT_UNITS = 500_000
-#: The minimum payout (N531 item 4: "a starting point: EUR 20"). Open.
+#: The minimum before earned tokens are credited (N531 item 4: "a starting
+#: point: EUR 20"). Open. Nothing is paid out in money (N614): what a model
+#: earned is credited as tokens, to spend in the app.
 MINIMUM_PAYOUT_UNITS = 200_000
 #: A hard clip is worth more (N531 item 2): the model was between these
 #: sureness values on it; its answer's points are multiplied by HARD_WEIGHT.
@@ -152,8 +154,6 @@ WORDS: dict[str, str] = {
     "earn_next": "Next payout",
     "earn_fixed": ("Your share is fixed for version {v}. It grows with each answer that counts; "
                    "hard clips count for more. Answers you give now count toward version {next}."),
-    "earn_minimum": ("We pay once a month when you have earned €20 or more. Before your first "
-                     "payout, we ask for your name and bank details, as every payment service must."),
     # a model's own key (MOD-48)
     "own_product": "Use {name} in your own product.",
     # downloading its data (MOD-51)
@@ -637,7 +637,8 @@ def month_payouts(calls: Iterable[dict], shares: list[dict], founder_id: Optiona
 
 
 def payable(owed_units: int) -> bool:
-    """Paid once a month above the minimum (N531 item 4); below it, it waits."""
+    """Credited in tokens above the minimum (N531 item 4, N614); below it,
+    it waits."""
     return int(owed_units) >= MINIMUM_PAYOUT_UNITS
 
 
@@ -660,7 +661,6 @@ def earnings_screen(model: Optional[dict], version_number: Optional[int], share:
                  {"label": WORDS["earn_answers"], "value": f"{int(answers):,}"},
                  {"label": WORDS["earn_next"], "value": nxt}],
         "fixed": WORDS["earn_fixed"].format(v=v, next=v + 1),
-        "minimum": WORDS["earn_minimum"],
         "actions": [WORDS["back_to_list"]],
     }
 
@@ -687,11 +687,16 @@ def may_download(model: dict, viewer_id: Any, answered: bool) -> bool:
     return False
 
 
-def download_rows(model: dict, answers: list[dict], examples: dict[str, dict]) -> list[dict]:
+def download_rows(model: dict, answers: list[dict], examples: dict[str, dict], *,
+                  sees_private: bool = False) -> list[dict]:
     """The teachers' own ratings and answers, one row each, in the order
     given. Each teacher and each example is a number within this download,
     never an id or a name; an answer to an example in the sealed final exam
-    never leaves (N566 item 5). Until the training yes carries the line that
+    never leaves (N566 item 5), and an answer to a private example (a
+    company's own data, N563 item 3) leaves only for the owner and the
+    teachers invited to the model (``sees_private``; N615 item 2). An answer
+    whose example cannot be read is left out: it cannot be shown to be
+    neither. Until the training yes carries the line that
     lets speakers' words be shared, a row holds only what the teacher gave
     and the question asked: never a speaker, a Take, the example's content
     or the machine's read (N528 item 12)."""
@@ -701,9 +706,11 @@ def download_rows(model: dict, answers: list[dict], examples: dict[str, dict]) -
     rows = []
     for a in answers:
         eid = str(a.get("example_id"))
-        ex = examples.get(eid) or {}
-        if ex.get("in_exam"):
-            continue          # the sealed exam stays sealed
+        ex = examples.get(eid)
+        if not ex or ex.get("in_exam"):
+            continue          # the sealed exam stays sealed; unknown is left out
+        if ex.get("private") and not sees_private:
+            continue          # a private example never reaches someone from the door
         rows.append({
             "example": example_no.setdefault(eid, len(example_no) + 1),
             "kind": ex.get("kind"),

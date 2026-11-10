@@ -206,6 +206,51 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     either version won is under 5% (14 against 3 is; 9 against 6 is not).
   - **A Take may teach** only while its speaker's training yes is on, and
     only Takes recorded after it (N563 item 4, N575).
+- **F6** **Starting a model** (N528 item 4, N566 items 2 to 6, N570, N571,
+  N582, N585): `services/model_setup.py` holds the setup's steps and words,
+  `services/model_setup_store.py` keeps the draft in `ai_models.setup`
+  (0517).
+  - **Three chapters,** Describe · Shape · Share, one action a screen; ✕
+    keeps the draft; after a first Take, Describe opens filled from its
+    answers. A model can start right after its scale; the rest is a
+    checklist on its page.
+  - **The app drafts the rest** from the three answers (a provider call
+    under the owner's processing authorization, with a rule-based fallback):
+    the name, what one example is, the parts, the scale's words, the
+    teachers' question, the list, the journey. The owner changes any word.
+  - **Each part gets the AI that fits it:** a voice score WillpowerLab's own
+    voice scorer, picking and answering GPT-4o mini.
+  - **Uploaded data** is checked (repeats, near repeats, no score,
+    mislabelled, names removed), counts only after the owner's tick, stays
+    private to the model, and waits for 60 re-rates; its labels never reach
+    a teacher; none of it goes into the exam.
+  - **The final exam** is set aside from whole speakers, never an upload,
+    and answered by the owner and one expert they ask; an exam answer never
+    counts toward training.
+  - **Nobody teaches a model alone:** an answer counts only once another
+    trusted teacher gives the same one, or it matches the example's known
+    answer; the owner's first 10 set those known answers, and two matching
+    trusted answers settle the rest, so the quiet trust check can admit
+    teachers (`model_launchpad_store.recount`).
+  - **A voice example plays by a short-lived signed link** with its window,
+    through `services/snippet_audio_url.py`; a teacher never receives the
+    speaker, the Take or the snippet.
+  - **Deletion:** a deleted Take's examples go (`ai_model_examples_take`);
+    an erased owner's description, name and the setup's own words go, the
+    model's name and card stay, and a draft is archived (trigger
+    `ai_models_owner_left`, 0520).
+  - **Inviting teachers is sharing your own chat’s link** (N598): the
+    invite step carries the owner's chat link; there is no teacher link.
+  - **No user id is kept in a model's setup:** the exam's expert and the
+    people invited are read from `ai_model_invites`, the owner from
+    `owner_id`, which erasure deletes and clears.
+  - **The owner's first 10** are answered on the teachers' screen, never an
+    exam case, and train the model once a second teacher agrees.
+  - **A host's model gathers** the moments of Takes sent to its owner, only
+    from speakers whose training yes is on, recorded after it, whose
+    learning is not stopped and whose processing authorization is current;
+    a yes turned off takes them out on the next run
+    (`services/model_examples_from_takes.py`, MOD-02).
 - **F7** **A model's API and its money** (N528 items 6, 7, 11 and 12, N531,
   N566 items 8 to 10, N577, N583): `services/model_api.py`, the rules once,
   read by `services/model_api_store.py` over migration 0521. Not in force
@@ -217,7 +262,7 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
   - **Money is tokens** (N583 item 2), in the stored units of
     `services/token_prices.py`. The prototype's euros translate at one shown
     token to one cent: €0.006 to run an answer is 60 units, €0.03 is 300,
-    the €20 minimum payout 200,000.
+    the €20 minimum before earned tokens are credited 200,000.
   - **The split, per answer:** running costs at cost; WillpowerLab 20% of
     the margin; the founder 10% of the rest; the teachers the remainder.
     Whole units, the fee and the founder's part rounded down, so the parts
@@ -239,7 +284,8 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     the teacher's reliability (0.2 to 1), a hard clip (the model 40 to 60%
     sure) worth 1.5. A share is a teacher's points over the version's; a
     teacher who leaves is no longer counted, so their part goes to the others.
-  - **Payouts:** only a whole past month is paid; its founder's and
+  - **Earned tokens, never money** (N614): nothing is paid out in money
+    and no line offers it. Only a whole past month is credited; its founder's and
     teachers' parts are written once per version, person and month; paid in tokens (N583 item 4) once a
     person's owed total reaches the minimum, each payout its own idempotent
     grant. WillpowerLab's founder runs it; nothing is scheduled.
@@ -247,7 +293,9 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     (`services/model_api_store.py` `download_for`): the screen, or with
     `?rows=1` the data. For the owner, its teachers who answered and a
     private model's team: the teachers' own ratings and answers, each teacher
-    and example a number, never the sealed exam, never a speaker's words, a
+    and example a number, never the sealed exam, a private example's answers
+    only for the owner and the teachers invited to the model (N615 item 2),
+    an answer whose example cannot be read left out, never a speaker's words, a
     Take or the machine's read, until the training yes carries its line
     (N528 item 12).
 
@@ -479,6 +527,10 @@ still open.
   `services/model_launchpad_store.py` and `routes/v2/learning_models.py`
   (`/v2/models`, ring row `ai_models`): the launchpad's tables, read into
   F5's rules
+- `migrations/a_model_keeps_its_setup.sql` (0520), `services/model_setup.py`,
+  `services/model_setup_store.py`, `routes/v2/model_setup.py`
+  (`/v2/models/setup`, `/v2/models/<id>/setup/*`) and
+  `services/model_examples_from_takes.py`: starting a model (F6)
 - `services/model_api.py` (the API's and the money's rules: the card, the
   price and its split, keys, usage, points, payouts, the download),
   `migrations/a_business_can_buy_a_model_s_answers.sql` (0521),
@@ -524,8 +576,10 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
-- 2026-11-09 · N528, N531, N566, N577, N583 · F7: a model's API and its money (0521): a model's card, "Try it", the price above the running cost with its split, a key shown once and stored as a hash, test keys free for 100 answers, live keys paid in tokens up to a monthly limit, versions with fixed shares, earnings and payouts in tokens, the teachers' own data to download; waits for its outside review · BE
-- 2026-11-09 · N528, N563 · F5's actions on `/v2/models`: an invite put off or accepted, an example added, a spoken answer as its words, Archive, Make public after its disclaimer, the download (teachers' answers only), the profile naming whose it is · BE
+- 2026-11-10 · N563 · After Make public, a private example is sent only to the owner and the teachers invited to the model, never to someone who came in at the door (the queue and the answer route) · BE
+- 2026-11-09 · N528, N531, N566, N577, N583 · F7: a model's API and its money (0521): a model's card, "Try it", the price above the running cost with its split, a key shown once and stored as a hash, test keys free for 100 answers, live keys paid in tokens up to a monthly limit, versions with fixed shares, earnings and payouts in tokens, the teachers' own data to download (outside review: approved as written, N611 item 7) · BE
+- 2026-11-09 · N528, N563 · F5's actions on `/v2/models`: an invite put off or accepted, through the inviter's own chat link (N598), an example added, a spoken answer as its words, Archive, Make public after its disclaimer, a recording to its words under the processing authorization and recording consent (never kept), the profile naming whose it is · BE
+- 2026-11-09 · N528, N566, N570, N571, N582, N585 · F6: starting a model, its draft kept (0520), the setup's routes behind the ring, and the job that gathers consented Takes (MOD-02); waits for its outside review · BE
 - 2026-11-09 · N528, N563, N566 · F5's tables (0516) and `/v2/models`, behind the ring row `ai_models` at ring 6; waits for its outside review · BE
 - 2026-11-09 · N528, N563, N566 · F5: the model launchpad's rules in one module, before its tables: the list, a model's page, teaching by the recipe card, the trust check, the one queue, release · BE
 - 2026-10-26 · N111 · §3 marks the founder's answers of 21 October: A1 to A10, A12, A13 and A15 decided, A11 and A14 held and asked again; B2 to B7 marked fixed, B1 still open · BE

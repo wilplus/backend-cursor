@@ -934,9 +934,14 @@ fi
 # cases are in tests/test_a_person_can_teach_and_start_ai_models_postgres.py.
 hard migrations/a_person_can_teach_and_start_ai_models.sql
 hard migrations/a_person_can_teach_and_start_ai_models.sql
+# 0520 (N566, MOD-02): a model keeps its setup; a Take's moment goes into a
+# model once. After 0516, twice. Its cases are in
+# tests/test_a_model_keeps_its_setup_postgres.py.
+hard migrations/a_model_keeps_its_setup.sql
+hard migrations/a_model_keeps_its_setup.sql
 
 # 0521 (N528, N531, N566, N577, N583): a model's API and its money. Both lanes,
-# after 0516 (0517 to 0520 are other PRs), twice. Its cases are in
+# after 0520, twice. Its cases are in
 # tests/test_a_business_can_buy_a_model_s_answers_postgres.py.
 hard migrations/a_business_can_buy_a_model_s_answers.sql
 hard migrations/a_business_can_buy_a_model_s_answers.sql

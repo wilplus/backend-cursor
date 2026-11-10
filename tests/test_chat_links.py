@@ -6,8 +6,8 @@ OUTCOME
   O1  My link is made the first time I ask and stays the same after;
       replacing it makes a new one, and the old one opens nothing.
   O2  Before signing in, the join page learns only the first name of whose
-      link it is. A wrong link and a replaced one answer 404, the same
-      answer.
+      link it is, in its three lines (N601). A wrong link and a replaced one
+      answer 404, the same answer.
   O3  Joining makes one chat between the two of us, each named for the
       other; opening a link again, from either side, finds the same chat.
   O4  My own link is refused (400 OWN_LINK), and nothing is made.
@@ -106,7 +106,9 @@ class ChatLinksTest(unittest.TestCase):
     def test_the_join_page_learns_only_a_first_name(self):
         token = self._link(TOMEK).get_json()["token"]
         res = self._preview(token)
-        self.assertEqual((res.status_code, res.get_json()), (200, {"name": "Tomek"}))
+        self.assertEqual((res.status_code, res.get_json()), (200, {
+            "name": "Tomek", "invited": "Tomek invited you", "learn": None,
+            "only_two": "Only the two of you are in this chat."}))
         wrong = self._preview("x" * 24)
         bad = self._preview("not a token!")
         for r in (wrong, bad):

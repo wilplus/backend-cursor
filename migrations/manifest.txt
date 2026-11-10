@@ -552,4 +552,8 @@
 0514	a_person_keeps_their_join_questions.sql
 0515	a_person_s_chat_opens_on_a_website.sql
 0516	a_person_can_teach_and_start_ai_models.sql
+0517	a_business_has_a_community_people_join.sql
+0518	a_person_keeps_their_chat_recipe.sql
+0519	a_question_joins_its_bundle.sql
+0520	a_model_keeps_its_setup.sql
 0521	a_business_can_buy_a_model_s_answers.sql

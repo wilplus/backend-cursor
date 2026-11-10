@@ -319,7 +319,7 @@ def list_chats(database: Any, user_id: Any) -> dict:
         # Whom the caller blocked, and what therefore never reaches them (N466).
         lambda: chat_safety.spans_by_member(database, list(mine.values())),
         lambda: _threads_with_recent(database, ids),
-        lambda: _rows(_table(database, MEMBERS).select("id,thread_id,display_name,subtitle")
+        lambda: _rows(_table(database, MEMBERS).select("id,thread_id,user_id,display_name,subtitle")
                       .in_("thread_id", ids)),
     ])
     if embedded is not None:
@@ -344,9 +344,15 @@ def list_chats(database: Any, user_id: Any) -> dict:
     joining = [str(t["id"]) for t in threads if lasts[str(t["id"])] is None and t.get("link_id")]
     through = dict(zip(joining, _side_by_side(
         [(lambda t=t: joined_through(database, user_id, t)) for t in joining])))
+    # Every person has an assistant that answers for them in the chat with
+    # them, labelled as theirs (N580 items 1 and 3), for the chat builder's
+    # ring (N579 item 2); a guest (a demo person, a customer) has none.
+    from services import assistants, rings
+    labelled = rings.feature_is_on_for_user(assistants.CHAT_BUILDER, user_id, database=database)
     chats: list[tuple[str, dict]] = []
     for t in threads:
         other = others.get(str(t["id"])) or {}
+        person = labelled and t["kind"] == "team" and other.get("user_id")
         me = mine[str(t["id"])]
         last = lasts[str(t["id"])]
         chats.append(((last or t)["created_at"] or "", {
@@ -354,6 +360,7 @@ def list_chats(database: Any, user_id: Any) -> dict:
             "title": other.get("display_name") or t["title"],
             "subtitle": other.get("subtitle"), "last": last,
             "joined_through": through.get(str(t["id"])),
+            "assistant": assistants.assistant_name(other.get("display_name")) if person else None,
             "blocked": chat_safety.blocking({"blocked_spans": spans.get(me, [])})}))
     chats.sort(key=lambda pair: str(pair[0]), reverse=True)
     return {"chats": [chat for _, chat in chats]}
@@ -404,6 +411,11 @@ def _tell(database: Any, me: dict, message: dict) -> None:
             push_devices.push_later(database, str(other["user_id"]),
                                     title=name or None,
                                     body=push_line(message, name), path=f"/chat?with={thread}")
+            # A website visitor who signed up: the first answer also goes
+            # to their phone or email (N591 item 4).
+            from services import chat_widget
+            chat_widget.first_notice(database, thread, str(me["id"]), str(other["id"]),
+                                     str(other["user_id"]), name)
     except Exception as e:  # noqa: BLE001 -- the message is sent either way
         logger.warning("chats: push not started: %s", e)
 
@@ -528,10 +540,17 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
 
 def post(database: Any, user_id: Any, thread_id: Any, body: Any) -> dict:
     """POST /v2/chats/<id>/messages {kind: "emoji", body}: one of the three
-    emoji (N311), or 400. {"message": {...}}."""
+    emoji (N311); or {kind: "text", body, to?}: typed words, in a chat whose
+    setup allows them (N591 items 2 and 3, ``assistants.may_type``); else
+    400. With ``to``, the id of the other person's question that waits, the
+    words are its answer (N610 item 4, "Type your answer"). {"message":
+    {...}}; an answer to one of the host's own questions also carries
+    {"messages": [the answer, then the host's next lines]}."""
     user_id = _require(database, user_id)
     me = _member_of(database, user_id, thread_id)
     payload = body if isinstance(body, dict) else {}
+    if payload.get("kind") == "text":
+        return _post_text(database, user_id, me, payload.get("body"), payload.get("to"))
     emoji = payload.get("body")
     if payload.get("kind") != "emoji" or not isinstance(emoji, str) or emoji not in EMOJI:
         raise ChatsError("NOT_ALLOWED", "Only 👍, 👀 or 🙏 for now.")
@@ -543,6 +562,67 @@ def post(database: Any, user_id: Any, thread_id: Any, body: Any) -> dict:
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
     _tell(database, me, rows[0])
     return {"message": _shown(rows[0], str(me["id"]), _authors(database, thread))}
+
+
+#: The longest typed message (N591).
+MAX_TEXT = 2000
+
+
+def _post_text(database: Any, user_id: str, me: dict, said: Any, to: Any = None) -> dict:
+    """Typed words, where the chat's setup allows them: the host answering
+    (N591 item 3), or someone writing to a host whose recipe lets them type
+    (N591 item 2). A question to the host joins its bundle (N584); words
+    typed ``to`` a question that waits are its answer, not a question
+    (N610 item 4)."""
+    from services import assistants, chat_widget
+    thread = str(me["thread_id"])
+    if not assistants.may_type(database, thread, user_id):
+        raise ChatsError("NOT_ALLOWED", "This chat is not answered that way.")
+    words = " ".join(str(said or "").split())
+    if not words or len(words) > MAX_TEXT:
+        raise ChatsError("NOT_ALLOWED", f"Write 1 to {MAX_TEXT} characters.")
+    if to is not None:
+        return _typed_answer(database, user_id, me, words, to)
+    host, _ = assistants.whose(database, thread)
+    asks = bool(host) and host != user_id
+    rows = _rows(_table(database, MESSAGES).insert({
+        "thread_id": thread, "author_member_id": str(me["id"]), "kind": "text",
+        "body": words, "meta": dict(chat_widget.QUESTION) if asks else {}}))
+    if not rows:
+        raise ChatsError("NOT_SAVED", "Could not send it.", 503)
+    _tell(database, me, rows[0])
+    if asks and host:
+        chat_widget.bundle(database, host, user_id, thread, str(rows[0]["id"]), words)
+    return {"message": _shown(rows[0], str(me["id"]), _authors(database, thread))}
+
+
+def _typed_answer(database: Any, user_id: str, me: dict, words: str, to: Any) -> dict:
+    """Words typed as the answer to what the other person asked (N610 item
+    4): one of the host's own questions, answered as a tap answers it
+    (``join_questions.answer_typed``), or a question they sent (``meta``
+    question, asked or record_answer), answered with a message that says
+    which (``meta.answer_to``) and asks nothing back. 404 for a message
+    that is not the other person's in this chat, 400 for one that asks for
+    no answer."""
+    from services import join_questions
+    thread, message = str(me["thread_id"]), _uuid(to)
+    rows = _rows(_table(database, MESSAGES).select("id,author_member_id,meta")
+                 .eq("id", message).eq("thread_id", thread).limit(1)) if message else []
+    if not rows or str(rows[0].get("author_member_id")) == str(me["id"]):
+        raise _not_found()
+    meta = rows[0].get("meta") or {}
+    if "setup" in meta:
+        answered = join_questions.answer_typed(database, me, user_id, message, words)
+        return {"message": answered["messages"][0], **answered}
+    if not any(meta.get(k) is True for k in ("question", "asked", "record_answer")):
+        raise ChatsError("NOT_ALLOWED", "This message asks for no answer.")
+    sent = _rows(_table(database, MESSAGES).insert({
+        "thread_id": thread, "author_member_id": str(me["id"]), "kind": "text",
+        "body": words, "meta": {"answer_to": message}}))
+    if not sent:
+        raise ChatsError("NOT_SAVED", "Could not send it.", 503)
+    _tell(database, me, sent[0])
+    return {"message": _shown(sent[0], str(me["id"]), _authors(database, thread))}
 
 
 def _duration(value: Any, most: int = MAX_VOICE_MS) -> Optional[int]:
@@ -594,8 +674,25 @@ def post_voice(database: Any, user_id: Any, thread_id: Any, audio: bytes, *,
     said = _keep_words(database, adapter, str(message["id"]), str(user_id), audio, filename)
     if meta.get("question") and said:
         message = _marked(database, message, said, str(user_id))
+    if said:
+        # A question to a host with the chat builder joins its bundle (N584);
+        # it waits there for the host (N606 item 1).
+        _bundle(database, thread, str(user_id), str(message["id"]), said)
     return {"message": _shown(message, str(me["id"]), _authors(database, thread),
                               {str(message["id"]): said} if said else None)}
+
+
+def _bundle(database: Any, thread: str, user_id: str, message_id: str, said: str) -> None:
+    """A voice note asked of the chat's host, never one of the host's own
+    (their replies are answers, not questions), joins its bundle (N584)."""
+    from services import question_bundles
+    try:
+        host = question_bundles.host_of_chat(database, thread)
+    except Exception:  # noqa: BLE001 -- the note is sent either way
+        logger.warning("chats: the bundle's host could not be read (message %s)", message_id)
+        return
+    if host and host != user_id:
+        question_bundles.collect(database, host, user_id, thread, message_id, said)
 
 
 def read_kind(text: Any) -> Optional[bool]:
@@ -950,14 +1047,15 @@ def _file_name(value: Any) -> str:
 
 
 def post_file(database: Any, user_id: Any, thread_id: Any, kind: str, data: bytes, *,
-              content_type: Any, file_name: Any) -> dict:
+              content_type: Any, file_name: Any, meta: Optional[dict] = None) -> dict:
     """POST /v2/chats/<id>/photo and /file (N351): a photo, one of
     PHOTO_TYPES, or a file of any type, from the "+". Missing, empty, or a
     photo that is not one of them is 400; over 10 MB, 413. Its message (kind
     ``photo`` or ``file``; a file's body is its own name) opens a new
     question for the other person (``meta.question``, N341 item 2). Either
     the message and its bytes are both kept or neither is. No provider call.
-    {"message": {...}}, as ``post``."""
+    ``meta``: what else the message carries (a photo a question asked for,
+    ``join_questions.answer_photo``). {"message": {...}}, as ``post``."""
     me = member(database, user_id, thread_id)
     sent_type = _sent_type(kind, content_type)
     if not data:
@@ -968,7 +1066,7 @@ def post_file(database: Any, user_id: Any, thread_id: Any, kind: str, data: byte
     thread = str(me["thread_id"])
     rows = _rows(_table(database, MESSAGES).insert({
         "thread_id": thread, "author_member_id": str(me["id"]), "kind": kind,
-        "body": name if kind == "file" else "", "meta": {"question": True}}))
+        "body": name if kind == "file" else "", "meta": {**(meta or {}), "question": True}}))
     if not rows:
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
     message = rows[0]

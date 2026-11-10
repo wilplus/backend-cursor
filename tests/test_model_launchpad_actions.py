@@ -7,7 +7,8 @@ STORY    As someone who teaches or owns an AI model, I want to put off an
          12, N563 item 4).
 OUTCOME
   O1  "Not now" keeps the invite in my list, saying I put it off; accepting
-      makes me a teacher of the model.
+      makes me a teacher of the model; the invite goes through the
+      inviter's own chat link, none of its own (N598).
   O2  An example I add is kept as mine, with my answer, and counts once
       another teacher agrees; a spoken answer arrives as its transcript.
   O3  Only the owner archives or makes a model public, and public needs the
@@ -16,10 +17,14 @@ OUTCOME
   O4  "Record your answer" and "Record one" turn a recording into its words
       only under my processing authorization and recording consent; without
       them nothing is transcribed, and the recording is never kept.
+  O5  A person who joins a model after it went public is never sent one of
+      its private examples, and cannot answer one; the teacher invited
+      while it was private still is.
 PROVES   O1 -> ModelActionsTest::test_not_now_keeps_the_invite_and_accept_makes_a_teacher
          O2 -> ModelActionsTest::test_an_added_example_and_a_spoken_answer
          O3 -> ModelActionsTest::test_the_owners_actions_and_the_profile
          O4 -> ModelActionsTest::test_a_recording_becomes_words_only_with_authorization
+         O5 -> ModelActionsTest::test_a_private_example_never_reaches_someone_who_joins_after_public
 WHY      routes/v2/learning_models.py over services/model_launchpad_store.py,
          for the screens built on #1863's routes.
 """
@@ -43,7 +48,11 @@ class ModelActionsTest(ModelRoutesTest):
         self.who = KASIA
         self.assertEqual(self._post(f"/v2/models/invites/{INVITE}/accept").status_code, 404)
         self.who = MARTA
-        self._post(f"/v2/models/invites/{INVITE}/accept")
+        self.store.tables["chat_links"] = [{"id": "l1", "user_id": ARTUR, "token": "artur-chat",
+                                            "display_name": "Artur", "revoked_at": None}]
+        self.assertEqual(self._get("/v2/models/invites").get_json()["invites"][0]["chat_link"], "/c/artur-chat")
+        accepted = self._post(f"/v2/models/invites/{INVITE}/accept").get_json()
+        self.assertEqual(accepted["chat_link"], "/c/artur-chat")      # N598: teach by using their chat
         self.assertIn((SPEAK, MARTA), {(t["model_id"], t["user_id"]) for t in self.store.tables["ai_model_teachers"]})
 
     def test_an_added_example_and_a_spoken_answer(self):
@@ -75,6 +84,29 @@ class ModelActionsTest(ModelRoutesTest):
         self.assertIn(PITCH, [m["id"] for m in section["models"]])
         self.who = KASIA
         self.assertEqual(self._post(f"/v2/models/{PITCH}/archive").get_json(), {"status": "archived"})
+
+    def test_a_private_example_never_reaches_someone_who_joins_after_public(self):
+        secret, own = "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "e5000000-0000-4000-8000-000000000009"
+        t = self.store.tables
+        t["ai_model_examples"].append({"id": own, "model_id": secret, "source": "upload", "private": True,
+                                       "in_exam": False, "kind": "rerate", "added_by": KASIA, "speaker_id": None,
+                                       "snippet_id": None, "known_answer": None,
+                                       "content": {"text": "A client's own case."}})
+        t["ai_model_invites"] = [{"id": INVITE, "model_id": secret, "inviter_id": KASIA,
+                                  "invitee_id": ARTUR, "status": "accepted"}]
+        t["ai_model_teachers"].append({"model_id": secret, "user_id": ARTUR, "role": "contributor",
+                                       "trust_status": "learning", "paused_at": None, "company_line": None})
+        self.who = KASIA
+        self._post(f"/v2/models/{secret}/make-public", {"confirm": True})
+        self.who = MARTA                                   # joins at the door, after it went public
+        self.assertEqual(self._post(f"/v2/models/{secret}/enter").get_json(), {"joined": True})
+        sent = self._get("/v2/models/queue").get_json()["examples"]
+        self.assertNotIn(own, [e["id"] for e in sent])
+        self.assertFalse(any(e.get("private") for e in sent))
+        self.assertEqual(self._post(f"/v2/models/{secret}/examples/{own}/answer",
+                                    {"step": "rate", "answer": "Yes"}).status_code, 404)
+        self.who = ARTUR                                   # invited while it was private
+        self.assertIn(own, [e["id"] for e in self._get("/v2/models/queue").get_json()["examples"]])
 
     def test_a_recording_becomes_words_only_with_authorization(self):
         import io
