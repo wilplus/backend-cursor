@@ -421,6 +421,11 @@ def test_the_hello_and_the_bar_show_the_level_and_its_marks(db, monkeypatch):
     assert one["body"].startswith("Today, one thing: ")
     assert one["metadata"]["arc_id"] == "arc-1" and one["metadata"]["take_index"] == 1
     assert not F.state(db, USER, tz="UTC", first_name="Artur")["wrote"]
+    # A Take on the day the hello showed the bar: no second bar after its
+    # walk (N623); its goodbye stands alone.
+    db.takes.rows.append({"id": "t2", "created_at": (started + timedelta(days=5)).isoformat(),
+                          "arc_id": "arc-1", "take_index": 2})
+    assert F.progress(db, USER) == []
     # The card's view: the level and its marks; no practice days, no date
     # for someone who is not preparing a talk (N564 items 2 and 6).
     view = out["plan"]

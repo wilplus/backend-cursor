@@ -1669,12 +1669,15 @@ def progress(database: Any, user_id: str) -> list[dict]:
     its four marks, the done ones filled (``metadata.plan_progress`` with
     ``bar``); after the fourth Take of a level, that level full, though the
     next has begun. What the speaker did, never a measure of the voice and
-    never points (Never 1). Once per Take. Best-effort: never raises; [] off
-    a plan."""
+    never points (Never 1). Once per Take, and only on a day the hello did
+    not already show the bar (N623: it showed twice). Best-effort: never
+    raises; [] off a plan."""
     try:
         plan = _active(database, user_id)
         takes = _takes(database, user_id)
         if not plan or not plan.get("level") or not takes:
+            return []
+        if str(plan.get("hello_on") or "") == today_in(plan.get("time_zone")).isoformat():
             return []
         facts = _facts(plan)
         latest = str(_latest_take(database, user_id).get("id") or "")

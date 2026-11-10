@@ -129,10 +129,40 @@ card for its teachers, and loses what the owner wrote: the
 description, their name, the setup's words; a draft is archived.","O1 -> test_a_model_keeps_its_setup_and_it_is_an_object
 O2 -> test_a_moment_goes_into_a_model_once
 O3 -> test_an_erased_owners_words_leave_the_model","Migration a_model_keeps_its_setup (0520), applied twice in both rehearsal lanes after 0516 (the reapply is its idempotency check)."
+tests/test_a_model_learns_from_its_settled_examples_postgres.py,Story,"As a person whose example taught a model, I want every version that learned from it found and marked to retrain when it is deleted or withdrawn, however it is deleted (PIPE-06, N615 item 3).","O1  The kept vectors are locked to the backend (RLS on, nothing for a
+browser role) and go with their example.
+O2  Deleting examples marks every version whose example_ids holds one of
+them, and no other version: one example, many in one statement, and
+many in a cascade (an erased speaker); the trigger is statement-level.","O1 -> test_the_vectors_are_locked_to_the_backend_and_go_with_their_example
+O2 -> test_a_deleted_example_marks_every_version_that_learned_from_it
+O2 -> test_many_deleted_at_once_or_in_a_cascade_mark_their_versions","Migration a_model_learns_from_its_settled_examples (0522), applied twice in both rehearsal lanes (the reapply is its idempotency check)."
 tests/test_a_model_learns_only_from_the_yes_postgres.py,Story,"As a speaker, I want the model trained only on my coached pairs that I said yes to and that were released, and only once, so that my ""no"" is respected.","O1  A released pair that is still allowed is marked trained, once.
 O2  A pair that is not released, no longer allowed, or already trained
 is refused.
 O3  An unknown training run is refused.","O1, O2, O3 -> test_a_pair_trains_once_and_only_when_released_and_releasable",Doors 3 and 4 (migration 0406).
+tests/test_a_model_that_learns.py,Story,"As a host whose people's answers teach a model, I want it to answer from what they settled, not from a general model reading its name; to say ""sure"" only when it has been measured right; to be checked by me on examples it never saw before it answers in my chat; and to be shared or sold only after an exam the app computes (N615, N616 items 8, 9, 10 and 23, N620).","LEARN-01  Training reads each settled example once and fits one head on
+the settled examples only: never an exam case, another model's
+example or a withdrawn speaker's.
+LEARN-02  The answer comes from the head: one of its three answers, one
+reader call and no chat call; ""sure"" from the head's measured
+confidence. Without a head, the recipe card answers as before.
+LEARN-03  The owner's check is ten examples the version was not fitted on,
+none of the first 10, the guess first; Keep or Change on each.
+LEARN-04  After the owner's check the model answers in its owner's chat;
+it is not shared for tokens or sold before a passed exam.
+LEARN-05  A version's exam is computed by the app, with the sign test
+against the version before; nobody enters ""passed"" by hand.
+LEARN-06  No model reads a photo: a photo model is never fitted, never
+answers from a head and is never offered to other hosts; the
+host sees the photo and answers it.
+PIPE-06   A withdrawn person's examples mark every version that learned
+from them to retrain, and the next fit leaves them out.","LEARN-01 -> ModelLearnsTest::test_a_head_learns_from_settled_examples_only
+LEARN-02 -> ModelLearnsTest::test_the_answer_comes_from_the_head
+LEARN-03 -> ModelLearnsTest::test_the_owners_check_is_ten_unseen_examples
+LEARN-04 -> ModelLearnsTest::test_two_gates
+LEARN-05 -> ModelLearnsTest::test_the_exam_is_computed_never_entered
+LEARN-06 -> ModelLearnsTest::test_no_photo_model_is_offered
+PIPE-06  -> ModelLearnsTest::test_a_withdrawn_example_marks_its_versions_to_retrain",services/model_head.py (the rules) and services/model_head_store.py (migration a_model_learns_from_its_settled_examples). The reader is mocked: no provider call in CI.
 tests/test_a_moment_may_be_lent_an_ear_postgres.py,Story,"As a speaker, I want a clip I shared for listening to vanish from the shared list as soon as I withdraw it, so that I control who hears me.",O1  A share with revoked_at set leaves shared_clips_live at once.,O1 -> test_a_withdrawn_share_leaves_the_live_view,"Migration 0410 (F3). The Voice Album share switch is RETIRED (services/lend_your_ear.py docstring): the app no longer writes voice_album_shares, so the revocation is written here by hand, and the view's one reader (delayed_measure.clips_for_listener) has no caller. The live sharing path is pinned in test_a_take_may_be_shared_with_a_community_postgres.py. Candidate for deletion together with its lane entry in scripts/rehearsal_tier.sh."
 tests/test_a_moment_opens_before_it_is_judged_postgres.py,Story,"As a coach, I want to know whether a speaker's request came from the open moment or from a judgement, recorded once, so that I answer in the right context.","O1  request_exercise_from_coach_v3 records raised_on; a repeat on the same
 moment keeps the first request.
@@ -551,6 +581,8 @@ FIRST-04 -> SetupTest::test_what_people_send_several_ticked
 FIRST-05 -> SetupTest::test_they_get_back_an_answer_unless_will_suggests_otherwise
 FIRST-06 -> SetupTest::test_the_hello_questions_and_taps_pass_the_hosts_checks
 FIRST-07 -> SetupTest::test_a_model_is_one_question_with_three_answers
+FIRST-08 -> SetupTest::test_a_model_made_here_is_a_real_model_teach_it_opens
+FIRST-23 -> SetupTest::test_the_host_adds_an_example_and_answers_it_first
 FIRST-09 -> SetupTest::test_who_answers_is_three_plain_choices
 FIRST-10 -> SetupTest::test_sharing_keeps_a_price_in_tokens
 FIRST-11 -> VisitorTest::test_not_yet_keeps_it_saved_and_yes_opens_it

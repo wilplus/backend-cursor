@@ -288,10 +288,19 @@ def released(versions: Iterable[dict]) -> list[dict]:
                   key=lambda v: int(v.get("number") or 0))
 
 
+def exam_passed(version: dict) -> bool:
+    """The exam THE APP computed passed (LEARN-05); an exam entered by hand
+    never counts."""
+    exam = version.get("exam") or {}
+    return exam.get("computed") is True and exam.get("passed") is True
+
+
 def for_sale(model: dict, versions: Iterable[dict]) -> bool:
-    """A model is sold only after its first training passed its final exam
-    and was released, and only while it has a price (N528 item 7)."""
-    return (model.get("status") not in ("archived", "draft") and bool(released(versions))
+    """A model is sold only after its training passed its final exam, as the
+    app computed it, and was released, and only while it has a price (N528
+    item 7, N616 item 10: gate two)."""
+    return (model.get("status") not in ("archived", "draft")
+            and any(exam_passed(v) for v in released(versions))
             and bool(model.get("price_units")))
 
 

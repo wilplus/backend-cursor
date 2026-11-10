@@ -188,7 +188,8 @@ class ModelApiTest(unittest.TestCase):
         t["ai_model_versions"] = [
             {"id": V1, "model_id": JOB, "number": 1, "status": "released", "base_model": "gpt-4o-mini",
              "provider_model": None, "founder_id": KASIA, "created_at": "2026-11-01",
-             "released_at": "2026-11-02T10:00:00+00:00", "exam": {"as_good_in_ten": 8},
+             "released_at": "2026-11-02T10:00:00+00:00",
+             "exam": {"as_good_in_ten": 8, "computed": True, "passed": True},
              "card": {"good_at": "Interviews in English", "not_so_good_at": "Other languages",
                       "not_for": "Legal advice"}},
         ]

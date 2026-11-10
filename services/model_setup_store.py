@@ -224,6 +224,40 @@ def begin(database: Any, user_id: Any) -> dict:
     return _view(database, me, model, "problem")
 
 
+#: What people send in a chat (services/chat_recipes.py) as a model's input.
+_CHAT_INPUT = {"rec": "voice", "text": "text", "photo": "image", "file": "text"}
+
+
+def begin_from_chat(database: Any, user_id: Any, *, question: str, answers: list[str],
+                    sends: str = "text") -> dict:
+    """A model the host makes in their chat's blank setup (N618 item 6):
+    one question with three answers, started as "Start your own" starts one
+    (owned by the host, private, the host its first teacher), with the
+    question as its name and the three answers as its scale, so it is ready
+    to learn and "Teach it" opens on it (the first-ten routes). No provider
+    call: nothing is drafted. The same ``{"model_id", "status", "screen"}``
+    as ``begin``."""
+    me = lp._require(database, user_id)
+    scale = S.clean_scale(answers)
+    draft: dict[str, Any] = {"visibility": "private", "name": S._clean(question, 80),
+                             "question": S._clean(question, 200), "parts": {"score": True},
+                             "scale": scale, "input": _CHAT_INPUT.get(sends, "text"),
+                             "from_chat": True, "done": ["problem", "kind", "scale", "question"]}
+    if not S.can_start(draft):
+        raise _bad("NOT_READY", "The model needs its question and three answers.")
+    made = _rows(_table(database, MODELS).insert({
+        "name": draft["name"], "owner_id": me, "owner_name": _owner_name(database, me),
+        "visibility": "private", "status": "draft", "draft_step": "ready", "setup": draft}))
+    if not made:
+        raise ChatsError("V2_ERROR", "The model could not be kept.", 500)
+    model = made[0]
+    model["setup"] = draft
+    _table(database, TEACHERS).insert({"model_id": model["id"], "user_id": me, "role": "owner",
+                                       "door_accepted_at": _now(), "trust_status": "counts"}).execute()
+    _write(database, model, draft, step="ready", status="learning")
+    return _view(database, me, model, "ready")
+
+
 def _owner_name(database: Any, me: str) -> Optional[str]:
     rows = _rows(_table(database, "people_profiles").select("name").eq("user_id", me).limit(1))
     return (rows[0].get("name") or None) if rows else None

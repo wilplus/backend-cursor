@@ -302,3 +302,45 @@ def chat_complete(
         completion_tokens=completion_tokens,
         total_tokens=total_tokens,
     )
+
+
+def embed(texts: list[str], *, surface: str, model: Optional[str] = None,
+          user_id: Optional[str] = None) -> Optional[list[list[float]]]:
+    """Read texts into vectors with the shared reader (N616 item 8): ONE
+    provider call for all of them, under the caller's processing
+    authorization (a permit for the call, as ``chat_complete``), each text
+    cut to ``READER_MAX_CHARS``. None on any failure; an authority failure
+    raises."""
+    from services.llm_config import READER_MAX_CHARS, READER_MODEL
+    inputs = [str(t or " ")[:READER_MAX_CHARS] or " " for t in texts]
+    if not inputs:
+        return []
+    from services.authorized_provider import authorize_protected_generation
+    authorization, permit_id = authorize_protected_generation(surface)
+
+    def failed(code: str) -> None:
+        if authorization is not None:
+            authorization.record_provider_event(permit_id, "failed", error_code=code)
+
+    try:
+        from services.openai_service import OpenAIService
+        service = OpenAIService()
+    except Exception as e:
+        logger.warning("llm.embed surface=%s init_failed", surface, exc_info=True)
+        failed(type(e).__name__)
+        return None
+    if not service.client:
+        failed("PROVIDER_UNAVAILABLE")
+        return None
+    name = model or READER_MODEL
+    try:
+        response = service.client.embeddings.create(model=name, input=inputs)
+        vectors = [list(map(float, d.embedding)) for d in response.data]
+    except Exception as e:
+        logger.warning("llm.embed surface=%s user=%s failed", surface, user_id or "-", exc_info=True)
+        failed(type(e).__name__)
+        return None
+    if authorization is not None:
+        authorization.record_provider_event(permit_id, "completed",
+                                            metadata={"surface": surface, "model": name})
+    return vectors if len(vectors) == len(inputs) else None

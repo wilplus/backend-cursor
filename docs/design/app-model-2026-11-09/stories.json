@@ -9156,19 +9156,20 @@
    "N607"
   ],
   "code": [
-   "be:services/chat_recipes.py::def _model("
+   "be:services/chat_recipes.py::def _model(",
+   "be:services/model_setup_store.py::def begin_from_chat("
   ],
   "tests": [
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "The recipe keeps each model as one question with three answers (backend #1893). Making the model itself is MOD-*; a used model's key is not built."
+  "note": "The recipe keeps each model as one question with three answers, and a model made there is a real model, the host's and private (backend #1893, #1894). A used model's key is not built."
  },
  {
   "id": "FIRST-08",
   "area": "The first person ever sets up a chat",
   "title": "You teach it, then it guesses and you check",
-  "status": "not built",
+  "status": "partly",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the person kept a model",
@@ -9182,9 +9183,14 @@
    "N585",
    "N582 item 5"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_setup_store.py::def begin_from_chat("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "The model made in the setup is ready for \"Teach it\": its first ten open on the existing routes (backend #1894). Its examples come from what the host's people send, once they say yes to training."
  },
  {
   "id": "FIRST-09",
@@ -9270,7 +9276,7 @@
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "Not yet keeps it saved and nobody meets it; Yes opens it (backend #1893). See it, the play-through, is the frontend's."
+  "note": "Not yet keeps it saved and nobody meets it; Yes opens it; the host's line is what a newcomer reads before joining, as \"People come to {name} ...\" (N622 item 2; backend #1893, #1894). See it, the play-through, is the frontend's."
  },
  {
   "id": "FIRST-12",
@@ -9354,7 +9360,7 @@
   "id": "FIRST-15",
   "area": "The first person ever sets up a chat",
   "title": "Health, law or money is asked once",
-  "status": "partly",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a host is setting up",
@@ -9368,13 +9374,14 @@
    "N616 item 22"
   ],
   "code": [
-   "be:services/chat_recipes.py::\"sensitive\""
+   "be:services/chat_recipes.py::\"sensitive\"",
+   "be:services/chat_recipes.py::\"care\""
   ],
   "tests": [
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "The recipe keeps the answer, yes until the host says no (backend #1893). Will's question waits for the founder's words and its place in the setup (N616 item 22)."
+  "note": "\"Is your work about health, law or money?\" is the part care, asked right after what the host does; until it is answered, yes; with yes, \"I answer at once\" is refused and falls back to \"I draft, you send\" (N622 item 1; backend #1894)."
  },
  {
   "id": "FIRST-16",
@@ -9568,7 +9575,7 @@
   "id": "VIS-07",
   "area": "What a visitor meets",
   "title": "In a health, law or money chat the model only suggests to the host",
-  "status": "partly",
+  "status": "built",
   "screen": "chat.person",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host answered yes to health, law or money",
@@ -9587,13 +9594,13 @@
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "In a health, law or money chat the person gets nothing from a model; the host sees the suggestion (backend #1893). Will's question in the setup waits for the founder's words and its place (N616 item 22)."
+  "note": "In a health, law or money chat the person gets nothing from a model; the host sees the suggestion in their Will (backend #1893, #1894; N622 item 1)."
  },
  {
   "id": "LEARN-01",
   "area": "A model that learns",
   "title": "Settled answers train a small head on a shared reader",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a model with a question and three answers has settled answers",
@@ -9608,15 +9615,21 @@
    "N582 item 2",
    "N615 item 2"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/model_head_store.py::def settled_examples",
+   "be:services/model_head_store.py::def vectors_for",
+   "be:services/model_head.py::def fit"
+  ],
+  "tests": [
+   "tests/test_a_model_that_learns.py"
+  ],
   "evals": []
  },
  {
   "id": "LEARN-02",
   "area": "A model that learns",
   "title": "The model's answer comes from its head",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a model has a trained head",
@@ -9629,15 +9642,21 @@
    "N616 item 8",
    "N594"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/model_head_store.py::def head_answer",
+   "be:services/model_head.py::def is_sure",
+   "be:services/model_api_store.py::model_head_store.head_answer"
+  ],
+  "tests": [
+   "tests/test_a_model_that_learns.py"
+  ],
   "evals": []
  },
  {
   "id": "LEARN-03",
   "area": "A model that learns",
   "title": "The owner's check is ten unseen examples",
-  "status": "not built",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the owner answered the first 10",
@@ -9650,15 +9669,21 @@
   "rules": [
    "N616 item 23"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/model_head_store.py::def check_for",
+   "be:services/model_head_store.py::def check_answer",
+   "be:services/model_head.py::def check_pool"
+  ],
+  "tests": [
+   "tests/test_a_model_that_learns.py"
+  ],
   "evals": []
  },
  {
   "id": "LEARN-04",
   "area": "A model that learns",
   "title": "Two gates",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a model passed its owner's check",
@@ -9670,15 +9695,22 @@
   "rules": [
    "N616 item 10"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/model_head.py::def gates",
+   "be:services/model_head_store.py::def chat_answers",
+   "be:services/model_api.py::def exam_passed",
+   "be:services/chat_recipes.py::def _shared_for_tokens"
+  ],
+  "tests": [
+   "tests/test_a_model_that_learns.py"
+  ],
   "evals": []
  },
  {
   "id": "LEARN-05",
   "area": "A model that learns",
   "title": "A version is scored on the exam by the app",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a new version is trained",
@@ -9690,15 +9722,20 @@
   "rules": [
    "N615 item 3"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/model_head.py::def exam_result",
+   "be:services/model_api_store.py::def admin_version"
+  ],
+  "tests": [
+   "tests/test_a_model_that_learns.py"
+  ],
   "evals": []
  },
  {
   "id": "LEARN-06",
   "area": "A model that learns",
   "title": "No photo model is offered",
-  "status": "not built",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a host's people send photos",
@@ -9710,8 +9747,13 @@
   "rules": [
    "N616 item 9"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/model_head_store.py::def readable",
+   "be:services/chat_recipes.py::continue  # no model reads a photo yet"
+  ],
+  "tests": [
+   "tests/test_a_model_that_learns.py"
+  ],
   "evals": []
  },
  {
@@ -9832,7 +9874,7 @@
   "id": "PIPE-06",
   "area": "Tight model pipes",
   "title": "A version knows what it learned from",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a version is recorded",
@@ -9843,8 +9885,15 @@
   "rules": [
    "N615 item 3"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/model_head_store.py::def mark_retrain",
+   "be:services/model_examples_from_takes.py::def _retrain",
+   "be:migrations/a_model_learns_from_its_settled_examples.sql::CREATE TRIGGER ai_model_examples_mark_retrain"
+  ],
+  "tests": [
+   "tests/test_a_model_that_learns.py",
+   "tests/test_a_model_learns_from_its_settled_examples_postgres.py"
+  ],
   "evals": []
  },
  {
@@ -10194,7 +10243,7 @@
   "id": "FIRST-23",
   "area": "The first person ever sets up a chat",
   "title": "Teach it with an example of your own",
-  "status": "not built",
+  "status": "partly",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host is teaching a model",
@@ -10207,9 +10256,14 @@
    "N618 item 3",
    "N563 item 3"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad_store.py::def add_example("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "On the model made in the setup the host adds an example of their own in words (POST /v2/models/<id>/examples) and answers it as the first of their first ten; it stays private to that model (backend #1896). A photo or a file as the example is not built."
  },
  {
   "id": "SMALL-04",
