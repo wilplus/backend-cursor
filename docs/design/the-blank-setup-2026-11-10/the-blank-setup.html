@@ -181,7 +181,7 @@ Reply with only a JSON object with these keys:
     draw({ body: say(line) + show(pick(id, list)), foot: kcFoot(typeAsk ? "Type my own" : ""), bind: () => {
       $("#keep", phone).onclick = () => next();
       $("#chg", phone).onclick = () => { S.own[id] = null; S.i[id] = (S.i[id] || 0) + 1; render(); };
-      const o = $("#own", phone); if (o) o.onclick = () => typeIn(typeAsk, (v) => { S.own[id] = v; render(); });
+      const o = $("#own", phone); const took = (v) => { if (/\d+\s*(%|\/\s*\d+|out of|points?|stars?)/i.test(v)) { S.thread.push({ w: true, t: "Try other words. Your chat can't show a score or a number about someone." }); return typeIn(typeAsk, took); } S.own[id] = v; render(); }; if (o) o.onclick = () => typeIn(typeAsk, took);
     } });
   }
   // typing always happens in Will's chat, then you come back to the screen you were on
@@ -213,7 +213,7 @@ Reply with only a JSON object with these keys:
     { id: "what", stage: 0, t: "Say what you do", s: "Type it, in Will's chat", r: () => draw({ body: say(`Hi ${S.name}. I'm Will. I ask one thing at a time. You tap Keep or Change.`) + say("What do you do?"), foot: `<button type="button" class="btn" id="go">Answer</button>`, bind: () => { $("#go", phone).onclick = () => typeIn("What do you do?", begin, "Speaking coach"); } }) },
     { id: "care", stage: 0, t: "Health, law or money?", s: "Yes / No", r: () => draw({ body: say("Is your work about health, law or money?") + cap("If yes, I only suggest answers to you, and you send each one. Not sure? Say yes."), foot: `<div class="row2"><button type="button" class="btn out" id="no">No</button><button type="button" class="btn" id="yes">Yes</button></div>`, bind: () => { $("#no", phone).onclick = () => { S.care = false; next(); }; $("#yes", phone).onclick = () => { S.care = true; next(); }; } }) },
     { id: "line", stage: 1, t: "Why people come", s: "Keep / Change", r: () => kc("line", "People come to you for this:", S.sug.line, (v) => card(v) + cap("New people read this before they join your chat."), "Why do people come to you?") },
-    { id: "send", stage: 1, t: "What they send", s: "Tick all that apply", r: () => { if (!S.sendSet) S.sendSet = [S.sug.send[0]];
+    { id: "send", stage: 1, t: "What they send", s: "Tick all that apply", r: () => { if (!S.sendSet) S.sendSet = [...new Set([S.sug.send[0], "text"])];
         draw({ body: say("What do people send you? Tick all that apply.") + S.sug.send.map((k) => `<button type="button" class="opt tick${S.sendSet.includes(k) ? " on" : ""}" data-k="${k}" role="checkbox" aria-checked="${S.sendSet.includes(k)}"><i class="bx" aria-hidden="true"></i><span><b>${esc(SEND[k][0])}</b><small>${esc(SEND[k][1])}</small></span></button>`).join(""),
           foot: `<button type="button" class="btn" id="keep"${S.sendSet.length ? "" : " disabled"}>Done</button>`, bind: () => {
             phone.querySelectorAll("[data-k]").forEach((x) => (x.onclick = () => { const k = x.dataset.k; S.sendSet = S.sendSet.includes(k) ? S.sendSet.filter((y) => y !== k) : [...S.sendSet, k]; render(); }));
