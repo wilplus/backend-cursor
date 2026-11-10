@@ -16137,8 +16137,11 @@ the app, you simply pay with the tokens").** For N531, N577, N583 and N607:
 2. **Tokens come from the existing top-up, and in the app people pay with
    tokens** (N583, N607): no second payment system.
 3. **The pull request for a model's API and its money** (backend #1866)
-   merges without its payout route; what it counts as earned stays counted.
-**Open:** whether a teacher's or an owner's earned tokens are still credited
-to them to spend in the app (N577 item 9, N607), or wait with the payouts.
+   merges with no way to take earnings out as money; what was earned is
+   credited in tokens (item 4).
+4. **Teachers and owners still get the tokens they earned, to spend in the
+   app** (N577 item 9, N607); only taking earnings out as money is off
+   (founder, the same chat, on that question: "a, teachers still get their
+   tokens to spend").
 No migration in this entry. No rules page yet: a page for the launchpad with
 its first part (N566).
