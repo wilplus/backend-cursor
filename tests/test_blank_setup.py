@@ -198,6 +198,7 @@ class SetupTest(_Base):
         and "I answer at once"; one tap chooses."""
         recipe = self._start().get_json()["recipe"]
         self.assertEqual(recipe["who"], "shadow")
+        self._put("care", False)
         self.assertEqual(self._put("who", "assistant").get_json()["recipe"]["who"], "assistant")
         self.assertEqual(self._put("who", "you").get_json()["recipe"]["who"], "you")
         self.assertEqual(self._put("who", "robot").status_code, 400)
@@ -255,10 +256,19 @@ class SetupTest(_Base):
         self.assertEqual(self._put("cost", {"people": 0, "sends": 1}).status_code, 400)
 
     def test_health_law_or_money_is_yes_until_the_host_says_no(self):
-        """FIRST-15: one yes-or-no; in doubt, yes."""
+        """FIRST-15: "Is your work about health, law or money?" right after
+        what you do; until it is answered, yes; with yes "I answer at once"
+        is not offered, and a chat that had it drafts instead (N622 item 1)."""
         self.assertTrue(self._start().get_json()["recipe"]["sensitive"])
-        self.assertFalse(self._put("sensitive", False).get_json()["recipe"]["sensitive"])
-        self.assertEqual(self._put("sensitive", "maybe").status_code, 400)
+        refused = self._put("who", "assistant")
+        self.assertEqual((refused.status_code, refused.get_json()["code"]), (400, "RECIPE_INVALID"))
+        recipe = self._put("care", False).get_json()["recipe"]
+        self.assertEqual((recipe["care"], recipe["sensitive"]), (False, False))
+        self.assertEqual(self._put("who", "assistant").status_code, 200)
+        recipe = self._put("care", True).get_json()["recipe"]
+        self.assertEqual((recipe["care"], recipe["sensitive"], recipe["who"]), (True, True, "shadow"))
+        self.assertEqual(self._put("who", "assistant").status_code, 400)
+        self.assertEqual(self._put("care", "maybe").status_code, 400)
 
     def test_not_now_leaves_the_chat_without_models(self):
         """FIRST-17: Not now leaves the chat without models."""
@@ -285,7 +295,8 @@ class SetupTest(_Base):
         own = self._read()["own_chat"]
         link = self._link(TOMEK).get_json()
         self.assertEqual(own, {"title": "Tomek", "line": "Hi. Send me a photo of your scalp, and tell me what worries you.",
-                               "link": link})
+                               "link": link,
+                               "join_line": "People come to Tomek with hair and scalp worries."})
         self.assertEqual(link["path"], f"/c/{link['token']}")
 
     def test_to_change_the_chat_tell_will(self):
@@ -304,7 +315,8 @@ class VisitorTest(_Base):
         self._start()
         self._put("send", ["text", "photo"])
         self._put("models", [self._model(), self._model("Are there flakes?")])
-        for part, value in parts.items():
+        # Health, law or money is answered first (N622 item 1).
+        for part, value in sorted(parts.items(), key=lambda kv: kv[0] != "sensitive"):
             self._put(part, value)
         if live:
             self._put("live", True)
@@ -329,10 +341,19 @@ class VisitorTest(_Base):
                  "created_at": f"2026-11-0{1 + i % 9}T00:00:00+00:00"})
 
     def test_not_yet_keeps_it_saved_and_yes_opens_it(self):
-        """FIRST-11: Not yet keeps it saved, and nobody meets it; Yes opens it."""
+        """FIRST-11: Not yet keeps it saved, and nobody meets it; Yes opens
+        it, and the host's line is what a newcomer reads before joining, as
+        "People come to {name} ..." (N622 item 2)."""
         chat = self._host(live=False)
+        token = self._link(TOMEK).get_json()["token"]
         self.assertIsNone(self.client.get(f"/v2/chats/{chat}/host", headers=self._as(PIOTR)).get_json()["host"])
+        self.assertIsNone(self.client.get(f"/v2/chats/join/{token}").get_json()["learn"])
         self._put("live", True)
+        joins = "People come to Tomek with hair and scalp worries."
+        self.assertEqual(self.client.get(f"/v2/chats/join/{token}").get_json()["learn"], joins)
+        self.assertEqual(self._read()["own_chat"]["join_line"], joins)
+        self._put("line", "Hair worries, answered.")
+        self.assertEqual(self.client.get(f"/v2/chats/join/{token}").get_json()["learn"], "Hair worries, answered.")
         self.assertEqual(self.client.get(f"/v2/chats/{chat}/host", headers=self._as(PIOTR)).get_json()["host"]["hello"],
                          "Hi. Send me a photo of your scalp, and tell me what worries you.")
 

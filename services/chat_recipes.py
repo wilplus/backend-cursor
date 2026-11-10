@@ -41,7 +41,7 @@ PART_TITLES: tuple[tuple[str, str], ...] = (
 WHO = tuple(w[1] for w in chat_suggestions.WHO)
 PRICES = tuple(chat_suggestions.PRICES)
 PARTS = ("line", "send", "out", "hello", "questions", "taps", "smart", "way", "models", "who",
-         "share", "price", "cost", "sensitive", "live")
+         "share", "price", "cost", "care", "sensitive", "live")
 MAX_QUESTIONS, MAX_MODELS = 3, 3
 DAYS = 30
 
@@ -149,7 +149,7 @@ _CLEAN: dict[str, Any] = {
     "who": _one_of(WHO, "Who answers is shadow, you or assistant."),
     "price": _one_of(PRICES, f"A price is one of {list(PRICES)} tokens."),
     "cost": _cost,
-    **{p: (lambda v, p=p: _bool(v, p)) for p in ("smart", "share", "sensitive", "live")},
+    **{p: (lambda v, p=p: _bool(v, p)) for p in ("smart", "share", "care", "sensitive", "live")},
 }
 
 
@@ -218,6 +218,19 @@ def set_part(database: Any, user_id: Any, part: str, body: Any) -> dict:
     value = _clean_part(part, (body or {}).get("value") if isinstance(body, dict) else None)
     if part == "models":
         value = _real_models(database, str(user_id), recipe, value)
+    if part == "who" and value == "assistant" and recipe.get("sensitive") is not False:
+        # Health, law or money, or not answered yet: nothing goes out until
+        # the host sends it (N616 item 13, N622 item 1).
+        raise RecipeError("RECIPE_INVALID", "In this chat the host sends each answer.")
+    if part in ("care", "sensitive"):
+        # "Is your work about health, law or money?" (N622 item 1): ``care``
+        # is its answer and sets ``sensitive``; with yes, "I answer at once"
+        # falls back to "I draft, you send".
+        recipe = {**recipe, "care": value, "sensitive": value}
+        if value and recipe.get("who") == "assistant":
+            recipe["who"] = WHO[0]
+        stored = _store(database, str(user_id), recipe)
+        return {"recipe": stored, "cost": cost(stored)}
     recipe = {**recipe, part: value}
     if part == "smart" and value is False:
         recipe["models"] = []
@@ -284,13 +297,29 @@ def cost(recipe: Optional[dict]) -> Optional[dict]:
     return {"lines": lines, "per_send": per, "month": month, "nothing": per == 0}
 
 
+_YOU = "People come to you"
+
+
+def join_line(recipe: Optional[dict], name: Any) -> Optional[str]:
+    """The host's "Why people come" as a newcomer reads it before joining
+    (N622 item 2): "People come to you ..." becomes "People come to
+    {name} ..."; any other line as the host wrote it."""
+    line = str((recipe or {}).get("line") or "").strip()
+    if not line:
+        return None
+    first = str(name or "").split()
+    who = first[0] if first else "WillpowerLab"
+    return f"People come to {who}{line[len(_YOU):]}" if line.startswith(_YOU) else line
+
+
 def own_chat(recipe: Optional[dict], name: Any) -> Optional[dict]:
     """The host's own chat in their list of chats, under their name
     (N618 item 8)."""
     if not recipe:
         return None
     first = str(name or "").split()
-    return {"title": first[0] if first else "WillpowerLab", "line": recipe.get("hello")}
+    return {"title": first[0] if first else "WillpowerLab", "line": recipe.get("hello"),
+            "join_line": join_line(recipe, name)}
 
 
 def read(database: Any, user_id: Any, token_payload: Any) -> dict:

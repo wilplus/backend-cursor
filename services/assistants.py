@@ -437,12 +437,19 @@ def welcome(database: Any, thread: str, owner_id: str, owner_member: str) -> lis
         return []
 
 
-def learns(database: Any, owner_id: Any, own: bool = True) -> Optional[str]:
+def learns(database: Any, owner_id: Any, own: bool = True, name: Any = None) -> Optional[str]:
     """The join page's one sentence of what you'll learn in the host's chat
     (N601 item 1): the host's own, from their recipe (only with ``own``, the
-    chat builder's ring); for Artur's link without one, his signed sentence
-    (N601 item 3); else None."""
-    about = ((met_recipe_of(database, owner_id) or {}).get("about") or []) if own else []
+    chat builder's ring); for a blank-setup chat, the host's "Why people
+    come", as "People come to {name} ..." (N622 item 2); for Artur's link
+    without one, his signed sentence (N601 item 3); else None."""
+    recipe = (met_recipe_of(database, owner_id) or {}) if own else {}
+    if recipe.get("v") == 2:
+        from services.chat_recipes import join_line
+        line = join_line(recipe, name)
+        if line:
+            return line
+    about = (recipe.get("about") or []) if own else []
     if about:
         return str(about[0])
     from services.take_sends import _founder

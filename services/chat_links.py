@@ -135,7 +135,7 @@ def preview(database: Any, token: Any) -> dict:
     owner, name = str(link["user_id"]), link["display_name"]
     on = assistants.on(database, owner)
     out: dict = {"name": name, "invited": assistants.INVITED.format(name=name),
-                 "learn": assistants.learns(database, owner, own=on),
+                 "learn": assistants.learns(database, owner, own=on, name=name),
                  "only_two": assistants.ONLY_TWO}
     if on:
         out["assistant"] = assistants.assistant_name(name)
