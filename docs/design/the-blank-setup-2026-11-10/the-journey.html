@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body>
+<title>A Specialist's First Day</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one column that reads top to bottom like the journey itself; each stage is a band of steps joined by arrows. */
+:root { --bg: #EFEDE8; --panel: #FFFFFF; --ink: #121212; --muted: #6E6A64; --line: #E3E0DA; --soft: #F3F2EF; --accent: #FF640A; --ok: #1F9D55; --ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151413; --panel: #1F1E1C; --ink: #F4F2EE; --muted: #A39E96; --line: #34322F; --soft: #2B2A27; --accent: #FF7A2E; --ok: #3CC47A; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #151413; --panel: #1F1E1C; --ink: #F4F2EE; --muted: #A39E96; --line: #34322F; --soft: #2B2A27; --accent: #FF7A2E; --ok: #3CC47A; color-scheme: dark }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--ui); padding-block: 28px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+main { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+h1 { font-size: 30px; line-height: 1.15; letter-spacing: -.02em; margin: 0; text-wrap: balance; }
+.lead { color: var(--muted); font-size: 16px; max-width: 62ch; margin: 0 0 8px; }
+.rule { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 6px; padding: 0; list-style: none; }
+.rule li { background: var(--panel); border-radius: 999px; padding: 7px 14px; font-size: 13.5px; font-weight: 600; }
+.stage { background: var(--panel); border-radius: 22px; padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 12px; }
+.stage header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.stage h2 { margin: 0; font-size: 17px; } .stage header p { margin: 0; color: var(--muted); font-size: 14px; }
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.step { border: 1.5px solid var(--line); border-radius: 16px; padding: 12px 13px; display: flex; flex-direction: column; gap: 6px; min-width: 0; position: relative; }
+.step b { font-size: 14.5px; } .step p { margin: 0; font-size: 13.5px; color: var(--muted); }
+.step .act { align-self: flex-start; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 9px; background: var(--soft); }
+.step .act.type { background: var(--accent); color: #fff; }
+.down { text-align: center; color: var(--muted); font-size: 20px; line-height: 1; }
+.loop { border: 1.5px dashed var(--muted); border-radius: 22px; padding: 16px 20px; }
+.loop h2 { margin: 0 0 6px; font-size: 17px; } .loop ul { margin: 0; padding-left: 18px; color: var(--muted); }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.two section { background: var(--panel); border-radius: 22px; padding: 18px 20px; } .two h2 { margin: 0 0 8px; font-size: 17px; } .two ul { margin: 0; padding-left: 18px; } .two li { margin: 3px 0; }
+</style>
+<main>
+  <h1>A specialist's first day in WillpowerLab</h1>
+  <p class="lead">You arrive with nothing. Will asks one thing at a time, and you tap Keep or Change. You leave with your own chat and your own models.</p>
+  <ul class="rule"><li>One decision per screen</li><li>Keep or Change</li><li>Typing happens in Will's chat, then you come back</li><li>Nothing is decided before you arrive</li></ul>
+
+  <section class="stage"><header><h2>1. You arrive</h2><p>Your list of chats has one chat: Will.</p></header><div class="steps">
+    <div class="step"><b>Your chats</b><p>The app opens on your list of chats. It has one chat: Will, pinned on top.</p><span class="act">Tap Will</span></div>
+    <div class="step"><b>Say what you do</b><p>"Speaking coach." "Trichologist." Will works out what fits.</p><span class="act type">Type, in Will's chat</span></div>
+  </div></section>
+  <div class="down" aria-hidden="true">↓</div>
+  <section class="stage"><header><h2>2. Your chat</h2><p>Will suggests. You keep it or change it.</p></header><div class="steps">
+    <div class="step"><b>Why people come</b><p>One sentence about you.</p><span class="act">Keep / Change</span></div>
+    <div class="step"><b>What they send</b><p>A recording, a message, a photo, a file. One or several.</p><span class="act">Tick all that apply</span></div>
+    <div class="step"><b>What they get back</b><p>An answer, their own words tidied, what to do next, or a mark on what they sent.</p><span class="act">Keep / Change</span></div>
+    <div class="step"><b>Your hello</b><p>The first thing your chat says.</p><span class="act">Keep / Change</span></div>
+    <div class="step"><b>First questions</b><p>Up to three things your chat asks a new person.</p><span class="act">Keep / Change, then Yes / No</span></div>
+    <div class="step"><b>What people can ask</b><p>Three taps, plus "Something else".</p><span class="act">Keep / Change</span></div>
+  </div></section>
+  <div class="down" aria-hidden="true">↓</div>
+  <section class="stage"><header><h2>3. Your models</h2><p>A model answers one question with one of three answers. It learns from you.</p></header><div class="steps">
+    <div class="step"><b>Make a model</b><p>"Does the speaker sound sure?" Yes · In between · No. Or use a ready model someone shared.</p><span class="act">Keep / Change</span></div>
+    <div class="step"><b>Teach it</b><p>You see an example and answer the question yourself.</p><span class="act">Tap one of three</span></div>
+    <div class="step"><b>Check its guesses</b><p>Now it guesses first. You keep the guess or fix it.</p><span class="act">Keep / Change</span></div>
+    <div class="step"><b>Another model?</b><p>Add up to three, then set the order people hear them in.</p><span class="act">Yes / No</span></div>
+  </div></section>
+  <div class="down" aria-hidden="true">↓</div>
+  <section class="stage"><header><h2>4. Answers and tokens</h2><p>Who speaks for you, and who may use what you built.</p></header><div class="steps">
+    <div class="step"><b>Who answers</b><p>Will drafts and you check. Or only you answer. Or Will answers and you correct.</p><span class="act">Keep / Change</span></div>
+    <div class="step"><b>Share your models</b><p>Others use them and pay you in tokens.</p><span class="act">Yes / Not now</span></div>
+    <div class="step"><b>The price</b><p>Tokens per use.</p><span class="act">Keep / Change</span></div>
+  </div></section>
+  <div class="down" aria-hidden="true">↓</div>
+  <section class="stage"><header><h2>5. Open it</h2><p>See it first. Then share it.</p></header><div class="steps">
+    <div class="step"><b>See it as your people do</b><p>You walk through your chat as someone who came to learn, one screen at a time.</p><span class="act">Next, Next</span></div>
+    <div class="step"><b>Open it to people</b><p>People with your link can now use it.</p><span class="act">Yes / Not yet</span></div>
+    <div class="step"><b>Your chat</b><p>Every part on one page. Tap a part to change it.</p><span class="act">Tap to change</span></div>
+  </div></section>
+  <div class="down" aria-hidden="true">↻</div>
+  <section class="loop"><h2>After that, it keeps learning</h2><ul>
+    <li>Every answer you give teaches your models.</li>
+    <li>Every guess you fix teaches them more.</li>
+    <li>Every "Was this useful?" tells Will what to suggest changing. Will suggests; you Keep or Change.</li>
+    <li>You can change any part at any time by telling Will.</li></ul></section>
+
+  <div class="two">
+    <section><h2>The building blocks</h2><ul><li>What people send: a recording, a message, a photo, a file</li><li>What they get back: an answer, their words tidied, what to do next, a mark</li><li>A model: one question, three answers</li><li>A ready model someone shared, paid in tokens</li><li>Taps people can ask with</li><li>Who answers: you, or Will with your check</li></ul></section>
+    <section><h2>Who decides what</h2><ul><li>The questions are always the same for everyone.</li><li>Will suggests the choices, fitted to your job.</li><li>You decide: Keep or Change.</li><li>If you ask for something that doesn't exist, Will says so and passes it on.</li></ul></section>
+  </div>
+</main>
+
+</body>
+</html>
