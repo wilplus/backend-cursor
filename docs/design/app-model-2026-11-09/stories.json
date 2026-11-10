@@ -9190,7 +9190,7 @@
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "The model made in the setup is ready for \"Teach it\": its first ten open on the existing routes (backend #1894). Its examples come from what the host's people send, once they say yes to training."
+  "note": "The model made in the setup is ready for \"Teach it\": its first ten open on the existing routes (backend #1894). Its examples come from what the host's people send, once they say yes to training. Screens: HostTeach.tsx and HostCheck.tsx (frontend); the 'each fix teaches the model' line is the backend's, and examples arrive only once the host's people say yes to training (the training-yes card, SMALL-01, is not built)."
  },
  {
   "id": "FIRST-09",
@@ -9273,10 +9273,11 @@
    "be:services/chat_recipes.py::def for_visitors("
   ],
   "tests": [
-   "tests/test_blank_setup.py"
+   "tests/test_blank_setup.py",
+   "src/components/willab/chats/hostsetup/hostSetup.test.tsx"
   ],
   "evals": [],
-  "note": "Not yet keeps it saved and nobody meets it; Yes opens it; the host's line is what a newcomer reads before joining, as \"People come to {name} ...\" (N622 item 2; backend #1893, #1894). See it, the play-through, is the frontend's."
+  "note": "Not yet keeps it saved and nobody meets it; Yes opens it; the host's line is what a newcomer reads before joining, as \"People come to {name} ...\" (N622 item 2; backend #1893, #1894). See it, the play-through, is the frontend's. Frontend: Yes makes it live and the list holds the chat (tested); no 'See it' play-through screen is on main."
  },
  {
   "id": "FIRST-12",
@@ -9375,10 +9376,12 @@
   ],
   "code": [
    "be:services/chat_recipes.py::\"sensitive\"",
-   "be:services/chat_recipes.py::\"care\""
+   "be:services/chat_recipes.py::\"care\"",
+   "fe:src/components/willab/chats/hostsetup/HostSetup.tsx::\"care\""
   ],
   "tests": [
-   "tests/test_blank_setup.py"
+   "tests/test_blank_setup.py",
+   "src/components/willab/chats/hostsetup/hostSetup.test.tsx"
   ],
   "evals": [],
   "note": "\"Is your work about health, law or money?\" is the part care, asked right after what the host does; until it is answered, yes; with yes, \"I answer at once\" is refused and falls back to \"I draft, you send\" (N622 item 1; backend #1894)."
@@ -9547,7 +9550,7 @@
   "id": "VIS-06",
   "area": "What a visitor meets",
   "title": "Before the minimum, the question waits for the host",
-  "status": "built",
+  "status": "partly",
   "screen": "chat.person",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host's assistant has fewer than 20 of the host's own answers",
@@ -9569,13 +9572,13 @@
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "Before the host's 20 own answers the question waits for the host, with Will's draft in their Will (backend #1893)."
+  "note": "Before the host's 20 own answers the question waits for the host, with Will's draft in their Will (backend #1893). Missing: no frontend screen shows the assistant's drafted answer in the host's Will (GET /v2/chats/setup/drafts is not called anywhere in the frontend), so the host cannot yet see the waiting question there."
  },
  {
   "id": "VIS-07",
   "area": "What a visitor meets",
   "title": "In a health, law or money chat the model only suggests to the host",
-  "status": "built",
+  "status": "partly",
   "screen": "chat.person",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host answered yes to health, law or money",
@@ -9594,7 +9597,7 @@
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "In a health, law or money chat the person gets nothing from a model; the host sees the suggestion in their Will (backend #1893, #1894; N622 item 1)."
+  "note": "In a health, law or money chat the person gets nothing from a model; the host sees the suggestion in their Will (backend #1893, #1894; N622 item 1). Missing: no frontend screen shows the model's suggestion to the host (GET /v2/chats/setup/drafts is not called anywhere in the frontend), so the host cannot yet send their own answer from it."
  },
  {
   "id": "LEARN-01",
@@ -9672,12 +9675,15 @@
   "code": [
    "be:services/model_head_store.py::def check_for",
    "be:services/model_head_store.py::def check_answer",
-   "be:services/model_head.py::def check_pool"
+   "be:services/model_head.py::def check_pool",
+   "fe:src/components/willab/chats/hostsetup/HostCheck.tsx::export default function HostCheck"
   ],
   "tests": [
-   "tests/test_a_model_that_learns.py"
+   "tests/test_a_model_that_learns.py",
+   "src/components/willab/chats/hostsetup/hostSetup.test.tsx"
   ],
-  "evals": []
+  "evals": [],
+  "note": "Backend: the ten unseen examples, none from the first 10. Screen: frontend #1371 (HostCheck.tsx), one example per screen, its guess first, Keep or the right answer."
  },
  {
   "id": "LEARN-04",
@@ -10081,7 +10087,7 @@
   "id": "SMALL-02",
   "area": "Small pieces",
   "title": "“Record Take 2” is faded until the walk is done",
-  "status": "not built",
+  "status": "built",
   "screen": "chat.person",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a speaker has a walk not yet done",
@@ -10093,10 +10099,15 @@
    "N592",
    "N616 item 18"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "fe:src/components/willab/Lounge.tsx::function recordBarHeld",
+   "fe:src/components/willab/walk/WalkFooter.tsx::disabled:opacity-30"
+  ],
+  "tests": [
+   "src/components/willab/plan/wayIn.test.tsx"
+  ],
   "evals": [],
-  "note": "#1872 reported this built for the way in (backend #1854, frontend #1337; FT-14's note). The frontend is not checked from this repo. Status as the build's stories give it."
+  "note": "Frontend: the bar is held while the way in's walk waits (Lounge.tsx recordBarHeld, N592 item 3)."
  },
  {
   "id": "SMALL-03",
@@ -10176,7 +10187,7 @@
   "id": "FIRST-19",
   "area": "The first person ever sets up a chat",
   "title": "Your own model: what it is, when it is worth it, when it is not",
-  "status": "not built",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host chose to train their own",
@@ -10188,9 +10199,15 @@
   "rules": [
    "N618 item 6"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/chats/hostsetup/HostSetup.tsx::case \"ownwhy\"",
+   "fe:src/components/willab/chats/hostsetup/hostSetupCopy.ts::ownWorth"
+  ],
+  "tests": [
+   "src/components/willab/chats/hostsetup/hostSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "Frontend (this build): three cards, then Train my own goes on; Not now goes back to the list of models, or on without a model when there is none. The screen is the frontend's; the backend keeps the way."
  },
  {
   "id": "FIRST-20",
@@ -10298,7 +10315,7 @@
   "id": "SMALL-04",
   "area": "Small pieces",
   "title": "An overlay is as wide as Will's chat",
-  "status": "not built",
+  "status": "built",
   "screen": "models",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the app is open in a wide browser window",
@@ -10309,15 +10326,20 @@
   "rules": [
    "N618 item 10"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/ModelsOverlay.tsx::function useWillColumn"
+  ],
+  "tests": [
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The models overlay is drawn in the column Will's chat fills (frontend #1363); the host setup is a chat, so it is in that column already."
  },
  {
   "id": "SMALL-05",
   "area": "Small pieces",
   "title": "The typing box grows, and Will shows he is thinking",
-  "status": "not built",
+  "status": "partly",
   "screen": "will",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a person types several lines, or Will is working something out",
@@ -10329,8 +10351,14 @@
   "rules": [
    "N618 item 4"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/chats/hostsetup/SetupBits.tsx::export function Box",
+   "fe:src/components/willab/chats/hostsetup/SetupBits.tsx::TypingGlyph"
+  ],
+  "tests": [
+   "src/components/willab/chats/hostsetup/hostSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "Built in Will's setup chat: the box grows to seven lines (SetupBits.tsx Box) and three dots show while he works (FIRST-02's test). No test checks that the box grows, and the other chats' boxes are not checked here, so 'the box grows' is not proven."
  }
 ]
