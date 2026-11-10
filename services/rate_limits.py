@@ -458,6 +458,8 @@ def _not_answering() -> bool:
         body = request.get_json(silent=True) or {}
         return not (isinstance(body, dict) and body.get("answer") is not None)
     except Exception:
+        logger.warning("rate_limits: the body could not be read; counted as an answer",
+                       exc_info=True)
         return False
 
 
