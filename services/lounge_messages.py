@@ -270,3 +270,97 @@ def shape_lounge_page(rows_desc: list[dict], limit: int) -> dict:
         "has_more":      has_more,
         "oldest_cursor": oldest_cursor,
     }
+
+
+# ── Which chat a Lounge row shows in (N635) ─────────────────────────────
+#
+# For whoever has the ring row ``chat_builder``, the Lounge's rows are shown
+# in two chats: what belongs to speaking only in the speaking chat (N590:
+# the Take's rows, "Your feedback is ready.", the way into the Feedback
+# walk, the plan's questions and its card, the feelings check, the line
+# after the walk), and the rest in Will's chat (the model, the chat's
+# setup, what needs you). Nothing is stored differently: a row is placed by
+# what it already carries. THIS IS THE ONE LIST; tests/test_lounge_place.py
+# names every writer of the Lounge and fails on one this list does not place.
+
+SPEAKING, WILL = "speaking", "will"
+PLACES = (SPEAKING, WILL)
+
+#: Kinds that only a Take makes: its readout, the walk's steps, the coach's
+#: feedback and Ideal Text bubbles, the cadence after a Take.
+SPEAKING_KINDS = frozenset({
+    "recording_summary", "cadence", "walk_step", "feedback", "ideal_text",
+    "best_presentation_ready", "transcript_ready", "status", "insight", "joke",
+})
+#: Metadata keys that tie a row to a Take or to the speaking plan: the
+#: plan's rows and the way in (``plan``), anything about a Take or its
+#: project, the feelings check, Will's question on a Take, the bridge and
+#: the goodbye after a Take.
+SPEAKING_KEYS = frozenset({
+    "plan", "arc_id", "take_session_id", "session_id", "recording_id", "take_index",
+    "first_take", "bridge", "next_take", "feedback_check", "will_question",
+})
+#: Offers made about a Take or the coach's feedback.
+SPEAKING_OFFERS = frozenset({"joke", "feedback_check", "will_question", "whatsapp"})
+#: Notes about the coach's feedback.
+SPEAKING_NOTES = frozenset({"feedback_digest"})
+
+
+def place_of(row: dict) -> str:
+    """"speaking" or "will" for one Lounge row (N635)."""
+    if row.get("kind") in SPEAKING_KINDS:
+        return SPEAKING
+    meta = row.get("metadata")
+    if not isinstance(meta, dict):
+        return WILL
+    if any(meta.get(k) not in (None, "", False) for k in SPEAKING_KEYS):
+        return SPEAKING
+    if meta.get("offer") in SPEAKING_OFFERS or meta.get("note") in SPEAKING_NOTES:
+        return SPEAKING
+    return WILL
+
+
+def parse_place(raw: Optional[str]) -> Optional[str]:
+    """``?place=``: "speaking", "will", or none (every row, as before)."""
+    if raw is None or raw == "":
+        return None
+    if raw not in PLACES:
+        raise LoungeValidationError("place: must be speaking or will")
+    return raw
+
+
+#: Older pages read, at most, to fill one page of one place.
+PLACE_ROUNDS = 5
+
+
+def placed_page(fetch: Any, limit: int, before: Optional[str], place: Optional[str]) -> dict:
+    """The GET page for one place (N635), or every row with no place. Each
+    message says its ``place``. ``fetch(limit, before)`` reads DESC, up to
+    ``limit + 1`` rows, as ``get_lounge_messages_page``. A place reads older
+    pages until it has a page of its own (at most PLACE_ROUNDS reads);
+    ``oldest_cursor`` then continues from the last row read, so the next
+    page never reads a row twice."""
+    if place is None:
+        page = shape_lounge_page(fetch(limit, before), limit)
+    else:
+        kept: list[dict] = []
+        cursor, more = before, False
+        for _ in range(PLACE_ROUNDS):
+            rows = fetch(limit, cursor) or []
+            scanned = rows[:limit]
+            more = len(rows) > limit
+            for r in scanned:
+                if place_of(r) == place:
+                    kept.append(r)
+            if scanned:
+                cursor = scanned[-1].get("client_created_at")
+            if len(kept) > limit or not more or not scanned:
+                break
+        page_desc = kept[:limit]
+        if len(kept) > limit:
+            more, cursor = True, page_desc[-1].get("client_created_at")
+        page = {"messages": list(reversed(page_desc)), "has_more": more,
+                "oldest_cursor": cursor if more else None}
+    for m in page["messages"]:
+        m["place"] = place_of(m)
+    return page
