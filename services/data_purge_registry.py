@@ -397,6 +397,11 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "delete", "database_row", 56),
     PurgeDependency("ai_model_examples_added_by", "ai_model_examples", "added_by", "user",
                     "delete", "database_row", 56),
+    # A deleted Take leaves every model it taught (migration
+    # a_model_keeps_its_setup; MOD-02): its moments go, with the answers on
+    # them.
+    PurgeDependency("ai_model_examples_take", "ai_model_examples", "take_id", "take",
+                    "delete", "database_row", 56),
     PurgeDependency("ai_model_teachers", "ai_model_teachers", "user_id", "user",
                     "delete", "database_row", 57),
     PurgeDependency("ai_model_invites_invitee", "ai_model_invites", "invitee_id", "user",

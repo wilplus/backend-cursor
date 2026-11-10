@@ -109,6 +109,15 @@ O2  On Take 2 the ""more than on Take 1"" line appears only when that cue
 was weaker on Take 1.
 O3  That line is never said twice in a row; the rotation carries on
 after it.","O1, O2, O3 -> test_two_takes_rotate_and_say_the_later_line_only_when_true","D-FW-3; signed line bank, ""Rotation"" (migration 0438)."
+tests/test_a_model_keeps_its_setup_postgres.py,Story,"As someone starting a model, I want my setup kept with the model from step to step, and a moment of a Take gathered into my model only once, so ✕ loses nothing and a rerun of the gathering adds nothing twice (N566 item 2, MOD-02, MOD-25).","O1  ai_models has a setup that is always an object, empty for a model
+made before it, and the column is locked to the backend as the table is.
+O2  The same moment of a Take goes into one model once; a second model may
+take it too, and an upload's rows are never held to it.
+O3  When the owner's account is erased, the model keeps its name and its
+card for its teachers, and loses what the owner wrote: the
+description, their name, the setup's words; a draft is archived.","O1 -> test_a_model_keeps_its_setup_and_it_is_an_object
+O2 -> test_a_moment_goes_into_a_model_once
+O3 -> test_an_erased_owners_words_leave_the_model","Migration a_model_keeps_its_setup (0520), applied twice in both rehearsal lanes after 0516 (the reapply is its idempotency check)."
 tests/test_a_model_learns_only_from_the_yes_postgres.py,Story,"As a speaker, I want the model trained only on my coached pairs that I said yes to and that were released, and only once, so that my ""no"" is respected.","O1  A released pair that is still allowed is marked trained, once.
 O2  A pair that is not released, no longer allowed, or already trained
 is refused.
@@ -2186,6 +2195,78 @@ teach, whatever their score; nothing else, and never a score.
 O2  An answer feeds the one model that fits the profile best at 2.0 or
 more; below it, no model.","O1 -> ModelMatchTest::test_for_you_is_chosen_by_the_knowledge_score
 O2 -> ModelMatchTest::test_an_answer_feeds_the_best_model_or_none","The person-to-model matching reuses the score and threshold of the person-to-Take matching (N518 item 7: ""Yes, reuse the score and threshold"")."
+tests/test_model_setup.py,Story,"As someone starting a model, I want the setup to walk me through three chapters one step at a time, propose what my model does and which AI does each part, check my data the way a data scientist would, keep the final exam fair, and show me afterwards what needs me, in plain words, so a model I start can learn from day one (N528 item 4, N566 items 2 to 6, N570, N585).","O1  The setup has three chapters with a thin bar; the caption says where
+I am and optional steps say so (MOD-24).
+O2  From my three answers the app proposes what the model does, and each
+part gets the AI that fits it: a voice score is WillpowerLab's voice
+scorer, picking and answering GPT-4o mini; others say ""Soon""
+(MOD-27, MOD-29).
+O3  The scale step says what one example is, with a word for every point,
+and a model can start right there; what is left becomes a checklist
+(MOD-28, MOD-36).
+O4  Uploaded data is checked: repeats and near repeats removed, rows with
+no score skipped, mislabelled rows flagged, names removed, a column
+naming a person left out; 60 rows are re-rated first (MOD-31).
+O5  The exam takes whole speakers, never an upload, never one of my first
+10; it is set aside by two experts (MOD-32).
+O6  Shorter and Longer switch the teachers' steps; Public shows its
+disclaimer first (MOD-33, MOD-34).
+O7  My page puts ""Needs you now"" on top where teachers disagree, gives an
+honest range and the slowest jar, and agreement within one point and
+exactly; a starting rule is kept or dropped on the first 50 ratings
+(MOD-30, MOD-37).","O1 -> SetupRulesTest::test_three_chapters_with_a_thin_bar
+O2 -> SetupRulesTest::test_what_it_does_and_the_ai_for_each_part
+O3 -> SetupRulesTest::test_the_scale_and_starting_early_leave_a_checklist
+O4 -> SetupRulesTest::test_uploaded_data_is_checked_before_it_counts
+O5 -> SetupRulesTest::test_the_exam_is_fair
+O6 -> SetupRulesTest::test_shorter_longer_and_the_public_disclaimer
+O7 -> SetupRulesTest::test_the_owners_page_says_what_needs_them","services/model_setup.py holds the setup's rules and signed words (the locked prototype, version 8)."
+tests/test_model_setup_routes.py,Story,"As someone starting a model, I want ""Start your own"" to keep my draft at every step, fill itself from my first Take, tell me when a model like mine exists, let me start right after the scale, take my existing data only with my tick, have me answer the first 10, and let me invite people who each choose; and as a speaker, I want my Takes to teach someone's model only while my training yes is on (N528 item 4, N563 item 4, N566, N570, N571, N575, N582).","O1  Without the ring row every setup route is 404, and a draft is 404 to
+anyone but its owner.
+O2  Three answers, one per screen; ✕ keeps the draft, which the list shows
+with ""You stopped at the scale. Nothing is lost."" and Continue
+(MOD-24, MOD-25).
+O3  ""A model like yours already exists"" slides up over the third answer,
+once; ""Set up mine anyway"" goes on (MOD-26).
+O4  After a first Take, Describe opens filled from its answers, with
+""Filled from your first Take. Change any word."" (MOD-54).
+O5  ""Start with this, finish the rest later"" starts the model learning
+after its scale; the rest is a checklist on its page (MOD-28, MOD-36).
+O6  Existing data counts only after the tick: its rows become the model's
+private examples, their labels never sent to a teacher, and only the
+60 re-rates reach the queue (MOD-31).
+O7  The owner answers the first 10 on the teachers' screen, never an exam
+case, and their answers are kept like any teacher's (MOD-38, MOD-55).
+O8  Public shows its disclaimer before it goes public; the second expert
+and the people invited each get an invite, and ""Copy an invite link""
+is the owner's own chat link (MOD-32, MOD-34, MOD-35, N598).
+O9  When the processing authorization is not current, no provider call is
+made and the rules' draft stands.
+O11 An erased person's id is nowhere in a model's setup: it never keeps
+one, and the expert and the invited people come from rows the purge
+registry deletes.
+O12 The owner's first 10 become the model's known answers; an answer
+counts only once another trusted teacher gives the same one, and two
+matching trusted answers settle an example (N570 item 4).
+O13 A teacher hears a voice example by a signed link, and never receives
+the speaker, the Take or the snippet.
+O14 A deleted Take leaves every model it taught.
+O10 A host's model gathers the moments of Takes sent to them only from
+speakers whose training yes is on, recorded after it; turning it off
+takes them out again (MOD-02).","O1 -> ModelSetupRoutesTest::test_without_the_ring_or_as_someone_else_nothing_is_shown
+O2 -> ModelSetupRoutesTest::test_three_answers_and_the_draft_kept
+O3 -> ModelSetupRoutesTest::test_a_model_like_yours_slides_up_once
+O4 -> ModelSetupRoutesTest::test_the_first_take_fills_describe
+O5 -> ModelSetupRoutesTest::test_start_after_the_scale_leaves_a_checklist
+O6 -> ModelSetupRoutesTest::test_existing_data_counts_only_with_the_tick
+O7 -> ModelSetupRoutesTest::test_the_owner_answers_the_first_ten
+O8 -> ModelSetupRoutesTest::test_public_after_its_disclaimer_and_invites
+O9 -> ModelSetupRoutesTest::test_no_provider_call_without_authorization
+O10 -> ModelSetupRoutesTest::test_takes_teach_only_with_the_training_yes
+O11 -> ModelSetupRoutesTest::test_an_erased_person_is_nowhere_in_the_setup
+O12 -> ModelSetupRoutesTest::test_nobody_teaches_a_model_alone
+O13 -> ModelSetupRoutesTest::test_a_voice_example_plays_by_a_signed_link_only
+O14 -> ModelSetupRoutesTest::test_a_deleted_take_leaves_every_model","routes/v2/model_setup.py over services/model_setup_store.py, and the job services/model_examples_from_takes.py."
 tests/test_moment_pick.py,Story,"As a speaker, I want each Take to show my strongest moment, praised, and my weakest, fixed with the tool its weakness needs (its words first, else its voice with the AI clip), so that I know what to keep and get one fix on the moment that needs it.","O1  The strongest is the Take's highest willfidence clip, a block's best
 clip standing for it and a clip with enough words before a short
 one; it is praised whatever its voice and called my most confident.
