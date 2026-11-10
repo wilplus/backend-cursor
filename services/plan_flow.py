@@ -412,6 +412,29 @@ def onboarding(database: Any, user_id: Any) -> bool:
 
 # ── the state, read when the Lounge opens ──────────────────────────────────
 
+def _join_day_not_chosen(database: Any, user_id: str, plan: Optional[dict]) -> Optional[dict]:
+    """A plan written before N631 kept a join link's "No" day as if the
+    person had picked it (``deadline_given`` false). Read once per day: when
+    that day is one their own "No" gave, the plan keeps it as never chosen,
+    so it is never shown or spoken of as theirs. A talk's date ("Prepare a
+    talk", ``facts.talk``) is always theirs. Best-effort."""
+    if not plan or plan.get("deadline_given") or not plan.get("deadline") or _facts(plan).get("talk"):
+        return plan
+    day = str(plan["deadline"])
+    if _facts(plan).get("join_day_read") == day:
+        return plan
+    try:
+        from services import join_questions
+        given = join_questions.unchosen_plan_day(database, user_id, day)
+        fields: dict[str, Any] = {"facts": {**_facts(plan), "join_day_read": day}}
+        if given:
+            fields["deadline_given"] = True
+        return _save(database, user_id, plan, fields)
+    except Exception:  # noqa: BLE001 -- the plan reads as it was
+        logger.warning("plan_flow: a join day could not be read", exc_info=True)
+        return plan
+
+
 def state(database: Any, user_id: str, *, tz: Any = None,
           first_name: Optional[str] = None) -> dict:
     """``{enabled, plan, wrote}``. A new speaker with no plan and no Take
@@ -421,7 +444,7 @@ def state(database: Any, user_id: str, *, tz: Any = None,
     if not enabled(database, user_id):
         return {"enabled": False, "plan": None, "wrote": False}
     zone_name = valid_zone(tz)
-    plan = database.get_open_plan(str(user_id))
+    plan = _join_day_not_chosen(database, user_id, database.get_open_plan(str(user_id)))
     wrote = False
     if plan is None:
         if database.get_latest_plan(str(user_id)) is None and not _takes(database, user_id):

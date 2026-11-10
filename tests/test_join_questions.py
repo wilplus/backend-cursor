@@ -38,6 +38,9 @@ PROVES   O1 -> JoinQuestionsTest::test_my_questions_are_kept_and_checked
          O2 -> JoinQuestionsTest::test_whoever_joins_finds_my_first_lines_and_i_do_not
          O3 -> JoinQuestionsTest::test_they_answer_by_tapping_and_i_read_one_card
          O3 -> JoinQuestionsTest::test_a_day_picked_is_theirs
+         O3 -> JoinQuestionsTest::test_an_answer_kept_before_n631_is_chosen_only_after_yes
+         O3 -> JoinQuestionsTest::test_a_card_kept_before_n631_is_corrected_when_read
+         O3 -> JoinQuestionsTest::test_a_plan_kept_before_n631_never_reads_no_as_chosen
          O4 -> JoinQuestionsTest::test_a_tap_that_is_not_an_answer_is_refused
          O5 -> JoinQuestionsTest::test_joining_someone_with_no_questions_posts_nothing
          O6 -> ReadyTest::test_a_typed_question_is_kept_only_when_practical_with_answers
@@ -189,6 +192,61 @@ class JoinQuestionsTest(_App):
         self._tap(PIOTR, chat, got[-1]["id"], ["English"])
         card = [m["meta"]["setup_card"] for m in self._read(TOMEK, chat)["messages"] if "setup_card" in m["meta"]]
         self.assertEqual(card[0]["rows"][0], {"k": "Deadline", "v": P.fmt_day(day)})
+
+    def _no_then_languages(self, *, before_n631: bool):
+        """Piotr taps "No", then the languages; with ``before_n631`` his
+        "No" row is as it was kept before N631 (no ``deadline_chosen``)."""
+        self._set(TOMEK, SET)
+        chat = self._join(TOMEK, PIOTR)
+        hurry = self._read(PIOTR, chat)["messages"][-1]["id"]
+        got = self._tap(PIOTR, chat, hurry, ["No"]).get_json()["messages"]
+        if before_n631:
+            row = next(r for r in self.store.tables["chat_messages"] if r["id"] == got[0]["id"])
+            row["meta"]["setup_answer"].pop("deadline_chosen")
+        self._tap(PIOTR, chat, got[-1]["id"], ["English"])
+        return chat, date.today() + timedelta(days=30)
+
+    def test_an_answer_kept_before_n631_is_chosen_only_after_yes(self):
+        """N631: an answer row with no ``deadline_chosen`` counts as a day
+        picked only after "Yes"; after "No" the card has no "Deadline"."""
+        from services.join_questions import day_chosen
+        chat, _due = self._no_then_languages(before_n631=True)
+        card = [m["meta"]["setup_card"] for m in self._read(TOMEK, chat)["messages"] if "setup_card" in m["meta"]]
+        self.assertEqual(card[0]["rows"][0], {"k": "Are you in a hurry", "v": "No"})
+        self.assertTrue(day_chosen({"picked": ["Yes"], "deadline": "2026-12-01"}))
+        self.assertFalse(day_chosen({"picked": ["No"], "deadline": "2026-12-01"}))
+
+    def test_a_card_kept_before_n631_is_corrected_when_read(self):
+        """N631: a "{name}'s answers" card stored with "Deadline" for a day
+        never chosen shows no such row when read; the stored row stays."""
+        chat, due = self._no_then_languages(before_n631=True)
+        stored = next(r for r in self.store.tables["chat_messages"] if "setup_card" in (r.get("meta") or {}))
+        old = [{"k": "Deadline", "v": P.fmt_day(due)}, {"k": "Languages", "v": "English"}]
+        stored["meta"]["setup_card"]["rows"] = list(old)
+        card = [m["meta"]["setup_card"] for m in self._read(TOMEK, chat)["messages"] if "setup_card" in m["meta"]]
+        self.assertEqual(card, [{"rows": [{"k": "Languages", "v": "English"}]}])
+        self.assertEqual(stored["meta"]["setup_card"]["rows"], old)
+
+    def test_a_plan_kept_before_n631_never_reads_no_as_chosen(self):
+        """N631: a plan that kept a join link's "No" day as if picked
+        (``deadline_given`` false) reads it as never chosen, once; a talk's
+        date stays the person's."""
+        from services import plan_flow
+        _chat, due = self._no_then_languages(before_n631=True)
+        plan = {"id": "p1", "deadline": due.isoformat(), "deadline_given": False, "facts": {}}
+        saved: list[dict] = []
+
+        def update(_u, _id, fields):
+            saved.append(fields)
+            return {**plan, **fields}
+        with patch.object(db, "update_plan", update, create=True):
+            got = plan_flow._join_day_not_chosen(db, PIOTR, plan)
+            self.assertTrue(got["deadline_given"])
+            talk = {**plan, "facts": {"talk": True}}
+            self.assertIs(plan_flow._join_day_not_chosen(db, PIOTR, talk), talk)
+            other = {**plan, "deadline": (due + timedelta(days=3)).isoformat()}
+            self.assertFalse(plan_flow._join_day_not_chosen(db, PIOTR, other).get("deadline_given"))
+        self.assertEqual(saved[0]["deadline_given"], True)
 
     def test_a_tap_that_is_not_an_answer_is_refused(self):
         self._set(TOMEK, SET)

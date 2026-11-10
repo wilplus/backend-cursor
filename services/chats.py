@@ -525,6 +525,7 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
     spans = chat_safety.spans_by_member(database, [str(me["id"])]).get(str(me["id"]), [])
     unheard = chat_safety.unheard(str(me["id"]), spans)
     from services import join_questions
+    newest = join_questions.as_read(newest)  # N631: a day never chosen is never on the card
     newest = [r for r in newest if not _held(r) and not unheard(r)
               and not join_questions.hidden(r, str(me["id"]))]
     _mark_demo_question(database, thread, newest)

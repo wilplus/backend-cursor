@@ -264,6 +264,66 @@ def hidden(row: dict, me: str) -> bool:
     return False
 
 
+def day_chosen(answer: Any) -> bool:
+    """Did the person pick this answer's day (N631)? ``deadline_chosen``
+    when the row carries it; a row written before it was kept counts as
+    chosen only when "Are you in a hurry?" was answered "Yes" (with its
+    date), never by default: "No"'s day is one step of the plan away."""
+    a = answer if isinstance(answer, dict) else {}
+    if "deadline_chosen" in a:
+        return a.get("deadline_chosen") is True
+    return a.get("picked") == [YES]
+
+
+def _unchosen_days(rows: list[dict]) -> set[str]:
+    """The day texts of the answers in these rows whose day was not chosen."""
+    out: set[str] = set()
+    for r in rows:
+        a = (r.get("meta") or {}).get("setup_answer")
+        if isinstance(a, dict) and a.get("deadline") and not day_chosen(a):
+            try:
+                out.add(_day_text(date.fromisoformat(str(a["deadline"]))))
+            except ValueError:
+                continue
+    return out
+
+
+def as_read(rows: list[dict]) -> list[dict]:
+    """A chat's rows as they are read: a "{name}'s answers" card stored
+    before N631 shows no "Deadline" for a day the person never chose (its
+    answer row, in the same rows, says so). The stored message itself is
+    not rewritten."""
+    unchosen = _unchosen_days(rows)
+    if not unchosen:
+        return rows
+    out = []
+    for r in rows:
+        card = (r.get("meta") or {}).get("setup_card")
+        if isinstance(card, dict) and isinstance(card.get("rows"), list):
+            kept = [c for c in card["rows"] if not (isinstance(c, dict) and c.get("k") == CARD_DEADLINE
+                                                    and c.get("v") in unchosen)]
+            if len(kept) != len(card["rows"]):
+                r = {**r, "meta": {**r["meta"], "setup_card": {**card, "rows": kept}}}
+        out.append(r)
+    return out
+
+
+def unchosen_plan_day(database: Any, user_id: str, day: Any) -> bool:
+    """Is ``day`` (YYYY-MM-DD) the day a join link's "No" gave this person,
+    never one they picked? Read from their own answers to "Are you in a
+    hurry?" in every chat they are in (N631, for a plan written before it
+    was kept on the plan)."""
+    if not day:
+        return False
+    members = [str(m["id"]) for m in _rows(_table(database, MEMBERS).select("id").eq("user_id", str(user_id)))]
+    if not members:
+        return False
+    rows = _rows(_table(database, MESSAGES).select("meta").in_("author_member_id", members))
+    answers = [(r.get("meta") or {}).get("setup_answer") for r in rows]
+    return any(isinstance(a, dict) and str(a.get("deadline") or "") == str(day) and not day_chosen(a)
+               for a in answers)
+
+
 def _members(database: Any, thread: str) -> list[dict]:
     return _rows(_table(database, MEMBERS).select("id,user_id,display_name").eq("thread_id", thread))
 
@@ -416,7 +476,7 @@ def _card(database: Any, thread: str, questions: dict) -> list[dict]:
             continue  # the photo is in the chat itself
         i = a.get("i")
         line = questions["lines"][i] if isinstance(i, int) and 0 <= i < len(questions["lines"]) else {}
-        if a.get("deadline") and a.get("deadline_chosen", True):
+        if a.get("deadline") and day_chosen(a):
             # Only a day the person picked is their deadline (N631 item 1);
             # after "No" the row is the question and the tap, as any other.
             out.append({"k": CARD_DEADLINE, "v": _day_text(date.fromisoformat(a["deadline"]))})
