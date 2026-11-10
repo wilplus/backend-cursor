@@ -52,7 +52,8 @@ logger = logging.getLogger(__name__)
 
 VERSIONS, SHARES, KEYS, CALLS, PAYOUTS = (
     "ai_model_versions", "ai_model_shares", "ai_model_api_keys", "ai_model_calls", "ai_model_payouts")
-_VERSION_FIELDS = "id,model_id,number,status,base_model,provider_model,founder_id,card,exam,created_at,released_at"
+_VERSION_FIELDS = ("id,model_id,number,status,base_model,provider_model,founder_id,card,exam,created_at,released_at,"
+                   "head,confidence,example_ids,retrain_at,owner_checked_at")
 _KEY_FIELDS = ("id,model_id,buyer_id,version_id,key_tail,kind,free_left,monthly_limit_units,"
                "allow_training,created_at,revoked_at")
 
@@ -142,9 +143,15 @@ def card_for(database: Any, user_id: Any, model_id: Any) -> dict:
 
 def _ask(model: dict, version: Optional[dict], message: str) -> Optional[dict]:
     """One answer from the model, under the caller's provider scope (the
-    route binds it). The version's own trained model when it has one, else
-    its base model. Returns {answer, sure}, or None when the provider gave
-    nothing."""
+    route binds it). From the version's head when it has one (LEARN-02: one
+    reader call, no chat call, "sure" from the head's measured confidence);
+    else, and only then, from the recipe card through the base model, as
+    before a model learned. Returns {answer, sure}, or None when the
+    provider gave nothing."""
+    from services import model_head_store
+    learned = model_head_store.head_answer(model, version, message, surface="model_api_answer")
+    if learned is not None:
+        return learned if learned.get("answer") else None
     from dataclasses import replace
 
     from services import llm
@@ -190,7 +197,8 @@ def try_it(database: Any, user_id: Any, model_id: Any, message: Any) -> dict:
         raise _not_found()
     text = _clean_message(message)
     versions = _versions(database, model["id"])
-    result = _ask(model, _latest_released(versions), text)
+    from services.model_head_store import latest_with_head
+    result = _ask(model, _latest_released(versions) or latest_with_head(versions), text)
     if result is None:
         raise ChatsError("MODEL_UNAVAILABLE", "The model could not answer just now.", 503)
     reply = rules.try_reply(model, versions, result)
@@ -540,21 +548,29 @@ def download_for(database: Any, user_id: Any, model_id: Any, *, rows: bool = Fal
 
 # ── The founder's steps (MOD-52, N563 item 5) ───────────────────────────────
 def record_version(database: Any, model_id: Any, *, provider_model: Optional[str],
-                   card: dict, exam: dict, base_model: str = "gpt-4o-mini") -> dict:
-    """A version that passed its final exam: its number, the provider's
-    model it runs on, its card and exam, the model's founder now, and the
+                   card: dict, exam: dict, base_model: str = "gpt-4o-mini",
+                   head: Optional[dict] = None, confidence: Optional[dict] = None,
+                   example_ids: Optional[list[str]] = None) -> dict:
+    """A fitted version: its number, its head, its confidence table, the
+    examples it learned from (PIPE-06), its card and the exam THE APP
+    computed (``model_head.exam_result``), the model's founder now, and the
     teachers' shares FIXED from the answers that counted so far (N531 item
-    2: a version pays the people whose answers trained it). WillpowerLab's
-    founder records it after the training run; the model's founder releases
-    it (``release``)."""
+    2). Called only by the fit (``model_head_store.fit_model``); no route
+    reaches it, so nobody enters "passed" by hand (LEARN-05). It is
+    "passed" only when that exam passed; the model's founder releases it
+    (``release``)."""
     model = models._model(database, model_id)
     versions = _versions(database, model["id"])
     number = (int(versions[-1]["number"]) + 1) if versions else 1
+    exam = dict(exam or {})
+    passed = exam.get("computed") is True and exam.get("passed") is True
     made = _rows(_table(database, VERSIONS).insert({
-        "model_id": model["id"], "number": number, "status": "passed", "base_model": base_model,
+        "model_id": model["id"], "number": number, "status": "passed" if passed else "training",
+        "base_model": base_model,
         "provider_model": provider_model, "founder_id": model.get("owner_id"),
         "card": {k: str(card.get(k) or "")[:300] for k in ("good_at", "not_so_good_at", "not_for")},
-        "exam": dict(exam or {}),
+        "exam": exam, "head": head, "confidence": confidence,
+        "example_ids": list(example_ids or []),
     }))
     version = made[0]
     answers = _all(lambda: _table(database, models.ANSWERS).select("example_id,teacher_id,counted")
@@ -571,6 +587,27 @@ def record_version(database: Any, model_id: Any, *, provider_model: Optional[str
             {"version_id": version["id"], "user_id": uid, "points": p["points"], "answers": p["answers"]}
             for uid, p in sorted(pts.items())]).execute()
     return {"id": str(version["id"]), "number": number, "teachers": len(pts)}
+
+
+def admin_version(database: Any, model_id: Any, body: Any) -> dict:
+    """WillpowerLab's founder on a model's versions (MOD-52): never "passed"
+    by hand (LEARN-05). A body with a status or an exam is refused; else a
+    new fit is queued for the background job, and a card, if given, is
+    saved on the newest version."""
+    body = body if isinstance(body, dict) else {}
+    if "status" in body or "exam" in body or "passed" in body:
+        raise ChatsError("EXAM_IS_COMPUTED", "A version's exam is computed by the app.", 409)
+    from services import model_head_store
+    queued = model_head_store.queue_fit(database, model_id)
+    card = body.get("card")
+    if isinstance(card, dict):
+        model = models._model(database, model_id)
+        versions = _versions(database, model["id"])
+        if versions:
+            _table(database, VERSIONS).update({"card": {k: str(card.get(k) or "")[:300] for k in
+                                                         ("good_at", "not_so_good_at", "not_for")}}) \
+                .eq("id", versions[-1]["id"]).execute()
+    return queued
 
 
 def release(database: Any, user_id: Any, model_id: Any, number: Any) -> dict:
