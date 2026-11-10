@@ -15603,3 +15603,100 @@ morning report; none is on screen without it (Never 4).
 The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
 (items 1 and 2), the other items in their PRs' home docs.
+
+**N594 · The overnight build's choices, second batch, 9 to 10 November
+2026: as N593, each build took the recommended option where a logged
+decision left a detail open, under the founder's standing instruction for
+the night ("just go with your recommendations if something is unsure!").
+Each item stands until the founder overrules it; overruling one is a new
+entry. Items on a PR still waiting for its migration's review come into
+force only when that PR merges.** By slice:
+1. **Hosts' chats** (N578 to N588; backend #1852 merged; #1856, #1857 and
+#1859 waiting; frontend #1343, #1346, #1348, #1349):
+   - a host's words are refused when they read as a score or a verdict (a
+     digit with %, "/n", "out of", points, stars, verdict words); other
+     numbers are allowed (Never 1);
+   - the join page's new lines show only for links whose owner is on the
+     ring row chat_builder (N579 item 2, testers first);
+   - the recipe is one per person, on people_profiles.chat_recipe (N578
+     item 7), and keeps only whether to automate; a model's own setup is
+     the launchpad's;
+   - specialization bubbles come from the plan's topic, by rules; the join
+     page's line is "{name}'s specialization: {spec}." plus the host's own
+     sentence;
+   - questions join a bundle by rules first (shared meaning words, joining
+     at 0.5, green from 0.75); only askers' notes are bundled; a bundle
+     with one asker reads "{name} asked: {question}"; the best answer
+     under a heading is the first one in until a model ranks them;
+   - a person with no recipe is a skill coach; a Take's coach is the chat
+     it was first sent to.
+2. **The website chat** (N591; backend #1868 waiting, with frontend #1344):
+   - a visitor records only after signing up, since a guest has no
+     processing authorization; a record-only chat asks for sign-up first;
+   - the host's answers are held until the visitor signs up; the visitor's
+     questions join their bundle at sign-up;
+   - typing is offered only where the chat's setup allows it; the host may
+     always type there;
+   - the first notice goes once, by email before phone;
+   - the one-question limit is dropped; the per-address limits stay;
+   - the public pages answer only for a host on the ring row website_chat,
+     off by default (N591 item 5).
+3. **AI models, starting one** (N566, N570, N571, N582; backend #1867 and
+#1869 waiting; frontend #1341, #1347):
+   - a host's model learns only from Takes sent to its owner in a chat, and
+     only while the speaker's training yes, learning and processing
+     authorization all hold; a yes turned off removes that speaker's
+     examples, and a deleted Take's examples go with it;
+   - an upload is private to its model and its labels are never shown to a
+     teacher; it counts at 7 in 10 agreement; a starting rule is kept at 35
+     in 50; "Needs you now" shows once 10 pairs are measured and exact
+     agreement is under 7 in 10;
+   - an answer counts only once another trusted teacher gives the same one,
+     or it matches the known answer; the owner's first 10 set the known
+     answers; the owner never agrees with themself;
+   - the final exam takes whole speakers, 1 in 5, until it holds 100; never
+     uploads, added examples or the first 10;
+   - a scale has 3 to 7 points, a list 2 to 12 options; uploads are CSV or
+     JSON up to 2 MB and 5,000 rows;
+   - the drafting model is GPT-4o mini;
+   - when an owner's account is erased, their model keeps its name and
+     card; its description and the setup's words are cleared, and a draft
+     is archived.
+4. **AI models, the API and the money** (N531, N577, N583; backend #1866
+waiting; frontend #1342, #1345, #1351):
+   - money is kept in token units; one token shown is one cent (€0.03 an
+     answer is "3 tokens an answer"; the €20 minimum is 200,000 units);
+   - the running cost floor is 60 units; the split is in whole units, the
+     fee and the founder's part rounded down, the rest to the teachers;
+   - an answer is charged before the model is called and refunded if no
+     answer comes back; live keys answer nothing while token pricing is
+     off;
+   - one test key per buyer and model; a live key always has a monthly
+     limit and stops before the answer that would pass it;
+   - "sure" means the model's confidence is at least 0.70 on a choice its
+     recipe offers;
+   - payouts are in tokens above the minimum, run by the founder, for whole
+     past months only;
+   - when a model's founder is erased, their 10% goes to the teachers; a
+     buyer's paid answers stay after their erasure, with the buyer cleared;
+   - a business's unsure questions reach the teachers, names removed, only
+     once the business turns it on;
+   - the one download route holds the teachers' own answers, numbered, and
+     never the final exam;
+   - the API's address is /v2/models/<id>/answer; the prototype's
+     api.willpowerlab.com address is open.
+5. **The summary after a Take** (WILL-07; backend #1865, frontend #1350):
+the summary is written at once with its signed line, and GPT-4o's words
+replace it in place off the request; nothing after the walk waits for the
+model. Whether to draw the summary on screen, or retire it, is open for
+the founder.
+6. **The way in's poll** (backend #1871): the way in's read has its own
+limit (60 a minute); the model's limit counts only calls that carry an
+answer or a recording.
+Words drafted tonight wait for the founder's OK and are listed in the
+morning report; none is on screen without it (Never 4).
+The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+(item 5) and
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+(item 2), the other items in their PRs' home docs.
