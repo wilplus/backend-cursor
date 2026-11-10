@@ -16266,3 +16266,28 @@ specialist's own chat:
 **Open:** counsel on item 13.
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup); a
 rules page for hosted chats with its first built part (N578).
+
+**N617 · The locked setup gains two screens: the models you can use, each
+with its owner's price, and what your chat costs you (founder, the Claude
+Code chat, 10 November 2026: "how do I know, show this to me in the
+prototype, that I'm using somebody's model, and how much will I pay for it?
+It should be based on what price they have set ... I want to make sure that
+my setup costs me rational amount of money"; then, on the two screens drawn:
+"Yes").** For N607, N611 and N616:
+1. **Models you can use.** Where the setup reaches the models, one list
+   shows every model other people shared: its question, its three answers,
+   who made it, and its price per use as its owner set it. A model that
+   does not fit what this host's people send is greyed out and says what it
+   needs. "Make my own" is under the list.
+2. **What your chat costs you.** Before "See it", one screen lists each
+   model in the chat with its cost, the total for each thing a person
+   sends, and an estimate for a month. The host pays; their people pay
+   nothing. Everything is in tokens (N611 item 5).
+3. **The pinned prototype and its stories are updated** in
+   `docs/design/the-blank-setup-2026-11-10/`; the stories now hold the
+   build's tests for the setup, what a visitor meets, a model that learns,
+   the tight pipes, tokens in a chat and the small pieces.
+**Open:** whether a host's own model is free to run in their own chat
+(drawn as free); what happens in a chat when the host has too few tokens
+(drawn: that model's line is left out and the host is told).
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
