@@ -13,6 +13,7 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          FIRST-06 -> SetupTest::test_the_hello_questions_and_taps_pass_the_hosts_checks
          FIRST-07 -> SetupTest::test_a_model_is_one_question_with_three_answers
          FIRST-08 -> SetupTest::test_a_model_made_here_is_a_real_model_teach_it_opens
+         FIRST-23 -> SetupTest::test_the_host_adds_an_example_and_answers_it_first
          FIRST-09 -> SetupTest::test_who_answers_is_three_plain_choices
          FIRST-10 -> SetupTest::test_sharing_keeps_a_price_in_tokens
          FIRST-11 -> VisitorTest::test_not_yet_keeps_it_saved_and_yes_opens_it
@@ -191,7 +192,33 @@ class SetupTest(_Base):
         self.assertEqual((mine["owner_id"], mine["visibility"], mine["status"], mine["recipe"]["scale"]),
                          (TOMEK, "private", "learning", ["Yes", "Somewhat", "No"]))
         self.assertEqual(teach.status_code, 200)
+        self.assertNotIn("teaching", teach.get_json()["screen"])
         self.assertEqual(self.provider.calls, [])
+
+    def test_the_host_adds_an_example_and_answers_it_first(self):
+        """FIRST-08, FIRST-23: on the model just made in the setup, the host
+        adds an example of their own ("Add an example"); it is the first of
+        their first ten, and their answer is kept."""
+        def rings(feature, user_id, database=None):
+            del database
+            return feature in ("chat_builder", "ai_models") and str(user_id) == TOMEK
+        with patch("services.rings.feature_is_on_for_user", rings):
+            self._start()
+            mid = self._put("models", [self._model()]).get_json()["recipe"]["models"][0]["model_id"]
+            added = self.client.post(f"/v2/models/{mid}/examples", json={"text": "Flakes near the roots."},
+                                     headers=self._as(TOMEK))
+            first = self.client.get(f"/v2/models/{mid}/setup/first-ten", headers=self._as(TOMEK)).get_json()
+            eid = added.get_json()["example_id"]
+            answered = self.client.post(f"/v2/models/{mid}/setup/first-ten/{eid}",
+                                        json={"step": "rate", "answer": "Yes"}, headers=self._as(TOMEK))
+            stranger = self.client.post(f"/v2/models/{mid}/examples", json={"text": "Mine."},
+                                        headers=self._as(PIOTR))
+        self.assertEqual(added.status_code, 200)
+        self.assertIn("teaching", first["screen"])
+        self.assertEqual(answered.status_code, 200)
+        kept = [a for a in self.store.tables.get("ai_model_answers", []) if a.get("example_id") == eid]
+        self.assertEqual([(a["teacher_id"], a["answer"]) for a in kept], [(TOMEK, "Yes")])
+        self.assertEqual(stranger.status_code, 404)
 
     def test_who_answers_is_three_plain_choices(self):
         """FIRST-09, FIRST-22: "I draft, you send" first, then "Only you"
