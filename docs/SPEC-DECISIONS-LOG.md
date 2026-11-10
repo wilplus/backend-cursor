@@ -15779,3 +15779,28 @@ testing ring, for the mvp we don't do it! Your principles › The Sunday note
    code behind those three stays behind a ring or goes is decided when the
    MVP is built, by CLAUDE.md's "Replacing a feature".
 No migration. No rules page yet.
+
+**N600 · The join page is three lines: who invited you, what you'll learn,
+and that only the two of you are in the chat (founder, the Claude Code
+chat, 10 November 2026, on the prototype's join page of Kasia's link: "we
+need to shorten that massively; as steven pinker would; please suggest
+smth"; then, of three drafts, "Three lines").** Amends N586 items 1 and 2,
+and the join page's words of N310 item 3 and N335 item 2; for N401 and N471
+(the way in, locked: this is the founder's change to it):
+1. **The join page of anyone's link:** "{name} invited you"; one sentence
+   of what you'll learn in their chat, under about fifteen words, which
+   Will drafts from the host's setup and the host confirms (N586 item 1);
+   "Only the two of you are in this chat."; and "Join". Nothing under it.
+2. **Gone from the page:** "{name} asks you to join them on WillpowerLab",
+   "A chat with {name}", the line about Will's chat (N586 item 2; Will
+   greets a newcomer inside the app, N586 item 5), "Nobody else can reach
+   you here unless you open their link too." and "Opens in your browser.
+   Nothing to install.".
+3. **Signed (Never 4):** "{name} invited you"; for Artur's link, "Record a
+   short talk. He'll tell you what landed and what to try next." Other
+   hosts' sentences are theirs (N578); the prototype's samples are Kasia's
+   "She'll show you how to check a quote, a number or a photo before you
+   trust it." and Lena's "Ask her what to use on your hair, and why."
+No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built.
