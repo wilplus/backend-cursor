@@ -946,6 +946,13 @@ hard migrations/a_model_keeps_its_setup.sql
 hard migrations/a_business_can_buy_a_model_s_answers.sql
 hard migrations/a_business_can_buy_a_model_s_answers.sql
 
+# 0522 (N615, N616): a model learns from its settled examples: kept vectors,
+# a version's head and lineage, and the retrain mark a deleted example sets.
+# Both lanes, after 0521, twice. Its cases are in
+# tests/test_a_model_learns_from_its_settled_examples_postgres.py.
+hard migrations/a_model_learns_from_its_settled_examples.sql
+hard migrations/a_model_learns_from_its_settled_examples.sql
+
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"
 rm -f "$log"
