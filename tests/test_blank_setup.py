@@ -100,6 +100,8 @@ class SetupTest(_Base):
         self.assertEqual(recipe["spec"], "Trichologist")
         self.assertEqual(recipe["hello"], "Hi. Send me a photo of your scalp, and tell me what worries you.")
         self.assertEqual(recipe["suggest"]["send"][0], "photo")
+        # "A message" is ticked beside Will's first suggestion (N625 item 1).
+        self.assertEqual(recipe["send"], ["photo", "text"])
         self.assertEqual(recipe["questions"], [{"q": "What worries you about your hair?"}])
         self.assertEqual(self.provider.calls, [])
         self.assertFalse(recipe["live"])
