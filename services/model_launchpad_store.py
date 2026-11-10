@@ -1,0 +1,326 @@
+"""The model launchpad's storage: it reads the models' tables (migration
+a_person_can_teach_and_start_ai_models) into the shapes
+``services/model_launchpad.py`` takes, and writes a teacher's door, Pause
+and answers. The rules are all there; nothing here decides anything a
+person sees.
+
+Ring row ``ai_models`` (ring 6, the founder and the people the founder adds
+first): anyone else gets 404, as for the chats. No provider call and no
+recording here: an answer in words is recorded through the chats' own
+recording path, which passes the processing-authorization path, and only
+its words reach a model (N528 item 10).
+
+  * ``list_for``      the list of models, the drafts on top (MOD-05, MOD-13)
+  * ``page_for``      a model's page for the caller, or 404 (MOD-03, MOD-06)
+  * ``enter``         "This is my field" at the door (MOD-07)
+  * ``queue_for``     the one queue across the models the caller teaches
+                      (MOD-14, MOD-15, MOD-23)
+  * ``set_paused``    Pause, per model (MOD-15)
+  * ``answer``        a teacher's answer: saved for every model it counts
+                      for, and only then the follow-up question and, once,
+                      "Your answers now count." (MOD-09, MOD-10, MOD-16 to MOD-18)
+  * ``chat_rows_for`` the rows under the people (MOD-04, MOD-14)
+  * ``profile_for``   the profile's section (MOD-50)
+  * ``invite_for``    an invite to teach as it stays in the chat (MOD-49)
+"""
+from __future__ import annotations
+
+import logging
+from collections import defaultdict
+from datetime import datetime, timezone
+from typing import Any, Optional
+
+from services import model_launchpad as rules
+from services.chats import ChatsError, _not_found, _rows, _table, _uuid
+
+logger = logging.getLogger(__name__)
+
+FEATURE = "ai_models"
+MODELS, TEACHERS, EXAMPLES, ANSWERS, INVITES = (
+    "ai_models", "ai_model_teachers", "ai_model_examples", "ai_model_answers", "ai_model_invites")
+_MODEL_FIELDS = "id,name,owner_id,owner_name,visibility,status,field,description,draft_step,recipe,targets"
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def enabled(database: Any, user_id: Any) -> bool:
+    """Does this person have the AI models? Fails closed (rings)."""
+    from services import rings
+    try:
+        return bool(user_id) and rings.feature_is_on_for_user(FEATURE, user_id, database=database)
+    except Exception:
+        logger.warning("ai_models: the rings could not be read; closed", exc_info=True)
+        return False
+
+
+def _require(database: Any, user_id: Any) -> str:
+    if not enabled(database, user_id):
+        raise _not_found()
+    return str(user_id)
+
+
+def _models(database: Any, ids: Optional[list[str]] = None) -> list[dict]:
+    """The models with their teachers and jars, in the rules' shape."""
+    query = _table(database, MODELS).select(_MODEL_FIELDS)
+    if ids is not None:
+        if not ids:
+            return []
+        query = query.in_("id", ids)
+    models = _rows(query)
+    if not models:
+        return []
+    mids = [str(m["id"]) for m in models]
+    teachers = _rows(_table(database, TEACHERS).select("model_id,user_id,role,trust_status")
+                     .in_("model_id", mids))
+    counted = _rows(_table(database, ANSWERS).select("model_id").in_("model_id", mids).eq("counted", True))
+    exam = _rows(_table(database, EXAMPLES).select("model_id").in_("model_id", mids).eq("in_exam", True))
+    by_model: dict[str, list[dict]] = defaultdict(list)
+    for t in teachers:
+        by_model[str(t["model_id"])].append(t)
+    n_counted: dict[str, int] = defaultdict(int)
+    for a in counted:
+        n_counted[str(a["model_id"])] += 1
+    n_exam: dict[str, int] = defaultdict(int)
+    for e in exam:
+        n_exam[str(e["model_id"])] += 1
+    out = []
+    for m in models:
+        mid = str(m["id"])
+        team = by_model.get(mid, [])
+        out.append({
+            **m, "id": mid,
+            "owner_id": str(m["owner_id"]) if m.get("owner_id") else None,
+            "recipe": m.get("recipe") or {}, "targets": m.get("targets") or {},
+            "owner_ids": [str(t["user_id"]) for t in team if t.get("role") == "owner"],
+            "contributor_ids": [str(t["user_id"]) for t in team if t.get("role") == "contributor"],
+            "teachers": sum(1 for t in team if t.get("trust_status") == "counts"),
+            "jars": {"counted_answers": n_counted.get(mid, 0), "exam_cases": n_exam.get(mid, 0)},
+        })
+    return out
+
+
+def _model(database: Any, model_id: Any) -> dict:
+    mid = _uuid(model_id)
+    found = _models(database, [mid]) if mid else []
+    if not found:
+        raise _not_found()
+    return found[0]
+
+
+def _my_fields(database: Any, user_id: str) -> list[str]:
+    rows = _rows(_table(database, "people_profiles").select("role,about").eq("user_id", user_id).limit(1))
+    return [v for v in ((rows[0].get("role"), rows[0].get("about")) if rows else ()) if v]
+
+
+def list_for(database: Any, user_id: Any, *, query: str = "", filter_: Optional[str] = None) -> dict:
+    me = _require(database, user_id)
+    if filter_ is not None and filter_ not in rules.FILTERS:
+        raise ChatsError("BAD_FILTER", "Unknown filter.")
+    return rules.model_list(_models(database), me, query=(query or "")[:80], filter_=filter_,
+                            viewer_fields=_my_fields(database, me))
+
+
+def page_for(database: Any, user_id: Any, model_id: Any) -> dict:
+    me = _require(database, user_id)
+    model = _model(database, model_id)
+    own_part = None
+    if rules.viewer_role(model, me) in ("owner", "contributor"):
+        mine = _rows(_table(database, ANSWERS).select("id").eq("model_id", model["id"])
+                     .eq("teacher_id", me).eq("counted", True))
+        own_part = {"answers_counted": len(mine)}
+    page = rules.model_page(model, me, own_part=own_part)
+    if page is None:
+        raise _not_found()
+    return page
+
+
+def enter(database: Any, user_id: Any, model_id: Any) -> dict:
+    """ "This is my field": the caller joins a public model as a teacher.
+    Their answers count only once the quiet trust check admits them."""
+    me = _require(database, user_id)
+    model = _model(database, model_id)
+    role = rules.viewer_role(model, me)
+    if role is None:
+        raise _not_found()
+    if role == "public":
+        _table(database, TEACHERS).insert({
+            "model_id": model["id"], "user_id": me, "role": "contributor",
+            "door_accepted_at": _now()}).execute()
+    return {"joined": True}
+
+
+def set_paused(database: Any, user_id: Any, model_id: Any, paused: bool) -> dict:
+    me = _require(database, user_id)
+    mid = _uuid(model_id)
+    rows = _rows(_table(database, TEACHERS).select("model_id").eq("model_id", mid).eq("user_id", me)) if mid else []
+    if not rows:
+        raise _not_found()
+    _table(database, TEACHERS).update({"paused_at": _now() if paused else None}) \
+        .eq("model_id", mid).eq("user_id", me).execute()
+    return {"paused": bool(paused)}
+
+
+def _teaching(database: Any, me: str) -> list[dict]:
+    return _rows(_table(database, TEACHERS).select("model_id,role,paused_at,company_line").eq("user_id", me))
+
+
+def queue_for(database: Any, user_id: Any, *, only: Any = None) -> dict:
+    me = _require(database, user_id)
+    mine = _teaching(database, me)
+    models = _models(database, [str(t["model_id"]) for t in mine])
+    mids = [m["id"] for m in models if m.get("status") in ("learning", "ready")]
+    examples = _rows(_table(database, EXAMPLES)
+                     .select("id,model_id,source,private,kind,content,sureness,speaker_id,added_by")
+                     .in_("model_id", mids).eq("in_exam", False)) if mids else []
+    answered = {(str(a["example_id"]), str(a["model_id"])) for a in _rows(
+        _table(database, ANSWERS).select("example_id,model_id").eq("teacher_id", me))} if mids else set()
+    waiting = [e for e in examples
+               if (str(e["id"]), str(e["model_id"])) not in answered
+               and str(e.get("speaker_id") or "") != me and str(e.get("added_by") or "") != me]
+    return rules.build_queue(
+        [m for m in models if m["id"] in mids], waiting, me,
+        paused=[t["model_id"] for t in mine if t.get("paused_at")], only=_uuid(only) if only else None,
+        company_line={str(t["model_id"]): t["company_line"] for t in mine if t.get("company_line")})
+
+
+def chat_rows_for(database: Any, user_id: Any) -> dict:
+    me = _require(database, user_id)
+    mine = _teaching(database, me)
+    if not mine:
+        return {"rows": rules.chat_rows(0, 0, teaches_any=False)}
+    q = queue_for(database, me)
+    return {"rows": rules.chat_rows(len(q["examples"]), sum(1 for r in q["models"] if not r["paused"]),
+                                    teaches_any=True)}
+
+
+def answer(database: Any, user_id: Any, example_id: Any, model_id: Any, step: str, value: Any) -> dict:
+    """Save one answer for every model it counts for (N566 item 7), then
+    return what follows: the note, the next model's question on the same
+    example, and once, "Your answers now count." The machine's read is
+    never returned here (Never 2)."""
+    me = _require(database, user_id)
+    if step not in ("rate", "pick", "words"):
+        raise ChatsError("BAD_STEP", "Unknown step.")
+    model = _model(database, model_id)
+    if rules.viewer_role(model, me) not in ("owner", "contributor"):
+        raise _not_found()
+    eid = _uuid(example_id)
+    rows = _rows(_table(database, EXAMPLES).select("id,model_id,private,snippet_id,known_answer")
+                 .eq("id", eid).eq("model_id", model["id"]).limit(1)) if eid else []
+    if not rows:
+        raise _not_found()
+    example = rows[0]
+    wanting: list[dict] = []
+    twins: list[dict] = []
+    if not example.get("private") and example.get("snippet_id"):
+        twins = _rows(_table(database, EXAMPLES).select("id,model_id").eq("snippet_id", example["snippet_id"])
+                      .eq("private", False).eq("in_exam", False))
+        twin_models = _models(database, sorted({str(t["model_id"]) for t in twins} - {model["id"]}))
+        wanting = [m for m in twin_models if rules.viewer_role(m, me) in ("owner", "contributor")]
+    plan = rules.counts_for(example, model, wanting)
+    text = None if value is None else str(value)[:4000]
+    twin_ids = {str(t["model_id"]): str(t["id"]) for t in twins}
+    for m in plan["counts_for"]:
+        ex_id = str(example["id"]) if m["id"] == model["id"] else twin_ids[m["id"]]
+        _save_answer(database, ex_id, m["id"], me, step, text)
+    told = _trust_after_answer(database, me, model)
+    return {"saved": True, "note": plan["note"],
+            "follow": [{"model_id": f["model"]["id"], "line": f["line"],
+                        "screen": rules.teaching_screen(f["model"], {"id": twin_ids.get(f["model"]["id"])})}
+                       for f in plan["follow"]],
+            "trust": told}
+
+
+def _save_answer(database: Any, example_id: str, model_id: str, me: str, step: str,
+                 text: Optional[str]) -> None:
+    """One row per teacher, example, model and step; a second answer replaces
+    the first."""
+    found = _rows(_table(database, ANSWERS).select("id").eq("example_id", example_id)
+                  .eq("model_id", model_id).eq("teacher_id", me).eq("step", step).limit(1))
+    if found:
+        _table(database, ANSWERS).update({"answer": text}).eq("id", found[0]["id"]).execute()
+    else:
+        _table(database, ANSWERS).insert({"example_id": example_id, "model_id": model_id,
+                                          "teacher_id": me, "step": step, "answer": text}).execute()
+
+
+def _trust_after_answer(database: Any, me: str, model: dict) -> Optional[dict]:
+    """Recompute the caller's trust for this model from all their answers;
+    tell them once when their answers start to count. A stop is silent."""
+    mine = _rows(_table(database, ANSWERS).select("example_id,answer").eq("model_id", model["id"])
+                 .eq("teacher_id", me).eq("step", "rate"))
+    if not mine:
+        return None
+    ids = [str(a["example_id"]) for a in mine]
+    known = {str(e["id"]): e.get("known_answer") for e in _rows(
+        _table(database, EXAMPLES).select("id,known_answer").in_("id", ids))}
+    others = [o for o in _rows(_table(database, ANSWERS).select("example_id,answer,teacher_id")
+                               .in_("example_id", ids).eq("model_id", model["id"]).eq("step", "rate"))
+              if str(o.get("teacher_id")) != me]
+    votes: dict[str, dict[Any, int]] = defaultdict(lambda: defaultdict(int))
+    for o in others:
+        votes[str(o["example_id"])][o.get("answer")] += 1
+    scored = []
+    for a in mine:
+        eid = str(a["example_id"])
+        consensus = known.get(eid) or (max(votes[eid].items(), key=lambda kv: kv[1])[0] if votes.get(eid) else None)
+        scored.append({"answer": a.get("answer"), "consensus": consensus, "known": bool(known.get(eid))})
+    team = _rows(_table(database, TEACHERS).select("user_id,trust_status,trust_kappa,trust_told_at")
+                 .eq("model_id", model["id"]))
+    me_row = next((t for t in team if str(t["user_id"]) == me), {})
+    ref = [float(t["trust_kappa"]) for t in team
+           if t.get("trust_status") == "counts" and t.get("trust_kappa") is not None and str(t["user_id"]) != me]
+    status = rules.trust_status(scored, ref, was_trusted=me_row.get("trust_status") == "counts")
+    kappa = rules.reliability(scored)["kappa"]
+    change: dict[str, Any] = {"trust_kappa": kappa}
+    just = status != me_row.get("trust_status")
+    if just:
+        change.update({"trust_status": status, "trust_changed_at": _now()})
+    screen = rules.trust_screen(status, just_changed=just and not me_row.get("trust_told_at"))
+    if screen:
+        change["trust_told_at"] = _now()
+    _table(database, TEACHERS).update(change).eq("model_id", model["id"]).eq("user_id", me).execute()
+    if status == "counts":
+        _table(database, ANSWERS).update({"counted": True}).eq("model_id", model["id"]) \
+            .eq("teacher_id", me).execute()
+    return screen
+
+
+def profile_for(database: Any, user_id: Any, person_id: Any) -> Optional[dict]:
+    me = _require(database, user_id)
+    pid = _uuid(person_id)
+    if not pid:
+        raise _not_found()
+    mine = _rows(_table(database, TEACHERS).select("model_id").eq("user_id", pid))
+    models = [m for m in _models(database, [str(t["model_id"]) for t in mine])
+              if pid == me or rules.viewer_role(m, me) is not None]
+    month = datetime.now(timezone.utc).strftime("%Y-%m-01")
+    counted = [a for a in _rows(_table(database, ANSWERS).select("model_id,created_at")
+                                .eq("teacher_id", pid).eq("counted", True))
+               if str(a.get("created_at") or "") >= month]
+    per: dict[str, int] = defaultdict(int)
+    for a in counted:
+        per[str(a["model_id"])] += 1
+    section = rules.profile_models(models, pid, per)
+    if section and pid != me:      # the actions are the owner's alone
+        for row in section["models"]:
+            row["actions"] = []
+    return section
+
+
+def invite_for(database: Any, user_id: Any, invite_id: Any) -> dict:
+    me = _require(database, user_id)
+    iid = _uuid(invite_id)
+    rows = _rows(_table(database, INVITES).select("id,model_id,inviter_id,invitee_id,status")
+                 .eq("id", iid).limit(1)) if iid else []
+    if not rows or str(rows[0]["invitee_id"]) != me:
+        raise _not_found()
+    inv = rows[0]
+    model = _model(database, inv["model_id"])
+    prof = _rows(_table(database, "people_profiles").select("name").eq("user_id", str(inv["inviter_id"])).limit(1))
+    who = (prof[0].get("name") if prof else None) or (
+        model.get("owner_name") if str(model.get("owner_id")) == str(inv["inviter_id"]) else None) or "Someone"
+    return rules.invite_card(who, model["name"],
+                             said_not_now=inv.get("status") == "not_now")

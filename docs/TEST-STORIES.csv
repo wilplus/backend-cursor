@@ -143,6 +143,15 @@ O2  A pair leaves once: a released pair cannot be released again.
 O3  Withdrawing voids the release that carried my pair and returns the
 pair; the release keeps its record.","O1 -> test_a_pair_is_releasable_only_under_an_active_yes
 O2, O3 -> test_a_withdrawal_voids_the_release_and_returns_the_pair_to_waiting","Founder 2026-09-30, L1, L2, L5 (migration 0405)."
+tests/test_a_person_can_teach_and_start_ai_models_postgres.py,Story,"As a person who starts or teaches an AI model, I want the models' tables to keep my model, my teaching and my answers safely, so that a public model outlives its owner's account, my own rows leave with mine, and no browser reaches any of it (N528, N563, N566).","O1  The five tables exist with RLS on, and no browser role is granted
+anything on them; the ring row ai_models sits at ring 6.
+O2  The tables refuse what the rules never allow: an added example with
+no adder, an example from Takes with no speaker, a known clip in the
+sealed exam, an unknown stage, the same answer twice.
+O3  Erasing the owner's account keeps their public model, with no owner;
+erasing a teacher's account takes their teaching and answers.","O1 -> test_the_tables_are_locked_to_the_backend_and_the_ring_is_six
+O2 -> test_the_tables_refuse_what_the_rules_never_allow
+O3 -> test_an_owners_model_outlives_their_account_and_a_teachers_rows_go","Migration a_person_can_teach_and_start_ai_models (0516), applied twice in both rehearsal lanes (the reapply is its idempotency check)."
 tests/test_a_practise_try_is_read_fast_postgres.py,Story,"As a speaker practising, I want each try read once, quickly, against my own practice and Take, so that feedback on the try arrives fast, belongs to me, and its number never reaches me.","O1  One stored read per try; the database takes the owner, practice and
 Take from the try itself and computes W and S*W; a repeat is a no-op.
 O2  A read that fails (services.v4_practice_read.record) still keeps its
@@ -2100,6 +2109,20 @@ O5 -> test_mod15_one_queue_across_models_helpful_first_and_none_starved
 O6 -> test_mod16_same_question_same_scale_counts_for_both
 O7 -> test_mod22_a_close_result_has_no_release_button
 O8 -> test_mod02_only_takes_after_the_training_yes_reach_teachers","The model launchpad, locked on its prototype (N566); its rules live once in services/model_launchpad.py, before its tables."
+tests/test_model_launchpad_routes.py,Story,"As a person in WillpowerLab, I want the AI models' list, a model's page, the door, the one queue and teaching to answer from the models' tables through /v2/models, so the launchpad's rules reach me as they are written (N528, N563, N566).","O1  Without the ring row (ai_models, ring 6) every route is 404.
+O2  The list shows public models with how far each is, and never another
+person's private model; its page is 404 to an outsider.
+O3  ""This is my field"" makes me a teacher; the queue then holds the
+model's examples without the machine's read, and Pause empties it.
+O4  One answer to a public clip is saved for both models that ask the
+same question, and the other model's different question follows; the
+answer returns nothing of the machine's read.
+O5  The profile lists the models a person started and teaches; an invite
+I put off says so and stays.","O1 -> ModelRoutesTest::test_without_the_ring_nothing_is_shown
+O2 -> ModelRoutesTest::test_the_list_and_a_private_page
+O3 -> ModelRoutesTest::test_the_door_the_queue_and_pause
+O4 -> ModelRoutesTest::test_one_answer_counts_for_both_and_the_other_question_follows
+O5 -> ModelRoutesTest::test_the_profile_and_the_invite","The model launchpad's first tables (migration a_person_can_teach_and_start_ai_models), served by services/model_launchpad_store.py over services/model_launchpad.py."
 tests/test_model_match.py,Story,"As someone on the models page, I want ""For you"" to show the models that need what I know and the ones I teach, so that my answers go where they count (founder, 5 November 2026, N518 items 7 and 8, N520 item 7; App Model MOD-53).","O1  ""For you"" shows only the models whose words match the person's
 profile at the matching's threshold (2.0) or more, and the ones they
 teach, whatever their score; nothing else, and never a score.
