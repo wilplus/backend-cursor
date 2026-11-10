@@ -9374,7 +9374,7 @@
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "The recipe keeps the answer, yes until the host says no (backend #1893). The prototype has no screen and no words for the question yet."
+  "note": "The recipe keeps the answer, yes until the host says no (backend #1893). Will's question waits for the founder's words and its place in the setup (N616 item 22)."
  },
  {
   "id": "FIRST-16",
@@ -9568,7 +9568,7 @@
   "id": "VIS-07",
   "area": "What a visitor meets",
   "title": "In a health, law or money chat the model only suggests to the host",
-  "status": "built",
+  "status": "partly",
   "screen": "chat.person",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host answered yes to health, law or money",
@@ -9587,7 +9587,7 @@
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "In a health, law or money chat the person gets nothing from a model; the host sees the suggestion (backend #1893)."
+  "note": "In a health, law or money chat the person gets nothing from a model; the host sees the suggestion (backend #1893). Will's question in the setup waits for the founder's words and its place (N616 item 22)."
  },
  {
   "id": "LEARN-01",
