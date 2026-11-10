@@ -7732,25 +7732,24 @@
   "id": "WID-16",
   "area": "Your chat on any website",
   "title": "No fixed questions are offered",
-  "status": "differs",
+  "status": "partly",
   "screen": "web.vis.number",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/your-chat-on-any-website-2026-11-09/your-chat-on-any-website.html",
   "given": "the visitor answered Ariel's questions",
   "when": "the widget moves on",
   "then": [
-   "it asks for a number (WID-17); no \"What would you like to ask Ariel?\" and no fixed questions"
+   "no \"What would you like to ask Ariel?\" and no fixed questions; the visitor writes as Ariel's chat is set up (N591 item 2)"
   ],
   "rules": [
+   "N591 item 5",
    "N569 item 2"
   ],
-  "code": [
-   "be:services/chat_widget.py::ASKS = (\"What do you do?\", \"How do you work with people?\", \"Can we talk?\")"
-  ],
+  "code": [],
   "tests": [
    "tests/test_chat_widget.py"
   ],
   "evals": [],
-  "note": "The code offers \"What would you like to ask {name}?\" with \"What do you do?\", \"How do you work with people?\" and \"Can we talk?\" (N567 item 5); N569 item 2 removes them."
+  "note": "Backend: the fixed questions are gone (#1868, N591 item 5); the widget still shows them until the frontend follows."
  },
  {
   "id": "WID-17",
@@ -7881,26 +7880,28 @@
  {
   "id": "WID-22",
   "area": "Your chat on any website",
-  "title": "The owner no longer records a spoken answer for a visitor",
-  "status": "differs",
+  "title": "The owner answers a visitor as in any chat",
+  "status": "partly",
   "screen": "web.own.chat",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/your-chat-on-any-website-2026-11-09/your-chat-on-any-website.html",
   "given": "a visitor's chat is open",
   "when": "Ariel looks at the bar",
   "then": [
-   "no \"Record your answer\" for the visitor; the call takes its place"
+   "the visitor's question is marked to answer, however it arrived",
+   "Ariel answers by recording or typing, as her setup allows"
   ],
   "rules": [
+   "N591 item 3",
    "N569 item 2"
   ],
   "code": [
-   "be:services/chat_widget.py::return _post(database, me, \"text\", ASKS[i], {\"widget_ask\": i, \"record_answer\": True})"
+   "be:services/chats.py::def _post_text"
   ],
   "tests": [
    "tests/test_chat_widget.py"
   ],
   "evals": [],
-  "note": "The code marks the visitor's question for \"Record your answer\" and plays the answer in the widget (N567 item 6); N569 item 2 removes it."
+  "note": "Backend built in #1868 (a typed question carries record_answer; the host may type); the bar's typing waits for the founder's OK (N483)."
  },
  {
   "id": "WID-23",
@@ -7930,7 +7931,7 @@
   "id": "WID-24",
   "area": "Your chat on any website",
   "title": "Keep this chat makes it the visitor's",
-  "status": "built",
+  "status": "differs",
   "screen": "web.vis.keep",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/your-chat-on-any-website-2026-11-09/your-chat-on-any-website.html",
   "given": "a visitor in the widget",
@@ -7940,18 +7941,18 @@
    "the join page opens; after Join the chat is theirs, and Ariel's list says \"Widget / {name}\""
   ],
   "rules": [
-   "N567 item 7",
-   "customer-requests.md §B8 to B13"
+   "N591 item 4",
+   "N567 item 7"
   ],
   "code": [
-   "fe:src/components/willab/chats/joinCopy.ts::export const keepLine = (name: string) => `Join WillpowerLab to keep it, and hear ${name}'s answers on your phone.`;",
-   "be:services/chat_widget.py::def keep(database: Any, user_id: Any, token: Any, guest: Any, token_payload: Any) -> dict:"
+   "fe:src/components/willab/chats/joinCopy.ts::export const keepLine = (name: string) => `Join WillpowerLab to keep it, and hear ${name}'s answers on your phone.`;"
   ],
   "tests": [
    "src/components/willab/chats/WidgetChat.test.tsx",
    "tests/test_chat_widget.py"
   ],
-  "evals": []
+  "evals": [],
+  "note": "Retired by N591 item 4: replaced by WID-29, the sign-up after asking. The backend's keep is now sign_up (#1868); the frontend's Keep this chat remains until it follows."
  },
  {
   "id": "WID-25",
@@ -8612,6 +8613,32 @@
    "src/components/willab/chats/WidgetChat.test.tsx"
   ],
   "evals": []
+ },
+ {
+  "id": "WID-29",
+  "area": "Your chat on any website",
+  "title": "The visitor signs up after asking, to get the answer",
+  "status": "partly",
+  "screen": "web.vis.keep",
+  "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/your-chat-on-any-website-2026-11-09/your-chat-on-any-website.html",
+  "given": "a visitor has asked Ariel something on her website",
+  "when": "they sign up with a phone, email, Google or another sign-in",
+  "then": [
+   "the chat becomes theirs, as for anyone who joined through Ariel's link, and Ariel's list names them",
+   "Ariel's answer reaches them, and the first notice of it goes to that phone or email"
+  ],
+  "rules": [
+   "N591 item 4",
+   "N471"
+  ],
+  "code": [
+   "be:services/chat_widget.py::def sign_up"
+  ],
+  "tests": [
+   "tests/test_chat_widget.py"
+  ],
+  "evals": [],
+  "note": "Backend built in #1868; the sign-up step's words and the first notice's words wait for the founder's OK (Never 4)."
  },
  {
   "id": "WILL-14",
