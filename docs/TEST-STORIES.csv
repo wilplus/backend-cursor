@@ -187,6 +187,19 @@ O2  A yes given under the old wording now reads as off: no new yes to
 the old wording, and no training copy made on it.
 O3  The old yes stays on record as it was and can still be withdrawn.","O1 -> test_one_call_retires_v1_and_registers_v2_at_the_same_instant
 O2, O3 -> test_a_v1_yes_reads_as_off_everywhere_and_stays_on_record","Founder D3, N68 (migration 0458)."
+tests/test_a_paid_answer_is_charged_once_within_its_limit_postgres.py,Story,"As a business that buys a model's answers, I want an answer charged once however often my call is retried, and my monthly limit never passed by two answers arriving together (PIPE-07, PIPE-08, N615 item 3).","O1  The charges and the reserve function are the backend's only: RLS on,
+nothing for a browser role, the function executable by service_role
+alone.
+O2  (PIPE-08) Two reserves for one key at its limit's edge, on two
+connections at once: the second waits on the first's row lock and is
+refused; only one passes. The month counts answers given before the
+migration (ai_model_calls rows with no charge) and not released ones.
+O3  (PIPE-07) The same Idempotency-Key again: ""in_flight"" while the first
+is reserved, then the first reply once it is answered, nothing new
+reserved; another question with it is a ""mismatch""; a released charge
+frees the key for a new try.","O1 -> test_the_charges_are_locked_to_the_backend
+O2 -> test_two_answers_at_the_limit_only_one_passes
+O3 -> test_the_same_idempotency_key_is_charged_once","Migration a_paid_answer_is_charged_once_within_its_limit (0523), applied twice in both rehearsal lanes (the reapply is its idempotency check)."
 tests/test_a_pair_remembers_the_yes_postgres.py,Story,"As a speaker, I want my coached pairs released for training only while my yes is active, and pulled back if I withdraw, so that withdrawing really stops their use.","O1  A pair is allowed into training only while my training yes is
 active; withdrawing turns it off.
 O2  A pair leaves once: a released pair cannot be released again.
@@ -2262,7 +2275,11 @@ there, the model is never asked.
 O10 Never an unpaid answer and never a charge with no answer: the price is
 taken first, and refunded when the model gives no answer.
 O11 A monthly limit and a month's payouts count every answer, past the
-database's 1,000 rows an answer; only a finished month is paid.","O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
+database's 1,000 rows an answer; only a finished month is paid.
+O12 (PIPE-07) A call sent again with the same Idempotency-Key is charged
+once and gets the first answer, the model asked once; the same key with
+another question is refused; a call without a key is a new answer, as
+before; a new key after an answer that never came is a new try.","O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
 O2 -> ModelApiTest::test_the_card_and_trying_a_model
 O3 -> ModelApiTest::test_a_test_key_is_shown_once_and_answers_100_times
 O4 -> ModelApiTest::test_a_live_key_pays_in_tokens_and_stops_at_its_limit
@@ -2272,7 +2289,8 @@ O7 -> ModelApiTest::test_a_version_fixes_shares_and_earnings_are_paid_in_tokens
 O8 -> ModelApiTest::test_the_download_holds_the_teachers_answers_only
 O9 -> ModelApiTest::test_an_api_answer_needs_the_buyers_authority
 O10 -> ModelApiTest::test_no_answer_is_never_charged_and_a_charge_is_never_unanswered
-O11 -> ModelApiTest::test_limits_and_payouts_count_past_a_thousand_rows","The models' API and its money (migration a_business_can_buy_a_model_s_answers), served by services/model_api_store.py over services/model_api.py."
+O11 -> ModelApiTest::test_limits_and_payouts_count_past_a_thousand_rows
+O12 -> ModelApiTest::test_a_paid_answer_is_charged_once","The models' API and its money (migration a_business_can_buy_a_model_s_answers), served by services/model_api_store.py over services/model_api.py."
 tests/test_model_launchpad.py,Story,"As a person in WillpowerLab, I want to find AI models, see how far each is, teach the ones in my field from one queue, and, as a model's founder, release a version only when it is clearly better (N528, N563, N566; the locked prototype ""The Model Launchpad"").","O1  The list puts my draft on top, then the most mature models, with
 search, the three filters, and an empty state that offers to start one.
 O2  A public model's page is in totals only; a private one is unseen by
@@ -2346,11 +2364,20 @@ O4  (PIPE-04) A model with more than a thousand counted answers shows every
 one of them in its counts.
 O5  (PIPE-09) A teacher the owner invites after the model went public is
 never sent, and cannot answer, the examples that were private; a
-teacher invited while it was private still is.","O1 -> ModelPipesTest::test_an_exam_example_or_your_own_cannot_be_answered
+teacher invited while it was private still is.
+O6  (PIPE-05) The same people's Takes reach two models: each model sets
+aside its own people for its exam, and a moment sealed in one model's
+exam is neither served to nor answerable by that exam's expert in the
+other model, while another teacher still gets it there.
+O7  The gathering reaches every model over successive runs, not the same
+first twenty every run.","O1 -> ModelPipesTest::test_an_exam_example_or_your_own_cannot_be_answered
 O2 -> ModelPipesTest::test_a_newcomer_is_measured_against_trusted_teachers_only
 O3 -> SweepTest::test_turning_the_training_yes_off_reaches_every_model
 O4 -> ModelPipesTest::test_counts_read_every_row
-O5 -> ModelPipesTest::test_invited_after_going_public_does_not_open_private_examples",The audit of the launchpad's code (N615); the build's stories PIPE-01 to PIPE-09 (docs/design/the-blank-setup-2026-11-10).
+O5 -> ModelPipesTest::test_invited_after_going_public_does_not_open_private_examples
+O6 -> SweepTest::test_each_models_exam_has_its_own_people
+O6 -> ModelPipesTest::test_a_sealed_moment_is_not_taught_by_its_expert_elsewhere
+O7 -> SweepTest::test_every_model_takes_its_turn_in_the_gathering",The audit of the launchpad's code (N615); the build's stories PIPE-01 to PIPE-09 (docs/design/the-blank-setup-2026-11-10).
 tests/test_model_setup.py,Story,"As someone starting a model, I want the setup to walk me through three chapters one step at a time, propose what my model does and which AI does each part, check my data the way a data scientist would, keep the final exam fair, and show me afterwards what needs me, in plain words, so a model I start can learn from day one (N528 item 4, N566 items 2 to 6, N570, N585).","O1  The setup has three chapters with a thin bar; the caption says where
 I am and optional steps say so (MOD-24).
 O2  From my three answers the app proposes what the model does, and each

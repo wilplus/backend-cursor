@@ -20,7 +20,15 @@ calls a provider outside that scope.
 MONEY. A live key's answer is charged to its buyer in tokens at the model's
 price (``token_account.charge_model_answer``), through the same atomic
 charge as every other; an answer is given only when the whole price was
-charged. Test keys never bill. Payouts are a founder's step
+charged. Test keys never bill.
+
+ONCE, AND WITHIN THE LIMIT (PIPE-07, PIPE-08; migration
+a_paid_answer_is_charged_once_within_its_limit). Before the model is asked,
+``ai_model_answer_reserve`` takes the answer's place in the key's month in
+one database transaction, under the key's row lock, so two answers at the
+limit's edge cannot both pass. A caller's ``Idempotency-Key`` is kept with
+that charge: the same key again gets the first answer back and is charged
+nothing. Payouts are a founder's step
 (``pay_month``), never a schedule; they credit tokens (N583 item 4).
 
   * ``card_for``        the card of a model for sale (MOD-39)
@@ -37,8 +45,9 @@ charged. Test keys never bill. Payouts are a founder's step
 """
 from __future__ import annotations
 
+import hashlib
 import logging
-import uuid
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -50,8 +59,15 @@ from services.chats import ChatsError, _not_found, _rows, _table, _uuid
 
 logger = logging.getLogger(__name__)
 
-VERSIONS, SHARES, KEYS, CALLS, PAYOUTS = (
-    "ai_model_versions", "ai_model_shares", "ai_model_api_keys", "ai_model_calls", "ai_model_payouts")
+VERSIONS, SHARES, KEYS, CALLS, PAYOUTS, CHARGES = (
+    "ai_model_versions", "ai_model_shares", "ai_model_api_keys", "ai_model_calls", "ai_model_payouts",
+    "ai_model_charges")
+#: The database function that checks a key's month and takes one answer's
+#: place in it, atomically (PIPE-08), and keeps the caller's key (PIPE-07).
+RESERVE_RPC = "ai_model_answer_reserve"
+#: An Idempotency-Key: 1 to 255 visible ASCII characters (the migration's
+#: CHECK ai_model_charges_key_shape).
+_IDEMPOTENCY_KEY = re.compile(r"^[!-~]{1,255}$")
 _VERSION_FIELDS = ("id,model_id,number,status,base_model,provider_model,founder_id,card,exam,created_at,released_at,"
                    "head,confidence,example_ids,retrain_at,owner_checked_at")
 _KEY_FIELDS = ("id,model_id,buyer_id,version_id,key_tail,kind,free_left,monthly_limit_units,"
@@ -394,9 +410,15 @@ def _give_back_a_free_answer(database: Any, key: dict) -> None:
                        exc_info=True)
 
 
-def answer_with_key(database: Any, key: dict, model_id: Any, message: Any) -> dict:
+def answer_with_key(database: Any, key: dict, model_id: Any, message: Any,
+                    idempotency_key: Optional[str] = None) -> dict:
     """One answer through the API: {answer, sure, version}. The key must be
     this model's; its buyer must still have the ring and may buy it.
+
+    ONCE (PIPE-07): with an ``idempotency_key``, the same key and question
+    again get the first answer back, charged nothing and the model not
+    asked; while the first is still being answered, 409; the same key for
+    another question, 422. Without one, every call is a new answer.
 
     FAIL CLOSED BOTH WAYS: never an unpaid answer, never a charge with no
     answer. What the answer costs is taken FIRST (a test key's free answer,
@@ -405,6 +427,9 @@ def answer_with_key(database: Any, key: dict, model_id: Any, message: Any) -> di
     given back (the free answer, or the tokens, refunded idempotently on the
     call's id)."""
     buyer = str(key["buyer_id"])
+    if idempotency_key is not None and not _IDEMPOTENCY_KEY.match(str(idempotency_key)):
+        raise KeyRefused("INVALID_IDEMPOTENCY_KEY",
+                         "An Idempotency-Key is 1 to 255 visible ASCII characters.", 400)
     if _uuid(model_id) != str(key["model_id"]):
         raise KeyRefused("INVALID_KEY", "This key is not for this model.", 401)
     if not models.enabled(database, buyer):
@@ -419,9 +444,11 @@ def answer_with_key(database: Any, key: dict, model_id: Any, message: Any) -> di
     if version is None or version.get("status") == "retired":
         raise KeyRefused("VERSION_RETIRED", "This key's version is retired. Switch to the newest.", 410)
     text = _clean_message(message)
-    call_id = str(uuid.uuid4())
     row = rules.call_row(key, model, version, sure=False, base_model=_base_model([version]))
-    _reserve(database, key, buyer, row, call_id)
+    asked = hashlib.sha256(text.encode()).hexdigest() if idempotency_key is not None else None
+    call_id, replay = _reserve(database, key, buyer, row, idempotency_key, asked)
+    if replay is not None:
+        return replay
     try:
         result = _ask(model, version, text)
     except Exception:
@@ -431,6 +458,8 @@ def answer_with_key(database: Any, key: dict, model_id: Any, message: Any) -> di
         _release(database, key, buyer, row, call_id)
         raise KeyRefused("MODEL_UNAVAILABLE", "The model could not answer just now.", 503)
     row["sure"] = bool(result["sure"])
+    out = {"answer": result["answer"], "sure": bool(result["sure"]), "version": int(version["number"])}
+    _settle(database, call_id, out if idempotency_key is not None else None)
     try:
         _table(database, CALLS).insert({"id": call_id, "key_id": key["id"], "buyer_id": buyer,
                                         "model_id": model["id"], "version_id": version["id"], **row}).execute()
@@ -441,30 +470,77 @@ def answer_with_key(database: Any, key: dict, model_id: Any, message: Any) -> di
     _table(database, KEYS).update({"last_used_at": _now().isoformat()}).eq("id", key["id"]).execute()
     if not result["sure"] and key.get("allow_training"):
         _queue_unsure(database, model, text, added_by=None)
-    return {"answer": result["answer"], "sure": bool(result["sure"]), "version": int(version["number"])}
+    return out
 
 
-def _reserve(database: Any, key: dict, buyer: str, row: dict, call_id: str) -> None:
-    """Take what one answer costs before the provider is asked: a test key's
-    free answer, or a live key's whole price (within its monthly limit)."""
+#: What the reserve function answers, other than "reserved" and "replay".
+_RESERVE_REFUSED = {
+    "no_key": ("INVALID_KEY", "This key is not valid.", 401),
+    "limit": ("MONTHLY_LIMIT", "This key reached its monthly limit.", 429),
+    "in_flight": ("IDEMPOTENCY_KEY_IN_USE", "A call with this Idempotency-Key is still being answered.", 409),
+    "mismatch": ("IDEMPOTENCY_KEY_REUSED", "This Idempotency-Key was sent with another question.", 422),
+}
+
+
+def _reserve(database: Any, key: dict, buyer: str, row: dict, idempotency_key: Optional[str],
+             asked: Optional[str]) -> tuple[str, Optional[dict]]:
+    """Take what one answer costs before the provider is asked: its place in
+    the key's month, atomically in the database (PIPE-08), then a test key's
+    free answer or a live key's whole price, charged on the call's id.
+    Returns (call id, None), or (call id, the first answer) for a retry of
+    an answered call (PIPE-07), which takes nothing."""
+    from services import token_account
+    if not row["test"] and not token_account.enabled():
+        raise KeyRefused("BILLING_OFF", "Live keys are not billing yet. Use a test key.", 503)
+    units = 0 if row["test"] else int(row["price_units"])
+    got = _rows(database.client.rpc(RESERVE_RPC, {
+        "p_key_id": str(key["id"]), "p_units": units,
+        "p_idempotency_key": idempotency_key, "p_request_hash": asked}))
+    first = got[0] if got else {}
+    outcome = first.get("outcome")
+    if outcome in _RESERVE_REFUSED:
+        raise KeyRefused(*_RESERVE_REFUSED[str(outcome)])
+    if outcome == "replay" and isinstance(first.get("reply"), dict):
+        return str(first["charge_id"]), dict(first["reply"])
+    if outcome != "reserved" or not first.get("charge_id"):
+        raise RuntimeError(f"model_api: the reserve answered {outcome!r}")
+    call_id = str(first["charge_id"])
     if row["test"]:
         if not _take_a_free_answer(database, key):
+            _settled(database, call_id, "released")
             raise KeyRefused("FREE_ANSWERS_USED", "This test key used its 100 free answers.", 402)
-        return
-    from services import token_account
-    if not token_account.enabled():
-        raise KeyRefused("BILLING_OFF", "Live keys are not billing yet. Use a test key.", 503)
-    if rules.call_refusal(key, row["price_units"], _spent_this_month(database, key)):
-        raise KeyRefused("MONTHLY_LIMIT", "This key reached its monthly limit.", 429)
-    charged = token_account.charge_model_answer(buyer, row["price_units"], ref_id=call_id)
-    if charged.charged != row["price_units"]:
+        return call_id, None
+    charged = token_account.charge_model_answer(buyer, units, ref_id=call_id)
+    if charged.charged != units:
         if charged.charged > 0:
             token_account.refund_model_answer(buyer, charged.charged, ref_id=call_id)
+        _settled(database, call_id, "released")
         raise KeyRefused("NOT_ENOUGH_TOKENS", "Not enough tokens. Top up to go on.", 402)
+    return call_id, None
+
+
+def _settled(database: Any, call_id: str, status: str, reply: Optional[dict] = None) -> None:
+    """The charge's stage after the model was asked. Never raises: a charge
+    left reserved still counts in its month, which errs on the safe side."""
+    update: dict = {"status": status, "settled_at": _now().isoformat()}
+    if reply is not None:
+        update["reply"] = reply
+    try:
+        _table(database, CHARGES).update(update).eq("id", call_id).execute()
+    except Exception:
+        logger.error("model_api: a charge was not settled call=%s status=%s", call_id, status,
+                     exc_info=True)
+
+
+def _settle(database: Any, call_id: str, reply: Optional[dict]) -> None:
+    """Answered: the reply is kept only for a call that sent an
+    Idempotency-Key, so its retry gets the same answer."""
+    _settled(database, call_id, "answered", reply)
 
 
 def _release(database: Any, key: dict, buyer: str, row: dict, call_id: str) -> None:
     """Give back what ``_reserve`` took, when no answer came back."""
+    _settled(database, call_id, "released")
     if row["test"]:
         _give_back_a_free_answer(database, key)
         return
@@ -473,15 +549,6 @@ def _release(database: Any, key: dict, buyer: str, row: dict, call_id: str) -> N
     if not done.get("ok"):
         logger.error("model_api: a charge for an answer that never came was not refunded "
                      "call=%s reason=%s", call_id, done.get("reason"))
-
-
-def _spent_this_month(database: Any, key: dict) -> int:
-    """What a live key was billed this month: every row counted, past any
-    page size (``_all``)."""
-    month = _month_start()
-    return sum(int(c.get("price_units") or 0) for c in _all(
-        lambda: _table(database, CALLS).select("price_units,created_at").eq("key_id", key["id"])
-        .gte("created_at", month)) if _in_month(c, month))
 
 
 # ── Earnings (MOD-47) ───────────────────────────────────────────────────────

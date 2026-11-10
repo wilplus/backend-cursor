@@ -18,11 +18,20 @@ OUTCOME
   O5  (PIPE-09) A teacher the owner invites after the model went public is
       never sent, and cannot answer, the examples that were private; a
       teacher invited while it was private still is.
+  O6  (PIPE-05) The same people's Takes reach two models: each model sets
+      aside its own people for its exam, and a moment sealed in one model's
+      exam is neither served to nor answerable by that exam's expert in the
+      other model, while another teacher still gets it there.
+  O7  The gathering reaches every model over successive runs, not the same
+      first twenty every run.
 PROVES   O1 -> ModelPipesTest::test_an_exam_example_or_your_own_cannot_be_answered
          O2 -> ModelPipesTest::test_a_newcomer_is_measured_against_trusted_teachers_only
          O3 -> SweepTest::test_turning_the_training_yes_off_reaches_every_model
          O4 -> ModelPipesTest::test_counts_read_every_row
          O5 -> ModelPipesTest::test_invited_after_going_public_does_not_open_private_examples
+         O6 -> SweepTest::test_each_models_exam_has_its_own_people
+         O6 -> ModelPipesTest::test_a_sealed_moment_is_not_taught_by_its_expert_elsewhere
+         O7 -> SweepTest::test_every_model_takes_its_turn_in_the_gathering
 WHY      The audit of the launchpad's code (N615); the build's stories
          PIPE-01 to PIPE-09 (docs/design/the-blank-setup-2026-11-10).
 """
@@ -138,8 +147,55 @@ class ModelPipesTest(ModelRoutesTest):
         self.who = ARTUR                                   # invited while it was private
         self.assertIn(own, [e["id"] for e in self._get("/v2/models/queue").get_json()["examples"]])
 
+    def test_a_sealed_moment_is_not_taught_by_its_expert_elsewhere(self):
+        from tests.test_model_launchpad_routes import INTERVIEW
+        twin = "e5000000-0000-4000-8000-00000000007a"
+        t = self.store.tables
+        t["ai_models"][0]["setup"] = {"exam": {"asked_at": "2026-11-01"}}     # Artur sets SPEAK's exam
+        t["ai_model_teachers"].append({"model_id": INTERVIEW, "user_id": ARTUR, "role": "contributor",
+                                       "trust_status": "learning", "paused_at": None, "company_line": None})
+        t["ai_model_examples"] += [
+            {"id": EXAM, "model_id": SPEAK, "source": "takes", "private": False, "snippet_id": "clip-7",
+             "in_exam": True, "known_answer": None, "speaker_id": KASIA, "added_by": None, "content": {}},
+            {"id": twin, "model_id": INTERVIEW, "source": "takes", "private": False, "snippet_id": "clip-7",
+             "in_exam": False, "known_answer": None, "speaker_id": KASIA, "added_by": None, "content": {}}]
+        self.who = ARTUR
+        served = [(e["id"], e.get("model_id")) for e in self._get("/v2/models/queue").get_json()["examples"]]
+        self.assertNotIn(twin, [i for i, _ in served])
+        self.assertEqual(self._answer(INTERVIEW, twin).status_code, 404)
+        self.assertEqual(self._answers_on(twin), [])
+        self.who = MARTA                                   # not an expert of SPEAK's exam
+        self.assertIn(twin, [e["id"] for e in self._get("/v2/models/queue").get_json()["examples"]])
+
 
 class SweepTest(unittest.TestCase):
+    def test_each_models_exam_has_its_own_people(self):
+        from services import model_examples_from_takes as gather
+        store = _Store()
+        a, b = "bbbb0000-0000-4000-8000-0000000000a1", "bbbb0000-0000-4000-8000-0000000000b2"
+        store.tables["ai_models"] = [{"id": m, "owner_id": ARTUR, "status": "learning",
+                                      "recipe": {"input": "voice"}} for m in (a, b)]
+        store.tables["ai_model_examples"] = []
+        speakers = [f"aaaa0000-0000-4000-8000-{i:012d}" for i in range(60)]
+        takes = [{"speaker_id": s, "take_id": f"take-{s}"} for s in speakers]
+
+        class Database:
+            client = store
+
+        with patch.object(gather, "speaker_may_teach", lambda _d, _s: {"ok": True, "granted_at": "2026-01-01"}), \
+                patch.object(gather, "_received_takes", lambda _d, _o: takes), \
+                patch.object(gather, "_recorded_at", lambda _d, _t: "2026-02-01"), \
+                patch.object(gather, "_moments", lambda _d, take: [{"id": f"{take}-m", "transcript": "Hello."}]):
+            gather.sweep(database=Database())
+
+        def exam_people(model):
+            return {e["speaker_id"] for e in store.tables["ai_model_examples"]
+                    if e["model_id"] == model and e["in_exam"]}
+        self.assertTrue(exam_people(a) and exam_people(b))
+        self.assertNotEqual(exam_people(a), exam_people(b))
+        self.assertTrue(exam_people(a) - exam_people(b))
+
+
     def test_turning_the_training_yes_off_reaches_every_model(self):
         from services import model_examples_from_takes as gather
         store = _Store()
@@ -162,3 +218,21 @@ class SweepTest(unittest.TestCase):
         left = {(e["model_id"], e["speaker_id"]) for e in store.tables["ai_model_examples"]}
         self.assertEqual({w for _, w in left}, {stays})
         self.assertEqual(len(left), 25)
+
+    def test_every_model_takes_its_turn_in_the_gathering(self):
+        from services import model_examples_from_takes as gather
+        store = _Store()
+        models = [f"bbbb0000-0000-4000-8000-{i:012d}" for i in range(25)]
+        store.tables["ai_models"] = [{"id": m, "owner_id": ARTUR, "status": "learning",
+                                      "recipe": {"input": "voice"}} for m in models]
+        store.tables["ai_model_examples"] = []
+        reached: list[str] = []
+
+        class Database:
+            client = store
+
+        with patch.object(gather, "gather_for_model",
+                          lambda _d, m: reached.append(m["id"]) or {"added": 0, "removed": 0}):
+            gather.sweep(database=Database(), limit=20)
+            gather.sweep(database=Database(), limit=20)
+        self.assertEqual(set(reached), set(models))

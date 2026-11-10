@@ -191,6 +191,8 @@ def queue_for(database: Any, user_id: Any, *, only: Any = None) -> dict:
     # An upload waits for its 60 re-rates; the rest of it never needs a
     # teacher (N566 item 4).
     examples = [e for e in examples if e.get("source") != "upload" or e.get("kind") == "rerate"]
+    sealed = _sealed_to(database, me, [str(t["model_id"]) for t in mine])
+    examples = [e for e in examples if not e.get("snippet_id") or str(e["snippet_id"]) not in sealed]
     examples += _exam_cases_for(database, me, mids)
     answered = {(str(a["example_id"]), str(a["model_id"])) for a in _rows(
         _table(database, ANSWERS).select("example_id,model_id").eq("teacher_id", me))} if mids else set()
@@ -277,6 +279,13 @@ def _exam_cases_for(database: Any, me: str, mids: list[str]) -> list[dict]:
                  .in_("model_id", mine).eq("in_exam", True))
 
 
+def _sealed_to(database: Any, me: str, mids: list[str]) -> set[str]:
+    """The moments (snippet ids) sealed in an exam this teacher sets, in any
+    model they teach: none of them is served to them, or taken from them,
+    as a teaching example in another model (PIPE-05, N615 item 2)."""
+    return {str(c["snippet_id"]) for c in _exam_cases_for(database, me, mids) if c.get("snippet_id")}
+
+
 def with_clips(database: Any, examples: list[dict]) -> list[dict]:
     """A voice example's clip for the teacher's screen (MOD-08): a short-lived
     signed link and the moment's window, through the path the blind coach
@@ -334,6 +343,11 @@ def answer(database: Any, user_id: Any, example_id: Any, model_id: Any, step: st
     # another teacher agrees, never on a second answer of theirs.
     if example.get("in_exam") and str(example["id"]) not in {
             str(c["id"]) for c in _exam_cases_for(database, me, [model["id"]])}:
+        raise _not_found()
+    # A moment sealed in an exam this teacher sets is not taught by them in
+    # another model (PIPE-05, N615 item 2): for them it is not there.
+    if not example.get("in_exam") and example.get("snippet_id") and str(example["snippet_id"]) in _sealed_to(
+            database, me, [str(t["model_id"]) for t in _teaching(database, me)]):
         raise _not_found()
     if str(example.get("added_by") or "") == me:
         raise ChatsError("OWN_EXAMPLE", "You added this example; another teacher answers it.", 409)
