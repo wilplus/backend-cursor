@@ -434,9 +434,11 @@ points.",O1 -> VoiceAlbumBubbleTests::test_ac9_it_never_counts_or_grades,Never-r
 tests/test_assistants.py,Story,"As someone who invites people, I want my own chat answered by ""{name}'s assistant"", so that whoever joins through my link meets my chat, set up my way, and knows an AI answers for me (N578, N579, N580, N585, N586, N588).","O1  With the chat builder's ring, each chat with a person in my list says
 whose assistant answers there: ""Tomek's assistant""; without the ring,
 nothing changes (N579 item 2, N580 items 1 and 3).
-O2  The join page of a tester's link says ""Tomek's assistant"" and ""Will's
-chat is where you can set up a chat of your own.""; anyone else's link
-shows only the name, as before (N586 item 2).
+O2  The join page of anyone's link is three lines: ""Tomek invited you"",
+one sentence of what you'll learn, ""Only the two of you are in this
+chat.""; Artur's link says his signed sentence; a tester's link also
+names ""Tomek's assistant""; the old line about Will's chat is gone
+(N601).
 O3  A host sets the welcome, the first Take's questions and how people
 answer; the builder starts from Artur's five; a locked field (the
 Nevers, consent, the bar...) is refused (N578 item 5, N579 item 1).
@@ -466,7 +468,7 @@ to see, and ""Do you want to automate your own chat?""; ""Go live"" keeps
 it, with the first Take's questions set in the builder, and the next
 person who joins meets it (N582 item 1, N586 item 5).
 O11 A welcome that scores people is not kept: Will says why and asks again.","O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
-O2 -> AssistantsTest::test_a_testers_join_page_names_the_assistant_and_wills_chat
+O2 -> AssistantsTest::test_the_join_page_is_three_lines
 O3 -> RecipeTest::test_a_host_sets_welcome_questions_and_how_people_answer
 O4 -> RecipeTest::test_a_hosts_words_never_score_the_speaker
 O5 -> RecipeTest::test_a_recognizer_reads_on_one_line_with_two_cuts
@@ -623,8 +625,8 @@ O3 -> test_answering_wills_question_is_not_deflected","Founder 2026-10-15: ""nex
 tests/test_chat_links.py,Story,"As a person in WillpowerLab, I want my own link that I paste into any email, so that a colleague who opens it joins me in a chat, and nobody else can reach me (N308, N328, N335).","O1  My link is made the first time I ask and stays the same after;
 replacing it makes a new one, and the old one opens nothing.
 O2  Before signing in, the join page learns only the first name of whose
-link it is. A wrong link and a replaced one answer 404, the same
-answer.
+link it is, in its three lines (N601). A wrong link and a replaced one
+answer 404, the same answer.
 O3  Joining makes one chat between the two of us, each named for the
 other; opening a link again, from either side, finds the same chat.
 O4  My own link is refused (400 OWN_LINK), and nothing is made.
@@ -2976,10 +2978,12 @@ O4  An address Apple no longer knows is forgotten.","O1 -> PushDevicesTest::test
 O2 -> PushDevicesTest::test_without_apples_key_nothing_is_sent
 O3 -> PushDevicesTest::test_an_app_run_from_xcode_is_reached_on_apples_sandbox
 O4 -> PushDevicesTest::test_an_address_apple_no_longer_knows_is_forgotten","Push in the iPhone app (founder 2026-11-03, N385); Apple's service is stood in for (services/push_devices.py)."
-tests/test_question_bundles.py,Story,"As a host, I want one recording to answer everyone who asked me the same thing, so that I answer a question once and everyone who asks it, now or later, gets my answer in their own chat with me (N584).","O1  Questions that ask the same thing gather in one bundle in my queue:
-""Ariel asked: ..."", then ""2 people asked: ..."", each person's question
-with its colour, and ""Record one answer""; a different question starts
-its own bundle.
+tests/test_question_bundles.py,Story,"As a host, I want one recording to answer everyone who asked me the same thing, so that I answer a question once and everyone who asks it, now or later, gets my answer in their own chat with me (N584).","O1  Questions that ask the same thing gather in one card in Will's chat
+(N602): ""2 people asked"", the question large, ""Ariel and Ola"", ""See
+who asked"" and ""Record one answer""; ""See who asked"" opens ""Who asked"",
+each person's own words, name and where they asked (""in your chat"",
+""on your website""), then ""Split them up""; a different question starts
+its own card.
 O2  My one recording goes to everyone in the bundle, each privately in
 their own chat with me, under their own question quoted; nobody gets
 it twice.
@@ -2995,6 +2999,7 @@ reads as the next question, and nothing of theirs is kept.","O1 -> BundlesTest::
 O2 -> BundlesTest::test_one_recording_answers_everyone_in_the_bundle
 O3 -> BundlesTest::test_a_later_asker_gets_the_answer_at_once
 O4 -> BundlesTest::test_without_the_ring_nothing_is_bundled
+O1 -> BundlesTest::test_the_card_names_two_and_how_many_more_and_where_they_asked
 O5 -> BundlesTest::test_my_own_replies_are_never_bundled
 O6 -> BundlesTest::test_a_later_asker_gets_the_answer_at_once
 O7 -> BundlesTest::test_one_answer_asks_my_recording_consent_again
@@ -4357,6 +4362,10 @@ W2 -> test_change_it_asks_what_to_change_and_draws_the_card_again
 W4 -> test_sharing_brings_the_join_questions_and_the_agreement
 W6, W7 -> test_learning_after_the_walk_and_record_take_2_waits
 W8 -> test_a_coachs_link_and_another_chat_meet_none_of_it","N453, N564, N572, N573, N590, N592; the rules are frontend docs/flows/the-plan.md §2."
+tests/test_way_in_limit.py,Story,"As a newcomer waiting for my first Take, I want Will's chat to keep answering while the app checks every few seconds what is due, so that the way in never stops with ""too many requests"" in the wait.","L1  The way in's poll (no answer, no audio) is not counted against the
+model's limit: more polls than that limit allows in a minute all
+pass, under the poll's own, higher limit.
+L2  An answer, which may call the model, is still counted against it.","L1, L2 -> test_polls_pass_the_models_limit_and_answers_do_not","The app polls POST /v2/plan/way-in every 5 s while Take 1 waits (N572, N592); under the model's 400 per hour it got 429s after about half an hour (coordinator's end-to-end review, 9 Nov 2026)."
 tests/test_webm_remux.py,Story,"As a speaker, I want my recording made seekable without changing its timing, and kept as-is if that fails, so that playback works everywhere and my Take is never lost. (Critical path: record.)","O1  The remuxed file carries a seek index and exactly the same packets and
 timestamps as the recording (even one not starting at zero), so no
 stored offset moves.

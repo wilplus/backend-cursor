@@ -470,7 +470,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 `tests/test_assistants.py` · Story
 
 - **O1** With the chat builder's ring, each chat with a person in my list says whose assistant answers there: "Tomek's assistant"; without the ring, nothing changes (N579 item 2, N580 items 1 and 3).
-- **O2** The join page of a tester's link says "Tomek's assistant" and "Will's chat is where you can set up a chat of your own."; anyone else's link shows only the name, as before (N586 item 2).
+- **O2** The join page of anyone's link is three lines: "Tomek invited you", one sentence of what you'll learn, "Only the two of you are in this chat."; Artur's link says his signed sentence; a tester's link also names "Tomek's assistant"; the old line about Will's chat is gone (N601).
 - **O3** A host sets the welcome, the first Take's questions and how people answer; the builder starts from Artur's five; a locked field (the Nevers, consent, the bar...) is refused (N578 item 5, N579 item 1).
 - **O4** A host's own words pass the checks Will's bubbles pass: a score or a verdict about the speaker is refused, their own numbers are not (N578 item 6, Never 1).
 - **O5** A simple recognizer reads on one line with two cuts: Yes past the upper, No below the lower, the queue between, coloured green, yellow or red, never a number (N580 item 3, N585 item 2).
@@ -651,7 +651,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 `tests/test_chat_links.py` · Story
 
 - **O1** My link is made the first time I ask and stays the same after; replacing it makes a new one, and the old one opens nothing.
-- **O2** Before signing in, the join page learns only the first name of whose link it is. A wrong link and a replaced one answer 404, the same answer.
+- **O2** Before signing in, the join page learns only the first name of whose link it is, in its three lines (N601). A wrong link and a replaced one answer 404, the same answer.
 - **O3** Joining makes one chat between the two of us, each named for the other; opening a link again, from either side, finds the same chat.
 - **O4** My own link is refused (400 OWN_LINK), and nothing is made.
 - **O5** As a user with no ring at all, I get my link and someone joins me through it (N456; was ring 6 only).
@@ -2810,7 +2810,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 `tests/test_question_bundles.py` · Story
 
-- **O1** Questions that ask the same thing gather in one bundle in my queue: "Ariel asked: ...", then "2 people asked: ...", each person's question with its colour, and "Record one answer"; a different question starts its own bundle.
+- **O1** Questions that ask the same thing gather in one card in Will's chat (N602): "2 people asked", the question large, "Ariel and Ola", "See who asked" and "Record one answer"; "See who asked" opens "Who asked", each person's own words, name and where they asked ("in your chat", "on your website"), then "Split them up"; a different question starts its own card.
 - **O2** My one recording goes to everyone in the bundle, each privately in their own chat with me, under their own question quoted; nobody gets it twice.
 - **O3** Someone who asks the same thing later gets my answer at once, with its colour for how sure the match is.
 - **O4** Without the chat builder's ring nothing is bundled and the queue is 404.
@@ -3953,6 +3953,14 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - W1  Once Take 1 is sent: "While your feedback is being prepared, check what I heard.", then "What would you like to do here first?" with "Something else" first, "Learn from others", "Share what I know", "Prepare a talk", several then "Send" (FT-05, WID-04; N453, N573). W2  Once the Take's words are stored: "Here's how others will see you:" and the card from slide 1 (the role, About, topics as "Ask about {topic}", the name from sign-up); "That's right" keeps it, and only then may others see it; "Change it" brings "Tell me what to change." (FT-06; N453 item 2). W3  "Prepare a talk" alone asks "When is it?" with "No date yet", once; its date is the plan's; nobody is asked "When is your deadline?" (FT-10, PLAN-16; N564 item 1). W4  "Share what I know" brings the questions for people who join into the wait, then the agreement "Do you accept it?" with "I agree", and one "You're set." with "Copy my link ›" and "Your questions for people who join ›" (FT-11, FT-12, FT-13; N572). W5  Everyone gets the plan card and one "You're set."; nobody outside a team or sharing is asked the agreement (FT-12, FT-13). W6  After "You're set.": "Your feedback is almost ready. It will appear at the top of this chat." while it is prepared; "Your feedback is ready." with "Open your feedback ›" once it is; after the walk one bubble by the choice, the talk first, then sharing; "Record Take 2" stays faded until the walk is done (N592; WAYIN-N592-1..4). W7  "Learn from others" leads to "Next, ask someone who knows. Tap + to start." (FT-14, N592 item 2). W8  A speaking coach's link meets none of the choice's beats; the way in is in the speaking chat only (N572, N590; WAYIN-N590-1). W9  A first Take on which nothing was heard still gets its plan and "You're set." once its walk is done; no card is checked (N459 item 1).
 
 *Why:* N453, N564, N572, N573, N590, N592; the rules are frontend docs/flows/the-plan.md §2.
+
+### As a newcomer waiting for my first Take, I want Will's chat to keep answering while the app checks every few seconds what is due, so that the way in never stops with "too many requests" in the wait.
+
+`tests/test_way_in_limit.py` · Story
+
+- L1  The way in's poll (no answer, no audio) is not counted against the model's limit: more polls than that limit allows in a minute all pass, under the poll's own, higher limit. L2  An answer, which may call the model, is still counted against it.
+
+*Why:* The app polls POST /v2/plan/way-in every 5 s while Take 1 waits (N572, N592); under the model's 400 per hour it got 429s after about half an hour (coordinator's end-to-end review, 9 Nov 2026).
 
 ### As a speaker, I want my recording made seekable without changing its timing, and kept as-is if that fails, so that playback works everywhere and my Take is never lost. (Critical path: record.)
 

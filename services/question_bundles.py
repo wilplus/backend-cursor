@@ -8,9 +8,11 @@ a_question_joins_its_bundle).
     (N584 item 1). When that bundle already has the host's answer, the asker
     gets it at once in their own chat, under their question, with its
     coloured mark for how sure the match is (N584 item 4, N580 item 3).
-  * ``queue``: the host's bundles in Will's chat (N584 item 2): "{n} people
-    asked: {question}", each person's question with its mark, and "Record
-    one answer"; the ones still waiting first.
+  * ``queue``: the host's bundles in Will's chat, one card each (N602):
+    "{n} people asked", the question, the faces of who asked with "{name},
+    {name} and {n} more", "See who asked" and the bar's "Record one answer";
+    the ones still waiting first. ``who_asked``: the sheet "Who asked", each
+    person's own words, name and where they asked, then "Split them up".
   * ``answer``: the host's one recording, a Take of their own, goes to
     everyone in the bundle, each privately in their own chat with the host,
     under their own question quoted (N584 item 3). It is a voice message that
@@ -54,9 +56,16 @@ SURE = 0.75
 MAX_WORDS = 2000
 
 # ── The words (drafted for the founder's OK, N584 item 2) ───────────────
-MANY_ASKED = "{n} people asked: {question}"
-ONE_ASKED = "{name} asked: {question}"
+#: The card and its sheet (N602, signed with the founder's choice).
+ASKED = "{n} people asked"
+SEE_WHO = "See who asked"
+WHO_ASKED = "Who asked"
+SPLIT = "Split them up"
+ASSISTANT_ANSWERED = "Your assistant has answered them for now."
 RECORD_ONE = "Record one answer"
+#: Drafted for the founder's OK: a bundle of one, and where it was asked.
+ONE_ASKED = "{name} asked"
+IN_CHAT, ON_WEBSITE = "in your chat", "on your website"
 
 _WORD = re.compile(r"[a-z0-9']+")
 _STOP = frozenset("""a an and are as at be but by can could do does for from had has have how i
@@ -107,13 +116,17 @@ def _question(askers: list[dict]) -> str:
 
 def host_of_chat(database: Any, thread_id: Any) -> Optional[str]:
     """Whose chat this is: the owner of the link it was made through (N578
-    item 1: you meet the chat of whoever's link you came by). None for a
-    chat made otherwise, which bundles nothing."""
+    item 1: you meet the chat of whoever's link you came by), or of the
+    website it opened on (N591). None for a chat made otherwise, which
+    bundles nothing."""
     from services.chat_links import LINKS
-    rows = _rows(_table(database, "chat_threads").select("link_id").eq("id", str(thread_id)).limit(1))
+    rows = _rows(_table(database, "chat_threads").select("link_id,widget_owner_id")
+                 .eq("id", str(thread_id)).limit(1))
     link = rows[0].get("link_id") if rows else None
     if not link:
-        return None
+        # A website visitor's chat is its owner's (N591 item 1).
+        owner = rows[0].get("widget_owner_id") if rows else None
+        return str(owner) if owner else None
     owners = _rows(_table(database, LINKS).select("user_id").eq("id", str(link)).limit(1))
     return str(owners[0]["user_id"]) if owners else None
 
@@ -194,35 +207,72 @@ def _names(database: Any, askers: list[dict]) -> dict[tuple[str, str], str]:
             for m in rows}
 
 
-def queue(database: Any, host_id: Any) -> dict:
-    """GET /v2/chats/bundles: the host's bundles, those still waiting for an
-    answer first, each with its line, its people's questions and "Record one
-    answer" while it waits."""
+def _faces(names: list[str]) -> str:
+    """"{name}, {name} and {n} more" (N602 item 1, signed); fewer people,
+    every name."""
+    names = [n for n in names if n] or ["Someone"]
+    if len(names) > 3:
+        return f"{names[0]}, {names[1]} and {len(names) - 2} more"
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def _bundle_rows(database: Any, host_id: str) -> tuple[list[dict], list[dict]]:
     bundles = _rows(_table(database, BUNDLES).select("id,answer_take,created_at")
                     .eq("host_id", str(host_id)).order("created_at", desc=True).limit(200))
     ids = [str(b["id"]) for b in bundles]
     askers = _rows(_table(database, ASKERS).select(
         "id,bundle_id,asker_id,thread_id,message_id,words,mark,answered_message_id,created_at")
         .in_("bundle_id", ids)) if ids else []
+    return bundles, sorted(askers, key=lambda a: str(a.get("created_at") or ""))
+
+
+def queue(database: Any, host_id: Any) -> dict:
+    """GET /v2/chats/bundles: one card per bundle in Will's chat (N602): the
+    ones still waiting for an answer first."""
+    bundles, askers = _bundle_rows(database, str(host_id))
     names = _names(database, askers)
     out: list[dict[str, Any]] = []
     for b in bundles:
-        mine = sorted((a for a in askers if str(a["bundle_id"]) == str(b["id"])),
-                      key=lambda a: str(a.get("created_at") or ""))
+        mine = [a for a in askers if str(a["bundle_id"]) == str(b["id"])]
         if not mine:
             continue
-        first = names.get((str(mine[0]["thread_id"]), str(mine[0]["asker_id"]))) or ""
-        question = _question(mine)
-        line = (MANY_ASKED.format(n=len(mine), question=question) if len(mine) > 1
-                else ONE_ASKED.format(name=first or "Someone", question=question))
-        out.append({"id": str(b["id"]), "line": line, "answered": bool(b.get("answer_take")),
-                    "record": None if b.get("answer_take") else RECORD_ONE,
-                    "questions": [{"id": str(a["id"]), "words": a["words"], "mark": a["mark"],
-                                   "name": names.get((str(a["thread_id"]), str(a["asker_id"]))),
-                                   "chat": str(a["thread_id"]),
-                                   "sent": bool(a.get("answered_message_id"))} for a in mine]})
+        who = [names.get((str(a["thread_id"]), str(a["asker_id"]))) or "" for a in mine]
+        out.append({"id": str(b["id"]),
+                    "title": ASKED.format(n=len(mine)) if len(mine) > 1
+                    else ONE_ASKED.format(name=who[0] or "Someone"),
+                    "question": _question(mine), "faces": who, "who": _faces(who),
+                    # Only true once the assistant has answered each of them;
+                    # it doesn't yet, so the line waits (N602 item 1).
+                    "note": None, "see": SEE_WHO,
+                    "answered": bool(b.get("answer_take")),
+                    "record": None if b.get("answer_take") else RECORD_ONE})
     out.sort(key=lambda b: b["answered"])
     return {"bundles": out}
+
+
+def _where(database: Any, thread_ids: list[str]) -> dict[str, str]:
+    """Where each question was asked: "on your website" for a website
+    visitor's chat (N591), else "in your chat" (N602 item 2)."""
+    rows = _rows(_table(database, "chat_threads").select("id,widget_owner_id")
+                 .in_("id", thread_ids)) if thread_ids else []
+    return {str(r["id"]): ON_WEBSITE if r.get("widget_owner_id") else IN_CHAT for r in rows}
+
+
+def who_asked(database: Any, host_id: Any, bundle_id: Any) -> dict:
+    """GET /v2/chats/bundles/<id>: the sheet "Who asked" (N602 item 2): each
+    person's own words, their name and where they asked, then "Split them
+    up"."""
+    bundle = _own_bundle(database, str(host_id), bundle_id)
+    askers = [a for a in _bundle_rows(database, str(host_id))[1]
+              if str(a["bundle_id"]) == str(bundle["id"])]
+    names = _names(database, askers)
+    where = _where(database, list({str(a["thread_id"]) for a in askers}))
+    return {"title": WHO_ASKED, "split": SPLIT,
+            "people": [{"id": str(a["id"]), "words": a["words"], "mark": a["mark"],
+                        "name": names.get((str(a["thread_id"]), str(a["asker_id"]))),
+                        "where": where.get(str(a["thread_id"]), IN_CHAT),
+                        "chat": str(a["thread_id"]), "sent": bool(a.get("answered_message_id"))}
+                       for a in askers]}
 
 
 def _own_bundle(database: Any, host_id: str, bundle_id: Any) -> dict:
