@@ -241,8 +241,9 @@ def _asked(rows: list[dict], me: str) -> bool:
 
 def read(database: Any, token: Any, guest: Any) -> dict:
     """GET /v2/chats/widget/<token>/messages: {"name", "writes", "messages",
-    "signed_up", "sign_up", "answered"}, oldest first, as the visitor sees
-    them. Before the sign-up the host's answers are not in ``messages``:
+    "signed_up", "notice_to", "sign_up", "answered"}, oldest first, as the
+    visitor sees them; ``notice_to`` ("email" | "phone", once signed up) is
+    where the first notice goes. Before the sign-up the host's answers are not in ``messages``:
     ``answered`` says one waits, ``sign_up`` that the step is due."""
     from services import join_questions
     me = _visitor(database, token, guest)
@@ -258,6 +259,7 @@ def read(database: Any, token: Any, guest: Any) -> dict:
     answers = _answers(database, shown)
     return {"name": me["name"], "writes": writes(database, me["owner"], signed_up=me["signed_up"]),
             "signed_up": me["signed_up"],
+            "notice_to": _notice_to_of(database, me) if me["signed_up"] else None,
             "sign_up": not me["signed_up"] and _asked(newest, me["id"]),
             "answered": bool(waiting),
             "messages": [_shown(r, me["id"], authors, words, answers) for r in reversed(shown)]}
@@ -365,8 +367,44 @@ def sign_up(database: Any, user_id: Any, token: Any, guest: Any, token_payload: 
             .eq("id", me["guest_id"]).execute()
         membership.admitted(uid)
         _bundle_asked(database, me, uid)
-    return {"chat": {"id": me["thread_id"]}, "notice_to": notice_to(token_payload),
-            **read(database, token, guest)}
+    told = notice_to(token_payload)
+    if told:
+        _NOTICE_TO[me["guest_id"]] = told
+    return {"chat": {"id": me["thread_id"]}, **read(database, token, guest)}
+
+
+#: Where each signed-up visitor's first notice goes, by guest id, so the
+#: widget's polling ``read`` asks the account once (bounded; a restart asks
+#: again).
+_NOTICE_TO: dict[str, str] = {}
+_NOTICE_TO_MAX = 10_000
+
+
+def _notice_to_of(database: Any, me: dict) -> Optional[str]:
+    """``notice_to`` for the widget's own read, which has no sign-in token:
+    from the visitor's account, as ``_send_notice`` reads it (N595 item 2's
+    line after signing up, shown in the widget's tab)."""
+    known = _NOTICE_TO.get(me["guest_id"])
+    if known:
+        return known
+    uid = _seat_user(database, me["id"])
+    if not uid:
+        return None
+    told: Optional[str] = None
+    try:
+        if database.get_user_email_from_auth(uid):
+            told = "email"
+        else:
+            from services import admin_person
+            told = "phone" if (admin_person.auth_user(uid) or {}).get("phone") else None
+    except Exception:  # noqa: BLE001 -- the widget reads without it
+        logger.warning("chat_widget: where the notice goes could not be read", exc_info=True)
+        return None
+    if told:
+        if len(_NOTICE_TO) >= _NOTICE_TO_MAX:
+            _NOTICE_TO.clear()
+        _NOTICE_TO[me["guest_id"]] = told
+    return told
 
 
 def notice_to(token_payload: Any) -> Optional[str]:

@@ -22,7 +22,7 @@ OUTCOME
   O5  Signing up after asking (phone, email, Google): the signed-in person
       takes the visitor's seat, my list names the chat after them, the chat
       is theirs in the app, their questions join their bundles, and the
-      widget learns where the first notice goes.
+      widget, in its own tab too, learns where the first notice goes.
   O6  The first answer after the sign-up goes once to the email they signed
       up with, in the signed words.
 PROVES   O1 -> ChatWidgetTest::test_the_widget_learns_only_whose_chat_it_is_and_how_to_write
@@ -244,14 +244,23 @@ class ChatWidgetTest(unittest.TestCase):
         self.assertEqual(signed.status_code, 200, signed.get_json())
         self.assertEqual(bundled, [(TOMEK, ANNA, "Do you open on Sundays?")])
         self.assertTrue(signed.get_json()["signed_up"])
-        # "Signed up. The first notice of the answer comes to your email." (N595)
+        # "Signed up. The first notice of the answer comes to your email." (N595),
+        # in the sign-up's answer and in the widget's own read, whose tab did
+        # not sign up (it has no token): there, from the account.
         self.assertEqual(signed.get_json()["notice_to"], "email")
+        from services import chat_widget
+        chat_widget._NOTICE_TO.clear()
+        with patch.object(db, "get_user_email_from_auth", lambda _u: None, create=True), \
+                patch("services.admin_person.auth_user", lambda _u: {"phone": "48600100200"}):
+            self.assertEqual(self._read(started)["notice_to"], "phone")
         self.assertTrue(signed.get_json()["writes"]["record"])
         row = self._my_list()[0]
         self.assertEqual((row["title"], row["subtitle"]), ("Widget / Anna", "From invitaheadspa.com"))
         hers = self.client.get("/v2/chats", headers=self._as(ANNA)).get_json()["chats"]
         self.assertEqual([c["id"] for c in hers], [signed.get_json()["chat"]["id"]])
         self.assertEqual(self._sign_up(started, who=TOMEK).status_code, 400)
+        # A visitor who has not signed up: nowhere yet.
+        self.assertIsNone(self._read(self._start(kind="emoji", body="👍"))["notice_to"])
 
     def test_the_first_answer_after_the_sign_up_is_noticed_once(self):
         from services import chat_widget
