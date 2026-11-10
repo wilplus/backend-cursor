@@ -48,6 +48,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -549,6 +550,70 @@ def _release(database: Any, key: dict, buyer: str, row: dict, call_id: str) -> N
     if not done.get("ok"):
         logger.error("model_api: a charge for an answer that never came was not refunded "
                      "call=%s reason=%s", call_id, done.get("reason"))
+
+
+# ── Another person's model in a host's chat (TOK-01, TOK-02) ───────────────
+#: The namespace of a chat use's id: one id per (visitor's message, model),
+#: so the same message delivered again is the same charge.
+_CHAT_USE = uuid.UUID("6f1d3c52-7a0e-4b8e-9d51-1c2b7e0a9f43")
+
+
+def chat_use_id(message_id: Any, model_id: Any) -> str:
+    return str(uuid.uuid5(_CHAT_USE, f"{message_id}:{model_id}"))
+
+
+def pay_for_chat_line(database: Any, host_id: Any, message_id: Any, model_id: Any) -> bool:
+    """May another person's model give its line in this host's chat? The
+    host pays the owner's price, once (N607 item 3, N617 item 2): charged
+    through the same atomic ledger charge as an API answer, on an id made
+    from the visitor's message and the model, so the same message delivered
+    again is charged nothing more. The owner and the teachers are credited
+    as for the API: an ``ai_model_calls`` row of the same id, paid in tokens
+    by ``pay_month``. The person who wrote pays nothing.
+
+    False leaves the line out, and the chat goes on: the model is no longer
+    shared, the charge could not be made (never a free line), or the host
+    has too few tokens, which is marked for the host once a day (TOK-02).
+    With TOKEN_PRICING_ENABLED off, True and nothing charged, as before.
+    Never raises; no provider call."""
+    from services import token_account
+    if not token_account.enabled():
+        return True
+    host = str(host_id)
+    try:
+        model = _model(database, host, model_id)
+        versions = _versions(database, model["id"])
+        version = next((v for v in reversed(rules.released(versions)) if rules.exam_passed(v)), None)
+        if version is None or rules.refusal(model, versions, host):
+            return False
+        row = rules.call_row({"kind": "live"}, model, version, sure=True,
+                             base_model=str(version.get("base_model") or "gpt-4o-mini"))
+        call_id = chat_use_id(message_id, model["id"])
+        charged = token_account.charge_model_answer(host, row["price_units"], ref_id=call_id)
+    except Exception:  # noqa: BLE001 -- the line is left out; the chat goes on
+        logger.warning("model_api: a chat line was not paid for model=%s", model_id, exc_info=True)
+        return False
+    if charged.reason == "insufficient":
+        token_account.mark_model_skipped(host, model["id"], _now().date().isoformat(), database=database)
+        return False
+    if charged.reason != "already_charged" and (not charged.ok or charged.charged != row["price_units"]):
+        if charged.charged > 0:
+            token_account.refund_model_answer(host, charged.charged, ref_id=call_id)
+        return False
+    _chat_use_row(database, call_id, host, model, version, row)
+    return True
+
+
+def _chat_use_row(database: Any, call_id: str, host: str, model: dict, version: dict, row: dict) -> None:
+    """The owner's and teachers' side of a paid chat line, once."""
+    try:
+        if not _rows(_table(database, CALLS).select("id").eq("id", call_id).limit(1)):
+            _table(database, CALLS).insert({"id": call_id, "key_id": None, "buyer_id": host,
+                                            "model_id": model["id"], "version_id": version["id"],
+                                            **row}).execute()
+    except Exception:  # noqa: BLE001 -- a raced second insert is the primary key at work
+        logger.error("model_api: a paid chat line's call row was not written call=%s model=%s",
+                     call_id, model["id"], exc_info=True)
 
 
 # ── Earnings (MOD-47) ───────────────────────────────────────────────────────

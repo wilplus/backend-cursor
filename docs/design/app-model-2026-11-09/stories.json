@@ -9981,7 +9981,7 @@
   "id": "TOK-01",
   "area": "Tokens in a chat",
   "title": "A host pays when someone else's model runs in their chat",
-  "status": "not built",
+  "status": "built",
   "screen": "tokens",
   "prototype": "Jump to… A second person sets up: models to choose from, and what it costs",
   "given": "a host's chat has another person's model",
@@ -9994,15 +9994,21 @@
    "N607",
    "N616 item 1"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_api_store.py::def pay_for_chat_line(",
+   "be:services/chat_replies.py::def _payer("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "The host pays the owner's price as set now, through the ledger's model_answer charge on an id made from the visitor's message and the model, so a message delivered again is charged once; the owner is credited by pay_month from an ai_model_calls row; the host's own model and \"Test my chat\" are free (backend, this build)."
  },
  {
   "id": "TOK-02",
   "area": "Tokens in a chat",
   "title": "Out of tokens, the model is skipped, the chat goes on",
-  "status": "not built",
+  "status": "built",
   "screen": "chat.person",
   "prototype": "Jump to… A second person sets up: models to choose from, and what it costs",
   "given": "the host has too few tokens",
@@ -10015,16 +10021,21 @@
    "N607",
    "Never 3"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/token_account.py::def mark_model_skipped(",
+   "be:services/chat_recipes.py::def skipped_models("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
   "evals": [],
-  "note": "Drafted: what happens when the host has no tokens is not decided."
+  "note": "The line is left out and the rest is sent; one model_skipped ledger mark per model per day, read as skipped_models on GET /v2/chats/setup. What Will says to the host waits for the founder's words (backend, this build)."
  },
  {
   "id": "TOK-03",
   "area": "Tokens in a chat",
   "title": "Earned tokens are credited every month, with no minimum",
-  "status": "not built",
+  "status": "built",
   "screen": "tokens",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a teacher's or an owner's model earned tokens last month",
@@ -10044,7 +10055,7 @@
    "tests/test_model_api_routes.py"
   ],
   "evals": [],
-  "note": "Main already does this (#1866): pay_month credits every finished month in tokens, with no minimum and nothing in money; the founder runs it, it is never scheduled. Status as the build's stories give it."
+  "note": "Main already does this (#1866): pay_month credits every finished month in tokens, with no minimum and nothing in money; the founder runs it by hand (POST /v2/admin/models/payouts {\"month\": \"YYYY-MM\", \"pay\": true}), it is never scheduled."
  },
  {
   "id": "SMALL-01",

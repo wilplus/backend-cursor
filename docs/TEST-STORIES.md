@@ -579,7 +579,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 *Why:* Founder 2026-10-21. The bake is retired only by the speaker's own writes (`ideal_text_feedback_surface_touched_at_v1`), never by the coach's, and a signed video link in it went dark after six hours.
 
-### As someone who knows a field, I want to set up a chat with Will from a blank start, one decision per screen, and open it; and as a person who comes to it, I want to get back what that host chose (N612 to N618; the locked prototype docs/design/the-blank-setup-2026-11-10/, its stories FIRST-* and VIS-*; the contract in backend PR #1893).
+### As someone who knows a field, I want to set up a chat with Will from a blank start, one decision per screen, and open it; and as a person who comes to it, I want to get back what that host chose (N612 to N618; the locked prototype docs/design/the-blank-setup-2026-11-10/, its stories FIRST-*, VIS-* and TOK-*; the contract in backend PR #1893).
 
 `tests/test_blank_setup.py` · Story
 

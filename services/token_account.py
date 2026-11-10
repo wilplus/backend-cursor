@@ -1074,9 +1074,56 @@ def charged_actions_for_ref(user_id: str, ref_id: str, *,
         return set()
 
 
+#: A model left out of a host's chat because the host had too few tokens for
+#: it (TOK-02): a mark for the host, not a movement, so ``delta`` is 0 and
+#: ``history`` never lists it. One per model per day: its ``ref_id`` is
+#: "{model_id}:{YYYY-MM-DD}", held to once by the ledger's unique index.
+MODEL_SKIPPED = "model_skipped"
+
+
+def mark_model_skipped(user_id: str, model_id: str, day: str, *,
+                       database=None) -> None:
+    """Keep, once a day, that ``model_id`` was left out of this host's chat
+    for want of tokens. Best-effort and never raises: the chat goes on."""
+    db = database or _db()
+    ref = f"{model_id}:{day}"
+    try:
+        seen = (db.client.table(_LEDGER_TABLE).select("id").eq("user_id", str(user_id))
+                .eq("action", MODEL_SKIPPED).eq("ref_id", ref).limit(1).execute().data or [])
+        if not seen:
+            db.client.table(_LEDGER_TABLE).insert({
+                "user_id": str(user_id), "delta": 0, "balance_after": None,
+                "action": MODEL_SKIPPED, "ref_id": ref, "price_version": price_version(),
+                "tier": None}).execute()
+    except Exception as e:  # noqa: BLE001 -- a raced second mark is the unique index at work
+        logger.info("token_account: a skipped model was not marked user=%s (%s)",
+                    user_id, type(e).__name__, exc_info=True)
+
+
+def models_skipped(user_id: str, *, since: str, database=None) -> list:
+    """[{"model_id", "on"}] newest first, one per model: the models left out
+    of this host's chat for want of tokens on or after ``since``
+    (YYYY-MM-DD). Empty on any failure."""
+    db = database or _db()
+    try:
+        rows = (db.client.table(_LEDGER_TABLE).select("ref_id,created_at")
+                .eq("user_id", str(user_id)).eq("action", MODEL_SKIPPED)
+                .order("created_at", desc=True).limit(100).execute().data or [])
+    except Exception as e:  # noqa: BLE001
+        logger.warning("token_account: skipped models unread user=%s err=%s", user_id, e, exc_info=True)
+        return []
+    out: dict = {}
+    for row in rows:
+        model_id, _, day = str(row.get("ref_id") or "").rpartition(":")
+        if model_id and day >= since and model_id not in out:
+            out[model_id] = {"model_id": model_id, "on": day}
+    return sorted(out.values(), key=lambda r: r["on"], reverse=True)
+
+
 def history(user_id: str, *, limit: int = 50, before_id: Optional[int] = None,
             database=None) -> list:
-    """Ledger rows, newest first. Read-only."""
+    """Ledger rows, newest first. Read-only. A skipped model's mark moves no
+    tokens and is not listed."""
     db = database or _db()
     try:
         q = (
@@ -1088,7 +1135,7 @@ def history(user_id: str, *, limit: int = 50, before_id: Optional[int] = None,
         )
         if before_id:
             q = q.lt("id", int(before_id))
-        return q.execute().data or []
+        return [r for r in q.execute().data or [] if r.get("action") != MODEL_SKIPPED]
     except Exception as e:
         logger.warning("token_account: history failed user=%s err=%s",
                        user_id, e)

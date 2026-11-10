@@ -27,11 +27,17 @@ comes from the head, LEARN-02), and the one chat call, both made under the
 processing authorization of the person who sent it (``user_provider_scope``)
 or, for "Test my chat", of the host (the route's ``phase1_provider_route``).
 Behind the host's ring row ``chat_builder``.
+
+TOKENS (TOK-01, TOK-02). A line of another person's model in a visitor's
+message is paid by the host, the owner's price, once per message
+(``model_api_store.pay_for_chat_line``); a host with too few tokens has
+that line left out and the rest is sent. The person pays nothing and sees
+no price. "Test my chat" is not charged. No provider call is added.
 """
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from services import assistants, chat_recipes
 from services.chats import MEMBERS, MESSAGES, ChatsError, _not_found, _rows, _table, _uuid
@@ -102,10 +108,13 @@ def _heads(database: Any, host_id: Optional[str], recipe: dict, said: str) -> di
 
 
 def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str],
-         database: Any = None, host_id: Optional[str] = None) -> dict:
+         database: Any = None, host_id: Optional[str] = None,
+         pay: Optional[Callable[[dict], bool]] = None) -> dict:
     """{"answer": words or None, "lines": [{"body", "by", "q"}]}: the one
     chat call, after one reader call when a model of the recipe has a head
-    whose gate is open."""
+    whose gate is open. ``pay``: asked for each line of another person's
+    model that would be given, after the call; False leaves it out (TOK-01,
+    TOK-02). The host's own models are free (N618 item 1)."""
     from services.llm import chat_complete
     from services.llm_config import SPEC_CHAT_REPLY
     heads = _heads(database, host_id, recipe, said)
@@ -125,6 +134,8 @@ def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str],
         if i in heads and not heads[i].get("sure"):
             continue  # its head is not sure: no line, never a guess (N566 item 8)
         body = _clean(raw_lines[i], 300) if i < len(raw_lines) else None
+        if body and pay is not None and not m.get("own", True) and not pay(m):
+            continue  # not paid for: left out, the chat goes on (TOK-02)
         if body:
             owner = _first(host_name) if m.get("own", True) else _first(m.get("by"))
             lines.append({"body": body, "by": f"{owner}'s model", "q": m.get("q")})
@@ -231,7 +242,7 @@ def on_question(database: Any, host_id: Any, asker_id: Any, thread_id: Any, mess
         from routes.v2.processing_authorization import user_provider_scope
         with user_provider_scope(str(asker_id), operation="ai_conversation", prefix="chat-reply"):
             reply = make(recipe, str(said or ""), host_name, user_id=str(asker_id),
-                         database=database, host_id=host)
+                         database=database, host_id=host, pay=_payer(database, host, message))
         if not reply.get("answer") and not reply.get("lines"):
             return {"waits": True}
         if at_once:
@@ -245,6 +256,15 @@ def on_question(database: Any, host_id: Any, asker_id: Any, thread_id: Any, mess
     except Exception:  # noqa: BLE001 -- the question is sent either way
         logger.warning("chat_replies: no reply to message %s", message, exc_info=True)
         return {"waits": True}
+
+
+def _payer(database: Any, host: str, message: str) -> Callable[[dict], bool]:
+    """Another person's model in this host's chat: the host pays its owner's
+    price for this message, once (``model_api_store.pay_for_chat_line``)."""
+    def pay(model: dict) -> bool:
+        from services.model_api_store import pay_for_chat_line
+        return pay_for_chat_line(database, host, message, model.get("model_id"))
+    return pay
 
 
 def _meta(database: Any, message_id: str) -> dict:
