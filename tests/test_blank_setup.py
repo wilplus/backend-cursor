@@ -100,7 +100,7 @@ class SetupTest(_Base):
         self.assertEqual(recipe["spec"], "Trichologist")
         self.assertEqual(recipe["hello"], "Hi. Send me a photo of your scalp, and tell me what worries you.")
         self.assertEqual(recipe["suggest"]["send"][0], "photo")
-        # "A message" is ticked beside Will's first suggestion (N623 item 1).
+        # "A message" is ticked beside Will's first suggestion (N625 item 1).
         self.assertEqual(recipe["send"], ["photo", "text"])
         self.assertEqual(recipe["questions"], [{"q": "What worries you about your hair?"}])
         self.assertEqual(self.provider.calls, [])
@@ -252,13 +252,16 @@ class SetupTest(_Base):
         self.store.tables["ai_models"] = [
             {"id": "m1", "owner_id": PIOTR, "owner_name": "Piotr", "visibility": "public",
              "status": "live", "price_units": 300,
-             "recipe": {"input": "image", "question": "Is the skin red?", "scale": ["Yes", "Somewhat", "No"]}},
+             "recipe": {"input": "voice", "question": "Is it rushed?", "scale": ["Yes", "Somewhat", "No"]}},
             {"id": "m2", "owner_id": PIOTR, "owner_name": "Piotr", "visibility": "private",
              "status": "live", "price_units": 300, "recipe": {"question": "Hidden?"}}]
+        # Shared for tokens only after the exam the app computed passed (LEARN-04).
+        self.store.tables["ai_model_versions"] = [
+            {"model_id": "m1", "status": "released", "exam": {"computed": True, "passed": True}}]
         with patch("services.token_prices.display_unit", lambda: 100):
             models = self.client.get("/v2/chats/setup/models", headers=self._as(TOMEK)).get_json()["models"]
-        self.assertEqual(models, [{"model_id": "m1", "q": "Is the skin red?", "opts": ["Yes", "Somewhat", "No"],
-                                   "by": "Piotr", "price": 3, "needs": "photo", "fits": False}])
+        self.assertEqual(models, [{"model_id": "m1", "q": "Is it rushed?", "opts": ["Yes", "Somewhat", "No"],
+                                   "by": "Piotr", "price": 3, "needs": "rec", "fits": False}])
 
     def test_two_ways_use_one_or_train_your_own(self):
         """FIRST-18: the way is kept; a used model carries its owner and

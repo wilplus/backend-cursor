@@ -141,7 +141,7 @@ def check_host_words(text: Any, *, verdicts: bool = True) -> Optional[str]:
     """None when a host's own line may reach the people in their chat, else
     the reason. Pure. ``verdicts=False`` is for words the host wrote for
     their own chat: a specialist's judgement in words is allowed there
-    (N616 item 12 overruled N594), a score or number about a person is not.
+    (N616 item 12 overruled N594; N625 items 2 and 3), a score or number about a person is not.
     Text from a model or from the speaker's data keeps the verdict words."""
     said = str(text or "").strip()
     if not said:

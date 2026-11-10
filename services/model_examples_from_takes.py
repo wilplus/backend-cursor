@@ -137,10 +137,22 @@ def _let_go(database: Any, model: dict, have: list[dict], path: dict[str, dict])
     for speaker, ok in path.items():
         theirs = [e for e in have if str(e.get("speaker_id")) == speaker]
         if not ok["ok"] and theirs:
+            _retrain([str(e["id"]) for e in theirs if e.get("id")], [model["id"]], database)
             _table(database, EXAMPLES).delete().eq("model_id", model["id"]).eq("source", "takes") \
                 .eq("speaker_id", speaker).execute()
             removed += len(theirs)
     return removed
+
+
+def _retrain(example_ids: list[str], model_ids: list[str], database: Any) -> None:
+    """PIPE-06: every version that learned from these examples is marked to
+    retrain before they go (the migration's trigger does it for any other
+    deletion). Never stops the let-go."""
+    try:
+        from services.model_head_store import mark_retrain
+        mark_retrain(database, example_ids, model_ids)
+    except Exception:  # noqa: BLE001 -- the trigger still marks them
+        logger.warning("model examples: versions not marked to retrain", exc_info=True)
 
 
 def _example(model: dict, speaker: str, take_id: str, clip: dict) -> dict:
@@ -239,6 +251,9 @@ def let_go_everywhere(database: Any) -> int:
     for speaker in _every_take_speaker(database):
         if speaker_may_teach(database, speaker)["ok"]:
             continue
+        theirs = _rows(_table(database, EXAMPLES).select("id,model_id").eq("source", "takes")
+                       .eq("speaker_id", speaker))
+        _retrain([str(e["id"]) for e in theirs], [str(e["model_id"]) for e in theirs], database)
         gone = _rows(_table(database, EXAMPLES).delete().eq("source", "takes").eq("speaker_id", speaker))
         removed += len(gone)
     return removed

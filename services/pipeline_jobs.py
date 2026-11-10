@@ -1280,7 +1280,12 @@ def _gather_model_examples(limit: int) -> Dict[str, int]:
     from services.model_examples_from_takes import sweep as gather
 
     gathered = gather(database=db, limit=limit)
-    return {f"model_examples_{key}": value for key, value in gathered.items()}
+    out = {f"model_examples_{key}": value for key, value in gathered.items()}
+    # Then each model that needs it is fitted on its settled examples
+    # (LEARN-01): here, in the background, never in a web request.
+    from services.model_head_store import sweep as fit
+    out.update({f"model_heads_{key}": value for key, value in fit(database=db).items()})
+    return out
 
 
 def orphan_stale_minutes() -> int:

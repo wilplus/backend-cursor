@@ -21,7 +21,9 @@
   * ``useful``: "Was this useful?" kept on the answer, Yes, No or Skip; it
     never stands before the next message (N616 item 6).
 
-A visitor's message costs at most one provider call (N620), made under the
+A visitor's message costs at most two provider calls (N620): one reader
+call when a model of the recipe has a head whose gate is open (its answer
+comes from the head, LEARN-02), and the one chat call, both made under the
 processing authorization of the person who sent it (``user_provider_scope``)
 or, for "Test my chat", of the host (the route's ``phase1_provider_route``).
 Behind the host's ring row ``chat_builder``.
@@ -55,8 +57,11 @@ def _first(name: Any) -> str:
     return parts[0] if parts else "WillpowerLab"
 
 
-def prompt(recipe: dict) -> str:
-    """The one call's instructions, from the recipe alone."""
+def prompt(recipe: dict, heads: Optional[dict] = None) -> str:
+    """The one call's instructions, from the recipe, and each model's own
+    answer where its head gave one (LEARN-02): the line then says that
+    answer in words, never another."""
+    heads = heads or {}
     lines = [f"You answer, in their chat, for a specialist: {recipe.get('spec') or 'a specialist'}.",
              f"Why people come to them: {recipe.get('line') or ''}".strip(),
              _OUTPUTS.get(str(recipe.get("out") or "answer"), _OUTPUTS["answer"]),
@@ -69,6 +74,9 @@ def prompt(recipe: dict) -> str:
                      + "; ".join(str(o) for o in m.get("opts") or []) + ". "
                      + (f"When the answer is \"{(m.get('opts') or [''])[0]}\" it says, for example: "
                         f"{m.get('says')}" if m.get("says") else ""))
+        if heads.get(i, {}).get("sure"):
+            lines.append(f"Model {i + 1}'s own answer is \"{heads[i]['answer']}\": its line says that "
+                         "answer in words, and no other.")
     lines.append('Reply with only a JSON object: {"answer": "<what the person gets back>", '
                  f'"lines": [{len(models)} strings, one sentence for each model in order, in '
                  "words, saying what that model notices in what the person sent]}.")
@@ -80,12 +88,29 @@ def _clean(text: Any, most: int) -> Optional[str]:
     return said if said and assistants.check_host_words(said) is None else None
 
 
-def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str]) -> dict:
-    """{"answer": words or None, "lines": [{"body", "by", "q"}]}: one call."""
+def _heads(database: Any, host_id: Optional[str], recipe: dict, said: str) -> dict:
+    """The heads' answers of the recipe's models, by place: one reader call
+    at most (N620: with the chat's own, two). Nothing when none answers."""
+    if database is None or not host_id or not any(m.get("model_id") for m in recipe.get("models") or []):
+        return {}
+    try:
+        from services.model_head_store import chat_answers
+        return chat_answers(database, host_id, recipe.get("models") or [], said[:MAX_SAID])
+    except Exception:  # noqa: BLE001 -- the lines come from the recipe, as before
+        logger.warning("chat_replies: the models' heads gave nothing", exc_info=True)
+        return {}
+
+
+def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str],
+         database: Any = None, host_id: Optional[str] = None) -> dict:
+    """{"answer": words or None, "lines": [{"body", "by", "q"}]}: the one
+    chat call, after one reader call when a model of the recipe has a head
+    whose gate is open."""
     from services.llm import chat_complete
     from services.llm_config import SPEC_CHAT_REPLY
+    heads = _heads(database, host_id, recipe, said)
     try:
-        result = chat_complete(spec=SPEC_CHAT_REPLY, system=prompt(recipe),
+        result = chat_complete(spec=SPEC_CHAT_REPLY, system=prompt(recipe, heads),
                                user=f"What the person sent: {said[:MAX_SAID]}",
                                surface="chat_reply", user_id=user_id)
     except Exception:  # noqa: BLE001 -- nothing is sent; the question waits
@@ -97,6 +122,8 @@ def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str]) -> 
     raw_lines: list = given if isinstance(given, list) else []
     lines = []
     for i, m in enumerate(recipe.get("models") or []):
+        if i in heads and not heads[i].get("sure"):
+            continue  # its head is not sure: no line, never a guess (N566 item 8)
         body = _clean(raw_lines[i], 300) if i < len(raw_lines) else None
         if body:
             owner = _first(host_name) if m.get("own", True) else _first(m.get("by"))
@@ -120,7 +147,7 @@ def try_it(database: Any, user_id: Any, name: Any, body: Any) -> dict:
     recipe = chat_recipes.mine(database, user_id)
     if recipe is None:
         raise ChatsError("NOT_STARTED", "Say what you do first.", 409)
-    reply = make(recipe, said, name, user_id=str(user_id))
+    reply = make(recipe, said, name, user_id=str(user_id), database=database, host_id=str(user_id))
     who = _first(name) if recipe.get("who") == "you" else assistants.assistant_name(name)
     return {"messages": _messages(reply, who), "useful": True}
 
@@ -203,7 +230,8 @@ def on_question(database: Any, host_id: Any, asker_id: Any, thread_id: Any, mess
             return {"waits": True}
         from routes.v2.processing_authorization import user_provider_scope
         with user_provider_scope(str(asker_id), operation="ai_conversation", prefix="chat-reply"):
-            reply = make(recipe, str(said or ""), host_name, user_id=str(asker_id))
+            reply = make(recipe, str(said or ""), host_name, user_id=str(asker_id),
+                         database=database, host_id=host)
         if not reply.get("answer") and not reply.get("lines"):
             return {"waits": True}
         if at_once:

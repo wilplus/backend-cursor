@@ -201,7 +201,7 @@ def start(database: Any, user_id: Any, body: Any) -> dict:
     spec = spec[0].upper() + spec[1:]
     sug, _calls = chat_suggestions.suggest(spec, user_id=str(user_id))
     first_out = sug["out"][0]
-    # "A message" is ticked by default, so a visitor can type (N623 item 1).
+    # "A message" is ticked by default, so a visitor can type (N625 item 1).
     send = [sug["send"][0], *(["text"] if sug["send"][0] != "text" else [])]
     recipe = {"spec": spec, "suggest": sug, "line": sug["line"][0], "send": send,
               "out": first_out, "hello": sug["hello"][0], "questions": [{"q": sug["qs"][0]}],
@@ -377,12 +377,15 @@ def shared_models(database: Any, user_id: Any) -> dict:
     except Exception:  # noqa: BLE001 -- none listed
         return {"models": []}
     send = set((mine(database, user_id) or {}).get("send") or [])
+    shared = _shared_for_tokens(database, [str(r["id"]) for r in rows])
     out = []
     for row in rows:
         if str(row.get("owner_id")) == str(user_id) or row.get("price_units") is None \
-                or row.get("status") == "archived":
+                or row.get("status") == "archived" or str(row["id"]) not in shared:
             continue
         card = row.get("recipe") if isinstance(row.get("recipe"), dict) else {}
+        if str(card.get("input") or "text") in ("image", "photo"):
+            continue  # no model reads a photo yet (N616 item 9, LEARN-06)
         opts = card.get("scale") or card.get("options") or []
         needs = {"voice": "rec", "audio": "rec", "text": "text", "image": "photo",
                  "photo": "photo", "file": "file"}.get(str(card.get("input") or "text"), "text")
@@ -391,3 +394,18 @@ def shared_models(database: Any, user_id: Any) -> dict:
                     "by": row.get("owner_name") or "", "price": shown(row.get("price_units")),
                     "needs": needs, "fits": needs in send})
     return {"models": out}
+
+
+def _shared_for_tokens(database: Any, model_ids: list[str]) -> set[str]:
+    """The models that passed their exam, as the app computed it: only they
+    may be shared for tokens (N616 item 10: gate two, LEARN-04)."""
+    if not model_ids:
+        return set()
+    from services.model_api import exam_passed
+    try:
+        rows = (database.client.table("ai_model_versions").select("model_id,status,exam")
+                .in_("model_id", model_ids).execute().data or [])
+    except Exception:  # noqa: BLE001 -- none shared
+        return set()
+    return {str(v["model_id"]) for v in rows
+            if v.get("status") in ("passed", "released") and exam_passed(v)}

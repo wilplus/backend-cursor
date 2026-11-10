@@ -299,6 +299,62 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     Take or the machine's read, until the training yes carries its line
     (N528 item 12).
 
+- **F8** **A model that learns** (N615 items 2 and 3, N616 items 8, 9, 10
+  and 23, N620; LEARN-01 to LEARN-06 and PIPE-06): `services/model_head.py`,
+  the rules once, read by `services/model_head_store.py` over migration
+  `a_model_learns_from_its_settled_examples` (0522). Was: a model's answer
+  was one cheap-model call reading its name, question and options, and
+  "sure" was that model's own claim (N615 Open).
+  - **The reader:** each example is read once into a vector, which is kept
+    (`ai_model_example_vectors`). Text goes through the shared reader
+    (`llm_config.READER_MODEL`). A voice clip's words go through the same
+    reader, with the voice measures already stored for the clip appended.
+    There is no photo reader: a photo model (a photo chat's own card still
+    gets one, FIRST-07) is taught by people, never fitted, never answers
+    from a head and is never offered to another host; the host sees the
+    photo and answers it (LEARN-06). Every reader call is one provider call with a
+    maximum length (`llm.embed`), under a processing authority.
+  - **The head:** one per version, a multinomial logistic regression over
+    the model's answers, fitted with numpy in the periodic sweep, never in
+    a request. It reads only the model's own settled examples (a known
+    answer from the first 10 or two trusted teachers). It never reads an
+    exam case for training, another model's example, or a speaker who may
+    no longer teach.
+  - **When it learns:** a model needs 10 settled examples, with at least 2
+    for each answer. Until then it answers from its recipe card as before,
+    and that fallback is the only place the old call stays. A new fit
+    happens when the founder queues one, when the newest version is marked
+    to retrain, or when the settled examples have grown by half.
+  - **The answer:** one reader call, then the head picks one of its
+    answers; no chat call. "Sure" comes from the head's own measured
+    confidence. When fitted, cross-validation measures how often it is right
+    at each probability level, and the answer is sure when that measured
+    rate is at least 0.70.
+  - **Lineage:** a version keeps the ids of the examples it learned from.
+    A withdrawn yes marks every version that learned from the example
+    (`mark_retrain`) before the example goes. The migration's trigger does
+    the same for any other deletion. The next fit leaves the example out.
+  - **The owner's check:** ten examples the version was not fitted on,
+    never one of the first 10 and never an exam case, chosen once per
+    version, with the head's guess first. The owner taps Keep or Change,
+    and the answer also goes in as an ordinary teacher's answer. All ten
+    answered with at least 7 kept opens gate one: the model may answer in
+    its owner's chat.
+  - **The exam:** computed by the app on the cases both experts settled,
+    compared case by case with the version before (the sign test). It passes
+    when the exam is full, the head agrees with the experts on at least 0.70
+    of the cases (`EXAM_AGREE`), and it beats the untrained version (a
+    first version, N528 item 8: the recipe card's answer, asked once a case
+    at that fit) or is not clearly worse than the version before (a later
+    one). The defaults are named once in `services/model_head.py`:
+    `MIN_SETTLED`, `MIN_PER_ANSWER`, `CHECK_KEEP`, `EXAM_AGREE` and
+    `REFIT_GROWTH`, until the founder sets them. No
+    route takes "passed" by hand. Only a passed exam opens gate two: shared
+    for tokens ("Models you can use") or sold through the API.
+  - **In a chat:** a recipe model with a head and an open gate answers from
+    its head. One reader call serves all of them, and the one chat call
+    words each line from the head's answer: two provider calls at most.
+
 ### G · What never becomes a label or training data
 
 - The speaker's own answers about their own voice (rule 2; contract 30; walk
@@ -537,6 +593,10 @@ still open.
   `services/model_api_store.py` and `routes/v2/model_api.py` (a model's card,
   "Try it", the price, keys, `/v2/models/<id>/answer`, earnings, the one
   download route, behind the same ring row): a model's API and its money (F7)
+- `services/model_head.py` (the head's rules: fitting, "sure", the owner's
+  check, the exam, the two gates), `services/model_head_store.py` and
+  `migrations/a_model_learns_from_its_settled_examples.sql` (0522): a model
+  that learns (F8)
 - `config.py`: the doors' per-surface sets and `DETECTOR_TRAINING_AUTHORISED`
 
 **Docs:**
@@ -576,6 +636,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-11-10 · N615, N616 · LEARN-01 to LEARN-06, PIPE-06: a model answers from a small head fitted on its own settled examples (F8); "sure" from the head's measured confidence; the owner's check of ten unseen examples opens its owner's chat; the exam is computed by the app, never entered, and only a passed one opens sharing and selling; no photo model is fitted, answers from a head or is offered; a version keeps what it learned from and is marked to retrain when an example goes; migration 0522 · BE #1898
 - 2026-11-10 · N615 · PIPE-09: the moment a model first goes public is kept in its setup (`setup.public_at`, no new column); a teacher invited after it is never sent, and cannot answer or download, the examples that were private; a model that went public before the moment was kept opens them to no invited teacher · BE
 - 2026-11-10 · N615 · PIPE-04: the launchpad's counts (counted answers, exam cases, teachers, a teacher's own part) read every row, page by page, never the server's first thousand · BE
 - 2026-11-10 · N615 · PIPE-03: a speaker whose training yes is off leaves every model on the next run, however many models hold their Takes (the let-go pass reads every model, page by page; only the gathering stays bounded) · BE

@@ -16537,3 +16537,46 @@ This changes N564 item 3 for the bar after the walk (the-plan.md E3, G13).
 
 No migration in this entry. The rules: frontend
 [`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
+
+**N624 · The One thing walk's fix no longer plays their confident moment
+again when it has its own example** (founder, the Claude Code chat, 10
+November 2026, on a screenshot of the fix with "Your confident moment"
+crossed out: "the one I crossed on the image is the repetition of the
+first most confident moment"; "please fix that").
+
+This changes N379 item 1 (the chip) and N377 item 2 (the line before it).
+
+1. When the fix has its own example (the AI clip of their voice, or the
+   exercise's video), "Your confident moment", the small chip that played
+   their best moment again, is gone. "Say this one like your confident
+   moment:" stands right above that example ("Pause before ..., like
+   this:" with the AI clip), in the walk and the chat.
+2. With no example of its own, their best moment's clip stays, full, after
+   the line, as before: it is then the one example to copy.
+
+No new words. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
+
+**N625 · A visitor can always write unless the host unticks it; and a host's
+own words are refused only for a score or a number about someone** (founder,
+the Claude Code chat, 10 November 2026, on two faults the journey test
+found: "OK").
+
+1. **"A message" is ticked by default** on "What do people send you?",
+   beside Will's first suggestion. The host can untick it. Was: only
+   Will's first suggestion was ticked, so a host who tapped Keep had a
+   chat where a visitor's typed message was refused, though the hello
+   invited words.
+2. **The line for refused words changes.** It is "Try other words. Your
+   chat can't show a score or a number about someone." This replaces N622
+   item 3, whose line named verdicts and so contradicted N616 item 12.
+3. **The check follows N616 item 12.** A host's own words for their own
+   chat are refused only when they read as a score or a number about a
+   person. A judgement in words passes. Was, in the code only: verdict
+   words were still refused (N594), so Will's own suggested hello for a
+   language teacher, "I'll show you the one thing to fix.", could not be
+   kept.
+4. **The pinned prototype and its stories are updated**
+   (`docs/design/the-blank-setup-2026-11-10/`): FIRST-03, FIRST-04.
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
