@@ -2191,8 +2191,8 @@ O6  ""Set your price"": − and + preview a price and its split without
 saving; ""Use {price}"" saves it, never below what an answer costs to
 run; nobody else can.
 O7  A version fixes its teachers' shares; ""Your share of version 1"" is
-their part of it, and a month's earnings above the minimum are paid
-in tokens, once.
+their part of it, and a finished month's earnings are credited in
+tokens, once, however small: there is no minimum.
 O8  ""Download the data"" (the one download route) holds the teachers' own
 ratings and answers, each teacher and example a number, never what a
 speaker said or the sealed exam, and a private example's answers only

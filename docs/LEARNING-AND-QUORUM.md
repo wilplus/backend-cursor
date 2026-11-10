@@ -262,7 +262,7 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
   - **Money is tokens** (N583 item 2), in the stored units of
     `services/token_prices.py`. The prototype's euros translate at one shown
     token to one cent: €0.006 to run an answer is 60 units, €0.03 is 300,
-    the €20 minimum before earned tokens are credited 200,000.
+    a €20 monthly limit 200,000.
   - **The split, per answer:** running costs at cost; WillpowerLab 20% of
     the margin; the founder 10% of the rest; the teachers the remainder.
     Whole units, the fee and the founder's part rounded down, so the parts
@@ -286,9 +286,9 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     teacher who leaves is no longer counted, so their part goes to the others.
   - **Earned tokens, never money** (N614): nothing is paid out in money
     and no line offers it. Only a whole past month is credited; its founder's and
-    teachers' parts are written once per version, person and month; paid in tokens (N583 item 4) once a
-    person's owed total reaches the minimum, each payout its own idempotent
-    grant. WillpowerLab's founder runs it; nothing is scheduled.
+    teachers' parts are written once per version, person and month; credited in tokens (N583 item 4) for every finished month, with no
+    minimum (founder, 10 November 2026: "Every month, no minimum"), each
+    payout its own idempotent grant. WillpowerLab's founder runs it; nothing is scheduled.
   - **The download** is one route, `GET /v2/models/<id>/download`
     (`services/model_api_store.py` `download_for`): the screen, or with
     `?rows=1` the data. For the owner, its teachers who answered and a

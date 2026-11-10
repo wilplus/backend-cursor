@@ -14,7 +14,8 @@ MONEY IS IN STORED TOKEN UNITS (N583 item 2: "tokens per answer"). One stored
 unit is what ``services/token_prices.py`` stores; ``token_prices.shown`` turns
 it into the tokens a person sees. The prototype's euro samples translate at
 one shown token (v4) to one euro cent: its €0.03 is 300 units, its €0.006
-running cost 60 units, its €20 minimum payout 200,000 units.
+running cost 60 units. Earned tokens have no minimum (founder, 10 November
+2026: "Every month, no minimum").
 
 THE SPLIT (N531 item 1, N577, N583 item 3), for each answer sold:
   1. the running costs, at cost;
@@ -53,10 +54,10 @@ FREE_TEST_ANSWERS = 100
 #: The monthly limits offered (the prototype's €20, €50, €100).
 MONTHLY_LIMITS_UNITS = (200_000, 500_000, 1_000_000)
 DEFAULT_MONTHLY_LIMIT_UNITS = 500_000
-#: The minimum before earned tokens are credited (N531 item 4: "a starting
-#: point: EUR 20"). Open. Nothing is paid out in money (N614): what a model
-#: earned is credited as tokens, to spend in the app.
-MINIMUM_PAYOUT_UNITS = 200_000
+#: Nothing is paid out in money (N614): what a model earned is credited as
+#: tokens, to spend in the app, for every finished month, with no minimum
+#: (founder, 10 November 2026: "Every month, no minimum"; the minimum of N531
+#: item 4 belonged to money payouts).
 #: A hard clip is worth more (N531 item 2): the model was between these
 #: sureness values on it; its answer's points are multiplied by HARD_WEIGHT.
 HARD_LO, HARD_HI, HARD_WEIGHT = 0.40, 0.60, 1.5
@@ -190,7 +191,6 @@ DRAFTED: dict[str, str] = {
     "switch_to": "Switch to version {v}",
     "earn_none": ("None of your models earns yet. A model earns once its first version passes "
                   "its exam and businesses use it."),
-    "earn_when_minimum": "When you have earned {minimum}",
     "earn_next_month": "At the end of this month, in tokens",
     "download_only_team": "Only its owner and its teachers can download its data.",
     "download_without_words": ("You get your teachers’ ratings and answers. What speakers said is "
@@ -636,12 +636,6 @@ def month_payouts(calls: Iterable[dict], shares: list[dict], founder_id: Optiona
     return out
 
 
-def payable(owed_units: int) -> bool:
-    """Credited in tokens above the minimum (N531 item 4, N614); below it,
-    it waits."""
-    return int(owed_units) >= MINIMUM_PAYOUT_UNITS
-
-
 # ── Earnings (MOD-47) ───────────────────────────────────────────────────────
 def earnings_screen(model: Optional[dict], version_number: Optional[int], share: float,
                     answers: int, month_units: int, owed_units: int) -> dict:
@@ -652,14 +646,12 @@ def earnings_screen(model: Optional[dict], version_number: Optional[int], share:
         return {"title": WORDS["earn_title"], "line": DRAFTED["earn_none"], "rows": [],
                 "actions": [WORDS["back_to_list"]]}
     v = int(version_number)
-    nxt = DRAFTED["earn_next_month"] if payable(owed_units + month_units) else \
-        DRAFTED["earn_when_minimum"].format(minimum=tokens_text(MINIMUM_PAYOUT_UNITS))
     return {
         "title": WORDS["earn_title"],
         "line": WORDS["earn_line"].format(name=model.get("name"), v=v, amount=tokens_text(month_units)),
         "rows": [{"label": WORDS["earn_share"].format(v=v), "value": f"{round(share * 100)}%"},
                  {"label": WORDS["earn_answers"], "value": f"{int(answers):,}"},
-                 {"label": WORDS["earn_next"], "value": nxt}],
+                 {"label": WORDS["earn_next"], "value": DRAFTED["earn_next_month"]}],
         "fixed": WORDS["earn_fixed"].format(v=v, next=v + 1),
         "actions": [WORDS["back_to_list"]],
     }

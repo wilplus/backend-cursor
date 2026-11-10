@@ -593,9 +593,9 @@ def pay_month(database: Any, month: str, *, pay: bool = False) -> dict:
     """A finished month's payouts, for every version that sold: written once
     per (version, person, role, month) as owed. Only a whole past month is
     paid: answers keep landing in the current one, so running it mid-month
-    would freeze a partial month and skip the rest. With ``pay``, everyone
-    whose owed total reaches the minimum is paid in tokens, each payout row
-    its own idempotent grant. Run by WillpowerLab's founder; never scheduled."""
+    would freeze a partial month and skip the rest. With ``pay``, everything
+    owed is credited in tokens, with no minimum (founder, 10 November 2026:
+    "Every month, no minimum"), each payout row its own idempotent grant. Run by WillpowerLab's founder; never scheduled."""
     import re
     if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])(-01)?", str(month or "")):
         raise ChatsError("BAD_MONTH", "A month is YYYY-MM.", 400)
@@ -632,8 +632,6 @@ def pay_month(database: Any, month: str, *, pay: bool = False) -> dict:
         for p in owed:
             per[str(p["user_id"])].append(p)
         for uid, rows in sorted(per.items()):
-            if not rules.payable(sum(int(p.get("units") or 0) for p in rows)):
-                continue
             for p in rows:
                 done = token_account.model_earnings_grant(uid, int(p["units"]), ref_id=str(p["id"]))
                 if done.get("ok"):

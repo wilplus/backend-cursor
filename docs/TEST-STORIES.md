@@ -2036,7 +2036,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O4** A live key pays the model's price in tokens, split as N577 sets it; it gets no answer when the tokens are not charged, and it stops before an answer that would pass its monthly limit.
 - **O5** A business's unsure questions reach the teachers, names removed, only once the business allows it.
 - **O6** "Set your price": − and + preview a price and its split without saving; "Use {price}" saves it, never below what an answer costs to run; nobody else can.
-- **O7** A version fixes its teachers' shares; "Your share of version 1" is their part of it, and a month's earnings above the minimum are paid in tokens, once.
+- **O7** A version fixes its teachers' shares; "Your share of version 1" is their part of it, and a finished month's earnings are credited in tokens, once, however small: there is no minimum.
 - **O8** "Download the data" (the one download route) holds the teachers' own ratings and answers, each teacher and example a number, never what a speaker said or the sealed exam, and a private example's answers only for its owner and the teachers invited to it; someone who never taught it is told "Only its owner and its teachers can download its data."
 - **O9** An API answer runs under its buyer's processing authority: refused there, the model is never asked.
 - **O10** Never an unpaid answer and never a charge with no answer: the price is taken first, and refunded when the model gives no answer.

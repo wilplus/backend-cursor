@@ -26,8 +26,8 @@ OUTCOME
       saving; "Use {price}" saves it, never below what an answer costs to
       run; nobody else can.
   O7  A version fixes its teachers' shares; "Your share of version 1" is
-      their part of it, and a month's earnings above the minimum are paid
-      in tokens, once.
+      their part of it, and a finished month's earnings are credited in
+      tokens, once, however small: there is no minimum.
   O8  "Download the data" (the one download route) holds the teachers' own
       ratings and answers, each teacher and example a number, never what a
       speaker said or the sealed exam, and a private example's answers only
@@ -349,10 +349,11 @@ class ModelApiTest(unittest.TestCase):
         store.pay_month(db, last, pay=True)
         store.pay_month(db, last, pay=True)  # a second run pays nobody twice
         # 3000 an answer: 60 to run, 588 to WillpowerLab, 235 to Kasia, 2,117 to the
-        # teachers. 130 answers: the teachers' 275,210 split 3:1, and only Marta's
-        # part passes the 200,000 minimum; Artur's and Kasia's wait.
-        self.assertEqual({(uid, units) for uid, units, _ref in self.paid}, {(MARTA, 206_408)})
-        self.assertEqual(len(self.paid), 1)
+        # teachers. 130 answers: the teachers' 275,210 split 3:1, Kasia's 30,550.
+        # Everyone is credited, however small their part: there is no minimum.
+        self.assertEqual({(uid, units) for uid, units, _ref in self.paid},
+                         {(MARTA, 206_408), (ARTUR, 68_802), (KASIA, 30_550)})
+        self.assertEqual(len(self.paid), 3)
 
     @staticmethod
     def _last_month():
