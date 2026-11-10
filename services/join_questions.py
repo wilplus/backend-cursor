@@ -242,7 +242,7 @@ def hidden(row: dict, me: str) -> bool:
     joiner's taps (the owner, N487 item 7); the card (the joiner)."""
     meta = row.get("meta") or {}
     mine_ = str(row.get("author_member_id")) == str(me)
-    if "setup" in meta:
+    if "setup" in meta or "welcome" in meta:  # the host's welcome, N590
         return mine_
     if "setup_answer" in meta:
         return not mine_

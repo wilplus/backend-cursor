@@ -443,9 +443,11 @@ points.",O1 -> VoiceAlbumBubbleTests::test_ac9_it_never_counts_or_grades,Never-r
 tests/test_assistants.py,Story,"As someone who invites people, I want my own chat answered by ""{name}'s assistant"", so that whoever joins through my link meets my chat, set up my way, and knows an AI answers for me (N578, N579, N580, N585, N586, N588).","O1  With the chat builder's ring, each chat with a person in my list says
 whose assistant answers there: ""Tomek's assistant""; without the ring,
 nothing changes (N579 item 2, N580 items 1 and 3).
-O2  The join page of a tester's link says ""Tomek's assistant"" and ""Will's
-chat is where you can set up a chat of your own.""; anyone else's link
-shows only the name, as before (N586 item 2).
+O2  The join page of anyone's link is three lines: ""Tomek invited you"",
+one sentence of what you'll learn, ""Only the two of you are in this
+chat.""; Artur's link says his signed sentence; a tester's link also
+names ""Tomek's assistant""; the old line about Will's chat is gone
+(N601).
 O3  A host sets the welcome, the first Take's questions and how people
 answer; the builder starts from Artur's five; a locked field (the
 Nevers, consent, the bar...) is refused (N578 item 5, N579 item 1).
@@ -458,12 +460,33 @@ or red, never a number (N580 item 3, N585 item 2).
 O6  A speaking coach is suggested only for a recording of you talking; a
 topic expert for their topic from any message; adding a coach your
 message doesn't suit brings one line with ""Record"" and ""Send anyway""
-(N588).","O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
-O2 -> AssistantsTest::test_a_testers_join_page_names_the_assistant_and_wills_chat
+(N588).
+O7  As a tester I keep my chat's recipe and read it back, with Artur's
+five to start from; without the ring the builder is 404; a locked
+field is 400 RECIPE_LOCKED and nothing is kept.
+O8  Someone who joins through my link meets my welcome first, as my
+own words (no assistant's mark, N606), and my join page says who I am and what they
+can learn with me, in my own words (N586 item 1, N590 item 2).
+O9  In my chat, the person who joined reads whose assistant answers, my
+first Take's questions and how they may answer; a chat with someone
+who has no recipe is as it was.
+O10 In Will's chat, Will says what I know can earn tokens, with ""Set up my
+chat""; then asks, one at a time, my welcome, how people answer, my
+specialization, what people learn, a skill or a topic and what I need
+to see, and ""Do you want to automate your own chat?""; ""Go live"" keeps
+it, with the first Take's questions set in the builder, and the next
+person who joins meets it (N582 item 1, N586 item 5).
+O11 A welcome that scores people is not kept: Will says why and asks again.","O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
+O2 -> AssistantsTest::test_the_join_page_is_three_lines
 O3 -> RecipeTest::test_a_host_sets_welcome_questions_and_how_people_answer
 O4 -> RecipeTest::test_a_hosts_words_never_score_the_speaker
 O5 -> RecipeTest::test_a_recognizer_reads_on_one_line_with_two_cuts
-O6 -> RecipeTest::test_suggestions_are_sensible_and_anyone_can_still_be_asked",Every inviter has a coach chat of their own (N578); the builder's MVP is for the founder and a few testers first (N579).
+O6 -> RecipeTest::test_suggestions_are_sensible_and_anyone_can_still_be_asked
+O7 -> AssistantsTest::test_a_tester_keeps_their_recipe
+O8 -> AssistantsTest::test_someone_who_joins_meets_my_welcome_and_who_i_am
+O9 -> AssistantsTest::test_the_joiner_reads_what_my_chat_is
+O10 -> SetupInWillsChatTest::test_will_sets_up_my_chat_one_question_at_a_time
+O11 -> SetupInWillsChatTest::test_a_welcome_that_scores_people_is_asked_again",Every inviter has a coach chat of their own (N578); the builder's MVP is for the founder and a few testers first (N579).
 tests/test_authorization_status_read.py,Story,"As a speaker, I want the app to check my permission quickly every time I open it, and to show a deletion I asked for when my account is blocked, so that opening the app is fast and I always see my pending deletion.","O1  An ordinary open reads only the status; a blocked person also gets
 both deletion lists.
 O2  The status comes back in one database call, keeping the gate mode
@@ -563,6 +586,30 @@ O3  A provider error while checking raises (it is never read as
 ""absent""), and nothing is recorded for it.","O1 -> test_preview_keeps_and_execute_deletes_then_confirms
 O2 -> test_a_file_still_there_raises_unrecorded
 O3 -> test_a_provider_error_raises_unrecorded",F4 storage step (scripts/bundled_era_erasure_storage.py drives services.bundled_era_storage.run). Storage and the database are replaced by in-memory fakes.
+tests/test_business_community.py,Story,"As a newcomer who came by the link of someone at a business, I want to be offered that business's community once, while my first Take is processed, so that people there can be suggested to me and I to them; and as a speaker, I want someone new after a Take to come only from my business (founder, 9 November 2026, N559 item 1, N572).","O1  A newcomer whose inviter is in a business's community is offered it
+once, with the inviter's first name; asked again it is the same offer
+until answered, and never after. Join makes them a member.
+O2  Not now is kept and the offer never comes back on its own; the
+newcomer is not in the community. An offer never made cannot be
+answered.
+O3  Someone who came by no member's link, or by a link whose owner is in
+no community, is offered nothing; a failure is no offer, never an
+error, so the wait for Take 1 goes on.
+O4  Only people in the speaker's business community are suggested as
+someone new, never someone outside it, and never from the retired
+passcode communities.
+O5  Only the founder makes a business's community; its owner is its
+first member.
+O6  When the inviter's account is erased, their id goes from the
+newcomer's offer; the newcomer's offer and answer stay theirs.
+O7  A community outlives its owner: when the owner's account is erased
+the community and its other members stay, with no owner.","O1 -> BusinessCommunityTest::test_a_newcomer_is_offered_once_and_join_makes_them_a_member
+O2 -> BusinessCommunityTest::test_not_now_is_never_asked_again
+O3 -> BusinessCommunityTest::test_no_member_link_no_offer
+O4 -> BusinessCommunityTest::test_someone_new_comes_from_the_speakers_business
+O5 -> BusinessCommunityTest::test_only_the_founder_makes_a_community
+O6 -> test_erasing_the_inviter_clears_them_from_the_offer
+O7 -> test_a_community_outlives_its_owner",N559 item 1: the business is the pool; joining is how a person belongs to it.
 tests/test_canonical_tables_are_rpc_only_postgres.py,Story,"As the founder, I want the learning-evidence tables written only through the checked database functions, so that no process holding the service key can slip unchecked data into training.","O1  With the service key, a direct insert is refused on every listed
 table.
 O2  The two checked functions every Take's feedback is written through
@@ -611,8 +658,8 @@ O3 -> test_answering_wills_question_is_not_deflected","Founder 2026-10-15: ""nex
 tests/test_chat_links.py,Story,"As a person in WillpowerLab, I want my own link that I paste into any email, so that a colleague who opens it joins me in a chat, and nobody else can reach me (N308, N328, N335).","O1  My link is made the first time I ask and stays the same after;
 replacing it makes a new one, and the old one opens nothing.
 O2  Before signing in, the join page learns only the first name of whose
-link it is. A wrong link and a replaced one answer 404, the same
-answer.
+link it is, in its three lines (N601). A wrong link and a replaced one
+answer 404, the same answer.
 O3  Joining makes one chat between the two of us, each named for the
 other; opening a link again, from either side, finds the same chat.
 O4  My own link is refused (400 OWN_LINK), and nothing is made.
@@ -3508,8 +3555,8 @@ O13 -> test_a_moment_whose_ai_clip_cannot_be_made_is_never_the_fix
 O14 -> test_a_weak_moment_no_tool_reaches_is_named_for_a_coach","Founder 2026-10-20 (""the score decides each"", flow page C2, C4), 2026-10-18 (""words first, then voice""), 2026-10-21 (N108, ""the voice decides""; N112, ""There was no single rewrite in the take""), 2026-10-22 (N113, ""After the rewording""), 2026-10-23 (N124, ""Let's do 1-4""; N118 and N122, ""S×W picks, voice names top""), 2026-10-24 (N128; N118); 2026-10-27 (N209, the level's moment); 2026-10-28 (N246: ""at least two confident moments""; ""go for the next confident moment""; ""Two best + level""); 2026-10-30 (N289: ""the praise clips just get the praise"", ""the third moment, the weakest one, is where we display the AI audio""); 2026-10-31 (N309, the One thing walk: ""apply to it the one thing walk""); 2026-11-02 (N323 item 6: ""yes, the pace game for everyone when rushing is the issue""); 2026-11-02 (N359: ""once a fix has worked on a slide, the walk stops picking the same issue on that slide, and picks it again only if it comes back"": ""go"")."
 tests/test_take_match.py,Story,"As a speaker, after my Take, I want the page that chose who hears it to come back once with someone new who fits what I asked, so that the right person can answer; and as that person, I want to hear the Take before anyone knows who I am, so that answering is my yes (founder, 4 November 2026, N477, N478, N481, N485, N486, N493).","O1  With no ring row, or while sending a Take is off, nobody is ever
 suggested: the speaker's routes answer 404.
-O2  After a Take, one person is suggested: someone who shares a community
-with the speaker, has no chat with them, and fits what the Take is
+O2  After a Take, one person is suggested: someone in the speaker's
+business community (N559 item 1), has no chat with them, and fits what the Take is
 about; shown as a pseudonym made for this match and their role, never
 a name, never the name the coach queue gives them, and never what
 their own Takes are about. Asking again gives the same one; someone
