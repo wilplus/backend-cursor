@@ -16673,3 +16673,24 @@ accept the proposal").
 
 No migration in this entry. No rules page yet: hosted chats and their setup
 get one when the build is joined.
+
+**N630 · Tokens in a chat, four decisions: Will's line for a skipped model;
+crediting by hand; a host pays the price they agreed to; community models
+stay as they are** (founder, the Claude Code chat, 10 November 2026, on the
+four points from the tokens build: "I say ok to all").
+
+1. **A model skipped because the host is out of tokens gets a line in
+   Will,** under "This needs you:" (N629): "I left out {name}'s model
+   today. You're out of tokens." One line for each model skipped that day.
+2. **Earned tokens are credited by hand, once a month,** by the founder
+   (N614, N616 item 15). No timer is added until people are earning.
+3. **A host pays the price shown when they added the model.** If the owner
+   changes it, the host's price does not move by itself: Will tells the
+   host, who keeps the model at the new price or drops it. Was, in the
+   code: the owner's current price was charged, with no word to the host.
+   Will's words for the change are not approved yet.
+4. **A model shared only with a community cannot be added to a chat;**
+   only a public or a team model can, as the code does today.
+
+No migration in this entry. No rules page yet: hosted chats and their setup
+get one when the build is joined.
