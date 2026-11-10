@@ -188,11 +188,12 @@ def normalize(body: Any) -> dict:
             raise RecipeError("RECIPE_LOCKED", f"{key} is not yours to set.")
         if key not in DEFINABLE:
             raise RecipeError("RECIPE_INVALID", f"{key} cannot be set yet.")
-    out = {"welcome": _lines(body.get("welcome"), MAX_WELCOME_LINES, "Welcome line"),
-           "questions": _questions(body.get("questions")),
-           "answer_with": _answer_with(body.get("answer_with")),
-           "about": _lines(body.get("about"), MAX_ABOUT_LINES, "About line")}
-    for line in out["about"]:
+    about = _lines(body.get("about"), MAX_ABOUT_LINES, "About line")
+    out: dict[str, Any] = {"welcome": _lines(body.get("welcome"), MAX_WELCOME_LINES, "Welcome line"),
+                           "questions": _questions(body.get("questions")),
+                           "answer_with": _answer_with(body.get("answer_with")),
+                           "about": about}
+    for line in about:
         problem = learn_sentence_problem(line)
         if problem:
             raise RecipeError("RECIPE_INVALID", problem)

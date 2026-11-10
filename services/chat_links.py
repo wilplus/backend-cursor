@@ -13,8 +13,8 @@ onboarding (N335 item 1).
     for. Its secret is ``token``; the page is ``/c/<token>``.
   * ``renew``: the caller's link replaced; the old one stops working.
   * ``preview``: for the join page, before anyone signs in: the first name
-    of whose link it is, in the page's three lines (N601). A wrong, replaced or switched-off
-    link is 404, the same answer for each.
+    of whose link it is, in the page's three lines (N601). A wrong,
+    replaced or switched-off link is 404, the same answer for each.
   * ``join``: the signed-in caller joins: one chat with the link's owner,
     made once for the two of them (chat_threads.pair_key), however often
     either opens a link. Your own link is refused. By invitation (N471):
