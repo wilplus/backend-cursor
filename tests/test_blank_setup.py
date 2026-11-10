@@ -3,7 +3,7 @@ STORY    As someone who knows a field, I want to set up a chat with Will from
          a blank start, one decision per screen, and open it; and as a person
          who comes to it, I want to get back what that host chose (N612 to
          N618; the locked prototype docs/design/the-blank-setup-2026-11-10/,
-         its stories FIRST-* and VIS-*; the contract in backend PR #1893).
+         its stories FIRST-*, VIS-* and TOK-*; the contract in backend PR #1893).
 OUTCOME  One test per story, on the public routes; the story id leads each
          test's docstring.
 PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_choices
@@ -33,6 +33,10 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          VIS-05   -> VisitorTest::test_was_this_useful_never_blocks_the_next_one
          VIS-06   -> VisitorTest::test_before_the_minimum_the_question_waits_for_the_host
          VIS-07   -> VisitorTest::test_in_a_health_law_or_money_chat_the_model_only_suggests
+         TOK-01   -> TokensTest::test_a_host_pays_when_someone_elses_model_runs_in_their_chat
+         TOK-01   -> TokensTest::test_the_same_message_delivered_twice_is_charged_once
+         TOK-02   -> TokensTest::test_out_of_tokens_the_model_is_skipped_and_the_chat_goes_on
+         TOK-02   -> TokensTest::test_with_token_pricing_off_nothing_is_charged_or_skipped
 WHY      The build succeeds when a stranger sets up a chat with Will and a
          second person gets a useful answer in it (N620).
 """
@@ -477,3 +481,126 @@ class VisitorTest(_Base):
         drafts = self.client.get("/v2/chats/setup/drafts", headers=self._as(TOMEK)).get_json()["drafts"]
         self.assertEqual((len(drafts), drafts[0]["sensitive"]), (1, True))
         self.assertFalse(any("reply" in m["meta"] for m in self._messages(chat)))
+
+
+KASIA = "11111111-1111-4111-8111-111111111111"
+JOB = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+V1 = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+
+
+class TokensTest(_Base):
+    """Tokens in a chat (TOK-01, TOK-02): Tomek's chat has his own model and
+    Kasia's, at her price of 300 a use."""
+    _host, _send, _messages, _answers = VisitorTest._host, VisitorTest._send, VisitorTest._messages, \
+        VisitorTest._answers
+
+    def setUp(self):
+        super().setUp()
+        from services.db import db
+        from services.token_account import ChargeResult
+        from tests.test_model_api_routes import _CappedStore
+        self.store = _CappedStore()
+        self.balance = {TOMEK: 1000, PIOTR: 1000}
+        self.ledger: list[tuple] = []
+        self.pricing = True
+        self.paid: list[tuple] = []
+
+        def charge(user_id, units, *, ref_id, database=None):
+            """The ledger's atomic charge: once per ref, never below zero."""
+            if any(r == ref_id for _u, _n, r in self.ledger):
+                return ChargeResult(True, 0, self.balance[user_id], "already_charged", "model_answer")
+            if self.balance[user_id] < units:
+                return ChargeResult(False, 0, self.balance[user_id], "insufficient", "model_answer")
+            self.balance[user_id] -= units
+            self.ledger.append((user_id, units, ref_id))
+            return ChargeResult(True, units, self.balance[user_id], "", "model_answer")
+
+        def grant(user_id, units, *, ref_id, database=None):
+            self.paid.append((user_id, units))
+            return {"ok": True, "reason": ""}
+
+        for p in (patch.object(db, "client", self.store),
+                  patch("services.token_account.enabled", lambda: self.pricing),
+                  patch("services.token_account.charge_model_answer", charge),
+                  patch("services.token_account.model_earnings_grant", grant)):
+            p.start()
+            self.addCleanup(p.stop)
+        t = self.store.tables
+        t["ai_models"] = [{"id": JOB, "name": "Scalp check", "owner_id": KASIA, "owner_name": "Kasia",
+                           "visibility": "public", "status": "ready", "field": "hair", "description": "",
+                           "draft_step": None, "recipe": {"input": "text", "question": "Are there flakes?"},
+                           "targets": {}, "price_units": 300}]
+        t["ai_model_teachers"] = [{"model_id": JOB, "user_id": KASIA, "role": "owner", "trust_status": "counts"}]
+        t["ai_model_versions"] = [{"id": V1, "model_id": JOB, "number": 1, "status": "released",
+                                   "base_model": "gpt-4o-mini", "founder_id": KASIA, "created_at": "2026-11-01",
+                                   "exam": {"computed": True, "passed": True}, "card": {}}]
+
+    def _chat(self):
+        chat = self._host(who="assistant", sensitive=False)
+        self._put("models", [self._model(), {"q": "Are there flakes?", "opts": ["Yes", "Somewhat", "No"],
+                                             "own": False, "model_id": JOB, "by": "Kasia", "price": 3}])
+        self._answers(20)
+        return chat
+
+    def _lines(self, reply):
+        return [(m["body"], m["meta"]["model_line"]["by"]) for m in reply["messages"] if "model_line" in m["meta"]]
+
+    def test_a_host_pays_when_someone_elses_model_runs_in_their_chat(self):
+        """TOK-01: Kasia's model's line costs Tomek her price, once; Piotr,
+        who wrote, pays nothing and sees no price; Tomek's own model is
+        free; Kasia is credited as for the API, in tokens."""
+        chat = self._chat()
+        sent = self._send(chat).get_json()
+        self.assertEqual(self._lines(sent["reply"]), [("Your scalp looks dry here.", "Tomek's model"),
+                                                       ("There are some flakes.", "Kasia's model")])
+        self.assertEqual([(u, n) for u, n, _r in self.ledger], [(TOMEK, 300)])
+        self.assertEqual(self.balance[PIOTR], 1000)
+        for never in ("price", "token", "300"):
+            self.assertNotIn(never, str(sent))
+        self.assertLessEqual(len(self.provider.calls), 2)  # N620: the charge is no provider call
+        from services import model_api_store as store
+        from tests.test_model_api_routes import ModelApiTest
+        last = ModelApiTest._last_month()
+        for c in self.store.tables["ai_model_calls"]:
+            c["created_at"] = f"{last}-15T10:00:00+00:00"
+        from services.db import db
+        store.pay_month(db, last, pay=True)
+        self.assertEqual([u for u, _n in self.paid], [KASIA])
+
+    def test_the_same_message_delivered_twice_is_charged_once(self):
+        """TOK-01 (N620 step 4): the same message delivered again charges
+        nothing more and credits nobody twice."""
+        from services import chat_replies
+        from services.db import db
+        chat = self._chat()
+        message = self._send(chat).get_json()["message"]
+        again = chat_replies.on_question(db, TOMEK, PIOTR, chat, message["id"], "My scalp itches.")
+        self.assertIn(("There are some flakes.", "Kasia's model"), self._lines(again))
+        self.assertEqual([(u, n) for u, n, _r in self.ledger], [(TOMEK, 300)])
+        self.assertEqual(len(self.store.tables["ai_model_calls"]), 1)
+
+    def test_out_of_tokens_the_model_is_skipped_and_the_chat_goes_on(self):
+        """TOK-02: with too few tokens Kasia's line is left out, the rest is
+        sent, nothing is charged, and Tomek's setup says which model, once
+        a day."""
+        chat = self._chat()
+        self.balance[TOMEK] = 100
+        reply = self._send(chat).get_json()["reply"]
+        self.assertEqual(reply["messages"][0]["body"], "Start with a gentle shampoo, twice a week.")
+        self.assertEqual(self._lines(reply), [("Your scalp looks dry here.", "Tomek's model")])
+        self.assertEqual(self._send(chat, "And the ends?").status_code, 200)
+        self.assertEqual(self.ledger, [])
+        skipped = self._read()["skipped_models"]
+        self.assertEqual([(s["model_id"], s["q"], s["by"]) for s in skipped], [(JOB, "Are there flakes?", "Kasia")])
+        marks = [r for r in self.store.tables["token_ledger"] if r["action"] == "model_skipped"]
+        self.assertEqual((len(marks), marks[0]["delta"]), (1, 0))
+
+    def test_with_token_pricing_off_nothing_is_charged_or_skipped(self):
+        """TOKEN_PRICING_ENABLED off: every line as before, nothing charged,
+        nothing skipped."""
+        self.pricing = False
+        chat = self._chat()
+        self.balance[TOMEK] = 0
+        reply = self._send(chat).get_json()["reply"]
+        self.assertEqual(len(self._lines(reply)), 2)
+        self.assertEqual((self.ledger, self._read()["skipped_models"]), ([], []))
