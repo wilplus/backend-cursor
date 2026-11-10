@@ -16034,3 +16034,36 @@ N584, N602 and N609:
 No migration in this entry. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
 C1, when built.
+
+**N611 · Open questions from the overnight build, settled; the outside
+review of the migrations (founder, the Claude Code chat, 10 November 2026,
+on seven questions the builders had left, each with a recommendation, and
+on Grok's review of five migrations: "go with your recommendations, take
+Grok's change").** For N559, N565, N574, N583, N591, N594 and N610:
+1. **The Settings card "Matching by how you speak"** (frontend #1340, N465,
+   N559 item 6), merged with an approval line an agent wrote, is approved by
+   the founder here; this entry is its approval.
+2. **Someone new is found only once a business community exists,** and for
+   the testing ring a community is made from the admin route only; no
+   screen makes one yet (N559 item 1).
+3. **The written summary after a Take is retired for the MVP:** it is drawn
+   nowhere and none is built.
+4. **The older head-spa customer requests (CR-01 to CR-05) are retired:**
+   the website chat takes their place (N591).
+5. **Money in the models is shown in tokens everywhere** (N583), never in
+   euros.
+6. **The two speed fixes of 9 November** (a chat opens in fewer database
+   rounds; two indexes) are merged, the indexes' migration after its outside
+   review.
+7. **The business community's migration takes Grok's change:** its people
+   are account ids with foreign keys; a member's and an offer's rows go with
+   the account, an offer's inviter is cleared, and a community outlives its
+   owner. The other four migrations (the chat recipe, bundles, starting a
+   model, the API and its money) were approved as written.
+8. **For the bar (N610):** a typed "thank you" is not told apart from a
+   typed question for the MVP; and the setup does not yet let a host ask for
+   a photo.
+Still open: the walk's voices on replay (VOICE-18), which changes a locked
+walk file and waits for the founder's own yes.
+No migration in this entry. No rules page: these settle builds already in
+their pull requests.
