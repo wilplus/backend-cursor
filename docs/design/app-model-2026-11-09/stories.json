@@ -10224,28 +10224,29 @@
  {
   "id": "FIRST-19",
   "area": "The first person ever sets up a chat",
-  "title": "Your own model: what it is, when it is worth it, when it is not",
+  "title": "Your own model: what it is, in two lines, before you start",
   "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host chose to train their own",
   "when": "before the first model is drafted",
   "then": [
-   "three short cards: what it is; worth it; not worth it",
+   "two lines: “Your own model answers one question the way you would.” and “Four choices, then you teach it by answering examples. It needs about 200 to get good.”",
    "“Train my own” goes on; “Not now” goes back without a model"
   ],
   "rules": [
-   "N618 item 6"
+   "N618 item 6",
+   "N636",
+   "N637"
   ],
   "code": [
-   "fe:src/components/willab/chats/hostsetup/HostSetup.tsx::case \"ownwhy\"",
-   "fe:src/components/willab/chats/hostsetup/hostSetupCopy.ts::ownWorth"
+   "fe:src/components/willab/chats/hostsetup/HostSetup.tsx::case \"ownwhy\""
   ],
   "tests": [
    "src/components/willab/chats/hostsetup/hostSetup.test.tsx"
   ],
   "evals": [],
-  "note": "Frontend (this build): three cards, then Train my own goes on; Not now goes back to the list of models, or on without a model when there is none. The screen is the frontend's; the backend keeps the way."
+  "note": "Frontend: two lines (N636 item 6, N637 item 3; was three cards), then Train my own goes on; Not now goes back to the list of models, or on without a model when there is none. The screen is the frontend's; the backend keeps the way."
  },
  {
   "id": "FIRST-20",
