@@ -215,10 +215,50 @@ def _sees_private(database: Any, me: str, models: list[dict]) -> set[str]:
            if m.get("visibility") != "public" or rules.viewer_role(m, me) == "owner"}
     rest = [m["id"] for m in models if m["id"] not in out]
     if rest:
+        went = {str(m["id"]): public_at(m) for m in _rows(
+            _table(database, MODELS).select("id,setup").in_("id", rest))}
         out |= {str(i["model_id"]) for i in _rows(
-            _table(database, INVITES).select("model_id,status").eq("invitee_id", me).in_("model_id", rest))
-            if i.get("status") == "accepted"}
+            _table(database, INVITES).select("model_id,status,created_at").eq("invitee_id", me)
+            .in_("model_id", rest))
+            if i.get("status") == "accepted" and _before(i.get("created_at"), went.get(str(i["model_id"])))}
     return out
+
+
+def public_at(model: dict) -> Optional[str]:
+    """When the model went public, as its setup keeps it (``mark_public``)."""
+    setup = model.get("setup")
+    return str(setup["public_at"]) if isinstance(setup, dict) and setup.get("public_at") else None
+
+
+def mark_public(setup: Any, public: bool) -> dict:
+    """The setup with the moment it went public kept, the first time it
+    does; going private again clears it (N615 item 2: someone invited after
+    it went public is never sent what was private)."""
+    out = dict(setup) if isinstance(setup, dict) else {}
+    if public:
+        out.setdefault("public_at", _now())
+    else:
+        out.pop("public_at", None)
+    return out
+
+
+def _when(value: Any) -> Optional[datetime]:
+    try:
+        stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
+
+
+def _before(invited: Any, went_public: Optional[str]) -> bool:
+    """An invite opens the private examples only when it was made while the
+    model was private. A model that went public before its moment was kept
+    opens them to nobody it invited (it cannot tell when it went public);
+    an invite without a time is read as before."""
+    if invited is None:
+        return True
+    asked, went = _when(invited), _when(went_public)
+    return asked is not None and went is not None and asked < went
 
 
 def _exam_cases_for(database: Any, me: str, mids: list[str]) -> list[dict]:
@@ -578,7 +618,10 @@ def make_public(database: Any, user_id: Any, model_id: Any, confirmed: bool) -> 
     model = _owner(database, me, model_id)
     if not confirmed:
         raise ChatsError("CONFIRM", "Read what making it public means first.")
-    _table(database, MODELS).update({"visibility": "public", "updated_at": _now()}).eq("id", model["id"]).execute()
+    found = _rows(_table(database, MODELS).select("id,setup").eq("id", model["id"]).limit(1))
+    setup = mark_public(found[0].get("setup") if found else None, True)
+    _table(database, MODELS).update({"visibility": "public", "setup": setup, "updated_at": _now()}) \
+        .eq("id", model["id"]).execute()
     return {"visibility": "public"}
 
 

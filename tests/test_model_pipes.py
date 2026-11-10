@@ -15,22 +15,28 @@ OUTCOME
       every model.
   O4  (PIPE-04) A model with more than a thousand counted answers shows every
       one of them in its counts.
+  O5  (PIPE-09) A teacher the owner invites after the model went public is
+      never sent, and cannot answer, the examples that were private; a
+      teacher invited while it was private still is.
 PROVES   O1 -> ModelPipesTest::test_an_exam_example_or_your_own_cannot_be_answered
          O2 -> ModelPipesTest::test_a_newcomer_is_measured_against_trusted_teachers_only
          O3 -> SweepTest::test_turning_the_training_yes_off_reaches_every_model
          O4 -> ModelPipesTest::test_counts_read_every_row
+         O5 -> ModelPipesTest::test_invited_after_going_public_does_not_open_private_examples
 WHY      The audit of the launchpad's code (N615); the build's stories
          PIPE-01 to PIPE-09 (docs/design/the-blank-setup-2026-11-10).
 """
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from tests.test_chats import _Query, _Result, _Store
 from tests.test_model_launchpad_routes import ARTUR, KASIA, MARTA, SPEAK, ModelRoutesTest
 
 EXAM = "e5000000-0000-4000-8000-0000000000ee"
+SECRET = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
 SERVER_CAP = 1000
 
 
@@ -104,6 +110,33 @@ class ModelPipesTest(ModelRoutesTest):
         page = self._get(f"/v2/models/{SPEAK}").get_json()
         self.assertEqual(page["jars"]["counted_answers"], 1505)
         self.assertEqual(page["own_part"]["answers_counted"], 1505)
+
+
+    def test_invited_after_going_public_does_not_open_private_examples(self):
+        own = "e5000000-0000-4000-8000-000000000009"
+        late = "11111111-0000-4000-8000-00000000000a"
+        t = self.store.tables
+        t["ai_model_examples"].append({"id": own, "model_id": SECRET, "source": "upload", "private": True,
+                                       "in_exam": False, "kind": "rerate", "added_by": KASIA, "speaker_id": None,
+                                       "snippet_id": None, "known_answer": None,
+                                       "content": {"text": "A client's own case."}})
+        before = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        t["ai_model_invites"] = [{"id": "11111111-0000-4000-8000-000000000009", "model_id": SECRET,
+                                  "inviter_id": KASIA, "invitee_id": ARTUR, "status": "accepted",
+                                  "created_at": before}]
+        t["ai_model_teachers"].append({"model_id": SECRET, "user_id": ARTUR, "role": "contributor",
+                                       "trust_status": "learning", "paused_at": None, "company_line": None})
+        self.who = KASIA
+        self.assertEqual(self._post(f"/v2/models/{SECRET}/make-public", {"confirm": True}).status_code, 200)
+        after = (datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat()
+        t["ai_model_invites"].append({"id": late, "model_id": SECRET, "inviter_id": KASIA,
+                                      "invitee_id": MARTA, "status": "open", "created_at": after})
+        self.who = MARTA                                   # invited after it went public
+        self.assertEqual(self._post(f"/v2/models/invites/{late}/accept").status_code, 200)
+        self.assertNotIn(own, [e["id"] for e in self._get("/v2/models/queue").get_json()["examples"]])
+        self.assertEqual(self._answer(SECRET, own).status_code, 404)
+        self.who = ARTUR                                   # invited while it was private
+        self.assertIn(own, [e["id"] for e in self._get("/v2/models/queue").get_json()["examples"]])
 
 
 class SweepTest(unittest.TestCase):

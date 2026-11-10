@@ -576,6 +576,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-11-10 · N615 · PIPE-09: the moment a model first goes public is kept in its setup (`setup.public_at`, no new column); a teacher invited after it is never sent, and cannot answer or download, the examples that were private; a model that went public before the moment was kept opens them to no invited teacher · BE
 - 2026-11-10 · N615 · PIPE-04: the launchpad's counts (counted answers, exam cases, teachers, a teacher's own part) read every row, page by page, never the server's first thousand · BE
 - 2026-11-10 · N615 · PIPE-03: a speaker whose training yes is off leaves every model on the next run, however many models hold their Takes (the let-go pass reads every model, page by page; only the gathering stays bounded) · BE
 - 2026-11-10 · N615 · PIPE-02: the quiet trust check measures a newcomer against trusted teachers' answers and known answers only, never against other newcomers · BE
