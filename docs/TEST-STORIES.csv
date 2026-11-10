@@ -572,6 +572,11 @@ VIS-04   -> VisitorTest::test_each_models_line_names_whose_model_it_is
 VIS-05   -> VisitorTest::test_was_this_useful_never_blocks_the_next_one
 VIS-06   -> VisitorTest::test_before_the_minimum_the_question_waits_for_the_host
 VIS-07   -> VisitorTest::test_in_a_health_law_or_money_chat_the_model_only_suggests",The build succeeds when a stranger sets up a chat with Will and a second person gets a useful answer in it (N620).
+tests/test_blank_setup_journey.py,Story,"As someone who knows a field, I want to set up a chat with Will from a blank start and open it, and as a second person I want to join it and get an answer, so that the whole journey works end to end, for any profession, at a small cost (N619 step 5 ""Joined""; N620).","One test walks the public routes for two professions: setup, the
+link, a visitor who joins, ""Only you answer"" (no provider call),
+""I draft, you send"" (one call, the host sends it), and the
+speaking loop untouched. It prints what the journey cost.","JOURNEY -> JourneyTest::test_the_whole_journey_for_a_trichologist
+JOURNEY -> JourneyTest::test_the_whole_journey_for_a_language_teacher","The build succeeds when a stranger sets up a chat with Will and a second person gets a useful answer in it (N620); a visitor's message costs at most two provider calls, and one setup at most one."
 tests/test_blind_coach_evidence_postgres.py,Story,"As a coach, I want the blind evidence packet to carry only audio and timing, never the machine's or other raters' answers, so that my judgement stays blind.","O1  blind_coach_evidence_v1 gives the assigned coach the moment's audio and
 timing, and nothing else: no owner, machine or peer value, no words.
 O2  coach_evidence_comparison_v1 shows the owner, machine and peer answers
