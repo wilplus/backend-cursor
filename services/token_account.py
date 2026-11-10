@@ -1097,7 +1097,7 @@ def mark_model_skipped(user_id: str, model_id: str, day: str, *,
                 "tier": None}).execute()
     except Exception as e:  # noqa: BLE001 -- a raced second mark is the unique index at work
         logger.info("token_account: a skipped model was not marked user=%s (%s)",
-                    user_id, type(e).__name__)
+                    user_id, type(e).__name__, exc_info=True)
 
 
 def models_skipped(user_id: str, *, since: str, database=None) -> list:
@@ -1110,7 +1110,7 @@ def models_skipped(user_id: str, *, since: str, database=None) -> list:
                 .eq("user_id", str(user_id)).eq("action", MODEL_SKIPPED)
                 .order("created_at", desc=True).limit(100).execute().data or [])
     except Exception as e:  # noqa: BLE001
-        logger.warning("token_account: skipped models unread user=%s err=%s", user_id, e)
+        logger.warning("token_account: skipped models unread user=%s err=%s", user_id, e, exc_info=True)
         return []
     out: dict = {}
     for row in rows:
