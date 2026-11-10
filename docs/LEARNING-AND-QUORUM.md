@@ -239,8 +239,7 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     an erased owner's description, name and the setup's own words go, the
     model's name and card stay, and a draft is archived (trigger
     `ai_models_owner_left`, 0517).
-  - **Inviting teachers is sharing your own chat’s link** (the founder, 10
-    November, #1874): the
+  - **Inviting teachers is sharing your own chat’s link** (N598): the
     invite step carries the owner's chat link; there is no teacher link.
   - **No user id is kept in a model's setup:** the exam's expert and the
     people invited are read from `ai_model_invites`, the owner from

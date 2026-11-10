@@ -570,6 +570,8 @@ def _fallback_label(row: dict) -> str:
         return ""
     take = meta.get("take_index")
     which = f"Take {take}" if isinstance(take, int) else "this Take"
+    if meta.get("writing"):  # GPT-4o's summary is still being written (WILL-07)
+        return f"[The app's fixed message after {which}; the written summary is not in yet]\n"
     return f"[The app's fixed message after {which}; the written summary failed]\n"
 
 

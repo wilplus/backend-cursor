@@ -319,7 +319,7 @@ def list_chats(database: Any, user_id: Any) -> dict:
         # Whom the caller blocked, and what therefore never reaches them (N466).
         lambda: chat_safety.spans_by_member(database, list(mine.values())),
         lambda: _threads_with_recent(database, ids),
-        lambda: _rows(_table(database, MEMBERS).select("id,thread_id,display_name,subtitle")
+        lambda: _rows(_table(database, MEMBERS).select("id,thread_id,user_id,display_name,subtitle")
                       .in_("thread_id", ids)),
     ])
     if embedded is not None:
@@ -344,9 +344,15 @@ def list_chats(database: Any, user_id: Any) -> dict:
     joining = [str(t["id"]) for t in threads if lasts[str(t["id"])] is None and t.get("link_id")]
     through = dict(zip(joining, _side_by_side(
         [(lambda t=t: joined_through(database, user_id, t)) for t in joining])))
+    # Every person has an assistant that answers for them in the chat with
+    # them, labelled as theirs (N580 items 1 and 3), for the chat builder's
+    # ring (N579 item 2); a guest (a demo person, a customer) has none.
+    from services import assistants, rings
+    labelled = rings.feature_is_on_for_user(assistants.CHAT_BUILDER, user_id, database=database)
     chats: list[tuple[str, dict]] = []
     for t in threads:
         other = others.get(str(t["id"])) or {}
+        person = labelled and t["kind"] == "team" and other.get("user_id")
         me = mine[str(t["id"])]
         last = lasts[str(t["id"])]
         chats.append(((last or t)["created_at"] or "", {
@@ -354,6 +360,7 @@ def list_chats(database: Any, user_id: Any) -> dict:
             "title": other.get("display_name") or t["title"],
             "subtitle": other.get("subtitle"), "last": last,
             "joined_through": through.get(str(t["id"])),
+            "assistant": assistants.assistant_name(other.get("display_name")) if person else None,
             "blocked": chat_safety.blocking({"blocked_spans": spans.get(me, [])})}))
     chats.sort(key=lambda pair: str(pair[0]), reverse=True)
     return {"chats": [chat for _, chat in chats]}
