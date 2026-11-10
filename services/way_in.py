@@ -606,6 +606,14 @@ def after_walk(database: Any, user_id: str, plan: dict, *,
     w["walk_ready"] = True
     plan = _save(database, user_id, plan, w)
     plan = _read(database, user_id, plan, _state(plan) or {}, first_name)
+    w = _state(plan) or {}
+    if not w.get("read"):
+        # Nothing was heard on the first Take: no card to check, and the plan
+        # comes with no date, as ``plan_flow._from_first_take`` has it (N459
+        # item 1). Without this the plan card and "You're set." never come.
+        w["read"] = True
+        w["profile"] = _clean_profile(None, first_name)
+        plan = _save(database, user_id, plan, w)
     plan = _keep(database, user_id, plan)
     plan, out = _advance(database, user_id, plan)
     w = _state(plan) or {}

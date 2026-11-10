@@ -431,6 +431,30 @@ O3 -> test_no_purchase_or_a_failed_read_keeps_the_paywall_up
 O4 -> test_missing_ids_are_never_entitled","services/arc_entitlement.py: ""a failure keeps the paywall up, never opens it""."
 tests/test_arc_notifications.py,Story,"As a speaker, I want the ""your voice album is ready"" chat message to speak in words, never counts or rankings, so that it encourages rather than grades.","O1  The message has no digits and none of: score, best, top, rank, %,
 points.",O1 -> VoiceAlbumBubbleTests::test_ac9_it_never_counts_or_grades,Never-rule 1; founder 2026-08-15 (post the album bubble once it is available).
+tests/test_assistants.py,Story,"As someone who invites people, I want my own chat answered by ""{name}'s assistant"", so that whoever joins through my link meets my chat, set up my way, and knows an AI answers for me (N578, N579, N580, N585, N586, N588).","O1  With the chat builder's ring, each chat with a person in my list says
+whose assistant answers there: ""Tomek's assistant""; without the ring,
+nothing changes (N579 item 2, N580 items 1 and 3).
+O2  The join page of a tester's link says ""Tomek's assistant"" and ""Will's
+chat is where you can set up a chat of your own.""; anyone else's link
+shows only the name, as before (N586 item 2).
+O3  A host sets the welcome, the first Take's questions and how people
+answer; the builder starts from Artur's five; a locked field (the
+Nevers, consent, the bar...) is refused (N578 item 5, N579 item 1).
+O4  A host's own words pass the checks Will's bubbles pass: a score or a
+verdict about the speaker is refused, their own numbers are not
+(N578 item 6, Never 1).
+O5  A simple recognizer reads on one line with two cuts: Yes past the
+upper, No below the lower, the queue between, coloured green, yellow
+or red, never a number (N580 item 3, N585 item 2).
+O6  A speaking coach is suggested only for a recording of you talking; a
+topic expert for their topic from any message; adding a coach your
+message doesn't suit brings one line with ""Record"" and ""Send anyway""
+(N588).","O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
+O2 -> AssistantsTest::test_a_testers_join_page_names_the_assistant_and_wills_chat
+O3 -> RecipeTest::test_a_host_sets_welcome_questions_and_how_people_answer
+O4 -> RecipeTest::test_a_hosts_words_never_score_the_speaker
+O5 -> RecipeTest::test_a_recognizer_reads_on_one_line_with_two_cuts
+O6 -> RecipeTest::test_suggestions_are_sensible_and_anyone_can_still_be_asked",Every inviter has a coach chat of their own (N578); the builder's MVP is for the founder and a few testers first (N579).
 tests/test_authorization_status_read.py,Story,"As a speaker, I want the app to check my permission quickly every time I open it, and to show a deletion I asked for when my account is blocked, so that opening the app is fast and I always see my pending deletion.","O1  An ordinary open reads only the status; a blocked person also gets
 both deletion lists.
 O2  The status comes back in one database call, keeping the gate mode
@@ -3650,7 +3674,12 @@ O5  The summary and the goodbye after it sort under the walk's last step,
 even when my browser's clock runs ahead of the server's.
 O7  Asked twice for the same Take (the page reloaded while the first ask
 was being written), the first ask's batch stands: nothing is written,
-remembered or let go again, so the goodbye stays under Will's question.
+remembered, let go or asked of the model again, so the goodbye stays
+under Will's question.
+O8  Nothing waits for the summary (WILL-07): the batch after the walk (the
+signed line, the goodbye, what Will remembers) is written at once, and
+GPT-4o's words take the signed line's place later, in the same spot
+of the thread.
 O6  The summary can point back to what I said in an older Take (the same
 project first), never this Take, never a Take whose processing
 authorization is not in force; a failing or slow lookup leaves the
@@ -3668,6 +3697,7 @@ test_a_coach_word_shared_after_the_review_is_its_own_bubble
 O4 -> test_the_summary_knows_the_talk_and_no_settings_ask_follows
 O5 -> test_the_summary_and_the_goodbye_sort_under_the_walk
 O7 -> test_a_second_ask_while_the_first_is_written_changes_nothing
+O8 -> test_the_chat_after_the_walk_never_waits_on_the_summary
 O6 -> test_the_summary_points_back_to_an_older_take_never_this_one,
 test_a_take_not_in_force_never_reaches_the_summary,
 test_a_failing_or_slow_lookup_leaves_the_summary_as_today,
@@ -4268,11 +4298,18 @@ stays faded until the walk is done (N592; WAYIN-N592-1..4).
 W7  ""Learn from others"" leads to ""Next, ask someone who knows. Tap + to
 start."" (FT-14, N592 item 2).
 W8  A speaking coach's link meets none of the choice's beats; the way in
-is in the speaking chat only (N572, N590; WAYIN-N590-1).","W1, W2, W3, W5, W6 -> test_a_talk_the_wait_and_what_comes_next
+is in the speaking chat only (N572, N590; WAYIN-N590-1).
+W9  A first Take on which nothing was heard still gets its plan and
+""You're set."" once its walk is done; no card is checked (N459 item 1).","W1, W2, W3, W5, W6 -> test_a_talk_the_wait_and_what_comes_next
+W9 -> test_a_take_with_nothing_heard_still_gets_its_plan
 W2 -> test_change_it_asks_what_to_change_and_draws_the_card_again
 W4 -> test_sharing_brings_the_join_questions_and_the_agreement
 W6, W7 -> test_learning_after_the_walk_and_record_take_2_waits
 W8 -> test_a_coachs_link_and_another_chat_meet_none_of_it","N453, N564, N572, N573, N590, N592; the rules are frontend docs/flows/the-plan.md §2."
+tests/test_way_in_limit.py,Story,"As a newcomer waiting for my first Take, I want Will's chat to keep answering while the app checks every few seconds what is due, so that the way in never stops with ""too many requests"" in the wait.","L1  The way in's poll (no answer, no audio) is not counted against the
+model's limit: more polls than that limit allows in a minute all
+pass, under the poll's own, higher limit.
+L2  An answer, which may call the model, is still counted against it.","L1, L2 -> test_polls_pass_the_models_limit_and_answers_do_not","The app polls POST /v2/plan/way-in every 5 s while Take 1 waits (N572, N592); under the model's 400 per hour it got 429s after about half an hour (coordinator's end-to-end review, 9 Nov 2026)."
 tests/test_webm_remux.py,Story,"As a speaker, I want my recording made seekable without changing its timing, and kept as-is if that fails, so that playback works everywhere and my Take is never lost. (Critical path: record.)","O1  The remuxed file carries a seek index and exactly the same packets and
 timestamps as the recording (even one not starting at zero), so no
 stored offset moves.
