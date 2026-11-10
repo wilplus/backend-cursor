@@ -8995,7 +8995,7 @@
   "id": "FIRST-02",
   "area": "The first person ever sets up a chat",
   "title": "Will asks what you do, and you type it in Will's chat",
-  "status": "not built",
+  "status": "built",
   "screen": "setup.will",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the person opens Will and taps “Let's start”",
@@ -9011,16 +9011,21 @@
    "N612 item 4",
    "N588"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/chat_recipes.py::def start(",
+   "be:services/chat_suggestions.py::def suggest("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
   "evals": [],
-  "note": "On main the setup still starts a new host from Artur's five questions (starting_questions); N612 item 2 says it starts blank."
+  "note": "Starts blank from what the host types; the prototype's four professions are built in, any other is one cheap-model call (backend #1893)."
  },
  {
   "id": "FIRST-03",
   "area": "The first person ever sets up a chat",
   "title": "One decision per screen: Keep or Change",
-  "status": "not built",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "Will has suggestions for this person",
@@ -9034,9 +9039,14 @@
    "N612 item 4",
    "N578 item 6"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/chat_recipes.py::def set_part("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "Will's suggestions are kept with the recipe, so Change needs no new call; each part is saved with PUT /v2/chats/setup/<part> (backend #1893)."
  },
  {
   "id": "FIRST-04",
@@ -9058,20 +9068,22 @@
   ],
   "code": [
    "be:services/assistants.py::def may_type",
-   "be:services/assistants.py::def photo_asks"
+   "be:services/assistants.py::def photo_asks",
+   "be:services/chat_recipes.py::def set_part("
   ],
   "tests": [
    "tests/test_assistants.py",
-   "tests/test_the_bar.py"
+   "tests/test_the_bar.py",
+   "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "A recording and a typed message exist. A chat asking for a photo, and the photo's upload, are merged (backend #1880), but the setup does not let a host ask for one yet (N611 item 8). A file is not built."
+  "note": "Several can be ticked and the recipe keeps them (backend #1893). A photo upload is #1880; a file sent to a host is not built."
  },
  {
   "id": "FIRST-05",
   "area": "The first person ever sets up a chat",
   "title": "What they get back is the chat's own output",
-  "status": "not built",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the setup reaches what people get back",
@@ -9084,15 +9096,20 @@
    "N612 item 3",
    "N618 item 2"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/chat_recipes.py::def start("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "Will's first suggestion is kept, an answer unless the profession suggests otherwise (backend #1893)."
  },
  {
   "id": "FIRST-06",
   "area": "The first person ever sets up a chat",
   "title": "The hello, the first questions and what people can tap",
-  "status": "partly",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the setup reaches the chat's first lines",
@@ -9109,13 +9126,15 @@
   ],
   "code": [
    "be:migrations/a_person_keeps_their_chat_recipe.sql",
-   "be:services/assistants.py::def save"
+   "be:services/assistants.py::def save",
+   "be:services/chat_recipes.py::SOMETHING_ELSE"
   ],
   "tests": [
-   "tests/test_assistants.py"
+   "tests/test_assistants.py",
+   "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "The recipe keeps the welcome, the questions and how people answer (#1856). The taps as question types are not built."
+  "note": "The hello, up to three questions and three taps, checked as a host's words; \"Something else\" is added on every read (backend #1893)."
  },
  {
   "id": "FIRST-07",
@@ -9136,10 +9155,14 @@
    "N582",
    "N607"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/chat_recipes.py::def _model("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
   "evals": [],
-  "note": "Starting a model is merged (backend #1867; MOD-24 to MOD-38). Adding someone's model to your chat is not built."
+  "note": "The recipe keeps each model as one question with three answers (backend #1893). Making the model itself is MOD-*; a used model's key is not built."
  },
  {
   "id": "FIRST-08",
@@ -9182,13 +9205,15 @@
    "N606"
   ],
   "code": [
-   "be:services/question_bundles.py::def _assistant_sends"
+   "be:services/question_bundles.py::def _assistant_sends",
+   "be:services/chat_replies.py::MINIMUM"
   ],
   "tests": [
-   "tests/test_question_bundles.py"
+   "tests/test_question_bundles.py",
+   "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "The shadow and the assistant exist for a host's chat; the minimum is not built."
+  "note": "The three choices are kept and the assistant answers alone only from the host's 20th own answer (backend #1893)."
  },
  {
   "id": "FIRST-10",
@@ -9210,19 +9235,21 @@
   ],
   "code": [
    "be:services/model_api.py::def price_screen(",
-   "be:services/model_api_store.py::def pay_month("
+   "be:services/model_api_store.py::def pay_month(",
+   "be:services/chat_recipes.py::PRICES"
   ],
   "tests": [
-   "tests/test_model_api_routes.py"
+   "tests/test_model_api_routes.py",
+   "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "The price, the split and the crediting of earned tokens are merged (backend #1866; MOD-46, MOD-47, TOK-03). Will's question in the setup is not built."
+  "note": "The setup keeps Share and a price in tokens (backend #1893); publishing it is the model API's price (#1866)."
  },
  {
   "id": "FIRST-11",
   "area": "The first person ever sets up a chat",
   "title": "See it as your people do, then open it",
-  "status": "not built",
+  "status": "partly",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "every part is decided",
@@ -9236,10 +9263,14 @@
    "N612",
    "N578 item 7"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/chat_recipes.py::def for_visitors("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
   "evals": [],
-  "note": "“Was this useful?” is drawn, not decided."
+  "note": "Not yet keeps it saved and nobody meets it; Yes opens it (backend #1893). See it, the play-through, is the frontend's."
  },
  {
   "id": "FIRST-12",
@@ -9265,7 +9296,7 @@
   "id": "FIRST-13",
   "area": "The first person ever sets up a chat",
   "title": "Models you can use, each with its owner's price",
-  "status": "not built",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… A second person sets up: models to choose from, and what it costs",
   "given": "models other people shared exist",
@@ -9280,15 +9311,20 @@
    "N616 item 1",
    "N617"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/chat_recipes.py::def shared_models("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "GET /v2/chats/setup/models lists public, priced models of others, greyed out when they do not fit (backend #1893)."
  },
  {
   "id": "FIRST-14",
   "area": "The first person ever sets up a chat",
   "title": "What your chat costs you",
-  "status": "not built",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… A second person sets up: models to choose from, and what it costs",
   "given": "the host has chosen their models",
@@ -9305,15 +9341,20 @@
    "N618 item 1",
    "N618 item 5"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/chat_recipes.py::def cost("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "Each model's price, Free for the host's own, and the month from the typed numbers (backend #1893)."
  },
  {
   "id": "FIRST-15",
   "area": "The first person ever sets up a chat",
   "title": "Health, law or money is asked once",
-  "status": "not built",
+  "status": "partly",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a host is setting up",
@@ -9326,15 +9367,20 @@
    "N616 item 13",
    "N616 item 22"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/chat_recipes.py::\"sensitive\""
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "The recipe keeps the answer, yes until the host says no (backend #1893). The prototype has no screen and no words for the question yet."
  },
  {
   "id": "FIRST-16",
   "area": "The first person ever sets up a chat",
   "title": "A new host starts blank",
-  "status": "not built",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "someone starts the setup",
@@ -9347,15 +9393,20 @@
    "N612 item 2",
    "N616 item 2"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/chat_suggestions.py::def generic("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "Nothing comes from Artur's chat; with no provider answer the generic suggestions stand (backend #1893)."
  },
  {
   "id": "VIS-01",
   "area": "What a visitor meets",
   "title": "The host's hello and first questions",
-  "status": "not built",
+  "status": "built",
   "screen": "chat.person",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "a person opens a host's link and joins",
@@ -9370,15 +9421,20 @@
    "N604",
    "N590 item 2"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/assistants.py::def host_of("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "The host's hello first, their questions and their taps with \"Something else\" (backend #1893)."
  },
  {
   "id": "VIS-02",
   "area": "What a visitor meets",
   "title": "The bar follows what the host takes",
-  "status": "not built",
+  "status": "built",
   "screen": "chat.person",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host ticked what people send",
@@ -9391,15 +9447,20 @@
    "N610",
    "N616 item 5"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/assistants.py::def may_type"
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "What the host ticked is what the chat takes (backend #1893); the bar itself is the frontend's."
  },
  {
   "id": "VIS-03",
   "area": "What a visitor meets",
   "title": "They get back the output the host chose",
-  "status": "not built",
+  "status": "built",
   "screen": "chat.person",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the person sent something",
@@ -9413,15 +9474,20 @@
    "N616 item 4",
    "N578 item 1"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/chat_replies.py::def on_question("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "One provider call makes the host's chosen output; it is sent at once or waits for the host (backend #1893)."
  },
  {
   "id": "VIS-04",
   "area": "What a visitor meets",
   "title": "Each model's line names whose model it is",
-  "status": "not built",
+  "status": "built",
   "screen": "chat.person",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host's chat has models",
@@ -9435,15 +9501,20 @@
    "N616 item 4",
    "N616 item 12"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/chat_replies.py::def make("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "One line per model, in order, each naming whose model; a line that scores the person is left out (backend #1893)."
  },
  {
   "id": "VIS-05",
   "area": "What a visitor meets",
   "title": "“Was this useful?” never blocks the next one",
-  "status": "not built",
+  "status": "built",
   "screen": "chat.person",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the person read what came back",
@@ -9456,15 +9527,20 @@
   "rules": [
    "N616 item 6"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/chat_replies.py::def useful("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "Yes, No or Skip is kept on the answer; the next message goes either way (backend #1893)."
  },
  {
   "id": "VIS-06",
   "area": "What a visitor meets",
   "title": "Before the minimum, the question waits for the host",
-  "status": "not built",
+  "status": "built",
   "screen": "chat.person",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host's assistant has fewer than 20 of the host's own answers",
@@ -9478,19 +9554,21 @@
    "N616 item 11"
   ],
   "code": [
-   "be:services/question_bundles.py::def _assistant_sends"
+   "be:services/question_bundles.py::def _assistant_sends",
+   "be:services/chat_replies.py::MINIMUM"
   ],
   "tests": [
-   "tests/test_question_bundles.py"
+   "tests/test_question_bundles.py",
+   "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "Main already holds every question for the host: the assistant sends nothing (#1857, N606). The minimum of 20 and telling the asker are not built. Status as the build's stories give it."
+  "note": "Before the host's 20 own answers the question waits for the host, with Will's draft in their Will (backend #1893)."
  },
  {
   "id": "VIS-07",
   "area": "What a visitor meets",
   "title": "In a health, law or money chat the model only suggests to the host",
-  "status": "not built",
+  "status": "built",
   "screen": "chat.person",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host answered yes to health, law or money",
@@ -9502,9 +9580,14 @@
   "rules": [
    "N616 item 13"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/chat_replies.py::def drafts("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "In a health, law or money chat the person gets nothing from a model; the host sees the suggestion (backend #1893)."
  },
  {
   "id": "LEARN-01",
@@ -9950,7 +10033,7 @@
   "id": "FIRST-17",
   "area": "The first person ever sets up a chat",
   "title": "“Want to make it {profession}-smart?”",
-  "status": "not built",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host's chat has its hello, questions and taps",
@@ -9962,15 +10045,20 @@
   "rules": [
    "N618 item 6"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/chat_recipes.py::def set_part("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "Not now leaves the chat without models (backend #1893)."
  },
  {
   "id": "FIRST-18",
   "area": "The first person ever sets up a chat",
   "title": "Two ways: use a model that exists, or train your own",
-  "status": "not built",
+  "status": "partly",
   "screen": "np",
   "prototype": "Jump to… A second person sets up: models to choose from, and what it costs",
   "given": "the host said yes",
@@ -9985,9 +10073,14 @@
    "N607",
    "N617"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/chat_recipes.py::def shared_models("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "The way and a used model's owner and price are kept (backend #1893); the key a used model gives the chat is not built."
  },
  {
   "id": "FIRST-19",
@@ -10013,7 +10106,7 @@
   "id": "FIRST-20",
   "area": "The first person ever sets up a chat",
   "title": "Test my chat opens my own chat",
-  "status": "not built",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "every part is decided",
@@ -10026,15 +10119,20 @@
   "rules": [
    "N618 item 8"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/chat_replies.py::def try_it("
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "Test my chat answers as the host's people would, in one provider call, and keeps nothing (backend #1893)."
  },
  {
   "id": "FIRST-21",
   "area": "The first person ever sets up a chat",
   "title": "To change the chat, tell Will",
-  "status": "not built",
+  "status": "built",
   "screen": "will",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the host's chat is set up",
@@ -10045,15 +10143,20 @@
   "rules": [
    "N618 item 8"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/chat_recipes.py::PARTS_LINE"
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "Any words to Will open the chat's parts again (backend #1893)."
  },
  {
   "id": "FIRST-22",
   "area": "The first person ever sets up a chat",
   "title": "Who answers is three plain choices on one screen",
-  "status": "not built",
+  "status": "built",
   "screen": "np",
   "prototype": "Jump to… The first person ever: the list of chats, then Will",
   "given": "the setup reaches who answers",
@@ -10066,9 +10169,14 @@
    "N618 item 9",
    "N606"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/chat_recipes.py::WHO"
+  ],
+  "tests": [
+   "tests/test_blank_setup.py"
+  ],
+  "evals": [],
+  "note": "Who answers is one of three (backend #1893)."
  },
  {
   "id": "FIRST-23",

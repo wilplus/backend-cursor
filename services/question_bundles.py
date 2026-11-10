@@ -168,11 +168,15 @@ def _send(database: Any, host_id: str, asker: dict, bundle: dict,
 
 
 def _assistant_sends(database: Any, host_id: str) -> bool:
-    """Whether the host's assistant may send a saved answer by itself. Not
-    yet for anyone: it answers only once a minimum is reached, and what the
-    minimum is stays open (N606 items 1 and 3)."""
-    del database, host_id
-    return False
+    """Whether the host's assistant may send a saved answer by itself: only
+    for a host who chose "I answer at once" in the blank setup, whose chat
+    is not about health, law or money, once they gave 20 answers of their
+    own (N606, N616 items 11 and 13; services/chat_replies.py). Until then
+    the question waits for the host."""
+    from services import chat_recipes, chat_replies
+    recipe = chat_recipes.for_visitors(chat_recipes.mine(database, host_id)) or {}
+    return (recipe.get("who") == "assistant" and recipe.get("sensitive") is False
+            and chat_replies.own_answers(database, host_id) >= chat_replies.MINIMUM)
 
 
 def collect(database: Any, host_id: Any, asker_id: Any, thread_id: Any, message_id: Any,

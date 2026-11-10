@@ -233,14 +233,16 @@ def clean(spec: str, raw: Any) -> dict:
     base = built_in(spec) or generic(spec)
     got = raw if isinstance(raw, dict) else {}
     models = []
-    for m in got.get("models") if isinstance(got.get("models"), list) else []:
+    raw_models = got.get("models")
+    for m in raw_models if isinstance(raw_models, list) else []:
         if isinstance(m, dict) and _str(m.get("q"), 90) and isinstance(m.get("opts"), list) \
                 and len(m["opts"]) >= 3:
             models.append({"q": _str(m["q"], 90),
                            "opts": [_str(x, 22) or "?" for x in m["opts"][:3]],
                            "says": _str(m.get("says"), 200) or ""})
     taps = []
-    for t in got.get("taps") if isinstance(got.get("taps"), list) else []:
+    raw_taps = got.get("taps")
+    for t in raw_taps if isinstance(raw_taps, list) else []:
         kept = _strs(t, 44, 3, [])
         if kept:
             taps.append(kept[:3])

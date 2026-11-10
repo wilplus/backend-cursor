@@ -350,6 +350,13 @@ def recipe_of(database: Any, user_id: Any) -> Optional[dict]:
     return value if isinstance(value, dict) else None
 
 
+def met_recipe_of(database: Any, user_id: Any) -> Optional[dict]:
+    """The recipe a person who comes to this host meets: the older one, or
+    a blank-setup one the host opened (``chat_recipes.for_visitors``)."""
+    from services.chat_recipes import for_visitors
+    return for_visitors(recipe_of(database, user_id))
+
+
 def builder(database: Any, user_id: Any, name: Any) -> dict:
     """GET /v2/chats/recipe: the host's assistant's name, their recipe as
     kept (or null), the builder's start (Artur's five) and what stays
@@ -385,15 +392,26 @@ def host_of(database: Any, user_id: Any, thread_id: Any) -> Optional[dict]:
     host = next((m for m in members if m.get("user_id") and str(m["user_id"]) != str(user_id)), None)
     if not host or not on(database, host["user_id"]):
         return None
-    recipe = recipe_of(database, host["user_id"])
+    recipe = met_recipe_of(database, host["user_id"])
     if not recipe:
         return None
-    return {"assistant": assistant_name(host.get("display_name")),
-            "about": recipe.get("about") or [],
-            # A question that asks for a photo is asked in the chat itself
-            # (``photo_asks``), never inside the first Take.
-            "questions": [q for q in recipe.get("questions") or [] if not q.get("photo")],
-            "answer_with": recipe.get("answer_with") or {k: True for k in ANSWER_WITH}}
+    out = {"assistant": assistant_name(host.get("display_name")),
+           "about": recipe.get("about") or [],
+           # A question that asks for a photo is asked in the chat itself
+           # (``photo_asks``), never inside the first Take.
+           "questions": [q for q in recipe.get("questions") or [] if not q.get("photo")],
+           "answer_with": recipe.get("answer_with") or {k: True for k in ANSWER_WITH}}
+    if recipe.get("v") == 2:
+        # The blank setup's chat (services/chat_recipes.py; VIS-01, VIS-02).
+        from services.chat_recipes import taps_of
+        def whose(m: dict) -> str:
+            owner = host.get("display_name") if m.get("own", True) else m.get("by")
+            parts = str(owner or "").split()
+            return f"{parts[0] if parts else 'WillpowerLab'}'s model"
+        out.update({"hello": recipe.get("hello"), "taps": taps_of(recipe),
+                    "send": recipe.get("send") or [], "out": recipe.get("out") or "answer",
+                    "models": [{"q": m.get("q"), "by": whose(m)} for m in recipe.get("models") or []]})
+    return out
 
 
 def welcome(database: Any, thread: str, owner_id: str, owner_member: str) -> list[dict]:
@@ -406,7 +424,7 @@ def welcome(database: Any, thread: str, owner_id: str, owner_member: str) -> lis
     try:
         if not on(database, owner_id):
             return []
-        recipe = recipe_of(database, owner_id) or {}
+        recipe = met_recipe_of(database, owner_id) or {}
         posted: list[dict] = []
         for i, line in enumerate(recipe.get("welcome") or []):
             rows = (database.client.table(MESSAGES).insert({
@@ -424,7 +442,7 @@ def learns(database: Any, owner_id: Any, own: bool = True) -> Optional[str]:
     (N601 item 1): the host's own, from their recipe (only with ``own``, the
     chat builder's ring); for Artur's link without one, his signed sentence
     (N601 item 3); else None."""
-    about = ((recipe_of(database, owner_id) or {}).get("about") or []) if own else []
+    about = ((met_recipe_of(database, owner_id) or {}).get("about") or []) if own else []
     if about:
         return str(about[0])
     from services.take_sends import _founder
@@ -437,7 +455,7 @@ def answer_with_of(database: Any, owner_id: Any) -> dict:
     """How people answer in this host's chat, from their recipe: {"tap",
     "type", "record"}. A host without the chat builder, or without a recipe,
     is read as the recipe's own default, every way open (``normalize``)."""
-    recipe = recipe_of(database, owner_id) if on(database, owner_id) else None
+    recipe = met_recipe_of(database, owner_id) if on(database, owner_id) else None
     given = (recipe or {}).get("answer_with")
     return _answer_with(given if isinstance(given, dict) else None)
 
@@ -482,7 +500,7 @@ def photo_asks(database: Any, owner_id: Any) -> list[str]:
     host without the chat builder or without a recipe. Best-effort: a
     failed read asks nothing."""
     try:
-        recipe = recipe_of(database, owner_id) if on(database, owner_id) else None
+        recipe = met_recipe_of(database, owner_id) if on(database, owner_id) else None
     except Exception:  # noqa: BLE001
         logger.warning("assistants: the photo questions could not be read", exc_info=True)
         return []
