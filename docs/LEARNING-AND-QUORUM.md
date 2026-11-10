@@ -290,6 +290,19 @@ about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-
     only for a call that sent a key, for 24 hours. Without a key, every call
     is a new answer, as before. Every key is pinned to the
     version it was made on until its buyer switches.
+  - **In a host's chat** (TOK-01, TOK-02; N607, N617, N618 item 1): a line
+    of another person's model in a visitor's message is paid by the host,
+    the owner's price as set now, through the same ledger charge
+    (`model_answer`), on an id made from the message and the model
+    (`pay_for_chat_line`), so the same message delivered again is charged
+    nothing more. The owner and teachers are credited from an
+    `ai_model_calls` row of that id (no key) by `pay_month`. Charged only
+    when the line is given; the person pays nothing; the host's own model
+    and "Test my chat" are free. With too few tokens the line is left out,
+    the rest is sent, and the host gets one `model_skipped` ledger mark per
+    model per day (no tokens moved, not in the token history), read as
+    `skipped_models` on GET /v2/chats/setup. With `TOKEN_PRICING_ENABLED`
+    off nothing is charged or left out. No provider call is added.
   - **An answer** runs under the buyer's processing authority, a permit for
     each provider call. It fails closed both ways (unlike the live loop):
     the price (or a test key's free answer) is taken first, the provider is
@@ -654,6 +667,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-11-10 · N607, N617, N618, N620 · TOK-01, TOK-02: another person's model in a host's chat is paid by the host, the owner's price, once per message; out of tokens its line is left out, the chat goes on and the host's setup lists it (`skipped_models`); TOK-03 was already built (`pay_month`, every finished month, no minimum, tokens only) · BE (this PR)
 - 2026-11-10 · N615 · PIPE-05, PIPE-07, PIPE-08: each model deals its own exam (the pick salted with the model's id) and a moment sealed in one model's exam is not taught by its experts in another; a paid answer is charged once per `Idempotency-Key`; a key's monthly limit is checked and taken in one database step under the key's row lock; the examples sweep reaches every model over successive runs; migration 0523 · BE #1903
 
 - 2026-11-10 · N615, N616 · LEARN-01 to LEARN-06, PIPE-06: a model answers from a small head fitted on its own settled examples (F8); "sure" from the head's measured confidence; the owner's check of ten unseen examples opens its owner's chat; the exam is computed by the app, never entered, and only a passed one opens sharing and selling; no photo model is fitted, answers from a head or is offered; a version keeps what it learned from and is marked to retrain when an example goes; migration 0522 · BE #1898

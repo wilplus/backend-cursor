@@ -591,7 +591,7 @@ fresh link, and an answer the coach withdrew since the bake is gone.
 O2  A coach's answer asks for the document to be baked again, off the
 coach's request; a broken queue never fails the answer.","O1 -> test_a_stored_bake_serves_the_coachs_answer_and_video_as_they_stand
 O2 -> test_a_coachs_answer_asks_for_a_rebake_and_a_broken_queue_never_fails_it","Founder 2026-10-21. The bake is retired only by the speaker's own writes (`ideal_text_feedback_surface_touched_at_v1`), never by the coach's, and a signed video link in it went dark after six hours."
-tests/test_blank_setup.py,Story,"As someone who knows a field, I want to set up a chat with Will from a blank start, one decision per screen, and open it; and as a person who comes to it, I want to get back what that host chose (N612 to N618; the locked prototype docs/design/the-blank-setup-2026-11-10/, its stories FIRST-* and VIS-*; the contract in backend PR #1893).","One test per story, on the public routes; the story id leads each
+tests/test_blank_setup.py,Story,"As someone who knows a field, I want to set up a chat with Will from a blank start, one decision per screen, and open it; and as a person who comes to it, I want to get back what that host chose (N612 to N618; the locked prototype docs/design/the-blank-setup-2026-11-10/, its stories FIRST-*, VIS-* and TOK-*; the contract in backend PR #1893).","One test per story, on the public routes; the story id leads each
 test's docstring.","FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_choices
 FIRST-03 -> SetupTest::test_one_decision_per_screen_keep_or_change
 FIRST-04 -> SetupTest::test_what_people_send_several_ticked
@@ -618,7 +618,16 @@ VIS-03   -> VisitorTest::test_they_get_back_the_output_the_host_chose
 VIS-04   -> VisitorTest::test_each_models_line_names_whose_model_it_is
 VIS-05   -> VisitorTest::test_was_this_useful_never_blocks_the_next_one
 VIS-06   -> VisitorTest::test_before_the_minimum_the_question_waits_for_the_host
-VIS-07   -> VisitorTest::test_in_a_health_law_or_money_chat_the_model_only_suggests",The build succeeds when a stranger sets up a chat with Will and a second person gets a useful answer in it (N620).
+VIS-07   -> VisitorTest::test_in_a_health_law_or_money_chat_the_model_only_suggests
+TOK-01   -> TokensTest::test_a_host_pays_when_someone_elses_model_runs_in_their_chat
+TOK-01   -> TokensTest::test_the_same_message_delivered_twice_is_charged_once
+TOK-02   -> TokensTest::test_out_of_tokens_the_model_is_skipped_and_the_chat_goes_on
+TOK-02   -> TokensTest::test_with_token_pricing_off_nothing_is_charged_or_skipped",The build succeeds when a stranger sets up a chat with Will and a second person gets a useful answer in it (N620).
+tests/test_blank_setup_journey.py,Story,"As someone who knows a field, I want to set up a chat with Will from a blank start and open it, and as a second person I want to join it and get an answer, so that the whole journey works end to end, for any profession, at a small cost (N619 step 5 ""Joined""; N620).","One test walks the public routes for two professions: setup, the
+link, a visitor who joins, ""Only you answer"" (no provider call),
+""I draft, you send"" (one call, the host sends it), and the
+speaking loop untouched. It prints what the journey cost.","JOURNEY -> JourneyTest::test_the_whole_journey_for_a_trichologist
+JOURNEY -> JourneyTest::test_the_whole_journey_for_a_language_teacher","The build succeeds when a stranger sets up a chat with Will and a second person gets a useful answer in it (N620); a visitor's message costs at most two provider calls, and one setup at most one."
 tests/test_blind_coach_evidence_postgres.py,Story,"As a coach, I want the blind evidence packet to carry only audio and timing, never the machine's or other raters' answers, so that my judgement stays blind.","O1  blind_coach_evidence_v1 gives the assigned coach the moment's audio and
 timing, and nothing else: no owner, machine or peer value, no words.
 O2  coach_evidence_comparison_v1 shows the owner, machine and peer answers

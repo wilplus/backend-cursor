@@ -14,6 +14,8 @@ field with the prototype step that fills it, is in backend PR #1893.
   * ``cost``: what the chat costs its host, in tokens (N617 item 2, N618
     items 1 and 5).
   * ``shared_models``: "Models you can use." (N617 item 1).
+  * ``skipped_models``: someone else's models left out of a person's
+    answer because the host had too few tokens (TOK-02), in ``read``.
 
 Kept in ``people_profiles.chat_recipe`` beside the older builder's ``"v":
 1`` recipe (``services/assistants.py``), which keeps working; ``welcome`` and
@@ -52,7 +54,7 @@ def _words(value: Any, most: int, field: str, *, empty: bool = False) -> str:
         return ""
     if not text or len(text) > most:
         raise RecipeError("RECIPE_INVALID", f"{field} must be 1 to {most} characters.")
-    reason = assistants.check_host_words(text)
+    reason = assistants.check_host_words(text, verdicts=False)
     if reason:
         raise RecipeError("RECIPE_WORDS", f"{field}: {reason}.")
     return text
@@ -201,7 +203,9 @@ def start(database: Any, user_id: Any, body: Any) -> dict:
     spec = spec[0].upper() + spec[1:]
     sug, _calls = chat_suggestions.suggest(spec, user_id=str(user_id))
     first_out = sug["out"][0]
-    recipe = {"spec": spec, "suggest": sug, "line": sug["line"][0], "send": [sug["send"][0]],
+    # "A message" is ticked by default, so a visitor can type (N625 item 1).
+    send = [sug["send"][0], *(["text"] if sug["send"][0] != "text" else [])]
+    recipe = {"spec": spec, "suggest": sug, "line": sug["line"][0], "send": send,
               "out": first_out, "hello": sug["hello"][0], "questions": [{"q": sug["qs"][0]}],
               "taps": list(sug["taps"][0])[:3], "smart": False, "models": [], "who": WHO[0],
               "share": False, "sensitive": True, "live": False}
@@ -332,7 +336,31 @@ def read(database: Any, user_id: Any, token_payload: Any) -> dict:
     if chat is not None:
         chat["link"] = my_link(database, user_id, token_payload)
     return {"recipe": recipe, "parts": parts(recipe) if recipe else [],
-            "own_chat": chat, "cost": cost(recipe)}
+            "own_chat": chat, "cost": cost(recipe), "skipped_models": skipped_models(database, user_id, recipe)}
+
+
+#: How far back "skipped_models" looks.
+SKIPPED_DAYS = 7
+
+
+def skipped_models(database: Any, user_id: Any, recipe: Optional[dict]) -> list[dict]:
+    """[{"model_id", "q", "by", "on"}]: someone else's models in this host's
+    chat left out of a person's answer in the last week because the host
+    had too few tokens (TOK-02), newest first, one per model; "on" is the
+    last day (YYYY-MM-DD). The words Will says about it wait for the
+    founder; this is only what happened."""
+    from datetime import timedelta
+
+    from services import token_account
+    theirs = {str(m.get("model_id")): m for m in (recipe or {}).get("models") or []
+              if not m.get("own", True) and m.get("model_id")}
+    if not theirs:
+        return []
+    since = (datetime.now(timezone.utc) - timedelta(days=SKIPPED_DAYS)).date().isoformat()
+    return [{"model_id": r["model_id"], "q": theirs[r["model_id"]].get("q"),
+             "by": theirs[r["model_id"]].get("by"), "on": r["on"]}
+            for r in token_account.models_skipped(str(user_id), since=since, database=database)
+            if r["model_id"] in theirs]
 
 
 def edit(database: Any, user_id: Any, body: Any) -> dict:
