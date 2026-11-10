@@ -9,7 +9,8 @@ item 6) and pass ``assistants.check_host_words``.
   * ``begin``: the setup's first question, or its open question again.
   * ``answer``: a tap, or typed words, under Will's question; then his next
     lines. At the end, "Go live" keeps the recipe (``assistants.save``) and
-    the person's assistant is live; "Start again" begins again. Nothing is
+    the person's chat is live (their assistant answers only once N606's
+    minimum is reached, which is not built here); "Start again" begins again. Nothing is
     kept before "Go live".
 
 The steps (N582 item 1): (1) the welcome; (2) navigation, how people answer
@@ -75,7 +76,9 @@ AUTOMATE = {"Yes": "yes", "Not now": "no", "Help train an existing model": "help
 SHORTER = "Shorter, please: one sentence of about fifteen words, for your join page."
 PEEK = "This is what someone new will meet in your chat:"
 GO_LIVE, START_AGAIN = "Go live", "Start again"
-LIVE = "Your assistant is live. Everyone who joins through your link meets it."
+#: Drafted for the founder's OK. The chat, not the assistant: the assistant
+#: sends nothing until the minimum is reached (N606 item 1).
+LIVE = "Your chat is live. Everyone who joins through your link meets it."
 AGAIN = "Let's try that again. {reason}"
 NOT_KEPT = "I can't put that in your chat: it reads like a score or a verdict about someone."
 
