@@ -89,56 +89,72 @@ def _model(raw: Any, i: int) -> dict:
     return out
 
 
+def _one_of(allowed: Any, message: str) -> Any:
+    def check(value: Any) -> Any:
+        if isinstance(value, bool) or value not in allowed:
+            raise RecipeError("RECIPE_INVALID", message)
+        return value
+    return check
+
+
+def _send(value: Any) -> list:
+    if not isinstance(value, list) or not value or any(v not in chat_suggestions.SEND for v in value):
+        raise RecipeError("RECIPE_INVALID", "Tick at least one of rec, text, photo, file.")
+    return list(dict.fromkeys(value))
+
+
+def _questions(value: Any) -> list:
+    if not isinstance(value, list) or len(value) > MAX_QUESTIONS:
+        raise RecipeError("RECIPE_INVALID", f"Up to {MAX_QUESTIONS} first questions.")
+    return [{"q": _words(q.get("q") if isinstance(q, dict) else q, 160, f"Question {i + 1}")}
+            for i, q in enumerate(value)]
+
+
+def _taps(value: Any) -> list:
+    if not isinstance(value, list) or len(value) != 3:
+        raise RecipeError("RECIPE_INVALID", "Three taps.")
+    taps = [_words(t, 44, f"Tap {i + 1}") for i, t in enumerate(value)]
+    if SOMETHING_ELSE in taps:
+        raise RecipeError("RECIPE_INVALID", f"“{SOMETHING_ELSE}” is always there.")
+    return taps
+
+
+def _models(value: Any) -> list:
+    if not isinstance(value, list) or len(value) > MAX_MODELS:
+        raise RecipeError("RECIPE_INVALID", f"Up to {MAX_MODELS} models.")
+    return [_model(m, i) for i, m in enumerate(value)]
+
+
+def _cost(value: Any) -> dict:
+    if not isinstance(value, dict):
+        raise RecipeError("RECIPE_INVALID", "How many people, and how often each sends.")
+    return {"people": _whole(value.get("people"), 1, 100000, "People"),
+            "sends": _whole(value.get("sends"), 1, 1000, "Sends")}
+
+
+#: Each part's check, as the contract says (PR #1893).
+_CLEAN: dict[str, Any] = {
+    "line": lambda v: _words(v, 160, "Why people come"),
+    "hello": lambda v: _words(v, 220, "Your hello"),
+    "send": _send,
+    "out": _one_of(tuple(chat_suggestions.OUT), "They get back answer, words, todo or mark."),
+    "questions": _questions,
+    "taps": _taps,
+    "models": _models,
+    "way": _one_of(("use", "own"), "Use one, or train your own."),
+    "who": _one_of(WHO, "Who answers is shadow, you or assistant."),
+    "price": _one_of(PRICES, f"A price is one of {list(PRICES)} tokens."),
+    "cost": _cost,
+    **{p: (lambda v, p=p: _bool(v, p)) for p in ("smart", "share", "sensitive", "live")},
+}
+
+
 def _clean_part(part: str, value: Any) -> Any:
     """One part's value, checked as the contract says, or 400."""
-    if part == "line":
-        return _words(value, 160, "Why people come")
-    if part == "hello":
-        return _words(value, 220, "Your hello")
-    if part == "send":
-        if not isinstance(value, list) or not value or any(v not in chat_suggestions.SEND for v in value):
-            raise RecipeError("RECIPE_INVALID", "Tick at least one of rec, text, photo, file.")
-        return list(dict.fromkeys(value))
-    if part == "out":
-        if value not in chat_suggestions.OUT:
-            raise RecipeError("RECIPE_INVALID", "They get back answer, words, todo or mark.")
-        return value
-    if part == "questions":
-        if not isinstance(value, list) or len(value) > MAX_QUESTIONS:
-            raise RecipeError("RECIPE_INVALID", f"Up to {MAX_QUESTIONS} first questions.")
-        return [{"q": _words(q.get("q") if isinstance(q, dict) else q, 160, f"Question {i + 1}")}
-                for i, q in enumerate(value)]
-    if part == "taps":
-        if not isinstance(value, list) or len(value) != 3:
-            raise RecipeError("RECIPE_INVALID", "Three taps.")
-        taps = [_words(t, 44, f"Tap {i + 1}") for i, t in enumerate(value)]
-        if SOMETHING_ELSE in taps:
-            raise RecipeError("RECIPE_INVALID", f"“{SOMETHING_ELSE}” is always there.")
-        return taps
-    if part == "models":
-        if not isinstance(value, list) or len(value) > MAX_MODELS:
-            raise RecipeError("RECIPE_INVALID", f"Up to {MAX_MODELS} models.")
-        return [_model(m, i) for i, m in enumerate(value)]
-    if part == "way":
-        if value not in ("use", "own"):
-            raise RecipeError("RECIPE_INVALID", "Use one, or train your own.")
-        return value
-    if part == "who":
-        if value not in WHO:
-            raise RecipeError("RECIPE_INVALID", "Who answers is shadow, you or assistant.")
-        return value
-    if part == "price":
-        if value not in PRICES or isinstance(value, bool):
-            raise RecipeError("RECIPE_INVALID", f"A price is one of {list(PRICES)} tokens.")
-        return value
-    if part == "cost":
-        if not isinstance(value, dict):
-            raise RecipeError("RECIPE_INVALID", "How many people, and how often each sends.")
-        return {"people": _whole(value.get("people"), 1, 100000, "People"),
-                "sends": _whole(value.get("sends"), 1, 1000, "Sends")}
-    if part in ("smart", "share", "sensitive", "live"):
-        return _bool(value, part)
-    raise RecipeError("NOT_FOUND", "No such part.", 404)
+    check = _CLEAN.get(part)
+    if check is None:
+        raise RecipeError("NOT_FOUND", "No such part.", 404)
+    return check(value)
 
 
 def _derived(recipe: dict) -> dict:
