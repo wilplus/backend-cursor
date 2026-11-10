@@ -568,12 +568,17 @@ def shared_models(database: Any, user_id: Any) -> dict:
     return {"models": out}
 
 
+def _card(row: dict) -> dict:
+    found = row.get("recipe")
+    return found if isinstance(found, dict) else {}
+
+
 def _offered(row: dict, user_id: str, teaching: Optional[set[str]], learning: bool) -> bool:
     """Is this model in the host's "Models you can use"? Not theirs, not
     archived or a draft, never a photo model (N616 item 9, LEARN-06); one
     that passed: public and priced; one still learning: public or one they
     teach, for a host with the AI models (N633 item 1)."""
-    card = row.get("recipe") if isinstance(row.get("recipe"), dict) else {}
+    card = _card(row)
     if str(card.get("input") or "text") in ("image", "photo"):
         return False  # no model reads a photo yet (N616 item 9, LEARN-06)
     if str(row.get("owner_id")) == user_id or row.get("status") in ("archived", "draft"):
@@ -585,7 +590,7 @@ def _offered(row: dict, user_id: str, teaching: Optional[set[str]], learning: bo
 
 def _offer(row: dict, learning: bool, send: set) -> dict:
     from services.token_prices import shown
-    card = row.get("recipe") if isinstance(row.get("recipe"), dict) else {}
+    card = _card(row)
     opts = card.get("scale") or card.get("options") or []
     needs = {"voice": "rec", "audio": "rec", "text": "text", "image": "photo",
              "photo": "photo", "file": "file"}.get(str(card.get("input") or "text"), "text")
