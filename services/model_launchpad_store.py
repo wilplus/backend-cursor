@@ -77,10 +77,15 @@ def _models(database: Any, ids: Optional[list[str]] = None) -> list[dict]:
     if not models:
         return []
     mids = [str(m["id"]) for m in models]
-    teachers = _rows(_table(database, TEACHERS).select("model_id,user_id,role,trust_status")
-                     .in_("model_id", mids))
-    counted = _rows(_table(database, ANSWERS).select("model_id").in_("model_id", mids).eq("counted", True))
-    exam = _rows(_table(database, EXAMPLES).select("model_id").in_("model_id", mids).eq("in_exam", True))
+    # Counts read every row, page by page, never the server's first
+    # thousand (N615 item 2).
+    from services.model_api_store import _all
+    teachers = _all(lambda: _table(database, TEACHERS).select("model_id,user_id,role,trust_status")
+                    .in_("model_id", mids))
+    counted = _all(lambda: _table(database, ANSWERS).select("model_id").in_("model_id", mids)
+                   .eq("counted", True))
+    exam = _all(lambda: _table(database, EXAMPLES).select("model_id").in_("model_id", mids)
+                .eq("in_exam", True))
     by_model: dict[str, list[dict]] = defaultdict(list)
     for t in teachers:
         by_model[str(t["model_id"])].append(t)
@@ -132,8 +137,9 @@ def page_for(database: Any, user_id: Any, model_id: Any) -> dict:
     model = _model(database, model_id)
     own_part = None
     if rules.viewer_role(model, me) in ("owner", "contributor"):
-        mine = _rows(_table(database, ANSWERS).select("id").eq("model_id", model["id"])
-                     .eq("teacher_id", me).eq("counted", True))
+        from services.model_api_store import _all
+        mine = _all(lambda: _table(database, ANSWERS).select("id").eq("model_id", model["id"])
+                    .eq("teacher_id", me).eq("counted", True))
         own_part = {"answers_counted": len(mine)}
     page = rules.model_page(model, me, own_part=own_part)
     if page is None:
@@ -209,10 +215,50 @@ def _sees_private(database: Any, me: str, models: list[dict]) -> set[str]:
            if m.get("visibility") != "public" or rules.viewer_role(m, me) == "owner"}
     rest = [m["id"] for m in models if m["id"] not in out]
     if rest:
+        went = {str(m["id"]): public_at(m) for m in _rows(
+            _table(database, MODELS).select("id,setup").in_("id", rest))}
         out |= {str(i["model_id"]) for i in _rows(
-            _table(database, INVITES).select("model_id,status").eq("invitee_id", me).in_("model_id", rest))
-            if i.get("status") == "accepted"}
+            _table(database, INVITES).select("model_id,status,created_at").eq("invitee_id", me)
+            .in_("model_id", rest))
+            if i.get("status") == "accepted" and _before(i.get("created_at"), went.get(str(i["model_id"])))}
     return out
+
+
+def public_at(model: dict) -> Optional[str]:
+    """When the model went public, as its setup keeps it (``mark_public``)."""
+    setup = model.get("setup")
+    return str(setup["public_at"]) if isinstance(setup, dict) and setup.get("public_at") else None
+
+
+def mark_public(setup: Any, public: bool) -> dict:
+    """The setup with the moment it went public kept, the first time it
+    does; going private again clears it (N615 item 2: someone invited after
+    it went public is never sent what was private)."""
+    out = dict(setup) if isinstance(setup, dict) else {}
+    if public:
+        out.setdefault("public_at", _now())
+    else:
+        out.pop("public_at", None)
+    return out
+
+
+def _when(value: Any) -> Optional[datetime]:
+    try:
+        stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
+
+
+def _before(invited: Any, went_public: Optional[str]) -> bool:
+    """An invite opens the private examples only when it was made while the
+    model was private. A model that went public before its moment was kept
+    opens them to nobody it invited (it cannot tell when it went public);
+    an invite without a time is read as before."""
+    if invited is None:
+        return True
+    asked, went = _when(invited), _when(went_public)
+    return asked is not None and went is not None and asked < went
 
 
 def _exam_cases_for(database: Any, me: str, mids: list[str]) -> list[dict]:
@@ -277,11 +323,20 @@ def answer(database: Any, user_id: Any, example_id: Any, model_id: Any, step: st
     if rules.viewer_role(model, me) not in ("owner", "contributor"):
         raise _not_found()
     eid = _uuid(example_id)
-    rows = _rows(_table(database, EXAMPLES).select("id,model_id,private,snippet_id,known_answer")
+    rows = _rows(_table(database, EXAMPLES).select("id,model_id,private,snippet_id,known_answer,in_exam,added_by")
                  .eq("id", eid).eq("model_id", model["id"]).limit(1)) if eid else []
     if not rows:
         raise _not_found()
     example = rows[0]
+    # An exam case is answered only by the two experts who set it aside
+    # (N566 item 5); for anyone else it is not there (N615 item 2). The
+    # adder answered their own example when they added it: it counts once
+    # another teacher agrees, never on a second answer of theirs.
+    if example.get("in_exam") and str(example["id"]) not in {
+            str(c["id"]) for c in _exam_cases_for(database, me, [model["id"]])}:
+        raise _not_found()
+    if str(example.get("added_by") or "") == me:
+        raise ChatsError("OWN_EXAMPLE", "You added this example; another teacher answers it.", 409)
     if example.get("private") and model["id"] not in _sees_private(database, me, [model]):
         raise _not_found()
     wanting: list[dict] = []
@@ -331,9 +386,15 @@ def _trust_after_answer(database: Any, me: str, model: dict) -> Optional[dict]:
     ids = [str(a["example_id"]) for a in mine]
     known = {str(e["id"]): e.get("known_answer") for e in _rows(
         _table(database, EXAMPLES).select("id,known_answer").in_("id", ids))}
+    team = _rows(_table(database, TEACHERS).select("user_id,trust_status,trust_kappa,trust_told_at")
+                 .eq("model_id", model["id"]))
+    # A newcomer is measured against trusted teachers only, never against
+    # other newcomers (N615 item 2): two who agree with each other are not
+    # admitted on each other's word.
+    trusted = {str(t["user_id"]) for t in team if t.get("trust_status") == "counts"} - {me}
     others = [o for o in _rows(_table(database, ANSWERS).select("example_id,answer,teacher_id")
                                .in_("example_id", ids).eq("model_id", model["id"]).eq("step", "rate"))
-              if str(o.get("teacher_id")) != me]
+              if str(o.get("teacher_id")) in trusted]
     votes: dict[str, dict[Any, int]] = defaultdict(lambda: defaultdict(int))
     for o in others:
         votes[str(o["example_id"])][o.get("answer")] += 1
@@ -342,8 +403,6 @@ def _trust_after_answer(database: Any, me: str, model: dict) -> Optional[dict]:
         eid = str(a["example_id"])
         consensus = known.get(eid) or (max(votes[eid].items(), key=lambda kv: kv[1])[0] if votes.get(eid) else None)
         scored.append({"answer": a.get("answer"), "consensus": consensus, "known": bool(known.get(eid))})
-    team = _rows(_table(database, TEACHERS).select("user_id,trust_status,trust_kappa,trust_told_at")
-                 .eq("model_id", model["id"]))
     me_row = next((t for t in team if str(t["user_id"]) == me), {})
     ref = [float(t["trust_kappa"]) for t in team
            if t.get("trust_status") == "counts" and t.get("trust_kappa") is not None and str(t["user_id"]) != me]
@@ -559,7 +618,10 @@ def make_public(database: Any, user_id: Any, model_id: Any, confirmed: bool) -> 
     model = _owner(database, me, model_id)
     if not confirmed:
         raise ChatsError("CONFIRM", "Read what making it public means first.")
-    _table(database, MODELS).update({"visibility": "public", "updated_at": _now()}).eq("id", model["id"]).execute()
+    found = _rows(_table(database, MODELS).select("id,setup").eq("id", model["id"]).limit(1))
+    setup = mark_public(found[0].get("setup") if found else None, True)
+    _table(database, MODELS).update({"visibility": "public", "setup": setup, "updated_at": _now()}) \
+        .eq("id", model["id"]).execute()
     return {"visibility": "public"}
 
 

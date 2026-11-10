@@ -698,3 +698,32 @@ SPEC_WALK_VOICE = LLMSpec(
 written from the Take's facts by the rules in ``services/prompts/walk_voice``,
 checked in code (``services.walk_voice.check``). Short: the walk waits for
 it, and shows the signed line when it is late."""
+
+
+SPEC_CHAT_SETUP_SUGGEST = LLMSpec(
+    model=CHEAP_MODEL,
+    temperature=0.6,
+    # The prototype's JSON: two lines, two hellos, three questions, two sets
+    # of three taps, up to four models and two samples (N620: the cheap
+    # model, once, with a maximum length).
+    max_tokens=900,
+    response_format={"type": "json_object"},
+    timeout_seconds=25.0,
+)
+"""Will's suggestions for a new host's chat, for a profession the
+prototype has none built in for (services/chat_suggestions.py; N612 item
+4, N620)."""
+
+
+SPEC_CHAT_REPLY = LLMSpec(
+    model=CHEAP_MODEL,
+    temperature=0.4,
+    # One answer of a few sentences and one line for each of up to three
+    # models, as JSON (N620: a visitor's message costs at most two calls;
+    # this is the one).
+    max_tokens=450,
+    response_format={"type": "json_object"},
+    timeout_seconds=20.0,
+)
+"""What a person gets back in a host's chat, made from the host's recipe
+(services/chat_replies.py; N612 item 3, N616 item 4)."""

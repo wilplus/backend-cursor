@@ -180,6 +180,11 @@ class _Query:
             self.cap = n
         return self
 
+    def range(self, start, end):
+        # A page of rows, as PostgREST's range (start and end both in).
+        self.span = (start, end)
+        return self
+
     def insert(self, payload):
         self.write = ("insert", payload if isinstance(payload, list) else [payload])
         return self
@@ -208,6 +213,9 @@ class _Query:
             return _Result(hits)
         if self.sort:
             hits.sort(key=lambda r: r[self.sort[0]], reverse=self.sort[1])
+        span = getattr(self, "span", None)
+        if span:
+            hits = hits[span[0]:span[1] + 1]
         out = [dict(r) for r in hits[:self.cap]]
         if self.embed:
             key = _EMBEDS[(self.name, self.embed)]
