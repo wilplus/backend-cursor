@@ -929,6 +929,12 @@ if [ "$LANE" = "released" ]; then
   psql -q -d "$DB" -c "ALTER TABLE public.snippets ADD COLUMN IF NOT EXISTS metrics JSONB" >>"$log" 2>&1
 fi
 
+# 0516 (N528, N563, N566): the model launchpad's tables and its ring row.
+# Both lanes, last, as in the manifest. Twice: apply/reapply idempotency. Its
+# cases are in tests/test_a_person_can_teach_and_start_ai_models_postgres.py.
+hard migrations/a_person_can_teach_and_start_ai_models.sql
+hard migrations/a_person_can_teach_and_start_ai_models.sql
+
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"
 rm -f "$log"
