@@ -111,8 +111,9 @@ def _questions(value: Any) -> list:
 
 
 def _taps(value: Any) -> list:
-    if not isinstance(value, list) or len(value) != 3:
-        raise RecipeError("RECIPE_INVALID", "Three taps.")
+    # "Type my own" makes one tap; Will's suggestions are three (the prototype).
+    if not isinstance(value, list) or not 1 <= len(value) <= 3:
+        raise RecipeError("RECIPE_INVALID", "One to three taps.")
     taps = [_words(t, 44, f"Tap {i + 1}") for i, t in enumerate(value)]
     if SOMETHING_ELSE in taps:
         raise RecipeError("RECIPE_INVALID", f"“{SOMETHING_ELSE}” is always there.")
@@ -259,11 +260,17 @@ def own_chat(recipe: Optional[dict], name: Any) -> Optional[dict]:
     return {"title": first[0] if first else "WillpowerLab", "line": recipe.get("hello")}
 
 
-def read(database: Any, user_id: Any, name: Any) -> dict:
-    """GET /v2/chats/setup."""
+def read(database: Any, user_id: Any, token_payload: Any) -> dict:
+    """GET /v2/chats/setup. ``own_chat.link`` is the host's own join link,
+    the one GET /v2/chats/link gives ({"token", "path"}), made the first
+    time as there, for the finished screen's link."""
+    from services.chat_links import my_link, name_of
     recipe = mine(database, user_id)
+    chat = own_chat(recipe, name_of(token_payload))
+    if chat is not None:
+        chat["link"] = my_link(database, user_id, token_payload)
     return {"recipe": recipe, "parts": parts(recipe) if recipe else [],
-            "own_chat": own_chat(recipe, name), "cost": cost(recipe)}
+            "own_chat": chat, "cost": cost(recipe)}
 
 
 def edit(database: Any, user_id: Any, body: Any) -> dict:
