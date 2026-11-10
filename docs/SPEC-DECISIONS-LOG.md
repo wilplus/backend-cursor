@@ -16694,3 +16694,36 @@ four points from the tokens build: "I say ok to all").
 
 No migration in this entry. No rules page yet: hosted chats and their setup
 get one when the build is joined.
+
+**N631 · A day the person never chose is never shown as theirs** (founder,
+the Claude Code chat, 5 November 2026, on the memo "When to ask the
+deadline", option A: "implement recommended"; and 10 November 2026, on
+seeing "Your deadline: Thu 10 Dec" after answering No to "Are you in a
+hurry?": "Merge it"). The decision was written on 5 November as N524 in a
+pull request that never merged (wilplus/backend-cursor#1771, frontend
+#1266); that number has since gone to another entry, so it is logged here.
+For N135, N149, N401, N459, N462 and N487 item 4; amends N459 item 1.
+
+1. **A day the person never chose is never spoken of or shown as theirs.**
+   That is "No date yet"'s two months, a first Take with no day heard, and
+   a join link's "No" to "Are you in a hurry?" (the plan's
+   `deadline_given`).
+2. **In a host's chat, "Your deadline: {date}" shows only under a day the
+   person picked.** After "No", no deadline line is drawn. The plan still
+   runs on its step meanwhile (N487 item 4).
+3. **The first new project asks for it.** After that project's first Take,
+   in place of "Is this for {date}?", Will asks "When is your deadline?"
+   with Pick a date or No date yet. A day picked becomes theirs: "Done.
+   Your plan now runs to {date}." "No date yet" gives two months from
+   today: "That's fine. Let's give it two months, until {date}." A chosen
+   day keeps "Is this for {date}?" as before.
+4. **The plan card shows "Your deadline:" only for a day the person
+   chose.**
+5. **The plan's end with no day chosen** asks neither "Your deadline was
+   {date}." nor "How did it go?".
+6. **Where the plan has changed since 5 November** (N564: four marks, no
+   practice days), items 3 to 5 apply only to what is still on screen; the
+   builder says which lines no longer exist.
+
+Signed words only, no new ones. No migration. The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md).
