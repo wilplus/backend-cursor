@@ -7,9 +7,11 @@ OUTCOME
   O1  With the chat builder's ring, each chat with a person in my list says
       whose assistant answers there: "Tomek's assistant"; without the ring,
       nothing changes (N579 item 2, N580 items 1 and 3).
-  O2  The join page of a tester's link says "Tomek's assistant" and "Will's
-      chat is where you can set up a chat of your own."; anyone else's link
-      shows only the name, as before (N586 item 2).
+  O2  The join page of anyone's link is three lines: "Tomek invited you",
+      one sentence of what you'll learn, "Only the two of you are in this
+      chat."; Artur's link says his signed sentence; a tester's link also
+      names "Tomek's assistant"; the old line about Will's chat is gone
+      (N601).
   O3  A host sets the welcome, the first Take's questions and how people
       answer; the builder starts from Artur's five; a locked field (the
       Nevers, consent, the bar...) is refused (N578 item 5, N579 item 1).
@@ -40,7 +42,7 @@ OUTCOME
       person who joins meets it (N582 item 1, N586 item 5).
   O11 A welcome that scores people is not kept: Will says why and asks again.
 PROVES   O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
-         O2 -> AssistantsTest::test_a_testers_join_page_names_the_assistant_and_wills_chat
+         O2 -> AssistantsTest::test_the_join_page_is_three_lines
          O3 -> RecipeTest::test_a_host_sets_welcome_questions_and_how_people_answer
          O4 -> RecipeTest::test_a_hosts_words_never_score_the_speaker
          O5 -> RecipeTest::test_a_recognizer_reads_on_one_line_with_two_cuts
@@ -86,22 +88,26 @@ class AssistantsTest(unittest.TestCase):
             self.assertEqual([c["assistant"] for c in self._list(PIOTR)], ["Tomek's assistant"])
             self.assertEqual([c["assistant"] for c in self._list(TOMEK)], [None])
 
-    def test_a_testers_join_page_names_the_assistant_and_wills_chat(self):
+    def test_the_join_page_is_three_lines(self):
         token = self._link(TOMEK).get_json()["token"]
         with patch("services.rings.feature_is_on_for_user", _ring({TOMEK})):
             self.assertEqual(self._preview(token).get_json(), {
-                "name": "Tomek", "assistant": "Tomek's assistant",
-                "will_line": "Will's chat is where you can set up a chat of your own."})
-        with patch("services.rings.feature_is_on_for_user", _ring(set())):
-            self.assertEqual(self._preview(token).get_json(), {"name": "Tomek"})
+                "name": "Tomek", "invited": "Tomek invited you", "learn": None,
+                "only_two": "Only the two of you are in this chat.",
+                "assistant": "Tomek's assistant"})
+        with patch("services.rings.feature_is_on_for_user", _ring(set())), \
+                patch("config.Config.FOUNDER_CHAT_USER_ID", TOMEK):
+            self.assertEqual(self._preview(token).get_json(), {
+                "name": "Tomek", "invited": "Tomek invited you",
+                "learn": "Record a short talk. He'll tell you what landed and what to try next.",
+                "only_two": "Only the two of you are in this chat."})
 
 
     KASIA = {"welcome": ["Hi, I'm Kasia. Let's get you moving."],
              "questions": [{"q": "Which move do you want first?",
                             "answers": ["Handstand", "Cartwheel"]}],
              "answer_with": {"tap": True, "type": False, "record": True},
-             "about": ["Tomek coaches gymnastics.",
-                       "In Tomek's chat you can practise your first handstand."],
+             "about": ["Your first handstand, step by step, at your own pace."],
              "fit": {"coaches": "skill", "needs": "moving", "skill": "gymnastics"}}
 
     def _keep(self, who, body):
@@ -127,8 +133,10 @@ class AssistantsTest(unittest.TestCase):
         token = self._link(TOMEK).get_json()["token"]
         with patch("services.rings.feature_is_on_for_user", _ring({TOMEK})):
             self._keep(TOMEK, self.KASIA)
-            self.assertEqual(self._preview(token).get_json()["about"], [
-                "Tomek coaches gymnastics.", "In Tomek's chat you can practise your first handstand."])
+            self.assertEqual(self._preview(token).get_json()["learn"],
+                             "Your first handstand, step by step, at your own pace.")
+            long = {**self.KASIA, "about": [" ".join(["word"] * 21)]}
+            self.assertEqual(self._keep(TOMEK, long).get_json()["code"], "RECIPE_INVALID")
             chat = self._join(PIOTR, token).get_json()["chat"]["id"]
         seen = self.client.get(f"/v2/chats/{chat}/messages", headers=self._as(PIOTR)).get_json()["messages"]
         self.assertEqual([m["body"] for m in seen], ["Hi, I'm Kasia. Let's get you moving."])
@@ -198,6 +206,10 @@ class SetupInWillsChatTest(unittest.TestCase):
         self.assertEqual(self._say(picked="Something else"), ["Something else", "What is your specialization?"])
         self.assertEqual(self._say(said="Gymnastics"),
                          ["Gymnastics", "What can people learn in your chat? One sentence."])
+        self.assertEqual(self._say(said=" ".join(["handstand"] * 25)), [
+            " ".join(["handstand"] * 25),
+            "Shorter, please: one sentence of about fifteen words, for your join page.",
+            "What can people learn in your chat? One sentence."])
         self.assertEqual(self._say(said="Your first handstand, step by step."), [
             "Your first handstand, step by step.",
             "Do people come to you to be coached on how they do something, or with questions on a topic?"])
@@ -207,8 +219,8 @@ class SetupInWillsChatTest(unittest.TestCase):
                                                            "Do you want to automate your own chat?"])
         self.assertEqual(self._chips(), ["Yes", "Not now", "Help train an existing model"])
         self.assertEqual(self._say(picked="Not now")[1].split("\n"), [
-            "This is what someone new will meet in your chat:", "Tomek's assistant",
-            "Tomek's specialization: Gymnastics.", "Your first handstand, step by step.",
+            "This is what someone new will meet in your chat:", "Tomek invited you",
+            "Your first handstand, step by step.", "Only the two of you are in this chat.",
             "Hi, I'm Tomek. Let's get you moving."])
         self.client.put("/v2/chats/recipe", headers=self._as(TOMEK), json={
             "questions": [{"q": "Which move do you want first?", "answers": ["Handstand"]}]})
@@ -224,6 +236,11 @@ class SetupInWillsChatTest(unittest.TestCase):
         chat = self._join(PIOTR, token).get_json()["chat"]["id"]
         seen = self.client.get(f"/v2/chats/{chat}/messages", headers=self._as(PIOTR)).get_json()["messages"]
         self.assertEqual([m["body"] for m in seen], ["Hi, I'm Tomek. Let's get you moving."])
+        # The MVP's Will chat (N599): the setup writes nothing of principles,
+        # the Sunday note or life goals.
+        said = " ".join(r["body"] for r in self.lounge.rows.values())
+        for gone in ("Your principles", "The Sunday note", "Your life goals"):
+            self.assertNotIn(gone, said)
 
     def test_a_welcome_that_scores_people_is_asked_again(self):
         self.client.post("/v2/chats/recipe/setup", headers=self._as(TOMEK))

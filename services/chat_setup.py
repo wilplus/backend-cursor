@@ -15,8 +15,8 @@ item 6) and pass ``assistants.check_host_words``.
 The steps (N582 item 1): (1) the welcome; (2) navigation, how people answer
 (record, type, tap answers, or any of these); (3) "What is your
 specialization?", with what the person said of their field in their first
-Take, and "Something else"; then what people learn with them, which with
-(3) makes the join page's lines (N586 item 1); then N588's two lines: a
+Take, and "Something else"; then what people learn with them, the join page's
+one sentence (N601, N586 item 1); then N588's two lines: a
 skill coach or a topic, and what they need to see; (4) the model, "Do you
 want to automate your own chat?", after Will's plain line on what that
 means; (5) the summary, to decide. The model's own setup (what it
@@ -27,6 +27,10 @@ Rows of the one Lounge thread (``lounge_messages``, kind "text"), each with
 ``metadata.chat_setup``: Will's sentence {"step": "say"}; Will's question
 that waits {"step", "chips", "draft"}; the person's answer, role "user",
 {"step": "answer", "to"}; the end {"step": "live"}.
+
+In the MVP, Will's chat holds this setup, the model and its queue (N599):
+nothing here writes a row for "Your principles", "The Sunday note" or "Your
+life goals".
 
 No provider call and no recording: nothing here passes the processing-
 authorization path. Behind the ring row ``chat_builder`` (its routes).
@@ -67,7 +71,8 @@ AUTOMATE_WHY = ("If you can't always be there, an assistant trained on your own 
                 "answer people while you're away, and bring every answer back to you here.")
 AUTOMATE_Q = "Do you want to automate your own chat?"
 AUTOMATE = {"Yes": "yes", "Not now": "no", "Help train an existing model": "help"}
-ABOUT = "{name}'s specialization: {spec}."
+#: Drafted for the founder's OK: the join page takes one short sentence (N601).
+SHORTER = "Shorter, please: one sentence of about fifteen words, for your join page."
 PEEK = "This is what someone new will meet in your chat:"
 GO_LIVE, START_AGAIN = "Go live", "Start again"
 LIVE = "Your assistant is live. Everyone who joins through your link meets it."
@@ -172,6 +177,8 @@ def _on_learn(database: Any, user_id: str, draft: dict, picked: str, said: str) 
     refused = _own(said, "learn", LEARN_Q, draft)
     if refused:
         return refused
+    if assistants.learn_sentence_problem(said):
+        return [_say(SHORTER), _ask("learn", LEARN_Q, [], draft)]
     draft["learn"] = said
     return [_ask("kind", KIND_Q, [HOW, TOPIC], draft)]
 
@@ -202,12 +209,13 @@ def _on_automate(database: Any, user_id: str, draft: dict, picked: str, said: st
 
 
 def _recipe(name: str, draft: dict) -> dict:
-    """The draft as a recipe, the join page's two lines drafted from the
-    specialization and what people learn (N586 item 1)."""
-    spec = str(draft.get("spec") or "").strip()
-    about = [ABOUT.format(name=name, spec=spec), str(draft.get("learn") or "")]
+    """The draft as a recipe: what people learn is the join page's one
+    sentence (N601 item 1, N586 item 1); the specialization goes to the
+    recipe's fit, not to the page."""
+    del name
+    learn = str(draft.get("learn") or "").strip()
     return {"welcome": draft.get("welcome") or [], "answer_with": draft.get("answer_with"),
-            "about": [line for line in about if line.strip(". ")], "fit": draft.get("fit"),
+            "about": [learn] if learn else [], "fit": draft.get("fit"),
             "model": {"automate": draft.get("automate", "no")}}
 
 
@@ -215,7 +223,9 @@ def _peek(user_id: str, draft: dict) -> list[tuple]:
     del user_id
     name = str(draft.get("name") or "WillpowerLab")
     recipe = _recipe(name, draft)
-    lines = [assistants.assistant_name(name), *recipe["about"], *recipe["welcome"]]
+    # The join page in its three lines (N601), then the welcome inside.
+    lines = [assistants.INVITED.format(name=name), *recipe["about"], assistants.ONLY_TWO,
+             *recipe["welcome"]]
     return [_ask("peek", "\n".join([PEEK, *lines]), [GO_LIVE, START_AGAIN], draft)]
 
 
