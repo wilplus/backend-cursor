@@ -695,12 +695,12 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 `tests/test_chat_widget.py` · Story
 
-- **O1** Before anything is agreed, the website chat learns only whose chat it is and how a visitor may write, as my chat's setup says: no fixed questions; a wrong or replaced link, or the switch still off (the default), opens nothing, the same answer as the join page's.
-- **O2** "Agree and start" makes the visitor's own chat with me: in my list it is "Widget / Visitor 1" with "From {site}" under it, like any other chat, and it does not count toward the day's joins through my link; my welcome and my own questions come first, as for anyone who joins.
+- **O1** Before the visitor writes, with no card in the way, the website chat learns only whose chat it is, my welcome and how a visitor may write, as my chat's setup says: no fixed questions; a wrong or replaced link, or the switch still off (the default), opens nothing, the same answer as the join page's.
+- **O2** The visitor's first message makes their own chat with me: in my list it is "Widget / Visitor 1" with "From {site}" under it, like any other chat, and it does not count toward the day's joins through my link; my welcome and my own questions come first, as for anyone who joins; a first message the chat does not take makes nothing.
 - **O3** The visitor taps my questions, then writes as my setup lets them: typed words when I allow typing, refused when I don't; no recording without an account.
 - **O4** I answer as in any chat, recorded or typed; the visitor gets my answer only after signing up, and nobody without the visitor's secret reads or plays anything.
-- **O5** Signing up after asking (phone, email, Google): the signed-in person takes the visitor's seat, my list names the chat after them, the chat is theirs in the app, and their questions join their bundles.
-- **O6** The first answer after the sign-up goes once to the email they signed up with, and only when its words are signed.
+- **O5** Signing up after asking (phone, email, Google): the signed-in person takes the visitor's seat, my list names the chat after them, the chat is theirs in the app, their questions join their bundles, and the widget learns where the first notice goes.
+- **O6** The first answer after the sign-up goes once to the email they signed up with, in the signed words.
 
 *Why:* The founder, 9 November 2026 (N591): "There's really no difference between the widget and the normal chat. It's just that the chat is placed on the public side."
 

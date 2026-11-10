@@ -670,14 +670,16 @@ O2 -> ChatSafetyTest::test_a_report_keeps_the_last_five_and_reaches_the_founder"
 tests/test_chat_talk.py,Story,"As a speaker, I want Will to read my whole talk slide by slide, so that his answers refer to what I actually said on each slide.","O1  Each slide lists its bullet points and what I said on it.
 O2  A slide I said nothing on reads ""(nothing yet)"".
 O3  Words not tied to a slide are listed on their own.","O1, O2, O3 -> test_each_slide_carries_its_points_and_what_they_said",Founder 2026-10-15; Privacy 3.7 section 4.
-tests/test_chat_widget.py,Story,"As a person in WillpowerLab, I want my own chat on my website, so that anyone there can write to me, I answer as in any chat, and they sign up after asking to get my answer (N591).","O1  Before anything is agreed, the website chat learns only whose chat it
-is and how a visitor may write, as my chat's setup says: no fixed
-questions; a wrong or replaced link, or the switch still off (the
-default), opens nothing, the same answer as the join page's.
-O2  ""Agree and start"" makes the visitor's own chat with me: in my list it
-is ""Widget / Visitor 1"" with ""From {site}"" under it, like any other chat, and
-it does not count toward the day's joins through my link; my welcome
-and my own questions come first, as for anyone who joins.
+tests/test_chat_widget.py,Story,"As a person in WillpowerLab, I want my own chat on my website, so that anyone there can write to me, I answer as in any chat, and they sign up after asking to get my answer (N591).","O1  Before the visitor writes, with no card in the way, the website chat
+learns only whose chat it is, my welcome and how a visitor may write,
+as my chat's setup says: no fixed questions; a wrong or replaced link,
+or the switch still off (the default), opens nothing, the same answer
+as the join page's.
+O2  The visitor's first message makes their own chat with me: in my list
+it is ""Widget / Visitor 1"" with ""From {site}"" under it, like any other
+chat, and it does not count toward the day's joins through my link;
+my welcome and my own questions come first, as for anyone who joins;
+a first message the chat does not take makes nothing.
 O3  The visitor taps my questions, then writes as my setup lets them:
 typed words when I allow typing, refused when I don't; no recording
 without an account.
@@ -686,10 +688,11 @@ only after signing up, and nobody without the visitor's secret reads
 or plays anything.
 O5  Signing up after asking (phone, email, Google): the signed-in person
 takes the visitor's seat, my list names the chat after them, the chat
-is theirs in the app, and their questions join their bundles.
+is theirs in the app, their questions join their bundles, and the
+widget learns where the first notice goes.
 O6  The first answer after the sign-up goes once to the email they signed
-up with, and only when its words are signed.","O1 -> ChatWidgetTest::test_the_widget_learns_only_whose_chat_it_is_and_how_to_write
-O2 -> ChatWidgetTest::test_agreeing_makes_a_chat_in_my_list_like_any_other
+up with, in the signed words.","O1 -> ChatWidgetTest::test_the_widget_learns_only_whose_chat_it_is_and_how_to_write
+O2 -> ChatWidgetTest::test_the_first_message_makes_a_chat_in_my_list_like_any_other
 O3 -> ChatWidgetTest::test_the_visitor_taps_my_questions_then_writes_as_my_setup_allows
 O4 -> ChatWidgetTest::test_my_answer_waits_for_the_sign_up_and_no_one_else_reads_it
 O5 -> ChatWidgetTest::test_signing_up_after_asking_makes_the_chat_theirs

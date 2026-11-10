@@ -7648,30 +7648,31 @@
  {
   "id": "WID-13",
   "area": "Your chat on any website",
-  "title": "Nothing is sent before the visitor agrees",
-  "status": "built",
+  "title": "The visitor writes at once, with no card before it",
+  "status": "partly",
   "screen": "web.vis.agree",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/your-chat-on-any-website-2026-11-09/your-chat-on-any-website.html",
   "given": "the visitor opened the pill",
   "when": "the chat opens",
   "then": [
-   "\"Your taps go to Ariel through WillpowerLab.\" with \"Privacy\"",
-   "\"Agree and start\"; only then is the visitor's chat made"
+   "no card before the visitor writes; they write at once",
+   "the chat is made with their first message or tap",
+   "agreeing comes with the sign-up: \"By signing up, you agree to our Terms of Service and Privacy Policy.\""
   ],
   "rules": [
-   "N567 item 4",
-   "N567 item 9",
+   "N595 item 1",
+   "N591",
    "customer-requests.md §B8 to B13"
   ],
   "code": [
-   "fe:src/components/willab/chats/joinCopy.ts::export const widgetConsent = (name: string) => `Your taps go to ${name} through WillpowerLab.`;",
-   "be:services/chat_widget.py::def start(database: Any, token: Any, site: Any) -> dict:"
+   "be:services/chat_widget.py::def start(database: Any, token: Any, site: Any, first: Any = None) -> dict:"
   ],
   "tests": [
    "src/components/willab/chats/WidgetChat.test.tsx",
    "tests/test_chat_widget.py"
   ],
-  "evals": []
+  "evals": [],
+  "note": "Backend built in #1868 (N595 item 1); the widget's \"Agree and start\" card goes when the frontend follows. Counsel's view on the visitor's consent stays open."
  },
  {
   "id": "WID-14",
@@ -8624,11 +8625,13 @@
   "given": "a visitor has asked Ariel something on her website",
   "when": "they sign up with a phone, email, Google or another sign-in",
   "then": [
-   "the chat becomes theirs, as for anyone who joined through Ariel's link, and Ariel's list names them",
-   "Ariel's answer reaches them, and the first notice of it goes to that phone or email"
+   "\"To get {name}'s answer, sign up.\" and \"The first notice of the answer comes to your phone or email. After that, this chat is yours.\"",
+   "after signing up, \"Signed up. The first notice of the answer comes to your phone.\" (or \"… to your email.\"), and the chat becomes theirs as for anyone who joined through Ariel's link",
+   "the first notice: \"{name} answered your question. Open it in WillpowerLab.\""
   ],
   "rules": [
    "N591 item 4",
+   "N595 item 2",
    "N471"
   ],
   "code": [
@@ -8638,7 +8641,7 @@
    "tests/test_chat_widget.py"
   ],
   "evals": [],
-  "note": "Backend built in #1868; the sign-up step's words and the first notice's words wait for the founder's OK (Never 4)."
+  "note": "Backend built in #1868, in the signed words (N595 item 2); the sign-up card is the frontend's."
  },
  {
   "id": "WILL-14",

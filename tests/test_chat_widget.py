@@ -3,14 +3,16 @@ STORY    As a person in WillpowerLab, I want my own chat on my website, so that
          anyone there can write to me, I answer as in any chat, and they sign
          up after asking to get my answer (N591).
 OUTCOME
-  O1  Before anything is agreed, the website chat learns only whose chat it
-      is and how a visitor may write, as my chat's setup says: no fixed
-      questions; a wrong or replaced link, or the switch still off (the
-      default), opens nothing, the same answer as the join page's.
-  O2  "Agree and start" makes the visitor's own chat with me: in my list it
-      is "Widget / Visitor 1" with "From {site}" under it, like any other chat, and
-      it does not count toward the day's joins through my link; my welcome
-      and my own questions come first, as for anyone who joins.
+  O1  Before the visitor writes, with no card in the way, the website chat
+      learns only whose chat it is, my welcome and how a visitor may write,
+      as my chat's setup says: no fixed questions; a wrong or replaced link,
+      or the switch still off (the default), opens nothing, the same answer
+      as the join page's.
+  O2  The visitor's first message makes their own chat with me: in my list
+      it is "Widget / Visitor 1" with "From {site}" under it, like any other
+      chat, and it does not count toward the day's joins through my link;
+      my welcome and my own questions come first, as for anyone who joins;
+      a first message the chat does not take makes nothing.
   O3  The visitor taps my questions, then writes as my setup lets them:
       typed words when I allow typing, refused when I don't; no recording
       without an account.
@@ -19,11 +21,12 @@ OUTCOME
       or plays anything.
   O5  Signing up after asking (phone, email, Google): the signed-in person
       takes the visitor's seat, my list names the chat after them, the chat
-      is theirs in the app, and their questions join their bundles.
+      is theirs in the app, their questions join their bundles, and the
+      widget learns where the first notice goes.
   O6  The first answer after the sign-up goes once to the email they signed
-      up with, and only when its words are signed.
+      up with, in the signed words.
 PROVES   O1 -> ChatWidgetTest::test_the_widget_learns_only_whose_chat_it_is_and_how_to_write
-         O2 -> ChatWidgetTest::test_agreeing_makes_a_chat_in_my_list_like_any_other
+         O2 -> ChatWidgetTest::test_the_first_message_makes_a_chat_in_my_list_like_any_other
          O3 -> ChatWidgetTest::test_the_visitor_taps_my_questions_then_writes_as_my_setup_allows
          O4 -> ChatWidgetTest::test_my_answer_waits_for_the_sign_up_and_no_one_else_reads_it
          O5 -> ChatWidgetTest::test_signing_up_after_asking_makes_the_chat_theirs
@@ -108,8 +111,8 @@ class ChatWidgetTest(unittest.TestCase):
             "answer_with": {"tap": True, "type": True, "record": True, **answer_with}})
         self.assertEqual(got.status_code, 200, got.get_json())
 
-    def _start(self, site="www.invitaheadspa.com"):
-        got = self.client.post(f"/v2/chats/widget/{self.token}/start", json={"site": site})
+    def _start(self, site="www.invitaheadspa.com", **first):
+        got = self.client.post(f"/v2/chats/widget/{self.token}/start", json={"site": site, **first})
         self.assertEqual(got.status_code, 200, got.get_json())
         return got.get_json()
 
@@ -140,7 +143,8 @@ class ChatWidgetTest(unittest.TestCase):
     def test_the_widget_learns_only_whose_chat_it_is_and_how_to_write(self):
         self._recipe(type=False)
         got = self.client.get(f"/v2/chats/widget/{self.token}").get_json()
-        self.assertEqual(got, {"name": "Tomek", "writes": {"tap": True, "type": False, "record": False}})
+        self.assertEqual(got, {"name": "Tomek", "welcome": ["Hi, I'm Tomek. Ask me anything about the spa."],
+                               "writes": {"tap": True, "type": False, "record": False}})
         self.assertNotIn("asks", got)
         self.assertEqual(self.client.get("/v2/chats/widget/not-a-real-token-at-all").status_code, 404)
         with patch("services.rings.feature_is_on_for_user",
@@ -152,15 +156,20 @@ class ChatWidgetTest(unittest.TestCase):
         self.client.post("/v2/chats/link", headers=self._as(TOMEK))
         self.assertEqual(self.client.get(f"/v2/chats/widget/{self.token}").status_code, 404)
 
-    def test_agreeing_makes_a_chat_in_my_list_like_any_other(self):
+    def test_the_first_message_makes_a_chat_in_my_list_like_any_other(self):
         from services import membership
+        self._recipe(type=False)
+        refused = self.client.post(f"/v2/chats/widget/{self.token}/start",
+                                   json={"site": "a.com", "kind": "text", "body": "Hello?"})
+        self.assertEqual(refused.status_code, 400)
+        self.assertEqual(self.store.count("chat_threads"), 0)
         self._recipe()
         self.client.put("/v2/chats/join-questions", json=QUESTIONS, headers=self._as(TOMEK))
-        started = self._start()
-        self.assertEqual([m["body"] for m in started["messages"]][:1],
-                         ["Hi, I'm Tomek. Ask me anything about the spa."])
-        self.assertEqual(started["messages"][-1]["body"], "Which languages can we use?")
-        self.assertFalse(started["sign_up"])
+        started = self._start(kind="text", body="Do you open on Sundays?")
+        self.assertEqual([m["body"] for m in started["messages"]],
+                         ["Hi, I'm Tomek. Ask me anything about the spa.", "Which languages can we use?",
+                          "Do you open on Sundays?"])
+        self.assertTrue(started["sign_up"])
         row = self._my_list()[0]
         self.assertEqual((row["title"], row["subtitle"]), ("Widget / Visitor 1", "From invitaheadspa.com"))
         self.assertIsNone(self.store.tables["chat_threads"][0].get("link_id"))
@@ -235,6 +244,8 @@ class ChatWidgetTest(unittest.TestCase):
         self.assertEqual(signed.status_code, 200, signed.get_json())
         self.assertEqual(bundled, [(TOMEK, ANNA, "Do you open on Sundays?")])
         self.assertTrue(signed.get_json()["signed_up"])
+        # "Signed up. The first notice of the answer comes to your email." (N595)
+        self.assertEqual(signed.get_json()["notice_to"], "email")
         self.assertTrue(signed.get_json()["writes"]["record"])
         row = self._my_list()[0]
         self.assertEqual((row["title"], row["subtitle"]), ("Widget / Anna", "From invitaheadspa.com"))
@@ -253,23 +264,12 @@ class ChatWidgetTest(unittest.TestCase):
                 patch("services.email_service.send_email_resend", lambda **kw: mails.append(kw)), \
                 patch("config.Config.SEND_EMAILS", True):
             self._answer_typed(chat, "Yes.")
-            self.assertEqual(mails, [])  # its words are not signed yet (Never 4)
-            with patch.object(chat_widget, "NOTICE_SIGNED", True):
-                self._answer_typed(chat, "Any day after five.")
-                self.assertEqual(mails, [])  # not the first answer
-                self.assertEqual(chat_widget.first_notice(db, chat, "x", "y", ANNA, "Tomek"),
-                                 "not_a_signed_up_visitor")
-        # A fresh visitor, signed up, then answered: one email.
-        other = self._start()
-        self._write(other, "Do you do massages?")
-        self._sign_up(other)
-        chat = self._my_list()[0]["id"]
-        with patch.object(db, "get_user_email_from_auth", lambda _u: "anna@example.com", create=True), \
-                patch("services.email_service.send_email_resend", lambda **kw: mails.append(kw)), \
-                patch("config.Config.SEND_EMAILS", True), patch.object(chat_widget, "NOTICE_SIGNED", True):
-            self._answer_typed(chat, "Yes, we do.")
-            self._answer_typed(chat, "Book any time.")
+            self._answer_typed(chat, "Any day after five.")
+            self.assertEqual(chat_widget.first_notice(db, chat, "x", "y", ANNA, "Tomek"),
+                             "not_a_signed_up_visitor")
         self.assertEqual([m["to"] for m in mails], ["anna@example.com"])
+        self.assertEqual(mails[0]["subject"], "Tomek answered your question.")
+        self.assertTrue(mails[0]["text"].startswith("Tomek answered your question. Open it in WillpowerLab."))
 
 
 if __name__ == "__main__":

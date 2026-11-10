@@ -715,10 +715,11 @@ def v2_chats_widget_preview(token):
 @v2_bp.route("/chats/widget/<token>/start", methods=["POST"])
 @limiter.limit("20 per hour", key_func=client_ip, scope="chats_widget_start")
 def v2_chats_widget_start(token):
-    """"Agree and start": the visitor's chat, made now."""
+    """The visitor's chat, made at their first message or tap, with no card
+    before it (N595 item 1)."""
     from services.chat_widget import start
     body = request.get_json(silent=True) or {}
-    return _run("widget_start", lambda: start(db, token, body.get("site")))
+    return _run("widget_start", lambda: start(db, token, body.get("site"), body))
 
 
 @v2_bp.route("/chats/widget/<token>/messages", methods=["GET"])

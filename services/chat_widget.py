@@ -9,17 +9,18 @@ so a new link, or a link switched off, stops every pasted line with it. The
 chat runs in an iframe on willpowerlab.com (``/w/<token>``). Anyone on the
 site can write to the host (N591 item 1):
 
-  * ``preview``: whose chat it is and how a visitor may write, from the
-    chat's recipe (N591 item 2): ``{"name", "writes": {"tap", "type",
-    "record"}}``; 404 for a wrong, replaced or switched-off link. No fixed
-    questions (N591 item 5).
-  * ``start``: "Agree and start" under the consent line (N567 item 9, kept):
-    the visitor's chat with the host, in the host's list like any other,
-    named "Widget / Visitor {n}" with "From {site}" under it (N567 item 6,
-    N591 item 1); then the
-    host's welcome and the host's own questions, as for anyone who joins
-    (N590 item 2). The answer carries the visitor's secret, ``<guest
+  * ``preview``: whose chat it is, the host's welcome and how a visitor may
+    write, from the chat's recipe (N591 item 2): ``{"name", "welcome",
+    "writes": {"tap", "type", "record"}}``; 404 for a wrong, replaced or
+    switched-off link. No fixed questions (N591 item 5).
+  * ``start``: no card before a visitor writes (N595 item 1): the chat is
+    made with the visitor's first message, or their first tap. It is in the
+    host's list like any other, named "Widget / Visitor {n}" with "From
+    {site}" under it (N567 item 6, N591 item 1), and begins with the host's
+    welcome and the host's own questions, as for anyone who joins (N590
+    item 2). The answer carries the visitor's secret, ``<guest
     id>.<secret>``, which only their browser keeps; its hash is kept here.
+    Agreeing comes with the sign-up (its Terms and Privacy line, N595).
   * ``read``: the visitor's chat. Until they sign up, the host's answers wait
     behind the sign-up (N591 item 4): ``sign_up`` says the step is due,
     ``answered`` that an answer is waiting for it.
@@ -79,11 +80,11 @@ QUESTION = {"question": True, "record_answer": True}
 VISITOR = "Widget / Visitor {n}"
 SIGNED_UP = "Widget / {name}"
 FROM = "From {site}"
-#: The first notice of the answer (N591 item 4). Drafted for the founder's
-#: OK (Never 4; N591 "Open"): nothing is sent until ``NOTICE_SIGNED``.
-NOTICE_SUBJECT = "{name} answered you"
-NOTICE_LINE = "{name} answered your question. Open your chat: {link}"
-NOTICE_SIGNED = False
+#: The first notice of the answer (N591 item 4), signed (N595 item 2,
+#: Never 4). The email's subject is the line's first sentence; the link
+#: follows the line, as a link and not as words.
+NOTICE_LINE = "{name} answered your question. Open it in WillpowerLab."
+NOTICE_SUBJECT = "{name} answered your question."
 #: Random bytes in a visitor's secret.
 SECRET_BYTES = 24
 #: The longest message a visitor or the host types.
@@ -139,22 +140,34 @@ def writes(database: Any, owner: str, *, signed_up: bool = False) -> dict:
 
 
 def preview(database: Any, token: Any) -> dict:
-    """GET /v2/chats/widget/<token>: {"name", "writes"}."""
+    """GET /v2/chats/widget/<token>: {"name", "welcome", "writes"}: what the
+    visitor sees before they write, with no card (N595 item 1); the welcome
+    is the host's own (N590 item 2), the same lines ``start`` posts."""
+    from services import assistants
     link = _link(database, token)
-    return {"name": link["display_name"], "writes": writes(database, str(link["user_id"]))}
+    owner = str(link["user_id"])
+    recipe = assistants.recipe_of(database, owner) if assistants.on(database, owner) else None
+    return {"name": link["display_name"], "welcome": list((recipe or {}).get("welcome") or []),
+            "writes": writes(database, owner)}
 
 
 def _number(database: Any, owner: str) -> int:
     return len(_rows(_table(database, GUESTS).select("id").eq("owner_user_id", owner))) + 1
 
 
-def start(database: Any, token: Any, site: Any) -> dict:
-    """POST /v2/chats/widget/<token>/start {"site"}: "Agree and start". The
-    visitor's chat with the host, made now, with the host's welcome and
-    questions: {"guest": the visitor's secret, then what ``read`` answers}."""
+def start(database: Any, token: Any, site: Any, first: Any = None) -> dict:
+    """POST /v2/chats/widget/<token>/start {"site", "kind"?, "body"?}: the
+    visitor's chat with the host, made at their first message or first tap,
+    with no card before it (N595 item 1); the host's welcome and questions
+    first, then ``first``, the visitor's message, as ``write`` takes it.
+    {"guest": the visitor's secret, then what ``read`` answers}. A first
+    message the chat does not take is refused before anything is made."""
+    message = first if isinstance(first, dict) and first.get("body") is not None else None
     from services import assistants, join_questions
     link = _link(database, token)
     owner = str(link["user_id"])
+    if message is not None:
+        _checked(message, writes(database, owner))
     host = _site(site)
     n = _number(database, owner)
     rows = _rows(_table(database, THREADS).insert({
@@ -187,6 +200,8 @@ def start(database: Any, token: Any, site: Any) -> dict:
     join_questions.begin_for_visitor(database, thread, owner, str(owner_seat["id"]),
                                      str(visitor_seat["id"]))
     guest = f"{guests[0]['id']}.{secret}"
+    if message is not None:
+        write(database, token, guest, message)
     return {"guest": guest, **read(database, token, guest)}
 
 
@@ -256,31 +271,38 @@ def answer_setup(database: Any, token: Any, guest: Any, message_id: Any, payload
     return join_questions.answer_as(database, me, None, message_id, payload)
 
 
-def write(database: Any, token: Any, guest: Any, payload: Any) -> dict:
-    """POST /v2/chats/widget/<token>/messages {"kind": "emoji" | "text",
-    "body"}: the visitor's own message, as the chat's setup lets them write
-    (N591 item 2). An emoji is a tap; typed words need the setup's typing.
-    {"message", "sign_up"}."""
-    me = _visitor(database, token, guest)
+def _checked(payload: Any, allowed: dict) -> tuple[str, str]:
+    """A visitor's message as the chat takes it, ``(kind, body)``, or 400:
+    an emoji is a tap; typed words need the setup's typing (N591 item 2)."""
     body = payload if isinstance(payload, dict) else {}
     kind = body.get("kind") or "emoji"
     sent = body.get("body")
-    allowed = writes(database, me["owner"], signed_up=me["signed_up"])
     if kind == "emoji":
         if not isinstance(sent, str) or sent not in EMOJI:
             raise ChatsError("NOT_ALLOWED", "Only 👍, 👀 or 🙏 for now.")
-        message = _post(database, me, "emoji", sent, {"label": EMOJI[sent]})
-    elif kind == "text" and allowed["type"]:
+        return kind, sent
+    if kind == "text" and allowed["type"]:
         words = " ".join(str(sent or "").split())
         if not words or len(words) > MAX_TEXT:
             raise ChatsError("NOT_ALLOWED", f"Write 1 to {MAX_TEXT} characters.")
-        message = _post(database, me, "text", words, dict(QUESTION))
+        return kind, words
+    raise ChatsError("NOT_ALLOWED", "This chat is not answered that way.")
+
+
+def write(database: Any, token: Any, guest: Any, payload: Any) -> dict:
+    """POST /v2/chats/widget/<token>/messages {"kind": "emoji" | "text",
+    "body"}: the visitor's own message, as the chat's setup lets them write
+    (N591 item 2). {"message", "sign_up"}."""
+    me = _visitor(database, token, guest)
+    kind, said = _checked(payload, writes(database, me["owner"], signed_up=me["signed_up"]))
+    if kind == "emoji":
+        message = _post(database, me, "emoji", said, {"label": EMOJI[said]})
+    else:
+        message = _post(database, me, "text", said, dict(QUESTION))
         if me["signed_up"]:
             asker = _seat_user(database, me["id"])
             if asker:
-                bundle(database, me["owner"], asker, me["thread_id"], message["id"], words)
-    else:
-        raise ChatsError("NOT_ALLOWED", "This chat is not answered that way.")
+                bundle(database, me["owner"], asker, me["thread_id"], message["id"], said)
     return {"message": message, "sign_up": not me["signed_up"]}
 
 
@@ -343,7 +365,18 @@ def sign_up(database: Any, user_id: Any, token: Any, guest: Any, token_payload: 
             .eq("id", me["guest_id"]).execute()
         membership.admitted(uid)
         _bundle_asked(database, me, uid)
-    return {"chat": {"id": me["thread_id"]}, **read(database, token, guest)}
+    return {"chat": {"id": me["thread_id"]}, "notice_to": notice_to(token_payload),
+            **read(database, token, guest)}
+
+
+def notice_to(token_payload: Any) -> Optional[str]:
+    """Where the first notice goes, for the line after signing up (N595 item
+    2: "... comes to your phone." or "... to your email."): "email" when the
+    account has one, else "phone", as ``_send_notice`` sends it."""
+    payload = token_payload if isinstance(token_payload, dict) else {}
+    if str(payload.get("email") or "").strip():
+        return "email"
+    return "phone" if str(payload.get("phone") or "").strip() else None
 
 
 def _bundle_asked(database: Any, me: dict, uid: str) -> None:
@@ -389,8 +422,8 @@ def first_notice(database: Any, thread: str, sender_member: str, recipient_membe
     ``_tell``), for each member it reaches. When it reaches a website
     visitor who has signed up (their seat is the guest row's), the host's
     first answer after the sign-up goes to the email they signed up with,
-    or, with no email, to their phone on WhatsApp; once. What happened, as a
-    word; never raises."""
+    or, with no email, to their phone on WhatsApp; once, in the signed words
+    (N595 item 2). What happened, as a word; never raises."""
     try:
         rows = _rows(_table(database, GUESTS).select("thread_id,kept_at")
                      .eq("member_id", str(recipient_member)).limit(1))
@@ -403,9 +436,6 @@ def first_notice(database: Any, thread: str, sender_member: str, recipient_membe
                    and not any(k in (r.get("meta") or {}) for k in ("welcome", "setup", "setup_card"))]
         if len(answers) != 1:
             return "not_the_first"
-        if not NOTICE_SIGNED:
-            logger.info("chat_widget: the first notice waits for its words (thread %s)", thread)
-            return "words_not_signed"
         return _send_notice(database, recipient, sender_name)
     except Exception:  # noqa: BLE001 -- the answer is sent either way
         logger.warning("chat_widget: the first notice was not sent (thread %s)", thread,
@@ -415,22 +445,23 @@ def first_notice(database: Any, thread: str, sender_member: str, recipient_membe
 
 def _send_notice(database: Any, user_id: str, name: str) -> str:
     from config import Config
-    first = (str(name or "").split() or ["Your host"])[0]
+    first = (str(name or "").split() or ["WillpowerLab"])[0]
     link = f"{(Config.FRONTEND_URL or '').rstrip('/')}/chat"
-    line = NOTICE_LINE.format(name=first, link=link)
+    line = NOTICE_LINE.format(name=first)
     email = database.get_user_email_from_auth(user_id)
     if email:
         if not Config.SEND_EMAILS:
             return "send_emails_off"
         from services.email_service import send_email_resend
         send_email_resend(to=email, subject=NOTICE_SUBJECT.format(name=first),
-                          html=f"<p>{_escape(line)}</p>", text=line)
+                          html=f'<p>{_escape(line)}</p><p><a href="{_escape(link)}">{_escape(link)}</a></p>',
+                          text=f"{line}\n{link}")
         return "email"
     from services import admin_person, whatsapp_notify
     phone = (admin_person.auth_user(user_id) or {}).get("phone")
     if phone:
         number = whatsapp_notify.normalize_phone(f"+{str(phone).lstrip('+')}")
-        whatsapp_notify.send_template(number, template="", params=[], text=line)
+        whatsapp_notify.send_template(number, template="", params=[], text=f"{line}\n{link}")
         return "phone"
     return "no_contact"
 
