@@ -131,9 +131,11 @@ O2 -> test_a_moment_goes_into_a_model_once
 O3 -> test_an_erased_owners_words_leave_the_model","Migration a_model_keeps_its_setup (0520), applied twice in both rehearsal lanes after 0516 (the reapply is its idempotency check)."
 tests/test_a_model_learns_from_its_settled_examples_postgres.py,Story,"As a person whose example taught a model, I want every version that learned from it found and marked to retrain when it is deleted or withdrawn, however it is deleted (PIPE-06, N615 item 3).","O1  The kept vectors are locked to the backend (RLS on, nothing for a
 browser role) and go with their example.
-O2  Deleting an example marks every version whose example_ids holds it,
-and no other version.","O1 -> test_the_vectors_are_locked_to_the_backend_and_go_with_their_example
-O2 -> test_a_deleted_example_marks_every_version_that_learned_from_it","Migration a_model_learns_from_its_settled_examples (0522), applied twice in both rehearsal lanes (the reapply is its idempotency check)."
+O2  Deleting examples marks every version whose example_ids holds one of
+them, and no other version: one example, many in one statement, and
+many in a cascade (an erased speaker); the trigger is statement-level.","O1 -> test_the_vectors_are_locked_to_the_backend_and_go_with_their_example
+O2 -> test_a_deleted_example_marks_every_version_that_learned_from_it
+O2 -> test_many_deleted_at_once_or_in_a_cascade_mark_their_versions","Migration a_model_learns_from_its_settled_examples (0522), applied twice in both rehearsal lanes (the reapply is its idempotency check)."
 tests/test_a_model_learns_only_from_the_yes_postgres.py,Story,"As a speaker, I want the model trained only on my coached pairs that I said yes to and that were released, and only once, so that my ""no"" is respected.","O1  A released pair that is still allowed is marked trained, once.
 O2  A pair that is not released, no longer allowed, or already trained
 is refused.

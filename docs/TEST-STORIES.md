@@ -149,7 +149,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 `tests/test_a_model_learns_from_its_settled_examples_postgres.py` · Story
 
 - **O1** The kept vectors are locked to the backend (RLS on, nothing for a browser role) and go with their example.
-- **O2** Deleting an example marks every version whose example_ids holds it, and no other version.
+- **O2** Deleting examples marks every version whose example_ids holds one of them, and no other version: one example, many in one statement, and many in a cascade (an erased speaker); the trigger is statement-level.
 
 *Why:* Migration a_model_learns_from_its_settled_examples (0522), applied twice in both rehearsal lanes (the reapply is its idempotency check).
 
