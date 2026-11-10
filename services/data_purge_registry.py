@@ -360,14 +360,16 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("take_matches_suggested", "take_matches", "candidate_id", "user",
                     "delete", "database_row", 60),
     # A business's community (migration a_business_has_a_community_people_join,
-    # N559 item 1): the person's place in it, their one offer, and a
-    # community they hold, whose members' rows go with it (ON DELETE CASCADE).
+    # N559 item 1): the person's place in it and their one offer go with
+    # the account. A community outlives its owner: the owner's id is cleared,
+    # the community and its members stay. The table's foreign keys to
+    # auth.users keep the same rule in the database.
     PurgeDependency("business_community_members", "business_community_members", "user_id",
                     "user", "delete", "database_row", 55),
     PurgeDependency("business_community_offers", "business_community_offers", "user_id",
                     "user", "delete", "database_row", 55),
     PurgeDependency("business_communities", "business_communities", "owner_id", "user",
-                    "delete", "database_row", 60),
+                    "delete", "database_row", 60, clears_selector=True),
     # Whose link a newcomer's offer came by: the inviter's id on the
     # newcomer's row, cleared with the inviter's account (the offer and its
     # answer stay the newcomer's).
@@ -378,6 +380,24 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # an_iphone_keeps_its_push_address, N385).
     PurgeDependency("push_devices", "push_devices", "user_id", "user",
                     "delete", "database_row", 60),
+    # The model launchpad (migration a_person_can_teach_and_start_ai_models,
+    # N528 item 11): a person's answers, teaching rows and invites go; the
+    # examples from their Takes or that they added go; a model they started
+    # stays for its other teachers, with no owner.
+    PurgeDependency("ai_model_answers", "ai_model_answers", "teacher_id", "user",
+                    "delete", "database_row", 55),
+    PurgeDependency("ai_model_examples_speaker", "ai_model_examples", "speaker_id", "user",
+                    "delete", "database_row", 56),
+    PurgeDependency("ai_model_examples_added_by", "ai_model_examples", "added_by", "user",
+                    "delete", "database_row", 56),
+    PurgeDependency("ai_model_teachers", "ai_model_teachers", "user_id", "user",
+                    "delete", "database_row", 57),
+    PurgeDependency("ai_model_invites_invitee", "ai_model_invites", "invitee_id", "user",
+                    "delete", "database_row", 57),
+    PurgeDependency("ai_model_invites_inviter", "ai_model_invites", "inviter_id", "user",
+                    "delete", "database_row", 57),
+    PurgeDependency("ai_models_owner", "ai_models", "owner_id", "user",
+                    "delete", "database_row", 58, clears_selector=True),
     # Email and password on Data & consent (WIL-95, N190, migration 0493):
     # the person's own security log goes with the account.
     PurgeDependency("account_security_events", "account_security_events",

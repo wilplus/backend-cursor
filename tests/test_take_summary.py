@@ -21,7 +21,12 @@ OUTCOME
       even when my browser's clock runs ahead of the server's.
   O7  Asked twice for the same Take (the page reloaded while the first ask
       was being written), the first ask's batch stands: nothing is written,
-      remembered or let go again, so the goodbye stays under Will's question.
+      remembered, let go or asked of the model again, so the goodbye stays
+      under Will's question.
+  O8  Nothing waits for the summary (WILL-07): the batch after the walk (the
+      signed line, the goodbye, what Will remembers) is written at once, and
+      GPT-4o's words take the signed line's place later, in the same spot
+      of the thread.
   O6  The summary can point back to what I said in an older Take (the same
       project first), never this Take, never a Take whose processing
       authorization is not in force; a failing or slow lookup leaves the
@@ -40,6 +45,7 @@ PROVES   O1 -> test_a_take_gets_one_summary_from_its_real_progress,
          O4 -> test_the_summary_knows_the_talk_and_no_settings_ask_follows
          O5 -> test_the_summary_and_the_goodbye_sort_under_the_walk
          O7 -> test_a_second_ask_while_the_first_is_written_changes_nothing
+         O8 -> test_the_chat_after_the_walk_never_waits_on_the_summary
          O6 -> test_the_summary_points_back_to_an_older_take_never_this_one,
                test_a_take_not_in_force_never_reaches_the_summary,
                test_a_failing_or_slow_lookup_leaves_the_summary_as_today,
@@ -101,6 +107,8 @@ TAKES = [{"id": "t1", "intake_context": {"topic": "Churn in Q3",
 
 
 def _run(db, monkeypatch, reply, body=None, takes=TAKES):
+    """The summary as the speaker's thread holds it once its words are in
+    (the model's write runs off the request; here, at once)."""
     seen = {}
 
     def fake(write):
@@ -115,9 +123,10 @@ def _run(db, monkeypatch, reply, body=None, takes=TAKES):
     monkeypatch.setattr("services.person_asks.next_for", lambda _user: None)
     monkeypatch.setattr(take_summary, "_under_authority", lambda _db, _take, w: fake(w))
     monkeypatch.setattr(take_summary, "write_summary", write)
+    monkeypatch.setattr("services.parallel.start_scoped_thread", lambda run, name=None: run())
     msg = take_summary.summary_message(db, user_id="u", arc_id="a", takes=takes,
                                        take_session_id="t2", body=body or {"practice": "better"})
-    return msg, seen
+    return db.rows.get(msg["client_id"], msg), seen
 
 
 def test_a_take_gets_one_summary_from_its_real_progress(monkeypatch):
@@ -266,10 +275,12 @@ def test_a_fourth_take_is_never_called_the_third(monkeypatch):
     monkeypatch.setattr("services.person_asks.next_for", lambda _user: None)
     monkeypatch.setattr(take_summary, "_under_authority", lambda _db, _take, w: w())
     monkeypatch.setattr(take_summary, "write_summary", lambda *a, **kw: None)  # refused
-    msg = take_summary.summary_message(db, user_id="u", arc_id="a", takes=takes,
-                                       take_session_id="t4", body={"practice": "better"})
+    monkeypatch.setattr("services.parallel.start_scoped_thread", lambda run, name=None: run())
+    take_summary.summary_message(db, user_id="u", arc_id="a", takes=takes,
+                                 take_session_id="t4", body={"practice": "better"})
+    msg = db.rows[take_summary.summary_client_id("u", "a", 4)]
     assert "third" not in msg["body"] and msg["body"] in take_summary.line_bank_lines()
-    assert msg["metadata"]["written"] is False
+    assert msg["metadata"]["written"] is False and "writing" not in msg["metadata"]
 
 
 def test_a_reply_that_ends_on_a_question_is_the_signed_copy(monkeypatch):
@@ -371,31 +382,72 @@ def test_an_earlier_take_with_a_number_still_falls_back_to_the_signed_copy(monke
 
 def test_a_second_ask_while_the_first_is_written_changes_nothing(monkeypatch):
     """N406 item 1, N458: a reload re-asks the summary while the first ask is
-    still in its model call. When the first ask's batch lands meanwhile, the
-    second ask returns it and writes, remembers and lets go nothing."""
-    db = _Db(phone=None)
+    still putting its batch together. When the first ask's batch lands
+    meanwhile, the second ask returns it and writes, remembers, lets go and
+    asks the model nothing."""
     client_id = take_summary.summary_client_id("u", "a", 2)
     first = {"client_id": client_id, "role": "bot", "kind": "cadence", "body": "First.",
              "metadata": {"summary": True, "take_session_id": "t2"}}
     goodbye = {"client_id": "goodbye", "role": "bot", "kind": "cadence",
                "body": "Good job. See you next time.",
                "metadata": {"next_take": True, "held_for": "will_question", "take_session_id": "t2"}}
-    remembered, let_go = [], []
 
-    def lands(write):
-        db.rows.update({client_id: first, "goodbye": goodbye})  # the first ask finished meanwhile
-        return write()
+    class _Racing(_Db):
+        """The first ask's batch lands just after this ask first looked."""
+        looked = False
 
+        def get_lounge_message_by_client_id(self, user_id, cid):
+            if cid == client_id and not self.looked:
+                self.looked = True
+                return None
+            if cid == client_id:
+                self.rows.update({client_id: first, "goodbye": goodbye})
+            return self.rows.get(cid)
+
+    db = _Racing(phone=None)
+    remembered, let_go, asked = [], [], []
     monkeypatch.setattr("services.whatsapp_notify.whatsapp_state",
                         lambda _db, _user: {"phone": db.phone})
     monkeypatch.setattr("services.person_asks.next_for", lambda _user: None)
     monkeypatch.setattr("services.speaker_memory.record", lambda *a, **k: remembered.append(a))
     monkeypatch.setattr("services.after_take._let_go", lambda *a, **k: let_go.append(a))
-    monkeypatch.setattr(take_summary, "_under_authority", lambda _db, _take, w: lands(w))
+    monkeypatch.setattr("services.parallel.start_scoped_thread", lambda run, name=None: run())
+    monkeypatch.setattr(take_summary, "_under_authority", lambda _db, _take, w: w())
     monkeypatch.setattr(take_summary, "write_summary",
-                        lambda anchor, facts, **kw: take_summary._clean("Churn in Q3, nailed it!"))
+                        lambda anchor, facts, **kw: asked.append(1) or "Churn in Q3, nailed it!")
     msg = take_summary.summary_message(db, user_id="u", arc_id="a", takes=TAKES,
                                        take_session_id="t2", body={"practice": "better"})
-    assert msg is first
+    assert msg is first and db.rows[client_id]["body"] == "First."
     assert set(db.rows) == {client_id, "goodbye"} and db.rows["goodbye"]["metadata"]["held_for"]
-    assert remembered == [] and let_go == []
+    assert remembered == [] and let_go == [] and asked == []
+
+
+def test_the_chat_after_the_walk_never_waits_on_the_summary(monkeypatch):
+    """WILL-07: the batch is written before GPT-4o's call, with the signed
+    line; Will remembers the Take at once (CLAUDE.md, the speaker-memory
+    promise); the model's words then take the signed line's place, in
+    place, and Will is no longer told the summary failed."""
+    from services.chat_query import _fallback_label
+    db = _Db(phone=None)
+    started, remembered = [], []
+    monkeypatch.setattr("services.whatsapp_notify.whatsapp_state",
+                        lambda _db, _user: {"phone": db.phone})
+    monkeypatch.setattr("services.person_asks.next_for", lambda _user: None)
+    monkeypatch.setattr("services.speaker_memory.record", lambda *a, **k: remembered.append(a))
+    monkeypatch.setattr("services.parallel.start_scoped_thread",
+                        lambda run, name=None: started.append(run))
+    monkeypatch.setattr(take_summary, "_under_authority", lambda _db, _take, w: w())
+    reply = "Your voice sounded surer than last time. Keep the endings you found."
+    monkeypatch.setattr(take_summary, "write_summary", lambda anchor, facts, **kw: reply)
+    msg = take_summary.summary_message(db, user_id="u", arc_id="a", takes=TAKES,
+                                       take_session_id="t2", body={"practice": "better"})
+    closing = next(r for r in db.rows.values() if (r.get("metadata") or {}).get("next_take"))
+    assert msg["body"] == _COPY[2].split("\n\n")[0] and len(started) == 1
+    assert closing["body"] == "Good job. See you next time." and len(remembered) == 1
+    assert "not in yet" in _fallback_label(msg)
+    at = msg["client_created_at"]
+    started[0]()  # GPT-4o's words come in
+    row = db.rows[msg["client_id"]]
+    assert row["body"] == reply and row["metadata"]["written"] is True
+    assert row["client_created_at"] == at and "writing" not in row["metadata"]
+    assert _fallback_label(row) == "" and len(remembered) == 1

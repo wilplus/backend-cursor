@@ -99,7 +99,7 @@ def _join(database: Any, community_id: str, user_id: str) -> None:
 
 def create(database: Any, owner_id: Any, name: Any) -> dict:
     """The founder makes a business's community; its owner joins it."""
-    owner, title = str(owner_id or "").strip(), str(name or "").strip()
+    owner, title = _uuid(owner_id), str(name or "").strip()
     if not owner or not 1 <= len(title) <= 80:
         raise ChatsError("BAD_REQUEST", "An owner and a name of 1 to 80 characters.", 400)
     rows = _rows(_table(database, COMMUNITIES).insert({"owner_id": owner, "name": title}))

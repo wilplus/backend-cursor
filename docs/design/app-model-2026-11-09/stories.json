@@ -212,15 +212,19 @@
   "code": [
    "fe:src/components/auth/LoginForm.tsx::WhatsAppAuth",
    "fe:src/components/auth/GoogleAuthButton.tsx",
-   "fe:src/components/auth/AppleAuthButton.tsx::APPLE_BUTTON_LABEL"
+   "fe:src/components/auth/AppleAuthButton.tsx::APPLE_BUTTON_LABEL",
+   "be:services/account_security.py::\"azure\": \"Microsoft\",",
+   "fe:src/components/auth/MicrosoftAuthButton.tsx::export const MICROSOFT_LABEL = \"Microsoft\";"
   ],
   "tests": [
    "src/components/auth/LoginForm.test.tsx",
    "src/lib/auth/oauthRetry.test.ts",
-   "tests/test_signup_email_in_use.py"
+   "tests/test_signup_email_in_use.py",
+   "tests/test_account_security.py",
+   "src/components/auth/microsoftSignIn.test.tsx"
   ],
   "evals": [],
-  "note": "No Microsoft sign-in exists in the code; N401 item 6 decided and signed it."
+  "note": "\"Microsoft\" beside Google is built behind its switch (BE #1858, FE #1336); it goes live once the founder enables Azure in Supabase."
  },
  {
   "id": "WAY-09",
@@ -656,7 +660,7 @@
   "id": "FT-05",
   "area": "The first Take",
   "title": "While Take 1 is processed, Will checks what he heard",
-  "status": "not built",
+  "status": "built",
   "screen": "first.wait",
   "prototype": null,
   "given": "the speaker has finished their first Take",
@@ -672,17 +676,22 @@
    "the-plan.md §2 \"Next\""
   ],
   "code": [
-   "fe:src/components/willab/ProcessingWait.tsx::Processing your recording"
+   "be:services/way_in.py::OPENER = \"While your feedback is being prepared, check what I heard.\"",
+   "be:routes/v2/plan.py::@v2_bp.route(\"/plan/way-in\", methods=[\"POST\"])",
+   "fe:src/components/willab/plan/WayIn.tsx::export function WayInProcessingRow"
   ],
-  "tests": [],
+  "tests": [
+   "tests/test_way_in.py",
+   "src/components/willab/plan/wayIn.test.tsx"
+  ],
   "evals": [],
-  "note": "Take 1 still shows the full processing wait (ProcessingWait.tsx) and opens the walk after it; the signed line \"While your feedback is being prepared, check what I heard.\" is in no code. the-plan.md §2 lists it as Next."
+  "note": "Built (BE #1854, FE #1337): while Take 1 is processed its wait is a thin row on top of Will's chat, and the way in's beats come in the chat."
  },
  {
   "id": "FT-06",
   "area": "The first Take",
   "title": "\"Here's how others will see you\"",
-  "status": "not built",
+  "status": "partly",
   "screen": "first.wait",
   "prototype": null,
   "given": "Take 1's slide 1 (\"Your field\") is heard",
@@ -697,17 +706,23 @@
    "N453 item 2"
   ],
   "code": [
-   "be:services/plan_flow.py::slide 1 is the setup's (N400 item 1)"
+   "be:services/plan_flow.py::slide 1 is the setup's (N400 item 1)",
+   "be:services/way_in.py::PROFILE = \"Here's how others will see you:\"",
+   "be:services/way_in.py::def profile_card",
+   "fe:src/components/willab/plan/WayIn.tsx::export function WayInProfileCard"
   ],
-  "tests": [],
+  "tests": [
+   "tests/test_way_in.py",
+   "src/components/willab/plan/wayIn.test.tsx"
+  ],
   "evals": [],
-  "note": "Locked with the setup prototype (N400) but not built; until it is, N503 asks the join questions when a person first shares their link."
+  "note": "The card, \"That's right\" / \"Change it\" / \"Tell me what to change.\" are built (BE #1854, FE #1337); the topics are kept in Will's notes, not yet on the profile: that needs the profile-topics migration (N453)."
  },
  {
   "id": "FT-07",
   "area": "The first Take",
   "title": "After Take 1's walk, the plan from its answers",
-  "status": "differs",
+  "status": "built",
   "screen": "plan.card",
   "prototype": null,
   "given": "the first Take's walk has ended",
@@ -732,7 +747,7 @@
    "tests/test_plan.py"
   ],
   "evals": [],
-  "note": "N564: the plan has no deadline unless the speaker chose to prepare a talk; its length is three levels of four Takes, not two months. the-plan.md §2 still says Will \"asks 'When is your deadline?' when no day was said\"; the code follows N459 (no deadline question after a Take). The page's line is stale."
+  "note": "Built as N564 has it (BE #1853): no deadline unless the speaker prepares a talk; three levels of four Takes. A first Take with nothing heard still gets its plan (BE #1870)."
  },
  {
   "id": "FT-08",
@@ -1493,7 +1508,9 @@
    "fe:src/components/willab/walk/FeedbackWalk.tsx::\"The rest of this Take held up just as well.\" (backend N551)",
    "be:services/take_feedback_policy_v3.py::nothing_to_fix"
   ],
-  "tests": [],
+  "tests": [
+   "src/components/willab/walk/oneThingWalk.test.tsx"
+  ],
   "evals": [],
   "note": "Built (frontend #1317, N557 item 2)."
  },
@@ -2193,14 +2210,20 @@
    "Never 1"
   ],
   "code": [
-   "be:services/take_summary.py::def write_summary"
+   "be:services/take_summary.py::def write_summary",
+   "be:services/take_summary.py::def _written_in_place",
+   "be:services/take_summary.py::def _off_request",
+   "be:services/chat_query.py::def _fallback_label",
+   "fe:src/components/willab/loungeScreen.ts::the written summary is not in yet"
   ],
   "tests": [
    "tests/test_take_summary.py",
-   "src/services/api/reviewSummaryText.test.ts"
+   "src/services/api/reviewSummaryText.test.ts",
+   "tests/test_will_question.py",
+   "src/components/willab/loungeScreen.test.ts"
   ],
   "evals": [],
-  "note": "Open in feedback-walk-and-chat.md §3: the summary is drawn nowhere (C9 has no summary step, D4 hides it in the chat), yet the chat after the walk waits on its model call."
+  "note": "Open in feedback-walk-and-chat.md §3: the summary is drawn nowhere (C9 has no summary step, D4 hides it in the chat), and nothing waits for it any more: the batch goes in at once with the signed line and GPT-4o's words take its place off the request."
  },
  {
   "id": "WILL-08",
@@ -2371,7 +2394,7 @@
   "id": "PLAN-01",
   "area": "The plan",
   "title": "The plan card",
-  "status": "differs",
+  "status": "built",
   "screen": "plan.card",
   "prototype": null,
   "given": "the plan is drawn (after Take 1's walk, or a new plan's questions)",
@@ -2388,20 +2411,21 @@
   ],
   "code": [
    "fe:src/components/willab/plan/PlanCard.tsx",
-   "be:services/plan.py::def fmt_day"
+   "be:services/plan.py::def fmt_day",
+   "fe:src/components/willab/plan/PlanCard.tsx::export function PlanBar({ bar }"
   ],
   "tests": [
    "src/components/willab/plan/plan.test.tsx",
    "tests/test_plan.py"
   ],
   "evals": [],
-  "note": "N564: the card shows the level's name and its four marks; practice days and \"Your deadline\" go (a date shows only for someone preparing a talk)."
+  "note": "Built as N564 has it (FE #1335, BE #1853): the level's name and its four marks; a date only for someone preparing a talk."
  },
  {
   "id": "PLAN-02",
   "area": "The plan",
   "title": "No date gives two months, said in words",
-  "status": "differs",
+  "status": "built",
   "screen": "plan.card",
   "prototype": null,
   "given": "no deadline heard or \"No date yet\"",
@@ -2417,14 +2441,15 @@
    "N137"
   ],
   "code": [
-   "be:services/plan_flow.py::def _deadline"
+   "be:services/plan_flow.py::def _deadline",
+   "be:services/plan_flow.py::def talk_date"
   ],
   "tests": [
    "tests/test_plan.py",
    "tests/test_plan_flow.py"
   ],
   "evals": [],
-  "note": "N564 retires the two-month default (N135): with no date the plan is three levels of four Takes."
+  "note": "Built as N564 has it (BE #1853): nobody is asked a deadline; \"No date yet\" gives no date, never two months."
  },
  {
   "id": "PLAN-03",
@@ -2544,7 +2569,7 @@
   "id": "PLAN-07",
   "area": "The plan",
   "title": "A practice day's hello",
-  "status": "differs",
+  "status": "built",
   "screen": "plan.day",
   "prototype": null,
   "given": "a practice day, the first time the app opens",
@@ -2562,13 +2587,14 @@
   ],
   "code": [
    "be:services/plan_flow.py::good to see you back!",
-   "be:services/plan.py::\"practice_n\""
+   "be:services/plan_flow.py::plan_bar=_bar(plan)"
   ],
   "tests": [
-   "tests/test_plan_flow.py"
+   "tests/test_plan_flow.py",
+   "src/components/willab/plan/plan.test.tsx"
   ],
   "evals": [],
-  "note": "N564: no practice days; the hello's \"Today is practice {n} of {total}\" gives way to the level's marks (words drafted for the founder's OK)."
+  "note": "Built as N564 has it (BE #1853, FE #1335): \"Hi {name}, good to see you back!\" with the bar; no practice days."
  },
  {
   "id": "PLAN-08",
@@ -2602,7 +2628,7 @@
   "id": "PLAN-09",
   "area": "The plan",
   "title": "After the walk on a plan",
-  "status": "differs",
+  "status": "built",
   "screen": "plan.day",
   "prototype": null,
   "given": "a practice's walk ends",
@@ -2619,20 +2645,22 @@
   ],
   "code": [
    "fe:src/components/willab/plan/usePlanLounge.tsx",
-   "be:services/after_take.py::def chain"
+   "be:services/after_take.py::def chain",
+   "be:services/after_take.py::body = closing_line()"
   ],
   "tests": [
    "tests/test_after_take.py",
-   "src/components/willab/plan/plan.test.tsx"
+   "src/components/willab/plan/plan.test.tsx",
+   "tests/test_plan_flow.py"
   ],
   "evals": [],
-  "note": "N564: \"That's your 15 minutes for today.\", the goodbye naming a practice day and \"{n} of {total} practices done.\" give way to the level's marks."
+  "note": "Built as N564 has it (BE #1853, FE #1335): the goodbye is \"Good job. See you next time.\"; the bar after the walk shows the level and its marks."
  },
  {
   "id": "PLAN-10",
   "area": "The plan",
   "title": "Changing the plan",
-  "status": "differs",
+  "status": "built",
   "screen": "plan.sheet",
   "prototype": null,
   "given": "\"See your plan\" → \"Change your plan\"",
@@ -2648,14 +2676,15 @@
   ],
   "code": [
    "fe:src/components/willab/plan/PlanSheet.tsx",
-   "fe:src/components/willab/plan/PlanRows.tsx"
+   "fe:src/components/willab/plan/PlanRows.tsx",
+   "fe:src/components/willab/plan/PlanSheet.tsx::The Deadline row only for someone preparing a talk"
   ],
   "tests": [
    "src/components/willab/plan/planNewEvent.test.tsx",
    "src/components/willab/plan/plan.test.tsx"
   ],
   "evals": [],
-  "note": "N564: the Practice days row goes; the Deadline row stays only for someone preparing a talk."
+  "note": "Built as N564 has it (FE #1335): no Practice days row; the Deadline row only for someone preparing a talk."
  },
  {
   "id": "PLAN-11",
@@ -2687,7 +2716,7 @@
   "id": "PLAN-12",
   "area": "The plan",
   "title": "The plan's end",
-  "status": "differs",
+  "status": "built",
   "screen": "plan.day",
   "prototype": null,
   "given": "the first time the app opens on or after the deadline",
@@ -2704,10 +2733,11 @@
    "be:services/plan_flow.py::the plan's end (I)"
   ],
   "tests": [
-   "tests/test_plan_flow.py"
+   "tests/test_plan_flow.py",
+   "tests/test_plan_consent.py"
   ],
   "evals": [],
-  "note": "N564: the plan ends after the third level: the summary session, then new levels; not on a deadline."
+  "note": "Built as N564 has it (BE #1853): the plan ends after the third level, with the summary session, then new levels; never on a date."
  },
  {
   "id": "PLAN-13",
@@ -2737,7 +2767,7 @@
   "id": "PLAN-16",
   "area": "The plan",
   "title": "A date is asked only of someone preparing a talk",
-  "status": "not built",
+  "status": "built",
   "screen": "will.after",
   "prototype": null,
   "given": "a newcomer, while Take 1 is processed",
@@ -2752,16 +2782,22 @@
    "N459 item 1",
    "Never 3"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/way_in.py::if TALK in picked:",
+   "be:services/plan_flow.py::def set_talk_date"
+  ],
+  "tests": [
+   "tests/test_way_in.py",
+   "src/components/willab/plan/wayIn.test.tsx"
+  ],
   "evals": [],
-  "note": "The choice of what to do here is drafted on the onboarding proposal; until it is built, nobody is asked a date."
+  "note": "Built (BE #1854, #1853, FE #1337): only \"Prepare a talk\" is asked a date; nobody is asked \"When is your deadline?\"."
  },
  {
   "id": "PLAN-17",
   "area": "The plan",
   "title": "The training is three levels of four Takes",
-  "status": "not built",
+  "status": "built",
   "screen": "plan.card",
   "prototype": null,
   "given": "anyone with a plan",
@@ -2777,19 +2813,22 @@
    "N209 item 3"
   ],
   "code": [
-   "be:services/plan.py::def next_level"
+   "be:services/plan.py::def next_level",
+   "be:services/plan_flow.py::def _next_level",
+   "be:services/plan.py::LEVEL_TAKES = 4"
   ],
   "tests": [
-   "tests/test_plan.py"
+   "tests/test_plan.py",
+   "tests/test_plan_flow.py"
   ],
   "evals": [],
-  "note": "next_level is built; levels by four Takes are not (today a level runs by the plan's length, level_days)."
+  "note": "Built (BE #1853): three levels of four Takes; the first Take does not fill a mark."
  },
  {
   "id": "PLAN-18",
   "area": "The plan",
   "title": "The bar shows the level and its marks, never points",
-  "status": "not built",
+  "status": "built",
   "screen": "plan.card",
   "prototype": null,
   "given": "the plan's bar anywhere it shows",
@@ -2803,16 +2842,23 @@
    "Never 1",
    "Never 4"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/plan.py::def bar(",
+   "be:services/plan_flow.py::\"bar\": _bar(plan) if level else None",
+   "fe:src/components/willab/plan/PlanCard.tsx::export function PlanBar({ bar }"
+  ],
+  "tests": [
+   "tests/test_plan.py",
+   "src/components/willab/plan/plan.test.tsx"
+  ],
   "evals": [],
-  "note": "Its words are drafted for the founder's OK."
+  "note": "Built (BE #1853, FE #1335): the level's name and its four marks, never a points total, score or percentage."
  },
  {
   "id": "PLAN-19",
   "area": "The plan",
   "title": "Every Take fills a mark",
-  "status": "not built",
+  "status": "built",
   "screen": "plan.card",
   "prototype": null,
   "given": "a speaker with a plan",
@@ -2823,15 +2869,20 @@
   "rules": [
    "N564 item 4"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/plan_flow.py::every Take fills one"
+  ],
+  "tests": [
+   "tests/test_plan_flow.py"
+  ],
+  "evals": [],
+  "note": "Built (BE #1853)."
  },
  {
   "id": "PLAN-20",
   "area": "The plan",
   "title": "After the third level: the summary, then new levels",
-  "status": "not built",
+  "status": "built",
   "screen": "plan.day",
   "prototype": null,
   "given": "the twelfth Take's walk has ended",
@@ -2844,9 +2895,15 @@
    "N564 item 5",
    "N248"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/plan_flow.py::summary_card:",
+   "be:services/plan_flow.py::a new set of three"
+  ],
+  "tests": [
+   "tests/test_plan_flow.py"
+  ],
+  "evals": [],
+  "note": "Built (BE #1853)."
  },
  {
   "id": "PLAN-14",
@@ -2875,7 +2932,7 @@
   "id": "PLAN-15",
   "area": "The plan",
   "title": "A day line before each day's first message",
-  "status": "partly",
+  "status": "built",
   "screen": "plan.day",
   "prototype": null,
   "given": "a chat that spans several days",
@@ -2888,11 +2945,15 @@
    "N169"
   ],
   "code": [
-   "fe:src/components/willab/Lounge.tsx"
+   "fe:src/components/willab/Lounge.tsx",
+   "fe:src/components/willab/plan/dayLines.tsx::export function dayLinesFor",
+   "fe:src/components/willab/Lounge.tsx::dayLinesFor"
   ],
-  "tests": [],
+  "tests": [
+   "src/components/willab/plan/plan.test.tsx"
+  ],
   "evals": [],
-  "note": "the-plan.md §3: the day line comes with the practice day's hello and the day after the deadline, not yet before every day's first message."
+  "note": "Built (FE #1335): a day line before the first message of each day, in the speaker's time zone."
  },
  {
   "id": "IT-01",
@@ -3916,7 +3977,7 @@
   "id": "MATCH-03",
   "area": "Matching",
   "title": "The match weighs knowledge only, for now",
-  "status": "partly",
+  "status": "built",
   "screen": "share.match",
   "prototype": null,
   "given": "matching after a Take",
@@ -3932,13 +3993,14 @@
   ],
   "code": [
    "be:services/take_match_knowledge.py",
-   "be:services/take_match_signals.py"
+   "be:services/take_match_signals.py",
+   "be:services/take_match.py::\"arm\": \"topics\", \"signals\": {\"knowledge\": score}"
   ],
   "tests": [
    "tests/test_take_match.py"
   ],
   "evals": [],
-  "note": "By decision: the voice-based arms wait for counsel and the next Terms (N481 item 4, N515 item 4)."
+  "note": "Built (BE #1861): with skills off only knowledge counts."
  },
  {
   "id": "MATCH-04",
@@ -3994,7 +4056,7 @@
   "id": "MATCH-06",
   "area": "Matching",
   "title": "A newcomer is offered their business's community once",
-  "status": "not built",
+  "status": "partly",
   "screen": "will.after",
   "prototype": null,
   "given": "a newcomer who came by the link of someone at a business",
@@ -4009,16 +4071,21 @@
    "Never 3",
    "Never 4"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "fe:src/lib/willab/wayIn.ts::export const COMMUNITY_OFFER_SIGNED = false;",
+   "fe:src/services/api/communityOffer.ts::export async function getCommunityOffer"
+  ],
+  "tests": [
+   "src/components/willab/plan/wayIn.test.tsx"
+  ],
   "evals": [],
-  "note": "Its question's words are drafted for the founder's OK (Never 4)."
+  "note": "The offer is drawn in the way in (FE #1340), off until its drafted words are signed (Never 4); its backend route is only in open BE #1862, so it stays partly."
  },
  {
   "id": "MATCH-07",
   "area": "Matching",
   "title": "Your own chats: the best fit comes first",
-  "status": "not built",
+  "status": "built",
   "screen": "share",
   "prototype": null,
   "given": "the screen of who hears a Take, with several people in your chats",
@@ -4032,17 +4099,22 @@
    "N470 items 1 and 2"
   ],
   "code": [
-   "fe:src/components/willab/NextTakeShareScreen.tsx::function firstTicks"
+   "fe:src/components/willab/NextTakeShareScreen.tsx::function firstTicks",
+   "be:services/take_match.py::def rank_chats(",
+   "fe:src/components/willab/NextTakeShareScreen.tsx::function bestFitFirst("
   ],
-  "tests": [],
+  "tests": [
+   "tests/test_take_match.py",
+   "src/components/willab/NextTakeShareScreen.test.tsx"
+  ],
   "evals": [],
-  "note": "As built, the person sent to last is on top, then the list's order (N470 item 1, the Was of N559 item 2)."
+  "note": "Built (BE #1861, FE #1340): your own chats, best fit first; no score."
  },
  {
   "id": "MATCH-08",
   "area": "Matching",
   "title": "The matcher learns from answers and conversations only",
-  "status": "partly",
+  "status": "built",
   "screen": "share.match",
   "prototype": null,
   "given": "a suggestion was sent",
@@ -4057,19 +4129,21 @@
    "Never 1"
   ],
   "code": [
-   "be:services/take_match.py::EXPLORE = (0.8, 0.1, 0.1)"
+   "be:services/take_match.py::EXPLORE = (0.8, 0.1, 0.1)",
+   "be:services/take_match.py::def _with_outcomes(",
+   "be:services/take_match.py::ANSWER_DAYS, TALK_DAYS, KEPT_TALKING = 7, 14, 3"
   ],
   "tests": [
    "tests/test_take_match.py"
   ],
   "evals": [],
-  "note": "Each suggestion keeps its pick's chance (built); the outcome signals of N559 item 3 are not yet read back into the pick."
+  "note": "Built (BE #1861): what came of each earlier suggestion is read back into the pick; nobody is asked to rate anyone."
  },
  {
   "id": "MATCH-09",
   "area": "Matching",
   "title": "By how people speak: a step ahead",
-  "status": "differs",
+  "status": "built",
   "screen": "share.match",
   "prototype": null,
   "given": "matching by how people speak is switched on (after the Terms and Privacy carry it, N481 item 4)",
@@ -4085,13 +4159,13 @@
    "Never 1"
   ],
   "code": [
-   "be:services/take_match.py::SKILL_ARMS = (\"similar_level\", \"further_along\")"
+   "be:services/take_match.py::SKILL_ARM = \"further_along\""
   ],
   "tests": [
    "tests/test_take_match.py"
   ],
   "evals": [],
-  "note": "The code still has the same-level arm; N559 item 4 retires it (one in, one out). Switched off (TAKE_MATCH_SKILLS unset)."
+  "note": "Built (BE #1861), switched off until TAKE_MATCH_SKILLS: the same-level arm is gone."
  },
  {
   "id": "MATCH-10",
@@ -4121,7 +4195,7 @@
   "id": "MATCH-11",
   "area": "Matching",
   "title": "Anyone can turn off matching by how they speak",
-  "status": "not built",
+  "status": "built",
   "screen": "settings",
   "prototype": null,
   "given": "matching by how people speak is on",
@@ -4134,10 +4208,17 @@
    "N559 item 6",
    "N465 items 1 and 2"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/speaking_match.py::def turn(",
+   "be:routes/v2/take_matches.py::/me/speaking-match",
+   "fe:src/components/account/SpeakingMatchCard.tsx::export default function SpeakingMatchCard"
+  ],
+  "tests": [
+   "tests/test_take_match.py",
+   "src/components/account/SpeakingMatchCard.test.tsx"
+  ],
   "evals": [],
-  "note": "Built before the speaking part is switched on (N559 item 6)."
+  "note": "Built (BE #1861, FE #1340): the card shows only while available (TAKE_MATCH_SKILLS)."
  },
  {
   "id": "MATCH-12",
@@ -4156,7 +4237,9 @@
    "N463 item 6"
   ],
   "code": [],
-  "tests": [],
+  "tests": [
+   "tests/test_take_match.py"
+  ],
   "evals": [],
   "note": "Retired before it was built: holds because nothing asks it."
  },
@@ -4465,7 +4548,7 @@
   "id": "COACH-12",
   "area": "Coach panel",
   "title": "The training corpus is the founder's",
-  "status": "differs",
+  "status": "built",
   "screen": "coach.corpus",
   "prototype": "https://claude.ai/artifact/TEBvGMehRF6wXCvJTEYTUA",
   "given": "the admin ☰, under Data",
@@ -4483,7 +4566,8 @@
   "code": [
    "fe:src/components/admin/AdminMenu.tsx::Training corpus",
    "fe:src/components/willab/coachpanel/CoachCorpusJudge.tsx",
-   "be:services/corpus_mixed_queue.py"
+   "be:services/corpus_mixed_queue.py",
+   "fe:src/components/admin/AdminMenu.tsx::// The training corpus, under Data beside Project deletions"
   ],
   "tests": [
    "src/components/willab/coachpanel/coachPanelCorpus.test.tsx",
@@ -4493,7 +4577,7 @@
    "src/app/admin/libraryAndErrorsGate.test.ts"
   ],
   "evals": [],
-  "note": "N511 item 1 puts the Training corpus row in the admin ☰ under Data, beside Project deletions; the code (AdminMenu.tsx, FE #1256, 4 November) moved it to Overview in the Roadmap's place, citing the founder, with no decision logged. Drawn as N511 has it, with the red chip."
+  "note": "Built as N511 item 1 has it (FE #1332): the Training corpus row sits in the admin ☰ under Data, beside Project deletions."
  },
  {
   "id": "COACH-13",
@@ -5664,7 +5748,9 @@
   "code": [
    "fe:src/components/willab/Phase1AcceptanceFlow.tsx::optionalPurposes: []"
   ],
-  "tests": [],
+  "tests": [
+   "tests/test_model_launchpad.py"
+  ],
   "evals": [],
   "note": "N575 (9 November): the training yes, \"Help improve WillpowerLab\", is asked only in Settings (Data & consent) or a consent ask the founder sends one person; never at joining or in onboarding (amends N518 item 5 and N528 item 12)."
  },
@@ -5692,22 +5778,25 @@
    "fe:src/lib/legal/dataConsentCopy.ts::trainingTitle: \"Help improve WillpowerLab\"",
    "fe:src/lib/legal/dataConsentCopy.ts::trainingOffTitle: \"Turn off training?\"",
    "fe:src/components/account/TrainingConsentCard.tsx::export default function TrainingConsentCard",
-   "be:services/person_asks.py::CONSENT_KEYS = (\"processing\", \"personalised_practice\", \"sensitive_information\","
+   "be:services/person_asks.py::CONSENT_KEYS = (\"processing\", \"personalised_practice\", \"sensitive_information\",",
+   "be:services/model_launchpad.py::def takes_offered_to_teachers("
   ],
   "tests": [
    "src/components/account/TrainingConsentCard.test.tsx",
    "src/services/api/trainingConsent.test.ts",
    "tests/test_training_consent_postgres.py",
-   "tests/test_person_asks.py"
+   "tests/test_person_asks.py",
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
   ],
   "evals": [],
-  "note": "The switch is built and asked in Settings or in a founder's consent ask in the chat; no model reads it yet, because no model gathers examples from Takes. N575 (9 November): the training yes, \"Help improve WillpowerLab\", is asked only in Settings (Data & consent) or a consent ask the founder sends one person; never at joining or in onboarding (amends N518 item 5 and N528 item 12)."
+  "note": "The switch is built and asked in Settings or in a founder's consent ask in the chat; no model reads it yet, because no model gathers examples from Takes. N575 (9 November): the training yes, \"Help improve WillpowerLab\", is asked only in Settings (Data & consent) or a consent ask the founder sends one person; never at joining or in onboarding (amends N518 item 5 and N528 item 12). The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-03",
   "area": "AI models",
   "title": "A speaker never sees a model's page or its numbers",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.meet",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Kasia is a speaker who teaches no model",
@@ -5719,15 +5808,22 @@
    "N526 item 3",
    "Never 1"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad.py::def model_page(",
+   "fe:src/components/willab/models/ModelScreens.tsx::A model's page (d:3; MOD-03, MOD-06)"
+  ],
+  "tests": [
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-04",
   "area": "AI models",
   "title": "The AI models row sits under the people in the list of chats",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.d-1",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta's list of chats, with Will on top and her people under him",
@@ -5741,15 +5837,22 @@
    "N563 item 1",
    "N566 item 11"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad.py::def chat_rows(",
+   "fe:src/components/willab/models/ModelsChatRows.tsx::export default function ModelsChatRows()"
+  ],
+  "tests": [
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-05",
   "area": "AI models",
   "title": "The list of models, the most mature first, with search and filters",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.d-2",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta taps \"AI models\"",
@@ -5765,15 +5868,22 @@
    "N566 item 2",
    "N566 item 11"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad.py::def model_list(",
+   "fe:src/components/willab/models/ModelScreens.tsx::The list (d:2, d:8; MOD-05, MOD-13)"
+  ],
+  "tests": [
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-06",
   "area": "AI models",
   "title": "A public model's page in totals only",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.d-3",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta opens Speaking confidence from the list",
@@ -5787,15 +5897,22 @@
    "N526 item 3",
    "N528 item 1"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad.py::def page_summary(",
+   "fe:src/components/willab/models/ModelScreens.tsx::A model's page (d:3; MOD-03, MOD-06)"
+  ],
+  "tests": [
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-07",
   "area": "AI models",
   "title": "A disclaimer at the door before anyone teaches",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.d-4",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta taps \"Teach it\" on a public model",
@@ -5810,9 +5927,17 @@
    "N528 item 2",
    "N528 item 10"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad.py::def door(",
+   "fe:src/components/willab/models/ModelScreens.tsx::The door (d:4; MOD-07)",
+   "fe:src/components/willab/models/ModelsOverlay.tsx::(\"This is my field\" joins it, MOD-07), else teaching at once"
+  ],
+  "tests": [
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-08",
@@ -5835,14 +5960,18 @@
   ],
   "code": [
    "fe:src/components/willab/coachpanel/CoachPanelScreens.tsx::export function JudgeScreen",
-   "be:services/label_quorum.py::def resolve("
+   "be:services/label_quorum.py::def resolve(",
+   "be:services/model_launchpad.py::def teaching_screen(",
+   "fe:src/components/willab/models/teachSteps.ts::export function isJudge("
   ],
   "tests": [
    "src/components/willab/coachpanel/coachPanel.test.tsx",
-   "tests/test_label_quorum.py"
+   "tests/test_label_quorum.py",
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
   ],
   "evals": [],
-  "note": "Built as the coach panel's Judge for the speaking coaches' moments; no model joined through the AI models row reaches it yet."
+  "note": "Built as the coach panel's Judge for the speaking coaches' moments; no model joined through the AI models row reaches it yet. The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-09",
@@ -5861,19 +5990,23 @@
    "N518 item 4"
   ],
   "code": [
-   "fe:src/components/willab/coachpanel/CoachPanelScreens.tsx::export function JudgeScreen"
+   "fe:src/components/willab/coachpanel/CoachPanelScreens.tsx::export function JudgeScreen",
+   "be:services/model_launchpad.py::def example_for_teacher(",
+   "fe:src/components/willab/models/ModelTeach.tsx::export default function ModelTeach("
   ],
   "tests": [
-   "src/components/willab/coachpanel/coachPanel.test.tsx"
+   "src/components/willab/coachpanel/coachPanel.test.tsx",
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
   ],
   "evals": [],
-  "note": "Holds today for the coach panel (the moment's read is asked for only after the rating saves); the launchpad's teaching screens are not built."
+  "note": "Holds today for the coach panel (the moment's read is asked for only after the rating saves); the launchpad's teaching screens are not built. The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-10",
   "area": "AI models",
   "title": "The quiet trust check: a newcomer's answers count once they hear what experts hear",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.d-6",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta has answered fewer than 20 examples of Speaking confidence",
@@ -5889,9 +6022,16 @@
    "N523 item 2",
    "Never 1"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad.py::def trust_status(",
+   "fe:src/components/willab/models/ModelTeach.tsx::now count.\" (MOD-10). While the quiet trust check runs nothing is said:"
+  ],
+  "tests": [
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-11",
@@ -5926,7 +6066,7 @@
   "id": "MOD-12",
   "area": "AI models",
   "title": "\"What do I get?\" in three short cards",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.d-7",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta taps \"What do I get?\" on the list",
@@ -5940,15 +6080,22 @@
    "N523 item 2",
    "N531"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad.py::def what_do_i_get(",
+   "fe:src/components/willab/models/ModelScreens.tsx::What do I get? (d:7; MOD-12)"
+  ],
+  "tests": [
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-13",
   "area": "AI models",
   "title": "An empty search says so and offers to start one",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.d-8",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta searches for a field nobody has started a model about",
@@ -5961,15 +6108,22 @@
   "rules": [
    "N566 item 11"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad.py::\"search_empty_title\": \"No models here yet.\"",
+   "fe:src/components/willab/models/ModelScreens.tsx::The list (d:2, d:8; MOD-05, MOD-13)"
+  ],
+  "tests": [
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-14",
   "area": "AI models",
   "title": "The coach's row is the one queue for every model a person teaches",
-  "status": "differs",
+  "status": "partly",
   "screen": "mod.q-1",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta teaches Speaking confidence, Pitch Coach and RASP sales replies",
@@ -5986,19 +6140,23 @@
   "code": [
    "fe:src/components/willab/coachwalk/CoachChatRow.tsx::export default function CoachChatRow",
    "fe:src/components/willab/coachwalk/CoachChatRow.tsx::export function coachRowWords",
-   "fe:src/components/willab/chats/useChatsDoor.tsx::coachRow={isCoach ? <CoachChatRow /> : null}"
+   "fe:src/components/willab/chats/useChatsDoor.tsx::coachRow={isCoach ? <CoachChatRow /> : null}",
+   "be:services/model_launchpad.py::def queue_row_line(",
+   "fe:src/components/willab/models/ModelsChatRows.tsx::export default function ModelsChatRows()"
   ],
   "tests": [
-   "src/components/willab/coachwalk/coachChatRow.test.tsx"
+   "src/components/willab/coachwalk/coachChatRow.test.tsx",
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
   ],
   "evals": [],
-  "note": "Built for the speaking coaches only: the row is named by the person's profile job (or \"Your queue\") with the line \"Open your queue\" or \"Nobody is waiting for you.\" (N521), and holds the speaking moments; no other model, no \"… examples wait · 3 models\" line."
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-15",
   "area": "AI models",
   "title": "The queue orders what helps most first, with Pause per model",
-  "status": "differs",
+  "status": "partly",
   "screen": "mod.q-2",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta opens Your queue",
@@ -6014,19 +6172,23 @@
    "N566 item 11"
   ],
   "code": [
-   "fe:src/components/willab/coachpanel/CoachPanelScreens.tsx::export function QueueScreen"
+   "fe:src/components/willab/coachpanel/CoachPanelScreens.tsx::export function QueueScreen",
+   "be:services/model_launchpad.py::def build_queue(",
+   "fe:src/components/willab/models/ModelScreens.tsx::The one queue (q:2, q:9; MOD-15, MOD-23)"
   ],
   "tests": [
-   "src/components/willab/coachpanel/coachPanel.test.tsx"
+   "src/components/willab/coachpanel/coachPanel.test.tsx",
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
   ],
   "evals": [],
-  "note": "The built queue (coach panel B2) lists speakers, the one who sent most recently on top, for the speaking model only, with no Pause and no per-model rows."
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-16",
   "area": "AI models",
   "title": "One answer counts for two models only when both ask the same question on the same scale",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.q-3",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "a public clip is wanted by Speaking confidence and Interview voice, which ask the same question on the same scale",
@@ -6039,15 +6201,22 @@
    "N566 item 7",
    "N563 item 3"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad.py::def counts_for(",
+   "fe:src/components/willab/models/ModelTeach.tsx::this question\" (MOD-16), another model's question on the same clip,"
+  ],
+  "tests": [
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-17",
   "area": "AI models",
   "title": "Another model's question on the same clip follows right after",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.q-4",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Pitch Coach asks something else about the same public clip",
@@ -6059,15 +6228,22 @@
   "rules": [
    "N566 item 7"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad.py::def follow_line(",
+   "fe:src/components/willab/models/ModelTeach.tsx::drawn without loading the clip again (MOD-17), and once, \"Your answers"
+  ],
+  "tests": [
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-18",
   "area": "AI models",
   "title": "A private example teaches only its company's model",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.q-5",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "RASP's own example in Marta's queue",
@@ -6080,9 +6256,16 @@
    "N563 item 3",
    "N563 item 6"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad.py::def private_example_note(",
+   "fe:src/components/willab/models/modelsCopy.ts::The backend's private_example_note (MOD-18), with its curly apostrophe."
+  ],
+  "tests": [
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-19",
@@ -6101,13 +6284,17 @@
    "N570 item 2"
   ],
   "code": [
-   "fe:src/lib/willab/coachPanelCopy.ts::chooseExercise: \"Choose exercise\""
+   "fe:src/lib/willab/coachPanelCopy.ts::chooseExercise: \"Choose exercise\"",
+   "be:services/model_launchpad.py::def teaching_screen(",
+   "fe:src/components/willab/models/teachSteps.ts::export function choicesOf("
   ],
   "tests": [
-   "src/components/willab/coachpanel/coachPanel.test.tsx"
+   "src/components/willab/coachpanel/coachPanel.test.tsx",
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
   ],
   "evals": [],
-  "note": "Built only as the speaking coach's pick of an exercise (\"Choose exercise\", coach panel E3); no model's own list is."
+  "note": "Built only as the speaking coach's pick of an exercise (\"Choose exercise\", coach panel E3); no model's own list is. The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-20",
@@ -6128,19 +6315,24 @@
    "N518 item 2"
   ],
   "code": [
-   "fe:src/lib/willab/planCopy.ts::recordAnswer: \"Record your answer\""
+   "fe:src/lib/willab/planCopy.ts::recordAnswer: \"Record your answer\"",
+   "be:services/model_launchpad.py::\"words_step\":",
+   "fe:src/services/api/models.ts::A spoken answer, as its words (MOD-20): the transcript of the recording"
   ],
   "tests": [
-   "src/components/willab/chats/chats.test.tsx"
+   "src/components/willab/chats/chats.test.tsx",
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/modelSetup.test.tsx",
+   "src/components/willab/models/models.test.tsx"
   ],
   "evals": [],
-  "note": "\"Record your answer\" is built for answering a person's Take or question in their chat (N481); it does not feed a model."
+  "note": "\"Record your answer\" is built for answering a person's Take or question in their chat (N481); it does not feed a model. The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-21",
   "area": "AI models",
   "title": "A teacher adds an example; it counts once another teacher agrees",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.q-7",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta knows a case the model should learn from",
@@ -6155,15 +6347,24 @@
    "N563 item 4",
    "N566 item 6"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad.py::def added_example_counts(",
+   "fe:src/components/willab/models/ModelAdd.tsx::Model MOD-21; the locked prototype's q:7): which model, then the case in",
+   "fe:src/components/willab/models/ModelsOverlay.tsx::answer it (MOD-21)"
+  ],
+  "tests": [
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/modelSetup.test.tsx",
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-22",
   "area": "AI models",
   "title": "Release is the founder's choice, and only when the gap is not luck",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.q-8",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "version 2 of Pitch Coach finished its final exam",
@@ -6181,15 +6382,22 @@
    "N563 item 5",
    "N566 item 9"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad.py::def release_screen(",
+   "fe:src/components/willab/models/ModelRelease.tsx::MOD-22; the locked prototype's q:8). Drawn from the backend's"
+  ],
+  "tests": [
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-23",
   "area": "AI models",
   "title": "An empty queue says so",
-  "status": "differs",
+  "status": "partly",
   "screen": "mod.q-9",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "nothing waits for Marta in any model",
@@ -6203,19 +6411,24 @@
    "N566 item 11"
   ],
   "code": [
-   "fe:src/lib/willab/coachWalkCopy.ts::queueEmpty: \"Nobody is waiting for you.\""
+   "fe:src/lib/willab/coachWalkCopy.ts::queueEmpty: \"Nobody is waiting for you.\"",
+   "be:services/model_launchpad.py::\"queue_empty_title\": \"Nothing waits for you.\"",
+   "fe:src/components/willab/models/ModelScreens.tsx::The one queue (q:2, q:9; MOD-15, MOD-23)",
+   "fe:src/components/willab/models/ModelsOverlay.tsx::teaching, when nothing more waits → the queue, which says so (MOD-23)"
   ],
   "tests": [
-   "src/components/willab/coachwalk/coachChatRow.test.tsx"
+   "src/components/willab/coachwalk/coachChatRow.test.tsx",
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/models.test.tsx"
   ],
   "evals": [],
-  "note": "The built speaking queue says \"Nobody is waiting for you.\" (signed for the coach panel, J), on the row and in the queue."
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-24",
   "area": "AI models",
   "title": "Starting a model in three chapters, with a thin bar",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.s-1",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta taps \"Start your own\"",
@@ -6229,15 +6442,21 @@
    "N566 item 2",
    "N528 item 4"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/ModelScreens.tsx::nothing: \"Start your own\" and a draft's \"Continue\" (the setup, MOD-24).",
+   "fe:src/components/willab/models/ModelsOverlay.tsx::list   → Start your own (the setup, MOD-24) · a draft's Continue"
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-25",
   "area": "AI models",
   "title": "✕ keeps a draft, shown in the list with Continue",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.d-2",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta is partway through the setup",
@@ -6248,15 +6467,21 @@
   "rules": [
    "N566 item 2"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/ModelScreens.tsx::A draft's \"Continue\" (MOD-25).",
+   "fe:src/components/willab/models/ModelSetup.tsx::(MOD-25); a checklist item opens its own step (openSetup). Each answer is saved as it"
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-26",
   "area": "AI models",
   "title": "A model like yours already exists",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.s-4",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "a public model is close to what Marta described",
@@ -6269,15 +6494,20 @@
    "N566 item 2",
    "N528 item 4"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/SetupSteps.tsx::Describe: three answers, one per screen (MOD-24, MOD-26, MOD-54)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-27",
   "area": "AI models",
   "title": "The app proposes what the model does; the founder unticks",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.s-5",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta finished Describe",
@@ -6291,15 +6521,20 @@
    "N528 item 4",
    "N520 item 1"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/SetupSteps.tsx::What it will do, and its name (MOD-27)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-28",
   "area": "AI models",
   "title": "One example and a scale with words for every point; a model can start right there",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.s-6",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "the model gives a score",
@@ -6314,15 +6549,20 @@
    "N563 item 5",
    "N520 item 4"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/SetupSteps.tsx::One example and a scale with a word for every point (MOD-28)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-29",
   "area": "AI models",
   "title": "Each part gets the AI that fits it",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.s-7",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "the model scores a voice, picks from a list and answers in words",
@@ -6335,15 +6575,20 @@
   "rules": [
    "N566 item 3"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/SetupSteps.tsx::The AI for each part (MOD-29)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-30",
   "area": "AI models",
   "title": "Research sets starting rules, each checked against the first ratings",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.s-8",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta has a study",
@@ -6357,15 +6602,20 @@
    "N528 item 4",
    "N566 item 2"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/SetupSteps.tsx::Starting rules from research (MOD-30; N585)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-31",
   "area": "AI models",
   "title": "Uploading an existing dataset, mapping its columns and checking it",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.s-11",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta has 1,240 rated pitch clips",
@@ -6380,15 +6630,20 @@
    "N566 item 4",
    "N531 item 2"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/SetupSteps.tsx::Existing data: the file, its columns, its check (MOD-31)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-32",
   "area": "AI models",
   "title": "Two experts set aside a final exam of 100 cases first",
-  "status": "differs",
+  "status": "partly",
   "screen": "mod.s-12",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta reaches the exam step",
@@ -6405,19 +6660,22 @@
   ],
   "code": [
    "be:services/golden_set.py::SET_SIZE = 50",
-   "be:services/golden_set.py::def seal("
+   "be:services/golden_set.py::def seal(",
+   "fe:src/components/willab/models/SetupSteps.tsx::The final exam, set aside by two experts (MOD-32)",
+   "fe:src/components/willab/models/modelsCopy.ts::before it is saved (\"Ask Daniel\", MOD-32). Every other word of the setup"
   ],
   "tests": [
-   "tests/test_golden_set_pool.py"
+   "tests/test_golden_set_pool.py",
+   "src/components/willab/models/modelSetup.test.tsx"
   ],
   "evals": [],
-  "note": "Only the speaking golden set exists: 50 clips judged and sealed by the founder (N523 item 6 grows it toward 150); no per-model exam of 100 set aside by two experts."
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-33",
   "area": "AI models",
   "title": "The teachers' journey, shorter or longer",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.s-13",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "the app generated what each teacher will do",
@@ -6429,15 +6687,20 @@
   "rules": [
    "N528 item 4"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/SetupSteps.tsx::The teachers' journey, shorter or longer (MOD-33)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-34",
   "area": "AI models",
   "title": "Private or Public, with a disclaimer before going public",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.s-15",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta reaches Share",
@@ -6451,15 +6714,21 @@
    "N528 item 5",
    "N526 item 2"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/ProfileModels.tsx::\"Make public\" first shows the setup's own disclaimer (MOD-34), read from",
+   "fe:src/components/willab/models/SetupSteps.tsx::Who can see it, and the disclaimer before Public (MOD-34)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-35",
   "area": "AI models",
   "title": "Inviting teachers: each person chooses whether to join",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.s-16",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta's model is RASP's, or her own",
@@ -6473,15 +6742,20 @@
    "N563 item 6",
    "N528 item 4"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/SetupSteps.tsx::Inviting teachers (MOD-35)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-36",
   "area": "AI models",
   "title": "The model is ready to learn, with what is left as a checklist",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.s-17",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta finished, or started after the scale",
@@ -6496,15 +6770,21 @@
    "N566 item 2",
    "N528 item 7"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/ModelOwner.tsx::The owner's part of a model's page (backend N566 item 6, MOD-36, MOD-37;",
+   "fe:src/components/willab/models/ModelScreens.tsx::checklist item; MOD-36, MOD-37)."
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-37",
   "area": "AI models",
   "title": "The owner's page: Needs you now on top",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.s-18",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Pitch Coach has been taught for two weeks",
@@ -6522,15 +6802,21 @@
    "N563 item 5",
    "N526 item 3"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/ModelOwner.tsx::The owner's part of a model's page (backend N566 item 6, MOD-36, MOD-37;",
+   "fe:src/components/willab/models/ModelScreens.tsx::checklist item; MOD-36, MOD-37)."
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-38",
   "area": "AI models",
   "title": "The founder sets the teachers' question and list and answers the first 10",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.s-6",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta set her model's scale",
@@ -6546,15 +6832,20 @@
    "N570 item 3",
    "N570 item 4"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/SetupSteps.tsx::The teachers' question and the list (MOD-38; N570)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-39",
   "area": "AI models",
   "title": "A model card before a business uses a model",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.b-1",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "a careers website finds Job interview coach, ready to use",
@@ -6567,15 +6858,20 @@
    "N566 item 9",
    "N528 item 7"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/ModelApiScreens.tsx::The card (mod.b-1; MOD-39)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelApi.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1342) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1866), so it stays partly."
  },
  {
   "id": "MOD-40",
   "area": "AI models",
   "title": "Trying a model on its link; it says when it is not sure",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.b-2",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "the business tries Job interview coach",
@@ -6588,15 +6884,20 @@
    "N566 item 8",
    "N528 item 9"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/ModelApiScreens.tsx::Try it (mod.b-2, mod.u-1; MOD-40, MOD-45)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelApi.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1342) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1866), so it stays partly."
  },
  {
   "id": "MOD-41",
   "area": "AI models",
   "title": "A free test key, a monthly limit, and the users' data not used without a yes",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.b-3",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "the business taps \"Use it in your business\"",
@@ -6612,15 +6913,20 @@
    "N566 item 9",
    "N528 item 7"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/ModelApiScreens.tsx::Use it in your business: the terms (mod.b-3, mod.u-4; MOD-41, MOD-48)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelApi.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1342) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1866), so it stays partly."
  },
  {
   "id": "MOD-42",
   "area": "AI models",
   "title": "The key is shown once",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.b-4",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "the business created a key",
@@ -6633,15 +6939,21 @@
   "rules": [
    "N566 item 9"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/ModelApiScreens.tsx::The key, shown once (mod.b-4; MOD-42, MOD-48)",
+   "fe:src/components/willab/models/ModelApiStack.tsx::for the code, so ‹ never shows it again (MOD-42)."
+  ],
+  "tests": [
+   "src/components/willab/models/modelApi.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1342) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1866), so it stays partly."
  },
  {
   "id": "MOD-43",
   "area": "AI models",
   "title": "The code in three languages, with \"sure\" in every answer",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.b-5",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "the key is copied",
@@ -6655,15 +6967,20 @@
    "N566 item 8",
    "N566 item 9"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/ModelApiScreens.tsx::The code (mod.b-5; MOD-43)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelApi.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1342) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1866), so it stays partly."
  },
  {
   "id": "MOD-44",
   "area": "AI models",
   "title": "Usage, the unsure questions back to the teachers, and pinned versions",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.b-6",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "a month of use",
@@ -6678,15 +6995,20 @@
    "N566 item 9",
    "N563 item 4"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/ModelApiScreens.tsx::Your usage (mod.b-6; MOD-44)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelApi.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1342) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1866), so it stays partly."
  },
  {
   "id": "MOD-45",
   "area": "AI models",
   "title": "A model not yet for sale can be tried on its link",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.u-1",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Pitch Coach has not passed its final exam",
@@ -6699,15 +7021,21 @@
    "N528 item 7",
    "N528 item 9"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/components/willab/models/ModelApiScreens.tsx::Try it (mod.b-2, mod.u-1; MOD-40, MOD-45)",
+   "fe:src/components/willab/models/ModelSetup.tsx::\"Try it\", once the model's code route answers (MOD-45; ModelApiScreens)."
+  ],
+  "tests": [
+   "src/components/willab/models/modelApi.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1342) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1866), so it stays partly."
  },
  {
   "id": "MOD-46",
   "area": "AI models",
   "title": "Setting the price with − and +, with Infrastructure as one row",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.u-2",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Pitch Coach passed its exam",
@@ -6725,16 +7053,20 @@
    "N531 item 3",
    "N577"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "fe:src/components/willab/models/ModelApiScreens.tsx::Set your price (mod.u-2; MOD-46)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelApi.test.tsx"
+  ],
   "evals": [],
-  "note": "N577 (9 November) settles the fee: WillpowerLab takes a stable 20% of the margin for every model and version; a model's founder keeps 10% of what is left; the teachers get the rest by points (v8's sample numbers match). Still open: the minimum payout, the payment provider and the legal terms."
+  "note": "The screens are merged (FE #1342, #1345) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1866), so it stays partly."
  },
  {
   "id": "MOD-47",
   "area": "AI models",
   "title": "A teacher's earnings, fixed per version, paid monthly above a minimum",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.u-3",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "version 1 of Pitch Coach earned money",
@@ -6752,16 +7084,21 @@
    "N523 item 2",
    "N577"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "fe:src/components/willab/models/ModelApiScreens.tsx::Your earnings (mod.u-3; MOD-47)",
+   "fe:src/components/willab/models/ModelScreens.tsx::\"Your earnings\", for a teacher whose model earns (MOD-47); nothing until"
+  ],
+  "tests": [
+   "src/components/willab/models/modelApi.test.tsx"
+  ],
   "evals": [],
-  "note": "N577 (9 November) settles the fee: WillpowerLab takes a stable 20% of the margin for every model and version; a model's founder keeps 10% of what is left; the teachers get the rest by points (v8's sample numbers match). Still open: the minimum payout, the payment provider and the legal terms. The €20 minimum shown is the prototype's."
+  "note": "The screens are merged (FE #1342) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1866), so it stays partly."
  },
  {
   "id": "MOD-48",
   "area": "AI models",
   "title": "A model's own API key",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.u-4",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Pitch Coach is for sale",
@@ -6774,15 +7111,21 @@
    "N528 item 7",
    "N566 item 9"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "fe:src/services/api/models.ts::The model's own owner: \"Use Pitch Coach in your own product.\" (MOD-48).",
+   "fe:src/components/willab/models/ModelApiScreens.tsx::Use it in your business: the terms (mod.b-3, mod.u-4; MOD-41, MOD-48)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelApi.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1342) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1866), so it stays partly."
  },
  {
   "id": "MOD-49",
   "area": "AI models",
   "title": "An invite to teach stays in the chat after Not now",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.p-1",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Kasia started Short news cuts and invited Marta to teach it, and Marta said not now",
@@ -6795,15 +7138,24 @@
   "rules": [
    "N528 item 3"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad.py::def invite_card(",
+   "fe:src/components/willab/models/ModelInviteCard.tsx::MOD-49; the locked prototype's p:1): \"Maya invited you to teach Pitch",
+   "fe:src/components/willab/models/ModelScreens.tsx::An invite's \"Open\" (MOD-49)."
+  ],
+  "tests": [
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/modelSetup.test.tsx",
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-50",
   "area": "AI models",
   "title": "The profile lists the models a person started and teaches",
-  "status": "not built",
+  "status": "partly",
   "screen": "mod.p-2",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta opens her profile",
@@ -6817,9 +7169,18 @@
    "N528 item 1",
    "N528 item 5"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/model_launchpad.py::def profile_models(",
+   "fe:src/components/willab/chats/Profile.tsx::MOD-50): on your own profile, and on another person's once the",
+   "fe:src/components/willab/models/ProfileModels.tsx::The profile's \"AI models\" (backend N528 items 1 and 5, MOD-50, MOD-51;"
+  ],
+  "tests": [
+   "tests/test_model_launchpad.py",
+   "src/components/willab/models/modelSetup.test.tsx",
+   "src/components/willab/models/models.test.tsx"
+  ],
+  "evals": [],
+  "note": "The screens are merged (FE #1339) and its rules are built (BE #1860) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1863 and #1869), so it stays partly."
  },
  {
   "id": "MOD-51",
@@ -6841,11 +7202,16 @@
    "N526 item 2"
   ],
   "code": [
-   "be:services/feedback_pairs.py::def exportable("
+   "be:services/feedback_pairs.py::def exportable(",
+   "fe:src/components/willab/models/ProfileModels.tsx::The profile's \"AI models\" (backend N528 items 1 and 5, MOD-50, MOD-51;",
+   "fe:src/components/willab/models/ModelApiScreens.tsx::Downloading its data (mod.p-3; MOD-51)"
   ],
-  "tests": [],
+  "tests": [
+   "src/components/willab/models/modelApi.test.tsx",
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
   "evals": [],
-  "note": "Only the founder's export of the speaking feedback pairs exists (feedback_pairs.exportable); no model owner can download anything."
+  "note": "Only the founder's export of the speaking feedback pairs exists (feedback_pairs.exportable); no model owner can download anything. The screens are merged (FE #1342) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1866), so it stays partly."
  },
  {
   "id": "MOD-52",
@@ -6889,19 +7255,21 @@
   ],
   "code": [
    "be:services/take_match_knowledge.py::def score",
-   "be:services/take_match.py::MIN_FIT = 2.0"
+   "be:services/take_match.py::MIN_FIT = 2.0",
+   "be:services/model_match.py::def for_you("
   ],
   "tests": [
-   "tests/test_take_match.py"
+   "tests/test_take_match.py",
+   "tests/test_model_match.py"
   ],
   "evals": [],
-  "note": "The score and the threshold are built for matching a Take to a person (take_match); matching a person to a model is not. From the test drive's MOD-04 (renumbered)."
+  "note": "The score and threshold for a person against models are built (BE #1861); \"For you\" waits for the launchpad's catalogue (open BE #1863)."
  },
  {
   "id": "MOD-54",
   "area": "AI models",
   "title": "After the first Take, the setup opens filled from its answers",
-  "status": "not built",
+  "status": "partly",
   "screen": "tdr.setup-1",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-2026-11-09/the-launchpad-test-drive.html",
   "given": "Kasia recorded her first Take",
@@ -6914,16 +7282,21 @@
    "N571 items 1 to 3",
    "Never 3"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "fe:src/components/willab/models/ModelSetup.tsx::filled from its answers, MOD-54); \"Continue\" opens it where it stopped",
+   "fe:src/components/willab/models/SetupSteps.tsx::Describe: three answers, one per screen (MOD-24, MOD-26, MOD-54)"
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
   "evals": [],
-  "note": "From the test drive's MOD-17 (renumbered); its drafted words await the founder's OK (Never 4)."
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "MOD-55",
   "area": "AI models",
   "title": "The founder answers the first 10; the model reads them from day one and trains on each once a second teacher agrees",
-  "status": "not built",
+  "status": "partly",
   "screen": "tdr.setup-21",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-2026-11-09/the-launchpad-test-drive.html",
   "given": "The setup’s last Shape step",
@@ -6936,10 +7309,14 @@
    "N570 items 3 and 4",
    "N520 item 11"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "fe:src/components/willab/models/ModelSetup.tsx::The owner's first 10 (MOD-55) are answered on the teachers' own screen,"
+  ],
+  "tests": [
+   "src/components/willab/models/modelSetup.test.tsx"
+  ],
   "evals": [],
-  "note": "From the test drive's MOD-25 (renumbered); its drafted words await the founder's OK (Never 4)."
+  "note": "The screens are merged (FE #1347) and nothing serves them yet: the /v2/models routes and tables are only in open backend PRs (#1867), so it stays partly."
  },
  {
   "id": "WID-01",
@@ -7030,7 +7407,7 @@
   "id": "WID-04",
   "area": "The first Take",
   "title": "While Take 1 is processed, one question: what would you like to do here first?",
-  "status": "not built",
+  "status": "built",
   "screen": "first.choice",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/your-chat-on-any-website-2026-11-09/your-chat-on-any-website.html",
   "given": "a newcomer whose Take 1 is being processed, after \"Here's how others will see you:\" and, on a member's link, the business's community",
@@ -7048,10 +7425,16 @@
    "N572",
    "N573"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/way_in.py::CHOICES = (SOMETHING_ELSE, LEARN, SHARE, TALK)",
+   "fe:src/components/willab/plan/WayIn.tsx::if (ask.kind === \"choice\") {"
+  ],
+  "tests": [
+   "tests/test_way_in.py",
+   "src/components/willab/plan/wayIn.test.tsx"
+  ],
   "evals": [],
-  "note": "Drafted words, for the founder's OK. N573 replaces the hand-off's draft answers; the choice is drawn here as N573 words it, not the hand-off's onb.first."
+  "note": "Built (BE #1854, FE #1337) with N573's signed choices."
  },
  {
   "id": "WID-05",
@@ -7635,9 +8018,12 @@
    "CLAUDE.md, deletion"
   ],
   "code": [
-   "be:services/data_purge_registry.py::PurgeDependency(\"chat_widget_threads\", \"chat_threads\", \"widget_owner_id\","
+   "be:services/data_purge_registry.py::PurgeDependency(\"chat_widget_threads\", \"chat_threads\", \"widget_owner_id\",",
+   "be:services/data_purge_project_scope.py::\"chat_widget_threads\", \"chat_widget_guests\","
   ],
-  "tests": [],
+  "tests": [
+   "tests/test_purge_user_locators.py"
+  ],
   "evals": []
  },
  {
@@ -8076,14 +8462,16 @@
   "code": [
    "be:services/walk_voice.py::def _under_authority"
   ],
-  "tests": [],
+  "tests": [
+   "tests/test_walk_voice_authority.py"
+  ],
   "evals": []
  },
  {
   "id": "VOICE-17",
   "area": "Will's voice",
   "title": "The speaker's private note is never quoted",
-  "status": "partly",
+  "status": "built",
   "screen": "walk.best",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/will-voice-2026-11-09/stories.json",
   "given": "the speaker's private note is in Will's context",
@@ -8097,12 +8485,14 @@
    "docs/SPEAKER-MEMORY.md"
   ],
   "code": [
-   "be:services/walk_voice.py::def check"
+   "be:services/walk_voice.py::def check",
+   "be:services/walk_voice.py::echo = _note_echo(said, (context or {}).get(\"speaker_note\"), spoken)"
   ],
   "tests": [
    "tests/test_walk_voice.py"
   ],
-  "evals": []
+  "evals": [],
+  "note": "Built (BE #1851): a draft sharing four words in a row with the private note, quoted or not, is refused unless the speaker said them in the Take."
  },
  {
   "id": "VOICE-18",
@@ -8194,7 +8584,9 @@
   "code": [
    "fe:src/components/willab/chats/InquiryThread.tsx::<VoiceWords words={take.words}"
   ],
-  "tests": [],
+  "tests": [
+   "src/components/willab/chats/InquiryThread.test.tsx"
+  ],
   "evals": []
  },
  {
@@ -8216,14 +8608,16 @@
   "code": [
    "fe:src/components/willab/chats/WidgetChat.tsx::<VoiceWords words={message."
   ],
-  "tests": [],
+  "tests": [
+   "src/components/willab/chats/WidgetChat.test.tsx"
+  ],
   "evals": []
  },
  {
   "id": "WILL-14",
   "area": "Will's chat",
   "title": "A Take's bubble in Will's chat opens its words",
-  "status": "not built",
+  "status": "built",
   "screen": "will.readit",
   "prototype": null,
   "given": "a Take in Will's chat, a voice bubble with its slides",
@@ -8235,16 +8629,23 @@
   "rules": [
    "N576 items 1 to 3"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/lounge_clips.py::def attach_take_words",
+   "be:services/take_repository.py::def get_slide_transcripts_many",
+   "fe:src/components/willab/ReportCard.tsx::function TakeWords({ meta }"
+  ],
+  "tests": [
+   "tests/test_lounge_clips.py",
+   "src/components/willab/takeBubbleReadIt.test.tsx"
+  ],
   "evals": [],
-  "note": "N576 item 3: what is new is Will's chat; the chats with people, the inquiry and the website chat have it (N331)."
+  "note": "Built (BE #1850, FE #1333): a Take's bubble in Will's chat opens its words behind \"Read it\", one paragraph per slide, from the reader's own Take only."
  },
  {
   "id": "FT-10",
   "area": "The first Take",
   "title": "\"Prepare a talk\" asks when it is, with \"No date yet\"",
-  "status": "not built",
+  "status": "built",
   "screen": "first.talk",
   "prototype": null,
   "given": "a newcomer who tapped \"Prepare a talk\" in the first choice",
@@ -8258,15 +8659,22 @@
    "N572",
    "N573"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/way_in.py::WHEN_Q = \"When is it?\"",
+   "fe:src/components/willab/plan/WayIn.tsx::if (ask.beat !== \"talk_date\")"
+  ],
+  "tests": [
+   "tests/test_way_in.py",
+   "src/components/willab/plan/wayIn.test.tsx"
+  ],
+  "evals": [],
+  "note": "Built (BE #1854, FE #1337)."
  },
  {
   "id": "FT-11",
   "area": "The first Take",
   "title": "\"Share what I know\" brings the questions for people who join into the wait",
-  "status": "not built",
+  "status": "built",
   "screen": "first.share",
   "prototype": null,
   "given": "a newcomer who tapped \"Share what I know\"",
@@ -8280,15 +8688,21 @@
    "N573 item 3",
    "N487"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/way_in.py::join_setup.begin(database, user_id)"
+  ],
+  "tests": [
+   "tests/test_way_in.py",
+   "src/components/willab/plan/wayIn.test.tsx"
+  ],
+  "evals": [],
+  "note": "Built (BE #1854, FE #1337)."
  },
  {
   "id": "FT-12",
   "area": "The first Take",
   "title": "The agreement for people in a team or sharing",
-  "status": "partly",
+  "status": "built",
   "screen": "first.agree",
   "prototype": null,
   "given": "a newcomer in a team, or one who chose \"Share what I know\"",
@@ -8301,16 +8715,21 @@
    "N572 item 4",
    "N453 item 5"
   ],
-  "code": [],
-  "tests": [],
+  "code": [
+   "be:services/way_in.py::AGREE_Q = \"Do you accept it?\""
+  ],
+  "tests": [
+   "tests/test_way_in.py",
+   "src/components/willab/plan/wayIn.test.tsx"
+  ],
   "evals": [],
-  "note": "Built for people in a team (N453 item 5); for sharers it is decided (N572 item 4), not built."
+  "note": "Built for people in a team and for sharers (BE #1854, FE #1337); the acceptance is kept on the plan (facts.way_in.agreed_at) until a consent record for the agreement exists."
  },
  {
   "id": "FT-13",
   "area": "The first Take",
   "title": "One \"You're set.\"; sharers also find their link and their questions",
-  "status": "not built",
+  "status": "built",
   "screen": "first.set",
   "prototype": null,
   "given": "a newcomer at the end of the way in",
@@ -8323,15 +8742,23 @@
   "rules": [
    "N572 item 1"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/way_in.py::SET = \"You're set.\"",
+   "be:services/way_in.py::COPY_LINK = \"Copy my link ›\"",
+   "fe:src/lib/willab/wayIn.ts::copyLink: \"Copy my link ›\","
+  ],
+  "tests": [
+   "tests/test_way_in.py",
+   "src/components/willab/plan/wayIn.test.tsx"
+  ],
+  "evals": [],
+  "note": "Built (BE #1854, FE #1337)."
  },
  {
   "id": "FT-14",
   "area": "The first Take",
   "title": "\"Learn from others\": where it leads awaits the founder's OK",
-  "status": "not built",
+  "status": "built",
   "screen": "first.learn",
   "prototype": null,
   "given": "a newcomer who tapped \"Learn from others\"",
@@ -8344,8 +8771,46 @@
    "N573 item 2",
    "Never 4"
   ],
-  "code": [],
-  "tests": [],
-  "evals": []
+  "code": [
+   "be:services/way_in.py::LEARN: \"Next, ask someone who knows. Tap + to start.\",",
+   "be:services/way_in.py::AFTER_WALK_ORDER = (TALK, SHARE, LEARN, SOMETHING_ELSE)",
+   "fe:src/lib/willab/wayIn.ts::export function recordWaits"
+  ],
+  "tests": [
+   "tests/test_way_in.py",
+   "src/components/willab/plan/wayIn.test.tsx"
+  ],
+  "evals": [],
+  "note": "Built (BE #1854, FE #1337) with N592's approved bubble; \"Record Take 2\" stays faded until the walk is done."
+ },
+ {
+  "id": "FT-15",
+  "area": "The first Take",
+  "title": "\"Something else\" after the walk: the other choices as taps",
+  "status": "built",
+  "screen": "first.else",
+  "prototype": null,
+  "given": "a newcomer who chose \"Something else\" at \"What would you like to do here first?\"",
+  "when": "the walk of Take 1 ends",
+  "then": [
+   "Will says \"Tell me what you'd like to do, and I'll show you where.\"",
+   "under it, as taps: \"Prepare a talk\", \"Share what I know\", \"Learn from others\", leaving out any already chosen",
+   "one tap shows as their answer and Will says that choice's next line (\"Next, record Take 2 of your talk.\", \"Next, set up your assistant, so people who join you are met your way.\", \"Next, ask someone who knows. Tap + to start.\")",
+   "their own words still answer it, typed or said; the answer is kept in Will's notes"
+  ],
+  "rules": [
+   "N592 item 2",
+   "N604"
+  ],
+  "code": [
+   "be:services/way_in.py::ELSE_TAPS = (TALK, SHARE, LEARN)",
+   "fe:src/components/willab/plan/WayIn.tsx"
+  ],
+  "tests": [
+   "tests/test_way_in.py",
+   "src/components/willab/plan/wayIn.test.tsx"
+  ],
+  "evals": [],
+  "note": "Built with N604: no new words, the taps and lines are N573's and N592's."
  }
 ]

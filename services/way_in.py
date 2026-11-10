@@ -89,6 +89,10 @@ AFTER_WALK = {
     SOMETHING_ELSE: "Tell me what you'd like to do, and I'll show you where.",
 }
 AFTER_WALK_ORDER = (TALK, SHARE, LEARN, SOMETHING_ELSE)
+#: Under "Tell me what you'd like to do, and I'll show you where.", the
+#: choices not taken yet, as taps; one tap brings that choice's next line
+#: (N604). Words still answer it, typed or said.
+ELSE_TAPS = (TALK, SHARE, LEARN)
 
 MAX_SAID = 400
 MAX_TOPICS = 3
@@ -204,7 +208,10 @@ def _after_walk_row(chosen: list) -> tuple:
     if SHARE in picked:
         meta["opens"] = "setup_chat"  # N578 item 4
     if picked[-1] == SOMETHING_ELSE:
-        meta["way_in_asks"] = "else"  # answered by voice or text
+        meta["way_in_asks"] = "else"  # answered by voice or text, or a tap (N604)
+        taps = [c for c in ELSE_TAPS if c not in picked]
+        if taps:
+            meta["chips"] = taps
     return _bot(body, "after_walk", "next", **meta)
 
 
@@ -524,15 +531,23 @@ def _on_agreement(w: dict, body: dict) -> list[tuple]:
     return [_me(I_AGREE, "agreement:answer", "agreement")]
 
 
-def _on_else(database: Any, user_id: str, said: str) -> list[tuple]:
+def _on_else(database: Any, user_id: str, said: str, picked: Any = None) -> list[tuple]:
     """The answer to "Tell me what you'd like to do, and I'll show you
-    where.", kept in Will's notes (N592 item 2)."""
-    if not said:
+    where.", kept in Will's notes (N592 item 2): words, or one of the taps
+    under it, which brings that choice's next line (N604)."""
+    tap = picked if isinstance(picked, str) and picked in ELSE_TAPS else None
+    if not said and not tap:
         raise WayInError("SAY_IT", "Say or type it.")
     from services import speaker_memory
     speaker_memory.record(database, str(user_id), "answer",
-                          {"question": AFTER_WALK[SOMETHING_ELSE], "said": said})
-    return [_me(said, f"else:{datetime.now(timezone.utc).isoformat()}", "next")]
+                          {"question": AFTER_WALK[SOMETHING_ELSE], "said": tap or said})
+    at = datetime.now(timezone.utc).isoformat()
+    if not tap:
+        return [_me(said, f"else:{at}", "next")]
+    meta: dict[str, Any] = {"way_in_next": [tap]}
+    if tap == SHARE:
+        meta["opens"] = "setup_chat"  # N578 item 4
+    return [_me(tap, f"else:{at}", "next"), _bot(AFTER_WALK[tap], f"else_next:{at}", "next", **meta)]
 
 
 def _answer(database: Any, user_id: str, plan: dict, answer: Any,
@@ -543,7 +558,8 @@ def _answer(database: Any, user_id: str, plan: dict, answer: Any,
     beat = str(body.get("beat") or "")
     said = " ".join(str(body.get("said") or "").split())[:MAX_SAID]
     if beat == "else" and w.get("after_walk_said"):
-        return plan, F._write(database, user_id, plan["id"], _on_else(database, user_id, said))
+        rows = _on_else(database, user_id, said, body.get("picked"))
+        return plan, F._write(database, user_id, plan["id"], rows)
     if not beat or beat != w.get("asking"):
         raise WayInError("NOT_NOW", "Not now.", 409)
     if beat == "profile":
@@ -606,6 +622,14 @@ def after_walk(database: Any, user_id: str, plan: dict, *,
     w["walk_ready"] = True
     plan = _save(database, user_id, plan, w)
     plan = _read(database, user_id, plan, _state(plan) or {}, first_name)
+    w = _state(plan) or {}
+    if not w.get("read"):
+        # Nothing was heard on the first Take: no card to check, and the plan
+        # comes with no date, as ``plan_flow._from_first_take`` has it (N459
+        # item 1). Without this the plan card and "You're set." never come.
+        w["read"] = True
+        w["profile"] = _clean_profile(None, first_name)
+        plan = _save(database, user_id, plan, w)
     plan = _keep(database, user_id, plan)
     plan, out = _advance(database, user_id, plan)
     w = _state(plan) or {}

@@ -49,6 +49,8 @@ its source address, not its user id.
 | `whisper_limit` | `RATE_LIMIT_WHISPER` | `20/min; 200/hr` | audio upload → transcription |
 | `llm_limit` | `RATE_LIMIT_LLM` | `30/min; 400/hr` | one interactive LLM call |
 | `heavy_limit` | `RATE_LIMIT_HEAVY` | `10/min; 100/hr` | multi-call generation, media, training |
+| `poll_limit` | `RATE_LIMIT_POLL` | `60/min; 2000/hr` | a read the app repeats while it waits (`POST /v2/plan/way-in`, every few seconds while Take 1 is processed) |
+| `answering_llm_limit` | `RATE_LIMIT_LLM` | as `llm_limit` | `llm_limit` counted only for a request carrying an answer or audio (the way in's answers, which may call the model) |
 | `regenerate_limit` | `RATE_LIMIT_REGENERATE` | `1/min` per `session_id` | icebreaker double-click guard (`force=true` bypasses) |
 | `guest_funnel_limit` | `GUEST_FUNNEL_RATE_LIMIT_PER_IP_PER_HOUR` / `_GLOBAL_PER_HOUR` | `5/hr` per IP, `200/hr` global | the anonymous funnel (unchanged caps) |
 
