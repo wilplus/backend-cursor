@@ -411,6 +411,11 @@ def _tell(database: Any, me: dict, message: dict) -> None:
             push_devices.push_later(database, str(other["user_id"]),
                                     title=name or None,
                                     body=push_line(message, name), path=f"/chat?with={thread}")
+            # A website visitor who signed up: the first answer also goes
+            # to their phone or email (N591 item 4).
+            from services import chat_widget
+            chat_widget.first_notice(database, thread, str(me["id"]), str(other["id"]),
+                                     str(other["user_id"]), name)
     except Exception as e:  # noqa: BLE001 -- the message is sent either way
         logger.warning("chats: push not started: %s", e)
 
@@ -535,10 +540,14 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
 
 def post(database: Any, user_id: Any, thread_id: Any, body: Any) -> dict:
     """POST /v2/chats/<id>/messages {kind: "emoji", body}: one of the three
-    emoji (N311), or 400. {"message": {...}}."""
+    emoji (N311); or {kind: "text", body}: typed words, in a chat whose setup
+    allows them (N591 items 2 and 3, ``assistants.may_type``); else 400.
+    {"message": {...}}."""
     user_id = _require(database, user_id)
     me = _member_of(database, user_id, thread_id)
     payload = body if isinstance(body, dict) else {}
+    if payload.get("kind") == "text":
+        return _post_text(database, user_id, me, payload.get("body"))
     emoji = payload.get("body")
     if payload.get("kind") != "emoji" or not isinstance(emoji, str) or emoji not in EMOJI:
         raise ChatsError("NOT_ALLOWED", "Only 👍, 👀 or 🙏 for now.")
@@ -549,6 +558,34 @@ def post(database: Any, user_id: Any, thread_id: Any, body: Any) -> dict:
     if not rows:
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
     _tell(database, me, rows[0])
+    return {"message": _shown(rows[0], str(me["id"]), _authors(database, thread))}
+
+
+#: The longest typed message (N591).
+MAX_TEXT = 2000
+
+
+def _post_text(database: Any, user_id: str, me: dict, said: Any) -> dict:
+    """Typed words, where the chat's setup allows them: the host answering
+    (N591 item 3), or someone writing to a host whose recipe lets them type
+    (N591 item 2). A question to the host joins its bundle (N584)."""
+    from services import assistants, chat_widget
+    thread = str(me["thread_id"])
+    if not assistants.may_type(database, thread, user_id):
+        raise ChatsError("NOT_ALLOWED", "This chat is not answered that way.")
+    words = " ".join(str(said or "").split())
+    if not words or len(words) > MAX_TEXT:
+        raise ChatsError("NOT_ALLOWED", f"Write 1 to {MAX_TEXT} characters.")
+    host, _ = assistants.whose(database, thread)
+    asks = bool(host) and host != user_id
+    rows = _rows(_table(database, MESSAGES).insert({
+        "thread_id": thread, "author_member_id": str(me["id"]), "kind": "text",
+        "body": words, "meta": dict(chat_widget.QUESTION) if asks else {}}))
+    if not rows:
+        raise ChatsError("NOT_SAVED", "Could not send it.", 503)
+    _tell(database, me, rows[0])
+    if asks and host:
+        chat_widget.bundle(database, host, user_id, thread, str(rows[0]["id"]), words)
     return {"message": _shown(rows[0], str(me["id"]), _authors(database, thread))}
 
 

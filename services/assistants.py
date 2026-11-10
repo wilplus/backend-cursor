@@ -420,3 +420,46 @@ def learns(database: Any, owner_id: Any, own: bool = True) -> Optional[str]:
         return str(about[0])
     from services.take_sends import _founder
     return ARTUR_LEARNS if owner_id and str(owner_id) == str(_founder(database) or "") else None
+
+
+# ── How people write in a host's chat (N578 item 5, N591 items 2 and 3) ─
+
+def answer_with_of(database: Any, owner_id: Any) -> dict:
+    """How people answer in this host's chat, from their recipe: {"tap",
+    "type", "record"}. A host without the chat builder, or without a recipe,
+    is read as the recipe's own default, every way open (``normalize``)."""
+    recipe = recipe_of(database, owner_id) if on(database, owner_id) else None
+    given = (recipe or {}).get("answer_with")
+    return _answer_with(given if isinstance(given, dict) else None)
+
+
+def whose(database: Any, thread_id: Any) -> tuple[Optional[str], bool]:
+    """Whose chat this is, and whether it is a website chat: the website
+    chat's owner (N591 item 1), or the owner of the link it was made
+    through; (None, False) for any other chat."""
+    rows = (database.client.table("chat_threads").select("id,link_id,widget_owner_id")
+            .eq("id", str(thread_id)).limit(1).execute().data or [])
+    if not rows:
+        return None, False
+    if rows[0].get("widget_owner_id"):
+        return str(rows[0]["widget_owner_id"]), True
+    link = rows[0].get("link_id")
+    if not link:
+        return None, False
+    links = (database.client.table("chat_links").select("user_id")
+             .eq("id", str(link)).limit(1).execute().data or [])
+    return (str(links[0]["user_id"]) if links else None), False
+
+
+def may_type(database: Any, thread_id: Any, user_id: Any) -> bool:
+    """May this member send typed words in this chat? In a website chat,
+    and in a chat made through the link of a host with the chat builder:
+    the host answers as their setup allows, by recording or typing (N591
+    item 3); the others type when the host's recipe lets them (N591 item 2).
+    Every other chat is as it was: no typing."""
+    host, website = whose(database, thread_id)
+    if not host or (not website and not on(database, host)):
+        return False
+    if str(user_id) == host:
+        return True
+    return bool(answer_with_of(database, host)["type"])
