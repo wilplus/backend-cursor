@@ -578,6 +578,8 @@ def pay_for_chat_line(database: Any, host_id: Any, message_id: Any, model_id: An
     False leaves the line out, and the chat goes on: the model is no longer
     shared, the charge could not be made (never a free line), or the host
     has too few tokens, which is marked for the host once a day (TOK-02).
+    A card saved at 0, its owner's price, gives its line once the model
+    passed its exam, with nothing charged or credited.
     With TOKEN_PRICING_ENABLED off, True and nothing charged, as before.
     Never raises; no provider call."""
     from services import token_account
@@ -588,7 +590,12 @@ def pay_for_chat_line(database: Any, host_id: Any, message_id: Any, model_id: An
         model = _model(database, host, model_id)
         versions = _versions(database, model["id"])
         version = next((v for v in reversed(rules.released(versions)) if rules.exam_passed(v)), None)
-        if version is None or rules.refusal(model, versions, host):
+        if version is None:
+            return False
+        if price is not None and int(price) == 0 and rules.may_buy(model, host) \
+                and model.get("status") not in ("archived", "draft"):
+            return True  # free at its owner's price: nothing to charge or credit (N633 item 1)
+        if rules.refusal(model, versions, host):
             return False
         if price is not None:
             from services.token_prices import stored

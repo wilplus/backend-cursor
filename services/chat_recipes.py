@@ -355,7 +355,7 @@ def read(database: Any, user_id: Any, token_payload: Any) -> dict:
     the one GET /v2/chats/link gives ({"token", "path"}), made the first
     time as there, for the finished screen's link."""
     from services.chat_links import my_link, name_of
-    recipe = mine(database, user_id)
+    recipe = settle(database, user_id, mine(database, user_id))
     chat = own_chat(recipe, name_of(token_payload))
     if chat is not None:
         chat["link"] = my_link(database, user_id, token_payload)
@@ -432,7 +432,7 @@ def _agreed_prices(database: Any, user_id: str, recipe: dict, models: list[dict]
             continue
         mid, price = str(m["model_id"]), int(m["price"])
         before = saved.get(mid) or {}
-        if mid not in passed or (before.get("learning") and price == 0):
+        if mid not in passed or (before.get("learning") and price == 0 and now.get(mid) != 0):
             if price != 0 or (mid not in passed and not before.get("learning")
                               and not _may_learn_here(database, user_id, mid)):
                 raise RecipeError("RECIPE_INVALID", f"Model {i + 1}'s price is its owner's price.")
@@ -456,6 +456,27 @@ def _join_teachers(database: Any, user_id: str, model_id: str) -> None:
     from services.model_launchpad import viewer_role
     if viewer_role(model_launchpad_store._model(database, model_id), user_id) == "public":
         model_launchpad_store.enter(database, user_id, model_id)
+
+
+def settle(database: Any, user_id: Any, recipe: Optional[dict]) -> Optional[dict]:
+    """A card still learning whose model has passed its exam while its
+    owner's price is 0 has nothing for the host to accept: it becomes a
+    used card at price 0 and gives its line (N633 item 1). Done on the
+    next read of the recipe: the host's setup (GET /v2/chats/setup) or a
+    person's message to the chat. With a price above 0 it stays learning
+    until the host keeps it (``price_changes``)."""
+    learning = learning_models(recipe)
+    if not recipe or not learning:
+        return recipe
+    passed = _shared_for_tokens(database, learning)
+    now = _owner_prices(database, sorted(passed))
+    free = {mid for mid in passed if now.get(mid) == 0}
+    if not free:
+        return recipe
+    models = [{**{k: v for k, v in m.items() if k != "learning"}, "price": 0}
+              if not m.get("own", True) and str(m.get("model_id")) in free else m
+              for m in recipe.get("models") or []]
+    return _store(database, str(user_id), {**recipe, "models": models})
 
 
 def learning_models(recipe: Optional[dict]) -> list[str]:

@@ -629,6 +629,7 @@ N630.3   -> TokensTest::test_a_host_pays_the_price_shown_when_they_added_the_mod
 FIRST-24 -> LearningTest::test_a_model_still_learning_is_listed_free_and_its_host_teaches_it
 FIRST-24 -> LearningTest::test_it_says_nothing_costs_nothing_and_the_hosts_own_words_teach_it
 FIRST-24 -> LearningTest::test_once_it_passes_the_host_keeps_it_at_the_price_they_see
+FIRST-24 -> LearningTest::test_one_that_passes_free_answers_without_a_price_to_accept
 VIS-08   -> MeetTest::test_the_hello_shows_once_in_the_chat_they_share
 VIS-08   -> MeetTest::test_each_writes_to_the_others_chat_both_ways
 VIS-08   -> MeetTest::test_without_the_other_persons_open_chat_nothing_changes",The build succeeds when a stranger sets up a chat with Will and a second person gets a useful answer in it (N620).
