@@ -15780,6 +15780,33 @@ testing ring, for the mvp we don't do it! Your principles › The Sunday note
    MVP is built, by CLAUDE.md's "Replacing a feature".
 No migration. No rules page yet.
 
+**N600 · The bar's buttons follow the chat's navigation: "+" on the left,
+the typing box in the middle, a small mic on the right (founder, the Claude
+Code chat, 10 November 2026, on a screenshot of the setup's "Like this:"
+preview: "there is a small mic on the right, typing in the center and plus
+on the left when you choose all 3 navigation options; then when you choose 2
+show the two; and there should be no difference when they ask and when they
+don't ask").** Amends N597 items 1 and 2 for the hosts' chats; for N582:
+1. **Record, Type and Tap answers all chosen:** "+" on the left, the typing
+   box in the middle, a small mic on the right; the tap answers sit above
+   the bar when a question has them (N483). No "Something else" chip: the
+   box is already there.
+2. **Two chosen, two shown:** Type and Record give the box and the mic; Type
+   and Tap the box, with taps above; Record and Tap the three emoji in the
+   middle with the mic on the right, taps above. One chosen: Type gives the
+   box, Record the emoji and the mic.
+3. **The same bar whether or not something is asked;** a question adds its
+   tap answers and "Not now" above it, nothing else. "Record your answer"
+   no longer takes the middle in a host's chat; the mic records the answer.
+4. **A speaking coach's chat** keeps "Record Take N" in the middle at rest
+   (Never 3, N597 item 3); while a question waits, its bar is the one above.
+5. **The setup's preview** draws one frame for a sharing chat, and two only
+   for a speaking coach's chat (prototype "The WillpowerLab App", version
+   10).
+No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built.
+
 **N601 · The join page is three lines: who invited you, what you'll learn,
 and that only the two of you are in the chat (founder, the Claude Code
 chat, 10 November 2026, on the prototype's join page of Kasia's link: "we
