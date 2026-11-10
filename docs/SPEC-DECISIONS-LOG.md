@@ -16518,3 +16518,22 @@ in the prototype and the drafted line: "you have my OK").
    FIRST-15, VIS-07.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N623 · The plan's bar shows after the walk only on a day the hello did
+not already show it** (founder, the Claude Code chat, 10 November 2026, on
+the bar drawn twice in the chat, under the hello and again after the walk:
+"now the plan and the progress bar appear twice"; of three ways offered,
+"3").
+
+This changes N564 item 3 for the bar after the walk (the-plan.md E3, G13).
+
+1. After a Take's walk, under "Good job. See you next time.", the plan's
+   bar comes only when that day's hello ("Hi Artur, good to see you
+   back!" with the bar) was not written, by the speaker's day in their
+   time zone. When the hello was written that day, the goodbye stands
+   alone and "Record Take N" follows it.
+2. The hello and its bar, the plan card and "See your plan" are
+   unchanged.
+
+No migration in this entry. The rules: frontend
+[`docs/flows/the-plan.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/the-plan.md)
