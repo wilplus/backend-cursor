@@ -4327,6 +4327,10 @@ W2 -> test_change_it_asks_what_to_change_and_draws_the_card_again
 W4 -> test_sharing_brings_the_join_questions_and_the_agreement
 W6, W7 -> test_learning_after_the_walk_and_record_take_2_waits
 W8 -> test_a_coachs_link_and_another_chat_meet_none_of_it","N453, N564, N572, N573, N590, N592; the rules are frontend docs/flows/the-plan.md §2."
+tests/test_way_in_limit.py,Story,"As a newcomer waiting for my first Take, I want Will's chat to keep answering while the app checks every few seconds what is due, so that the way in never stops with ""too many requests"" in the wait.","L1  The way in's poll (no answer, no audio) is not counted against the
+model's limit: more polls than that limit allows in a minute all
+pass, under the poll's own, higher limit.
+L2  An answer, which may call the model, is still counted against it.","L1, L2 -> test_polls_pass_the_models_limit_and_answers_do_not","The app polls POST /v2/plan/way-in every 5 s while Take 1 waits (N572, N592); under the model's 400 per hour it got 429s after about half an hour (coordinator's end-to-end review, 9 Nov 2026)."
 tests/test_webm_remux.py,Story,"As a speaker, I want my recording made seekable without changing its timing, and kept as-is if that fails, so that playback works everywhere and my Take is never lost. (Critical path: record.)","O1  The remuxed file carries a seek index and exactly the same packets and
 timestamps as the recording (even one not starting at zero), so no
 stored offset moves.
