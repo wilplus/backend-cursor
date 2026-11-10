@@ -16415,3 +16415,59 @@ is done (N616). Making the setup able to produce the speaking chat's own
 steps is not part of this build; it is planned after step 6.
 
 No migration in this entry. No rules page: this is the order of work.
+
+**N620 · What it means for the build to succeed, step by step, and the rules
+that keep its cost down** (founder, the Claude Code chat, 10 November 2026:
+"what it means for this chat to have the build marked as a success. I want
+to have it clear from the very first moment"; "for every step, I want you to
+come back and check"; asked whether to log the criteria and the cost rules:
+"yes").
+
+**The build has succeeded when** a stranger who is not a speaking coach sets
+up a chat with Will, with nobody's help, opens it, and a second person gets
+a useful answer in it, while every speaker's loop works as it did before
+the build.
+
+**Done, for each step of N619:**
+
+1. **Ready:** the log, the pinned prototype and the stories agree, and the
+   founder has said "green light".
+2. **The contract:** one written shape of a chat's recipe and its routes;
+   every step of the prototype's setup maps to a field in it; no builder
+   builds on a guess.
+3. **Round one:** each pull request names its stories, and each story has a
+   test that fails before the change and passes after; the screens match
+   the prototype word for word; the speaking loop's tests pass unedited; a
+   migration has the founder's Grok verdict.
+4. **Round two:** as round one; and a host is charged once per use, never
+   twice for a request sent again; a host out of tokens has the model
+   skipped and the chat goes on.
+5. **Joined:** one test in code walks the whole journey for two different
+   professions; every story of the build is built; every leak of N615 is
+   closed, each with its test.
+6. **Opened:** the founder does the journey in the live app as a specialist
+   who is not a speaking coach, a second account gets an answer, and the
+   founder opens the rings. Only this step makes the build a success.
+
+After every step the coordinator reports each line as yes or no, with the
+evidence. A step with a no does not close.
+
+**Cost rules, for the builders:**
+
+- A brief names the builder's stories and files. No builder reads the whole
+  repo or audits the prototype again.
+- A builder that finds a disagreement stops and asks; it does not explore.
+
+**Cost rules, for the running app:**
+
+- A visitor's message costs at most two provider calls.
+- Will's suggestions in the setup use the cheap model, one call per step,
+  and the built-in suggestions first where a profession has them.
+- The owner's check (N616 item 23) runs once per version, not on every
+  edit.
+- Every provider call has a maximum length and goes through the
+  processing-authorization path.
+- The journey test of step 5 prints the provider calls and tokens that one
+  setup and one answer used. That figure is the cost of a chat.
+
+No migration in this entry. No rules page: this is the order of work.
