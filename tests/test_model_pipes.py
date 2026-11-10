@@ -10,14 +10,22 @@ OUTCOME
   O2  (PIPE-02) Two new teachers who answer the same examples alike are not
       admitted on each other's answers: a newcomer is measured against
       trusted teachers and known answers only.
+  O3  (PIPE-03) A speaker whose Takes are examples in more than twenty models
+      turns the training yes off: at the next run their examples leave
+      every model.
 PROVES   O1 -> ModelPipesTest::test_an_exam_example_or_your_own_cannot_be_answered
          O2 -> ModelPipesTest::test_a_newcomer_is_measured_against_trusted_teachers_only
+         O3 -> SweepTest::test_turning_the_training_yes_off_reaches_every_model
 WHY      The audit of the launchpad's code (N615); the build's stories
          PIPE-01 to PIPE-09 (docs/design/the-blank-setup-2026-11-10).
 """
 from __future__ import annotations
 
-from tests.test_model_launchpad_routes import KASIA, MARTA, SPEAK, ModelRoutesTest
+import unittest
+from unittest.mock import patch
+
+from tests.test_chats import _Store
+from tests.test_model_launchpad_routes import ARTUR, KASIA, MARTA, SPEAK, ModelRoutesTest
 
 EXAM = "e5000000-0000-4000-8000-0000000000ee"
 
@@ -72,3 +80,28 @@ class ModelPipesTest(ModelRoutesTest):
                   if t["model_id"] == SPEAK}
         self.assertNotEqual(status[MARTA], "counts")
         self.assertNotEqual(status[KASIA], "counts")
+
+
+class SweepTest(unittest.TestCase):
+    def test_turning_the_training_yes_off_reaches_every_model(self):
+        from services import model_examples_from_takes as gather
+        store = _Store()
+        gone, stays = "aaaa0000-0000-4000-8000-000000000001", "aaaa0000-0000-4000-8000-000000000002"
+        models = [f"bbbb0000-0000-4000-8000-{i:012d}" for i in range(25)]
+        store.tables["ai_models"] = [{"id": m, "owner_id": ARTUR, "status": "learning",
+                                      "recipe": {"input": "voice"}} for m in models]
+        store.tables["ai_model_examples"] = [
+            {"id": f"{m}-{who}", "model_id": m, "source": "takes", "speaker_id": who, "snippet_id": f"{m}{who}",
+             "in_exam": False} for m in models for who in (gone, stays)]
+
+        class Database:
+            client = store
+
+        def may_teach(_db, speaker):
+            return {"ok": speaker == stays, "granted_at": "2026-01-01"}
+
+        with patch.object(gather, "speaker_may_teach", may_teach):
+            gather.sweep(database=Database(), limit=20)
+        left = {(e["model_id"], e["speaker_id"]) for e in store.tables["ai_model_examples"]}
+        self.assertEqual({w for _, w in left}, {stays})
+        self.assertEqual(len(left), 25)
