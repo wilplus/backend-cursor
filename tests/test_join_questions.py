@@ -12,7 +12,9 @@ OUTCOME
       the chat I see neither the questions nor their taps, only that they
       joined through my link.
   O3  They answer by tapping: "No" to "Are you in a hurry?" puts the
-      deadline one step of my plan away and moves on; a question that takes
+      deadline one step of my plan away and moves on, a day they never
+      chose, never shown as theirs (N631: ``deadline_chosen`` false, the
+      plan's ``deadline_given``, the card's row the question and "No"); a question that takes
       more than one answer takes several; then my closing line; I see one
       card with the deadline and the languages.
   O4  A tap that is not one of the answers, two answers to a one-answer
@@ -35,6 +37,7 @@ OUTCOME
 PROVES   O1 -> JoinQuestionsTest::test_my_questions_are_kept_and_checked
          O2 -> JoinQuestionsTest::test_whoever_joins_finds_my_first_lines_and_i_do_not
          O3 -> JoinQuestionsTest::test_they_answer_by_tapping_and_i_read_one_card
+         O3 -> JoinQuestionsTest::test_a_day_picked_is_theirs
          O4 -> JoinQuestionsTest::test_a_tap_that_is_not_an_answer_is_refused
          O5 -> JoinQuestionsTest::test_joining_someone_with_no_questions_posts_nothing
          O6 -> ReadyTest::test_a_typed_question_is_kept_only_when_practical_with_answers
@@ -144,22 +147,48 @@ class JoinQuestionsTest(_App):
         self._set(TOMEK, SET)
         chat = self._join(TOMEK, PIOTR)
         hurry = self._read(PIOTR, chat)["messages"][-1]["id"]
-        got = self._tap(PIOTR, chat, hurry, ["No"]).get_json()["messages"]
+        plan = {"id": "p1", "deadline": None, "deadline_given": False}
+        saved: list[dict] = []
+        with patch.object(db, "get_open_plan", lambda _u: plan, create=True), \
+                patch.object(db, "update_plan", lambda _u, _id, f: saved.append(f), create=True):
+            got = self._tap(PIOTR, chat, hurry, ["No"]).get_json()["messages"]
         self.assertEqual([m["body"] for m in got], ["No", "Which languages can we use?"])
         due = date.today() + timedelta(days=30)
         self.assertEqual(got[0]["meta"]["setup_answer"]["deadline"], due.isoformat())
+        # A day Piotr never chose (N631): not marked as his, on the answer
+        # (no "Your deadline:" under it), on his plan, or on my card.
+        self.assertIs(got[0]["meta"]["setup_answer"]["deadline_chosen"], False)
+        self.assertEqual(saved, [{"deadline": due.isoformat(), "deadline_given": True}])
         languages = got[-1]["id"]
         end = self._tap(PIOTR, chat, languages, ["English", "Polish"]).get_json()["messages"]
         self.assertEqual([m["body"] for m in end], ["Polish, English", J.CLOSING])
         tomek = self._read(TOMEK, chat)["messages"]
         self.assertEqual([m["meta"].get("setup_card") for m in tomek],
-                         [{"rows": [{"k": "Deadline", "v": P.fmt_day(due)},
+                         [{"rows": [{"k": "Are you in a hurry", "v": "No"},
                                     {"k": "Languages", "v": "Polish, English"}]}])
         self.assertNotIn("setup_card", str(self._read(PIOTR, chat)["messages"]))
         row = self.client.get("/v2/chats", headers=self._as(TOMEK)).get_json()["chats"][0]
         self.assertEqual(row["last"]["meta"], {"setup_card": True})
         piotr_row = self.client.get("/v2/chats", headers=self._as(PIOTR)).get_json()["chats"][0]
         self.assertEqual(piotr_row["last"]["body"], J.CLOSING)
+
+    def test_a_day_picked_is_theirs(self):
+        """N631 item 2: "Yes" and a date is a day the person picked: marked
+        as chosen on the answer, on their plan and on my card."""
+        self._set(TOMEK, SET)
+        chat = self._join(TOMEK, PIOTR)
+        hurry = self._read(PIOTR, chat)["messages"][-1]["id"]
+        day = date.today() + timedelta(days=9)
+        plan = {"id": "p1", "deadline": None, "deadline_given": False}
+        saved: list[dict] = []
+        with patch.object(db, "get_open_plan", lambda _u: plan, create=True), \
+                patch.object(db, "update_plan", lambda _u, _id, f: saved.append(f), create=True):
+            got = self._tap(PIOTR, chat, hurry, ["Yes"], date=day.isoformat()).get_json()["messages"]
+        self.assertEqual(got[0]["meta"]["setup_answer"]["deadline_chosen"], True)
+        self.assertEqual(saved, [{"deadline": day.isoformat(), "deadline_given": False}])
+        self._tap(PIOTR, chat, got[-1]["id"], ["English"])
+        card = [m["meta"]["setup_card"] for m in self._read(TOMEK, chat)["messages"] if "setup_card" in m["meta"]]
+        self.assertEqual(card[0]["rows"][0], {"k": "Deadline", "v": P.fmt_day(day)})
 
     def test_a_tap_that_is_not_an_answer_is_refused(self):
         self._set(TOMEK, SET)
