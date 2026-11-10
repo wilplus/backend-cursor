@@ -37,6 +37,7 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          TOK-01   -> TokensTest::test_the_same_message_delivered_twice_is_charged_once
          TOK-02   -> TokensTest::test_out_of_tokens_the_model_is_skipped_and_the_chat_goes_on
          TOK-02   -> TokensTest::test_with_token_pricing_off_nothing_is_charged_or_skipped
+         N630.3   -> TokensTest::test_a_host_pays_the_price_shown_when_they_added_the_model
 WHY      The build succeeds when a stranger sets up a chat with Will and a
          second person gets a useful answer in it (N620).
 """
@@ -272,6 +273,7 @@ class SetupTest(_Base):
         price, the host's own has none."""
         self._start()
         self.assertEqual(self._put("way", "use").get_json()["recipe"]["way"], "use")
+        self.store.tables["ai_models"] = [{"id": "m1", "owner_id": PIOTR, "price_units": 3}]  # Piotr's price
         used = {**self._model("Is the skin red?"), "own": False, "model_id": "m1", "by": "Piotr", "price": 3}
         recipe = self._put("models", [used, self._model()]).get_json()["recipe"]
         self.assertEqual([m["own"] for m in recipe["models"]], [False, True])
@@ -284,6 +286,7 @@ class SetupTest(_Base):
         self._start()
         self._put("models", [self._model()])
         self.assertTrue(self._put("cost", {"people": 10, "sends": 2}).get_json()["cost"]["nothing"])
+        self.store.tables["ai_models"] = [{"id": "m1", "owner_id": PIOTR, "price_units": 3}]  # Piotr's price
         used = {**self._model("Is the skin red?"), "own": False, "model_id": "m1", "by": "Piotr", "price": 3}
         cost = self._put("models", [used, self._model()]).get_json()["cost"]
         self.assertEqual(cost, {"lines": [{"q": "Is the skin red?", "by": "Piotr", "price": 3},
@@ -524,7 +527,9 @@ class TokensTest(_Base):
         for p in (patch.object(db, "client", self.store),
                   patch("services.token_account.enabled", lambda: self.pricing),
                   patch("services.token_account.charge_model_answer", charge),
-                  patch("services.token_account.model_earnings_grant", grant)):
+                  patch("services.token_account.model_earnings_grant", grant),
+                  # One shown token is 100 stored units: the card's 3 is Kasia's 300.
+                  patch("services.token_prices.display_unit", lambda: 100)):
             p.start()
             self.addCleanup(p.stop)
         t = self.store.tables
@@ -596,6 +601,31 @@ class TokensTest(_Base):
         self.assertEqual([(s["model_id"], s["q"], s["by"]) for s in skipped], [(JOB, "Are there flakes?", "Kasia")])
         marks = [r for r in self.store.tables["token_ledger"] if r["action"] == "model_skipped"]
         self.assertEqual((len(marks), marks[0]["delta"]), (1, 0))
+
+    def test_a_host_pays_the_price_shown_when_they_added_the_model(self):
+        """N630 item 3: Kasia raises her price; Tomek still pays the 3 he
+        agreed to, and his setup says it changed. He keeps the model only at
+        her new price (no other number), and then pays that; dropping it
+        ends the difference too. Kasia is credited what Tomek pays."""
+        chat = self._chat()
+        self.store.tables["ai_models"][0]["price_units"] = 500
+        self._send(chat)
+        self.assertEqual([(u, n) for u, n, _r in self.ledger], [(TOMEK, 300)])
+        self.assertEqual(self.store.tables["ai_model_calls"][0]["price_units"], 300)
+        self.assertEqual(self._read()["price_changes"],
+                         [{"model_id": JOB, "q": "Are there flakes?", "by": "Kasia", "was": 3, "now": 5}])
+        kasias = {"q": "Are there flakes?", "opts": ["Yes", "Somewhat", "No"], "own": False,
+                  "model_id": JOB, "by": "Kasia"}
+        self.assertEqual(self._put("models", [self._model(), {**kasias, "price": 4}]).status_code, 400)
+        self.assertEqual(self._put("models", [self._model(), {**kasias, "price": 3}]).status_code, 200)  # kept
+        self.assertEqual(self._put("models", [self._model(), {**kasias, "price": 5}]).status_code, 200)
+        self.assertEqual(self._read()["price_changes"], [])
+        self._send(chat, "And the ends?")
+        self.assertEqual([n for _u, n, _r in self.ledger], [300, 500])
+        self.store.tables["ai_models"][0]["price_units"] = 700
+        self._put("models", [self._model()])                     # dropped
+        self.assertEqual(self._read()["price_changes"], [])
+        self.assertEqual(self._put("models", [self._model(), {**kasias, "price": 5}]).status_code, 400)
 
     def test_with_token_pricing_off_nothing_is_charged_or_skipped(self):
         """TOKEN_PRICING_ENABLED off: every line as before, nothing charged,

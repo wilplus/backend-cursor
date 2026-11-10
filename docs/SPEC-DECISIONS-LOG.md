@@ -16638,3 +16638,59 @@ overlay as wide as Will's chat).
 
 No new words. No migration. The rules: frontend
 [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+
+**N629 · What needs you is in Will; the list of chats holds Will and people
+only; drafted answers get their screen** (founder, the Claude Code chat, 10
+November 2026, on the prototype's "Proposal: what needs you is in Will": "i
+accept the proposal").
+
+1. **Will says what needs you.** "This needs you:", then one line for each
+   kind that has something waiting, each opening its work:
+   - "{n} answers to send" · "I drafted them. You fix and send."
+   - "{n} moments to answer" · "From your speakers. Nobody shows you my
+     guess first."
+   - "{n} examples to teach" · "For the models you teach."
+   - "{n} models to check" · "Its guesses, on examples it has not seen."
+   With nothing waiting: "Nothing needs you now." Then "And yours to open
+   any time:" with "AI models" · "Teach one, or start your own." and "Your
+   chat" · "See it, test it, change it." The numbers count a person's own
+   work, never a person (Never 1).
+2. **The list of chats holds Will and people only.** Will's line there
+   reads "{n} things need you" or "Nothing needs you now". "Your queue" and
+   "AI models" are no longer rows in the list: they are lines in Will.
+3. **Drafted answers, one per screen** (N618 item 9, "I draft, you send"):
+   "{name} asked:" with their message, "I'd answer:" with the draft and
+   each model's line under it, then Change and Send. Change lets the host
+   edit the words and send their own. After the last: "All sent." and "Each
+   one you changed teaches me to answer like you.", then Done.
+4. **Nothing is copied or moved.** The lines read what the app already
+   holds: the coach's queue, the models' examples, the owner's check, the
+   drafts. Moments open the coach panel as it is; examples and the check
+   open the screens that exist.
+5. **It reaches whoever has the ring row `chat_builder`.** Everyone else
+   keeps the list and Will's chat as they are, so nothing a speaker meets
+   changes (N619).
+
+No migration in this entry. No rules page yet: hosted chats and their setup
+get one when the build is joined.
+
+**N630 · Tokens in a chat, four decisions: Will's line for a skipped model;
+crediting by hand; a host pays the price they agreed to; community models
+stay as they are** (founder, the Claude Code chat, 10 November 2026, on the
+four points from the tokens build: "I say ok to all").
+
+1. **A model skipped because the host is out of tokens gets a line in
+   Will,** under "This needs you:" (N629): "I left out {name}'s model
+   today. You're out of tokens." One line for each model skipped that day.
+2. **Earned tokens are credited by hand, once a month,** by the founder
+   (N614, N616 item 15). No timer is added until people are earning.
+3. **A host pays the price shown when they added the model.** If the owner
+   changes it, the host's price does not move by itself: Will tells the
+   host, who keeps the model at the new price or drops it. Was, in the
+   code: the owner's current price was charged, with no word to the host.
+   Will's words for the change are not approved yet.
+4. **A model shared only with a community cannot be added to a chat;**
+   only a public or a team model can, as the code does today.
+
+No migration in this entry. No rules page yet: hosted chats and their setup
+get one when the build is joined.
