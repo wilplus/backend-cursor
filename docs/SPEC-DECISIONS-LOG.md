@@ -15827,3 +15827,15 @@ and N597:
    up" and "Your assistant has answered them for now." are signed with the
    founder's choice (Never 4).
 No migration. No rules page yet.
+
+**N603 · When a chat asks for a photo, an image button takes the mic's place
+on the right (founder, the Claude Code chat, 10 November 2026, asked where
+the photo goes in the bar of N600: "An image button on the right").**
+Amends N597 item 2's "Upload a photo" in the middle; for N600:
+1. **While a chat asks for a photo,** a small image button stands on the
+   right, where the mic is (N600); the box stays in the middle. It opens the
+   phone's own picker; its name for screen readers is "Add a photo".
+2. **"Upload a photo" no longer takes the middle.**
+No migration. The rules: frontend
+[`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md)
+C1, when built.
