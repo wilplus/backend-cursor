@@ -38,7 +38,7 @@ from auth import require_auth
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import phase1_provider_route
 from services.db import db
-from services.rate_limits import llm_limit
+from services.rate_limits import answering_llm_limit, llm_limit, poll_limit
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +264,8 @@ def v2_plan_answer_audio(answer_id):
 
 @v2_bp.route("/plan/way-in", methods=["POST"])
 @phase1_provider_route
-@llm_limit
+@poll_limit
+@answering_llm_limit
 @require_auth
 def v2_plan_way_in():
     """The speaking way in (N572, N573, N592): begins once Take 1 is sent,
