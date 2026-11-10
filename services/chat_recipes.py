@@ -169,8 +169,16 @@ def _clean_part(part: str, value: Any) -> Any:
 
 
 def _derived(recipe: dict) -> dict:
-    """``welcome`` and ``answer_with`` as the older readers read them."""
+    """``welcome``, ``answer_with`` and ``fit`` as the older readers read
+    them. ``fit`` (N588's two lines) is never asked (N632 item 3): a chat
+    that takes a recording is a skill chat, any other a topic chat."""
     send = recipe.get("send") or []
+    spec = str(recipe.get("spec") or "").strip()
+    if "rec" in send:
+        recipe["fit"] = {"coaches": "skill", "needs": "talking", "topics": [],
+                         **({"skill": spec.lower()} if spec else {})}
+    else:
+        recipe["fit"] = {"coaches": "topic", "needs": "any", "topics": [spec] if spec else []}
     recipe["welcome"] = [recipe["hello"]] if recipe.get("hello") else []
     recipe["answer_with"] = {"record": "rec" in send, "type": "text" in send,
                              "tap": bool(recipe.get("taps"))}
@@ -207,6 +215,13 @@ def start(database: Any, user_id: Any, body: Any) -> dict:
     spec = _words(what, chat_suggestions.MAX_SPEC, "What you do")
     spec = spec[0].upper() + spec[1:]
     sug, _calls = chat_suggestions.suggest(spec, user_id=str(user_id))
+    # "Start again" (N632 item 4) keeps nothing of the old answers but the
+    # real models behind the host's own cards, so a model kept again is the
+    # same model (``_real_models``), never a second one.
+    before = mine(database, user_id) or {}
+    kept = [{"q": m["q"], "model_id": m["model_id"]}
+            for m in [*(before.get("models") or []), *(before.get("kept_models") or [])]
+            if m.get("own", True) and m.get("model_id") and m.get("q")]
     first_out = sug["out"][0]
     # "A message" is ticked by default, so a visitor can type (N625 item 1).
     send = [sug["send"][0], *(["text"] if sug["send"][0] != "text" else [])]
@@ -214,6 +229,8 @@ def start(database: Any, user_id: Any, body: Any) -> dict:
               "out": first_out, "hello": sug["hello"][0], "questions": [{"q": sug["qs"][0]}],
               "taps": list(sug["taps"][0])[:3], "smart": False, "models": [], "who": WHO[0],
               "share": False, "sensitive": True, "live": False}
+    if kept:
+        recipe["kept_models"] = list({m["model_id"]: m for m in kept}.values())
     return {"recipe": _store(database, str(user_id), recipe)}
 
 
@@ -258,7 +275,8 @@ def _real_models(database: Any, user_id: str, recipe: dict, models: list[dict]) 
     for a host with the AI models (ring ``ai_models``); without it the card
     stays as it is, with no ``model_id``."""
     from services import model_launchpad_store, model_setup_store
-    before = [m for m in recipe.get("models") or [] if m.get("own", True) and m.get("model_id")]
+    before = [m for m in [*(recipe.get("models") or []), *(recipe.get("kept_models") or [])]
+              if m.get("own", True) and m.get("model_id")]
     ids = {str(m["model_id"]) for m in before}
     by_q = {m["q"]: str(m["model_id"]) for m in before}
     sends = (recipe.get("send") or ["text"])[0]
@@ -343,7 +361,18 @@ def read(database: Any, user_id: Any, token_payload: Any) -> dict:
         chat["link"] = my_link(database, user_id, token_payload)
     return {"recipe": recipe, "parts": parts(recipe) if recipe else [],
             "own_chat": chat, "cost": cost(recipe), "skipped_models": skipped_models(database, user_id, recipe),
-            "price_changes": price_changes(database, recipe)}
+            "price_changes": price_changes(database, recipe), "spec_guess": spec_guess(database, user_id)}
+
+
+def spec_guess(database: Any, user_id: Any) -> Optional[str]:
+    """What the person's first Take told the app of their field (N632 item
+    2): the topic their plan keeps from it, the same words the earlier
+    setup offered for "What is your specialization?". "What do you do?"
+    opens with it, to keep or change. None when none was heard. No provider
+    call."""
+    from services import chat_setup
+    said = chat_setup._field(database, str(user_id))
+    return said[0] if said else None
 
 
 def _owner_prices(database: Any, model_ids: list[str]) -> dict[str, Optional[int]]:

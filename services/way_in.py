@@ -201,15 +201,35 @@ def _walk_ready(database: Any, user_id: str, plan: dict, w: dict) -> bool:
     return (plan.get("facts") or {}).get("first_take") in ("kept", "read")
 
 
-def _after_walk_row(chosen: list) -> tuple:
+def _setup_in_your_chat(database: Any, user_id: str) -> bool:
+    """A person with the chat builder sets up their chat from "Your chat" in
+    Will's lines (N632 items 1 and 5): Will no longer sends them to "set up
+    your assistant"."""
+    try:
+        from services import assistants
+        return assistants.on(database, user_id)
+    except Exception:  # noqa: BLE001 -- as before, for anyone it cannot tell
+        logger.warning("way_in: the chat builder's ring could not be read", exc_info=True)
+        return False
+
+
+def _after_walk_row(chosen: list, *, ring: bool = False) -> Optional[tuple]:
+    """The one bubble after the walk. ``ring``: the person has the chat
+    builder, so "Share what I know"'s sentence is left out and nothing
+    opens the earlier setup (N632 item 5); the other sentences stay as
+    signed. None when nothing is left to say."""
     picked = [c for c in AFTER_WALK_ORDER if c in set(chosen or [])] or [SOMETHING_ELSE]
+    if ring:
+        picked = [c for c in picked if c != SHARE]
+        if not picked:
+            return None
     body = " ".join(AFTER_WALK[c] for c in picked)
     meta: dict[str, Any] = {"way_in_next": picked}
     if SHARE in picked:
         meta["opens"] = "setup_chat"  # N578 item 4
     if picked[-1] == SOMETHING_ELSE:
         meta["way_in_asks"] = "else"  # answered by voice or text, or a tap (N604)
-        taps = [c for c in ELSE_TAPS if c not in picked]
+        taps = [c for c in ELSE_TAPS if c not in picked and not (ring and c == SHARE)]
         if taps:
             meta["chips"] = taps
     return _bot(body, "after_walk", "next", **meta)
@@ -259,7 +279,8 @@ def _beat_rows(database: Any, user_id: str, plan: dict, w: dict, beat: str) -> O
     if beat == "next":
         if w.get("walk_done"):
             w["after_walk_said"] = True
-            return [_after_walk_row(w.get("chosen") or [])]
+            row = _after_walk_row(w.get("chosen") or [], ring=_setup_in_your_chat(database, user_id))
+            return [row] if row is not None else []
         if _walk_ready(database, user_id, plan, w):
             w["ready_said"] = True
             return [_bot(READY, "ready", "next", chips=[OPEN_FEEDBACK], opens="feedback")]
@@ -542,8 +563,8 @@ def _on_else(database: Any, user_id: str, said: str, picked: Any = None) -> list
     speaker_memory.record(database, str(user_id), "answer",
                           {"question": AFTER_WALK[SOMETHING_ELSE], "said": tap or said})
     at = datetime.now(timezone.utc).isoformat()
-    if not tap:
-        return [_me(said, f"else:{at}", "next")]
+    if not tap or (tap == SHARE and _setup_in_your_chat(database, user_id)):
+        return [_me(tap or said, f"else:{at}", "next")]  # N632 item 5: "Your chat" is the way
     meta: dict[str, Any] = {"way_in_next": [tap]}
     if tap == SHARE:
         meta["opens"] = "setup_chat"  # N578 item 4
@@ -638,7 +659,9 @@ def after_walk(database: Any, user_id: str, plan: dict, *,
         if "next" not in w.get("done", []):
             w["done"] = [*w.get("done", []), "next"]
         plan = _save(database, user_id, plan, w)
-        out += _flow()._write(database, user_id, plan["id"], [_after_walk_row(w.get("chosen") or [])])
+        row = _after_walk_row(w.get("chosen") or [], ring=_setup_in_your_chat(database, user_id))
+        if row is not None:
+            out += _flow()._write(database, user_id, plan["id"], [row])
     return out
 
 

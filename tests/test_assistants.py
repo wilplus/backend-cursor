@@ -34,13 +34,12 @@ OUTCOME
   O9  In my chat, the person who joined reads whose assistant answers, my
       first Take's questions and how they may answer; a chat with someone
       who has no recipe is as it was.
-  O10 In Will's chat, Will says what I know can earn tokens, with "Set up my
-      chat"; then asks, one at a time, my welcome, how people answer, my
-      specialization, what people learn, a skill or a topic and what I need
-      to see, and "Do you want to automate your own chat?"; "Go live" keeps
-      it, with the first Take's questions set in the builder, and the next
-      person who joins meets it (N582 item 1, N586 item 5).
-  O11 A welcome that scores people is not kept: Will says why and asks again.
+  O10 With the new setup (N632 item 1), Will's chat gets none of the
+      earlier setup: no offer line, no "Set up my chat", no questions as
+      bubbles; one it left waiting answers nothing more. A recipe made
+      with it is kept and read as before. (Was: N582 item 1, N586 item 5,
+      Will's questions one at a time, and a welcome that scores people
+      asked again; the overlay's checks are tests/test_blank_setup.py.)
 PROVES   O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
          O2 -> AssistantsTest::test_the_join_page_is_three_lines
          O3 -> RecipeTest::test_a_host_sets_welcome_questions_and_how_people_answer
@@ -50,8 +49,7 @@ PROVES   O1 -> AssistantsTest::test_my_list_says_whose_assistant_answers
          O7 -> AssistantsTest::test_a_tester_keeps_their_recipe
          O8 -> AssistantsTest::test_someone_who_joins_meets_my_welcome_and_who_i_am
          O9 -> AssistantsTest::test_the_joiner_reads_what_my_chat_is
-         O10 -> SetupInWillsChatTest::test_will_sets_up_my_chat_one_question_at_a_time
-         O11 -> SetupInWillsChatTest::test_a_welcome_that_scores_people_is_asked_again
+         O10 -> SetupInWillsChatTest::test_the_earlier_setup_writes_nothing_in_wills_chat
 WHY      Every inviter has a coach chat of their own (N578); the builder's MVP
          is for the founder and a few testers first (N579).
 """
@@ -188,67 +186,23 @@ class SetupInWillsChatTest(unittest.TestCase):
     def _chips(self):
         return self._asked()["metadata"]["chat_setup"]["chips"]
 
-    def test_will_sets_up_my_chat_one_question_at_a_time(self):
+    def test_the_earlier_setup_writes_nothing_in_wills_chat(self):
+        """N632 item 1: with the new setup, Will's chat gets no offer line,
+        no "Set up my chat" and none of the earlier setup's questions; a
+        question it left waiting is answered by nothing more (404). A chat
+        made with it keeps its recipe, read as before."""
+        self.assertEqual(self.client.post("/v2/chats/recipe/setup/offer", headers=self._as(TOMEK))
+                         .get_json(), {"offered": False})
+        self.assertEqual(self.client.post("/v2/chats/recipe/setup", headers=self._as(TOMEK))
+                         .get_json(), {"started": False})
+        self.assertEqual(self.lounge.rows, {})
         from services import chat_setup as C
-        self.client.post("/v2/chats/recipe/setup/offer", headers=self._as(TOMEK))
-        self.assertEqual(self._asked()["body"], (
-            "What you know can earn tokens: by teaching the models in your field, and you can spend "
-            "them on a chat of your own that shares what you know while you're away, if you want it."))
-        self.assertEqual(self._chips(), ["Set up my chat"])
-        self.assertEqual(self._say(picked="Set up my chat"), [
-            "Set up my chat", "Let's set up your chat. People who join through your link will meet it.",
-            "What should people read first when they open your chat? Write it as you'd greet them."])
-        self.assertEqual(self._say(said="Hi, I'm Tomek. Let's get you moving."),
-                         ["Hi, I'm Tomek. Let's get you moving.", "How should people answer you in your chat?"])
-        self.assertEqual(self._chips(), ["Record", "Type", "Tap answers", "Any of these"])
-        self.assertEqual(self._say(picked="Record"), ["Record", "What is your specialization?"])
-        self.assertEqual(self._chips(), ["Speaking", "Something else"])
-        self.assertEqual(self._say(picked="Something else"), ["Something else", "What is your specialization?"])
-        self.assertEqual(self._say(said="Gymnastics"),
-                         ["Gymnastics", "What can people learn in your chat? One sentence."])
-        self.assertEqual(self._say(said=" ".join(["handstand"] * 25)), [
-            " ".join(["handstand"] * 25),
-            "Shorter, please: one sentence of about fifteen words, for your join page.",
-            "What can people learn in your chat? One sentence."])
-        self.assertEqual(self._say(said="Your first handstand, step by step."), [
-            "Your first handstand, step by step.",
-            "Do people come to you to be coached on how they do something, or with questions on a topic?"])
-        self.assertEqual(self._say(picked="How they do it"),
-                         ["How they do it", "What do you need to see to coach them?"])
-        self.assertEqual(self._say(picked="Them moving"), ["Them moving", C.AUTOMATE_WHY,
-                                                           "Do you want to automate your own chat?"])
-        self.assertEqual(self._chips(), ["Yes", "Not now", "Help train an existing model"])
-        self.assertEqual(self._say(picked="Not now")[1].split("\n"), [
-            "This is what someone new will meet in your chat:", "Tomek invited you",
-            "Your first handstand, step by step.", "Only the two of you are in this chat.",
-            "Hi, I'm Tomek. Let's get you moving."])
-        self.client.put("/v2/chats/recipe", headers=self._as(TOMEK), json={
-            "questions": [{"q": "Which move do you want first?", "answers": ["Handstand"]}]})
-        self.assertEqual(self._say(picked="Go live"), [
-            "Go live", "Your chat is live. Everyone who joins through your link meets it."])
+        self.lounge.insert(TOMEK, [{"client_id": "q1", "role": "bot", "kind": "text", "body": C.WELCOME_Q,
+                                    "metadata": {"chat_setup": {"step": "welcome", "chips": [], "draft": {}}}}])
+        self.assertEqual(self._say(said="Hi, I'm Tomek."), 404)
+        self.client.put("/v2/chats/recipe", headers=self._as(TOMEK), json={"welcome": ["Hi, I'm Tomek."]})
         kept = self.client.get("/v2/chats/recipe", headers=self._as(TOMEK)).get_json()["recipe"]
-        self.assertEqual((kept["answer_with"], kept["fit"], kept["model"]), (
-            {"tap": False, "type": False, "record": True},
-            {"coaches": "skill", "needs": "moving", "topics": [], "skill": "gymnastics"},
-            {"automate": "no"}))
-        self.assertEqual([q["q"] for q in kept["questions"]], ["Which move do you want first?"])
-        token = self._link(TOMEK).get_json()["token"]
-        chat = self._join(PIOTR, token).get_json()["chat"]["id"]
-        seen = self.client.get(f"/v2/chats/{chat}/messages", headers=self._as(PIOTR)).get_json()["messages"]
-        self.assertEqual([m["body"] for m in seen], ["Hi, I'm Tomek. Let's get you moving."])
-        # The MVP's Will chat (N599): the setup writes nothing of principles,
-        # the Sunday note or life goals.
-        said = " ".join(r["body"] for r in self.lounge.rows.values())
-        for gone in ("Your principles", "The Sunday note", "Your life goals"):
-            self.assertNotIn(gone, said)
-
-    def test_a_welcome_that_scores_people_is_asked_again(self):
-        self.client.post("/v2/chats/recipe/setup", headers=self._as(TOMEK))
-        self.assertEqual(self._say(said="I rate everyone out of 10 points."), [
-            "I rate everyone out of 10 points.",
-            "I can't put that in your chat: it reads like a score or a verdict about someone.",
-            "What should people read first when they open your chat? Write it as you'd greet them."])
-        self.assertEqual(self._say(picked="Record"), 400)
+        self.assertEqual(kept["welcome"], ["Hi, I'm Tomek."])
 
 
 class RecipeTest(unittest.TestCase):
