@@ -917,11 +917,15 @@ def upload_counts(pairs: list[tuple[Any, Any]]) -> Optional[dict]:
 
 
 # ── The final exam (MOD-32; N566 items 5 and 6) ─────────────────────────────
-def exam_split(examples: list[dict], have: int, *, n: int = EXAM_CASES) -> set[str]:
+def exam_split(examples: list[dict], have: int, *, n: int = EXAM_CASES, model_id: Any = "") -> set[str]:
     """Which new examples go to the sealed exam: whole speakers at a time, so
     no speaker is on both sides (N566 item 6), until it holds ``n``. Never an
     uploaded row (N566 item 4), a known clip, an added example or one of the
-    owner's first 10 (N570 item 3). ``have``: cases already set aside."""
+    owner's first 10 (N570 item 3). ``have``: cases already set aside.
+
+    The pick is salted with ``model_id`` (PIPE-05, N615 item 2): being in one
+    model's exam says nothing about another's, so the same people are not
+    set aside in every model."""
     if have >= n:
         return set()
     by_speaker: dict[str, list[str]] = {}
@@ -930,11 +934,14 @@ def exam_split(examples: list[dict], have: int, *, n: int = EXAM_CASES) -> set[s
             continue
         by_speaker.setdefault(str(e["speaker_id"]), []).append(str(e["id"]))
     picked: set[str] = set()
-    for speaker in sorted(by_speaker, key=lambda s: hashlib.sha256(s.encode()).hexdigest()):
+    def deal(speaker: str) -> str:
+        return hashlib.sha256(f"{model_id}:{speaker}".encode()).hexdigest()
+
+    for speaker in sorted(by_speaker, key=deal):
         if have + len(picked) >= n:
             break
         # One speaker in five goes to the exam until it is full.
-        if int(hashlib.sha256(speaker.encode()).hexdigest(), 16) % 5 == 0:
+        if int(deal(speaker), 16) % 5 == 0:
             picked.update(by_speaker[speaker])
     return picked
 

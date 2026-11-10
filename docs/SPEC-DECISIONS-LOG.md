@@ -16580,3 +16580,28 @@ found: "OK").
    (`docs/design/the-blank-setup-2026-11-10/`): FIRST-03, FIRST-04.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N626 · A Take goes to nobody unless the speaker sends it; no choice is
+remembered** (founder, the Claude Code chat, 10 November 2026, on a chat
+with a user holding Takes 2, 3, 6 and 10 the founder had not meant to send:
+"involuntarily I am sending my takes from Will to one of the users"; "I
+don't want to send it to others now"; of three ways offered, "Nothing by
+default").
+
+This replaces N479 item 5 and the remembered choice of N309 item 5 and
+N470 (feedback-walk-and-chat.md G1, G2, G4). Never 3 stands: nothing new
+comes before a Take.
+
+1. "Record Take N" records at once, with nothing sent and nothing shared.
+   "Who hears this Take" is never asked before a Take, and no earlier
+   choice is reused.
+2. Each new Take's line in Will's chat reads "Only me" (signed with the
+   sharing screen, N309) and opens "Who hears this Take" for that Take,
+   with nobody ticked: the speaker picks the people, and Continue sends it
+   to them (G3 unchanged). A Take already sent still opens to add people,
+   never to unsend.
+3. Sends already chosen before this change and still waiting on the
+   phone keep going: they were chosen.
+
+No new words. No migration. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)

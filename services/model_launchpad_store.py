@@ -191,18 +191,26 @@ def queue_for(database: Any, user_id: Any, *, only: Any = None) -> dict:
     # An upload waits for its 60 re-rates; the rest of it never needs a
     # teacher (N566 item 4).
     examples = [e for e in examples if e.get("source") != "upload" or e.get("kind") == "rerate"]
+    sealed = _sealed_to(database, me, [str(t["model_id"]) for t in mine])
+    examples = [e for e in examples if not e.get("snippet_id") or str(e["snippet_id"]) not in sealed]
     examples += _exam_cases_for(database, me, mids)
-    answered = {(str(a["example_id"]), str(a["model_id"])) for a in _rows(
-        _table(database, ANSWERS).select("example_id,model_id").eq("teacher_id", me))} if mids else set()
-    sees = _sees_private(database, me, models)
-    waiting = [e for e in examples
-               if (str(e["id"]), str(e["model_id"])) not in answered
-               and str(e.get("speaker_id") or "") != me and str(e.get("added_by") or "") != me
-               and (not e.get("private") or str(e["model_id"]) in sees)]
+    waiting = _waiting_for(database, me, models, examples) if mids else []
     return rules.build_queue(
         [m for m in models if m["id"] in mids], with_clips(database, waiting), me,
         paused=[t["model_id"] for t in mine if t.get("paused_at")], only=_uuid(only) if only else None,
         company_line={str(t["model_id"]): t["company_line"] for t in mine if t.get("company_line")})
+
+
+def _waiting_for(database: Any, me: str, models: list[dict], examples: list[dict]) -> list[dict]:
+    """The examples this teacher may still be sent: not answered by them,
+    not their own Take or example, a private one only where they see it."""
+    answered = {(str(a["example_id"]), str(a["model_id"])) for a in _rows(
+        _table(database, ANSWERS).select("example_id,model_id").eq("teacher_id", me))}
+    sees = _sees_private(database, me, models)
+    return [e for e in examples
+            if (str(e["id"]), str(e["model_id"])) not in answered
+            and str(e.get("speaker_id") or "") != me and str(e.get("added_by") or "") != me
+            and (not e.get("private") or str(e["model_id"]) in sees)]
 
 
 def _sees_private(database: Any, me: str, models: list[dict]) -> set[str]:
@@ -277,6 +285,13 @@ def _exam_cases_for(database: Any, me: str, mids: list[str]) -> list[dict]:
                  .in_("model_id", mine).eq("in_exam", True))
 
 
+def _sealed_to(database: Any, me: str, mids: list[str]) -> set[str]:
+    """The moments (snippet ids) sealed in an exam this teacher sets, in any
+    model they teach: none of them is served to them, or taken from them,
+    as a teaching example in another model (PIPE-05, N615 item 2)."""
+    return {str(c["snippet_id"]) for c in _exam_cases_for(database, me, mids) if c.get("snippet_id")}
+
+
 def with_clips(database: Any, examples: list[dict]) -> list[dict]:
     """A voice example's clip for the teacher's screen (MOD-08): a short-lived
     signed link and the moment's window, through the path the blind coach
@@ -328,17 +343,7 @@ def answer(database: Any, user_id: Any, example_id: Any, model_id: Any, step: st
     if not rows:
         raise _not_found()
     example = rows[0]
-    # An exam case is answered only by the two experts who set it aside
-    # (N566 item 5); for anyone else it is not there (N615 item 2). The
-    # adder answered their own example when they added it: it counts once
-    # another teacher agrees, never on a second answer of theirs.
-    if example.get("in_exam") and str(example["id"]) not in {
-            str(c["id"]) for c in _exam_cases_for(database, me, [model["id"]])}:
-        raise _not_found()
-    if str(example.get("added_by") or "") == me:
-        raise ChatsError("OWN_EXAMPLE", "You added this example; another teacher answers it.", 409)
-    if example.get("private") and model["id"] not in _sees_private(database, me, [model]):
-        raise _not_found()
+    _may_answer(database, me, model, example)
     wanting: list[dict] = []
     twins: list[dict] = []
     if not example.get("private") and example.get("snippet_id"):
@@ -360,6 +365,26 @@ def answer(database: Any, user_id: Any, example_id: Any, model_id: Any, step: st
                         "screen": rules.teaching_screen(f["model"], {"id": twin_ids.get(f["model"]["id"])})}
                        for f in plan["follow"]],
             "trust": told}
+
+
+def _may_answer(database: Any, me: str, model: dict, example: dict) -> None:
+    """Raise unless this teacher may answer this example."""
+    # An exam case is answered only by the two experts who set it aside
+    # (N566 item 5); for anyone else it is not there (N615 item 2). The
+    # adder answered their own example when they added it: it counts once
+    # another teacher agrees, never on a second answer of theirs.
+    if example.get("in_exam") and str(example["id"]) not in {
+            str(c["id"]) for c in _exam_cases_for(database, me, [model["id"]])}:
+        raise _not_found()
+    # A moment sealed in an exam this teacher sets is not taught by them in
+    # another model (PIPE-05, N615 item 2): for them it is not there.
+    if not example.get("in_exam") and example.get("snippet_id") and str(example["snippet_id"]) in _sealed_to(
+            database, me, [str(t["model_id"]) for t in _teaching(database, me)]):
+        raise _not_found()
+    if str(example.get("added_by") or "") == me:
+        raise ChatsError("OWN_EXAMPLE", "You added this example; another teacher answers it.", 409)
+    if example.get("private") and model["id"] not in _sees_private(database, me, [model]):
+        raise _not_found()
 
 
 def _save_answer(database: Any, example_id: str, model_id: str, me: str, step: str,
