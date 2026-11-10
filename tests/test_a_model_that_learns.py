@@ -226,8 +226,16 @@ class ModelLearnsTest(unittest.TestCase):
         gates = self._get(f"/v2/models/{PACE}/learning").get_json()["gates"]
         self.assertTrue(gates["owner_chat"])
         self.read.clear()
-        self.assertEqual(model_head_store.chat_answers(db, KASIA, own, "a calm close"), {0: {"answer": "Calm"}})
+        self.assertEqual(model_head_store.chat_answers(db, KASIA, own, "a calm close"), {0: {"answer": "Calm", "sure": True}})
         self.assertEqual(len(self.read), 1)             # one reader call for the chat's models
+        # A visitor's message: one reader call and the one chat call (N620).
+        from services import chat_replies
+        self.read.clear()
+        self.chats.clear()
+        chat_replies.make({"models": own, "out": "answer"}, "a calm close", "Kasia", user_id=TOMEK,
+                          database=db, host_id=KASIA)
+        self.assertEqual((len(self.read), len(self.chats)), (1, 1))
+        self.assertIn('own answer is "Calm"', self.chats[0])
         # Another host may not use it, and nobody buys it, before a passed exam.
         self._version()["exam"] = {"computed": True, "passed": False}
         self.assertEqual(model_head_store.chat_answers(db, TOMEK, own, "a calm close"), {})

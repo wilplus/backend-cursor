@@ -320,7 +320,8 @@ def chat_answers(database: Any, host_id: str, recipe_models: list[dict], text: s
     place: ONE reader call for all of them (N620: two provider calls at
     most, with the chat's own). A host's own model answers once its owner's
     check passed (gate one); another person's only after a passed exam
-    (gate two). A model with neither answers nothing here."""
+    (gate two). A model with neither answers nothing here. An answer that
+    is not sure is returned as such: its line is left out of the chat."""
     picked: list[tuple[int, dict, dict]] = []
     for i, m in enumerate(recipe_models):
         mid = _uuid(m.get("model_id"))
@@ -344,8 +345,8 @@ def chat_answers(database: Any, host_id: str, recipe_models: list[dict], text: s
     out: dict[int, dict] = {}
     for i, model, version in picked:
         a = rules.answer(version, extend(model, got[0]))
-        if a and a["sure"]:
-            out[i] = {"answer": a["answer"]}
+        if a:
+            out[i] = {"answer": a["answer"], "sure": bool(a["sure"])}
     return out
 
 

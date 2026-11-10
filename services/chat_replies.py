@@ -74,7 +74,7 @@ def prompt(recipe: dict, heads: Optional[dict] = None) -> str:
                      + "; ".join(str(o) for o in m.get("opts") or []) + ". "
                      + (f"When the answer is \"{(m.get('opts') or [''])[0]}\" it says, for example: "
                         f"{m.get('says')}" if m.get("says") else ""))
-        if i in heads:
+        if heads.get(i, {}).get("sure"):
             lines.append(f"Model {i + 1}'s own answer is \"{heads[i]['answer']}\": its line says that "
                          "answer in words, and no other.")
     lines.append('Reply with only a JSON object: {"answer": "<what the person gets back>", '
@@ -122,6 +122,8 @@ def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str],
     raw_lines: list = given if isinstance(given, list) else []
     lines = []
     for i, m in enumerate(recipe.get("models") or []):
+        if i in heads and not heads[i].get("sure"):
+            continue  # its head is not sure: no line, never a guess (N566 item 8)
         body = _clean(raw_lines[i], 300) if i < len(raw_lines) else None
         if body:
             owner = _first(host_name) if m.get("own", True) else _first(m.get("by"))
