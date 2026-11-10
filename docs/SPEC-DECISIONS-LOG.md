@@ -16183,3 +16183,111 @@ answers do not reach it (N582 item 2 names "a small linear model on a
 shared reader", which is not built). No image reader exists.
 No migration in this entry. The rules: docs/LEARNING-AND-QUORUM.md, with
 the pull request that fixes them.
+
+**N616 · The blank setup is locked, and twenty more decisions with it
+(founder, the Claude Code chat, 10 November 2026, on twenty-one questions
+asked one per screen, each with a recommended answer; the founder's answers,
+as pasted: "1. Lock the blank setup: Lock it 2. One setup for everyone: Yes,
+one setup 3. Artur's chat meanwhile: It keeps working 4. The visitor's side:
+Yes, build it 5. What they get back: One choice 6. Was this useful?: Yes,
+add it 7. Will suggests only: Suggests; you Keep or Change 8. A model that
+learns: Yes: voice and text first 9. Photos: People can send them; no photo
+models yet 10. The exam for a small host: Two gates 11. The assistant's
+minimum: 20 12. Verdicts in a specialist's chat: Numbers never; a judgement
+in words is allowed 13. Health, law and money: The specialist; the model
+only suggests to them 14. Review of the next migration: Send me the Grok
+prompt 15. Crediting earned tokens: Every month, no minimum 16. Wish-list
+emails: One email per request 17. The walk's voices on replay: Show me first
+18. Record Take 2: Faded until the walk is done 19. The training-yes card:
+Signed 20. The website widget: Accept all three 21. The prototypes: Keep
+both ... Build it.").** For N520, N528, N566, N578, N579, N582, N592, N594,
+N605, N606, N610, N612, N613, N614 and N615; amends Never 1 for a
+specialist's own chat:
+1. **The blank setup is locked** as its prototype shows it, pinned at
+   `docs/design/the-blank-setup-2026-11-10/` (docs/LOCKS.md): the list of
+   chats, Will, "What do you do?", then one decision per screen, Keep or
+   Change; typing happens in Will's chat and comes back to the screen. Its
+   words are signed as drawn.
+2. **One setup for everyone.** The blank setup replaces the setup that
+   starts from Artur's questions, for every new host (N612 item 2).
+3. **Artur's existing chat keeps working** as it is until the rebuilt one is
+   ready; the loop never breaks (Never 3).
+4. **The visitor's side is built from the same blocks:** a person who comes
+   to a chat gets the output its host chose and each of the host's models'
+   lines, each naming whose model said it.
+5. **What people get back is one choice** (N612 item 3); what people send is
+   ticked, several at once.
+6. **"Was this useful?"** is asked after what a person gets back, with Yes,
+   No and Skip. It never stands before the next thing they send, and it is
+   read together with what they did next.
+7. **Will suggests; the host taps Keep or Change.** Nothing about a chat's
+   order or its models changes without the host's tap.
+8. **A model learns from its teachers' answers:** a reader for each kind of
+   input and one small head per model, trained on settled answers; voice and
+   text first (N582 item 2). Was: a model's answer came from a general model
+   reading the model's name, question and options (N615 Open).
+9. **People can send a photo; no model reads one yet.** The host sees it.
+   A model that recognises something in a photo waits for an image reader,
+   and the setup does not offer one until then.
+10. **Two gates.** A model may answer in its owner's chat after the owner's
+    own check; it may be sold only after the full final exam (N528 item 7,
+    N566 item 5).
+11. **The assistant's minimum is 20** of the host's own answers (N606).
+12. **Never 1 in a specialist's chat:** no score and no number about a
+    person, anywhere. A specialist's judgement in words is allowed in their
+    own chat. Was: a host's words that read as a verdict were refused
+    everywhere (N594).
+13. **Health, law and money:** in such a chat the specialist answers; a
+    model only suggests to the specialist, until counsel has looked.
+14. **The next migration gets its outside review:** the founder is sent the
+    Grok prompt (CLAUDE.md, How to ship).
+15. **Earned tokens are credited every month, with no minimum** (N614 item
+    4). Was: only above the minimum meant for money payouts.
+16. **A wish is one email per request** (N613 item 2).
+17. **The walk's voices on replay** (frontend #1352) wait: the founder sees
+    it first.
+18. **"Record Take 2" is faded until the walk is done** (N592); it is the
+    one place the middle of the bar is not full black (N610).
+19. **The training-yes card is signed:** "Help {name}'s model learn", "Yes,
+    help it learn", "Not now" (N605).
+20. **The website widget's three choices are accepted:** in a chat without
+    typing, the black "Ask {name}" starts the visitor's chat and opens the
+    sign-up; "+" before the chat exists does what the middle does; an emoji
+    is never a visitor's first message.
+21. **Both prototypes stay:** the whole app's, which is the source, and
+    "Build Your Chat", the same setup alone.
+22. **Whether a chat is about health, law or money is asked in the setup:**
+    Will asks the host one yes-or-no question, and when in doubt the answer
+    is yes (founder, the same chat, on both proposals: "Okay, I agree with
+    both").
+23. **The owner's own check is ten new examples the model has not seen.**
+    The first 10 set the model's known answers; they are never also its
+    test (N582 item 8, N585 item 4, N615).
+**Open:** counsel on item 13.
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup); a
+rules page for hosted chats with its first built part (N578).
+
+**N617 · The locked setup gains two screens: the models you can use, each
+with its owner's price, and what your chat costs you (founder, the Claude
+Code chat, 10 November 2026: "how do I know, show this to me in the
+prototype, that I'm using somebody's model, and how much will I pay for it?
+It should be based on what price they have set ... I want to make sure that
+my setup costs me rational amount of money"; then, on the two screens drawn:
+"Yes").** For N607, N611 and N616:
+1. **Models you can use.** Where the setup reaches the models, one list
+   shows every model other people shared: its question, its three answers,
+   who made it, and its price per use as its owner set it. A model that
+   does not fit what this host's people send is greyed out and says what it
+   needs. "Make my own" is under the list.
+2. **What your chat costs you.** Before "See it", one screen lists each
+   model in the chat with its cost, the total for each thing a person
+   sends, and an estimate for a month. The host pays; their people pay
+   nothing. Everything is in tokens (N611 item 5).
+3. **The pinned prototype and its stories are updated** in
+   `docs/design/the-blank-setup-2026-11-10/`; the stories now hold the
+   build's tests for the setup, what a visitor meets, a model that learns,
+   the tight pipes, tokens in a chat and the small pieces.
+**Open:** whether a host's own model is free to run in their own chat
+(drawn as free); what happens in a chat when the host has too few tokens
+(drawn: that model's line is left out and the host is told).
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).

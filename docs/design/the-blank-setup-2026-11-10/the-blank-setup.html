@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body>
+<title>Build Your Chat</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: the journey as a map on the left, one phone on the right; the map follows the phone, the phone follows the map. */
+:root { --bg: #EFEDE8; --panel: #FFFFFF; --ink: #121212; --muted: #6E6A64; --line: #E3E0DA; --bubble: #F3F2EF; --accent: #FF640A; --ok: #1F9D55; --rec: #EF4444; --ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151413; --panel: #1F1E1C; --ink: #F4F2EE; --muted: #A39E96; --line: #34322F; --bubble: #2B2A27; --accent: #FF7A2E; --ok: #3CC47A; --rec: #F26666; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #151413; --panel: #1F1E1C; --ink: #F4F2EE; --muted: #A39E96; --line: #34322F; --bubble: #2B2A27; --accent: #FF7A2E; --ok: #3CC47A; --rec: #F26666; color-scheme: dark }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--ui); padding-block: 20px 32px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.top { max-width: 1120px; margin: 0 auto 18px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.top h1 { font-size: 20px; font-weight: 700; margin: 0; letter-spacing: -.01em; }
+.tabs { display: none; gap: 6px; }
+.tabs button, .again { border: 1.5px solid var(--line); background: var(--panel); border-radius: 999px; padding: 7px 14px; font-weight: 600; font-size: 14px; }
+.tabs button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 28px; align-items: start; }
+/* the map */
+.map { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.stage { background: var(--panel); border-radius: 20px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.stage h2 { margin: 0; font-size: 15px; font-weight: 700; } .stage p { margin: 0; color: var(--muted); font-size: 13.5px; }
+.nodes { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.node { border: 1.5px solid var(--line); background: var(--panel); border-radius: 14px; padding: 8px 12px; text-align: left; display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 100%; }
+.node b { font-size: 14px; font-weight: 600; } .node small { font-size: 12px; color: var(--muted); }
+.node.done { border-color: var(--ok); } .node.on { border-color: var(--ink); background: var(--ink); color: var(--panel); } .node.on small { color: inherit; opacity: .75; }
+.arrow { align-self: center; color: var(--muted); font-size: 18px; }
+.down { text-align: center; color: var(--muted); font-size: 18px; line-height: 1; }
+.loop { color: var(--muted); font-size: 13.5px; border: 1.5px dashed var(--line); border-radius: 14px; padding: 10px 14px; }
+/* the phone */
+.side { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 10px; align-items: center; min-width: 0; }
+.phone { width: 100%; max-width: 390px; height: min(780px, calc(100vh - 110px)); min-height: 560px; background: var(--panel); border: 9px solid #111; border-radius: 42px; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+.hd { flex: none; height: 58px; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+.hd b { font-size: 16px; flex: 1; } .hd .bk, .hd .x { border: 0; background: none; font-size: 22px; width: 32px; height: 32px; border-radius: 50%; }
+.hd .bk { width: auto; font-size: 15px; font-weight: 600; padding: 0 8px 0 0; border-radius: 8px; }
+.hd .av { width: 36px; height: 36px; border-radius: 50%; background: var(--bubble); color: var(--ink); display: grid; place-items: center; font-size: 11px; letter-spacing: 1px; font-weight: 700; }
+.bd { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 18px 12px; display: flex; flex-direction: column; gap: 12px; }
+.ft { flex: none; padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+.row2 { display: flex; gap: 10px; } .row2 > * { flex: 1; }
+.btn { min-height: 50px; border-radius: 999px; border: 1.5px solid var(--ink); background: var(--ink); color: var(--panel); font-weight: 600; font-size: 15.5px; padding: 0 16px; display: flex; align-items: center; justify-content: center; gap: 9px; }
+.btn.out { background: var(--panel); color: var(--ink); }
+.btn i { width: 10px; height: 10px; border-radius: 50%; background: var(--rec); display: inline-block; }
+.lnk { border: 0; background: none; color: var(--muted); font-size: 14px; padding: 4px; align-self: center; text-decoration: underline; text-underline-offset: 3px; }
+.w { align-self: flex-start; max-width: 92%; background: var(--bubble); border-radius: 20px; padding: 11px 15px; font-size: 16.5px; line-height: 1.4; }
+.me { align-self: flex-end; max-width: 88%; background: var(--accent); color: #fff; border-radius: 20px; padding: 10px 15px; font-size: 16px; }
+.card { border: 1.5px solid var(--line); border-radius: 18px; padding: 14px 15px; display: flex; flex-direction: column; gap: 6px; }
+.card b { font-size: 17px; font-weight: 600; line-height: 1.3; } .card small, .cap { color: var(--muted); font-size: 13.5px; }
+.cap { margin: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 7px; } .chips span { border: 1.5px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 14px; }
+.opt:disabled { opacity: .5; cursor: default; }
+.opt { border: 1.5px solid var(--line); background: var(--panel); border-radius: 16px; padding: 13px 15px; text-align: left; font-size: 16px; font-weight: 600; }
+.tick { display: flex; align-items: center; gap: 12px; } .tick span { display: flex; flex-direction: column; } .tick small { font-weight: 400; font-size: 13.5px; color: var(--muted); }
+.bx { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line); flex: none; display: grid; place-items: center; } .tick.on { border-color: var(--ink); } .tick.on .bx { background: var(--ink); border-color: var(--ink); } .tick.on .bx::after { content: "✓"; color: var(--panel); font-size: 14px; font-style: normal; }
+.btn:disabled { opacity: .4; cursor: default; }
+.tile { border-radius: 16px; background: var(--bubble); color: var(--muted); padding: 22px 14px; text-align: center; font-size: 14px; }
+.nav { flex: none; height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+.logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; letter-spacing: -.01em; } .dots { display: flex; align-items: center; gap: 3px; } .dots i, .wm i { border-radius: 50%; background: var(--ink); display: block; width: 5px; height: 5px; } .dots i:nth-child(2), .wm i:nth-child(2) { width: 7px; height: 7px; }
+.menu { display: flex; flex-direction: column; gap: 4px; } .menu i { width: 20px; height: 2px; border-radius: 2px; background: var(--ink); display: block; }
+.clist { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.crow { height: 76px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 0 0 16px; border: 0; background: none; text-align: left; width: 100%; }
+.wm { width: 48px; height: 48px; border-radius: 50%; background: var(--bubble); display: flex; align-items: center; justify-content: center; gap: 3px; flex: none; } .wm.plus { font-size: 22px; }
+.cmid { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 3px; border-bottom: 1px solid var(--line); padding-right: 16px; }
+.c1 { display: flex; align-items: baseline; gap: 8px; } .c1 b { flex: 1; font-size: 16px; font-weight: 700; } .c1 b.reg { font-weight: 600; } .c1 em { font-style: normal; font-size: 12px; font-weight: 600; color: var(--accent); }
+.c2 { display: flex; align-items: center; gap: 8px; min-height: 20px; } .cl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--muted); } .cl.new { font-weight: 700; color: var(--accent); }
+.cdot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); flex: none; } .pin { font-size: 12px; opacity: .5; filter: grayscale(1); }
+.fab { position: absolute; right: 16px; bottom: 20px; width: 48px; height: 48px; border-radius: 50%; border: 0; background: var(--ink); color: var(--panel); font-size: 24px; line-height: 1; box-shadow: 0 6px 18px rgba(0,0,0,.22); }
+.snote { position: absolute; left: 10px; right: 10px; bottom: 20px; z-index: 3; display: flex; align-items: center; gap: 4px; border: 1px solid var(--line); background: var(--panel); border-radius: 16px; padding: 10px 4px 10px 14px; box-shadow: 0 6px 18px rgba(0,0,0,.14); }
+.snote span { flex: 1; display: flex; flex-direction: column; gap: 8px; } .snote b { font-size: 15px; font-weight: 600; line-height: 1.35; } .setb { align-self: flex-start; border: 0; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 600; font-size: 15px; padding: 8px 16px; } .nx { border: 0; background: none; width: 44px; height: 44px; font-size: 20px; color: var(--muted); }
+.big { font-size: 26px; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; margin: 8px 0 0; text-wrap: balance; }
+.listrow { border: 0; border-bottom: 1px solid var(--line); background: none; display: flex; gap: 12px; align-items: center; padding: 14px 4px; text-align: left; width: 100%; }
+.listrow span { display: flex; flex-direction: column; } .listrow small { color: var(--muted); font-size: 13px; }
+.box { display: flex; gap: 8px; padding: 10px 12px 14px; border-top: 1px solid var(--line); }
+.box input { flex: 1; min-width: 0; height: 46px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--panel); color: var(--ink); padding: 0 16px; font: 16px var(--ui); }
+.box button { height: 46px; border-radius: 999px; border: 0; background: var(--ink); color: var(--panel); padding: 0 18px; font-weight: 600; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); display: inline-block; margin-right: 7px; }
+@media (max-width: 900px) { .wrap { grid-template-columns: minmax(0, 1fr); } .tabs { display: flex; } body[data-tab="map"] .side, body[data-tab="phone"] .map { display: none; } .side { position: static; } .phone { height: min(760px, calc(100vh - 140px)); } }
+@media (prefers-reduced-motion: no-preference) { .bd > * { animation: in .18s ease-out; } @keyframes in { from { opacity: .4; transform: translateY(4px); } to { opacity: 1; transform: none; } } }
+</style>
+<div class="top"><h1>Build your chat, from nothing</h1><div class="tabs" role="tablist"><button type="button" id="tab-map" data-tab="map">The journey</button><button type="button" id="tab-phone" data-tab="phone">Try it</button></div><span style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="again" id="second">Come in second</button><button type="button" class="again" id="again">Start again</button></span></div>
+<div class="wrap"><div class="map" id="map"></div><div class="side"><div class="phone" id="phone"></div></div></div>
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s), esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const phone = $("#phone");
+  /* ---------- the building blocks ---------- */
+  const SEND = { rec: ["A recording", "They talk. You listen."], text: ["A message", "They write to you."], photo: ["A photo", "They show you something."], file: ["A file", "A document or a clip."] };
+  const OUT = { answer: ["An answer", "One message, in words."], words: ["Their own words, tidied", "What they said, made clear."], todo: ["What to do next", "A short list of steps."], mark: ["A mark on what they sent", "You point at the spot."] };
+  const WHO = [["I draft the answer. You check it and send it.", "shadow"], ["Only you answer. I stay quiet.", "you"], ["I answer at once. You correct me.", "assistant"]];
+  const OPTS = [["Yes", "Somewhat", "No"], ["Yes", "Not sure", "No"], ["A lot", "A little", "None"]];
+  const PRICES = [2, 1, 3, 5];
+  const EX = ["Speaking coach", "Trichologist", "Language teacher", "Fitness coach"];
+  const KNOWN = {
+    "speaking coach": { line: ["People come to you to speak so others listen.", "People come to you to feel sure when they talk."], send: ["rec", "text", "file", "photo"], out: ["words", "answer", "todo", "mark"],
+      hello: ["Hi. Record a short talk, and I'll tell you what worked.", "Welcome. Say it out loud once. We'll make it better together."], qs: ["What talk are you getting ready for?", "Who will be listening?", "What is the one thing they should remember?"],
+      taps: [["Practise a talk", "Get ready for a pitch", "Answer a hard question"], ["Sound more sure", "Stop rushing", "Open strongly"]],
+      models: [{ q: "Does the speaker sound sure?", opts: ["Yes", "In between", "No"], says: "You sound sure at the start, and less sure near the numbers." }, { q: "Do they pause before the main line?", opts: ["Yes", "A little", "No"], says: "You ran through your main line. Stop before it." }, { q: "Are they rushing?", opts: ["Yes", "A little", "No"], says: "You speed up in the middle. Slow down there." }, { q: "Is the opening clear?", opts: ["Yes", "Somewhat", "No"], says: "Your opening is clear. People know what this is about." }],
+      sample_in: "A two-minute talk about checking quotes.", sample_out: "Every quote we publish is checked twice. First by the editor who found it, then by someone who was not in the room." },
+    trichologist: { line: ["People come to you with hair and scalp worries.", "People come to you to keep their hair healthy."], send: ["photo", "text", "rec", "file"], out: ["answer", "todo", "mark", "words"],
+      hello: ["Hi. Send me a photo of your scalp, and tell me what worries you.", "Welcome. Show me, and I'll tell you what I'd do first."], qs: ["What worries you about your hair?", "How long has it been like this?", "What do you wash it with?"],
+      taps: [["Look at my scalp", "My hair is falling out", "Which shampoo"], ["An itchy scalp", "After colouring", "Thin hair"]],
+      models: [{ q: "Is this a dry scalp?", opts: ["Yes", "Somewhat", "No"], says: "Your scalp looks dry here. That is a common place to start." }, { q: "Is the hair thinning here?", opts: ["Yes", "Somewhat", "No"], says: "The hair is thinner at the crown than around it." }, { q: "Is the skin red?", opts: ["Yes", "Somewhat", "No"], says: "The skin looks a little red. Go gently with what you put on it." }, { q: "Are there flakes?", opts: ["A lot", "A little", "None"], says: "There are some flakes near the roots." }],
+      sample_in: "A photo of the top of my head.", sample_out: "Thank you. I can see the crown clearly. Here is what I notice, and what I'd do first." },
+    "language teacher": { line: ["People come to you to speak a new language.", "People come to you to stop making the same mistakes."], send: ["rec", "text", "file", "photo"], out: ["words", "answer", "todo", "mark"],
+      hello: ["Hi. Say or write a few sentences. I'll show you the one thing to fix.", "Welcome. Tell me about your day, in the language you're learning."], qs: ["Which language are you learning?", "Why do you want to learn it?", "What is hardest for you?"],
+      taps: [["Correct my sentence", "How do I say this", "Practise speaking"], ["Explain a rule", "Get ready for an exam", "New words"]],
+      models: [{ q: "Is there a mistake that changes the meaning?", opts: ["Yes", "Not sure", "No"], says: "One word changes what you mean. Look at the verb." }, { q: "Is the past tense right?", opts: ["Yes", "Somewhat", "No"], says: "Two past forms slipped: went, bought." }, { q: "Does it sound natural?", opts: ["Yes", "Somewhat", "No"], says: "It is correct, and a native speaker would say it shorter." }],
+      sample_in: "Yesterday I go to the shop and buyed bread.", sample_out: "Yesterday I went to the shop and bought bread." },
+    "fitness coach": { line: ["People come to you to move well and get stronger.", "People come to you to train without getting hurt."], send: ["file", "photo", "text", "rec"], out: ["mark", "todo", "answer", "words"],
+      hello: ["Hi. Send a clip of one exercise. I'll tell you the first thing to fix.", "Welcome. Show me how you move."], qs: ["What are you training for?", "How often do you train?", "Does anything hurt?"],
+      taps: [["Check my form", "Plan my week", "Coming back after a break"], ["What to eat before", "A pain when I train", "Get stronger"]],
+      models: [{ q: "Do the heels stay down?", opts: ["Yes", "Somewhat", "No"], says: "Your heels lift as you go down. Fix that first." }, { q: "Is the back straight?", opts: ["Yes", "Somewhat", "No"], says: "Your back rounds at the bottom." }, { q: "Is the movement slow enough?", opts: ["Yes", "Somewhat", "No"], says: "You drop fast. Count to three on the way down." }],
+      sample_in: "A clip of my squat from the side.", sample_out: "Look at the moment just before the bottom." } };
+  const generic = (spec) => { const s = spec.toLowerCase(); return { line: [`People come to you for help from a ${s}.`, `People come to you to learn what a ${s} knows.`], send: ["text", "rec", "photo", "file"], out: ["answer", "todo", "words", "mark"],
+    hello: ["Hi. Tell me what you need, and I'll help.", "Welcome. Ask me anything about what I do."], qs: ["What do you need help with?", "What have you tried so far?", "What would a good result look like?"],
+    taps: [["Ask for advice", "Check my work", "Show me how you do it"], ["Where do I start", "A second opinion", "Explain it simply"]],
+    models: [{ q: "Is the main thing clear?", opts: ["Yes", "Somewhat", "No"], says: "Start here: this is the part that matters most." }, { q: "Is something missing?", opts: ["Yes", "Not sure", "No"], says: "One thing is missing. Add it and send it again." }, { q: "Is this ready?", opts: ["Yes", "Somewhat", "No"], says: "This is nearly ready. One more step." }],
+    sample_in: `A question for a ${s}.`, sample_out: "Here is my answer, in plain words, from what you sent." }; };
+  const PROMPT = (spec) => `You help a specialist set up a chat in which people learn from them or ask them things. The specialist is: ${spec}. Write for a 12-year-old: short, warm, plain words. No scores, numbers, grades or percentages about a person. For health, law or money never state a diagnosis or a final ruling.
+Reply with only a JSON object with these keys:
+"line": 2 different one-sentence versions of "People come to you ..." saying why people come to this specialist;
+"send": the ids "rec" (voice recording), "text" (typed message), "photo", "file", ordered from what people would most naturally send to least;
+"out": the ids "answer" (one message in words), "words" (the person's own words, tidied), "todo" (a short list of what to do next), "mark" (a mark on what they sent), ordered from the best first thing to get back to the least fitting;
+"hello": 2 different welcome messages the chat says first, 1 or 2 short sentences each, in the specialist's voice;
+"qs": 3 short questions the chat asks a new person first;
+"taps": 2 arrays, each with 3 things people would ask this specialist for, at most 5 words each;
+"models": 4 objects, each one thing a small model could learn to recognise in what the person sent: {"q": a short yes-or-no style question the specialist answers by looking or listening, "opts": exactly 3 short answers from yes to no, "says": one sentence the person reads when the answer is the first option};
+"sample_in": one sentence describing what a person might send;
+"sample_out": the first thing they get back, 1 or 2 sentences.`;
+  function clean(spec, j) {
+    const g = KNOWN[spec.toLowerCase()] || generic(spec), o = j && typeof j === "object" ? j : {}, str = (x, n) => (typeof x === "string" && x.trim() ? x.trim().slice(0, n) : null);
+    const arr = (a, n, min, fb) => { const v = (Array.isArray(a) ? a : []).map((x) => str(x, n)).filter(Boolean); return v.length >= min ? v : fb; };
+    const ids = (a, all) => [...new Set([...(Array.isArray(a) ? a.filter((x) => all.includes(x)) : []), ...all])];
+    const models = (Array.isArray(o.models) ? o.models : []).map((m) => (m && str(m.q, 90) && Array.isArray(m.opts) && m.opts.length >= 3 ? { q: str(m.q, 90), opts: m.opts.slice(0, 3).map((x) => str(x, 22) || "?"), says: str(m.says, 200) || "" } : null)).filter(Boolean);
+    const taps = (Array.isArray(o.taps) ? o.taps : []).map((t) => arr(t, 44, 3, null)).filter(Boolean).map((t) => t.slice(0, 3));
+    return { line: arr(o.line, 160, 1, g.line), send: ids(o.send || g.send, Object.keys(SEND)), out: ids(o.out || g.out, Object.keys(OUT)), hello: arr(o.hello, 220, 1, g.hello), qs: arr(o.qs, 120, 2, g.qs),
+      taps: taps.length ? taps : g.taps, models: models.length ? models : g.models, sample_in: str(o.sample_in, 200) || g.sample_in, sample_out: str(o.sample_out, 300) || g.sample_out };
+  }
+  /* ---------- the state ---------- */
+  const REG = [];   // models other people shared (filled when someone finishes and starts again as someone else)
+  let S, cur, T, run = 0;
+  const fresh = () => { S = { name: "Artur", spec: null, sug: null, i: {}, own: {}, qs: [], models: [], mi: 0, t: 0, c: 0, thread: [], live: false, edit: false }; cur = 0; T = null; };
+  const pick = (id, list) => (S.own[id] != null ? S.own[id] : list[(S.i[id] || 0) % list.length]);
+  const sendKeys = () => (S.sendSet && S.sendSet.length ? S.sug.send.filter((k) => S.sendSet.includes(k)) : [S.sug.send[0]]), sendKey = () => sendKeys()[0], outKey = () => pick("out", S.sug.out);
+  /* ---------- drawing ---------- */
+  const say = (t) => `<div class="w">${esc(t)}</div>`, cap = (t) => `<p class="cap">${esc(t)}</p>`;
+  const card = (b, s) => `<div class="card"><b>${esc(b)}</b>${s ? `<small>${esc(s)}</small>` : ""}</div>`;
+  const chips = (l) => `<div class="chips">${l.map((x) => `<span>${esc(x)}</span>`).join("")}</div>`;
+  function draw({ title = "Will", body, foot = "", back = true, bind }) {
+    phone.innerHTML = `<div class="hd">${back ? '<button type="button" class="bk" id="bk" >‹ Back</button>' : ""}<span class="av">•••</span><b>${esc(title)}</b></div><div class="bd">${body}</div>${foot ? `<div class="ft">${foot}</div>` : ""}`;
+    const b = $("#bk", phone); if (b) b.onclick = () => { const id = STEPS[cur].id; if (id === "q" && S.qs.length) { cur = idx("qmore"); return render(); } if (id === "qmore") { S.qs.pop(); cur = idx("q"); return render(); } if (id === "taps" && S.qs.length >= 3) { S.qs.pop(); cur = idx("q"); return render(); } const lm = S.models[S.models.length - 1];
+      if (id === "model" && S.models.length) { cur = idx("more"); return render(); }
+      if (id === "teach") { if (S.t > 0) { S.t--; lm.taught.pop(); } else { S.models.pop(); cur = idx("model"); } return render(); }
+      if (id === "check") { if (S.c > 0) S.c--; else { cur = idx("teach"); S.t = 2; lm.taught.pop(); } return render(); }
+      if (id === "more") { if (lm.ready) { S.models.pop(); cur = idx("model"); } else { cur = idx("check"); S.c = 1; } return render(); } if (cur > 0) { cur = prevIdx(); render(); } };
+    if (bind) bind(); paintMap();
+  }
+  const kcFoot = (typeLabel) => `<div class="row2"><button type="button" class="btn out" id="chg">Change</button><button type="button" class="btn" id="keep">Keep</button></div>${typeLabel ? `<button type="button" class="lnk" id="own">${esc(typeLabel)}</button>` : ""}`;
+  // one decision: Will's line, the thing, Keep or Change; "Type my own" goes to Will's chat and comes back here
+  function kc(id, line, list, show, typeAsk) {
+    draw({ body: say(line) + show(pick(id, list)), foot: kcFoot(typeAsk ? "Type my own" : ""), bind: () => {
+      $("#keep", phone).onclick = () => next();
+      $("#chg", phone).onclick = () => { S.own[id] = null; S.i[id] = (S.i[id] || 0) + 1; render(); };
+      const o = $("#own", phone); if (o) o.onclick = () => typeIn(typeAsk, (v) => { S.own[id] = v; render(); });
+    } });
+  }
+  // typing always happens in Will's chat, then you come back to the screen you were on
+  function typeIn(ask, done, ph = "Type here") {
+    S.thread.push({ w: true, t: ask });
+    const paint = () => {
+      phone.innerHTML = `<div class="hd"><button type="button" class="bk" id="bk" >‹ Back</button><span class="av">•••</span><b>Will</b></div><div class="bd">${S.thread.map((m) => `<div class="${m.w ? "w" : "me"}">${esc(m.t)}</div>`).join("")}</div><form class="box" id="f"><input id="say" type="text" maxlength="120" placeholder="${esc(ph)}" autocomplete="off"><button type="submit">Send</button></form>`;
+      const bd = $(".bd", phone); bd.scrollTop = bd.scrollHeight;
+      $("#bk", phone).onclick = () => { S.thread.pop(); render(); };
+      $("#f", phone).onsubmit = (e) => { e.preventDefault(); const v = $("#say", phone).value.trim(); if (!v) return; S.thread.push({ w: false, t: v }); done(v); };
+      $("#say", phone).focus({ preventScroll: true });
+    };
+    paint(); paintMap();
+  }
+  const sample = () => { const k = sendKey(); return k === "text" ? `<div class="me">${esc(S.sug.sample_in)}</div>` : `<div class="tile">${k === "rec" ? "▶ " : ""}${esc(SEND[k][0])}<br>${esc(S.sug.sample_in)}</div>`; };
+  const draft = () => { const own = S.own.mq; const base = S.sug.models[S.mi % S.sug.models.length]; return own ? { q: own, opts: OPTS[(S.i.mopts || 0) % OPTS.length], says: `${own} ${OPTS[(S.i.mopts || 0) % OPTS.length][0]}.` } : base; };
+  const others = () => REG.filter((m) => !S.models.some((x) => x.q === m.q)).map((m) => ({ ...m, fits: sendKeys().includes(m.send) }));
+  /* ---------- the steps: one thing each ---------- */
+  const STEPS = [
+    { id: "will", stage: 0, t: "Your chats", s: "Tap Will", r: () => {
+        phone.innerHTML = `<div class="nav"><span class="logo"><span class="dots"><i></i><i></i><i></i></span>WillpowerLab</span><span class="menu" aria-hidden="true"><i></i><i></i><i></i></span></div>
+          <div class="clist"><button type="button" class="crow" id="go"><span class="wm"><i></i><i></i><i></i></span><span class="cmid"><span class="c1"><b>Will</b><em>now</em></span><span class="c2"><span class="cl new">Hi ${esc(S.name)}. Let's build your chat.</span><i class="cdot"></i><span class="pin" aria-hidden="true">📌</span></span></span></button>
+          <button type="button" class="crow" id="add"><span class="wm plus">+</span><span class="cmid"><span class="c1"><b class="reg">Add someone to chat with</b></span></span></button></div>
+          <button type="button" class="fab" id="fab" aria-label="Add someone to chat with">+</button><div id="note"></div>`;
+        const note = () => { $("#note", phone).innerHTML = `<div class="snote"><span><b>Before you share your link, set the questions for people who join.</b><button type="button" class="setb" id="set">Set them</button></span><button type="button" class="nx" id="nx" aria-label="Not now">×</button></div>`; $("#set", phone).onclick = next; $("#nx", phone).onclick = () => { $("#note", phone).innerHTML = ""; }; };
+        $("#go", phone).onclick = next; $("#add", phone).onclick = note; $("#fab", phone).onclick = note; paintMap(); } },
+    { id: "what", stage: 0, t: "Say what you do", s: "Type it, in Will's chat", r: () => draw({ body: say(`Hi ${S.name}. I'm Will. I ask one thing at a time. You tap Keep or Change.`) + say("What do you do?"), foot: `<button type="button" class="btn" id="go">Answer</button>`, bind: () => { $("#go", phone).onclick = () => typeIn("What do you do?", begin, "Speaking coach"); } }) },
+    { id: "line", stage: 1, t: "Why people come", s: "Keep / Change", r: () => kc("line", "People come to you for this:", S.sug.line, (v) => card(v), "Why do people come to you?") },
+    { id: "send", stage: 1, t: "What they send", s: "Tick all that apply", r: () => { if (!S.sendSet) S.sendSet = [S.sug.send[0]];
+        draw({ body: say("What do people send you? Tick all that apply.") + S.sug.send.map((k) => `<button type="button" class="opt tick${S.sendSet.includes(k) ? " on" : ""}" data-k="${k}" role="checkbox" aria-checked="${S.sendSet.includes(k)}"><i class="bx" aria-hidden="true"></i><span><b>${esc(SEND[k][0])}</b><small>${esc(SEND[k][1])}</small></span></button>`).join(""),
+          foot: `<button type="button" class="btn" id="keep"${S.sendSet.length ? "" : " disabled"}>Done</button>`, bind: () => {
+            phone.querySelectorAll("[data-k]").forEach((x) => (x.onclick = () => { const k = x.dataset.k; S.sendSet = S.sendSet.includes(k) ? S.sendSet.filter((y) => y !== k) : [...S.sendSet, k]; render(); }));
+            $("#keep", phone).onclick = () => next(); } }); } },
+    { id: "out", stage: 1, t: "What they get back", s: "Keep / Change", r: () => kc("out", "They get back:", S.sug.out, (k) => card(OUT[k][0], OUT[k][1])) },
+    { id: "hello", stage: 1, t: "Your hello", s: "Keep / Change", r: () => kc("hello", "Your chat opens with:", S.sug.hello, (v) => `<div class="card"><div class="w">${esc(v)}</div></div>`, "What should your chat say first?") },
+    { id: "q", stage: 1, t: "First questions", s: "Keep / Change", r: () => { const n = S.qs.length; kc("q" + n, "Then it asks:", S.sug.qs.slice(n).concat(S.sug.qs.slice(0, n)), (v) => card(v), "What should your chat ask first?"); } },
+    { id: "qmore", stage: 1, t: "One more?", s: "Yes / No", r: () => draw({ body: say("Ask one more question?") + chips(S.qs), foot: `<div class="row2"><button type="button" class="btn out" id="no">No</button><button type="button" class="btn" id="yes">Yes</button></div>`, bind: () => { $("#no", phone).onclick = () => next(); $("#yes", phone).onclick = () => { cur = idx("q"); render(); }; } }) },
+    { id: "taps", stage: 1, t: "What people can ask", s: "Keep / Change", r: () => kc("taps", "People tap what they want:", S.sug.taps, (v) => chips([...(Array.isArray(v) ? v : [v]), "Something else"]), "What do people ask you for?") },
+    { id: "model", stage: 2, t: "Make a model", s: "One question, three answers", r: () => {
+        const ot = others();
+        if (ot.length && !S.skipReady) return draw({ body: say("Models you can use. Tap one to add it.") + ot.map((m, i) => `<button type="button" class="opt" data-r="${i}"${m.fits ? "" : " disabled"}>${esc(m.q)}<small style="display:block;font-weight:400;color:var(--muted);font-size:13.5px">${esc(m.opts.join(" · "))}</small><small style="display:block;font-weight:400;color:var(--muted);font-size:13.5px">${esc(m.fits ? `${m.by} made it. ${m.price} tokens each use, paid by you.` : `${m.by} made it. It needs ${SEND[m.send][0].toLowerCase()}.`)}</small></button>`).join(""), foot: `<button type="button" class="btn" id="own">Make my own</button>`, bind: () => {
+          phone.querySelectorAll("[data-r]").forEach((b) => (b.onclick = () => { const m = ot[+b.dataset.r]; if (!m.fits) return; S.models.push({ ...m, ready: true }); cur = idx("more"); render(); }));
+          $("#own", phone).onclick = () => { S.skipReady = true; render(); }; } });
+        const d = draft();
+        draw({ body: say(S.models.length ? "Your next model:" : "Now a model. It learns one thing from you.") + card(d.q, d.opts.join(" · ")) + cap("One question, three answers. That is a model."), foot: kcFoot("Type my own"), bind: () => {
+          $("#keep", phone).onclick = () => { S.models.push({ ...d, taught: [], price: null }); S.own.mq = null; S.t = 0; S.c = 0; next(); };
+          $("#chg", phone).onclick = () => { if (S.own.mq) S.i.mopts = (S.i.mopts || 0) + 1; else S.mi++; render(); };
+          $("#own", phone).onclick = () => typeIn("What should it spot? Write it as a question.", (v) => { S.own.mq = /\?$/.test(v) ? v : v + "?"; render(); }, "Is this a dry scalp?");
+        } }); } },
+    { id: "teach", stage: 2, t: "Teach it", s: "You answer", r: () => { const m = S.models[S.models.length - 1]; draw({ body: say(`Teach it. Example ${S.t + 1} of 3.`) + sample() + `<div class="card"><b>${esc(m.q)}</b></div>` + m.opts.map((o, k) => `<button type="button" class="opt" data-o="${k}">${esc(o)}</button>`).join("") + cap("In the app you answer 10. Here, 3 is enough."), bind: () => { phone.querySelectorAll("[data-o]").forEach((b) => (b.onclick = () => { m.taught.push(+b.dataset.o); S.t++; if (S.t >= 3) next(); else render(); })); } }); } },
+    { id: "check", stage: 2, t: "Check its guesses", s: "Keep / Change", r: () => { const m = S.models[S.models.length - 1], g = m.opts[(m.taught[S.c] ?? S.c) % 3]; draw({ body: say("Now it guesses. You check.") + sample() + card(m.q, `Its guess: ${g}`), foot: kcFoot(""), bind: () => {
+        const on = () => { S.c++; if (S.c >= 2) next(); else render(); };
+        $("#keep", phone).onclick = on;
+        $("#chg", phone).onclick = () => draw({ body: say("What's the right answer?") + m.opts.filter((o) => o !== g).map((o) => `<button type="button" class="opt" data-o="1">${esc(o)}</button>`).join("") + cap("Each fix teaches it."), bind: () => { phone.querySelectorAll("[data-o]").forEach((b) => (b.onclick = on)); } });
+      } }); } },
+    { id: "more", stage: 2, t: "Another model?", s: "Yes / No", r: () => draw({ body: say("Add another model?") + S.models.map((m) => card(m.q, m.opts.join(" · "))).join(""), foot: `<div class="row2"><button type="button" class="btn out" id="no">No</button><button type="button" class="btn" id="yes"${S.models.length >= 3 ? " disabled" : ""}>Yes</button></div>`, bind: () => { $("#no", phone).onclick = () => next(); $("#yes", phone).onclick = () => { S.mi++; S.skipReady = false; cur = idx("model"); render(); }; } }) },
+    { id: "order", stage: 2, t: "The order", s: "Keep / Change", skip: () => S.models.length < 2, r: () => draw({ body: say("Your models speak in this order:") + S.models.map((m, k) => card(`${k + 1}. ${m.q}`)).join(""), foot: kcFoot(""), bind: () => { $("#keep", phone).onclick = () => next(); $("#chg", phone).onclick = () => { S.models.push(S.models.shift()); render(); }; } }) },
+    { id: "who", stage: 3, t: "Who answers", s: "Keep / Change", r: () => kc("who", "When someone asks you a question:", WHO.map((w) => w[0]), (v) => card(v)) },
+    { id: "share", stage: 3, t: "Share your model", s: "Yes / Not now", r: () => draw({ body: say("Let others use your models? They pay you in tokens.") + cap("Tokens are what you spend in the app."), foot: `<div class="row2"><button type="button" class="btn out" id="no">Not now</button><button type="button" class="btn" id="yes">Yes</button></div>`, bind: () => { $("#no", phone).onclick = () => { S.shared = false; cur = idx("try"); render(); }; $("#yes", phone).onclick = () => { S.shared = true; next(); }; } }) },
+    { id: "price", stage: 3, t: "Its price", s: "Keep / Change", skip: () => !S.shared, r: () => kc("price", "Each use costs them:", PRICES, (v) => card(`${v} token${v === 1 ? "" : "s"}`)) },
+    { id: "cost", stage: 3, t: "What it costs you", s: "Per send, per month", r: () => { const per = S.models.reduce((a, m) => a + (m.ready ? m.price : 0), 0), ppl = [10, 50, 200][(S.i.cost || 0) % 3];
+        draw({ body: say("What your chat costs you:") + S.models.map((m) => card(m.q, m.ready ? `${m.by}'s model · ${m.price} tokens each use` : "Yours · free in your own chat")).join("") + card(`${per} tokens each time someone sends you something`, per ? `With ${ppl} people sending once a week: about ${per * ppl * 4} tokens a month.` : "Every model here is yours.") + cap("You pay. Your people pay nothing."), foot: per ? kcFoot("") : `<button type="button" class="btn" id="keep">Next</button>`, bind: () => { $("#keep", phone).onclick = () => next(); const c = $("#chg", phone); if (c) c.onclick = () => { S.i.cost = (S.i.cost || 0) + 1; render(); }; } }); } },
+    { id: "try", stage: 4, t: "See it as your people do", s: "Walk through it", r: () => draw({ body: say("Your chat is ready. See it as your people will."), foot: `<button type="button" class="btn" id="go">See it</button>`, bind: () => { $("#go", phone).onclick = () => { T = 0; render(); }; } }) },
+    { id: "live", stage: 4, t: "Open it to people", s: "Yes / Not yet", r: () => draw({ body: say("Open your chat to people?") + cap("Anyone with your link can use it."), foot: `<div class="row2"><button type="button" class="btn out" id="no">Not yet</button><button type="button" class="btn" id="yes">Yes</button></div>`, bind: () => { $("#no", phone).onclick = () => { S.live = false; next(); }; $("#yes", phone).onclick = () => { S.live = true; next(); }; } }) },
+    { id: "done", stage: 4, t: "Your chat", s: "Tap a part to change it", r: () => { S.edit = true; const rows = [["line", "Why people come", pick("line", S.sug.line)], ["send", "They send", sendKeys().map((k) => SEND[k][0]).join(" · ")], ["out", "They get back", OUT[outKey()][0]], ["hello", "Your hello", pick("hello", S.sug.hello)], ["q", "First questions", S.qs.join(" · ")], ["taps", "They can ask", [].concat(pick("taps", S.sug.taps)).join(" · ")], ["more", "Your models", S.models.map((m) => m.q).join(" · ")], ["who", "Who answers", pick("who", WHO.map((w) => w[0]))]];
+        draw({ title: `${S.spec}`, body: say(S.live ? "Your chat is open. Share your link." : "Your chat is saved. Nobody can see it yet.") + (S.live ? `<div class="card"><b>willpowerlab.com/c/${esc(S.name.toLowerCase())}</b><small>This link opens your chat.</small></div>` : "") + rows.map(([id, k, v]) => `<button type="button" class="opt" data-j="${id}"><small style="display:block;color:var(--muted);font-weight:500;font-size:13px">${esc(k)}</small>${esc(v)}</button>`).join(""), foot: `<button type="button" class="btn" id="go">See it as your people do</button><button type="button" class="lnk" id="other">Start again as someone else</button>`, bind: () => {
+          phone.querySelectorAll("[data-j]").forEach((b) => (b.onclick = () => { if (b.dataset.j === "q") S.qs = []; cur = idx(b.dataset.j); render(); }));
+          $("#go", phone).onclick = () => { T = 0; render(); };
+          $("#other", phone).onclick = () => { if (S.shared) S.models.filter((m) => !m.ready).forEach((m) => REG.push({ q: m.q, opts: m.opts, says: m.says, by: S.name, send: sendKey(), price: pick("price", PRICES) })); const nm = S.name === "Artur" ? "Kasia" : "Lena"; fresh(); S.name = nm; cur = idx("what"); render(); };
+        } }); } },
+  ];
+  const idx = (id) => STEPS.findIndex((s) => s.id === id);
+  const prevIdx = () => { let k = cur - 1; while (k > 0 && STEPS[k].skip && STEPS[k].skip()) k--; return k; };
+  function next() {
+    const id = STEPS[cur].id;
+    if (id === "q") { const n = S.qs.length; S.qs.push(pick("q" + n, S.sug.qs.slice(n).concat(S.sug.qs.slice(0, n)))); if (S.qs.length >= 3) { cur = idx("taps"); return render(); } }
+    if (S.edit && !["q", "qmore", "model", "teach", "check", "try", "live"].includes(id)) { cur = idx("done"); return render(); }
+    do { cur++; } while (STEPS[cur].skip && STEPS[cur].skip());
+    render();
+  }
+  async function begin(v) {
+    const spec = v[0].toUpperCase() + v.slice(1), mine = ++run; S.spec = spec;
+    draw({ body: say(`${spec}. One moment.`), back: false });
+    let j = null;
+    try { const use = window.claude && window.claude.use ? await Promise.race([window.claude.use("sample"), new Promise((r) => setTimeout(() => r(null), 4000))]) : null; if (use) j = await Promise.race([use.json(PROMPT(spec), { modelTier: "quick" }), new Promise((r) => setTimeout(() => r(null), 25000))]); } catch (e) { j = null; }
+    if (mine !== run) return;
+    S.sug = clean(spec, j); cur = idx("line"); render();
+  }
+  /* ---------- the same chat, as the person who came to learn meets it ---------- */
+  function tryIt() {
+    const who = pick("who", WHO.map((w) => w[0])), mode = WHO.find((w) => w[0] === who)[1], k = sendKey(), o = outKey(), from = mode === "you" ? S.name : `${S.name}'s assistant`;
+    const seq = ["hello", ...S.qs.map((_, i) => "q" + i), "ask", "send", "out", ...S.models.map((_, i) => i), "useful", "end"], at = seq[Math.min(T, seq.length - 1)];
+    const fwd = () => { if (at === "end") { T = null; cur = idx(S.edit ? "done" : "live"); } else T++; render(); };
+    const one = (label, rec) => `<button type="button" class="btn" id="go">${rec ? "<i></i>" : ""}${esc(label)}</button>`, sendLabel = { rec: "Record", text: "Send", photo: "Send a photo", file: "Send a file" }[k];
+    let body, foot = one("Next");
+    if (at === "hello") body = `<div class="w">${esc(pick("hello", S.sug.hello))}</div>`;
+    else if (typeof at === "string" && at[0] === "q") { body = `<div class="w">${esc(S.qs[+at.slice(1)])}</div>`; foot = one("Answer"); }
+    else if (at === "ask") { body = `<div class="w">What would you like to do?</div>` + [].concat(pick("taps", S.sug.taps), "Something else").map((x) => `<button type="button" class="opt" data-go="1">${esc(x)}</button>`).join(""); foot = ""; }
+    else if (at === "send") { body = sample(); foot = one(sendLabel, k === "rec"); }
+    else if (at === "out") body = (o === "mark" ? `<div class="tile">${esc(SEND[k][0])} · the spot is marked</div>` : "") + (o === "todo" ? `<div class="card"><b>What to do next</b>${S.models.map((m) => `<small>· ${esc(m.says)}</small>`).join("")}</div>` : `<div class="w">${esc(S.sug.sample_out)}</div>`) + `<p class="cap"><span class="dot"></span>${esc(from)}</p>`;
+    else if (at === "useful") { body = `<div class="w">Was this useful?</div>` + ["Yes", "No"].map((x) => `<button type="button" class="opt" data-go="1">${x}</button>`).join(""); foot = `<button type="button" class="lnk" id="go">Skip</button>`; }
+    else if (at === "end") { body = `<div class="w">Send the next one when you're ready.</div>`; foot = one("Back to my setup"); }
+    else { const m = S.models[at]; body = `<div class="w">${esc(m.says || `${m.q} ${m.opts[0]}.`)}</div><p class="cap"><span class="dot"></span>${esc(m.ready ? `${m.by}'s model` : `${S.name}'s model`)} · ${at + 1} of ${S.models.length}</p>`; }
+    phone.innerHTML = `<div class="hd"><button type="button" class="bk" id="bk" >‹ Back</button><b>${esc(S.name)}</b><button type="button" class="x" id="x" aria-label="Close">×</button></div><div class="bd">${cap("This is what your people see.")}${body}</div>${foot ? `<div class="ft">${foot}</div>` : ""}`;
+    $("#bk", phone).onclick = () => { if (T > 0) T--; else T = null; render(); }; $("#x", phone).onclick = () => { T = null; render(); };
+    const g = $("#go", phone); if (g) g.onclick = fwd; phone.querySelectorAll("[data-go]").forEach((b) => (b.onclick = fwd));
+    paintMap();
+  }
+  function render() { if (T != null) return tryIt(); STEPS[cur].r(); }
+  /* ---------- the map: every step of the journey; it follows the phone, and a tap opens that step ---------- */
+  const STAGES = [["You arrive", "Your list of chats has one chat: Will."], ["Your chat", "What people send, what they get back, how it greets them."], ["Your models", "A model answers one question with one of three answers. It learns from you."], ["Answers and tokens", "Who answers, and whether others may use your models."], ["Open it", "See it as your people do, then share your link."]];
+  function ensure() {   // jumping in from the map: fill what is not decided yet with Will's first suggestion
+    if (!S.sug) { S.spec = S.spec || "Speaking coach"; S.sug = clean(S.spec, null); }
+    if (!S.qs.length) S.qs = [S.sug.qs[0]];
+    if (!S.models.length) S.models = [{ ...S.sug.models[0], taught: [0, 1, 0], price: null }];
+  }
+  function paintMap() {
+    $("#map").innerHTML = STAGES.map(([h, p], si) => `<section class="stage"><h2>${si + 1}. ${esc(h)}</h2><p>${esc(p)}</p><div class="nodes">${STEPS.map((s, k) => (s.stage === si ? `<button type="button" class="node${k === cur && T == null ? " on" : k < cur ? " done" : ""}" data-n="${k}"><b>${esc(s.t)}</b><small>${esc(s.s)}</small></button><span class="arrow" aria-hidden="true">›</span>` : "")).join("").replace(/<span class="arrow" aria-hidden="true">›<\/span>$/, "")}</div></section>`).join('<div class="down" aria-hidden="true">↓</div>') + `<p class="loop">After that, it keeps learning. Every answer you give, every guess you fix, and every “Was this useful?” teaches your models. You can change any part by telling Will.</p>`;
+    $("#map").querySelectorAll("[data-n]").forEach((b) => (b.onclick = () => { const k = +b.dataset.n; if (k > idx("what")) ensure(); T = null; S.edit = false; cur = k; if (STEPS[k].id === "teach" || STEPS[k].id === "check") { S.t = 0; S.c = 0; S.models[S.models.length - 1].taught = STEPS[k].id === "check" ? [0, 1, 0] : []; } if (STEPS[k].id === "q") S.qs = []; setTab("phone"); render(); }));
+  }
+  const setTab = (t) => { document.body.dataset.tab = t; document.querySelectorAll("[data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t)); };
+  document.querySelectorAll(".tabs [data-tab]").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
+  $("#again").onclick = () => { REG.length = 0; fresh(); render(); };
+  // come in as someone who is not the first: two models already exist, each with its owner's price
+  $("#second").onclick = () => { REG.length = 0; REG.push({ q: "Does the speaker sound sure?", opts: ["Yes", "In between", "No"], says: "You sound sure at the start, and less sure near the numbers.", by: "Artur", send: "rec", price: 2 }, { q: "Was each quote checked?", opts: ["Yes", "Not sure", "No"], says: "You quote someone here. Say where the quote is from.", by: "Kasia", send: "text", price: 3 }); fresh(); S.name = "Marta"; setTab("phone"); render(); };
+  fresh(); setTab("map"); render();
+})();
+</script>
+
+</body>
+</html>

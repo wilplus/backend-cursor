@@ -1,0 +1,980 @@
+[
+ {
+  "id": "FIRST-01",
+  "area": "The first person ever sets up a chat",
+  "title": "The app opens on the list of chats, with one chat: Will",
+  "screen": "list",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "someone signs up whom nobody invited",
+  "when": "the app opens",
+  "then": [
+   "the list shows Will, pinned on top, with his three-dot mark",
+   "under it, “Add someone to chat with”, and the round +",
+   "before the chat is set up, + shows “Before you share your link, set the questions for people who join.” with “Set them”"
+  ],
+  "rules": [
+   "N580 item 1",
+   "N360",
+   "N503"
+  ],
+  "code": [
+   "fe:src/components/willab/chats/ChatList.tsx::WILL_ROW_TITLE",
+   "fe:src/components/willab/chats/joinCopy.ts::ADD_SHEET_TITLE",
+   "fe:src/components/willab/chats/joinCopy.ts::SETUP_NOTE"
+  ],
+  "tests": [],
+  "evals": [],
+  "status": "built",
+  "note": "The list is the app's own. Will's first line for someone nobody invited is drafted."
+ },
+ {
+  "id": "FIRST-02",
+  "area": "The first person ever sets up a chat",
+  "title": "Will asks what you do, and you type it in Will's chat",
+  "screen": "setup.will",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the person opens Will and taps “Let's start”",
+  "when": "Will asks “What do you do?”",
+  "then": [
+   "the box opens in Will's chat and the person types their work",
+   "Will works out what fits that work: the choices on every later screen",
+   "nothing is copied from another person's chat"
+  ],
+  "rules": [
+   "N612 item 1",
+   "N612 item 2",
+   "N612 item 4",
+   "N588"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": "On main the setup still starts a new host from Artur's five questions (starting_questions); N612 item 2 says it starts blank."
+ },
+ {
+  "id": "FIRST-03",
+  "area": "The first person ever sets up a chat",
+  "title": "One decision per screen: Keep or Change",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "Will has suggestions for this person",
+  "when": "a screen opens",
+  "then": [
+   "it shows one line from Will, one thing, and two buttons: Change and Keep",
+   "Change shows Will's next suggestion",
+   "“Type my own” goes to Will's chat for the words and comes back to the same screen"
+  ],
+  "rules": [
+   "N612 item 4",
+   "N578 item 6"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "FIRST-04",
+  "area": "The first person ever sets up a chat",
+  "title": "What people send: tick all that apply",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the setup reaches what people send",
+  "when": "the screen opens",
+  "then": [
+   "a recording, a message, a photo, a file, each with a tick; Will's first suggestion comes ticked",
+   "several can be ticked; Done keeps them"
+  ],
+  "rules": [
+   "N612 item 3",
+   "N610 item 4",
+   "N611 item 8"
+  ],
+  "code": [
+   "be:services/assistants.py::def may_type"
+  ],
+  "tests": [],
+  "evals": [],
+  "status": "partly",
+  "note": "A recording and a typed message exist; a photo is in backend #1880; a file is not built."
+ },
+ {
+  "id": "FIRST-05",
+  "area": "The first person ever sets up a chat",
+  "title": "What they get back is the chat's own output",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the setup reaches what people get back",
+  "when": "the screen opens",
+  "then": [
+   "an answer, their own words tidied, what to do next, or a mark on what they sent",
+   "for a speaking coach Will suggests their own words tidied (the Ideal Text); for another specialist, an answer"
+  ],
+  "rules": [
+   "N612 item 3",
+   "N612 item 4"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "FIRST-06",
+  "area": "The first person ever sets up a chat",
+  "title": "The hello, the first questions and what people can tap",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the setup reaches the chat's first lines",
+  "when": "each screen opens",
+  "then": [
+   "the hello, then up to three first questions, one at a time, with “Ask one more question?”",
+   "three taps people can ask with, and “Something else” always there (N604)",
+   "a host's own words pass the same checks as Will's (no score, no verdict)"
+  ],
+  "rules": [
+   "N579 item 1",
+   "N604",
+   "N578 item 6"
+  ],
+  "code": [
+   "be:migrations/a_person_keeps_their_chat_recipe.sql"
+  ],
+  "tests": [],
+  "evals": [],
+  "status": "partly",
+  "note": "The recipe keeps the welcome, the questions and how people answer (#1856). The taps as question types are not built."
+ },
+ {
+  "id": "FIRST-07",
+  "area": "The first person ever sets up a chat",
+  "title": "A model is one question with three answers",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the setup reaches the models",
+  "when": "Will suggests a model",
+  "then": [
+   "the card shows one question and its three answers",
+   "Change shows another; “Type my own” takes the person's own question, then one of three sets of answers",
+   "a model that already exists and fits what people send is offered first, with its price in tokens, paid by the host"
+  ],
+  "rules": [
+   "N571",
+   "N582",
+   "N607"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "partly",
+  "note": "Starting a model is backend #1867, in the merge queue; adding someone's model to your chat is not built."
+ },
+ {
+  "id": "FIRST-08",
+  "area": "The first person ever sets up a chat",
+  "title": "You teach it, then it guesses and you check",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the person kept a model",
+  "when": "the teaching starts",
+  "then": [
+   "the person answers the model's question on examples (10 in the app)",
+   "then the model guesses first and the person taps Keep, or Change and the right answer",
+   "each answer and each fix teaches the model"
+  ],
+  "rules": [
+   "N585",
+   "N582 item 5"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "FIRST-09",
+  "area": "The first person ever sets up a chat",
+  "title": "Who answers: the shadow, only you, or your assistant",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the setup reaches who answers",
+  "when": "the screen opens",
+  "then": [
+   "“I draft the answer. You check it and send it.” comes first",
+   "Change: “Only you answer. I stay quiet.”, then “I answer at once. You correct me.”",
+   "the assistant answers by itself only after its minimum (N606)"
+  ],
+  "rules": [
+   "N580",
+   "N606"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "partly",
+  "note": "The shadow and the assistant exist for a host's chat; the minimum is not built."
+ },
+ {
+  "id": "FIRST-10",
+  "area": "The first person ever sets up a chat",
+  "title": "Sharing a model, and its price in tokens",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the person has a model of their own",
+  "when": "Will asks “Let others use your models?”",
+  "then": [
+   "Yes asks the price per use, in tokens; Not now keeps it private",
+   "tokens come from the existing top-up; earned tokens are credited to spend in the app; nothing pays out in money"
+  ],
+  "rules": [
+   "N607",
+   "N583",
+   "N614"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "partly",
+  "note": "The price, the split and the crediting are backend #1866, in the merge queue."
+ },
+ {
+  "id": "FIRST-11",
+  "area": "The first person ever sets up a chat",
+  "title": "See it as your people do, then open it",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "every part is decided",
+  "when": "the person taps “See it”",
+  "then": [
+   "the chat plays one screen at a time as someone who came to it: the hello, the first questions, what they send, what they get back, each model's line, “Was this useful?”",
+   "“Open your chat to people?” Yes makes it live; Not yet keeps it saved",
+   "Will's chat then shows the link to the chat's parts, each open to change"
+  ],
+  "rules": [
+   "N612",
+   "N578 item 7"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": "“Was this useful?” is drawn, not decided."
+ },
+ {
+  "id": "FIRST-12",
+  "area": "The first person ever sets up a chat",
+  "title": "Something that doesn't exist yet goes on the wish list",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the person asks for a piece the app doesn't have",
+  "when": "they type it in Will's chat",
+  "then": [
+   "Will says it isn't available yet",
+   "the wish is kept and emailed to the founder as a design element request"
+  ],
+  "rules": [
+   "N613"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "FIRST-13",
+  "area": "The first person ever sets up a chat",
+  "title": "Models you can use, each with its owner's price",
+  "screen": "np",
+  "prototype": "Jump to… A second person sets up: models to choose from, and what it costs",
+  "given": "models other people shared exist",
+  "when": "the setup reaches the models",
+  "then": [
+   "one list shows each model: its question, its three answers, who made it, and its price per use as its owner set it",
+   "a model that does not fit what this host's people send is greyed out and says what it needs",
+   "“Make my own” is at the bottom"
+  ],
+  "rules": [
+   "N607",
+   "N616 item 1",
+   "N617"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "FIRST-14",
+  "area": "The first person ever sets up a chat",
+  "title": "What your chat costs you",
+  "screen": "np",
+  "prototype": "Jump to… A second person sets up: models to choose from, and what it costs",
+  "given": "the host has chosen their models",
+  "when": "the setup reaches the cost",
+  "then": [
+   "each model is listed with its cost: its owner's price per use, or “Yours · free in your own chat”",
+   "the total per thing a person sends, and an estimate per month for 10, 50 or 200 people",
+   "“You pay. Your people pay nothing.”; everything in tokens, never in money"
+  ],
+  "rules": [
+   "N607",
+   "N611 item 5",
+   "N617"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": "Whether a host's own model is free in their own chat is drafted, not decided."
+ },
+ {
+  "id": "FIRST-15",
+  "area": "The first person ever sets up a chat",
+  "title": "Health, law or money is asked once",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a host is setting up",
+  "when": "Will asks whether the chat is about health, law or money",
+  "then": [
+   "one yes-or-no question; in doubt, yes",
+   "with yes, the host's models only suggest to the host and never answer a person themselves"
+  ],
+  "rules": [
+   "N616 item 13",
+   "N616 item 22"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "FIRST-16",
+  "area": "The first person ever sets up a chat",
+  "title": "A new host starts blank",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "someone starts the setup",
+  "when": "the first suggestions come",
+  "then": [
+   "nothing is copied from Artur's chat or anyone else's",
+   "the choices come from what this person said they do; with no provider answer, from rules"
+  ],
+  "rules": [
+   "N612 item 2",
+   "N616 item 2"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "VIS-01",
+  "area": "What a visitor meets",
+  "title": "The host's hello and first questions",
+  "screen": "chat.person",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a person opens a host's link and joins",
+  "when": "their chat with the host opens",
+  "then": [
+   "the host's own hello is the first line",
+   "then the host's first questions, one at a time",
+   "the host's taps under “Tell me what you'd like to do, and I'll show you where.”, with “Something else”"
+  ],
+  "rules": [
+   "N616 item 4",
+   "N604",
+   "N590 item 2"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "VIS-02",
+  "area": "What a visitor meets",
+  "title": "The bar follows what the host takes",
+  "screen": "chat.person",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the host ticked what people send",
+  "when": "the person is about to send something",
+  "then": [
+   "a recording: the black button; a message: the box; both: the box with the record button; a photo: “Add a photo”",
+   "the bar is the locked two places, never grey"
+  ],
+  "rules": [
+   "N610",
+   "N616 item 5"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "VIS-03",
+  "area": "What a visitor meets",
+  "title": "They get back the output the host chose",
+  "screen": "chat.person",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the person sent something",
+  "when": "it has been taken in",
+  "then": [
+   "an answer, their own words tidied, or what to do next, as the host chose",
+   "it says who it is from: the host, or “{name}'s assistant” with its mark"
+  ],
+  "rules": [
+   "N612 item 3",
+   "N616 item 4",
+   "N578 item 1"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "VIS-04",
+  "area": "What a visitor meets",
+  "title": "Each model's line names whose model it is",
+  "screen": "chat.person",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the host's chat has models",
+  "when": "the output has come",
+  "then": [
+   "one line per model, in the host's order",
+   "under each: the model's name and whose it is",
+   "words only: no score and no number about the person"
+  ],
+  "rules": [
+   "N616 item 4",
+   "N616 item 12"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "VIS-05",
+  "area": "What a visitor meets",
+  "title": "“Was this useful?” never blocks the next one",
+  "screen": "chat.person",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the person read what came back",
+  "when": "the last line is shown",
+  "then": [
+   "“Was this useful?” with Yes, No and Skip",
+   "any of the three, or none, and the bar is ready for the next thing",
+   "the answer is kept with what the person did next"
+  ],
+  "rules": [
+   "N616 item 6"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "VIS-06",
+  "area": "What a visitor meets",
+  "title": "Before the minimum, the question waits for the host",
+  "screen": "chat.person",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the host's assistant has fewer than 20 of the host's own answers",
+  "when": "a person asks something",
+  "then": [
+   "nothing is answered for the host",
+   "the question is in the host's Will; the host answers it themself"
+  ],
+  "rules": [
+   "N606",
+   "N616 item 11"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "VIS-07",
+  "area": "What a visitor meets",
+  "title": "In a health, law or money chat the model only suggests to the host",
+  "screen": "chat.person",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the host answered yes to health, law or money",
+  "when": "a person sends something",
+  "then": [
+   "the person gets nothing from a model",
+   "the host sees the model's suggestion in their Will and sends their own answer"
+  ],
+  "rules": [
+   "N616 item 13"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "LEARN-01",
+  "area": "A model that learns",
+  "title": "Settled answers train a small head on a shared reader",
+  "screen": "models",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a model with a question and three answers has settled answers",
+  "when": "training runs",
+  "then": [
+   "each example is read once by the shared reader for its kind (voice or text)",
+   "one small head per model is fitted on the settled answers only",
+   "an exam example, a private example of another model and a withdrawn person's example are never read"
+  ],
+  "rules": [
+   "N616 item 8",
+   "N582 item 2",
+   "N615 item 2"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "LEARN-02",
+  "area": "A model that learns",
+  "title": "The model's answer comes from its head",
+  "screen": "models",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a model has a trained head",
+  "when": "it is asked about a new example",
+  "then": [
+   "the answer is one of its three answers, from the head",
+   "“sure” comes from the head's own measured confidence, never from a general model's claim"
+  ],
+  "rules": [
+   "N616 item 8",
+   "N594"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "LEARN-03",
+  "area": "A model that learns",
+  "title": "The owner's check is ten unseen examples",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the owner answered the first 10",
+  "when": "the model is checked",
+  "then": [
+   "ten examples the model has not seen are shown, the model's guess first",
+   "the owner taps Keep or Change on each",
+   "none of the first 10 is among them"
+  ],
+  "rules": [
+   "N616 item 23"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "LEARN-04",
+  "area": "A model that learns",
+  "title": "Two gates",
+  "screen": "models",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a model passed its owner's check",
+  "when": "it is used",
+  "then": [
+   "it may answer in its owner's chat",
+   "it cannot be shared for tokens or sold until it passes the full exam"
+  ],
+  "rules": [
+   "N616 item 10"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "LEARN-05",
+  "area": "A model that learns",
+  "title": "A version is scored on the exam by the app",
+  "screen": "models",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a new version is trained",
+  "when": "it is recorded",
+  "then": [
+   "its exam result is computed on the exam examples, with the sign test against the version before",
+   "nobody can enter “passed” by hand"
+  ],
+  "rules": [
+   "N615 item 3"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "LEARN-06",
+  "area": "A model that learns",
+  "title": "No photo model is offered",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a host's people send photos",
+  "when": "the setup reaches the models",
+  "then": [
+   "no model that reads a photo is offered",
+   "the host sees the photo and answers"
+  ],
+  "rules": [
+   "N616 item 9"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "PIPE-01",
+  "area": "Tight model pipes",
+  "title": "An exam example, or your own, cannot be answered",
+  "screen": "models",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a teacher knows the id of an exam example, or added an example",
+  "when": "they send an answer to it",
+  "then": [
+   "the answer is refused, not stored"
+  ],
+  "rules": [
+   "N615 item 2"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "PIPE-02",
+  "area": "Tight model pipes",
+  "title": "A newcomer is measured against trusted teachers only",
+  "screen": "models",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "two new teachers answer the same examples",
+  "when": "trust is worked out",
+  "then": [
+   "neither is admitted on the other's answers"
+  ],
+  "rules": [
+   "N615 item 2"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "PIPE-03",
+  "area": "Tight model pipes",
+  "title": "Turning the training yes off reaches every model",
+  "screen": "settings",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a person's Takes are examples in more than twenty models",
+  "when": "they turn the training yes off",
+  "then": [
+   "their examples leave every model at the next run"
+  ],
+  "rules": [
+   "N615 item 2",
+   "N575"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "PIPE-04",
+  "area": "Tight model pipes",
+  "title": "Counts read every row",
+  "screen": "models",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a model has more than a thousand answers",
+  "when": "its counts are shown",
+  "then": [
+   "every answer is counted"
+  ],
+  "rules": [
+   "N615 item 2"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "PIPE-05",
+  "area": "Tight model pipes",
+  "title": "Each model's exam has its own people",
+  "screen": "models",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "the same person's Takes reach two models",
+  "when": "each model sets its exam aside",
+  "then": [
+   "being in one model's exam does not put them in the other's",
+   "a moment sealed in one model's exam is not served to the same teacher in another model"
+  ],
+  "rules": [
+   "N615 item 2"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "PIPE-06",
+  "area": "Tight model pipes",
+  "title": "A version knows what it learned from",
+  "screen": "models",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a version is recorded",
+  "when": "a person's data is deleted or withdrawn",
+  "then": [
+   "every version that learned from it is found and marked to retrain"
+  ],
+  "rules": [
+   "N615 item 3"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "PIPE-07",
+  "area": "Tight model pipes",
+  "title": "A paid answer is charged once",
+  "screen": "tokens",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a buyer's call is retried with the same key",
+  "when": "it arrives twice",
+  "then": [
+   "one charge, one answer"
+  ],
+  "rules": [
+   "N615 item 3"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "PIPE-08",
+  "area": "Tight model pipes",
+  "title": "The monthly limit cannot be raced",
+  "screen": "tokens",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "two answers arrive at once at the limit's edge",
+  "when": "both are charged",
+  "then": [
+   "only one passes"
+  ],
+  "rules": [
+   "N615 item 3"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "PIPE-09",
+  "area": "Tight model pipes",
+  "title": "Invited after going public does not open private examples",
+  "screen": "models",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a model went public",
+  "when": "the owner invites a teacher afterwards",
+  "then": [
+   "that teacher is not sent the examples that were private before"
+  ],
+  "rules": [
+   "N615 item 2"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "TOK-01",
+  "area": "Tokens in a chat",
+  "title": "A host pays when someone else's model runs in their chat",
+  "screen": "tokens",
+  "prototype": "Jump to… A second person sets up: models to choose from, and what it costs",
+  "given": "a host's chat has another person's model",
+  "when": "it runs for one of the host's people",
+  "then": [
+   "the host's tokens are charged the owner's price, once",
+   "the person pays nothing and sees no price"
+  ],
+  "rules": [
+   "N607",
+   "N616 item 1"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "TOK-02",
+  "area": "Tokens in a chat",
+  "title": "Out of tokens, the model is skipped, the chat goes on",
+  "screen": "chat.person",
+  "prototype": "Jump to… A second person sets up: models to choose from, and what it costs",
+  "given": "the host has too few tokens",
+  "when": "a person sends something",
+  "then": [
+   "that model's line is left out",
+   "the host is told in their Will; the person's chat is not held up"
+  ],
+  "rules": [
+   "N607",
+   "Never 3"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": "Drafted: what happens when the host has no tokens is not decided."
+ },
+ {
+  "id": "TOK-03",
+  "area": "Tokens in a chat",
+  "title": "Earned tokens are credited every month, with no minimum",
+  "screen": "tokens",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a teacher's or an owner's model earned tokens last month",
+  "when": "the month is closed",
+  "then": [
+   "the tokens are credited to spend in the app",
+   "nothing is paid out in money"
+  ],
+  "rules": [
+   "N614",
+   "N616 item 15"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "SMALL-01",
+  "area": "Small pieces",
+  "title": "The training-yes card",
+  "screen": "chat.person",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a person in a host's chat has not said the training yes",
+  "when": "the host's model would learn from what they send",
+  "then": [
+   "a card: “Help {name}'s model learn”, with “Yes, help it learn” and “Not now”"
+  ],
+  "rules": [
+   "N605",
+   "N616 item 19"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "SMALL-02",
+  "area": "Small pieces",
+  "title": "“Record Take 2” is faded until the walk is done",
+  "screen": "chat.person",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a speaker has a walk not yet done",
+  "when": "the bar shows “Record Take 2”",
+  "then": [
+   "it is faded until the walk is done, then full black"
+  ],
+  "rules": [
+   "N592",
+   "N616 item 18"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ },
+ {
+  "id": "SMALL-03",
+  "area": "Small pieces",
+  "title": "A wish is one email",
+  "screen": "np",
+  "prototype": "Jump to… The first person ever: the list of chats, then Will",
+  "given": "a host asks for something no piece does yet",
+  "when": "they send it",
+  "then": [
+   "Will says it isn't available yet",
+   "one email reaches the founder: a design element request, with who asked and what"
+  ],
+  "rules": [
+   "N613",
+   "N616 item 16"
+  ],
+  "code": [],
+  "tests": [],
+  "evals": [],
+  "status": "not built",
+  "note": null
+ }
+]
