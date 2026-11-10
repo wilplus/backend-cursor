@@ -576,6 +576,8 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-11-10 · N615 · PIPE-01: an answer on an exam case is refused for anyone but the two experts who set the exam aside, and a teacher's second answer on an example they added is refused; neither is stored · BE
+
 - 2026-11-10 · N563 · After Make public, a private example is sent only to the owner and the teachers invited to the model, never to someone who came in at the door (the queue and the answer route) · BE
 - 2026-11-09 · N528, N531, N566, N577, N583 · F7: a model's API and its money (0521): a model's card, "Try it", the price above the running cost with its split, a key shown once and stored as a hash, test keys free for 100 answers, live keys paid in tokens up to a monthly limit, versions with fixed shares, earnings and payouts in tokens, the teachers' own data to download (outside review: approved as written, N611 item 7) · BE
 - 2026-11-09 · N528, N563 · F5's actions on `/v2/models`: an invite put off or accepted, through the inviter's own chat link (N598), an example added, a spoken answer as its words, Archive, Make public after its disclaimer, a recording to its words under the processing authorization and recording consent (never kept), the profile naming whose it is · BE

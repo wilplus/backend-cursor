@@ -277,11 +277,20 @@ def answer(database: Any, user_id: Any, example_id: Any, model_id: Any, step: st
     if rules.viewer_role(model, me) not in ("owner", "contributor"):
         raise _not_found()
     eid = _uuid(example_id)
-    rows = _rows(_table(database, EXAMPLES).select("id,model_id,private,snippet_id,known_answer")
+    rows = _rows(_table(database, EXAMPLES).select("id,model_id,private,snippet_id,known_answer,in_exam,added_by")
                  .eq("id", eid).eq("model_id", model["id"]).limit(1)) if eid else []
     if not rows:
         raise _not_found()
     example = rows[0]
+    # An exam case is answered only by the two experts who set it aside
+    # (N566 item 5); for anyone else it is not there (N615 item 2). The
+    # adder answered their own example when they added it: it counts once
+    # another teacher agrees, never on a second answer of theirs.
+    if example.get("in_exam") and str(example["id"]) not in {
+            str(c["id"]) for c in _exam_cases_for(database, me, [model["id"]])}:
+        raise _not_found()
+    if str(example.get("added_by") or "") == me:
+        raise ChatsError("OWN_EXAMPLE", "You added this example; another teacher answers it.", 409)
     if example.get("private") and model["id"] not in _sees_private(database, me, [model]):
         raise _not_found()
     wanting: list[dict] = []
