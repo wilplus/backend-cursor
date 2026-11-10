@@ -16885,3 +16885,71 @@ and "Your chat" is in Will's chat.
 
 No migration in this entry. No new words. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N636 · Three chats, each for one thing: Will, the speaking chat and
+Principles. And a model is made in blocks, one choice per screen**
+(founder, the Claude Code chat, 11 November 2026, after the live trial:
+"model set up stays in will; speaking related go only to the specialist
+chat; and the principles have separate chat called principles"; "A pinned
+speaking chat for everyone"; "Principles is the strengths, all connected to
+dump screen and the principles and creative expressions and all that"; on
+the model setup's pages: "it should be like Lego building blocks", "make
+this page minimalistic with amount of text and elements", "there should be
+no small grey text", "to have no option to edit it or reject it, and it is
+not clear what it does"; "Please fix those latest that I sent"). Amends
+N635 and N634 item 1.
+
+For whoever has the ring row `chat_builder`:
+
+1. **Three pinned chats.** Will holds the model, the chat's setup and what
+   needs you (N629, N635). The speaking chat holds everything about Takes
+   and the record button (N635), and everyone has it, pinned, named
+   "Speaking coach". "Principles" holds the principles coaching: strengths,
+   everything that comes from the dump screen, the principles, creative
+   expressions and what belongs with them. Nothing is stored differently;
+   each chat shows its own kind (N635 item 4), and what is unread is
+   counted per chat.
+2. **A person can still type in the speaking chat:** the record button at
+   rest, the text field when Will asks for words or the person taps to
+   type, as today.
+3. **What is about your own chat shows in Will's chat:** "Copy my link ›"
+   and "Your questions for people who join ›".
+4. **The line after a Take** for someone who chose to share what they know
+   (N634 item 3) becomes: "Next, open Will, and set up your chat."
+5. **Every link that opens a Take opens the speaking chat:** the Ideal
+   Text, the coach's feedback. The promise that the coach's link opens the
+   coach's feedback stands.
+6. **A model is made in blocks,** one choice per screen, with few words and
+   no small grey text, as the pinned prototype shows:
+   - "Your own model answers one question the way you would." and "You
+     teach it by answering examples. It needs about 200 to get good.", then
+     "Not now" or "Train my own". Was: three cards, "What it is", "Worth
+     it" and "Not worth it".
+   - "What should it give back?": "A pick from a list"; "A score, not ready
+     yet"; "An answer in your words, not ready yet". Only a choice that is
+     ready can be tapped.
+   - "What should it be built on?": "GPT"; "Claude, not ready yet";
+     "WillpowerLab's own, not ready yet". Was: each with a line under it
+     (N634 item 1).
+   - "What should it notice?": the question and its answers, with Keep,
+     Change and Type my own.
+   - "Your model. Tap a block to change it.": four blocks, the question,
+     "It gives back a pick from a list", "Built on GPT" and "Taught by
+     you". Tapping a block changes that block alone and comes back. Then
+     "Teach it".
+7. **One way to start a model.** On the AI models page, "Start your own"
+   and "Start the first one" open these same blocks. The earlier setup in
+   three chapters ("Describe", "Shape", "Share") is not started anew; a
+   draft already begun in it can still be continued, and nothing it made is
+   removed.
+
+**What stops for people on the ring:** starting a model through the
+three-chapter setup; in Will's chat, the principles coaching's rows.
+
+**Open:** where the three-chapter setup's later parts go (the experts'
+exam, uploading examples, making a model public, inviting, selling); the
+teaching screens for a score and for an answer in your words; whether "no
+small grey text" holds for the rest of the setup.
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup);
+frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) for items 1 to 5.
