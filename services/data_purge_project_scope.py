@@ -186,6 +186,10 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # A Take's suggestion of someone new (N477, N478): the account's, as
     # the chats are, whether the person recorded the Take or was suggested.
     "take_matches", "take_matches_suggested",
+    # A business's community (N559 item 1): who joined, the one offer, the
+    # community a person holds, and whose link an offer came by.
+    "business_community_members", "business_community_offers",
+    "business_communities", "business_community_offers_inviter",
     # Where the person's iPhone is reached (N385): the account's.
     "push_devices",
     # The plan (N203): one per person, across their projects; the account
