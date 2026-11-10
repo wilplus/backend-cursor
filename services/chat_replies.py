@@ -238,7 +238,7 @@ def on_question(database: Any, host_id: Any, asker_id: Any, thread_id: Any, mess
     try:
         if not assistants.on(database, host):
             return None
-        recipe = chat_recipes.for_visitors(chat_recipes.mine(database, host))
+        recipe = chat_recipes.for_visitors(chat_recipes.settle(database, host, chat_recipes.mine(database, host)))
         if recipe is None:
             return None
         who = recipe.get("who") or "shadow"

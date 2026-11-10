@@ -46,6 +46,7 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          FIRST-24 -> LearningTest::test_a_model_still_learning_is_listed_free_and_its_host_teaches_it
          FIRST-24 -> LearningTest::test_it_says_nothing_costs_nothing_and_the_hosts_own_words_teach_it
          FIRST-24 -> LearningTest::test_once_it_passes_the_host_keeps_it_at_the_price_they_see
+         FIRST-24 -> LearningTest::test_one_that_passes_free_answers_without_a_price_to_accept
          VIS-08   -> MeetTest::test_the_hello_shows_once_in_the_chat_they_share
          VIS-08   -> MeetTest::test_each_writes_to_the_others_chat_both_ways
          VIS-08   -> MeetTest::test_without_the_other_persons_open_chat_nothing_changes
@@ -826,6 +827,20 @@ class LearningTest(_Tokens):
         self.assertIn(("There are some flakes.", "Ola's model"),
                       self._lines(self._send(chat, "And the ends?").get_json()["reply"]))
         self.assertEqual([(u, n) for u, n, _r in self.ledger], [(TOMEK, 300)])
+
+    def test_one_that_passes_free_answers_without_a_price_to_accept(self):
+        """FIRST-24: when it passes and Ola's price is 0, Tomek has nothing
+        to accept: on the next read it is a used card at 0, it gives its
+        line and nothing is charged."""
+        chat = self._chat()
+        self._passes()
+        next(m for m in self.store.tables["ai_models"] if m["id"] == LM)["price_units"] = 0
+        self.assertEqual(self._lines(self._send(chat).get_json()["reply"]),
+                         [("Your scalp looks dry here.", "Tomek's model"), ("There are some flakes.", "Ola's model")])
+        self.assertEqual(self.ledger, [])
+        card = self._read()["recipe"]["models"][1]
+        self.assertEqual((card.get("learning"), card["price"]), (None, 0))
+        self.assertEqual(self._read()["price_changes"], [])
 
 
 class MeetTest(_Base):

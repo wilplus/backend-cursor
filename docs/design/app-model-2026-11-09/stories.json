@@ -10376,7 +10376,7 @@
    "tests/test_blank_setup.py"
   ],
   "evals": [],
-  "note": "GET /v2/chats/setup/models gives learning true and price 0; the card is saved with learning true; the host joins through the models' own door (model_launchpad_store.enter) and each answer in their own words is an example through “Add an example” (model_launchpad_store.add_example), answered by the model's other teachers. A voice answer teaches nothing yet."
+  "note": "GET /v2/chats/setup/models gives learning true and price 0; the card is saved with learning true; the host joins through the models' own door (model_launchpad_store.enter) and each answer in their own words is an example through “Add an example” (model_launchpad_store.add_example), answered by the model's other teachers. A voice answer teaches nothing yet. One that passes while its owner's price is 0 has nothing to accept: on the next read of the recipe (the host's setup, or a person's message) its card becomes a used card at 0 and gives its line, with nothing charged or credited."
  },
  {
   "id": "SMALL-04",
