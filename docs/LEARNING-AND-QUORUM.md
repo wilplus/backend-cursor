@@ -576,6 +576,12 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-11-10 · N615 · PIPE-09: the moment a model first goes public is kept in its setup (`setup.public_at`, no new column); a teacher invited after it is never sent, and cannot answer or download, the examples that were private; a model that went public before the moment was kept opens them to no invited teacher · BE
+- 2026-11-10 · N615 · PIPE-04: the launchpad's counts (counted answers, exam cases, teachers, a teacher's own part) read every row, page by page, never the server's first thousand · BE
+- 2026-11-10 · N615 · PIPE-03: a speaker whose training yes is off leaves every model on the next run, however many models hold their Takes (the let-go pass reads every model, page by page; only the gathering stays bounded) · BE
+- 2026-11-10 · N615 · PIPE-02: the quiet trust check measures a newcomer against trusted teachers' answers and known answers only, never against other newcomers · BE
+- 2026-11-10 · N615 · PIPE-01: an answer on an exam case is refused for anyone but the two experts who set the exam aside, and a teacher's second answer on an example they added is refused; neither is stored · BE
+
 - 2026-11-10 · N563 · After Make public, a private example is sent only to the owner and the teachers invited to the model, never to someone who came in at the door (the queue and the answer route) · BE
 - 2026-11-09 · N528, N531, N566, N577, N583 · F7: a model's API and its money (0521): a model's card, "Try it", the price above the running cost with its split, a key shown once and stored as a hash, test keys free for 100 answers, live keys paid in tokens up to a monthly limit, versions with fixed shares, earnings and payouts in tokens, the teachers' own data to download (outside review: approved as written, N611 item 7) · BE
 - 2026-11-09 · N528, N563 · F5's actions on `/v2/models`: an invite put off or accepted, through the inviter's own chat link (N598), an example added, a spoken answer as its words, Archive, Make public after its disclaimer, a recording to its words under the processing authorization and recording consent (never kept), the profile naming whose it is · BE

@@ -116,7 +116,11 @@ def _stored(draft: dict) -> dict:
 def _write(database: Any, model: dict, draft: dict, *, step: Optional[str] = None,
            status: Optional[str] = None) -> None:
     """The draft kept, and the model's row kept in step with it: its name,
-    what it is about, its recipe card, who can see it, where it stopped."""
+    what it is about, its recipe card, who can see it, where it stopped.
+    The moment it first goes public is kept in the draft (N615 item 2)."""
+    kept = lp.mark_public(draft, draft.get("visibility") == "public")
+    draft.clear()
+    draft.update(kept)
     change: dict[str, Any] = {
         "setup": _stored(draft), "updated_at": _now(),
         "name": (S._clean(draft.get("name"), 80) or model.get("name") or rules.WORDS["your_draft"]),

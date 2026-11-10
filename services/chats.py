@@ -435,6 +435,9 @@ def _shown(row: dict, me: str, authors: dict[str, str],
     in ms, for the strip that follows its voice; its words are its Take's."""
     author = str(row["author_member_id"])
     meta = dict(row.get("meta") or {})
+    # A drafted answer waits for the host in their Will (services/
+    # chat_replies.py): nobody reads it on the question itself.
+    meta.pop("draft", None)
     if author != me:
         # An answer's Take is the speaker's own: the person it was sent to
         # gets just the answer (N336 item 2).
@@ -591,9 +594,19 @@ def _post_text(database: Any, user_id: str, me: dict, said: Any, to: Any = None)
     if not rows:
         raise ChatsError("NOT_SAVED", "Could not send it.", 503)
     _tell(database, me, rows[0])
+    reply = None
     if asks and host:
         chat_widget.bundle(database, host, user_id, thread, str(rows[0]["id"]), words)
-    return {"message": _shown(rows[0], str(me["id"]), _authors(database, thread))}
+        # A host's blank-setup chat gets back what the host chose, or waits
+        # for the host (services/chat_replies.py; N612 item 3, N606).
+        from services import chat_replies
+        reply = chat_replies.on_question(database, host, user_id, thread, str(rows[0]["id"]), words)
+    shown = {"message": _shown(rows[0], str(me["id"]), _authors(database, thread))}
+    if reply is not None:
+        shown["reply"] = {**reply, "messages": [_shown(m, str(me["id"]), _authors(database, thread))
+                                                for m in reply.get("messages") or []]} \
+            if reply.get("messages") else reply
+    return shown
 
 
 def _typed_answer(database: Any, user_id: str, me: dict, words: str, to: Any) -> dict:

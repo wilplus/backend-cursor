@@ -581,6 +581,108 @@ def v2_chats_recipe_setup_answer():
         db, str(request.user_id), body)))
 
 
+# ── The blank setup and what a person meets (services/chat_recipes.py,
+#    services/chat_replies.py; N612 to N618; the contract in PR #1893) ──
+
+@v2_bp.route("/chats/setup", methods=["GET"])
+@require_auth
+def v2_chats_blank_setup():
+    """My chat as the blank setup keeps it, its parts, my own chat and its cost."""
+    from services import chat_recipes
+    from services.chat_links import name_of
+    payload = getattr(request, "token_payload", None)
+    return _builder_or_404(lambda: _run("setup read", lambda: chat_recipes.read(
+        db, str(request.user_id), name_of(payload))))
+
+
+@v2_bp.route("/chats/setup/start", methods=["POST"])
+@limiter.limit("30 per hour", scope="chats_blank_setup_start")
+@require_auth
+@phase1_provider_route
+def v2_chats_blank_setup_start():
+    """"What do you do?": a blank recipe with Will's suggestions (0 or 1 call)."""
+    from services import chat_recipes
+    body = request.get_json(silent=True)
+    return _builder_or_404(lambda: _run("setup start", lambda: chat_recipes.start(
+        db, str(request.user_id), body)))
+
+
+@v2_bp.route("/chats/setup/models", methods=["GET"])
+@require_auth
+def v2_chats_blank_setup_models():
+    """"Models you can use." (N617 item 1)."""
+    from services import chat_recipes
+    return _builder_or_404(lambda: _run("setup models", lambda: chat_recipes.shared_models(
+        db, str(request.user_id))))
+
+
+@v2_bp.route("/chats/setup/try", methods=["POST"])
+@limiter.limit("120 per hour", scope="chats_blank_setup_try")
+@require_auth
+@phase1_provider_route
+def v2_chats_blank_setup_try():
+    """"Test my chat" (N618 item 8): what a person would get back; 1 call."""
+    from services import chat_replies
+    from services.chat_links import name_of
+    payload = getattr(request, "token_payload", None)
+    body = request.get_json(silent=True)
+    return _builder_or_404(lambda: _run("setup try", lambda: chat_replies.try_it(
+        db, str(request.user_id), name_of(payload), body)))
+
+
+@v2_bp.route("/chats/setup/edit", methods=["POST"])
+@limiter.limit("120 per hour", scope="chats_blank_setup_edit")
+@require_auth
+def v2_chats_blank_setup_edit():
+    """"I want to edit my chat", in any words: the parts open again."""
+    from services import chat_recipes
+    body = request.get_json(silent=True)
+    return _builder_or_404(lambda: _run("setup edit", lambda: chat_recipes.edit(
+        db, str(request.user_id), body)))
+
+
+@v2_bp.route("/chats/setup/drafts", methods=["GET"])
+@require_auth
+def v2_chats_blank_setup_drafts():
+    """In my Will: what people asked, with the drafted answer, not yet sent."""
+    from services import chat_replies
+    return _builder_or_404(lambda: _run("setup drafts", lambda: chat_replies.drafts(
+        db, str(request.user_id))))
+
+
+@v2_bp.route("/chats/setup/drafts/<message_id>/send", methods=["POST"])
+@limiter.limit("600 per hour", scope="chats_blank_setup_send")
+@require_auth
+def v2_chats_blank_setup_send(message_id):
+    """The drafted answer, or my own words, sent from me."""
+    from services import chat_replies
+    body = request.get_json(silent=True)
+    return _builder_or_404(lambda: _run("setup send", lambda: chat_replies.send_draft(
+        db, str(request.user_id), message_id, body)))
+
+
+@v2_bp.route("/chats/setup/<part>", methods=["PUT"])
+@limiter.limit("600 per hour", scope="chats_blank_setup_part")
+@require_auth
+def v2_chats_blank_setup_part(part):
+    """One decision, Keep or Change, saved (N616 item 7)."""
+    from services import chat_recipes
+    body = request.get_json(silent=True)
+    return _builder_or_404(lambda: _run("setup part", lambda: chat_recipes.set_part(
+        db, str(request.user_id), part, body)))
+
+
+@v2_bp.route("/chats/<thread_id>/messages/<message_id>/useful", methods=["POST"])
+@limiter.limit("600 per hour", scope="chats_useful")
+@require_auth
+def v2_chats_useful(thread_id, message_id):
+    """"Was this useful?": Yes, No or Skip, kept on the answer (N616 item 6)."""
+    from services import chat_replies
+    body = request.get_json(silent=True)
+    return _run("useful", lambda: chat_replies.useful(
+        db, str(request.user_id), thread_id, message_id, body))
+
+
 # ── One recording answers everyone who asked (services/question_bundles.py; N584)
 
 @v2_bp.route("/chats/bundles", methods=["GET"])

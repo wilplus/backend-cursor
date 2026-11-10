@@ -30,8 +30,10 @@ reads their words.
 The sealed exam (N566 items 5 and 6): whole speakers at a time go to a
 model's exam until it holds 100 cases, so no speaker is on both sides.
 
-Runs from the periodic sweep (``services/pipeline_jobs.py``), a bounded
-number of models a run, and is safe to run twice: a moment goes into a
+Runs from the periodic sweep (``services/pipeline_jobs.py``): a withdrawn
+yes is let go in every model each run, however many models there are
+(N615 item 2); the gathering is a bounded number of models a run. It is
+safe to run twice: a moment goes into a
 model once (0520's ``ai_model_examples_take_moment_once``).
 """
 from __future__ import annotations
@@ -205,13 +207,55 @@ def gather_for_model(database: Any, model: dict) -> dict:
     return {"added": _insert(database, model, kept, new) if new else 0, "removed": removed}
 
 
+#: Rows read a request: PostgREST answers at most a thousand without a range.
+PAGE = 500
+
+
+def _all(make_query: Any) -> list[dict]:
+    """Every row a query matches, a page at a time (``make_query`` builds a
+    fresh query for each page), so nothing is past the server's cap."""
+    out: list[dict] = []
+    start = 0
+    while True:
+        rows = _rows(make_query().range(start, start + PAGE - 1))
+        out.extend(rows)
+        if len(rows) < PAGE:
+            return out
+        start += PAGE
+
+
+def _every_take_speaker(database: Any) -> list[str]:
+    """Every speaker with an example from their Takes in any model."""
+    rows = _all(lambda: _table(database, EXAMPLES).select("speaker_id").eq("source", "takes"))
+    return sorted({str(r["speaker_id"]) for r in rows if r.get("speaker_id")})
+
+
+def let_go_everywhere(database: Any) -> int:
+    """A speaker who no longer may teach leaves every model at once, however
+    many models hold their Takes (N575, N615 item 2): each speaker is checked
+    once a run, and their examples are taken out of all models together.
+    The gathering below is bounded; this is not."""
+    removed = 0
+    for speaker in _every_take_speaker(database):
+        if speaker_may_teach(database, speaker)["ok"]:
+            continue
+        gone = _rows(_table(database, EXAMPLES).delete().eq("source", "takes").eq("speaker_id", speaker))
+        removed += len(gone)
+    return removed
+
+
 def sweep(*, database: Any = None, limit: int = 20) -> dict:
-    """Every model that learns, up to ``limit`` a run. Never raises."""
+    """First every withdrawn yes, in every model; then every model that
+    learns gathers, up to ``limit`` a run. Never raises."""
     if database is None:
         from services.db import db as database
     out = {"models": 0, "added": 0, "removed": 0}
     try:
-        models = [m for m in _rows(_table(database, MODELS).select("id,owner_id,status,recipe"))
+        out["removed"] += let_go_everywhere(database)
+    except Exception:
+        logger.warning("model examples: a withdrawn yes could not be let go everywhere", exc_info=True)
+    try:
+        models = [m for m in _all(lambda: _table(database, MODELS).select("id,owner_id,status,recipe"))
                   if m.get("status") in ("learning", "ready")][:limit]
     except Exception:
         logger.warning("model examples: the models could not be read", exc_info=True)
