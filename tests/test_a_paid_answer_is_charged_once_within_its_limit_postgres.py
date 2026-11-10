@@ -15,9 +15,13 @@ OUTCOME
       is reserved, then the first reply once it is answered, nothing new
       reserved; another question with it is a "mismatch"; a released charge
       frees the key for a new try.
+  O4  Concurrent calls, all released together: with one Idempotency-Key,
+      exactly one is "reserved" and the rest "in_flight" or "replay", never
+      an error; at the limit's edge, exactly one is "reserved".
 PROVES   O1 -> test_the_charges_are_locked_to_the_backend
          O2 -> test_two_answers_at_the_limit_only_one_passes
          O3 -> test_the_same_idempotency_key_is_charged_once
+         O4 -> test_concurrent_calls_reserve_exactly_once
 WHY      Migration a_paid_answer_is_charged_once_within_its_limit (0523),
          applied twice in both rehearsal lanes (the reapply is its
          idempotency check).
@@ -138,3 +142,44 @@ def test_the_same_idempotency_key_is_charged_once(db):
     with pytest.raises(psycopg2.errors.UniqueViolation):
         _one(db, "INSERT INTO public.ai_model_charges(key_id, units, idempotency_key) VALUES (%s, 300, "
                  "'order-8') RETURNING id", (key,))
+
+
+def _together(n, work):
+    """``n`` connections run ``work`` at the same moment; each commits."""
+    conns = [psycopg2.connect(DSN) for _ in range(n)]
+    gate = threading.Barrier(n)
+    out: list = [None] * n
+
+    def run(i):
+        gate.wait()
+        try:
+            out[i] = work(conns[i])
+            conns[i].commit()
+        except Exception as e:  # noqa: BLE001 -- an error is a result the test refuses
+            out[i] = e
+            conns[i].rollback()
+    threads = [threading.Thread(target=run, args=(i,)) for i in range(n)]
+    try:
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=20)
+    finally:
+        for c in conns:
+            c.close()
+    return out
+
+
+def test_concurrent_calls_reserve_exactly_once(db):
+    key, _model, _version = _key(db, None)
+    asked = hashlib.sha256(b"How do I answer?").hexdigest()
+    same = _together(6, lambda c: _reserve(c, key, 300, "order-1", asked))
+    assert not [r for r in same if isinstance(r, Exception)], same
+    outcomes = [r[0] for r in same]
+    assert outcomes.count("reserved") == 1
+    assert set(outcomes) <= {"reserved", "in_flight", "replay"}
+
+    edge, _model, _version = _key(db, 300)
+    raced = _together(6, lambda c: _reserve(c, edge, 300))
+    assert not [r for r in raced if isinstance(r, Exception)], raced
+    assert sorted(r[0] for r in raced) == ["limit"] * 5 + ["reserved"]

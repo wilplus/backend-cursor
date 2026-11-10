@@ -174,7 +174,10 @@ BEGIN
     END IF;
 
     IF p_idempotency_key IS NOT NULL THEN
-        -- A key's replies are kept 24 hours, then let go.
+        -- A key's replies are kept 24 hours, then let go. Only this key's
+        -- rows that still hold an Idempotency-Key older than 24 hours are
+        -- touched. Lazy on purpose: a background sweep of keys that never
+        -- ask again is out of scope (the founder's review of 0523).
         UPDATE public.ai_model_charges c
            SET idempotency_key = NULL, request_hash = NULL, reply = NULL
          WHERE c.key_id = p_key_id
@@ -186,7 +189,8 @@ BEGIN
          WHERE c.key_id = p_key_id
            AND c.idempotency_key = p_idempotency_key
            AND c.status <> 'released'
-         LIMIT 1;
+         LIMIT 1
+           FOR UPDATE;
         IF FOUND THEN
             IF v_found.request_hash IS DISTINCT FROM p_request_hash THEN
                 RETURN QUERY SELECT 'mismatch'::TEXT, v_found.id, NULL::JSONB;
@@ -214,9 +218,34 @@ BEGIN
         END IF;
     END IF;
 
-    INSERT INTO public.ai_model_charges (key_id, units, idempotency_key, request_hash)
-    VALUES (p_key_id, p_units, p_idempotency_key, p_request_hash)
-    RETURNING id INTO v_id;
+    -- A second guard (the founder's review of 0523): the key row's lock above
+    -- already serialises every reserve for one key, so this handler should
+    -- never run; if two charges ever race for one (key, Idempotency-Key),
+    -- the unique index refuses the second and it answers as a retry does.
+    BEGIN
+        INSERT INTO public.ai_model_charges (key_id, units, idempotency_key, request_hash)
+        VALUES (p_key_id, p_units, p_idempotency_key, p_request_hash)
+        RETURNING id INTO v_id;
+    EXCEPTION WHEN unique_violation THEN
+        SELECT c.id, c.status, c.reply, c.request_hash INTO v_found
+          FROM public.ai_model_charges c
+         WHERE c.key_id = p_key_id
+           AND c.idempotency_key = p_idempotency_key
+           AND c.status <> 'released'
+         LIMIT 1
+           FOR UPDATE;
+        IF NOT FOUND THEN
+            RAISE;
+        END IF;
+        IF v_found.request_hash IS DISTINCT FROM p_request_hash THEN
+            RETURN QUERY SELECT 'mismatch'::TEXT, v_found.id, NULL::JSONB;
+        ELSIF v_found.status = 'answered' THEN
+            RETURN QUERY SELECT 'replay'::TEXT, v_found.id, v_found.reply;
+        ELSE
+            RETURN QUERY SELECT 'in_flight'::TEXT, v_found.id, NULL::JSONB;
+        END IF;
+        RETURN;
+    END;
     RETURN QUERY SELECT 'reserved'::TEXT, v_id, NULL::JSONB;
 END
 $$;

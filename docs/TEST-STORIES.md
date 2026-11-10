@@ -217,6 +217,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O1** The charges and the reserve function are the backend's only: RLS on, nothing for a browser role, the function executable by service_role alone.
 - **O2** (PIPE-08) Two reserves for one key at its limit's edge, on two connections at once: the second waits on the first's row lock and is refused; only one passes. The month counts answers given before the migration (ai_model_calls rows with no charge) and not released ones.
 - **O3** (PIPE-07) The same Idempotency-Key again: "in_flight" while the first is reserved, then the first reply once it is answered, nothing new reserved; another question with it is a "mismatch"; a released charge frees the key for a new try.
+- **O4** Concurrent calls, all released together: with one Idempotency-Key, exactly one is "reserved" and the rest "in_flight" or "replay", never an error; at the limit's edge, exactly one is "reserved".
 
 *Why:* Migration a_paid_answer_is_charged_once_within_its_limit (0523), applied twice in both rehearsal lanes (the reapply is its idempotency check).
 

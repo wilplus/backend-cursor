@@ -197,9 +197,13 @@ migration (ai_model_calls rows with no charge) and not released ones.
 O3  (PIPE-07) The same Idempotency-Key again: ""in_flight"" while the first
 is reserved, then the first reply once it is answered, nothing new
 reserved; another question with it is a ""mismatch""; a released charge
-frees the key for a new try.","O1 -> test_the_charges_are_locked_to_the_backend
+frees the key for a new try.
+O4  Concurrent calls, all released together: with one Idempotency-Key,
+exactly one is ""reserved"" and the rest ""in_flight"" or ""replay"", never
+an error; at the limit's edge, exactly one is ""reserved"".","O1 -> test_the_charges_are_locked_to_the_backend
 O2 -> test_two_answers_at_the_limit_only_one_passes
-O3 -> test_the_same_idempotency_key_is_charged_once","Migration a_paid_answer_is_charged_once_within_its_limit (0523), applied twice in both rehearsal lanes (the reapply is its idempotency check)."
+O3 -> test_the_same_idempotency_key_is_charged_once
+O4 -> test_concurrent_calls_reserve_exactly_once","Migration a_paid_answer_is_charged_once_within_its_limit (0523), applied twice in both rehearsal lanes (the reapply is its idempotency check)."
 tests/test_a_pair_remembers_the_yes_postgres.py,Story,"As a speaker, I want my coached pairs released for training only while my yes is active, and pulled back if I withdraw, so that withdrawing really stops their use.","O1  A pair is allowed into training only while my training yes is
 active; withdrawing turns it off.
 O2  A pair leaves once: a released pair cannot be released again.
