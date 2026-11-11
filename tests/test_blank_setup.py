@@ -29,6 +29,8 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          FIRST-22 -> SetupTest::test_who_answers_is_three_plain_choices
          N642.1   -> SetupTest::test_a_chat_has_a_name_its_first_name_until_given
          N642.1   -> VisitorTest::test_people_who_come_read_the_chats_name
+         N642.3   -> SetupTest::test_live_reads_what_a_person_meets_and_can_be_tried
+         N642.3   -> TokensTest::test_my_own_trial_answers_at_once_keeps_nothing_costs_nothing
          N641.1   -> SetupTest::test_the_feedback_walk_is_kept_in_a_chat_that_takes_a_recording
          N641.2   -> SetupTest::test_i_want_this_tells_the_founder_once
          N641.2   -> SetupTest::test_the_ask_is_kept_when_the_mail_cannot_go
@@ -472,7 +474,10 @@ class SetupTest(_Base):
         link = self._link(TOMEK).get_json()
         self.assertEqual(own, {"title": "Tomek", "named": False, "line": "Hi. Send me a photo of your scalp, and tell me what worries you.",
                                "link": link,
-                               "join_line": "People come to Tomek with hair and scalp worries."})
+                               "join_line": "People come to Tomek with hair and scalp worries.",
+                               "about": [], "hello": "Hi. Send me a photo of your scalp, and tell me what worries you.",
+                               "taps": ["Look at my scalp", "My hair is falling out", "Which shampoo", "Something else"],
+                               "can_try": True})
         self.assertEqual(link["path"], f"/c/{link['token']}")
 
     def test_to_change_the_chat_tell_will(self):
@@ -484,6 +489,25 @@ class SetupTest(_Base):
         self.assertEqual([p["title"] for p in res["parts"]],
                          ["Name", "Why people come", "They send", "They get back", "Your hello",
                           "First questions", "They can ask", "Your models", "Who answers"])
+
+    def test_live_reads_what_a_person_meets_and_can_be_tried(self):
+        """N642.3: Live shows the chat as people meet it, the visitor's host
+        read's own lines (about, hello, taps with "Something else" last),
+        and the switch shows once there is something to try."""
+        self.assertFalse(self._read()["can_try"])
+        self._start()
+        self._put("hello", "Welcome. Show me.")
+        self._put("taps", ["One", "Two"])
+        read = self._read()
+        own = read["own_chat"]
+        self.assertTrue(read["can_try"] and own["can_try"])
+        self.assertEqual((own["hello"], own["taps"], own["about"]),
+                         ("Welcome. Show me.", ["One", "Two", "Something else"], []))
+        # The same lines a person who comes reads in the chat's header.
+        self._put("live", True)
+        chat = self._join(PIOTR, self._link(TOMEK).get_json()["token"]).get_json()["chat"]["id"]
+        host = self.client.get(f"/v2/chats/{chat}/host", headers=self._as(PIOTR)).get_json()["host"]
+        self.assertEqual((host["hello"], host["taps"], host["about"]), (own["hello"], own["taps"], own["about"]))
 
     def test_a_chat_has_a_name_its_first_name_until_given(self):
         """N642.1: "Your chat is called:" with three suggestions from the
@@ -806,6 +830,29 @@ class TokensTest(_Tokens):
                                              "own": False, "model_id": JOB, "by": "Kasia", "price": 3}])
         self._answers(20)
         return chat
+
+    def test_my_own_trial_answers_at_once_keeps_nothing_costs_nothing(self):
+        """N642.3: the host's own trial answers at once whatever "Who
+        answers" says, before any minimum of answers; it writes no message
+        and no "Was this useful?" row; it never charges (no
+        pay_for_chat_line), and another person's model answers in it free."""
+        self._host(who="assistant", sensitive=False)  # no answers of the host's own yet
+        self._put("models", [self._model(), {"q": "Are there flakes?", "opts": ["Yes", "Somewhat", "No"],
+                                             "own": False, "model_id": JOB, "by": "Kasia", "price": 3}])
+        before = list(self.store.tables.get("chat_messages", []))
+        with patch("services.model_api_store.pay_for_chat_line",
+                   side_effect=AssertionError("a trial is never charged")):
+            for who in ("shadow", "you", "assistant"):
+                self._put("who", who)
+                res = self.client.post("/v2/chats/setup/try", json={"body": "My scalp itches."},
+                                       headers=self._as(TOMEK))
+                self.assertEqual(res.status_code, 200, who)
+                got = res.get_json()
+                self.assertNotIn("waits", got)
+                self.assertIn(("There are some flakes.", "Kasia's model"),
+                              [(m["body"], m["by"]) for m in got["messages"]], who)
+        self.assertEqual(self.store.tables.get("chat_messages", []), before)
+        self.assertEqual(self.ledger, [])
 
     def test_a_host_pays_when_someone_elses_model_runs_in_their_chat(self):
         """TOK-01: Kasia's model's line costs Tomek her price, once; Piotr,
