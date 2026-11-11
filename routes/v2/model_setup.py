@@ -103,6 +103,12 @@ def v2_model_setup_study(model_id):
 def v2_model_setup_data(model_id):
     from services import model_setup as rules
     from services import model_setup_store as store
+    if "file" not in request.files and request.is_json:
+        # The step's own answer, "I don't have any" ({}) or "Use this data"
+        # ({use: true}): this route shadows /setup/<step> for "data", so a
+        # JSON body is that step, never an upload without a file.
+        body = _body()
+        return _run("save", lambda: store.save(db, _me(), model_id, "data", body))
     name, data = _file(rules.MAX_UPLOAD_BYTES)
     return _run("data", lambda: store.read_data(db, _me(), model_id, name, data))
 

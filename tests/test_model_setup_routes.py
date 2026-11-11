@@ -46,6 +46,7 @@ PROVES   O1 -> ModelSetupRoutesTest::test_without_the_ring_or_as_someone_else_no
          O4 -> ModelSetupRoutesTest::test_the_first_take_fills_describe
          O5 -> ModelSetupRoutesTest::test_start_after_the_scale_leaves_a_checklist
          O6 -> ModelSetupRoutesTest::test_existing_data_counts_only_with_the_tick
+         O6 -> ModelSetupRoutesTest::test_the_data_step_takes_its_answer_as_well_as_a_file
          O7 -> ModelSetupRoutesTest::test_the_owner_answers_the_first_ten
          O8 -> ModelSetupRoutesTest::test_public_after_its_disclaimer_and_invites
          O9 -> ModelSetupRoutesTest::test_no_provider_call_without_authorization
@@ -246,6 +247,27 @@ class ModelSetupRoutesTest(unittest.TestCase):
         self.assertEqual(len(queue["examples"]), 60)
         self.assertNotIn("uploaded", str(queue))
         self.assertNotIn("machine", str(queue))
+
+    def test_the_data_step_takes_its_answer_as_well_as_a_file(self):
+        """The data step's answer reaches the step, not the upload: "I don't
+        have any" ({}) moves on; "Use this data" ({use: true}) needs a file
+        uploaded first, and after one, keeps it."""
+        mid, _ = self._begin()
+        self._through_describe(mid)
+        self._post(f"/v2/models/{mid}/setup/kind", {"parts": {"score": True}, "name": "Pitch Coach"})
+        self._post(f"/v2/models/{mid}/setup/scale", {"scale": DRAFT["scale"]})
+        none = self._post(f"/v2/models/{mid}/setup/data", {})
+        self.assertEqual(none.status_code, 200)
+        self.assertNotEqual(none.get_json().get("code"), "BAD_FILE")
+        self.assertTrue(self._model(mid)["setup"]["data"]["decided"])
+        self.assertEqual(self._post(f"/v2/models/{mid}/setup/data", {"use": True}).get_json()["code"], "NO_FILE")
+        rows = "".join(f"Pitch number {i} about our seed round,{1 + i % 5}\n" for i in range(20))
+        self.client.post(f"/v2/models/{mid}/setup/data", headers={"Authorization": "Bearer t"},
+                         data={"file": (io.BytesIO(("clip,score\n" + rows).encode()), "pitches.csv")},
+                         content_type="multipart/form-data")
+        use = self._post(f"/v2/models/{mid}/setup/data", {"use": True})
+        self.assertEqual(use.status_code, 200)
+        self.assertTrue(self._model(mid)["setup"]["data"].get("columns"))
 
     def test_the_owner_answers_the_first_ten(self):
         mid, _ = self._begin()
