@@ -612,6 +612,8 @@ FIRST-21 -> SetupTest::test_to_change_the_chat_tell_will
 FIRST-22 -> SetupTest::test_who_answers_is_three_plain_choices
 N642.1   -> SetupTest::test_a_chat_has_a_name_its_first_name_until_given
 N642.1   -> VisitorTest::test_people_who_come_read_the_chats_name
+N642.3   -> SetupTest::test_live_reads_what_a_person_meets_and_can_be_tried
+N642.3   -> TokensTest::test_my_own_trial_answers_at_once_keeps_nothing_costs_nothing
 N641.1   -> SetupTest::test_the_feedback_walk_is_kept_in_a_chat_that_takes_a_recording
 N641.2   -> SetupTest::test_i_want_this_tells_the_founder_once
 N641.2   -> SetupTest::test_the_ask_is_kept_when_the_mail_cannot_go

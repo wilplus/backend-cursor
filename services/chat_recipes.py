@@ -514,11 +514,17 @@ def join_line(recipe: Optional[dict], name: Any) -> Optional[str]:
 
 def own_chat(recipe: Optional[dict], name: Any) -> Optional[dict]:
     """The host's own chat in their list of chats, under its name (N618
-    item 8, N642 item 1); ``named`` says whether the host gave one."""
+    item 8, N642 item 1); ``named`` says whether the host gave one. For
+    Live (N642 item 3), what a person meets there, as the visitor's host
+    read gives it (``assistants.host_of``): ``about``, ``hello`` and
+    ``taps`` ("Something else" last); ``can_try``: the host can try it
+    ("Test my chat" answers from any saved recipe)."""
     if not recipe:
         return None
     return {"title": chat_name(recipe, name), "named": bool(str(recipe.get("name") or "").strip()),
-            "line": recipe.get("hello"), "join_line": join_line(recipe, name)}
+            "line": recipe.get("hello"), "join_line": join_line(recipe, name),
+            "about": list(recipe.get("about") or []), "hello": recipe.get("hello"),
+            "taps": taps_of(recipe), "can_try": True}
 
 
 def read(database: Any, user_id: Any, token_payload: Any) -> dict:
@@ -532,7 +538,7 @@ def read(database: Any, user_id: Any, token_payload: Any) -> dict:
     if chat is not None:
         chat["link"] = my_link(database, user_id, token_payload)
     return {"recipe": _with_walk(_with_base(recipe), person), "parts": parts(recipe, person) if recipe else [],
-            "own_chat": chat, "cost": cost(recipe), "skipped_models": skipped_models(database, user_id, recipe),
+            "own_chat": chat, "can_try": recipe is not None, "cost": cost(recipe), "skipped_models": skipped_models(database, user_id, recipe),
             "price_changes": price_changes(database, recipe), "spec_guess": spec_guess(database, user_id)}
 
 
