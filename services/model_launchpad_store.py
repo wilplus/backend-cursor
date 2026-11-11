@@ -343,7 +343,7 @@ def answer(database: Any, user_id: Any, example_id: Any, model_id: Any, step: st
     if not rows:
         raise _not_found()
     example = rows[0]
-    _may_answer(database, me, model, example)
+    _may_answer(database, me, model, example, step)
     wanting: list[dict] = []
     twins: list[dict] = []
     if not example.get("private") and example.get("snippet_id"):
@@ -367,12 +367,13 @@ def answer(database: Any, user_id: Any, example_id: Any, model_id: Any, step: st
             "trust": told}
 
 
-def _may_answer(database: Any, me: str, model: dict, example: dict) -> None:
+def _may_answer(database: Any, me: str, model: dict, example: dict, step: str) -> None:
     """Raise unless this teacher may answer this example."""
     # An exam case is answered only by the two experts who set it aside
     # (N566 item 5); for anyone else it is not there (N615 item 2). The
-    # adder answered their own example when they added it: it counts once
-    # another teacher agrees, never on a second answer of theirs.
+    # adder gives their own example a first answer on each step (as they
+    # add it, or by its id after a set is uploaded): it counts once another
+    # teacher agrees, never on a second answer of theirs (N645 item 4).
     if example.get("in_exam") and str(example["id"]) not in {
             str(c["id"]) for c in _exam_cases_for(database, me, [model["id"]])}:
         raise _not_found()
@@ -381,7 +382,9 @@ def _may_answer(database: Any, me: str, model: dict, example: dict) -> None:
     if not example.get("in_exam") and example.get("snippet_id") and str(example["snippet_id"]) in _sealed_to(
             database, me, [str(t["model_id"]) for t in _teaching(database, me)]):
         raise _not_found()
-    if str(example.get("added_by") or "") == me:
+    if str(example.get("added_by") or "") == me and _rows(
+            _table(database, ANSWERS).select("id").eq("example_id", str(example["id"]))
+            .eq("model_id", model["id"]).eq("teacher_id", me).eq("step", step).limit(1)):
         raise ChatsError("OWN_EXAMPLE", "You added this example; another teacher answers it.", 409)
     if example.get("private") and model["id"] not in _sees_private(database, me, [model]):
         raise _not_found()

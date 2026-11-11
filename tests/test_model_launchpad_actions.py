@@ -98,9 +98,17 @@ class ModelActionsTest(ModelRoutesTest):
         self.assertTrue(all(c["source"] == "teacher" and c["in_exam"] is False for c in made))
         pool = first_ten_pool(made, [])
         self.assertEqual([e["content"]["text"] for e in pool][:2], ["Second", "First"])
-        # the answer route still refuses the adder's own case: the adder answers it only as they add it
-        reply = self._post(f"/v2/models/{PITCH}/examples/{made[0]['id']}/answer", {"step": "rate", "answer": "Rushed"})
-        self.assertEqual((reply.status_code, reply.get_json()["code"]), (409, "OWN_EXAMPLE"))
+        # the adder's FIRST answer on a step, by id, is taken; their second is refused; it does not count alone
+        first = made[0]["id"]
+        answer = f"/v2/models/{PITCH}/examples/{first}/answer"
+        self.assertEqual(self._post(answer, {"step": "rate", "answer": "Rushed"}).get_json()["saved"], True)
+        self.assertEqual(self._post(answer, {"step": "pick", "answer": "A"}).get_json()["saved"], True)
+        again = self._post(answer, {"step": "rate", "answer": "Calm"})
+        self.assertEqual((again.status_code, again.get_json()["code"]), (409, "OWN_EXAMPLE"))
+        mine = [a for a in self.store.tables["ai_model_answers"] if a["example_id"] == first and a["step"] == "rate"]
+        self.assertEqual([a["answer"] for a in mine], ["Rushed"])
+        self.assertFalse(any(a.get("counted") for a in self.store.tables["ai_model_answers"]
+                             if a["example_id"] == first))
         over = self._post(url, {"texts": [f"t{i}" for i in range(store.MAX_SET_TEXTS + 1)], "may_use": True})
         self.assertEqual((over.status_code, over.get_json()["code"]), (400, "TOO_MANY"))
         self.assertEqual(self._post(url, {"texts": [" "], "may_use": True}).status_code, 400)
