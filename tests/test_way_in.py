@@ -33,7 +33,7 @@ OUTCOME
   W9  A first Take on which nothing was heard still gets its plan and
       "You're set." once its walk is done; no card is checked (N459 item 1).
   W10 With the chat builder, "Share what I know" is followed by "Next, open
-      Your chat below, and set it up." (N634 item 3), never "set up your
+      Will, and set up your chat." (N636 item 4), never "set up your
       assistant", and nothing opens the earlier setup.
 PROVES   W1, W2, W3, W5, W6 -> test_a_talk_the_wait_and_what_comes_next
          W9 -> test_a_take_with_nothing_heard_still_gets_its_plan
@@ -226,8 +226,8 @@ def test_something_else_after_the_walk_offers_taps_that_say_what_comes_next(db, 
 
 
 def test_with_the_new_setup_sharing_points_to_your_chat(db):
-    # N634 item 3 (after N632 item 5): with the chat builder, "Share what I
-    # know" is followed by "Next, open Your chat below, and set it up.",
+    # N636 item 4 (was N634 item 3): with the chat builder, "Share what I
+    # know" is followed by "Next, open Will, and set up your chat.",
     # never "set up your assistant", and nothing opens the earlier setup;
     # the other signed sentences stay as they are.
     _words_stored(db)
@@ -238,11 +238,11 @@ def test_with_the_new_setup_sharing_points_to_your_chat(db):
     answer(db, "choice", picked=["Something else"], said="Not sure yet")
     assert db.thread[-1]["metadata"]["chips"] == ["Prepare a talk", "Share what I know", "Learn from others"]
     answer(db, "else", picked="Share what I know")
-    assert said(db)[-2:] == ["Share what I know", "Next, open Your chat below, and set it up."]
+    assert said(db)[-2:] == ["Share what I know", "Next, open Will, and set up your chat."]
     assert "opens" not in db.thread[-1]["metadata"]
     assert "set up your assistant" not in " ".join(said(db))
     row = W._after_walk_row(["Share what I know", "Prepare a talk"], ring=True)
-    assert row[1] == "Next, record Take 2 of your talk. Next, open Your chat below, and set it up."
+    assert row[1] == "Next, record Take 2 of your talk. Next, open Will, and set up your chat."
     assert "opens" not in row[2]
 
 

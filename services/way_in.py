@@ -88,9 +88,10 @@ AFTER_WALK = {
     LEARN: "Next, ask someone who knows. Tap + to start.",
     SOMETHING_ELSE: "Tell me what you'd like to do, and I'll show you where.",
 }
-#: The same choice for a person with the chat builder, whose chat is set up
-#: from "Your chat" in Will's lines (N634 item 3; N632 item 5 left it none).
-SHARE_IN_YOUR_CHAT = "Next, open Your chat below, and set it up."
+#: The same choice for a person with the chat builder: the line shows in the
+#: speaking chat, and the chat is set up in Will (N636 item 4; was N634 item
+#: 3's "Next, open Your chat below, and set it up.").
+SHARE_IN_YOUR_CHAT = "Next, open Will, and set up your chat."
 AFTER_WALK_ORDER = (TALK, SHARE, LEARN, SOMETHING_ELSE)
 #: Under "Tell me what you'd like to do, and I'll show you where.", the
 #: choices not taken yet, as taps; one tap brings that choice's next line

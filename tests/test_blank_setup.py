@@ -32,6 +32,8 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          N632.4   -> SetupTest::test_start_again_begins_blank_and_keeps_only_the_same_model
          N632.6   -> SetupTest::test_not_now_is_never_final
          N634.1   -> SetupTest::test_an_own_model_is_built_on_gpt
+         N636.6   -> SetupTest::test_an_own_model_gives_back_a_pick
+         N636.6   -> SetupTest::test_a_changed_question_keeps_the_same_model
          VIS-01   -> VisitorTest::test_the_hosts_hello_first_questions_and_taps
          VIS-02   -> VisitorTest::test_the_bar_follows_what_the_host_takes
          VIS-03   -> VisitorTest::test_they_get_back_the_output_the_host_chose
@@ -322,6 +324,35 @@ class SetupTest(_Base):
         row = next(r for r in self.store.tables["people_profiles"] if r["user_id"] == TOMEK)
         row["chat_recipe"]["models"][0].pop("base")             # a card saved before N634
         self.assertEqual(self._read()["recipe"]["models"][0]["base"], "gpt")
+
+    def test_an_own_model_gives_back_a_pick(self):
+        """N636 item 6: an own model's card keeps what it gives back; only
+        "pick" is ready, "score" and "answer" are refused, and a card saved
+        with none reads as a pick."""
+        self._start()
+        self.assertEqual(self._put("models", [{**self._model(), "gives": "pick"}]).get_json()
+                         ["recipe"]["models"][0]["gives"], "pick")
+        for not_ready in ("score", "answer", "essay"):
+            got = self._put("models", [{**self._model(), "gives": not_ready}])
+            self.assertEqual((got.status_code, got.get_json()["code"]), (400, "RECIPE_INVALID"))
+        self.assertEqual(self._put("models", [self._model()]).get_json()["recipe"]["models"][0]["gives"], "pick")
+        row = next(r for r in self.store.tables["people_profiles"] if r["user_id"] == TOMEK)
+        row["chat_recipe"]["models"][0].pop("gives")            # a card saved before N636
+        self.assertEqual(self._read()["recipe"]["models"][0]["gives"], "pick")
+
+    def test_a_changed_question_keeps_the_same_model(self):
+        """N636 item 6: a block changed and the card saved again with its
+        model_id keeps that one model; no second model is made."""
+        def rings(feature, user_id, database=None):
+            del database
+            return feature in ("chat_builder", "ai_models") and str(user_id) == TOMEK
+        with patch("services.rings.feature_is_on_for_user", rings):
+            self._start()
+            card = self._put("models", [self._model()]).get_json()["recipe"]["models"][0]
+            changed = {**card, "q": "Is the scalp dry?", "opts": ["Yes", "A bit", "No"]}
+            again = self._put("models", [changed]).get_json()["recipe"]["models"][0]
+        self.assertEqual(again["model_id"], card["model_id"])
+        self.assertEqual(len(self.store.tables["ai_models"]), 1)
 
     def test_who_answers_is_three_plain_choices(self):
         """FIRST-09, FIRST-22: "I draft, you send" first, then "Only you"
@@ -667,8 +698,12 @@ class TokensTest(_Tokens):
                                                        ("There are some flakes.", "Kasia's model")])
         self.assertEqual([(u, n) for u, n, _r in self.ledger], [(TOMEK, 300)])
         self.assertEqual(self.balance[PIOTR], 1000)
+        def words(value):  # what a person reads: no ids or times, which are random
+            if isinstance(value, dict):
+                return {k: words(v) for k, v in value.items() if k not in ("id", "created_at", "to")}
+            return [words(v) for v in value] if isinstance(value, list) else value
         for never in ("price", "token", "300"):
-            self.assertNotIn(never, str(sent))
+            self.assertNotIn(never, str(words(sent)))
         self.assertLessEqual(len(self.provider.calls), 2)  # N620: the charge is no provider call
         from services import model_api_store as store
         from tests.test_model_api_routes import ModelApiTest
