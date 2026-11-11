@@ -17294,3 +17294,25 @@ Where a person adds the first cases to a model (after "Teach it", and
 each), set when that is built; a model that learns from images.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N646 · A model's answers come from its question: at most three, and the
+person can change them** (founder, the Claude Code chat, 11 November 2026:
+"if 'the wood is cracked or broken' was the question, the answers available
+should be broken or cracked or not sure, but not Yes, no, not sure, cause
+that is wrong. Make sure to infer the set of answers from the set up and
+make them editable if needed, but no more than 3 options"). For N636 item 2.
+
+1. **The answers follow the question.** When a model's question names the
+   things to tell apart ("Is the wood cracked or broken?"), those are its
+   answers: "Cracked", "Broken", "Not sure". "Yes", "No", "Not sure" is
+   offered only for a question that is itself yes or no.
+2. **At most three answers,** the unsure one included.
+3. **The person can change them** in the setup before teaching starts, and
+   sees them before the first case.
+4. **The same answers are used everywhere the model is:** teaching, a set of
+   cases (N645), the check, and the model's own reply.
+
+**Open:** whether the answers of a model that already has counted answers
+may still be changed; until decided, they may not.
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
