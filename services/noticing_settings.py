@@ -232,6 +232,10 @@ _reader: Callable[[], Optional[str]] = _read_store
 _lock = threading.Lock()
 _cached: Optional[dict[str, Any]] = None
 _cached_at = 0.0
+_refreshing = False
+#: Bumped by ``use_reader``, so a read begun under the old reader never
+#: lands in the cache of the new one.
+_generation = 0
 
 
 def _parse(raw: Optional[str]) -> dict[str, Any]:
@@ -255,20 +259,35 @@ def _parse(raw: Optional[str]) -> dict[str, Any]:
 
 def live() -> dict[str, Any]:
     """The values in force: the record, at most a minute old, else the
-    defaults. Never raises."""
-    global _cached, _cached_at
-    now = time.monotonic()
+    defaults. Never raises.
+
+    The database read happens OUTSIDE the lock, so a slow read never holds
+    up a caller: while one thread refreshes, every other caller gets the
+    cached set at once (a minute old at most, plus the read). Only the very
+    first callers, before any set is cached, read for themselves."""
+    global _cached, _cached_at, _refreshing
     with _lock:
-        if _cached is not None and now - _cached_at < CACHE_SECONDS:
+        now = time.monotonic()
+        if _cached is not None and (now - _cached_at < CACHE_SECONDS or _refreshing):
             return _cached
+        _refreshing = True
+        reader, generation = _reader, _generation
+    try:
         try:
-            raw = _reader()
+            raw = reader()
         except Exception as exc:  # the record is optional; the constants stand
             logger.warning("noticing_settings: read failed (%s); using the defaults",
                            exc, exc_info=True)
             raw = None
-        _cached, _cached_at = _parse(raw), now
-        return _cached
+        values = _parse(raw)
+        with _lock:
+            if generation == _generation:  # a reader swapped meanwhile wins
+                _cached, _cached_at = values, time.monotonic()
+            return values
+    finally:
+        with _lock:
+            if generation == _generation:
+                _refreshing = False
 
 
 _trying: ContextVar[Optional[Mapping[str, Any]]] = ContextVar(
@@ -307,6 +326,7 @@ def version() -> str:
 def use_reader(reader: Callable[[], Optional[str]]) -> None:
     """Swap where the record is read from, and drop the cache (tests, and a
     process that must not reach the database)."""
-    global _reader, _cached
+    global _reader, _cached, _refreshing, _generation
     with _lock:
-        _reader, _cached = reader, None
+        _reader, _cached, _refreshing = reader, None, False
+        _generation += 1
