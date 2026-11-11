@@ -2121,6 +2121,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O3** Only the owner archives or makes a model public, and public needs the disclaimer's confirm; another person's profile names whose it is and each model's id.
 - **O4** "Record your answer" and "Record one" turn a recording into its words only under my processing authorization and recording consent; without them nothing is transcribed, and the recording is never kept.
 - **O5** A person who joins a model after it went public is never sent one of its private examples, and cannot answer one; the teacher invited while it was private still is.
+- **O6** A set of texts becomes one case each, in the order given, private as the model is, ready for the first ten; nothing is taken without the tick; empties and repeats are skipped; a set is at most 200; someone who may not add to the model is refused as on the single route (N645 item 4).
 
 *Why:* routes/v2/learning_models.py over services/model_launchpad_store.py, for the screens built on #1863's routes.
 

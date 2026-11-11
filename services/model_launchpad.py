@@ -145,7 +145,7 @@ WORDS: dict[str, str] = {
     "add_record": "Record one",
     "add_record_line": "Say the case in your own voice",
     "add_upload": "Upload a file",
-    "add_upload_line": "A recording, a photo or a written case",
+    "add_upload_line": "A written case",
     "add_counts_once": "It counts once another teacher agrees with your answer.",
     # release (MOD-22)
     "release_exam_intro": "On the 100 exam cases:",

@@ -20,11 +20,17 @@ OUTCOME
   O5  A person who joins a model after it went public is never sent one of
       its private examples, and cannot answer one; the teacher invited
       while it was private still is.
+  O6  A set of texts becomes one case each, in the order given, private as
+      the model is, ready for the first ten; nothing is taken without the
+      tick; empties and repeats are skipped; a set is at most 200; someone
+      who may not add to the model is refused as on the single route
+      (N645 item 4).
 PROVES   O1 -> ModelActionsTest::test_not_now_keeps_the_invite_and_accept_makes_a_teacher
          O2 -> ModelActionsTest::test_an_added_example_and_a_spoken_answer
          O3 -> ModelActionsTest::test_the_owners_actions_and_the_profile
          O4 -> ModelActionsTest::test_a_recording_becomes_words_only_with_authorization
          O5 -> ModelActionsTest::test_a_private_example_never_reaches_someone_who_joins_after_public
+         O6 -> ModelActionsTest::test_a_set_of_texts_becomes_one_case_each
 WHY      routes/v2/learning_models.py over services/model_launchpad_store.py,
          for the screens built on #1863's routes.
 """
@@ -70,6 +76,33 @@ class ModelActionsTest(ModelRoutesTest):
                    {"step": "words", "transcript": "Slow down before the ask."})
         spoken = [a for a in self.store.tables["ai_model_answers"] if a["teacher_id"] == KASIA]
         self.assertEqual(spoken[0]["answer"], "Slow down before the ask.")
+
+    def test_a_set_of_texts_becomes_one_case_each(self):
+        from services import model_launchpad_store as store
+        from services.model_setup import first_ten_pool
+        url = f"/v2/models/{PITCH}/examples/set"
+        def cases():
+            return [e for e in self.store.tables["ai_model_examples"] if e.get("added_by") == MARTA]
+
+        before = len(self.store.tables["ai_model_examples"])
+        for body in ({"texts": ["One"]}, {"texts": ["One"], "may_use": "yes"}):
+            out = self._post(url, body)
+            self.assertEqual((out.status_code, out.get_json()["code"]), (400, "MAY_USE_REQUIRED"))
+        self.assertEqual(len(self.store.tables["ai_model_examples"]), before)
+        out = self._post(url, {"texts": ["  Second  ", "", "   ", "First", "Second", "x" * 5000], "may_use": True})
+        self.assertEqual(out.get_json(), {"added": 3, "skipped": 3})
+        made = cases()
+        self.assertEqual([c["content"]["text"] for c in made], ["Second", "First", "x" * store.MAX_ADDED_TEXT])
+        self.assertTrue(all(c["source"] == "teacher" and c["in_exam"] is False for c in made))
+        pool = first_ten_pool(made, [])
+        self.assertEqual([e["content"]["text"] for e in pool][:2], ["Second", "First"])
+        over = self._post(url, {"texts": [f"t{i}" for i in range(store.MAX_SET_TEXTS + 1)], "may_use": True})
+        self.assertEqual((over.status_code, over.get_json()["code"]), (400, "TOO_MANY"))
+        self.assertEqual(self._post(url, {"texts": [" "], "may_use": True}).status_code, 400)
+        self.assertEqual(len(cases()), 3)
+        self.who = ARTUR            # not a teacher of this model
+        self.assertEqual(self._post(url, {"texts": ["One"], "may_use": True}).status_code, 404)
+        self.assertEqual(len(cases()), 3)
 
     def test_the_owners_actions_and_the_profile(self):
         self.assertEqual(self._post(f"/v2/models/{PITCH}/archive").status_code, 404)
