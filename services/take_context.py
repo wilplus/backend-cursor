@@ -31,6 +31,8 @@ import logging
 import re
 from typing import Any
 
+from services import noticing_settings as ns
+
 logger = logging.getLogger(__name__)
 
 SURE = "sure"
@@ -124,7 +126,7 @@ def _words(text: Any) -> set[str]:
 def carries(sentence: Any, phrase: Any) -> bool:
     """The sentence says at least ``MATCH`` of the phrase's words. Pure."""
     want = _words(phrase)
-    return bool(want) and len(want & _words(sentence)) / len(want) >= MATCH
+    return bool(want) and len(want & _words(sentence)) / len(want) >= ns.value("take_context.MATCH")
 
 
 def relevance(sentence: Any, context: Any) -> float:
