@@ -79,6 +79,17 @@ def v2_model_setup_state(model_id):
     return _run("state", lambda: store.state(db, _me(), model_id, request.args.get("step") or None))
 
 
+@v2_bp.route("/models/setup/blocks", methods=["POST"])
+@limiter.limit("30 per hour", scope="model_setup_begin")
+@require_auth
+def v2_model_setup_blocks():
+    """"Start your own" in blocks (N636 item 7): {question, answers, gives?,
+    base?} makes the model at once, as a chat's own card does."""
+    from services import model_setup_store as store
+    body = _body()
+    return _run("blocks", lambda: store.begin_from_blocks(db, _me(), body))
+
+
 @v2_bp.route("/models/<model_id>/setup/start-now", methods=["POST"])
 @require_auth
 def v2_model_setup_start_now(model_id):
@@ -103,6 +114,12 @@ def v2_model_setup_study(model_id):
 def v2_model_setup_data(model_id):
     from services import model_setup as rules
     from services import model_setup_store as store
+    if "file" not in request.files and request.is_json:
+        # The step's own answer, "I don't have any" ({}) or "Use this data"
+        # ({use: true}): this route shadows /setup/<step> for "data", so a
+        # JSON body is that step, never an upload without a file.
+        body = _body()
+        return _run("save", lambda: store.save(db, _me(), model_id, "data", body))
     name, data = _file(rules.MAX_UPLOAD_BYTES)
     return _run("data", lambda: store.read_data(db, _me(), model_id, name, data))
 

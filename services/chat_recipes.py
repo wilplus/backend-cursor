@@ -97,6 +97,11 @@ def _model(raw: Any, i: int) -> dict:
         if base not in READY_BASES:
             raise RecipeError("RECIPE_INVALID", f"Model {i + 1} can be built on GPT only, for now.")
         out["base"] = base
+        # What it gives back (N636 item 6): only a pick from a list is ready.
+        gives = raw.get("gives") or "pick"
+        if gives not in READY_GIVES:
+            raise RecipeError("RECIPE_INVALID", f"Model {i + 1} can give back a pick for now.")
+        out["gives"] = gives
     if not out["own"]:
         out["model_id"] = str(raw.get("model_id") or "")[:64]
         if not out["model_id"]:
@@ -109,6 +114,9 @@ def _model(raw: Any, i: int) -> dict:
 #: The bases a host's own model may be built on (N634 item 1): GPT is ready;
 #: "claude" and "own" (WillpowerLab's own) are not yet, and are refused.
 READY_BASES = ("gpt",)
+#: What a host's own model may give back (N636 item 6): a pick from a list is
+#: ready; "score" and "answer" (in your words) are not yet, and are refused.
+READY_GIVES = ("pick",)
 
 
 def _with_base(recipe: Optional[dict]) -> Optional[dict]:
@@ -116,8 +124,8 @@ def _with_base(recipe: Optional[dict]) -> Optional[dict]:
     as built on GPT, as it is."""
     if not recipe:
         return recipe
-    models = [{**m, "base": m.get("base") or "gpt"} if m.get("own", True) else m
-              for m in recipe.get("models") or []]
+    models = [{**m, "base": m.get("base") or "gpt", "gives": m.get("gives") or "pick"}
+              if m.get("own", True) else m for m in recipe.get("models") or []]
     return {**recipe, "models": models} if recipe.get("models") else recipe
 
 

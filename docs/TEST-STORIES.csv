@@ -615,6 +615,8 @@ N632.3   -> SetupTest::test_a_chat_that_takes_a_recording_is_a_skill_chat
 N632.4   -> SetupTest::test_start_again_begins_blank_and_keeps_only_the_same_model
 N632.6   -> SetupTest::test_not_now_is_never_final
 N634.1   -> SetupTest::test_an_own_model_is_built_on_gpt
+N636.6   -> SetupTest::test_an_own_model_gives_back_a_pick
+N636.6   -> SetupTest::test_a_changed_question_keeps_the_same_model
 VIS-01   -> VisitorTest::test_the_hosts_hello_first_questions_and_taps
 VIS-02   -> VisitorTest::test_the_bar_follows_what_the_host_takes
 VIS-03   -> VisitorTest::test_they_get_back_the_output_the_host_chose
@@ -2111,6 +2113,7 @@ speaking chat's rows, ?place=principles only the principles chat's,
 ?place=will only Will's, and no place every
 row as before; each row says its place, and a place reads older
 pages until it has a page of its own.","O1 -> LoungePlaceTest::test_every_lounge_writer_places_its_rows
+O1 -> LoungePlaceTest::test_a_typed_turn_stays_in_the_chat_it_was_typed_in
 O2 -> LoungePlaceTest::test_the_read_returns_one_place",services/lounge_messages.place_of is the one list (N635 item 4: the rows stay where they are written; each chat shows its own).
 tests/test_manager_engine.py,Story,"As the founder, I want the feedback arbitration's experiment honest (protected Confident Voice slot, per-slide exploration, withheld notes recorded as having won), so that we can later learn what feedback helps.","O1  A protected note never gives up its slot to exploration or withholding.
 O2  Exploration trades only inside the swapped note's own slide.
@@ -2481,6 +2484,8 @@ O3 -> ModelSetupRoutesTest::test_a_model_like_yours_slides_up_once
 O4 -> ModelSetupRoutesTest::test_the_first_take_fills_describe
 O5 -> ModelSetupRoutesTest::test_start_after_the_scale_leaves_a_checklist
 O6 -> ModelSetupRoutesTest::test_existing_data_counts_only_with_the_tick
+O6 -> ModelSetupRoutesTest::test_the_data_step_takes_its_answer_as_well_as_a_file
+O6 -> ModelSetupRoutesTest::test_start_your_own_in_blocks_makes_the_model_at_once
 O7 -> ModelSetupRoutesTest::test_the_owner_answers_the_first_ten
 O8 -> ModelSetupRoutesTest::test_public_after_its_disclaimer_and_invites
 O9 -> ModelSetupRoutesTest::test_no_provider_call_without_authorization
@@ -4751,7 +4756,7 @@ is in the speaking chat only (N572, N590; WAYIN-N590-1).
 W9  A first Take on which nothing was heard still gets its plan and
 ""You're set."" once its walk is done; no card is checked (N459 item 1).
 W10 With the chat builder, ""Share what I know"" is followed by ""Next, open
-Your chat below, and set it up."" (N634 item 3), never ""set up your
+Will, and set up your chat."" (N636 item 4), never ""set up your
 assistant"", and nothing opens the earlier setup.","W1, W2, W3, W5, W6 -> test_a_talk_the_wait_and_what_comes_next
 W9 -> test_a_take_with_nothing_heard_still_gets_its_plan
 W2 -> test_change_it_asks_what_to_change_and_draws_the_card_again

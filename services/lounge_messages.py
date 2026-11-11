@@ -307,6 +307,9 @@ SPEAKING_KEYS = frozenset({
 SPEAKING_OFFERS = frozenset({"joke", "feedback_check", "will_question", "whatsapp"})
 #: Notes about the coach's feedback.
 SPEAKING_NOTES = frozenset({"feedback_digest"})
+#: Cards for the coach about a speaker: their speaking goal changed
+#: (services/goal_history.py, ``metadata.card``).
+SPEAKING_CARDS = frozenset({"goal_change"})
 #: The principles coaching (frontend docs/flows/principles.md): the offers
 #: of the voice notebook, the Sunday note, life goals, the sales step, your
 #: why and strengths, and the keys their rows carry.
@@ -321,15 +324,20 @@ PRINCIPLES_KEYS = frozenset({
 
 
 def place_of(row: dict) -> str:
-    """"speaking", "principles" or "will" for one Lounge row (N635)."""
+    """"speaking", "principles" or "will" for one Lounge row (N635). A row
+    stamped with the chat it was typed in (``metadata.place``, a typed turn
+    and Will's reply to it) stays in that chat."""
+    meta = row.get("metadata")
+    if isinstance(meta, dict) and meta.get("place") in PLACES:
+        return str(meta["place"])
     if row.get("kind") in SPEAKING_KINDS:
         return SPEAKING
-    meta = row.get("metadata")
     if not isinstance(meta, dict):
         return WILL
     if any(meta.get(k) not in (None, "", False) for k in SPEAKING_KEYS):
         return SPEAKING
-    if meta.get("offer") in SPEAKING_OFFERS or meta.get("note") in SPEAKING_NOTES:
+    if meta.get("offer") in SPEAKING_OFFERS or meta.get("note") in SPEAKING_NOTES \
+            or meta.get("card") in SPEAKING_CARDS:
         return SPEAKING
     if meta.get("offer") in PRINCIPLES_OFFERS or any(meta.get(k) not in (None, "", False)
                                                      for k in PRINCIPLES_KEYS):

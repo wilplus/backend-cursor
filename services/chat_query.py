@@ -93,7 +93,7 @@ def persist_chat_turn(
     database, user_id, question, answer, *, suggested_action=None,
     suggested_actions=None, bubbles=None, intent=None,
     user_client_id=None, user_created_at=None, offer=None, take_card=None,
-    row_metadata=None, bot_row=True,
+    row_metadata=None, bot_row=True, place=None,
 ):
     """BE-owned persistence of one Lounge chat turn (founder #2 — bubbles must
     never disappear): the user message and the bot reply, in lounge_messages,
@@ -108,7 +108,13 @@ def persist_chat_turn(
     already in the thread (a typed "yes" lets the message after the Take go,
     services/after_take.py).
 
+    ``place``: the chat the turn was typed in ("speaking", "principles" or
+    "will", N635): the user's row and Will's reply are stamped with it
+    (``metadata.place``), so they stay there whichever write lands first.
+
     Returns the bot row's client_id, or None on failure. Best-effort."""
+    from services.lounge_messages import PLACES
+    stamp = {"place": place} if place in PLACES else {}
     q = (question or "").strip()
     a = (answer or "").strip()
     if not user_id or not a:
@@ -137,15 +143,15 @@ def persist_chat_turn(
         rows.append({
             "client_id": u_id, "role": "user", "kind": "text",
             "body": q, "client_created_at": u_ts,
-            "metadata": None,
+            "metadata": dict(stamp) or None,
         })
     if bot_row:
         rows.append({
             "client_id": b_id, "role": "bot", "kind": "text", "body": a,
-            "metadata": _bot_metadata(
+            "metadata": {**(_bot_metadata(
                 intent=intent, suggested_action=suggested_action,
                 suggested_actions=suggested_actions, bubbles=bubbles,
-                extra=row_metadata),
+                extra=row_metadata) or {}), **stamp} or None,
             "client_created_at": now_iso,
         })
     if offer:
@@ -208,7 +214,7 @@ def _goals_after_note(database, user_id) -> bool:
 
 def finish_chat_turn(database, resp: dict, *, user_id, question,
                      persist_thread, user_client_id, user_created_at,
-                     intent=None) -> dict:
+                     intent=None, place=None) -> dict:
     """Persist and charge one completed turn; the response body.
 
     A turn that passes the Take's open ask advances the chain after the
@@ -222,7 +228,7 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
             bubbles=resp.get("bubbles"), intent=intent,
             user_client_id=user_client_id, user_created_at=user_created_at,
             offer=resp.get("offer"), take_card=resp.get("take_card"),
-            row_metadata=resp.get("row_metadata"),
+            row_metadata=resp.get("row_metadata"), place=place,
         )
         resp["persisted"] = bool(bot_cid)
         if bot_cid:

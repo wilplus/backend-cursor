@@ -203,6 +203,8 @@ def _parse_chat_request(req) -> dict:
         "user_client_id": None,
         "user_created_at": None,
         "screen": False,
+        # The chat the turn is typed in (N635): its rows are stamped with it.
+        "place": None,
     }
     if not is_multipart:
         body = req.get_json(silent=True) or {}
@@ -220,6 +222,8 @@ def _parse_chat_request(req) -> dict:
         context = body.get("presentation_context")
         parsed["presentation_context"] = context \
             if isinstance(context, dict) else {}
+        place = body.get("place")
+        parsed["place"] = place if isinstance(place, str) else None
         return parsed
 
     parsed["question"] = (req.form.get("question") or "").strip()
@@ -246,6 +250,7 @@ def _parse_chat_request(req) -> dict:
     )
     parsed["user_client_id"] = req.form.get("client_id") or None
     parsed["user_created_at"] = req.form.get("client_created_at") or None
+    parsed["place"] = req.form.get("place") or None
 
     return parsed
 
@@ -343,7 +348,8 @@ def v2_chat_query():
             return jsonify(finish_chat_turn(
                 db, resp, user_id=request.user_id, question=question,
                 persist_thread=persist_thread, user_client_id=user_client_id,
-                user_created_at=user_created_at, intent=intent)), 200
+                user_created_at=user_created_at, intent=intent,
+                place=transport["place"])), 200
 
         return answer_chat(
             db, user_id=request.user_id, question=question, history=history,
