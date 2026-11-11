@@ -46,13 +46,14 @@ PARTS_LINE = "Here are your chat's parts. Tap one to change it."
 #: The prototype's ``done`` step: each part and its title.
 PART_TITLES: tuple[tuple[str, str], ...] = (
     ("name", "Name"), ("line", "Why people come"), ("send", "They send"), ("out", "They get back"),
-    ("walk", "The feedback walk"), ("hello", "Your hello"), ("questions", "First questions"),
+    ("walk", "The feedback walk"), ("practice", "Practice after a Take"),
+    ("hello", "Your hello"), ("questions", "First questions"),
     ("taps", "They can ask"),
     ("models", "Your models"), ("who", "Who answers"))
 WHO = tuple(w[1] for w in chat_suggestions.WHO)
 PRICES = tuple(chat_suggestions.PRICES)
 PARTS = ("line", "send", "out", "hello", "questions", "taps", "smart", "way", "models", "who",
-         "share", "price", "cost", "care", "sensitive", "live", "walk",
+         "share", "price", "cost", "care", "sensitive", "live", "walk", "practice",
          "name")
 #: "Your chat is called:" (N642 item 1, N643 item 1): at most 40 characters.
 MAX_NAME = 40
@@ -88,10 +89,15 @@ def _model(raw: Any, i: int) -> dict:
     if not isinstance(raw, dict):
         raise RecipeError("RECIPE_INVALID", f"Model {i + 1} must be an object.")
     opts = raw.get("opts")
-    if not isinstance(opts, list) or len(opts) != 3:
-        raise RecipeError("RECIPE_INVALID", f"Model {i + 1} has three answers.")
+    if isinstance(opts, list) and len(opts) > 3:
+        raise RecipeError("TOO_MANY_ANSWERS", f"Model {i + 1} has at most three answers.")
+    if not isinstance(opts, list) or len(opts) < 2:
+        raise RecipeError("RECIPE_INVALID", f"Model {i + 1} has two or three answers.")
+    kept_opts = [_words(o, 24, f"An answer of model {i + 1}") for o in opts]
+    if len({o.lower() for o in kept_opts}) != len(kept_opts):
+        raise RecipeError("RECIPE_INVALID", f"Model {i + 1}'s answers are all different.")
     out: dict[str, Any] = {"q": _words(raw.get("q"), 90, f"Model {i + 1}"),
-                           "opts": [_words(o, 22, f"An answer of model {i + 1}") for o in opts],
+                           "opts": kept_opts,
                            "says": _words(raw.get("says"), 200, f"Model {i + 1}'s line", empty=True),
                            "own": raw.get("own", True) is not False}
     if out["own"] and raw.get("model_id"):
@@ -252,7 +258,7 @@ _CLEAN: dict[str, Any] = {
     "price": _one_of(PRICES, f"A price is one of {list(PRICES)} tokens."),
     "cost": _cost,
     "walk": _walk,
-    **{p: (lambda v, p=p: _bool(v, p)) for p in ("smart", "share", "care", "sensitive", "live")},
+    **{p: (lambda v, p=p: _bool(v, p)) for p in ("smart", "share", "care", "sensitive", "live", "practice")},
 }
 
 
@@ -347,6 +353,8 @@ def set_part(database: Any, user_id: Any, part: str, body: Any) -> dict:
         # "I want this", once asked, stays asked whatever the walk becomes.
         before = recipe.get("walk") or {}
         value = {**value, **{k: before[k] for k in ("wanted", "wanted_at") if k in before}}
+    if part == "practice" and "rec" not in (recipe.get("send") or []):
+        raise RecipeError("RECIPE_INVALID", "Practice after a Take is for a chat that takes a recording.")
     if part == "who" and value == "assistant" and recipe.get("sensitive") is not False:
         # Health, law or money, or not answered yet: nothing goes out until
         # the host sends it (N616 item 13, N622 item 1).
@@ -388,6 +396,11 @@ def _real_models(database: Any, user_id: str, recipe: dict, models: list[dict]) 
             out.append(m)
             continue
         made = m.get("model_id") if m.get("model_id") in ids else by_q.get(m["q"])
+        if made and list(m["opts"]) != _opts_of(before, made):
+            # Changed answers reach the real model too, so teaching, the
+            # check and the reply read the same three (N646 items 3 and 4);
+            # refused once an answer counted (409 ANSWERS_LOCKED).
+            model_setup_store.set_answers(database, user_id, made, m["opts"])
         if not made and model_launchpad_store.enabled(database, user_id):
             made = model_setup_store.begin_from_chat(
                 database, user_id, question=m["q"], answers=m["opts"], sends=sends)["model_id"]
@@ -396,6 +409,11 @@ def _real_models(database: Any, user_id: str, recipe: dict, models: list[dict]) 
         out.append({**{k: v for k, v in m.items() if k != "model_id"},
                     **({"model_id": made} if made else {})})
     return out
+
+
+def _opts_of(cards: list[dict], model_id: str) -> Optional[list]:
+    """The answers a card for this model was saved with, or None."""
+    return next((list(m.get("opts") or []) for m in cards if str(m.get("model_id")) == str(model_id)), None)
 
 
 def parts(recipe: dict, person: Any = None) -> list[dict]:
@@ -413,11 +431,21 @@ def parts(recipe: dict, person: Any = None) -> list[dict]:
               # N641's words: the steps in order, then the end; the saved
               # walk, else the suggestion (``saved`` says which; ``walk``
               # holds the ids).
-              "walk": walk_words(walk_of(recipe))}
+              "walk": walk_words(walk_of(recipe)),
+              "practice": "On" if practice_on(recipe) else "Off"}
     rec = "rec" in (recipe.get("send") or [])
     return [{"part": p, "title": t, "value": values[p],
              **({"saved": bool(recipe.get("walk")), "walk": walk_of(recipe)} if p == "walk" else {})}
-            for p, t in PART_TITLES if p != "walk" or rec]
+            for p, t in PART_TITLES if p not in ("walk", "practice") or rec]
+
+
+def practice_on(recipe: Optional[dict]) -> bool:
+    """"Practice after a Take" (N648 item 8): one switch for practice,
+    Confident Voice and the AI voice after a Take made in this chat. Off
+    unless the host turned it on, and never on in a chat that takes no
+    recording."""
+    r = recipe or {}
+    return r.get("practice") is True and "rec" in (r.get("send") or [])
 
 
 def walk_of(recipe: Optional[dict]) -> dict:
