@@ -64,6 +64,7 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          N647.8   -> WalkTest::test_a_model_that_is_not_ready_says_nothing_in_the_walk
          N647.8   -> WalkTest::test_outside_the_ring_nothing_runs
          N647.8   -> WalkTest::test_a_chat_with_no_walk_answers_as_before
+         N647.8   -> WalkTest::test_an_item_turned_off_says_nothing_and_stays_off
 WHY      The build succeeds when a stranger sets up a chat with Will and a
          second person gets a useful answer in it (N620).
 """
@@ -1233,3 +1234,19 @@ class WalkTest(_Tokens):
         self.assertEqual([m["body"] for m in reply["messages"] if "model_line" in m["meta"]],
                          ["Your scalp looks dry here.", "There are some flakes."])
         self.assertEqual([bool(m["meta"].get("useful_ask")) for m in reply["messages"]], [False, False, True])
+
+    def test_an_item_turned_off_says_nothing_and_stays_off(self):
+        """N647.8: a model in ``walk.off`` says nothing, not even a line
+        written for it; saving the walk again keeps it off."""
+        from services import chat_recipes
+        from services.db import db
+        chat = self._chat()
+        recipe = chat_recipes.mine(db, TOMEK)
+        flakes = recipe["models"][1]["model_id"]
+        chat_recipes._store(db, TOMEK, {**recipe, "walk": {**recipe["walk"], "off": [flakes]}})
+        self._put("walk", {"steps": ["best", "words"], "out": "none"})
+        self.assertEqual(chat_recipes.mine(db, TOMEK)["walk"]["off"], [flakes])
+        self.heads = {0: {"answer": "Yes", "sure": True}, 1: {"answer": "Flakes", "sure": True}}
+        reply = self._send(chat).get_json()["reply"]
+        self.assertEqual([m["body"] for m in reply["messages"] if "model_line" in m["meta"]],
+                         ["Your scalp looks dry here."])

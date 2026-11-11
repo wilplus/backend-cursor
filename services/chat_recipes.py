@@ -344,9 +344,10 @@ def set_part(database: Any, user_id: Any, part: str, body: Any) -> dict:
     if part == "walk":
         if "rec" not in (recipe.get("send") or []):
             raise RecipeError("RECIPE_INVALID", "The feedback walk is for a chat that takes a recording.")
-        # "I want this", once asked, stays asked whatever the walk becomes.
+        # "I want this", once asked, stays asked whatever the walk becomes;
+        # the items turned off (``off``, N647 item 8) stay off.
         before = recipe.get("walk") or {}
-        value = {**value, **{k: before[k] for k in ("wanted", "wanted_at") if k in before}}
+        value = {**value, **{k: before[k] for k in ("wanted", "wanted_at", "off") if k in before}}
     if part == "who" and value == "assistant" and recipe.get("sensitive") is not False:
         # Health, law or money, or not answered yet: nothing goes out until
         # the host sends it (N616 item 13, N622 item 1).

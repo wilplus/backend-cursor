@@ -33,7 +33,9 @@ walk: each of the host's own models whose head is ready (gate one open)
 and sure says the host's own line (``says``) word for word, in the host's
 order, when its answer is the first of its three (what the line is for),
 and nothing otherwise. Each such line asks "Did this help?" on its own
-(``meta.walk_line``, ``meta.useful_ask``; the answer is ``meta.useful``).
+(``meta.walk_line`` {model_id, says}: the words it used, so a changed
+line counts afresh; ``meta.useful_ask``; the answer is ``meta.useful``).
+An own model whose id is in ``recipe.walk.off`` says nothing at all.
 No provider call is added. Everything else, a recipe with no walk and
 every model not ready, is as before.
 
@@ -148,17 +150,13 @@ def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str],
     got = parsed if isinstance(parsed, dict) else {}
     given = got.get("lines")
     raw_lines: list = given if isinstance(given, list) else []
+    walked = _walk_lines(recipe, heads, host_name)
     lines = []
-    walking = bool(recipe.get("walk"))
     for i, m in enumerate(recipe.get("models") or []):
-        if walking and m.get("own", True) and heads.get(i, {}).get("sure"):
-            # The feedback walk (N647 item 8, step 1): a ready own model says
-            # the host's own line, word for word, when it notices what its
-            # line is for (its first answer); otherwise nothing.
-            line = walk_line(m, heads[i], host_name)
-            if line:
-                lines.append(line)
-            continue
+        if i in walked:
+            if walked[i]:
+                lines.append(walked[i])
+            continue  # the walk's own (N647 item 8): its line, or nothing
         if i in heads and not heads[i].get("sure"):
             continue  # its head is not sure: no line, never a guess (N566 item 8)
         body = _clean(raw_lines[i], 300) if i < len(raw_lines) else None
@@ -168,6 +166,26 @@ def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str],
             owner = _first(host_name) if m.get("own", True) else _first(m.get("by"))
             lines.append({"body": body, "by": f"{owner}'s model", "q": m.get("q")})
     return {"answer": _clean(got.get("answer"), 1200), "lines": lines}
+
+
+def _walk_lines(recipe: dict, heads: dict, host_name: Any) -> dict[int, Optional[dict]]:
+    """{place: line or None} for each own model the walk speaks for: one
+    turned off (``walk.off``, N647 item 6) says nothing; a ready, sure one
+    says the host's line when it notices what the line is for, else
+    nothing. Empty for a recipe with no walk: all is as before."""
+    walk = recipe.get("walk") if isinstance(recipe.get("walk"), dict) else None
+    if walk is None:
+        return {}
+    off = {str(x) for x in walk.get("off") or []}
+    out: dict[int, Optional[dict]] = {}
+    for i, m in enumerate(recipe.get("models") or []):
+        if not m.get("own", True):
+            continue
+        if m.get("model_id") and str(m["model_id"]) in off:
+            out[i] = None
+        elif heads.get(i, {}).get("sure"):
+            out[i] = walk_line(m, heads[i], host_name)
+    return out
 
 
 def walk_line(model: dict, head: dict, host_name: Any) -> Optional[dict]:
