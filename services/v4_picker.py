@@ -50,6 +50,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Iterable, Optional
 
+from services import noticing_settings as ns
 from services import willfidence as wf
 from services.v4_take_tags import ROLE_WEIGHTS, ROLES_VERSION
 
@@ -192,7 +193,7 @@ def block_row(block: dict, frame: dict, by_clip: dict[str, dict], read: dict) ->
     kind = kind_for(block, frame)
     v3_kind, v3_clip = v3_pick(block, frame)
     reason = ("no_role" if importance is None else "no_read" if gap is None
-              else "unsure" if sure < SURENESS_CUTOFF else None)
+              else "unsure" if sure < ns.value("v4_picker.SURENESS_CUTOFF") else None)
     return {
         "block_id": str(block.get("block_id") or ""), "role": role, "importance": importance,
         "willfident": sw, "gap": gap, "strength": strength,
