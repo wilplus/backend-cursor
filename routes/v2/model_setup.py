@@ -79,6 +79,17 @@ def v2_model_setup_state(model_id):
     return _run("state", lambda: store.state(db, _me(), model_id, request.args.get("step") or None))
 
 
+@v2_bp.route("/models/setup/blocks", methods=["POST"])
+@limiter.limit("30 per hour", scope="model_setup_begin")
+@require_auth
+def v2_model_setup_blocks():
+    """"Start your own" in blocks (N636 item 7): {question, answers, gives?,
+    base?} makes the model at once, as a chat's own card does."""
+    from services import model_setup_store as store
+    body = _body()
+    return _run("blocks", lambda: store.begin_from_blocks(db, _me(), body))
+
+
 @v2_bp.route("/models/<model_id>/setup/start-now", methods=["POST"])
 @require_auth
 def v2_model_setup_start_now(model_id):

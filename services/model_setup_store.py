@@ -228,6 +228,33 @@ def begin(database: Any, user_id: Any) -> dict:
 _CHAT_INPUT = {"rec": "voice", "text": "text", "photo": "image", "file": "text"}
 
 
+def begin_from_blocks(database: Any, user_id: Any, body: Any) -> dict:
+    """"Start your own" on the AI models page, made in blocks (N636 items 6
+    and 7): the same model as a chat's own card makes (``begin_from_chat``),
+    outside a chat, named by its question. {"question", "answers": [3],
+    "gives"?: "pick", "base"?: "gpt", "sends"?: "rec" | "text" | "file"}: what
+    people send, as a chat's ``send`` names it, sets what one example is (a
+    recording: voice; else text); none is "text". A photo is refused: no
+    model reads one yet (N616 item 9). A choice not ready yet is refused, as
+    on the card."""
+    from services.chat_recipes import READY_BASES, READY_GIVES
+    body = body if isinstance(body, dict) else {}
+    question = S._clean(body.get("question"), 200)
+    answers = body.get("answers")
+    if not question or not isinstance(answers, list) or len(answers) != 3 \
+            or not all(isinstance(a, str) and a.strip() for a in answers):
+        raise _bad("NOT_READY", "The model needs its question and three answers.")
+    if (body.get("base") or "gpt") not in READY_BASES:
+        raise _bad("NOT_READY_YET", "It can be built on GPT only, for now.")
+    if (body.get("gives") or "pick") not in READY_GIVES:
+        raise _bad("NOT_READY_YET", "It can give back a pick for now.")
+    sends = body.get("sends") or "text"
+    if sends not in ("rec", "text", "file"):
+        raise _bad("NOT_READY_YET", "No model reads a photo yet.")
+    return begin_from_chat(database, user_id, question=question, answers=[a.strip() for a in answers],
+                           sends=sends)
+
+
 def begin_from_chat(database: Any, user_id: Any, *, question: str, answers: list[str],
                     sends: str = "text") -> dict:
     """A model the host makes in their chat's blank setup (N618 item 6):

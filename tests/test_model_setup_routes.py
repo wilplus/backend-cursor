@@ -47,6 +47,7 @@ PROVES   O1 -> ModelSetupRoutesTest::test_without_the_ring_or_as_someone_else_no
          O5 -> ModelSetupRoutesTest::test_start_after_the_scale_leaves_a_checklist
          O6 -> ModelSetupRoutesTest::test_existing_data_counts_only_with_the_tick
          O6 -> ModelSetupRoutesTest::test_the_data_step_takes_its_answer_as_well_as_a_file
+         O6 -> ModelSetupRoutesTest::test_start_your_own_in_blocks_makes_the_model_at_once
          O7 -> ModelSetupRoutesTest::test_the_owner_answers_the_first_ten
          O8 -> ModelSetupRoutesTest::test_public_after_its_disclaimer_and_invites
          O9 -> ModelSetupRoutesTest::test_no_provider_call_without_authorization
@@ -268,6 +269,27 @@ class ModelSetupRoutesTest(unittest.TestCase):
         use = self._post(f"/v2/models/{mid}/setup/data", {"use": True})
         self.assertEqual(use.status_code, 200)
         self.assertTrue(self._model(mid)["setup"]["data"].get("columns"))
+
+    def test_start_your_own_in_blocks_makes_the_model_at_once(self):
+        """N636 item 7: "Start your own" in blocks makes the same model as a
+        chat's own card, named by its question, ready for "Teach it"; a
+        choice not ready yet is refused."""
+        out = self._post("/v2/models/setup/blocks", {"question": "Does it sound rushed?",
+                                                     "answers": ["Yes", "A little", "No"],
+                                                     "gives": "pick", "base": "gpt"})
+        self.assertEqual(out.status_code, 200)
+        mid = out.get_json()["model_id"]
+        made = self._model(mid)
+        self.assertEqual((made["name"], made["visibility"], made["status"]),
+                         ("Does it sound rushed?", "private", "learning"))
+        self.assertEqual(self._get(f"/v2/models/{mid}/setup/first-ten").status_code, 200)
+        self.assertEqual(made["setup"]["input"], "text")             # none said: written words
+        voice = self._post("/v2/models/setup/blocks", {"question": "Is it calm?", "sends": "rec",
+                                                       "answers": ["Yes", "A little", "No"]}).get_json()
+        self.assertEqual(self._model(voice["model_id"])["setup"]["input"], "voice")
+        for bad in ({"gives": "score"}, {"base": "claude"}, {"answers": ["Yes", "No"]}, {"sends": "photo"}):
+            body = {"question": "Is it clear?", "answers": ["Yes", "Somewhat", "No"], **bad}
+            self.assertEqual(self._post("/v2/models/setup/blocks", body).status_code, 400, bad)
 
     def test_the_owner_answers_the_first_ten(self):
         mid, _ = self._begin()
