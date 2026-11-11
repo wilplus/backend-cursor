@@ -287,7 +287,8 @@ class ModelSetupRoutesTest(unittest.TestCase):
         voice = self._post("/v2/models/setup/blocks", {"question": "Is it calm?", "sends": "rec",
                                                        "answers": ["Yes", "A little", "No"]}).get_json()
         self.assertEqual(self._model(voice["model_id"])["setup"]["input"], "voice")
-        for bad in ({"gives": "score"}, {"base": "claude"}, {"answers": ["Yes", "No"]}, {"sends": "photo"}):
+        for bad in ({"gives": "score"}, {"base": "claude"}, {"answers": ["Yes"]},
+                    {"answers": ["Yes", "No", "Maybe", "Other"]}, {"sends": "photo"}):
             body = {"question": "Is it clear?", "answers": ["Yes", "Somewhat", "No"], **bad}
             self.assertEqual(self._post("/v2/models/setup/blocks", body).status_code, 400, bad)
 

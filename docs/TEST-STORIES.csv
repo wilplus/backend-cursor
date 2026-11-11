@@ -614,6 +614,8 @@ N642.1   -> SetupTest::test_a_chat_has_a_name_its_first_name_until_given
 N642.1   -> VisitorTest::test_people_who_come_read_the_chats_name
 N642.3   -> SetupTest::test_live_reads_what_a_person_meets_and_can_be_tried
 N642.3   -> TokensTest::test_my_own_trial_answers_at_once_keeps_nothing_costs_nothing
+N646.1   -> SetupTest::test_a_models_answers_come_from_its_question
+N646.3   -> SetupTest::test_the_answers_can_change_until_an_answer_counted
 N641.1   -> SetupTest::test_the_feedback_walk_is_kept_in_a_chat_that_takes_a_recording
 N641.2   -> SetupTest::test_i_want_this_tells_the_founder_once
 N641.2   -> SetupTest::test_the_ask_is_kept_when_the_mail_cannot_go
@@ -642,7 +644,11 @@ FIRST-24 -> LearningTest::test_once_it_passes_the_host_keeps_it_at_the_price_the
 FIRST-24 -> LearningTest::test_one_that_passes_free_answers_without_a_price_to_accept
 VIS-08   -> MeetTest::test_the_hello_shows_once_in_the_chat_they_share
 VIS-08   -> MeetTest::test_each_writes_to_the_others_chat_both_ways
-VIS-08   -> MeetTest::test_without_the_other_persons_open_chat_nothing_changes",The build succeeds when a stranger sets up a chat with Will and a second person gets a useful answer in it (N620).
+VIS-08   -> MeetTest::test_without_the_other_persons_open_chat_nothing_changes
+N647.8   -> WalkTest::test_a_message_gets_the_walk_in_the_hosts_own_words
+N647.8   -> WalkTest::test_a_model_that_is_not_ready_says_nothing_in_the_walk
+N647.8   -> WalkTest::test_outside_the_ring_nothing_runs
+N647.8   -> WalkTest::test_a_chat_with_no_walk_answers_as_before",The build succeeds when a stranger sets up a chat with Will and a second person gets a useful answer in it (N620).
 tests/test_blank_setup_journey.py,Story,"As someone who knows a field, I want to set up a chat with Will from a blank start and open it, and as a second person I want to join it and get an answer, so that the whole journey works end to end, for any profession, at a small cost (N619 step 5 ""Joined""; N620).","One test walks the public routes for two professions: setup, the
 link, a visitor who joins, ""Only you answer"" (no provider call),
 ""I draft, you send"" (one call, the host sends it), and the
@@ -3538,6 +3544,9 @@ O4 -> test_a_second_run_finds_nothing_left_to_do
 O5 -> test_a_stuck_object_keeps_its_event_back
 O6 -> test_without_the_purge_switch_no_guest_is_erased,
 test_a_guest_stopped_for_review_is_left_for_a_person","Migrations 0423/0426, services/retention_cleaner.py; founder 2026-10-05, decisions log N48.4 Q16 A and N50. Every case runs in ONE rolled-back transaction on the released lane. The cleaner's PostgREST calls become SQL as service_role (the client from tests/test_account_deletion_starts_postgres.py). The world is set in 2001 (AS_OF), so nothing other suites write is ever due here. Stand-ins: object storage is faked; every retention rule the purge can ask for is seeded active; tables this lane lacks are built from their own migrations; 0426 is re-applied inside the case; Supabase's default service_role grants are given on the other tables only."
+tests/test_review_queue_limit_skips_published.py,Story,"As a speaker, I want my Take to reach a coach even when many newer Takes were already answered, so that no moment I meet is lost.","O1  With more than 100 newer published Takes, an older waiting Take is
+still in the review queue.
+O2  The reach alarm hears that Take (it is in the rows it counts).","O1, O2 -> test_older_waiting_take_survives_newer_published_ones","Founder promise: every moment a speaker meets reaches a coach. The limit of 100 was applied before published rows were dropped, so published rows took slots."
 tests/test_rewrite_declines_q3.py,Story,"As a speaker, I want a rewrite I answered ""Keep my words"" to stay away until I change that Paragraph, so that I am not asked the same thing again.","O1  While the Paragraph's words are unchanged, the declined rewrite is
 excluded as declined_by_owner and not selected.
 O2  Once the Paragraph's words change, the same rewrite is eligible again.
