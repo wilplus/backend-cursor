@@ -16,6 +16,7 @@ admin_bp = Blueprint("admin", __name__)
 # entry is tied to the client object it was read with, so a rebuilt client
 # (or a test's stand-in) always asks afresh.
 ROLE_TTL_S = 60.0
+ROLE_RETRY_PAUSE_S = 0.2
 _role_cache: dict[tuple[str, str], tuple[float, int, bool]] = {}
 _role_lock = threading.Lock()
 
@@ -28,6 +29,25 @@ def _role_lookup(table: str, email: str) -> bool:
         hit = _role_cache.get(key)
     if hit and hit[1] == id(client) and now - hit[0] < ROLE_TTL_S:
         return hit[2]
+    try:
+        answer = _read_role(client, table, email)
+    except Exception:
+        # A database blip must not lock out a real coach or admin: try once
+        # more, then fall back on the last stored answer (never invent a yes).
+        time.sleep(ROLE_RETRY_PAUSE_S)
+        try:
+            answer = _read_role(client, table, email)
+        except Exception:
+            if hit:
+                logger.warning("Role lookup failed twice; using earlier answer for %s", table)
+                return hit[2]
+            raise
+    with _role_lock:
+        _role_cache[key] = (now, id(client), answer)
+    return answer
+
+
+def _read_role(client, table: str, email: str) -> bool:
     result = (
         client.table(table)
         .select("id")
@@ -35,10 +55,7 @@ def _role_lookup(table: str, email: str) -> bool:
         .eq("is_active", True)
         .execute()
     )
-    answer = len(result.data) > 0
-    with _role_lock:
-        _role_cache[key] = (now, id(client), answer)
-    return answer
+    return len(result.data) > 0
 
 
 def is_admin(user_id: str) -> bool:

@@ -3697,6 +3697,12 @@ reads ""done"".","O1 -> test_open_draft_and_merged_prs_set_the_state
 O2 -> test_parts_branches_and_nothing_found
 O3 -> test_a_linear_id_ties_only_recent_prs
 O4 -> test_github_down_shows_unknown_not_done",
+tests/test_role_lookup_retry.py,Story,"As a coach, I want my coach link to open even when the database hiccups for a moment, so that I am not told ""not a coach"" by mistake.","O1  A lookup that fails once and then answers gives the real answer.
+O2  A lookup that fails twice keeps an earlier stored yes; with nothing
+stored it says no, as before.
+O3  ""No rows"" is an answer and is not retried.","O1 -> RoleLookupRetryTest::test_fails_once_then_answers
+O2 -> RoleLookupRetryTest::test_fails_twice_uses_stored_answer_else_no
+O3 -> RoleLookupRetryTest::test_no_rows_is_not_retried","Founder 2026-11-11: retry the lookup once before answering ""not a coach""."
 tests/test_rooting_phrase_qualification_postgres.py,Story,"As a speaker, I want a phrase I said confidently to become my helper words and lock its Paragraph in one step, and be removable, so that my helper words follow my choices.","O1  A phrase I said with a confident ""yes"" qualifies to become helper
 words directly.
 O2  Choosing it locks the Paragraph and sets the helper words in one step;
