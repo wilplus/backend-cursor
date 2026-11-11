@@ -413,8 +413,9 @@ class SetupTest(_Base):
             self.assertEqual(self._put("models", [edited]).status_code, 200)
             model = next(r for r in self.store.tables["ai_models"] if r["id"] == mid)
             self.assertEqual(model["recipe"]["scale"], ["Cracked", "Split", "Not sure"])
-            scale = lambda words: self.client.post(f"/v2/models/{mid}/setup/scale", headers=self._as(TOMEK),
-                                                   json={"scale": [{"t": w, "d": ""} for w in words]})
+            def scale(words):
+                return self.client.post(f"/v2/models/{mid}/setup/scale", headers=self._as(TOMEK),
+                                        json={"scale": [{"t": w, "d": ""} for w in words]})
             too_many = scale(["Cracked", "Split", "Broken", "Not sure"])
             self.assertEqual((too_many.status_code, too_many.get_json()["code"]), (400, "TOO_MANY_ANSWERS"))
             self.store.tables.setdefault("ai_model_answers", []).append(
