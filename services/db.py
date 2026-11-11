@@ -10365,8 +10365,10 @@ class DatabaseService:
         to the coach (status pending_admin_review, source audit_upload)
         and not yet published, newest-sent first. Returns raw rows; the
         route pseudonymizes user_id (§14 red-line 6 — never the real id in
-        the list) + shapes the response. (results_published_at filtered in
-        Python to avoid PostgREST is-null quirks.) Read rows are folded out
+        the list) + shapes the response. (results_published_at is filtered in
+        the query BEFORE the limit, so published rows take no slot and an
+        older waiting Take is never pushed out of every coach's queue and the
+        reach alarm; the Python filter stays as a second guard.) Read rows are folded out
         (fold_reads_out_of_queue) — a re-read reviews INSIDE its parent
         take's packet, never as its own row.
         """
@@ -10391,6 +10393,7 @@ class DatabaseService:
                     .select(_full_cols)
                     .eq("status", "pending_admin_review")
                     .eq("source", "audit_upload")
+                    .is_("results_published_at", "null")
                     .order("review_requested_at", desc=True)
                     .limit(limit)
                     .execute()
@@ -10409,6 +10412,7 @@ class DatabaseService:
                     .select(_base_cols)
                     .eq("status", "pending_admin_review")
                     .eq("source", "audit_upload")
+                    .is_("results_published_at", "null")
                     .order("review_requested_at", desc=True)
                     .limit(limit)
                     .execute()
