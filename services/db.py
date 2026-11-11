@@ -1995,6 +1995,38 @@ class DatabaseService:
             out[str(row.get("key"))] = text or None
         return out
 
+    def get_runtime_config_entry(self, key: str) -> Optional[Dict[str, Any]]:
+        """One runtime_config row's value and updated_at, for a
+        compare-and-swap write (services/silent_tries). None when absent.
+        Raises on failure: a try read as "none" would let a second start in."""
+        res = (self.client.table("runtime_config").select("value,updated_at")
+               .eq("key", key).limit(1).execute())
+        return res.data[0] if res.data else None
+
+    def put_runtime_config_entry(
+        self, key: str, value: str, *, updated_by: Optional[str],
+        expected_updated_at: Optional[str],
+    ) -> bool:
+        """Write one non-model runtime_config row only if it is unchanged
+        since it was read: insert when ``expected_updated_at`` is None (an
+        existing row makes it False), else update the row whose updated_at
+        still matches. False when someone else wrote meanwhile. Model keys
+        stay behind promote_runtime_surface_model (the trigger refuses them)."""
+        now = datetime.now(timezone.utc).isoformat()
+        row = {"value": value, "updated_by": updated_by, "updated_at": now}
+        if expected_updated_at is None:
+            try:
+                res = (self.client.table("runtime_config")
+                       .insert({"key": key, **row}).execute())
+            except Exception as e:
+                if "duplicate key" in str(e).lower() or "23505" in str(e):
+                    return False
+                raise
+            return bool(res.data)
+        res = (self.client.table("runtime_config").update(row)
+               .eq("key", key).eq("updated_at", expected_updated_at).execute())
+        return bool(res.data)
+
     def promote_runtime_surface_model(
         self,
         *,
