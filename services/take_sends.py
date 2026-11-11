@@ -108,10 +108,12 @@ def _last_sent_chat(database: Any, my_member_ids: list[str]) -> Optional[str]:
     """The chat of the speaker's newest Take sent, or None."""
     if not my_member_ids:
         return None
-    rows = _rows(_table(database, MESSAGES).select("thread_id,created_at")
+    rows = _rows(_table(database, MESSAGES).select("thread_id,meta,created_at")
                  .in_("author_member_id", my_member_ids).eq("kind", "take")
-                 .order("created_at", desc=True).limit(1))
-    return str(rows[0]["thread_id"]) if rows else None
+                 .order("created_at", desc=True).limit(20))
+    # A Take recorded in a host's chat was not sent (services/take_door.py).
+    sent = [r for r in rows if "made_here" not in (r.get("meta") or {})]
+    return str(sent[0]["thread_id"]) if sent else None
 
 
 def _person_chats(database: Any, user_id: str) -> tuple[dict[str, str], list[str], dict[str, dict]]:

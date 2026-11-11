@@ -1359,6 +1359,11 @@ O3  Verdicts go to the shadow log once, under the fit's own version, for
 consented speakers' clips only; the live detector is unchanged.","O1 -> test_switch_off_reads_and_writes_nothing
 O2 -> test_only_consented_train_split_answers_are_fitted
 O3 -> test_verdicts_go_to_the_shadow_log_only_for_consented_clips","3.5 pack, file 22 E3; document 02 v1.2 §3c (dark lane, PLF1 Phase 2)."
+tests/test_dev_mode.py,Story,"As a host, I turn on ""Developer mode"" under Build and see, in plain numbers, how close my chat is to the speaking coach, how each thing my chat notices is doing, and how many people came each week; nobody else sees any of it (N648 items 1, 2, 3, 5 and 7; the pinned prototype docs/design/the-blank-setup-2026-11-10/the-blank-setup.html).","On the public routes: the host gets their numbers; anyone else 404;
+a week with too few people never shows its count.","N648.2 -> DevModeTest::test_the_host_gets_how_close_what_it_notices_and_the_weeks
+N648.3 -> DevModeTest::test_the_host_gets_how_close_what_it_notices_and_the_weeks
+N648.5 -> DevModeTest::test_a_week_of_few_people_is_hidden_in_the_screen_and_the_file
+N648.7 -> DevModeTest::test_anyone_but_the_host_gets_404",
 tests/test_doc_guard.py,Guard,"scripts/doc_guard.py: every part of the code has one home doc in README.md, every doc is listed there, and a new doc carries the founder's OK (N107, N111).","Code that no row of the home-doc table covers; a row that covers
 nothing or points at a missing, History or Archive doc; two rows
 claiming one file equally; a doc the master doc doesn't list; a new
@@ -1677,8 +1682,11 @@ O3 -> test_a_failed_send_keeps_its_takes_for_tomorrow","Founder 2026-10-26, N174
 tests/test_host_chat_take_reaches_coach.py,Story,"As a person who records in a host's chat, I want the moments I meet to reach a coach and the alarm to watch them, so that no moment is lost because of where I recorded.","O1  A Take made in a host's chat is an ordinary Take of the person: once
 the speaker opens a moment, it is listed for a coach as ""judge it"".
 O2  Three such Takes whose moments never reached the speaker fire the
-reach alarm; with one reached, it stays quiet.","O1 -> HostChatTakeTests::test_an_opened_moment_is_listed_for_a_coach
-O2 -> HostChatTakeTests::test_unreached_host_chat_takes_fire_the_alarm",N648 item 8 (coaches answer the moments of a Take made in a host's chat); promise: every moment a speaker meets reaches a coach.
+reach alarm; with one reached, it stays quiet.
+O3  When the alarm fires, its message names the host chat of each
+unreached Take; a chat that cannot be read never stops the alarm.","O1 -> HostChatTakeTests::test_an_opened_moment_is_listed_for_a_coach
+O2 -> HostChatTakeTests::test_unreached_host_chat_takes_fire_the_alarm
+O3 -> HostChatTakeTests::test_the_alarm_names_the_host_chats",N648 item 8 (coaches answer the moments of a Take made in a host's chat); promise: every moment a speaker meets reaches a coach.
 tests/test_ideal_text_bake_fresh_head.py,Story,"As a speaker, I want my feedback marks built on the Take I was just told is ready, so that I never see the previous Take's marks.","O1  If the stored Ideal Text still points at the previous Take, it is
 republished first and the new Take is the one baked.
 O2  If it is already current, it is baked as it stands, with no republish.","O1 -> test_a_stale_head_is_republished_and_the_new_take_is_baked
@@ -3704,6 +3712,16 @@ how many made an account, by way; nobody else can read it.","O1 -> SignupCountTe
 O2 -> SignupCountTest::test_the_founder_reads_seen_and_made_by_way","Founder 2026-10-26, N207 item 6 (N174 item 6)."
 tests/test_signup_email_in_use.py,Story,"As a person who already has an account and fills in the sign-up form again, I want to be told my email is registered and sent to sign in.","O1  A sign-up with a registered email is answered 409 EMAIL_IN_USE.
 O2  That answer is not reported to Sentry as a server error.","O1, O2 -> test_a_registered_email_is_told_to_sign_in","Sentry 2026-10-29: ""AuthApiError v2.v2_auth_signup — A user with this email address has already been registered"" raised as an error on every repeat sign-up."
+tests/test_silent_tries.py,Story,"As the founder, I want ""Catch more"" or ""Catch fewer"" on one thing the walk notices to run silently beside the live setting first, so that I see what it would catch and what coaches say before anything a speaker sees changes (N647 item 3).","O1  One try per thing at a time; a second start is refused.
+O2  Re-scoring the last 20 stored recordings makes the result ready at
+once; it counts only the cases that differ from live, and only
+SETTLED coach answers (a singleton never counts).
+O3  ""Use it"" makes the candidate live, once, and only when the try is
+ready and at least 10 settled answers exist.
+O4  ""Go back"", or a try left for 60 days, changes nothing live.","O1 -> test_one_try_per_thing
+O2 -> test_twenty_stored_recordings_give_the_result_at_once
+O3 -> test_use_it_needs_ten_settled_answers_then_goes_live
+O4 -> test_go_back_and_expiry_change_nothing_live",
 tests/test_single_deliverable.py,Story,"As a speaker, I want my Ideal Text free in both states, never the coach's unfinished edit, with the only paid item being key-moment explanations, so that I get my text without a paywall and pay only for extras.","O1  The Ideal Text GET never shows the coach's in-progress edit.
 O2  Never-1: the Ideal Text GET carries the text and no scores or
 internal reads; the stored suggestions snapshot drops internal
@@ -3867,6 +3885,26 @@ O3 -> test_a_presentation_deletes_all_or_none
 O4 -> test_a_delete_that_did_not_happen_is_not_a_success
 O5 -> test_a_stranger_cannot_delete_my_take
 O6 -> test_cleanup_keeps_a_take_with_lineage_quietly","2026-09-25: links were nulled before a refused DELETE and the route answered 200 (the same defect reverted the project delete, #647). Covers the Python routes and repository only, against a table double that refuses a DELETE the way PostgreSQL does (one statement, all or nothing); the database's own RESTRICT keys are not exercised here."
+tests/test_take_door.py,Story,"As a speaker in my chat with the speaking host, I want to record a Take right there, through the same loop as every Take, so that the host's chat can do what the pinned speaking chat does; as the host, I never get a speaker's Take unless they send it to me.","O1  In my chat with the speaking host, whose recipe takes a recording and
+whose walk ends in an Ideal Text, the chat says ""takes"" (the list
+and the chat), and my Take, once uploaded, is tagged with it: found by
+``made_in`` and listed once by ``takes_made_in``. The Take is the same
+Take, with its Ideal Text; nothing is copied, and no push goes.
+O2  Tagging again posts nothing new.
+O3  The door is shut, and nothing is written, for someone not on the ring
+row chat_builder, in a chat with anyone but the speaking host, for a
+recipe without a recording or without a saved walk ending in an Ideal
+Text, and for a Take that is not mine; a withdrawn recording consent
+is refused.
+O4  The host's read of the chat does not expose the Take: no tag among
+the messages or as the list's last line, and neither ""Open Take"" nor
+the audio opens anything through it.
+O5  A Take made in the chat and also sent there with ""Send"" are two
+messages; the tag never counts as a send (""Last sent"").","O1 -> TakeDoorTest::test_a_take_recorded_in_the_hosts_chat_is_tagged_with_it
+O2 -> TakeDoorTest::test_tagging_again_posts_nothing
+O3 -> TakeDoorTest::test_the_door_is_shut_elsewhere_and_nothing_is_written
+O4 -> TakeDoorTest::test_the_host_never_gets_the_take_through_the_tag
+O5 -> TakeDoorTest::test_a_take_made_here_and_sent_here_are_two_messages","N642 item 7, N644, N648 item 8 (founder, 11 November 2026): Artur's chat, set up by hand, does what the speaking coach does; the loop is never copied or broken (Never 3); a Take reaches someone else only when its speaker sends it (Privacy 4f). Built on tests/test_take_sends.py's in-memory chat tables."
 tests/test_take_feedback_candidates.py,Story,"As a speaker, I want the Confident Voice moment I am asked about to be quoted from my own words in this Take, so that the feedback points at what I really said.","O1  The quote is the phrase the model picked when I said it; else a
 phrase I said that the Ideal Text shares; else the start of that
 slide's paragraph (a route), never words from elsewhere.
