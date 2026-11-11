@@ -478,7 +478,16 @@ def clean_scale(raw: Any) -> list[dict]:
     return out
 
 
-def scale_ok(scale: list[dict]) -> bool:
+#: A model made from one question (a chat's card, blocks) has two or three
+#: answers (N646 item 2).
+MIN_ANSWERS, MAX_ANSWERS = 2, 3
+
+
+def scale_ok(scale: list[dict], draft: Optional[dict] = None) -> bool:
+    """Every point a word; three to seven points, or two or three answers for
+    a model made from one question (``from_chat``)."""
+    if (draft or {}).get("from_chat"):
+        return MIN_ANSWERS <= len(scale) <= MAX_ANSWERS and all(p.get("t") for p in scale)
     """A word for every point, three to seven points."""
     return MIN_POINTS <= len(scale) <= MAX_POINTS and all(p.get("t") for p in scale)
 
@@ -995,7 +1004,8 @@ def checklist(draft: dict) -> list[dict]:
     parts = draft.get("parts") or {}
     items = []
     if parts.get("score"):
-        items.append({"title": WORDS["check_scale"], "step": "scale", "done": scale_ok(clean_scale(draft.get("scale")))})
+        items.append({"title": WORDS["check_scale"], "step": "scale",
+                      "done": scale_ok(clean_scale(draft.get("scale")), draft)})
     items += [
         {"title": WORDS["check_kind"], "step": "kind", "done": bool(parts_on(draft))},
         {"title": WORDS["check_rules"], "step": "rules", "done": bool(draft.get("rules_decided"))},
@@ -1015,7 +1025,7 @@ def can_start(draft: dict) -> bool:
     if not _clean(draft.get("name"), 80) or not parts_on(draft):
         return False
     if (draft.get("parts") or {}).get("score"):
-        return scale_ok(clean_scale(draft.get("scale")))
+        return scale_ok(clean_scale(draft.get("scale")), draft)
     return True
 
 

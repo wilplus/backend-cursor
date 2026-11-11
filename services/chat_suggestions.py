@@ -20,6 +20,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from services import model_answers
+
 logger = logging.getLogger(__name__)
 
 # ── The prototype's building blocks, word for word ─────────────────────
@@ -183,7 +185,7 @@ PROMPT = (
     "\"hello\": 2 different welcome messages the chat says first, 1 or 2 short sentences each, in the specialist's voice;\n"
     "\"qs\": 3 short questions the chat asks a new person first;\n"
     "\"taps\": 2 arrays, each with 3 things people would ask this specialist for, at most 5 words each;\n"
-    "\"models\": 4 objects, each one thing a small model could learn to recognise in what the person sent (it must fit the first kind in \"send\": never ask about a picture when people send messages, or about a voice when they send photos): {\"q\": a short yes-or-no style question the specialist answers by looking or listening, \"opts\": exactly 3 short answers from yes to no, \"says\": one sentence the person reads when the answer is the first option};\n"
+    "\"models\": 4 objects, each one thing a small model could learn to recognise in what the person sent (it must fit the first kind in \"send\": never ask about a picture when people send messages, or about a voice when they send photos): {\"q\": a short question the specialist answers by looking or listening, \"opts\": exactly 3 short answers to that very question: when it names the things to tell apart, those things and then \"Not sure\" (\"Is the wood cracked or broken?\": \"Cracked\", \"Broken\", \"Not sure\"), and only for a question that is itself yes or no, from yes to no, \"says\": one sentence the person reads when the answer is the first option};\n"
     "\"sample_in\": one sentence describing what a person might send;\n"
     "\"sample_out\": the first thing they get back, 1 or 2 sentences."
 )
@@ -237,8 +239,10 @@ def clean(spec: str, raw: Any) -> dict:
     for m in raw_models if isinstance(raw_models, list) else []:
         if isinstance(m, dict) and _str(m.get("q"), 90) and isinstance(m.get("opts"), list) \
                 and len(m["opts"]) >= 3:
+            # The answers follow the question (N646 item 1): a reply that
+            # still says yes or no to a question naming two things is fixed.
             models.append({"q": _str(m["q"], 90),
-                           "opts": [_str(x, 22) or "?" for x in m["opts"][:3]],
+                           "opts": model_answers.fix(m["q"], [_str(x, 22) or "?" for x in m["opts"][:3]]),
                            "says": _str(m.get("says"), 200) or ""})
     taps = []
     raw_taps = got.get("taps")

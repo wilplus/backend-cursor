@@ -241,9 +241,9 @@ def begin_from_blocks(database: Any, user_id: Any, body: Any) -> dict:
     body = body if isinstance(body, dict) else {}
     question = S._clean(body.get("question"), 200)
     answers = body.get("answers")
-    if not question or not isinstance(answers, list) or len(answers) != 3 \
-            or not all(isinstance(a, str) and a.strip() for a in answers):
-        raise _bad("NOT_READY", "The model needs its question and three answers.")
+    if not question:
+        raise _bad("NOT_READY", "The model needs its question.")
+    answers = clean_answers(answers)
     if (body.get("base") or "gpt") not in READY_BASES:
         raise _bad("NOT_READY_YET", "It can be built on GPT only, for now.")
     if (body.get("gives") or "pick") not in READY_GIVES:
@@ -251,8 +251,27 @@ def begin_from_blocks(database: Any, user_id: Any, body: Any) -> dict:
     sends = body.get("sends") or "text"
     if sends not in ("rec", "text", "file"):
         raise _bad("NOT_READY_YET", "No model reads a photo yet.")
-    return begin_from_chat(database, user_id, question=question, answers=[a.strip() for a in answers],
-                           sends=sends)
+    return begin_from_chat(database, user_id, question=question, answers=answers, sends=sends)
+
+
+def clean_answers(answers: Any) -> list[str]:
+    """A model's own answers as a person typed them (N646 item 2): two or
+    three, each 1 to 24 characters, no two the same; a fourth is refused
+    (TOO_MANY_ANSWERS), fewer than two or a blank or repeated one too
+    (BAD_ANSWERS)."""
+    if not isinstance(answers, list):
+        raise _bad("BAD_ANSWERS", "Give two or three answers.")
+    if len(answers) > S.MAX_ANSWERS:
+        raise _bad("TOO_MANY_ANSWERS", f"At most {S.MAX_ANSWERS} answers.")
+    kept = [" ".join(a.split()) if isinstance(a, str) else "" for a in answers]
+    if len(kept) < S.MIN_ANSWERS or not all(0 < len(a) <= ANSWER_LONGEST for a in kept) \
+            or len({a.lower() for a in kept}) != len(kept):
+        raise _bad("BAD_ANSWERS", "Give two or three different answers.")
+    return kept
+
+
+#: The longest answer a person types.
+ANSWER_LONGEST = 24
 
 
 def begin_from_chat(database: Any, user_id: Any, *, question: str, answers: list[str],
@@ -271,7 +290,7 @@ def begin_from_chat(database: Any, user_id: Any, *, question: str, answers: list
                              "scale": scale, "input": _CHAT_INPUT.get(sends, "text"),
                              "from_chat": True, "done": ["problem", "kind", "scale", "question"]}
     if not S.can_start(draft):
-        raise _bad("NOT_READY", "The model needs its question and three answers.")
+        raise _bad("NOT_READY", "The model needs its question and two or three answers.")
     made = _rows(_table(database, MODELS).insert({
         "name": draft["name"], "owner_id": me, "owner_name": _owner_name(database, me),
         "visibility": "private", "status": "draft", "draft_step": "ready", "setup": draft}))
@@ -377,12 +396,45 @@ def _kind(_db: Any, _me: str, _model: dict, draft: dict, body: dict) -> None:
     return None
 
 
-def _scale(_db: Any, _me: str, _model: dict, draft: dict, body: dict) -> None:
-    scale = S.clean_scale(body.get("scale"))
-    if not S.scale_ok(scale):
-        raise _bad("BAD_SCALE", "Give every point a word.")
-    draft["scale"] = scale
+def _scale(database: Any, _me: str, model: dict, draft: dict, body: dict) -> None:
+    draft["scale"] = _answers_kept(database, model, draft, body.get("scale"))
     return None
+
+
+def _counted(database: Any, model_id: Any) -> bool:
+    """Has any answer to this model counted yet (N646 Open)?"""
+    return bool(_rows(_table(database, ANSWERS).select("id").eq("model_id", str(model_id))
+                      .eq("counted", True).limit(1)))
+
+
+def _answers_kept(database: Any, model: dict, draft: dict, raw: Any) -> list[dict]:
+    """The model's answers as the person changed them, checked (N646 items
+    2 and 3): every point a word; a model made from a question (a chat's
+    card, blocks) at most three; and none changed once an answer counted:
+    until the founder decides (N646 Open), they may not, 409
+    ANSWERS_LOCKED."""
+    scale = S.clean_scale(raw)
+    if draft.get("from_chat") and len(scale) > S.MAX_ANSWERS:
+        raise _bad("TOO_MANY_ANSWERS", f"At most {S.MAX_ANSWERS} answers.")
+    if not S.scale_ok(scale, draft):
+        raise _bad("BAD_SCALE", "Give every point a word.")
+    if [p["t"] for p in scale] != [p.get("t") for p in S.clean_scale(draft.get("scale"))] \
+            and _counted(database, model["id"]):
+        raise ChatsError("ANSWERS_LOCKED", "Its answers can't change once teaching has counted.", 409)
+    return scale
+
+
+def set_answers(database: Any, user_id: Any, model_id: Any, answers: list[str]) -> None:
+    """The answers of the host's own model made from their chat's card, kept
+    as the card says them (N646 item 4: the chat's reply reads the card,
+    teaching and the check read the model). Unchanged is nothing."""
+    me = lp._require(database, user_id)
+    model = _owned(database, me, model_id)
+    draft = dict(model["setup"])
+    if [p.get("t") for p in S.clean_scale(draft.get("scale"))] == list(answers):
+        return
+    draft["scale"] = _answers_kept(database, model, draft, answers)
+    _write(database, model, draft)
 
 
 def _question(_db: Any, _me: str, _model: dict, draft: dict, body: dict) -> None:

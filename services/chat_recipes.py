@@ -88,10 +88,15 @@ def _model(raw: Any, i: int) -> dict:
     if not isinstance(raw, dict):
         raise RecipeError("RECIPE_INVALID", f"Model {i + 1} must be an object.")
     opts = raw.get("opts")
-    if not isinstance(opts, list) or len(opts) != 3:
-        raise RecipeError("RECIPE_INVALID", f"Model {i + 1} has three answers.")
+    if isinstance(opts, list) and len(opts) > 3:
+        raise RecipeError("TOO_MANY_ANSWERS", f"Model {i + 1} has at most three answers.")
+    if not isinstance(opts, list) or len(opts) < 2:
+        raise RecipeError("RECIPE_INVALID", f"Model {i + 1} has two or three answers.")
+    kept_opts = [_words(o, 24, f"An answer of model {i + 1}") for o in opts]
+    if len({o.lower() for o in kept_opts}) != len(kept_opts):
+        raise RecipeError("RECIPE_INVALID", f"Model {i + 1}'s answers are all different.")
     out: dict[str, Any] = {"q": _words(raw.get("q"), 90, f"Model {i + 1}"),
-                           "opts": [_words(o, 22, f"An answer of model {i + 1}") for o in opts],
+                           "opts": kept_opts,
                            "says": _words(raw.get("says"), 200, f"Model {i + 1}'s line", empty=True),
                            "own": raw.get("own", True) is not False}
     if out["own"] and raw.get("model_id"):
@@ -388,6 +393,11 @@ def _real_models(database: Any, user_id: str, recipe: dict, models: list[dict]) 
             out.append(m)
             continue
         made = m.get("model_id") if m.get("model_id") in ids else by_q.get(m["q"])
+        if made and list(m["opts"]) != _opts_of(before, made):
+            # Changed answers reach the real model too, so teaching, the
+            # check and the reply read the same three (N646 items 3 and 4);
+            # refused once an answer counted (409 ANSWERS_LOCKED).
+            model_setup_store.set_answers(database, user_id, made, m["opts"])
         if not made and model_launchpad_store.enabled(database, user_id):
             made = model_setup_store.begin_from_chat(
                 database, user_id, question=m["q"], answers=m["opts"], sends=sends)["model_id"]
@@ -396,6 +406,11 @@ def _real_models(database: Any, user_id: str, recipe: dict, models: list[dict]) 
         out.append({**{k: v for k, v in m.items() if k != "model_id"},
                     **({"model_id": made} if made else {})})
     return out
+
+
+def _opts_of(cards: list[dict], model_id: str) -> Optional[list]:
+    """The answers a card for this model was saved with, or None."""
+    return next((list(m.get("opts") or []) for m in cards if str(m.get("model_id")) == str(model_id)), None)
 
 
 def parts(recipe: dict, person: Any = None) -> list[dict]:
