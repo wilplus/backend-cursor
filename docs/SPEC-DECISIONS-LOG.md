@@ -17374,3 +17374,54 @@ N641 and N642.
 host sees while fewer than ten coaches' answers exist for a count.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N648 · Developer mode in Build: how close the chat is to the speaking
+coach, how each part is doing, charts, and the training data to keep. What
+is not started gets built** (founder, the Claude Code chat, 11 November
+2026: "We want the exact same capabilities and look and features by set up
+from the manual set up and with oversight over it and options for
+calibration and observation how it learns, how far each intervention and
+moment is to its next level of performance, how many experiments have been
+ran and how many segments do we have. And what data can be exported like
+very simple charts ... as for a 15 years old. Available on the developers
+mode toggle below the 2 tabs"; "below the dashboards ... you should be able
+to export any of your training data"; and "please log it all and build it.
+The not started should be built"). For N642 and N647.
+
+1. **A switch, "Developer mode",** sits under Build's two tabs. On, it shows
+   Will's line "What I measure, in plain numbers. Tap one." and five rows,
+   each one screen. Off, Build is as before.
+2. **"How close to the speaking coach":** "Your chat does {n} of the {m}
+   things the speaking coach does.", a bar, and the list, each thing marked
+   built, being built or not started.
+3. **"What I notice":** each thing noticed with its level and the next one
+   ("Still learning", "Learns from cases", "Checked by you", "Passed its
+   exam": a model's own gates, N566, N616), a bar, what it still needs, its
+   segments, the experiments run (N647 item 3), and how often coaches
+   agreed.
+4. **"What I say":** each line with "Helped {a} of {b} times.", a bar, and
+   how many more answers before the result can be told.
+5. **"Charts":** simple bar charts by week, each with "Download": people
+   who wrote or recorded, walks run, "Did this help?", Ideal Texts made.
+   A chart holds counts by week, never a person.
+6. **"Your training data":** "Everything you taught, in pairs: the case and
+   the answer. Tap one to download." and "Cases you wrote come with their
+   text. Other people's words stay out." One row for each model, each thing
+   noticed, and the lines with their "Did this help?" answers. What may
+   leave is what N528 item 12 and N615 item 2 already allow: a speaker's
+   words, a sealed exam case and another team's private case never do.
+7. **Everything here is for the host only** (N647 item 7). Nothing about
+   one person goes to an organisation (Terms 3.10).
+8. **What is not started is built,** in this order, so that Artur's chat,
+   set up by hand, does what the speaking coach does: the walk and its
+   lines in a host's chat (N647 item 8); a Take recorded in a host's chat,
+   through the same loop, with its transcript and Ideal Text; practice, the
+   plan, the feelings check and coaches' answers there; the speaking
+   coach's thresholds as settings, unchanged; the silent tries; then this
+   entry's screens. Until each is built the speaking coach keeps doing it,
+   and nothing a speaker has is removed (N644 item 4).
+
+**Open:** how many answers a line needs before its result is told; whether
+a chart's download is a file or a copy to the clipboard.
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
