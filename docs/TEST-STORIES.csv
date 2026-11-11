@@ -610,6 +610,9 @@ FIRST-18 -> SetupTest::test_two_ways_use_one_or_train_your_own
 FIRST-20 -> SetupTest::test_test_my_chat_answers_as_my_people_would
 FIRST-21 -> SetupTest::test_to_change_the_chat_tell_will
 FIRST-22 -> SetupTest::test_who_answers_is_three_plain_choices
+N641.1   -> SetupTest::test_the_feedback_walk_is_kept_in_a_chat_that_takes_a_recording
+N641.2   -> SetupTest::test_i_want_this_tells_the_founder_once
+N641.2   -> SetupTest::test_the_ask_is_kept_when_the_mail_cannot_go
 N632.2   -> SetupTest::test_what_the_first_take_said_opens_what_you_do
 N632.3   -> SetupTest::test_a_chat_that_takes_a_recording_is_a_skill_chat
 N632.4   -> SetupTest::test_start_again_begins_blank_and_keeps_only_the_same_model
