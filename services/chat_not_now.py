@@ -31,7 +31,7 @@ def _what(row: dict) -> str | None:
     """'take' for a Take, 'question' for a question asked to answer properly
     (N361, N498); None for anything that asks for no answer."""
     meta = row.get("meta") or {}
-    if row.get("kind") == "take":
+    if row.get("kind") == "take" and "made_here" not in meta:  # a tag asks nothing
         return "take"
     if meta.get("question") is True or meta.get("record_answer") is True:
         return "question"

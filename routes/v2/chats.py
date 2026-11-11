@@ -58,6 +58,11 @@ Service: services/chats.py.
                                    a Take sent in the chat (kind "take",
                                    N470): {audio_url, duration_ms, slides:
                                    [{index, title, words}]}, for any member
+  POST /v2/chats/<id>/take       {take}: {message_id, take}, the caller's
+                                   own Take, recorded through the one loop,
+                                   tagged with the speaking host's chat it
+                                   was made in, once (services/take_door.py,
+                                   N648 item 8); 404 where the door is shut
   GET  /v2/user/takes/send/people {enabled, people: [...]}, whom a Take can
                                    be sent to (services/take_sends.py)
   GET  /v2/user/takes/send/last   {enabled, choice: {all, user_ids} | null}
@@ -293,6 +298,24 @@ def v2_chats_answer(thread_id):
     return _run("answer", lambda: post_answer(
         db, str(request.user_id), thread_id, body.get("take"), body.get("duration_ms"),
         body.get("hold_ms")))
+
+
+@v2_bp.route("/chats/<thread_id>/take", methods=["POST"])
+@limiter.limit("120 per hour", scope="chats_take")
+@require_auth
+@_a_member_first
+def v2_chats_take_made_here(thread_id):
+    """A Take recorded in the speaking host's chat (N648 item 8), tagged with
+    it once its upload has passed the processing-authorization path as every
+    Take does (POST /v2/lab/recordings). Nothing here calls a provider; the
+    recording consent is asked again, as an answer's is. Then the chat and
+    its door (404) and the Take (404 if not the caller's)."""
+    refused = _recording_refused()
+    if refused is not None:
+        return refused
+    from services.take_door import tag
+    body = request.get_json(silent=True) or {}
+    return _run("take", lambda: tag(db, str(request.user_id), thread_id, body.get("take")))
 
 
 @v2_bp.route("/chats/<thread_id>/question", methods=["POST"])
@@ -673,6 +696,26 @@ def v2_chats_blank_setup_walk_want():
     payload = getattr(request, "token_payload", None)
     return _builder_or_404(lambda: _run("setup walk want", lambda: chat_recipes.want_walk(
         db, str(request.user_id), payload)))
+
+
+@v2_bp.route("/chats/setup/walk", methods=["GET"])
+@require_auth
+def v2_chats_blank_setup_walk():
+    """The walk, what it notices, what it says and how each is doing (N647)."""
+    from services import chat_replies
+    return _builder_or_404(lambda: _run("setup walk", lambda: chat_replies.walk_view(
+        db, str(request.user_id))))
+
+
+@v2_bp.route("/chats/setup/walk/items/<model_id>", methods=["PUT"])
+@limiter.limit("600 per hour", scope="chats_blank_setup_walk_item")
+@require_auth
+def v2_chats_blank_setup_walk_item(model_id):
+    """Turn one line of the walk on or off, or change its words (N647 item 6)."""
+    from services import chat_replies
+    body = request.get_json(silent=True)
+    return _builder_or_404(lambda: _run("setup walk item", lambda: chat_replies.walk_item(
+        db, str(request.user_id), model_id, body)))
 
 
 @v2_bp.route("/chats/setup/dev", methods=["GET"])
