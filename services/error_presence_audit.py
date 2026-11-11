@@ -83,16 +83,23 @@ def week_key(now: Optional[datetime] = None) -> str:
 
 # ── sampling ───────────────────────────────────────────────────────────────
 
+def _stratum(c: dict) -> tuple[str, bool, str]:
+    """(error, fired, trial): a case a silent try sees differently from
+    live (``trial``) is its own stratum, so it is drawn often and its
+    sampling probability still weights the report honestly."""
+    return (str(c["error_id"]), bool(c.get("fired")), "trial" if c.get("trial") else "")
+
+
 def sampling_plan(candidates: Iterable[dict], *, size: int,
                   rng: Any = None) -> list[dict]:
     """Stratified per (error, fired): equal draws from each stratum, round
     robin until `size`; each pick carries its sampling probability (picks
     from its stratum over the stratum's size). Pure."""
     rng = rng or random.Random()
-    strata: dict[tuple[str, bool], list[dict]] = defaultdict(list)
+    strata: dict[tuple[str, bool, str], list[dict]] = defaultdict(list)
     for c in candidates:
         if isinstance(c, dict) and c.get("clip_id") and c.get("error_id"):
-            strata[(str(c["error_id"]), bool(c.get("fired")))].append(c)
+            strata[_stratum(c)].append(c)
     for rows in strata.values():
         rng.shuffle(rows)
     counts: Counter = Counter()
@@ -107,9 +114,21 @@ def sampling_plan(candidates: Iterable[dict], *, size: int,
                 counts[k] += 1
     out = []
     for pick in picks:
-        k = (str(pick["error_id"]), bool(pick.get("fired")))
+        k = _stratum(pick)
         out.append({**pick, "sampling_probability": round(counts[k] / len(strata[k]), 4)})
     return out
+
+
+def _mark_trials(database: Any, candidates: list[dict]) -> list[dict]:
+    """Flag the cases a silent try sees differently (services/silent_tries).
+    The flag shapes the draw only; the row written for the coach never
+    carries it."""
+    from services.silent_tries import trial_clips
+    trials = trial_clips(database)
+    if not trials:
+        return candidates
+    return [{**c, "trial": (str(c.get("clip_id")), str(c.get("error_id"))) in trials}
+            for c in candidates]
 
 
 def _on_notice_version(database: Any, take_session_id: str) -> bool:
@@ -215,13 +234,17 @@ def sample_for_coach(database: Any, *, coach_id: str, now: Optional[datetime] = 
                       if isinstance(r, dict)}
     candidates = [c for c in (database.list_audit_candidates(list(errors_in_scope())) or [])
                   if isinstance(c, dict) and (str(c.get("clip_id")), str(c.get("error_id"))) not in answered_by_me]
+    candidates = _mark_trials(database, candidates)
     candidates = _still_permitted(database, candidates)
     candidates = unexposed(database, str(coach_id), candidates)
     plan = _per_speaker_cap(sampling_plan(candidates, size=room * 3, rng=rng))[:room]
     written = []
     for pick in plan:
         audited_before = int(pick.get("answered_count") or 0)
-        if audited_before >= 2 or (audited_before == 1 and rng.random() >= OVERLAP_SHARE):
+        # A silent try's case always gets its second coach: only two
+        # matching answers settle it (LEARNING-AND-QUORUM section C).
+        if audited_before >= 2 or (audited_before == 1 and not pick.get("trial")
+                                   and rng.random() >= OVERLAP_SHARE):
             continue
         row = database.insert_error_presence_audit({
             "coach_id": str(coach_id), "clip_id": str(pick["clip_id"]),

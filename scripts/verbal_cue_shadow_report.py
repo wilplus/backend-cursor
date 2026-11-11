@@ -32,18 +32,18 @@ def main() -> int:
         meets_bar,
         report,
     )
-    from services.verbal_cues import CUES, VERBAL_CUES_VERSION
+    from services.verbal_cues import CUES, detector_version
 
     min_yes = PROMOTION_MIN_YES if args.min_yes is None else args.min_yes
     min_caught = (PROMOTION_MIN_CAUGHT_RATE if args.min_caught is None
                   else args.min_caught)
-    out = report(db, detector_version=VERBAL_CUES_VERSION, cues=CUES)
+    out = report(db, detector_version=detector_version(), cues=CUES)
     for summary in out.values():
         ok, why = meets_bar(summary, min_yes=min_yes,
                             min_caught_rate=min_caught)
         summary["clears_bar"] = ok
         summary["why_not"] = why
-    print(json.dumps({"detector_version": VERBAL_CUES_VERSION,
+    print(json.dumps({"detector_version": detector_version(),
                       "bar": {"min_yes": min_yes,
                               "min_caught_rate": min_caught},
                       "cues": out},

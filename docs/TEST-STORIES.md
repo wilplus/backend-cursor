@@ -3357,6 +3357,10 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O2** Re-scoring the last 20 stored recordings makes the result ready at once; it counts only the cases that differ from live, and only SETTLED coach answers (a singleton never counts).
 - **O3** "Use it" makes the candidate live, once, and only when the try is ready and at least 10 settled answers exist.
 - **O4** "Go back", or a try left for 60 days, changes nothing live.
+- **O5** A running try leaves every live verdict on a Take as it was; the candidate's verdicts go to the shadow log under their own version.
+- **O6** The re-score reads the last stored Takes again, and a case counts as agreed only once two coaches' blind answers match.
+- **O7** A case a try sees differently always reaches a second coach, and the coach's row never says a try is involved (Never 2).
+- **O8** After a value is made live, the blind audit still draws that cue's cases, old and new; it never draws a silent try's own verdicts.
 
 ### As a speaker, I want my Ideal Text free in both states, never the coach's unfinished edit, with the only paid item being key-moment explanations, so that I get my text without a paywall and pay only for extras.
 

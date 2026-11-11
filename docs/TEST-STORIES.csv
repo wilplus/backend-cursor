@@ -3723,10 +3723,22 @@ once; it counts only the cases that differ from live, and only
 SETTLED coach answers (a singleton never counts).
 O3  ""Use it"" makes the candidate live, once, and only when the try is
 ready and at least 10 settled answers exist.
-O4  ""Go back"", or a try left for 60 days, changes nothing live.","O1 -> test_one_try_per_thing
+O4  ""Go back"", or a try left for 60 days, changes nothing live.
+O5  A running try leaves every live verdict on a Take as it was; the
+candidate's verdicts go to the shadow log under their own version.
+O6  The re-score reads the last stored Takes again, and a case counts as
+agreed only once two coaches' blind answers match.
+O7  A case a try sees differently always reaches a second coach, and the
+coach's row never says a try is involved (Never 2).
+O8  After a value is made live, the blind audit still draws that cue's
+cases, old and new; it never draws a silent try's own verdicts.","O1 -> test_one_try_per_thing
 O2 -> test_twenty_stored_recordings_give_the_result_at_once
 O3 -> test_use_it_needs_ten_settled_answers_then_goes_live
-O4 -> test_go_back_and_expiry_change_nothing_live",
+O4 -> test_go_back_and_expiry_change_nothing_live
+O5 -> test_a_running_try_leaves_the_live_verdicts_as_they_were
+O6 -> test_the_rescore_counts_only_settled_answers
+O7 -> test_a_tried_case_gets_a_second_coach_blind
+O8 -> test_the_audit_keeps_drawing_a_cue_after_use_it",
 tests/test_single_deliverable.py,Story,"As a speaker, I want my Ideal Text free in both states, never the coach's unfinished edit, with the only paid item being key-moment explanations, so that I get my text without a paywall and pay only for extras.","O1  The Ideal Text GET never shows the coach's in-progress edit.
 O2  Never-1: the Ideal Text GET carries the text and no scores or
 internal reads; the stored suggestions snapshot drops internal

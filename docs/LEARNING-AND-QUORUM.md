@@ -417,7 +417,7 @@ One line per piece of work: `item · what it is · where it stands · PR`.
 - **willfidence-v2** · weights tuned against the soft label · waits for 200 labels (§3, item A6) · none yet
 - **N79** · the coach's words captured for a "text brain" · capture in open PRs; no trainer · BE #1133, #1134, #1136, #1137, #1138
 - **Will learns more** · transcripts, coach words and chat history in Will's memory (step 2) · open PR · BE #1186
-- **N647.3** · silent tries: "Catch more" or "Catch fewer" runs beside live on 20 recordings, counted only on the cases that differ and only from settled answers; one per thing, kept in runtime_config `silent_try:<thing>` (`services/silent_tries.py`) · PR1 the service; the evaluation hook waits on the noticing settings; "Use it" behind a founder switch, off until counsel answers C1 · BE PR1
+- **N647.3** · silent tries: "Catch more" or "Catch fewer" on a verbal cue runs beside live: the last 20 stored Takes at once, then each new Take; counted only on the cases that differ, and only from settled answers (two matching blind audit answers); a tried case gets its own audit stratum and always a second coach; one try per thing, kept in runtime_config `silent_try:<thing>` (`services/silent_tries.py`) · the service merged (BE #1957); the judging beside live in PR2; "Use it" behind a founder switch, off until counsel answers C1 · BE #1957, PR2
 
 ---
 
