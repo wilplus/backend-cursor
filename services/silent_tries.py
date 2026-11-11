@@ -515,3 +515,108 @@ def trial_clips(database: Any) -> set[tuple[str, str]]:
         logger.warning("silent_tries: tries unreadable for the audit (%s)", exc, exc_info=True)
         return set()
     return {(clip, thing) for thing, t in tries.items() for clip in differing_clips(t)}
+
+
+# ---------- what the founder's routes call (PR3) ----------
+#
+# The host never sees a threshold: only the thing, the direction, words and
+# counts. "Use it" is reachable only while the environment switch below is
+# on; it is off unless set, until counsel answers whether tuning a cut-off
+# counts as training (C1; services/detector_candidates.py).
+
+USE_SWITCH = "SILENT_TRY_USE_ENABLED"
+NOT_ENOUGH_ANSWERS = "Coaches haven't answered enough yet."
+
+#: The settings seam names each thing in words; a try names it by error id.
+SEAM_THINGS = {"filler_cluster": "Filler words", "hedging": "Hedging",
+               "restart_repair": "Restarts"}
+MAX_LIVE_HISTORY = 20
+
+
+def use_is_on() -> bool:
+    import os
+    return (os.environ.get(USE_SWITCH) or "").strip().lower() == "true"
+
+
+def start_for(database: Any, thing: str, direction: str, *, by: str) -> dict:
+    """One notch toward catching more or fewer, of the dials this thing owns
+    (``noticing_settings.step``), started and re-scored at once."""
+    from services import noticing_settings as ns
+    if thing not in DIALS:
+        raise TryRefused("thing_unknown")
+    if direction not in DIRECTIONS:
+        raise TryRefused("direction_unknown")
+    live = ns.live()
+    stepped = ns.step(live, SEAM_THINGS[thing], direction)
+    overrides = {name: stepped[name] for name in DIALS[thing]
+                 if stepped.get(name) != live.get(name)}
+    if not overrides:
+        raise TryRefused("no_notch_left")
+    started = start(database, thing=thing, direction=direction, candidate=overrides,
+                    candidate_version=ns.version_of(ns.candidate(overrides)),
+                    live_version=ns.version_of(live), started_by=by)
+    rescore(database, thing)
+    return started
+
+
+def status_for(database: Any, thing: str) -> dict:
+    """What the host may read: the try's state, direction and counts, and a
+    line when coaches have not answered enough. Never a threshold."""
+    if thing not in DIALS:
+        raise TryRefused("thing_unknown")
+    found = result(database, thing)
+    if not found:
+        return {"thing": thing, "try": None}
+    shown = {k: found[k] for k in ("id", "state", "direction", "seen", "needed",
+                                   "changed", "settled", "agreed", "enough_answers")}
+    if not found["enough_answers"]:
+        shown["note"] = NOT_ENOUGH_ANSWERS
+    return {"thing": thing, "try": shown, "can_use": use_is_on()}
+
+
+def use_for(database: Any, thing: str, try_id: str, *, by: str) -> dict:
+    from services import noticing_settings as ns
+    current_try = current(database, thing)
+    if not current_try or current_try.get("id") != try_id:
+        raise TryRefused("no_such_try")
+    settled = settled_labels(database, thing, differing_clips(current_try))
+    return use(database, thing, try_id=try_id, settled=settled,
+               write_live=lambda overrides, who: make_live(database, overrides, by=who),
+               by=by, live_version=ns.version_of(ns.live()))
+
+
+def make_live(database: Any, overrides: Mapping, *, by: str) -> str:
+    """Write a new noticing_settings record: the live values with
+    ``overrides``, its version, and the record it replaces kept in its
+    history. A compare-and-swap, like a try. Returns the new version."""
+    from services import noticing_settings as ns
+    entry = database.get_runtime_config_entry(ns.KEY)
+    try:
+        record = json.loads((entry or {}).get("value") or "{}")
+    except (TypeError, ValueError):
+        record = {}
+    if not isinstance(record, dict):
+        record = {}
+    # The base is the record as stored now, not the cached live set (up to a
+    # minute old): a value made live meanwhile is kept, never undone.
+    stored = record.get("values") if isinstance(record.get("values"), dict) else {}
+    try:
+        base = ns.candidate(stored, base=ns.defaults())
+    except ValueError:
+        base = ns.live()
+    values = ns.candidate(dict(overrides), base=base)
+    moved = {name: list(v) if isinstance(v, tuple) else v
+             for name, v in values.items() if v != ns.DEFAULTS.get(name)}
+    history = list(record.get("history") or [])
+    if record.get("values") is not None:
+        history.append({"version": record.get("version"), "values": record.get("values"),
+                        "replaced_at": _iso(_now()), "replaced_by": by})
+    new_version = ns.version_of(values)
+    ok = database.put_runtime_config_entry(
+        ns.KEY, json.dumps({"version": new_version, "values": moved,
+                            "history": history[-MAX_LIVE_HISTORY:]}, sort_keys=True),
+        updated_by=by, expected_updated_at=(entry or {}).get("updated_at"))
+    if not ok:
+        raise TryRefused("changed_meanwhile")
+    ns.use_reader(ns._reader)  # same reader, cache dropped: this process reads it now
+    return new_version
