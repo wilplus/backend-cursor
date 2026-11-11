@@ -17258,3 +17258,39 @@ Takes they made before; decided when item 4 is built.
 
 No migration in this entry. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N645 · Adding the first cases to a model is guided: what a case is, three
+ways to start, and a set of texts to judge one by one** (founder, the
+Claude Code chat, 11 November 2026: "when you add your own cases to start
+with, guide people how it needs to look, and give an option for assistance
+that they can upload a set of images, or a set of texts to judge them, or a
+set of recordings (they should be automatically shortened too)"; on who
+pays for cutting and writing out uploaded recordings: "Yes they pay"; on
+the uploader confirming they may use the voices: "Ok"; and on the screen
+and its words as proposed: "Yes ... My go!"). Amends N638.
+
+Where a person adds the first cases to a model (after "Teach it", and
+"Add an example"):
+
+1. **The guide,** two of Will's lines: "A case is one real thing someone
+   sent you." and "Add ten that differ from each other. Easy ones teach
+   little."
+2. **Three ways to start:** "Write one" (N638), "Upload a set", and
+   "Record one", which is not ready yet and cannot be tapped.
+3. **"Upload a set" asks what kind:** "Texts"; "Recordings, coming. I want
+   this"; "Images, coming. I want this". "I want this" sends the founder
+   one mail and is not counted (N641 item 3).
+4. **For texts:** "One case per line, or one file per case." Then a tick,
+   "I may use these.", without which nothing is taken. Each case is then
+   judged one by one, as teaching works today. Was: one text file made one
+   case (N638 item 3).
+5. **When recordings are built,** their row works, with "Each one is cut
+   into short clips. It costs tokens." and the same tick. The person who
+   uploads pays for the cutting and the writing out, and is told before
+   they upload; they confirm they may use the voices before anything is
+   processed.
+
+**Open:** the limits for a set of recordings (how many at once, how long
+each), set when that is built; a model that learns from images.
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
