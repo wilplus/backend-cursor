@@ -300,6 +300,19 @@ def _side_by_side(calls: list) -> list:
         return [f.result() for f in futures]
 
 
+def _chat_titles(database: Any, others: dict[str, dict]) -> dict[str, str]:
+    """{host's user id: their chat's name} for the other people in these
+    chats who host a named chat (N642 item 1)."""
+    from services import assistants
+    return assistants.chat_titles(database, [str(o["user_id"]) for o in others.values() if o.get("user_id")])
+
+
+def _title(named: dict[str, str], other: dict, thread: dict) -> str:
+    """A row's title: the host's chat's name, else the other person's name,
+    else the chat's own."""
+    return named.get(str(other.get("user_id"))) or other.get("display_name") or thread["title"]
+
+
 def list_chats(database: Any, user_id: Any) -> dict:
     """GET /v2/chats: {"chats": [{id, kind, title, subtitle, last,
     joined_through}]}. ``joined_through`` is the first name of whose link the
@@ -351,8 +364,7 @@ def list_chats(database: Any, user_id: Any) -> dict:
     labelled = rings.feature_is_on_for_user(assistants.CHAT_BUILDER, user_id, database=database)
     # A host's chat is shown under its name (N642 item 1), to everyone in it
     # but the host; the person's name stays for the assistant and the rest.
-    named = assistants.chat_titles(database, [str(o["user_id"]) for o in others.values()
-                                              if o.get("user_id")])
+    named = _chat_titles(database, others)
     chats: list[tuple[str, dict]] = []
     for t in threads:
         other = others.get(str(t["id"])) or {}
@@ -361,7 +373,7 @@ def list_chats(database: Any, user_id: Any) -> dict:
         last = lasts[str(t["id"])]
         chats.append(((last or t)["created_at"] or "", {
             "id": str(t["id"]), "kind": t["kind"],
-            "title": named.get(str(other.get("user_id") or "")) or other.get("display_name") or t["title"],
+            "title": _title(named, other, t),
             "subtitle": other.get("subtitle"), "last": last,
             "joined_through": through.get(str(t["id"])),
             "assistant": assistants.assistant_name(other.get("display_name")) if person else None,
