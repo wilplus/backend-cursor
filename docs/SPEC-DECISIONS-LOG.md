@@ -17224,3 +17224,37 @@ The line under the name in Live is the one small line the founder asked
 for ("a small text that its admin set"); N637's rule is for the setup.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N644 · Where N642 ends: your own chat, the chats you have with people,
+and Principles. The pinned speaking chat goes when Artur's chat can do its
+work** (founder, the Claude Code chat, 11 November 2026: "as a result of
+those changes the Will chat and Speaking coach will converge, cause the
+speaking coach per se will disappear unless you have a chat with Artur, and
+Will becomes your own chat, you have a name. Principles is another feature
+so it stays"; and, earlier the same day, on "Speaking coach": "we wanted
+Artur to be the speaking coach, not in app speaking coach ... It will only
+be possible if we can set up the whole chat that is in the speaking coach
+through the set up, like a second speaking coach. So for now keep it"). For
+N636 item 1 and N642 item 7.
+
+1. **The end state, for whoever has the ring row `chat_builder`:** the
+   list holds one's own chat under its name (N642), the chats one has with
+   other people, and "Principles". There is no chat called "Will" and no
+   chat called "Speaking coach".
+2. **Speaking coaching lives in a person's chat with Artur,** as it would
+   with any other speaking coach who set their chat up the same way. A
+   person with no such chat has no speaking chat.
+3. **"Principles" stays** a chat of its own: it is another feature.
+4. **The pinned "Speaking coach" stays until then.** It goes only when a
+   host's chat runs Takes, the feedback walk and the Ideal Text as the
+   speaking chat does today (N642 item 7), and Artur's chat is set up that
+   way. Until that day nothing a speaker has is removed: record, process,
+   Ideal Text, next Take.
+5. **What a person recorded before** is shown in their chat with Artur
+   when the pinned chat goes; nothing is lost.
+
+**Open:** what a person on the ring who never joined Artur sees of the
+Takes they made before; decided when item 4 is built.
+
+No migration in this entry. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
