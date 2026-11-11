@@ -397,8 +397,9 @@ def walk_of(recipe: Optional[dict]) -> dict:
 
 def _full_name(token_payload: Any, user_id: str) -> str:
     from services.chat_links import name_of
-    payload = token_payload if isinstance(token_payload, dict) else {}
-    meta = payload.get("user_metadata") if isinstance(payload.get("user_metadata"), dict) else {}
+    payload: dict = token_payload if isinstance(token_payload, dict) else {}
+    raw = payload.get("user_metadata")
+    meta: dict = raw if isinstance(raw, dict) else {}
     return " ".join(str(meta.get("full_name") or meta.get("name") or "").split()) or name_of(payload)
 
 
