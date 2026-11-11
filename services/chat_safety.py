@@ -159,7 +159,9 @@ def _last_five(database: Any, thread: str, me: dict, names: dict) -> list[dict]:
     rows = (database.client.table(MESSAGES).select("id,author_member_id,kind,body,meta,created_at")
             .eq("thread_id", thread).order("created_at", desc=True).limit(50).execute().data or [])
     hidden = unheard(str(me["id"]), me.get("blocked_spans") or [])
-    shown = [r for r in rows if not _held(r) and not hidden(r)][:REPORTED_MESSAGES]
+    from services.take_door import mine_only  # a Take tagged for its speaker only
+    shown = [r for r in rows if not _held(r) and not hidden(r)
+             and not mine_only(r, str(me["id"]))][:REPORTED_MESSAGES]
     words: dict[str, str] = {}
     voices = [str(r["id"]) for r in shown if r.get("kind") == "voice"]
     if voices:
