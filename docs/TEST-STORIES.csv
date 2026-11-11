@@ -2372,11 +2372,17 @@ only under my processing authorization and recording consent; without
 them nothing is transcribed, and the recording is never kept.
 O5  A person who joins a model after it went public is never sent one of
 its private examples, and cannot answer one; the teacher invited
-while it was private still is.","O1 -> ModelActionsTest::test_not_now_keeps_the_invite_and_accept_makes_a_teacher
+while it was private still is.
+O6  A set of texts becomes one case each, in the order given, private as
+the model is, ready for the first ten; nothing is taken without the
+tick; empties and repeats are skipped; a set is at most 200; someone
+who may not add to the model is refused as on the single route
+(N645 item 4).","O1 -> ModelActionsTest::test_not_now_keeps_the_invite_and_accept_makes_a_teacher
 O2 -> ModelActionsTest::test_an_added_example_and_a_spoken_answer
 O3 -> ModelActionsTest::test_the_owners_actions_and_the_profile
 O4 -> ModelActionsTest::test_a_recording_becomes_words_only_with_authorization
-O5 -> ModelActionsTest::test_a_private_example_never_reaches_someone_who_joins_after_public","routes/v2/learning_models.py over services/model_launchpad_store.py, for the screens built on #1863's routes."
+O5 -> ModelActionsTest::test_a_private_example_never_reaches_someone_who_joins_after_public
+O6 -> ModelActionsTest::test_a_set_of_texts_becomes_one_case_each","routes/v2/learning_models.py over services/model_launchpad_store.py, for the screens built on #1863's routes."
 tests/test_model_launchpad_routes.py,Story,"As a person in WillpowerLab, I want the AI models' list, a model's page, the door, the one queue and teaching to answer from the models' tables through /v2/models, so the launchpad's rules reach me as they are written (N528, N563, N566).","O1  Without the ring row (ai_models, ring 6) every route is 404.
 O2  The list shows public models with how far each is, and never another
 person's private model; its page is 404 to an outsider.
