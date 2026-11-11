@@ -2484,6 +2484,7 @@ O4 -> ModelSetupRoutesTest::test_the_first_take_fills_describe
 O5 -> ModelSetupRoutesTest::test_start_after_the_scale_leaves_a_checklist
 O6 -> ModelSetupRoutesTest::test_existing_data_counts_only_with_the_tick
 O6 -> ModelSetupRoutesTest::test_the_data_step_takes_its_answer_as_well_as_a_file
+O6 -> ModelSetupRoutesTest::test_start_your_own_in_blocks_makes_the_model_at_once
 O7 -> ModelSetupRoutesTest::test_the_owner_answers_the_first_ten
 O8 -> ModelSetupRoutesTest::test_public_after_its_disclaimer_and_invites
 O9 -> ModelSetupRoutesTest::test_no_provider_call_without_authorization
