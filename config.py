@@ -383,6 +383,11 @@ class Config:
     # with ADMIN_EMAIL (services/take_sends.py, found once per process);
     # set, this id wins. Neither finds anybody: no fallback.
     FOUNDER_CHAT_USER_ID = (os.getenv("FOUNDER_CHAT_USER_ID") or "").strip() or None
+    # The speaking host: a person on the ring row chat_builder records a Take
+    # in their chat with this account, when its recipe takes a recording and
+    # its walk ends in an Ideal Text (services/take_door.py, N648 item 8).
+    # Optional: unset, it is the founder's account, found as above.
+    SPEAKING_HOST_USER_ID = (os.getenv("SPEAKING_HOST_USER_ID") or "").strip() or None
 
     # 6d: fitting a learned detector on audit answers. ON from 2026-10-02
     # (founder: "You have my go on each of the flips"; N26): the AI Act
