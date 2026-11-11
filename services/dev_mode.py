@@ -240,10 +240,13 @@ def people_events(database: Any, host: str, since: datetime) -> list[tuple[datet
     others = {str(m["id"]): str(m.get("user_id") or m["id"]) for m in members if str(m.get("user_id")) != host}
     if not others:
         return []
-    rows = _rows(database.client.table(MESSAGES).select("author_member_id,created_at")
+    from services.take_door import MADE_HERE
+    rows = _rows(database.client.table(MESSAGES).select("author_member_id,meta,created_at")
                  .in_("thread_id", threads).gte("created_at", since.isoformat()))
     out = []
     for r in rows:
+        if MADE_HERE in (r.get("meta") or {}):
+            continue  # a Take recorded here is its speaker's own, not the host's to count (take_door)
         who, when = others.get(str(r.get("author_member_id"))), _when(r.get("created_at"))
         if who and when:
             out.append((when, who))

@@ -24,6 +24,8 @@ OUTCOME
       offered practice as today; a Take made in the host's chat only while
       the host has "Practice after a Take" on (off by default); a lookup
       that fails answers yes.
+  O7  The host's Developer mode does not count a Take recorded in their
+      chat among the people who wrote or recorded.
 PROVES   O1 -> TakeDoorTest::test_a_take_recorded_in_the_hosts_chat_is_tagged_with_it
          O2 -> TakeDoorTest::test_tagging_again_posts_nothing
          O3 -> TakeDoorTest::test_the_door_is_shut_elsewhere_and_nothing_is_written
@@ -32,6 +34,7 @@ PROVES   O1 -> TakeDoorTest::test_a_take_recorded_in_the_hosts_chat_is_tagged_wi
          O6 -> TakeDoorTest::test_practice_follows_the_hosts_switch_for_a_take_made_in_their_chat
               TakeDoorTest::test_a_practice_cannot_be_started_while_the_hosts_switch_is_off
               TakeDoorTest::test_no_exercise_is_offered_while_the_hosts_switch_is_off
+         O7 -> TakeDoorTest::test_the_hosts_developer_mode_does_not_count_the_tag
 WHY      N642 item 7, N644, N648 item 8 (founder, 11 November 2026): Artur's
          chat, set up by hand, does what the speaking coach does; the loop
          is never copied or broken (Never 3); a Take reaches someone else
@@ -228,6 +231,22 @@ class TakeDoorTest(unittest.TestCase):
             with patch.object(_ChangesRun, "_practice_permitted", return_value=person), \
                     patch.object(take_door, "practice_allowed", return_value=host):
                 self.assertEqual(run._practice_offered(), offered, (person, host))
+
+    # ── O7 ───────────────────────────────────────────────────────────────
+
+    def test_the_hosts_developer_mode_does_not_count_the_tag(self):
+        from datetime import datetime, timedelta, timezone
+
+        from services import dev_mode
+        chat = self._chat_with(HOST, "Artur")
+        for row in self.store.tables["chat_threads"]:
+            if row["id"] == chat:
+                row["widget_owner_id"] = HOST
+        self._tag(chat, self._take())
+        since = datetime.now(timezone.utc) - timedelta(days=7)
+        self.assertEqual(dev_mode.people_events(sends.db, HOST, since), [])
+        self._post(f"/v2/chats/{chat}/messages", {"kind": "emoji", "body": "👍"})
+        self.assertEqual([who for _, who in dev_mode.people_events(sends.db, HOST, since)], [ME])
 
 
 if __name__ == "__main__":
