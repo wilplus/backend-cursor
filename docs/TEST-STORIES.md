@@ -2277,6 +2277,16 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 *Why:* 0439, D-FW-5; the Feedback walk lock, flow 1. Runs services.coach_feedback_signal against the real functions.
 
+### What the speaking coach notices moved from code into one settings record, unchanged (N647 item 8, step 3): today's thresholds are its defaults, and a missing, broken or out-of-bounds record changes nothing a speaker sees.
+
+`tests/test_noticing_settings.py` · Guard
+
+- **C1** a default drifting from the constant it replaced, so the move itself changes what is noticed
+- **C2** a missing, unreadable or out-of-bounds record changing a verdict, or a moved threshold logging its verdicts under today's version
+- **C3** a candidate (a silent try, step 4) leaking out of its own block into what the live rules read, or a step moving a ranking or pinned value, or leaving its bounds
+
+*Why:* If removed: moving a threshold could change the walk with no log to tell.
+
 ### As a speaker, I want every stored recording of my voice served only through a fresh signed link, so that my voice is never reachable on a permanent public URL.
 
 `tests/test_object_key_prefixes_are_classified.py` · Story

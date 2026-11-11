@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 from typing import Any, Callable, Iterable, NamedTuple, Optional
 
+from services import noticing_settings as ns
 from services.feedback_data_contract import FEATURE_SCHEMA_VERSION
 from services.reasonable_confidence import selection_summary
 from services.take_feedback_manager import (
@@ -646,6 +647,7 @@ def _practice_routing(blocks: list[dict]) -> dict:
     """
     from services.voice_confidence import band as delivery_band
 
+    practice_bands = ns.value("take_feedback_policy_v3.PRACTICE_BANDS")
     routing: dict[str, dict] = {}
     for block in blocks:
         selected_id = block.get("selected_candidate_id")
@@ -663,7 +665,7 @@ def _practice_routing(blocks: list[dict]) -> dict:
         label = delivery_band(chosen.get("machine_score"))
         routing[block["block_id"]] = {
             "delivery_band": label,
-            "practice_prompt": label in PRACTICE_BANDS,
+            "practice_prompt": label in practice_bands,
             "carries_exercise": (
                 label is not None and label not in CONFIDENT_BANDS),
         }
@@ -676,6 +678,13 @@ def _practice_routing(blocks: list[dict]) -> dict:
     for block in blocks:
         block.update(routing.get(block["block_id"], _UNROUTED_BLOCK))
     return routing
+
+
+def _noticing_stamp() -> dict:
+    """The noticing settings' version, only when a threshold is not today's
+    (``services.noticing_settings``), so today's frame is unchanged."""
+    moved = ns.version()
+    return {} if moved == ns.DEFAULT_VERSION else {"noticing_version": moved}
 
 
 def _selected_candidate(block: dict) -> Optional[dict]:
@@ -2306,7 +2315,8 @@ def build_shadow_frame(
         },
         "practice_policy": {
             "threshold": "below_neutral_delivery_band",
-            "prompt_bands": list(PRACTICE_BANDS),
+            "prompt_bands": list(ns.value("take_feedback_policy_v3.PRACTICE_BANDS")),
+            **_noticing_stamp(),
             # Founder 2026-10-20 (flow page C2, C4): each of the two shown
             # moments below the floor is corrected (services.moment_pick).
             "exercise_budget": "one_per_corrected_moment",
