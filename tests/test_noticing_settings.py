@@ -11,13 +11,18 @@ CATCHES
   C3  a candidate (a silent try, step 4) leaking out of its own block into
       what the live rules read, or a step moving a ranking or pinned value,
       or leaving its bounds
+  C4  one slow database read holding up every caller that needs a value:
+      while one thread refreshes, the others get the cached set at once
 IF REMOVED  moving a threshold could change the walk with no log to tell.
 PROVES   C1 -> test_the_defaults_are_todays_constants
          C2 -> test_a_bad_record_keeps_todays_values_and_a_moved_one_is_versioned
          C3 -> test_a_candidate_is_read_only_inside_its_block
                test_a_step_moves_only_a_things_dials_one_notch
+         C4 -> test_a_slow_read_does_not_hold_up_a_caller_with_a_cached_set
 """
 import json
+import threading
+import time
 
 import pytest
 
@@ -106,3 +111,28 @@ def test_a_step_moves_only_a_things_dials_one_notch():
     assert every_dial == noticing_settings.DIALABLE
     with pytest.raises(ValueError):
         noticing_settings.candidate({"moment_pick.MIN_WORDS": 9})
+
+
+def test_a_slow_read_does_not_hold_up_a_caller_with_a_cached_set(monkeypatch):
+    noticing_settings.use_reader(lambda: json.dumps({"values": {"moment_pick.FLOOR": 0.65}}))
+    assert noticing_settings.value("moment_pick.FLOOR") == 0.65
+    entered, release = threading.Event(), threading.Event()
+
+    def slow() -> str:
+        entered.set()
+        release.wait(5)
+        return json.dumps({"values": {"moment_pick.FLOOR": 0.55}})
+
+    monkeypatch.setattr(noticing_settings, "_reader", slow)
+    monkeypatch.setattr(noticing_settings, "_cached_at", time.monotonic() - 1000)
+    refresher = threading.Thread(target=noticing_settings.live)
+    refresher.start()
+    try:
+        assert entered.wait(5)
+        started = time.monotonic()
+        assert noticing_settings.value("moment_pick.FLOOR") == 0.65
+        assert time.monotonic() - started < 1.0
+    finally:
+        release.set()
+        refresher.join(5)
+    assert noticing_settings.value("moment_pick.FLOOR") == 0.55
