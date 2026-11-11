@@ -17080,3 +17080,46 @@ For whoever has the ring row `chat_builder`:
 
 No migration in this entry. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N641 · A host says what their feedback walk holds; the chat does not run
+it yet, and a host who wants it tells the founder with one tap** (founder,
+the Claude Code chat, 11 November 2026: "adjust the feedback walk in the
+your chat so that there you can define the feedback walk, with its order of
+interventions, the type of output like an ideal text or without any for
+now, and one example coming up, with an option to vote for this design
+element that sends mail to me as feature request"; on the coordinator's
+proposal to build the screens and the vote, and to say plainly that the
+chat cannot run the walk yet: "Yes, not counted, just email"). Also
+corrects a slip in N639.
+
+For whoever has the ring row `chat_builder`, in a chat that takes a
+recording:
+
+1. **"The feedback walk" is a part of one's chat,** in the setup after
+   "They get back" and among the chat's parts. The pinned prototype shows
+   its screens:
+   - "After a recording, people get a feedback walk." and "What should
+     yours hold? Tick all that apply.": "Their best moment", "One moment
+     to try another way", "The helper words".
+   - "Your walk goes in this order:" with Keep and Change, when it holds
+     more than one.
+   - "What do they get at the end?": "An Ideal Text" or "Nothing for now".
+   - "Your walk:" with what was chosen, as blocks.
+2. **It is kept and nothing more.** No visitor's chat runs a walk or makes
+   an Ideal Text yet, and the screen says so: "Your chat can't run this
+   yet. Want it?" with "Not now" and "I want this".
+3. **"I want this" sends the founder one mail,** as a request for the
+   feature, and answers "Thanks. I've told Artur." It is not counted, and
+   no number is shown. Asked again, it sends nothing more.
+4. **The speaking chat's own walk is untouched** (its order is locked,
+   N309): this part belongs to a host's chat only.
+
+**Open:** a host's chat running the walk it holds. That needs a visitor's
+recording to become a Take: whose it is, consent and the
+processing-authorization path, who pays, the slides for an Ideal Text, and
+what coaches see.
+
+**Correction to N639 item 1:** the bar of the coach's queue keeps its own
+name, "Your queue". "Your speakers" is the heading of the list inside it.
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
