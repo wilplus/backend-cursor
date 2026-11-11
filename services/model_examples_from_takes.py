@@ -112,9 +112,15 @@ def speaker_may_teach(database: Any, speaker_id: str) -> dict:
     return {"ok": True, "granted_at": consent.get("granted_at")}
 
 
+#: What the gathering reads of a moment: its id and its words. Never the
+#: word timings or the metrics, which are the heavy part of a snippet row.
+MOMENT_COLUMNS = "id, session_id, start_offset_ms, transcript"
+
+
 def _moments(database: Any, take_id: str) -> list[dict]:
     try:
-        clips = database.get_snippets_by_session(take_id) or []
+        clips = (database.get_snippets_by_sessions([take_id], columns=MOMENT_COLUMNS)
+                 or {}).get(str(take_id)) or []
     except Exception:
         logger.warning("model examples: the Take's moments could not be read take=%s", take_id,
                        exc_info=True)
@@ -124,12 +130,13 @@ def _moments(database: Any, take_id: str) -> list[dict]:
 
 
 def _recorded_at(database: Any, take_id: str) -> str:
+    """When the Take was recorded: that one column, not the whole Take."""
     try:
-        session = database.v2_get_session_by_id(take_id) or {}
+        rows = _rows(_table(database, "v2_sessions").select("id,created_at").eq("id", take_id))
     except Exception:
         logger.warning("model examples: the Take could not be read take=%s", take_id, exc_info=True)
-        session = {}
-    return str(session.get("created_at") or "")
+        rows = []
+    return str((rows[0] if rows else {}).get("created_at") or "")
 
 
 def _let_go(database: Any, model: dict, have: list[dict], path: dict[str, dict]) -> int:

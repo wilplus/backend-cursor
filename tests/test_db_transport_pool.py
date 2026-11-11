@@ -72,16 +72,18 @@ def test_the_keep_warm_ping_comes_before_the_pool_drops_an_idle_connection():
     assert 0 < warm_connections.PING_EVERY_S < db_transport.KEEPALIVE_S
 
 
-def test_the_keep_warm_ping_warms_enough_for_one_wide_request(monkeypatch):
-    """The app opens with several requests at once, and one of them can read
-    eight things at once (the chats list); one warm connection serves one
-    read, so with three threads the ping keeps two plus eight, together."""
+def test_the_keep_warm_ping_keeps_a_few_connections_and_more_when_asked(monkeypatch):
+    """Founder 2026-11-11: every warm connection is a database backend held
+    open all day, and the database is short of memory. A web worker keeps
+    three, sent together; WARM_CONNECTIONS widens it, up to what one wide
+    request beside the other lanes needs (with three threads, ten)."""
     import threading
     from services import warm_connections
     monkeypatch.setenv("GUNICORN_THREADS", "3")
+    monkeypatch.delenv("WARM_CONNECTIONS", raising=False)
     # Every ping waits for all the others: pings sent one after another would
     # never all arrive, and the barrier would break instead.
-    together = threading.Barrier(10, timeout=5)
+    together = threading.Barrier(3, timeout=5)
     seen: list = []
 
     def ping():
@@ -90,7 +92,9 @@ def test_the_keep_warm_ping_warms_enough_for_one_wide_request(monkeypatch):
 
     monkeypatch.setattr(warm_connections, "_ping_once", ping)
     warm_connections._ping_every_lane()
-    assert len(seen) == 10 and not together.broken
+    assert len(seen) == 3 and not together.broken
+    monkeypatch.setenv("WARM_CONNECTIONS", "50")
+    assert warm_connections._web_connections() == 10
 
 
 def test_a_takes_job_opens_its_connections_without_waiting(monkeypatch):

@@ -40,6 +40,14 @@ Loading times, 2026-11-05, two widenings:
     second at a time as its stages fanned out. ``held_warm`` opens them at
     the job's first moment, side by side with the job's own first reads, and
     keeps them open until the job ends (``worker.py``). Nothing waits for it.
+
+Supabase's memory warning, 2026-11-11 (founder): the database ran on about
+400 MB with 500 MB of swap in use, and the eleven connections each web
+worker kept warm were eleven Postgres backends held open all day, pinged
+95,000 times a day. A web worker now keeps WARM_CONNECTIONS warm (default
+3): the first requests after a quiet spell are warm, and a wide one opens
+the rest cold, about a second each, once. Setting WARM_CONNECTIONS to 11
+on the web service brings the 2026-11-05 width back.
 """
 from __future__ import annotations
 
@@ -73,12 +81,21 @@ def _lanes() -> int:
         return 4
 
 
+#: Connections a web worker keeps warm unless WARM_CONNECTIONS says otherwise.
+DEFAULT_WARM = 3
+
+
 def _web_connections() -> int:
-    """How many connections a web worker keeps warm: one wide request beside
-    the other lanes, never so many that a ping round fills the pool. With the
-    defaults (4 threads, a pool of 16): 11."""
+    """How many connections a web worker keeps warm: WARM_CONNECTIONS
+    (default 3), never more than one wide request beside the other lanes
+    needs, and never so many that a ping round fills the pool."""
     lanes = _lanes()
-    return max(lanes, min(lanes - 1 + WIDEST_FAN_OUT, POOL_SIZE - lanes))
+    widest = max(1, min(lanes - 1 + WIDEST_FAN_OUT, POOL_SIZE - lanes))
+    try:
+        wanted = int((os.getenv("WARM_CONNECTIONS") or str(DEFAULT_WARM)).strip())
+    except ValueError:
+        wanted = DEFAULT_WARM
+    return max(1, min(wanted, widest))
 
 
 def _ping_once() -> None:
