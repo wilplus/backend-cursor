@@ -2353,7 +2353,14 @@ database's 1,000 rows an answer; only a finished month is paid.
 O12 (PIPE-07) A call sent again with the same Idempotency-Key is charged
 once and gets the first answer, the model asked once; the same key with
 another question is refused; a call without a key is a new answer, as
-before; a new key after an answer that never came is a new try.","O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
+before; a new key after an answer that never came is a new try.
+O13 (N648 item 6) The download as a file, JSON lines or CSV: a manifest
+line first (model, version, date, rows, answers, rules), then each
+answer with its case's settled answer and how many agree; a case
+carries its text only for the person who wrote it, never a speaker's
+words, an exam case or another team's private case; the settled answer
+only for the owner, or on a case the teacher already answered; a cell
+that would run as a spreadsheet formula starts with a quote in the CSV.","O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
 O2 -> ModelApiTest::test_the_card_and_trying_a_model
 O3 -> ModelApiTest::test_a_test_key_is_shown_once_and_answers_100_times
 O4 -> ModelApiTest::test_a_live_key_pays_in_tokens_and_stops_at_its_limit
@@ -2364,7 +2371,8 @@ O8 -> ModelApiTest::test_the_download_holds_the_teachers_answers_only
 O9 -> ModelApiTest::test_an_api_answer_needs_the_buyers_authority
 O10 -> ModelApiTest::test_no_answer_is_never_charged_and_a_charge_is_never_unanswered
 O11 -> ModelApiTest::test_limits_and_payouts_count_past_a_thousand_rows
-O12 -> ModelApiTest::test_a_paid_answer_is_charged_once","The models' API and its money (migration a_business_can_buy_a_model_s_answers), served by services/model_api_store.py over services/model_api.py."
+O12 -> ModelApiTest::test_a_paid_answer_is_charged_once
+O13 -> ModelApiTest::test_the_download_file_keeps_only_your_own_cases_text","The models' API and its money (migration a_business_can_buy_a_model_s_answers), served by services/model_api_store.py over services/model_api.py."
 tests/test_model_coach_tasks.py,Story,"As a coach who teaches models, I want the queue's tasks shown in the models tab as models being taught, each with what waits for me and opening where I answer it today, with nothing moved (N642 item 6, step one; N643 item 4).","O1  GET /v2/models/coach-tasks lists ""Moments to answer"", ""Do you hear
 it?"", ""Pick the most confident"", ""Pick the moment for feedback"" and
 ""Which sounds surer"", each with this coach's waiting count as the

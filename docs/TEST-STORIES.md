@@ -2101,6 +2101,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O10** Never an unpaid answer and never a charge with no answer: the price is taken first, and refunded when the model gives no answer.
 - **O11** A monthly limit and a month's payouts count every answer, past the database's 1,000 rows an answer; only a finished month is paid.
 - **O12** (PIPE-07) A call sent again with the same Idempotency-Key is charged once and gets the first answer, the model asked once; the same key with another question is refused; a call without a key is a new answer, as before; a new key after an answer that never came is a new try.
+- **O13** (N648 item 6) The download as a file, JSON lines or CSV: a manifest line first (model, version, date, rows, answers, rules), then each answer with its case's settled answer and how many agree; a case carries its text only for the person who wrote it, never a speaker's words, an exam case or another team's private case; the settled answer only for the owner, or on a case the teacher already answered; a cell that would run as a spreadsheet formula starts with a quote in the CSV.
 
 *Why:* The models' API and its money (migration a_business_can_buy_a_model_s_answers), served by services/model_api_store.py over services/model_api.py.
 

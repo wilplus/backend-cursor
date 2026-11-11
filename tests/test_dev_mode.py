@@ -75,6 +75,8 @@ class DevModeTest(B._Base):
         people = next(c for c in body["charts"] if c["name"] == "people")["weeks"]
         self.assertEqual(len(people), 8)
         self.assertEqual(people[-1]["count"], 5)
+        files = next(d for d in body["data"] if d["model_id"] == model_id)["files"]
+        self.assertEqual(files["csv"], f"/v2/models/{model_id}/download?format=csv")
         self.assertEqual(self.provider.calls, [])
 
     def test_a_model_checked_by_its_host_needs_the_exam_and_shows_agreement(self):

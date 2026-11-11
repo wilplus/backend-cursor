@@ -3,6 +3,7 @@ plain numbers, for the host only (N647 item 7, N648 item 7).
 
   GET /v2/chats/setup/dev                       the screens' numbers
   GET /v2/chats/setup/dev/charts/<name>.csv     one chart's counts, a file
+  GET /v2/models/<id>/download?format=jsonl|csv  "Your training data", a file
 
 Behind the ring row ``chat_builder`` (``routes/v2/chats.py``
 ``_builder_or_404``) and the host's own blank-setup recipe: anyone else gets
@@ -289,7 +290,17 @@ def read(database: Any, user_id: Any, now: Optional[datetime] = None) -> dict:
     walk in the chat (N647 item 8) and is empty until it is built."""
     host, recipe = _host_recipe(database, user_id)
     return {"close": close(), "notice": notice(database, host, recipe), "says": [],
-            "charts": charts(database, host, now)}
+            "charts": charts(database, host, now), "data": data(database, host, recipe)}
+
+
+def data(database: Any, host: str, recipe: dict) -> list[dict]:
+    """"Your training data" (N648 item 6): one row per own model, each its
+    one download route (``model_api_store.download_for``, with its rules) as
+    JSON lines or CSV. The lines and their "Did this help?" answers come with
+    the walk in the chat."""
+    return [{"model_id": str(m["id"]), "q": (m.get("recipe") or {}).get("question") or m.get("name"),
+             "files": {fmt: f"/v2/models/{m['id']}/download?format={fmt}" for fmt in ("jsonl", "csv")}}
+            for m in _own_models(database, host, recipe)]
 
 
 def chart_file(database: Any, user_id: Any, name: str, now: Optional[datetime] = None) -> str:
