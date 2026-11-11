@@ -19,6 +19,11 @@ OUTCOME
       coach's row never says a try is involved (Never 2).
   O8  After a value is made live, the blind audit still draws that cue's
       cases, old and new; it never draws a silent try's own verdicts.
+  O9  Only the founder reaches the routes; what they return is the thing,
+      the direction, counts and words, never a threshold, and below 10
+      settled answers it says "Coaches haven't answered enough yet."
+  O10 "Use it" is unreachable unless its switch is on; making a value live
+      writes a new settings version and keeps the one it replaces.
 PROVES   O1 -> test_one_try_per_thing
          O2 -> test_twenty_stored_recordings_give_the_result_at_once
          O3 -> test_use_it_needs_ten_settled_answers_then_goes_live
@@ -27,6 +32,8 @@ PROVES   O1 -> test_one_try_per_thing
          O6 -> test_the_rescore_counts_only_settled_answers
          O7 -> test_a_tried_case_gets_a_second_coach_blind
          O8 -> test_the_audit_keeps_drawing_a_cue_after_use_it
+         O9 -> test_the_founder_routes_show_counts_and_words_never_a_threshold
+         O10 -> test_use_it_is_off_unless_switched_on_and_keeps_the_old_setting
 """
 from __future__ import annotations
 
@@ -287,6 +294,73 @@ class Tries(unittest.TestCase):
         self.assertEqual(sorted(hedging), ["new-0", "old-0", "tried-0"])
         self.assertTrue(hedging["new-0"]["fired"])
         self.assertFalse(any(verbal_cues.TRY_MARK in str(r["detector_version"]) for r in drawn))
+
+
+class Routes(unittest.TestCase):
+    H = {"Authorization": "Bearer t"}
+
+    def setUp(self):
+        from flask import Flask
+
+        import auth
+        from routes.v2 import register_domains
+        from routes.v2.blueprint import v2_bp
+        register_domains()
+        app = Flask(__name__)
+        app.register_blueprint(v2_bp, url_prefix="/v2")
+        self.client = app.test_client()
+        self.founder = True
+        self.db = FakeTakes({f"t{i:02d}": [ONE_HEDGE] for i in range(3)})
+        with mock.patch.object(verbal_cues, "_practice_permitted", return_value=True):
+            for take in self.db.takes:
+                verbal_cues.record_take(self.db, take)
+        payload = {"sub": "u-founder", "email": "f@example.com"}
+        for p in (mock.patch.object(auth, "verify_supabase_token", lambda _t: payload),
+                  mock.patch("routes.admin.is_admin", lambda _u: True),
+                  mock.patch("routes.admin.is_founder_email", lambda _e: self.founder),
+                  mock.patch("routes.v2.silent_tries.db", self.db),
+                  mock.patch.object(verbal_cues, "_practice_permitted", return_value=True)):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_the_founder_routes_show_counts_and_words_never_a_threshold(self):
+        self.founder = False
+        self.assertEqual(self.client.get("/v2/build/notice/hedging/try", headers=self.H).status_code, 403)
+        self.founder = True
+        res = self.client.post("/v2/build/notice/hedging/try", json={"direction": "more"}, headers=self.H)
+        self.assertEqual(res.status_code, 200)
+        body = res.get_json()
+        self.assertEqual((body["try"]["state"], body["try"]["seen"], body["try"]["changed"]),
+                         (st.RUNNING, 3, 3))
+        self.assertEqual(body["try"]["note"], "Coaches haven't answered enough yet.")
+        self.assertNotIn("verbal_cues.", json.dumps(body))
+        again = self.client.post("/v2/build/notice/hedging/try", json={"direction": "fewer"}, headers=self.H)
+        self.assertEqual((again.status_code, again.get_json()["code"]), (409, "try_in_progress"))
+        try_id = body["try"]["id"]
+        gone = self.client.post(f"/v2/build/notice/hedging/try/{try_id}/drop", headers=self.H)
+        self.assertEqual(gone.get_json()["try"], None)
+        self.assertNotIn("noticing_settings", self.db.rows)
+
+    def test_use_it_is_off_unless_switched_on_and_keeps_the_old_setting(self):
+        with mock.patch.dict("os.environ", {}, clear=False):
+            import os
+            os.environ.pop(st.USE_SWITCH, None)
+            res = self.client.post("/v2/build/notice/hedging/try/x/use", headers=self.H)
+        self.assertEqual(res.status_code, 404)
+        from services import noticing_settings as ns
+        before = ns.use_reader
+        self.db.rows[ns.KEY] = {"updated_at": "t0", "value": json.dumps(
+            {"version": "old", "values": {"verbal_cues.FILLER_MIN_COUNT": 3}})}
+        try:
+            version = st.make_live(self.db, {"verbal_cues.HEDGE_MIN_COUNT": 1}, by="founder")
+        finally:
+            ns.use_reader(lambda: None)
+        record = json.loads(self.db.rows[ns.KEY]["value"])
+        self.assertEqual(record["version"], version)
+        self.assertEqual(record["values"], {"verbal_cues.HEDGE_MIN_COUNT": 1,
+                                            "verbal_cues.FILLER_MIN_COUNT": 3})
+        self.assertEqual(record["history"][-1]["values"], {"verbal_cues.FILLER_MIN_COUNT": 3})
+        self.assertIs(ns.use_reader, before)
 
 
 if __name__ == "__main__":  # pragma: no cover

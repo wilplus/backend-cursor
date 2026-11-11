@@ -3374,6 +3374,8 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O6** The re-score reads the last stored Takes again, and a case counts as agreed only once two coaches' blind answers match.
 - **O7** A case a try sees differently always reaches a second coach, and the coach's row never says a try is involved (Never 2).
 - **O8** After a value is made live, the blind audit still draws that cue's cases, old and new; it never draws a silent try's own verdicts.
+- **O9** Only the founder reaches the routes; what they return is the thing, the direction, counts and words, never a threshold, and below 10 settled answers it says "Coaches haven't answered enough yet."
+- **O10** "Use it" is unreachable unless its switch is on; making a value live writes a new settings version and keeps the one it replaces.
 
 ### As a speaker, I want my Ideal Text free in both states, never the coach's unfinished edit, with the only paid item being key-moment explanations, so that I get my text without a paywall and pay only for extras.
 
