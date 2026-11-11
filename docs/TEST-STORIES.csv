@@ -2347,7 +2347,9 @@ O13 (N648 item 6) The download as a file, JSON lines or CSV: a manifest
 line first (model, version, date, rows, answers, rules), then each
 answer with its case's settled answer and how many agree; a case
 carries its text only for the person who wrote it, never a speaker's
-words, an exam case or another team's private case.","O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
+words, an exam case or another team's private case; the settled answer
+only for the owner, or on a case the teacher already answered; a cell
+that would run as a spreadsheet formula starts with a quote in the CSV.","O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
 O2 -> ModelApiTest::test_the_card_and_trying_a_model
 O3 -> ModelApiTest::test_a_test_key_is_shown_once_and_answers_100_times
 O4 -> ModelApiTest::test_a_live_key_pays_in_tokens_and_stops_at_its_limit
