@@ -629,7 +629,8 @@ def add_example_set(database: Any, user_id: Any, model_id: Any, body: Any) -> di
     (source "teacher", private when the model is, no label), in the order
     given (N645 item 4). Needs the uploader's tick, ``may_use: true``. Empty
     texts are skipped and an exact repeat is kept once. All or nothing: one
-    insert, so a failure keeps no case and a retry is safe. ``created_at``
+    insert, so a failure keeps no case and a retry is safe. The cases made come
+    back in order, as ids and as ``added_cases`` with the text as stored. ``created_at``
     steps by a microsecond so the first-ten pool keeps the order given."""
     me = _require(database, user_id)
     model = _model(database, model_id)
@@ -660,7 +661,9 @@ def add_example_set(database: Any, user_id: Any, model_id: Any, body: Any) -> di
         for i, text in enumerate(kept)]))
     if len(made) != len(kept):
         raise ChatsError("V2_ERROR", "The cases could not be kept.", 500)
-    return {"added": len(kept), "skipped": len(texts) - len(kept)}
+    return {"added": len(kept), "skipped": len(texts) - len(kept),
+            "example_ids": [str(m["id"]) for m in made],
+            "added_cases": [{"id": str(m["id"]), "text": text} for m, text in zip(made, kept)]}
 
 
 # ── The owner's actions (MOD-50, MOD-51; N528 items 5 and 12) ───────────────
