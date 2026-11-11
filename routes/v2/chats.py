@@ -58,6 +58,11 @@ Service: services/chats.py.
                                    a Take sent in the chat (kind "take",
                                    N470): {audio_url, duration_ms, slides:
                                    [{index, title, words}]}, for any member
+  POST /v2/chats/<id>/take       {take}: {message_id, take}, the caller's
+                                   own Take, recorded through the one loop,
+                                   tagged with the speaking host's chat it
+                                   was made in, once (services/take_door.py,
+                                   N648 item 8); 404 where the door is shut
   GET  /v2/user/takes/send/people {enabled, people: [...]}, whom a Take can
                                    be sent to (services/take_sends.py)
   GET  /v2/user/takes/send/last   {enabled, choice: {all, user_ids} | null}
@@ -293,6 +298,24 @@ def v2_chats_answer(thread_id):
     return _run("answer", lambda: post_answer(
         db, str(request.user_id), thread_id, body.get("take"), body.get("duration_ms"),
         body.get("hold_ms")))
+
+
+@v2_bp.route("/chats/<thread_id>/take", methods=["POST"])
+@limiter.limit("120 per hour", scope="chats_take")
+@require_auth
+@_a_member_first
+def v2_chats_take_made_here(thread_id):
+    """A Take recorded in the speaking host's chat (N648 item 8), tagged with
+    it once its upload has passed the processing-authorization path as every
+    Take does (POST /v2/lab/recordings). Nothing here calls a provider; the
+    recording consent is asked again, as an answer's is. Then the chat and
+    its door (404) and the Take (404 if not the caller's)."""
+    refused = _recording_refused()
+    if refused is not None:
+        return refused
+    from services.take_door import tag
+    body = request.get_json(silent=True) or {}
+    return _run("take", lambda: tag(db, str(request.user_id), thread_id, body.get("take")))
 
 
 @v2_bp.route("/chats/<thread_id>/question", methods=["POST"])
