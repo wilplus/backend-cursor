@@ -103,6 +103,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
+from services import noticing_settings as ns
 from services import willfidence
 
 #: Founder lock 2026-10-12, section 6: a start value, calibrated later so
@@ -294,7 +295,7 @@ def unfixed(reads: list[dict], shown: list[dict]) -> Optional[dict]:
     strongest = next((m["block_id"] for m in shown if m.get("slot") == SLOT_STRONGEST), None)
     weak = [row for row in reads if row.get("read") and row["block_id"] != strongest
             and _worded(row) and row["read"].get("sound", True) and not row.get("held")
-            and row["read"]["value"] < FLOOR]
+            and row["read"]["value"] < ns.value("moment_pick.FLOOR")]
     return min(weak, key=lambda row: row["read"]["value"], default=None)
 
 
@@ -439,7 +440,7 @@ def _voice_clears(row: dict) -> bool:
     """The voice reaches the floor, on a clip with enough words and a sound
     read (a clip with none stays corrected, 2026-10-17)."""
     read_ = row["read"]
-    return _worded(row) and bool(read_.get("sound", True)) and read_["s"] >= FLOOR
+    return _worded(row) and bool(read_.get("sound", True)) and read_["s"] >= ns.value("moment_pick.FLOOR")
 
 
 def _worded(row: dict) -> bool:

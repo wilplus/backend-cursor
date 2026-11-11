@@ -25,6 +25,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from services import noticing_settings as ns
+
 _log = logging.getLogger(__name__)
 
 #: The version every verdict is logged under. It names the thresholds below,
@@ -80,20 +82,20 @@ def measure(transcript: Any, language: Any) -> Optional[dict]:
     repeats = _repeats(transcript)
     return {
         "filler_cluster": {
-            "fired": (len(fillers) >= FILLER_MIN_COUNT
-                      and per_100 >= FILLER_MIN_PER_100_WORDS),
+            "fired": (len(fillers) >= ns.value("verbal_cues.FILLER_MIN_COUNT")
+                      and per_100 >= ns.value("verbal_cues.FILLER_MIN_PER_100_WORDS")),
             "measurements": {"n_words": n_words, "count": len(fillers),
                              "per_100_words": per_100,
                              "tokens": sorted(set(fillers))},
         },
         "hedging": {
-            "fired": hedges["strict"] >= HEDGE_MIN_COUNT,
+            "fired": hedges["strict"] >= ns.value("verbal_cues.HEDGE_MIN_COUNT"),
             "measurements": {"n_words": n_words, "count": hedges["strict"],
                              "ambiguous_not_counted": hedges["ambiguous"],
                              "terms": strict_terms},
         },
         "restart_repair": {
-            "fired": len(repeats) >= RESTART_MIN_COUNT,
+            "fired": len(repeats) >= ns.value("verbal_cues.RESTART_MIN_COUNT"),
             "measurements": {"n_words": n_words, "count": len(repeats),
                              "repeated": sorted(set(repeats))},
         },
@@ -105,10 +107,21 @@ def _is_strict_hedge(term: str, language: str) -> bool:
     return lexicon(HEDGE, language).get(term) is False
 
 
+def detector_version() -> str:
+    """``VERBAL_CUES_VERSION``, with the noticing version beside it when a
+    verbal threshold is not today's (``services.noticing_settings``), so
+    verdicts under unlike thresholds are never compared."""
+    moved = ns.version_of({name: v for name, v in ns.current().items()
+                           if name.startswith("verbal_cues.")})
+    return (VERBAL_CUES_VERSION if moved == ns.DEFAULT_VERSION
+            else f"{VERBAL_CUES_VERSION}+{moved}")
+
+
 def take_observations(snippets: list[dict], *, take_session_id: str,
                       language_of: Any) -> list[dict]:
     """The rows one Take logs. ``language_of(recording_id)`` returns the
     recording's transcription language (or None)."""
+    version = detector_version()
     rows: list[dict] = []
     languages: dict[str, Optional[str]] = {}
     for snippet in snippets or []:
@@ -128,7 +141,7 @@ def take_observations(snippets: list[dict], *, take_session_id: str,
                 "snippet_id": str(snippet["id"]),
                 "recording_id": recording_id or None,
                 "error_id": cue,
-                "detector_version": VERBAL_CUES_VERSION,
+                "detector_version": version,
                 "language": language,
                 "fired": bool(verdicts[cue]["fired"]),
                 "measurements": verdicts[cue]["measurements"],

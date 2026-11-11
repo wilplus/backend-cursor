@@ -2589,6 +2589,14 @@ O4  The browser roles cannot call the two functions.","O1 -> test_publish_open_a
 O2 -> test_an_unshared_word_never_lights_it
 O3 -> test_another_speakers_take_is_refused_and_untouched
 O4 -> test_the_browser_roles_cannot_call_the_functions","0439, D-FW-5; the Feedback walk lock, flow 1. Runs services.coach_feedback_signal against the real functions."
+tests/test_noticing_settings.py,Guard,"What the speaking coach notices moved from code into one settings record, unchanged (N647 item 8, step 3): today's thresholds are its defaults, and a missing, broken or out-of-bounds record changes nothing a speaker sees.","C1  a default drifting from the constant it replaced, so the move itself
+changes what is noticed
+C2  a missing, unreadable or out-of-bounds record changing a verdict, or a
+moved threshold logging its verdicts under today's version
+C3  a candidate (a silent try, step 4) leaking out of its own block into
+what the live rules read","C1 -> test_the_defaults_are_todays_constants
+C2 -> test_a_bad_record_keeps_todays_values_and_a_moved_one_is_versioned
+C3 -> test_a_candidate_is_read_only_inside_its_block",If removed: moving a threshold could change the walk with no log to tell.
 tests/test_object_key_prefixes_are_classified.py,Story,"As a speaker, I want every stored recording of my voice served only through a fresh signed link, so that my voice is never reachable on a permanent public URL.","O1  Every object-key prefix the services and routes write is classified,
 as user content or deliberately not.
 O2  A user-content key gets no public URL; a non-user key still does.","O1 -> test_every_written_prefix_is_classified,

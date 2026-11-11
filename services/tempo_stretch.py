@@ -33,6 +33,8 @@ import threading
 from collections import OrderedDict
 from typing import Any, Optional
 
+from services import noticing_settings as ns
+
 logger = logging.getLogger(__name__)
 
 RULES_VERSION = "tempo-stretch-v1"
@@ -157,7 +159,7 @@ def pick(snippets: list[dict]) -> Optional[dict]:
             continue
         rushed, slow = shares
         outside = max(rushed, slow)
-        if outside >= MIN_OUTSIDE and (best is None or outside > best["outside"]):
+        if outside >= ns.value("tempo_stretch.MIN_OUTSIDE") and (best is None or outside > best["outside"]):
             best = {"index": index, "outside": outside, "reading": "rushed" if rushed >= slow else "slow"}
     return best
 
@@ -175,7 +177,7 @@ def stays_inside(snippets: list[dict], ids: set[str], reading: str) -> Optional[
     side = 0 if reading == "rushed" else 1
     found = [shares[side] for s in snippets
              if str(s.get("id")) in ids and (shares := _shares(path, first, s))]
-    return all(share < MIN_OUTSIDE for share in found) if found else None
+    return all(share < ns.value("tempo_stretch.MIN_OUTSIDE") for share in found) if found else None
 
 
 _SENTENCE = re.compile(r"(?<=[.?!])\s+")
