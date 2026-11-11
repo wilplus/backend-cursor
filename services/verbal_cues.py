@@ -117,6 +117,22 @@ def detector_version() -> str:
             else f"{VERBAL_CUES_VERSION}+{moved}")
 
 
+#: Marks a silent try's own verdicts in the shadow log (services/silent_tries):
+#: ``<detector_version inside trying>~try-<id>``. Never a live verdict.
+TRY_MARK = "~try-"
+
+
+def logged_live(detector_version: object) -> bool:
+    """True for a verdict the live cue logged, under today's thresholds or
+    an earlier live set ("verbal-cues-v1" or "verbal-cues-v1+noticing-...");
+    False for a silent try's verdict. A coach's answer is about the clip,
+    not the threshold, so a clip logged under an earlier live set stays
+    eligible for the blind audit after "Use it"."""
+    text = str(detector_version or "")
+    return ((text == VERBAL_CUES_VERSION or text.startswith(VERBAL_CUES_VERSION + "+"))
+            and TRY_MARK not in text)
+
+
 def take_observations(snippets: list[dict], *, take_session_id: str,
                       language_of: Any) -> list[dict]:
     """The rows one Take logs. ``language_of(recording_id)`` returns the
@@ -180,9 +196,27 @@ def record_take(database: Any, take_session_id: str) -> int:
         row = database.get_recording(recording_id)
         return row.get("transcription_language") if isinstance(row, dict) else None
 
+    snippets = database.get_snippets_by_session(str(take_session_id)) or []
     rows = take_observations(
-        database.get_snippets_by_session(str(take_session_id)) or [],
-        take_session_id=str(take_session_id), language_of=language_of)
+        snippets, take_session_id=str(take_session_id), language_of=language_of)
     if not rows:
         return 0
-    return int(database.record_verbal_cue_shadow(rows) or 0)
+    added = int(database.record_verbal_cue_shadow(rows) or 0)
+    _observe_silent_tries(database, str(take_session_id), snippets, language_of)
+    return added
+
+
+def _observe_silent_tries(database: Any, take_session_id: str,
+                          snippets: list[dict], language_of: Any) -> None:
+    """After the live verdicts are logged: judge the Take again under any
+    silent try (services/silent_tries, N647 item 3). Its outcome reaches
+    nobody, and its failure never touches the live rows above."""
+    from services import silent_tries
+    try:
+        clips = [{**s, "snippet_id": str(s["id"]), "take_session_id": take_session_id,
+                  "language": language_of(str(s.get("recording_id") or ""))}
+                 for s in snippets if isinstance(s, dict) and s.get("id")]
+        silent_tries.observe_take(database, take_session_id, clips)
+    except Exception as exc:  # a silent try must never cost the Take anything
+        _log.warning("verbal_cues: silent try not judged for %s (%s)",
+                     take_session_id, exc, exc_info=True)

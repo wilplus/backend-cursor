@@ -15387,7 +15387,7 @@ class DatabaseService:
         into fired_at_sampling; no reader shows it."""
         from services.confident_voice_practice import SIGNAL_RULES_VERSION
         from services.detector_rollout import LIVE_DETECTOR
-        from services.verbal_cues import VERBAL_CUES_VERSION
+        from services.verbal_cues import logged_live
         wanted = [str(e) for e in errors if e]
         if not wanted:
             return []
@@ -15397,9 +15397,7 @@ class DatabaseService:
                .in_("error_id", wanted).order("created_at", desc=True)
                .limit(int(limit)).execute())
         rows = [r for r in (res.data or []) if isinstance(r, dict)]
-        rows = [r for r in rows
-                if str(r.get("detector_version")) ==
-                str(LIVE_DETECTOR.get(str(r.get("error_id")), VERBAL_CUES_VERSION))]
+        rows = audit_candidate_rows(rows, LIVE_DETECTOR, logged_live)
         takes = sorted({str(r.get("take_session_id")) for r in rows if r.get("take_session_id")})
         speaker: dict[str, str] = {}
         for i in range(0, len(takes), 200):
@@ -15665,3 +15663,27 @@ def new_client() -> Client:
 from services.first_client_repository import FirstClientRepository  # noqa: E402
 
 first_client_repository = FirstClientRepository(lambda: db.client)
+
+
+def audit_candidate_rows(rows: list[dict], live_detector: dict,
+                         logged_live: Any) -> list[dict]:
+    """The shadow rows the blind audit may draw, newest first: an acoustic
+    error's rows at its live version (``LIVE_DETECTOR``); a verbal cue's rows
+    the live cue logged under any live set (``verbal_cues.logged_live``),
+    never a silent try's. One row per (clip, error): the newest."""
+    out: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for r in rows:
+        error_id = str(r.get("error_id"))
+        version = r.get("detector_version")
+        if error_id in live_detector:
+            if str(version) != str(live_detector[error_id]):
+                continue
+        elif not logged_live(version):
+            continue
+        key = (str(r.get("snippet_id")), error_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(r)
+    return out
