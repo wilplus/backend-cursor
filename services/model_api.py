@@ -690,7 +690,7 @@ def may_download(model: dict, viewer_id: Any, answered: bool) -> bool:
 
 def download_rows(model: dict, answers: list[dict], examples: dict[str, dict], *,
                   sees_private: bool = False, own_text_for: Any = None,
-                  owner: bool = False) -> list[dict]:
+                  owner: bool = False, example_no: Optional[dict[str, int]] = None) -> list[dict]:
     """The teachers' own ratings and answers, one row each, in the order
     given. Each teacher and each example is a number within this download,
     never an id or a name; an answer to an example in the sealed final exam
@@ -727,7 +727,7 @@ def download_rows(model: dict, answers: list[dict], examples: dict[str, dict], *
                 and str(a.get("answer")) == str(case["known_answer"]):
             votes[str(a["example_id"])] = votes.get(str(a["example_id"]), 0) + 1
     teacher_no: dict[str, int] = {}
-    example_no: dict[str, int] = {}
+    example_no = {} if example_no is None else example_no    # filled here: id -> its number
     rows = []
     for a in answers:
         eid = str(a.get("example_id"))
@@ -793,6 +793,33 @@ def download_file(model: dict, version: Optional[int], rows: list[dict], fmt: st
     for r in rows:
         w.writerow([_csv_cell(r.get(k)) for k in DOWNLOAD_COLUMNS])
     return buf.getvalue(), "text/csv", f"{stem}.csv"
+
+
+def version_file(model: dict, version: dict, example_no: dict[str, int], day: str,
+                 reader: str) -> tuple[str, str, str]:
+    """(body, media type, file name) of the owner's version file (N648 item
+    6, coordinator's answer h): the cases the version learned from, by the
+    numbers of the same day's data download (a case with no answers in it
+    has no number: null); Keep or Change on the owner's check; the exam's
+    result only, never its cases or which it got right; the confidence
+    table; the reader's name. Never the head's weights or a vector. Pure."""
+    import json
+    learned = [example_no.get(str(e)) for e in version.get("example_ids") or []]
+    check = [{"case": example_no.get(str(i.get("example_id"))), "guess": i.get("guess"),
+              "kept": i.get("kept"), "answer": i.get("answer")}
+             for i in (version.get("owner_check") or {}).get("items") or []]
+    exam = version.get("exam") or {}
+    body = {"model": model.get("name"), "version": int(version.get("number") or 0), "date": day,
+            "answers": answers_of_recipe(model), "reader": reader,
+            "learned_from": {"cases": len(learned), "numbers": sorted(n for n in learned if n is not None)},
+            "check": {"items": check, "passed": bool(version.get("owner_checked_at"))},
+            "exam": ({k: exam.get(k) for k in ("passed", "cases", "full", "as_good_in_ten",
+                                                "better", "worse", "same")}
+                     if exam.get("computed") else None),
+            "confidence": version.get("confidence")}
+    stem = re.sub(r"[^A-Za-z0-9]+", "-", str(model.get("name") or "model")).strip("-").lower() or "model"
+    return (json.dumps(body, ensure_ascii=False, indent=2) + "\n", "application/json",
+            f"{stem}-version-{body['version']}.json")
 
 
 def _csv_cell(value: Any) -> Any:

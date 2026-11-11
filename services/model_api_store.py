@@ -674,7 +674,9 @@ def download_for(database: Any, user_id: Any, model_id: Any, *, rows: bool = Fal
     model (N615 item 2), until the training yes carries the line that lets
     speakers' words be shared (N528 item 12). With ``fmt`` ("jsonl" or
     "csv"), the same rows as one file, its manifest first (N648 item 6):
-    {"file", "media_type", "name"}."""
+    {"file", "media_type", "name"}. With ``fmt`` "version", the owner's
+    version file for the newest version with a head (``version_file``);
+    anyone else, or a model with no head yet, 404."""
     me = models._require(database, user_id)
     model = _model(database, me, model_id)
     answered = bool(_rows(_table(database, models.ANSWERS).select("id").eq("model_id", model["id"])
@@ -692,12 +694,24 @@ def download_for(database: Any, user_id: Any, model_id: Any, *, rows: bool = Fal
                                                  "id,kind,source,in_exam,private,known_answer,added_by,content",
                                                  ids)}
     sees = model["id"] in models._sees_private(database, me, [model])
+    owner = rules.viewer_role(model, me) == "owner"
+    if fmt == "version" and not owner:
+        raise _not_found()
+    numbers: dict[str, int] = {}
     out = rules.download_rows(model, answers, examples, sees_private=sees, own_text_for=me,
-                              owner=rules.viewer_role(model, me) == "owner")
+                              owner=owner, example_no=numbers)
     if fmt is None:
         return {"model": model["name"], "rows": out}
+    if fmt == "version":
+        from services import model_head_store
+        from services.llm_config import READER_MODEL
+        head = model_head_store.latest_with_head(model_head_store.versions(database, model["id"]))
+        if head is None:
+            raise _not_found()
+        body, media, name = rules.version_file(model, head, numbers, _now().date().isoformat(), READER_MODEL)
+        return {"file": body, "media_type": media, "name": name}
     if fmt not in ("jsonl", "csv"):
-        raise ChatsError("BAD_FORMAT", "A download is jsonl or csv.", 400)
+        raise ChatsError("BAD_FORMAT", "A download is jsonl, csv or version.", 400)
     with_head = [v for v in _versions(database, model["id"]) if v.get("status") != "retired"]
     version = int(with_head[-1]["number"]) if with_head else None
     body, media, name = rules.download_file(model, version, out, fmt, _now().date().isoformat())

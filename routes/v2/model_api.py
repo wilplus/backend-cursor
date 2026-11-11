@@ -20,7 +20,8 @@ In the app (signed in; the ring row ``ai_models``, else 404):
   GET    /v2/models/<id>/download ?rows=1     downloading its data, the one route (MOD-51):
                                               numbered, never the sealed exam; ?format=jsonl
                                               or csv: the same rows as a file, a manifest
-                                              line first (N648 item 6)
+                                              line first (N648 item 6); ?format=version:
+                                              the owner's version file (anyone else 404)
   POST   /v2/models/<id>/versions/<n>/release the model's founder releases a version
   GET    /v2/models/<id>/check                the owner's check: ten unseen examples, the
                                               head's guess first (LEARN-03)
