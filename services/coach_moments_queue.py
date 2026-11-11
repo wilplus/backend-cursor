@@ -267,24 +267,24 @@ REACH_ALARM_AFTER = timedelta(hours=6)
 _alarmed_on: Optional[str] = None
 
 
-def reach_alarm(takes: list[tuple[str, bool]], now: Optional[datetime] = None) -> bool:
+def reach_alarm(takes: list[tuple], now: Optional[datetime] = None, chat_of: Optional[Callable] = None) -> bool:
     """THE ALARM (founder 2026-10-20). ``takes`` is (sent_at, any moment
-    reached) for every Take with moments. When the newest few, all sent long
+    reached[, session id]) for every Take with moments. When the newest few, all sent long
     enough ago, have no moment that reached their speaker, something stopped
     recording the reach (the walk did, 2026-10-12, and no coach heard a new
-    speaker): one Sentry warning a day. True when it fired."""
+    speaker): one Sentry warning a day, naming the host chats. True when it fired."""
     global _alarmed_on
     now = now or datetime.now(timezone.utc)
     cutoff = (now - REACH_ALARM_AFTER).isoformat()
     newest = sorted((t for t in takes if t[0] and t[0] <= cutoff), reverse=True)[:REACH_ALARM_TAKES]
-    if len(newest) < REACH_ALARM_TAKES or any(reached for _, reached in newest):
+    if len(newest) < REACH_ALARM_TAKES or any(t[1] for t in newest):
         return False
     today = now.date().isoformat()
     if _alarmed_on == today:
         return False
     _alarmed_on = today
     message = (f"coach queue: the {REACH_ALARM_TAKES} newest Takes have no moment "
-               "that reached their speaker; no coach can hear them")
+               "that reached their speaker; no coach can hear them" + host_chats_note(newest, chat_of))
     _log.warning(message)
     try:
         import sentry_sdk
@@ -477,6 +477,7 @@ def moments_queue(
     goal_for: Callable[[Any], Optional[str]] = _no_goal,
     listen_again_for: Callable[[str], dict[str, str]] = lambda _sid: {},
     alarm: bool = True,
+    chat_of: Optional[Callable[[str], Optional[str]]] = None,
 ) -> list[dict]:
     """Speakers oldest first (by the earliest take waiting), takes oldest
     first under each, moments in the order the take lists them.
@@ -498,7 +499,7 @@ def moments_queue(
     waiting (BLIND COACH)."""
     speakers: dict[str, dict] = {}
     order: list[str] = []
-    reach: list[tuple[str, bool]] = []
+    reach: list[tuple[str, bool, str]] = []
     for row in rows or []:
         if not isinstance(row, dict) or not row.get("id"):
             continue
@@ -510,7 +511,7 @@ def moments_queue(
         moments = []
         listed = _listed(session_id, bookmarked, reached_for(session_id))
         if bookmarked:
-            reach.append((sent_at, bool(listed)))
+            reach.append((sent_at, bool(listed), session_id))
         if take_closed(row):
             _log.info("coach queue: take withheld sid=%s filter=%s",
                       session_id, NOT_LISTED_CLOSED_BY_FOUNDER)
@@ -548,7 +549,7 @@ def moments_queue(
         if sent_at and (not speaker["first_sent_at"] or sent_at < speaker["first_sent_at"]):
             speaker["first_sent_at"] = sent_at
     if alarm:  # off for a part of the queue (the founder's Delete)
-        reach_alarm(reach)
+        reach_alarm(reach, chat_of=chat_of)
     out = []
     for key in sorted(order, key=lambda k: speakers[k]["first_sent_at"]):
         speaker = speakers[key]
@@ -610,6 +611,13 @@ def queue_reads(
     }
 
 
+def host_chat_of(database: Any) -> Callable[[str], Optional[str]]:
+    """``chat_of`` for the reach alarm: the host chat a Take was made in
+    (services.take_door.made_in), read only when the alarm fires."""
+    from services import take_door
+    return lambda take_id: take_door.made_in(database, take_id)
+
+
 def queue_for_coach(
     database: Any, rows: list, *, rater_id: Any,
     moments_for: Bookmarks,
@@ -621,7 +629,7 @@ def queue_for_coach(
     gate); ``moments_for`` their bookmarks (services.coach_queue)."""
     return moments_queue(
         rows, moments_for=moments_for, pseudonym_for=pseudonym_for,
-        rater_id=rater_id, alarm=alarm,
+        rater_id=rater_id, alarm=alarm, chat_of=host_chat_of(database),
         **queue_reads(database, rows, rater_id=rater_id, bookmarks=moments_for))
 
 
@@ -718,6 +726,28 @@ def walk_for_coach(
                             goal_rows=[item["plan"] for item in items])
     with timed("queue_build"):
         queue = moments_queue(matched, moments_for=bookmarks, pseudonym_for=pseudonym_for,
-                              rater_id=rater_id, **reads)
+                              rater_id=rater_id, chat_of=host_chat_of(database), **reads)
         return _with_plans(queue, items, pseudonym_for=pseudonym_for,
                            goal_for=reads["goal_for"])
+
+
+def host_chats_note(takes: list[tuple], chat_of: Optional[Callable[[str], Optional[str]]]) -> str:
+    """"; made in host chat: a, b" for the host chats the named Takes were
+    made in (N648 item 8), or "". ``chat_of(session id)`` is
+    services.take_door.made_in, read only when the alarm fires, for the few
+    Takes it names; a failed read leaves that Take out and never costs the
+    alarm."""
+    if chat_of is None:
+        return ""
+    found: list[str] = []
+    for take in takes:
+        if len(take) < 3 or not take[2]:
+            continue
+        try:
+            chat = chat_of(str(take[2]))
+        except Exception:  # noqa: BLE001 — the alarm never waits on this read
+            _log.debug("coach queue: host chat not read for %s", take[2], exc_info=True)
+            continue
+        if chat and chat not in found:
+            found.append(chat)
+    return "; made in host chat: " + ", ".join(found) if found else ""
