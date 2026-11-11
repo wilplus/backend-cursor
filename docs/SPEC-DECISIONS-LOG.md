@@ -17473,3 +17473,30 @@ dots showed there.
 
 No migration in this entry. The rules: frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N651 · Build's "Your chat" is in four groups, with orange for what is on
+and what to tap** (founder, the Claude Code chat, 11 November 2026, on a
+picture of Build's "Your chat" drawn for his presentation with orange and
+the parts grouped: "btw love the deisgn simplify it and make it for the
+app!"). For N642 item 3, N643 item 4. The pinned prototype draws it.
+
+1. **Four groups, each under its heading,** in this order; a group with
+   no part is not drawn, and a part the list does not know goes last with
+   no heading:
+   - "About your chat": What you do, Name, Why people come, Your hello.
+   - "What comes in": They send, First questions, They can ask.
+   - "What goes back": They get back, The feedback walk, Practice after a
+     Take, Who answers.
+   - "What makes it smart": Your models.
+2. **Orange says what is on and what to tap:** the side of the switch that
+   is on ("Live" or "Build"), the line under the tab that is open, each
+   group's heading, and the arrow at the right of each part. Nothing else
+   changes colour.
+3. **A part that is off or empty** ("Off", "None yet") shows its value in
+   grey.
+4. **Simplified from the picture:** no icons beside the parts, and the
+   headings are written as sentences, not in capitals.
+5. Will's line over the parts, the parts' names and values, the field
+   "Message Will" and what a tap on a part opens are unchanged.
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
