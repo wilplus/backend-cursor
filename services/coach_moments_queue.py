@@ -267,49 +267,24 @@ REACH_ALARM_AFTER = timedelta(hours=6)
 _alarmed_on: Optional[str] = None
 
 
-def _host_chats(takes: list[tuple], chat_of: Callable[[str], Optional[str]]) -> list[str]:
-    """The host chats the named Takes were made in, each once."""
-    found: list[str] = []
-    for take in takes:
-        if len(take) < 3 or not take[2]:
-            continue
-        try:
-            chat = chat_of(str(take[2]))
-        except Exception:  # noqa: BLE001 — the alarm never waits on this read
-            _log.debug("coach queue: host chat not read for %s", take[2], exc_info=True)
-            continue
-        if chat and chat not in found:
-            found.append(chat)
-    return found
-
-
-def reach_alarm(takes: list[tuple], now: Optional[datetime] = None,
-                chat_of: Callable[[str], Optional[str]] = lambda _sid: None) -> bool:
+def reach_alarm(takes: list[tuple], now: Optional[datetime] = None, chat_of: Optional[Callable] = None) -> bool:
     """THE ALARM (founder 2026-10-20). ``takes`` is (sent_at, any moment
-    reached[, session id]) for every Take with moments. When the newest few,
-    all sent long enough ago, have no moment that reached their speaker,
-    something stopped recording the reach (the walk did, 2026-10-12, and no
-    coach heard a new speaker): one Sentry warning a day. True when it fired.
-
-    ``chat_of(session id)`` is the host chat a Take was made in (N648 item
-    8; services.take_door.made_in). It is read only when the alarm fires, for
-    the few Takes it names, so the message says which host chats are not
-    reaching a coach; a failed read leaves it out and never costs the alarm."""
+    reached[, session id]) for every Take with moments. When the newest few, all sent long
+    enough ago, have no moment that reached their speaker, something stopped
+    recording the reach (the walk did, 2026-10-12, and no coach heard a new
+    speaker): one Sentry warning a day, naming the host chats. True when it fired."""
     global _alarmed_on
     now = now or datetime.now(timezone.utc)
     cutoff = (now - REACH_ALARM_AFTER).isoformat()
     newest = sorted((t for t in takes if t[0] and t[0] <= cutoff), reverse=True)[:REACH_ALARM_TAKES]
-    if len(newest) < REACH_ALARM_TAKES or any(take[1] for take in newest):
+    if len(newest) < REACH_ALARM_TAKES or any(t[1] for t in newest):
         return False
     today = now.date().isoformat()
     if _alarmed_on == today:
         return False
     _alarmed_on = today
     message = (f"coach queue: the {REACH_ALARM_TAKES} newest Takes have no moment "
-               "that reached their speaker; no coach can hear them")
-    chats = _host_chats(newest, chat_of)
-    if chats:
-        message += "; made in host chat: " + ", ".join(chats)
+               "that reached their speaker; no coach can hear them" + host_chats_note(newest, chat_of))
     _log.warning(message)
     try:
         import sentry_sdk
@@ -502,7 +477,7 @@ def moments_queue(
     goal_for: Callable[[Any], Optional[str]] = _no_goal,
     listen_again_for: Callable[[str], dict[str, str]] = lambda _sid: {},
     alarm: bool = True,
-    chat_of: Callable[[str], Optional[str]] = lambda _sid: None,
+    chat_of: Optional[Callable[[str], Optional[str]]] = None,
 ) -> list[dict]:
     """Speakers oldest first (by the earliest take waiting), takes oldest
     first under each, moments in the order the take lists them.
@@ -754,3 +729,23 @@ def walk_for_coach(
                               rater_id=rater_id, chat_of=host_chat_of(database), **reads)
         return _with_plans(queue, items, pseudonym_for=pseudonym_for,
                            goal_for=reads["goal_for"])
+
+
+def host_chats_note(takes: list[tuple], chat_of: Optional[Callable[[str], Optional[str]]]) -> str:
+    """"; made in host chat: a, b" for the host chats the named Takes were
+    made in (N648 item 8), or "". ``chat_of(session id)`` is
+    services.take_door.made_in, read only when the alarm fires, for the few
+    Takes it names; a failed read leaves that Take out and never costs the
+    alarm."""
+    found: list[str] = []
+    for take in takes if chat_of else ():
+        if len(take) < 3 or not take[2]:
+            continue
+        try:
+            chat = chat_of(str(take[2]))
+        except Exception:  # noqa: BLE001 — the alarm never waits on this read
+            _log.debug("coach queue: host chat not read for %s", take[2], exc_info=True)
+            continue
+        if chat and chat not in found:
+            found.append(chat)
+    return "; made in host chat: " + ", ".join(found) if found else ""
