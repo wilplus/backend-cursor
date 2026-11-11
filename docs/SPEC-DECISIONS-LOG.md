@@ -17123,3 +17123,72 @@ what coaches see.
 name, "Your queue". "Your speakers" is the heading of the list inside it.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N642 · Will's row becomes your chat, with a switch between using it and
+building it; a chat has a name; and the models tab is the one place where
+models are taught** (founder, the Claude Code chat, 11 November 2026: "add
+an option to name your chat, and then Will is simply your chat, with a
+small text that its admin set, and you can [be] talking to the chat, and
+then switch a toggle on the navbar to make it editable and configurable";
+"if you switch it you have just two [tabs] with AI models and Your chat,
+and the rest guides you as we agreed before, and then you toggle back to
+production and you can test your chat right away"; "the underlying goal is
+to have a production set up that can recreate the chat of speaking coach 1
+to 1, and the model training be available in the models tab with all the
+nitty gritty to be configurable and then trainable like it is today in the
+waiting queue; if there are formats like voice not available yet add them,
+and make it soon to come for images and videos models training"; and on
+the coordinator's nine questions and the order of work: "Yes, to all").
+The words below are the coordinator's, under the founder's standing "all
+the wording is okay"; the founder answered yes to them as proposals.
+Amends N629, N635 and N636 item 1.
+
+For whoever has the ring row `chat_builder`:
+
+1. **A chat has a name.** The setup asks for it, and it is a part of the
+   chat like the others. Until one is given, the name is the person's
+   first name, as today. People who join see it.
+2. **One row, your chat.** The pinned row that was "Will" is the person's
+   own chat, under its name, with one line under the name on its top bar:
+   "You run this chat." The separate row for one's own chat goes. Before a
+   chat exists the row reads "Your chat".
+3. **A switch on the top bar: "Live" and "Build".**
+   - **Live** is the chat as people meet it. The person talks to it and
+     tries it at once. Their own trial always answers at once, keeps
+     nothing and costs nothing, whatever "Who answers" says.
+   - **Build** has two tabs, "Your chat" and "AI models". "Your chat" holds
+     the chat's parts, the setup that guides one decision per screen, the
+     answers to send, and the links about one's chat. "AI models" holds
+     the models and everything a person teaches, the moments to answer
+     among it.
+   - Before a chat exists the row opens in Build, at "What do you do?",
+     and the switch shows once there is something to try.
+4. **Will stays the voice of Build.** The field there still reaches him,
+   so words such as "I want to edit my chat" work as before, and what the
+   person and Will already wrote is kept and shown there.
+5. **Nothing loses its way in.** What Will's chat held (N629) has its home
+   in Build before the row changes: every moment still reaches a coach
+   through "AI models".
+6. **The models tab is where models are taught,** as the waiting queue is
+   worked today. In order: the queue's tasks are shown there as models,
+   each with what waits, opening where it is answered today, with nothing
+   moved; then "Do you hear it?" becomes models of the ordinary kind; a
+   case can be recorded as well as written; and models that learn from
+   images and from video are shown as coming, with "I want this", which
+   sends the founder one mail (N641 item 3).
+7. **The speaking coach's chat, one to one, is the goal:** a host's chat
+   that runs Takes, the feedback walk and the Ideal Text as the speaking
+   chat does. It is the last step, with its own decisions (N641's open
+   point), and until then "Speaking coach" and "Principles" stay as they
+   are (N636).
+
+**The order of work:** the name; the switch and Build with what Will holds
+today; then the row becomes the chat and Live shows it; then the models
+tab as the training area.
+
+**What stops for people on the ring, when the third step lands:** a row
+called "Will"; Will's chat as a screen of its own; the second row for
+one's own chat.
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup);
+frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
