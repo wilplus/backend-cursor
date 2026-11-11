@@ -2340,6 +2340,16 @@ O9 -> ModelApiTest::test_an_api_answer_needs_the_buyers_authority
 O10 -> ModelApiTest::test_no_answer_is_never_charged_and_a_charge_is_never_unanswered
 O11 -> ModelApiTest::test_limits_and_payouts_count_past_a_thousand_rows
 O12 -> ModelApiTest::test_a_paid_answer_is_charged_once","The models' API and its money (migration a_business_can_buy_a_model_s_answers), served by services/model_api_store.py over services/model_api.py."
+tests/test_model_coach_tasks.py,Story,"As a coach who teaches models, I want the queue's tasks shown in the models tab as models being taught, each with what waits for me and opening where I answer it today, with nothing moved (N642 item 6, step one; N643 item 4).","O1  GET /v2/models/coach-tasks lists ""Moments to answer"", ""Do you hear
+it?"", ""Pick the most confident"", ""Pick the moment for feedback"" and
+""Which sounds surer"", each with this coach's waiting count as the
+panel counts it and where it opens; ``coming`` is the coming list.
+O2  Reading it fills no line and answers nothing; a line that cannot be
+read waits 0.
+O3  Someone who is not a coach, or has neither ring, gets empty lists,
+not an error.","O1 -> CoachTasksTest::test_each_task_is_a_model_with_what_waits
+O2 -> CoachTasksTest::test_reading_fills_nothing_and_a_failed_line_waits_nothing
+O3 -> CoachTasksTest::test_others_get_empty_lists","The smallest honest first step: the founder sees the waiting list as models being taught, taught where it is taught today."
 tests/test_model_launchpad.py,Story,"As a person in WillpowerLab, I want to find AI models, see how far each is, teach the ones in my field from one queue, and, as a model's founder, release a version only when it is clearly better (N528, N563, N566; the locked prototype ""The Model Launchpad"").","O1  The list puts my draft on top, then the most mature models, with
 search, the three filters, and an empty state that offers to start one.
 O2  A public model's page is in totals only; a private one is unseen by
