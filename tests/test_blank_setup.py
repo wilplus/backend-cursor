@@ -27,6 +27,9 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          FIRST-20 -> SetupTest::test_test_my_chat_answers_as_my_people_would
          FIRST-21 -> SetupTest::test_to_change_the_chat_tell_will
          FIRST-22 -> SetupTest::test_who_answers_is_three_plain_choices
+         N641.1   -> SetupTest::test_the_feedback_walk_is_kept_in_a_chat_that_takes_a_recording
+         N641.2   -> SetupTest::test_i_want_this_tells_the_founder_once
+         N641.2   -> SetupTest::test_the_ask_is_kept_when_the_mail_cannot_go
          N632.2   -> SetupTest::test_what_the_first_take_said_opens_what_you_do
          N632.3   -> SetupTest::test_a_chat_that_takes_a_recording_is_a_skill_chat
          N632.4   -> SetupTest::test_start_again_begins_blank_and_keeps_only_the_same_model
@@ -479,6 +482,72 @@ class SetupTest(_Base):
         self.assertEqual([p["title"] for p in res["parts"]],
                          ["Why people come", "They send", "They get back", "Your hello",
                           "First questions", "They can ask", "Your models", "Who answers"])
+
+    def test_the_feedback_walk_is_kept_in_a_chat_that_takes_a_recording(self):
+        """N641.1: "The feedback walk" holds steps from best, fix, words in
+        the host's order, and an Ideal Text or nothing at the end; it is a
+        part only in a chat that takes a recording; unsaved, it reads as
+        the suggestion; a visitor meets nothing of it."""
+        self._start()
+        self.assertEqual(self._put("walk", {"steps": ["best"], "out": "none"}).status_code, 400)
+        self.assertNotIn("walk", [p["part"] for p in self._read()["parts"]])
+        self._put("send", ["rec", "text"])
+        read = self._read()
+        self.assertNotIn("walk", read["recipe"])
+        self.assertEqual(read["recipe"]["suggest"]["walk"], {"steps": ["best", "fix", "words"], "out": "ideal_text"})
+        row = [p for p in read["parts"] if p["part"] == "walk"][0]
+        self.assertEqual(row, {"part": "walk", "title": "The feedback walk", "saved": False,
+                               "value": {"steps": ["best", "fix", "words"], "out": "ideal_text"}})
+        self.assertEqual([p["part"] for p in read["parts"]][2:4], ["out", "walk"])
+        for bad in ({"steps": [], "out": "none"}, {"steps": ["best", "best"], "out": "none"},
+                    {"steps": ["score"], "out": "none"}, {"steps": ["fix"], "out": "verdict"}, ["fix"]):
+            self.assertEqual(self._put("walk", bad).status_code, 400, bad)
+        before = {k: self._read()["recipe"][k] for k in ("answer_with", "welcome", "fit")}
+        saved = self._put("walk", {"steps": ["words", "best"], "out": "none", "wanted": True})
+        self.assertEqual(saved.get_json()["recipe"]["walk"], {"steps": ["words", "best"], "out": "none"})
+        row = [p for p in self._read()["parts"] if p["part"] == "walk"][0]
+        self.assertEqual((row["value"], row["saved"]), ({"steps": ["words", "best"], "out": "none"}, True))
+        self.assertEqual({k: self._read()["recipe"][k] for k in before}, before)
+
+    def _want(self):
+        return self.client.post("/v2/chats/setup/walk/want", headers=self._as(TOMEK))
+
+    def test_i_want_this_tells_the_founder_once(self):
+        """N641.2: "I want this" sends the founder one mail naming the host
+        and their walk, keeps the ask, and a second tap sends nothing; no
+        number comes back; only for the ring chat_builder."""
+        from config import Config
+        self._start()
+        self._put("send", ["rec"])
+        self._put("walk", {"steps": ["fix", "best"], "out": "ideal_text"})
+        with patch("services.email_service.send_email_resend") as mail:
+            self.assertEqual(self._want().get_json(), {"wanted": True})
+            self.assertEqual(self._want().get_json(), {"wanted": True})
+        self.assertEqual(mail.call_count, 1)
+        sent = mail.call_args.kwargs
+        self.assertEqual(sent["to"], Config().ADMIN_EMAIL)
+        self.assertIn(TOMEK, sent["text"])
+        self.assertIn("One moment to try another way, then Their best moment", sent["text"])
+        self.assertIn("An Ideal Text", sent["text"])
+        walk = self._read()["recipe"]["walk"]
+        self.assertTrue(walk["wanted"] and walk["wanted_at"])
+        # Changing the walk afterwards keeps the ask; a third tap sends nothing.
+        self._put("walk", {"steps": ["best"], "out": "none"})
+        with patch("services.email_service.send_email_resend") as mail:
+            self._want()
+        self.assertEqual((mail.call_count, self._read()["recipe"]["walk"]["wanted"]), (0, True))
+        self.assertEqual(self.client.post("/v2/chats/setup/walk/want", headers=self._as(PIOTR)).status_code, 404)
+
+    def test_the_ask_is_kept_when_the_mail_cannot_go(self):
+        """N641.2: no key or a provider error: the ask is kept, the answer
+        is the same, the failure is logged."""
+        self._start()
+        self._put("send", ["rec"])
+        with patch("services.email_service.send_email_resend", side_effect=RuntimeError("RESEND_API_KEY")), \
+                self.assertLogs("services.chat_recipes", "WARNING"):
+            res = self._want()
+        self.assertEqual((res.status_code, res.get_json()), (200, {"wanted": True}))
+        self.assertTrue(self._read()["recipe"]["walk"]["wanted"])
 
 
 class VisitorTest(_Base):

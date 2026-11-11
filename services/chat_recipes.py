@@ -18,6 +18,9 @@ field with the prototype step that fills it, is in backend PR #1893.
     ``teach``; ``price_changes`` once one passes its exam).
   * ``skipped_models``: someone else's models left out of a person's
     answer because the host had too few tokens (TOK-02), in ``read``.
+  * ``walk`` (N641): "The feedback walk" a chat that takes a recording
+    holds, kept and nothing more: no visitor's chat runs it yet.
+    ``want_walk`` is "I want this": one mail to the founder, once.
 
 Kept in ``people_profiles.chat_recipe`` beside the older builder's ``"v":
 1`` recipe (``services/assistants.py``), which keeps working; ``welcome`` and
@@ -43,12 +46,13 @@ PARTS_LINE = "Here are your chat's parts. Tap one to change it."
 #: The prototype's ``done`` step: each part and its title.
 PART_TITLES: tuple[tuple[str, str], ...] = (
     ("line", "Why people come"), ("send", "They send"), ("out", "They get back"),
-    ("hello", "Your hello"), ("questions", "First questions"), ("taps", "They can ask"),
+    ("walk", "The feedback walk"), ("hello", "Your hello"), ("questions", "First questions"),
+    ("taps", "They can ask"),
     ("models", "Your models"), ("who", "Who answers"))
 WHO = tuple(w[1] for w in chat_suggestions.WHO)
 PRICES = tuple(chat_suggestions.PRICES)
 PARTS = ("line", "send", "out", "hello", "questions", "taps", "smart", "way", "models", "who",
-         "share", "price", "cost", "care", "sensitive", "live")
+         "share", "price", "cost", "care", "sensitive", "live", "walk")
 MAX_QUESTIONS, MAX_MODELS = 3, 3
 DAYS = 30
 
@@ -129,6 +133,15 @@ def _with_base(recipe: Optional[dict]) -> Optional[dict]:
     return {**recipe, "models": models} if recipe.get("models") else recipe
 
 
+def _with_walk(recipe: Optional[dict]) -> Optional[dict]:
+    """A recipe as GET reads it: Will's suggestion for the feedback walk in
+    ``suggest.walk`` (N641 item 1); ``walk`` itself only once saved."""
+    if not recipe:
+        return recipe
+    suggestion = {"steps": list(WALK_STEPS), "out": "ideal_text"}
+    return {**recipe, "suggest": {**(recipe.get("suggest") or {}), "walk": suggestion}}
+
+
 def _one_of(allowed: Any, message: str) -> Any:
     def check(value: Any) -> Any:
         if isinstance(value, bool) or value not in allowed:
@@ -166,6 +179,28 @@ def _models(value: Any) -> list:
     return [_model(m, i) for i, m in enumerate(value)]
 
 
+#: "What should yours hold?" (N641 item 1): their best moment, one moment to
+#: try another way, the helper words; in the order the host keeps.
+WALK_STEPS = ("best", "fix", "words")
+#: "What do they get at the end?": an Ideal Text, or nothing for now.
+WALK_OUTS = ("ideal_text", "none")
+#: A chat without the part reads this as the suggestion, never as saved.
+WALK_SUGGESTION = {"steps": list(WALK_STEPS), "out": "ideal_text"}
+
+
+def _walk(value: Any) -> dict:
+    if not isinstance(value, dict):
+        raise RecipeError("RECIPE_INVALID", "The feedback walk is its steps and what they get at the end.")
+    steps = value.get("steps")
+    if (not isinstance(steps, list) or not steps or any(s not in WALK_STEPS for s in steps)
+            or len(set(steps)) != len(steps)):
+        raise RecipeError("RECIPE_INVALID", f"Tick at least one of {list(WALK_STEPS)}, each once.")
+    out = value.get("out")
+    if isinstance(out, bool) or out not in WALK_OUTS:
+        raise RecipeError("RECIPE_INVALID", f"At the end they get one of {list(WALK_OUTS)}.")
+    return {"steps": list(steps), "out": out}
+
+
 def _cost(value: Any) -> dict:
     if not isinstance(value, dict):
         raise RecipeError("RECIPE_INVALID", "How many people, and how often each sends.")
@@ -186,6 +221,7 @@ _CLEAN: dict[str, Any] = {
     "who": _one_of(WHO, "Who answers is shadow, you or assistant."),
     "price": _one_of(PRICES, f"A price is one of {list(PRICES)} tokens."),
     "cost": _cost,
+    "walk": _walk,
     **{p: (lambda v, p=p: _bool(v, p)) for p in ("smart", "share", "care", "sensitive", "live")},
 }
 
@@ -275,6 +311,12 @@ def set_part(database: Any, user_id: Any, part: str, body: Any) -> dict:
     if part == "models":
         value = _agreed_prices(database, str(user_id), recipe, value)
         value = _real_models(database, str(user_id), recipe, value)
+    if part == "walk":
+        if "rec" not in (recipe.get("send") or []):
+            raise RecipeError("RECIPE_INVALID", "The feedback walk is for a chat that takes a recording.")
+        # "I want this", once asked, stays asked whatever the walk becomes.
+        before = recipe.get("walk") or {}
+        value = {**value, **{k: before[k] for k in ("wanted", "wanted_at") if k in before}}
     if part == "who" and value == "assistant" and recipe.get("sensitive") is not False:
         # Health, law or money, or not answered yet: nothing goes out until
         # the host sends it (N616 item 13, N622 item 1).
@@ -337,8 +379,71 @@ def parts(recipe: dict) -> list[dict]:
               "questions": " · ".join(q["q"] for q in recipe.get("questions") or []),
               "taps": " · ".join(recipe.get("taps") or []),
               "models": " · ".join(m["q"] for m in recipe.get("models") or []) or "None yet",
-              "who": labels.get(recipe.get("who") or "", "")}
-    return [{"part": p, "title": t, "value": values[p]} for p, t in PART_TITLES]
+              "who": labels.get(recipe.get("who") or "", ""),
+              # The ids, for the frontend to draw (N641): the saved walk,
+              # else the suggestion; ``saved`` says which.
+              "walk": walk_of(recipe)}
+    rec = "rec" in (recipe.get("send") or [])
+    return [{"part": p, "title": t, "value": values[p],
+             **({"saved": bool(recipe.get("walk"))} if p == "walk" else {})}
+            for p, t in PART_TITLES if p != "walk" or rec]
+
+
+def walk_of(recipe: Optional[dict]) -> dict:
+    """The walk a chat holds ({"steps", "out"}), or the suggestion."""
+    walk = (recipe or {}).get("walk") or WALK_SUGGESTION
+    return {"steps": list(walk["steps"]), "out": walk["out"]}
+
+
+def _full_name(token_payload: Any, user_id: str) -> str:
+    from services.chat_links import name_of
+    payload = token_payload if isinstance(token_payload, dict) else {}
+    meta = payload.get("user_metadata") if isinstance(payload.get("user_metadata"), dict) else {}
+    return " ".join(str(meta.get("full_name") or meta.get("name") or "").split()) or name_of(payload)
+
+
+_STEP_WORDS = {"best": "Their best moment", "fix": "One moment to try another way",
+               "words": "The helper words"}
+_OUT_WORDS = {"ideal_text": "An Ideal Text", "none": "Nothing for now"}
+
+
+def want_walk(database: Any, user_id: Any, token_payload: Any) -> dict:
+    """POST /v2/chats/setup/walk/want: "I want this" (N641 items 2 and 3).
+    The ask is kept on the recipe (``walk.wanted``, ``walk.wanted_at``);
+    the first time, one mail tells the founder (ADMIN_EMAIL) which host
+    wants their chat to run the walk and what it holds. Asked again, it
+    sends nothing more. Not counted; a mail that cannot go is logged and
+    the host gets the same answer."""
+    recipe = mine(database, user_id)
+    if recipe is None:
+        raise RecipeError("NOT_STARTED", "Say what you do first.", 409)
+    walk = recipe.get("walk") or dict(WALK_SUGGESTION)
+    if walk.get("wanted"):
+        return {"wanted": True}
+    walk = {**walk, "wanted": True, "wanted_at": datetime.now(timezone.utc).isoformat()}
+    _store(database, str(user_id), {**recipe, "walk": walk})
+    _tell_founder(str(user_id), _full_name(token_payload, str(user_id)), recipe, walk)
+    return {"wanted": True}
+
+
+def _tell_founder(user_id: str, name: str, recipe: dict, walk: dict) -> None:
+    """The feature request, by mail. Never fails the ask."""
+    try:
+        import html
+
+        from config import Config
+        from services.email_service import send_email_resend
+        config = Config()
+        steps = [_STEP_WORDS[s] for s in walk["steps"]]
+        lines = [f"{name} (user {user_id}) wants their chat to run the feedback walk.", "",
+                 f"Their chat: {recipe.get('spec') or 'not said'}.",
+                 "Their walk, in order: " + ", then ".join(steps) + ".",
+                 f"At the end: {_OUT_WORDS[walk['out']]}.", "",
+                 "A request for the feature (N641). Their chat cannot run it yet."]
+        send_email_resend(to=config.ADMIN_EMAIL, subject=f"{name} wants the feedback walk in their chat",
+                          html="<br>".join(html.escape(line) for line in lines), text="\n".join(lines))
+    except Exception as e:  # noqa: BLE001 -- the ask is kept either way
+        logger.warning("chat_recipes: the feedback walk request mail not sent: %s", e)
 
 
 def cost(recipe: Optional[dict]) -> Optional[dict]:
@@ -389,7 +494,7 @@ def read(database: Any, user_id: Any, token_payload: Any) -> dict:
     chat = own_chat(recipe, name_of(token_payload))
     if chat is not None:
         chat["link"] = my_link(database, user_id, token_payload)
-    return {"recipe": _with_base(recipe), "parts": parts(recipe) if recipe else [],
+    return {"recipe": _with_walk(_with_base(recipe)), "parts": parts(recipe) if recipe else [],
             "own_chat": chat, "cost": cost(recipe), "skipped_models": skipped_models(database, user_id, recipe),
             "price_changes": price_changes(database, recipe), "spec_guess": spec_guess(database, user_id)}
 

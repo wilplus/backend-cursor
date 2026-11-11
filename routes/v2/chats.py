@@ -660,6 +660,17 @@ def v2_chats_blank_setup_send(message_id):
         db, str(request.user_id), message_id, body)))
 
 
+@v2_bp.route("/chats/setup/walk/want", methods=["POST"])
+@limiter.limit("30 per hour", scope="chats_blank_setup_walk_want")
+@require_auth
+def v2_chats_blank_setup_walk_want():
+    """"I want this" under the feedback walk (N641): one mail to the founder, once."""
+    from services import chat_recipes
+    payload = getattr(request, "token_payload", None)
+    return _builder_or_404(lambda: _run("setup walk want", lambda: chat_recipes.want_walk(
+        db, str(request.user_id), payload)))
+
+
 @v2_bp.route("/chats/setup/<part>", methods=["PUT"])
 @limiter.limit("600 per hour", scope="chats_blank_setup_part")
 @require_auth
