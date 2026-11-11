@@ -13,9 +13,20 @@ OUTCOME
       ?place=will only Will's, and no place every
       row as before; each row says its place, and a place reads older
       pages until it has a page of its own.
+  O3  A Take recorded in my chat with the speaking host (services/
+      take_door.py) shows its rows in that chat, to me only: its Ideal
+      Text card, the walk and its summary come back for ?chat=<that chat>,
+      each placed "chat" with its chat_id, and are gone from
+      ?place=speaking; my old Takes, made in the pinned speaking chat,
+      stay in "speaking"; my own speaking rows with no Take (the plan, the
+      feelings check) are in both, so nothing disappears. An arc's own
+      rows go to the chat of the arc's latest Take. The host, a chat that is not mine, or a
+      person off the ring row chat_builder get 404 for ?chat=, and off the
+      ring every row is placed as before.
 PROVES   O1 -> LoungePlaceTest::test_every_lounge_writer_places_its_rows
          O1 -> LoungePlaceTest::test_a_typed_turn_stays_in_the_chat_it_was_typed_in
          O2 -> LoungePlaceTest::test_the_read_returns_one_place
+         O3 -> HostChatPlaceTest::test_a_take_made_in_the_hosts_chat_is_shown_there_to_me_only
 WHY      services/lounge_messages.place_of is the one list (N635 item 4:
          the rows stay where they are written; each chat shows its own).
 """
@@ -23,10 +34,14 @@ from __future__ import annotations
 
 import pathlib
 import unittest
+import uuid
 from unittest.mock import patch
 from urllib.parse import quote
 
 from services.lounge_messages import PRINCIPLES, SPEAKING, WILL, place_of
+from tests.test_chats import ME
+from tests.test_take_sends import FOUNDER as HOST
+from tests.test_take_sends import MAYA
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -175,6 +190,76 @@ class LoungePlaceTest(unittest.TestCase):
             self.assertTrue(all(m["place"] == WILL for m in will["messages"]))
             self.assertEqual(client.get("/v2/user/lounge/messages?place=coach",
                                         headers={"Authorization": "Bearer t"}).status_code, 400)
+
+
+class HostChatPlaceTest(unittest.TestCase):
+    """O3, on the door's in-memory chat tables (tests/test_take_door.py)."""
+    from tests.test_take_door import TakeDoorTest as _Door
+    setUp, setUp_sends, setUp_chats = _Door.setUp, _Door.setUp_sends, _Door.setUp_chats
+    _get, _post, _chat_with, _take, _tag, _messages = (
+        _Door._get, _Door._post, _Door._chat_with, _Door._take, _Door._tag, _Door._messages)
+
+    def _lounge(self, q):
+        from services.db import db
+
+        def page(_user, *, limit, before=None):
+            older = [r for r in self.rows if before is None or r["client_created_at"] < before]
+            return list(reversed(older))[:limit + 1]
+        with patch.object(db, "get_lounge_messages_page", page), \
+                patch("services.lounge_clips.enrich_page", lambda *a, **k: None):
+            return self._get(f"/v2/user/lounge/messages?{q}")
+
+    def _session(self, take, arc, at):
+        for row in self.store.tables["v2_sessions"]:
+            if row["id"] == take:
+                row.update(arc_id=arc, created_at=at)
+
+    def test_a_take_made_in_the_hosts_chat_is_shown_there_to_me_only(self):
+        chat = self._chat_with(HOST, "Artur")
+        maya = self._chat_with(MAYA, "Maya")
+        here, elsewhere = self._take(), self._take(index=3)
+        self._session(here, "arc-here", "2026-11-11T09:00:00+00:00")
+        self._session(elsewhere, "arc-else", "2026-11-11T09:05:00+00:00")
+        self.assertEqual(self._tag(chat, here).status_code, 200)
+        metas = [("ideal_text", {"arc_id": "arc-here", "variant": "ready"}),   # the Ideal Text card
+                 ("walk_step", {"step": "best", "take_session_id": here}),     # the walk
+                 ("recording_summary", {"session_id": here}),                  # its summary
+                 ("text", {"plan": "p1", "plan_ask": "voice"}),                # the plan
+                 ("text", {"feedback_check": "fine"}),                         # the feelings check
+                 ("ideal_text", {"arc_id": "arc-else", "variant": "ready"}),   # a Take made elsewhere
+                 ("text", {"chat_setup": {}})]                                  # Will's chat
+        self.rows = [{"id": str(i), "client_id": f"c{i}", "role": "bot", "kind": kind, "body": f"row {i}",
+                      "client_created_at": f"2026-11-11T10:00:{i:02d}+00:00", "metadata": meta}
+                     for i, (kind, meta) in enumerate(metas)]
+
+        def bodies(q):
+            res = self._lounge(q)
+            self.assertEqual(res.status_code, 200, q)
+            return res.get_json()["messages"]
+        mine = bodies(f"chat={chat}")
+        self.assertEqual([m["body"] for m in mine], ["row 0", "row 1", "row 2", "row 3", "row 4"])
+        self.assertTrue(all((m["place"], m["chat_id"]) == ("chat", chat) for m in mine))
+        # The plan and the feelings check stay too; the old Take stays.
+        self.assertEqual([m["body"] for m in bodies("place=speaking")], ["row 3", "row 4", "row 5"])
+        self.assertEqual([m["body"] for m in bodies("place=will")], ["row 6"])
+        # Nothing of it is written into the chat the host reads.
+        self.assertEqual([m["kind"] for m in self._messages()], ["take"])
+
+        # The arc's latest Take was made elsewhere: its card goes back to speaking.
+        later = self._take(index=4)
+        self._session(later, "arc-here", "2026-11-11T09:30:00+00:00")
+        self.assertEqual([m["body"] for m in bodies("place=speaking")], ["row 0", "row 3", "row 4", "row 5"])
+        self.assertEqual([m["body"] for m in bodies(f"chat={chat}")], ["row 1", "row 2", "row 3", "row 4"])
+
+        self.assertEqual(self._lounge(f"chat={maya}").status_code, 404)    # no Take made there
+        self.assertEqual(self._lounge(f"chat={uuid.uuid4()}").status_code, 404)  # not a member
+        self.assertEqual(self._lounge(f"chat={chat}&place=speaking").status_code, 400)
+        self.who = HOST                                                     # the host
+        self.assertEqual(self._lounge(f"chat={chat}").status_code, 404)
+        self.who, self.ring = ME, {HOST}                                   # off the ring
+        self.assertEqual(self._lounge(f"chat={chat}").status_code, 404)
+        self.assertEqual([m["body"] for m in bodies("place=speaking")],
+                         ["row 0", "row 1", "row 2", "row 3", "row 4", "row 5"])
 
 
 if __name__ == "__main__":

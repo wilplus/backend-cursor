@@ -1995,6 +1995,38 @@ class DatabaseService:
             out[str(row.get("key"))] = text or None
         return out
 
+    def get_runtime_config_entry(self, key: str) -> Optional[Dict[str, Any]]:
+        """One runtime_config row's value and updated_at, for a
+        compare-and-swap write (services/silent_tries). None when absent.
+        Raises on failure: a try read as "none" would let a second start in."""
+        res = (self.client.table("runtime_config").select("value,updated_at")
+               .eq("key", key).limit(1).execute())
+        return res.data[0] if res.data else None
+
+    def put_runtime_config_entry(
+        self, key: str, value: str, *, updated_by: Optional[str],
+        expected_updated_at: Optional[str],
+    ) -> bool:
+        """Write one non-model runtime_config row only if it is unchanged
+        since it was read: insert when ``expected_updated_at`` is None (an
+        existing row makes it False), else update the row whose updated_at
+        still matches. False when someone else wrote meanwhile. Model keys
+        stay behind promote_runtime_surface_model (the trigger refuses them)."""
+        now = datetime.now(timezone.utc).isoformat()
+        row = {"value": value, "updated_by": updated_by, "updated_at": now}
+        if expected_updated_at is None:
+            try:
+                res = (self.client.table("runtime_config")
+                       .insert({"key": key, **row}).execute())
+            except Exception as e:
+                if "duplicate key" in str(e).lower() or "23505" in str(e):
+                    return False
+                raise
+            return bool(res.data)
+        res = (self.client.table("runtime_config").update(row)
+               .eq("key", key).eq("updated_at", expected_updated_at).execute())
+        return bool(res.data)
+
     def promote_runtime_surface_model(
         self,
         *,
@@ -10365,8 +10397,10 @@ class DatabaseService:
         to the coach (status pending_admin_review, source audit_upload)
         and not yet published, newest-sent first. Returns raw rows; the
         route pseudonymizes user_id (§14 red-line 6 — never the real id in
-        the list) + shapes the response. (results_published_at filtered in
-        Python to avoid PostgREST is-null quirks.) Read rows are folded out
+        the list) + shapes the response. (results_published_at is filtered in
+        the query BEFORE the limit, so published rows take no slot and an
+        older waiting Take is never pushed out of every coach's queue and the
+        reach alarm; the Python filter stays as a second guard.) Read rows are folded out
         (fold_reads_out_of_queue) — a re-read reviews INSIDE its parent
         take's packet, never as its own row.
         """
@@ -10391,6 +10425,7 @@ class DatabaseService:
                     .select(_full_cols)
                     .eq("status", "pending_admin_review")
                     .eq("source", "audit_upload")
+                    .is_("results_published_at", "null")
                     .order("review_requested_at", desc=True)
                     .limit(limit)
                     .execute()
@@ -10409,6 +10444,7 @@ class DatabaseService:
                     .select(_base_cols)
                     .eq("status", "pending_admin_review")
                     .eq("source", "audit_upload")
+                    .is_("results_published_at", "null")
                     .order("review_requested_at", desc=True)
                     .limit(limit)
                     .execute()
@@ -15351,7 +15387,7 @@ class DatabaseService:
         into fired_at_sampling; no reader shows it."""
         from services.confident_voice_practice import SIGNAL_RULES_VERSION
         from services.detector_rollout import LIVE_DETECTOR
-        from services.verbal_cues import VERBAL_CUES_VERSION
+        from services.verbal_cues import logged_live
         wanted = [str(e) for e in errors if e]
         if not wanted:
             return []
@@ -15361,9 +15397,7 @@ class DatabaseService:
                .in_("error_id", wanted).order("created_at", desc=True)
                .limit(int(limit)).execute())
         rows = [r for r in (res.data or []) if isinstance(r, dict)]
-        rows = [r for r in rows
-                if str(r.get("detector_version")) ==
-                str(LIVE_DETECTOR.get(str(r.get("error_id")), VERBAL_CUES_VERSION))]
+        rows = audit_candidate_rows(rows, LIVE_DETECTOR, logged_live)
         takes = sorted({str(r.get("take_session_id")) for r in rows if r.get("take_session_id")})
         speaker: dict[str, str] = {}
         for i in range(0, len(takes), 200):
@@ -15629,3 +15663,27 @@ def new_client() -> Client:
 from services.first_client_repository import FirstClientRepository  # noqa: E402
 
 first_client_repository = FirstClientRepository(lambda: db.client)
+
+
+def audit_candidate_rows(rows: list[dict], live_detector: dict,
+                         logged_live: Any) -> list[dict]:
+    """The shadow rows the blind audit may draw, newest first: an acoustic
+    error's rows at its live version (``LIVE_DETECTOR``); a verbal cue's rows
+    the live cue logged under any live set (``verbal_cues.logged_live``),
+    never a silent try's. One row per (clip, error): the newest."""
+    out: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for r in rows:
+        error_id = str(r.get("error_id"))
+        version = r.get("detector_version")
+        if error_id in live_detector:
+            if str(version) != str(live_detector[error_id]):
+                continue
+        elif not logged_live(version):
+            continue
+        key = (str(r.get("snippet_id")), error_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(r)
+    return out

@@ -1273,10 +1273,34 @@ def sweep_stale_jobs(max_rows: int = 100) -> Dict[str, int]:
     return counts
 
 
+def model_sweep_interval_seconds() -> int:
+    """How often the models gather and are fitted. Not every sweep: a run
+    reads every Take a model's owner received, for every model, and at once
+    a minute that was the database's steadiest reader (Supabase's Disk IO
+    warning, 2026-11-11)."""
+    return max(60, int(config.MODEL_SWEEP_INTERVAL_SECONDS))
+
+
+def _model_sweep_due() -> bool:
+    """True once an interval: the first sweep to set the flag runs, the rest
+    rest until it expires. Without Redis every sweep runs, as before."""
+    try:
+        store = job_queue.get_redis()
+        if store is None:
+            return True
+        return bool(store.set("model-sweep:ran", "1", nx=True,
+                              ex=model_sweep_interval_seconds()))
+    except Exception:  # noqa: BLE001 -- a flag that cannot be read never stops the models
+        logger.warning("pipeline_jobs: model sweep flag unreadable", exc_info=True)
+        return True
+
+
 def _gather_model_examples(limit: int) -> Dict[str, int]:
     """A host's model gathers the Takes sent to them, only from speakers
     whose training yes is on, and lets go of the rest (MOD-02). The job
     never raises; this only keeps the sweep's counts."""
+    if not _model_sweep_due():
+        return {}
     from services.model_examples_from_takes import sweep as gather
 
     gathered = gather(database=db, limit=limit)

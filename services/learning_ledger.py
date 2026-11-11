@@ -129,7 +129,7 @@ def ledger(database: Any, *, config: Any = None) -> dict:
     from services.verbal_cue_validation import (
         PROMOTION_MIN_CAUGHT_RATE, PROMOTION_MIN_YES, report,
     )
-    from services.verbal_cues import CUES, VERBAL_CUES_VERSION
+    from services.verbal_cues import CUES, detector_version
 
     unavailable: list[str] = []
     pairs = _read("pairs", lambda: counts(database), unavailable) or {}
@@ -137,7 +137,7 @@ def ledger(database: Any, *, config: Any = None) -> dict:
     from services.acoustic_cues import ACOUSTIC_CUES_VERSION, CUES as ACOUSTIC_CUES
     cues = _read(
         "shadow_cues",
-        lambda: report(database, detector_version=VERBAL_CUES_VERSION, cues=CUES),
+        lambda: report(database, detector_version=detector_version(), cues=CUES),
         unavailable) or {}
     # The two acoustic shadow cues (ML-14) sit in the same ledger, under
     # their own detector version, against the same bar.

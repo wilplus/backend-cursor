@@ -269,8 +269,9 @@ def _last(rows: list[dict], unheard: Any = None, me: str = "") -> Optional[dict]
     Take its number only (``meta.take_index``), for the list's "{name} sent
     you Take {n}" (N470); never its Take's id."""
     from services.join_questions import hidden
+    from services.take_door import mine_only
     row = next((r for r in rows if not _held(r) and not (unheard and unheard(r))
-                and not (me and hidden(r, me))), None)
+                and not (me and (hidden(r, me) or mine_only(r, me)))), None)
     if not row:
         return None
     last = {"kind": row["kind"], "body": row["body"], "created_at": row["created_at"],
@@ -365,6 +366,9 @@ def list_chats(database: Any, user_id: Any) -> dict:
     # A host's chat is shown under its name (N642 item 1), to everyone in it
     # but the host; the person's name stays for the assistant and the rest.
     named = _chat_titles(database, others)
+    # The chats where a Take can be recorded (services/take_door.py).
+    from services.take_door import doors
+    speaking = doors(database, user_id, mine)
     chats: list[tuple[str, dict]] = []
     for t in threads:
         other = others.get(str(t["id"])) or {}
@@ -377,7 +381,8 @@ def list_chats(database: Any, user_id: Any) -> dict:
             "subtitle": other.get("subtitle"), "last": last,
             "joined_through": through.get(str(t["id"])),
             "assistant": assistants.assistant_name(other.get("display_name")) if person else None,
-            "blocked": chat_safety.blocking({"blocked_spans": spans.get(me, [])})}))
+            "blocked": chat_safety.blocking({"blocked_spans": spans.get(me, [])}),
+            "takes": str(t["id"]) in speaking}))
     chats.sort(key=lambda pair: str(pair[0]), reverse=True)
     return {"chats": [chat for _, chat in chats]}
 
@@ -542,8 +547,10 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
     unheard = chat_safety.unheard(str(me["id"]), spans)
     from services import join_questions
     newest = join_questions.as_read(newest)  # N631: a day never chosen is never on the card
+    # A Take made here is tagged for its speaker only (services/take_door.py).
+    from services.take_door import doors, mine_only
     newest = [r for r in newest if not _held(r) and not unheard(r)
-              and not join_questions.hidden(r, str(me["id"]))]
+              and not join_questions.hidden(r, str(me["id"])) and not mine_only(r, str(me["id"]))]
     _mark_demo_question(database, thread, newest)
     authors = _authors(database, thread)
     words = _words(database, thread, newest)
@@ -556,7 +563,9 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
             # (N496); the owner's: who joined through their link (N502 item 5).
             "joined_asks": bool(through) and join_questions.asks(database, thread),
             "joined_by": None if through else joined_by(database, user_id, thread),
-            "blocked": chat_safety.blocking({"blocked_spans": spans})}
+            "blocked": chat_safety.blocking({"blocked_spans": spans}),
+            # A Take can be recorded here, through the one loop (N648 item 8).
+            "takes": thread in doors(database, user_id, {thread: str(me["id"])})}
 
 
 # ── Writing ──────────────────────────────────────────────────────────────

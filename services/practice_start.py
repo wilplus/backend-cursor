@@ -249,6 +249,9 @@ def start_practice(database, *, snippet_id: str, body: dict, user_id: Any,
     if existing:
         return _resumed(database, existing, kind=kind, snip=snip, body=body,
                         user_id=user_id), False
+    from services import take_door
+    if not take_door.practice_allowed(database, take_id):
+        raise Refusal("NOT_ELIGIBLE", "Practice is not on for this chat.", 403)
     verdict, matching = _start_gate(
         database, kind, snip, take_id, str(snippet_id), exercise_id,
         _median_wpm(database, take_id), user_id)

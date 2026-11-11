@@ -44,6 +44,17 @@ OUTCOME
       once and gets the first answer, the model asked once; the same key with
       another question is refused; a call without a key is a new answer, as
       before; a new key after an answer that never came is a new try.
+  O13 (N648 item 6) The download as a file, JSON lines or CSV: a manifest
+      line first (model, version, date, rows, answers, rules), then each
+      answer with its case's settled answer and how many agree; a case
+      carries its text only for the person who wrote it, never a speaker's
+      words, an exam case or another team's private case; the settled answer
+      only for the owner, or on a case the teacher already answered; a cell
+      that would run as a spreadsheet formula starts with a quote in the CSV.
+  O14 (N648 item 6) The owner's version file: the cases it learned from by
+      the data download's numbers, Keep or Change on the check, the exam's
+      result only, the confidence table and the reader; never the exam's
+      cases, which it got right, or the head's weights; anyone else 404.
 PROVES   O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
          O2 -> ModelApiTest::test_the_card_and_trying_a_model
          O3 -> ModelApiTest::test_a_test_key_is_shown_once_and_answers_100_times
@@ -56,6 +67,8 @@ PROVES   O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
          O10 -> ModelApiTest::test_no_answer_is_never_charged_and_a_charge_is_never_unanswered
          O11 -> ModelApiTest::test_limits_and_payouts_count_past_a_thousand_rows
          O12 -> ModelApiTest::test_a_paid_answer_is_charged_once
+         O13 -> ModelApiTest::test_the_download_file_keeps_only_your_own_cases_text
+         O14 -> ModelApiTest::test_the_owners_version_file_holds_the_exams_result_only
 WHY      The models' API and its money (migration
          a_business_can_buy_a_model_s_answers), served by
          services/model_api_store.py over services/model_api.py.
@@ -521,6 +534,101 @@ class ModelApiTest(unittest.TestCase):
         self.who = BIZ
         self.assertEqual(self._get(f"/v2/models/{JOB}/download").get_json()["refused"],
                          "Only its owner and its teachers can download its data.")
+
+    def test_the_download_file_keeps_only_your_own_cases_text(self):
+        import csv
+        import io
+        import json
+        t = self.store.tables
+        t["ai_model_examples"] += [
+            {"id": "x-kasia", "model_id": JOB, "source": "teacher", "added_by": KASIA, "private": False,
+             "in_exam": False, "known_answer": "Yes", "content": {"text": "Kasia's own case"}},
+            {"id": "x-marta", "model_id": JOB, "source": "teacher", "added_by": MARTA, "private": False,
+             "in_exam": False, "known_answer": "No", "content": {"text": "Marta's own case"}},
+            {"id": "x-exam", "model_id": JOB, "source": "teacher", "added_by": KASIA, "private": False,
+             "in_exam": True, "known_answer": "Yes", "content": {"text": "A sealed exam case"}},
+            {"id": "x-other", "model_id": JOB, "source": "upload", "private": True, "in_exam": False,
+             "content": {"text": "Another team's private row"}},
+        ]
+        t["ai_model_answers"] += [
+            {"id": "b1", "example_id": "x-kasia", "model_id": JOB, "teacher_id": MARTA, "step": "words",
+             "answer": "Yes", "counted": True},
+            {"id": "b2", "example_id": "x-kasia", "model_id": JOB, "teacher_id": ARTUR, "step": "words",
+             "answer": "Yes", "counted": True},
+            {"id": "b3", "example_id": "x-marta", "model_id": JOB, "teacher_id": KASIA, "step": "words",
+             "answer": "No", "counted": True},
+            {"id": "b4", "example_id": "x-exam", "model_id": JOB, "teacher_id": MARTA, "step": "words",
+             "answer": "Yes", "counted": True},
+            {"id": "b5", "example_id": "x-other", "model_id": JOB, "teacher_id": KASIA, "step": "words",
+             "answer": "On another team's row", "counted": True},
+            {"id": "b6", "example_id": "x-marta", "model_id": JOB, "teacher_id": ARTUR, "step": "words",
+             "answer": "=HYPERLINK(\"http://x\")", "counted": False},
+        ]
+        self.who = KASIA
+        res = self._get(f"/v2/models/{JOB}/download?format=jsonl")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("attachment", res.headers["Content-Disposition"])
+        lines = [json.loads(x) for x in res.get_data(as_text=True).splitlines()]
+        manifest, rows = lines[0], lines[1:]
+        self.assertEqual((manifest["manifest"], manifest["version"], manifest["rows"]), (True, 1, len(rows)))
+        self.assertIn("no sealed exam case", manifest["rules"])
+        # The owner sees the settled answer of a case she never answered
+        # (Kasia's own case, answered by Marta and Artur); a formula stays
+        # exact in JSON lines.
+        self.assertIn('=HYPERLINK("http://x")', [r["answer"] for r in rows])
+        mine = [r for r in rows if r["text"] == "Kasia's own case"]
+        self.assertEqual([(r["settled"], r["votes"]) for r in mine], [("Yes", 2), ("Yes", 2)])
+        text = res.get_data(as_text=True)
+        for never in ("Marta's own case", "What a speaker said", "A sealed exam case", KASIA, MARTA, ARTUR):
+            self.assertNotIn(never, text)
+        # Marta: her own case's text, never Kasia's, never the private row.
+        self.who = MARTA
+        text = self._get(f"/v2/models/{JOB}/download?format=csv").get_data(as_text=True)
+        self.assertTrue(text.startswith("# "))
+        table = list(csv.DictReader(io.StringIO(text.split("\n", 1)[1])))
+        self.assertIn("Marta's own case", {r["text"] for r in table})
+        # Marta answered Kasia's case, so she sees its settled answer; she never
+        # answered her own case, so its settled answer stays out of her file.
+        by_text = {r["text"]: r for r in table}
+        self.assertEqual(by_text["Marta's own case"]["settled"], "")
+        self.assertEqual(by_text["Marta's own case"]["votes"], "")
+        answered = [r for r in table if r["answer"] == "Yes" and r["teacher"] and r["settled"]]
+        self.assertTrue(answered and all(r["settled"] == "Yes" for r in answered))
+        # A cell a spreadsheet would run as a formula starts with a quote in the CSV.
+        self.assertIn("'=HYPERLINK", text)
+        self.assertNotIn(',=HYPERLINK', text)
+        for never in ("Kasia's own case", "On another team's row", "Another team's private row",
+                      "What a speaker said", "A sealed exam case"):
+            self.assertNotIn(never, text)
+        self.assertEqual(self._get(f"/v2/models/{JOB}/download?format=xml").status_code, 400)
+        self.who = BIZ
+        self.assertIn("refused", self._get(f"/v2/models/{JOB}/download?format=csv").get_json())
+
+    def test_the_owners_version_file_holds_the_exams_result_only(self):
+        import json
+        self.who = KASIA
+        self.assertEqual(self._get(f"/v2/models/{JOB}/download?format=version").status_code, 404)
+        self.store.tables["ai_model_versions"].append(
+            {"id": "v2", "model_id": JOB, "number": 2, "status": "draft", "created_at": "2026-11-10",
+             "head": {"answers": ["Yes", "No"], "weights": [[0.123456]], "bias": [0.5]},
+             "example_ids": ["e1", "x-unseen"],
+             "owner_check": {"items": [{"example_id": "e1", "guess": "Yes", "kept": True, "answer": None}]},
+             "owner_checked_at": "2026-11-10",
+             "confidence": {"levels": [{"at": 0.7, "right": 0.8, "n": 10}]},
+             "exam": {"computed": True, "passed": False, "cases": 40, "full": False, "as_good_in_ten": 7,
+                      "better": 3, "worse": 1, "same": 36, "right": {"x-exam-1": True}}})
+        res = self._get(f"/v2/models/{JOB}/download?format=version")
+        self.assertEqual((res.status_code, res.mimetype), (200, "application/json"))
+        body = json.loads(res.get_data(as_text=True))
+        self.assertEqual((body["version"], body["reader"]), (2, "text-embedding-3-small"))
+        self.assertEqual(body["learned_from"], {"cases": 2, "numbers": [1]})
+        self.assertEqual(body["check"]["items"], [{"case": 1, "guess": "Yes", "kept": True, "answer": None}])
+        self.assertEqual((body["exam"]["as_good_in_ten"], body["exam"]["passed"]), (7, False))
+        text = res.get_data(as_text=True)
+        for never in ("x-exam-1", "right\": {", "weights", "0.123456", "e1", "x-unseen", KASIA):
+            self.assertNotIn(never, text)
+        self.who = MARTA
+        self.assertEqual(self._get(f"/v2/models/{JOB}/download?format=version").status_code, 404)
 
     def test_an_api_answer_needs_the_buyers_authority(self):
         key = self._key()["key"]

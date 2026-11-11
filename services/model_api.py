@@ -689,7 +689,8 @@ def may_download(model: dict, viewer_id: Any, answered: bool) -> bool:
 
 
 def download_rows(model: dict, answers: list[dict], examples: dict[str, dict], *,
-                  sees_private: bool = False) -> list[dict]:
+                  sees_private: bool = False, own_text_for: Any = None,
+                  owner: bool = False, example_no: Optional[dict[str, int]] = None) -> list[dict]:
     """The teachers' own ratings and answers, one row each, in the order
     given. Each teacher and each example is a number within this download,
     never an id or a name; an answer to an example in the sealed final exam
@@ -700,10 +701,33 @@ def download_rows(model: dict, answers: list[dict], examples: dict[str, dict], *
     neither. Until the training yes carries the line that
     lets speakers' words be shared, a row holds only what the teacher gave
     and the question asked: never a speaker, a Take, the example's content
-    or the machine's read (N528 item 12)."""
+    or the machine's read (N528 item 12).
+
+    Each row also says the example's settled answer and how many counted
+    answers agree with it (N648 item 6). ``own_text_for``: the downloader;
+    a case they wrote themselves (source "teacher", added_by them) carries
+    its text, and no other case ever does (N648 item 6: "Cases you wrote
+    come with their text. Other people's words stay out.").
+
+    The settled answer and its votes go to the ``owner`` on every row; to
+    anyone else only on the cases they have already answered on every step
+    the recipe asks, so nobody can read a known answer before giving their
+    own (a newcomer is measured against known answers, N615)."""
     recipe = model.get("recipe") or {}
+    me = str(own_text_for) if own_text_for else None
+    steps = set(recipe.get("steps") or ["rate"])
+    my_steps: dict[str, set] = {}
+    for a in answers:
+        if me and str(a.get("teacher_id")) == me:
+            my_steps.setdefault(str(a.get("example_id")), set()).add(a.get("step"))
+    votes: dict[str, int] = {}
+    for a in answers:
+        case = examples.get(str(a.get("example_id"))) or {}
+        if a.get("counted") and case.get("known_answer") is not None \
+                and str(a.get("answer")) == str(case["known_answer"]):
+            votes[str(a["example_id"])] = votes.get(str(a["example_id"]), 0) + 1
     teacher_no: dict[str, int] = {}
-    example_no: dict[str, int] = {}
+    example_no = {} if example_no is None else example_no    # filled here: id -> its number
     rows = []
     for a in answers:
         eid = str(a.get("example_id"))
@@ -721,8 +745,97 @@ def download_rows(model: dict, answers: list[dict], examples: dict[str, dict], *
             "answer": a.get("answer"),
             "counted": bool(a.get("counted")),
             "teacher": teacher_no.setdefault(str(a.get("teacher_id")), len(teacher_no) + 1),
+            **({"settled": ex.get("known_answer"), "votes": votes.get(eid, 0)}
+               if owner or steps <= my_steps.get(eid, set()) else {"settled": None, "votes": None}),
+            "text": _own_case_text(ex, me),
         })
     return rows
+
+
+def _own_case_text(example: dict, me: Optional[str]) -> Optional[str]:
+    """The text of a case the downloader wrote, else None. Never a Take's
+    words, an upload, a business's row or another teacher's case."""
+    if not me or example.get("source") != "teacher" or str(example.get("added_by") or "") != me:
+        return None
+    raw = example.get("content")
+    text = str((raw if isinstance(raw, dict) else {}).get("text") or "").strip()
+    return text or None
+
+
+#: What every download keeps out, said in its manifest line (N648 item 6).
+DOWNLOAD_RULES = ("no sealed exam case", "no other team's private case", "no speaker's words",
+                  "case text only for cases you wrote", "each teacher and case is a number",
+                  "settled answer and votes only for the owner, or on cases you answered on every step")
+#: The columns of a download, in order (the manifest is the first line).
+DOWNLOAD_COLUMNS = ("example", "kind", "source", "step", "question", "answer", "counted", "teacher",
+                    "settled", "votes", "text")
+
+
+def download_file(model: dict, version: Optional[int], rows: list[dict], fmt: str,
+                  day: str) -> tuple[str, str, str]:
+    """(body, media type, file name) of one model's download: JSON lines or
+    CSV, the manifest first (model, version, date, row count, the answers it
+    chooses from, the rules applied), then one row each. Pure."""
+    import csv
+    import io
+    import json
+    manifest = {"manifest": True, "model": model.get("name"), "version": version, "date": day,
+                "rows": len(rows), "answers": answers_of_recipe(model), "rules": list(DOWNLOAD_RULES)}
+    stem = re.sub(r"[^A-Za-z0-9]+", "-", str(model.get("name") or "model")).strip("-").lower() or "model"
+    if fmt == "jsonl":
+        lines = [json.dumps(manifest, ensure_ascii=False)]
+        lines += [json.dumps({k: r.get(k) for k in DOWNLOAD_COLUMNS}, ensure_ascii=False) for r in rows]
+        return "\n".join(lines) + "\n", "application/x-ndjson", f"{stem}.jsonl"
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    buf.write("# " + json.dumps(manifest, ensure_ascii=False) + "\n")
+    w.writerow(DOWNLOAD_COLUMNS)
+    for r in rows:
+        w.writerow([_csv_cell(r.get(k)) for k in DOWNLOAD_COLUMNS])
+    return buf.getvalue(), "text/csv", f"{stem}.csv"
+
+
+def version_file(model: dict, version: dict, example_no: dict[str, int], day: str,
+                 reader: str) -> tuple[str, str, str]:
+    """(body, media type, file name) of the owner's version file (N648 item
+    6, coordinator's answer h): the cases the version learned from, by the
+    numbers of the same day's data download (a case with no answers in it
+    has no number: null); Keep or Change on the owner's check; the exam's
+    result only, never its cases or which it got right; the confidence
+    table; the reader's name. Never the head's weights or a vector. Pure."""
+    import json
+    learned = [example_no.get(str(e)) for e in version.get("example_ids") or []]
+    check = [{"case": example_no.get(str(i.get("example_id"))), "guess": i.get("guess"),
+              "kept": i.get("kept"), "answer": i.get("answer")}
+             for i in (version.get("owner_check") or {}).get("items") or []]
+    exam = version.get("exam") or {}
+    body = {"model": model.get("name"), "version": int(version.get("number") or 0), "date": day,
+            "answers": answers_of_recipe(model), "reader": reader,
+            "learned_from": {"cases": len(learned), "numbers": sorted(n for n in learned if n is not None)},
+            "check": {"items": check, "passed": bool(version.get("owner_checked_at"))},
+            "exam": ({k: exam.get(k) for k in ("passed", "cases", "full", "as_good_in_ten",
+                                                "better", "worse", "same")}
+                     if exam.get("computed") else None),
+            "confidence": version.get("confidence")}
+    stem = re.sub(r"[^A-Za-z0-9]+", "-", str(model.get("name") or "model")).strip("-").lower() or "model"
+    return (json.dumps(body, ensure_ascii=False, indent=2) + "\n", "application/json",
+            f"{stem}-version-{body['version']}.json")
+
+
+def _csv_cell(value: Any) -> Any:
+    """A cell as the CSV writes it: a text that a spreadsheet would run as a
+    formula (=, +, - or @ first) gets a single quote in front; the JSON lines
+    keep every value exact."""
+    if value is None:
+        return ""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@"):
+        return "'" + value
+    return value
+
+
+def answers_of_recipe(model: dict) -> list[str]:
+    from services.model_head import answers_of
+    return answers_of(model.get("recipe"))
 
 
 # ── Names removed (N563 item 4: "from businesses that allowed it, names removed") ──

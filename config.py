@@ -230,6 +230,9 @@ class Config:
         "PIPELINE_JOB_MAX_RUNTIME_MINUTES", 20)
     PIPELINE_ORPHAN_STALE_MINUTES = _env_int("PIPELINE_ORPHAN_STALE_MINUTES", 30)
     PIPELINE_SWEEP_INTERVAL_SECONDS = _env_int("PIPELINE_SWEEP_INTERVAL_SECONDS", 60)
+    # The models' gathering and fitting ride the sweep but not every run of
+    # it (services/pipeline_jobs.py::_model_sweep_due).
+    MODEL_SWEEP_INTERVAL_SECONDS = _env_int("MODEL_SWEEP_INTERVAL_SECONDS", 600)
     # TAKE FEEDBACK V3 SHADOW-WRITE MODE. J1-3 (audit 2026-09-22): the old
     # comment here read "Take Feedback V3 dark mode", which made this look
     # like the switch between the V2 and V3 policies. IT IS NOT, and an
@@ -383,6 +386,11 @@ class Config:
     # with ADMIN_EMAIL (services/take_sends.py, found once per process);
     # set, this id wins. Neither finds anybody: no fallback.
     FOUNDER_CHAT_USER_ID = (os.getenv("FOUNDER_CHAT_USER_ID") or "").strip() or None
+    # The speaking host: a person on the ring row chat_builder records a Take
+    # in their chat with this account, when its recipe takes a recording and
+    # its walk ends in an Ideal Text (services/take_door.py, N648 item 8).
+    # Optional: unset, it is the founder's account, found as above.
+    SPEAKING_HOST_USER_ID = (os.getenv("SPEAKING_HOST_USER_ID") or "").strip() or None
 
     # 6d: fitting a learned detector on audit answers. ON from 2026-10-02
     # (founder: "You have my go on each of the flips"; N26): the AI Act
