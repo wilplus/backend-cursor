@@ -498,9 +498,10 @@ class ModelSetupRoutesTest(unittest.TestCase):
         with patch("services.rings.principal_for_user", lambda uid, **_: uid), \
                 patch.object(db, "get_mlc2_training_consent_status", lambda p: yes[p]), \
                 patch("services.account_deletion.learning_stopped", lambda *_a: False), \
-                patch.object(db, "v2_get_session_by_id", lambda s: {"created_at": recorded[s]}), \
-                patch.object(db, "get_snippets_by_session",
-                             lambda s: [{"id": f"{s}-clip{i}", "transcript": f"moment {i} of {s}"} for i in range(3)]):
+                patch.object(job, "_recorded_at", lambda _d, s: recorded[s]), \
+                patch.object(db, "get_snippets_by_sessions",
+                             lambda ids, **_: {s: [{"id": f"{s}-clip{i}", "transcript": f"moment {i} of {s}"}
+                                                   for i in range(3)] for s in ids}):
             out = job.sweep(database=db)
             mine = [e for e in t["ai_model_examples"] if e["model_id"] == mid]
             self.assertEqual(out["added"], 3)

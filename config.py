@@ -230,6 +230,9 @@ class Config:
         "PIPELINE_JOB_MAX_RUNTIME_MINUTES", 20)
     PIPELINE_ORPHAN_STALE_MINUTES = _env_int("PIPELINE_ORPHAN_STALE_MINUTES", 30)
     PIPELINE_SWEEP_INTERVAL_SECONDS = _env_int("PIPELINE_SWEEP_INTERVAL_SECONDS", 60)
+    # The models' gathering and fitting ride the sweep but not every run of
+    # it (services/pipeline_jobs.py::_model_sweep_due).
+    MODEL_SWEEP_INTERVAL_SECONDS = _env_int("MODEL_SWEEP_INTERVAL_SECONDS", 600)
     # TAKE FEEDBACK V3 SHADOW-WRITE MODE. J1-3 (audit 2026-09-22): the old
     # comment here read "Take Feedback V3 dark mode", which made this look
     # like the switch between the V2 and V3 policies. IT IS NOT, and an
