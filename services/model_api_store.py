@@ -665,13 +665,16 @@ def earnings_for(database: Any, user_id: Any) -> dict:
 
 
 # ── Downloading its data (MOD-51) ───────────────────────────────────────────
-def download_for(database: Any, user_id: Any, model_id: Any, *, rows: bool = False) -> dict:
+def download_for(database: Any, user_id: Any, model_id: Any, *, rows: bool = False,
+                 fmt: Optional[str] = None) -> dict:
     """The one download route (#1866's shape, #1869's rules). The screen, or
     with ``rows`` the data: the teachers' own ratings and answers only, each
     teacher and example a number, never the sealed exam, and a private
     example's answers only for the owner and the teachers invited to the
     model (N615 item 2), until the training yes carries the line that lets
-    speakers' words be shared (N528 item 12)."""
+    speakers' words be shared (N528 item 12). With ``fmt`` ("jsonl" or
+    "csv"), the same rows as one file, its manifest first (N648 item 6):
+    {"file", "media_type", "name"}."""
     me = models._require(database, user_id)
     model = _model(database, me, model_id)
     answered = bool(_rows(_table(database, models.ANSWERS).select("id").eq("model_id", model["id"])
@@ -679,17 +682,25 @@ def download_for(database: Any, user_id: Any, model_id: Any, *, rows: bool = Fal
     if not rules.may_download(model, me, answered):
         return {"title": rules.WORDS["download_title"], "refused": rules.DRAFTED["download_only_team"],
                 "actions": [rules.WORDS["back_to_list"]]}
-    if not rows:
+    if not rows and fmt is None:
         return rules.download_screen(model)
     answers = sorted(_all(lambda: _table(database, models.ANSWERS)
                           .select("example_id,teacher_id,step,answer,counted,created_at")
                           .eq("model_id", model["id"])), key=lambda a: str(a.get("created_at") or ""))
     ids = sorted({str(a["example_id"]) for a in answers})
     examples = {str(e["id"]): e for e in _by_ids(database, models.EXAMPLES,
-                                                 "id,kind,source,in_exam,private", ids)}
+                                                 "id,kind,source,in_exam,private,known_answer,added_by,content",
+                                                 ids)}
     sees = model["id"] in models._sees_private(database, me, [model])
-    return {"model": model["name"],
-            "rows": rules.download_rows(model, answers, examples, sees_private=sees)}
+    out = rules.download_rows(model, answers, examples, sees_private=sees, own_text_for=me)
+    if fmt is None:
+        return {"model": model["name"], "rows": out}
+    if fmt not in ("jsonl", "csv"):
+        raise ChatsError("BAD_FORMAT", "A download is jsonl or csv.", 400)
+    with_head = [v for v in _versions(database, model["id"]) if v.get("status") != "retired"]
+    version = int(with_head[-1]["number"]) if with_head else None
+    body, media, name = rules.download_file(model, version, out, fmt, _now().date().isoformat())
+    return {"file": body, "media_type": media, "name": name}
 
 
 # ── The founder's steps (MOD-52, N563 item 5) ───────────────────────────────
