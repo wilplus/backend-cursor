@@ -17047,3 +17047,36 @@ change (the founder's approval is this entry).
 No migration in this entry. No new words. The rules: frontend
 [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md) and
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N640 · Principles says what it is for, and each chat's field says what
+to do there** (founder, the Claude Code chat, 11 November 2026, on the
+Principles chat: "it should be little introduced"; "this option for
+principles for talking is only available on mobile app so here you can just
+type"; "It can be answering from anywhere"; and on his own message drawn
+grey on the left: "it is not orange and on the right side like it is
+supposed to be for a sender"). The words below were written by the
+coordinator under the founder's standing "all the wording is okay" and
+shown to him the same morning. For N636 item 1.
+
+For whoever has the ring row `chat_builder`:
+
+1. **Principles opens with one line of its own,** above everything else in
+   that chat: "This is where your principles live. Write what's on your
+   mind, and I'll keep it." Until something else is written there, the
+   same line is what the list shows under "Principles". On the web it says
+   nothing about talking: pulling down to talk exists only in the mobile
+   app.
+2. **Each chat's field says what to do there.** Will's chat: "Message
+   Will", always. Principles: "Write here". The speaking chat keeps its
+   own, and "Type your answer" stays only where Will has asked for an
+   answer. Was: Will's chat and Principles both read "Type your answer".
+3. **What a person sends is theirs on screen:** on the right, in the
+   person's colour, in every chat. A message never shows as Will's because
+   of the chat it was typed in.
+4. **Principles may answer from anything Will knows about the person,**
+   their Takes included.
+
+**Open:** the line for the mobile app, which also says how to talk there.
+
+No migration in this entry. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
