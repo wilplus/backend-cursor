@@ -1109,13 +1109,6 @@ def _rewrite_on_same_paragraph(row: dict, rows: list[dict]) -> bool:
     return False
 
 
-def _practice_allowed(database: Any, take_session_id: str) -> bool:
-    """A Take made in a host's chat is offered practice only while the host
-    has "Practice after a Take" on (services.take_door.practice_allowed)."""
-    from services import take_door
-    return take_door.practice_allowed(database, take_session_id)
-
-
 def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
                           database: Any, owner_user_id: str = "") -> list[dict]:
     """Attach at most one active exercise after Feedback Manager selection.
@@ -1127,8 +1120,6 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
     candidates = [row for row in rows if row.get("source") == "confident_voice"
                   and row.get("snippet_id")]
     if not candidates or not take_session_id:
-        return rows
-    if not _practice_allowed(database, take_session_id):
         return rows
     exercises = offerable_exercises(database)
     if not exercises:
@@ -1226,8 +1217,6 @@ def attach_v3_exercise_offer(
     """
     rows = [dict(row) for row in (changes or [])]
     if not take_session_id:
-        return rows
-    if not _practice_allowed(database, take_session_id):
         return rows
     rows = _attach_exercises(
         rows, take_session_id=take_session_id, owner_user_id=owner_user_id,

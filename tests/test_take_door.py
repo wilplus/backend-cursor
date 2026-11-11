@@ -31,6 +31,7 @@ PROVES   O1 -> TakeDoorTest::test_a_take_recorded_in_the_hosts_chat_is_tagged_wi
          O5 -> TakeDoorTest::test_a_take_made_here_and_sent_here_are_two_messages
          O6 -> TakeDoorTest::test_practice_follows_the_hosts_switch_for_a_take_made_in_their_chat
               TakeDoorTest::test_a_practice_cannot_be_started_while_the_hosts_switch_is_off
+              TakeDoorTest::test_no_exercise_is_offered_while_the_hosts_switch_is_off
 WHY      N642 item 7, N644, N648 item 8 (founder, 11 November 2026): Artur's
          chat, set up by hand, does what the speaking coach does; the loop
          is never copied or broken (Never 3); a Take reaches someone else
@@ -215,6 +216,18 @@ class TakeDoorTest(unittest.TestCase):
             with self.assertRaises(Refusal) as refused:
                 practice_start.start_practice(db, snippet_id="s-1", body={}, user_id="u-1", answer=None)
         self.assertEqual(refused.exception.status, 403)
+
+    def test_no_exercise_is_offered_while_the_hosts_switch_is_off(self):
+        """The one place the exercise offer is decided asks the person's yes
+        and the host's switch; both must hold."""
+        from services.ideal_text_changes import _ChangesRun
+        run = object.__new__(_ChangesRun)
+        run.db, run.arm_sid = sends.db, "t-1"
+        for person, host, offered in ((True, True, True), (True, False, False),
+                                      (False, True, False)):
+            with patch.object(_ChangesRun, "_practice_permitted", return_value=person), \
+                    patch.object(take_door, "practice_allowed", return_value=host):
+                self.assertEqual(run._practice_offered(), offered, (person, host))
 
 
 if __name__ == "__main__":
