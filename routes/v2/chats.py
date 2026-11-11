@@ -698,6 +698,27 @@ def v2_chats_blank_setup_walk_want():
         db, str(request.user_id), payload)))
 
 
+@v2_bp.route("/chats/setup/dev", methods=["GET"])
+@require_auth
+def v2_chats_blank_setup_dev():
+    """Developer mode (N648): what Will measures in my chat, for me only."""
+    from services import dev_mode
+    return _builder_or_404(lambda: _run("setup dev", lambda: dev_mode.read(db, str(request.user_id))))
+
+
+@v2_bp.route("/chats/setup/dev/charts/<name>.csv", methods=["GET"])
+@require_auth
+def v2_chats_blank_setup_dev_chart(name):
+    """One chart's counts by week, as a CSV file (N648 item 5)."""
+    from services import dev_mode
+
+    def csv_file(text):
+        return send_file(io.BytesIO(text.encode("utf-8")), mimetype="text/csv", as_attachment=True,
+                         download_name=f"{name}-by-week.csv")
+    return _builder_or_404(lambda: _run("setup dev chart", lambda: dev_mode.chart_file(
+        db, str(request.user_id), name), answer=csv_file))
+
+
 @v2_bp.route("/chats/setup/<part>", methods=["PUT"])
 @limiter.limit("600 per hour", scope="chats_blank_setup_part")
 @require_auth

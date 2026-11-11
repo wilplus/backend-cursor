@@ -31,6 +31,8 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          N642.1   -> VisitorTest::test_people_who_come_read_the_chats_name
          N642.3   -> SetupTest::test_live_reads_what_a_person_meets_and_can_be_tried
          N642.3   -> TokensTest::test_my_own_trial_answers_at_once_keeps_nothing_costs_nothing
+         N646.1   -> SetupTest::test_a_models_answers_come_from_its_question
+         N646.3   -> SetupTest::test_the_answers_can_change_until_an_answer_counted
          N641.1   -> SetupTest::test_the_feedback_walk_is_kept_in_a_chat_that_takes_a_recording
          N641.2   -> SetupTest::test_i_want_this_tells_the_founder_once
          N641.2   -> SetupTest::test_the_ask_is_kept_when_the_mail_cannot_go
@@ -60,6 +62,10 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          VIS-08   -> MeetTest::test_the_hello_shows_once_in_the_chat_they_share
          VIS-08   -> MeetTest::test_each_writes_to_the_others_chat_both_ways
          VIS-08   -> MeetTest::test_without_the_other_persons_open_chat_nothing_changes
+         N647.8   -> WalkTest::test_a_message_gets_the_walk_in_the_hosts_own_words
+         N647.8   -> WalkTest::test_a_model_that_is_not_ready_says_nothing_in_the_walk
+         N647.8   -> WalkTest::test_outside_the_ring_nothing_runs
+         N647.8   -> WalkTest::test_a_chat_with_no_walk_answers_as_before
 WHY      The build succeeds when a stranger sets up a chat with Will and a
          second person gets a useful answer in it (N620).
 """
@@ -194,11 +200,13 @@ class SetupTest(_Base):
         self.assertEqual(self._put("taps", ["One", "Two", "Something else"]).status_code, 400)
 
     def test_a_model_is_one_question_with_three_answers(self):
-        """FIRST-07: one question and exactly three answers."""
+        """FIRST-07: one question and two or three answers (N646 item 2:
+        never one, never four)."""
         self._start()
         self.assertEqual(self._put("models", [self._model()]).status_code, 200)
-        two = {"q": "Is it dry?", "opts": ["Yes", "No"]}
-        self.assertEqual(self._put("models", [two]).status_code, 400)
+        self.assertEqual(self._put("models", [{"q": "Is it dry?", "opts": ["Yes"]}]).status_code, 400)
+        self.assertEqual(self._put("models", [{"q": "Is it dry?", "opts": ["Yes", "No", "Maybe", "Other"]}])
+                         .status_code, 400)
         self.assertEqual(self._put("models", [self._model()] * 4).status_code, 400)
 
     def test_a_model_made_here_is_a_real_model_teach_it_opens(self):
@@ -347,6 +355,82 @@ class SetupTest(_Base):
         row["chat_recipe"]["models"][0].pop("gives")            # a card saved before N636
         self.assertEqual(self._read()["recipe"]["models"][0]["gives"], "pick")
 
+    def test_a_models_answers_come_from_its_question(self):
+        """N646.1, N646.2: a question that names the things to tell apart
+        gives those things, then "Not sure"; a yes-or-no question "Yes",
+        "No", "Not sure"; Will's suggestions are fixed the same way, in the
+        same one call; never four answers."""
+        def rings(feature, user_id, database=None):
+            del database
+            return feature in ("chat_builder", "ai_models") and str(user_id) == TOMEK
+
+        def answers(q, who=TOMEK):
+            return self.client.post("/v2/models/setup/answers", json={"question": q}, headers=self._as(who))
+        with patch("services.rings.feature_is_on_for_user", rings):
+            self.assertEqual(answers("Is the wood cracked or broken?").get_json(),
+                             {"sets": [["Cracked", "Broken", "Not sure"], ["Cracked", "Broken"]]})
+            self.assertEqual(answers("Is this a quote, a paraphrase or neither?").get_json()["sets"][0],
+                             ["Quote", "Paraphrase", "Neither"])
+            plain = answers("Is this a dry scalp?").get_json()["sets"]
+            self.assertEqual(plain[0], ["Yes", "No", "Not sure"])
+            for got in (plain, answers("Is it red, green, blue or yellow?").get_json()["sets"]):
+                self.assertTrue(all(2 <= len(one) <= 3 for one in got) and len(got) <= 3)
+            self.assertNotIn(["Yes", "No", "Not sure"], answers("Is the wood cracked or broken?").get_json()["sets"])
+            self.assertEqual(answers("").status_code, 400)
+            self.provider.answer = {"models": [{"q": "Is the wood cracked or broken?",
+                                                "opts": ["Yes", "No", "Not sure"], "says": "It is cracked."}]}
+            sug = self._start("Carpenter").get_json()["recipe"]["suggest"]
+            self.assertEqual(sug["models"][0]["opts"], ["Cracked", "Broken", "Not sure"])
+            self.assertEqual(self.provider.calls, ["chat_setup_suggest"])
+            four = {**self._model("Is it red or green?"), "opts": ["Red", "Green", "Blue", "Not sure"]}
+            refused = self._put("models", [four])
+            self.assertEqual((refused.status_code, refused.get_json()["code"]), (400, "TOO_MANY_ANSWERS"))
+            def blocks(answers_given):
+                return self.client.post("/v2/models/setup/blocks", headers=self._as(TOMEK),
+                                        json={"question": "Is it red or green?", "answers": answers_given})
+            self.assertEqual(blocks(four["opts"]).get_json()["code"], "TOO_MANY_ANSWERS")
+            for bad in (["Red"], ["Red", "red"], ["Red", ""], ["Red", "x" * 25]):
+                self.assertEqual(blocks(bad).get_json()["code"], "BAD_ANSWERS", bad)
+            # Two answers are a model too, on both routes.
+            two = blocks(["Red", "Green"])
+            self.assertEqual(two.status_code, 200)
+            made = next(r for r in self.store.tables["ai_models"] if r["id"] == two.get_json()["model_id"])
+            self.assertEqual((made["status"], made["recipe"]["scale"]), ("learning", ["Red", "Green"]))
+            card = self._put("models", [{**self._model("Is it dry or oily?"), "opts": ["Dry", "Oily"]}])
+            self.assertEqual(card.get_json()["recipe"]["models"][0]["opts"], ["Dry", "Oily"])
+        self.assertEqual(answers("Is it dry?", PIOTR).status_code, 404)  # no ring
+
+    def test_the_answers_can_change_until_an_answer_counted(self):
+        """N646.3, N646.4: the answers change in the setup, on the card or on
+        the model's own scale step, and the model keeps what the card says;
+        at most three; once an answer counted they may not (409
+        ANSWERS_LOCKED)."""
+        def rings(feature, user_id, database=None):
+            del database
+            return feature in ("chat_builder", "ai_models") and str(user_id) == TOMEK
+        with patch("services.rings.feature_is_on_for_user", rings):
+            self._start()
+            card = self._put("models", [{**self._model("Is the wood cracked or broken?"),
+                                         "opts": ["Cracked", "Broken", "Not sure"]}]).get_json()["recipe"]["models"][0]
+            mid = card["model_id"]
+            edited = {**card, "opts": ["Cracked", "Split", "Not sure"]}
+            self.assertEqual(self._put("models", [edited]).status_code, 200)
+            model = next(r for r in self.store.tables["ai_models"] if r["id"] == mid)
+            self.assertEqual(model["recipe"]["scale"], ["Cracked", "Split", "Not sure"])
+            def scale(words):
+                return self.client.post(f"/v2/models/{mid}/setup/scale", headers=self._as(TOMEK),
+                                        json={"scale": [{"t": w, "d": ""} for w in words]})
+            too_many = scale(["Cracked", "Split", "Broken", "Not sure"])
+            self.assertEqual((too_many.status_code, too_many.get_json()["code"]), (400, "TOO_MANY_ANSWERS"))
+            self.store.tables.setdefault("ai_model_answers", []).append(
+                {"id": "a1", "model_id": mid, "counted": True, "step": "rate", "answer": "Cracked"})
+            locked = self._put("models", [{**edited, "opts": ["Cracked", "Broken", "Not sure"]}])
+            self.assertEqual((locked.status_code, locked.get_json()["code"]), (409, "ANSWERS_LOCKED"))
+            self.assertEqual(scale(["Cracked", "Broken", "Not sure"]).status_code, 409)
+            self.assertEqual(self._put("models", [edited]).status_code, 200)  # unchanged is fine
+        self.assertEqual(next(r for r in self.store.tables["ai_models"] if r["id"] == mid)["recipe"]["scale"],
+                         ["Cracked", "Split", "Not sure"])
+
     def test_a_changed_question_keeps_the_same_model(self):
         """N636 item 6: a block changed and the card saved again with its
         model_id keeps that one model; no second model is made."""
@@ -489,6 +573,22 @@ class SetupTest(_Base):
         self.assertEqual([p["title"] for p in res["parts"]],
                          ["Name", "Why people come", "They send", "They get back", "Your hello",
                           "First questions", "They can ask", "Your models", "Who answers"])
+
+    def test_practice_after_a_take_is_an_off_switch_in_a_chat_that_takes_a_recording(self):
+        """N648.8: "Practice after a Take" is one on/off switch for practice,
+        Confident Voice and the AI voice; a part only in a chat that takes a
+        recording; off until the host turns it on."""
+        from services import chat_recipes
+        self._start()
+        self.assertEqual(self._put("practice", True).status_code, 400)
+        self.assertNotIn("practice", [p["part"] for p in self._read()["parts"]])
+        self._put("send", ["rec", "text"])
+        row = [p for p in self._read()["parts"] if p["part"] == "practice"][0]
+        self.assertEqual((row["title"], row["value"]), ("Practice after a Take", "Off"))
+        self.assertEqual(self._put("practice", "yes").status_code, 400)
+        self.assertTrue(chat_recipes.practice_on(self._put("practice", True).get_json()["recipe"]))
+        self._put("send", ["text"])
+        self.assertFalse(chat_recipes.practice_on(self._read()["recipe"]))
 
     def test_live_reads_what_a_person_meets_and_can_be_tried(self):
         """N642.3: Live shows the chat as people meet it, the visitor's host
@@ -1138,3 +1238,94 @@ class MeetTest(_Base):
         self.assertNotIn("reply", sent)
         self.assertEqual(self._drafts(TOMEK), [])
 
+
+class WalkTest(_Tokens):
+    """N647 item 8, step 1: Tomek, with the chat builder and the AI models,
+    saved a feedback walk; his own models are what it notices, and when one
+    that is ready notices its thing, the walk says Tomek's own line."""
+    _send, _messages, _answers = VisitorTest._send, VisitorTest._messages, VisitorTest._answers
+
+    def setUp(self):
+        super().setUp()
+        def rings(feature, user_id, database=None):
+            del database
+            return feature in ("chat_builder", "ai_models") and str(user_id) == TOMEK
+        self.heads: dict = {}
+        for p in (patch("services.rings.feature_is_on_for_user", rings),
+                  patch("services.model_head_store.chat_answers",
+                        lambda database, host, models, text: dict(self.heads))):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _chat(self, walk=True):
+        self._start()
+        self._put("send", ["text", "rec"])
+        self._put("sensitive", False)
+        self._put("who", "assistant")
+        self._put("models", [self._model(), {"q": "Are there flakes?", "opts": ["Flakes", "Some", "None"],
+                                              "says": "I see flakes. Try a gentler shampoo."}])
+        if walk:
+            self.assertEqual(self._put("walk", {"steps": ["best"], "out": "none"}).status_code, 200)
+        self._put("live", True)
+        self._answers(20)
+        return self._join(PIOTR, self._link(TOMEK).get_json()["token"]).get_json()["chat"]["id"]
+
+    def _walk(self, reply):
+        return [(m["body"], m["meta"]["walk_line"]["says"], m["meta"]["useful_ask"])
+                for m in reply.get("messages") or [] if "walk_line" in m["meta"]]
+
+    def test_a_message_gets_the_walk_in_the_hosts_own_words(self):
+        """N647.8: each ready own model that notices its thing says Tomek's
+        line word for word, in his order; one that noticed something else
+        says nothing; each line asks "Did this help?", and the answer is kept
+        on it. No provider call is added."""
+        chat = self._chat()
+        self.heads = {0: {"answer": "Yes", "sure": True}, 1: {"answer": "Flakes", "sure": True}}
+        reply = self._send(chat).get_json()["reply"]
+        self.assertEqual(reply["messages"][0]["body"], "Start with a gentle shampoo, twice a week.")
+        self.assertEqual(self._walk(reply), [("Your scalp looks dry here.", "Your scalp looks dry here.", True),
+                                             ("I see flakes. Try a gentler shampoo.",
+                                              "I see flakes. Try a gentler shampoo.", True)])
+        self.assertEqual(self.provider.calls, ["chat_reply"])
+        line = [m for m in reply["messages"] if "walk_line" in m["meta"]][0]
+        self.assertEqual(self.client.post(f"/v2/chats/{chat}/messages/{line['id']}/useful",
+                                          json={"answer": "no"}, headers=self._as(PIOTR)).get_json(), {"ok": True})
+        self.assertEqual(next(m for m in self._messages(chat) if m["id"] == line["id"])["meta"]["useful"], "no")
+        self.heads = {0: {"answer": "No", "sure": True}, 1: {"answer": "Flakes", "sure": True}}
+        again = self._send(chat, "And now?").get_json()["reply"]
+        self.assertEqual([b for b, _s, _a in self._walk(again)], ["I see flakes. Try a gentler shampoo."])
+        # "Test my chat" gets the same walk, kept nowhere.
+        tried = self.client.post("/v2/chats/setup/try", json={"body": "Itchy."}, headers=self._as(TOMEK))
+        self.assertEqual([m["body"] for m in tried.get_json()["messages"] if m.get("walk")],
+                         ["I see flakes. Try a gentler shampoo."])
+
+    def test_a_model_that_is_not_ready_says_nothing_in_the_walk(self):
+        """N647.8: a model whose head is not open gives no walk line (its
+        line is as before), and one not sure gives nothing at all."""
+        chat = self._chat()
+        self.heads = {1: {"answer": "Flakes", "sure": False}}
+        reply = self._send(chat).get_json()["reply"]
+        self.assertEqual(self._walk(reply), [])
+        self.assertEqual([m["body"] for m in reply["messages"] if "model_line" in m["meta"]],
+                         ["Your scalp looks dry here."])
+
+    def test_outside_the_ring_nothing_runs(self):
+        """N647.8: a host without the chat builder: no walk, no reply, no
+        provider call."""
+        chat = self._chat()
+        self.heads = {0: {"answer": "Yes", "sure": True}}
+        with patch("services.rings.feature_is_on_for_user", lambda *a, **k: False):
+            res = self._send(chat).get_json()
+        self.assertNotIn("reply", res)
+        self.assertEqual(self.provider.calls, [])
+
+    def test_a_chat_with_no_walk_answers_as_before(self):
+        """N647.8: without a saved walk, a ready model's line is the one
+        written for it, as before, and only the last message asks."""
+        chat = self._chat(walk=False)
+        self.heads = {0: {"answer": "Yes", "sure": True}, 1: {"answer": "Flakes", "sure": True}}
+        reply = self._send(chat).get_json()["reply"]
+        self.assertEqual(self._walk(reply), [])
+        self.assertEqual([m["body"] for m in reply["messages"] if "model_line" in m["meta"]],
+                         ["Your scalp looks dry here.", "There are some flakes."])
+        self.assertEqual([bool(m["meta"].get("useful_ask")) for m in reply["messages"]], [False, False, True])
