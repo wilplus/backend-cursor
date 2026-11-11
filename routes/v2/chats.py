@@ -601,9 +601,11 @@ def v2_chats_blank_setup():
 def v2_chats_blank_setup_start():
     """"What do you do?": a blank recipe with Will's suggestions (0 or 1 call)."""
     from services import chat_recipes
+    from services.chat_links import name_of
     body = request.get_json(silent=True)
+    person = name_of(getattr(request, "token_payload", None))
     return _builder_or_404(lambda: _run("setup start", lambda: chat_recipes.start(
-        db, str(request.user_id), body)))
+        db, str(request.user_id), body, person)))
 
 
 @v2_bp.route("/chats/setup/models", methods=["GET"])
@@ -635,9 +637,11 @@ def v2_chats_blank_setup_try():
 def v2_chats_blank_setup_edit():
     """"I want to edit my chat", in any words: the parts open again."""
     from services import chat_recipes
+    from services.chat_links import name_of
     body = request.get_json(silent=True)
+    person = name_of(getattr(request, "token_payload", None))
     return _builder_or_404(lambda: _run("setup edit", lambda: chat_recipes.edit(
-        db, str(request.user_id), body)))
+        db, str(request.user_id), body, person)))
 
 
 @v2_bp.route("/chats/setup/drafts", methods=["GET"])

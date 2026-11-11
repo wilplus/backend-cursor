@@ -18,6 +18,7 @@ for the rules, services/model_launchpad_store.py for the tables).
   POST /v2/models/invites/<id>/not-now     "Not now": it stays
   POST /v2/models/invites/<id>/accept      the caller teaches the model
   POST /v2/models/<id>/examples            {text | transcript, step?, answer?}: an example added
+  POST /v2/models/<id>/examples/set        {texts: [..], may_use: true}: a set of texts, one case each (N645)
   POST /v2/models/<id>/archive             the owner's Archive
   POST /v2/models/<id>/make-public         {confirm: true}, after the disclaimer
   POST /v2/models/<id>/transcribe          a spoken answer or case (multipart ``audio``)
@@ -178,6 +179,14 @@ def v2_models_add_example(model_id):
     from services import model_launchpad_store as store
     body = request.get_json(silent=True) or {}
     return _run("add", lambda: store.add_example(db, _me(), model_id, body))
+
+
+@v2_bp.route("/models/<model_id>/examples/set", methods=["POST"])
+@require_auth
+def v2_models_add_example_set(model_id):
+    from services import model_launchpad_store as store
+    body = request.get_json(silent=True) or {}
+    return _run("add-set", lambda: store.add_example_set(db, _me(), model_id, body))
 
 
 @v2_bp.route("/models/<model_id>/archive", methods=["POST"])

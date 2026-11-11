@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from services import model_launchpad as rules
@@ -343,7 +343,7 @@ def answer(database: Any, user_id: Any, example_id: Any, model_id: Any, step: st
     if not rows:
         raise _not_found()
     example = rows[0]
-    _may_answer(database, me, model, example)
+    _may_answer(database, me, model, example, step)
     wanting: list[dict] = []
     twins: list[dict] = []
     if not example.get("private") and example.get("snippet_id"):
@@ -367,12 +367,13 @@ def answer(database: Any, user_id: Any, example_id: Any, model_id: Any, step: st
             "trust": told}
 
 
-def _may_answer(database: Any, me: str, model: dict, example: dict) -> None:
+def _may_answer(database: Any, me: str, model: dict, example: dict, step: str) -> None:
     """Raise unless this teacher may answer this example."""
     # An exam case is answered only by the two experts who set it aside
     # (N566 item 5); for anyone else it is not there (N615 item 2). The
-    # adder answered their own example when they added it: it counts once
-    # another teacher agrees, never on a second answer of theirs.
+    # adder gives their own example a first answer on each step (as they
+    # add it, or by its id after a set is uploaded): it counts once another
+    # teacher agrees, never on a second answer of theirs (N645 item 4).
     if example.get("in_exam") and str(example["id"]) not in {
             str(c["id"]) for c in _exam_cases_for(database, me, [model["id"]])}:
         raise _not_found()
@@ -381,7 +382,9 @@ def _may_answer(database: Any, me: str, model: dict, example: dict) -> None:
     if not example.get("in_exam") and example.get("snippet_id") and str(example["snippet_id"]) in _sealed_to(
             database, me, [str(t["model_id"]) for t in _teaching(database, me)]):
         raise _not_found()
-    if str(example.get("added_by") or "") == me:
+    if str(example.get("added_by") or "") == me and _rows(
+            _table(database, ANSWERS).select("id").eq("example_id", str(example["id"]))
+            .eq("model_id", model["id"]).eq("teacher_id", me).eq("step", step).limit(1)):
         raise ChatsError("OWN_EXAMPLE", "You added this example; another teacher answers it.", 409)
     if example.get("private") and model["id"] not in _sees_private(database, me, [model]):
         raise _not_found()
@@ -618,6 +621,52 @@ def add_example(database: Any, user_id: Any, model_id: Any, body: Any) -> dict:
     if body.get("answer") is not None:
         _save_answer(database, str(made[0]["id"]), model["id"], me, step, str(body["answer"])[:4000])
     return {"example_id": str(made[0]["id"]), "note": rules.WORDS["add_counts_once"]}
+
+
+#: A set of texts (N645 item 4): at most this many in one call, over it nothing is kept.
+MAX_SET_TEXTS = 200
+
+
+def add_example_set(database: Any, user_id: Any, model_id: Any, body: Any) -> dict:
+    """A set of texts, each one a case made as ``add_example`` makes one
+    (source "teacher", private when the model is, no label), in the order
+    given (N645 item 4). Needs the uploader's tick, ``may_use: true``. Empty
+    texts are skipped and an exact repeat is kept once. All or nothing: one
+    insert, so a failure keeps no case and a retry is safe. The cases made come
+    back in order, as ids and as ``added_cases`` with the text as stored. ``created_at``
+    steps by a microsecond so the first-ten pool keeps the order given."""
+    me = _require(database, user_id)
+    model = _model(database, model_id)
+    if rules.viewer_role(model, me) not in ("owner", "contributor"):
+        raise _not_found()
+    body = body if isinstance(body, dict) else {}
+    if body.get("may_use") is not True:
+        raise ChatsError("MAY_USE_REQUIRED", "Tick that you may use these first.")
+    texts = body.get("texts")
+    if not isinstance(texts, list) or not all(isinstance(t, str) for t in texts):
+        raise ChatsError("BAD_TEXTS", "Send the texts as a list.")
+    if len(texts) > MAX_SET_TEXTS:
+        raise ChatsError("TOO_MANY", f"A set is at most {MAX_SET_TEXTS} texts.")
+    seen: set[str] = set()
+    kept: list[str] = []
+    for raw in texts:
+        text = raw.strip()[:MAX_ADDED_TEXT]
+        if text and text not in seen:
+            seen.add(text)
+            kept.append(text)
+    if not kept:
+        raise ChatsError("EMPTY", "Write or say the case first.")
+    start = datetime.now(timezone.utc)
+    private = model.get("visibility") == "private"
+    made = _rows(_table(database, EXAMPLES).insert([
+        {"model_id": model["id"], "source": "teacher", "private": private, "added_by": me, "in_exam": False,
+         "content": {"text": text}, "created_at": (start + timedelta(microseconds=i)).isoformat()}
+        for i, text in enumerate(kept)]))
+    if len(made) != len(kept):
+        raise ChatsError("V2_ERROR", "The cases could not be kept.", 500)
+    return {"added": len(kept), "skipped": len(texts) - len(kept),
+            "example_ids": [str(m["id"]) for m in made],
+            "added_cases": [{"id": str(m["id"]), "text": text} for m, text in zip(made, kept)]}
 
 
 # ── The owner's actions (MOD-50, MOD-51; N528 items 5 and 12) ───────────────

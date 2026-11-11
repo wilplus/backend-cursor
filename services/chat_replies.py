@@ -83,7 +83,7 @@ def prompt(recipe: dict, heads: Optional[dict] = None) -> str:
              "diagnosis or a final ruling."]
     models = recipe.get("models") or []
     for i, m in enumerate(models):
-        lines.append(f"Model {i + 1} asks: {m.get('q')} Its three answers: "
+        lines.append(f"Model {i + 1} asks: {m.get('q')} Its answers: "
                      + "; ".join(str(o) for o in m.get("opts") or []) + ". "
                      + (f"When the answer is \"{(m.get('opts') or [''])[0]}\" it says, for example: "
                         f"{m.get('says')}" if m.get("says") else ""))

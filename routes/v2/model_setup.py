@@ -11,6 +11,14 @@ services/model_setup_store.py for the tables).
   POST /v2/models/<id>/setup/data                existing data (multipart ``file``)
   GET  /v2/models/<id>/setup/first-ten           the next of the owner's first 10
   POST /v2/models/<id>/setup/first-ten/<eid>     {step, answer}
+  POST /v2/models/setup/answers                  {question}: the answers it starts with
+                                                 (services/model_answers.py)
+  GET  /v2/models/coach-tasks                    the coach's queue as models
+                                                 (services/model_coach_tasks.py)
+  GET  /v2/models/coming                         images, video, recordings: coming
+  POST /v2/models/coming/<kind>/want             "I want this", one mail, once
+                                                 (services/model_coming.py; ring
+                                                 chat_builder or ai_models)
 
 Every answer is {model_id, status, screen}; ``screen`` is one step as the
 owner's screen shows it. "Copy an invite link" is the owner's own chat link
@@ -145,3 +153,67 @@ def v2_model_setup_save(model_id, step):
     from services import model_setup_store as store
     body = _body()
     return _run("save", lambda: store.save(db, _me(), model_id, step, body))
+
+
+# ── Models that learn from images, video and recordings: coming (N642
+#    item 6, N645; services/model_coming.py) ──────────────────────────────
+
+@v2_bp.route("/models/coming", methods=["GET"])
+@require_auth
+def v2_models_coming():
+    """{"coming": [{kind, title, wanted}]}: images, video, recordings."""
+    from services import model_coming
+    return _run("coming", lambda: model_coming.coming(db, _me()))
+
+
+@v2_bp.route("/models/coming/<kind>/want", methods=["POST"])
+@limiter.limit("30 per hour", scope="models_coming_want")
+@require_auth
+def v2_models_coming_want(kind):
+    """"I want this": one mail to the founder, once per kind."""
+    from services import model_coming
+    payload = getattr(request, "token_payload", None)
+    return _run("coming want", lambda: model_coming.want(db, _me(), kind, payload))
+
+
+@v2_bp.route("/models/coach-tasks", methods=["GET"])
+@require_auth
+def v2_models_coach_tasks():
+    """The coach's queue in the models tab, each task with what waits for
+    this coach and where it is answered today (N642 item 6, step one)."""
+    from routes.admin import is_admin, is_coach
+    from services import model_coach_tasks
+    me = _me()
+    coach = bool(me) and (is_admin(me) or is_coach(me))
+
+    def moments() -> int:
+        from routes.v2.coach import _bookmarked_snippet_ids, _language_matched_rows
+        from services.coach_moments_queue import walk_for_coach
+        from services.coach_pseudonym import coach_pseudonym
+        return model_coach_tasks.walk_waiting(walk_for_coach(
+            db, rater_id=me, matched_rows=_language_matched_rows,
+            bookmarked=_bookmarked_snippet_ids, pseudonym_for=coach_pseudonym))
+    return _run("coach tasks", lambda: model_coach_tasks.tasks(
+        db, me, is_coach=coach, moments_waiting=moments))
+
+
+
+@v2_bp.route("/models/setup/answers", methods=["POST"])
+@limiter.limit("120 per hour", scope="model_setup_answers")
+@require_auth
+def v2_model_setup_answers():
+    """{question} → {sets}: up to three sets of two or three answers for a
+    typed question, the first inferred from it (N646 item 1): what it names
+    to tell apart, then "Not sure"; else "Yes", "No", "Not sure". Rules, no
+    provider call. Ring chat_builder or ai_models."""
+    from services import model_answers, model_coming
+    from services.chats import ChatsError
+
+    def work() -> dict:
+        if not model_coming.on(db, _me()):
+            raise ChatsError("NOT_FOUND", "Not found.", 404)
+        question = " ".join(str(_body().get("question") or "").split())[:200]
+        if not question:
+            raise ChatsError("EMPTY", "Write the question first.")
+        return {"sets": model_answers.sets(question)}
+    return _run("answers", work)
