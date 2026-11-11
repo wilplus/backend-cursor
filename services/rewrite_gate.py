@@ -51,6 +51,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
+from services import noticing_settings as ns
 from services import undermining, verbal_markers, willfidence
 
 GATE_VERSION = "rewrite-gate-v1"
@@ -97,9 +98,9 @@ def words_need_help(text: Any, slide_fit: Optional[float]) -> Optional[str]:
         return "undermining"
     if restart_count(text):
         return "restart"
-    if _below(_fillers(text), WORD_SIGNAL_FLOOR):
+    if _below(_fillers(text), ns.value("rewrite_gate.WORD_SIGNAL_FLOOR")):
         return "fillers"
-    if _below(willfidence.hedging(text), WORD_SIGNAL_FLOOR):
+    if _below(willfidence.hedging(text), ns.value("rewrite_gate.WORD_SIGNAL_FLOOR")):
         return "hedges"
     if _below(slide_fit, SLIDE_FIT_FLOOR):
         return "off_slide"
@@ -113,8 +114,8 @@ def words_need_help(text: Any, slide_fit: Optional[float]) -> Optional[str]:
 def _repeats_often(text: Any) -> bool:
     from services.take_feedback_manager import repeat_count
     words, repeats = len(_words(text)), repeat_count(text)
-    return (words > 0 and repeats >= MIN_REPEATS
-            and repeats * 100 / words >= REPEATS_PER_100)
+    return (words > 0 and repeats >= ns.value("rewrite_gate.MIN_REPEATS")
+            and repeats * 100 / words >= ns.value("rewrite_gate.REPEATS_PER_100"))
 
 
 def _words(text: Any) -> list[str]:

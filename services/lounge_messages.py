@@ -23,9 +23,12 @@ Invariants this module enforces (BE contract §5.11):
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 
 # Closed sets — mirror the DB CHECK constraints in
@@ -345,6 +348,119 @@ def place_of(row: dict) -> str:
     return WILL
 
 
+# ── A Take made in a host's chat (N642 item 7, N644, N648 item 8) ────────
+#
+# A Take recorded in a person's chat with the speaking host is tagged with
+# that chat (services/take_door.py); its Lounge rows are written as any
+# Take's are. They are placed at READ time: every row ``place_of`` puts in
+# "speaking" that belongs to such a Take (its ``take_session_id`` or
+# ``session_id``, or its ``arc_id``) is shown in that chat instead, to the
+# person only; the rows stay in lounge_messages, never in chat_messages, so
+# the host never gets them (Privacy 4f). An arc's own rows (the Ideal Text
+# card) go to the chat of the arc's LATEST Take: if that Take was made
+# anywhere else, they stay in "speaking". A person's OLD Takes, made in the
+# pinned speaking chat before the door existed, are not tagged and stay in
+# "speaking" (the pinned chat stays, N644 item 4). The person's own
+# speaking rows that carry no Take (the plan, the feelings check, anything
+# placed in "speaking" by its kind) are shown in BOTH while the pinned chat
+# exists: in "speaking" and in the person's one chat whose door is open
+# (their speaking home, one speaking host for now), so nothing a speaker has
+# disappears. Nothing is written differently.
+
+#: What a row of a host's chat says its place is; ``chat_id`` names the chat.
+CHAT = "chat"
+#: Keys that name a Take; the key that names its arc; any of these, with a
+#: recording's, means a row carries a Take.
+_TAKE_KEYS, _ARC_KEY = ("take_session_id", "session_id"), "arc_id"
+_CARRIES_A_TAKE = _TAKE_KEYS + (_ARC_KEY, "recording_id")
+
+
+class Rooms:
+    """Which host's chat a person's Takes, arcs and plan rows belong to.
+    Empty (``Rooms()``) places every row as before."""
+
+    def __init__(self, takes: Optional[dict] = None, arcs: Optional[dict] = None,
+                 door: Optional[str] = None, chats_: Optional[set] = None):
+        self.takes, self.arcs, self.door = dict(takes or {}), dict(arcs or {}), door
+        self.chats = set(chats_ or ()) | set(self.takes.values()) | set(self.arcs.values()) \
+            | ({door} if door else set())
+
+    def chat_of(self, row: dict) -> Optional[str]:
+        """The host's chat a Take's row is shown in INSTEAD of "speaking", or
+        None (placed as before)."""
+        if not self.chats or place_of(row) != SPEAKING:
+            return None
+        meta = row.get("metadata")
+        if not isinstance(meta, dict) or meta.get("place") in PLACES:
+            return None
+        for key in _TAKE_KEYS:
+            if meta.get(key) and str(meta[key]) in self.takes:
+                return self.takes[str(meta[key])]
+        if meta.get(_ARC_KEY) and str(meta[_ARC_KEY]) in self.arcs:
+            return self.arcs[str(meta[_ARC_KEY])]
+        return None
+
+    def also_in(self, row: dict) -> Optional[str]:
+        """The speaking home a person-level speaking row is ALSO shown in (it
+        stays in "speaking" too), or None."""
+        if not self.door or place_of(row) != SPEAKING:
+            return None
+        meta = row.get("metadata")
+        if isinstance(meta, dict) and any(meta.get(k) not in (None, "", False) for k in _CARRIES_A_TAKE):
+            return None
+        return self.door
+
+    def in_chat(self, row: dict, chat: str) -> bool:
+        return self.chat_of(row) == chat or self.also_in(row) == chat
+
+
+def host_rooms(database: Any, user_id: Any) -> Rooms:
+    """The person's ``Rooms``: three small reads, only for a person on the
+    ring row ``chat_builder`` who is in a chat. Never raises: on any failure
+    every row is placed as before."""
+    try:
+        from services import assistants, chats, take_door
+        if not user_id or not assistants.on(database, user_id):
+            return Rooms()
+        mine = {str(r["thread_id"]): str(r["id"]) for r in chats._memberships(database, str(user_id))}
+        if not mine:
+            return Rooms()
+        doors = take_door.doors(database, user_id, mine)
+        door = sorted(doors)[0] if len(doors) == 1 else None
+        tags = chats._rows(chats._table(database, chats.MESSAGES).select("thread_id,meta")
+                           .eq("kind", "take").in_("author_member_id", list(mine.values())))
+        takes = {str(t["meta"][take_door.MADE_HERE]): str(t["thread_id"]) for t in tags
+                 if isinstance(t.get("meta"), dict) and t["meta"].get(take_door.MADE_HERE)}
+        arcs: dict = {}
+        if takes:
+            made = chats._rows(chats._table(database, chats.SESSIONS).select("id,arc_id")
+                               .in_("id", list(takes)).eq("user_id", str(user_id)))
+            arc_ids = sorted({str(r["arc_id"]) for r in made if r.get("arc_id")})
+            if arc_ids:
+                latest: dict = {}
+                for r in chats._rows(chats._table(database, chats.SESSIONS)
+                                     .select("id,arc_id,created_at").in_("arc_id", arc_ids)
+                                     .eq("user_id", str(user_id))):
+                    arc, at = str(r.get("arc_id")), str(r.get("created_at") or "")
+                    if arc not in latest or at > latest[arc][0]:
+                        latest[arc] = (at, str(r["id"]))
+                arcs = {arc: takes[take] for arc, (_at, take) in latest.items() if take in takes}
+        return Rooms(takes, arcs, door, doors)
+    except Exception:
+        logger.warning("lounge: the host's chats could not be read; rows placed as before", exc_info=True)
+        return Rooms()
+
+
+def parse_chat(raw: Optional[str]) -> Optional[str]:
+    """``?chat=``: a host's chat id, or none."""
+    if raw is None or raw == "":
+        return None
+    try:
+        return str(uuid.UUID(str(raw)))
+    except (ValueError, AttributeError):
+        raise LoungeValidationError("chat: must be a chat id")
+
+
 def parse_place(raw: Optional[str]) -> Optional[str]:
     """``?place=``: "speaking", "principles", "will", or none (every row, as before)."""
     if raw is None or raw == "":
@@ -358,14 +474,24 @@ def parse_place(raw: Optional[str]) -> Optional[str]:
 PLACE_ROUNDS = 5
 
 
-def placed_page(fetch: Any, limit: int, before: Optional[str], place: Optional[str]) -> dict:
+def placed_page(fetch: Any, limit: int, before: Optional[str], place: Optional[str],
+                rooms: Optional[Rooms] = None, chat: Optional[str] = None) -> dict:
     """The GET page for one place (N635), or every row with no place. Each
     message says its ``place``. ``fetch(limit, before)`` reads DESC, up to
     ``limit + 1`` rows, as ``get_lounge_messages_page``. A place reads older
     pages until it has a page of its own (at most PLACE_ROUNDS reads);
     ``oldest_cursor`` then continues from the last row read, so the next
-    page never reads a row twice."""
-    if place is None:
+    page never reads a row twice. ``chat``: only the rows of that host's
+    chat (``rooms``: its Takes' rows and, for the speaking home, the
+    person's own speaking rows); ``place`` leaves out the rows of Takes made
+    in a host's chat. Every row of a ``chat`` read says place "chat"."""
+    rooms = rooms or Rooms()
+
+    def keep(r: dict) -> bool:
+        if chat is not None:
+            return rooms.in_chat(r, chat)
+        return rooms.chat_of(r) is None and place_of(r) == place
+    if place is None and chat is None:
         page = shape_lounge_page(fetch(limit, before), limit)
     else:
         kept: list[dict] = []
@@ -375,7 +501,7 @@ def placed_page(fetch: Any, limit: int, before: Optional[str], place: Optional[s
             scanned = rows[:limit]
             more = len(rows) > limit
             for r in scanned:
-                if place_of(r) == place:
+                if keep(r):
                     kept.append(r)
             if scanned:
                 cursor = scanned[-1].get("client_created_at")
@@ -387,5 +513,8 @@ def placed_page(fetch: Any, limit: int, before: Optional[str], place: Optional[s
         page = {"messages": list(reversed(page_desc)), "has_more": more,
                 "oldest_cursor": cursor if more else None}
     for m in page["messages"]:
-        m["place"] = place_of(m)
+        room = chat or rooms.chat_of(m)
+        m["place"] = CHAT if room else place_of(m)
+        if room:
+            m["chat_id"] = room
     return page

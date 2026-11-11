@@ -2135,9 +2135,20 @@ O2  GET /v2/user/lounge/messages?place=speaking returns only the
 speaking chat's rows, ?place=principles only the principles chat's,
 ?place=will only Will's, and no place every
 row as before; each row says its place, and a place reads older
-pages until it has a page of its own.","O1 -> LoungePlaceTest::test_every_lounge_writer_places_its_rows
+pages until it has a page of its own.
+O3  A Take recorded in my chat with the speaking host (services/
+take_door.py) shows its rows in that chat, to me only: its Ideal
+Text card, the walk and its summary come back for ?chat=<that chat>,
+each placed ""chat"" with its chat_id, and are gone from
+?place=speaking; my old Takes, made in the pinned speaking chat,
+stay in ""speaking""; my own speaking rows with no Take (the plan, the
+feelings check) are in both, so nothing disappears. An arc's own
+rows go to the chat of the arc's latest Take. The host, a chat that is not mine, or a
+person off the ring row chat_builder get 404 for ?chat=, and off the
+ring every row is placed as before.","O1 -> LoungePlaceTest::test_every_lounge_writer_places_its_rows
 O1 -> LoungePlaceTest::test_a_typed_turn_stays_in_the_chat_it_was_typed_in
-O2 -> LoungePlaceTest::test_the_read_returns_one_place",services/lounge_messages.place_of is the one list (N635 item 4: the rows stay where they are written; each chat shows its own).
+O2 -> LoungePlaceTest::test_the_read_returns_one_place
+O3 -> HostChatPlaceTest::test_a_take_made_in_the_hosts_chat_is_shown_there_to_me_only",services/lounge_messages.place_of is the one list (N635 item 4: the rows stay where they are written; each chat shows its own).
 tests/test_manager_engine.py,Story,"As the founder, I want the feedback arbitration's experiment honest (protected Confident Voice slot, per-slide exploration, withheld notes recorded as having won), so that we can later learn what feedback helps.","O1  A protected note never gives up its slot to exploration or withholding.
 O2  Exploration trades only inside the swapped note's own slide.
 O3  Every withheld note is logged as would_have_surfaced, not surfaced.
@@ -2344,7 +2355,14 @@ database's 1,000 rows an answer; only a finished month is paid.
 O12 (PIPE-07) A call sent again with the same Idempotency-Key is charged
 once and gets the first answer, the model asked once; the same key with
 another question is refused; a call without a key is a new answer, as
-before; a new key after an answer that never came is a new try.","O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
+before; a new key after an answer that never came is a new try.
+O13 (N648 item 6) The download as a file, JSON lines or CSV: a manifest
+line first (model, version, date, rows, answers, rules), then each
+answer with its case's settled answer and how many agree; a case
+carries its text only for the person who wrote it, never a speaker's
+words, an exam case or another team's private case; the settled answer
+only for the owner, or on a case the teacher already answered; a cell
+that would run as a spreadsheet formula starts with a quote in the CSV.","O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
 O2 -> ModelApiTest::test_the_card_and_trying_a_model
 O3 -> ModelApiTest::test_a_test_key_is_shown_once_and_answers_100_times
 O4 -> ModelApiTest::test_a_live_key_pays_in_tokens_and_stops_at_its_limit
@@ -2355,7 +2373,8 @@ O8 -> ModelApiTest::test_the_download_holds_the_teachers_answers_only
 O9 -> ModelApiTest::test_an_api_answer_needs_the_buyers_authority
 O10 -> ModelApiTest::test_no_answer_is_never_charged_and_a_charge_is_never_unanswered
 O11 -> ModelApiTest::test_limits_and_payouts_count_past_a_thousand_rows
-O12 -> ModelApiTest::test_a_paid_answer_is_charged_once","The models' API and its money (migration a_business_can_buy_a_model_s_answers), served by services/model_api_store.py over services/model_api.py."
+O12 -> ModelApiTest::test_a_paid_answer_is_charged_once
+O13 -> ModelApiTest::test_the_download_file_keeps_only_your_own_cases_text","The models' API and its money (migration a_business_can_buy_a_model_s_answers), served by services/model_api_store.py over services/model_api.py."
 tests/test_model_coach_tasks.py,Story,"As a coach who teaches models, I want the queue's tasks shown in the models tab as models being taught, each with what waits for me and opening where I answer it today, with nothing moved (N642 item 6, step one; N643 item 4).","O1  GET /v2/models/coach-tasks lists ""Moments to answer"", ""Do you hear
 it?"", ""Pick the most confident"", ""Pick the moment for feedback"" and
 ""Which sounds surer"", each with this coach's waiting count as the
@@ -2605,6 +2624,19 @@ O4  The browser roles cannot call the two functions.","O1 -> test_publish_open_a
 O2 -> test_an_unshared_word_never_lights_it
 O3 -> test_another_speakers_take_is_refused_and_untouched
 O4 -> test_the_browser_roles_cannot_call_the_functions","0439, D-FW-5; the Feedback walk lock, flow 1. Runs services.coach_feedback_signal against the real functions."
+tests/test_noticing_settings.py,Guard,"What the speaking coach notices moved from code into one settings record, unchanged (N647 item 8, step 3): today's thresholds are its defaults, and a missing, broken or out-of-bounds record changes nothing a speaker sees.","C1  a default drifting from the constant it replaced, so the move itself
+changes what is noticed
+C2  a missing, unreadable or out-of-bounds record changing a verdict, or a
+moved threshold logging its verdicts under today's version
+C3  a candidate (a silent try, step 4) leaking out of its own block into
+what the live rules read, or a step moving a ranking or pinned value,
+or leaving its bounds
+C4  one slow database read holding up every caller that needs a value:
+while one thread refreshes, the others get the cached set at once","C1 -> test_the_defaults_are_todays_constants
+C2 -> test_a_bad_record_keeps_todays_values_and_a_moved_one_is_versioned
+C3 -> test_a_candidate_is_read_only_inside_its_block
+test_a_step_moves_only_a_things_dials_one_notch
+C4 -> test_a_slow_read_does_not_hold_up_a_caller_with_a_cached_set",If removed: moving a threshold could change the walk with no log to tell.
 tests/test_object_key_prefixes_are_classified.py,Story,"As a speaker, I want every stored recording of my voice served only through a fresh signed link, so that my voice is never reachable on a permanent public URL.","O1  Every object-key prefix the services and routes write is classified,
 as user content or deliberately not.
 O2  A user-content key gets no public URL; a non-user key still does.","O1 -> test_every_written_prefix_is_classified,
@@ -3715,10 +3747,22 @@ once; it counts only the cases that differ from live, and only
 SETTLED coach answers (a singleton never counts).
 O3  ""Use it"" makes the candidate live, once, and only when the try is
 ready and at least 10 settled answers exist.
-O4  ""Go back"", or a try left for 60 days, changes nothing live.","O1 -> test_one_try_per_thing
+O4  ""Go back"", or a try left for 60 days, changes nothing live.
+O5  A running try leaves every live verdict on a Take as it was; the
+candidate's verdicts go to the shadow log under their own version.
+O6  The re-score reads the last stored Takes again, and a case counts as
+agreed only once two coaches' blind answers match.
+O7  A case a try sees differently always reaches a second coach, and the
+coach's row never says a try is involved (Never 2).
+O8  After a value is made live, the blind audit still draws that cue's
+cases, old and new; it never draws a silent try's own verdicts.","O1 -> test_one_try_per_thing
 O2 -> test_twenty_stored_recordings_give_the_result_at_once
 O3 -> test_use_it_needs_ten_settled_answers_then_goes_live
-O4 -> test_go_back_and_expiry_change_nothing_live",
+O4 -> test_go_back_and_expiry_change_nothing_live
+O5 -> test_a_running_try_leaves_the_live_verdicts_as_they_were
+O6 -> test_the_rescore_counts_only_settled_answers
+O7 -> test_a_tried_case_gets_a_second_coach_blind
+O8 -> test_the_audit_keeps_drawing_a_cue_after_use_it",
 tests/test_single_deliverable.py,Story,"As a speaker, I want my Ideal Text free in both states, never the coach's unfinished edit, with the only paid item being key-moment explanations, so that I get my text without a paywall and pay only for extras.","O1  The Ideal Text GET never shows the coach's in-progress edit.
 O2  Never-1: the Ideal Text GET carries the text and no scores or
 internal reads; the stored suggestions snapshot drops internal
@@ -3897,11 +3941,18 @@ O4  The host's read of the chat does not expose the Take: no tag among
 the messages or as the list's last line, and neither ""Open Take"" nor
 the audio opens anything through it.
 O5  A Take made in the chat and also sent there with ""Send"" are two
-messages; the tag never counts as a send (""Last sent"").","O1 -> TakeDoorTest::test_a_take_recorded_in_the_hosts_chat_is_tagged_with_it
+messages; the tag never counts as a send (""Last sent"").
+O6  Practice after a Take (N648 item 8): a Take made anywhere else is
+offered practice as today; a Take made in the host's chat only while
+the host has ""Practice after a Take"" on (off by default); a lookup
+that fails answers yes.","O1 -> TakeDoorTest::test_a_take_recorded_in_the_hosts_chat_is_tagged_with_it
 O2 -> TakeDoorTest::test_tagging_again_posts_nothing
 O3 -> TakeDoorTest::test_the_door_is_shut_elsewhere_and_nothing_is_written
 O4 -> TakeDoorTest::test_the_host_never_gets_the_take_through_the_tag
-O5 -> TakeDoorTest::test_a_take_made_here_and_sent_here_are_two_messages","N642 item 7, N644, N648 item 8 (founder, 11 November 2026): Artur's chat, set up by hand, does what the speaking coach does; the loop is never copied or broken (Never 3); a Take reaches someone else only when its speaker sends it (Privacy 4f). Built on tests/test_take_sends.py's in-memory chat tables."
+O5 -> TakeDoorTest::test_a_take_made_here_and_sent_here_are_two_messages
+O6 -> TakeDoorTest::test_practice_follows_the_hosts_switch_for_a_take_made_in_their_chat
+TakeDoorTest::test_a_practice_cannot_be_started_while_the_hosts_switch_is_off
+TakeDoorTest::test_no_exercise_is_offered_while_the_hosts_switch_is_off","N642 item 7, N644, N648 item 8 (founder, 11 November 2026): Artur's chat, set up by hand, does what the speaking coach does; the loop is never copied or broken (Never 3); a Take reaches someone else only when its speaker sends it (Privacy 4f). Built on tests/test_take_sends.py's in-memory chat tables."
 tests/test_take_feedback_candidates.py,Story,"As a speaker, I want the Confident Voice moment I am asked about to be quoted from my own words in this Take, so that the feedback points at what I really said.","O1  The quote is the phrase the model picked when I said it; else a
 phrase I said that the Ideal Text shares; else the start of that
 slide's paragraph (a route), never words from elsewhere.

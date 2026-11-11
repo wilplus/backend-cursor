@@ -57,7 +57,13 @@ def v2_user_lounge_messages_get():
                                       (N635, for the chat builder's ring;
                                       services/lounge_messages.place_of).
                                       Absent → every row, as before.
-    Every message carries "place": "speaking" | "principles" | "will".
+      chat   (a host's chat id, optional) — only the caller's own rows of a
+                                      Take made in that chat (N642 item 7,
+                                      services/lounge_messages.host_rooms);
+                                      404 when the caller is not in it.
+                                      Not with ``place``.
+    Every message carries "place": "speaking" | "principles" | "will", or
+    "chat" with its "chat_id" for a row of a Take made in a host's chat.
 
     Response 200 (BE contract §3.15):
       {
@@ -75,6 +81,8 @@ def v2_user_lounge_messages_get():
     try:
         from services.lounge_messages import (
             LoungeValidationError,
+            host_rooms,
+            parse_chat,
             parse_limit,
             parse_place,
             placed_page,
@@ -85,14 +93,21 @@ def v2_user_lounge_messages_get():
         try:
             before = validate_before_cursor(request.args.get("before"))
             place = parse_place(request.args.get("place"))
+            chat = parse_chat(request.args.get("chat"))
+            if place and chat:
+                raise LoungeValidationError("place and chat: one of them")
         except LoungeValidationError as ve:
             return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 400
+
+        rooms = host_rooms(db, request.user_id)
+        if chat is not None and chat not in rooms.chats:
+            return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
 
         from services.request_context import lap
         with lap("page"):
             page = placed_page(
                 lambda n, cursor: db.get_lounge_messages_page(request.user_id, limit=n, before=cursor),
-                limit, before, place,
+                limit, before, place, rooms, chat,
             )
         from routes.v2.common import _resolve_snippet_audio_url
         from services.audio_ref_resolver import resolve_playable_ref

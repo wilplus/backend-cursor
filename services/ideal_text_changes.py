@@ -1174,7 +1174,7 @@ class _ChangesRun:
         # Confident Voice card still arrives, simply without an exercise.
         # Not a degradation: the person's choice is the healthy outcome, so
         # nothing is noted and the payload is byte-identical to "no offer".
-        if not self._practice_permitted():
+        if not self._practice_offered():
             return
         if getattr(self, "v3_replaced_changes", False):
             self._v3_exercise_offer()
@@ -1214,6 +1214,13 @@ class _ChangesRun:
             self.changes, take_session_id=self.arm_sid,
             owner_user_id=str(self.user_id or ""), database=self.db,
             ground=ground)
+
+    def _practice_offered(self) -> bool:
+        """Permitted by the person, and, for a Take made in a host's chat,
+        by the host's "Practice after a Take" (N648 item 8)."""
+        from services import take_door
+        return self._practice_permitted() and take_door.practice_allowed(
+            self.db, self.arm_sid)
 
     def _practice_permitted(self) -> bool:
         """Whether this Take's owner allows exercises chosen from it.

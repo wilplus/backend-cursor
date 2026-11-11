@@ -18,7 +18,9 @@ In the app (signed in; the ring row ``ai_models``, else 404):
   POST   /v2/models/keys/<key_id>/unsure {on} "Send the questions it wasn't sure about"
   GET    /v2/models/earnings                  a teacher's earnings (MOD-47)
   GET    /v2/models/<id>/download ?rows=1     downloading its data, the one route (MOD-51):
-                                              numbered, never the sealed exam
+                                              numbered, never the sealed exam; ?format=jsonl
+                                              or csv: the same rows as a file, a manifest
+                                              line first (N648 item 6)
   POST   /v2/models/<id>/versions/<n>/release the model's founder releases a version
   GET    /v2/models/<id>/check                the owner's check: ten unseen examples, the
                                               head's guess first (LEARN-03)
@@ -49,7 +51,7 @@ read here, hashed in the store, and never passed to a logger.
 import logging
 
 import sentry_sdk
-from flask import jsonify, request
+from flask import Response, jsonify, request
 
 from auth import require_auth
 from routes.admin import require_founder
@@ -62,7 +64,7 @@ from services.rate_limits import llm_limit
 logger = logging.getLogger(__name__)
 
 
-def _run(label: str, work, status: int = 200):
+def _run(label: str, work, status: int = 200, answer=None):
     from services.chats import ChatsError
     try:
         result = work()
@@ -74,7 +76,9 @@ def _run(label: str, work, status: int = 200):
         logger.error("model api %s failed: %s", label, type(e).__name__, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to reach the model"}), 500
-    resp = jsonify(result)
+    resp = answer(result) if answer is not None else None
+    if resp is None:
+        resp = jsonify(result)
     resp.headers["Cache-Control"] = "no-store"
     return resp, status
 
@@ -189,8 +193,16 @@ def v2_model_earnings():
 @require_auth
 def v2_model_download(model_id):
     from services import model_api_store as store
+    fmt = request.args.get("format") or None
+
+    def as_file(result):
+        if "file" not in result:
+            return None          # the screen, the rows or a refusal: JSON as before
+        resp = Response(result["file"], mimetype=result["media_type"])
+        resp.headers["Content-Disposition"] = f'attachment; filename="{result["name"]}"'
+        return resp
     return _run("download", lambda: store.download_for(
-        db, _me(), model_id, rows=request.args.get("rows") in ("1", "true")))
+        db, _me(), model_id, rows=request.args.get("rows") in ("1", "true"), fmt=fmt), answer=as_file)
 
 
 @v2_bp.route("/models/<model_id>/versions/<number>/release", methods=["POST"])
