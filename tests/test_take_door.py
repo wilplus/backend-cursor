@@ -20,11 +20,14 @@ OUTCOME
       the audio opens anything through it.
   O5  A Take made in the chat and also sent there with "Send" are two
       messages; the tag never counts as a send ("Last sent").
+  O6  The host's Developer mode does not count a Take recorded in their
+      chat among the people who wrote or recorded.
 PROVES   O1 -> TakeDoorTest::test_a_take_recorded_in_the_hosts_chat_is_tagged_with_it
          O2 -> TakeDoorTest::test_tagging_again_posts_nothing
          O3 -> TakeDoorTest::test_the_door_is_shut_elsewhere_and_nothing_is_written
          O4 -> TakeDoorTest::test_the_host_never_gets_the_take_through_the_tag
          O5 -> TakeDoorTest::test_a_take_made_here_and_sent_here_are_two_messages
+         O6 -> TakeDoorTest::test_the_hosts_developer_mode_does_not_count_the_tag
 WHY      N642 item 7, N644, N648 item 8 (founder, 11 November 2026): Artur's
          chat, set up by hand, does what the speaking coach does; the loop
          is never copied or broken (Never 3); a Take reaches someone else
@@ -180,6 +183,22 @@ class TakeDoorTest(unittest.TestCase):
         self.who = HOST
         said = self._get(f"/v2/chats/{chat}/messages").get_json()["messages"]
         self.assertEqual([m["meta"].get("take_index") for m in said], [2])
+
+    # ── O6 ───────────────────────────────────────────────────────────────
+
+    def test_the_hosts_developer_mode_does_not_count_the_tag(self):
+        from datetime import datetime, timedelta, timezone
+
+        from services import dev_mode
+        chat = self._chat_with(HOST, "Artur")
+        for row in self.store.tables["chat_threads"]:
+            if row["id"] == chat:
+                row["widget_owner_id"] = HOST
+        self._tag(chat, self._take())
+        since = datetime.now(timezone.utc) - timedelta(days=7)
+        self.assertEqual(dev_mode.people_events(sends.db, HOST, since), [])
+        self._post(f"/v2/chats/{chat}/messages", {"kind": "emoji", "body": "👍"})
+        self.assertEqual([who for _, who in dev_mode.people_events(sends.db, HOST, since)], [ME])
 
 
 if __name__ == "__main__":
