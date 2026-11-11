@@ -1238,7 +1238,10 @@ class WalkTest(_Tokens):
             del database
             return feature in ("chat_builder", "ai_models") and str(user_id) == TOMEK
         self.heads: dict = {}
+        self.closed: set = set()  # models whose head has no open gate
         for p in (patch("services.rings.feature_is_on_for_user", rings),
+                  patch("services.model_head_store.open_head",
+                        lambda database, host, m: None if m.get("model_id") in self.closed else ({}, {})),
                   patch("services.model_head_store.chat_answers",
                         lambda database, host, models, text: dict(self.heads))):
             p.start()
@@ -1340,6 +1343,12 @@ class WalkTest(_Tokens):
         self.assertEqual((first["runs_on_messages"], first["say"][0]["helped"], first["say"][0]["on"]),
                          (True, None, True))
         self.assertIsNone(first["notice"][0]["agreed"])
+        self.assertEqual([(n["ready"], n["learning"]) for n in first["notice"]], [(True, False)] * 2)
+        # "Ready" is what the run uses: with no gate open nothing speaks, and the walk says so.
+        self.closed = {m["model_id"] for m in first["notice"]}
+        shut = self._get().get_json()
+        self.assertEqual(([n["ready"] for n in shut["notice"]], shut["runs_on_messages"]), ([False, False], False))
+        self.closed = set()
         self.heads = {0: {"answer": "Yes", "sure": True}}
         for answer in ("yes", "yes", "no", "skip"):
             self._answer(chat, self._send(chat).get_json()["reply"], answer)

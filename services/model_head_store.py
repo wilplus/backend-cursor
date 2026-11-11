@@ -336,6 +336,24 @@ def head_answer(model: dict, version: Optional[dict], text: str, *, surface: str
     return {"answer": got["answer"], "sure": got["sure"]} if got else {"answer": "", "sure": False}
 
 
+def open_head(database: Any, host_id: str, recipe_model: dict) -> Optional[tuple[dict, dict]]:
+    """(model, version) when the recipe's model may answer in the chat: its
+    latest head whose gate is open (own: the owner's check passed, gate one;
+    another person's: a passed exam, gate two). The one test ``chat_answers``
+    and the walk's "ready" both use."""
+    mid = _uuid(recipe_model.get("model_id"))
+    if not mid:
+        return None
+    found = _rows(_table(database, models.MODELS).select("id,owner_id,recipe").eq("id", mid).limit(1))
+    if not found or not readable(found[0]):
+        return None
+    model = found[0]
+    own = str(model.get("owner_id")) == str(host_id)
+    open_ = [v for v in versions(database, mid) if v.get("head") and v.get("status") != "retired"
+             and rules.gates(v)["owner_chat" if own else "share"]]
+    return (model, open_[-1]) if open_ else None
+
+
 def chat_answers(database: Any, host_id: str, recipe_models: list[dict], text: str) -> dict[int, dict]:
     """The heads' answers for a visitor's message, by the recipe model's
     place: ONE reader call for all of them (N620: two provider calls at
@@ -345,19 +363,9 @@ def chat_answers(database: Any, host_id: str, recipe_models: list[dict], text: s
     is not sure is returned as such: its line is left out of the chat."""
     picked: list[tuple[int, dict, dict]] = []
     for i, m in enumerate(recipe_models):
-        mid = _uuid(m.get("model_id"))
-        if not mid:
-            continue
-        found = _rows(_table(database, models.MODELS).select("id,owner_id,recipe").eq("id", mid).limit(1))
-        if not found or not readable(found[0]):
-            continue
-        model = found[0]
-        vs = versions(database, mid)
-        own = str(model.get("owner_id")) == str(host_id)
-        open_ = [v for v in vs if v.get("head") and v.get("status") != "retired"
-                 and rules.gates(v)["owner_chat" if own else "share"]]
-        if open_:
-            picked.append((i, model, open_[-1]))
+        found = open_head(database, host_id, m)
+        if found:
+            picked.append((i, *found))
     if not picked:
         return {}
     got = read([text], surface="model_reader")

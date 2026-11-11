@@ -251,22 +251,30 @@ def _walk_recipe(database: Any, host_id: Any) -> dict:
 def walk_view(database: Any, host_id: Any) -> dict:
     """GET /v2/chats/setup/walk: the walk, what it notices and what it says,
     each with whether it is on and how it is doing. Counts are the host's
-    only (N647 item 7). ``agreed`` is not counted here (null)."""
+    only (N647 item 7). ``agreed`` is not counted here (null). ``ready`` is
+    what the run uses: the model's head has its gate open
+    (``model_head_store.open_head``), else it stays silent; ``learning`` is
+    the card still learning. ``runs_on_messages``: the walk is saved and an
+    own model that is on is ready."""
     recipe = _walk_recipe(database, host_id)
     walk = chat_recipes.walk_of(recipe)
     off = set((recipe.get("walk") or {}).get("off") or [])
     models = _own_models(recipe)
     counts = helped(database, host_id, models)
+    from services.model_head_store import open_head
     notice, say = [], []
+    runs = False
     for m in models:
         mid = str(m["model_id"])
         on = mid not in off
-        notice.append({"model_id": mid, "q": m.get("q"), "ready": not m.get("learning"),
-                       "on": on, "agreed": None})
+        ready = not m.get("learning") and open_head(database, str(host_id), m) is not None
+        runs = runs or (on and ready)
+        notice.append({"model_id": mid, "q": m.get("q"), "ready": ready,
+                       "learning": bool(m.get("learning")), "on": on, "agreed": None})
         a, b = counts.get(mid, (0, 0))
         say.append({"model_id": mid, "q": m.get("q"), "says": m.get("says") or "", "on": on,
                     "helped": {"a": a, "b": b} if b else None})
-    return {**walk, "runs_on_messages": bool(recipe.get("walk")), "notice": notice, "say": say}
+    return {**walk, "runs_on_messages": bool(recipe.get("walk")) and runs, "notice": notice, "say": say}
 
 
 def walk_item(database: Any, host_id: Any, model_id: Any, body: Any) -> dict:
