@@ -161,6 +161,10 @@ class _Query:
         self.filters.append(lambda r: r.get(column) in set(values))
         return self
 
+    def gte(self, column, value):
+        self.filters.append(lambda r: r.get(column) is not None and str(r.get(column)) >= str(value))
+        return self
+
     def is_(self, column, value):
         # Only "null", the one IS the services use.
         self.filters.append(lambda r: r.get(column) is None)
