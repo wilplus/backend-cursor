@@ -9,6 +9,8 @@ OUTCOME  On the public routes: the host gets their numbers; anyone else 404;
 PROVES   N648.2 -> DevModeTest::test_the_host_gets_how_close_what_it_notices_and_the_weeks
          N648.3 -> DevModeTest::test_the_host_gets_how_close_what_it_notices_and_the_weeks
          N648.5 -> DevModeTest::test_a_week_of_few_people_is_hidden_in_the_screen_and_the_file
+         N648.4 -> DevModeTest::test_what_i_say_and_the_walk_charts
+         N648.5 -> DevModeTest::test_what_i_say_and_the_walk_charts
          N648.7 -> DevModeTest::test_anyone_but_the_host_gets_404
 """
 from __future__ import annotations
@@ -107,6 +109,44 @@ class DevModeTest(B._Base):
         self.assertNotIn("u-1-", text)
         self.assertEqual(self.client.get("/v2/chats/setup/dev/charts/nobody.csv",
                                          headers=self._as(TOMEK)).status_code, 404)
+
+    def _walks_in_chats(self, model_id, says, answers, weeks_ago=0):
+        """One walk line said in each of len(answers) chats, ``weeks_ago``,
+        answered "yes", "no" or None (Skip)."""
+        t = self.store.tables
+        when = (datetime.now(timezone.utc) - timedelta(weeks=weeks_ago)).isoformat()
+        for i, useful in enumerate(answers):
+            chat, me = f"w-{weeks_ago}-{i}", f"host-{weeks_ago}-{i}"
+            t["chat_members"].append({"id": me, "thread_id": chat, "user_id": TOMEK, "display_name": "Tomek"})
+            meta = {"walk_line": {"model_id": model_id, "says": says}, "useful_ask": True,
+                    "reply": {"to": f"q-{weeks_ago}-{i}"}}
+            if useful:
+                meta["useful"] = useful
+            t["chat_messages"].append({"id": f"wl-{weeks_ago}-{i}", "thread_id": chat, "author_member_id": me,
+                                       "kind": "text", "body": says, "meta": meta, "created_at": when})
+
+    def test_what_i_say_and_the_walk_charts(self):
+        """N648.4, N648.5: each line with "Helped a of b" at once and how many
+        more answers until 30; walks run and "Did this help?" by week, a week
+        of fewer than 5 chats hidden, in the screen and the file."""
+        self._host()
+        card = self._read()["recipe"]["models"][0]
+        self._walks_in_chats(card["model_id"], card["says"], ["yes", "yes", "yes", "no", None])
+        self._walks_in_chats(card["model_id"], card["says"], ["yes", "no"], weeks_ago=1)
+        body = self._dev().get_json()
+        line = next(x for x in body["says"] if x["model_id"] == card["model_id"])
+        self.assertEqual((line["helped"], line["more_to_tell"], line["enough_at"]),
+                         ({"a": 4, "b": 6}, 24, 30))
+        charts = {c["name"]: c["weeks"] for c in body["charts"]}
+        self.assertEqual(charts["walks"][-1]["count"], 5)
+        self.assertEqual(charts["walks"][-2], {"week": charts["walks"][-2]["week"], "count": None, "fewer_than": 5})
+        # Four chats answered this week (one skipped): fewer than 5, hidden.
+        self.assertIsNone(charts["helped"][-1]["count"])
+        text = self.client.get("/v2/chats/setup/dev/charts/helped.csv", headers=self._as(TOMEK)).get_data(as_text=True)
+        self.assertEqual(text.splitlines()[0], "week,count,of")
+        self.assertIn("fewer than 5", text)
+        for never in ("w-0-", "host-0-", card["says"]):
+            self.assertNotIn(never, text)
 
     def test_anyone_but_the_host_gets_404(self):
         """N648.7: someone in my chat, or anyone without the chat builder,

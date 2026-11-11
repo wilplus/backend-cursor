@@ -24,7 +24,13 @@ and how often the experts agreed (the exam's cases right, once computed;
 before that the owner's check, kept of answered). The experiments run come
 from the silent tries, not built yet: ``None``.
 
-CHARTS (N648 item 5). Counts by week, never a person. A week with at least
+WHAT I SAY (N648 item 4). Each line of the walk as the walk's own reader
+gives it (``chat_replies.walk_view``): its words, on or off, "Helped {a}
+of {b}" shown at once, and how many more answers until ``ENOUGH_TO_TELL``.
+
+CHARTS (N648 item 5). Counts by week, never a person. Walks run and "Did
+this help?" read the same lines ``chat_replies.helped`` reads; one chat is
+one person, so a week with 1 to 4 chats is hidden. A week with at least
 one and fewer than ``SMALLEST_WEEK`` people shows ``None`` with
 ``fewer_than``, so nobody can be singled out; every chart follows it.
 """
@@ -70,9 +76,9 @@ LEVELS = ("Still learning", "Learns from cases", "Checked by you", "Passed its e
 SMALLEST_WEEK = 5
 #: How many weeks a chart holds (the prototype: the last eight).
 WEEKS = 8
-#: The charts this module can count today (N648 item 5); the walk's and the
-#: Ideal Text's come with their neighbours.
-CHARTS = ("people",)
+#: The charts this module can count today (N648 item 5); the Ideal Text's
+#: comes with its neighbour.
+CHARTS = ("people", "walks", "helped")
 
 
 def _rows(query: Any) -> list[dict]:
@@ -249,28 +255,127 @@ def people_events(database: Any, host: str, since: datetime) -> list[tuple[datet
     return out
 
 
+def walk_events(database: Any, host: str, since: datetime) -> list[dict]:
+    """Each line of the walk the host's chat said since ``since``:
+    {"when", "chat", "reply", "useful"}. ``chat`` and ``reply`` stay here,
+    only to count chats and walks; ``useful`` is "yes", "no" or None
+    (Skip or no answer). The same messages ``chat_replies.helped`` reads."""
+    from services.chat_replies import MESSAGES, _host_members
+    members = _host_members(database, host)
+    ids = {str(m["id"]) for m in members}
+    threads = sorted({str(m["thread_id"]) for m in members})
+    if not threads:
+        return []
+    rows = _rows(database.client.table(MESSAGES).select("thread_id,author_member_id,meta,created_at")
+                 .in_("thread_id", threads).gte("created_at", since.isoformat()))
+    out = []
+    for r in rows:
+        raw = r.get("meta")
+        meta: dict = raw if isinstance(raw, dict) else {}
+        when = _when(r.get("created_at"))
+        if not isinstance(meta.get("walk_line"), dict) or str(r.get("author_member_id")) not in ids or not when:
+            continue
+        reply = (meta.get("reply") or {}).get("to") if isinstance(meta.get("reply"), dict) else None
+        out.append({"when": when, "chat": str(r.get("thread_id")), "reply": str(reply or r.get("created_at")),
+                    "useful": meta.get("useful") if meta.get("useful") in ("yes", "no") else None})
+    return out
+
+
+def _weeks(now: datetime, weeks: int = WEEKS) -> list[str]:
+    start = _monday(now) - timedelta(weeks=weeks - 1)
+    return [(start + timedelta(weeks=i)).date().isoformat() for i in range(weeks)]
+
+
+def walks_weekly(events: list[dict], now: datetime) -> list[dict]:
+    """Walks run each week (one walk: the lines said in reply to one
+    message), hidden as "fewer than 5" when they came from 1 to 4 chats,
+    one chat being one person. Pure."""
+    walks: dict[str, set] = {w: set() for w in _weeks(now)}
+    chats: dict[str, set] = {w: set() for w in walks}
+    for e in events:
+        w = _monday(e["when"]).date().isoformat()
+        if w in walks:
+            walks[w].add((e["chat"], e["reply"]))
+            chats[w].add(e["chat"])
+    return [_shown(w, len(walks[w]), len(chats[w])) for w in walks]
+
+
+def helped_weekly(events: list[dict], now: datetime) -> list[dict]:
+    """"Did this help?" each week: {"week", "count": Yes, "of": Yes or No}
+    by the week the line was said; Skip and no answer are left out. Hidden
+    when the answers came from 1 to 4 chats. Pure."""
+    yes: dict[str, int] = {w: 0 for w in _weeks(now)}
+    of: dict[str, int] = dict(yes)
+    chats: dict[str, set] = {w: set() for w in yes}
+    for e in events:
+        w = _monday(e["when"]).date().isoformat()
+        if w in yes and e["useful"]:
+            of[w] += 1
+            yes[w] += e["useful"] == "yes"
+            chats[w].add(e["chat"])
+    out = []
+    for w in yes:
+        row = _shown(w, yes[w], len(chats[w]))
+        if row["count"] is not None:
+            row["of"] = of[w]
+        out.append(row)
+    return out
+
+
+def _shown(week: str, count: int, people: int) -> dict:
+    if people == 0 or people >= SMALLEST_WEEK:
+        return {"week": week, "count": count}
+    return {"week": week, "count": None, "fewer_than": SMALLEST_WEEK}
+
+
 def charts(database: Any, host: str, now: Optional[datetime] = None) -> list[dict]:
     now = now or datetime.now(timezone.utc)
     since = _monday(now) - timedelta(weeks=WEEKS - 1)
     try:
-        people = weekly(people_events(database, host, since), now)
+        people: Optional[list[dict]] = weekly(people_events(database, host, since), now)
     except Exception:  # noqa: BLE001 -- unknown is shown as not counted, never as zero
         logger.warning("dev mode: the people chart could not be read", exc_info=True)
         people = None
+    walks: Optional[list[dict]] = None
+    helped: Optional[list[dict]] = None
+    try:
+        events = walk_events(database, host, since)
+        walks, helped = walks_weekly(events, now), helped_weekly(events, now)
+    except Exception:  # noqa: BLE001 -- unknown is shown as not counted, never as zero
+        logger.warning("dev mode: the walk charts could not be read", exc_info=True)
     return [{"name": "people", "weeks": people},
-            {"name": "walks", "weeks": None},
-            {"name": "helped", "weeks": None},
+            {"name": "walks", "weeks": walks},
+            {"name": "helped", "weeks": helped},
             {"name": "ideal_texts", "weeks": None}]
+
+
+#: A line's "Helped {a} of {b}" is shown at once; this many answers are
+#: enough to tell (coordinator's answer e, a placeholder the founder may change).
+ENOUGH_TO_TELL = 30
+
+
+def says(database: Any, host: str) -> list[dict]:
+    """"What I say" (N648 item 4): each line of the walk as the walk's own
+    reader gives it (``chat_replies.walk_view``, N647 items 6 and 7), with
+    how many more answers are needed before its result can be told."""
+    from services.chat_replies import walk_view
+    out = []
+    for line in walk_view(database, host).get("say") or []:
+        b = (line.get("helped") or {}).get("b") or 0
+        out.append({**line, "more_to_tell": max(0, ENOUGH_TO_TELL - b), "enough_at": ENOUGH_TO_TELL})
+    return out
 
 
 def chart_csv(chart: dict) -> str:
     """One chart as a CSV file: week, count ("fewer than 5" when hidden)."""
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
-    w.writerow(["week", "count"])
-    for row in chart.get("weeks") or []:
-        w.writerow([row["week"], row["count"] if row["count"] is not None
-                    else f"fewer than {row.get('fewer_than', SMALLEST_WEEK)}"])
+    rows = chart.get("weeks") or []
+    with_of = any("of" in r for r in rows) or chart.get("name") == "helped"
+    w.writerow(["week", "count", "of"] if with_of else ["week", "count"])
+    for row in rows:
+        count = row["count"] if row["count"] is not None else f"fewer than {row.get('fewer_than', SMALLEST_WEEK)}"
+        w.writerow([row["week"], count, row.get("of", "")] if with_of else [row["week"], count])
     return buf.getvalue()
 
 
@@ -285,10 +390,9 @@ def _host_recipe(database: Any, user_id: Any) -> tuple[str, dict]:
 
 
 def read(database: Any, user_id: Any, now: Optional[datetime] = None) -> dict:
-    """GET /v2/chats/setup/dev: the host's numbers. "says" waits for the
-    walk in the chat (N647 item 8) and is empty until it is built."""
+    """GET /v2/chats/setup/dev: the host's numbers."""
     host, recipe = _host_recipe(database, user_id)
-    return {"close": close(), "notice": notice(database, host, recipe), "says": [],
+    return {"close": close(), "notice": notice(database, host, recipe), "says": says(database, host),
             "charts": charts(database, host, now)}
 
 
