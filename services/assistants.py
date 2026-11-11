@@ -358,6 +358,37 @@ def recipe_of(database: Any, user_id: Any) -> Optional[dict]:
     return value if isinstance(value, dict) else None
 
 
+def chat_title(database: Any, owner_id: Any, person: Any) -> str:
+    """What a host's chat is called for whoever comes to it (N642 item 1):
+    the name the host gave a chat people can meet, else their first name."""
+    from services.chat_recipes import chat_name
+    return chat_name(met_recipe_of(database, owner_id), person)
+
+
+def chat_titles(database: Any, owner_ids: list[str]) -> dict[str, str]:
+    """{owner_id: name} for those of these hosts whose chat people meet has
+    a name and who have the chat builder; one read for all of them (the
+    list of chats). Unread is none: the rows keep the person's name."""
+    from services.chat_recipes import for_visitors
+    ids = sorted({str(i) for i in owner_ids if i})
+    if not ids:
+        return {}
+    try:
+        rows = (database.client.table(PROFILES).select(f"user_id,{COLUMN}")
+                .in_("user_id", ids).execute().data or [])
+    except Exception:  # noqa: BLE001 -- the person's name, as before
+        logger.warning("assistants: the chats' names could not be read", exc_info=True)
+        return {}
+    out = {}
+    for row in rows:
+        recipe = row.get(COLUMN)
+        met = for_visitors(recipe if isinstance(recipe, dict) else None) or {}
+        name = str(met.get("name") or "").strip()
+        if name and on(database, row["user_id"]):
+            out[str(row["user_id"])] = name
+    return out
+
+
 def met_recipe_of(database: Any, user_id: Any) -> Optional[dict]:
     """The recipe a person who comes to this host meets: the older one, or
     a blank-setup one the host opened (``chat_recipes.for_visitors``)."""
@@ -416,7 +447,9 @@ def host_of(database: Any, user_id: Any, thread_id: Any) -> Optional[dict]:
             owner = host.get("display_name") if m.get("own", True) else m.get("by")
             parts = str(owner or "").split()
             return f"{parts[0] if parts else 'WillpowerLab'}'s model"
-        out.update({"hello": recipe.get("hello"), "taps": taps_of(recipe),
+        from services.chat_recipes import chat_name
+        out.update({"name": chat_name(recipe, host.get("display_name")),
+                    "hello": recipe.get("hello"), "taps": taps_of(recipe),
                     "send": recipe.get("send") or [], "out": recipe.get("out") or "answer",
                     "models": [{"q": m.get("q"), "by": whose(m)} for m in recipe.get("models") or []
                                if not m.get("learning")]})

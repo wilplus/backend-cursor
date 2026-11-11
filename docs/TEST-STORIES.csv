@@ -610,6 +610,10 @@ FIRST-18 -> SetupTest::test_two_ways_use_one_or_train_your_own
 FIRST-20 -> SetupTest::test_test_my_chat_answers_as_my_people_would
 FIRST-21 -> SetupTest::test_to_change_the_chat_tell_will
 FIRST-22 -> SetupTest::test_who_answers_is_three_plain_choices
+N642.1   -> SetupTest::test_a_chat_has_a_name_its_first_name_until_given
+N642.1   -> VisitorTest::test_people_who_come_read_the_chats_name
+N642.3   -> SetupTest::test_live_reads_what_a_person_meets_and_can_be_tried
+N642.3   -> TokensTest::test_my_own_trial_answers_at_once_keeps_nothing_costs_nothing
 N641.1   -> SetupTest::test_the_feedback_walk_is_kept_in_a_chat_that_takes_a_recording
 N641.2   -> SetupTest::test_i_want_this_tells_the_founder_once
 N641.2   -> SetupTest::test_the_ask_is_kept_when_the_mail_cannot_go
@@ -2336,6 +2340,16 @@ O9 -> ModelApiTest::test_an_api_answer_needs_the_buyers_authority
 O10 -> ModelApiTest::test_no_answer_is_never_charged_and_a_charge_is_never_unanswered
 O11 -> ModelApiTest::test_limits_and_payouts_count_past_a_thousand_rows
 O12 -> ModelApiTest::test_a_paid_answer_is_charged_once","The models' API and its money (migration a_business_can_buy_a_model_s_answers), served by services/model_api_store.py over services/model_api.py."
+tests/test_model_coach_tasks.py,Story,"As a coach who teaches models, I want the queue's tasks shown in the models tab as models being taught, each with what waits for me and opening where I answer it today, with nothing moved (N642 item 6, step one; N643 item 4).","O1  GET /v2/models/coach-tasks lists ""Moments to answer"", ""Do you hear
+it?"", ""Pick the most confident"", ""Pick the moment for feedback"" and
+""Which sounds surer"", each with this coach's waiting count as the
+panel counts it and where it opens; ``coming`` is the coming list.
+O2  Reading it fills no line and answers nothing; a line that cannot be
+read waits 0.
+O3  Someone who is not a coach, or has neither ring, gets empty lists,
+not an error.","O1 -> CoachTasksTest::test_each_task_is_a_model_with_what_waits
+O2 -> CoachTasksTest::test_reading_fills_nothing_and_a_failed_line_waits_nothing
+O3 -> CoachTasksTest::test_others_get_empty_lists","The smallest honest first step: the founder sees the waiting list as models being taught, taught where it is taught today."
 tests/test_model_launchpad.py,Story,"As a person in WillpowerLab, I want to find AI models, see how far each is, teach the ones in my field from one queue, and, as a model's founder, release a version only when it is clearly better (N528, N563, N566; the locked prototype ""The Model Launchpad"").","O1  The list puts my draft on top, then the most mature models, with
 search, the three filters, and an empty state that offers to start one.
 O2  A public model's page is in totals only; a private one is unseen by
@@ -2372,11 +2386,17 @@ only under my processing authorization and recording consent; without
 them nothing is transcribed, and the recording is never kept.
 O5  A person who joins a model after it went public is never sent one of
 its private examples, and cannot answer one; the teacher invited
-while it was private still is.","O1 -> ModelActionsTest::test_not_now_keeps_the_invite_and_accept_makes_a_teacher
+while it was private still is.
+O6  A set of texts becomes one case each, in the order given, private as
+the model is, ready for the first ten; nothing is taken without the
+tick; empties and repeats are skipped; a set is at most 200; someone
+who may not add to the model is refused as on the single route
+(N645 item 4).","O1 -> ModelActionsTest::test_not_now_keeps_the_invite_and_accept_makes_a_teacher
 O2 -> ModelActionsTest::test_an_added_example_and_a_spoken_answer
 O3 -> ModelActionsTest::test_the_owners_actions_and_the_profile
 O4 -> ModelActionsTest::test_a_recording_becomes_words_only_with_authorization
-O5 -> ModelActionsTest::test_a_private_example_never_reaches_someone_who_joins_after_public","routes/v2/learning_models.py over services/model_launchpad_store.py, for the screens built on #1863's routes."
+O5 -> ModelActionsTest::test_a_private_example_never_reaches_someone_who_joins_after_public
+O6 -> ModelActionsTest::test_a_set_of_texts_becomes_one_case_each","routes/v2/learning_models.py over services/model_launchpad_store.py, for the screens built on #1863's routes."
 tests/test_model_launchpad_routes.py,Story,"As a person in WillpowerLab, I want the AI models' list, a model's page, the door, the one queue and teaching to answer from the models' tables through /v2/models, so the launchpad's rules reach me as they are written (N528, N563, N566).","O1  Without the ring row (ai_models, ring 6) every route is 404.
 O2  The list shows public models with how far each is, and never another
 person's private model; its page is 404 to an outsider.
@@ -2497,6 +2517,14 @@ O11 -> ModelSetupRoutesTest::test_an_erased_person_is_nowhere_in_the_setup
 O12 -> ModelSetupRoutesTest::test_nobody_teaches_a_model_alone
 O13 -> ModelSetupRoutesTest::test_a_voice_example_plays_by_a_signed_link_only
 O14 -> ModelSetupRoutesTest::test_a_deleted_take_leaves_every_model","routes/v2/model_setup.py over services/model_setup_store.py, and the job services/model_examples_from_takes.py."
+tests/test_models_coming.py,Story,"As someone who teaches models, I want to see that models which learn from images, video and recordings are coming, and to tell the founder with one tap that I want one (N642 item 6, N643 item 4, N645).","O1  GET /v2/models/coming lists images, video and recordings, each with
+its title and whether this person asked; only for the ring
+chat_builder or ai_models.
+O2  POST /v2/models/coming/<kind>/want sends the founder one mail and
+keeps the ask on the account; again, nothing more; a mail that cannot
+go is logged and the answer is the same; nothing is counted.","O1 -> ModelsComingTest::test_three_kinds_are_coming_for_the_ring
+O2 -> ModelsComingTest::test_i_want_this_tells_the_founder_once
+O2 -> ModelsComingTest::test_the_ask_is_answered_when_the_mail_cannot_go","The vote of N641 item 3, for the models tab; kept in the account's user_metadata (services/model_coming.py), which goes with the account."
 tests/test_moment_pick.py,Story,"As a speaker, I want each Take to show my strongest moment, praised, and my weakest, fixed with the tool its weakness needs (its words first, else its voice with the AI clip), so that I know what to keep and get one fix on the moment that needs it.","O1  The strongest is the Take's highest willfidence clip, a block's best
 clip standing for it and a clip with enough words before a short
 one; it is praised whatever its voice and called my most confident.

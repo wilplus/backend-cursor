@@ -90,7 +90,7 @@ class AssistantsTest(unittest.TestCase):
         token = self._link(TOMEK).get_json()["token"]
         with patch("services.rings.feature_is_on_for_user", _ring({TOMEK})):
             self.assertEqual(self._preview(token).get_json(), {
-                "name": "Tomek", "invited": "Tomek invited you", "learn": None,
+                "name": "Tomek", "chat": "Tomek", "invited": "Tomek invited you", "learn": None,
                 "only_two": "Only the two of you are in this chat.",
                 "assistant": "Tomek's assistant"})
         with patch("services.rings.feature_is_on_for_user", _ring(set())), \

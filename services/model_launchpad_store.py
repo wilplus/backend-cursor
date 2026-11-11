@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from services import model_launchpad as rules
@@ -618,6 +618,49 @@ def add_example(database: Any, user_id: Any, model_id: Any, body: Any) -> dict:
     if body.get("answer") is not None:
         _save_answer(database, str(made[0]["id"]), model["id"], me, step, str(body["answer"])[:4000])
     return {"example_id": str(made[0]["id"]), "note": rules.WORDS["add_counts_once"]}
+
+
+#: A set of texts (N645 item 4): at most this many in one call, over it nothing is kept.
+MAX_SET_TEXTS = 200
+
+
+def add_example_set(database: Any, user_id: Any, model_id: Any, body: Any) -> dict:
+    """A set of texts, each one a case made as ``add_example`` makes one
+    (source "teacher", private when the model is, no label), in the order
+    given (N645 item 4). Needs the uploader's tick, ``may_use: true``. Empty
+    texts are skipped and an exact repeat is kept once. All or nothing: one
+    insert, so a failure keeps no case and a retry is safe. ``created_at``
+    steps by a microsecond so the first-ten pool keeps the order given."""
+    me = _require(database, user_id)
+    model = _model(database, model_id)
+    if rules.viewer_role(model, me) not in ("owner", "contributor"):
+        raise _not_found()
+    body = body if isinstance(body, dict) else {}
+    if body.get("may_use") is not True:
+        raise ChatsError("MAY_USE_REQUIRED", "Tick that you may use these first.")
+    texts = body.get("texts")
+    if not isinstance(texts, list) or not all(isinstance(t, str) for t in texts):
+        raise ChatsError("BAD_TEXTS", "Send the texts as a list.")
+    if len(texts) > MAX_SET_TEXTS:
+        raise ChatsError("TOO_MANY", f"A set is at most {MAX_SET_TEXTS} texts.")
+    seen: set[str] = set()
+    kept: list[str] = []
+    for raw in texts:
+        text = raw.strip()[:MAX_ADDED_TEXT]
+        if text and text not in seen:
+            seen.add(text)
+            kept.append(text)
+    if not kept:
+        raise ChatsError("EMPTY", "Write or say the case first.")
+    start = datetime.now(timezone.utc)
+    private = model.get("visibility") == "private"
+    made = _rows(_table(database, EXAMPLES).insert([
+        {"model_id": model["id"], "source": "teacher", "private": private, "added_by": me, "in_exam": False,
+         "content": {"text": text}, "created_at": (start + timedelta(microseconds=i)).isoformat()}
+        for i, text in enumerate(kept)]))
+    if len(made) != len(kept):
+        raise ChatsError("V2_ERROR", "The cases could not be kept.", 500)
+    return {"added": len(kept), "skipped": len(texts) - len(kept)}
 
 
 # ── The owner's actions (MOD-50, MOD-51; N528 items 5 and 12) ───────────────

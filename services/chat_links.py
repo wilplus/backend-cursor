@@ -139,6 +139,9 @@ def preview(database: Any, token: Any) -> dict:
                  "only_two": assistants.ONLY_TWO}
     if on:
         out["assistant"] = assistants.assistant_name(name)
+        # What the chat is called (N642 item 1): its name, else the first
+        # name. ``name`` stays the person, whose "{name} invited you" it is.
+        out["chat"] = assistants.chat_title(database, owner, name)
     return out
 
 
