@@ -17452,3 +17452,24 @@ day: "Do so"). For N616, N642.
    database did not answer (Sentry, 11 November 2026, 12:53 to 12:55 CET).
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N650 · In every chat the bubbles sit at the bottom, and the three dots
+too** (founder, the Claude Code chat, 11 November 2026, on a screenshot of
+"Live" with a few bubbles at the top of an empty screen: "please make it a
+rule for the app that in the chat the bubbles appear at the bottom and the
+3 dots waiting sign also at the bottom of the chat not top").
+
+1. **The rule, for every chat in the app:** a person's chat, one's own chat
+   in Live ("Test my chat"), Will's chat, the speaking chat, a host's chat
+   that takes Takes, and the setup that reads as a chat (N647 item 9). When
+   the bubbles do not fill the screen, they sit at the bottom, right above
+   the bar; the empty space is above them. The newest bubble is the lowest.
+2. **The three dots** that show while an answer is coming are the lowest
+   line of the chat, where the answer will appear, never at the top.
+3. **A longer chat** scrolls as it does today, opened at its newest bubble.
+
+Was: in some chats (Live among them) a short chat began at the top and the
+dots showed there.
+
+No migration in this entry. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
