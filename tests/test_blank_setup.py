@@ -62,6 +62,10 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          VIS-08   -> MeetTest::test_the_hello_shows_once_in_the_chat_they_share
          VIS-08   -> MeetTest::test_each_writes_to_the_others_chat_both_ways
          VIS-08   -> MeetTest::test_without_the_other_persons_open_chat_nothing_changes
+         N647.8   -> WalkTest::test_a_message_gets_the_walk_in_the_hosts_own_words
+         N647.8   -> WalkTest::test_a_model_that_is_not_ready_says_nothing_in_the_walk
+         N647.8   -> WalkTest::test_outside_the_ring_nothing_runs
+         N647.8   -> WalkTest::test_a_chat_with_no_walk_answers_as_before
 WHY      The build succeeds when a stranger sets up a chat with Will and a
          second person gets a useful answer in it (N620).
 """
@@ -1218,3 +1222,94 @@ class MeetTest(_Base):
         self.assertNotIn("reply", sent)
         self.assertEqual(self._drafts(TOMEK), [])
 
+
+class WalkTest(_Tokens):
+    """N647 item 8, step 1: Tomek, with the chat builder and the AI models,
+    saved a feedback walk; his own models are what it notices, and when one
+    that is ready notices its thing, the walk says Tomek's own line."""
+    _send, _messages, _answers = VisitorTest._send, VisitorTest._messages, VisitorTest._answers
+
+    def setUp(self):
+        super().setUp()
+        def rings(feature, user_id, database=None):
+            del database
+            return feature in ("chat_builder", "ai_models") and str(user_id) == TOMEK
+        self.heads: dict = {}
+        for p in (patch("services.rings.feature_is_on_for_user", rings),
+                  patch("services.model_head_store.chat_answers",
+                        lambda database, host, models, text: dict(self.heads))):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _chat(self, walk=True):
+        self._start()
+        self._put("send", ["text", "rec"])
+        self._put("sensitive", False)
+        self._put("who", "assistant")
+        self._put("models", [self._model(), {"q": "Are there flakes?", "opts": ["Flakes", "Some", "None"],
+                                              "says": "I see flakes. Try a gentler shampoo."}])
+        if walk:
+            self.assertEqual(self._put("walk", {"steps": ["best"], "out": "none"}).status_code, 200)
+        self._put("live", True)
+        self._answers(20)
+        return self._join(PIOTR, self._link(TOMEK).get_json()["token"]).get_json()["chat"]["id"]
+
+    def _walk(self, reply):
+        return [(m["body"], m["meta"]["walk_line"]["says"], m["meta"]["useful_ask"])
+                for m in reply.get("messages") or [] if "walk_line" in m["meta"]]
+
+    def test_a_message_gets_the_walk_in_the_hosts_own_words(self):
+        """N647.8: each ready own model that notices its thing says Tomek's
+        line word for word, in his order; one that noticed something else
+        says nothing; each line asks "Did this help?", and the answer is kept
+        on it. No provider call is added."""
+        chat = self._chat()
+        self.heads = {0: {"answer": "Yes", "sure": True}, 1: {"answer": "Flakes", "sure": True}}
+        reply = self._send(chat).get_json()["reply"]
+        self.assertEqual(reply["messages"][0]["body"], "Start with a gentle shampoo, twice a week.")
+        self.assertEqual(self._walk(reply), [("Your scalp looks dry here.", "Your scalp looks dry here.", True),
+                                             ("I see flakes. Try a gentler shampoo.",
+                                              "I see flakes. Try a gentler shampoo.", True)])
+        self.assertEqual(self.provider.calls, ["chat_reply"])
+        line = [m for m in reply["messages"] if "walk_line" in m["meta"]][0]
+        self.assertEqual(self.client.post(f"/v2/chats/{chat}/messages/{line['id']}/useful",
+                                          json={"answer": "no"}, headers=self._as(PIOTR)).get_json(), {"ok": True})
+        self.assertEqual(next(m for m in self._messages(chat) if m["id"] == line["id"])["meta"]["useful"], "no")
+        self.heads = {0: {"answer": "No", "sure": True}, 1: {"answer": "Flakes", "sure": True}}
+        again = self._send(chat, "And now?").get_json()["reply"]
+        self.assertEqual([b for b, _s, _a in self._walk(again)], ["I see flakes. Try a gentler shampoo."])
+        # "Test my chat" gets the same walk, kept nowhere.
+        tried = self.client.post("/v2/chats/setup/try", json={"body": "Itchy."}, headers=self._as(TOMEK))
+        self.assertEqual([m["body"] for m in tried.get_json()["messages"] if m.get("walk")],
+                         ["I see flakes. Try a gentler shampoo."])
+
+    def test_a_model_that_is_not_ready_says_nothing_in_the_walk(self):
+        """N647.8: a model whose head is not open gives no walk line (its
+        line is as before), and one not sure gives nothing at all."""
+        chat = self._chat()
+        self.heads = {1: {"answer": "Flakes", "sure": False}}
+        reply = self._send(chat).get_json()["reply"]
+        self.assertEqual(self._walk(reply), [])
+        self.assertEqual([m["body"] for m in reply["messages"] if "model_line" in m["meta"]],
+                         ["Your scalp looks dry here."])
+
+    def test_outside_the_ring_nothing_runs(self):
+        """N647.8: a host without the chat builder: no walk, no reply, no
+        provider call."""
+        chat = self._chat()
+        self.heads = {0: {"answer": "Yes", "sure": True}}
+        with patch("services.rings.feature_is_on_for_user", lambda *a, **k: False):
+            res = self._send(chat).get_json()
+        self.assertNotIn("reply", res)
+        self.assertEqual(self.provider.calls, [])
+
+    def test_a_chat_with_no_walk_answers_as_before(self):
+        """N647.8: without a saved walk, a ready model's line is the one
+        written for it, as before, and only the last message asks."""
+        chat = self._chat(walk=False)
+        self.heads = {0: {"answer": "Yes", "sure": True}, 1: {"answer": "Flakes", "sure": True}}
+        reply = self._send(chat).get_json()["reply"]
+        self.assertEqual(self._walk(reply), [])
+        self.assertEqual([m["body"] for m in reply["messages"] if "model_line" in m["meta"]],
+                         ["Your scalp looks dry here.", "There are some flakes."])
+        self.assertEqual([bool(m["meta"].get("useful_ask")) for m in reply["messages"]], [False, False, True])
