@@ -3143,12 +3143,16 @@ promises to keep is deleted: the recording first, then its row.
 O2  Never taken: the attempt they chose, an attempt they saved, an attempt
 the Voice Album admitted, anything in a practice still open.
 O3  If the Album cannot be read, nothing in that practice is deleted.
-O4  A recording that cannot be deleted keeps its row, so the next sweep
-finds it again.","O1 -> test_after_30_days_the_rest_go_file_first
+O4  A recording that cannot be deleted keeps its row, so a later sweep
+finds it again.
+O5  Every closed practice is reached, however many there are: one that
+was looked at waits a day before it is read again.","O1 -> test_after_30_days_the_rest_go_file_first
 O2 -> test_the_chosen_saved_and_album_attempts_stay
 test_an_open_practice_is_never_swept
 O3 -> test_an_unreadable_album_deletes_nothing
-O4 -> test_a_recording_it_cannot_delete_keeps_its_row","Founder 2026-09-16, option A (""keep only the attempt they chose; delete the rest after 30 days""). Nothing deleted by age before this."
+O4 -> test_a_recording_it_cannot_delete_keeps_its_row
+O5 -> test_a_recording_beyond_the_first_fifty_is_deleted
+test_a_practice_looked_at_is_not_read_again_for_a_day","Founder 2026-09-16, option A (""keep only the attempt they chose; delete the rest after 30 days""). Nothing deleted by age before this."
 tests/test_practice_transcription.py,Story,"As a speaker, I want my Confident Voice practice recording sent to the transcription provider only under a permit, so that nothing I say leaves the app without a record.","O1  A permit for this Take (recording_id None: a practice try is new
 audio) is taken BEFORE the provider is called, and the call is logged
 started then completed (Never-3: every provider call goes through the

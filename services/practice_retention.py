@@ -23,6 +23,16 @@ Audio first, row second, and never the row without the audio. A deleted row
 whose file survives is the exact hole 0334 closed; doing it in that order
 means a crash mid-sweep leaves a row we will revisit, not a file nobody can
 find.
+
+EVERY PRACTICE IS REACHED. The sweep deletes attempts and leaves the practice
+row, so a closed practice matches the query for ever. Each one the sweep reads
+is stamped (`retention_checked_at`, 0524) and read again a day later at the
+earliest: never-read ones first, then the ones read longest ago. Without the
+stamp the oldest 50 came back every minute and the 51st was never read. A
+practice is stamped whether or not its deletes worked, so fifty that keep
+failing cannot hold the queue either; a failed delete is tried again the next
+day. It is read again daily, not never, because what a practice keeps can
+change after it closed (a save undone, an Album entry removed).
 """
 from __future__ import annotations
 
@@ -35,6 +45,9 @@ logger = logging.getLogger(__name__)
 #: The founder's number. Measured from when the practice closed, not from when
 #: the attempt was recorded — the promise is about the practice being over.
 RETENTION_DAYS = 30
+
+#: How long a practice the sweep has looked at waits before it is read again.
+RECHECK_AFTER = timedelta(days=1)
 
 
 def cutoff(now: datetime | None = None) -> str:
@@ -74,8 +87,11 @@ def sweep_practice_retention(
 ) -> dict[str, int]:
     """Delete expired practice recordings. Returns a small tally for the log."""
     tally = {"practices": 0, "attempts": 0, "objects": 0, "failed": 0}
+    moment = now or datetime.now(timezone.utc)
     try:
-        practices = database.list_closed_practices_before(cutoff(now), limit) or []
+        practices = database.list_closed_practices_before(
+            cutoff(moment), limit,
+            checked_before=(moment - RECHECK_AFTER).isoformat()) or []
     except Exception as error:
         logger.error("practice retention: could not list practices: %s", error)
         return tally
@@ -85,24 +101,39 @@ def sweep_practice_retention(
         if not practice_id:
             continue
         tally["practices"] += 1
+        _sweep_one(database, practice, practice_id, tally)
+        # Stamped whatever happened, so the next run moves on to the next
+        # practices. A stamp that fails only means this one is read again.
         try:
-            attempts = database.list_confident_voice_practice_attempts(practice_id) or []
-            protected = database.list_album_practice_attempt_ids(
-                [str((row or {}).get("id") or "") for row in attempts
-                 if isinstance(row, dict)]) or []
-        except Exception as error:
-            logger.error("practice retention: could not read %s: %s",
-                         practice_id, error)
-            tally["failed"] += 1
-            continue
-        for attempt in expired_attempts(practice, attempts, protected):
-            if _expire(database, attempt, tally):
-                tally["attempts"] += 1
-            else:
-                tally["failed"] += 1
+            database.mark_practice_retention_checked(
+                practice_id, moment.isoformat())
+        except Exception:
+            logger.exception("practice retention: could not stamp %s",
+                             practice_id)
     if tally["attempts"] or tally["failed"]:
         logger.info("practice retention swept %s", tally)
     return tally
+
+
+def _sweep_one(
+    database: Any, practice: Any, practice_id: str, tally: dict[str, int],
+) -> None:
+    """One practice: delete what it no longer promises to keep."""
+    try:
+        attempts = database.list_confident_voice_practice_attempts(practice_id) or []
+        protected = database.list_album_practice_attempt_ids(
+            [str((row or {}).get("id") or "") for row in attempts
+             if isinstance(row, dict)]) or []
+    except Exception as error:
+        logger.error("practice retention: could not read %s: %s",
+                     practice_id, error)
+        tally["failed"] += 1
+        return
+    for attempt in expired_attempts(practice, attempts, protected):
+        if _expire(database, attempt, tally):
+            tally["attempts"] += 1
+        else:
+            tally["failed"] += 1
 
 
 def _expire(database: Any, attempt: dict, tally: dict[str, int]) -> bool:
