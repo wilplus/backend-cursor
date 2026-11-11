@@ -35,7 +35,8 @@ def _queue(intake: dict) -> list[dict]:
             [row], moments_for=lambda _r: [A, B], reached_for=lambda _s: {A, B},
             ratings_for=lambda _s: {}, request_for=lambda _s, _n: None,
             pseudonym_for=lambda _u: "Brave Robin")
-    alarm.assert_called_once_with([("2026-10-20T08:00:00+00:00", True)])
+    alarm.assert_called_once()
+    assert alarm.call_args.args[0] == [("2026-10-20T08:00:00+00:00", True, TAKE)]
     return out
 
 
