@@ -29,6 +29,10 @@ WHAT I SAY (N648 item 4). Each line of the walk as the walk's own reader
 gives it (``chat_replies.walk_view``): its words, on or off, "Helped {a}
 of {b}" shown at once, and how many more answers until ``ENOUGH_TO_TELL``.
 
+THE SPEAKING COACH'S CUES (N648 item 3). For the speaking host only, each
+shadow cue is a thing noticed too, read from its promotion bar
+(``speaking_cues``).
+
 CHARTS (N648 item 5). Counts by week, never a person. Walks run and "Did
 this help?" read the same lines ``chat_replies.helped`` reads; one chat is
 one person, so a week with 1 to 4 chats is hidden. A week with at least
@@ -187,7 +191,55 @@ def notice(database: Any, host: str, recipe: dict) -> list[dict]:
             continue
         target = int((m.get("targets") or {}).get("exam") or EXAM_CASES)
         out.append(notice_row(m, vs, examples, settled, target))
-    return out
+    return out + speaking_cues(database, host)
+
+
+def cue_row(cue: str, row: dict) -> dict:
+    """One of the speaking coach's shadow cues as a thing noticed. Pure.
+    Its levels are two of the four: "Learns from cases" while it is measured
+    in the shadow, "Passed its exam" once it clears its promotion bar
+    (``verbal_cue_validation``: coaches' Yes answers in the blind audit and
+    the catch rate). It has no owner's check. Its segments are the clips it
+    was measured on; coaches agreed is Yes of Yes and No in the blind audit."""
+    ready = bool(row.get("ready"))
+    yes, bar = int(row.get("audit_yes") or 0), int(row.get("audit_yes_bar") or 0)
+    rate, rate_bar = row.get("caught_rate"), row.get("caught_bar")
+    parts = [min(1.0, yes / bar) if bar else 1.0]
+    parts.append(min(1.0, float(rate) / float(rate_bar)) if rate is not None and rate_bar else 0.0)
+    lv = 3 if ready else 1
+    agreed = None
+    if row.get("audit_no") is not None and yes + int(row["audit_no"]):
+        agreed = {"a": yes, "b": yes + int(row["audit_no"]), "from": "audit"}
+    return {"kind": "cue", "cue": cue, "q": cue.replace("_", " ").capitalize(),
+            "level": lv, "level_name": LEVELS[lv], "next_name": None if ready else LEVELS[3],
+            "need": None if ready else {"step": "bar", "have": yes, "of": bar,
+                                         "caught": rate, "caught_of": rate_bar},
+            "pct": 100 if ready else round(100 * min(parts)),
+            "segments": int(row.get("clips_measured") or 0), "examples": None,
+            "experiments": None, "agreed": agreed}
+
+
+def speaking_cues(database: Any, host: str) -> list[dict]:
+    """The speaking coach's shadow cues, for the speaking host only
+    (``take_door.speaking_host``): read, not rebuilt, from the promotion
+    bar's own report and ``learning_ledger.cue_rows``. Counts only; no pair
+    of these leaves in a download. Unreadable: no rows, never zeros."""
+    from services.take_door import speaking_host
+    try:
+        if speaking_host(database) != host:
+            return []
+        from services.acoustic_cues import ACOUSTIC_CUES_VERSION, CUES as ACOUSTIC_CUES
+        from services.learning_ledger import cue_rows
+        from services.verbal_cue_validation import PROMOTION_MIN_CAUGHT_RATE, PROMOTION_MIN_YES, report
+        from services.verbal_cues import CUES, detector_version
+        summaries = dict(report(database, detector_version=detector_version(), cues=CUES))
+        summaries.update(report(database, detector_version=ACOUSTIC_CUES_VERSION, cues=ACOUSTIC_CUES))
+        rows = cue_rows(summaries, min_yes=PROMOTION_MIN_YES, min_caught_rate=PROMOTION_MIN_CAUGHT_RATE)
+    except Exception:  # noqa: BLE001 -- the host's own models still show
+        logger.warning("dev mode: the speaking coach's cues could not be read", exc_info=True)
+        return []
+    return [cue_row(cue, {**row, "audit_no": (summaries.get(cue) or {}).get("audit_no")})
+            for cue, row in sorted(rows.items())]
 
 
 # ── Charts ──────────────────────────────────────────────────────────────────

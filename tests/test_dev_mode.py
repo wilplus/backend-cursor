@@ -10,6 +10,7 @@ PROVES   N648.2 -> DevModeTest::test_the_host_gets_how_close_what_it_notices_and
          N648.3 -> DevModeTest::test_the_host_gets_how_close_what_it_notices_and_the_weeks
          N648.5 -> DevModeTest::test_a_week_of_few_people_is_hidden_in_the_screen_and_the_file
          N648.4 -> DevModeTest::test_what_i_say_and_the_walk_charts
+         N648.3 -> DevModeTest::test_the_speaking_host_also_sees_the_speaking_coachs_cues
          N648.5 -> DevModeTest::test_what_i_say_and_the_walk_charts
          N648.7 -> DevModeTest::test_anyone_but_the_host_gets_404
 """
@@ -149,6 +150,33 @@ class DevModeTest(B._Base):
         self.assertIn("fewer than 5", text)
         for never in ("w-0-", "host-0-", card["says"]):
             self.assertNotIn(never, text)
+
+    def test_the_speaking_host_also_sees_the_speaking_coachs_cues(self):
+        """N648.3: for the speaking host only, each shadow cue is a thing
+        noticed, read from its promotion bar: coaches' Yes answers of 30 and
+        the catch rate; a cue past the bar has passed; another host sees none."""
+        self._host()
+
+        def report(_db, *, detector_version, cues):
+            del detector_version
+            out = {}
+            for cue in cues:
+                ready = cue == "hedging"
+                out[cue] = {"audited": True, "audit_yes": 31 if ready else 12, "audit_no": 4,
+                            "caught_rate": 0.9 if ready else 0.4, "clips_measured": 200}
+            return out
+        with patch("services.take_door.speaking_host", lambda _db: TOMEK), \
+                patch("services.verbal_cue_validation.report", report):
+            rows = {r["cue"]: r for r in self._dev().get_json()["notice"] if r.get("kind") == "cue"}
+        self.assertEqual(rows["hedging"]["level_name"], "Passed its exam")
+        filler = rows["filler_cluster"]
+        self.assertEqual((filler["level_name"], filler["next_name"]), ("Learns from cases", "Passed its exam"))
+        self.assertEqual(filler["need"], {"step": "bar", "have": 12, "of": 30, "caught": 0.4, "caught_of": 0.8})
+        self.assertEqual((filler["pct"], filler["segments"], filler["agreed"]),
+                         (40, 200, {"a": 12, "b": 16, "from": "audit"}))
+        with patch("services.take_door.speaking_host", lambda _db: "someone-else"), \
+                patch("services.verbal_cue_validation.report", report):
+            self.assertFalse([r for r in self._dev().get_json()["notice"] if r.get("kind") == "cue"])
 
     def test_anyone_but_the_host_gets_404(self):
         """N648.7: someone in my chat, or anyone without the chat builder,
