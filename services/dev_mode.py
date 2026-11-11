@@ -57,16 +57,16 @@ CAPABILITIES: tuple[dict, ...] = tuple({"key": k, "label": label, "status": stat
     ("what_people_ask", "What people can ask", BUILT),
     ("own_models_answer", "Your own models answer in the chat", BUILT),
     ("walk_steps_chosen", "The walk's steps and what people get are chosen", BUILT),
-    ("live_and_build", "Live and Build in one chat", BEING_BUILT),
-    ("walk_in_chat", "The walk runs in your chat", BEING_BUILT),
-    ("take_in_chat", "People record a Take in your chat", NOT_STARTED),
-    ("transcript_ideal_text", "The transcript and the Ideal Text", NOT_STARTED),
-    ("notices_as_settings", "What it notices, as settings", NOT_STARTED),
-    ("says_and_helped", "What it says, and whether it helped", NOT_STARTED),
-    ("silent_tries", "Silent tries before a change", NOT_STARTED),
-    ("practice", "Practice and exercises", NOT_STARTED),
-    ("plan_feelings", "The plan and the feelings check", NOT_STARTED),
-    ("coaches_moments", "Coaches answer the moments", NOT_STARTED),
+    ("live_and_build", "Live and Build in one chat", BUILT),
+    ("walk_in_chat", "The walk runs in your chat", BUILT),
+    ("take_in_chat", "People record a Take in your chat", BEING_BUILT),
+    ("transcript_ideal_text", "The transcript and the Ideal Text", BEING_BUILT),
+    ("notices_as_settings", "What it notices, as settings", BEING_BUILT),
+    ("says_and_helped", "What it says, and whether it helped", BUILT),
+    ("silent_tries", "Silent tries before a change", BEING_BUILT),
+    ("practice", "Practice and exercises", BEING_BUILT),
+    ("plan_feelings", "The plan and the feelings check", BEING_BUILT),
+    ("coaches_moments", "Coaches answer the moments", BEING_BUILT),
 ))
 
 #: The four levels, a model's own gates (N566, N616), in order.
@@ -346,6 +346,14 @@ def charts(database: Any, host: str, now: Optional[datetime] = None) -> list[dic
     return [{"name": "people", "weeks": people},
             {"name": "walks", "weeks": walks},
             {"name": "helped", "weeks": helped},
+            # Not built on purpose (coordinator, 11 November 2026): a Take made in
+            # a host's chat is tagged for its speaker only (services/take_door.py,
+            # meta.made_here), so a count of them would let the host subtract what
+            # they see and learn who recorded. It waits for the founder's decision
+            # on whether a host sees a Take made in their chat; when built, count
+            # only what the host can already see, or hide any week where the count
+            # minus what the host can see is 1 to 4. The walks chart counts only
+            # walk lines in the host's own messages, never a Take.
             {"name": "ideal_texts", "weeks": None}]
 
 
