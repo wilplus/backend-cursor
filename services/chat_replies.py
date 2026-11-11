@@ -154,6 +154,13 @@ def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str],
         result = None
     parsed = getattr(result, "parsed", None) if result else None
     got = parsed if isinstance(parsed, dict) else {}
+    lines = _lines(recipe, heads, got, host_name, pay)
+    return {"answer": _clean(got.get("answer"), 1200), "lines": lines}
+
+
+def _lines(recipe: dict, heads: dict, got: dict, host_name: Any,
+           pay: Optional[Callable[[dict], bool]]) -> list[dict]:
+    """The lines of one reply, one per model in the host's order (see ``make``)."""
     given = got.get("lines")
     raw_lines: list = given if isinstance(given, list) else []
     lines = []
@@ -178,7 +185,7 @@ def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str],
         if body:
             owner = _first(host_name) if m.get("own", True) else _first(m.get("by"))
             lines.append({"body": body, "by": f"{owner}'s model", "q": m.get("q")})
-    return {"answer": _clean(got.get("answer"), 1200), "lines": lines}
+    return lines
 
 
 def walk_line(model: dict, head: dict, host_name: Any) -> Optional[dict]:
