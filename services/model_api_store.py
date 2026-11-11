@@ -692,7 +692,8 @@ def download_for(database: Any, user_id: Any, model_id: Any, *, rows: bool = Fal
                                                  "id,kind,source,in_exam,private,known_answer,added_by,content",
                                                  ids)}
     sees = model["id"] in models._sees_private(database, me, [model])
-    out = rules.download_rows(model, answers, examples, sees_private=sees, own_text_for=me)
+    out = rules.download_rows(model, answers, examples, sees_private=sees, own_text_for=me,
+                              owner=rules.viewer_role(model, me) == "owner")
     if fmt is None:
         return {"model": model["name"], "rows": out}
     if fmt not in ("jsonl", "csv"):

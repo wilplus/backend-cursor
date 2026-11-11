@@ -48,7 +48,9 @@ OUTCOME
       line first (model, version, date, rows, answers, rules), then each
       answer with its case's settled answer and how many agree; a case
       carries its text only for the person who wrote it, never a speaker's
-      words, an exam case or another team's private case.
+      words, an exam case or another team's private case; the settled answer
+      only for the owner, or on a case the teacher already answered; a cell
+      that would run as a spreadsheet formula starts with a quote in the CSV.
 PROVES   O1 -> ModelApiTest::test_without_the_ring_nothing_is_sold
          O2 -> ModelApiTest::test_the_card_and_trying_a_model
          O3 -> ModelApiTest::test_a_test_key_is_shown_once_and_answers_100_times
@@ -544,16 +546,18 @@ class ModelApiTest(unittest.TestCase):
              "content": {"text": "Another team's private row"}},
         ]
         t["ai_model_answers"] += [
-            {"id": "b1", "example_id": "x-kasia", "model_id": JOB, "teacher_id": MARTA, "step": "rate",
+            {"id": "b1", "example_id": "x-kasia", "model_id": JOB, "teacher_id": MARTA, "step": "words",
              "answer": "Yes", "counted": True},
-            {"id": "b2", "example_id": "x-kasia", "model_id": JOB, "teacher_id": ARTUR, "step": "rate",
+            {"id": "b2", "example_id": "x-kasia", "model_id": JOB, "teacher_id": ARTUR, "step": "words",
              "answer": "Yes", "counted": True},
-            {"id": "b3", "example_id": "x-marta", "model_id": JOB, "teacher_id": KASIA, "step": "rate",
+            {"id": "b3", "example_id": "x-marta", "model_id": JOB, "teacher_id": KASIA, "step": "words",
              "answer": "No", "counted": True},
-            {"id": "b4", "example_id": "x-exam", "model_id": JOB, "teacher_id": MARTA, "step": "rate",
+            {"id": "b4", "example_id": "x-exam", "model_id": JOB, "teacher_id": MARTA, "step": "words",
              "answer": "Yes", "counted": True},
-            {"id": "b5", "example_id": "x-other", "model_id": JOB, "teacher_id": KASIA, "step": "rate",
+            {"id": "b5", "example_id": "x-other", "model_id": JOB, "teacher_id": KASIA, "step": "words",
              "answer": "On another team's row", "counted": True},
+            {"id": "b6", "example_id": "x-marta", "model_id": JOB, "teacher_id": ARTUR, "step": "words",
+             "answer": "=HYPERLINK(\"http://x\")", "counted": False},
         ]
         self.who = KASIA
         res = self._get(f"/v2/models/{JOB}/download?format=jsonl")
@@ -563,6 +567,10 @@ class ModelApiTest(unittest.TestCase):
         manifest, rows = lines[0], lines[1:]
         self.assertEqual((manifest["manifest"], manifest["version"], manifest["rows"]), (True, 1, len(rows)))
         self.assertIn("no sealed exam case", manifest["rules"])
+        # The owner sees the settled answer of a case she never answered
+        # (Kasia's own case, answered by Marta and Artur); a formula stays
+        # exact in JSON lines.
+        self.assertIn('=HYPERLINK("http://x")', [r["answer"] for r in rows])
         mine = [r for r in rows if r["text"] == "Kasia's own case"]
         self.assertEqual([(r["settled"], r["votes"]) for r in mine], [("Yes", 2), ("Yes", 2)])
         text = res.get_data(as_text=True)
@@ -574,6 +582,16 @@ class ModelApiTest(unittest.TestCase):
         self.assertTrue(text.startswith("# "))
         table = list(csv.DictReader(io.StringIO(text.split("\n", 1)[1])))
         self.assertIn("Marta's own case", {r["text"] for r in table})
+        # Marta answered Kasia's case, so she sees its settled answer; she never
+        # answered her own case, so its settled answer stays out of her file.
+        by_text = {r["text"]: r for r in table}
+        self.assertEqual(by_text["Marta's own case"]["settled"], "")
+        self.assertEqual(by_text["Marta's own case"]["votes"], "")
+        answered = [r for r in table if r["answer"] == "Yes" and r["teacher"] and r["settled"]]
+        self.assertTrue(answered and all(r["settled"] == "Yes" for r in answered))
+        # A cell a spreadsheet would run as a formula starts with a quote in the CSV.
+        self.assertIn("'=HYPERLINK", text)
+        self.assertNotIn(',=HYPERLINK', text)
         for never in ("Kasia's own case", "On another team's row", "Another team's private row",
                       "What a speaker said", "A sealed exam case"):
             self.assertNotIn(never, text)
