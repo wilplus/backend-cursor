@@ -16987,3 +16987,28 @@ Not covered: a chat's header (the name with what the person does under
 it), which is the chat's own design.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N638 · A case can be written, so a new model's teaching can start** (the
+coordinator, the Claude Code chat, 11 November 2026, under the founder's
+standing "all the wording is okay", after his live trial: "When I click to
+record one nothing happens", "No reaction", "there is an option to answer
+few cases yourself or upload a file with cases and to answer yourself it
+didn't work"). Shown to him the same morning. For N636 items 6 and 7.
+
+What was true: on "Do you know a case this model should learn from? Add
+it, then answer it yourself.", "Record one" was drawn like a choice and did
+nothing (no recording reaches a model yet), and "Upload a file" took a text
+file only while promising "A recording, a photo or a written case". A model
+made in blocks has no cases, so on a phone its teaching could not start.
+
+1. **"Write one"** is the first choice on that screen, with "Type the case
+   in your own words." under it. The person types the case, and the
+   answering opens as it does after an upload.
+2. **"Record one"** stays, drawn lighter, and cannot be tapped until a
+   recording can reach a model (N637 item 1).
+3. **"Upload a file"** says what it takes: "A written case". Was: "A
+   recording, a photo or a written case".
+
+**Open:** a recorded case; a photo or a recording as a file.
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
