@@ -307,6 +307,9 @@ SPEAKING_KEYS = frozenset({
 SPEAKING_OFFERS = frozenset({"joke", "feedback_check", "will_question", "whatsapp"})
 #: Notes about the coach's feedback.
 SPEAKING_NOTES = frozenset({"feedback_digest"})
+#: Cards for the coach about a speaker: their speaking goal changed
+#: (services/goal_history.py, ``metadata.card``).
+SPEAKING_CARDS = frozenset({"goal_change"})
 #: The principles coaching (frontend docs/flows/principles.md): the offers
 #: of the voice notebook, the Sunday note, life goals, the sales step, your
 #: why and strengths, and the keys their rows carry.
@@ -329,7 +332,8 @@ def place_of(row: dict) -> str:
         return WILL
     if any(meta.get(k) not in (None, "", False) for k in SPEAKING_KEYS):
         return SPEAKING
-    if meta.get("offer") in SPEAKING_OFFERS or meta.get("note") in SPEAKING_NOTES:
+    if meta.get("offer") in SPEAKING_OFFERS or meta.get("note") in SPEAKING_NOTES \
+            or meta.get("card") in SPEAKING_CARDS:
         return SPEAKING
     if meta.get("offer") in PRINCIPLES_OFFERS or any(meta.get(k) not in (None, "", False)
                                                      for k in PRINCIPLES_KEYS):

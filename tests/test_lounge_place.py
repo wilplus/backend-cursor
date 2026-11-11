@@ -64,7 +64,7 @@ WRITERS: dict[str, list[tuple[dict, str]]] = {
     "services/join_setup.py": [({"role": "bot", "kind": "text", "metadata": {"join_setup": {}}}, WILL)],
     "services/chats.py": [({"role": "bot", "kind": "text", "metadata": {"answer_taken_back": True}}, WILL)],
     "services/goal_history.py": [
-        ({"role": "bot", "kind": "text", "metadata": {"card": "goal_change", "speaker": "S1"}}, WILL)],
+        ({"role": "bot", "kind": "text", "metadata": {"card": "goal_change", "speaker": "S1"}}, SPEAKING)],
     "services/in_control.py": [({"role": "bot", "kind": "text", "metadata": {"in_control": "x"}},PRINCIPLES)],
     "services/life_goals.py": [
         ({"role": "bot", "kind": "text", "metadata": {"offer": "life_goals"}},PRINCIPLES),
