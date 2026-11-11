@@ -90,12 +90,25 @@ class ModelActionsTest(ModelRoutesTest):
             self.assertEqual((out.status_code, out.get_json()["code"]), (400, "MAY_USE_REQUIRED"))
         self.assertEqual(len(self.store.tables["ai_model_examples"]), before)
         out = self._post(url, {"texts": ["  Second  ", "", "   ", "First", "Second", "x" * 5000], "may_use": True})
-        self.assertEqual(out.get_json(), {"added": 3, "skipped": 3})
         made = cases()
+        self.assertEqual(out.get_json(), {
+            "added": 3, "skipped": 3, "example_ids": [c["id"] for c in made],
+            "added_cases": [{"id": c["id"], "text": c["content"]["text"]} for c in made]})
         self.assertEqual([c["content"]["text"] for c in made], ["Second", "First", "x" * store.MAX_ADDED_TEXT])
         self.assertTrue(all(c["source"] == "teacher" and c["in_exam"] is False for c in made))
         pool = first_ten_pool(made, [])
         self.assertEqual([e["content"]["text"] for e in pool][:2], ["Second", "First"])
+        # the adder's FIRST answer on a step, by id, is taken; their second is refused; it does not count alone
+        first = made[0]["id"]
+        answer = f"/v2/models/{PITCH}/examples/{first}/answer"
+        self.assertEqual(self._post(answer, {"step": "rate", "answer": "Rushed"}).get_json()["saved"], True)
+        self.assertEqual(self._post(answer, {"step": "pick", "answer": "A"}).get_json()["saved"], True)
+        again = self._post(answer, {"step": "rate", "answer": "Calm"})
+        self.assertEqual((again.status_code, again.get_json()["code"]), (409, "OWN_EXAMPLE"))
+        mine = [a for a in self.store.tables["ai_model_answers"] if a["example_id"] == first and a["step"] == "rate"]
+        self.assertEqual([a["answer"] for a in mine], ["Rushed"])
+        self.assertFalse(any(a.get("counted") for a in self.store.tables["ai_model_answers"]
+                             if a["example_id"] == first))
         over = self._post(url, {"texts": [f"t{i}" for i in range(store.MAX_SET_TEXTS + 1)], "may_use": True})
         self.assertEqual((over.status_code, over.get_json()["code"]), (400, "TOO_MANY"))
         self.assertEqual(self._post(url, {"texts": [" "], "may_use": True}).status_code, 400)

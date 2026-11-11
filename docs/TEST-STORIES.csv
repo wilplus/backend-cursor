@@ -2417,8 +2417,10 @@ teach, whatever their score; nothing else, and never a score.
 O2  An answer feeds the one model that fits the profile best at 2.0 or
 more; below it, no model.","O1 -> ModelMatchTest::test_for_you_is_chosen_by_the_knowledge_score
 O2 -> ModelMatchTest::test_an_answer_feeds_the_best_model_or_none","The person-to-model matching reuses the score and threshold of the person-to-Take matching (N518 item 7: ""Yes, reuse the score and threshold"")."
-tests/test_model_pipes.py,Story,"As the founder, I want the model pipes tight before the launchpad opens to anyone else, so that no teacher can teach a model what it is tested on, no newcomer is let in on another newcomer's word, a withdrawn training yes reaches every model, counts are whole, and a private example stays private (N615 item 2).","O1  (PIPE-01) An answer on an exam example, or on an example the teacher
-added themself, is refused and nothing is stored.
+tests/test_model_pipes.py,Story,"As the founder, I want the model pipes tight before the launchpad opens to anyone else, so that no teacher can teach a model what it is tested on, no newcomer is let in on another newcomer's word, a withdrawn training yes reaches every model, counts are whole, and a private example stays private (N615 item 2).","O1  (PIPE-01) An answer on an exam example is refused and nothing is
+stored; the teacher who added an example gives it a first answer on
+each step and never a second (N645), and it counts only once another
+teacher agrees.
 O2  (PIPE-02) Two new teachers who answer the same examples alike are not
 admitted on each other's answers: a newcomer is measured against
 trusted teachers and known answers only.
