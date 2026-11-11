@@ -11,6 +11,10 @@ services/model_setup_store.py for the tables).
   POST /v2/models/<id>/setup/data                existing data (multipart ``file``)
   GET  /v2/models/<id>/setup/first-ten           the next of the owner's first 10
   POST /v2/models/<id>/setup/first-ten/<eid>     {step, answer}
+  GET  /v2/models/coming                         images, video, recordings: coming
+  POST /v2/models/coming/<kind>/want             "I want this", one mail, once
+                                                 (services/model_coming.py; ring
+                                                 chat_builder or ai_models)
 
 Every answer is {model_id, status, screen}; ``screen`` is one step as the
 owner's screen shows it. "Copy an invite link" is the owner's own chat link
@@ -145,3 +149,24 @@ def v2_model_setup_save(model_id, step):
     from services import model_setup_store as store
     body = _body()
     return _run("save", lambda: store.save(db, _me(), model_id, step, body))
+
+
+# ── Models that learn from images, video and recordings: coming (N642
+#    item 6, N645; services/model_coming.py) ──────────────────────────────
+
+@v2_bp.route("/models/coming", methods=["GET"])
+@require_auth
+def v2_models_coming():
+    """{"coming": [{kind, title, wanted}]}: images, video, recordings."""
+    from services import model_coming
+    return _run("coming", lambda: model_coming.coming(db, _me()))
+
+
+@v2_bp.route("/models/coming/<kind>/want", methods=["POST"])
+@limiter.limit("30 per hour", scope="models_coming_want")
+@require_auth
+def v2_models_coming_want(kind):
+    """"I want this": one mail to the founder, once per kind."""
+    from services import model_coming
+    payload = getattr(request, "token_payload", None)
+    return _run("coming want", lambda: model_coming.want(db, _me(), kind, payload))
