@@ -1912,6 +1912,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 - **O1** Every writer of the Lounge is named here, and each kind of row it writes is placed in exactly one chat; a new writer that this list does not name fails the test.
 - **O2** GET /v2/user/lounge/messages?place=speaking returns only the speaking chat's rows, ?place=principles only the principles chat's, ?place=will only Will's, and no place every row as before; each row says its place, and a place reads older pages until it has a page of its own.
+- **O3** A Take recorded in my chat with the speaking host (services/ take_door.py) shows its rows in that chat, to me only: its Ideal Text card, the walk and its summary come back for ?chat=<that chat>, each placed "chat" with its chat_id, and are gone from ?place=speaking; my old Takes, made in the pinned speaking chat, stay in "speaking"; my own speaking rows with no Take (the plan, the feelings check) are in both, so nothing disappears. An arc's own rows go to the chat of the arc's latest Take. The host, a chat that is not mine, or a person off the ring row chat_builder get 404 for ?chat=, and off the ring every row is placed as before.
 
 *Why:* services/lounge_messages.place_of is the one list (N635 item 4: the rows stay where they are written; each chat shows its own).
 

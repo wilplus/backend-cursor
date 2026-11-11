@@ -2133,9 +2133,20 @@ O2  GET /v2/user/lounge/messages?place=speaking returns only the
 speaking chat's rows, ?place=principles only the principles chat's,
 ?place=will only Will's, and no place every
 row as before; each row says its place, and a place reads older
-pages until it has a page of its own.","O1 -> LoungePlaceTest::test_every_lounge_writer_places_its_rows
+pages until it has a page of its own.
+O3  A Take recorded in my chat with the speaking host (services/
+take_door.py) shows its rows in that chat, to me only: its Ideal
+Text card, the walk and its summary come back for ?chat=<that chat>,
+each placed ""chat"" with its chat_id, and are gone from
+?place=speaking; my old Takes, made in the pinned speaking chat,
+stay in ""speaking""; my own speaking rows with no Take (the plan, the
+feelings check) are in both, so nothing disappears. An arc's own
+rows go to the chat of the arc's latest Take. The host, a chat that is not mine, or a
+person off the ring row chat_builder get 404 for ?chat=, and off the
+ring every row is placed as before.","O1 -> LoungePlaceTest::test_every_lounge_writer_places_its_rows
 O1 -> LoungePlaceTest::test_a_typed_turn_stays_in_the_chat_it_was_typed_in
-O2 -> LoungePlaceTest::test_the_read_returns_one_place",services/lounge_messages.place_of is the one list (N635 item 4: the rows stay where they are written; each chat shows its own).
+O2 -> LoungePlaceTest::test_the_read_returns_one_place
+O3 -> HostChatPlaceTest::test_a_take_made_in_the_hosts_chat_is_shown_there_to_me_only",services/lounge_messages.place_of is the one list (N635 item 4: the rows stay where they are written; each chat shows its own).
 tests/test_manager_engine.py,Story,"As the founder, I want the feedback arbitration's experiment honest (protected Confident Voice slot, per-slide exploration, withheld notes recorded as having won), so that we can later learn what feedback helps.","O1  A protected note never gives up its slot to exploration or withholding.
 O2  Exploration trades only inside the swapped note's own slide.
 O3  Every withheld note is logged as would_have_surfaced, not surfaced.
