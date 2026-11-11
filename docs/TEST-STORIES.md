@@ -3339,6 +3339,15 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 *Why:* Sentry 2026-10-29: "AuthApiError v2.v2_auth_signup — A user with this email address has already been registered" raised as an error on every repeat sign-up.
 
+### As the founder, I want "Catch more" or "Catch fewer" on one thing the walk notices to run silently beside the live setting first, so that I see what it would catch and what coaches say before anything a speaker sees changes (N647 item 3).
+
+`tests/test_silent_tries.py` · Story
+
+- **O1** One try per thing at a time; a second start is refused.
+- **O2** Re-scoring the last 20 stored recordings makes the result ready at once; it counts only the cases that differ from live, and only SETTLED coach answers (a singleton never counts).
+- **O3** "Use it" makes the candidate live, once, and only when the try is ready and at least 10 settled answers exist.
+- **O4** "Go back", or a try left for 60 days, changes nothing live.
+
 ### As a speaker, I want my Ideal Text free in both states, never the coach's unfinished edit, with the only paid item being key-moment explanations, so that I get my text without a paywall and pay only for extras.
 
 `tests/test_single_deliverable.py` · Story

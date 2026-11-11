@@ -3704,6 +3704,16 @@ how many made an account, by way; nobody else can read it.","O1 -> SignupCountTe
 O2 -> SignupCountTest::test_the_founder_reads_seen_and_made_by_way","Founder 2026-10-26, N207 item 6 (N174 item 6)."
 tests/test_signup_email_in_use.py,Story,"As a person who already has an account and fills in the sign-up form again, I want to be told my email is registered and sent to sign in.","O1  A sign-up with a registered email is answered 409 EMAIL_IN_USE.
 O2  That answer is not reported to Sentry as a server error.","O1, O2 -> test_a_registered_email_is_told_to_sign_in","Sentry 2026-10-29: ""AuthApiError v2.v2_auth_signup — A user with this email address has already been registered"" raised as an error on every repeat sign-up."
+tests/test_silent_tries.py,Story,"As the founder, I want ""Catch more"" or ""Catch fewer"" on one thing the walk notices to run silently beside the live setting first, so that I see what it would catch and what coaches say before anything a speaker sees changes (N647 item 3).","O1  One try per thing at a time; a second start is refused.
+O2  Re-scoring the last 20 stored recordings makes the result ready at
+once; it counts only the cases that differ from live, and only
+SETTLED coach answers (a singleton never counts).
+O3  ""Use it"" makes the candidate live, once, and only when the try is
+ready and at least 10 settled answers exist.
+O4  ""Go back"", or a try left for 60 days, changes nothing live.","O1 -> test_one_try_per_thing
+O2 -> test_twenty_stored_recordings_give_the_result_at_once
+O3 -> test_use_it_needs_ten_settled_answers_then_goes_live
+O4 -> test_go_back_and_expiry_change_nothing_live",
 tests/test_single_deliverable.py,Story,"As a speaker, I want my Ideal Text free in both states, never the coach's unfinished edit, with the only paid item being key-moment explanations, so that I get my text without a paywall and pay only for extras.","O1  The Ideal Text GET never shows the coach's in-progress edit.
 O2  Never-1: the Ideal Text GET carries the text and no scores or
 internal reads; the stored suggestions snapshot drops internal
