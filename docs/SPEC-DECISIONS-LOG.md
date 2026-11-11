@@ -17425,3 +17425,30 @@ The not started should be built"). For N642 and N647.
 a chart's download is a file or a copy to the clipboard.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N649 · A save that fails says so; "What you do" can be changed on its
+own; a coach stays a coach through a database blip** (founder, the Claude
+Code chat, 11 November 2026: on the line for a failed save, on "What you
+do" as an editable part in Build, and on retrying the coach and admin
+lookup once: "You have my yeses to all"; on the retry, earlier the same
+day: "Do so"). For N616, N642.
+
+1. **A save that fails says so.** In the setup of a chat, when a part
+   cannot be kept (the backend does not answer, or refuses for a reason
+   that has no line of its own), Will says "That didn't save. Try again."
+   and the screen stays as it was. Was: nothing happened, so "Yes" and
+   "Teach it" looked dead (the founder's report). The line for words the
+   chat may not show stays as it is.
+2. **"What you do" is a part.** Among the chat's parts, in Build's "Your
+   chat" too, a row "What you do" opens "What do you do?" and keeps the
+   new answer alone: the other answers, the models and the name stay.
+   Will's suggestions are made again from the new answer and are offered
+   under "Change"; nothing kept is replaced by them. "Start again" stays
+   for starting over.
+3. **A coach stays a coach through a database blip.** When the lookup of
+   the coaches' or the admins' list fails, it is tried once more; if it
+   fails again, the last answer kept for that person is used. Nobody is
+   let in without an earlier yes. Was: a real coach was refused while the
+   database did not answer (Sentry, 11 November 2026, 12:53 to 12:55 CET).
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
