@@ -14,6 +14,7 @@ OUTCOME
       row as before; each row says its place, and a place reads older
       pages until it has a page of its own.
 PROVES   O1 -> LoungePlaceTest::test_every_lounge_writer_places_its_rows
+         O1 -> LoungePlaceTest::test_a_typed_turn_stays_in_the_chat_it_was_typed_in
          O2 -> LoungePlaceTest::test_the_read_returns_one_place
 WHY      services/lounge_messages.place_of is the one list (N635 item 4:
          the rows stay where they are written; each chat shows its own).
@@ -107,6 +108,30 @@ class LoungePlaceTest(unittest.TestCase):
             for row, place in rows:
                 self.assertIn(place_of(row), (SPEAKING, PRINCIPLES, WILL))
                 self.assertEqual(place_of(row), place, f"{writer}: {row}")
+
+    def test_a_typed_turn_stays_in_the_chat_it_was_typed_in(self):
+        """N635: a turn typed in a chat, written by the backend from the
+        chat query, and Will's reply to it, stay in that chat: both rows
+        carry ``metadata.place``; with no place, as before."""
+        import uuid
+
+        from services.chat_query import persist_chat_turn
+        written: list[dict] = []
+
+        class _Db:
+            def insert_lounge_messages(self, _user, rows):
+                written.extend(rows)
+                return rows
+        for place in (SPEAKING, PRINCIPLES, WILL):
+            written.clear()
+            persist_chat_turn(_Db(), "u1", "What did I note?", "You noted this.",
+                              user_client_id=str(uuid.uuid4()), place=place,
+                              row_metadata={"arc_id": "a"} if place == WILL else None)
+            self.assertEqual([place_of(r) for r in written], [place, place], place)
+        written.clear()
+        persist_chat_turn(_Db(), "u1", "Hello", "Hi.", user_client_id=str(uuid.uuid4()))
+        self.assertEqual([place_of(r) for r in written], [WILL, WILL])
+        self.assertIsNone(written[0]["metadata"])
 
     def test_the_read_returns_one_place(self):
         from flask import Flask

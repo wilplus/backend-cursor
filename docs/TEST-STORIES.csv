@@ -2113,6 +2113,7 @@ speaking chat's rows, ?place=principles only the principles chat's,
 ?place=will only Will's, and no place every
 row as before; each row says its place, and a place reads older
 pages until it has a page of its own.","O1 -> LoungePlaceTest::test_every_lounge_writer_places_its_rows
+O1 -> LoungePlaceTest::test_a_typed_turn_stays_in_the_chat_it_was_typed_in
 O2 -> LoungePlaceTest::test_the_read_returns_one_place",services/lounge_messages.place_of is the one list (N635 item 4: the rows stay where they are written; each chat shows its own).
 tests/test_manager_engine.py,Story,"As the founder, I want the feedback arbitration's experiment honest (protected Confident Voice slot, per-slide exploration, withheld notes recorded as having won), so that we can later learn what feedback helps.","O1  A protected note never gives up its slot to exploration or withholding.
 O2  Exploration trades only inside the swapped note's own slide.
