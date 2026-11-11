@@ -380,12 +380,13 @@ def parts(recipe: dict) -> list[dict]:
               "taps": " · ".join(recipe.get("taps") or []),
               "models": " · ".join(m["q"] for m in recipe.get("models") or []) or "None yet",
               "who": labels.get(recipe.get("who") or "", ""),
-              # The ids, for the frontend to draw (N641): the saved walk,
-              # else the suggestion; ``saved`` says which.
-              "walk": walk_of(recipe)}
+              # N641's words: the steps in order, then the end; the saved
+              # walk, else the suggestion (``saved`` says which; ``walk``
+              # holds the ids).
+              "walk": walk_words(walk_of(recipe))}
     rec = "rec" in (recipe.get("send") or [])
     return [{"part": p, "title": t, "value": values[p],
-             **({"saved": bool(recipe.get("walk"))} if p == "walk" else {})}
+             **({"saved": bool(recipe.get("walk")), "walk": walk_of(recipe)} if p == "walk" else {})}
             for p, t in PART_TITLES if p != "walk" or rec]
 
 
@@ -393,6 +394,11 @@ def walk_of(recipe: Optional[dict]) -> dict:
     """The walk a chat holds ({"steps", "out"}), or the suggestion."""
     walk = (recipe or {}).get("walk") or WALK_SUGGESTION
     return {"steps": list(walk["steps"]), "out": walk["out"]}
+
+
+def walk_words(walk: dict) -> str:
+    """"Their best moment · The helper words · An Ideal Text"."""
+    return " · ".join([*(_STEP_WORDS[x] for x in walk["steps"]), _OUT_WORDS[walk["out"]]])
 
 
 def _full_name(token_payload: Any, user_id: str) -> str:

@@ -497,7 +497,9 @@ class SetupTest(_Base):
         self.assertEqual(read["recipe"]["suggest"]["walk"], {"steps": ["best", "fix", "words"], "out": "ideal_text"})
         row = [p for p in read["parts"] if p["part"] == "walk"][0]
         self.assertEqual(row, {"part": "walk", "title": "The feedback walk", "saved": False,
-                               "value": {"steps": ["best", "fix", "words"], "out": "ideal_text"}})
+                               "value": "Their best moment · One moment to try another way · "
+                                        "The helper words · An Ideal Text",
+                               "walk": {"steps": ["best", "fix", "words"], "out": "ideal_text"}})
         self.assertEqual([p["part"] for p in read["parts"]][2:4], ["out", "walk"])
         for bad in ({"steps": [], "out": "none"}, {"steps": ["best", "best"], "out": "none"},
                     {"steps": ["score"], "out": "none"}, {"steps": ["fix"], "out": "verdict"}, ["fix"]):
@@ -506,7 +508,9 @@ class SetupTest(_Base):
         saved = self._put("walk", {"steps": ["words", "best"], "out": "none", "wanted": True})
         self.assertEqual(saved.get_json()["recipe"]["walk"], {"steps": ["words", "best"], "out": "none"})
         row = [p for p in self._read()["parts"] if p["part"] == "walk"][0]
-        self.assertEqual((row["value"], row["saved"]), ({"steps": ["words", "best"], "out": "none"}, True))
+        self.assertEqual((row["value"], row["walk"], row["saved"]),
+                         ("The helper words · Their best moment · Nothing for now",
+                          {"steps": ["words", "best"], "out": "none"}, True))
         self.assertEqual({k: self._read()["recipe"][k] for k in before}, before)
 
     def _want(self):
