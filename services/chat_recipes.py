@@ -45,14 +45,17 @@ SOMETHING_ELSE = "Something else"
 PARTS_LINE = "Here are your chat's parts. Tap one to change it."
 #: The prototype's ``done`` step: each part and its title.
 PART_TITLES: tuple[tuple[str, str], ...] = (
-    ("line", "Why people come"), ("send", "They send"), ("out", "They get back"),
+    ("name", "Name"), ("line", "Why people come"), ("send", "They send"), ("out", "They get back"),
     ("walk", "The feedback walk"), ("hello", "Your hello"), ("questions", "First questions"),
     ("taps", "They can ask"),
     ("models", "Your models"), ("who", "Who answers"))
 WHO = tuple(w[1] for w in chat_suggestions.WHO)
 PRICES = tuple(chat_suggestions.PRICES)
 PARTS = ("line", "send", "out", "hello", "questions", "taps", "smart", "way", "models", "who",
-         "share", "price", "cost", "care", "sensitive", "live", "walk")
+         "share", "price", "cost", "care", "sensitive", "live", "walk",
+         "name")
+#: "Your chat is called:" (N642 item 1, N643 item 1): at most 40 characters.
+MAX_NAME = 40
 MAX_QUESTIONS, MAX_MODELS = 3, 3
 DAYS = 30
 
@@ -133,13 +136,39 @@ def _with_base(recipe: Optional[dict]) -> Optional[dict]:
     return {**recipe, "models": models} if recipe.get("models") else recipe
 
 
-def _with_walk(recipe: Optional[dict]) -> Optional[dict]:
+def _with_walk(recipe: Optional[dict], person: Any = None) -> Optional[dict]:
     """A recipe as GET reads it: Will's suggestion for the feedback walk in
-    ``suggest.walk`` (N641 item 1); ``walk`` itself only once saved."""
+    ``suggest.walk`` (N641 item 1), ``walk`` itself only once saved; and the
+    three names in ``suggest.name`` (N643 item 1), ``name`` itself (or null)
+    only once given."""
     if not recipe:
         return recipe
     suggestion = {"steps": list(WALK_STEPS), "out": "ideal_text"}
-    return {**recipe, "suggest": {**(recipe.get("suggest") or {}), "walk": suggestion}}
+    return {**recipe, "name": recipe.get("name") or None,
+            "suggest": {**(recipe.get("suggest") or {}), "walk": suggestion,
+                        "name": name_suggestions(person, recipe.get("spec"))}}
+
+
+def first_of(person: Any) -> str:
+    """The person's first name, as the chats name them."""
+    words = str(person or "").split()
+    return words[0] if words else "WillpowerLab"
+
+
+def name_suggestions(person: Any, spec: Any) -> list[str]:
+    """"{name}'s chat", "Ask {name}", "{what they do} with {name}" (N643
+    item 1), each cut to the name's 40 characters."""
+    first = first_of(person)
+    names = [f"{first}'s chat", f"Ask {first}"]
+    if str(spec or "").strip():
+        names.append(f"{' '.join(str(spec).split())} with {first}")
+    return [n[:MAX_NAME] for n in names]
+
+
+def chat_name(recipe: Optional[dict], person: Any) -> str:
+    """What the chat is called (N642 item 1): its name, else the person's
+    first name, as before."""
+    return str((recipe or {}).get("name") or "").strip() or first_of(person)
 
 
 def _one_of(allowed: Any, message: str) -> Any:
@@ -211,6 +240,7 @@ def _cost(value: Any) -> dict:
 #: Each part's check, as the contract says (PR #1893).
 _CLEAN: dict[str, Any] = {
     "line": lambda v: _words(v, 160, "Why people come"),
+    "name": lambda v: _words(v, MAX_NAME, "Your chat's name"),
     "hello": lambda v: _words(v, 220, "Your hello"),
     "send": _send,
     "out": _one_of(tuple(chat_suggestions.OUT), "They get back answer, words, todo or mark."),
@@ -274,7 +304,7 @@ def mine(database: Any, user_id: Any) -> Optional[dict]:
 
 # ── The routes' work ────────────────────────────────────────────────────
 
-def start(database: Any, user_id: Any, body: Any) -> dict:
+def start(database: Any, user_id: Any, body: Any, person: Any = None) -> dict:
     """POST /v2/chats/setup/start {"what"}: a blank recipe, each field Will's
     first suggestion; 0 provider calls for a profession built in, else 1."""
     what = (body or {}).get("what") if isinstance(body, dict) else None
@@ -297,7 +327,7 @@ def start(database: Any, user_id: Any, body: Any) -> dict:
               "share": False, "sensitive": True, "live": False}
     if kept:
         recipe["kept_models"] = list({m["model_id"]: m for m in kept}.values())
-    return {"recipe": _store(database, str(user_id), recipe)}
+    return {"recipe": _with_walk(_store(database, str(user_id), recipe), person)}
 
 
 def set_part(database: Any, user_id: Any, part: str, body: Any) -> dict:
@@ -368,11 +398,11 @@ def _real_models(database: Any, user_id: str, recipe: dict, models: list[dict]) 
     return out
 
 
-def parts(recipe: dict) -> list[dict]:
+def parts(recipe: dict, person: Any = None) -> list[dict]:
     names = dict(chat_suggestions.SEND)
     gets = dict(chat_suggestions.OUT)
     labels = {w[1]: w[0] for w in chat_suggestions.WHO}
-    values = {"line": recipe.get("line"),
+    values = {"name": chat_name(recipe, person), "line": recipe.get("line"),
               "send": " · ".join(names[k][0] for k in recipe.get("send") or [] if k in names),
               "out": gets.get(recipe.get("out") or "answer", ("",))[0],
               "hello": recipe.get("hello"),
@@ -473,23 +503,22 @@ _YOU = "People come to you"
 def join_line(recipe: Optional[dict], name: Any) -> Optional[str]:
     """The host's "Why people come" as a newcomer reads it before joining
     (N622 item 2): "People come to you ..." becomes "People come to
-    {name} ..."; any other line as the host wrote it."""
+    {the chat's name} ..." (N642 item 1: the name, else the first name);
+    any other line as the host wrote it."""
     line = str((recipe or {}).get("line") or "").strip()
     if not line:
         return None
-    first = str(name or "").split()
-    who = first[0] if first else "WillpowerLab"
+    who = chat_name(recipe, name)
     return f"People come to {who}{line[len(_YOU):]}" if line.startswith(_YOU) else line
 
 
 def own_chat(recipe: Optional[dict], name: Any) -> Optional[dict]:
-    """The host's own chat in their list of chats, under their name
-    (N618 item 8)."""
+    """The host's own chat in their list of chats, under its name (N618
+    item 8, N642 item 1); ``named`` says whether the host gave one."""
     if not recipe:
         return None
-    first = str(name or "").split()
-    return {"title": first[0] if first else "WillpowerLab", "line": recipe.get("hello"),
-            "join_line": join_line(recipe, name)}
+    return {"title": chat_name(recipe, name), "named": bool(str(recipe.get("name") or "").strip()),
+            "line": recipe.get("hello"), "join_line": join_line(recipe, name)}
 
 
 def read(database: Any, user_id: Any, token_payload: Any) -> dict:
@@ -498,10 +527,11 @@ def read(database: Any, user_id: Any, token_payload: Any) -> dict:
     time as there, for the finished screen's link."""
     from services.chat_links import my_link, name_of
     recipe = settle(database, user_id, mine(database, user_id))
-    chat = own_chat(recipe, name_of(token_payload))
+    person = name_of(token_payload)
+    chat = own_chat(recipe, person)
     if chat is not None:
         chat["link"] = my_link(database, user_id, token_payload)
-    return {"recipe": _with_walk(_with_base(recipe)), "parts": parts(recipe) if recipe else [],
+    return {"recipe": _with_walk(_with_base(recipe), person), "parts": parts(recipe, person) if recipe else [],
             "own_chat": chat, "cost": cost(recipe), "skipped_models": skipped_models(database, user_id, recipe),
             "price_changes": price_changes(database, recipe), "spec_guess": spec_guess(database, user_id)}
 
@@ -674,7 +704,7 @@ def skipped_models(database: Any, user_id: Any, recipe: Optional[dict]) -> list[
             if r["model_id"] in theirs]
 
 
-def edit(database: Any, user_id: Any, body: Any) -> dict:
+def edit(database: Any, user_id: Any, body: Any, person: Any = None) -> dict:
     """POST /v2/chats/setup/edit {"said"}: any words open the parts again."""
     said = (body or {}).get("said") if isinstance(body, dict) else None
     if not isinstance(said, str) or not said.strip():
@@ -682,7 +712,7 @@ def edit(database: Any, user_id: Any, body: Any) -> dict:
     recipe = mine(database, user_id)
     if recipe is None:
         raise RecipeError("NOT_STARTED", "Say what you do first.", 409)
-    return {"line": PARTS_LINE, "parts": parts(recipe)}
+    return {"line": PARTS_LINE, "parts": parts(recipe, person)}
 
 
 def taps_of(recipe: dict) -> list[str]:

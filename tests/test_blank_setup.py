@@ -27,6 +27,8 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          FIRST-20 -> SetupTest::test_test_my_chat_answers_as_my_people_would
          FIRST-21 -> SetupTest::test_to_change_the_chat_tell_will
          FIRST-22 -> SetupTest::test_who_answers_is_three_plain_choices
+         N642.1   -> SetupTest::test_a_chat_has_a_name_its_first_name_until_given
+         N642.1   -> VisitorTest::test_people_who_come_read_the_chats_name
          N641.1   -> SetupTest::test_the_feedback_walk_is_kept_in_a_chat_that_takes_a_recording
          N641.2   -> SetupTest::test_i_want_this_tells_the_founder_once
          N641.2   -> SetupTest::test_the_ask_is_kept_when_the_mail_cannot_go
@@ -468,7 +470,7 @@ class SetupTest(_Base):
         self.assertEqual(self.store.tables.get("chat_messages", []), [])
         own = self._read()["own_chat"]
         link = self._link(TOMEK).get_json()
-        self.assertEqual(own, {"title": "Tomek", "line": "Hi. Send me a photo of your scalp, and tell me what worries you.",
+        self.assertEqual(own, {"title": "Tomek", "named": False, "line": "Hi. Send me a photo of your scalp, and tell me what worries you.",
                                "link": link,
                                "join_line": "People come to Tomek with hair and scalp worries."})
         self.assertEqual(link["path"], f"/c/{link['token']}")
@@ -480,8 +482,29 @@ class SetupTest(_Base):
                                headers=self._as(TOMEK)).get_json()
         self.assertEqual(res["line"], "Here are your chat's parts. Tap one to change it.")
         self.assertEqual([p["title"] for p in res["parts"]],
-                         ["Why people come", "They send", "They get back", "Your hello",
+                         ["Name", "Why people come", "They send", "They get back", "Your hello",
                           "First questions", "They can ask", "Your models", "Who answers"])
+
+    def test_a_chat_has_a_name_its_first_name_until_given(self):
+        """N642.1: "Your chat is called:" with three suggestions from the
+        first name and what the person does; until a name is given the chat
+        is called by the first name; the name is a part, "Name", first; at
+        most 40 characters, with the host's word checks."""
+        started = self._start().get_json()["recipe"]
+        self.assertEqual(started["suggest"]["name"], ["Tomek's chat", "Ask Tomek", "Trichologist with Tomek"])
+        read = self._read()
+        self.assertIsNone(read["recipe"]["name"])
+        self.assertEqual(read["recipe"]["suggest"]["name"], started["suggest"]["name"])
+        self.assertEqual(read["parts"][0], {"part": "name", "title": "Name", "value": "Tomek"})
+        self.assertEqual((read["own_chat"]["title"], read["own_chat"]["named"]), ("Tomek", False))
+        self.assertEqual(self._put("name", "x" * 41).status_code, 400)
+        bad = self._put("name", "I'll give you a score out of 10.")
+        self.assertEqual((bad.status_code, bad.get_json()["code"]), (400, "RECIPE_WORDS"))
+        self.assertEqual(self._put("name", "  Ask   Tomek ").get_json()["recipe"]["name"], "Ask Tomek")
+        read = self._read()
+        self.assertEqual(read["parts"][0]["value"], "Ask Tomek")
+        self.assertEqual((read["own_chat"]["title"], read["own_chat"]["named"]), ("Ask Tomek", True))
+        self.assertEqual(read["own_chat"]["join_line"], "People come to Ask Tomek with hair and scalp worries.")
 
     def test_the_feedback_walk_is_kept_in_a_chat_that_takes_a_recording(self):
         """N641.1: "The feedback walk" holds steps from best, fix, words in
@@ -500,7 +523,7 @@ class SetupTest(_Base):
                                "value": "Their best moment · One moment to try another way · "
                                         "The helper words · An Ideal Text",
                                "walk": {"steps": ["best", "fix", "words"], "out": "ideal_text"}})
-        self.assertEqual([p["part"] for p in read["parts"]][2:4], ["out", "walk"])
+        self.assertEqual([p["part"] for p in read["parts"]][3:5], ["out", "walk"])
         for bad in ({"steps": [], "out": "none"}, {"steps": ["best", "best"], "out": "none"},
                     {"steps": ["score"], "out": "none"}, {"steps": ["fix"], "out": "verdict"}, ["fix"]):
             self.assertEqual(self._put("walk", bad).status_code, 400, bad)
@@ -583,6 +606,29 @@ class VisitorTest(_Base):
                 {"id": f"a{i}", "thread_id": "elsewhere", "author_member_id": "host-elsewhere",
                  "kind": "text", "body": "My answer.", "meta": {"answer_to": f"q{i}"},
                  "created_at": f"2026-11-0{1 + i % 9}T00:00:00+00:00"})
+
+    def test_people_who_come_read_the_chats_name(self):
+        """N642.1: the join page, the chat's header and the visitor's row
+        carry the chat's name; the person stays the one who invited, whose
+        assistant answers and whose model it is; the host's own row still
+        names the visitor."""
+        chat = self._host(name="Ask Tomek")
+        token = self._link(TOMEK).get_json()["token"]
+        page = self.client.get(f"/v2/chats/join/{token}").get_json()
+        self.assertEqual((page["chat"], page["name"], page["invited"], page["assistant"]),
+                         ("Ask Tomek", "Tomek", "Tomek invited you", "Tomek's assistant"))
+        self.assertEqual(page["learn"], "People come to Ask Tomek with hair and scalp worries.")
+        host = self.client.get(f"/v2/chats/{chat}/host", headers=self._as(PIOTR)).get_json()["host"]
+        self.assertEqual((host["name"], host["assistant"], host["models"][0]["by"]),
+                         ("Ask Tomek", "Tomek's assistant", "Tomek's model"))
+        row = self.client.get("/v2/chats", headers=self._as(PIOTR)).get_json()["chats"][0]
+        self.assertEqual(row["title"], "Ask Tomek")
+        self.assertEqual(self.client.get("/v2/chats", headers=self._as(TOMEK)).get_json()["chats"][0]["title"],
+                         "Piotr")
+        # A chat not open to people yet keeps the first name for them.
+        self._put("live", False)
+        self.assertEqual(self.client.get("/v2/chats", headers=self._as(PIOTR)).get_json()["chats"][0]["title"],
+                         "Tomek")
 
     def test_not_yet_keeps_it_saved_and_yes_opens_it(self):
         """FIRST-11: Not yet keeps it saved, and nobody meets it; Yes opens

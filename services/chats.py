@@ -349,6 +349,10 @@ def list_chats(database: Any, user_id: Any) -> dict:
     # ring (N579 item 2); a guest (a demo person, a customer) has none.
     from services import assistants, rings
     labelled = rings.feature_is_on_for_user(assistants.CHAT_BUILDER, user_id, database=database)
+    # A host's chat is shown under its name (N642 item 1), to everyone in it
+    # but the host; the person's name stays for the assistant and the rest.
+    named = assistants.chat_titles(database, [str(o["user_id"]) for o in others.values()
+                                              if o.get("user_id")])
     chats: list[tuple[str, dict]] = []
     for t in threads:
         other = others.get(str(t["id"])) or {}
@@ -357,7 +361,7 @@ def list_chats(database: Any, user_id: Any) -> dict:
         last = lasts[str(t["id"])]
         chats.append(((last or t)["created_at"] or "", {
             "id": str(t["id"]), "kind": t["kind"],
-            "title": other.get("display_name") or t["title"],
+            "title": named.get(str(other.get("user_id") or "")) or other.get("display_name") or t["title"],
             "subtitle": other.get("subtitle"), "last": last,
             "joined_through": through.get(str(t["id"])),
             "assistant": assistants.assistant_name(other.get("display_name")) if person else None,
