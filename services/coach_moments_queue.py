@@ -737,8 +737,10 @@ def host_chats_note(takes: list[tuple], chat_of: Optional[Callable[[str], Option
     services.take_door.made_in, read only when the alarm fires, for the few
     Takes it names; a failed read leaves that Take out and never costs the
     alarm."""
+    if chat_of is None:
+        return ""
     found: list[str] = []
-    for take in takes if chat_of else ():
+    for take in takes:
         if len(take) < 3 or not take[2]:
             continue
         try:
