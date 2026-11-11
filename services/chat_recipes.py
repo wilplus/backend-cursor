@@ -45,7 +45,7 @@ SOMETHING_ELSE = "Something else"
 PARTS_LINE = "Here are your chat's parts. Tap one to change it."
 #: The prototype's ``done`` step: each part and its title.
 PART_TITLES: tuple[tuple[str, str], ...] = (
-    ("name", "Name"), ("line", "Why people come"), ("send", "They send"), ("out", "They get back"),
+    ("what", "What you do"), ("name", "Name"), ("line", "Why people come"), ("send", "They send"), ("out", "They get back"),
     ("walk", "The feedback walk"), ("practice", "Practice after a Take"),
     ("hello", "Your hello"), ("questions", "First questions"),
     ("taps", "They can ask"),
@@ -54,7 +54,7 @@ WHO = tuple(w[1] for w in chat_suggestions.WHO)
 PRICES = tuple(chat_suggestions.PRICES)
 PARTS = ("line", "send", "out", "hello", "questions", "taps", "smart", "way", "models", "who",
          "share", "price", "cost", "care", "sensitive", "live", "walk", "practice",
-         "name")
+         "name", "what")
 #: "Your chat is called:" (N642 item 1, N643 item 1): at most 40 characters.
 MAX_NAME = 40
 MAX_QUESTIONS, MAX_MODELS = 3, 3
@@ -245,6 +245,7 @@ def _cost(value: Any) -> dict:
 
 #: Each part's check, as the contract says (PR #1893).
 _CLEAN: dict[str, Any] = {
+    "what": lambda v: (lambda w: w[0].upper() + w[1:])(_words(v, chat_suggestions.MAX_SPEC, "What you do")),
     "line": lambda v: _words(v, 160, "Why people come"),
     "name": lambda v: _words(v, MAX_NAME, "Your chat's name"),
     "hello": lambda v: _words(v, 220, "Your hello"),
@@ -347,14 +348,7 @@ def set_part(database: Any, user_id: Any, part: str, body: Any) -> dict:
     if part == "models":
         value = _agreed_prices(database, str(user_id), recipe, value)
         value = _real_models(database, str(user_id), recipe, value)
-    if part == "walk":
-        if "rec" not in (recipe.get("send") or []):
-            raise RecipeError("RECIPE_INVALID", "The feedback walk is for a chat that takes a recording.")
-        # "I want this", once asked, stays asked whatever the walk becomes.
-        before = recipe.get("walk") or {}
-        value = {**value, **{k: before[k] for k in ("wanted", "wanted_at", "off") if k in before}}
-    if part == "practice" and "rec" not in (recipe.get("send") or []):
-        raise RecipeError("RECIPE_INVALID", "Practice after a Take is for a chat that takes a recording.")
+    value = _recording_part(recipe, part, value)
     if part == "who" and value == "assistant" and recipe.get("sensitive") is not False:
         # Health, law or money, or not answered yet: nothing goes out until
         # the host sends it (N616 item 13, N622 item 1).
@@ -369,12 +363,36 @@ def set_part(database: Any, user_id: Any, part: str, body: Any) -> dict:
         stored = _store(database, str(user_id), recipe)
         return {"recipe": stored, "cost": cost(stored)}
     recipe = {**recipe, part: value}
+    if part == "what":
+        recipe = _remade_from(recipe, value, str(user_id))
     if part == "smart" and value is False:
         recipe["models"] = []
     if part == "share" and value is False:
         recipe.pop("price", None)
     stored = _store(database, str(user_id), recipe)
     return {"recipe": stored, "cost": cost(stored)}
+
+
+def _recording_part(recipe: dict, part: str, value: Any) -> Any:
+    """The walk and practice are for a chat that takes a recording; a saved
+    walk keeps what was asked for."""
+    if part == "walk":
+        if "rec" not in (recipe.get("send") or []):
+            raise RecipeError("RECIPE_INVALID", "The feedback walk is for a chat that takes a recording.")
+        # "I want this", once asked, stays asked whatever the walk becomes.
+        before = recipe.get("walk") or {}
+        value = {**value, **{k: before[k] for k in ("wanted", "wanted_at", "off") if k in before}}
+    if part == "practice" and "rec" not in (recipe.get("send") or []):
+        raise RecipeError("RECIPE_INVALID", "Practice after a Take is for a chat that takes a recording.")
+    return value
+
+
+def _remade_from(recipe: dict, spec: str, user_id: str) -> dict:
+    """A new answer to "What do you do?" (N649 item 2): Will's suggestions
+    again from it; every other answer stays. ``_derived`` rebuilds ``fit``."""
+    sug, _calls = chat_suggestions.suggest(spec, user_id=user_id)
+    return {**{k: v for k, v in recipe.items() if k != "what"}, "spec": spec,
+            "suggest": {**(recipe.get("suggest") or {}), **sug}}
 
 
 def _real_models(database: Any, user_id: str, recipe: dict, models: list[dict]) -> list[dict]:
@@ -420,7 +438,7 @@ def parts(recipe: dict, person: Any = None) -> list[dict]:
     names = dict(chat_suggestions.SEND)
     gets = dict(chat_suggestions.OUT)
     labels = {w[1]: w[0] for w in chat_suggestions.WHO}
-    values = {"name": chat_name(recipe, person), "line": recipe.get("line"),
+    values = {"what": recipe.get("spec"), "name": chat_name(recipe, person), "line": recipe.get("line"),
               "send": " · ".join(names[k][0] for k in recipe.get("send") or [] if k in names),
               "out": gets.get(recipe.get("out") or "answer", ("",))[0],
               "hello": recipe.get("hello"),

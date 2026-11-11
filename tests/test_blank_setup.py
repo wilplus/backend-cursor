@@ -567,6 +567,29 @@ class SetupTest(_Base):
                                "can_try": True})
         self.assertEqual(link["path"], f"/c/{link['token']}")
 
+    def test_what_you_do_changes_alone_and_keeps_every_other_answer(self):
+        """N649 item 2: a new answer to "What do you do?" makes Will's
+        suggestions again and keeps every other answer."""
+        def rings(feature, user_id, database=None):
+            del database
+            return feature in ("chat_builder", "ai_models") and str(user_id) == TOMEK
+        with patch("services.rings.feature_is_on_for_user", rings):
+            self._start()
+            self._put("hello", "Hi, show me your scalp.")
+            self._put("models", [self._model()])
+            before = self._read()["recipe"]
+            res = self._put("what", "barber")
+            self.assertEqual(res.status_code, 200)
+            after = self._read()
+        rec = after["recipe"]
+        self.assertEqual(rec["spec"], "Barber")
+        self.assertEqual(after["parts"][0], {"part": "what", "title": "What you do", "value": "Barber"})
+        for k in ("hello", "line", "models", "send", "out", "who", "questions", "taps"):
+            self.assertEqual(rec[k], before[k])
+        self.assertTrue(rec["suggest"]["line"])
+        self.assertNotEqual(rec["suggest"]["line"], before["suggest"]["line"])
+        self.assertIn("walk", rec["suggest"])
+
     def test_to_change_the_chat_tell_will(self):
         """FIRST-21: any words open the chat's parts again."""
         self._start()
@@ -574,7 +597,7 @@ class SetupTest(_Base):
                                headers=self._as(TOMEK)).get_json()
         self.assertEqual(res["line"], "Here are your chat's parts. Tap one to change it.")
         self.assertEqual([p["title"] for p in res["parts"]],
-                         ["Name", "Why people come", "They send", "They get back", "Your hello",
+                         ["What you do", "Name", "Why people come", "They send", "They get back", "Your hello",
                           "First questions", "They can ask", "Your models", "Who answers"])
 
     def test_practice_after_a_take_is_an_off_switch_in_a_chat_that_takes_a_recording(self):
@@ -622,14 +645,14 @@ class SetupTest(_Base):
         read = self._read()
         self.assertIsNone(read["recipe"]["name"])
         self.assertEqual(read["recipe"]["suggest"]["name"], started["suggest"]["name"])
-        self.assertEqual(read["parts"][0], {"part": "name", "title": "Name", "value": "Tomek"})
+        self.assertEqual(read["parts"][1], {"part": "name", "title": "Name", "value": "Tomek"})
         self.assertEqual((read["own_chat"]["title"], read["own_chat"]["named"]), ("Tomek", False))
         self.assertEqual(self._put("name", "x" * 41).status_code, 400)
         bad = self._put("name", "I'll give you a score out of 10.")
         self.assertEqual((bad.status_code, bad.get_json()["code"]), (400, "RECIPE_WORDS"))
         self.assertEqual(self._put("name", "  Ask   Tomek ").get_json()["recipe"]["name"], "Ask Tomek")
         read = self._read()
-        self.assertEqual(read["parts"][0]["value"], "Ask Tomek")
+        self.assertEqual(read["parts"][1]["value"], "Ask Tomek")
         self.assertEqual((read["own_chat"]["title"], read["own_chat"]["named"]), ("Ask Tomek", True))
         self.assertEqual(read["own_chat"]["join_line"], "People come to Ask Tomek with hair and scalp worries.")
 
@@ -650,7 +673,7 @@ class SetupTest(_Base):
                                "value": "Their best moment · One moment to try another way · "
                                         "The helper words · An Ideal Text",
                                "walk": {"steps": ["best", "fix", "words"], "out": "ideal_text"}})
-        self.assertEqual([p["part"] for p in read["parts"]][3:5], ["out", "walk"])
+        self.assertEqual([p["part"] for p in read["parts"]][4:6], ["out", "walk"])
         for bad in ({"steps": [], "out": "none"}, {"steps": ["best", "best"], "out": "none"},
                     {"steps": ["score"], "out": "none"}, {"steps": ["fix"], "out": "verdict"}, ["fix"]):
             self.assertEqual(self._put("walk", bad).status_code, 400, bad)
