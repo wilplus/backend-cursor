@@ -5,7 +5,7 @@ STORY    As a speaker in my chat with the speaking host, I want to record a
          I never get a speaker's Take unless they send it to me.
 OUTCOME
   O1  In my chat with the speaking host, whose recipe takes a recording and
-      whose walk ends in an Ideal Text, the chat says "speaking" (the list
+      whose walk ends in an Ideal Text, the chat says "takes" (the list
       and the chat), and my Take, once uploaded, is tagged with it: found by
       ``made_in`` and listed once by ``takes_made_in``. The Take is the same
       Take, with its Ideal Text; nothing is copied, and no push goes.
@@ -77,8 +77,8 @@ class TakeDoorTest(unittest.TestCase):
         return self._post(f"/v2/chats/{chat}/take", {"take": take})
 
     def _speaking(self, chat):
-        listed = {c["id"]: c["speaking"] for c in self._get("/v2/chats").get_json()["chats"]}
-        read = self._get(f"/v2/chats/{chat}/messages").get_json()["speaking"]
+        listed = {c["id"]: c["takes"] for c in self._get("/v2/chats").get_json()["chats"]}
+        read = self._get(f"/v2/chats/{chat}/messages").get_json()["takes"]
         self.assertEqual(listed[chat], read)
         return read
 
@@ -157,7 +157,7 @@ class TakeDoorTest(unittest.TestCase):
         self.assertEqual(self._get(f"/v2/chats/{chat}/messages").get_json()["messages"], [])
         row = next(c for c in self._get("/v2/chats").get_json()["chats"] if c["id"] == chat)
         self.assertIsNone(row["last"])
-        self.assertFalse(row["speaking"])
+        self.assertFalse(row["takes"])
         self.assertEqual(self._get(f"/v2/chats/{chat}/messages/{tagged}/take").status_code, 404)
         with patch("services.lab_audio_storage.get_lab_audio_bytes", lambda key, **_: b"OggS"):
             self.assertEqual(self._get(f"/v2/chats/{chat}/messages/{tagged}/audio").status_code, 404)

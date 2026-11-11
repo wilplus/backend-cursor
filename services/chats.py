@@ -382,7 +382,7 @@ def list_chats(database: Any, user_id: Any) -> dict:
             "joined_through": through.get(str(t["id"])),
             "assistant": assistants.assistant_name(other.get("display_name")) if person else None,
             "blocked": chat_safety.blocking({"blocked_spans": spans.get(me, [])}),
-            "speaking": str(t["id"]) in speaking}))
+            "takes": str(t["id"]) in speaking}))
     chats.sort(key=lambda pair: str(pair[0]), reverse=True)
     return {"chats": [chat for _, chat in chats]}
 
@@ -565,7 +565,7 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
             "joined_by": None if through else joined_by(database, user_id, thread),
             "blocked": chat_safety.blocking({"blocked_spans": spans}),
             # A Take can be recorded here, through the one loop (N648 item 8).
-            "speaking": thread in doors(database, user_id, {thread: str(me["id"])})}
+            "takes": thread in doors(database, user_id, {thread: str(me["id"])})}
 
 
 # ── Writing ──────────────────────────────────────────────────────────────
