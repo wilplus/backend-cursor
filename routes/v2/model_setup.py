@@ -11,6 +11,8 @@ services/model_setup_store.py for the tables).
   POST /v2/models/<id>/setup/data                existing data (multipart ``file``)
   GET  /v2/models/<id>/setup/first-ten           the next of the owner's first 10
   POST /v2/models/<id>/setup/first-ten/<eid>     {step, answer}
+  GET  /v2/models/coach-tasks                    the coach's queue as models
+                                                 (services/model_coach_tasks.py)
   GET  /v2/models/coming                         images, video, recordings: coming
   POST /v2/models/coming/<kind>/want             "I want this", one mail, once
                                                  (services/model_coming.py; ring
@@ -170,3 +172,24 @@ def v2_models_coming_want(kind):
     from services import model_coming
     payload = getattr(request, "token_payload", None)
     return _run("coming want", lambda: model_coming.want(db, _me(), kind, payload))
+
+
+@v2_bp.route("/models/coach-tasks", methods=["GET"])
+@require_auth
+def v2_models_coach_tasks():
+    """The coach's queue in the models tab, each task with what waits for
+    this coach and where it is answered today (N642 item 6, step one)."""
+    from routes.admin import is_admin, is_coach
+    from services import model_coach_tasks
+    me = _me()
+    coach = bool(me) and (is_admin(me) or is_coach(me))
+
+    def moments() -> int:
+        from routes.v2.coach import _bookmarked_snippet_ids, _language_matched_rows
+        from services.coach_moments_queue import walk_for_coach
+        from services.coach_pseudonym import coach_pseudonym
+        return model_coach_tasks.walk_waiting(walk_for_coach(
+            db, rater_id=me, matched_rows=_language_matched_rows,
+            bookmarked=_bookmarked_snippet_ids, pseudonym_for=coach_pseudonym))
+    return _run("coach tasks", lambda: model_coach_tasks.tasks(
+        db, me, is_coach=coach, moments_waiting=moments))
