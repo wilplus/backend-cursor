@@ -88,10 +88,15 @@ def _model(raw: Any, i: int) -> dict:
     if not isinstance(raw, dict):
         raise RecipeError("RECIPE_INVALID", f"Model {i + 1} must be an object.")
     opts = raw.get("opts")
-    if not isinstance(opts, list) or len(opts) != 3:
-        raise RecipeError("RECIPE_INVALID", f"Model {i + 1} has three answers.")
+    if isinstance(opts, list) and len(opts) > 3:
+        raise RecipeError("TOO_MANY_ANSWERS", f"Model {i + 1} has at most three answers.")
+    if not isinstance(opts, list) or len(opts) < 2:
+        raise RecipeError("RECIPE_INVALID", f"Model {i + 1} has two or three answers.")
+    kept_opts = [_words(o, 24, f"An answer of model {i + 1}") for o in opts]
+    if len({o.lower() for o in kept_opts}) != len(kept_opts):
+        raise RecipeError("RECIPE_INVALID", f"Model {i + 1}'s answers are all different.")
     out: dict[str, Any] = {"q": _words(raw.get("q"), 90, f"Model {i + 1}"),
-                           "opts": [_words(o, 22, f"An answer of model {i + 1}") for o in opts],
+                           "opts": kept_opts,
                            "says": _words(raw.get("says"), 200, f"Model {i + 1}'s line", empty=True),
                            "own": raw.get("own", True) is not False}
     if out["own"] and raw.get("model_id"):

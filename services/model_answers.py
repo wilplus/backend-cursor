@@ -80,6 +80,24 @@ def answers_for(question: Any) -> list[str]:
     return [*things, UNSURE]
 
 
+#: The other ways "Change" offers for a yes-or-no question (the setup's own
+#: sets, hostSetupCopy.ts OPTS).
+_YES_NO_SETS = [YES_NO, ["Yes", "Somewhat", "No"], ["A lot", "A little", "None"]]
+
+
+def sets(question: Any) -> list[list[str]]:
+    """Up to three sets for "Change", the first ``answers_for``'s: for a
+    question that names the things, those with "Not sure" and without it;
+    for a yes-or-no question, the setup's yes-or-no sets. Never a yes-or-no
+    set for a question that names the things (N646 item 1)."""
+    first = answers_for(question)
+    if first == YES_NO:
+        return [list(s) for s in _YES_NO_SETS]
+    things = [a for a in first if a != UNSURE]
+    out = [first] + ([things] if len(things) >= 2 and things != first else [])
+    return out[:MOST]
+
+
 def fix(question: Any, answers: Any) -> list[str]:
     """Suggested answers kept, unless the question names the things to tell
     apart: then those (N646 item 1)."""

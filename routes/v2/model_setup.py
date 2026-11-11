@@ -11,7 +11,7 @@ services/model_setup_store.py for the tables).
   POST /v2/models/<id>/setup/data                existing data (multipart ``file``)
   GET  /v2/models/<id>/setup/first-ten           the next of the owner's first 10
   POST /v2/models/<id>/setup/first-ten/<eid>     {step, answer}
-  GET  /v2/models/answers?question=…             the answers a question starts with
+  POST /v2/models/setup/answers                  {question}: the answers it starts with
                                                  (services/model_answers.py)
   GET  /v2/models/coach-tasks                    the coach's queue as models
                                                  (services/model_coach_tasks.py)
@@ -197,20 +197,23 @@ def v2_models_coach_tasks():
         db, me, is_coach=coach, moments_waiting=moments))
 
 
-@v2_bp.route("/models/answers", methods=["GET"])
+
+@v2_bp.route("/models/setup/answers", methods=["POST"])
+@limiter.limit("120 per hour", scope="model_setup_answers")
 @require_auth
-def v2_models_answers():
-    """?question=…: the answers a model with this question starts with
-    (N646 item 1): what it names to tell apart, then "Not sure"; else
-    "Yes", "No", "Not sure". At most three; rules, no provider call."""
+def v2_model_setup_answers():
+    """{question} → {sets}: up to three sets of two or three answers for a
+    typed question, the first inferred from it (N646 item 1): what it names
+    to tell apart, then "Not sure"; else "Yes", "No", "Not sure". Rules, no
+    provider call. Ring chat_builder or ai_models."""
     from services import model_answers, model_coming
     from services.chats import ChatsError
 
     def work() -> dict:
         if not model_coming.on(db, _me()):
             raise ChatsError("NOT_FOUND", "Not found.", 404)
-        question = " ".join(str(request.args.get("question") or "").split())[:200]
+        question = " ".join(str(_body().get("question") or "").split())[:200]
         if not question:
             raise ChatsError("EMPTY", "Write the question first.")
-        return {"answers": model_answers.answers_for(question)}
+        return {"sets": model_answers.sets(question)}
     return _run("answers", work)

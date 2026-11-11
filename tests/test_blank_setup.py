@@ -196,11 +196,13 @@ class SetupTest(_Base):
         self.assertEqual(self._put("taps", ["One", "Two", "Something else"]).status_code, 400)
 
     def test_a_model_is_one_question_with_three_answers(self):
-        """FIRST-07: one question and exactly three answers."""
+        """FIRST-07: one question and two or three answers (N646 item 2:
+        never one, never four)."""
         self._start()
         self.assertEqual(self._put("models", [self._model()]).status_code, 200)
-        two = {"q": "Is it dry?", "opts": ["Yes", "No"]}
-        self.assertEqual(self._put("models", [two]).status_code, 400)
+        self.assertEqual(self._put("models", [{"q": "Is it dry?", "opts": ["Yes"]}]).status_code, 400)
+        self.assertEqual(self._put("models", [{"q": "Is it dry?", "opts": ["Yes", "No", "Maybe", "Other"]}])
+                         .status_code, 400)
         self.assertEqual(self._put("models", [self._model()] * 4).status_code, 400)
 
     def test_a_model_made_here_is_a_real_model_teach_it_opens(self):
@@ -358,16 +360,18 @@ class SetupTest(_Base):
             del database
             return feature in ("chat_builder", "ai_models") and str(user_id) == TOMEK
 
-        def answers(q):
-            return self.client.get("/v2/models/answers", query_string={"question": q},
-                                   headers=self._as(TOMEK))
+        def answers(q, who=TOMEK):
+            return self.client.post("/v2/models/setup/answers", json={"question": q}, headers=self._as(who))
         with patch("services.rings.feature_is_on_for_user", rings):
             self.assertEqual(answers("Is the wood cracked or broken?").get_json(),
-                             {"answers": ["Cracked", "Broken", "Not sure"]})
-            self.assertEqual(answers("Is this a quote, a paraphrase or neither?").get_json()["answers"],
+                             {"sets": [["Cracked", "Broken", "Not sure"], ["Cracked", "Broken"]]})
+            self.assertEqual(answers("Is this a quote, a paraphrase or neither?").get_json()["sets"][0],
                              ["Quote", "Paraphrase", "Neither"])
-            self.assertEqual(answers("Is this a dry scalp?").get_json()["answers"], ["Yes", "No", "Not sure"])
-            self.assertEqual(len(answers("Is it red, green, blue or yellow?").get_json()["answers"]), 3)
+            plain = answers("Is this a dry scalp?").get_json()["sets"]
+            self.assertEqual(plain[0], ["Yes", "No", "Not sure"])
+            for got in (plain, answers("Is it red, green, blue or yellow?").get_json()["sets"]):
+                self.assertTrue(all(2 <= len(one) <= 3 for one in got) and len(got) <= 3)
+            self.assertNotIn(["Yes", "No", "Not sure"], answers("Is the wood cracked or broken?").get_json()["sets"])
             self.assertEqual(answers("").status_code, 400)
             self.provider.answer = {"models": [{"q": "Is the wood cracked or broken?",
                                                 "opts": ["Yes", "No", "Not sure"], "says": "It is cracked."}]}
@@ -375,13 +379,22 @@ class SetupTest(_Base):
             self.assertEqual(sug["models"][0]["opts"], ["Cracked", "Broken", "Not sure"])
             self.assertEqual(self.provider.calls, ["chat_setup_suggest"])
             four = {**self._model("Is it red or green?"), "opts": ["Red", "Green", "Blue", "Not sure"]}
-            self.assertEqual(self._put("models", [four]).status_code, 400)
-            blocks = self.client.post("/v2/models/setup/blocks", headers=self._as(TOMEK),
-                                      json={"question": "Is it red or green?", "answers": four["opts"]})
-            self.assertEqual(blocks.status_code, 400)
-        no_ring = self.client.get("/v2/models/answers", query_string={"question": "Is it dry?"},
-                                  headers=self._as(PIOTR))
-        self.assertEqual(no_ring.status_code, 404)
+            refused = self._put("models", [four])
+            self.assertEqual((refused.status_code, refused.get_json()["code"]), (400, "TOO_MANY_ANSWERS"))
+            def blocks(answers_given):
+                return self.client.post("/v2/models/setup/blocks", headers=self._as(TOMEK),
+                                        json={"question": "Is it red or green?", "answers": answers_given})
+            self.assertEqual(blocks(four["opts"]).get_json()["code"], "TOO_MANY_ANSWERS")
+            for bad in (["Red"], ["Red", "red"], ["Red", ""], ["Red", "x" * 25]):
+                self.assertEqual(blocks(bad).get_json()["code"], "BAD_ANSWERS", bad)
+            # Two answers are a model too, on both routes.
+            two = blocks(["Red", "Green"])
+            self.assertEqual(two.status_code, 200)
+            made = next(r for r in self.store.tables["ai_models"] if r["id"] == two.get_json()["model_id"])
+            self.assertEqual((made["status"], made["recipe"]["scale"]), ("learning", ["Red", "Green"]))
+            card = self._put("models", [{**self._model("Is it dry or oily?"), "opts": ["Dry", "Oily"]}])
+            self.assertEqual(card.get_json()["recipe"]["models"][0]["opts"], ["Dry", "Oily"])
+        self.assertEqual(answers("Is it dry?", PIOTR).status_code, 404)  # no ring
 
     def test_the_answers_can_change_until_an_answer_counted(self):
         """N646.3, N646.4: the answers change in the setup, on the card or on
