@@ -324,10 +324,14 @@ PRINCIPLES_KEYS = frozenset({
 
 
 def place_of(row: dict) -> str:
-    """"speaking", "principles" or "will" for one Lounge row (N635)."""
+    """"speaking", "principles" or "will" for one Lounge row (N635). A row
+    stamped with the chat it was typed in (``metadata.place``, a typed turn
+    and Will's reply to it) stays in that chat."""
+    meta = row.get("metadata")
+    if isinstance(meta, dict) and meta.get("place") in PLACES:
+        return str(meta["place"])
     if row.get("kind") in SPEAKING_KINDS:
         return SPEAKING
-    meta = row.get("metadata")
     if not isinstance(meta, dict):
         return WILL
     if any(meta.get(k) not in (None, "", False) for k in SPEAKING_KEYS):
