@@ -33,7 +33,9 @@ THE SEAM FOR A SILENT TRY (step 4, a neighbouring session). All pure; nothing
 here writes:
   ``setting_for(thing)``            the live values of a thing's dials
   ``step(settings, thing, "more")`` a candidate one notch over, within bounds
-  ``candidate(overrides)`` / ``with_changes(settings, changes)``
+  ``candidate(overrides)``          the live set with the overrides; an
+                                    unknown name or a bad value raises
+  ``with_changes(settings, changes)``
   ``with trying(values):``          the same rules, reading the candidate, in
                                     this context only (a ``contextvars``
                                     value: other threads and requests keep
@@ -153,10 +155,10 @@ def defaults() -> dict[str, Any]:
     return dict(DEFAULTS)
 
 
-def with_changes(settings: Mapping[str, Any], changes: Mapping[str, Any]) -> dict[str, Any]:
-    """``settings`` with each change that passes its bounds. Pure; stores
-    nothing. An unknown name, a pinned one or a bad value is left out."""
-    values = {name: settings.get(name, default) for name, default in DEFAULTS.items()}
+def _lenient(base: Mapping[str, Any], changes: Mapping[str, Any]) -> dict[str, Any]:
+    """``base`` with each change it may hold; the rest left out (the stored
+    record, where a bad value must fall back, never fail)."""
+    values = {name: base.get(name, default) for name, default in DEFAULTS.items()}
     for name, value in (changes or {}).items():
         checked = _checked(str(name), value)
         if checked is not None:
@@ -164,9 +166,24 @@ def with_changes(settings: Mapping[str, Any], changes: Mapping[str, Any]) -> dic
     return values
 
 
-def candidate(overrides: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
-    """The defaults with the overrides that pass their bounds. Pure."""
-    return with_changes(DEFAULTS, overrides or {})
+def with_changes(settings: Mapping[str, Any], changes: Mapping[str, Any]) -> dict[str, Any]:
+    """``settings`` with ``changes``. Pure; stores nothing. ValueError on an
+    unknown name, a pinned value moved, or a value outside its bounds: a
+    typo never yields a candidate that quietly equals what it started from."""
+    for name, value in (changes or {}).items():
+        if str(name) not in SPECS:
+            raise ValueError(f"noticing_settings: unknown name {name!r}")
+        if _checked(str(name), value) is None:
+            raise ValueError(f"noticing_settings: {name} may not hold {value!r}")
+    return _lenient(settings, changes)
+
+
+def candidate(overrides: Optional[Mapping[str, Any]] = None, *,
+              base: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
+    """The LIVE set (or ``base``, e.g. ``defaults()``) with ``overrides``, so
+    every value not overridden keeps what is in force. Pure; raises as
+    ``with_changes`` does."""
+    return with_changes(live() if base is None else base, overrides or {})
 
 
 def version_of(values: Mapping[str, Any]) -> str:
@@ -229,7 +246,7 @@ def _parse(raw: Optional[str]) -> dict[str, Any]:
     if not isinstance(stored, dict):
         logger.warning("noticing_settings: the record has no values; using the defaults")
         return dict(DEFAULTS)
-    values = candidate(stored)
+    values = _lenient(DEFAULTS, stored)
     for name, value in stored.items():
         if name in DEFAULTS and values[name] != _checked(name, value):
             logger.warning("noticing_settings: %s may not hold that value; using its default", name)
@@ -261,8 +278,9 @@ _trying: ContextVar[Optional[Mapping[str, Any]]] = ContextVar(
 @contextmanager
 def trying(values: Mapping[str, Any]) -> Iterator[Mapping[str, Any]]:
     """Inside this block, and only in this context, the rules read
-    ``values`` (checked as ``candidate`` checks them) instead of the live
-    set."""
+    ``values`` instead of the live set. ``values`` may be partial: what it
+    leaves out keeps its live value (``candidate``); it raises as
+    ``candidate`` does."""
     token = _trying.set(candidate(values))
     try:
         yield _trying.get() or {}

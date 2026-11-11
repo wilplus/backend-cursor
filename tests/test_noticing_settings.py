@@ -72,14 +72,21 @@ def test_a_bad_record_keeps_todays_values_and_a_moved_one_is_versioned():
 
 def test_a_candidate_is_read_only_inside_its_block():
     live = verbal_cues.measure(FILLERS, "en")["filler_cluster"]["fired"]
-    tried = noticing_settings.candidate({"verbal_cues.FILLER_MIN_COUNT": 4,
-                                         "take_context.MATCH": 5.0})
-    assert tried["take_context.MATCH"] == noticing_settings.DEFAULTS["take_context.MATCH"]
+    for typo in ({"verbal_cues.FILLER_MIN_CONT": 4}, {"take_context.MATCH": 5.0},
+                 {"tempo_stretch.GREEN_LOW": 0.1}):
+        with pytest.raises(ValueError):
+            noticing_settings.candidate(typo)
+    # A candidate keeps every other value that is live.
+    noticing_settings.use_reader(lambda: json.dumps(
+        {"values": {"moment_pick.FLOOR": 0.65}}))
+    tried = noticing_settings.candidate({"verbal_cues.FILLER_MIN_COUNT": 4})
+    assert tried["moment_pick.FLOOR"] == 0.65
     with noticing_settings.trying(tried):
         assert verbal_cues.measure(FILLERS, "en")["filler_cluster"]["fired"] is not live
         assert verbal_cues.detector_version() != verbal_cues.VERBAL_CUES_VERSION
     assert verbal_cues.measure(FILLERS, "en")["filler_cluster"]["fired"] is live
-    assert noticing_settings.version() == noticing_settings.DEFAULT_VERSION
+    assert noticing_settings.value("verbal_cues.FILLER_MIN_COUNT") == 2
+    assert noticing_settings.value("moment_pick.FLOOR") == 0.65
 
 
 def test_a_step_moves_only_a_things_dials_one_notch():
@@ -97,5 +104,5 @@ def test_a_step_moves_only_a_things_dials_one_notch():
     assert edge["verbal_cues.FILLER_MIN_COUNT"] == 1
     every_dial = {n for names in noticing_settings.THINGS.values() for n in names}
     assert every_dial == noticing_settings.DIALABLE
-    assert noticing_settings.candidate({"moment_pick.MIN_WORDS": 9,
-                                        "tempo_stretch.GREEN_LOW": 0.1}) == live
+    with pytest.raises(ValueError):
+        noticing_settings.candidate({"moment_pick.MIN_WORDS": 9})
