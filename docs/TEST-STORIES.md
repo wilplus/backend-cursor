@@ -2160,7 +2160,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 `tests/test_model_pipes.py` · Story
 
-- **O1** (PIPE-01) An answer on an exam example, or on an example the teacher added themself, is refused and nothing is stored.
+- **O1** (PIPE-01) An answer on an exam example is refused and nothing is stored; the teacher who added an example gives it a first answer on each step and never a second (N645), and it counts only once another teacher agrees.
 - **O2** (PIPE-02) Two new teachers who answer the same examples alike are not admitted on each other's answers: a newcomer is measured against trusted teachers and known answers only.
 - **O3** (PIPE-03) A speaker whose Takes are examples in more than twenty models turns the training yes off: at the next run their examples leave every model.
 - **O4** (PIPE-04) A model with more than a thousand counted answers shows every one of them in its counts.

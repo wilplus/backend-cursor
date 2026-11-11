@@ -5,8 +5,10 @@ STORY    As the founder, I want the model pipes tight before the launchpad
          withdrawn training yes reaches every model, counts are whole, and a
          private example stays private (N615 item 2).
 OUTCOME
-  O1  (PIPE-01) An answer on an exam example, or on an example the teacher
-      added themself, is refused and nothing is stored.
+  O1  (PIPE-01) An answer on an exam example is refused and nothing is
+      stored; the teacher who added an example gives it a first answer on
+      each step and never a second (N645), and it counts only once another
+      teacher agrees.
   O2  (PIPE-02) Two new teachers who answer the same examples alike are not
       admitted on each other's answers: a newcomer is measured against
       trusted teachers and known answers only.
@@ -74,13 +76,14 @@ class ModelPipesTest(ModelRoutesTest):
         self.assertGreaterEqual(exam.status_code, 400)
         self.assertEqual(self._answers_on(EXAM), [])
         added = self._post(f"/v2/models/{SPEAK}/examples", {"text": "A pause before the ask."}).get_json()
-        mine = self._answer(SPEAK, added["example_id"])
-        self.assertGreaterEqual(mine.status_code, 400)
-        self.assertEqual(self._answers_on(added["example_id"]), [])
+        self.assertEqual(self._answer(SPEAK, added["example_id"]).status_code, 200)   # the adder's first answer (N645)
+        self.assertGreaterEqual(self._answer(SPEAK, added["example_id"]).status_code, 400)   # never a second
+        self.assertEqual(len(self._answers_on(added["example_id"])), 1)
         self.who = KASIA                                  # another teacher may answer it
         self._post(f"/v2/models/{SPEAK}/enter")
         self.assertEqual(self._answer(SPEAK, added["example_id"]).status_code, 200)
-        self.assertEqual([a["teacher_id"] for a in self._answers_on(added["example_id"])], [KASIA])
+        self.assertEqual(sorted(a["teacher_id"] for a in self._answers_on(added["example_id"])),
+                         sorted([MARTA, KASIA]))
 
     def test_a_newcomer_is_measured_against_trusted_teachers_only(self):
         scale = ["Yes", "In-between", "No"]
