@@ -642,7 +642,11 @@ FIRST-24 -> LearningTest::test_once_it_passes_the_host_keeps_it_at_the_price_the
 FIRST-24 -> LearningTest::test_one_that_passes_free_answers_without_a_price_to_accept
 VIS-08   -> MeetTest::test_the_hello_shows_once_in_the_chat_they_share
 VIS-08   -> MeetTest::test_each_writes_to_the_others_chat_both_ways
-VIS-08   -> MeetTest::test_without_the_other_persons_open_chat_nothing_changes",The build succeeds when a stranger sets up a chat with Will and a second person gets a useful answer in it (N620).
+VIS-08   -> MeetTest::test_without_the_other_persons_open_chat_nothing_changes
+N647.8   -> WalkTest::test_a_message_gets_the_walk_in_the_hosts_own_words
+N647.8   -> WalkTest::test_a_model_that_is_not_ready_says_nothing_in_the_walk
+N647.8   -> WalkTest::test_outside_the_ring_nothing_runs
+N647.8   -> WalkTest::test_a_chat_with_no_walk_answers_as_before",The build succeeds when a stranger sets up a chat with Will and a second person gets a useful answer in it (N620).
 tests/test_blank_setup_journey.py,Story,"As someone who knows a field, I want to set up a chat with Will from a blank start and open it, and as a second person I want to join it and get an answer, so that the whole journey works end to end, for any profession, at a small cost (N619 step 5 ""Joined""; N620).","One test walks the public routes for two professions: setup, the
 link, a visitor who joins, ""Only you answer"" (no provider call),
 ""I draft, you send"" (one call, the host sends it), and the

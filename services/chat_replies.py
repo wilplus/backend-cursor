@@ -28,6 +28,15 @@ processing authorization of the person who sent it (``user_provider_scope``)
 or, for "Test my chat", of the host (the route's ``phase1_provider_route``).
 Behind the host's ring row ``chat_builder``.
 
+THE FEEDBACK WALK (N647 item 8, step 1). A host whose recipe holds a saved
+walk: each of the host's own models whose head is ready (gate one open)
+and sure says the host's own line (``says``) word for word, in the host's
+order, when its answer is the first of its three (what the line is for),
+and nothing otherwise. Each such line asks "Did this help?" on its own
+(``meta.walk_line``, ``meta.useful_ask``; the answer is ``meta.useful``).
+No provider call is added. Everything else, a recipe with no walk and
+every model not ready, is as before.
+
 A model still learning on the host's cards (N633 item 1) is left out of
 the call: no line, no charge. The host's own words, when they answer a
 question by typing or change a draft before sending it, become an example
@@ -140,7 +149,16 @@ def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str],
     given = got.get("lines")
     raw_lines: list = given if isinstance(given, list) else []
     lines = []
+    walking = bool(recipe.get("walk"))
     for i, m in enumerate(recipe.get("models") or []):
+        if walking and m.get("own", True) and heads.get(i, {}).get("sure"):
+            # The feedback walk (N647 item 8, step 1): a ready own model says
+            # the host's own line, word for word, when it notices what its
+            # line is for (its first answer); otherwise nothing.
+            line = walk_line(m, heads[i], host_name)
+            if line:
+                lines.append(line)
+            continue
         if i in heads and not heads[i].get("sure"):
             continue  # its head is not sure: no line, never a guess (N566 item 8)
         body = _clean(raw_lines[i], 300) if i < len(raw_lines) else None
@@ -152,9 +170,25 @@ def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str],
     return {"answer": _clean(got.get("answer"), 1200), "lines": lines}
 
 
+def walk_line(model: dict, head: dict, host_name: Any) -> Optional[dict]:
+    """The walk's line for one of the host's own ready models (N647 item 8,
+    step 1): the host's words (``says``, N578: they pass the host's checks)
+    when the model's sure answer is the one the line is for, its first
+    (``opts[0]``). None when it noticed something else or has no line."""
+    opts = model.get("opts") or []
+    if not opts or head.get("answer") != opts[0]:
+        return None
+    body = _clean(model.get("says"), 300)
+    if not body:
+        return None
+    return {"body": body, "by": f"{_first(host_name)}'s model", "q": model.get("q"),
+            "walk": {"model_id": model.get("model_id"), "says": body}}
+
+
 def _messages(reply: dict, by: str) -> list[dict]:
     out = [{"kind": "answer", "body": reply["answer"], "by": by}] if reply.get("answer") else []
-    return out + [{"kind": "model", "body": line["body"], "by": line["by"]} for line in reply["lines"]]
+    return out + [{"kind": "model", "body": line["body"], "by": line["by"],
+                   **({"walk": True} if line.get("walk") else {})} for line in reply["lines"]]
 
 
 # ── "Test my chat" (N618 item 8) ────────────────────────────────────────
@@ -216,9 +250,14 @@ def _post(database: Any, thread: str, member: str, reply: dict, to: str, by: str
         rows.append({"thread_id": thread, "author_member_id": member, "kind": "text",
                      "body": reply["answer"], "meta": {"reply": {"to": to, "by": by, "name": name}}})
     for line in reply.get("lines") or []:
+        meta: dict[str, Any] = {"model_line": {"q": line.get("q"), "by": line["by"]},
+                "reply": {"to": to, "by": by, "name": name}}
+        if line.get("walk"):
+            # Each line of the walk asks "Did this help?" on its own, so the
+            # host can read back how each line does (N647 item 6).
+            meta = {**meta, "walk_line": dict(line["walk"]), "useful_ask": True}
         rows.append({"thread_id": thread, "author_member_id": member, "kind": "text",
-                     "body": line["body"], "meta": {"model_line": {"q": line.get("q"), "by": line["by"]},
-                                                     "reply": {"to": to, "by": by, "name": name}}})
+                     "body": line["body"], "meta": meta})
     if not rows:
         return []
     rows[-1]["meta"]["useful_ask"] = True
