@@ -648,7 +648,10 @@ VIS-08   -> MeetTest::test_without_the_other_persons_open_chat_nothing_changes
 N647.8   -> WalkTest::test_a_message_gets_the_walk_in_the_hosts_own_words
 N647.8   -> WalkTest::test_a_model_that_is_not_ready_says_nothing_in_the_walk
 N647.8   -> WalkTest::test_outside_the_ring_nothing_runs
-N647.8   -> WalkTest::test_a_chat_with_no_walk_answers_as_before",The build succeeds when a stranger sets up a chat with Will and a second person gets a useful answer in it (N620).
+N647.8   -> WalkTest::test_a_chat_with_no_walk_answers_as_before
+N647.6   -> WalkTest::test_the_host_sees_how_each_line_helped_and_changes_it
+N647.6   -> WalkTest::test_a_line_turned_off_is_not_said
+N647.6   -> WalkTest::test_only_the_host_reads_or_changes_the_walk",The build succeeds when a stranger sets up a chat with Will and a second person gets a useful answer in it (N620).
 tests/test_blank_setup_journey.py,Story,"As someone who knows a field, I want to set up a chat with Will from a blank start and open it, and as a second person I want to join it and get an answer, so that the whole journey works end to end, for any profession, at a small cost (N619 step 5 ""Joined""; N620).","One test walks the public routes for two professions: setup, the
 link, a visitor who joins, ""Only you answer"" (no provider call),
 ""I draft, you send"" (one call, the host sends it), and the
@@ -2611,6 +2614,16 @@ O4  The browser roles cannot call the two functions.","O1 -> test_publish_open_a
 O2 -> test_an_unshared_word_never_lights_it
 O3 -> test_another_speakers_take_is_refused_and_untouched
 O4 -> test_the_browser_roles_cannot_call_the_functions","0439, D-FW-5; the Feedback walk lock, flow 1. Runs services.coach_feedback_signal against the real functions."
+tests/test_noticing_settings.py,Guard,"What the speaking coach notices moved from code into one settings record, unchanged (N647 item 8, step 3): today's thresholds are its defaults, and a missing, broken or out-of-bounds record changes nothing a speaker sees.","C1  a default drifting from the constant it replaced, so the move itself
+changes what is noticed
+C2  a missing, unreadable or out-of-bounds record changing a verdict, or a
+moved threshold logging its verdicts under today's version
+C3  a candidate (a silent try, step 4) leaking out of its own block into
+what the live rules read, or a step moving a ranking or pinned value,
+or leaving its bounds","C1 -> test_the_defaults_are_todays_constants
+C2 -> test_a_bad_record_keeps_todays_values_and_a_moved_one_is_versioned
+C3 -> test_a_candidate_is_read_only_inside_its_block
+test_a_step_moves_only_a_things_dials_one_notch",If removed: moving a threshold could change the walk with no log to tell.
 tests/test_object_key_prefixes_are_classified.py,Story,"As a speaker, I want every stored recording of my voice served only through a fresh signed link, so that my voice is never reachable on a permanent public URL.","O1  Every object-key prefix the services and routes write is classified,
 as user content or deliberately not.
 O2  A user-content key gets no public URL; a non-user key still does.","O1 -> test_every_written_prefix_is_classified,
