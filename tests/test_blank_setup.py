@@ -483,6 +483,22 @@ class SetupTest(_Base):
                          ["Why people come", "They send", "They get back", "Your hello",
                           "First questions", "They can ask", "Your models", "Who answers"])
 
+    def test_practice_after_a_take_is_an_off_switch_in_a_chat_that_takes_a_recording(self):
+        """N648.8: "Practice after a Take" is one on/off switch for practice,
+        Confident Voice and the AI voice; a part only in a chat that takes a
+        recording; off until the host turns it on."""
+        from services import chat_recipes
+        self._start()
+        self.assertEqual(self._put("practice", True).status_code, 400)
+        self.assertNotIn("practice", [p["part"] for p in self._read()["parts"]])
+        self._put("send", ["rec", "text"])
+        row = [p for p in self._read()["parts"] if p["part"] == "practice"][0]
+        self.assertEqual((row["title"], row["value"]), ("Practice after a Take", "Off"))
+        self.assertEqual(self._put("practice", "yes").status_code, 400)
+        self.assertTrue(chat_recipes.practice_on(self._put("practice", True).get_json()["recipe"]))
+        self._put("send", ["text"])
+        self.assertFalse(chat_recipes.practice_on(self._read()["recipe"]))
+
     def test_the_feedback_walk_is_kept_in_a_chat_that_takes_a_recording(self):
         """N641.1: "The feedback walk" holds steps from best, fix, words in
         the host's order, and an Ideal Text or nothing at the end; it is a

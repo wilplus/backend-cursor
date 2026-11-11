@@ -46,13 +46,14 @@ PARTS_LINE = "Here are your chat's parts. Tap one to change it."
 #: The prototype's ``done`` step: each part and its title.
 PART_TITLES: tuple[tuple[str, str], ...] = (
     ("line", "Why people come"), ("send", "They send"), ("out", "They get back"),
-    ("walk", "The feedback walk"), ("hello", "Your hello"), ("questions", "First questions"),
+    ("walk", "The feedback walk"), ("practice", "Practice after a Take"),
+    ("hello", "Your hello"), ("questions", "First questions"),
     ("taps", "They can ask"),
     ("models", "Your models"), ("who", "Who answers"))
 WHO = tuple(w[1] for w in chat_suggestions.WHO)
 PRICES = tuple(chat_suggestions.PRICES)
 PARTS = ("line", "send", "out", "hello", "questions", "taps", "smart", "way", "models", "who",
-         "share", "price", "cost", "care", "sensitive", "live", "walk")
+         "share", "price", "cost", "care", "sensitive", "live", "walk", "practice")
 MAX_QUESTIONS, MAX_MODELS = 3, 3
 DAYS = 30
 
@@ -222,7 +223,7 @@ _CLEAN: dict[str, Any] = {
     "price": _one_of(PRICES, f"A price is one of {list(PRICES)} tokens."),
     "cost": _cost,
     "walk": _walk,
-    **{p: (lambda v, p=p: _bool(v, p)) for p in ("smart", "share", "care", "sensitive", "live")},
+    **{p: (lambda v, p=p: _bool(v, p)) for p in ("smart", "share", "care", "sensitive", "live", "practice")},
 }
 
 
@@ -317,6 +318,8 @@ def set_part(database: Any, user_id: Any, part: str, body: Any) -> dict:
         # "I want this", once asked, stays asked whatever the walk becomes.
         before = recipe.get("walk") or {}
         value = {**value, **{k: before[k] for k in ("wanted", "wanted_at") if k in before}}
+    if part == "practice" and "rec" not in (recipe.get("send") or []):
+        raise RecipeError("RECIPE_INVALID", "Practice after a Take is for a chat that takes a recording.")
     if part == "who" and value == "assistant" and recipe.get("sensitive") is not False:
         # Health, law or money, or not answered yet: nothing goes out until
         # the host sends it (N616 item 13, N622 item 1).
@@ -383,11 +386,21 @@ def parts(recipe: dict) -> list[dict]:
               # N641's words: the steps in order, then the end; the saved
               # walk, else the suggestion (``saved`` says which; ``walk``
               # holds the ids).
-              "walk": walk_words(walk_of(recipe))}
+              "walk": walk_words(walk_of(recipe)),
+              "practice": "On" if practice_on(recipe) else "Off"}
     rec = "rec" in (recipe.get("send") or [])
     return [{"part": p, "title": t, "value": values[p],
              **({"saved": bool(recipe.get("walk")), "walk": walk_of(recipe)} if p == "walk" else {})}
-            for p, t in PART_TITLES if p != "walk" or rec]
+            for p, t in PART_TITLES if p not in ("walk", "practice") or rec]
+
+
+def practice_on(recipe: Optional[dict]) -> bool:
+    """"Practice after a Take" (N648 item 8): one switch for practice,
+    Confident Voice and the AI voice after a Take made in this chat. Off
+    unless the host turned it on, and never on in a chat that takes no
+    recording."""
+    r = recipe or {}
+    return r.get("practice") is True and "rec" in (r.get("send") or [])
 
 
 def walk_of(recipe: Optional[dict]) -> dict:
