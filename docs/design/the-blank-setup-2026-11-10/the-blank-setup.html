@@ -93,7 +93,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .box { display: flex; gap: 8px; padding: 10px 12px 14px; border-top: 1px solid var(--line); }
 .box { align-items: flex-end; }
 .box textarea { flex: 1; min-width: 0; min-height: 46px; max-height: 168px; resize: none; overflow-y: auto; border-radius: 23px; border: 1.5px solid var(--line); background: var(--panel); color: var(--ink); padding: 11px 16px; font: 16px/1.4 var(--ui); display: block; }
-.box button { height: 46px; border-radius: 999px; border: 0; background: var(--ink); color: var(--panel); padding: 0 18px; font-weight: 600; }
+.box button { flex: none; width: 46px; height: 46px; border-radius: 50%; border: 0; background: var(--ink); color: var(--panel); padding: 0; font-size: 20px; font-weight: 600; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); display: inline-block; margin-right: 7px; }
 @media (max-width: 900px) { .wrap { grid-template-columns: minmax(0, 1fr); } .tabs { display: flex; } body[data-tab="map"] .side, body[data-tab="phone"] .map { display: none; } .side { position: static; } .phone { height: min(760px, calc(100vh - 140px)); } }
 @media (prefers-reduced-motion: no-preference) { .bd > * { animation: in .18s ease-out; } @keyframes in { from { opacity: .4; transform: translateY(4px); } to { opacity: 1; transform: none; } } }
@@ -172,8 +172,19 @@ Reply with only a JSON object with these keys:
   const say = (t) => `<div class="w">${esc(t)}</div>`, cap = (t) => `<div class="w">${esc(t)}</div>`;
   const card = (b, s) => `<div class="card"><b>${esc(b)}</b>${s ? `<small>${esc(s)}</small>` : ""}</div>`;
   const chips = (l) => `<div class="chips">${l.map((x) => `<span>${esc(x)}</span>`).join("")}</div>`;
+  // The setup reads as a chat: what was asked and what you answered stay above, as in any chat.
+  let LAST = null, PICK = null;
+  phone.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b || !LAST || ["bk", "chg", "own"].includes(b.id) || b.classList.contains("lnk") || b.classList.contains("tick") || b.type === "submit") return;
+    const ticks = [...phone.querySelectorAll(".tick.on b")].map((x) => x.textContent), cardB = phone.querySelector(".bd .card:not(.hist) b"), lab = b.querySelector("b, span");
+    PICK = ["keep", "go", "yes"].includes(b.id) ? (ticks.length ? ticks.join(" · ") : cardB ? cardB.textContent : b.textContent.trim()) : (lab ? lab.textContent : b.textContent).trim(); }, true);
+  phone.addEventListener("submit", (e) => { const t = e.target.querySelector("textarea, input"); if (t && t.value.trim() && LAST) PICK = t.value.trim(); }, true);
   function draw({ title = "Will", body, foot = "", back = true, bind }) {
-    phone.innerHTML = `<div class="hd">${back ? '<button type="button" class="bk" id="bk" >‹ Back</button>' : ""}<span class="av">•••</span><b>${esc(title)}</b></div><div class="bd">${body}</div>${foot ? `<div class="ft">${foot}</div>` : ""}`;
+    const sid = STEPS[cur].id; S.log = S.log || [];
+    if (LAST && LAST.id !== sid && PICK != null && LAST.lines.length) S.log.push({ id: LAST.id, w: LAST.lines, me: PICK });
+    PICK = null; const at = S.log.findIndex((h) => h.id === sid); if (at >= 0) S.log.length = at;
+    const hist = S.edit ? "" : S.log.map((h) => h.w.map((t) => `<div class="w hist">${esc(t)}</div>`).join("") + `<div class="me hist">${esc(h.me)}</div>`).join("");
+    phone.innerHTML = `<div class="hd">${back ? '<button type="button" class="bk" id="bk" >‹ Back</button>' : ""}<span class="av">•••</span><b>${esc(title)}</b></div><div class="bd">${hist}${body}</div>${foot ? `<div class="ft">${foot}</div>` : ""}`;
+    LAST = { id: sid, lines: [...phone.querySelectorAll(".bd > .w:not(.hist)")].map((x) => x.textContent) }; const bd0 = $(".bd", phone); bd0.scrollTop = bd0.scrollHeight;
     const b = $("#bk", phone); if (b) b.onclick = () => { const id = STEPS[cur].id; if (id === "q" && S.qs.length) { cur = idx("qmore"); return render(); } if (id === "qmore") { S.qs.pop(); cur = idx("q"); return render(); } if (id === "taps" && S.qs.length >= 3) { S.qs.pop(); cur = idx("q"); return render(); } const lm = S.models[S.models.length - 1];
       if (id === "model" && S.models.length) { cur = idx("way"); return render(); }
       if (id === "model") S.ownSeen = false;
@@ -196,7 +207,7 @@ Reply with only a JSON object with these keys:
   function typeIn(ask, done, ph = "Type here") {
     S.thread.push({ w: true, t: ask });
     const paint = () => {
-      phone.innerHTML = `<div class="hd"><button type="button" class="bk" id="bk" >‹ Back</button><span class="av">•••</span><b>Will</b></div><div class="bd">${S.thread.map((m) => `<div class="${m.w ? "w" : "me"}">${esc(m.t)}</div>`).join("")}</div><form class="box" id="f"><textarea id="say" rows="1" maxlength="400" placeholder="${esc(ph)}" autocomplete="off"></textarea><button type="submit">Send</button></form>`;
+      phone.innerHTML = `<div class="hd"><button type="button" class="bk" id="bk" >‹ Back</button><span class="av">•••</span><b>Will</b></div><div class="bd">${S.thread.map((m) => `<div class="${m.w ? "w" : "me"}">${esc(m.t)}</div>`).join("")}</div><form class="box" id="f"><textarea id="say" rows="1" maxlength="400" placeholder="${esc(ph)}" autocomplete="off"></textarea><button type="submit" aria-label="Send">↑</button></form>`;
       const bd = $(".bd", phone); bd.scrollTop = bd.scrollHeight;
       $("#bk", phone).onclick = () => { S.thread.pop(); render(); };
       $("#f", phone).onsubmit = (e) => { e.preventDefault(); const v = $("#say", phone).value.trim(); if (!v) return; S.thread.push({ w: false, t: v }); done(v); };
@@ -244,7 +255,7 @@ Reply with only a JSON object with these keys:
     { id: "way", stage: 2, t: "Two ways", s: "Use one, or train yours", skip: () => S.noModels, r: () => { const n = others().length; draw({ body: say("Two ways to make it smart. Pick one.") + `<button type="button" class="opt" id="wuse"${n ? "" : " disabled"}>Use a model that exists<small style="display:block;font-weight:400;font-size:16px">${n ? "Ready now. You pay its owner a few tokens each time it runs." : "Nobody has shared one yet. Yours can be the first."}</small></button><button type="button" class="opt" id="wown">Train your own<small style="display:block;font-weight:400;font-size:16px">Free. It needs your answers and some time before it works. Later, others can pay you to use it.</small></button>`, bind: () => { $("#wuse", phone).onclick = () => { if (!n) return; S.way = "use"; S.pickM = null; next(); }; $("#wown", phone).onclick = () => { S.way = "own"; next(); }; } }); } },
     { id: "ownwhy", stage: 2, t: "Is your own worth it?", s: "Yes / Not now", skip: () => S.noModels || S.way !== "own" || S.ownSeen, r: () => draw({ body: say("Your own model answers one question the way you would.") + say("Four choices, then you teach it by answering examples. It needs about 200 to get good."), foot: `<div class="row2"><button type="button" class="btn out" id="no">Not now</button><button type="button" class="btn" id="yes">Train my own</button></div>`, bind: () => { $("#yes", phone).onclick = () => { S.ownSeen = true; next(); }; $("#no", phone).onclick = () => { if (S.models.length) cur = idx("more"); else { S.noModels = true; cur = idx("who"); } render(); }; } }) },
     { id: "gives", stage: 2, t: "What it gives back", s: "Pick one", skip: () => S.noModels || S.way !== "own" || S.gives, r: () => draw({ body: say("What should it give back?") + GIVES.map((g, k) => `<button type="button" class="opt" data-g="${k}"${k ? " disabled" : ""}>${esc(g)}${k ? ", not ready yet" : ""}</button>`).join(""), bind: () => { phone.querySelectorAll("[data-g]").forEach((b) => (b.onclick = () => { S.gives = GIVES[+b.dataset.g]; if (S.toStack) { S.toStack = false; cur = idx("stack"); render(); } else next(); })); } }) },
-    { id: "base", stage: 2, t: "What it is built on", s: "Pick one", skip: () => S.noModels || S.way !== "own" || S.base, r: () => draw({ body: say("What should it be built on?") + `<button type="button" class="opt" data-b="gpt">GPT</button><button type="button" class="opt" data-b="claude" disabled>Claude, not ready yet</button><button type="button" class="opt" data-b="own" disabled>WillpowerLab's own, not ready yet</button>`, bind: () => { phone.querySelectorAll("[data-b]").forEach((b) => (b.onclick = () => { S.base = b.dataset.b; if (S.toStack) { S.toStack = false; cur = idx("stack"); render(); } else next(); })); } }) },
+    { id: "base", stage: 2, t: "What it is built on", s: "Pick one", skip: () => S.noModels || S.way !== "own" || S.base, r: () => draw({ body: say("Your model is a small one of its own. It learns your answers on top of what a big model reads.") + say("What should it be built on?") + `<button type="button" class="opt" data-b="gpt">GPT</button><button type="button" class="opt" data-b="claude" disabled>Claude, not ready yet</button><button type="button" class="opt" data-b="own" disabled>WillpowerLab's own, not ready yet</button>`, bind: () => { phone.querySelectorAll("[data-b]").forEach((b) => (b.onclick = () => { S.base = b.dataset.b; if (S.toStack) { S.toStack = false; cur = idx("stack"); render(); } else next(); })); } }) },
     { id: "model", stage: 2, t: "Make a model", s: "One question, three answers", skip: () => S.noModels, r: () => {
         const ot = others(), small = (t) => `<small style="display:block;font-weight:400;font-size:16px">${esc(t)}</small>`;
         if (S.way === "use" && S.pickM) { const m = S.pickM; return draw({ body: say(m.q) + card(m.opts.join(" · "), `${m.by} made it.`) + say("Your chat gets smarter today: it notices this with no training from you.") + cap(`It costs you ${m.price} tokens each time it runs. Your people pay nothing.`), foot: `<div class="row2"><button type="button" class="btn out" id="no">Back</button><button type="button" class="btn" id="yes">Add it</button></div>`, bind: () => { $("#no", phone).onclick = () => { S.pickM = null; render(); }; $("#yes", phone).onclick = () => { S.models.push({ ...m, ready: true }); S.pickM = null; cur = idx("more"); render(); }; } }); }
@@ -283,7 +294,7 @@ Reply with only a JSON object with these keys:
     { id: "live", stage: 4, t: "Open it to people", s: "Yes / Not yet", r: () => draw({ body: say("Open your chat to people?") + cap("Anyone with your link can use it. This is what they read before they join:") + card(chatName(), String(pick("line", S.sug.line)).replace(/^People come to you/, `People come to ${S.name}`)), foot: `<div class="row2"><button type="button" class="btn out" id="no">Not yet</button><button type="button" class="btn" id="yes">Yes</button></div>`, bind: () => { $("#no", phone).onclick = () => { S.live = false; S.finished = true; S.mode = "home"; render(); }; $("#yes", phone).onclick = () => { S.live = true; S.finished = true; S.mode = "home"; render(); }; } }) },
     { id: "done", stage: 4, t: "Your chat", s: "Tap a part to change it", r: () => { S.edit = true; if (S.finished) { S.mode = "build"; S.tab = "chat"; return render(); } const rows = partsRows();
         draw({ title: `${S.spec}`, body: say(S.live ? "Your chat is open. Share your link." : "Your chat is saved. Nobody can see it yet.") + (S.live ? `<div class="card"><b>willpowerlab.com/c/${esc(S.name.toLowerCase())}</b><small>This link opens your chat.</small></div>` : "") + rows.map(([id, k, v]) => `<button type="button" class="opt" data-j="${id}"><small style="display:block;color:var(--muted);font-weight:500;font-size:13px">${esc(k)}</small>${esc(v)}</button>`).join(""), foot: `<button type="button" class="btn" id="go">Back to my chats</button><button type="button" class="lnk" id="other">Start again as someone else</button>`, bind: () => {
-          phone.querySelectorAll("[data-j]").forEach((b) => (b.onclick = () => { if (b.dataset.j === "q") S.qs = []; cur = idx(b.dataset.j); render(); }));
+          phone.querySelectorAll("[data-j]").forEach((b) => (b.onclick = () => { if (b.dataset.j === "walk" && S.finished) { S.mode = "walk"; S.wv = null; return render(); } if (b.dataset.j === "q") S.qs = []; cur = idx(b.dataset.j); render(); }));
           $("#go", phone).onclick = () => { S.finished = true; S.mode = "home"; render(); };
           $("#other", phone).onclick = () => { if (S.shared) S.models.filter((m) => !m.ready).forEach((m) => REG.push({ q: m.q, opts: m.opts, says: m.says, by: S.name, send: sendKey(), price: pick("price", PRICES) })); const nm = S.name === "Artur" ? "Kasia" : "Lena"; fresh(); S.name = nm; cur = idx("what"); render(); };
         } }); } },
@@ -334,15 +345,74 @@ Reply with only a JSON object with these keys:
       <button type="button" class="crow" id="ha"><span class="wm plus">+</span><span class="cmid"><span class="c1"><b class="reg">Add someone to chat with</b></span></span></button></div>`;
     $("#hm", phone).onclick = () => { S.tc = null; S.mode = "test"; S.testFrom = "home"; render(); }; paintMap();
   }
+  // The feedback walk, part by part: its steps, what Will notices, what Will says, what people get.
+  const RECS = [
+    { k: "strong", t: "A strong moment", q: "Is this a strong moment?", ok: [9, 10], iv: "This part landed. Keep it.", help: [8, 10] },
+    { k: "rush", t: "A rushed moment", q: "Is this a rushed moment?", ok: [8, 10], iv: "Try this part slower.", help: [7, 10] },
+    { k: "fill", t: "Too many filler words", q: "Are there too many filler words here?", ok: [6, 10], iv: "Say it again without the fillers.", help: [4, 10] },
+  ];
+  function walkParts() {
+    S.rec = S.rec || {}; const v = S.wv, st = (k) => (S.rec[k] = S.rec[k] || {}), R = (k) => RECS.find((x) => x.k === k);
+    const opt = (attr, k, a, b) => `<button type="button" class="opt" ${attr}="${k}"><span style="display:block;font-weight:400">${esc(a)}</span>${esc(b)}</button>`;
+    const pick = (list) => list.map(([id, t]) => `<button type="button" class="opt" data-a="${id}">${esc(t)}</button>`).join("");
+    const page = (title, body, foot, back) => { phone.innerHTML = `<div class="hd"><button type="button" class="bk" id="bk">‹</button><b>${esc(title)}</b></div><div class="bd">${body}</div>${foot ? `<div class="ft">${foot}</div>` : ""}`; $("#bk", phone).onclick = back; paintMap(); };
+    const go = (x) => { S.wv = x; render(); }, act = (f) => phone.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => f(b.dataset.a)));
+    const doing = (x) => { const o = st(x.k); return o.off ? "Off" : o.trying ? `Trying: catch ${o.trying}` : `Coaches agreed ${x.ok[0]} of ${x.ok[1]}`; };
+    const on = RECS.filter((x) => !st(x.k).off);
+    if (!v) {
+      page("The feedback walk", say("Your walk, part by part. Tap one to change it.") + opt("data-a", "steps", "Its steps", walkSteps().map((k) => WALK[k]).join(" · ")) + opt("data-a", "notice", "What I notice", on.map((x) => x.t).join(" · ") || "Nothing yet") + opt("data-a", "says", "What I say", on.filter((x) => !st(x.k).quiet).length + " lines") + opt("data-a", "out", "What they get", WOUT[S.wout || "ideal"]) + `<button type="button" class="opt" data-a="run">See it run</button>`, "", () => { S.mode = "build"; render(); });
+      return act((a) => { if (a === "steps" || a === "out") { S.mode = null; S.edit = true; cur = idx(a === "steps" ? "walk" : "walkout"); return render(); } go(a); });
+    }
+    if (v === "notice") {
+      page("What I notice", say("This is what I notice in a recording. Tap one.") + RECS.map((x) => opt("data-a", x.k, x.t, doing(x))).join("") + S.models.map((mm, n) => opt("data-m", n, mm.q, mm.ready ? "Your model" : "Your model, still learning")).join("") + `<button type="button" class="opt" data-a="else">${S.recWant ? "Thanks. I've told Artur." : "Something else. I want this"}</button>`, "", () => go(null));
+      phone.querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => go({ model: +b.dataset.m }))); return act((a) => { if (a === "else") { S.recWant = true; return render(); } go({ rec: a }); });
+    }
+    if (v.rec) {
+      const x = R(v.rec), o = st(x.k), back = () => go("notice");
+      if (v.told) return page(x.t, say(`I'll try catching ${o.trying} on the next 20 recordings, silently. Nobody sees a change.`) + say("Then I'll show you what it caught."), `<button type="button" class="btn" id="go">Done</button>`, back), ($("#go", phone).onclick = back);
+      if (v.read === 1) return page(x.t, say("Upload an article about this. I'll read it and suggest a change."), `<button type="button" class="btn" id="go">Upload an article</button>`, () => go({ rec: x.k })), ($("#go", phone).onclick = () => go({ rec: x.k, read: 2 }));
+      if (v.read === 2) { page(x.t, say("I read it. It says people sound rushed sooner than I assumed.") + say("I'd catch more. Try it silently?"), `<div class="row2"><button type="button" class="btn out" id="no">Not now</button><button type="button" class="btn" id="yes">Try it</button></div>`, () => go({ rec: x.k })); $("#no", phone).onclick = () => go({ rec: x.k }); $("#yes", phone).onclick = () => { o.trying = "more"; go({ rec: x.k, told: true }); }; return; }
+      if (v.check != null) {
+        if (v.check > 2) return page(x.t, say("Thanks. That teaches me."), `<button type="button" class="btn" id="go">Done</button>`, back), ($("#go", phone).onclick = back);
+        page(x.t, say(x.q) + card("▶ 0:0" + (6 + v.check)) + pick([["y", "Yes"], ["n", "No"], ["u", "Not sure"]]), "", back);
+        return act(() => go({ rec: x.k, check: v.check + 1 }));
+      }
+      if (o.trying) {
+        page(x.t, say(`I tried catching ${o.trying} on 20 recordings, silently.`) + say(o.trying === "more" ? "I caught 6 more. Coaches agreed with 4 of them." : "I caught 5 fewer. Coaches say 1 of them was real."), `<div class="row2"><button type="button" class="btn out" id="no">Go back</button><button type="button" class="btn" id="yes">Use it</button></div>`, back);
+        $("#no", phone).onclick = () => { o.trying = null; back(); }; $("#yes", phone).onclick = () => { o.trying = null; o.used = true; back(); }; return;
+      }
+      page(x.t, say(x.t + ".") + say(o.off ? "It's off. I don't look for it." : `Coaches agreed with me ${x.ok[0]} times out of ${x.ok[1]}.`) + (o.off ? pick([["on", "Turn it on"]]) : pick([["keep", "Keep it as it is"], ["more", "Catch more"], ["fewer", "Catch fewer"], ["check", "Check some myself"], ["read", "Read an article"], ["off", "Turn it off"]])), "", back);
+      return act((a) => { if (a === "keep") return back(); if (a === "off" || a === "on") { o.off = a === "off"; return back(); } if (a === "check") return go({ rec: x.k, check: 0 }); if (a === "read") return go({ rec: x.k, read: 1 }); o.trying = a; go({ rec: x.k, told: true }); });
+    }
+    if (v.model != null) { const mm = S.models[v.model]; page("What I notice", say(mm.q) + say(mm.ready ? "Teachers agreed with me 7 times out of 10." : "It's still learning. I use it once it's ready.") + pick([["keep", "Keep it"], ["off", "Leave it out of the walk"]]), "", () => go("notice")); return act(() => go("notice")); }
+    if (v === "run") {
+      const lines = on.filter((x) => !st(x.k).quiet).slice(0, walkSteps().length);
+      page(chatName(), `<div class="card"><b>▶ 0:42</b></div>` + lines.map((x) => say(st(x.k).iv || x.iv)).join("") + say(S.helped ? "Thanks." : "Did this help?") + (S.helped ? "" : pick([["y", "Yes"], ["n", "No"]])), "", () => { S.helped = false; go(null); });
+      return act(() => { S.helped = true; render(); });
+    }
+    if (v === "says") {
+      page("What I say", say("This is what I say when I notice something. Tap one.") + (on.map((x) => opt("data-a", x.k, x.t, st(x.k).quiet ? "I say nothing" : st(x.k).iv || x.iv)).join("") || say("I notice nothing yet.")), "", () => go(null));
+      return act((a) => go({ iv: a }));
+    }
+    if (v.iv) {
+      const x = R(v.iv), o = st(x.k), back = () => go("says");
+      if (v.write) {
+        phone.innerHTML = `<div class="hd"><button type="button" class="bk" id="bk">‹</button><b>${esc(x.t)}</b></div><div class="bd">${say("What should I say?")}</div><form class="box" id="f"><textarea id="say" rows="1" maxlength="120" placeholder="Write here" autocomplete="off"></textarea><button type="submit" aria-label="Send">↑</button></form>`;
+        $("#bk", phone).onclick = () => go({ iv: x.k }); $("#f", phone).onsubmit = (e) => { e.preventDefault(); const t = $("#say", phone).value.trim(); if (t) { o.iv = t; o.fresh = true; } go({ iv: x.k }); }; $("#say", phone).onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("#f", phone).requestSubmit(); } }; return paintMap();
+      }
+      page(x.t, say(`When I notice ${x.t.charAt(0).toLowerCase() + x.t.slice(1)}, I say:`) + (o.quiet ? card("Nothing") : card(o.iv || x.iv)) + say(o.quiet ? "It's off." : o.fresh ? "It's new. I'll tell you how it does." : `People said it helped ${x.help[0]} times out of ${x.help[1]}.`) + (o.quiet ? pick([["on", "Turn it on"]]) : pick([["keep", "Keep it"], ["write", "Change the words"], ["off", "Turn it off"]])), "", back);
+      return act((a) => { if (a === "keep") return back(); if (a === "write") return go({ iv: x.k, write: true }); o.quiet = a === "off"; back(); });
+    }
+  }
   // Build: two tabs, "Your chat" (its parts, and Will's field) and "AI models" (the models and all that is taught)
   function build() {
     const tab = S.tab || "chat", QUEUE = [["Moments to answer", "37 waiting"], ["Do you hear it?", "20 waiting"], ["Pick the most confident", "20 waiting"], ["Pick the moment for feedback", "10 waiting"]], SOON = ["Images", "Video"];
     const chat = say(S.live ? "Your chat is open. Tap a part to change it." : "Your chat is saved. Nobody can see it yet. Tap a part to change it.") + partsRows().map(([id, k, v]) => `<button type="button" class="opt" data-j="${id}"><span style="display:block;font-weight:400">${esc(k)}</span>${esc(v)}</button>`).join("");
     const models = say("Your models, and everything you teach.") + S.models.map((mm) => card(mm.q, mm.ready ? `${mm.by}'s model` : "Teach it")).join("") + (walkOn() ? QUEUE.map(([a, b]) => card(a, b)).join("") : "") + `<button type="button" class="opt" id="start">Start your own</button>` + SOON.map((x, k) => `<button type="button" class="opt" data-soon="${k}">${esc(x)}, coming. ${(S.soon || [])[k] ? "Thanks. I've told Artur." : "I want this"}</button>`).join("");
-    phone.innerHTML = `<div class="hd"><button type="button" class="bk" id="bk" style="font-size:22px" aria-label="Back">‹</button><b>${esc(chatName())}</b>${sw("build")}</div><div class="tabs"><button type="button" id="t1" class="${tab === "chat" ? "on" : ""}">Your chat</button><button type="button" id="t2" class="${tab === "models" ? "on" : ""}">AI models</button></div><div class="bd">${tab === "chat" ? chat : models}</div>${tab === "chat" ? `<form class="box" id="f"><textarea id="say" rows="1" maxlength="300" placeholder="Message Will" autocomplete="off"></textarea><button type="submit">Send</button></form>` : ""}`;
+    phone.innerHTML = `<div class="hd"><button type="button" class="bk" id="bk" style="font-size:22px" aria-label="Back">‹</button><b>${esc(chatName())}</b>${sw("build")}</div><div class="tabs"><button type="button" id="t1" class="${tab === "chat" ? "on" : ""}">Your chat</button><button type="button" id="t2" class="${tab === "models" ? "on" : ""}">AI models</button></div><div class="bd">${tab === "chat" ? chat : models}</div>${tab === "chat" ? `<form class="box" id="f"><textarea id="say" rows="1" maxlength="300" placeholder="Message Will" autocomplete="off"></textarea><button type="submit" aria-label="Send">↑</button></form>` : ""}`;
     $("#bk", phone).onclick = () => { S.mode = "home"; render(); }; $("#swl", phone).onclick = () => { S.tc = null; S.mode = "test"; S.testFrom = "home"; render(); };
     $("#t1", phone).onclick = () => { S.tab = "chat"; render(); }; $("#t2", phone).onclick = () => { S.tab = "models"; render(); };
-    phone.querySelectorAll("[data-j]").forEach((b) => (b.onclick = () => { if (b.dataset.j === "q") S.qs = []; S.mode = null; S.edit = true; cur = idx(b.dataset.j); render(); }));
+    phone.querySelectorAll("[data-j]").forEach((b) => (b.onclick = () => { if (b.dataset.j === "walk" && S.finished) { S.mode = "walk"; S.wv = null; return render(); } if (b.dataset.j === "q") S.qs = []; S.mode = null; S.edit = true; cur = idx(b.dataset.j); render(); }));
     const st = $("#start", phone); if (st) st.onclick = () => { S.mode = null; S.edit = false; S.noModels = false; S.way = "own"; S.ownSeen = false; cur = idx("ownwhy"); render(); };
     phone.querySelectorAll("[data-soon]").forEach((b) => (b.onclick = () => { S.soon = S.soon || []; S.soon[+b.dataset.soon] = true; render(); }));
     const f = $("#f", phone); if (f) f.onsubmit = (e) => { e.preventDefault(); }; paintMap();
@@ -351,7 +421,7 @@ Reply with only a JSON object with these keys:
   function willAfter() {
     const EDIT = "I want to edit my chat";
     if (!S.thread.some((m) => m.after)) S.thread.push({ w: true, after: true, t: `${S.live ? "Your chat is open. Share your link: willpowerlab.com/c/" + S.name.toLowerCase() : "Your chat is saved. Nobody can see it yet."}` }, { w: true, after: true, t: "To change anything, just tell me. For one: “I want to edit my chat”." });
-    phone.innerHTML = `<div class="hd"><button type="button" class="bk" id="bk">‹ Back</button><span class="av">•••</span><b>Will</b></div><div class="bd">${S.thread.map((m) => `<div class="${m.w ? "w" : "me"}">${esc(m.t)}</div>`).join("")}<button type="button" class="opt" id="ed" style="align-self:flex-end;width:auto">${EDIT}</button></div><form class="box" id="f"><textarea id="say" rows="1" maxlength="300" placeholder="${EDIT}" autocomplete="off"></textarea><button type="submit">Send</button></form>`;
+    phone.innerHTML = `<div class="hd"><button type="button" class="bk" id="bk">‹ Back</button><span class="av">•••</span><b>Will</b></div><div class="bd">${S.thread.map((m) => `<div class="${m.w ? "w" : "me"}">${esc(m.t)}</div>`).join("")}<button type="button" class="opt" id="ed" style="align-self:flex-end;width:auto">${EDIT}</button></div><form class="box" id="f"><textarea id="say" rows="1" maxlength="300" placeholder="${EDIT}" autocomplete="off"></textarea><button type="submit" aria-label="Send">↑</button></form>`;
     const bd = $(".bd", phone); bd.scrollTop = bd.scrollHeight;
     const open = (v) => { S.thread.push({ w: false, t: v }, { w: true, t: "Here are your chat's parts. Tap one to change it." }); S.mode = null; cur = idx("done"); render(); };
     $("#bk", phone).onclick = () => { S.mode = "home"; render(); }; $("#ed", phone).onclick = () => open(EDIT);
@@ -365,7 +435,7 @@ Reply with only a JSON object with these keys:
     if (!S.tc) S.tc = { log: [{ w: pick("hello", S.sug.hello) }, { w: "Tell me what you'd like to do, and I'll show you where." }], stage: "ask" };
     const tc = S.tc, close = () => { S.mode = S.testFrom === "home" ? "home" : null; if (S.testFrom !== "home") { cur = idx("live"); } render(); };
     const bubble = (m) => m.img ? `<img class="exi" src="${m.img}" alt="What you sent">` : m.w ? `<div class="w">${esc(m.w)}</div>${m.by ? `<p class="cap" style="margin-top:-6px"><span class="dot"></span>${esc(m.by)}</p>` : ""}` : `<div class="me">${esc(m.me)}</div>`;
-    const bar = tc.stage === "ask" ? "" : `<form class="box" id="f">${sends.includes("photo") || sends.includes("file") ? `<input type="file" id="tf" hidden accept="image/*,audio/*,video/*,.pdf,.txt,.csv,.doc,.docx"><button type="button" id="tfb" style="background:var(--panel);color:var(--ink);border:1.5px solid var(--line);padding:0 14px" aria-label="Add a photo or a file">+</button>` : ""}${sends.includes("text") || !sends.includes("rec") ? `<textarea id="say" rows="1" maxlength="400" placeholder="Message ${esc(S.name)}" autocomplete="off"></textarea><button type="submit">Send</button>` : ""}${sends.includes("rec") ? `<button type="button" id="rec" style="display:flex;align-items:center;gap:8px;${sends.includes("text") ? "" : "flex:1;justify-content:center"}"><i style="width:10px;height:10px;border-radius:50%;background:var(--rec);display:inline-block"></i>${sends.includes("text") ? "" : "Record"}</button>` : ""}</form>`;
+    const bar = tc.stage === "ask" ? "" : `<form class="box" id="f">${sends.includes("photo") || sends.includes("file") ? `<input type="file" id="tf" hidden accept="image/*,audio/*,video/*,.pdf,.txt,.csv,.doc,.docx"><button type="button" id="tfb" style="background:var(--panel);color:var(--ink);border:1.5px solid var(--line);padding:0 14px" aria-label="Add a photo or a file">+</button>` : ""}${sends.includes("text") || !sends.includes("rec") ? `<textarea id="say" rows="1" maxlength="400" placeholder="Message ${esc(S.name)}" autocomplete="off"></textarea><button type="submit" aria-label="Send">↑</button>` : ""}${sends.includes("rec") ? `<button type="button" id="rec" style="display:flex;align-items:center;gap:8px;${sends.includes("text") ? "" : "flex:1;justify-content:center"}"><i style="width:10px;height:10px;border-radius:50%;background:var(--rec);display:inline-block"></i>${sends.includes("text") ? "" : "Record"}</button>` : ""}</form>`;
     phone.innerHTML = `<div class="hd"><button type="button" class="bk" id="bk">‹ Back</button>${letter().replace('class="wm"', 'class="wm" style="width:36px;height:36px"')}<b>${esc(S.finished ? chatName() : S.name)}<small style="display:block;font-weight:400;color:var(--muted);font-size:12.5px;line-height:1.2">${esc(S.finished ? "You run this chat." : S.spec)}</small></b>${S.finished ? sw("live") : ""}</div>
       <div class="bd">${tc.log.map(bubble).join("")}${tc.stage === "ask" ? `<div class="tapsr">${taps.map((t, i) => `<button type="button" class="tapme" data-tp="${i}">${esc(t)}</button>`).join("")}</div>` : ""}${tc.useful ? `<div class="tapsr row">${["Yes", "No", "Skip"].map((x) => `<button type="button" class="tapme" data-u="${x}">${x}</button>`).join("")}</div>` : ""}</div>${bar}`;
     const bd = $(".bd", phone); bd.scrollTop = bd.scrollHeight;
@@ -381,7 +451,7 @@ Reply with only a JSON object with these keys:
     const tf = $("#tf", phone); if (tf) { $("#tfb", phone).onclick = () => tf.click(); tf.onchange = (e) => { const file = e.target.files && e.target.files[0]; if (file) sent(/^image\//.test(file.type) ? { img: URL.createObjectURL(file) } : { me: "📄 " + file.name }); }; }
     paintMap();
   }
-  function render() { if (S.mode === "test") return testChat(); if (S.mode === "home") return home(); if (S.mode === "build") return build(); if (S.mode === "will") return willAfter(); if (T != null) return tryIt(); STEPS[cur].r(); }
+  function render() { if (S.mode === "test") return testChat(); if (S.mode === "home") return home(); if (S.mode === "build") return build(); if (S.mode === "walk") return walkParts(); if (S.mode === "will") return willAfter(); if (T != null) return tryIt(); STEPS[cur].r(); }
   /* ---------- the map: every step of the journey; it follows the phone, and a tap opens that step ---------- */
   const STAGES = [["You arrive", "Your list of chats has one chat: Will."], ["Your chat", "What people send, what they get back, how it greets them."], ["Your models", "A model answers one question with one of three answers. It learns from you."], ["Answers and tokens", "Who answers, and whether others may use your models."], ["Open it", "See it as your people do, then share your link."]];
   function ensure() {   // jumping in from the map: fill what is not decided yet with Will's first suggestion

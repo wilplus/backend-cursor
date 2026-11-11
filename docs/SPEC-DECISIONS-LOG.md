@@ -17316,3 +17316,61 @@ make them editable if needed, but no more than 3 options"). For N636 item 2.
 may still be changed; until decided, they may not.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N647 · The feedback walk is set part by part: what it notices, what it
+says, and how each is doing. The setup reads as a chat** (founder, the
+Claude Code chat, 11 November 2026: "I want to make a set up that defines it
+all so that I can copy the speaking coach's settings and all he does one to
+one using the set up only"; on the four-step order and the drawing: "You
+have my go!"; on the pinned prototype: "The rest of the prototype is fine I
+can't see any gaps"; and "unify the bubbles as answers in the set up to be
+also posted the same way they are in the chat itself ... when you need to
+type something use the unified bottom bar, source it from the app"; "for the
+app check that the text input has the send button icon on the right"). For
+N641 and N642.
+
+1. **The walk has four parts,** opened from "The feedback walk" in Build,
+   "Your chat": "Its steps" and "What they get" (N641), "What I notice" and
+   "What I say". Will's line: "Your walk, part by part. Tap one to change
+   it." A fifth row, "See it run", plays a sample and asks "Did this help?".
+2. **"What I notice"** lists what the walk looks for, the host's own models
+   among them, each with how it is doing: "Coaches agreed {a} of {b}". The
+   last row is "Something else. I want this" (N641 item 3). One of them
+   opens: "Coaches agreed with me {a} times out of {b}.", then "Keep it as
+   it is" · "Catch more" · "Catch fewer" · "Check some myself" · "Read an
+   article" · "Turn it off".
+3. **A change runs silently first.** "I'll try catching more on the next 20
+   recordings, silently. Nobody sees a change." and "Then I'll show you what
+   it caught." Later: what it caught and how many of those coaches agreed
+   with, then "Use it" or "Go back". Nothing a speaker sees changes before
+   "Use it". The host never sees a threshold.
+4. **"Check some myself"** shows one case to a screen with the question and
+   "Yes" · "No" · "Not sure" (or the model's own answers, N646), and ends
+   "Thanks. That teaches me."
+5. **"Read an article":** "Upload an article about this. I'll read it and
+   suggest a change." Will says what it read and proposes "catch more" or
+   "catch fewer"; "Try it" or "Not now". It then runs as item 3.
+6. **"What I say"** lists the line for each thing noticed. One opens: "When
+   I notice {it}, I say:", the line, "People said it helped {a} times out
+   of {b}.", then "Keep it" · "Change the words" · "Turn it off". A new line
+   reads "It's new. I'll tell you how it does." The host's words are theirs
+   (N578).
+7. **Counts are for the host only.** A speaker never sees one.
+8. **The order of building:** a host's chat runs a walk with the host's own
+   models as what it notices; then the lines, with "Did this help?" read
+   back to the host; then the speaking coach's thresholds move from code
+   into settings, unchanged; then the dials of item 3. The third step
+   changes nothing a speaker sees.
+9. **The setup reads as a chat.** Each step answered stays above: Will's
+   lines, and the person's answer as their own bubble, whether tapped or
+   typed. The buttons stay as they are. Where the person types, the field
+   is the app's own bottom bar. Every text field in the app has its send
+   button on the right.
+10. **Where a model is built on a base** Will says: "Your model is a small
+    one of its own. It learns your answers on top of what a big model
+    reads."
+
+**Open:** how many recordings a silent run takes when few arrive; what a
+host sees while fewer than ten coaches' answers exist for a count.
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
