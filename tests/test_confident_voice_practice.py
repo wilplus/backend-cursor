@@ -153,6 +153,17 @@ class MatchTraceTests(unittest.TestCase):
             self._row("elsewhere", ["ending_compression"]),
         ]
 
+    def test_no_exercise_is_offered_after_a_take_whose_host_has_practice_off(self):
+        """N648 item 8: a Take made in a host's chat is offered nothing
+        while the host's "Practice after a Take" is off."""
+        from unittest.mock import patch
+        db = _Db(self._catalogue())
+        with patch("services.take_door.practice_allowed", return_value=False):
+            self.assertIsNone(self._offer(db, {"insufficient_pauses": True}))
+        self.assertFalse(db.assigned)
+        with patch("services.take_door.practice_allowed", return_value=True):
+            self.assertIsNotNone(self._offer(db, {"insufficient_pauses": True}))
+
     def test_the_trace_never_reaches_the_speaker(self):
         db = _Db(self._catalogue())
         offer = self._offer(db, {"insufficient_pauses": True})
