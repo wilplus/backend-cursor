@@ -17012,3 +17012,38 @@ made in blocks has no cases, so on a phone its teaching could not start.
 **Open:** a recorded case; a photo or a recording as a file.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N639 · Everything opened from Will's lines has one top bar: a back arrow
+and the name of what was opened** (founder, the Claude Code chat, 11
+November 2026, on the screens opened from "This needs you:" and "And yours
+to open any time:": "For all those please unify the navbar when you open
+them, do it the same like on the model parameters, but just keep the arrow
+back without the icon, just write the title of the tab"; on the coach
+panel: "I couldn't swipe to go back and there is no button I can click to
+go back", "back button should bring me back to will"; and on the list:
+"Don't write smth like arturs assistant"). For N629 and N632 item 6.
+
+For whoever has the ring row `chat_builder`:
+
+1. **One top bar.** What opens from one of Will's lines (the moments to
+   answer, the answers to send, a model to check, "AI models", "Your chat"
+   with its setup and its parts) shows a back arrow on the left and its
+   name beside it, as the AI models page does. No circle, no "Back" word,
+   no close button on the right, and no site bar above. The name is the
+   line's own: "AI models", "Your chat"; the coach panel keeps its own,
+   "Your speakers". Was: the coach panel had only a close button on the
+   right; the setup and its parts showed "Back", Will's circle and what the
+   person does.
+2. **Back goes one step, and from the first screen to Will's chat,** where
+   the person came from. The phone's own back does the same.
+3. **"Test my chat" and a person's own chat keep a chat's top bar** (the
+   circle and the name): they are chats.
+4. **A person's row in the list of chats does not say "{name}'s
+   assistant".**
+
+The coach panel is a locked screen: only its top bar and its way back
+change (the founder's approval is this entry).
+
+No migration in this entry. No new words. The rules: frontend
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md) and
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
