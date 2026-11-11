@@ -11,6 +11,8 @@ services/model_setup_store.py for the tables).
   POST /v2/models/<id>/setup/data                existing data (multipart ``file``)
   GET  /v2/models/<id>/setup/first-ten           the next of the owner's first 10
   POST /v2/models/<id>/setup/first-ten/<eid>     {step, answer}
+  GET  /v2/models/answers?question=…             the answers a question starts with
+                                                 (services/model_answers.py)
   GET  /v2/models/coach-tasks                    the coach's queue as models
                                                  (services/model_coach_tasks.py)
   GET  /v2/models/coming                         images, video, recordings: coming
@@ -193,3 +195,22 @@ def v2_models_coach_tasks():
             bookmarked=_bookmarked_snippet_ids, pseudonym_for=coach_pseudonym))
     return _run("coach tasks", lambda: model_coach_tasks.tasks(
         db, me, is_coach=coach, moments_waiting=moments))
+
+
+@v2_bp.route("/models/answers", methods=["GET"])
+@require_auth
+def v2_models_answers():
+    """?question=…: the answers a model with this question starts with
+    (N646 item 1): what it names to tell apart, then "Not sure"; else
+    "Yes", "No", "Not sure". At most three; rules, no provider call."""
+    from services import model_answers, model_coming
+    from services.chats import ChatsError
+
+    def work() -> dict:
+        if not model_coming.on(db, _me()):
+            raise ChatsError("NOT_FOUND", "Not found.", 404)
+        question = " ".join(str(request.args.get("question") or "").split())[:200]
+        if not question:
+            raise ChatsError("EMPTY", "Write the question first.")
+        return {"answers": model_answers.answers_for(question)}
+    return _run("answers", work)

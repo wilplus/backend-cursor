@@ -377,12 +377,46 @@ def _kind(_db: Any, _me: str, _model: dict, draft: dict, body: dict) -> None:
     return None
 
 
-def _scale(_db: Any, _me: str, _model: dict, draft: dict, body: dict) -> None:
-    scale = S.clean_scale(body.get("scale"))
+def _scale(database: Any, _me: str, model: dict, draft: dict, body: dict) -> None:
+    draft["scale"] = _answers_kept(database, model, draft, body.get("scale"))
+    return None
+
+
+def _counted(database: Any, model_id: Any) -> bool:
+    """Has any answer to this model counted yet (N646 Open)?"""
+    return bool(_rows(_table(database, ANSWERS).select("id").eq("model_id", str(model_id))
+                      .eq("counted", True).limit(1)))
+
+
+def _answers_kept(database: Any, model: dict, draft: dict, raw: Any) -> list[dict]:
+    """The model's answers as the person changed them, checked (N646 items
+    2 and 3): every point a word; a model made from a question (a chat's
+    card, blocks) at most three; and none changed once an answer counted:
+    until the founder decides (N646 Open), they may not, 409
+    ANSWERS_LOCKED."""
+    from services.model_answers import MOST
+    scale = S.clean_scale(raw)
     if not S.scale_ok(scale):
         raise _bad("BAD_SCALE", "Give every point a word.")
-    draft["scale"] = scale
-    return None
+    if draft.get("from_chat") and len(scale) > MOST:
+        raise _bad("TOO_MANY_ANSWERS", f"At most {MOST} answers.")
+    if [p["t"] for p in scale] != [p.get("t") for p in S.clean_scale(draft.get("scale"))] \
+            and _counted(database, model["id"]):
+        raise ChatsError("ANSWERS_LOCKED", "Its answers can't change once teaching has counted.", 409)
+    return scale
+
+
+def set_answers(database: Any, user_id: Any, model_id: Any, answers: list[str]) -> None:
+    """The answers of the host's own model made from their chat's card, kept
+    as the card says them (N646 item 4: the chat's reply reads the card,
+    teaching and the check read the model). Unchanged is nothing."""
+    me = lp._require(database, user_id)
+    model = _owned(database, me, model_id)
+    draft = dict(model["setup"])
+    if [p.get("t") for p in S.clean_scale(draft.get("scale"))] == list(answers):
+        return
+    draft["scale"] = _answers_kept(database, model, draft, answers)
+    _write(database, model, draft)
 
 
 def _question(_db: Any, _me: str, _model: dict, draft: dict, body: dict) -> None:

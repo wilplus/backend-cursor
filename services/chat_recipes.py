@@ -388,6 +388,11 @@ def _real_models(database: Any, user_id: str, recipe: dict, models: list[dict]) 
             out.append(m)
             continue
         made = m.get("model_id") if m.get("model_id") in ids else by_q.get(m["q"])
+        if made and list(m["opts"]) != _opts_of(before, made):
+            # Changed answers reach the real model too, so teaching, the
+            # check and the reply read the same three (N646 items 3 and 4);
+            # refused once an answer counted (409 ANSWERS_LOCKED).
+            model_setup_store.set_answers(database, user_id, made, m["opts"])
         if not made and model_launchpad_store.enabled(database, user_id):
             made = model_setup_store.begin_from_chat(
                 database, user_id, question=m["q"], answers=m["opts"], sends=sends)["model_id"]
@@ -396,6 +401,11 @@ def _real_models(database: Any, user_id: str, recipe: dict, models: list[dict]) 
         out.append({**{k: v for k, v in m.items() if k != "model_id"},
                     **({"model_id": made} if made else {})})
     return out
+
+
+def _opts_of(cards: list[dict], model_id: str) -> Optional[list]:
+    """The answers a card for this model was saved with, or None."""
+    return next((list(m.get("opts") or []) for m in cards if str(m.get("model_id")) == str(model_id)), None)
 
 
 def parts(recipe: dict, person: Any = None) -> list[dict]:
