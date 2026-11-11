@@ -66,6 +66,9 @@ PROVES   FIRST-02 -> SetupTest::test_will_asks_what_you_do_and_works_out_the_cho
          N647.8   -> WalkTest::test_a_model_that_is_not_ready_says_nothing_in_the_walk
          N647.8   -> WalkTest::test_outside_the_ring_nothing_runs
          N647.8   -> WalkTest::test_a_chat_with_no_walk_answers_as_before
+         N647.6   -> WalkTest::test_the_host_sees_how_each_line_helped_and_changes_it
+         N647.6   -> WalkTest::test_a_line_turned_off_is_not_said
+         N647.6   -> WalkTest::test_only_the_host_reads_or_changes_the_walk
 WHY      The build succeeds when a stranger sets up a chat with Will and a
          second person gets a useful answer in it (N620).
 """
@@ -1313,3 +1316,66 @@ class WalkTest(_Tokens):
         self.assertEqual([m["body"] for m in reply["messages"] if "model_line" in m["meta"]],
                          ["Your scalp looks dry here.", "There are some flakes."])
         self.assertEqual([bool(m["meta"].get("useful_ask")) for m in reply["messages"]], [False, False, True])
+
+    # ── What it says, and whether it helped (N647 items 6 and 7) ──
+
+    def _get(self, who=TOMEK):
+        return self.client.get("/v2/chats/setup/walk", headers=self._as(who))
+
+    def _item(self, mid, body, who=TOMEK):
+        return self.client.put(f"/v2/chats/setup/walk/items/{mid}", json=body, headers=self._as(who))
+
+    def _answer(self, chat, reply, answer):
+        for m in [m for m in reply["messages"] if "walk_line" in m["meta"]][:1]:
+            self.client.post(f"/v2/chats/{chat}/messages/{m['id']}/useful", json={"answer": answer},
+                             headers=self._as(PIOTR))
+
+    def test_the_host_sees_how_each_line_helped_and_changes_it(self):
+        """N647.6/7: "People said it helped {a} times out of {b}": Yes and
+        No count, Skip does not; a new line is null; changed words are
+        checked, used on the next reply, and count from nothing."""
+        chat = self._chat()
+        first = self._get().get_json()
+        mid = first["say"][0]["model_id"]
+        self.assertEqual((first["runs_on_messages"], first["say"][0]["helped"], first["say"][0]["on"]),
+                         (True, None, True))
+        self.assertIsNone(first["notice"][0]["agreed"])
+        self.heads = {0: {"answer": "Yes", "sure": True}}
+        for answer in ("yes", "yes", "no", "skip"):
+            self._answer(chat, self._send(chat).get_json()["reply"], answer)
+        self.assertEqual(self._get().get_json()["say"][0]["helped"], {"a": 2, "b": 3})
+        self.assertEqual(self._item(mid, {"says": "Your scalp is very dry; 9 out of 10."}).status_code, 400)
+        new = "Your scalp looks dry. Try a gentler shampoo."
+        say = self._item(mid, {"says": new}).get_json()["say"][0]
+        self.assertEqual((say["says"], say["helped"]), (new, None))
+        reply = self._send(chat).get_json()["reply"]
+        self.assertEqual([s for _b, s, _a in self._walk(reply)], [new])
+        self._answer(chat, reply, "yes")
+        self.assertEqual(self._get().get_json()["say"][0]["helped"], {"a": 1, "b": 1})
+        # The old words back: their old answers count again.
+        old = "Your scalp looks dry here."
+        self.assertEqual(self._item(mid, {"says": old}).get_json()["say"][0]["helped"], {"a": 2, "b": 3})
+
+    def test_a_line_turned_off_is_not_said(self):
+        """N647.6: off says nothing and keeps its words; on says it again; the
+        walk saved again keeps what is off."""
+        chat = self._chat()
+        mid = self._get().get_json()["say"][0]["model_id"]
+        self.heads = {0: {"answer": "Yes", "sure": True}, 1: {"answer": "Flakes", "sure": True}}
+        self.assertFalse(self._item(mid, {"on": False}).get_json()["say"][0]["on"])
+        self._put("walk", {"steps": ["best"], "out": "none"})
+        reply = self._send(chat).get_json()["reply"]
+        self.assertEqual([b for b, _s, _a in self._walk(reply)], ["I see flakes. Try a gentler shampoo."])
+        self.assertEqual(self._get().get_json()["say"][0]["says"], "Your scalp looks dry here.")
+        self._item(mid, {"on": True})
+        again = self._send(chat).get_json()["reply"]
+        self.assertEqual(len(self._walk(again)), 2)
+
+    def test_only_the_host_reads_or_changes_the_walk(self):
+        """N647.7: anyone else gets 404 on the read and on the change."""
+        self._chat()
+        mid = self._get().get_json()["say"][0]["model_id"]
+        self.assertEqual(self._get(PIOTR).status_code, 404)
+        self.assertEqual(self._item(mid, {"on": False}, PIOTR).status_code, 404)
+        self.assertEqual(self._item("not-mine", {"on": False}).status_code, 404)
+        self.assertTrue(self._get().get_json()["say"][0]["on"])

@@ -675,6 +675,26 @@ def v2_chats_blank_setup_walk_want():
         db, str(request.user_id), payload)))
 
 
+@v2_bp.route("/chats/setup/walk", methods=["GET"])
+@require_auth
+def v2_chats_blank_setup_walk():
+    """The walk, what it notices, what it says and how each is doing (N647)."""
+    from services import chat_replies
+    return _builder_or_404(lambda: _run("setup walk", lambda: chat_replies.walk_view(
+        db, str(request.user_id))))
+
+
+@v2_bp.route("/chats/setup/walk/items/<model_id>", methods=["PUT"])
+@limiter.limit("600 per hour", scope="chats_blank_setup_walk_item")
+@require_auth
+def v2_chats_blank_setup_walk_item(model_id):
+    """Turn one line of the walk on or off, or change its words (N647 item 6)."""
+    from services import chat_replies
+    body = request.get_json(silent=True)
+    return _builder_or_404(lambda: _run("setup walk item", lambda: chat_replies.walk_item(
+        db, str(request.user_id), model_id, body)))
+
+
 @v2_bp.route("/chats/setup/<part>", methods=["PUT"])
 @limiter.limit("600 per hour", scope="chats_blank_setup_part")
 @require_auth

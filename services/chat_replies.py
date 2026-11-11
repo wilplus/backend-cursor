@@ -37,6 +37,14 @@ and nothing otherwise. Each such line asks "Did this help?" on its own
 No provider call is added. Everything else, a recipe with no walk and
 every model not ready, is as before.
 
+READ BACK AND EDITED (N647 items 6 and 7; host only). ``walk_view`` /
+``walk_item``: each line with its words, whether it is on
+(``recipe.walk.off`` lists the ones turned off; they say nothing) and
+"People said it helped {a} times out of {b}" (``helped``: Yes over Yes plus
+No, Skip left out, counted only for the line's current words, which each
+answer carries in ``meta.walk_line.says``). Changed words pass the host's
+checks and count from nothing. Counts are never shown to a speaker.
+
 A model still learning on the host's cards (N633 item 1) is left out of
 the call: no line, no charge. The host's own words, when they answer a
 question by typing or change a draft before sending it, become an example
@@ -150,7 +158,10 @@ def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str],
     raw_lines: list = given if isinstance(given, list) else []
     lines = []
     walking = bool(recipe.get("walk"))
+    off = set((recipe.get("walk") or {}).get("off") or [])
     for i, m in enumerate(recipe.get("models") or []):
+        if walking and m.get("model_id") in off:
+            continue  # the host turned this line off: it says nothing (N647 item 6)
         if walking and m.get("own", True) and heads.get(i, {}).get("sure"):
             # The feedback walk (N647 item 8, step 1): a ready own model says
             # the host's own line, word for word, when it notices what its
@@ -189,6 +200,99 @@ def _messages(reply: dict, by: str) -> list[dict]:
     out = [{"kind": "answer", "body": reply["answer"], "by": by}] if reply.get("answer") else []
     return out + [{"kind": "model", "body": line["body"], "by": line["by"],
                    **({"walk": True} if line.get("walk") else {})} for line in reply["lines"]]
+
+
+# ── What it says, and whether it helped (N647 items 6 and 7) ────────────
+
+def _same(a: Any, b: Any) -> bool:
+    return " ".join(str(a or "").split()) == " ".join(str(b or "").split())
+
+
+def helped(database: Any, host_id: Any, models: list[dict]) -> dict[str, tuple[int, int]]:
+    """{model_id: (a, b)}: of the answers to "Did this help?" given to the
+    line a model says now, a said Yes and b said Yes or No (Skip and no
+    answer are left out). One scan of the host's threads for all lines. An
+    answer given to older words is not counted: each answer sits on the
+    message with the words it was given for (``meta.walk_line.says``)."""
+    now = {str(m["model_id"]): m.get("says") for m in models if m.get("model_id")}
+    members = _host_members(database, str(host_id))
+    ids = {str(m["id"]) for m in members}
+    threads = list({str(m["thread_id"]) for m in members})
+    counts = {mid: [0, 0] for mid in now}
+    if not threads or not now:
+        return {mid: (0, 0) for mid in now}
+    rows = _rows(_table(database, MESSAGES).select("id,author_member_id,meta")
+                 .in_("thread_id", threads).order("created_at", desc=True).limit(5000))
+    for row in rows:
+        meta = row.get("meta") or {}
+        line = meta.get("walk_line") if isinstance(meta, dict) else None
+        if not isinstance(line, dict) or str(row.get("author_member_id")) not in ids:
+            continue
+        mid = str(line.get("model_id"))
+        if mid not in counts or not _same(line.get("says"), now[mid]):
+            continue
+        if meta.get("useful") in ("yes", "no"):
+            counts[mid][1] += 1
+            counts[mid][0] += meta["useful"] == "yes"
+    return {mid: (a, b) for mid, (a, b) in counts.items()}
+
+
+def _own_models(recipe: dict) -> list[dict]:
+    return [m for m in recipe.get("models") or [] if m.get("own", True) and m.get("model_id")]
+
+
+def _walk_recipe(database: Any, host_id: Any) -> dict:
+    recipe = chat_recipes.mine(database, host_id)
+    if recipe is None:
+        raise chat_recipes.RecipeError("NOT_STARTED", "Say what you do first.", 409)
+    return recipe
+
+
+def walk_view(database: Any, host_id: Any) -> dict:
+    """GET /v2/chats/setup/walk: the walk, what it notices and what it says,
+    each with whether it is on and how it is doing. Counts are the host's
+    only (N647 item 7). ``agreed`` is not counted here (null)."""
+    recipe = _walk_recipe(database, host_id)
+    walk = chat_recipes.walk_of(recipe)
+    off = set((recipe.get("walk") or {}).get("off") or [])
+    models = _own_models(recipe)
+    counts = helped(database, host_id, models)
+    notice, say = [], []
+    for m in models:
+        mid = str(m["model_id"])
+        on = mid not in off
+        notice.append({"model_id": mid, "q": m.get("q"), "ready": not m.get("learning"),
+                       "on": on, "agreed": None})
+        a, b = counts.get(mid, (0, 0))
+        say.append({"model_id": mid, "q": m.get("q"), "says": m.get("says") or "", "on": on,
+                    "helped": {"a": a, "b": b} if b else None})
+    return {**walk, "runs_on_messages": bool(recipe.get("walk")), "notice": notice, "say": say}
+
+
+def walk_item(database: Any, host_id: Any, model_id: Any, body: Any) -> dict:
+    """PUT /v2/chats/setup/walk/items/<model_id> {"on"} or {"says"}. New
+    words pass the host's checks and are used from the next reply; their
+    count starts again. A model that is not the host's own: 404."""
+    recipe = _walk_recipe(database, host_id)
+    body = body if isinstance(body, dict) else {}
+    models = list(recipe.get("models") or [])
+    at = next((i for i, m in enumerate(models)
+               if m.get("own", True) and m.get("model_id") and str(m["model_id"]) == str(model_id)), None)
+    if at is None:
+        raise _not_found()
+    if "says" in body:
+        models[at] = {**models[at], "says": chat_recipes._words(body["says"], 200, "The line")}
+        recipe = {**recipe, "models": models}
+    elif isinstance(body.get("on"), bool):
+        walk = recipe.get("walk")
+        if not walk:
+            raise chat_recipes.RecipeError("NOT_STARTED", "Save the feedback walk first.", 409)
+        off = [x for x in walk.get("off") or [] if x != str(model_id)]
+        recipe = {**recipe, "walk": {**walk, "off": off if body["on"] else [*off, str(model_id)]}}
+    else:
+        raise chat_recipes.RecipeError("RECIPE_INVALID", "Send on (yes or no) or says (the words).")
+    chat_recipes._store(database, str(host_id), recipe)
+    return walk_view(database, host_id)
 
 
 # ── "Test my chat" (N618 item 8) ────────────────────────────────────────
