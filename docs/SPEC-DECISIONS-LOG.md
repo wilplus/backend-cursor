@@ -17192,3 +17192,35 @@ one's own chat.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup);
 frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N643 · The words of N642's screens, as the pinned prototype draws them**
+(the coordinator, the Claude Code chat, 11 November 2026, under the
+founder's standing "all the wording is okay", after his "Yes, to all" on
+N642; shown to him the same morning on the prototype). For N642.
+
+1. **The name.** In the setup, after "Why people come": "Your chat is
+   called:" with a suggestion to Keep or Change, and "Type my own", whose
+   ask is "What should your chat be called?". The suggestions are made from
+   the person's first name and what they do: "{name}'s chat", "Ask
+   {name}", "{what they do} with {name}". Among the chat's parts its row is
+   "Name". What people read before they join carries the name.
+2. **The list.** One row for one's own chat: its circle, its name, and its
+   hello under it.
+3. **Live.** The top bar: Back, the circle, the name with "You run this
+   chat." under it, and the switch "Live" · "Build".
+4. **Build.** The top bar: a back arrow, the name, and the switch. Under
+   it two tabs, "Your chat" and "AI models".
+   - "Your chat": "Your chat is open. Tap a part to change it." (or "Your
+     chat is saved. Nobody can see it yet. Tap a part to change it."), the
+     parts, and the field "Message Will".
+   - "AI models": "Your models, and everything you teach.", each model,
+     each task of the queue with what waits ("Moments to answer", "Do you
+     hear it?", "Pick the most confident", "Pick the moment for feedback",
+     their own titles, "{n} waiting"), "Start your own", and "Images,
+     coming. I want this" and "Video, coming. I want this", each answering
+     "Thanks. I've told Artur." once tapped.
+
+The line under the name in Live is the one small line the founder asked
+for ("a small text that its admin set"); N637's rule is for the setup.
+
+No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
