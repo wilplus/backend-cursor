@@ -150,7 +150,7 @@ def _stretch(frame: Any, snippets: list[dict]) -> Optional[dict]:
 def _issue(fix: dict, clips: list[dict], snippets: list[dict]) -> Optional[bool]:
     """Whether the fix's issue is on the slide's clips; None when
     unreadable."""
-    from services import moment_pick, tempo_stretch
+    from services import moment_pick, noticing_settings, tempo_stretch
     from services.voice_confidence import stamped_score
     kind = fix["kind"]
     if kind == "tempo":
@@ -162,7 +162,7 @@ def _issue(fix: dict, clips: list[dict], snippets: list[dict]) -> Optional[bool]
     if kind == "voice":
         heard = [r["s"] for r, c in zip(reads, clips)
                  if r["sound"] and len(str(c.get("transcript") or "").split()) >= moment_pick.MIN_WORDS]
-        return max(heard) < moment_pick.FLOOR if heard else None
+        return max(heard) < noticing_settings.value("moment_pick.FLOOR") if heard else None
     if kind == "clearer":
         return any(r["words_help"] for r in reads) if reads else None
     return None

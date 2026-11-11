@@ -352,7 +352,7 @@ def set_part(database: Any, user_id: Any, part: str, body: Any) -> dict:
             raise RecipeError("RECIPE_INVALID", "The feedback walk is for a chat that takes a recording.")
         # "I want this", once asked, stays asked whatever the walk becomes.
         before = recipe.get("walk") or {}
-        value = {**value, **{k: before[k] for k in ("wanted", "wanted_at") if k in before}}
+        value = {**value, **{k: before[k] for k in ("wanted", "wanted_at", "off") if k in before}}
     if part == "practice" and "rec" not in (recipe.get("send") or []):
         raise RecipeError("RECIPE_INVALID", "Practice after a Take is for a chat that takes a recording.")
     if part == "who" and value == "assistant" and recipe.get("sensitive") is not False:

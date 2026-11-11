@@ -103,6 +103,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
+from services import noticing_settings as ns
 from services import willfidence
 
 #: Founder lock 2026-10-12, section 6: a start value, calibrated later so
@@ -168,7 +169,7 @@ def read(score: Any, text: Any, metrics: Any, shown: Any = None,
     s = willfidence.stretch(score)
     sound = s is not None
     if s is None:
-        s = NEUTRAL_SOUND
+        s = ns.value("moment_pick.NEUTRAL_SOUND")
     from services.rewrite_gate import words_need_help
     fit = willfidence.slide_fit([metrics])
     w = willfidence.partial_w(willfidence.filler(text), willfidence.hedging(text), fit)
@@ -294,7 +295,7 @@ def unfixed(reads: list[dict], shown: list[dict]) -> Optional[dict]:
     strongest = next((m["block_id"] for m in shown if m.get("slot") == SLOT_STRONGEST), None)
     weak = [row for row in reads if row.get("read") and row["block_id"] != strongest
             and _worded(row) and row["read"].get("sound", True) and not row.get("held")
-            and row["read"]["value"] < FLOOR]
+            and row["read"]["value"] < ns.value("moment_pick.FLOOR")]
     return min(weak, key=lambda row: row["read"]["value"], default=None)
 
 
@@ -332,11 +333,11 @@ def _weakest(rows: list[dict], praised_part: Any = None) -> Optional[dict]:
     the lowest willfidence, whatever its voice showed."""
     from config import Config
     floor = float(Config.AI_VOICE_MIN_SEVERITY)
-    heard = [row for row in rows if (row.get("word_count") or 0) >= STRETCH_WORDS
+    heard = [row for row in rows if (row.get("word_count") or 0) >= ns.value("moment_pick.STRETCH_WORDS")
              and row["read"].get("sound", True) and not row.get("held")
              and not _fixed(row, EXERCISE_VOICE)
              and float(row.get("voice") or 0.0) >= floor]
-    return min(heard, key=lambda row: (-float(row.get("voice") or 0.0) * (1 + RELEVANCE_LIFT * _relevance(row))
+    return min(heard, key=lambda row: (-float(row.get("voice") or 0.0) * (1 + ns.value("moment_pick.RELEVANCE_LIFT") * _relevance(row))
                                        * fix_give(row, praised_part),
                                        row["read"]["value"] * _damp(row), row["read"]["s"]),
                default=None)
@@ -369,18 +370,18 @@ def part_of(at: int, count: int) -> Optional[int]:
 def praise_give(row: dict) -> float:
     """How much a clip counts for their best and the next bests (N546): a
     worked slide's a little less, and the part the last walk praised."""
-    give = 1 - TOUCHED_GIVE if row.get("touched") else 1.0
-    return give * (1 - PART_GIVE) if row.get("praised_last") else give
+    give = 1 - ns.value("moment_pick.TOUCHED_GIVE") if row.get("touched") else 1.0
+    return give * (1 - ns.value("moment_pick.PART_GIVE")) if row.get("praised_last") else give
 
 
 def fix_give(row: dict, praised_part: Any = None) -> float:
     """How much a clip counts for a fix (N546): a worked slide's a little
     less, and in their best's part of the talk, and in the part the last
     walk fixed."""
-    give = 1 - TOUCHED_GIVE if row.get("touched") else 1.0
+    give = 1 - ns.value("moment_pick.TOUCHED_GIVE") if row.get("touched") else 1.0
     if praised_part is not None and row.get("part") == praised_part:
-        give *= 1 - PART_GIVE
-    return give * (1 - PART_GIVE) if row.get("fixed_last") else give
+        give *= 1 - ns.value("moment_pick.PART_GIVE")
+    return give * (1 - ns.value("moment_pick.PART_GIVE")) if row.get("fixed_last") else give
 
 
 def _fixed(row: dict, kind: str) -> bool:
@@ -415,7 +416,7 @@ def _rank(row: dict) -> tuple:
     little less on a worked slide or in the part the last walk praised
     (``praise_give``, N546), then the voice (N118)."""
     return (not _worded(row), bool(row.get("held")),
-            -row["read"]["value"] * (1 + RELEVANCE_LIFT * _relevance(row)) * praise_give(row),
+            -row["read"]["value"] * (1 + ns.value("moment_pick.RELEVANCE_LIFT") * _relevance(row)) * praise_give(row),
             -row["read"]["s"])
 
 
@@ -426,20 +427,20 @@ def _relevance(row: dict) -> float:
 def _damp(row: dict) -> float:
     """A relevant sentence reads a little lower for the fix slots, so the
     fix lands where it matters most to the talk (N293)."""
-    return 1 - RELEVANCE_LIFT * _relevance(row)
+    return 1 - ns.value("moment_pick.RELEVANCE_LIFT") * _relevance(row)
 
 
 def _heard(row: dict) -> float:
     """1 with no verbal read, down to 1 - ``VERBAL_LIFT`` at its full
     weight (N326)."""
-    return 1 - VERBAL_LIFT * float(row["read"].get("verbal") or 0.0)
+    return 1 - ns.value("moment_pick.VERBAL_LIFT") * float(row["read"].get("verbal") or 0.0)
 
 
 def _voice_clears(row: dict) -> bool:
     """The voice reaches the floor, on a clip with enough words and a sound
     read (a clip with none stays corrected, 2026-10-17)."""
     read_ = row["read"]
-    return _worded(row) and bool(read_.get("sound", True)) and read_["s"] >= FLOOR
+    return _worded(row) and bool(read_.get("sound", True)) and read_["s"] >= ns.value("moment_pick.FLOOR")
 
 
 def _worded(row: dict) -> bool:
