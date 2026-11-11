@@ -1,16 +1,27 @@
 """What the speaking coach notices, as settings (N647 item 8, step 3).
 
-The thresholds that decide what the feedback walk notices lived as Python
-constants. Eight of them, the ones a dial can move (more or fewer catches,
-one meaning), are read here instead, from one record:
-``runtime_config`` key ``noticing_settings``, a JSON object
-``{"version": "...", "values": {name: value}}``.
+The thresholds that decide what the feedback walk notices, and how it ranks
+the moments it picks, lived as Python constants. They are read here
+instead, from one record: ``runtime_config`` key ``noticing_settings``, its
+``value`` (the text column) holding a JSON object
+``{"version": "...", "values": {name: value}}``. Other keys in that object
+(a history, a note) are ignored. ``metadata`` is not read.
 
 TODAY'S VALUES ARE THE DEFAULTS, and nothing changes while the record is
 missing, unreadable, or holds the defaults. A value that is missing, of the
 wrong type or outside its bounds falls back to its constant on its own; the
 rest of the record still counts. ``tests/test_noticing_settings.py`` pins
-``DEFAULTS`` to the constants in their own modules, name by name.
+every default to the constant in its own module, name by name.
+
+THREE KINDS OF VALUE (``SPECS``):
+  dial    a host may move it, a notch at a time, under one "thing noticed"
+          (``THINGS``): one meaning, more or fewer catches.
+  rank    it orders the moments, never adds or removes a catch. Only the
+          founder may change it, by hand; ``step`` never touches it.
+  pinned  listed so the inventory is whole, but held at its constant: a copy
+          lives elsewhere (the frontend's pace scale, a SQL function), or it
+          is structure, or it has its own calibration rule. The record cannot
+          move it, and the code still reads the constant.
 
 THE VERSION. ``version()`` is ``DEFAULT_VERSION`` while every value is the
 default; otherwise ``noticing-`` and a hash of the values that differ, so a
@@ -18,13 +29,17 @@ log written under a moved threshold can never be compared with one written
 under today's. The verbal cues stamp it into their detector version and the
 policy frame into its practice policy, only when it is not the default.
 
-THE SEAM FOR A SILENT TRY (step 4, a neighbouring session). A candidate is a
-pure value, never stored: ``candidate(overrides)`` returns the full set with
-the overrides that pass the bounds, and ``version_of(values)`` its version.
-``with trying(values):`` runs the same rules on it, in that context only
-(a ``contextvars`` value: other threads and requests keep the live set), and
-the rules need no new argument. A caller runs the live rule, then the same
-rule inside ``trying``, and logs the second result; it never serves it.
+THE SEAM FOR A SILENT TRY (step 4, a neighbouring session). All pure; nothing
+here writes:
+  ``setting_for(thing)``            the live values of a thing's dials
+  ``step(settings, thing, "more")`` a candidate one notch over, within bounds
+  ``candidate(overrides)`` / ``with_changes(settings, changes)``
+  ``with trying(values):``          the same rules, reading the candidate, in
+                                    this context only (a ``contextvars``
+                                    value: other threads and requests keep
+                                    the live set); the rules take no new
+                                    argument. Log what they say; never serve
+                                    it.
 
 The record is read at most once a minute per process (``CACHE_SECONDS``),
 and a failed read counts as missing for that minute. Never shown to anyone.
@@ -38,7 +53,7 @@ import threading
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any, Callable, Iterator, Mapping, Optional
+from typing import Any, Callable, Iterator, Mapping, NamedTuple, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -46,65 +61,112 @@ KEY = "noticing_settings"
 DEFAULT_VERSION = "noticing-v0-defaults"
 CACHE_SECONDS = 60.0
 
-_BANDS_LOW = ("delivery_signal_low",)
-_BANDS_TWO = ("delivery_signal_mid_low", "delivery_signal_low")
-_BANDS_THREE = ("delivery_signal_neutral", "delivery_signal_mid_low",
-                "delivery_signal_low")
+DIAL, RANK, PINNED = "dial", "rank", "pinned"
+MORE, FEWER = "more", "fewer"
 
-#: Today's values, under the names of the constants they replace.
-DEFAULTS: dict[str, Any] = {
-    "tempo_stretch.MIN_OUTSIDE": 0.25,
-    "verbal_cues.FILLER_MIN_COUNT": 2,
-    "verbal_cues.FILLER_MIN_PER_100_WORDS": 5.0,
-    "verbal_cues.HEDGE_MIN_COUNT": 2,
-    "verbal_cues.RESTART_MIN_COUNT": 2,
-    "take_feedback_policy_v3.PRACTICE_BANDS": _BANDS_TWO,
-    "moment_pick.FLOOR": 0.6,
-    "take_context.MATCH": 0.6,
+_LOW = ("delivery_signal_low",)
+_TWO = ("delivery_signal_mid_low", "delivery_signal_low")
+_THREE = ("delivery_signal_neutral", "delivery_signal_mid_low", "delivery_signal_low")
+
+
+class Spec(NamedTuple):
+    default: Any
+    kind: str
+    #: Numbers: (low, high), both included. A tuple of bands: the allowed sets.
+    bounds: Any = None
+    #: Dials: the notches, in the order that CATCHES MORE.
+    notches: tuple = ()
+
+
+SPECS: dict[str, Spec] = {
+    # ── dials ──
+    "tempo_stretch.MIN_OUTSIDE": Spec(0.25, DIAL, (0.15, 0.35), (0.35, 0.3, 0.25, 0.2, 0.15)),
+    "verbal_cues.FILLER_MIN_COUNT": Spec(2, DIAL, (1, 4), (4, 3, 2, 1)),
+    "verbal_cues.FILLER_MIN_PER_100_WORDS": Spec(5.0, DIAL, (3.0, 7.0), (7.0, 6.0, 5.0, 4.0, 3.0)),
+    "verbal_cues.HEDGE_MIN_COUNT": Spec(2, DIAL, (1, 4), (4, 3, 2, 1)),
+    "verbal_cues.RESTART_MIN_COUNT": Spec(2, DIAL, (1, 4), (4, 3, 2, 1)),
+    "rewrite_gate.REPEATS_PER_100": Spec(2.0, DIAL, (1.0, 3.0), (3.0, 2.5, 2.0, 1.5, 1.0)),
+    "rewrite_gate.MIN_REPEATS": Spec(2, DIAL, (1, 4), (4, 3, 2, 1)),
+    "rewrite_gate.WORD_SIGNAL_FLOOR": Spec(0.7, DIAL, (0.5, 0.9), (0.5, 0.6, 0.7, 0.8, 0.9)),
+    "take_feedback_policy_v3.PRACTICE_BANDS": Spec(_TWO, DIAL, (_LOW, _TWO, _THREE), (_LOW, _TWO, _THREE)),
+    "moment_pick.FLOOR": Spec(0.6, DIAL, (0.5, 0.7), (0.5, 0.55, 0.6, 0.65, 0.7)),
+    "take_context.MATCH": Spec(0.6, DIAL, (0.4, 0.8), (0.8, 0.7, 0.6, 0.5, 0.4)),
+    # ── ranking: orders the moments, never a dial ──
+    "moment_pick.VERBAL_LIFT": Spec(0.5, RANK, (0.0, 1.0)),
+    "moment_pick.RELEVANCE_LIFT": Spec(0.25, RANK, (0.0, 1.0)),
+    "moment_pick.TOUCHED_GIVE": Spec(0.2, RANK, (0.0, 0.5)),
+    "moment_pick.PART_GIVE": Spec(0.15, RANK, (0.0, 0.5)),
+    "moment_pick.STRETCH_WORDS": Spec(8, RANK, (5, 20)),
+    "moment_pick.NEUTRAL_SOUND": Spec(0.5, RANK, (0.0, 1.0)),
+    "v4_picker.SURENESS_CUTOFF": Spec(0.3, RANK, (0.0, 1.0)),
+    # ── pinned: held at the constant ──
+    "tempo_stretch.GREEN_LOW": Spec(0.275, PINNED),       # the frontend's pace scale has a copy
+    "tempo_stretch.GREEN_HIGH": Spec(0.725, PINNED),      # the same
+    "willfidence.CEILING_PER_100": Spec(10, PINNED),      # record_v4_willfidence_reads_v1 has a copy
+    "rewrite_gate.SLIDE_FIT_FLOOR": Spec(0.5, PINNED),    # the read is only 0, 0.5 or 1
+    "v4_reached_bar.BAR": Spec(0.6, PINNED),              # its own calibration rule
+    "moment_pick.MIN_WORDS": Spec(5, PINNED),             # also the policy's block split: structure
+    "take_feedback_policy_v3.CONFIDENT_BANDS": Spec(      # shared with confident_voice_practice
+        ("delivery_signal_high", "delivery_signal_mid_high"), PINNED),
 }
 
-#: What each value may be. Numbers: (type, low, high), both ends included.
-#: The practice bands: one of the three runs from the bottom band up.
-_BOUNDS: dict[str, Any] = {
-    "tempo_stretch.MIN_OUTSIDE": (float, 0.05, 0.6),
-    "verbal_cues.FILLER_MIN_COUNT": (int, 1, 6),
-    "verbal_cues.FILLER_MIN_PER_100_WORDS": (float, 1.0, 15.0),
-    "verbal_cues.HEDGE_MIN_COUNT": (int, 1, 6),
-    "verbal_cues.RESTART_MIN_COUNT": (int, 1, 6),
-    "take_feedback_policy_v3.PRACTICE_BANDS": (_BANDS_LOW, _BANDS_TWO, _BANDS_THREE),
-    "moment_pick.FLOOR": (float, 0.3, 0.9),
-    "take_context.MATCH": (float, 0.3, 0.9),
+#: The things a host can name, and the dials under each.
+THINGS: dict[str, tuple[str, ...]] = {
+    "A rushed moment": ("tempo_stretch.MIN_OUTSIDE",),
+    "Filler words": ("verbal_cues.FILLER_MIN_COUNT", "verbal_cues.FILLER_MIN_PER_100_WORDS"),
+    "Hedging": ("verbal_cues.HEDGE_MIN_COUNT",),
+    "Restarts": ("verbal_cues.RESTART_MIN_COUNT", "rewrite_gate.REPEATS_PER_100",
+                 "rewrite_gate.MIN_REPEATS"),
+    "Words that need a rewrite": ("rewrite_gate.WORD_SIGNAL_FLOOR",),
+    "A voice that sounds unsure": ("take_feedback_policy_v3.PRACTICE_BANDS",),
+    "A moment that needs a fix": ("moment_pick.FLOOR",),
+    "Saying the key line": ("take_context.MATCH",),
 }
+
+DEFAULTS: dict[str, Any] = {name: spec.default for name, spec in SPECS.items()}
+DIALABLE = frozenset(name for name, spec in SPECS.items() if spec.kind == DIAL)
 
 
 def _checked(name: str, value: Any) -> Any:
-    """The value in its proper type when it is within bounds, else None."""
-    bound = _BOUNDS.get(name)
-    if bound is None:
+    """The value in its proper type when the record may hold it, else None."""
+    spec = SPECS.get(name)
+    if spec is None:
         return None
-    if isinstance(bound[0], tuple):
-        if isinstance(value, (list, tuple)) and tuple(value) in bound:
+    if spec.kind == PINNED:
+        return spec.default if value == spec.default else None
+    if isinstance(spec.default, tuple):
+        if isinstance(value, (list, tuple)) and tuple(value) in spec.bounds:
             return tuple(value)
         return None
-    kind, low, high = bound
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
+    kind = type(spec.default)
     if kind is int and float(value) != int(value):
         return None
+    low, high = spec.bounds
     if not low <= value <= high:
         return None
     return kind(value)
 
 
-def candidate(overrides: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
-    """The full set: the defaults, with each override that passes its bounds.
-    Pure; stores nothing. An unknown name or a bad value is left out."""
-    values = dict(DEFAULTS)
-    for name, value in (overrides or {}).items():
+def defaults() -> dict[str, Any]:
+    return dict(DEFAULTS)
+
+
+def with_changes(settings: Mapping[str, Any], changes: Mapping[str, Any]) -> dict[str, Any]:
+    """``settings`` with each change that passes its bounds. Pure; stores
+    nothing. An unknown name, a pinned one or a bad value is left out."""
+    values = {name: settings.get(name, default) for name, default in DEFAULTS.items()}
+    for name, value in (changes or {}).items():
         checked = _checked(str(name), value)
         if checked is not None:
             values[str(name)] = checked
     return values
+
+
+def candidate(overrides: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
+    """The defaults with the overrides that pass their bounds. Pure."""
+    return with_changes(DEFAULTS, overrides or {})
 
 
 def version_of(values: Mapping[str, Any]) -> str:
@@ -117,6 +179,31 @@ def version_of(values: Mapping[str, Any]) -> str:
         return DEFAULT_VERSION
     blob = json.dumps(moved, sort_keys=True, separators=(",", ":"))
     return "noticing-" + hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
+
+
+def setting_for(thing: str, settings: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
+    """The dials of one thing noticed, as ``settings`` holds them (live when
+    None). KeyError for a thing that is not in ``THINGS``."""
+    values = settings if settings is not None else live()
+    return {name: values.get(name, DEFAULTS[name]) for name in THINGS[thing]}
+
+
+def step(settings: Mapping[str, Any], thing: str, direction: str) -> dict[str, Any]:
+    """A candidate: every dial of ``thing`` one notch toward catching more
+    (``MORE``) or fewer (``FEWER``). A dial already at its last notch, or
+    between notches, stays. Pure; only dials move."""
+    if direction not in (MORE, FEWER):
+        raise ValueError(f"direction must be {MORE!r} or {FEWER!r}")
+    changes: dict[str, Any] = {}
+    for name in THINGS[thing]:
+        notches = SPECS[name].notches
+        now = settings.get(name, DEFAULTS[name])
+        if now not in notches:
+            continue
+        at = notches.index(now) + (1 if direction == MORE else -1)
+        if 0 <= at < len(notches):
+            changes[name] = notches[at]
+    return with_changes(settings, changes)
 
 
 def _read_store() -> Optional[str]:
@@ -145,7 +232,7 @@ def _parse(raw: Optional[str]) -> dict[str, Any]:
     values = candidate(stored)
     for name, value in stored.items():
         if name in DEFAULTS and values[name] != _checked(name, value):
-            logger.warning("noticing_settings: %s is out of bounds; using its default", name)
+            logger.warning("noticing_settings: %s may not hold that value; using its default", name)
     return values
 
 
@@ -174,7 +261,8 @@ _trying: ContextVar[Optional[Mapping[str, Any]]] = ContextVar(
 @contextmanager
 def trying(values: Mapping[str, Any]) -> Iterator[Mapping[str, Any]]:
     """Inside this block, and only in this context, the rules read
-    ``values`` (from ``candidate``) instead of the live set."""
+    ``values`` (checked as ``candidate`` checks them) instead of the live
+    set."""
     token = _trying.set(candidate(values))
     try:
         yield _trying.get() or {}

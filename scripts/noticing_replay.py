@@ -8,6 +8,8 @@ corpus and prints a digest of all their answers:
   tempo_stretch.pick            the rushed or slow stretch, and stays_inside
   moment_pick.pick / unfixed    the shown moments and the unfixed one
   take_context.carries          a sentence carries the key line
+  rewrite_gate.words_need_help  why a moment's words need a rewrite
+  moment_pick.read              a clip's read with no sound read
   _practice_routing             which blocks offer practice
 
     python scripts/noticing_replay.py            # one digest
@@ -65,9 +67,12 @@ def _row(rng: random.Random, i: int) -> dict:
     s, w = round(rng.random(), 3), round(rng.random(), 3)
     return {"block_id": f"b{i}", "slide_index": i % 4, "word_count": rng.randint(2, 40),
             "candidate_id": f"b{i}-clip", "voice": round(1 - s, 3),
-            "held": rng.random() < 0.2,
+            "held": rng.random() < 0.2, "touched": rng.random() < 0.3,
+            "part": rng.randint(0, 2), "praised_last": rng.random() < 0.2,
+            "fixed_last": rng.random() < 0.2,
             "read": {"s": s, "w": w, "value": s * w, "sound": rng.random() < 0.9,
-                     "words_help": None}}
+                     "verbal": round(rng.random(), 3),
+                     "relevance": rng.choice((0.0, 0.0, 0.5, 1.0)), "words_help": None}}
 
 
 def answers() -> dict:
@@ -75,7 +80,10 @@ def answers() -> dict:
     from services.take_feedback_policy_v3 import _practice_routing
 
     rng = random.Random(SEED)
-    out: dict = {"verbal": [], "tempo": [], "pick": [], "carries": [], "practice": []}
+    from services import rewrite_gate
+
+    out: dict = {"verbal": [], "tempo": [], "pick": [], "carries": [], "practice": [],
+                 "rewrite": [], "read": []}
     for _ in range(400):
         out["verbal"].append(verbal_cues.measure(_transcript(rng), "en"))
     for _ in range(200):
@@ -101,6 +109,11 @@ def answers() -> dict:
                                               "machine_score": rng.choice(BANDS)}]}
                   for i in range(rng.randint(1, 5))]
         out["practice"].append(_practice_routing(blocks))
+    for _ in range(300):
+        out["rewrite"].append(rewrite_gate.words_need_help(
+            _transcript(rng), rng.choice((None, 0.0, 0.5, 1.0))))
+    for _ in range(100):
+        out["read"].append(moment_pick.read(None, _transcript(rng), {}))
     return out
 
 

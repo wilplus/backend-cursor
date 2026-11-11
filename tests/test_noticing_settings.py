@@ -9,20 +9,23 @@ CATCHES
   C2  a missing, unreadable or out-of-bounds record changing a verdict, or a
       moved threshold logging its verdicts under today's version
   C3  a candidate (a silent try, step 4) leaking out of its own block into
-      what the live rules read
+      what the live rules read, or a step moving a ranking or pinned value,
+      or leaving its bounds
 IF REMOVED  moving a threshold could change the walk with no log to tell.
 PROVES   C1 -> test_the_defaults_are_todays_constants
          C2 -> test_a_bad_record_keeps_todays_values_and_a_moved_one_is_versioned
          C3 -> test_a_candidate_is_read_only_inside_its_block
+               test_a_step_moves_only_a_things_dials_one_notch
 """
 import json
 
 import pytest
 
-from services import moment_pick, noticing_settings, take_context, tempo_stretch, verbal_cues
-from services import take_feedback_policy_v3
+from services import (moment_pick, noticing_settings, rewrite_gate, take_context,
+                      take_feedback_policy_v3, tempo_stretch, v4_picker, v4_reached_bar,
+                      verbal_cues, willfidence)
 
-FILLERS = "um we um built it uh in six weeks um with the data we had"
+FILLERS = "um we um built it uh in six weeks with the data we had"
 
 
 @pytest.fixture(autouse=True)
@@ -33,9 +36,10 @@ def _no_record():
 
 
 def test_the_defaults_are_todays_constants():
-    modules = {"tempo_stretch": tempo_stretch, "verbal_cues": verbal_cues,
-               "moment_pick": moment_pick, "take_context": take_context,
-               "take_feedback_policy_v3": take_feedback_policy_v3}
+    modules = {m.__name__.split(".")[-1]: m for m in (
+        tempo_stretch, verbal_cues, moment_pick, take_context, take_feedback_policy_v3,
+        rewrite_gate, v4_picker, v4_reached_bar, willfidence)}
+    assert len(noticing_settings.DEFAULTS) == 25
     for name, default in noticing_settings.DEFAULTS.items():
         module, constant = name.split(".")
         assert getattr(modules[module], constant) == default, name
@@ -56,8 +60,8 @@ def test_a_bad_record_keeps_todays_values_and_a_moved_one_is_versioned():
     assert noticing_settings.live() == noticing_settings.DEFAULTS
 
     noticing_settings.use_reader(lambda: json.dumps(
-        {"version": "x", "values": {"verbal_cues.FILLER_MIN_COUNT": 5}}))
-    assert noticing_settings.value("verbal_cues.FILLER_MIN_COUNT") == 5
+        {"version": "x", "values": {"verbal_cues.FILLER_MIN_COUNT": 4}}))
+    assert noticing_settings.value("verbal_cues.FILLER_MIN_COUNT") == 4
     assert noticing_settings.version() != noticing_settings.DEFAULT_VERSION
     rows = verbal_cues.take_observations(
         [{"id": "s1", "recording_id": "r1", "transcript": FILLERS}], take_session_id="t", language_of=lambda _: "en")
@@ -68,7 +72,7 @@ def test_a_bad_record_keeps_todays_values_and_a_moved_one_is_versioned():
 
 def test_a_candidate_is_read_only_inside_its_block():
     live = verbal_cues.measure(FILLERS, "en")["filler_cluster"]["fired"]
-    tried = noticing_settings.candidate({"verbal_cues.FILLER_MIN_COUNT": 6,
+    tried = noticing_settings.candidate({"verbal_cues.FILLER_MIN_COUNT": 4,
                                          "take_context.MATCH": 5.0})
     assert tried["take_context.MATCH"] == noticing_settings.DEFAULTS["take_context.MATCH"]
     with noticing_settings.trying(tried):
@@ -76,3 +80,22 @@ def test_a_candidate_is_read_only_inside_its_block():
         assert verbal_cues.detector_version() != verbal_cues.VERBAL_CUES_VERSION
     assert verbal_cues.measure(FILLERS, "en")["filler_cluster"]["fired"] is live
     assert noticing_settings.version() == noticing_settings.DEFAULT_VERSION
+
+
+def test_a_step_moves_only_a_things_dials_one_notch():
+    live = noticing_settings.defaults()
+    assert noticing_settings.setting_for("Filler words") == {
+        "verbal_cues.FILLER_MIN_COUNT": 2, "verbal_cues.FILLER_MIN_PER_100_WORDS": 5.0}
+    more = noticing_settings.step(live, "Filler words", noticing_settings.MORE)
+    assert more["verbal_cues.FILLER_MIN_COUNT"] == 1
+    assert more["verbal_cues.FILLER_MIN_PER_100_WORDS"] == 4.0
+    assert {n for n in more if more[n] != live[n]} <= set(noticing_settings.THINGS["Filler words"])
+    assert noticing_settings.step(more, "Filler words", noticing_settings.FEWER) == live
+    edge = live
+    for _ in range(10):
+        edge = noticing_settings.step(edge, "Filler words", noticing_settings.MORE)
+    assert edge["verbal_cues.FILLER_MIN_COUNT"] == 1
+    every_dial = {n for names in noticing_settings.THINGS.values() for n in names}
+    assert every_dial == noticing_settings.DIALABLE
+    assert noticing_settings.candidate({"moment_pick.MIN_WORDS": 9,
+                                        "tempo_stretch.GREEN_LOW": 0.1}) == live

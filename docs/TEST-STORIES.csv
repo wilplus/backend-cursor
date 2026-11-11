@@ -2594,9 +2594,11 @@ changes what is noticed
 C2  a missing, unreadable or out-of-bounds record changing a verdict, or a
 moved threshold logging its verdicts under today's version
 C3  a candidate (a silent try, step 4) leaking out of its own block into
-what the live rules read","C1 -> test_the_defaults_are_todays_constants
+what the live rules read, or a step moving a ranking or pinned value,
+or leaving its bounds","C1 -> test_the_defaults_are_todays_constants
 C2 -> test_a_bad_record_keeps_todays_values_and_a_moved_one_is_versioned
-C3 -> test_a_candidate_is_read_only_inside_its_block",If removed: moving a threshold could change the walk with no log to tell.
+C3 -> test_a_candidate_is_read_only_inside_its_block
+test_a_step_moves_only_a_things_dials_one_notch",If removed: moving a threshold could change the walk with no log to tell.
 tests/test_object_key_prefixes_are_classified.py,Story,"As a speaker, I want every stored recording of my voice served only through a fresh signed link, so that my voice is never reachable on a permanent public URL.","O1  Every object-key prefix the services and routes write is classified,
 as user content or deliberately not.
 O2  A user-content key gets no public URL; a non-user key still does.","O1 -> test_every_written_prefix_is_classified,

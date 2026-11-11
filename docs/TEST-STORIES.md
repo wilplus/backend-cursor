@@ -2267,7 +2267,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 - **C1** a default drifting from the constant it replaced, so the move itself changes what is noticed
 - **C2** a missing, unreadable or out-of-bounds record changing a verdict, or a moved threshold logging its verdicts under today's version
-- **C3** a candidate (a silent try, step 4) leaking out of its own block into what the live rules read
+- **C3** a candidate (a silent try, step 4) leaking out of its own block into what the live rules read, or a step moving a ranking or pinned value, or leaving its bounds
 
 *Why:* If removed: moving a threshold could change the walk with no log to tell.
 
