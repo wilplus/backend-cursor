@@ -1366,6 +1366,8 @@ tests/test_dev_mode.py,Story,"As a host, I turn on ""Developer mode"" under Buil
 a week with too few people never shows its count.","N648.2 -> DevModeTest::test_the_host_gets_how_close_what_it_notices_and_the_weeks
 N648.3 -> DevModeTest::test_the_host_gets_how_close_what_it_notices_and_the_weeks
 N648.5 -> DevModeTest::test_a_week_of_few_people_is_hidden_in_the_screen_and_the_file
+N648.4 -> DevModeTest::test_what_i_say_and_the_walk_charts
+N648.5 -> DevModeTest::test_what_i_say_and_the_walk_charts
 N648.7 -> DevModeTest::test_anyone_but_the_host_gets_404",
 tests/test_doc_guard.py,Guard,"scripts/doc_guard.py: every part of the code has one home doc in README.md, every doc is listed there, and a new doc carries the founder's OK (N107, N111).","Code that no row of the home-doc table covers; a row that covers
 nothing or points at a missing, History or Archive doc; two rows
