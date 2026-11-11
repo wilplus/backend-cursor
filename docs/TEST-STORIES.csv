@@ -3905,11 +3905,18 @@ O4  The host's read of the chat does not expose the Take: no tag among
 the messages or as the list's last line, and neither ""Open Take"" nor
 the audio opens anything through it.
 O5  A Take made in the chat and also sent there with ""Send"" are two
-messages; the tag never counts as a send (""Last sent"").","O1 -> TakeDoorTest::test_a_take_recorded_in_the_hosts_chat_is_tagged_with_it
+messages; the tag never counts as a send (""Last sent"").
+O6  Practice after a Take (N648 item 8): a Take made anywhere else is
+offered practice as today; a Take made in the host's chat only while
+the host has ""Practice after a Take"" on (off by default); a lookup
+that fails answers yes.","O1 -> TakeDoorTest::test_a_take_recorded_in_the_hosts_chat_is_tagged_with_it
 O2 -> TakeDoorTest::test_tagging_again_posts_nothing
 O3 -> TakeDoorTest::test_the_door_is_shut_elsewhere_and_nothing_is_written
 O4 -> TakeDoorTest::test_the_host_never_gets_the_take_through_the_tag
-O5 -> TakeDoorTest::test_a_take_made_here_and_sent_here_are_two_messages","N642 item 7, N644, N648 item 8 (founder, 11 November 2026): Artur's chat, set up by hand, does what the speaking coach does; the loop is never copied or broken (Never 3); a Take reaches someone else only when its speaker sends it (Privacy 4f). Built on tests/test_take_sends.py's in-memory chat tables."
+O5 -> TakeDoorTest::test_a_take_made_here_and_sent_here_are_two_messages
+O6 -> TakeDoorTest::test_practice_follows_the_hosts_switch_for_a_take_made_in_their_chat
+TakeDoorTest::test_a_practice_cannot_be_started_while_the_hosts_switch_is_off
+TakeDoorTest::test_no_exercise_is_offered_while_the_hosts_switch_is_off","N642 item 7, N644, N648 item 8 (founder, 11 November 2026): Artur's chat, set up by hand, does what the speaking coach does; the loop is never copied or broken (Never 3); a Take reaches someone else only when its speaker sends it (Privacy 4f). Built on tests/test_take_sends.py's in-memory chat tables."
 tests/test_take_feedback_candidates.py,Story,"As a speaker, I want the Confident Voice moment I am asked about to be quoted from my own words in this Take, so that the feedback points at what I really said.","O1  The quote is the phrase the model picked when I said it; else a
 phrase I said that the Ideal Text shares; else the start of that
 slide's paragraph (a route), never words from elsewhere.

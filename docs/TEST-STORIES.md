@@ -3525,6 +3525,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O3** The door is shut, and nothing is written, for someone not on the ring row chat_builder, in a chat with anyone but the speaking host, for a recipe without a recording or without a saved walk ending in an Ideal Text, and for a Take that is not mine; a withdrawn recording consent is refused.
 - **O4** The host's read of the chat does not expose the Take: no tag among the messages or as the list's last line, and neither "Open Take" nor the audio opens anything through it.
 - **O5** A Take made in the chat and also sent there with "Send" are two messages; the tag never counts as a send ("Last sent").
+- **O6** Practice after a Take (N648 item 8): a Take made anywhere else is offered practice as today; a Take made in the host's chat only while the host has "Practice after a Take" on (off by default); a lookup that fails answers yes.
 
 *Why:* N642 item 7, N644, N648 item 8 (founder, 11 November 2026): Artur's chat, set up by hand, does what the speaking coach does; the loop is never copied or broken (Never 3); a Take reaches someone else only when its speaker sends it (Privacy 4f). Built on tests/test_take_sends.py's in-memory chat tables.
 
