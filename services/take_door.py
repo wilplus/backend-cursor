@@ -178,3 +178,23 @@ def takes_made_in(database: Any, thread_id: Any) -> list[str]:
         return []
     rows = sorted(_tags(database, thread_id=thread), key=lambda r: str(r.get("created_at") or ""))
     return list(dict.fromkeys(str(r["meta"][MADE_HERE]) for r in rows))
+
+
+def practice_allowed(database: Any, take_id: Any) -> bool:
+    """May practice be offered after this Take (N648 item 8)? A Take made
+    anywhere but a host's chat: always, as today (the speaking coach is
+    unchanged). A Take made in a host's chat: only while that host's live
+    recipe has "Practice after a Take" on (off unless they turned it on).
+    One switch for practice, Confident Voice and the AI voice. Never raises:
+    a lookup that fails answers yes, as before the door existed."""
+    try:
+        if not made_in(database, take_id):
+            return True
+        host = speaking_host(database)
+        if not host:
+            return True
+        from services import assistants, chat_recipes
+        return chat_recipes.practice_on(assistants.recipe_of(database, host))
+    except Exception:
+        logger.warning("take_door: practice could not be checked for Take %s", take_id, exc_info=True)
+        return True
