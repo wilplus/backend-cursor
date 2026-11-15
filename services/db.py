@@ -14941,6 +14941,7 @@ class DatabaseService:
 
     def list_closed_practices_before(
         self, cutoff_iso: str, limit: int = 50,
+        checked_before: Optional[str] = None,
     ) -> list[dict]:
         """Practices that closed before `cutoff_iso` — the retention sweep's
         candidates. Open practices are never returned: the speaker is still
@@ -14951,16 +14952,50 @@ class DatabaseService:
         touches the row — a coach attaching an explanation video to a finished
         practice would otherwise restart the speaker's 30-day clock. A NULL
         `closed_at` simply does not match, which is the safe direction: a row
-        whose clock we cannot read is kept, not guessed at."""
+        whose clock we cannot read is kept, not guessed at.
+
+        The ones the sweep has never looked at come first, oldest closed
+        first; then, if there is room, the ones it last looked at before
+        `checked_before`, longest ago first (0524). The sweep leaves the row
+        in place, so without that order the same oldest `limit` rows matched
+        for ever and a later practice was never read."""
         try:
-            res = (self.client.table("confident_voice_practice")
-                   .select("id,status,selected_attempt_id,closed_at")
-                   .neq("status", "open").lt("closed_at", str(cutoff_iso))
-                   .order("closed_at").limit(int(limit)).execute())
-            return res.data or []
+            def closed():
+                return (self.client.table("confident_voice_practice")
+                        .select("id,status,selected_attempt_id,closed_at")
+                        .neq("status", "open").lt("closed_at", str(cutoff_iso)))
+
+            rows = (closed().is_("retention_checked_at", "null")
+                    .order("closed_at").limit(int(limit)).execute().data or [])
+            room = int(limit) - len(rows)
+            if checked_before and room > 0:
+                rows = rows + (
+                    closed().lt("retention_checked_at", str(checked_before))
+                    .order("retention_checked_at").limit(room)
+                    .execute().data or [])
+            return rows
         except Exception as e:
             logger.warning("list_closed_practices_before failed: %s", e)
             return []
+
+    def mark_practice_retention_checked(
+        self, practice_id: str, checked_at_iso: str,
+    ) -> bool:
+        """The retention sweep looked at this practice (0524). Only the
+        stamp: `updated_at` is left alone, the sweep is not a change to the
+        practice."""
+        if not practice_id:
+            return False
+        try:
+            (self.client.table("confident_voice_practice")
+             .update({"retention_checked_at": str(checked_at_iso)})
+             .eq("id", str(practice_id)).execute())
+            return True
+        except Exception as e:
+            logger.warning(
+                "mark_practice_retention_checked failed id=%s: %s",
+                practice_id, e, exc_info=True)
+            return False
 
     def list_album_practice_attempt_ids(
         self, attempt_ids: List[str],

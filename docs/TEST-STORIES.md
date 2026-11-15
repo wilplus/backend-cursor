@@ -2726,7 +2726,8 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O1** Thirty days after a practice closed, every attempt it no longer promises to keep is deleted: the recording first, then its row.
 - **O2** Never taken: the attempt they chose, an attempt they saved, an attempt the Voice Album admitted, anything in a practice still open.
 - **O3** If the Album cannot be read, nothing in that practice is deleted.
-- **O4** A recording that cannot be deleted keeps its row, so the next sweep finds it again.
+- **O4** A recording that cannot be deleted keeps its row, so a later sweep finds it again.
+- **O5** Every closed practice is reached, however many there are: one that was looked at waits a day before it is read again.
 
 *Why:* Founder 2026-09-16, option A ("keep only the attempt they chose; delete the rest after 30 days"). Nothing deleted by age before this.
 

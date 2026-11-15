@@ -674,6 +674,18 @@ model assignments through the canonical purge graph.
 No MLC-3 dataset may be created until exact source and attempt audio-object
 SHA-256 values are independently verified or recomputed at release time.
 
+**The 30-day practice sweep** (`services/practice_retention.py`, founder
+2026-09-16, option A). Thirty days after a practice closed, its attempts are
+deleted, the recording first and then the row, except the attempt the speaker
+chose, any they saved and any the Voice Album admitted. The practice row
+stays. Every minute the sweep reads up to 50 closed practices: the ones it has
+never read first, then the ones it read more than a day ago. It stamps each
+one it reads (`confident_voice_practice.retention_checked_at`, migration
+0524), so every practice is reached however many there are, and one with
+nothing left to delete is read once a day. A delete that fails is tried again
+the next day. Before 0524 the same oldest 50 came back every minute and a
+later practice was never read.
+
 ## 10. Legacy exercise cutover
 
 The current `diagnostic_exercise`, `confident_voice_practice`,
