@@ -405,7 +405,8 @@ is trimmed to the part around what the clip teaches, and my try is
 asked for the same trimmed words (N459 item 3).
 O3  A clip that fails its check is made once more with a new seed and
 is never shown; a try after it is not scored; a real pause heard in
-the audio passes.
+the audio passes. Benign transcription spelling differences do not
+hide a Polish clip, while changed words still do.
 O4  One clip per practice, started early once the exercise is known,
 within my daily and monthly limits (3 and 20, N188), and a new voice
 only while the plan has a voice slot free; a voice still being made is waited for a
@@ -434,7 +435,9 @@ test_a_sentence_with_fillers_is_said_without_them_and_the_next_try_is_measured_o
 test_a_moment_too_long_for_a_clip_is_trimmed_around_what_it_teaches,
 test_the_walks_fix_on_a_long_moment_gets_its_clip_and_the_try_the_same_words
 O3 -> test_a_clip_that_fails_its_check_is_made_once_more_and_shown_only_if_it_passes,
-test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it
+test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it,
+test_validator_accepts_benign_polish_transcription_normalization,
+test_validator_still_rejects_materially_changed_polish_words
 O4 -> test_a_speakers_daily_or_monthly_limit_stops_the_provider_call,
 test_no_new_voice_while_the_plans_voice_slots_are_full,
 test_two_corrected_moments_queue_two_prewarms,
@@ -818,9 +821,13 @@ writes the same two ids, so the table keeps it once.
 O2  A reload (GET /v2/user/lounge/messages) brings the bot's choices back.
 O3  If saving fails, the turn still answers.
 O4  The bot's reply is saved under my turn even when my browser's clock
-runs ahead of the server's, so a reload keeps the order I saw.","O1, O2 -> test_a_turn_is_saved_once_and_its_choices_come_back
+runs ahead of the server's, so a reload keeps the order I saw.
+O5  A typed answer to Will's open practice question is stored in the talk
+and memory, answered by contextual Will from that question and screen,
+and persisted with the settling metadata before the chain advances once.","O1, O2 -> test_a_turn_is_saved_once_and_its_choices_come_back
 O3     -> test_the_answer_still_comes_when_saving_fails
-O4     -> test_the_reply_is_saved_under_the_turn_it_answers",Founder #2: bubbles must never disappear; founder 2026-10-20: the chat keeps the order it shows. The harness is tests/chat_route_fakes.py; what the chat answers is pinned in test_chat_answers.py.
+O4     -> test_the_reply_is_saved_under_the_turn_it_answers
+O5     -> test_a_typed_practice_answer_is_contextual_and_settles_once",Founder #2: bubbles must never disappear; founder 2026-10-20: the chat keeps the order it shows. The harness is tests/chat_route_fakes.py; what the chat answers is pinned in test_chat_answers.py.
 tests/test_chat_provider.py,Story,"As the founder, I can compare and activate Mistral one text surface at a time without moving Whisper, strong reasoning, or an unapproved production path away from OpenAI.","O1  OpenAI remains the default and strong-model calls remain on OpenAI.
 O2  Only an explicitly allowed cheap-model surface selects Mistral.
 O3  Missing Mistral configuration never silently falls back to OpenAI.
@@ -2477,11 +2484,14 @@ O4  One answer to a public clip is saved for both models that ask the
 same question, and the other model's different question follows; the
 answer returns nothing of the machine's read.
 O5  The profile lists the models a person started and teaches; an invite
-I put off says so and stays.","O1 -> ModelRoutesTest::test_without_the_ring_nothing_is_shown
+I put off says so and stays.
+O6  The queue reads its tables in batches, so teaching more models does
+not add one database round trip per model.","O1 -> ModelRoutesTest::test_without_the_ring_nothing_is_shown
 O2 -> ModelRoutesTest::test_the_list_and_a_private_page
 O3 -> ModelRoutesTest::test_the_door_the_queue_and_pause
 O4 -> ModelRoutesTest::test_one_answer_counts_for_both_and_the_other_question_follows
-O5 -> ModelRoutesTest::test_the_profile_and_the_invite","The model launchpad's first tables (migration a_person_can_teach_and_start_ai_models), served by services/model_launchpad_store.py over services/model_launchpad.py."
+O5 -> ModelRoutesTest::test_the_profile_and_the_invite
+O6 -> ModelRoutesTest::test_the_queue_batches_reads_across_models","The model launchpad's first tables (migration a_person_can_teach_and_start_ai_models), served by services/model_launchpad_store.py over services/model_launchpad.py."
 tests/test_model_match.py,Story,"As someone on the models page, I want ""For you"" to show the models that need what I know and the ones I teach, so that my answers go where they count (founder, 5 November 2026, N518 items 7 and 8, N520 item 7; App Model MOD-53).","O1  ""For you"" shows only the models whose words match the person's
 profile at the matching's threshold (2.0) or more, and the ones they
 teach, whatever their score; nothing else, and never a score.
@@ -5028,14 +5038,17 @@ words my Take says, word for word, short and without a number, are
 kept.
 O3  A tap is kept for Will and fills the talk's setup, so the next Take
 carries who it is for; Will says it back, ""{who}. I'll keep them in
-mind."" (N294 item 5), any other answer gets ""Got it, thanks 🙏""; then
-the message after the Take. ""Someone else"" under the check opens one
+mind."" (N294 item 5), any other tapped answer gets ""Got it, thanks 🙏"";
+then the message after the Take. ""Someone else"" under the check opens one
 follow-up, ""Who is it for, then? 👀"", with no tap answers, and the
 message waits; my typed words under it are the answer, or Skip. Skip
 lets the message go; a repeat tap writes nothing.
 O4  Typed words under the question are the answer: what I want them to
-do lands as the talk's call to action, my own note on the talk kept.
-Distress is never taken as an answer: the chat's safety reply comes.
+do lands as the talk's call to action, my own note on the talk kept,
+and contextual Will answers from the visible thread, open question and
+those words. The reply settles the question and releases the chain once,
+with one user row and one bot row. Distress is never taken as an answer:
+the chat's safety reply comes.
 O5  After a Take that needs it, the summary's batch holds the message
 under Will's question, a bridge line between the summary and the
 question (""Ok, now let's dive into the content for a bit."", founder

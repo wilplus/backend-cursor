@@ -436,7 +436,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 - **O1** One problem is picked against my own usual (or the default), and the sentence under the clip names it in words, with no numbers. As the walk's one fix on a moment, the clip teaches the strongest problem my clip shows, never the runner-up, and with nothing measured no clip is made: no default (N425). A clearer version's example keeps the default.
 - **O2** The clip says my own words (or the clearer version I accepted, with the ums taken out), in at most 17 seconds. A moment too long for that is trimmed to the part around what the clip teaches, and my try is asked for the same trimmed words (N459 item 3).
-- **O3** A clip that fails its check is made once more with a new seed and is never shown; a try after it is not scored; a real pause heard in the audio passes.
+- **O3** A clip that fails its check is made once more with a new seed and is never shown; a try after it is not scored; a real pause heard in the audio passes. Benign transcription spelling differences do not hide a Polish clip, while changed words still do.
 - **O4** One clip per practice, started early once the exercise is known, within my daily and monthly limits (3 and 20, N188), and a new voice only while the plan has a voice slot free; a voice still being made is waited for a few times only; my next try is measured on that one problem. My voice starts being made as my spoken Take is stored, beside its processing (N84), so the clip can be ready by the walk.
 - **O5** Delete removes my voice at the provider and every clip, old links stop working, and deleting twice is safe; closing my account removes the voice first.
 - **O6** A clip names its problem (pace, pause, stress, fillers or default) and the phrase it is made with as soon as they are chosen, ready or still being made; never a number (N120).
@@ -756,6 +756,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O2** A reload (GET /v2/user/lounge/messages) brings the bot's choices back.
 - **O3** If saving fails, the turn still answers.
 - **O4** The bot's reply is saved under my turn even when my browser's clock runs ahead of the server's, so a reload keeps the order I saw.
+- **O5** A typed answer to Will's open practice question is stored in the talk and memory, answered by contextual Will from that question and screen, and persisted with the settling metadata before the chain advances once.
 
 *Why:* Founder #2: bubbles must never disappear; founder 2026-10-20: the chat keeps the order it shows. The harness is tests/chat_route_fakes.py; what the chat answers is pinned in test_chat_answers.py.
 
@@ -2194,6 +2195,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O3** "This is my field" makes me a teacher; the queue then holds the model's examples without the machine's read, and Pause empties it.
 - **O4** One answer to a public clip is saved for both models that ask the same question, and the other model's different question follows; the answer returns nothing of the machine's read.
 - **O5** The profile lists the models a person started and teaches; an invite I put off says so and stays.
+- **O6** The queue reads its tables in batches, so teaching more models does not add one database round trip per model.
 
 *Why:* The model launchpad's first tables (migration a_person_can_teach_and_start_ai_models), served by services/model_launchpad_store.py over services/model_launchpad.py.
 
@@ -4372,8 +4374,8 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 - **O1** Will asks only when something is off or missing, the first that holds: a breather when the practice missed or the voice dipped two Takes in a row; "On purpose?" when the clearer line I practised last Take did not come back; who the talk is for; what I want them to do; from Take 3, with all three known, one deeper question. Nothing missing, no question; each of these once per talk, a breather never twice in a row.
 - **O2** The tap answers come from what Will heard, the recording first: a Take that names its audience twice is checked ("Right?"); named once, those words come first, then what I said for an earlier talk, then the signed answers for my field, and no "Someone else": my own words go into "Something else" in the bar (N406 item 2); what I want them to do the same way. From the AI's read only words my Take says, word for word, short and without a number, are kept.
-- **O3** A tap is kept for Will and fills the talk's setup, so the next Take carries who it is for; Will says it back, "{who}. I'll keep them in mind." (N294 item 5), any other answer gets "Got it, thanks 🙏"; then the message after the Take. "Someone else" under the check opens one follow-up, "Who is it for, then? 👀", with no tap answers, and the message waits; my typed words under it are the answer, or Skip. Skip lets the message go; a repeat tap writes nothing.
-- **O4** Typed words under the question are the answer: what I want them to do lands as the talk's call to action, my own note on the talk kept. Distress is never taken as an answer: the chat's safety reply comes.
+- **O3** A tap is kept for Will and fills the talk's setup, so the next Take carries who it is for; Will says it back, "{who}. I'll keep them in mind." (N294 item 5), any other tapped answer gets "Got it, thanks 🙏"; then the message after the Take. "Someone else" under the check opens one follow-up, "Who is it for, then? 👀", with no tap answers, and the message waits; my typed words under it are the answer, or Skip. Skip lets the message go; a repeat tap writes nothing.
+- **O4** Typed words under the question are the answer: what I want them to do lands as the talk's call to action, my own note on the talk kept, and contextual Will answers from the visible thread, open question and those words. The reply settles the question and releases the chain once, with one user row and one bot row. Distress is never taken as an answer: the chat's safety reply comes.
 - **O5** After a Take that needs it, the summary's batch holds the message under Will's question, a bridge line between the summary and the question ("Ok, now let's dive into the content for a bit.", founder 2026-10-21, N94), and the summary hears the line I practised last Take when this Take said it.
 - **O8** The question opens on my own words of the last moment the walk showed (N294 item 1): "When you said “…”, " where it reads on, else "We just worked on “…”. "; "On purpose?" quotes its own line and nothing more; with no moment the question is as signed.
 - **O9** One at a time (N294 item 4): when both who the talk is for and what I want them to do are missing, what I want them to do follows my answer to who, from what Will heard first; a Skip ends them, and a "#" note under the question is no answer: the next question does not follow it.

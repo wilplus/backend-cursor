@@ -318,24 +318,29 @@ def feature_reaches(
 def principal_for_user(user_id: Any, *, database: Any = None) -> Optional[str]:
     """The owner principal behind a signed-in user, or None.
 
-    Cached for the request. A screen that checks two rings (the chat
-    builder and the AI models) used to look the same person up twice.
+    A request commonly checks more than one feature. The owner mapping is
+    immutable for that request, so share the first read with every later
+    feature check instead of resolving the same principal once per feature.
+    The database identity is part of the key: tests and admin paths can use
+    more than one database object inside one Flask request without sharing a
+    principal between them.
     """
     if not user_id:
         return None
+    target = _database(database)
     cache = _request_cache()
-    key = ("principal", str(user_id))
+    key = ("principal_for_user", id(target), str(user_id))
     if cache is not None and key in cache:
         return cache[key]
     try:
-        row = _database(database).get_owner_principal_for_user(str(user_id))
+        row = target.get_owner_principal_for_user(str(user_id))
     except Exception:
-        found = None
+        principal = None
     else:
-        found = _valid_uuid((row or {}).get("id"))
+        principal = _valid_uuid((row or {}).get("id"))
     if cache is not None:
-        cache[key] = found
-    return found
+        cache[key] = principal
+    return principal
 
 
 def feature_is_on_for_user(

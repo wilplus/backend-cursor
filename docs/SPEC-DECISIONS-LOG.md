@@ -17516,3 +17516,81 @@ No migration in this entry. The rules: `services/content_language.py`, `services
 2. **WID-09:** personal invitation controls and `Copy my link` are intentionally removed. The only remaining admission URL is `/c/xLl2I4B-u14RY5yZd1JSR-4K`; the story must not retain the `AppMenu.tsx` `AddSomeoneSheet` control.
 
 No migration in this entry. The rules: `docs/design/app-model-2026-11-09/stories.json`, `docs/design/model-launchpad-app-model-2026-11-09/stories.json`, and `docs/design/your-chat-on-any-website-2026-11-09/stories.json`.
+
+**N654 · A Take lands in its project immediately; the project chat uses the locked chat order and controls** (founder, the Codex chat, 16 November 2026: “after the take the project appears in the chat right away”, “first the bubble”, “the back button is the top bar”, “they should be piled up and as they used to be”, “in the speaking coach the default is the text input”, and, for the inventory linked below, “approve Polish recording copy”). For N650, N652.
+
+1. **The project result is immediate.** As soon as a Take is accepted, its project/result presence appears in the project conversation. Analysis may fill in real feedback and delivery evidence later; it never holds the project out of the chat, and the optimistic state never invents a score, quality label or claim.
+2. **The project conversation has one human order:** the Feedback/Ideal-text project card first, then the Take summary, bridge and contextual question. A stored closing stays hidden while its question is open and, when released, follows that Take's answer or reply. The card's type and controls remain readable.
+3. **Existing chat chrome is the design.** A project conversation replaces the site/logo bar with the existing single chat top bar. Suggested answers use the shared stacked answer controls; “Something else” opens the existing text composer. No custom chip row and no divider above those controls.
+4. **Speaking coach rests on text.** Its default bottom control is the normal text composer. Recording remains available through the existing projects/recording route; a standing “Record Take N” bar does not replace the composer.
+5. **Fixed recording UI follows the interface locale.** Back, Next/Finish and other fixed recording controls use the app/system locale. Transcript, feedback and other generated coaching content continue to follow N652's immediate content language instead.
+
+No migration in this entry. The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md).
+
+**N655 · In the iPhone app, a Take is recorded natively (founder, the Claude
+Code chat, 16 November 2026: "native recording it is", on the choice between
+first measuring what the iPhone's microphone applies to a web-recorded Take
+and recording natively).** Corrects N365 item 3 ("The web recorder stays"):
+1. **In the iPhone app, the phone records a Take itself** (native audio), not
+the web recorder: the voice as it is, with the phone-call processing (echo
+cancellation, noise suppression, automatic gain) off, at a quality the app
+sets, and interruptions (a call, another app's audio) handled by the phone.
+In a browser and in the home-screen app, the web recorder stays.
+2. **Nothing the web recorder does is lost** (CLAUDE.md, "Replacing a
+feature"): the slides and when each one starts, the clock, the pause for a
+call (N437 item 2), discarding a Take, the upload under the processing
+authorization, and the loop record → Ideal Text → feedback → next Take
+(Never 3). Before anything is built, a plan lists all of it, and every
+change it would make to the locked recording screens, for the founder's OK.
+3. **Measuring the web recorder first is no longer the condition** for this.
+4. **It ships as a new app version** through Apple's review, after the
+founder has tried it on their iPhone.
+No new words yet. No migration in this entry. No rules page yet: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+gets its line when the plan is signed and built.
+
+**N656 · A typed message appears immediately and Will answers the conversation, not a receipt** (founder, the Codex chat, 16 November 2026: “when I post the bubble it should appear right away even if the response doesnt come that fast”, “my message has not been registered”, “it should be smart the Will chat”, and “lock it in the docs; so that if I change the agent to Claude next time it can easily read the docs and integrate their code into this one”). For N650, N652, N654.
+
+1. **The speaker's message lands first.** In Will's chat, Speaking coach and a project's conversation, submitted typed words appear at once as the speaker's own bubble, before persistence or Will's answer finishes. The same client identity goes to persistence, so a reload replaces or confirms the optimistic bubble instead of duplicating or removing it.
+2. **Words are never silently lost.** The field is not irreversibly cleared before the send is accepted. A refused or failed send keeps the submitted words recoverable for a safe retry; a successful send survives reload. “Something else” in a project uses this typed-message path, never the tap-only answer contract.
+3. **Will answers with the conversation.** A typed answer under Will's open practice question is still saved to speaker memory and the Take's context, and still advances the after-Take chain exactly once. It then continues through Will's existing contextual chat response with the visible question, thread and current answer. It does not short-circuit to the generic “Got it, thanks 🙏” receipt. Signed deterministic acknowledgements for tap-only answers are unchanged.
+4. **Safety and language remain upstream rules.** A crisis message receives the safety response and is not stored as a practice answer. Will's generated response follows the typed message's language under N652; interface locale is not evidence for response language.
+5. **Implementation ownership for the next agent:** frontend optimistic identity, retry state and project free-text routing live in `ProjectChat.tsx`, `Lounge.tsx` and `useLoungeThread.ts`; the typed practice-answer capture and contextual continuation live in backend `services/will_question.py` and `services/chat_query.py`. Their business tests must prove immediate display, one persisted turn, saved coaching context and a contextual reply.
+
+No migration in this entry. The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N657 · Fixed presentation and project UI follows the interface locale** (founder, the Codex chat, 16 November 2026: “these presentation slides and the setup presentation for the newcomer in the chat builder should also be in Polish if the system settings are in Polish” and “Start a new project and the system settings and the hardcoded elements of the design of the app are in Polish if the system setting is in Polish”). For N652, N654 item 5.
+
+1. **The app's fixed words follow the interface locale, everywhere in this flow.** The recording slide counter and controls, fixed default slide titles/instructions, the newcomer presentation used by the chat builder, “Start a new project” and its fixed setup controls are Polish when the effective interface locale is PL and English when it is EN.
+2. **There is one locale source.** These surfaces use the existing effective interface locale (automatic system/country default with the persisted EN/PL override), not a second detector or per-screen setting.
+3. **Content language remains separate.** A transcript, the speaker's slide content, feedback and generated coaching are never translated because of interface locale; they continue to follow the recording or typed content under N652.
+4. **The approved scope is bounded.** The founder approved the Polish fixed-UI copy named here. Future Polish product wording outside this inventory still requires founder approval.
+
+No migration in this entry. The rules: frontend [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md) and the existing EN/PL copy inventory.
+
+**N658 · A project icon is its slides, or a stable colour** (founder, the Codex chat, 16 November 2026, on the empty grey circles in the project list: “add a blue or orange or yellow or some random colours background” and “if it has slides just blur the first slide and make it a background of that icon”).
+
+1. **With slides, the first slide is the icon.** Its existing preview fills and crops the circular project icon and is softened/blurred so it reads as a thumbnail texture, not as a second slide reader.
+2. **Without slides, colour gives the project an identity.** The icon uses a blue, orange or yellow colour from the app's palette, selected deterministically from the project identity. It does not change on refresh.
+3. **Loading and failure never return the empty grey circle.** A project keeps its deterministic colour while the preview is absent, loading or unavailable. The list adds no per-render preview request and changes no project copy, status, score or claim.
+
+No migration in this entry. The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N659 · Every desktop surface uses one content rail; an overlay owns the viewport, not a second width** (founder, the Codex chat, 16 November 2026: “these two widths should be the same ... across the all app”, “whatever you open ... is the same width”, “except the overlay that are the full page but inside them the elements should be exactly that width”, “that line should be full width”, and “remove that scroll bar”).
+
+1. **One rail aligns the app.** On desktop, the global logo and menu, project lists, chats, setup and decision screens, and the meaningful content inside overlays share one responsive content width and horizontal alignment. A feature does not introduce its own unrelated max-width.
+2. **An overlay is full-screen, its content is not.** Full-page overlays cover the viewport, while their header, body, actions and chat content sit on the shared rail. Mobile remains fluid with the app's existing safe side padding.
+3. **A divider may span the viewport.** The top-bar content remains on the rail, but its thin separator runs edge to edge. The separator does not define or shrink the content width.
+4. **Scrolling stays usable without a visible bar.** Full-page overlay and Ideal Text bodies retain mouse, trackpad, touch, keyboard and programmatic scrolling, but do not show a native scrollbar. The implementation must not create a trapped body or two competing vertical scroll areas.
+5. **The existing shell is the source.** The shared rail is derived from the current logo/menu shell and reused as a primitive or token; this decision does not authorize changing locked typography, buttons, spacing or copy.
+
+No migration in this entry. The rules: frontend layout primitives and the presentation/feedback flow documents that consume them.
+
+**N660 · Choices supplement the project composer; the bottom action is always present** (founder, the Codex chat, 16 November 2026: “there should always be a bottom bar even though you are displaying options to tap; there should be a typing for the content part and then the recording bar to record the next take”). For N654, N656.
+
+1. **The bottom action never disappears.** A project conversation always has one persistent bottom action appropriate to its current state. Suggested answers sit above it and never replace it.
+2. **Content questions keep the text composer.** While Will is asking about the Take's content, the speaker can type an arbitrary answer even when tap choices are offered. A tap and a typed answer use the same immediate own-bubble, persistence and contextual-response contract from N656.
+3. **The finished conversation offers the next Take.** Only when the current content conversation reaches its released next-take state does the bottom action change from the text composer to the existing recording bar for the next Take. The recording action does not appear early and does not hide an unanswered content question.
+4. **There is one action rail.** Chips, composer and recording action use the shared stacked chat controls and the shared width from N659; no floating or parallel chip column is introduced.
+
+No migration in this entry. The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).

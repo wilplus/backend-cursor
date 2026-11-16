@@ -126,9 +126,13 @@ def _label(on: str) -> str:
 
 
 def _today(database: Any, user_id: str, now: Optional[datetime] = None) -> date:
+    zone_name = (database.get_voice_notebook_consent(str(user_id)) or {}).get("time_zone")
+    return _local_day(zone_name, now)
+
+
+def _local_day(zone_name: Any, now: Optional[datetime] = None) -> date:
     from services.sunday_note import _zone
     now = now or datetime.now(timezone.utc)
-    zone_name = (database.get_voice_notebook_consent(str(user_id)) or {}).get("time_zone")
     return now.astimezone(_zone(zone_name)).date()
 
 
@@ -377,23 +381,44 @@ def today(database: Any, user_id: str, now: Optional[datetime] = None) -> list[d
     """The first time the Lounge opens on the day before a talk (N4): "Your
     talk is tomorrow.", one kept strength and the note it came from. The
     talk's day from the plan's deadline or a note; no date, nothing."""
-    from services import life_store
+    from services import life_store, plan_flow
     from services.lounge_messages import stamp_after, thread_stamp
-    if not enabled(database, user_id) or _waits(database, user_id):
+    from services.parallel import run_in_parallel
+    if not enabled(database, user_id):
         return []
-    tomorrow = (_today(database, user_id, now) + timedelta(days=1)).isoformat()
-    talks = {t["talk_on"]: t for t in life_store.talk_dates(str(user_id))}
-    deadline = str((database.get_open_plan(str(user_id)) or {}).get("deadline") or "")[:10]
+
+    # The plan gate and row are independent reads.  The row is also needed
+    # below for its deadline, so read it once and share it with onboarding.
+    plan_on, open_plan = run_in_parallel(
+        lambda: plan_flow.enabled(database, user_id),
+        lambda: database.get_open_plan(str(user_id)))
+    if plan_on and plan_flow.onboarding_from_open_plan(database, user_id, open_plan):
+        return []
+
+    # Time zone and named talk dates do not depend on one another.  Keeping
+    # them in one bounded wave removes two more serial network waits without
+    # caching either user's mutable state.
+    consent, talk_rows = run_in_parallel(
+        lambda: database.get_voice_notebook_consent(str(user_id)),
+        lambda: life_store.talk_dates(str(user_id)))
+    zone_name = (consent or {}).get("time_zone") if isinstance(consent, dict) else None
+    tomorrow = (_local_day(zone_name, now) + timedelta(days=1)).isoformat()
+    talks = {t["talk_on"]: t for t in (talk_rows or [])}
+    plan = open_plan if isinstance(open_plan, dict) else {}
+    deadline = str(plan.get("deadline") or "")[:10]
     if tomorrow not in talks and deadline != tomorrow:
         return []
     if (talks.get(tomorrow) or {}).get("reminded_at"):
         return []
-    kept = [s for s in life_store.list_strengths(str(user_id)) if s.get("status") == "kept"]
+    strength_rows, notes = run_in_parallel(
+        lambda: life_store.list_strengths(str(user_id)),
+        lambda: life_store.strength_notes(str(user_id)))
+    kept = [s for s in (strength_rows or []) if s.get("status") == "kept"]
     if not kept:
         return []
-    notes = life_store.strength_notes(str(user_id))
     # The strength with the newest note, quoting that note.
-    best = max(((s, n) for s in kept for n in notes if str(n.get("strength_id")) == str(s["id"])),
+    best = max(((s, n) for s in kept for n in (notes or [])
+                if str(n.get("strength_id")) == str(s["id"])),
                key=lambda pair: _day(pair[1].get("noted_on")), default=None)
     if not best:
         return []

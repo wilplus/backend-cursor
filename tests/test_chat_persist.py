@@ -9,15 +9,21 @@ OUTCOME
   O3  If saving fails, the turn still answers.
   O4  The bot's reply is saved under my turn even when my browser's clock
       runs ahead of the server's, so a reload keeps the order I saw.
+  O5  A typed answer to Will's open practice question is stored in the talk
+      and memory, answered by contextual Will from that question and screen,
+      and persisted with the settling metadata before the chain advances once.
 PROVES   O1, O2 -> test_a_turn_is_saved_once_and_its_choices_come_back
          O3     -> test_the_answer_still_comes_when_saving_fails
          O4     -> test_the_reply_is_saved_under_the_turn_it_answers
+         O5     -> test_a_typed_practice_answer_is_contextual_and_settles_once
 WHY      Founder #2: bubbles must never disappear; founder 2026-10-20: the
          chat keeps the order it shows. The harness is
          tests/chat_route_fakes.py; what the chat answers is pinned in
          test_chat_answers.py.
 """
 from __future__ import annotations
+
+from unittest.mock import patch
 
 from tests.chat_route_fakes import CHOICE, USER, ChatRouteHarness
 
@@ -64,3 +70,81 @@ class ChatTurnPersistsTests(ChatRouteHarness):
         self.assertEqual(mine["client_created_at"], ahead)
         self.assertGreater(datetime.fromisoformat(bot["client_created_at"]),
                            datetime.fromisoformat(ahead))
+
+    def test_a_typed_practice_answer_is_contextual_and_settles_once(self):
+        from services import after_take
+        from services.db import db
+
+        asked = "When you finish, what do you want the audience to do?"
+        answer = "Approve two hires by March"
+        self.model_answer = "That gives this talk a concrete outcome."
+        self.thread = [{
+            "client_id": "will-question-ask", "role": "bot", "kind": "text",
+            "body": asked,
+            "metadata": {
+                "offer": "will_question", "will_question": "goal",
+                "will_question_step": "ask", "arc_id": "arc-1",
+                "take_session_id": "take-1", "chips": [],
+            },
+            "client_created_at": "2026-11-16T19:00:00+00:00",
+        }]
+        setup = {"strategic_context": "Existing context."}
+        memory, releases = [], []
+
+        def stored_row(_user_id, client_id):
+            rows = self.thread + [row for _, batch in self.rows for row in batch]
+            return next((row for row in rows if row["client_id"] == client_id), None)
+
+        def remember(_database, user_id, kind, payload, take):
+            memory.append((user_id, kind, payload, take))
+
+        def release(_database, user_id, take=None):
+            releases.append((user_id, take))
+            return [{"kind": "text"}]
+
+        client_id = "11111111-1111-4111-8111-111111111111"
+        with (
+            patch.object(db, "get_lounge_message_by_client_id", stored_row),
+            patch.object(db.takes, "get_session_intake_context",
+                         lambda _take: dict(setup)),
+            patch.object(db.takes, "set_session_intake_context",
+                         lambda _take, context: setup.update(context) or True),
+            patch("services.speaker_memory.record", remember),
+            patch.object(after_take, "release", release),
+        ):
+            body = self.post({
+                "question": answer, "persist": True, "client_id": client_id,
+                "place": "will", "history_source": "screen",
+                # The optimistic bubble is already on screen; Will must read it
+                # once, with the server-owned open question immediately before it.
+                "history": [
+                    {"role": "assistant", "content": "Earlier context."},
+                    {"role": "user", "content": answer},
+                ],
+            }).get_json()
+
+        self.assertEqual(body["answer"], self.model_answer)
+        self.assertTrue(body["persisted"])
+        self.assertTrue(body["after_take"])
+        self.assertEqual(self.histories[-1], [
+            {"role": "assistant", "content": "Earlier context."},
+            {"role": "assistant", "content": asked},
+        ])
+        self.assertEqual(memory, [(USER, "answer", {
+            "question": "goal", "said": answer, "typed": True,
+            "goal": answer,
+        }, "take-1")])
+        self.assertEqual(
+            setup["strategic_context"],
+            "Desired call to action: Approve two hires by March\nExisting context.",
+        )
+        self.assertEqual(releases, [(USER, None)])
+        mine, will = self.rows[-1][1]
+        self.assertEqual((mine["role"], mine["body"]), ("user", answer))
+        self.assertEqual((will["role"], will["body"]),
+                         ("bot", self.model_answer))
+        self.assertNotEqual(mine["client_id"], will["client_id"])
+        self.assertEqual(will["metadata"]["will_question_step"], "thanks")
+        self.assertEqual(will["metadata"]["will_question"], "goal")
+        self.assertEqual(will["metadata"]["take_session_id"], "take-1")
+        self.assertEqual(will["metadata"]["place"], "will")

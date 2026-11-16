@@ -44,6 +44,7 @@ FEATURE = "ai_models"
 MODELS, TEACHERS, EXAMPLES, ANSWERS, INVITES = (
     "ai_models", "ai_model_teachers", "ai_model_examples", "ai_model_answers", "ai_model_invites")
 _MODEL_FIELDS = "id,name,owner_id,owner_name,visibility,status,field,description,draft_step,recipe,targets"
+_QUEUE_MODEL_FIELDS = "id,name,owner_id,visibility,status,setup"
 
 
 def _now() -> str:
@@ -180,9 +181,51 @@ def _teaching(database: Any, me: str) -> list[dict]:
     return _rows(_table(database, TEACHERS).select("model_id,role,paused_at,company_line").eq("user_id", me))
 
 
-_QUEUE_MODEL_FIELDS = "id,name,owner_id,visibility,status,setup"
-_EXAMPLE_FIELDS = "id,model_id,source,private,kind,content,sureness,speaker_id,added_by,snippet_id,in_exam"
-_INVITE_FIELDS = "id,model_id,invitee_id,status,created_at"
+def _queue_models(database: Any, me: str, teaching: list[dict]) -> list[dict]:
+    """The small model shape the queue needs, in one read.
+
+    ``_models`` also reads every teacher and the model's two progress jars.
+    Those totals belong on the list and model page, but the queue never uses
+    them. The caller's own teaching rows already carry the only role the
+    queue needs for its line and private-example access.
+    """
+    mids = [str(t["model_id"]) for t in teaching]
+    if not mids:
+        return []
+    roles: dict[str, set[str]] = defaultdict(set)
+    for row in teaching:
+        roles[str(row["model_id"])].add(str(row.get("role") or ""))
+    models = _rows(_table(database, MODELS).select(_QUEUE_MODEL_FIELDS).in_("id", mids))
+    out = []
+    for model in models:
+        mid = str(model["id"])
+        mine = roles.get(mid, set())
+        out.append({
+            **model,
+            "id": mid,
+            "owner_id": str(model["owner_id"]) if model.get("owner_id") else None,
+            "owner_ids": [me] if "owner" in mine else [],
+            "contributor_ids": [me] if "contributor" in mine else [],
+        })
+    return out
+
+
+def _queue_access(database: Any, me: str, models: list[dict]) -> tuple[set[str], list[dict]]:
+    """Private-example access and the caller's exam cases, batched.
+
+    The former queue path read the same model setups twice and called
+    ``with_people`` once per model on each pass. The rules depend only on
+    the model's stored setup and its invite rows, so one invite read can
+    preserve both the pre-public private-data rule and the two-expert exam
+    rule without per-model database calls.
+    """
+    mids = [str(model["id"]) for model in models]
+    if not mids:
+        return set(), []
+    invites = _rows(_table(database, INVITES)
+                    .select("id,model_id,invitee_id,status,created_at")
+                    .in_("model_id", mids))
+    return _access_from_invites(me, models, invites, examples=None, database=database)
 
 
 def queue_for(database: Any, user_id: Any, *, only: Any = None) -> dict:
@@ -194,16 +237,30 @@ def queue_for(database: Any, user_id: Any, *, only: Any = None) -> dict:
     if isinstance(bundled, dict) and "enabled" in bundled:
         if not bundled.get("enabled"):
             raise _not_found()
-        return _queue_built(database, str(user_id), _teachers(bundled.get("teachers")),
-                            _model_rows(bundled.get("models")), only=only,
-                            examples=_example_rows(bundled.get("examples")),
-                            answers=_answer_pairs(bundled.get("answers")),
-                            invites=_invite_rows(bundled.get("invites")))
+        return _queue_from_bundle(database, str(user_id), bundled, only)
     me = _require(database, user_id)
     mine = _teaching(database, me)
-    ids = [str(t["model_id"]) for t in mine]
-    rows = _rows(_table(database, MODELS).select(_QUEUE_MODEL_FIELDS).in_("id", ids)) if ids else []
-    return _queue_built(database, me, mine, _with_my_role(me, rows, mine), only=only)
+    models = _queue_models(database, me, mine)
+    mids = [m["id"] for m in models if m.get("status") in ("learning", "ready")]
+    examples = _rows(_table(database, EXAMPLES)
+                     .select("id,model_id,source,private,kind,content,sureness,speaker_id,added_by,snippet_id")
+                     .in_("model_id", mids).eq("in_exam", False)) if mids else []
+    sees_private, exam_cases = _queue_access(database, me, models)
+    return _draw_queue(database, me, mine, models, mids, examples, exam_cases,
+                       sees_private, only, answered=None)
+
+
+def _queue_from_bundle(database: Any, me: str, bundled: dict, only: Any) -> dict:
+    """The same queue, from the one-trip read."""
+    mine = _teachers(bundled.get("teachers"))
+    models = _models_for_roles(me, mine, _model_rows(bundled.get("models")))
+    mids = [m["id"] for m in models if m.get("status") in ("learning", "ready")]
+    examples = [e for e in _example_rows(bundled.get("examples")) if not e.get("in_exam")]
+    invites = _invite_rows(bundled.get("invites"))
+    sees_private, exam_cases = _access_from_invites(
+        me, models, invites, examples=_example_rows(bundled.get("examples")), database=None)
+    return _draw_queue(database, me, mine, models, mids, examples, exam_cases, sees_private, only,
+                       answered=_answer_pairs(bundled.get("answers")))
 
 
 def _teachers(raw: Any) -> list[dict]:
@@ -227,6 +284,21 @@ def _model_rows(raw: Any) -> list[dict]:
     return out
 
 
+def _models_for_roles(me: str, teaching: list[dict], models: list[dict]) -> list[dict]:
+    """The caller's role, as ``_queue_models`` attaches it, without a read."""
+    roles: dict[str, set[str]] = defaultdict(set)
+    for row in teaching:
+        roles[str(row["model_id"])].add(str(row.get("role") or ""))
+    out = []
+    for model in models:
+        mid = str(model["id"])
+        mine = roles.get(mid, set())
+        out.append({**model, "id": mid,
+                    "owner_ids": [me] if "owner" in mine else [],
+                    "contributor_ids": [me] if "contributor" in mine else []})
+    return out
+
+
 def _example_rows(raw: Any) -> list[dict]:
     out = []
     for row in raw or []:
@@ -244,148 +316,89 @@ def _invite_rows(raw: Any) -> list[dict]:
     return [row for row in raw or [] if isinstance(row, dict)]
 
 
-def _with_my_role(me: str, models: list[dict], mine: list[dict]) -> list[dict]:
-    """The caller's role on each model, which is all the queue asks.
-    ``viewer_role`` for this caller matches the full teacher list: owner
-    when they own it or their teacher row says owner, else contributor."""
-    role = {str(t["model_id"]): t.get("role") for t in mine}
-    out = []
+def _sets_the_exam(model: dict, me: str, invites: list[dict]) -> bool:
+    """The owner, or the expert whose invite the exam keeps (``with_people``)."""
+    raw_setup = model.get("setup")
+    setup: dict[str, Any] = raw_setup if isinstance(raw_setup, dict) else {}
+    raw_exam = setup.get("exam")
+    exam: dict[str, Any] = raw_exam if isinstance(raw_exam, dict) else {}
+    if not exam:
+        return False
+    if str(model.get("owner_id") or "") == me:
+        return True
+    invite_id = str(exam.get("invite_id") or "")
+    return any(str(invite.get("id") or "") == invite_id and str(invite.get("invitee_id") or "") == me
+               for invite in invites)
+
+
+def _access_from_invites(me: str, models: list[dict], invites: list[dict], *,
+                         examples: Optional[list[dict]], database: Any) -> tuple[set[str], list[dict]]:
+    """``_queue_access`` once the invites are in hand. Exam cases are read
+    when ``examples`` is None, and taken from ``examples`` when the one-trip
+    read already brought them."""
+    by_model: dict[str, list[dict]] = defaultdict(list)
+    for invite in invites:
+        by_model[str(invite.get("model_id"))].append(invite)
+    sees_private: set[str] = set()
+    exam_models: list[str] = []
     for model in models:
         mid = str(model["id"])
-        owner_id = str(model["owner_id"]) if model.get("owner_id") else None
-        mine_role = role.get(mid)
-        setup = model.get("setup") if isinstance(model.get("setup"), dict) else {}
-        out.append({**model, "id": mid, "owner_id": owner_id, "setup": setup,
-                    "owner_ids": [me] if mine_role == "owner" or owner_id == me else [],
-                    "contributor_ids": [me] if mine_role == "contributor" and owner_id != me else []})
-    return out
-
-
-def _queue_built(database: Any, me: str, mine: list[dict], models: list[dict], *,
-                 only: Any = None, examples: Optional[list[dict]] = None,
-                 answers: Optional[set[tuple[str, str]]] = None,
-                 invites: Optional[list[dict]] = None) -> dict:
-    """Draw the queue from rows already in hand, or read them together."""
-    mids = [m["id"] for m in models if m.get("status") in ("learning", "ready")]
+        model_invites = by_model.get(mid, [])
+        if model.get("visibility") != "public" or rules.viewer_role(model, me) == "owner":
+            sees_private.add(mid)
+        elif any(str(invite.get("invitee_id") or "") == me
+                 and invite.get("status") == "accepted"
+                 and _before(invite.get("created_at"), public_at(model))
+                 for invite in model_invites):
+            sees_private.add(mid)
+        if _sets_the_exam(model, me, model_invites):
+            exam_models.append(mid)
+    if not exam_models:
+        return sees_private, []
     if examples is None:
-        examples, exam_rows, answers, invites = _load_queue_rows(
-            database, me, mids, [str(t["model_id"]) for t in mine])
+        cases = _rows(_table(database, EXAMPLES)
+                      .select("id,model_id,source,private,kind,content,sureness,speaker_id,added_by,snippet_id")
+                      .in_("model_id", exam_models).eq("in_exam", True))
     else:
-        exam_rows = [e for e in examples if e.get("in_exam")]
-        examples = [e for e in examples if not e.get("in_exam")]
-    waiting = _examples_to_send(database, me, models, mids, examples, exam_rows,
-                                answers or set(), invites or [])
-    return _draw_queue(database, me, mine, models, mids, waiting, only)
+        wanted = set(exam_models)
+        cases = [row for row in examples if row.get("in_exam") and str(row.get("model_id")) in wanted]
+    return sees_private, cases
 
 
-def _load_queue_rows(database: Any, me: str, mids: list[str], teach_ids: list[str]):
-    """Open examples, exam cases, this teacher's answers and the invites,
-    read together."""
-    from services.parallel import run_in_parallel
-    opened, exams, answer_rows, invite_rows = run_in_parallel(
-        lambda: _examples_where(database, mids, in_exam=False),
-        lambda: _examples_where(database, teach_ids, in_exam=True),
-        lambda: _answer_rows(database, me, teach_ids),
-        lambda: _invites_for(database, teach_ids))
-    pairs = {(str(a["example_id"]), str(a["model_id"])) for a in answer_rows}
-    return opened, exams, pairs, invite_rows
-
-
-def _examples_to_send(database: Any, me: str, models: list[dict], mids: list[str],
-                      examples: list[dict], exam_rows: list[dict],
-                      answers: set[tuple[str, str]], invites: list[dict]) -> list[dict]:
-    """What this teacher may still be sent. An upload waits for its 60
-    re-rates (N566 item 4). A moment sealed in an exam this teacher sets is
-    not taught by them on another model (PIPE-05); the exam case itself is."""
-    if not mids:
-        return []
-    experts = _expert_ids(models, invites)
-    exam_cases = [e for e in exam_rows if me in experts.get(str(e["model_id"]), ())]
-    sealed = {str(c["snippet_id"]) for c in exam_cases if c.get("snippet_id")}
+def _draw_queue(database: Any, me: str, mine: list[dict], models: list[dict], mids: list[str],
+                examples: list[dict], exam_cases: list[dict], sees_private: set[str], only: Any,
+                answered: Optional[set[tuple[str, str]]]) -> dict:
+    # An upload waits for its 60 re-rates; the rest of it never needs a
+    # teacher (N566 item 4).
+    open_examples = [e for e in examples if e.get("source") != "upload" or e.get("kind") == "rerate"]
+    sealed = {str(case["snippet_id"]) for case in exam_cases if case.get("snippet_id")}
+    open_examples = [e for e in open_examples if not e.get("snippet_id") or str(e["snippet_id"]) not in sealed]
     mid_set = set(mids)
-    sending = [e for e in examples
-               if str(e["model_id"]) in mid_set and _servable(e, sealed)]
-    sending += [e for e in exam_cases if str(e["model_id"]) in mid_set]
-    return _waiting_for(database, me, models, sending, answered=answers, invites=invites)
-
-
-def _servable(example: dict, sealed: set[str]) -> bool:
-    if example.get("source") == "upload" and example.get("kind") != "rerate":
-        return False
-    snippet = example.get("snippet_id")
-    return not snippet or str(snippet) not in sealed
-
-
-def _draw_queue(database: Any, me: str, mine: list[dict], models: list[dict],
-                mids: list[str], waiting: list[dict], only: Any) -> dict:
-    mid_set = set(mids)
+    open_examples += [case for case in exam_cases if str(case.get("model_id")) in mid_set]
+    waiting = _waiting_for(database, me, models, open_examples, sees_private=sees_private,
+                           answered=answered) if mids else []
     return rules.build_queue(
         [m for m in models if m["id"] in mid_set], with_clips(database, waiting), me,
         paused=[t["model_id"] for t in mine if t.get("paused_at")], only=_uuid(only) if only else None,
         company_line={str(t["model_id"]): t["company_line"] for t in mine if t.get("company_line")})
 
 
-def _examples_where(database: Any, model_ids: list[str], *, in_exam: bool) -> list[dict]:
-    if not model_ids:
-        return []
-    return _rows(_table(database, EXAMPLES).select(_EXAMPLE_FIELDS)
-                 .in_("model_id", model_ids).eq("in_exam", in_exam))
-
-
-def _answer_rows(database: Any, me: str, model_ids: list[str]) -> list[dict]:
-    if not model_ids:
-        return []
-    return _rows(_table(database, ANSWERS).select("example_id,model_id")
-                 .eq("teacher_id", me).in_("model_id", model_ids))
-
-
-def _invites_for(database: Any, model_ids: list[str]) -> list[dict]:
-    if not model_ids:
-        return []
-    return _rows(_table(database, INVITES).select(_INVITE_FIELDS).in_("model_id", model_ids))
-
-
-def _expert_ids(models: list[dict], invites: list[dict]) -> dict[str, list[str]]:
-    """Who set an exam aside, as ``model_setup_store.with_people`` reads it:
-    the owner and the expert named by the exam's invite. One invite list
-    for every model, not one query each."""
-    by_model: dict[str, list[dict]] = defaultdict(list)
-    for invite in invites:
-        by_model[str(invite.get("model_id"))].append(invite)
-    out: dict[str, list[str]] = {}
-    for model in models:
-        mid = str(model.get("id"))
-        raw_setup = model.get("setup")
-        setup = raw_setup if isinstance(raw_setup, dict) else {}
-        raw_exam = setup.get("exam")
-        exam = raw_exam if isinstance(raw_exam, dict) else {}
-        if not exam:
-            out[mid] = []
-            continue
-        expert = next((str(i.get("invitee_id")) for i in by_model.get(mid, [])
-                       if str(i.get("id")) == str(exam.get("invite_id") or "")), None)
-        owner = str(model.get("owner_id") or "")
-        out[mid] = [person for person in (owner, expert) if person]
-    return out
-
-
 def _waiting_for(database: Any, me: str, models: list[dict], examples: list[dict], *,
-                 answered: Optional[set[tuple[str, str]]] = None,
-                 invites: Optional[list[dict]] = None) -> list[dict]:
+                 sees_private: Optional[set[str]] = None,
+                 answered: Optional[set[tuple[str, str]]] = None) -> list[dict]:
     """The examples this teacher may still be sent: not answered by them,
     not their own Take or example, a private one only where they see it."""
     if answered is None:
         answered = {(str(a["example_id"]), str(a["model_id"])) for a in _rows(
             _table(database, ANSWERS).select("example_id,model_id").eq("teacher_id", me))}
-    sees = _sees_private(database, me, models, invites=invites)
+    sees = _sees_private(database, me, models) if sees_private is None else sees_private
     return [e for e in examples
             if (str(e["id"]), str(e["model_id"])) not in answered
             and str(e.get("speaker_id") or "") != me and str(e.get("added_by") or "") != me
             and (not e.get("private") or str(e["model_id"]) in sees)]
 
 
-def _sees_private(database: Any, me: str, models: list[dict], *,
-                  invites: Optional[list[dict]] = None) -> set[str]:
+def _sees_private(database: Any, me: str, models: list[dict]) -> set[str]:
     """The models whose private examples (a company's own data, N563 item 3)
     the caller may be sent: every model that is still private, and of the
     public ones, those the caller owns or was invited to teach. Someone who
@@ -394,22 +407,12 @@ def _sees_private(database: Any, me: str, models: list[dict], *,
     out = {m["id"] for m in models
            if m.get("visibility") != "public" or rules.viewer_role(m, me) == "owner"}
     rest = [m["id"] for m in models if m["id"] not in out]
-    if not rest:
-        return out
-    rest_set = set(rest)
-    known = [m for m in models if m["id"] in rest_set and "setup" in m]
-    if len(known) == len(rest):
-        went = {m["id"]: public_at(m) for m in known}
-    else:
+    if rest:
         went = {str(m["id"]): public_at(m) for m in _rows(
             _table(database, MODELS).select("id,setup").in_("id", rest))}
-    if invites is None:
-        rows = _rows(_table(database, INVITES).select("model_id,status,created_at")
-                     .eq("invitee_id", me).in_("model_id", rest))
-    else:
-        rows = [i for i in invites
-                if str(i.get("invitee_id") or "") == str(me) and str(i.get("model_id")) in rest_set]
-    out |= {str(i["model_id"]) for i in rows
+        out |= {str(i["model_id"]) for i in _rows(
+            _table(database, INVITES).select("model_id,status,created_at").eq("invitee_id", me)
+            .in_("model_id", rest))
             if i.get("status") == "accepted" and _before(i.get("created_at"), went.get(str(i["model_id"])))}
     return out
 

@@ -16,7 +16,8 @@ OUTCOME
       asked for the same trimmed words (N459 item 3).
   O3  A clip that fails its check is made once more with a new seed and
       is never shown; a try after it is not scored; a real pause heard in
-      the audio passes.
+      the audio passes. Benign transcription spelling differences do not
+      hide a Polish clip, while changed words still do.
   O4  One clip per practice, started early once the exercise is known,
       within my daily and monthly limits (3 and 20, N188), and a new voice
       only while the plan has a voice slot free; a voice still being made is waited for a
@@ -46,7 +47,9 @@ PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
                test_a_moment_too_long_for_a_clip_is_trimmed_around_what_it_teaches,
                test_the_walks_fix_on_a_long_moment_gets_its_clip_and_the_try_the_same_words
          O3 -> test_a_clip_that_fails_its_check_is_made_once_more_and_shown_only_if_it_passes,
-               test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it
+               test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it,
+               test_validator_accepts_benign_polish_transcription_normalization,
+               test_validator_still_rejects_materially_changed_polish_words
          O4 -> test_a_speakers_daily_or_monthly_limit_stops_the_provider_call,
                test_no_new_voice_while_the_plans_voice_slots_are_full,
                test_two_corrected_moments_queue_two_prewarms,
@@ -617,6 +620,44 @@ def test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it():
                    decode=lambda _a: _pcm_with_pause(1.0), language="en")
     assert out["passed"] and out["measurements"]["word_gap_s"] < 0.1
     assert out["measurements"]["pause_s"] >= 0.3
+
+
+def _polish_validator_result(heard_text):
+    from services.ai_voice_language import tokens
+    from services.ai_voice_validator import validate
+
+    expected = "To ważny przykład bo możemy działać szybko"
+    words = []
+    for index, word in enumerate(heard_text.split()):
+        start = index * 0.25
+        words.append({"word": word, "start": start, "end": start + 0.15})
+    return validate(
+        audio=b"x",
+        transcription={"transcript": heard_text, "language": "pl", "words": words},
+        spoken_words=tokens(expected),
+        exercise={"exercise": "pause", "target_phrase": "możemy działać szybko"},
+        original_wpm=None,
+        original_duration_s=None,
+        decode=lambda _audio: _pcm_with_pause(1.0),
+        language="pl",
+    )
+
+
+def test_validator_accepts_benign_polish_transcription_normalization():
+    """Whisper may omit accents, decompose Unicode, change case, and add
+    punctuation. Those spellings still represent the exact words spoken."""
+    out = _polish_validator_result("TO ważny przykład, bo mozemy działać szybko!")
+
+    assert out["passed"]
+    assert out["measurements"]["word_error_rate"] == 0.0
+    assert "words_changed" not in out["failed_checks"]
+
+
+def test_validator_still_rejects_materially_changed_polish_words():
+    out = _polish_validator_result("To ważny problem bo możemy działać szybko")
+
+    assert not out["passed"]
+    assert out["failed_checks"] == ["words_changed"]
 
 
 def test_validator_rejects_a_retranscription_in_the_wrong_language():
