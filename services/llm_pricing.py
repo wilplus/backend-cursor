@@ -82,6 +82,8 @@ def cost_for_chat(
     model: Optional[str],
     tokens_in: Optional[int],
     tokens_out: Optional[int],
+    *,
+    provider: str = "openai",
 ) -> Optional[float]:
     """USD for one chat completion. None only when BOTH counts are unusable.
 
@@ -89,6 +91,10 @@ def cost_for_chat(
     occasionally omits one side of ``usage``, and half a cost is much closer to
     the truth than no cost at all.
     """
+    # A Mistral call without a verified, versioned price is unknown — never
+    # invent an OpenAI-priced cost for another provider.
+    if str(provider or "").strip().lower() != "openai":
+        return None
     in_rate, out_rate = _lookup(model)
     ti = _coerce_int(tokens_in)
     to = _coerce_int(tokens_out)

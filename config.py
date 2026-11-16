@@ -129,6 +129,20 @@ class Config:
     OPENAI_CHAT_MODEL = (os.getenv("OPENAI_CHAT_MODEL") or "").strip() or None
     OPENAI_COPILOT_MODEL = (os.getenv("OPENAI_COPILOT_MODEL") or "").strip() or None
 
+    # Mistral text generation ships dark. A surface moves only when it is
+    # explicitly named here after its OpenAI-vs-Mistral golden comparison and
+    # founder approval. Whisper and strong-model calls never read this list.
+    MISTRAL_API_KEY = _secret("MISTRAL_API_KEY") or ""
+    MISTRAL_MODEL = (os.getenv("MISTRAL_MODEL") or "").strip() or None
+    MISTRAL_BASE_URL = (
+        os.getenv("MISTRAL_BASE_URL") or "https://api.mistral.ai/v1"
+    ).strip().rstrip("/")
+    MISTRAL_TEXT_SURFACES = frozenset(
+        surface.strip()
+        for surface in (os.getenv("MISTRAL_TEXT_SURFACES") or "").split(",")
+        if surface.strip()
+    )
+
     # ── F1 flags and tunables (audit Q-A5, 2026-09-14) ──────────────────────
     # These used to be os.getenv reads scattered through the F1 modules
     # (transcription, Ideal Text, Manager). They are read ONCE, here, at boot:

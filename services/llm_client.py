@@ -34,17 +34,18 @@ from __future__ import annotations
 import os
 from typing import Any, Optional
 
-#: (pid, key, timeout, max_retries) -> client. Entries a fork inherited are
+#: (pid, key, timeout, max_retries, base_url) -> client. Entries a fork inherited are
 #: never used (their pid is not ours) and never closed here. No lock: a lock
 #: held by another thread at fork time would stay held in the child forever,
 #: and two threads racing here only build one spare client, which is dropped.
-_CLIENTS: dict[tuple[int, str, float, int], Any] = {}
+_CLIENTS: dict[tuple[int, str, float, int, str], Any] = {}
 
 
 def build_openai_client(
     api_key: Optional[str], *, timeout: float, max_retries: int,
+    base_url: Optional[str] = None,
 ) -> Optional[Any]:
-    """Return a configured ``openai.OpenAI`` client, or ``None`` without a key.
+    """Return an OpenAI-compatible client, or ``None`` without a key.
 
     ``None`` is the documented "provider unavailable" signal every caller
     already handles; it is never an exception, so a missing key can never
@@ -59,11 +60,18 @@ def build_openai_client(
     key = (api_key or "").strip()
     if not key:
         return None
-    slot = (os.getpid(), key, float(timeout), int(max_retries))
+    endpoint = str(base_url or "").strip().rstrip("/")
+    slot = (os.getpid(), key, float(timeout), int(max_retries), endpoint)
     client = _CLIENTS.get(slot)
     if client is None:
         import openai  # lazy: keeps this module importable where the SDK is absent
 
-        client = _CLIENTS.setdefault(
-            slot, openai.OpenAI(api_key=key, timeout=timeout, max_retries=max_retries))
+        kwargs: dict[str, Any] = {
+            "api_key": key,
+            "timeout": timeout,
+            "max_retries": max_retries,
+        }
+        if endpoint:
+            kwargs["base_url"] = endpoint
+        client = _CLIENTS.setdefault(slot, openai.OpenAI(**kwargs))
     return client

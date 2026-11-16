@@ -821,6 +821,16 @@ O4  The bot's reply is saved under my turn even when my browser's clock
 runs ahead of the server's, so a reload keeps the order I saw.","O1, O2 -> test_a_turn_is_saved_once_and_its_choices_come_back
 O3     -> test_the_answer_still_comes_when_saving_fails
 O4     -> test_the_reply_is_saved_under_the_turn_it_answers",Founder #2: bubbles must never disappear; founder 2026-10-20: the chat keeps the order it shows. The harness is tests/chat_route_fakes.py; what the chat answers is pinned in test_chat_answers.py.
+tests/test_chat_provider.py,Story,"As the founder, I can compare and activate Mistral one text surface at a time without moving Whisper, strong reasoning, or an unapproved production path away from OpenAI.","O1  OpenAI remains the default and strong-model calls remain on OpenAI.
+O2  Only an explicitly allowed cheap-model surface selects Mistral.
+O3  Missing Mistral configuration never silently falls back to OpenAI.
+O4  The speaker's provider permit and usage record name Mistral before the
+provider client is built.","O1 -> test_openai_is_the_default_even_when_mistral_is_configured,
+test_only_an_allowlisted_cheap_surface_moves_to_mistral
+O2 -> test_only_an_allowlisted_cheap_surface_moves_to_mistral,
+test_mistral_uses_the_compatible_endpoint_without_hiding_its_identity
+O3 -> test_missing_mistral_credentials_never_fall_back_to_openai
+O4 -> test_chat_complete_names_mistral_before_building_the_client","Provider portability is useful only when it preserves the live loop, processing authorization, and a one-variable rollback path."
 tests/test_chat_safety.py,Story,"As a person in a chat with someone else, I want to block them and to report what they sent, so that I stop hearing from someone abusive and the founder can act on it; and as the founder, I want every report in front of me at once.","O1  When I block the other person, what they send from then on never
 reaches me: not in my chat, not as my list's last line, not as a push,
 and not after I unblock either. They are not told: their own chat
@@ -2252,6 +2262,11 @@ LedgerSqlTests::test_is_idempotent,
 BaselineSqlTests::test_is_idempotent_and_cannot_clobber_a_real_apply
 O5 -> TransactionPoolerWarningTests::test_warns_on_transaction_pooler,
 TransactionPoolerWarningTests::test_never_echoes_the_url",CLAUDE.md: merging a migration runs it in production (stdlib only: CI installs nothing).
+tests/test_mistral_smoke.py,Story,"As the founder, I can verify the configured Mistral endpoint with synthetic English, Polish, and JSON before any speaker is routed.","O1  The smoke check proves plain English, Polish, and structured JSON.
+O2  It refuses to run without an explicit key and model.
+O3  Its report never contains the API key or synthetic response text.","O1 -> test_the_smoke_check_covers_english_polish_and_structured_json
+O2 -> test_the_command_refuses_without_the_key_or_model
+O3 -> test_the_command_reports_only_case_status_and_latency","A three-call check catches access, language, and response-contract failures before one low-risk production surface is enabled."
 tests/test_mlc2_confidence.py,Story,"As a coach, I want the blind packet I rate to carry no transcript, score, rank, model guess or judgement, so that my rating is my own.",O1  A packet carrying any such hint is refused.,O1 -> test_blind_packet_rejects_answer_or_selection_hints,Never-rule 2: no coach sees the machine's guess before answering.
 tests/test_mlc2_confidence_end_to_end_postgres.py,Story,"As the founder, I want a Take promoted with a training yes to flow to one finalized confidence frame with exact spans, one selected candidate, a replay that changes nothing and a blind packet with no hints, so that the training corpus is consented, exact and blind.","O1  One Take, one producer receipt and one outbox event per promotion.
 O2  The worker's frame is accepted: one candidate per snippet, each span
