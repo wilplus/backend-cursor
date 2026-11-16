@@ -14,11 +14,14 @@ OUTCOME
       answer returns nothing of the machine's read.
   O5  The profile lists the models a person started and teaches; an invite
       I put off says so and stays.
+  O6  The queue reads its tables in batches, so teaching more models does
+      not add one database round trip per model.
 PROVES   O1 -> ModelRoutesTest::test_without_the_ring_nothing_is_shown
          O2 -> ModelRoutesTest::test_the_list_and_a_private_page
          O3 -> ModelRoutesTest::test_the_door_the_queue_and_pause
          O4 -> ModelRoutesTest::test_one_answer_counts_for_both_and_the_other_question_follows
          O5 -> ModelRoutesTest::test_the_profile_and_the_invite
+         O6 -> ModelRoutesTest::test_the_queue_batches_reads_across_models
 WHY      The model launchpad's first tables (migration
          a_person_can_teach_and_start_ai_models), served by
          services/model_launchpad_store.py over services/model_launchpad.py.
@@ -142,6 +145,31 @@ class ModelRoutesTest(unittest.TestCase):
         self.assertEqual(empty["empty"]["title"], "Nothing waits for you.")
         rows = self._get("/v2/models/rows").get_json()["rows"]
         self.assertEqual(rows[0], {"name": "Your queue", "line": "0 examples wait · 0 models"})
+
+    def test_the_queue_batches_reads_across_models(self):
+        self.assertEqual(self._post(f"/v2/models/{SPEAK}/enter").status_code, 200)
+        self.store.reads.clear()
+        base = self._get("/v2/models/queue")
+        self.assertEqual(base.status_code, 200)
+        base_reads = list(self.store.reads)
+
+        for i in range(8):
+            mid = f"{i + 1:08x}-1000-4000-8000-{i + 1:012x}"
+            self.store.tables["ai_models"].append({
+                "id": mid, "name": f"Extra model {i + 1}", "owner_id": KASIA,
+                "visibility": "public", "status": "learning", "setup": {},
+            })
+            self.store.tables["ai_model_teachers"].append({
+                "model_id": mid, "user_id": MARTA, "role": "contributor",
+                "trust_status": "learning", "paused_at": None, "company_line": None,
+            })
+
+        self.store.reads.clear()
+        scaled = self._get("/v2/models/queue")
+        self.assertEqual(scaled.status_code, 200)
+        self.assertEqual(len(scaled.get_json()["models"]), len(base.get_json()["models"]) + 8)
+        self.assertEqual(self.store.reads, base_reads)
+        self.assertLessEqual(len(self.store.reads), 6)
 
     def test_one_answer_counts_for_both_and_the_other_question_follows(self):
         self._post(f"/v2/models/{SPEAK}/enter")

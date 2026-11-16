@@ -23,6 +23,7 @@ Nothing in the result is ever shown to the speaker (AC-9).
 from __future__ import annotations
 
 import statistics
+import unicodedata
 from typing import Any, Optional
 
 from config import Config
@@ -30,7 +31,7 @@ from services.ai_voice_language import require as require_language
 from services.ai_voice_language import tokens as word_tokens
 from services.rater_languages import normalize_provider_language
 
-VALIDATOR_VERSION = "ai-voice-validator-v2"
+VALIDATOR_VERSION = "ai-voice-validator-v3"
 
 CLIPPED_SAMPLE = 0.999
 MAX_CLIPPED_SHARE = 0.001
@@ -47,10 +48,30 @@ PAUSE_OVER_MEDIAN = 1.8
 STRESS_MIN_DB, STRESS_MAX_DB = 1.5, 10.0
 
 _FRAME_S = 0.02
+_POLISH_STROKE_FOLD = str.maketrans({"ł": "l", "Ł": "L"})
 
 
 def _tokens(text: str) -> list[str]:
-    return word_tokens(text)
+    """Words in the clip check's deliberately narrow comparison form.
+
+    Whisper can return Polish without diacritics, or with canonically
+    decomposed Unicode, even when the audio says the requested word.  Folding
+    those spelling-only differences keeps the word fence strict: punctuation,
+    case and accents may differ, but a different lexical token still costs a
+    full edit in the existing word-error-rate check.
+    """
+    decomposed = unicodedata.normalize(
+        "NFKD", str(text or "").translate(_POLISH_STROKE_FOLD)
+    )
+    comparable = "".join(
+        character for character in decomposed
+        if unicodedata.category(character) != "Mn"
+    )
+    return word_tokens(comparable)
+
+
+def _spoken_tokens(words: list[str]) -> list[str]:
+    return [token for word in words for token in _tokens(word)]
 
 
 def _word_error_rate(said: list[str], heard: list[str]) -> float:
@@ -187,7 +208,7 @@ def _check_stress(words: list[dict], dbs: list[float], index: int, phrase: str) 
 def _check_fillers(words: list[dict], language: str) -> dict:
     """Not one hesitation in what was heard in the recording's language."""
     from services.transcript_smoothing import hesitations_for
-    fillers = set(hesitations_for(language))
+    fillers = set(_spoken_tokens(list(hesitations_for(language))))
     heard = sum(1 for w in words if w["t"] in fillers)
     return {"passed": heard == 0, "measurements": {"fillers_heard": heard},
             "failed": ["fillers_heard"] if heard else []}
@@ -264,8 +285,9 @@ def validate(*, audio: bytes, transcription: Optional[dict], spoken_words: list[
                 heard_language = normalize_provider_language(transcription.get("language"))
                 if heard_language and heard_language != language:
                     failed.append("language_mismatch")
+                said = _spoken_tokens(list(spoken_words))
                 heard = _tokens(str(transcription.get("transcript") or ""))
-                wer = _word_error_rate(list(spoken_words), heard)
+                wer = _word_error_rate(said, heard)
                 m["word_error_rate"] = round(wer, 3)
                 if wer > MAX_WORD_ERROR_RATE:
                     failed.append("words_changed")

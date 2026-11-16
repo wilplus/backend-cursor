@@ -436,7 +436,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 - **O1** One problem is picked against my own usual (or the default), and the sentence under the clip names it in words, with no numbers. As the walk's one fix on a moment, the clip teaches the strongest problem my clip shows, never the runner-up, and with nothing measured no clip is made: no default (N425). A clearer version's example keeps the default.
 - **O2** The clip says my own words (or the clearer version I accepted, with the ums taken out), in at most 17 seconds. A moment too long for that is trimmed to the part around what the clip teaches, and my try is asked for the same trimmed words (N459 item 3).
-- **O3** A clip that fails its check is made once more with a new seed and is never shown; a try after it is not scored; a real pause heard in the audio passes.
+- **O3** A clip that fails its check is made once more with a new seed and is never shown; a try after it is not scored; a real pause heard in the audio passes. Benign transcription spelling differences do not hide a Polish clip, while changed words still do.
 - **O4** One clip per practice, started early once the exercise is known, within my daily and monthly limits (3 and 20, N188), and a new voice only while the plan has a voice slot free; a voice still being made is waited for a few times only; my next try is measured on that one problem. My voice starts being made as my spoken Take is stored, beside its processing (N84), so the clip can be ready by the walk.
 - **O5** Delete removes my voice at the provider and every clip, old links stop working, and deleting twice is safe; closing my account removes the voice first.
 - **O6** A clip names its problem (pace, pause, stress, fillers or default) and the phrase it is made with as soon as they are chosen, ready or still being made; never a number (N120).
@@ -2194,6 +2194,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O3** "This is my field" makes me a teacher; the queue then holds the model's examples without the machine's read, and Pause empties it.
 - **O4** One answer to a public clip is saved for both models that ask the same question, and the other model's different question follows; the answer returns nothing of the machine's read.
 - **O5** The profile lists the models a person started and teaches; an invite I put off says so and stays.
+- **O6** The queue reads its tables in batches, so teaching more models does not add one database round trip per model.
 
 *Why:* The model launchpad's first tables (migration a_person_can_teach_and_start_ai_models), served by services/model_launchpad_store.py over services/model_launchpad.py.
 
