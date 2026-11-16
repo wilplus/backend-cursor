@@ -17516,3 +17516,13 @@ No migration in this entry. The rules: `services/content_language.py`, `services
 2. **WID-09:** personal invitation controls and `Copy my link` are intentionally removed. The only remaining admission URL is `/c/xLl2I4B-u14RY5yZd1JSR-4K`; the story must not retain the `AppMenu.tsx` `AddSomeoneSheet` control.
 
 No migration in this entry. The rules: `docs/design/app-model-2026-11-09/stories.json`, `docs/design/model-launchpad-app-model-2026-11-09/stories.json`, and `docs/design/your-chat-on-any-website-2026-11-09/stories.json`.
+
+**N654 · A Take lands in its project immediately; the project chat uses the locked chat order and controls** (founder, the Codex chat, 16 November 2026: “after the take the project appears in the chat right away”, “first the bubble”, “the back button is the top bar”, “they should be piled up and as they used to be”, “in the speaking coach the default is the text input”, and, for the inventory linked below, “approve Polish recording copy”). For N650, N652.
+
+1. **The project result is immediate.** As soon as a Take is accepted, its project/result presence appears in the project conversation. Analysis may fill in real feedback and delivery evidence later; it never holds the project out of the chat, and the optimistic state never invents a score, quality label or claim.
+2. **The project conversation has one human order:** the Feedback/Ideal-text project card first, then the Take summary, bridge and contextual question. A stored closing stays hidden while its question is open and, when released, follows that Take's answer or reply. The card's type and controls remain readable.
+3. **Existing chat chrome is the design.** A project conversation replaces the site/logo bar with the existing single chat top bar. Suggested answers use the shared stacked answer controls; “Something else” opens the existing text composer. No custom chip row and no divider above those controls.
+4. **Speaking coach rests on text.** Its default bottom control is the normal text composer. Recording remains available through the existing projects/recording route; a standing “Record Take N” bar does not replace the composer.
+5. **Fixed recording UI follows the interface locale.** Back, Next/Finish and other fixed recording controls use the app/system locale. Transcript, feedback and other generated coaching content continue to follow N652's immediate content language instead.
+
+No migration in this entry. The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md).
