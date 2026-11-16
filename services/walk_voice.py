@@ -162,10 +162,22 @@ def compose(context: dict, step: dict) -> Optional[str]:
     from services.llm import chat_complete
     from services.llm_config import SPEC_WALK_VOICE
     from services.prompts.walk_voice import SYSTEM
+    from services.content_language import complete_in_language, resolve_content_language
+    target_language = resolve_content_language(
+        recording_language=context.get("target_language")
+        or context.get("transcription_language"),
+        typed_message=" ".join(
+            str(value) for value in (context.get("moment") or {}).values()
+            if isinstance(value, str)
+        ),
+    )
     user = ("CONTEXT:\n" + json.dumps(context, indent=1, ensure_ascii=False)
             + "\n\nSTEP:\n" + json.dumps(step, indent=1, ensure_ascii=False))
     for attempt in range(ATTEMPTS):
-        result = chat_complete(spec=SPEC_WALK_VOICE, system=SYSTEM, user=user, surface=_SURFACE)
+        result = complete_in_language(
+            chat_complete, target_language=target_language, system=SYSTEM,
+            user=user, spec=SPEC_WALK_VOICE, surface=_SURFACE,
+        )
         text = _unwrapped((getattr(result, "text", None) or "") if result else "")
         reason = check(text, context)
         if not reason:
@@ -282,7 +294,22 @@ def context_for(database: Any, user_id: Any, take: dict, snippet_id: Any) -> dic
     """What Will knows for this message, in words. Each part is read on its
     own; one that fails is left out."""
     take_id = str(take.get("id") or "")
-    context: dict[str, Any] = {"take_number": take.get("take_index")}
+    from services.content_language import recording_target_language
+    raw_intake_context = take.get("intake_context")
+    intake_context: dict[str, Any] = (
+        raw_intake_context if isinstance(raw_intake_context, dict) else {}
+    )
+    target_language = recording_target_language(
+        recording=take, session_context=intake_context,
+    )
+    context: dict[str, Any] = {
+        "take_number": take.get("take_index"),
+        "target_language": target_language,
+        "transcription_language": (
+            take.get("transcription_language")
+            or intake_context.get("transcription_language")
+        ),
+    }
     snippets = _safe(lambda: database.get_snippets_by_session(take_id), []) or []
     moment = next((s for s in snippets if str(s.get("id")) == str(snippet_id or "")), None)
     if moment is not None:

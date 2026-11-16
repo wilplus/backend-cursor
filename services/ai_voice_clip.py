@@ -115,6 +115,28 @@ def demo_for(database: Any, practice: dict, selection: Optional[dict]) -> str:
     return "ai_voice"
 
 
+def _recording_language(database: Any, practice: dict, snippet: dict) -> str:
+    """Resolve the frozen recording language; never guess from the words."""
+    from services.ai_voice_language import require as require_language
+
+    recording_id = str(snippet.get("recording_id") or practice.get("recording_id") or "")
+    if not recording_id:
+        try:
+            session = database.v2_get_session_by_id(
+                str(practice.get("take_session_id") or "")) or {}
+            recording_id = str(session.get("recording_id") or "")
+        except Exception:  # noqa: BLE001 — missing compatibility read is diagnosed below
+            recording_id = ""
+    if recording_id and callable(getattr(database, "get_recording", None)):
+        recording = database.get_recording(recording_id) or {}
+        if "transcription_language" in recording:
+            return require_language(recording.get("transcription_language"))
+    for source in (practice, snippet):
+        if source.get("transcription_language") is not None:
+            return require_language(source.get("transcription_language"))
+    return require_language(None)
+
+
 # ── ensure / generate ────────────────────────────────────────────────────
 
 def ensure(database: Any, practice: dict, *, user_id: str, principal_id: str,
@@ -367,8 +389,9 @@ def prewarm(user_id: str, take_session_id: str, snippet_id: str, principal_id: s
 def _choose(database: Any, practice: dict, cycle: dict) -> tuple[Optional[dict], dict]:
     from services.ai_voice_severity import own_medians, select
     snippet = database.get_snippet_by_id(str(practice.get("snippet_id"))) or {}
+    language = _recording_language(database, practice, snippet)
     take = database.get_snippets_by_session(str(practice.get("take_session_id"))) or []
-    medians = own_medians(take)
+    medians = own_medians(take, language)
     history = [row for row in store.owner_cycles(database, str(cycle["owner_user_id"]))
                if str(row.get("id")) != str(cycle["id"])]
     sentence = str(practice.get("exact_passage") or snippet.get("transcript") or "")
@@ -382,18 +405,21 @@ def _choose(database: Any, practice: dict, cycle: dict) -> tuple[Optional[dict],
     fix = str(practice.get("kind") or "") != "rewrite"
     selection = select(snippet, medians, sentence=sentence,
                        seed=str(practice["id"]), history=history, prefer=prefer,
-                       explore=not fix, allow_default=not fix, hold_back=not fix)
+                       explore=not fix, allow_default=not fix, hold_back=not fix,
+                       language=language)
     if fix and selection:
-        sentence = _fit_passage(database, practice, sentence, selection)
+        sentence = _fit_passage(database, practice, sentence, selection, language)
     before = {k: (snippet.get("metrics") or {}).get(k)
               for k in ("wpm", "pause_ratio", "dynamic_db")}
     from services.ai_voice_severity import fillers_per_100
-    before["fillers_per_100"] = fillers_per_100(sentence)
+    before["fillers_per_100"] = fillers_per_100(sentence, language)
     return selection, {"before": before, "medians": medians,
-                       "sentence": sentence, "snippet": snippet}
+                       "sentence": sentence, "snippet": snippet,
+                       "language": language}
 
 
-def _fit_passage(database: Any, practice: dict, sentence: str, selection: dict) -> str:
+def _fit_passage(database: Any, practice: dict, sentence: str, selection: dict,
+                 language: str) -> str:
     """The walk's fix on a moment too long for a clip: its words trimmed to
     the part around what the clip teaches, so the clip can be made, and the
     practice re-pointed to them before any try, so the try is checked
@@ -401,7 +427,8 @@ def _fit_passage(database: Any, practice: dict, sentence: str, selection: dict) 
     ``selection`` carries them as ``passage`` for the walk to show."""
     from services.ai_voice_prompt import fit_to_clip
     words = fit_to_clip(sentence, selection.get("target_phrase"),
-                        drop_fillers=selection.get("exercise") == "fillers")
+                        drop_fillers=selection.get("exercise") == "fillers",
+                        language=language)
     practice_id = str(practice.get("id") or "")
     if (words == sentence or not words
             or database.list_confident_voice_practice_attempts(practice_id)):
@@ -472,7 +499,9 @@ def generate(cycle_id: str, principal_id: str, queue: Optional[str] = None, *,
         selection, context = _choose(database, practice, cycle)
     except Exception as error:  # noqa: BLE001 — recorded as the cycle's failure
         _log.warning("ai voice: choosing failed cycle=%s", cycle_id, exc_info=True)
-        return job.fail("internal", type(error).__name__)
+        return job.fail("configuration" if getattr(error, "kind", "") == "configuration"
+                        else "internal",
+                        getattr(error, "code", None) or type(error).__name__)
     job.lap("choose_exercise")
     job.update({"status": "choosing_exercise",
                 "demo": demo_for(database, practice, selection),
@@ -500,9 +529,9 @@ def _make(job: _Job, selection: dict, context: dict) -> str:
         return _wait_for_voice(job, selection)
     try:
         request = build(sentence=context["sentence"], exercise=selection,
-                        practice_id=str(job.practice["id"]))
+                        practice_id=str(job.practice["id"]), language=context["language"])
     except PromptRejected as error:
-        return job.fail("internal", str(error))
+        return job.fail("configuration", str(error))
     refused = clip_refusal(job.db, job.owner,
                            characters=request["metadata"]["characters"],
                            provider_usage=job.tools["provider_usage"])
@@ -602,7 +631,8 @@ def _speak_until_checked(job: _Job, voice_id: str, request: dict, selection: dic
         result = validate(
             audio=audio, spoken_words=request["spoken_words"], exercise=selection,
             transcription=_hear(job.db, job.principal_id, job.practice, audio,
-                                job.tools["transcribe"]),
+                                job.tools["transcribe"], context["language"]),
+            language=context["language"],
             decode=job.tools["decode"],
             original_wpm=(snippet.get("metrics") or {}).get("wpm"),
             original_duration_s=(snippet.get("duration_ms") or 0) / 1000.0 or None)
@@ -682,14 +712,14 @@ def _voices(database: Any, principal_id: str, practice: dict):
 
 
 def _hear(database: Any, principal_id: str, practice: dict, audio: bytes,
-          transcribe=None) -> Optional[dict]:
+          transcribe=None, language: str = "") -> Optional[dict]:
     """The clip re-heard by the existing Whisper, through its permit."""
     try:
         if transcribe is not None:
-            return transcribe(audio)
+            return transcribe(audio, language)
         from services.authorized_provider import AuthorizedProviderAdapter
         adapter = AuthorizedProviderAdapter(database, _coordinates(principal_id, practice))
-        return adapter.transcribe_snippet(audio, "ai-voice-check.mp3", language_hint="en")
+        return adapter.transcribe_snippet(audio, "ai-voice-check.mp3", language_hint=language)
     except Exception:  # noqa: BLE001 — unheard means unchecked, never shown
         _log.info("ai voice: clip not re-heard", exc_info=True)
         return None
@@ -834,14 +864,19 @@ def note_attempts(database: Any, practice: dict, attempts: list[dict]) -> None:
     # Fillers are read from the try's own transcript, the same way the
     # practised sentence was read.
     from services.ai_voice_severity import fillers_per_100
-    after["fillers_per_100"] = fillers_per_100(latest.get("transcript"))
+    try:
+        language = _recording_language(database, practice, {})
+    except Exception as error:  # noqa: BLE001 — no language, no measured outcome
+        _log.info("ai voice: attempt language unavailable: %s", type(error).__name__)
+        return
+    after["fillers_per_100"] = fillers_per_100(latest.get("transcript"), language)
     too_long = int(latest.get("duration_ms") or 0) > 1000 * int(Config.AI_VOICE_MAX_PRACTICE_SECONDS)
     from services.ai_voice_severity import outcome
     medians = {}
     try:
         from services.ai_voice_severity import own_medians
         medians = own_medians(database.get_snippets_by_session(
-            str(practice.get("take_session_id"))) or [])
+            str(practice.get("take_session_id"))) or [], language)
     except Exception:  # noqa: BLE001 — unmeasured is inconclusive
         _log.info("ai voice: own usual unreadable", exc_info=True)
         medians = {}

@@ -69,6 +69,7 @@ def generate_coach_note_draft(
     *,
     take_comparison: Optional[str] = None,
     goal: Optional[str] = None,
+    target_language: Optional[str] = None,
 ) -> Optional[str]:
     """Testable core: one LLM call → a friendly coach-note draft in the willab
     Insights voice, or None on empty transcript / no LLM / failure. Metrics are
@@ -79,15 +80,19 @@ def generate_coach_note_draft(
     try:
         from services.llm import chat_complete
         from services.llm_config import SPEC_COACH_COMMENT_DRAFT
+        from services.content_language import complete_in_language, resolve_content_language
     except Exception as e:
         logger.warning("coach_comment_drafter: openai import failed: %s", e)
         return None
     observations = metric_observations(metrics)
     try:
         from services.llm_schemas import COACH_NOTE_DRAFT_SCHEMA, response_format
-        resp = chat_complete(
-            spec=SPEC_COACH_COMMENT_DRAFT,
-            system=_system_prompt(),
+        target = resolve_content_language(
+            recording_language=target_language, typed_message=transcript,
+        )
+        resp = complete_in_language(
+            chat_complete, target_language=target,
+            spec=SPEC_COACH_COMMENT_DRAFT, system=_system_prompt(),
             user=_user_prompt(
                 transcript, slide, observations, take_comparison, goal
             ),
@@ -198,6 +203,7 @@ def dispatch_coach_note_drafts(
     *,
     goal: Optional[str] = None,
     llm_ids: Optional[set] = None,
+    target_language: Optional[str] = None,
 ) -> None:
     """Fire-and-forget: draft a coach note for each snippet, persist it frozen.
     Slides are OPTIONAL grounding — a deck-less recording (a spoken pitch with
@@ -220,7 +226,7 @@ def dispatch_coach_note_drafts(
         # the Take's provider scope and the model call goes out unpermitted.
         start_scoped_thread(
             _draft_all,
-            args=(session_id, snippets, slides, advances, goal, llm_ids),
+            args=(session_id, snippets, slides, advances, goal, llm_ids, target_language),
             name=f"coach-draft-{str(session_id)[:8]}",
         )
     except Exception as e:
@@ -228,7 +234,7 @@ def dispatch_coach_note_drafts(
 
 
 def _draft_all(session_id, snippets, slides, advances, goal,
-               llm_ids=None) -> None:
+               llm_ids=None, target_language=None) -> None:
     from services.slide_alignment import slide_index_for_offset
     from services.db import db
     slides = slides or []
@@ -266,6 +272,7 @@ def _draft_all(session_id, snippets, slides, advances, goal,
                 _metrics,
                 take_comparison=take_comparison,
                 goal=goal,
+                target_language=target_language,
             )
             if draft and db.set_charisma_snippet_ai_draft_coach_note(sid, draft):
                 written += 1

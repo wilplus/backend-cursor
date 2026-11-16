@@ -34,6 +34,7 @@ from services.prompts.moment_suggestions import STRUCT_SYSTEM as _STRUCT_SYSTEM
 from services.prompts.moment_suggestions import (
     EMPHASIS_SYSTEM as _EMPHASIS_SYSTEM,
 )
+from services.content_language import DEFAULT_CONTENT_LANGUAGE
 
 # Cap on the context-document excerpt per prompt. The stored text can reach
 # 40k chars and this rides every snippet's call, so the excerpt is bounded.
@@ -62,6 +63,7 @@ class _GenerationContext:
     decided_keys: set
     intent_keys: set
     take_texts: list
+    target_language: str = DEFAULT_CONTENT_LANGUAGE
 
 
 def _read_take_metrics(database: Any, session_id: str) -> tuple[list, dict]:
@@ -195,6 +197,14 @@ def _load_generation_context(
     context = intake if isinstance(intake, dict) else {}
     audience = context.get("audience") or None
     strategic_context = context.get("strategic_context") or None
+    from services.content_language import recording_target_language
+    recording = session
+    recording_id = session.get("recording_id") if isinstance(session, dict) else None
+    if recording_id:
+        try:
+            recording = database.get_recording(str(recording_id)) or session
+        except Exception:  # noqa: BLE001 -- session context remains sufficient
+            recording = session
 
     return _GenerationContext(
         cap=cap,
@@ -209,6 +219,9 @@ def _load_generation_context(
         decided_keys=decided_keys,
         intent_keys=decision_intent_keys,
         take_texts=take_texts,
+        target_language=recording_target_language(
+            recording=recording, session_context=context,
+        ),
     )
 
 
@@ -220,6 +233,7 @@ def generate_moment_suggestion(
     trigger: Optional[str] = None,
     user_id: Optional[str] = None,
     speaker_focus: Optional[str] = None,
+    target_language: Optional[str] = None,
 ) -> Optional[dict]:
     """{'why': str, 'replacement': str|None} or None on any miss. Guarded.
 
@@ -234,6 +248,7 @@ def generate_moment_suggestion(
         from services.llm import chat_complete
         from services.llm_config import SPEC_MOMENT_SUGGESTION
         from services.say_it_stronger import _guard_copy
+        from services.content_language import complete_in_language, resolve_content_language
 
         payload = {
             "kind": kind,
@@ -257,12 +272,13 @@ def generate_moment_suggestion(
             from services.prompts.moment_suggestions import SPEAKER_FOCUS
             payload["speaker_focus"] = speaker_focus.strip()[:200]
             system = _SYSTEM + SPEAKER_FOCUS
-        result = chat_complete(
-            spec=SPEC_MOMENT_SUGGESTION,
-            system=system,
-            user=json.dumps(payload, ensure_ascii=False),
-            surface="moment_suggestion",
-            user_id=user_id,
+        target = resolve_content_language(
+            recording_language=target_language, typed_message=transcript,
+        )
+        result = complete_in_language(
+            chat_complete, target_language=target, spec=SPEC_MOMENT_SUGGESTION,
+            system=system, user=json.dumps(payload, ensure_ascii=False),
+            surface="moment_suggestion", user_id=user_id,
         )
         parsed = getattr(result, "parsed", None) if result else None
         if not isinstance(parsed, dict):
@@ -749,6 +765,7 @@ def _generate_acoustic_candidate(
             context_document=context.context_document,
             trigger=plan.trigger,
             user_id=context.session.get("user_id"),
+            target_language=context.target_language,
         )
     if not generated:
         return None
@@ -1145,7 +1162,8 @@ def context_rewrites(session_id: str, arc_id: Optional[str], weights: Any,
                 "replace", plan.transcript, audience=context.audience,
                 strategic_context=context.strategic_context,
                 context_document=context.context_document, trigger=plan.trigger,
-                user_id=context.session.get("user_id"), speaker_focus=focus)
+                user_id=context.session.get("user_id"), speaker_focus=focus,
+                target_language=context.target_language)
             replacement = (made or {}).get("replacement")
             # Stored over the rule lane's row only when it would pass the
             # gate's word checks itself: a context rewrite never costs the

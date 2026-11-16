@@ -133,7 +133,8 @@ def _heads(database: Any, host_id: Optional[str], recipe: dict, said: str) -> di
 
 def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str],
          database: Any = None, host_id: Optional[str] = None,
-         pay: Optional[Callable[[dict], bool]] = None) -> dict:
+         pay: Optional[Callable[[dict], bool]] = None,
+         target_language: Optional[str] = None) -> dict:
     """{"answer": words or None, "lines": [{"body", "by", "q"}]}: the one
     chat call, after one reader call when a model of the recipe has a head
     whose gate is open. ``pay``: asked for each line of another person's
@@ -141,14 +142,21 @@ def make(recipe: dict, said: str, host_name: Any, *, user_id: Optional[str],
     TOK-02). The host's own models are free (N618 item 1)."""
     from services.llm import chat_complete
     from services.llm_config import SPEC_CHAT_REPLY
+    from services.content_language import complete_in_language, resolve_content_language
     # A model still learning says nothing to the people who write and costs
     # nothing (N633 item 1): it is not in the call at all.
     recipe = {**recipe, "models": [m for m in recipe.get("models") or [] if not m.get("learning")]}
     heads = _heads(database, host_id, recipe, said)
     try:
-        result = chat_complete(spec=SPEC_CHAT_REPLY, system=prompt(recipe, heads),
-                               user=f"What the person sent: {said[:MAX_SAID]}",
-                               surface="chat_reply", user_id=user_id)
+        target = resolve_content_language(
+            recording_language=target_language, typed_message=said,
+        )
+        result = complete_in_language(
+            chat_complete, target_language=target,
+            system=prompt(recipe, heads),
+            user=f"What the person sent: {said[:MAX_SAID]}",
+            spec=SPEC_CHAT_REPLY, surface="chat_reply", user_id=user_id,
+        )
     except Exception:  # noqa: BLE001 -- nothing is sent; the question waits
         logger.warning("chat_replies: no provider answer", exc_info=True)
         result = None

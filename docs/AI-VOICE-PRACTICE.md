@@ -73,6 +73,16 @@ The lock (flow, words, rules) is
 | `services/admin_takes.py` | the admin Take view: each Take's clip, its outcome and the fillers rate before and after |
 | `routes/v2/ai_voice.py` | the walk's routes and the card's routes |
 
+The language field contract is shared by the whole generation/check job:
+`recordings.transcription_language` is the frozen source and currently must be
+`en` or `pl`. The job passes that code unchanged to ElevenLabs
+`language_code`, Whisper re-transcription, Unicode word/phrase matching,
+filler removal and checks, severity selection, and every generation retry. A
+missing or unsupported value is a `configuration` failure; a returned clip
+whose words or exercise do not pass the strict validator is a `validation`
+failure. Synthetic tests may carry the same field on the practice payload;
+they never use provider keys or personal audio.
+
 Job states (`ai_voice_cycles.status`): `pending → analyzing →
 choosing_exercise → generating → validating → completed | failed | skipped`.
 Provider failures and validation failures are told apart in `failure_kind`.
@@ -88,9 +98,9 @@ normalization range (`AI_VOICE_PACE_*`, `AI_VOICE_PAUSE_*`,
 settings; see `config.py`.
 
 **Fillers** (founder 2026-10-18, lock section "Decided after the lock,
-fillers"): the hesitations counted are the closed list the transcript fence
-removes (`services/transcript_smoothing.py`, the English list: the lane
-speaks and is re-heard in English). The sentence sent is the speaker's own
+fillers"): the hesitations counted are the closed, recording-language list
+the transcript fence removes (`services/transcript_smoothing.py`). The lane
+speaks and is re-heard in the persisted recording language. The sentence sent is the speaker's own
 with those tokens left out (`ai_voice_prompt._without_fillers`); the
 validator refuses the clip if one is heard (`fillers_heard`). The sentence
 under the player is L18. The library has no fillers exercise, so fillers

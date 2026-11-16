@@ -186,6 +186,15 @@ class _Db:
                 "matching_criteria": {"primary_problem_tag": "rushing"}}
 
 
+class _RecordingLanguageDb(_Db):
+    def __init__(self, practice, snippet, take, language):
+        super().__init__(practice, snippet, take)
+        self.recording_language = language
+
+    def get_recording(self, recording_id):
+        return {"id": recording_id, "transcription_language": self.recording_language}
+
+
 def _snip(wpm, pause_ratio=0.15, dynamic_db=28.0):
     return {"metrics": {"wpm": wpm, "pause_ratio": pause_ratio, "dynamic_db": dynamic_db},
             "duration_ms": 2600, "transcript": SENTENCE}
@@ -194,9 +203,10 @@ def _snip(wpm, pause_ratio=0.15, dynamic_db=28.0):
 TAKE = [_snip(150), _snip(152), _snip(148), _snip(151)]
 
 
-def _practice(kind="plain", fit=None, video=None):
+def _practice(kind="plain", fit=None, video=None, language="en"):
     return {"id": str(uuid.uuid4()), "kind": kind, "take_session_id": str(uuid.uuid4()),
             "snippet_id": str(uuid.uuid4()), "exact_passage": SENTENCE,
+            "transcription_language": language,
             "exercise_id": "x", "exercise_snapshot": {"explanation_video_url": video},
             "machine_assessment": {"exercise_fit": fit}}
 
@@ -260,6 +270,18 @@ def _heard(gap_before_target, phrase="match our price", step=0.17):
     return {"transcript": SENTENCE, "words": words}
 
 
+def _heard_sentence(sentence, phrase, gap_before_target=0.55, step=0.17):
+    tokens, target = sentence.split(), phrase.split()
+    at = next(i for i in range(len(tokens)) if tokens[i:i + len(target)] == target)
+    words, t = [], 0.0
+    for i, word in enumerate(tokens):
+        if i == at:
+            t += gap_before_target
+        words.append({"word": word, "start": t, "end": t + 0.15})
+        t += step
+    return {"transcript": sentence, "words": words}
+
+
 def _ready_voice(db):
     db.client.tables.setdefault("ai_voice_clones", []).append(
         {"owner_user_id": OWNER, "status": "ready", "enabled": True,
@@ -272,7 +294,7 @@ def _run_pipeline(db, practice, voices, heard, pcm=None, objects=None, decode=No
             objects[key] = audio
         return "bucket"
     return ai_voice_clip.ensure(db, practice, user_id=OWNER, principal_id="", run=lambda cid, p: ai_voice_clip.generate(
-        cid, p, database=db, provider=voices, transcribe=lambda _a: heard,
+        cid, p, database=db, provider=voices, transcribe=lambda _a, _language: heard,
         put_object=put, decode=decode or (lambda _a: pcm if pcm is not None else _pcm_with_pause(1.0)),
         provider_usage={"used": 0}), sign=lambda b, k: f"https://signed/{k}")
 
@@ -286,14 +308,15 @@ def _run_pipeline(db, practice, voices, heard, pcm=None, objects=None, decode=No
 ])
 def test_a_problem_from_the_line_up_else_the_default(pause_ratio, picked):
     with _on(AI_VOICE_MIN_SEVERITY=0.4):
-        medians = ai_voice_severity.own_medians(TAKE)
+        medians = ai_voice_severity.own_medians(TAKE, "en")
         out = ai_voice_severity.select(_snip(150, pause_ratio=pause_ratio), medians,
-                                       sentence=SENTENCE, seed="s")
+                                       sentence=SENTENCE, seed="s", language="en")
         assert out["exercise"] == picked and out["default"] is (picked == "stress")
         assert 0.0 <= out["severity"] <= 1.0 and out["target_phrase"]
         # The walk's one fix (N425): what the clip shows, or nothing.
         fix = ai_voice_severity.select(_snip(150, pause_ratio=pause_ratio), medians,
-                                       sentence=SENTENCE, seed="s", explore=False, allow_default=False)
+                                       sentence=SENTENCE, seed="s", explore=False, allow_default=False,
+                                       language="en")
         assert (fix is None) if picked == "stress" else (fix["exercise"] == picked)
 
 
@@ -301,28 +324,29 @@ def test_raw_units_are_never_compared_and_the_phrase_has_a_fallback():
     """168 words a minute is a big number and 0.05 a small one; on the
     speaker's own scale the missing pauses are the worse problem."""
     with _on():
-        medians = ai_voice_severity.own_medians(TAKE)
+        medians = ai_voice_severity.own_medians(TAKE, "en")
         out = ai_voice_severity.select(_snip(168, pause_ratio=0.05), medians,
-                                       sentence=SENTENCE, seed="s")
+                                       sentence=SENTENCE, seed="s", language="en")
         scores = out["severity_scores"]
         assert out["exercise"] == "pause" and scores["pause"] > scores["pace"] > 0
     # No comma or joining word: the last third of the sentence.
     assert ai_voice_severity.target_phrase(
-        "Our revenue grew twelve percent last quarter in Europe") == "quarter in Europe"
+        "Our revenue grew twelve percent last quarter in Europe", language="en") == "quarter in Europe"
 
 
 def test_on_a_plan_the_clip_practises_the_levels_problem():
     with _on():
-        medians = ai_voice_severity.own_medians(TAKE)
+        medians = ai_voice_severity.own_medians(TAKE, "en")
         clip = _snip(168, pause_ratio=0.05)  # fewer pauses is the worse problem
-        plain = ai_voice_severity.select(clip, medians, sentence=SENTENCE, seed="s")
+        plain = ai_voice_severity.select(clip, medians, sentence=SENTENCE, seed="s", language="en")
         assert plain["exercise"] == "pause"
-        paced = ai_voice_severity.select(clip, medians, sentence=SENTENCE, seed="s", prefer="pace")
+        paced = ai_voice_severity.select(clip, medians, sentence=SENTENCE, seed="s", prefer="pace",
+                                         language="en")
         assert paced["exercise"] == "pace" and not paced["default"]
         # A level the clip doesn't show (its loudness range is its usual):
         # the pick as without a plan.
         level_off = ai_voice_severity.select(clip, medians, sentence=SENTENCE, seed="s",
-                                             prefer="stress")
+                                             prefer="stress", language="en")
         assert level_off["exercise"] == "pause"
 
 
@@ -334,7 +358,8 @@ def test_on_a_plan_the_clip_practises_the_levels_problem():
     {"exercise": "stress", "target_phrase": "match our price"},
 ])
 def test_the_request_says_the_speakers_own_words(exercise):
-    out = ai_voice_prompt.build(sentence=SENTENCE, exercise=exercise, practice_id="p")
+    out = ai_voice_prompt.build(sentence=SENTENCE, exercise=exercise, practice_id="p",
+                                language="en")
     assert out["spoken_words"] == SENTENCE.lower().split()
     assert set(out["metadata"]["tags"]) <= ai_voice_prompt.ALLOWED_TAGS
     assert "speed" not in out["body"]["voice_settings"]  # not on Eleven v4
@@ -345,12 +370,12 @@ def test_no_clip_is_longer_than_the_limit():
     long to say in that time is never sent; a longer clip fails its check."""
     with pytest.raises(ai_voice_prompt.PromptRejected):
         ai_voice_prompt.build(sentence=" ".join([SENTENCE] * 3), exercise={"exercise": "pace"},
-                              practice_id="p")
+                              practice_id="p", language="en")
     from services.ai_voice_validator import validate
     pcm = (0.2 * np.sin(2 * np.pi * 180 * np.arange(18 * 16000) / 16000)).astype(np.float32)
     out = validate(audio=b"x", transcription=None, spoken_words=SENTENCE.lower().split(),
                    exercise={"exercise": "pace"}, original_wpm=None,
-                   original_duration_s=None, decode=lambda _a: pcm)
+                   original_duration_s=None, decode=lambda _a: pcm, language="en")
     assert "too_long" in out["failed_checks"] and not out["passed"]
 
 
@@ -366,14 +391,14 @@ def test_a_moment_too_long_for_a_clip_is_trimmed_around_what_it_teaches():
     is left as it is."""
     def fits(text):  # 600 characters, 17 s said at 2.2 words a second, one pause
         return len(text) <= 600 and len(text.split()) / 2.2 + 0.6 <= 17
-    assert ai_voice_prompt.fit_to_clip(SENTENCE, PHRASE) == SENTENCE
+    assert ai_voice_prompt.fit_to_clip(SENTENCE, PHRASE, language="en") == SENTENCE
     for text, phrase in ((LONG_MOMENT, "the window closes once"),
                          (" ".join([SENTENCE] * 4), "match our price"),
                          (LONG_MOMENT, None)):
         assert not fits(text)
-        cut = ai_voice_prompt.fit_to_clip(text, phrase)
+        cut = ai_voice_prompt.fit_to_clip(text, phrase, language="en")
         assert fits(cut) and cut in text and (phrase is None or phrase in cut)
-    assert ai_voice_prompt.fit_to_clip(LONG_MOMENT, "the window closes once") == SENTENCE
+    assert ai_voice_prompt.fit_to_clip(LONG_MOMENT, "the window closes once", language="en") == SENTENCE
 
 
 class _TrimDb(_Db):
@@ -513,11 +538,12 @@ def test_the_walks_fix_gets_no_clip_when_nothing_was_off_and_never_the_runner_up
         cycle = db.client.tables["ai_voice_cycles"][0]
         assert (cycle["status"], cycle["failure_kind"], voices.spoken) == ("skipped", "no_exercise", 0)
     with _on(AI_VOICE_EXPLORE_SHARE=1.0):
-        medians = ai_voice_severity.own_medians(TAKE)
+        medians = ai_voice_severity.own_medians(TAKE, "en")
         both = _snip(168, pause_ratio=0.05)  # pause the worse, pace the runner-up
-        assert ai_voice_severity.select(both, medians, sentence=SENTENCE, seed="s")["exercise"] == "pace"
         assert ai_voice_severity.select(both, medians, sentence=SENTENCE, seed="s",
-                                        explore=False)["exercise"] == "pause"
+                                        language="en")["exercise"] == "pace"
+        assert ai_voice_severity.select(both, medians, sentence=SENTENCE, seed="s",
+                                        explore=False, language="en")["exercise"] == "pause"
         # Pause, just the worse, did not help this speaker twice running: a
         # Clearer version's example holds it back, the walk's fix still
         # teaches it, and keeps that it was held back for learning.
@@ -525,9 +551,10 @@ def test_the_walks_fix_gets_no_clip_when_nothing_was_off_and_never_the_runner_up
         tried = [{"ready_at": "2026-11-0%dT09:00:00Z" % day, "exercise": "pause",
                   "outcome": "similar"} for day in (2, 1)]
         held = ai_voice_severity.select(close, medians, sentence=SENTENCE, seed="s", history=tried,
-                                        explore=False)
+                                        explore=False, language="en")
         fix = ai_voice_severity.select(close, medians, sentence=SENTENCE, seed="s", history=tried,
-                                       explore=False, allow_default=False, hold_back=False)
+                                       explore=False, allow_default=False, hold_back=False,
+                                       language="en")
         assert (held["exercise"], fix["exercise"], fix["held_back"]) == ("pace", "pause", ["pause"])
 
 
@@ -587,9 +614,75 @@ def test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it():
                    spoken_words=SENTENCE.lower().split(),
                    exercise={"exercise": "pause", "target_phrase": "the window closes once"},
                    original_wpm=None, original_duration_s=None,
-                   decode=lambda _a: _pcm_with_pause(1.0))
+                   decode=lambda _a: _pcm_with_pause(1.0), language="en")
     assert out["passed"] and out["measurements"]["word_gap_s"] < 0.1
     assert out["measurements"]["pause_s"] >= 0.3
+
+
+def test_validator_rejects_a_retranscription_in_the_wrong_language():
+    from services.ai_voice_validator import validate
+    heard = {**_heard(0.0, "the window closes once"), "language": "en"}
+    out = validate(audio=b"x", transcription=heard,
+                   spoken_words=SENTENCE.lower().split(), exercise={"exercise": "pace"},
+                   original_wpm=150, original_duration_s=None,
+                   decode=lambda _audio: _pcm_with_pause(1.0), language="pl")
+    assert "language_mismatch" in out["failed_checks"] and not out["passed"]
+
+
+def test_missing_recording_language_is_configuration_failure_and_never_calls_provider():
+    with _on():
+        db = _Db(_practice(language=None), _snip(150, pause_ratio=0.02), TAKE)
+        _ready_voice(db)
+        voices = _Voices()
+        out = _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
+        cycle = db.client.tables["ai_voice_cycles"][0]
+        assert out["clip"]["state"] == "unavailable"
+        assert (cycle["failure_kind"], cycle["failure_code"]) == (
+            "configuration", "recording_language_missing")
+        assert voices.spoken == 0
+
+
+@pytest.mark.parametrize("language, sentence, phrase", [
+    ("en", SENTENCE, "the window closes once"),
+    ("pl", "To jest ważny przykład, bo musimy działać szybko",
+     "musimy działać szybko"),
+])
+def test_consented_synthetic_golden_languages_cross_generation_validation_storage_and_signing(
+        language, sentence, phrase):
+    """The same strict synthetic/golden contract is exercised in EN and PL.
+
+    The fake provider receives no key or personal recording and the stored
+    bytes are synthetic; the test still crosses generation, re-hearing,
+    validation, object storage, and signed-link boundaries.
+    """
+    with _on():
+        # The recording row is authoritative; the PL case deliberately carries
+        # a stale synthetic practice copy to prove it is not consulted.
+        practice = _practice(language="en" if language == "pl" else language)
+        practice["exact_passage"] = sentence
+        snippet = {**_snip(150, pause_ratio=0.02), "transcript": sentence,
+                   "recording_id": f"recording-{language}"}
+        db = _RecordingLanguageDb(
+            practice, snippet, [snippet, _snip(152), _snip(148), _snip(151)], language)
+        _ready_voice(db)
+        voices, objects, heard_languages = _Voices(), {}, []
+        out = ai_voice_clip.ensure(
+            db, practice, user_id=OWNER, principal_id="",
+            run=lambda cid, p: ai_voice_clip.generate(
+                cid, p, database=db, provider=voices,
+                transcribe=lambda _audio, _language: (
+                    heard_languages.append(_language), _heard_sentence(sentence, phrase)
+                )[1],
+                put_object=lambda key, audio: (objects.__setitem__(key, audio), "bucket")[1],
+                decode=lambda _audio: _pcm_with_pause(1.0), provider_usage={"used": 0}),
+            sign=lambda bucket, key: f"https://signed/{bucket}/{key}")
+        assert out["clip"]["state"] == "ready"
+        cycle = db.client.tables["ai_voice_cycles"][0]
+        assert voices.bodies[0]["language_code"] == language
+        assert heard_languages == [language]
+        assert cycle["generation_metadata"]["language"] == language
+        assert cycle["validation"]["language"] == language
+        assert objects and out["clip"]["url"].startswith("https://signed/")
 
 
 def test_one_recording_makes_one_checked_clip_then_measures_the_next_try(monkeypatch):
@@ -674,12 +767,12 @@ def test_a_clean_sentence_never_gets_the_fillers_clip():
     """No hesitation in the sentence: fillers is never picked, and a request
     for it is refused before anything is sent."""
     with _on():
-        out = ai_voice_severity.select(_snip(150), ai_voice_severity.own_medians(TAKE),
-                                       sentence=SENTENCE, seed="s")
+        out = ai_voice_severity.select(_snip(150), ai_voice_severity.own_medians(TAKE, "en"),
+                                       sentence=SENTENCE, seed="s", language="en")
         assert out["exercise"] != "fillers" and out["severity_scores"]["fillers"] == 0.0
     with pytest.raises(ai_voice_prompt.PromptRejected):
         ai_voice_prompt.build(sentence=SENTENCE, exercise={"exercise": "fillers"},
-                              practice_id="p")
+                              practice_id="p", language="en")
 
 
 # ── the voice, and deleting it ────────────────────────────────────────────
@@ -861,7 +954,11 @@ class _PrewarmDb(_Db):
         self.practices: list = []
 
     def v2_get_session_by_id(self, take_id):
-        return {"id": take_id, "user_id": OWNER, "arc_id": ARC}
+        return {"id": take_id, "user_id": OWNER, "arc_id": ARC,
+                "recording_id": "recording-en"}
+
+    def get_recording(self, recording_id):
+        return {"id": recording_id, "transcription_language": "en"}
 
     def get_confident_voice_practice_by_moment(self, take_id, snippet_id, owner=None):
         return next((p for p in self.practices
@@ -917,7 +1014,7 @@ def test_prewarm_opens_the_practice_and_the_clip_and_skips_without_a_voice(allow
 
         def run(cid, p):
             ai_voice_clip.generate(cid, p, database=db, provider=voices,
-                                   transcribe=lambda _a: _heard(0.55, "the window closes once"),
+                                       transcribe=lambda _a, _language: _heard(0.55, "the window closes once"),
                                    put_object=lambda k, a: "bucket",
                                    decode=lambda _a: _pcm_with_pause(1.0),
                                    provider_usage={"used": 0})

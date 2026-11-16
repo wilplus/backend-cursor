@@ -17500,3 +17500,19 @@ app!"). For N642 item 3, N643 item 4. The pinned prototype draws it.
    "Message Will" and what a tap on a part opens are unchanged.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N652 · Coaching responses follow the immediate content language; UI locale is separate** (founder, the Claude Code chat, 16 November 2026, approved while implementing backend content-language routing). The interface locale may be controlled by IP or a manual override, but it never chooses the language of coaching content.
+
+1. **Every generated coaching response follows the immediate content:** an English recording or typed message gets English; a Polish recording or typed message gets Polish. IP, browser locale, and UI locale are never content-language evidence.
+2. **Raw speech stays raw:** persist the provider's `transcription_language` as first-class recording evidence, preserve raw transcripts, and never translate them.
+3. **Language is explicit downstream:** feedback, feedback-walk voice, post-recording questions, coach/chat prompts, and safe fallbacks receive the recording or typed-message target. Generated output gets one bounded target-language retry before the existing safe fallback.
+4. **Polish filler handling is meaning-preserving:** remove fixed spoken fillers (`yyy`, `eee`, `em`, `hm`, `hmm`) and handle `jakby`, `wiesz`, `znaczy`, `no`, and `więc` only in a sentence-leading, paused discourse context; retain meaningful grammar.
+
+No migration in this entry. The rules: `services/content_language.py`, `services/recording_transcription.py`, `services/transcript_smoothing.py`, and the recording/feedback/chat services that consume their contract.
+
+**N653 · The approved App Model removes the legacy coach row and personal invitation controls** (founder, the Claude Code chat, 16 November 2026, reconciling the frontend removals in PR #1428 with the canonical App Model stories). The removed frontend surfacing does not retire backend queue/model behavior.
+
+1. **MOD-14:** the backend queue/model behavior remains, but the approved Speaking Coach project home intentionally removes the legacy coach/people row from the primary IA. The story must not retain `useChatsDoor.tsx::coachRow={isCoach ? <CoachChatRow /> : null}` or invent a replacement frontend behavior; an existing approved model-list anchor may remain where it is real.
+2. **WID-09:** personal invitation controls and `Copy my link` are intentionally removed. The only remaining admission URL is `/c/xLl2I4B-u14RY5yZd1JSR-4K`; the story must not retain the `AppMenu.tsx` `AddSomeoneSheet` control.
+
+No migration in this entry. The rules: `docs/design/app-model-2026-11-09/stories.json`, `docs/design/model-launchpad-app-model-2026-11-09/stories.json`, and `docs/design/your-chat-on-any-website-2026-11-09/stories.json`.

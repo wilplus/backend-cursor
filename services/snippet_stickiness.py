@@ -35,7 +35,7 @@ _SURFACE = "snippet_stickiness"
 _MAX_COMMENT_LEN = 200
 
 
-def score_snippets_stickiness(snippets: list[dict]) -> list[dict]:
+def score_snippets_stickiness(snippets: list[dict], target_language: Optional[str] = None) -> list[dict]:
     """Return per-snippet ``{snippet_id, composite, comment}``.
 
     Parallel to ``snippets`` (same order + length). Composite is a
@@ -57,7 +57,7 @@ def score_snippets_stickiness(snippets: list[dict]) -> list[dict]:
     if not any(transcripts):
         return [_empty_entry(s) for s in snippets]
 
-    parsed = _llm_score(transcripts)
+    parsed = _llm_score(transcripts, target_language=target_language)
     return _shape(parsed, snippets)
 
 
@@ -110,7 +110,7 @@ def _clean_comment(value: Any) -> Optional[str]:
     return text
 
 
-def _llm_score(transcripts: list[str]) -> Optional[list]:
+def _llm_score(transcripts: list[str], target_language: Optional[str] = None) -> Optional[list]:
     """One batch call → the per_snippet array (or None on failure)."""
     try:
         from services.llm import chat_complete
@@ -153,11 +153,10 @@ def _llm_score(transcripts: list[str]) -> Optional[list]:
         "strict": True,
     }
 
-    result = chat_complete(
-        spec=SPEC_SNIPPET_STICKINESS,
-        system=system,
-        user=user,
-        surface=_SURFACE,
+    from services.content_language import complete_in_language
+    result = complete_in_language(
+        chat_complete, target_language=target_language, spec=SPEC_SNIPPET_STICKINESS,
+        system=system, user=user, surface=_SURFACE,
         response_format_override={"type": "json_schema", "json_schema": schema},
     )
     if not result:

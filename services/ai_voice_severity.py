@@ -17,12 +17,12 @@ pitch, voice level or speaking style is ever the target:
   stress  the loudness range (``dynamic_db``) below the speaker's own
           median: a flatter delivery than they usually have. With no median
           there is no stress severity (no absolute loudness is a problem).
-  fillers hesitations ("um", "uh": the closed list the transcript fence
+  fillers hesitations from the recording-language list the transcript fence
           removes silently, services.transcript_smoothing) per 100 words of
           the sentence, above the speaker's own median on this Take (0 with
           no median: a usually clean speaker). ``Config.AI_VOICE_FILLER_GAP_PER_100``
-          more than their usual is the line. The AI lane is English (the
-          request and the re-hearing both say so), so the English list.
+          more than their usual is the line. The request and re-hearing use
+          the persisted recording language.
 
 The highest severity wins if it reaches ``Config.AI_VOICE_MIN_SEVERITY``
 (0.2 since 2026-10-15; 0.4 is the line itself); otherwise the default, stress on the main point, marked
@@ -44,13 +44,11 @@ import statistics
 from typing import Any, Iterable, Optional
 
 from config import Config
+from services.ai_voice_language import require as require_language
 
 PROBLEMS = ("pace", "pause", "stress", "fillers")
 #: v2 (2026-10-18): the fillers problem joined the three.
-RULES_VERSION = "ai-voice-severity-v2"
-#: The language the AI lane speaks and hears; the hesitation list follows it.
-LANE_LANGUAGE = "en"
-
+RULES_VERSION = "ai-voice-severity-v3"
 #: Severity at the line where the existing rule already calls it a problem.
 AT_THE_LINE = 0.4
 #: An exercise that did not improve the speaker's next try this many times
@@ -97,25 +95,34 @@ def _metric(snippet: dict, name: str) -> Optional[float]:
     return _number((metrics or {}).get(name)) if isinstance(metrics, dict) else None
 
 
-def fillers_per_100(text: Any, language: Optional[str] = LANE_LANGUAGE) -> Optional[float]:
+def fillers_per_100(text: Any, language: str) -> Optional[float]:
     """Hesitations per 100 words of a text; None when it has no words."""
     from services.transcript_smoothing import count_fillers
     words = len(re.findall(r"[\w']+", str(text or "")))
     if words <= 0:
         return None
-    return round(100.0 * count_fillers(str(text), language) / words, 3)
+    return round(100.0 * count_fillers(str(text), require_language(language)) / words, 3)
 
 
-def own_medians(take_snippets: Iterable[dict]) -> dict:
+def own_medians(take_snippets: Iterable[dict], language: Optional[str] = None) -> dict:
     """The speaker's own usual pace, pausing, loudness range and fillers on
     this Take."""
     out: dict[str, Optional[float]] = {}
     rows = list(take_snippets or [])
+    if language is None:
+        language = next((row.get("transcription_language")
+                         for row in rows if isinstance(row, dict)
+                         and row.get("transcription_language")), None)
+    # Legacy shadow/walk callers predate the recording-language field. The
+    # live AI-voice job always passes the persisted value explicitly.
+    language = language or "en"
     for name in ("wpm", "pause_ratio", "dynamic_db"):
         values = [v for v in (_metric(row, name) for row in rows) if v is not None]
         out[name] = statistics.median(values) if len(values) >= 3 else None
-    rates = [v for v in (fillers_per_100((row or {}).get("transcript"))
-                         for row in rows if isinstance(row, dict)) if v is not None]
+    language = (require_language(language) if language is not None else None)
+    rates = ([v for v in (fillers_per_100((row or {}).get("transcript"), language)
+                          for row in rows if isinstance(row, dict)) if v is not None]
+             if language else [])
     out["fillers_per_100"] = statistics.median(rates) if len(rates) >= 3 else None
     return out
 
@@ -163,16 +170,19 @@ def filler_severity(per_100: Optional[float], median: Optional[float]) -> float:
     return _ranged(per_100 - comfort, float(Config.AI_VOICE_FILLER_GAP_PER_100))
 
 
-def severities(snippet: dict, medians: dict, *, sentence: Optional[str] = None) -> dict[str, float]:
+def severities(snippet: dict, medians: dict, *, sentence: Optional[str] = None,
+               language: Optional[str] = None) -> dict[str, float]:
+    language = require_language(language or (snippet or {}).get("transcription_language") or "en")
     text = sentence if sentence is not None else (snippet or {}).get("transcript")
+    filler_score = filler_severity(fillers_per_100(text, language),
+                                   medians.get("fillers_per_100"))
     return {
         "pace": round(pace_severity(_metric(snippet, "wpm"), medians.get("wpm")), 3),
         "pause": round(pause_severity(_metric(snippet, "pause_ratio"),
                                       medians.get("pause_ratio")), 3),
         "stress": round(stress_severity(_metric(snippet, "dynamic_db"),
                                         medians.get("dynamic_db")), 3),
-        "fillers": round(filler_severity(fillers_per_100(text),
-                                         medians.get("fillers_per_100")), 3),
+        "fillers": round(filler_score, 3),
     }
 
 
@@ -202,11 +212,13 @@ def _explores(seed: str) -> bool:
     return (int.from_bytes(digest[:4], "big") / 2**32) < share
 
 
-_BREAKS = re.compile(r"[,;:—–]|\s(?:because|but|so|and|which|that|when|if)\s",
-                     re.IGNORECASE)
+_BREAK_WORDS = {
+    "en": "because|but|so|and|which|that|when|if",
+    "pl": "bo|ale|więc|i|który|które|który|że|kiedy|jeśli",
+}
 
 
-def target_phrase(sentence: str, max_words: int = 4) -> Optional[str]:
+def target_phrase(sentence: str, max_words: int = 4, *, language: str) -> Optional[str]:
     """The main point: the opening words of the sentence's last clause.
 
     The last clause is what follows the last comma, dash or joining word
@@ -214,10 +226,13 @@ def target_phrase(sentence: str, max_words: int = 4) -> Optional[str]:
     sentence. At most ``max_words`` words, at least two. None when the
     sentence is too short to have a main point apart from itself.
     """
+    language = require_language(language)
     words = (sentence or "").split()
     if len(words) < 5:
         return None
-    breaks = list(_BREAKS.finditer(sentence))
+    breaks = list(re.compile(
+        rf"[,;:—–]|\s(?:{_BREAK_WORDS[language]})\s", re.IGNORECASE | re.UNICODE
+    ).finditer(sentence))
     tail = sentence[breaks[-1].end():] if breaks else " ".join(
         words[len(words) - max(2, len(words) // 3):])
     tail_words = [w for w in tail.split() if w.strip()]
@@ -229,7 +244,7 @@ def target_phrase(sentence: str, max_words: int = 4) -> Optional[str]:
 def select(snippet: dict, medians: dict, *, sentence: str, seed: str,
            history: Iterable[dict] = (), prefer: Optional[str] = None,
            explore: bool = True, allow_default: bool = True,
-           hold_back: bool = True) -> Optional[dict]:
+           hold_back: bool = True, language: Optional[str] = None) -> Optional[dict]:
     """The one exercise for this clip. With every signal weak, the default
     (stress on the main point); None only when the sentence has no main
     point apart from itself.
@@ -247,13 +262,17 @@ def select(snippet: dict, medians: dict, *, sentence: str, seed: str,
     N209; ``services.plan_walk.AI_PROBLEM``). It is the exercise whenever
     the clip shows it (its severity reaches the minimum) and it has what it
     needs; otherwise the pick is as without a plan."""
-    scores = severities(snippet, medians, sentence=sentence)
+    # Legacy shadow/walk callers predate the recording-language field. The
+    # live AI-voice job always passes the persisted value explicitly.
+    language = require_language(language or "en")
+    scores = severities(snippet, medians, sentence=sentence, language=language)
     held = _held_back(history)
     if prefer in PROBLEMS and scores[prefer] >= float(Config.AI_VOICE_MIN_SEVERITY):
-        phrase = None if prefer in _NO_PHRASE else target_phrase(sentence)
+        phrase = None if prefer in _NO_PHRASE else target_phrase(sentence, language=language)
         if prefer in _NO_PHRASE or phrase:
             return _selection(prefer, phrase, scores, snippet, medians, held,  # type: ignore[arg-type]
-                              explored=False, default=False, sentence=sentence)
+                              explored=False, default=False, sentence=sentence,
+                              language=language)
     ranked = sorted(
         PROBLEMS,
         key=lambda p: -(scores[p] * (HELD_BACK_FACTOR if hold_back and p in held else 1.0)))
@@ -265,14 +284,15 @@ def select(snippet: dict, medians: dict, *, sentence: str, seed: str,
         # Nothing clearly off: the main point said so it stands out, so the
         # speaker always hears a better version (founder 2026-10-15, A).
         # Recorded as a default, never as a problem found.
-        phrase = target_phrase(sentence)
+        phrase = target_phrase(sentence, language=language)
         if not phrase:
             return None
         return _selection("stress", phrase, scores, snippet, medians, held,
-                          explored=False, default=True, sentence=sentence)
+                          explored=False, default=True, sentence=sentence,
+                          language=language)
     explored = explore and len(eligible) > 1 and _explores(seed)
     problem = eligible[1] if explored else eligible[0]
-    phrase = None if problem in _NO_PHRASE else target_phrase(sentence)
+    phrase = None if problem in _NO_PHRASE else target_phrase(sentence, language=language)
     if problem not in _NO_PHRASE and not phrase:
         # No main point to pause before or stand out: the next problem that
         # needs none, if any.
@@ -281,12 +301,14 @@ def select(snippet: dict, medians: dict, *, sentence: str, seed: str,
             return None
         problem, phrase = rest[0], None
     return _selection(problem, phrase, scores, snippet, medians, held,
-                      explored=explored, default=False, sentence=sentence)
+                      explored=explored, default=False, sentence=sentence,
+                      language=language)
 
 
 def _selection(problem: str, phrase: Optional[str], scores: dict, snippet: dict,
                medians: dict, held: set, *, explored: bool, default: bool,
-               sentence: Optional[str] = None) -> dict:
+               sentence: Optional[str] = None, language: str) -> dict:
+    language = require_language(language)
     text = sentence if sentence is not None else (snippet or {}).get("transcript")
     return {
         "exercise": problem,
@@ -301,7 +323,7 @@ def _selection(problem: str, phrase: Optional[str], scores: dict, snippet: dict,
             "own_usual_pause_ratio": medians.get("pause_ratio"),
             "dynamic_db": _metric(snippet, "dynamic_db"),
             "own_usual_dynamic_db": medians.get("dynamic_db"),
-            "fillers_per_100_words": fillers_per_100(text),
+            "fillers_per_100_words": fillers_per_100(text, language),
             "own_usual_fillers_per_100_words": medians.get("fillers_per_100"),
         },
         "target_change": TARGET_CHANGE[problem],

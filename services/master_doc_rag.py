@@ -1039,7 +1039,7 @@ def _build_lane_prompt(intent, dont_ask_block, life_context=None,
 
 def _answer_via_router(
     question, history, admin_dont_ask_notes, service,
-    life_context=None, app_context=None,
+    life_context=None, app_context=None, target_language=None,
 ) -> Optional[tuple[dict[str, Any], dict[str, Any]]]:
     """Stage 1 classify → Stage 2 focused handler. Returns ``(payload,
     debug)`` or ``None`` to tell the caller to fall back to the mega-prompt
@@ -1063,12 +1063,12 @@ def _answer_via_router(
     try:
         from services.llm import chat_complete
         from services.llm_config import SPEC_MASTER_DOC_RAG
-        resp = chat_complete(
-            spec=SPEC_MASTER_DOC_RAG,
-            system=system_content,
-            user=question,
-            surface="master_doc_rag_lane",
-            messages_override=messages,
+        from services.content_language import complete_in_language
+        resp = complete_in_language(
+            chat_complete, target_language=target_language,
+            spec=SPEC_MASTER_DOC_RAG, system=system_content, user=question,
+            surface="master_doc_rag_lane", messages_override=messages,
+            return_last_on_failure=True,
             response_format_override={
                 "type": "json_schema", "json_schema": _RESPONSE_SCHEMA,
             },
@@ -1099,6 +1099,9 @@ def _answer_via_router(
     answer, suggested_action, _guard = _enforce_output_guards(
         answer, suggested_action,
     )
+    from services.content_language import validate_output_language
+    if not _guard and not validate_output_language(answer, target_language):
+        return None
     debug: dict[str, Any] = {
         "model": _ROUTER_MODEL,
         "router_intent": intent,
@@ -1125,6 +1128,7 @@ def answer_question(
     admin_dont_ask_notes: Optional[str] = None,
     life_context: Optional[dict] = None,
     app_context=None,  # dict, or a callable returning one
+    target_language: Optional[str] = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run one LLM call grounded in the Master Document.
 
@@ -1170,6 +1174,10 @@ def answer_question(
     Anonymous callers (no user_id available) pass None.
     """
     q = (question or "").strip()
+    from services.content_language import resolve_content_language
+    target_language = resolve_content_language(
+        recording_language=target_language, typed_message=q,
+    )
     if not q:
         return (
             {
@@ -1194,7 +1202,7 @@ def answer_question(
     if _router_enabled():
         routed = _answer_via_router(
             q, history, admin_dont_ask_notes, service,
-            life_context, app_context,
+            life_context, app_context, target_language,
         )
         if routed is not None:
             return routed
@@ -1230,31 +1238,31 @@ def answer_question(
     try:
         from services.llm import chat_complete
         from services.llm_config import SPEC_MASTER_DOC_RAG
-        response = chat_complete(
-            spec=SPEC_MASTER_DOC_RAG,
-            system=system_content,
-            user=q,
-            surface="master_doc_rag",
-            messages_override=messages,
+        from services.content_language import complete_in_language
+        response = complete_in_language(
+            chat_complete, target_language=target_language,
+            spec=SPEC_MASTER_DOC_RAG, system=system_content, user=q,
+            surface="master_doc_rag", messages_override=messages,
+            return_last_on_failure=True,
             response_format_override={
                 "type": "json_schema",
                 "json_schema": _RESPONSE_SCHEMA,
             },
         )
         if response is None:
-            return (_fallback_payload(), {"error": "llm_unavailable"})
+            return (_fallback_payload(target_language), {"error": "llm_unavailable"})
         raw = response.text
     except Exception as e:
         from services.processing_authorization import rethrow_processing_authorization
         rethrow_processing_authorization(e)
         logger.warning("master_doc_rag: llm call failed: %s", e)
         return (
-            _fallback_payload(),
+            _fallback_payload(target_language),
             {"error": "llm_error", "detail": str(e)},
         )
 
     if not raw:
-        return (_fallback_payload(), {"error": "empty_response"})
+        return (_fallback_payload(target_language), {"error": "empty_response"})
 
     try:
         parsed = json.loads(raw)
@@ -1262,11 +1270,11 @@ def answer_question(
         logger.warning(
             "master_doc_rag: llm output not JSON: %r", raw[:300],
         )
-        return (_fallback_payload(), {"error": "parse_error"})
+        return (_fallback_payload(target_language), {"error": "parse_error"})
 
     answer = (parsed.get("answer") or "").strip()
     if not answer:
-        return (_fallback_payload(), {"error": "empty_answer"})
+        return (_fallback_payload(target_language), {"error": "empty_answer"})
 
     # Defensive coercion — strict schema should guarantee bool,
     # but the wire could in theory carry truthy strings on a model
@@ -1288,6 +1296,9 @@ def answer_question(
     answer, suggested_action, _guard = _enforce_output_guards(
         answer, suggested_action,
     )
+    from services.content_language import validate_output_language
+    if not _guard and not validate_output_language(answer, target_language):
+        return (_fallback_payload(target_language), {"error": "output_language"})
 
     debug: dict[str, Any] = {
         "model": _MODEL, "history_used": len(messages) - 2,
@@ -1314,7 +1325,7 @@ def _app_action(parsed: dict, guard) -> Optional[str]:
     return action if action in _APP_ACTIONS and not guard else None
 
 
-def _fallback_payload() -> dict[str, Any]:
+def _fallback_payload(target_language: Optional[str] = None) -> dict[str, Any]:
     """Polite, document-grounded fallback payload when the LLM is
     unavailable / failed / returned unparseable output.
 
@@ -1322,13 +1333,22 @@ def _fallback_payload() -> dict[str, Any]:
     -case the error envelope. Both intent flags default False since
     we couldn't actually detect intent.
     """
+    from services.content_language import safe_fallback
     return {
-        "answer": (
-            "I'm having trouble pulling the answer together right "
-            "now. The system is mostly human-led and scaled by AI "
-            "— a real coach listens to your recordings and shapes "
-            "what you work on next. Try again in a moment, or "
-            "ask something more specific."
+        "answer": safe_fallback(
+            target_language,
+            default=(
+                "I'm having trouble pulling the answer together right "
+                "now. The system is mostly human-led and scaled by AI "
+                "— a real coach listens to your recordings and shapes "
+                "what you work on next. Try again in a moment, or "
+                "ask something more specific."
+            ),
+            polish=(
+                "Mam teraz trudność z przygotowaniem odpowiedzi. System "
+                "łączy pracę człowieka ze skalą AI. Spróbuj ponownie za "
+                "chwilę albo zadaj bardziej szczegółowe pytanie."
+            ),
         ),
         "show_record_ui": False,
         "suggested_action": None,

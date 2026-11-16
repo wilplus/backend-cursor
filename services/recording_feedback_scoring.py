@@ -58,7 +58,7 @@ def _score_stickiness(state: RecordingState, pieces: list[dict]) -> list[dict]:
     budget_scores = score_snippets_stickiness([
         {"id": None, "transcript": pieces[index]["transcript"]}
         for index in budget_order
-    ])
+    ], target_language=state.transcription_language)
     scores: list[dict] = [{} for _ in pieces]
     for budget_position, piece_index in enumerate(budget_order):
         scores[piece_index] = (

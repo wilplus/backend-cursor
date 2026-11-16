@@ -59,10 +59,15 @@ def _whisper_request(
         "file": (hint_filename, mp3_bytes, ct),
         "response_format": "verbose_json",
         "timestamp_granularities": ["word"],
-        "prompt": _DISFLUENT_PROMPT,
     }
     if language_hint:
         kwargs["language"] = language_hint
+        if str(language_hint).strip().lower().startswith("en"):
+            kwargs["prompt"] = _DISFLUENT_PROMPT
+    else:
+        # Do not prime an unknown clip with English: short Polish clips are
+        # otherwise especially likely to be detected as English.
+        logger.info("snippet_transcription: language unknown — prompt dropped")
     return kwargs
 
 

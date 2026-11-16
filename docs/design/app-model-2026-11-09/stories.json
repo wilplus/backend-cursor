@@ -6168,38 +6168,35 @@
  {
   "id": "MOD-14",
   "area": "AI models",
-  "title": "The coach's row is the one queue for every model a person teaches",
-  "status": "built",
+  "title": "The model-teaching queue remains without the removed primary coach row",
+  "status": "partly",
   "screen": "mod.q-1",
   "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/model-launchpad-app-model-2026-11-09/the-launchpad-app-model.html",
   "given": "Marta teaches Speaking confidence, Pitch Coach and RASP sales replies",
   "when": "she looks at her list of chats",
   "then": [
-   "one row \"Your queue\", right under Will, with \"12 examples wait · 3 models\"",
-   "nothing of the queue sits at the bottom of Will's chat"
+   "the backend queue remains available for the models Marta teaches",
+   "the approved primary IA does not show the legacy coach/people row"
   ],
   "rules": [
    "N563 item 1",
    "N521 item 1",
-   "N521 item 7"
+   "N521 item 7",
+   "N653"
   ],
   "code": [
-   "fe:src/components/willab/coachwalk/CoachChatRow.tsx::export default function CoachChatRow",
-   "fe:src/components/willab/coachwalk/CoachChatRow.tsx::export function coachRowWords",
-   "fe:src/components/willab/chats/useChatsDoor.tsx::coachRow={isCoach ? <CoachChatRow /> : null}",
    "be:services/model_launchpad.py::def queue_row_line(",
    "fe:src/components/willab/models/ModelsChatRows.tsx::export default function ModelsChatRows()",
    "be:services/model_launchpad_store.py::def queue_for(",
    "be:services/model_launchpad_store.py::def chat_rows_for("
   ],
   "tests": [
-   "src/components/willab/coachwalk/coachChatRow.test.tsx",
    "tests/test_model_launchpad.py",
    "src/components/willab/models/models.test.tsx",
    "tests/test_model_launchpad_routes.py"
   ],
   "evals": [],
-  "note": "Built: backend #1860, #1863 and #1869, frontend #1339. Behind the ring ai_models, which opens to others only once N615's leaks are fixed (PIPE-01 to PIPE-09). The frontend refs are as #1872 checked them; not checked again here."
+  "note": "The backend queue/model behavior remains and ModelsChatRows is the existing model-list anchor. The founder-approved Speaking Coach project home removes the legacy coach/people row from the primary IA; no other replacement behavior is implied."
  },
  {
   "id": "MOD-15",
@@ -7691,22 +7688,20 @@
  {
   "id": "WID-09",
   "area": "Your chat on any website",
-  "title": "Copy my link in the menu opens the same sheet as the +",
+  "title": "The fixed admission URL is the only invitation entry point",
   "status": "built",
-  "screen": "web.own.add",
-  "prototype": "https://github.com/wilplus/backend-cursor/blob/main/docs/design/your-chat-on-any-website-2026-11-09/your-chat-on-any-website.html",
-  "given": "Ariel is signed in",
-  "when": "she taps \"Copy my link\" in the ☰ menu",
+  "given": "A visitor has the fixed admission URL /c/xLl2I4B-u14RY5yZd1JSR-4K",
+  "when": "they use the admission entry point",
   "then": [
-   "\"Add someone to chat with\" opens; nothing is copied until she taps \"Copy my link\" there"
+   "the fixed admission URL /c/xLl2I4B-u14RY5yZd1JSR-4K remains the admission URL",
+   "personal invitation controls and \"Copy my link\" are not shown"
   ],
   "rules": [
    "N567 item 1",
-   "consent-screens.md §1"
+   "consent-screens.md §1",
+   "N653"
   ],
-  "code": [
-   "fe:src/components/AppMenu.tsx::{adding ? <AddSomeoneSheet fixed onClose={() => setAdding(false)} /> : null}"
-  ],
+  "code": [],
   "tests": [
    "src/components/AppMenu.test.tsx"
   ],

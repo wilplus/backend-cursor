@@ -296,29 +296,31 @@
   {
     "id": "MOD-14",
     "area": "AI models",
-    "title": "The coach's row is the one queue for every model a person teaches",
+    "title": "The model-teaching queue remains without the removed primary coach row",
     "given": "Marta teaches Speaking confidence, Pitch Coach and RASP sales replies",
-    "when": "she looks at her list of chats",
+    "when": "the model list is prepared",
     "then": [
-      "one row \"Your queue\", right under Will, with \"12 examples wait · 3 models\"",
-      "nothing of the queue sits at the bottom of Will's chat"
+      "the backend queue remains available for the models Marta teaches",
+      "the approved primary IA does not show the legacy coach/people row"
     ],
     "rules": [
       "N563 item 1",
       "N521 item 1",
-      "N521 item 7"
+      "N521 item 7",
+      "N653"
     ],
     "code": [
-      "fe:src/components/willab/coachwalk/CoachChatRow.tsx::export default function CoachChatRow",
-      "fe:src/components/willab/coachwalk/CoachChatRow.tsx::export function coachRowWords",
-      "fe:src/components/willab/chats/useChatsDoor.tsx::coachRow={isCoach ? <CoachChatRow /> : null}"
+      "be:services/model_launchpad.py::def queue_row_line(",
+      "be:services/model_launchpad_store.py::def queue_for(",
+      "be:services/model_launchpad_store.py::def chat_rows_for("
     ],
     "tests": [
-      "src/components/willab/coachwalk/coachChatRow.test.tsx"
+      "tests/test_model_launchpad.py",
+      "tests/test_model_launchpad_routes.py"
     ],
-    "status": "differs",
+    "status": "partly",
     "screen": "q-1",
-    "note": "Built for the speaking coaches only: the row is named by the person's profile job (or \"Your queue\") with the line \"Open your queue\" or \"Nobody is waiting for you.\" (N521), and holds the speaking moments; no other model, no \"… examples wait · 3 models\" line."
+    "note": "The backend queue/model behavior remains. The founder-approved Speaking Coach project home removes the legacy coach/people row from the primary IA; this story names no replacement frontend behavior."
   },
   {
     "id": "MOD-15",

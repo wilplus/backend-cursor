@@ -51,7 +51,7 @@ HESITATIONS = {
     "en": ("um", "umm", "ummm", "uh", "uhh", "uhhh", "uhm", "erm", "ehm",
            "hmm", "mmm"),
     "de": ("äh", "ähm", "ähhh", "öh", "öhm", "hmm", "mmm"),
-    "pl": ("yyy", "yyyy", "eee", "eeee", "hmm", "mmm"),
+    "pl": ("yyy", "yyyy", "eee", "eeee", "em", "emm", "hm", "hmm", "mmm"),
     "pt": ("hum", "ahn", "hmm", "mmm"),
     # Spanish "eh"/"este" and Italian "mah" are real words — excluded.
     "es": ("ehh", "hmm", "mmm"),
@@ -88,6 +88,47 @@ SEAM_PAUSE_MS = 600
 # The pronoun "I" is a capital in English wherever it stands, so it says
 # nothing about a sentence beginning ("and then | I said").
 _PRONOUN_I_RE = re.compile(r"^I(?:['’](?:m|ll|ve|d|s))?(?![\w])")
+
+# Polish discourse words can be either a removable spoken hesitation or real
+# grammar.  Only remove them when they open a sentence and are immediately
+# followed by an oral pause.  ``więc`` is intentionally retained: even at a
+# sentence start it is commonly the conjunction carrying the sentence's
+# logic.  The protected continuations keep constructions such as "wiesz, że"
+# and "to znaczy, że" literal.
+_POLISH_CONTEXT_RE = re.compile(
+    r"(?<![\w'-])(?P<token>jakby|wiesz|znaczy|no|więc)"
+    r"(?P<pause>\s*(?:,|…|\.{2,}|[-–—])\s*)",
+    re.IGNORECASE,
+)
+_POLISH_CONTEXT_PROTECTED = {
+    "jakby": {"co", "kto", "kiedy", "gdzie", "że", "to", "tak", "nie"},
+    "wiesz": {"że", "jak", "co", "kto", "gdzie", "czy", "dlaczego"},
+    "znaczy": {"że", "jak", "się", "to"},
+    "no": {"i", "to", "bo", "właśnie", "dobrze", "tak", "nie", "więc"},
+}
+
+
+def _strip_polish_contextual(text: str) -> tuple[str, int]:
+    """Remove only sentence-leading Polish discourse fillers with a pause."""
+    removed = 0
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal removed
+        before = text[:match.start()].rstrip()
+        if before and before[-1] not in ".!?":
+            return match.group(0)
+        token = match.group("token").lower()
+        if token == "więc":
+            return match.group(0)
+        after = text[match.end():].lstrip()
+        next_word = re.match(r"[\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ]+", after,
+                             re.IGNORECASE)
+        if next_word and next_word.group(0).lower() in _POLISH_CONTEXT_PROTECTED.get(token, set()):
+            return match.group(0)
+        removed += 1
+        return " "
+
+    return _POLISH_CONTEXT_RE.sub(replace, text), removed
 
 
 def seam_stop(left: Any, right: Any, pause_ms: Any,
@@ -134,6 +175,8 @@ def strip_fillers(text: Any, language: Optional[str] = None) -> str:
     if not isinstance(text, str) or not text:
         return ""
     out = _filler_re(hesitations_for(language)).sub(" ", text)
+    if str(language or "").strip().lower()[:2] == "pl":
+        out, _ = _strip_polish_contextual(out)
     for _ in range(3):          # "the the the" — bounded
         new = _REPEAT_RE.sub(r"\1", out)
         if new == out:
@@ -148,7 +191,11 @@ def count_fillers(text: Any, language: Optional[str] = None) -> int:
     counted). Pure."""
     if not isinstance(text, str) or not text:
         return 0
-    return len(_filler_re(hesitations_for(language)).findall(text))
+    count = len(_filler_re(hesitations_for(language)).findall(text))
+    if str(language or "").strip().lower()[:2] == "pl":
+        _, contextual = _strip_polish_contextual(text)
+        count += contextual
+    return count
 
 
 def without_fillers(text: Any, language: Optional[str] = None) -> str:
@@ -156,7 +203,7 @@ def without_fillers(text: Any, language: Optional[str] = None) -> str:
     never any other word), tidied as a piece. Pure."""
     if not isinstance(text, str) or not text:
         return ""
-    return tidy_piece(_filler_re(hesitations_for(language)).sub(" ", text))
+    return tidy_piece(strip_fillers(text, language))
 
 
 def tidy_piece(text: Any) -> str:

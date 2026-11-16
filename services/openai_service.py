@@ -91,10 +91,16 @@ def _whisper_request(filename: str | None, audio_data: bytes, ct: str,
             "transcribe_audio: language=%s — English disfluency "
             "prompt dropped", _lang,
         )
-    else:
-        if _lang:
-            _create_kwargs["language"] = _lang
+    elif _lang:
+        _create_kwargs["language"] = _lang
         _create_kwargs["prompt"] = prompt
+    else:
+        # Unknown content must stay unknown. The English disfluency primer
+        # can make Whisper choose English and return an empty or translated
+        # transcript for Polish (or another language). Domain vocabulary is
+        # intentionally not sent either: it is still a language-bearing
+        # prompt when no content language is known.
+        logger.info("transcribe_audio: language unknown — prompt dropped")
     return _create_kwargs
 
 
@@ -269,10 +275,9 @@ class OpenAIService:
         the disfluency prompt below is ENGLISH, and Whisper follows its
         prompt's language — an English prompt on Polish audio biases
         auto-detection toward English and can yield an empty or garbage
-        transcript. So the prompt is only applied when the audio is English
-        or the language is unknown-but-assumed-English; for any other
-        declared language we pass the code and DROP the English prompt
-        (keeping only the domain vocabulary, which is language-neutral).
+        transcript. The prompt is only applied when English is explicitly
+        known. For another declared language, or unknown language, it is
+        dropped entirely.
         Losing filler-word priming on a non-English take is a far smaller
         cost than losing the transcript.
 

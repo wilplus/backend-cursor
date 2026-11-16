@@ -26,6 +26,9 @@ class RecordingState:
     recording_kind: str
     paired_session_id: Optional[str]
     run_analytics: bool
+    # Provider-owned content language, frozen with the recording. This is
+    # distinct from UI locale and is the target for downstream coaching text.
+    transcription_language: Optional[str] = None
     signal: Any = None
     segments: tuple[Any, ...] = field(default_factory=tuple)
     words_all: tuple[Any, ...] = field(default_factory=tuple)
