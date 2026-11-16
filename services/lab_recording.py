@@ -457,6 +457,7 @@ def _process_lab_recording_impl(
                 (session_context or {}).get("slide_advances"),
                 goal=(session_context or {}).get("topic"),
                 llm_ids=_llm_ids,
+                target_language=state.transcription_language,
             )
         except Exception as _draft_err:
             logger.warning(
@@ -475,6 +476,11 @@ def _process_lab_recording_impl(
         from services.say_it_stronger import dispatch_say_it_stronger
         from services.audio_metrics import SAMPLE_RATE
         _ctx = session_context or {}
+        _content_context = {
+            **_ctx,
+            "target_language": state.transcription_language,
+            "transcription_language": state.transcription_language,
+        }
         _full_tx = _full_transcript_text(segments, words_all)
         # Cards only for the LLM-budget pieces (cost cap) —
         # the instant view's suggestions ride the most salient moments;
@@ -494,6 +500,8 @@ def _process_lab_recording_impl(
             "target_length_seconds": _ctx.get("target_length_seconds"),
             "duration_sec": (len(sig) / float(SAMPLE_RATE)) if sig is not None else None,
             "full_transcript": _full_tx,
+            "target_language": _content_context.get("target_language"),
+            "transcription_language": _content_context.get("transcription_language"),
         }, means=_sis_means)
     except Exception as _sis_err:
         logger.warning(

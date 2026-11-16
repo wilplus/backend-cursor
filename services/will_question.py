@@ -299,14 +299,18 @@ def read_heard(text: Optional[str], title: str, said: str) -> dict:
 
 
 def heard(title: str, said: str, *, user_id: Optional[str], take: Optional[str],
-          arc_id: Optional[str]) -> dict:
+          arc_id: Optional[str], target_language: Optional[str] = None) -> dict:
     """gpt-4o-mini reads who the talk is for and what it asks. Runs inside
     the Take's protected provider scope (the caller's)."""
     from services.llm import chat_complete
     from services.llm_config import SPEC_WILL_QUESTION_HEARD
+    from services.content_language import complete_in_language
     user = f"Title: \"{title}\"\nTranscript: {said[:_HEARD_CHARS]}"
-    result = chat_complete(spec=SPEC_WILL_QUESTION_HEARD, system=_HEARD_SYSTEM, user=user,
-                           surface=_SURFACE, user_id=user_id, session_id=take, arc_id=arc_id)
+    result = complete_in_language(
+        chat_complete, target_language=target_language, spec=SPEC_WILL_QUESTION_HEARD,
+        system=_HEARD_SYSTEM, user=user, surface=_SURFACE, user_id=user_id,
+        session_id=take, arc_id=arc_id,
+    )
     return read_heard(getattr(result, "text", None) if result else None, title, said)
 
 
@@ -318,6 +322,7 @@ def start_heard(database: Any, *, user_id: str, arc_id: str, take: str, title: s
     nothing: dict = {"audience": None, "ask": None, "audience_times": 0}
     if not said.strip():
         return lambda: nothing
+    target_language = _target_language_for_take(database, take)
     try:
         from concurrent.futures import ThreadPoolExecutor
         from contextvars import copy_context
@@ -325,7 +330,7 @@ def start_heard(database: Any, *, user_id: str, arc_id: str, take: str, title: s
         pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="will-question-heard")
         future = pool.submit(copy_context().run, lambda: _under_authority(
             database, take, lambda: heard(title, said, user_id=user_id, take=take,
-                                          arc_id=arc_id)))
+                                          arc_id=arc_id, target_language=target_language)))
         pool.shutdown(wait=False)
     except Exception as error:  # noqa: BLE001 -- Will asks openly
         logger.warning("will question: heard not started take=%s: %s", take, error)
@@ -406,15 +411,19 @@ def read_varied(key: str, text: Optional[str], signed: str) -> Optional[str]:
 
 
 def vary(key: str, signed: str, *, user_id: Optional[str], take: Optional[str],
-         arc_id: Optional[str]) -> Optional[str]:
+         arc_id: Optional[str], target_language: Optional[str] = None) -> Optional[str]:
     """gpt-4o-mini says the signed question with a light touch; code keeps it
     only when ``read_varied`` does. Runs inside the Take's protected provider
     scope (the caller's)."""
     from services.llm import chat_complete
     from services.llm_config import SPEC_WILL_QUESTION_VARY
-    result = chat_complete(spec=SPEC_WILL_QUESTION_VARY, system=_VARY_SYSTEM,
-                           user=f"Question: {signed}", surface=_VARY_SURFACE,
-                           user_id=user_id, session_id=take, arc_id=arc_id)
+    from services.content_language import complete_in_language
+    result = complete_in_language(
+        chat_complete, target_language=target_language,
+        spec=SPEC_WILL_QUESTION_VARY, system=_VARY_SYSTEM,
+        user=f"Question: {signed}", surface=_VARY_SURFACE,
+        user_id=user_id, session_id=take, arc_id=arc_id,
+    )
     return read_varied(key, getattr(result, "text", None) if result else None, signed)
 
 
@@ -473,17 +482,21 @@ def read_lead_in(ask: str, text: Optional[str], signed: str) -> Optional[str]:
 
 
 def lead_in(ask: str, signed: str, facts: list[str], *, user_id: Optional[str],
-            take: Optional[str], arc_id: Optional[str]) -> Optional[str]:
+            take: Optional[str], arc_id: Optional[str],
+            target_language: Optional[str] = None) -> Optional[str]:
     """gpt-4o-mini writes Will's lead-in to one ask from the Take's facts;
     code keeps it only when ``read_lead_in`` does. Runs inside the Take's
     protected provider scope (the caller's)."""
     from services.llm import chat_complete
     from services.llm_config import SPEC_WILL_LEAD_IN
+    from services.content_language import complete_in_language
     user = (f"Ask (signed wording): {signed}\nFacts about this Take:\n"
             + "\n".join(f"- {f}" for f in facts[:6]))
-    result = chat_complete(spec=SPEC_WILL_LEAD_IN, system=_LEAD_IN_SYSTEM, user=user,
-                           surface=_LEAD_IN_SURFACE, user_id=user_id, session_id=take,
-                           arc_id=arc_id)
+    result = complete_in_language(
+        chat_complete, target_language=target_language, spec=SPEC_WILL_LEAD_IN,
+        system=_LEAD_IN_SYSTEM, user=user, surface=_LEAD_IN_SURFACE,
+        user_id=user_id, session_id=take, arc_id=arc_id,
+    )
     return read_lead_in(ask, getattr(result, "text", None) if result else None, signed)
 
 
@@ -493,8 +506,10 @@ def start_lead_ins(database: Any, *, user_id: str, arc_id: str, take: str,
     words) off the request, beside the summary's own call, and returns the
     call that collects them, waiting at most ``_HEARD_BUDGET`` in all. Too
     slow, refused or failed: that ask is said as written."""
+    target_language = _target_language_for_take(database, take)
     def one(ask: str, text: str) -> Callable[[], Optional[str]]:
-        return lambda: lead_in(ask, text, facts, user_id=user_id, take=take, arc_id=arc_id)
+        return lambda: lead_in(ask, text, facts, user_id=user_id, take=take,
+                               arc_id=arc_id, target_language=target_language)
     return _start_calls(database, take=take, label="lead-in",
                         calls={ask: one(ask, text) for ask, text in signed.items() if text})
 
@@ -544,13 +559,15 @@ def start_vary(database: Any, *, user_id: str, arc_id: str, take: str, keys: lis
     templates = {k: t for k, t in templates.items() if t}
     if not templates:
         return lambda: {}
+    target_language = _target_language_for_take(database, take)
     try:
         from concurrent.futures import ThreadPoolExecutor
         from contextvars import copy_context
         from services.take_summary import _under_authority
         pool = ThreadPoolExecutor(max_workers=len(templates), thread_name_prefix="will-question-vary")
         futures = {k: pool.submit(copy_context().run, lambda k=k, t=t: _under_authority(
-            database, take, lambda: vary(k, t, user_id=user_id, take=take, arc_id=arc_id)))
+            database, take, lambda: vary(k, t, user_id=user_id, take=take,
+                                         arc_id=arc_id, target_language=target_language)))
             for k, t in templates.items()}
         pool.shutdown(wait=False)
     except Exception as error:  # noqa: BLE001 -- said as written
@@ -570,6 +587,17 @@ def start_vary(database: Any, *, user_id: str, arc_id: str, take: str, keys: lis
                 logger.info("will question: said as written key=%s take=%s: %r", k, take, error)
         return out
     return collect
+
+
+def _target_language_for_take(database: Any, take: str) -> str:
+    """Persisted recording language first; intake context is legacy fallback."""
+    from services.content_language import recording_target_language
+    try:
+        row = database.v2_get_session_by_id(str(take)) or {}
+    except Exception:  # noqa: BLE001 -- signed question still has a safe default
+        row = {}
+    context = row.get("intake_context") if isinstance(row.get("intake_context"), dict) else {}
+    return recording_target_language(recording=row, session_context=context)
 
 
 # ------------------------------------------------------------------ the talk

@@ -190,9 +190,10 @@ def write_summary(anchor: str, facts: list[str], *, practice: Optional[str],
                   helper_words: list[str], coach_note: Optional[str],
                   session_id: str, arc_id: str, user_id: str,
                   signed: Optional[list[str]] = None,
-                  names: tuple = ()) -> Optional[str]:
+                  names: tuple = (), target_language: Optional[str] = None) -> Optional[str]:
     from services.llm import chat_complete
     from services.llm_config import SPEC_TAKE_SUMMARY
+    from services.content_language import complete_in_language
     lines = [f"The usual message for this point (use its spirit, not its words): {anchor}"]
     if signed:
         lines += ["SIGNED LINES (use exactly one):"] + [f"- {s}" for s in signed]
@@ -205,9 +206,11 @@ def write_summary(anchor: str, facts: list[str], *, practice: Optional[str],
         lines.append("- Helper words they chose: " + ", ".join(f'"{w}"' for w in helper_words[:2]))
     if coach_note:
         lines.append(f"- Their coach asked: {coach_note[:400]}")
-    result = chat_complete(spec=SPEC_TAKE_SUMMARY, system=_SYSTEM, user="\n".join(lines),
-                           surface=_SURFACE, user_id=user_id, session_id=session_id,
-                           arc_id=arc_id)
+    result = complete_in_language(
+        chat_complete, target_language=target_language, system=_SYSTEM,
+        user="\n".join(lines), spec=SPEC_TAKE_SUMMARY, surface=_SURFACE,
+        user_id=user_id, session_id=session_id, arc_id=arc_id,
+    )
     return _clean(getattr(result, "text", None) if result else None, signed, names)
 
 
@@ -272,13 +275,14 @@ def _heard_before(held: Optional[dict], note: Optional[str]) -> bool:
 
 def _written(database: Any, take: str, anchor: str, facts: list[str], practice: Optional[str],
              words: list[str], note: Optional[str], arc_id: str, user_id: str,
-             signed: Optional[list[str]] = None, names: tuple = ()) -> Optional[str]:
+             signed: Optional[list[str]] = None, names: tuple = (),
+             target_language: Optional[str] = None) -> Optional[str]:
     """GPT-4o's summary under the Take's authority; None when refused or failed."""
     try:
         return _under_authority(database, take, lambda: write_summary(
             anchor, facts, practice=practice, helper_words=words, coach_note=note,
             session_id=take, arc_id=arc_id, user_id=user_id, signed=signed,
-            names=names))
+            names=names, target_language=target_language))
     except Exception as error:  # noqa: BLE001 -- refused or failed: the signed copy
         logger.warning("take summary refused take=%s: %s", take, error, exc_info=True)
         return None
@@ -530,11 +534,18 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
             "take_session_id": take, "written": False, "coach_noted": note is not None,
             "coach_note_key": _note_key(note), "practice": practice, "helper_words": words,
             "moved": moved}
+    from services.content_language import recording_target_language
+    target_row = next((row for row in takes if str(row.get("id")) == take), {})
+    target_language = recording_target_language(
+        recording=target_row,
+        session_context=target_row.get("intake_context")
+        if isinstance(target_row, dict) else None,
+    )
 
     def write() -> Optional[str]:
         return _written(database, take, anchor, facts, practice, words, note, str(arc_id),
                         str(user_id), signed=signed_lines(now, before, take_index),
-                        names=talk_names(takes))
+                        names=talk_names(takes), target_language=target_language)
     if held:
         _off_request(lambda: _rewritten(database, str(user_id), client_id, held, write(),
                                         {**meta, "written": True}), take)

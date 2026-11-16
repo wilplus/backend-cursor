@@ -174,7 +174,7 @@
     "legacy_openai.whisper_priming": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "28c5f1d516ca10b036af317fc8c96b7afa84663061202c2bf9045b6616e6f3c8"
+      "sha256": "93b5de55c65489c53a648a1e52b014c19c65b588448621e2cc7e783a0e7250db"
     },
     "life_board.advisors": {
       "kind": "source_ref",
@@ -464,7 +464,7 @@
     "will_question.heard_user": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "3008567e3494d728efb1f2b3d5c9e9d8e8204289eccfa9c560f893b28245f98e"
+      "sha256": "b866999ba2c5551c3d73a7ca4ddb40f7616cdc89b528a9ea967310ed654de2fc"
     },
     "will_question.lead_in": {
       "kind": "source_ref",
@@ -474,7 +474,7 @@
     "will_question.lead_in_user": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "942a8ee8a03cfdd0df9dee983b15d5e4daa51a7efb1d654c1cf85b0907740c27"
+      "sha256": "8d488703a5a08f5ba1262ee413fadcb001b478b9d7e37e99aa0a5bc93ea46f4a"
     },
     "will_question.vary": {
       "kind": "source_ref",
@@ -484,7 +484,7 @@
     "will_question.vary_user": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "01b64cc917c90ab9d0f1db039537d4ce51e40475402d72f7bf50c4b629f7cdf1"
+      "sha256": "01a690ec592e020fb3ee27a753cb663ca30ce35946e2fa051a968f708de7ee85"
     },
     "will_voice.off_brand": {
       "kind": "source_ref",

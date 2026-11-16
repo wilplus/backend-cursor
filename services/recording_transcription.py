@@ -78,7 +78,11 @@ def _transcription_audio(
 def _language_hint(session_context: Optional[dict]) -> Optional[str]:
     if not isinstance(session_context, dict):
         return None
-    language = session_context.get("language")
+    # ``language`` is a UI/intake locale in older payloads. It must never
+    # steer the content language of a new recording. Only an explicit
+    # recording/transcription hint is eligible here; otherwise Whisper
+    # detects from the audio itself.
+    language = session_context.get("transcription_language")
     return (str(language).strip() or None) if language else None
 
 
@@ -306,11 +310,21 @@ def transcribe_recording(
         detected_language = normalize_provider_language(
             transcription.get("language")
         )
+        stored_language = None
+        try:
+            persisted = db.get_recording_languages([state.recording_id])
+            row = persisted.get(str(state.recording_id)) if isinstance(persisted, dict) else None
+            stored_language = normalize_provider_language(
+                row.get("transcription_language") if isinstance(row, dict) else row
+            )
+        except Exception as error:  # noqa: BLE001 -- provider result remains authoritative
+            log.info("recording language lookup unavailable sid=%s: %s", state.session_id, error)
         if detected_language:
-            stored_language = db.set_recording_transcription_language_if_missing(
+            persisted_language = db.set_recording_transcription_language_if_missing(
                 state.recording_id,
                 detected_language,
             )
+            stored_language = normalize_provider_language(persisted_language) or stored_language
             if stored_language != detected_language:
                 log.warning(
                     "recording language was not persisted or conflicts "
@@ -320,6 +334,7 @@ def transcribe_recording(
                     detected_language,
                     stored_language,
                 )
+        content_language = stored_language or detected_language
         _settle_transcription_charge(state, transcription, log=log)
     except Exception as error:
         from services.processing_authorization import ProcessingAuthorizationError
@@ -345,4 +360,5 @@ def transcribe_recording(
         state,
         segments=tuple(segments),
         words_all=tuple(words),
+        transcription_language=content_language,
     )

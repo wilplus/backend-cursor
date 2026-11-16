@@ -243,6 +243,7 @@ def generate_say_it_stronger(
     metrics: Optional[dict],
     session_means: Optional[dict],
     context: Optional[dict] = None,
+    target_language: Optional[str] = None,
 ) -> Optional[dict]:
     """One LLM call → the persisted suggestion payload, or None on empty
     transcript / no LLM / failure. Metrics become plain-language
@@ -254,12 +255,19 @@ def generate_say_it_stronger(
     try:
         from services.llm import chat_complete
         from services.llm_config import SPEC_SAY_IT_STRONGER
+        from services.content_language import complete_in_language, resolve_content_language
     except Exception as e:
         logger.warning("say_it_stronger: llm import failed: %s", e)
         return None
     try:
-        result = chat_complete(
-            spec=SPEC_SAY_IT_STRONGER,
+        target = resolve_content_language(
+            recording_language=target_language
+            or (context or {}).get("target_language")
+            or (context or {}).get("transcription_language"),
+            typed_message=transcript,
+        )
+        result = complete_in_language(
+            chat_complete, target_language=target, spec=SPEC_SAY_IT_STRONGER,
             system=_SYSTEM_PROMPT,
             user=_user_prompt(transcript, observations, context),
             surface="say_it_stronger",

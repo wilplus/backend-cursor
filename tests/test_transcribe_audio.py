@@ -129,6 +129,14 @@ def test_non_english_language_drops_the_english_prompt_and_keeps_vocabulary():
     assert call["prompt"] == "Kraków, OKR."
 
 
+def test_unknown_language_drops_the_english_prompt_entirely():
+    client = _FakeClient()
+    _service(client).transcribe_audio(BytesIO(b"x"), "take.webm")
+    call = client.calls[0]
+    assert "language" not in call
+    assert "prompt" not in call
+
+
 def test_provider_failure_is_wrapped_and_reported_to_sentry():
     captured = []
     with patch.object(osvc.sentry_sdk, "capture_exception", captured.append):

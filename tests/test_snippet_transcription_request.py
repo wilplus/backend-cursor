@@ -73,6 +73,7 @@ def test_the_filename_is_fixed_up_to_its_lowercase_extension(
     name, _, content_type = transcriptions.requests[0]["file"]
     assert (name, content_type) == sent
     assert "language" not in transcriptions.requests[0]
+    assert "prompt" not in transcriptions.requests[0]
 
 
 def test_the_result_is_cleaned_and_its_usage_recorded(monkeypatch):
