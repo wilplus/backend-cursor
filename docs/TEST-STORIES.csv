@@ -821,9 +821,13 @@ writes the same two ids, so the table keeps it once.
 O2  A reload (GET /v2/user/lounge/messages) brings the bot's choices back.
 O3  If saving fails, the turn still answers.
 O4  The bot's reply is saved under my turn even when my browser's clock
-runs ahead of the server's, so a reload keeps the order I saw.","O1, O2 -> test_a_turn_is_saved_once_and_its_choices_come_back
+runs ahead of the server's, so a reload keeps the order I saw.
+O5  A typed answer to Will's open practice question is stored in the talk
+and memory, answered by contextual Will from that question and screen,
+and persisted with the settling metadata before the chain advances once.","O1, O2 -> test_a_turn_is_saved_once_and_its_choices_come_back
 O3     -> test_the_answer_still_comes_when_saving_fails
-O4     -> test_the_reply_is_saved_under_the_turn_it_answers",Founder #2: bubbles must never disappear; founder 2026-10-20: the chat keeps the order it shows. The harness is tests/chat_route_fakes.py; what the chat answers is pinned in test_chat_answers.py.
+O4     -> test_the_reply_is_saved_under_the_turn_it_answers
+O5     -> test_a_typed_practice_answer_is_contextual_and_settles_once",Founder #2: bubbles must never disappear; founder 2026-10-20: the chat keeps the order it shows. The harness is tests/chat_route_fakes.py; what the chat answers is pinned in test_chat_answers.py.
 tests/test_chat_provider.py,Story,"As the founder, I can compare and activate Mistral one text surface at a time without moving Whisper, strong reasoning, or an unapproved production path away from OpenAI.","O1  OpenAI remains the default and strong-model calls remain on OpenAI.
 O2  Only an explicitly allowed cheap-model surface selects Mistral.
 O3  Missing Mistral configuration never silently falls back to OpenAI.
@@ -5034,14 +5038,17 @@ words my Take says, word for word, short and without a number, are
 kept.
 O3  A tap is kept for Will and fills the talk's setup, so the next Take
 carries who it is for; Will says it back, ""{who}. I'll keep them in
-mind."" (N294 item 5), any other answer gets ""Got it, thanks 🙏""; then
-the message after the Take. ""Someone else"" under the check opens one
+mind."" (N294 item 5), any other tapped answer gets ""Got it, thanks 🙏"";
+then the message after the Take. ""Someone else"" under the check opens one
 follow-up, ""Who is it for, then? 👀"", with no tap answers, and the
 message waits; my typed words under it are the answer, or Skip. Skip
 lets the message go; a repeat tap writes nothing.
 O4  Typed words under the question are the answer: what I want them to
-do lands as the talk's call to action, my own note on the talk kept.
-Distress is never taken as an answer: the chat's safety reply comes.
+do lands as the talk's call to action, my own note on the talk kept,
+and contextual Will answers from the visible thread, open question and
+those words. The reply settles the question and releases the chain once,
+with one user row and one bot row. Distress is never taken as an answer:
+the chat's safety reply comes.
 O5  After a Take that needs it, the summary's batch holds the message
 under Will's question, a bridge line between the summary and the
 question (""Ok, now let's dive into the content for a bit."", founder
