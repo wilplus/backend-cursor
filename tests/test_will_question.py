@@ -21,14 +21,17 @@ OUTCOME
       kept.
   O3  A tap is kept for Will and fills the talk's setup, so the next Take
       carries who it is for; Will says it back, "{who}. I'll keep them in
-      mind." (N294 item 5), any other answer gets "Got it, thanks 🙏"; then
-      the message after the Take. "Someone else" under the check opens one
+      mind." (N294 item 5), any other tapped answer gets "Got it, thanks 🙏";
+      then the message after the Take. "Someone else" under the check opens one
       follow-up, "Who is it for, then? 👀", with no tap answers, and the
       message waits; my typed words under it are the answer, or Skip. Skip
       lets the message go; a repeat tap writes nothing.
   O4  Typed words under the question are the answer: what I want them to
-      do lands as the talk's call to action, my own note on the talk kept.
-      Distress is never taken as an answer: the chat's safety reply comes.
+      do lands as the talk's call to action, my own note on the talk kept,
+      and contextual Will answers from the visible thread, open question and
+      those words. The reply settles the question and releases the chain once,
+      with one user row and one bot row. Distress is never taken as an answer:
+      the chat's safety reply comes.
   O5  After a Take that needs it, the summary's batch holds the message
       under Will's question, a bridge line between the summary and the
       question ("Ok, now let's dive into the content for a bit.", founder
@@ -89,6 +92,7 @@ WHY      Founder 2026-10-20 (N82): "ask me a lot of questions … a natural
          moment"; "they can be only one at a time. Only once you answer".
 """
 import json
+import uuid
 
 from services import after_take, chat_query, speaker_memory, take_summary, will_question
 import pytest
@@ -259,19 +263,27 @@ def test_a_tap_is_kept_fills_the_setup_and_lets_the_message_go(monkeypatch):
     assert after_take.held(db, "u") is None
 
 
-def _typed(db, monkeypatch, question):
+def _typed(db, monkeypatch, question, *, reply="Will's own reply.", history=None,
+           screen=False, seen=None):
     """One typed turn through the chat's chain, persisted as the route does."""
-    db.insert_lounge_messages("u", [{"client_id": f"typed-{question}", "role": "user", "kind": "text",
+    client_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"typed:{question}"))
+    db.insert_lounge_messages("u", [{"client_id": client_id, "role": "user", "kind": "text",
                                      "body": question, "metadata": {},
                                      "client_created_at": "2026-10-20T10:00:09+00:00"}])
     monkeypatch.setattr("services.db.db", db, raising=False)
-    monkeypatch.setattr(chat_query, "_librarian", lambda *a, **k: ({"answer": "Will's own reply."}, "faq"))
+    def librarian(_database, _user_id, current, turns, _app_config, context=None):
+        if seen is not None:
+            seen.update(question=current, history=turns, context=context)
+        return {"answer": reply, "debug": {"model": "test-will"}}, "faq"
+
+    monkeypatch.setattr(chat_query, "_librarian", librarian)
     monkeypatch.setattr(chat_query, "thread_history", lambda *a, **k: [])
     return chat_query.answer_chat(
-        db, user_id="u", question=question, history=[], context=None, app_config=object(),
+        db, user_id="u", question=question, history=history or [], context=None,
+        app_config=object(), screen=screen,
         finalize=lambda resp, intent: chat_query.finish_chat_turn(
             db, resp, user_id="u", question=question, persist_thread=True,
-            user_client_id=f"typed-{question}", user_created_at=None, intent=intent))
+            user_client_id=client_id, user_created_at=None, intent=intent))
 
 
 def test_someone_else_opens_one_follow_up_answered_in_own_words(monkeypatch):
@@ -282,7 +294,7 @@ def test_someone_else_opens_one_follow_up_answered_in_own_words(monkeypatch):
     assert [r["body"] for r in rows] == ["Someone else", FOLLOW_AT["audience_check"][1]]
     assert after_take.held(db, "u") is not None and "t1" not in db.takes.ctx  # it waits
     resp = _typed(db, monkeypatch, "The investors.")
-    assert resp["answer"] == "The investors. I'll keep them in mind."
+    assert resp["answer"] == "Will's own reply."
     assert db.takes.ctx["t1"]["audience"] == "The investors."
     assert db.bodies()[-1] == SEE_YOU and after_take.held(db, "u") is None
 
@@ -315,13 +327,41 @@ def test_typed_words_are_the_answer_and_fill_the_call_to_action(monkeypatch):
     _quiet(monkeypatch)
     db = _Db()
     db.takes.ctx["t1"] = {"strategic_context": "Additional context: they cut budgets last year."}
-    _asked(db, "goal", chips=["Say yes", "Trust me", "Get it"])
-    resp = _typed(db, monkeypatch, "Approve two hires by March")
-    assert resp["answer"] == THANKS and db.bodies()[-1] == SEE_YOU
+    asked = _asked(db, "goal", chips=["Say yes", "Trust me", "Get it"])
+    answer = "Approve two hires by March"
+    contextual = "That gives this talk a concrete outcome."
+    seen = {}
+    resp = _typed(
+        db, monkeypatch, answer, reply=contextual, seen=seen, screen=True,
+        history=[
+            {"role": "assistant", "content": "Earlier context."},
+            {"role": "user", "content": answer},
+        ],
+    )
+    assert resp["answer"] == contextual and db.bodies()[-1] == SEE_YOU
+    assert seen == {
+        "question": answer,
+        "history": [
+            {"role": "assistant", "content": "Earlier context."},
+            {"role": "assistant", "content": asked["body"]},
+        ],
+        "context": None,
+    }
     assert db.takes.ctx["t1"]["strategic_context"] == (
         "Desired call to action: Approve two hires by March\n"
         "Additional context: they cut budgets last year.")
     assert will_question.talk_goal([{"intake_context": db.takes.ctx["t1"]}]) == "Approve two hires by March"
+    assert db.events[-1]["payload"] == {
+        "question": "goal", "said": answer, "typed": True, "goal": answer,
+    }
+    assert resp["row_metadata"] == {
+        "will_question": "goal", "arc_id": "arc", "take_session_id": "t1",
+        "will_question_step": "thanks",
+    }
+    assert resp["after_take"] is True and after_take.held(db, "u") is None
+    assert sum(r["role"] == "user" and r["body"] == answer for r in db.thread.values()) == 1
+    assert sum(r["role"] == "bot" and r["body"] == contextual for r in db.thread.values()) == 1
+    assert db.bodies().count(SEE_YOU) == 1
 
 
 class _SummaryDb(_Db):
@@ -409,7 +449,7 @@ def test_will_says_who_from_my_side_and_the_goodbye_waits(monkeypatch):
     asked = next(r for r in db.thread.values() if (r.get("metadata") or {}).get("offer") == "will_question")
     assert will_question.SOMEONE_ELSE not in asked["metadata"]["chips"]  # "Something else" in the bar
     resp = _typed(db, monkeypatch, "Myself")
-    assert resp["answer"] == "I'll keep you in mind."
+    assert resp["answer"] == "Will's own reply."
     assert db.bodies()[-1] == will_question.GOAL_SELF
     assert will_question.open_question(db, "u")["chips"] == []
     # The Lounge asks to let the goodbye go before it reads the thread again.
@@ -417,13 +457,14 @@ def test_will_says_who_from_my_side_and_the_goodbye_waits(monkeypatch):
     # Nor anyone else: the goodbye waits under his open question (N544).
     assert after_take.release(db, "u") == [] and db.bodies()[-1] == will_question.GOAL_SELF
     resp = _typed(db, monkeypatch, "Feel calm")
-    assert resp["answer"] == THANKS and db.bodies()[-1] == SEE_YOU
+    assert resp["answer"] == "Will's own reply." and db.bodies()[-1] == SEE_YOU
     assert will_question.key_line_question("Myself") == will_question.key_line_question(None)
 
     mine = _SummaryDb()
     _summary(mine, monkeypatch)
     resp = _typed(mine, monkeypatch, "my manager and her two leads")
-    assert resp["answer"] == "Your manager and her two leads. I'll keep them in mind."
+    assert resp["answer"] == "Will's own reply."
+    assert mine.takes.ctx["t1"]["audience"] == "my manager and her two leads"
     assert mine.bodies()[-1] == QUESTIONS["goal"]
     assert will_question.key_line_question("my team").startswith("If your team remembers")
 

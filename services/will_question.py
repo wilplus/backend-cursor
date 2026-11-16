@@ -1341,7 +1341,13 @@ def open_question(database: Any, user_id: str) -> Optional[dict]:
         return None
     if _answered(database, user_id, str(take), step, _round(meta)):
         return None
-    return {**meta, "take_session_id": str(take)}
+    return {
+        **meta,
+        "take_session_id": str(take),
+        # Internal context for the chat model. This is deliberately not row
+        # metadata: the persisted reply keeps only the signed question keys.
+        "_asked": str((bot or {}).get("body") or "").strip(),
+    }
 
 
 def _said_as_chip(text: str, chips: list[str]) -> Optional[str]:
@@ -1366,7 +1372,9 @@ def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:
     open_q = open_question(database, str(user_id))
     if not open_q:
         return None
-    return _taken(database, str(user_id), open_q, question, typed=True)
+    turn = _taken(database, str(user_id), open_q, question, typed=True)
+    turn["asked"] = open_q.get("_asked")
+    return turn
 
 
 def _taken(database: Any, user_id: str, open_q: dict, text: str, **how: Any) -> dict:
