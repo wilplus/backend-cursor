@@ -17526,3 +17526,25 @@ No migration in this entry. The rules: `docs/design/app-model-2026-11-09/stories
 5. **Fixed recording UI follows the interface locale.** Back, Next/Finish and other fixed recording controls use the app/system locale. Transcript, feedback and other generated coaching content continue to follow N652's immediate content language instead.
 
 No migration in this entry. The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md).
+
+**N655 · In the iPhone app, a Take is recorded natively (founder, the Claude
+Code chat, 16 November 2026: "native recording it is", on the choice between
+first measuring what the iPhone's microphone applies to a web-recorded Take
+and recording natively).** Corrects N365 item 3 ("The web recorder stays"):
+1. **In the iPhone app, the phone records a Take itself** (native audio), not
+the web recorder: the voice as it is, with the phone-call processing (echo
+cancellation, noise suppression, automatic gain) off, at a quality the app
+sets, and interruptions (a call, another app's audio) handled by the phone.
+In a browser and in the home-screen app, the web recorder stays.
+2. **Nothing the web recorder does is lost** (CLAUDE.md, "Replacing a
+feature"): the slides and when each one starts, the clock, the pause for a
+call (N437 item 2), discarding a Take, the upload under the processing
+authorization, and the loop record → Ideal Text → feedback → next Take
+(Never 3). Before anything is built, a plan lists all of it, and every
+change it would make to the locked recording screens, for the founder's OK.
+3. **Measuring the web recorder first is no longer the condition** for this.
+4. **It ships as a new app version** through Apple's review, after the
+founder has tried it on their iPhone.
+No new words yet. No migration in this entry. No rules page yet: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+gets its line when the plan is signed and built.
