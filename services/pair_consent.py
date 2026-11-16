@@ -255,7 +255,12 @@ def _admitted_together(database: Any, takes: list[str]) -> dict:
     keys = {_speaker_key(sessions.get(take) or {}, principals) for take in need}
     resolved = dict(zip(keys, _side_by_side(
         [lambda key=key: _resolve(database, key) for key in keys]))) if keys else {}
-    speakers = sorted({resolved.get(key) for key in keys if resolved.get(key)})
+    heard: set[str] = set()
+    for key in keys:
+        speaker = resolved.get(key)
+        if isinstance(speaker, str) and speaker:
+            heard.add(speaker)
+    speakers = sorted(heard)
     objected = dict(zip(speakers, _side_by_side(
         [lambda principal=principal: _objected_principal(database, principal)
          for principal in speakers]))) if speakers else {}
@@ -266,7 +271,7 @@ def _admitted_together(database: Any, takes: list[str]) -> dict:
             out[take] = False
             continue
         speaker = resolved.get(_speaker_key(sessions.get(take) or {}, principals))
-        out[take] = bool(speaker) and not objected.get(speaker, True)
+        out[take] = isinstance(speaker, str) and bool(speaker) and not objected.get(speaker, True)
     return out
 
 

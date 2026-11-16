@@ -355,8 +355,10 @@ def _expert_ids(models: list[dict], invites: list[dict]) -> dict[str, list[str]]
     out: dict[str, list[str]] = {}
     for model in models:
         mid = str(model.get("id"))
-        setup = model.get("setup") if isinstance(model.get("setup"), dict) else {}
-        exam = setup.get("exam") if isinstance(setup.get("exam"), dict) else {}
+        raw_setup = model.get("setup")
+        setup = raw_setup if isinstance(raw_setup, dict) else {}
+        raw_exam = setup.get("exam")
+        exam = raw_exam if isinstance(raw_exam, dict) else {}
         if not exam:
             out[mid] = []
             continue
