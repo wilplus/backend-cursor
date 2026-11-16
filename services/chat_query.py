@@ -309,17 +309,59 @@ def _feedback_check(user_id, question, _context, _history=None) -> Optional[tupl
                   debug={"intent": "feedback_check"}, **extra), "feedback_check"
 
 
-def _will_question(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
-    """N82: what the speaker types under Will's question after a Take (or
-    its one follow-up) is their answer: kept, then thanked, before any other
-    voice reads it as something else."""
+def _will_question_history(history, asked: str, answer: str) -> list[dict]:
+    """The visible thread with Will's open question directly before its answer.
+
+    A screen-history request may already include the optimistic user bubble;
+    the librarian appends the current answer itself, so remove that one copy.
+    The server-owned question is then guaranteed to be present even for an
+    older client that sent only plain chat turns.
+    """
+    turns = screen_history(history)
+    if (turns and turns[-1]["role"] == "user"
+            and turns[-1]["content"].strip() == answer.strip()):
+        turns.pop()
+    asked = (asked or "").strip()
+    if asked and not (turns and turns[-1]["role"] == "assistant"
+                      and turns[-1]["content"] == asked):
+        turns.append({"role": "assistant", "content": asked})
+    return turns
+
+
+def _will_question(
+    user_id, question, context, history=None, *, app_config=None,
+) -> Optional[tuple[dict, str]]:
+    """A typed answer to Will's question is kept, then answered by Will.
+
+    ``will_question.chat_turn`` owns the existing memory/take-context write.
+    A terminal answer then goes through the same contextual librarian as the
+    rest of Will chat, with the open question restored beside the real screen
+    history. The signed follow-up remains deterministic because it is the next
+    product question, not an acknowledgement.
+    """
     from services.db import db
     from services.will_question import chat_turn
     turn = chat_turn(db, user_id, question)
     if not turn:
         return None
-    return _reply(turn["answer"], row_metadata=turn["row_metadata"],
-                  debug={"intent": "will_question"}), "will_question"
+    meta = turn["row_metadata"]
+    if meta.get("will_question_step") == "follow":
+        return _reply(turn["answer"], row_metadata=meta,
+                      debug={"intent": "will_question"}), "will_question"
+
+    try:
+        reply, _model_intent = _librarian(
+            db, user_id, question,
+            _will_question_history(history, str(turn.get("asked") or ""), question),
+            app_config, context,
+        )
+    except Exception as error:  # noqa: BLE001 -- the stored answer must settle
+        logger.warning("chat/query: contextual will-question reply failed "
+                       "user=%s: %s", user_id, error)
+        reply = _reply(turn["answer"])
+    reply["row_metadata"] = meta
+    reply["debug"] = {**(reply.get("debug") or {}), "intent": "will_question"}
+    return reply, "will_question"
 
 
 def _whatsapp_number(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
@@ -439,7 +481,8 @@ def _intercepts(user_id, app_config) -> list[tuple[str, Callable]]:
     chain: list[tuple[str, Callable]] = []
     if user_id:
         chain.append(("feedback-check intercept failed user=%s: %s", _feedback_check))
-        chain.append(("will-question intercept failed user=%s: %s", _will_question))
+        chain.append(("will-question intercept failed user=%s: %s",
+                      functools.partial(_will_question, app_config=app_config)))
         chain.append(("whatsapp-number intercept failed user=%s: %s", _whatsapp_number))
         chain.append(("sunday-note intercept failed user=%s: %s", _sunday_note))
         chain.append(("life-goals intercept failed user=%s: %s", _life_goals))

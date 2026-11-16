@@ -47,6 +47,7 @@ class ChatRouteHarness(unittest.TestCase):
         self.fail_db = False
         self.app_action = None
         self.debug = {"intent": "faq"}
+        self.model_answer = "It's a voice coach."
         self.card = {"whatsapp_on": False}
 
         def _insert(user_id, messages):
@@ -57,7 +58,7 @@ class ChatRouteHarness(unittest.TestCase):
 
         def _answer(question, history=None, **_kw):
             self.histories.append(history)
-            return {"answer": "It's a voice coach.",
+            return {"answer": self.model_answer,
                     "app_action": self.app_action}, dict(self.debug)
 
         def _presentation(question, context=None):
