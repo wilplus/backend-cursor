@@ -405,7 +405,8 @@ is trimmed to the part around what the clip teaches, and my try is
 asked for the same trimmed words (N459 item 3).
 O3  A clip that fails its check is made once more with a new seed and
 is never shown; a try after it is not scored; a real pause heard in
-the audio passes.
+the audio passes. Benign transcription spelling differences do not
+hide a Polish clip, while changed words still do.
 O4  One clip per practice, started early once the exercise is known,
 within my daily and monthly limits (3 and 20, N188), and a new voice
 only while the plan has a voice slot free; a voice still being made is waited for a
@@ -434,7 +435,9 @@ test_a_sentence_with_fillers_is_said_without_them_and_the_next_try_is_measured_o
 test_a_moment_too_long_for_a_clip_is_trimmed_around_what_it_teaches,
 test_the_walks_fix_on_a_long_moment_gets_its_clip_and_the_try_the_same_words
 O3 -> test_a_clip_that_fails_its_check_is_made_once_more_and_shown_only_if_it_passes,
-test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it
+test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it,
+test_validator_accepts_benign_polish_transcription_normalization,
+test_validator_still_rejects_materially_changed_polish_words
 O4 -> test_a_speakers_daily_or_monthly_limit_stops_the_provider_call,
 test_no_new_voice_while_the_plans_voice_slots_are_full,
 test_two_corrected_moments_queue_two_prewarms,
@@ -2477,11 +2480,14 @@ O4  One answer to a public clip is saved for both models that ask the
 same question, and the other model's different question follows; the
 answer returns nothing of the machine's read.
 O5  The profile lists the models a person started and teaches; an invite
-I put off says so and stays.","O1 -> ModelRoutesTest::test_without_the_ring_nothing_is_shown
+I put off says so and stays.
+O6  The queue reads its tables in batches, so teaching more models does
+not add one database round trip per model.","O1 -> ModelRoutesTest::test_without_the_ring_nothing_is_shown
 O2 -> ModelRoutesTest::test_the_list_and_a_private_page
 O3 -> ModelRoutesTest::test_the_door_the_queue_and_pause
 O4 -> ModelRoutesTest::test_one_answer_counts_for_both_and_the_other_question_follows
-O5 -> ModelRoutesTest::test_the_profile_and_the_invite","The model launchpad's first tables (migration a_person_can_teach_and_start_ai_models), served by services/model_launchpad_store.py over services/model_launchpad.py."
+O5 -> ModelRoutesTest::test_the_profile_and_the_invite
+O6 -> ModelRoutesTest::test_the_queue_batches_reads_across_models","The model launchpad's first tables (migration a_person_can_teach_and_start_ai_models), served by services/model_launchpad_store.py over services/model_launchpad.py."
 tests/test_model_match.py,Story,"As someone on the models page, I want ""For you"" to show the models that need what I know and the ones I teach, so that my answers go where they count (founder, 5 November 2026, N518 items 7 and 8, N520 item 7; App Model MOD-53).","O1  ""For you"" shows only the models whose words match the person's
 profile at the matching's threshold (2.0) or more, and the ones they
 teach, whatever their score; nothing else, and never a score.
