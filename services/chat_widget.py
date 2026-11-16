@@ -11,7 +11,8 @@ site can write to the host (N591 item 1):
 
   * ``preview``: whose chat it is, the host's welcome and how a visitor may
     write, from the chat's recipe (N591 item 2): ``{"name", "welcome",
-    "writes": {"tap", "type", "record"}}``; 404 for a wrong, replaced or
+    "writes": {"tap", "type", "record"}}``, and ``send`` (``rec``, ``text``,
+    ``photo``, ``file``) when the recipe has one; 404 for a wrong, replaced or
     switched-off link. No fixed questions (N591 item 5).
   * ``start``: no card before a visitor writes (N595 item 1): the chat is
     made with the visitor's first message, or their first tap. It is in the
@@ -140,16 +141,29 @@ def writes(database: Any, owner: str, *, signed_up: bool = False) -> dict:
             "record": allowed["record"] and signed_up}
 
 
+def _with_send(payload: dict, recipe: Any) -> dict:
+    """The recipe's ``send`` list (``rec``, ``text``, ``photo``, ``file``)
+    beside ``writes``. Omitted when the recipe has none, so the bar keeps
+    ``answer_with``. ``answer_with`` itself is unchanged."""
+    send = recipe.get("send") if isinstance(recipe, dict) else None
+    if isinstance(send, list) and send:
+        payload["send"] = [str(item) for item in send]
+    return payload
+
+
 def preview(database: Any, token: Any) -> dict:
     """GET /v2/chats/widget/<token>: {"name", "welcome", "writes"}: what the
     visitor sees before they write, with no card (N595 item 1); the welcome
-    is the host's own (N590 item 2), the same lines ``start`` posts."""
+    is the host's own (N590 item 2), the same lines ``start`` posts.
+    ``send`` rides along when the recipe has one."""
     from services import assistants
     link = _link(database, token)
     owner = str(link["user_id"])
     recipe = assistants.recipe_of(database, owner) if assistants.on(database, owner) else None
-    return {"name": link["display_name"], "welcome": list((recipe or {}).get("welcome") or []),
-            "writes": writes(database, owner)}
+    return _with_send(
+        {"name": link["display_name"], "welcome": list((recipe or {}).get("welcome") or []),
+         "writes": writes(database, owner)},
+        recipe)
 
 
 def _number(database: Any, owner: str) -> int:
@@ -258,12 +272,16 @@ def read(database: Any, token: Any, guest: Any) -> dict:
     authors = _authors(database, thread)
     words = _words(database, thread, shown)
     answers = _answers(database, shown)
-    return {"name": me["name"], "writes": writes(database, me["owner"], signed_up=me["signed_up"]),
-            "signed_up": me["signed_up"],
-            "notice_to": _notice_to_of(database, me) if me["signed_up"] else None,
-            "sign_up": not me["signed_up"] and _asked(newest, me["id"]),
-            "answered": bool(waiting),
-            "messages": [_shown(r, me["id"], authors, words, answers) for r in reversed(shown)]}
+    from services import assistants
+    recipe = assistants.recipe_of(database, me["owner"]) if assistants.on(database, me["owner"]) else None
+    return _with_send(
+        {"name": me["name"], "writes": writes(database, me["owner"], signed_up=me["signed_up"]),
+         "signed_up": me["signed_up"],
+         "notice_to": _notice_to_of(database, me) if me["signed_up"] else None,
+         "sign_up": not me["signed_up"] and _asked(newest, me["id"]),
+         "answered": bool(waiting),
+         "messages": [_shown(r, me["id"], authors, words, answers) for r in reversed(shown)]},
+        recipe)
 
 
 def answer_setup(database: Any, token: Any, guest: Any, message_id: Any, payload: Any) -> dict:

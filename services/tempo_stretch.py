@@ -144,7 +144,7 @@ def _shares(path: list[float], first: int, s: dict) -> Optional[tuple[float, flo
             sum(1 for v in frames if v < GREEN_LOW) / len(frames))
 
 
-def pick(snippets: list[dict]) -> Optional[dict]:
+def pick(snippets: list[dict], *, min_outside: Optional[float] = None) -> Optional[dict]:
     """The clip furthest from the green and which side it leaned to, or None
     when no clip spends ``MIN_OUTSIDE`` of its time outside it. ``outside``
     is its share of time on that side. Pure."""
@@ -159,7 +159,8 @@ def pick(snippets: list[dict]) -> Optional[dict]:
             continue
         rushed, slow = shares
         outside = max(rushed, slow)
-        if outside >= ns.value("tempo_stretch.MIN_OUTSIDE") and (best is None or outside > best["outside"]):
+        bar = ns.value("tempo_stretch.MIN_OUTSIDE") if min_outside is None else min_outside
+        if outside >= bar and (best is None or outside > best["outside"]):
             best = {"index": index, "outside": outside, "reading": "rushed" if rushed >= slow else "slow"}
     return best
 
@@ -264,7 +265,8 @@ def tempo_for_take(database: Any, *, take: str, user_id: str, arc_id: str,
             _CACHE.move_to_end(take)
             return _CACHE[take]
     snippets = database.get_snippets_by_session(take) or []
-    chosen = pick(snippets)
+    from services.coach_definition import dial_value
+    chosen = pick(snippets, min_outside=dial_value(database, user_id, "tempo_stretch.MIN_OUTSIDE"))
     result: Optional[dict] = None
     if chosen:
         said = said_around(snippets, chosen["index"])

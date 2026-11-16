@@ -137,6 +137,7 @@ class ChatWidgetTest(unittest.TestCase):
         self.assertEqual(got, {"name": "Tomek", "welcome": ["Hi, I'm Tomek. Ask me anything about the spa."],
                                "writes": {"tap": True, "type": False, "record": False}})
         self.assertNotIn("asks", got)
+        self.assertNotIn("send", got)
         self.assertEqual(self.client.get("/v2/chats/widget/not-a-real-token-at-all").status_code, 404)
         with patch("services.rings.feature_is_on_for_user",
                    lambda feature, user_id, **kw: feature != "website_chat" and _ring(feature, user_id)):
@@ -146,6 +147,19 @@ class ChatWidgetTest(unittest.TestCase):
                                               json={"site": "a.com"}).status_code, 404)
         self.client.post("/v2/chats/link", headers=self._as(TOMEK))
         self.assertEqual(self.client.get(f"/v2/chats/widget/{self.token}").status_code, 404)
+
+    def test_send_is_on_the_widget_read_and_on_start_when_the_recipe_has_one(self):
+        """The bar reads ``send`` (rec, text, photo, file) next to ``writes``.
+        A recipe without one leaves the key off, and ``writes`` stays."""
+        self._recipe()
+        row = self.store.tables["people_profiles"][0]
+        row["chat_recipe"] = {**row["chat_recipe"], "send": ["rec", "text", "photo", "file"]}
+        preview = self.client.get(f"/v2/chats/widget/{self.token}").get_json()
+        self.assertEqual(preview["send"], ["rec", "text", "photo", "file"])
+        self.assertEqual(preview["writes"], {"tap": True, "type": True, "record": False})
+        started = self._start(kind="text", body="Do you open on Sundays?")
+        self.assertEqual(started["send"], ["rec", "text", "photo", "file"])
+        self.assertEqual(self._read(started)["send"], ["rec", "text", "photo", "file"])
 
     def test_the_first_message_makes_a_chat_in_my_list_like_any_other(self):
         from services import membership

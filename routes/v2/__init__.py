@@ -33,6 +33,7 @@ DOMAIN_MODULES = (
     "account_security", "signup_count", "first_visit", "login_code", "whatsapp_webhook",
     "roadmap_admin", "chats", "push_devices", "take_matches", "learning_models", "model_setup",
     "silent_tries",
+    "coaches",
 )
 
 
