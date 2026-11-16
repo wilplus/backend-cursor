@@ -43,6 +43,35 @@ from services.llm_config import LLMSpec
 logger = logging.getLogger(__name__)
 
 
+def operational_chat_complete(
+    client: Any,
+    *,
+    model: str,
+    messages: list[dict[str, str]],
+    temperature: float,
+    max_tokens: int,
+    response_format: Optional[dict] = None,
+    timeout: Optional[float] = None,
+) -> Any:
+    """Call the shared chat transport for a synthetic operational probe.
+
+    This deliberately does not issue a protected-data permit or write to the
+    user-usage ledger. It is reserved for probes whose prompts contain no
+    speaker data; production surfaces must call :func:`chat_complete`.
+    """
+    create_kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if response_format is not None:
+        create_kwargs["response_format"] = response_format
+    if timeout is not None:
+        create_kwargs["timeout"] = timeout
+    return client.chat.completions.create(**create_kwargs)
+
+
 @dataclass(frozen=True)
 class LLMResult:
     """Return shape from ``chat_complete``.
@@ -211,7 +240,15 @@ def chat_complete(
 
     t0 = time.perf_counter()
     try:
-        response = client.chat.completions.create(**create_kwargs)
+        response = operational_chat_complete(
+            client,
+            model=str(create_kwargs["model"]),
+            messages=create_kwargs["messages"],
+            temperature=float(create_kwargs["temperature"]),
+            max_tokens=int(create_kwargs["max_tokens"]),
+            response_format=create_kwargs.get("response_format"),
+            timeout=create_kwargs.get("timeout"),
+        )
     except Exception as e:
         duration_ms = int((time.perf_counter() - t0) * 1000)
         logger.warning(

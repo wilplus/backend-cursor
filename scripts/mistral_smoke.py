@@ -23,6 +23,7 @@ if REPO_ROOT not in sys.path:
 
 from config import Config  # noqa: E402
 from services.chat_provider import ChatTarget, build_chat_client  # noqa: E402
+from services.llm import operational_chat_complete  # noqa: E402
 
 
 class SmokeFailure(RuntimeError):
@@ -98,16 +99,15 @@ def run_smoke(client: Any, model: str, *, emit: Callable[[str], None] = print) -
         ),
     )
     for name, messages, response_format, validate in cases:
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "temperature": 0,
-            "max_tokens": 80,
-        }
-        if response_format is not None:
-            kwargs["response_format"] = response_format
         started = time.perf_counter()
-        response = client.chat.completions.create(**kwargs)
+        response = operational_chat_complete(
+            client,
+            model=model,
+            messages=messages,
+            temperature=0,
+            max_tokens=80,
+            response_format=response_format,
+        )
         validate(_content(response))
         emit(f"PASS {name} {int((time.perf_counter() - started) * 1000)}ms")
 
