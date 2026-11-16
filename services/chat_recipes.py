@@ -293,14 +293,52 @@ def _derived(recipe: dict) -> dict:
 def _store(database: Any, user_id: str, recipe: dict) -> dict:
     stamp = datetime.now(timezone.utc).isoformat()
     stored = {**_derived(recipe), "v": V, "updated_at": stamp}
-    table = database.client.table(assistants.PROFILES)
-    if table.select("user_id").eq("user_id", str(user_id)).limit(1).execute().data or []:
-        database.client.table(assistants.PROFILES).update(
-            {assistants.COLUMN: stored, "updated_at": stamp}).eq("user_id", str(user_id)).execute()
-    else:
+    if not _write_recipe(database, str(user_id), stored):
         database.client.table(assistants.PROFILES).insert(
             {"user_id": str(user_id), assistants.COLUMN: stored}).execute()
     return stored
+
+
+def _write_recipe(database: Any, user_id: str, stored: dict) -> bool:
+    """Update the profile's recipe. True when a row was already there.
+
+    The profile row also holds the photo, up to 5 MB. PostgREST's default
+    is to send the whole row back, and that was the multi-second call on
+    PUT /v2/chats/setup/live. The update asks for ``user_id`` only. A
+    stand-in client without that parameter takes the earlier select, which
+    never reads the photo either.
+    """
+    table = database.client.table(assistants.PROFILES)
+    payload = {assistants.COLUMN: stored, "updated_at": stored["updated_at"]}
+    try:
+        from postgrest.types import ReturnMethod
+        query = table.update(payload, returning=ReturnMethod.representation).eq(
+            "user_id", user_id)
+        query.params = query.params.add("select", "user_id")
+        return bool(query.execute().data)
+    except (TypeError, AttributeError):
+        rows = table.select("user_id").eq("user_id", user_id).limit(1).execute().data or []
+        if not rows:
+            return False
+        table.update(payload).eq("user_id", user_id).execute()
+        return True
+
+
+def _recipe_for_save(database: Any, user_id: Any) -> Optional[dict]:
+    """The blank-setup recipe, or None when the host has not started.
+    404 when they do not have the chat builder. One read when the database
+    has ``chat_setup_recipe_v1``; otherwise the ring check and the recipe.
+    """
+    from services.db import rpc_object
+    bundled = rpc_object(database, "chat_setup_recipe_v1", {"p_user": str(user_id)})
+    if isinstance(bundled, dict) and "builder" in bundled:
+        if not bundled.get("builder"):
+            raise RecipeError("NOT_FOUND", "Not found.", 404)
+        recipe = bundled.get("recipe")
+        return recipe if isinstance(recipe, dict) and recipe.get("v") == V else None
+    if not assistants.on(database, user_id):
+        raise RecipeError("NOT_FOUND", "Not found.", 404)
+    return mine(database, user_id)
 
 
 def mine(database: Any, user_id: Any) -> Optional[dict]:
@@ -339,9 +377,9 @@ def start(database: Any, user_id: Any, body: Any, person: Any = None) -> dict:
 
 def set_part(database: Any, user_id: Any, part: str, body: Any) -> dict:
     """PUT /v2/chats/setup/<part> {"value"}: one decision saved."""
+    recipe = _recipe_for_save(database, user_id)
     if part not in PARTS:
         raise RecipeError("NOT_FOUND", "No such part.", 404)
-    recipe = mine(database, user_id)
     if recipe is None:
         raise RecipeError("NOT_STARTED", "Say what you do first.", 409)
     value = _clean_part(part, (body or {}).get("value") if isinstance(body, dict) else None)
@@ -790,25 +828,74 @@ def shared_models(database: Any, user_id: Any) -> dict:
     true for a public model, or one the host already teaches, that is
     still learning (N633 item 1), listed for a host with the AI models
     (ring ``ai_models``), whose ``price`` is 0: free while it learns. Never
-    a photo model, never the host's own."""
+    a photo model, never the host's own.
+
+    One read (``chat_setup_models_bundle_v1``) when the database has it:
+    the ring, the public models, their exams and the models this host
+    teaches. Otherwise those reads go together, side by side.
+    """
+    from services.db import rpc_object
+    bundled = rpc_object(database, "chat_setup_models_bundle_v1", {"p_user": str(user_id)})
+    if isinstance(bundled, dict) and "builder" in bundled:
+        if not bundled.get("builder"):
+            raise RecipeError("NOT_FOUND", "Not found.", 404)
+        rows = [*(bundled.get("public") or []), *(bundled.get("extra") or [])]
+        rows = [r for r in rows if isinstance(r, dict)]
+        teaching = bundled.get("teaching")
+        teaching_ids = None if teaching is None else {str(m) for m in teaching}
+        send = set(bundled.get("send") or [])
+        shared = _passed_versions(rows)
+        return _listed(str(user_id), rows, teaching_ids, send, shared)
+    if not assistants.on(database, user_id):
+        raise RecipeError("NOT_FOUND", "Not found.", 404)
+    return _shared_from_tables(database, user_id)
+
+
+def _shared_from_tables(database: Any, user_id: Any) -> dict:
+    """The list, from the tables, when the one-trip read is not there."""
     from services import model_launchpad_store as models
-    teaching = _teaching(database, user_id)
+    from services.parallel import run_in_parallel
     fields = "id,owner_id,owner_name,visibility,status,recipe,price_units"
-    try:
-        rows = (database.client.table(models.MODELS).select(fields)
-                .eq("visibility", "public").limit(200).execute().data or [])
-        extra = sorted((teaching or set()) - {str(r["id"]) for r in rows})
-        if extra:
-            rows += (database.client.table(models.MODELS).select(fields)
-                     .in_("id", extra).execute().data or [])
-    except Exception:  # noqa: BLE001 -- none listed
+
+    def public_rows() -> Optional[list]:
+        try:
+            return (database.client.table(models.MODELS).select(fields)
+                    .eq("visibility", "public").limit(200).execute().data or [])
+        except Exception:
+            logger.warning("chat_recipes: the shared models could not be read", exc_info=True)
+            return None
+
+    rows, teaching, recipe = run_in_parallel(
+        public_rows, lambda: _teaching(database, user_id), lambda: mine(database, user_id))
+    if rows is None:
         return {"models": []}
-    send = set((mine(database, user_id) or {}).get("send") or [])
-    shared = _shared_for_tokens(database, [str(r["id"]) for r in rows])
+    extra = sorted((teaching or set()) - {str(r["id"]) for r in rows})
+    if extra:
+        try:
+            rows = [*rows, *(database.client.table(models.MODELS).select(fields)
+                             .in_("id", extra).execute().data or [])]
+        except Exception:
+            logger.warning("chat_recipes: the taught models could not be read", exc_info=True)
+            return {"models": []}
+    send = set((recipe or {}).get("send") or [])
+    return _listed(str(user_id), rows, teaching, send,
+                   _shared_for_tokens(database, [str(r["id"]) for r in rows]))
+
+
+def _passed_versions(rows: list) -> set[str]:
+    """Models whose bundled version rows passed the exam the app computed."""
+    from services.model_api import exam_passed
+    return {str(row["id"]) for row in rows
+            if any(v.get("status") in ("passed", "released") and exam_passed(v)
+                   for v in (row.get("versions") or []) if isinstance(v, dict))}
+
+
+def _listed(user_id: str, rows: list, teaching: Optional[set[str]], send: set,
+            shared: set[str]) -> dict:
     out = []
     for row in rows:
         learning = str(row["id"]) not in shared
-        if _offered(row, str(user_id), teaching, learning):
+        if _offered(row, user_id, teaching, learning):
             out.append(_offer(row, learning, send))
     return {"models": out}
 

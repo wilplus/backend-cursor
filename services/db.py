@@ -15657,6 +15657,36 @@ def new_client() -> Client:
     (audit Q-A2, tests/test_db_client_fence.py)."""
     return db._build_supabase_client()
 
+
+def rpc_object(database: Any, name: str, params: dict) -> Optional[dict]:
+    """One JSON function, or None when this database cannot run it.
+
+    The caller then reads the tables the way it did before the function
+    existed. A missing function is that path, not a failure; anything else
+    is logged and takes the same path, so a bad read never 500s a screen
+    the tables can still draw.
+    """
+    client = getattr(database, "client", None)
+    rpc = getattr(client, "rpc", None)
+    if rpc is None:
+        return None
+    try:
+        data = rpc(name, params).execute().data
+    except Exception as error:
+        text = str(error)
+        missing = "PGRST202" in text or "Could not find the function" in text
+        if not missing:
+            logger.warning("rpc %s failed: %s", name, error, exc_info=True)
+        return None
+    if isinstance(data, list):
+        data = data[0] if data else None
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except ValueError:
+            return None
+    return data if isinstance(data, dict) else None
+
 # The first-client exercise surface has a dedicated persistence boundary.  It
 # shares the already-configured Supabase client but does not enlarge the
 # application-wide DatabaseService API.

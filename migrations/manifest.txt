@@ -560,3 +560,4 @@
 0522	a_model_learns_from_its_settled_examples.sql
 0523	a_paid_answer_is_charged_once_within_its_limit.sql
 0524	each_model_call_names_its_provider.sql
+0525	the_slow_model_reads_use_one_trip.sql

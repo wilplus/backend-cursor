@@ -316,14 +316,26 @@ def feature_reaches(
 
 
 def principal_for_user(user_id: Any, *, database: Any = None) -> Optional[str]:
-    """The owner principal behind a signed-in user, or None."""
+    """The owner principal behind a signed-in user, or None.
+
+    Cached for the request. A screen that checks two rings (the chat
+    builder and the AI models) used to look the same person up twice.
+    """
     if not user_id:
         return None
+    cache = _request_cache()
+    key = ("principal", str(user_id))
+    if cache is not None and key in cache:
+        return cache[key]
     try:
         row = _database(database).get_owner_principal_for_user(str(user_id))
     except Exception:
-        return None
-    return _valid_uuid((row or {}).get("id"))
+        found = None
+    else:
+        found = _valid_uuid((row or {}).get("id"))
+    if cache is not None:
+        cache[key] = found
+    return found
 
 
 def feature_is_on_for_user(
