@@ -198,24 +198,23 @@
   {
     "id": "WID-09",
     "area": "Your chat on any website",
-    "title": "Copy my link in the menu opens the same sheet as the +",
-    "given": "Ariel is signed in",
-    "when": "she taps \"Copy my link\" in the ☰ menu",
+    "title": "The fixed admission URL is the only invitation entry point",
+    "given": "A visitor has the fixed admission URL /c/xLl2I4B-u14RY5yZd1JSR-4K",
+    "when": "they use the admission entry point",
     "then": [
-      "\"Add someone to chat with\" opens; nothing is copied until she taps \"Copy my link\" there"
+      "the fixed admission URL /c/xLl2I4B-u14RY5yZd1JSR-4K remains the admission URL",
+      "personal invitation controls and \"Copy my link\" are not shown"
     ],
     "rules": [
       "N567 item 1",
-      "consent-screens.md §1"
+      "consent-screens.md §1",
+      "N653"
     ],
-    "code": [
-      "fe:src/components/AppMenu.tsx::{adding ? <AddSomeoneSheet fixed onClose={() => setAdding(false)} /> : null}"
-    ],
+    "code": [],
     "tests": [
       "src/components/AppMenu.test.tsx"
     ],
-    "status": "built",
-    "screen": "own.add"
+    "status": "built"
   },
   {
     "id": "WID-10",

@@ -17509,3 +17509,10 @@ No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
 4. **Polish filler handling is meaning-preserving:** remove fixed spoken fillers (`yyy`, `eee`, `em`, `hm`, `hmm`) and handle `jakby`, `wiesz`, `znaczy`, `no`, and `więc` only in a sentence-leading, paused discourse context; retain meaningful grammar.
 
 No migration in this entry. The rules: `services/content_language.py`, `services/recording_transcription.py`, `services/transcript_smoothing.py`, and the recording/feedback/chat services that consume their contract.
+
+**N653 · The approved App Model removes the legacy coach row and personal invitation controls** (founder, the Claude Code chat, 16 November 2026, reconciling the frontend removals in PR #1428 with the canonical App Model stories). The removed frontend surfacing does not retire backend queue/model behavior.
+
+1. **MOD-14:** the backend queue/model behavior remains, but the approved Speaking Coach project home intentionally removes the legacy coach/people row from the primary IA. The story must not retain `useChatsDoor.tsx::coachRow={isCoach ? <CoachChatRow /> : null}` or invent a replacement frontend behavior; an existing approved model-list anchor may remain where it is real.
+2. **WID-09:** personal invitation controls and `Copy my link` are intentionally removed. The only remaining admission URL is `/c/xLl2I4B-u14RY5yZd1JSR-4K`; the story must not retain the `AppMenu.tsx` `AddSomeoneSheet` control.
+
+No migration in this entry. The rules: `docs/design/app-model-2026-11-09/stories.json`, `docs/design/model-launchpad-app-model-2026-11-09/stories.json`, and `docs/design/your-chat-on-any-website-2026-11-09/stories.json`.
