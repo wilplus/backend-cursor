@@ -6,6 +6,7 @@ browser locale and profile preferences never select it.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import Any, Callable, Optional
@@ -60,7 +61,7 @@ def detect_typed_language(text: Any) -> Optional[str]:
         code: sum(1 for word in words if word in markers)
         for code, markers in _MARKERS.items()
     }
-    best = max(scores, key=scores.get)
+    best = max(scores, key=lambda code: scores[code])
     other = "pl" if best == "en" else "en"
     return best if scores[best] >= 2 and scores[best] > scores[other] else None
 
@@ -119,9 +120,14 @@ def safe_fallback(target_language: Any, *, default: str,
 def complete_in_language(
     generate: Callable[..., Any], *, target_language: Any, system: str,
     user: str, messages_override: Optional[list[dict[str, str]]] = None,
+    return_last_on_failure: bool = False,
     **kwargs: Any,
 ) -> Any:
-    """Generate with one bounded language retry, then fail closed."""
+    """Generate with one bounded language retry, then fail closed.
+
+    A caller with a stronger deterministic safety guard may request the last
+    response so it can sanitize it before applying the language fallback.
+    """
     target = normalize_language(target_language)
     instruction = language_instruction(target)
     if not instruction:
@@ -139,26 +145,49 @@ def complete_in_language(
                 break
         return out
 
-    current_user = user + instruction
+    current_user = user
+    current_system = system + instruction
     current_messages = with_instruction(messages_override)
+    last_result = None
     for attempt in range(2):
         result = generate(
-            system=system + instruction, user=current_user,
+            system=current_system, user=current_user,
             messages_override=current_messages, **kwargs,
         )
+        last_result = result
         text = getattr(result, "text", None) if result is not None else None
+        if not isinstance(text, str) and result is not None:
+            structured = getattr(result, "parsed", None)
+            if isinstance(structured, dict):
+                text = " ".join(
+                    value for value in structured.values()
+                    if isinstance(value, str)
+                )
+        if isinstance(text, str):
+            try:
+                structured = json.loads(text)
+            except (TypeError, ValueError):
+                structured = None
+            if isinstance(structured, dict):
+                text = " ".join(
+                    value for value in structured.values()
+                    if isinstance(value, str)
+                )
         if validate_output_language(text, target):
             return result
         if attempt == 0:
-            current_user = (
-                user + instruction + "\n\nYour previous answer was not in the "
-                "target language. Rewrite the same answer now, without translating "
-                "or changing the speaker's quoted words."
+            retry_instruction = (
+                "Your previous answer was not in the target language. Rewrite "
+                "the same answer now, without translating or changing the "
+                "speaker's quoted words."
             )
+            current_system += "\n\n" + retry_instruction
             if current_messages:
                 current_messages = [dict(message) for message in current_messages]
-                current_messages.append({"role": "user", "content": current_user})
+                current_messages.append({"role": "user", "content": retry_instruction})
     logger.warning("content-language output rejected target=%s", target)
+    if return_last_on_failure:
+        return last_result
     return None
 
 

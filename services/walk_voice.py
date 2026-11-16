@@ -295,7 +295,10 @@ def context_for(database: Any, user_id: Any, take: dict, snippet_id: Any) -> dic
     own; one that fails is left out."""
     take_id = str(take.get("id") or "")
     from services.content_language import recording_target_language
-    intake_context = take.get("intake_context") if isinstance(take.get("intake_context"), dict) else {}
+    raw_intake_context = take.get("intake_context")
+    intake_context: dict[str, Any] = (
+        raw_intake_context if isinstance(raw_intake_context, dict) else {}
+    )
     target_language = recording_target_language(
         recording=take, session_context=intake_context,
     )

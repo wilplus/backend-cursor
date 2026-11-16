@@ -1068,6 +1068,7 @@ def _answer_via_router(
             chat_complete, target_language=target_language,
             spec=SPEC_MASTER_DOC_RAG, system=system_content, user=question,
             surface="master_doc_rag_lane", messages_override=messages,
+            return_last_on_failure=True,
             response_format_override={
                 "type": "json_schema", "json_schema": _RESPONSE_SCHEMA,
             },
@@ -1098,6 +1099,9 @@ def _answer_via_router(
     answer, suggested_action, _guard = _enforce_output_guards(
         answer, suggested_action,
     )
+    from services.content_language import validate_output_language
+    if not _guard and not validate_output_language(answer, target_language):
+        return None
     debug: dict[str, Any] = {
         "model": _ROUTER_MODEL,
         "router_intent": intent,
@@ -1239,6 +1243,7 @@ def answer_question(
             chat_complete, target_language=target_language,
             spec=SPEC_MASTER_DOC_RAG, system=system_content, user=q,
             surface="master_doc_rag", messages_override=messages,
+            return_last_on_failure=True,
             response_format_override={
                 "type": "json_schema",
                 "json_schema": _RESPONSE_SCHEMA,
@@ -1291,6 +1296,9 @@ def answer_question(
     answer, suggested_action, _guard = _enforce_output_guards(
         answer, suggested_action,
     )
+    from services.content_language import validate_output_language
+    if not _guard and not validate_output_language(answer, target_language):
+        return (_fallback_payload(target_language), {"error": "output_language"})
 
     debug: dict[str, Any] = {
         "model": _MODEL, "history_used": len(messages) - 2,

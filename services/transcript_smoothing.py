@@ -126,7 +126,7 @@ def _strip_polish_contextual(text: str) -> tuple[str, int]:
         if next_word and next_word.group(0).lower() in _POLISH_CONTEXT_PROTECTED.get(token, set()):
             return match.group(0)
         removed += 1
-        return ""
+        return " "
 
     return _POLISH_CONTEXT_RE.sub(replace, text), removed
 

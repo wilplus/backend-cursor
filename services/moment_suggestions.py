@@ -34,6 +34,7 @@ from services.prompts.moment_suggestions import STRUCT_SYSTEM as _STRUCT_SYSTEM
 from services.prompts.moment_suggestions import (
     EMPHASIS_SYSTEM as _EMPHASIS_SYSTEM,
 )
+from services.content_language import DEFAULT_CONTENT_LANGUAGE
 
 # Cap on the context-document excerpt per prompt. The stored text can reach
 # 40k chars and this rides every snippet's call, so the excerpt is bounded.
@@ -62,7 +63,7 @@ class _GenerationContext:
     decided_keys: set
     intent_keys: set
     take_texts: list
-    target_language: str
+    target_language: str = DEFAULT_CONTENT_LANGUAGE
 
 
 def _read_take_metrics(database: Any, session_id: str) -> tuple[list, dict]:

@@ -16292,15 +16292,6 @@ my setup costs me rational amount of money"; then, on the two screens drawn:
 (drawn: that model's line is left out and the host is told).
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
 
-**N652 · Coaching responses follow the immediate content language; UI locale is separate** (founder, the Claude Code chat, 16 November 2026, approved while implementing backend content-language routing). The interface locale may be controlled by IP or a manual override, but it never chooses the language of coaching content.
-
-1. **Every generated coaching response follows the immediate content:** an English recording or typed message gets English; a Polish recording or typed message gets Polish. IP, browser locale, and UI locale are never content-language evidence.
-2. **Raw speech stays raw:** persist the provider's `transcription_language` as first-class recording evidence, preserve raw transcripts, and never translate them.
-3. **Language is explicit downstream:** feedback, feedback-walk voice, post-recording questions, coach/chat prompts, and safe fallbacks receive the recording or typed-message target. Generated output gets one bounded target-language retry before the existing safe fallback.
-4. **Polish filler handling is meaning-preserving:** remove fixed spoken fillers (`yyy`, `eee`, `em`, `hm`, `hmm`) and handle `jakby`, `wiesz`, `znaczy`, `no`, and `więc` only in a sentence-leading, paused discourse context; retain meaningful grammar.
-
-No migration in this entry. The rules: `services/content_language.py`, `services/recording_transcription.py`, `services/transcript_smoothing.py`, and the recording/feedback/chat services that consume their contract.
-
 **N618 · The locked setup, corrected by the founder while using it: your own
 model is free; a story before the models; test your own chat; tell Will to
 edit it; and nine smaller things (founder, the Claude Code chat, 10 November
@@ -17509,3 +17500,12 @@ app!"). For N642 item 3, N643 item 4. The pinned prototype draws it.
    "Message Will" and what a tap on a part opens are unchanged.
 
 No migration in this entry. The rules: docs/LOCKS.md (the blank setup).
+
+**N652 · Coaching responses follow the immediate content language; UI locale is separate** (founder, the Claude Code chat, 16 November 2026, approved while implementing backend content-language routing). The interface locale may be controlled by IP or a manual override, but it never chooses the language of coaching content.
+
+1. **Every generated coaching response follows the immediate content:** an English recording or typed message gets English; a Polish recording or typed message gets Polish. IP, browser locale, and UI locale are never content-language evidence.
+2. **Raw speech stays raw:** persist the provider's `transcription_language` as first-class recording evidence, preserve raw transcripts, and never translate them.
+3. **Language is explicit downstream:** feedback, feedback-walk voice, post-recording questions, coach/chat prompts, and safe fallbacks receive the recording or typed-message target. Generated output gets one bounded target-language retry before the existing safe fallback.
+4. **Polish filler handling is meaning-preserving:** remove fixed spoken fillers (`yyy`, `eee`, `em`, `hm`, `hmm`) and handle `jakby`, `wiesz`, `znaczy`, `no`, and `więc` only in a sentence-leading, paused discourse context; retain meaningful grammar.
+
+No migration in this entry. The rules: `services/content_language.py`, `services/recording_transcription.py`, `services/transcript_smoothing.py`, and the recording/feedback/chat services that consume their contract.

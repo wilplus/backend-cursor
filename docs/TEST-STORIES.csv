@@ -1280,6 +1280,13 @@ O2  The retired bundled route (/v2/user/mlc2-consent) records no grant
 (410) and still lets a holder withdraw.","O1 -> test_get_and_put_answer_410_write_nothing_and_warn
 O2 -> test_post_records_nothing_and_answers_410_with_a_code_only
 test_delete_withdraws_a_held_grant_and_never_erases_it",No frontend caller of /v2/user/consent was found on 2026-10-19. Terms acceptance at sign-up is routes/auth.py and is not affected.
+tests/test_content_language.py,Story,"As a speaker, I want coaching output to follow the language of my recording or typed message, so that the interface locale never changes what Will says to me.","O1  Recording language takes precedence over typed-message evidence.
+O2  Typed English and Polish content is detected from the immediate message.
+O3  Generated output is validated and gets at most one target-language retry.","O1 -> test_content_language_uses_recording_before_typed_message
+O2 -> test_content_language_detects_polish_and_english_typed_messages
+O3 -> test_output_language_validation_distinguishes_polish_and_english,
+test_language_generation_retries_once_then_returns_valid_result,
+test_language_generation_is_bounded_when_both_outputs_fail",Founder decision N652: coaching content follows the immediate content; UI locale is separate.
 tests/test_corpus_mixed_queue.py,Story,"As the founder judging the training corpus, I want the clips really mixed: never the same speaker twice in a row, and the machine's high, neutral and low reads all there, without anything on screen hinting which is which.","O1  Never one speaker twice in a row while another is left in the round.
 O2  The machine's bands in equal measure: up to the same number from
 each, all of a scarce band.
@@ -4670,6 +4677,11 @@ O4  No words, no document.","O1 -> test_the_document_reads_only_the_latest_spoke
 O2 -> test_one_paragraph_per_slide_and_the_coachs_slide_fix_applies
 O3 -> test_a_document_over_the_cap_keeps_only_whole_pieces
 O4 -> test_no_words_builds_nothing",
+tests/test_transcript_smoothing_language.py,Story,"As a Polish speaker, I want spoken fillers removed without deleting meaningful grammar, so that my raw transcript remains faithful.","O1  Fixed Polish hesitations are removed only when Polish is known.
+O2  Contextual discourse fillers are removed only at paused sentence starts.
+O3  Meaningful Polish constructions and conjunctions remain unchanged.","O1 -> test_polish_fixed_fillers_are_removed_but_unknown_language_stays_safe
+O2 -> test_polish_discourse_fillers_are_removed_only_at_a_paused_sentence_start
+O3 -> test_polish_meaningful_grammar_and_conjunctions_are_preserved",Founder decision N652: Polish filler handling is meaning-preserving.
 tests/test_user_content_not_public.py,Story,"As a speaker, I want my recordings served only through short-lived signed links, so that a leaked link does not expose my voice forever.","O1  Each of the four stored snippet row shapes resolves to a signed link
 against its own bucket, never a URL under a public base; stored public
 URLs are re-signed on read.
