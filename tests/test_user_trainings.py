@@ -25,6 +25,7 @@ from flask import Flask, request
 
 from routes.v2 import user_sessions
 from services.db import db
+from services.user_trainings import _practice_summary
 
 SLIDES = {"topic": "T", "slides": [{"title": "A"}, {"title": "B"}]}
 
@@ -41,6 +42,7 @@ def test_trainings_group_by_talk_and_mark_ideal_ready():
     edits = {"ready": {0: "Edited.", 1: "Also edited."}, "half": {0: "Edited."}}
     with patch.object(db.takes, "list_user_arc_sessions", return_value=rows), \
             patch.object(db, "list_arc_batch_deliveries", return_value={}), \
+            patch.object(db, "get_coach_snippet_drafts_by_sessions", return_value={}), \
             patch.object(db, "get_coach_best_presentation_edits",
                          side_effect=lambda arc: edits[arc]), \
             patch("services.project_deletion.with_deletion_state",
@@ -56,6 +58,50 @@ def test_trainings_group_by_talk_and_mark_ideal_ready():
     assert cards["ready"]["take_count"] == 2
     assert cards["ready"]["ideal_ready"] is True
     assert cards["half"]["ideal_ready"] is False
+
+
+def test_practice_history_groups_exact_ranges_and_reads_delivery_not_attempts():
+    sessions = [
+        {**_take("a1", "a", 1), "intake_context": {
+            **SLIDES, "slides": [{}] * 10,
+            "slide_advances": [{"index": 0}, {"index": 4}],
+        }},
+        {**_take("a2", "a", 2), "intake_context": {
+            **SLIDES, "slides": [{}] * 10,
+            "slide_advances": [{"index": 0}, {"index": 4}],
+        }},
+        {**_take("b1", "a", 3), "intake_context": {
+            **SLIDES, "slides": [{}] * 10,
+            "slide_advances": [{"index": 5}, {"index": 9}],
+        }},
+    ]
+    drafts = {
+        "a2": [{"surfaced": True, "feedback_family": "rewrite_clarity"}],
+        "b1": [{"surfaced": True, "feedback_family": "confident_voice"}],
+    }
+
+    progress, chunks = _practice_summary(sessions, drafts, 10)
+
+    assert progress == 58
+    assert chunks == [
+        {"start_slide": 1, "end_slide": 5, "attempts": 2,
+         "delivery_label": "Not yet there", "latest_session_id": "a2"},
+        {"start_slide": 6, "end_slide": 10, "attempts": 1,
+         "delivery_label": "Strong delivery", "latest_session_id": "b1"},
+    ]
+
+
+def test_unpractised_slides_keep_project_progress_grounded():
+    sessions = [{**_take("only", "a", 1), "intake_context": {
+        **SLIDES, "slides": [{}] * 10,
+        "slide_advances": [{"index": 0}, {"index": 4}],
+    }}]
+    drafts = {"only": [{"surfaced": True,
+                         "feedback_family": "confident_voice"}]}
+
+    progress, _chunks = _practice_summary(sessions, drafts, 10)
+
+    assert progress == 45
 
 
 class _Rows:
