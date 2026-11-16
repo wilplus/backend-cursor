@@ -875,6 +875,7 @@ is theirs in the app, their questions join their bundles, and the
 widget, in its own tab too, learns where the first notice goes.
 O6  The first answer after the sign-up goes once to the email they signed
 up with, in the signed words.","O1 -> ChatWidgetTest::test_the_widget_learns_only_whose_chat_it_is_and_how_to_write
+O1 -> ChatWidgetTest::test_send_is_on_the_widget_read_and_on_start_when_the_recipe_has_one
 O2 -> ChatWidgetTest::test_the_first_message_makes_a_chat_in_my_list_like_any_other
 O3 -> ChatWidgetTest::test_the_visitor_taps_my_questions_then_writes_as_my_setup_allows
 O4 -> ChatWidgetTest::test_my_answer_waits_for_the_sign_up_and_no_one_else_reads_it
@@ -1003,6 +1004,17 @@ removed from the list of moments.","O1 -> test_transcript_is_released_only_after
 test_redaction_withholds_unanswered_transcript_from_the_payload
 O2 -> test_acoustic_features_are_released_only_after_a_committed_answer
 O3 -> test_the_allowlist_still_drops_everything_that_judges_the_speaker",Never-rule 2 (N1): no coach sees the machine's guess before answering.
+tests/test_coach_definition.py,Story,"As the founder building a speaking coach, I want a draft I can preview without saving it as live, and publish only when I say so, so a paste is checked and never run.","O1  A document with the wrong recording clock is refused, and a preview
+of it writes nothing.
+O2  A paste that calls eval is rejected and is not executed. A paste with
+the detector lines and nothing banned is checked.
+O3  A good document's preview lists its steps and writes nothing.
+O4  A digit in a fixed line, another line, a variant, or a choice is refused.
+O5  A saved draft is not the active coach until it is published.","O1 -> test_a_bad_clock_is_refused_and_preview_does_not_write
+O2 -> test_a_paste_that_calls_eval_is_rejected_and_not_executed
+O3 -> test_preview_of_a_good_document_lists_the_steps_and_writes_nothing
+O4 -> test_a_digit_in_a_line_a_variant_or_a_choice_is_refused
+O5 -> test_a_saved_draft_is_not_active_until_it_is_published",Chat Builder phase 1 (frontend PR 1427): the walk keeps today's constants unless this person's coach document is published.
 tests/test_coach_feedback_notice.py,Story,"As a speaker, I want one message when my coach is done with my Take, not one for every answer, so that my phone buzzes once and only when I have not already seen it.","O1  A coach who leaves a word and answers four moments sends one message,
 after the last share, naming the Take of the last share; the job of
 an earlier share sends nothing, and a job that runs twice sends once.

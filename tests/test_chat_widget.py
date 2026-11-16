@@ -26,6 +26,7 @@ OUTCOME
   O6  The first answer after the sign-up goes once to the email they signed
       up with, in the signed words.
 PROVES   O1 -> ChatWidgetTest::test_the_widget_learns_only_whose_chat_it_is_and_how_to_write
+         O1 -> ChatWidgetTest::test_send_is_on_the_widget_read_and_on_start_when_the_recipe_has_one
          O2 -> ChatWidgetTest::test_the_first_message_makes_a_chat_in_my_list_like_any_other
          O3 -> ChatWidgetTest::test_the_visitor_taps_my_questions_then_writes_as_my_setup_allows
          O4 -> ChatWidgetTest::test_my_answer_waits_for_the_sign_up_and_no_one_else_reads_it

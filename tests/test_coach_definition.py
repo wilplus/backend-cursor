@@ -1,4 +1,23 @@
-"""The speaking-coach document is stored and checked, and a preview writes nothing."""
+"""
+STORY    As the founder building a speaking coach, I want a draft I can
+         preview without saving it as live, and publish only when I say so,
+         so a paste is checked and never run.
+OUTCOME
+  O1  A document with the wrong recording clock is refused, and a preview
+      of it writes nothing.
+  O2  A paste that calls eval is rejected and is not executed. A paste with
+      the detector lines and nothing banned is checked.
+  O3  A good document's preview lists its steps and writes nothing.
+  O4  A digit in a fixed line, another line, a variant, or a choice is refused.
+  O5  A saved draft is not the active coach until it is published.
+PROVES   O1 -> test_a_bad_clock_is_refused_and_preview_does_not_write
+         O2 -> test_a_paste_that_calls_eval_is_rejected_and_not_executed
+         O3 -> test_preview_of_a_good_document_lists_the_steps_and_writes_nothing
+         O4 -> test_a_digit_in_a_line_a_variant_or_a_choice_is_refused
+         O5 -> test_a_saved_draft_is_not_active_until_it_is_published
+WHY      Chat Builder phase 1 (frontend PR 1427): the walk keeps today's
+         constants unless this person's coach document is published.
+"""
 from services import coach_definition as coach
 
 
