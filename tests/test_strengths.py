@@ -219,6 +219,88 @@ def test_the_day_before_my_talk_one_strength_comes_back(me):
     assert st.today(db, "u", now=on_10) == []  # once
 
 
+def test_today_reuses_plan_and_overlaps_independent_reads(monkeypatch):
+    """The common no-reminder answer stays empty without nine serial reads."""
+    from collections import Counter
+    from threading import Barrier
+
+    from flask import Flask
+
+    from services import life_store
+
+    principal = "11111111-1111-4111-8111-111111111111"
+    plan_wave = Barrier(2, timeout=2)
+    local_day_wave = Barrier(2, timeout=2)
+    calls: list[str] = []
+    writes: list[str] = []
+
+    class _Takes:
+        def list_user_arc_sessions(self, user_id):
+            calls.append("takes")
+            return []
+
+    class _TodayDb:
+        def __init__(self):
+            self.client = self
+            self.takes = _Takes()
+
+        def get_owner_principal_for_user(self, user_id):
+            calls.append("principal")
+            return {"id": principal}
+
+        def rpc(self, name, params):
+            assert name == "feature_is_on_v1"
+            feature = str(params["p_feature"])
+            calls.append(f"ring:{feature}")
+            if feature == "plan":
+                plan_wave.wait()
+            return SimpleNamespace(execute=lambda: SimpleNamespace(data=True))
+
+        def get_open_plan(self, user_id):
+            calls.append("open_plan")
+            plan_wave.wait()
+            return {"status": "active", "started_at": "2026-11-01T00:00:00+00:00",
+                    "facts": {"mode": "again"}}
+
+        def get_voice_notebook_consent(self, user_id):
+            calls.append("time_zone")
+            local_day_wave.wait()
+            return {"decision": "yes", "time_zone": "UTC"}
+
+        def insert_lounge_messages(self, user_id, rows):
+            writes.append("messages")
+            return rows
+
+    def talk_dates(user_id):
+        calls.append("talk_dates")
+        local_day_wave.wait()
+        return []
+
+    monkeypatch.setattr(life_store, "talk_dates", talk_dates)
+    monkeypatch.setattr(life_store, "mark_talk_reminded",
+                        lambda *_a, **_k: writes.append("reminder") or True)
+    db = _TodayDb()
+    app = Flask(__name__)
+    with app.test_request_context("/v2/strengths/today"):
+        assert st.today(db, "u", now=datetime(2026, 11, 10, 7, 0,
+                                              tzinfo=timezone.utc)) == []
+
+    # The production trace made nine reads here: the principal and open plan
+    # were each read twice, and every call waited for the previous one.  The
+    # same answer now needs seven calls; each barrier also proves its pair ran
+    # in one wave rather than sequentially.
+    assert Counter(calls) == Counter({
+        "principal": 1,
+        "ring:strengths": 1,
+        "ring:plan": 1,
+        "open_plan": 1,
+        "takes": 1,
+        "time_zone": 1,
+        "talk_dates": 1,
+    })
+    assert writes == []
+
+
 def test_without_the_ring_or_in_a_crisis_nothing(me):
     store, reads, seen = me
     db = _Db()

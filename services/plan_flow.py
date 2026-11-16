@@ -392,6 +392,22 @@ def _onboarding(plan: dict, done: int) -> bool:
     return plan.get("status") == "active" and _first_plan(plan) and done == 0
 
 
+def onboarding_from_open_plan(database: Any, user_id: Any, plan: Any) -> bool:
+    """The onboarding answer for an already-authorised, already-read plan.
+
+    Opening surfaces often need the same open plan for their own work.  This
+    keeps the existing plan semantics while letting those callers share that
+    row instead of asking the database for it again.  The caller still owns
+    the plan feature check; :func:`onboarding` remains the complete gate for
+    callers without that state.
+    """
+    if not isinstance(plan, dict) or not plan:
+        return False
+    done = _done(plan, _takes(database, str(user_id))) \
+        if plan.get("status") == "active" else 0
+    return _onboarding(plan, done)
+
+
 def onboarding(database: Any, user_id: Any) -> bool:
     """Is the person being onboarded (N243)? While they are, the principles
     (the voice notebook, the Sunday note, life goals) show nothing. False
@@ -401,10 +417,7 @@ def onboarding(database: Any, user_id: Any) -> bool:
         if not enabled(database, user_id):
             return False
         plan = database.get_open_plan(str(user_id))
-        if not plan:
-            return False
-        done = _done(plan, _takes(database, user_id)) if plan.get("status") == "active" else 0
-        return _onboarding(plan, done)
+        return onboarding_from_open_plan(database, user_id, plan)
     except Exception as error:  # noqa: BLE001 -- an unread plan holds nothing back
         logger.warning("plan: onboarding not read user=%s: %s", user_id, error)
         return False
