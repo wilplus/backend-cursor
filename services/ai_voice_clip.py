@@ -132,9 +132,8 @@ def _recording_language(database: Any, practice: dict, snippet: dict) -> str:
         if "transcription_language" in recording:
             return require_language(recording.get("transcription_language"))
     for source in (practice, snippet):
-        for key in ("transcription_language", "language"):
-            if source.get(key) is not None:
-                return require_language(source.get(key))
+        if source.get("transcription_language") is not None:
+            return require_language(source.get("transcription_language"))
     return require_language(None)
 
 

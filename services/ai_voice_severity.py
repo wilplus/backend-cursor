@@ -110,9 +110,9 @@ def own_medians(take_snippets: Iterable[dict], language: Optional[str] = None) -
     out: dict[str, Optional[float]] = {}
     rows = list(take_snippets or [])
     if language is None:
-        language = next((row.get("transcription_language") or row.get("language")
+        language = next((row.get("transcription_language")
                          for row in rows if isinstance(row, dict)
-                         and (row.get("transcription_language") or row.get("language"))), None)
+                         and row.get("transcription_language")), None)
     # Legacy shadow/walk callers predate the recording-language field. The
     # live AI-voice job always passes the persisted value explicitly.
     language = language or "en"
@@ -172,8 +172,7 @@ def filler_severity(per_100: Optional[float], median: Optional[float]) -> float:
 
 def severities(snippet: dict, medians: dict, *, sentence: Optional[str] = None,
                language: Optional[str] = None) -> dict[str, float]:
-    language = require_language(language or (snippet or {}).get("transcription_language")
-                                or (snippet or {}).get("language") or "en")
+    language = require_language(language or (snippet or {}).get("transcription_language") or "en")
     text = sentence if sentence is not None else (snippet or {}).get("transcript")
     filler_score = filler_severity(fillers_per_100(text, language),
                                    medians.get("fillers_per_100"))
