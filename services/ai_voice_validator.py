@@ -15,20 +15,22 @@ only when every check passes:
                      read from the audio's silence (Whisper's word times
                      swallow short silences)
               stress: the target phrase louder than the rest, not shouted
-              fillers: not one hesitation heard in the clip
+  fillers: not one hesitation heard in the clip, using the recording language
 
 Every threshold is a named constant here, so tuning is one reviewed edit.
 Nothing in the result is ever shown to the speaker (AC-9).
 """
 from __future__ import annotations
 
-import re
 import statistics
 from typing import Any, Optional
 
 from config import Config
+from services.ai_voice_language import require as require_language
+from services.ai_voice_language import tokens as word_tokens
+from services.rater_languages import normalize_provider_language
 
-VALIDATOR_VERSION = "ai-voice-validator-v1"
+VALIDATOR_VERSION = "ai-voice-validator-v2"
 
 CLIPPED_SAMPLE = 0.999
 MAX_CLIPPED_SHARE = 0.001
@@ -48,7 +50,7 @@ _FRAME_S = 0.02
 
 
 def _tokens(text: str) -> list[str]:
-    return re.findall(r"[a-z0-9']+", str(text or "").lower())
+    return word_tokens(text)
 
 
 def _word_error_rate(said: list[str], heard: list[str]) -> float:
@@ -182,25 +184,25 @@ def _check_stress(words: list[dict], dbs: list[float], index: int, phrase: str) 
     return {"passed": not failed, "measurements": m, "failed": failed}
 
 
-def _check_fillers(words: list[dict]) -> dict:
-    """Not one hesitation in what was heard (the English list of the
-    transcript fence: the AI lane speaks and is re-heard in English)."""
+def _check_fillers(words: list[dict], language: str) -> dict:
+    """Not one hesitation in what was heard in the recording's language."""
     from services.transcript_smoothing import hesitations_for
-    fillers = set(hesitations_for("en"))
+    fillers = set(hesitations_for(language))
     heard = sum(1 for w in words if w["t"] in fillers)
     return {"passed": heard == 0, "measurements": {"fillers_heard": heard},
             "failed": ["fillers_heard"] if heard else []}
 
 
 def check_exercise(problem: str, *, words: list[dict], dbs: list[float],
-                   phrase: Optional[str], original_wpm: Optional[float]) -> dict:
+                   phrase: Optional[str], original_wpm: Optional[float],
+                   language: str) -> dict:
     """``{"passed", "measurements", "failed"}`` for the one exercise."""
     if len(words) < 3:
         return {"passed": False, "measurements": {}, "failed": ["no_timed_words"]}
     if problem == "pace":
         return _check_pace(words, original_wpm)
     if problem == "fillers":
-        return _check_fillers(words)
+        return _check_fillers(words, language)
     if problem not in ("pause", "stress"):
         return {"passed": False, "measurements": {}, "failed": ["unknown_exercise"]}
     index = _find_phrase(words, phrase or "")
@@ -214,13 +216,15 @@ def check_exercise(problem: str, *, words: list[dict], dbs: list[float],
 def validate(*, audio: bytes, transcription: Optional[dict], spoken_words: list[str],
              exercise: dict, original_wpm: Optional[float],
              original_duration_s: Optional[float], decode=None,
-             sample_rate: int = 16000) -> dict:
+             sample_rate: int = 16000, language: str) -> dict:
     """The brief's result shape: ``passed``, ``exercise``, ``measurements``,
     ``failed_checks``, ``reason`` (the first failed check), ``version``."""
+    language = require_language(language)
     problem = str((exercise or {}).get("exercise") or "")
     result: dict[str, Any] = {"passed": False, "exercise": problem,
                               "measurements": {}, "failed_checks": [],
-                              "reason": None, "version": VALIDATOR_VERSION}
+                              "reason": None, "version": VALIDATOR_VERSION,
+                              "language": language}
     failed: list[str] = result["failed_checks"]
     m: dict[str, Any] = result["measurements"]
 
@@ -257,6 +261,9 @@ def validate(*, audio: bytes, transcription: Optional[dict], spoken_words: list[
             if transcription is None:
                 failed.append("not_transcribed")
             else:
+                heard_language = normalize_provider_language(transcription.get("language"))
+                if heard_language and heard_language != language:
+                    failed.append("language_mismatch")
                 heard = _tokens(str(transcription.get("transcript") or ""))
                 wer = _word_error_rate(list(spoken_words), heard)
                 m["word_error_rate"] = round(wer, 3)
@@ -265,7 +272,7 @@ def validate(*, audio: bytes, transcription: Optional[dict], spoken_words: list[
                 verdict = check_exercise(
                     problem, words=_timed_words(transcription), dbs=dbs,
                     phrase=(exercise or {}).get("target_phrase"),
-                    original_wpm=original_wpm)
+                    original_wpm=original_wpm, language=language)
                 m.update(verdict["measurements"])
                 failed.extend(verdict["failed"])
     result["passed"] = not failed

@@ -38,7 +38,7 @@ SENTENCE = ("We think the timing matters because the window closes "
             "once the incumbents match our price")
 
 
-def _transcribe(audio: bytes):
+def _transcribe(audio: bytes, language: str):
     """The clip re-heard by Whisper, with word times, called directly: the
     app's own transcription path needs its database, which a laptop run
     doesn't have (and must not touch)."""
@@ -47,7 +47,7 @@ def _transcribe(audio: bytes):
     if client is None:
         return None
     resp = client.audio.transcriptions.create(
-        model="whisper-1", file=("smoke.mp3", audio, "audio/mpeg"), language="en",
+        model="whisper-1", file=("smoke.mp3", audio, "audio/mpeg"), language=language,
         response_format="verbose_json", timestamp_granularities=["word"])
     words = [{"word": w.word, "start": w.start, "end": w.end}
              for w in (getattr(resp, "words", None) or [])]
@@ -67,19 +67,20 @@ def _one_clip(client, voice_id: str, args, problem: str, phrase, out_dir: Path) 
     t0 = started = time.monotonic()
     exercise = {"exercise": problem, "target_phrase": phrase if problem != "pace" else None}
     request = ai_voice_prompt.build(sentence=args.sentence, exercise=exercise,
-                                    practice_id=f"smoke-{problem}")
+                                    practice_id=f"smoke-{problem}", language=args.language)
     clock["build"] = _ms(started)
     started = time.monotonic()
     speech = client.speak(voice_id=voice_id, body=request["body"])
     clock["generation"] = _ms(started)
     (out_dir / f"{problem}.mp3").write_bytes(speech.audio)
     started = time.monotonic()
-    heard = _transcribe(speech.audio)
+    heard = _transcribe(speech.audio, args.language)
     clock["re_transcription"] = _ms(started)
     started = time.monotonic()
     result = validate(audio=speech.audio, transcription=heard,
                       spoken_words=request["spoken_words"], exercise=exercise,
-                      original_wpm=args.original_wpm, original_duration_s=None)
+                      original_wpm=args.original_wpm, original_duration_s=None,
+                      language=args.language)
     clock["validation"] = _ms(started)
     clock["end_to_end"] = _ms(t0)
     return {"prepared_text": request["prepared_text"], "latency_ms": clock,
@@ -92,6 +93,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--sample", required=True, type=Path)
     parser.add_argument("--sentence", default=SENTENCE)
+    parser.add_argument("--language", choices=("en", "pl"), default="en")
     parser.add_argument("--original-wpm", type=float, default=175.0)
     parser.add_argument("--i-consent-this-is-my-own-voice", action="store_true")
     parser.add_argument("--keep-voice", action="store_true")
@@ -123,7 +125,7 @@ def main() -> int:
             name="willab-smoke", sample=sample, filename=args.sample.name,
             content_type=mimetypes.guess_type(args.sample.name)[0] or "audio/mpeg")
         report["clone_ms"] = _ms(started)
-        phrase = ai_voice_severity.target_phrase(args.sentence)
+        phrase = ai_voice_severity.target_phrase(args.sentence, language=args.language)
         for problem in ("pace", "pause", "stress"):
             report[problem] = _one_clip(client, voice_id, args, problem, phrase, out_dir)
             row = report[problem]
