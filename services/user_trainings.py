@@ -18,6 +18,7 @@ private implementation evidence.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable, Optional
 
 
@@ -27,6 +28,8 @@ _DELIVERY_LABELS = (
     (40, "Almost"),
     (0, "Not yet there"),
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _context(session: dict) -> dict:
@@ -229,6 +232,7 @@ def list_trainings(database: Any, user_id: Any, *, every_project: bool) -> list:
     except Exception:
         # Keep the project list available if feedback evidence is briefly
         # unreadable; the conservative fallback is "Not yet there".
+        logger.warning("practice feedback evidence unreadable", exc_info=True)
         drafts_by_session = {}
     if every_project:
         batched = database.get_coach_best_presentation_edits_for_arcs(list(by_arc.keys()))
