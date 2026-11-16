@@ -1,7 +1,7 @@
-"""Thin wrapper around OpenAI's ``chat.completions.create``.
+"""Thin wrapper around OpenAI-compatible ``chat.completions.create``.
 
 One place that:
-  • Loads the OpenAI client once + handles the "client unavailable"
+  • Resolves the approved provider + handles the "client unavailable"
     fallback uniformly across every caller.
   • Forwards the spec (model / temperature / max_tokens / response_format)
     from ``services.llm_config`` without each caller having to know
@@ -54,6 +54,7 @@ class LLMResult:
     """
     text: str
     parsed: Optional[Any]
+    provider: str
     model: str
     duration_ms: int
     prompt_tokens: Optional[int]
@@ -151,46 +152,49 @@ def chat_complete(
         ``None`` on any failure (client unavailable, network error,
         empty response, malformed JSON when JSON was expected).
     """
+    response_format = response_format_override or spec.response_format
+    from services.ml_surface_contracts import resolve_surface_model
+    model = _model_the_promotion_gate_allows(
+        surface, resolve_surface_model(surface, spec.model), spec.model,
+    )
+    from services.chat_provider import build_chat_client, resolve_chat_target
+    target = resolve_chat_target(surface, model)
+
+    # Provider identity is resolved before authorization, but no client is
+    # constructed until the permit has been issued.
     authorization = None
     provider_permit_id = None
     try:
         from services.authorized_provider import authorize_protected_generation
-        authorization, provider_permit_id = authorize_protected_generation(surface)
+        authorization, provider_permit_id = authorize_protected_generation(
+            surface, provider=target.provider,
+        )
     except Exception:
-        # A protected call must fail closed.  In particular, an authority
-        # failure may never be converted into the wrapper's usual optional
-        # ``None`` fallback.
         raise
 
-    # Lazy import — keep this module importable even when openai_service
-    # isn't (test contexts, scripts).
     try:
-        from services.openai_service import OpenAIService
-        service = OpenAIService()
+        client = build_chat_client(target)
     except Exception as e:
         if authorization is not None:
             authorization.record_provider_event(
                 provider_permit_id, "failed", error_code=type(e).__name__,
             )
         logger.warning(
-            "llm.chat surface=%s init_failed err=%s", surface, e,
+            "llm.chat surface=%s provider=%s init_failed err=%s",
+            surface, target.provider, e,
         )
         return None
-    if not service.client:
+    if not client:
         if authorization is not None:
             authorization.record_provider_event(
                 provider_permit_id, "failed", error_code="PROVIDER_UNAVAILABLE",
             )
         logger.warning(
-            "llm.chat surface=%s client_unavailable", surface,
+            "llm.chat surface=%s provider=%s client_unavailable",
+            surface, target.provider,
         )
         return None
-
-    response_format = response_format_override or spec.response_format
-    from services.ml_surface_contracts import resolve_surface_model
-    model = _model_the_promotion_gate_allows(
-        surface, resolve_surface_model(surface, spec.model), spec.model,
-    )
+    model = target.model
     create_kwargs: dict[str, Any] = {
         "model": model,
         "messages": messages_override or [
@@ -207,13 +211,13 @@ def chat_complete(
 
     t0 = time.perf_counter()
     try:
-        response = service.client.chat.completions.create(**create_kwargs)
+        response = client.chat.completions.create(**create_kwargs)
     except Exception as e:
         duration_ms = int((time.perf_counter() - t0) * 1000)
         logger.warning(
-            "llm.chat surface=%s model=%s duration_ms=%d "
+            "llm.chat surface=%s provider=%s model=%s duration_ms=%d "
             "user=%s call_failed err=%s",
-            surface, model, duration_ms, user_id or "-", e,
+            surface, target.provider, model, duration_ms, user_id or "-", e,
         )
         if authorization is not None:
             authorization.record_provider_event(
@@ -237,7 +241,11 @@ def chat_complete(
             provider_permit_id,
             "completed",
             provider_operation_ref=str(getattr(response, "id", "") or "") or None,
-            metadata={"surface": surface, "model": model},
+            metadata={
+                "surface": surface,
+                "provider": target.provider,
+                "model": model,
+            },
         )
 
     # Cost ledger (token-pricing Phase 0). THE hook that covers every surface
@@ -251,6 +259,7 @@ def chat_complete(
         from services.llm_usage import record_chat_usage
         record_chat_usage(
             surface=surface,
+            provider=target.provider,
             model=model,
             tokens_in=prompt_tokens,
             tokens_out=completion_tokens,
@@ -264,9 +273,9 @@ def chat_complete(
     raw = (response.choices[0].message.content or "").strip()
     if not raw:
         logger.warning(
-            "llm.chat surface=%s model=%s duration_ms=%d "
+            "llm.chat surface=%s provider=%s model=%s duration_ms=%d "
             "user=%s empty_response",
-            surface, model, duration_ms, user_id or "-",
+            surface, target.provider, model, duration_ms, user_id or "-",
         )
         return None
 
@@ -287,15 +296,16 @@ def chat_complete(
             # text. They can check ``parsed is None`` to detect.
 
     logger.info(
-        "llm.chat surface=%s model=%s duration_ms=%d "
+        "llm.chat surface=%s provider=%s model=%s duration_ms=%d "
         "user=%s prompt_tokens=%s completion_tokens=%s",
-        surface, model, duration_ms, user_id or "-",
+        surface, target.provider, model, duration_ms, user_id or "-",
         prompt_tokens, completion_tokens,
     )
 
     return LLMResult(
         text=raw,
         parsed=parsed,
+        provider=target.provider,
         model=model,
         duration_ms=duration_ms,
         prompt_tokens=prompt_tokens,

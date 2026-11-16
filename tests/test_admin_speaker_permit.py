@@ -122,7 +122,9 @@ def test_directives_reach_the_permit_through_the_real_llm_wrapper(
                         lambda **_: "ctx")
     asked: list = []
 
-    def refuse_permit(self, operation_kind, *, manifest, idempotency_key):
+    def refuse_permit(
+        self, operation_kind, *, manifest, idempotency_key, provider=None,
+    ):
         asked.append((self.coordinates.acquisition_principal_id, manifest["surface"]))
         raise ProcessingAuthorizationError("PROVIDER_PERMIT_INVALID", "No permit.", 403)
 

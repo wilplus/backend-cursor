@@ -27,7 +27,9 @@ class _Permit:
         self.coordinates = ProviderCoordinates("principal-1", "take-1", "rec-1")
         self.keys: list[str] = []
 
-    def authorize_operation(self, _kind, *, manifest, idempotency_key):
+    def authorize_operation(
+        self, _kind, *, manifest, idempotency_key, provider=None,
+    ):
         self.keys.append(idempotency_key)
         return {"permit_id": f"permit-{len(self.keys)}"}
 

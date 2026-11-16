@@ -40,7 +40,7 @@ class _ProtectedCallScope:
     _counts: dict[str, int] = field(default_factory=dict)
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
-    def next_key(self, surface: str) -> str:
+    def next_key(self, surface: str, provider: str) -> str:
         safe_surface = "".join(
             character if character.isalnum() or character in "-_" else "-"
             for character in str(surface or "unknown")
@@ -48,7 +48,14 @@ class _ProtectedCallScope:
         with self._lock:
             ordinal = self._counts.get(safe_surface, 0) + 1
             self._counts[safe_surface] = ordinal
-        return f"{self.idempotency_prefix}:generation:{safe_surface}:{ordinal}"
+        safe_provider = "".join(
+            character if character.isalnum() or character in "-_" else "-"
+            for character in str(provider or "unknown")
+        )[:40]
+        return (
+            f"{self.idempotency_prefix}:generation:{safe_provider}:"
+            f"{safe_surface}:{ordinal}"
+        )
 
 
 _protected_call_scope: ContextVar[_ProtectedCallScope | None] = ContextVar(
@@ -85,7 +92,7 @@ def scoped_adapter() -> "AuthorizedProviderAdapter | None":
     return scope.adapter if scope is not None else None
 
 
-def authorize_protected_generation(surface: str) -> tuple[
+def authorize_protected_generation(surface: str, *, provider: str = "openai") -> tuple[
     ProcessingAuthorizationService | None, str | None,
 ]:
     """Issue the per-call permit for a protected language-model operation."""
@@ -99,7 +106,8 @@ def authorize_protected_generation(surface: str) -> tuple[
             "purpose": "recording_feedback",
             "surface": str(surface),
         },
-        idempotency_key=scope.next_key(surface),
+        idempotency_key=scope.next_key(surface, provider),
+        provider=provider,
     )
     permit_id = str((permit or {}).get("permit_id") or "") or None
     scope.adapter.authorization.record_provider_event(permit_id, "started")
@@ -320,7 +328,7 @@ class AuthorizedProviderAdapter:
 
     def authorize_operation(
         self, operation_kind: str, *, manifest: Mapping[str, Any],
-        idempotency_key: str,
+        idempotency_key: str, provider: str | None = None,
     ) -> dict | None:
         """Permit boundary for generation/coach operations implemented by an
         existing domain service. The caller still performs the operation, but
@@ -329,7 +337,7 @@ class AuthorizedProviderAdapter:
             acquisition_principal_id=self.coordinates.acquisition_principal_id,
             take_id=self.coordinates.take_id,
             recording_id=self.coordinates.recording_id,
-            provider=(
+            provider=provider or (
                 "cloudflare_r2" if operation_kind == "audio_download"
                 else "willab_coach" if operation_kind == "coach_delivery"
                 else "openai"

@@ -821,6 +821,16 @@ O4  The bot's reply is saved under my turn even when my browser's clock
 runs ahead of the server's, so a reload keeps the order I saw.","O1, O2 -> test_a_turn_is_saved_once_and_its_choices_come_back
 O3     -> test_the_answer_still_comes_when_saving_fails
 O4     -> test_the_reply_is_saved_under_the_turn_it_answers",Founder #2: bubbles must never disappear; founder 2026-10-20: the chat keeps the order it shows. The harness is tests/chat_route_fakes.py; what the chat answers is pinned in test_chat_answers.py.
+tests/test_chat_provider.py,Story,"As the founder, I can compare and activate Mistral one text surface at a time without moving Whisper, strong reasoning, or an unapproved production path away from OpenAI.","O1  OpenAI remains the default and strong-model calls remain on OpenAI.
+O2  Only an explicitly allowed cheap-model surface selects Mistral.
+O3  Missing Mistral configuration never silently falls back to OpenAI.
+O4  The speaker's provider permit and usage record name Mistral before the
+provider client is built.","O1 -> test_openai_is_the_default_even_when_mistral_is_configured,
+test_only_an_allowlisted_cheap_surface_moves_to_mistral
+O2 -> test_only_an_allowlisted_cheap_surface_moves_to_mistral,
+test_mistral_uses_the_compatible_endpoint_without_hiding_its_identity
+O3 -> test_missing_mistral_credentials_never_fall_back_to_openai
+O4 -> test_chat_complete_names_mistral_before_building_the_client","Provider portability is useful only when it preserves the live loop, processing authorization, and a one-variable rollback path."
 tests/test_chat_safety.py,Story,"As a person in a chat with someone else, I want to block them and to report what they sent, so that I stop hearing from someone abusive and the founder can act on it; and as the founder, I want every report in front of me at once.","O1  When I block the other person, what they send from then on never
 reaches me: not in my chat, not as my list's last line, not as a push,
 and not after I unblock either. They are not told: their own chat

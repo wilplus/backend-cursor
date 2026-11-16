@@ -86,6 +86,7 @@ def reset_breaker() -> None:
 def record_chat_usage(
     *,
     surface: str,
+    provider: str = "openai",
     model: Optional[str],
     tokens_in: Optional[int],
     tokens_out: Optional[int],
@@ -96,13 +97,17 @@ def record_chat_usage(
     """Record one chat-completion call. Best-effort; never raises."""
     try:
         from services.llm_pricing import cost_for_chat, PRICE_VERSION
+        provider_name = _text(provider) or "unknown"
         _write({
             "surface": surface,
+            "provider": provider_name,
             "model": (model or "").strip() or "unknown",
             "tokens_in": _int(tokens_in),
             "tokens_out": _int(tokens_out),
-            "cost_usd": cost_for_chat(model, tokens_in, tokens_out),
-            "price_version": PRICE_VERSION,
+            "cost_usd": cost_for_chat(
+                model, tokens_in, tokens_out, provider=provider_name,
+            ),
+            "price_version": PRICE_VERSION if provider_name == "openai" else None,
             "user_id": _text(user_id),
             "session_id": _text(session_id),
             "arc_id": _text(arc_id),
@@ -116,6 +121,7 @@ def record_response_usage(
     *,
     surface: str,
     model: Optional[str],
+    provider: str = "openai",
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
     arc_id: Optional[str] = None,
@@ -135,6 +141,7 @@ def record_response_usage(
         usage = getattr(response, "usage", None)
         record_chat_usage(
             surface=surface,
+            provider=provider,
             model=model,
             tokens_in=getattr(usage, "prompt_tokens", None) if usage else None,
             tokens_out=(
@@ -168,6 +175,7 @@ def record_audio_usage(
         from services.llm_pricing import cost_for_audio, PRICE_VERSION
         _write({
             "surface": surface,
+            "provider": "openai",
             "model": model,
             "audio_seconds": _float(seconds),
             "cost_usd": cost_for_audio(seconds),
