@@ -17594,3 +17594,27 @@ No migration in this entry. The rules: frontend layout primitives and the presen
 4. **There is one action rail.** Chips, composer and recording action use the shared stacked chat controls and the shared width from N659; no floating or parallel chip column is introduced.
 
 No migration in this entry. The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N661 · The iPhone app's version 1.1 is one build: the dump screen, the native
+Take recorder and two loading fixes, with one native recorder (founder, the
+Claude Code chat, 17 November 2026: "Yes" to "Shall I add the two loading
+fixes to 1.1 and tell both sessions to share one recorder?").** For N365,
+N506, N507 and N655:
+1. **One version, one review.** The native dump screen (N506, N507), the
+native Take recorder (N655) and the two loading fixes below go to Apple
+together as version 1.1, after the founder has built it in Xcode and tried
+it on their iPhone.
+2. **The launch screen stays until the chat has drawn.** No blank white page
+between the launch screen and the chat. It never stays longer than a few
+seconds, whatever the website does.
+3. **A built-in page for when the website cannot be reached** (no signal):
+it says so and tries again. Its words wait for the founder's signature
+(Never 4).
+4. **One native recorder.** The dump screen's recorder and the Take's
+recorder share one core, with one owner of the phone's audio session, so the
+two never fight over the microphone. The two upload queues stay separate:
+the Take's guards the loop (N556).
+5. **One microphone sentence** for both, signed once; N507 item 4's draft
+still waits for the founder's signature.
+No new words are signed here. No migration. No rules page: the app's shell
+has none; each screen's rules page gets its line with its build.
