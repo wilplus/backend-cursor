@@ -17596,25 +17596,50 @@ No migration in this entry. The rules: frontend layout primitives and the presen
 No migration in this entry. The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
 
 **N661 · The iPhone app's version 1.1 is one build: the dump screen, the native
-Take recorder and two loading fixes, with one native recorder (founder, the
+Take recorder and a launch-screen fix, with one native recorder (founder, the
 Claude Code chat, 17 November 2026: "Yes" to "Shall I add the two loading
-fixes to 1.1 and tell both sessions to share one recorder?").** For N365,
-N506, N507 and N655:
+fixes to 1.1 and tell both sessions to share one recorder?"; then "But do the
+fixes that are strictly technical and do not touch the design or the look
+cause we are working on this now and don't want to have two concurrent
+builds").** For N365, N506, N507, N524 and N655:
 1. **One version, one review.** The native dump screen (N506, N507), the
-native Take recorder (N655) and the two loading fixes below go to Apple
+native Take recorder (N655) and the launch-screen fix below go to Apple
 together as version 1.1, after the founder has built it in Xcode and tried
 it on their iPhone.
 2. **The launch screen stays until the chat has drawn.** No blank white page
 between the launch screen and the chat. It never stays longer than a few
 seconds, whatever the website does.
-3. **A built-in page for when the website cannot be reached** (no signal):
-it says so and tries again. Its words wait for the founder's signature
-(Never 4).
+3. **Only strictly technical fixes now:** nothing that changes the design or
+the look, while the founder's design work is under way. So the built-in page
+for when the website cannot be reached (no signal), offered the same day,
+waits: it is a new screen with new words.
 4. **One native recorder.** The dump screen's recorder and the Take's
 recorder share one core, with one owner of the phone's audio session, so the
 two never fight over the microphone. The two upload queues stay separate:
 the Take's guards the loop (N556).
-5. **One microphone sentence** for both, signed once; N507 item 4's draft
-still waits for the founder's signature.
+5. **One microphone sentence** for both: the one signed in N524.
 No new words are signed here. No migration. No rules page: the app's shell
 has none; each screen's rules page gets its line with its build.
+
+**N662 · The native Take recorder's plan is approved: the screens stay, 64 kbps,
+the microphone the phone picks, a switch on for the founder first (founder,
+the Claude Code chat, 17 November 2026: "OK to the shape. 64 kbps. The mic
+the phone picks. The switch, on for me first.", on the plan page "Native Take
+Recording" <https://claude.ai/artifact/17dteQrYzWhzv3YGj5UiQj>).** For N655,
+N661 and N365:
+1. **The shape:** in the iPhone app only the capture moves native, behind a
+plugin with the web recorder's own interface; every recording screen, word,
+slide, clock, upload and retry stays the web code it is. The one line that
+changes in the locked `LabOverlay.tsx` (which recorder it uses) is approved
+by this entry, with no visible change.
+2. **Quality:** AAC in an m4a file, mono, 48 kHz, **64 kbps**, with the
+phone-call processing off.
+3. **Earbuds:** the Take records from **whichever microphone the phone picks**,
+as today, so the earbuds line (N372) still shows; the phone reports the kind
+of microphone, never its name.
+4. **A switch:** a ring row, `native_take`, **on for the founder first**.
+Off, or in an app version without the plugin, the web recorder records.
+No new words. The backend reads m4a Takes before the app ships them. No
+migration in this entry. The rules: frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+gets its line with the build.
