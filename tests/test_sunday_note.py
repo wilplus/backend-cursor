@@ -127,7 +127,10 @@ def founder(monkeypatch):
 
     def model(**kw):
         if "Decide whether" in kw["system"]:
-            return SimpleNamespace(text="{}", parsed={"asks": "pattern" in kw["user"]})
+            return SimpleNamespace(
+                text="{}",
+                parsed={"asks": "pattern" in kw["user"] or "wzorz" in kw["user"]},
+            )
         seen["users"].append(kw["user"])
         return SimpleNamespace(text="{}", parsed=dict(seen["case"]))
     monkeypatch.setattr("services.llm.chat_complete", model)
@@ -189,7 +192,10 @@ def test_only_my_notes_of_the_last_seven_days_are_read(founder):
 def test_asked_in_my_own_words(founder):
     db = _Db()
     _asked(db)
-    assert db.bodies()[-2:] == [sn.COPY["head"], CASE["case"]]
+    assert db.bodies()[-2:] == [
+        f"I found a pattern in your recent notes: {CASE['case']}",
+        CASE["case"],
+    ]
     case_row = db.get_lounge_messages_page("u", 1)[0]
     assert case_row["metadata"]["offer"] == sn.OFFER
 
@@ -200,6 +206,19 @@ def test_asked_in_my_own_words(founder):
     assert sn.chat_turn(db, "u", "# a note about a pattern") is None  # a note stays a note
     assert sn.chat_turn(db, "u", "how do I slow down my opening?") is None
     assert sn.chat_turn(db, "someone", "sunday note") is None
+
+
+def test_a_polish_pattern_question_gets_the_case_before_its_structured_card(founder):
+    db = _Db()
+    founder["case"] = {
+        **CASE,
+        "case": "W tym tygodniu dwa razy odłożyłeś telefon do klienta.",
+    }
+    turn = sn.chat_turn(db, "u", "czy widzisz jakiś wzorzec?")
+    assert turn["answer"].startswith("Widzę wzorzec w Twoich ostatnich notatkach:")
+    assert founder["case"]["case"] in turn["answer"]
+    assert turn["row_metadata"]["sunday_step"] == "head"
+    assert turn["case"]["body"] == founder["case"]["case"]
 
 
 def test_the_lens_walks_me_through_it_and_adds_only_on_my_yes(founder):

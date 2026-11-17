@@ -35,6 +35,7 @@ from services.slide_boundary_metrics import boundary_metrics
 from services.slide_word_split import (
     apply_clock_offset,
     build_slide_transcripts,
+    chunk_slide_words_by_chars,
     chunk_transcript_by_chars,
     chunk_words_by_chars,
     deckless_chunks_from_stx,
@@ -79,6 +80,29 @@ class PerSlideSplitTests(unittest.TestCase):
         self.assertEqual(frags[0]["slide_index"], 1)
         self.assertEqual(frags[0]["start_offset_ms"], 6000)
         self.assertEqual(frags[0]["duration_ms"], 1500)  # 7.5 s - 6.0 s
+
+    def test_no_taps_put_the_complete_transcript_and_pieces_on_slide_zero(self):
+        # N33: no taps is not no slide. The deck stayed on its opening slide,
+        # so the complete transcript must agree with the canonical pieces.
+        words = [_w("we", 0.2, 0.4), _w("opened", 0.5, 0.9),
+                 _w("strong.", 1.0, 1.4)]
+
+        per_slide = build_slide_transcripts(words, [], SLIDES)
+        self.assertEqual(per_slide, [
+            {"index": 0, "transcript": "we opened strong.",
+             "start_offset_ms": 200, "duration_ms": 1200},
+            {"index": 1, "transcript": "", "start_offset_ms": None,
+             "duration_ms": None},
+            {"index": 2, "transcript": "", "start_offset_ms": None,
+             "duration_ms": None},
+        ])
+
+        pieces = chunk_slide_words_by_chars(words, [], SLIDES)
+        self.assertEqual(pieces, [
+            {"index": 0, "slide_index": 0,
+             "transcript": "we opened strong.",
+             "start_offset_ms": 200, "duration_ms": 1200},
+        ])
 
 
 class DecklessTests(unittest.TestCase):

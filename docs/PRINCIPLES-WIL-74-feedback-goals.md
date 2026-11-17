@@ -32,6 +32,22 @@ The chat knows these as facts (`feedback_check.CHAT_FACTS`, passed to the
 librarian with the feature list and the speaker's status card), so it can
 answer "who reads my answer?" or "how do I change my goal?".
 
+## Chat behavior (2026-11-16)
+
+Will mirrors the language of the speaker's typed message; the browser or
+navigation locale does not choose the language of a reply. A substantive
+question gets a substantive answer: Will may use one short, natural framing
+clause, but does not replace the answer with a generic acknowledgement. The
+recent visible conversation and the current project's bounded context are
+passed together so a follow-up such as "what about the opening?" stays tied to
+the talk the speaker is viewing. Missing context remains missing; Will does
+not invent evidence or metrics.
+
+When a speaker asks for a pattern, the first reply names the pattern found in
+their recent notes in the typed language and the following structured case row
+remains the source for the existing Not now | Investigate intervention. The
+answer is concise; the case row's metadata and follow-on lens are unchanged.
+
 **Will learns about each speaker** (founder, 2026-10-20). Their answers and
 each Take's outcome feed a private note Will reads before it chats and before
 it writes the summary. The speaker never sees their answers played back. See

@@ -335,6 +335,29 @@ class PracticeCompleteContract(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ReadoutSetupEchoContract(unittest.TestCase):
+    """A terminal re-read keeps the deployed client's setup restore path."""
+
+    def test_the_authenticated_readout_echoes_its_authorized_setup(self):
+        session = {"id": SID, "user_id": USER, "arc_id": ARC,
+                   "status": "readout_ready", "results_published_at": None}
+        readout = {"snippets": [], "setup": {
+            "topic": "Q3 review", "slides": [{"title": "Revenue"}],
+        }}
+        with patch.object(db, "v2_get_session_by_id", return_value=session), \
+                patch.object(us, "_arc_audit_paid", return_value=False), \
+                patch("services.take_analysis_state.served_analysis_state",
+                      return_value=None), \
+                patch("services.lab_recording.build_readout_from_session",
+                      return_value=readout):
+            status, body = _call(us.v2_user_get_session_readout, SID)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body["setup"], readout["setup"])
+        self.assertEqual(body["readout"]["setup"], readout["setup"])
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class ReadoutsListContract(unittest.TestCase):
     """GET /v2/user/readouts."""
 

@@ -95,6 +95,7 @@ class GuestReadoutTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual((body["session_id"], body["state"], body["readout"]),
                          (_SID, "readout_ready", self._READOUT))
+        self.assertNotIn("setup", body)
 
     def test_bare_session_id_is_not_authorization(self):
         body, status = self._call(include_guest=False)
@@ -217,6 +218,9 @@ class ReadoutReadsTests(unittest.TestCase):
         self.assertEqual((status, body["state"], body["analysis_state"]),
                          (200, "readout_ready", "ready"))
         self.assertEqual(body["readout"]["setup"]["topic"], "Q3 review")
+        # The deployed poll client restores the deck/context from this echo;
+        # it must be the exact already-authorized nested value.
+        self.assertEqual(body["setup"], body["readout"]["setup"])
         self.assertEqual(rows_read, [_SID])
 
 

@@ -268,13 +268,18 @@ def queue_for(database: Any, user_id: Any, *, only: Any = None) -> dict:
     mine = _teaching(database, me)
     models = _queue_models(database, me, mine)
     mids = [m["id"] for m in models if m.get("status") in ("learning", "ready")]
-    examples = _rows(_table(database, EXAMPLES)
-                     .select("id,model_id,source,private,kind,content,sureness,speaker_id,added_by,snippet_id")
-                     .in_("model_id", mids).eq("in_exam", False)) if mids else []
+    from services.parallel import run_in_parallel
+    examples, access = run_in_parallel(
+        lambda: (_rows(_table(database, EXAMPLES)
+                       .select("id,model_id,source,private,kind,content,sureness,speaker_id,added_by,snippet_id")
+                       .in_("model_id", mids).eq("in_exam", False))
+                  if mids else []),
+        lambda: _queue_access(database, me, models),
+    )
     # An upload waits for its 60 re-rates; the rest of it never needs a
     # teacher (N566 item 4).
     examples = [e for e in examples if e.get("source") != "upload" or e.get("kind") == "rerate"]
-    sees_private, exam_cases = _queue_access(database, me, models)
+    sees_private, exam_cases = access
     sealed = {str(case["snippet_id"]) for case in exam_cases if case.get("snippet_id")}
     examples = [e for e in examples if not e.get("snippet_id") or str(e["snippet_id"]) not in sealed]
     examples += [case for case in exam_cases if str(case.get("model_id")) in set(mids)]

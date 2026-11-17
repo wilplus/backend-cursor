@@ -42,6 +42,12 @@ Before Will answers in the chat he looks up the speaker's own history:
 `services/speaker_lookup.py`, reached through `history_for`. A simple
 lookup, no vector search, no embeddings, no AI call, no migration.
 
+The chat also sends the recent visible turns and a bounded current-project
+context with the question. These are conversational context, not new
+evidence: Will may use them to resolve a follow-up or name the project, but
+must not invent a metric, pattern or claim that is absent from the supplied
+history and project data.
+
 | Source | Where | Ownership | Bound |
 |---|---|---|---|
 | Their Takes' transcripts | `v2_sessions.slide_transcripts`, one piece per slide | `user_id` = the speaker; finished spoken Takes only; erased or archived projects left out | newest 6 Takes |

@@ -168,7 +168,10 @@ class ModelRoutesTest(unittest.TestCase):
         scaled = self._get("/v2/models/queue")
         self.assertEqual(scaled.status_code, 200)
         self.assertEqual(len(scaled.get_json()["models"]), len(base.get_json()["models"]) + 8)
-        self.assertEqual(self.store.reads, base_reads)
+        # The example read and the batched access read now overlap, so their
+        # completion order is intentionally unspecified; the query set is
+        # the contract that proves the queue stayed batched as models grew.
+        self.assertEqual(sorted(self.store.reads), sorted(base_reads))
         self.assertLessEqual(len(self.store.reads), 6)
 
     def test_one_answer_counts_for_both_and_the_other_question_follows(self):

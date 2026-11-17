@@ -1,8 +1,62 @@
-# Load-time finding — chat + ideal text (ticket 7, 2026-07-26)
+# Load-time finding — chat + Ideal Text (ticket 7, 2026-07-26; audit refreshed 2026-11-16)
 
 > **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
 
-**Measurement only, as instructed. No optimisation code in this pass.**
+## 2026-11-16 backend/API performance audit
+
+Filter stamp: `JUSTIFIED-SCAFFOLDING` — category `F1-surface` — fences clear,
+locks clear — redirect: reduce latency/query load on existing feedback, Ideal
+Text, chat, queue and strengths surfaces without changing contracts.
+
+This pass measured the request shapes in code and added only bounded,
+read-only performance changes. Production traffic and production database
+access were not available from this worktree, so the query counts below are
+structural measurements, not claims about production wall-clock latency.
+The existing `Server-Timing` header remains the production measurement path:
+it reports total app time, DB-call count, summed DB wait and the slowest DB
+call. Use it on the named routes before/after release; no deployment was
+performed here.
+
+### Implemented changes and before/after measurements
+
+| Surface | Before | After | Contract/risk boundary |
+|---|---:|---:|---|
+| `GET /v2/explore/arc/<arc>/feedback` | `5T + 3R + 1` DB reads for `T` spoken Takes and `R` re-reads | 5 batched reads for up to 20 sessions/page, plus pagination for larger sets | Same per-Take payload; coach-only confidence labels still pass through `key_snippet_ids`; edits remain display-only |
+| `GET /v2/chats/<thread>/messages` | authors, words, answer slides and join attribution read serially | Same 4 reads overlapped after identical ownership/filtering | No writes or filtering moved into worker threads; results are collected in submission order |
+| `GET /v2/models/queue` | examples and private/exam access read serially | Same reads overlapped after the teaching/model scope is resolved | Model visibility, exam sealing, pause state and queue ordering remain in the rules layer |
+| `POST /v2/strengths/today` | consent, talk dates and open plan read serially after gates | Same 3 reads overlapped after the existing ring/onboarding early exits | No new read happens when the feature is off, onboarding is active, or no date matches |
+
+For the feedback path, a representative 3-Take arc with one re-read drops from
+19 structural reads to 5 (14 fewer); a 10-Take arc with 10 re-reads drops from
+81 to 5 before batch pagination. A fixed-delay 4-way, 25 ms synthetic
+independent-read harness measured 128.9 ms serial versus 36.9 ms overlapped
+(3.5×); this is a concurrency sanity check, not a production benchmark.
+
+The new transcript-edit query uses the existing `idx_user_transcript_edits_session`
+index. The existing migrations already index the other batch predicates:
+snippet session, coach draft session, confidence-label snippet, chat member /
+message thread, model teacher / example / answer, and strengths / notes. No
+new migration is needed or included. This matters because `MIGRATE_ON_BOOT`
+means merging a migration also runs it in production at the next release.
+
+### Remaining bottlenecks and measurement plan
+
+| Area | Remaining issue | Evidence/status | Next safe step |
+|---|---|---|---|
+| App boot | Import-time route registration plus provenance/snippet reachability checks still run on every web process | Code inspection only; this worktree cannot import `app.py` because its CI dependencies are not installed | Capture process-start timing around the existing boot checks in Railway; do not defer checks without an explicit live-loop review |
+| Feedback | Large arcs can cross the 20-session or 1,000-row batch boundaries; signed playback and JSONB snippet payloads remain costly | Bounded batch code in `services/db.py`; no production row cardinalities available | Use `Server-Timing` and DB slowest-call data on the largest arc before narrowing projections |
+| Ideal Text | Optional enrichment remains intentionally uncached and generation-fenced; the core snapshot is already one read model | Existing route uses parallel ownership/core reads and stale fence checks | Measure section-level timings; cache only immutable, actor-scoped payloads after freshness/tenant review |
+| Conversational chat | LLM/provider latency and push side effects are outside the list/read changes | Route/service inspection; no upstream timing available here | Keep provider timing separate from DB timing before changing sequencing |
+| Model queue | Clip URL signing and answer filtering still happen after the batched reads | Existing `with_clips` and `_waiting_for` paths | Measure queue sizes and `Server-Timing` before considering clip-url caching |
+| Strengths/today | Ring and onboarding gates remain required reads and intentionally fail closed | Existing behavior preserved | Add a request-level timing sample if this surface is observed as slow; do not cache private freshness-sensitive state without a TTL decision |
+
+No safe cache was added: these surfaces contain private, freshness-sensitive,
+or authorization-dependent data, and the current evidence supports batching /
+overlap more strongly than a cache policy.
+
+## Prior measurement (2026-07-26)
+
+**Measurement only, as instructed. No optimisation code in that pass.**
 
 ## What I could and could not measure
 

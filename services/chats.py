@@ -552,10 +552,16 @@ def read(database: Any, user_id: Any, thread_id: Any) -> dict:
     newest = [r for r in newest if not _held(r) and not unheard(r)
               and not join_questions.hidden(r, str(me["id"])) and not mine_only(r, str(me["id"]))]
     _mark_demo_question(database, thread, newest)
-    authors = _authors(database, thread)
-    words = _words(database, thread, newest)
-    answers = _answers(database, newest)
-    through = joined_through(database, user_id, thread)
+    # These are independent read-only decorations of the already-filtered
+    # message page. Keep their results in submission order while overlapping
+    # their database waits; the route's response shape and filtering stay
+    # unchanged.
+    authors, words, answers, through = _side_by_side([
+        lambda: _authors(database, thread),
+        lambda: _words(database, thread, newest),
+        lambda: _answers(database, newest),
+        lambda: joined_through(database, user_id, thread),
+    ])
     return {"messages": [_shown(r, str(me["id"]), authors, words, answers)
                          for r in reversed(newest)],
             "joined_through": through,

@@ -8684,6 +8684,57 @@ class DatabaseService:
                            session_id, e)
             return []
 
+    def get_user_transcript_edits_by_sessions(self, session_ids) -> dict:
+        """Batch the display-layer transcript corrections for several Takes.
+
+        The feedback walk renders every spoken Take in one response. Reading
+        edits one Take at a time made that response pay one round trip per
+        Take even though the rows have the same owner-independent session
+        key. The result keeps the singular method's row shape, grouped by
+        session id, and is paged so a large correction set cannot be silently
+        truncated by PostgREST's row cap.
+        """
+        ids = [str(value) for value in (session_ids or []) if value]
+        if not ids:
+            return {}
+        _page = 1000
+        out: dict[str, list[dict]] = {}
+        try:
+            for i in range(0, len(ids), 20):
+                chunk = ids[i:i + 20]
+                offset = 0
+                while True:
+                    rows = (self.client.table("user_transcript_edits")
+                            .select("session_id,snippet_id,chunk_index,text")
+                            .in_("session_id", chunk)
+                            .order("session_id", desc=False)
+                            .order("chunk_index", desc=False)
+                            .range(offset, offset + _page - 1)
+                            .execute().data) or []
+                    for row in rows:
+                        if not isinstance(row, dict):
+                            continue
+                        sid = str(row.get("session_id") or "")
+                        if not sid:
+                            continue
+                        out.setdefault(sid, []).append({
+                            key: value for key, value in row.items()
+                            if key != "session_id"
+                        })
+                    if len(rows) < _page:
+                        break
+                    offset += _page
+        except Exception as e:
+            err_low = str(e).lower()
+            if "user_transcript_edits" in err_low and (
+                    "does not exist" in err_low or "pgrst" in err_low):
+                return {}
+            logger.warning(
+                "get_user_transcript_edits_by_sessions failed n=%s: %s",
+                len(ids), e, exc_info=True)
+            return {}
+        return out
+
     def upsert_user_transcript_edit(
         self,
         session_id: str,

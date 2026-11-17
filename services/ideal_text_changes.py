@@ -42,6 +42,35 @@ logger = logging.getLogger(__name__)
 READ_PATH = "ideal_text"
 
 
+def _recording_transcription_language(database: Any, session: Any) -> Any:
+    """The immutable language on this Take's recording, or None.
+
+    V3's voice-picker must use the same value as the later AI-voice job.  A
+    field-only recording read keeps that fact in the database authority and
+    avoids loading any recording content into the feedback path.  None is
+    deliberate: the picker then withholds voice rather than guessing English.
+    """
+    take = session if isinstance(session, dict) else {}
+    recording_id = str(take.get("recording_id") or "")
+    if not recording_id:
+        return None
+    get_languages = getattr(database, "get_recording_languages", None)
+    if not callable(get_languages):
+        return None
+    try:
+        rows = get_languages([recording_id])
+        row = rows.get(recording_id) if isinstance(rows, dict) else None
+        return row.get("transcription_language") if isinstance(row, dict) else None
+    except AttributeError:
+        # Narrow test/replay stores may not expose the field-only recording
+        # read. They preserve the historic, explicit no-voice fallback.
+        return None
+    except Exception as error:  # noqa: BLE001 -- never guess a language
+        logger.warning("recording language not read recording_id=%s: %s",
+                       recording_id, error)
+        return None
+
+
 @dataclass(frozen=True)
 class ChangesDeps:
     """What the block needs from its caller: the database service and the
@@ -1693,7 +1722,8 @@ class _ChangesRun:
         key line on a plan (`plan_walk.walk_inputs`), the helper words
         each slide had when the Take was recorded (N246 items 2 and 3),
         the Take's context (`take_context.for_take`, N293), whether the
-        speaker has the tempo step, asked only when the Sniper would be the
+        speaker has the tempo step, the recording language used by the
+        AI-voice picker, asked only when the Sniper would be the
         One thing walk's fix (N323 item 6), the Take's verbal read for a
         speaker it reaches (`verbal_read.for_pick`, N326), and the fixes
         the walk of the Take before gave, not given again where they worked
@@ -1713,6 +1743,11 @@ class _ChangesRun:
             slides = {piece.get("slide_index") for piece in pieces or [] if isinstance(piece, dict)}
             self._walks[key] = {
                 **walk_inputs(self.db, self.user_id, session),
+                # The persisted recording language, not transcript text,
+                # decides the EN/PL filler vocabulary. The V3 picker fails
+                # closed when it is absent, exactly as the voice job does.
+                "transcription_language": _recording_transcription_language(
+                    self.db, session),
                 "held_words": held_at_take(self.db, self.arc_id, self.user_id, session, slides),
                 # What the Take is for: its key line and call to action
                 # count for more in the pick (N293).

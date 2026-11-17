@@ -29,7 +29,11 @@ _MARKERS = {
     "pl": frozenset(
         "i oraz albo do z w na jest są był była było ten ta to że się dla "
         "nie tak jak czy ale aby przez przy można chcę chce mamy mają "
-        "twoją twoje mój moja moje więc wiesz znaczy".split()
+        "twoją twoje mój moja moje więc wiesz znaczy możesz mozesz "
+        "odpowiedź odpowiedz odpowiedzieć odpowiedziec wyjaśnić wyjasnic "
+        "dlaczego gdzie kiedy jestem mam mieć miec chcesz proszę prosze "
+        "potrzebuję potrzebuje pomóc pomoc wzorzec wzorce ostatnio "
+        "powtarza ciągle ciagle znowu".split()
     ),
 }
 _PL_DIACRITICS = frozenset("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ")

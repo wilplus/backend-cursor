@@ -395,6 +395,23 @@ def test_on_a_plan_the_walk_i_see_knows_my_level():
     assert walk["held_words"] == {0: ["shipped it"]}
 
 
+def test_v3_walk_reads_the_frozen_recording_language_for_voice_eligibility():
+    class LanguageDB(FakeDB):
+        def get_recording_languages(self, recording_ids):
+            self.language_read = list(recording_ids)
+            return {"recording-1": {"transcription_language": "pl"}}
+
+    db = LanguageDB()
+    run = _run_for_playback(_deps(db))
+    walk = run._walk_inputs(
+        {"id": T1, "recording_id": "recording-1"},
+        {"pieces": [{"slide_index": 0}]},
+    )
+
+    assert db.language_read == ["recording-1"]
+    assert walk["transcription_language"] == "pl"
+
+
 def test_a_failure_on_the_way_to_v3_serves_no_v2_rows():
     """The session read, the document and the binding ran outside the guard,
     so a raise there left V2's rows serving. It is V3 failing this Take."""

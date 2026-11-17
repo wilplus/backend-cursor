@@ -328,8 +328,11 @@ def _bucket_words_by_slide(words_all: Any, slide_advances: Any,
         return {}
 
     buckets: dict = {i: [] for i in range(n)}
-    if words_all and slide_advances:
-        slide_at = _slide_on_screen(slide_advances, n)
+    if words_all:
+        # With no taps, the deck never moved past the opening slide.  Use the
+        # same slide-0 fallback as the canonical piece cutter so the complete
+        # transcript and its pieces cannot disagree.
+        slide_at = _slide_on_screen(slide_advances or [], n)
         for w in words_all:
             if not isinstance(w, dict):
                 continue
@@ -367,10 +370,6 @@ def build_slide_transcripts(words_all: Any, slide_advances: Any,
     if n == 0:
         return []
     buckets = _bucket_words_by_slide(words_all, slide_advances, slides)
-    # No advances at all → the legacy behavior was empty buckets (all-empty
-    # transcripts). _bucket_words_by_slide clamps everything to slide 0 only
-    # when advances EXIST; without advances it also produces empty buckets
-    # (the words loop is gated on slide_advances) — preserved.
 
     out: list = []
     for i in range(n):

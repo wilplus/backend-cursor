@@ -435,6 +435,53 @@ def test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate():
     assert unseen["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"] == []
 
 
+def test_polish_filler_voice_fix_uses_the_frozen_recording_language():
+    """A PL-only hesitation must make the same One Thing voice decision as
+    the AI-voice job, rather than the legacy English fallback."""
+    # Eight Polish ``yyy`` hesitations clear the configured per-100 gap; the
+    # remaining words make this a normal (not short) speech block.  They are
+    # not English fillers, so EN is the control case.
+    polish = " ".join(["yyy"] * 8 + ["ważny"] * 67)
+    pieces, snippets, at = [], [], 0
+    for index, score in enumerate((0.9, -0.6, 0.5)):
+        text = polish if index == 1 else " ".join(
+            f"w{index}x{word}" for word in range(75))
+        pieces.append({
+            "snippet_id": f"s{index}", "take_session_id": "take-2",
+            "slide_index": index, "start": at, "end": at + len(text),
+            "text": text, "recording_id": "recording-1",
+            "start_offset_ms": index * 5000, "duration_ms": 5000,
+        })
+        at += len(text) + 1
+        snippets.append({
+            "id": f"s{index}", "session_id": "take-2",
+            "recording_id": "recording-1", "start_offset_ms": index * 5000,
+            "duration_ms": 5000, "transcript": text,
+            # The only intentionally weak signal is the delivery score; a
+            # shared, adequate pause ratio makes language the deciding input.
+            "metrics": {"voice_confidence": {
+                "version": "voice-confidence-universal-v3", "score": score,
+            }, "pause_ratio": 0.15},
+        })
+    served = " ".join(piece["text"] for piece in pieces)
+
+    def frame(language):
+        return build_shadow_frame(
+            take_document={"take_session_id": "take-2", "text": served,
+                           "pieces": pieces},
+            snippets=snippets, suggestions={}, feedback_candidates=[],
+            take_index=2, expected_recording_id="recording-1",
+            served_text=served, transcription_language=language,
+        )
+
+    english = next(block for block in frame("en")["blocks"]
+                   if block["slide_index"] == 1)
+    polish = next(block for block in frame("pl")["blocks"]
+                  if block["slide_index"] == 1)
+    assert (english["walk_slot"], english["exercise_kind"]) == (None, None)
+    assert (polish["walk_slot"], polish["exercise_kind"]) == ("weakest", "voice")
+
+
 _HEDGED = "I think maybe we could kind of start the pilot in two cities and see how it goes."
 
 

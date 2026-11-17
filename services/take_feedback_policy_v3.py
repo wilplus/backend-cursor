@@ -61,6 +61,11 @@ COVERAGE_FLOOR_BY_TAKE: dict[int, float] = {1: 0.70, 2: 0.80}
 COVERAGE_FLOOR_MATURE = 1.00
 _WORD_RE = re.compile(r"[^\W_]+(?:[’'-][^\W_]+)*", re.UNICODE)
 _VERBAL_FAMILIES = set(VERBAL_FAMILIES)
+# ``None`` is meaningful for a live Take: its recording has no language the
+# AI-voice lane can safely use, so the picker must withhold voice too.  Keep a
+# separate sentinel for legacy/offline callers that have not supplied this
+# recording field; their historical fallback stays unchanged.
+_VOICE_LANGUAGE_UNSET = object()
 
 
 def dark_enabled(acquisition_principal_id: Any) -> bool:
@@ -760,6 +765,7 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
                   clearer_ok: Optional[Callable[[dict, dict], bool]] = None,
                   worked: frozenset = frozenset(),
                   voice_medians: Optional[dict] = None,
+                  transcription_language: Any = _VOICE_LANGUAGE_UNSET,
                   last_parts: Optional[dict] = None) -> dict:
     """The Take's shown moments (three, N284): the strongest, the weakest and
     the between, one per block (founder 2026-10-30, N289, flow page C2 and
@@ -807,7 +813,8 @@ def _pick_moments(blocks: list[dict], snippet_map: dict, clips: dict,
     showable = [(block, candidate) for block in blocks
                 for candidate in _showable(block, clips, servability)]
     reads = [_with_parts(_moment_read(candidate, block, snippet_map, clips, served_text,
-                                      held_words, context, worked, voice_medians),
+                                      held_words, context, worked, voice_medians,
+                                      transcription_language),
                          parts.get(block["block_id"]), last_parts)
              for block, candidate in showable]
     row_ok = _row_clearer_ok(showable, clearer_ok)
@@ -1000,7 +1007,8 @@ def _level_pick(reads: list[dict], showable: list[tuple], snippet_map: dict,
 def _moment_read(candidate: dict, block: dict, snippet_map: dict, clips: dict,
                  served_text: Any, held_words: Any = None, context: Any = None,
                  worked: frozenset = frozenset(),
-                 voice_medians: Optional[dict] = None) -> dict:
+                 voice_medians: Optional[dict] = None,
+                 transcription_language: Any = _VOICE_LANGUAGE_UNSET) -> dict:
     """One clip's row for `moment_pick`, with its willfidence read,
     whether its words hold the helper words its slide had when the Take
     was recorded (``held_words``, ``{slide_index: [phrase, ...]}``; N246
@@ -1024,7 +1032,9 @@ def _moment_read(candidate: dict, block: dict, snippet_map: dict, clips: dict,
         "worked": frozenset(kind for slide, kind in worked if slide == block.get("slide_index")),
         # The clip's strongest voice problem the AI clip can teach, against
         # the speaker's own usual on this Take (N425); 0 with none.
-        "voice": _voice_problem(snippet, voice_medians),
+        "voice": _voice_problem(
+            snippet, voice_medians,
+            transcription_language=transcription_language),
         "read": moment_pick.read(
             candidate.get("machine_score"), snippet.get("transcript"),
             snippet.get("metrics"), shown=shown,
@@ -1032,19 +1042,32 @@ def _moment_read(candidate: dict, block: dict, snippet_map: dict, clips: dict,
     }
 
 
-def _voice_medians(snippets: Any) -> dict:
+def _voice_medians(
+        snippets: Any, *, transcription_language: Any = _VOICE_LANGUAGE_UNSET
+        ) -> Optional[dict]:
     """The speaker's own usual pace, pausing, loudness range and fillers on
     this Take, as the AI clip measures them (`ai_voice_severity.own_medians`;
-    N425). {} on any failure. Never raises."""
+    N425). None on any failure, which withholds the voice intervention.
+    Never raises."""
     from services import ai_voice_severity
     try:
-        return ai_voice_severity.own_medians([s for s in snippets or [] if isinstance(s, dict)])
+        rows = [s for s in snippets or [] if isinstance(s, dict)]
+        if transcription_language is _VOICE_LANGUAGE_UNSET:
+            return ai_voice_severity.own_medians(rows)
+        # The live picker and the job must make this decision from the same
+        # frozen recording language.  Missing/unsupported is intentionally a
+        # no-voice outcome, never an English guess.
+        from services.ai_voice_language import require as require_language
+        return ai_voice_severity.own_medians(
+            rows, require_language(transcription_language))
     except Exception as error:  # noqa: BLE001 -- no voice problem read
         logger.warning("voice medians not read: %s", error)
-        return {}
+        return None
 
 
-def _voice_problem(snippet: Any, medians: Optional[dict]) -> float:
+def _voice_problem(
+        snippet: Any, medians: Optional[dict], *,
+        transcription_language: Any = _VOICE_LANGUAGE_UNSET) -> float:
     """The clip's voice problem the AI clip would teach, as the clip job
     itself would choose it (`ai_voice_severity.select` with the One thing
     walk's fix flags, the same words the practice says: its transcript;
@@ -1060,9 +1083,14 @@ def _voice_problem(snippet: Any, medians: Optional[dict]) -> float:
         return 0.0
     from services import ai_voice_severity
     try:
+        language: Optional[str] = None
+        if transcription_language is not _VOICE_LANGUAGE_UNSET:
+            from services.ai_voice_language import require as require_language
+            language = require_language(transcription_language)
         chosen = ai_voice_severity.select(
             snippet, medians, sentence=sentence, seed=str(snippet.get("id") or ""),
-            explore=False, allow_default=False, hold_back=False)
+            explore=False, allow_default=False, hold_back=False,
+            language=language)
         return float(chosen["severity"]) if chosen else 0.0
     except Exception as error:  # noqa: BLE001 -- no voice problem read
         logger.warning("voice problem not read snippet=%s: %s", snippet.get("id"), error)
@@ -2113,6 +2141,7 @@ def build_shadow_frame(
     verbal: Any = None,
     last_fixes: Any = None,
     last_parts: Any = None,
+    transcription_language: Any = _VOICE_LANGUAGE_UNSET,
 ) -> Optional[dict]:
     """Build the complete v3 frame; return None for an unusable Take.
 
@@ -2125,6 +2154,12 @@ def build_shadow_frame(
     (`take_progress.last_parts`): this walk's praise and fix count a little
     less there, so the walks move through the talk (N546). It never adds a
     key to the frame. None: the parts of this Take alone.
+
+    ``transcription_language`` is the persisted language on the Take's
+    recording. The live caller always supplies it, so voice-filler evidence
+    and AI-voice generation use the same frozen EN/PL vocabulary. An explicit
+    missing or unsupported value withholds the voice intervention; omission
+    remains only for legacy/offline frame readers.
 
     ``verbal`` is the Take's verbal read for a speaker it reaches
     (`services.verbal_read.for_pick`, N326): the moments whose words matter
@@ -2225,12 +2260,15 @@ def build_shadow_frame(
     )
     heard = _heard_weights(verbal, rewrite_ranked, frozen_candidate_ids, blocks)
     worked = _worked(last_fixes, blocks, snippets)
+    voice_medians = _voice_medians(
+        snippets, transcription_language=transcription_language)
     picked = _pick_moments(blocks, snippet_map, clips, servability,
                            confidence_selections, served_text,
                            plan=(plan_level, key_line), held_words=held_words,
                            context=context, heard=heard,
                            clearer_ok=_clearer_check(rewrite_ranked, feedback_rows),
-                           worked=worked, voice_medians=_voice_medians(snippets),
+                           worked=worked, voice_medians=voice_medians,
+                           transcription_language=transcription_language,
                            last_parts=last_parts)
 
     # THE ONLY PLACE THE REASON LAYER IS OBSERVABLE (24j). Everything else it

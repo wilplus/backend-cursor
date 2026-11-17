@@ -325,6 +325,12 @@ _SYSTEM_PROMPT = with_tone(
     "    user end the conversation saying \"I learned something "
     "    specific\"? If they'd end it saying \"thanks for the "
     "    encouragement\" — you're off-brand. Rewrite.\n"
+    "    USEFUL FRAMING: you may use one short natural framing clause "
+    "    before the useful answer when it helps (for example, acknowledge "
+    "    that a pattern was found). Never answer a substantive question "
+    "    with only a generic acknowledgement such as \"Got it\" or "
+    "    \"Thanks\"; answer the latest question using the conversation "
+    "    and project context you were given.\n"
     "\n"
     "  RULE D — LANGUAGE MIRRORING:\n"
     "    ALWAYS respond in the user's OWN language (detect it from their "
@@ -849,6 +855,11 @@ _LANE_BASE = (
     "Trainings — stay in English exactly as "
     "written). Be direct and specific, no marketing fluff, no vague "
     "affirmations. Two to three sentences, about 50 words, hard cap. "
+    "Use at most one short natural framing clause before the useful answer "
+    "when it helps (for example, acknowledge that a pattern was found). "
+    "Never answer a substantive question with only a generic acknowledgement "
+    "such as 'Got it' or 'Thanks'; answer the latest question using the "
+    "conversation and project context you were given. "
     "Ask at most one question. If more is needed, give the one most "
     "useful point and offer to go on. Never reproduce more than one "
     "sentence of the MASTER DOCUMENT; say the rest in your own short "
@@ -990,7 +1001,7 @@ def render_app_context(app_context) -> str:
     if not isinstance(app_context, dict):
         return ""
     parts = [app_context.get(k) or ""
-             for k in ("features", "status", "principles", "memory")]
+             for k in ("features", "status", "principles", "memory", "context")]
     return "\n".join(p for p in parts if p)
 
 
@@ -1188,6 +1199,7 @@ def answer_question(
                 ),
                 "show_record_ui": False,
                 "suggested_action": None,
+                "app_action": None,
             },
             {"error": "empty_question"},
         )
@@ -1352,4 +1364,5 @@ def _fallback_payload(target_language: Optional[str] = None) -> dict[str, Any]:
         ),
         "show_record_ui": False,
         "suggested_action": None,
+        "app_action": None,
     }

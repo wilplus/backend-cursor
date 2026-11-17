@@ -198,12 +198,16 @@ def _clean(value: Any, limit: int = 500) -> str:
     return "" if _DIGIT.search(text) else text
 
 
-def _write(database: Any, user_id: str, notes: list[dict], held: list[dict]) -> Optional[dict]:
+def _write(database: Any, user_id: str, notes: list[dict], held: list[dict],
+           target_language: Optional[str] = None) -> Optional[dict]:
     from services.llm import chat_complete
     from services.llm_config import SPEC_SUNDAY_NOTE
-    result = chat_complete(spec=SPEC_SUNDAY_NOTE, system=_SYSTEM,
-                           user=gather(database, user_id, notes, held),
-                           surface=_SURFACE, user_id=user_id)
+    from services.content_language import complete_in_language
+    result = complete_in_language(
+        chat_complete, target_language=target_language, spec=SPEC_SUNDAY_NOTE,
+        system=_SYSTEM, user=gather(database, user_id, notes, held),
+        surface=_SURFACE, user_id=user_id,
+    )
     parsed = getattr(result, "parsed", None) if result else None
     return parsed if isinstance(parsed, dict) else None
 
@@ -251,7 +255,8 @@ def _likely(parsed: dict, held: list[dict]) -> list[dict]:
 
 
 def compose(database: Any, user_id: str, *, source: str, now: datetime,
-            zone_name: Optional[str]) -> tuple[str, Optional[dict]]:
+            zone_name: Optional[str], target_language: Optional[str] = None
+            ) -> tuple[str, Optional[dict]]:
     """Look at the last seven days: ``("no_notes", None)``, ``("nothing",
     None)``, ``("shown", None)`` (Sunday only: a case was already shown in
     those days) or ``("case", note)`` with the note kept and its likely
@@ -269,8 +274,10 @@ def compose(database: Any, user_id: str, *, source: str, now: datetime,
     if not claim:
         return "shown", None
     held = _held(user_id)
-    parsed = _under_authority(database, user_id, claim["id"],
-                              lambda: _write(database, user_id, notes, held)) or {}
+    parsed = _under_authority(
+        database, user_id, claim["id"],
+        lambda: _write(database, user_id, notes, held, target_language),
+    ) or {}
     case = _clean(parsed.get("case"), 400)
     if not case:
         database.update_sunday_note(claim["id"], {"status": "failed", "updated_at": _now()})
@@ -405,11 +412,19 @@ def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:
         return None  # the principles wait while the person is onboarded (N243)
     if not _asks(text, user_id):
         return None
+    from services.content_language import detect_typed_language
+    language = detect_typed_language(text)
     consent = database.get_voice_notebook_consent(str(user_id)) or {}
     found, note = compose(database, str(user_id), source="asked",
-                          now=datetime.now(timezone.utc), zone_name=consent.get("time_zone"))
+                          now=datetime.now(timezone.utc), zone_name=consent.get("time_zone"),
+                          target_language=language)
     if found == "case" and note:
-        return {"answer": COPY["head"], "row_metadata": _head_meta(note),
+        answer = (
+            f"Widzę wzorzec w Twoich ostatnich notatkach: {note['body']}"
+            if language == "pl" else
+            f"I found a pattern in your recent notes: {note['body']}"
+        )
+        return {"answer": answer, "row_metadata": _head_meta(note),
                 "case": note}
     return {"answer": COPY["no_notes" if found == "no_notes" else "nothing"],
             "row_metadata": {"sunday_empty": found}}

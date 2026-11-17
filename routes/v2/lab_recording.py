@@ -803,14 +803,20 @@ def v2_guest_get_recording_readout(session_id):
         else:
             state = "readout_ready"
 
-        return jsonify({
+        payload = {
             "session_id": session_id,
             "state": state,
             # Unambiguous poll terminal (see the authed twin): past
             # processing|failed everything is "ready".
             "analysis_state": "ready",
             "readout": readout,
-        }), 200
+        }
+        # The deployed readout client restores its deck/context from the
+        # top-level setup field on a terminal poll. Keep the canonical copy
+        # nested in readout and echo that already-authorized object here.
+        if isinstance(readout, dict) and isinstance(readout.get("setup"), dict):
+            payload["setup"] = readout["setup"]
+        return jsonify(payload), 200
     except Exception as e:
         logger.error(
             "lab/recordings/<id>/readout GET failed sid=%s err=%s",

@@ -613,7 +613,7 @@ def v2_user_get_session_readout(session_id):
         else:
             state = "readout_ready"
 
-        return jsonify({
+        payload = {
             "session_id": session_id,
             "published": published,
             "state": state,
@@ -626,7 +626,13 @@ def v2_user_get_session_readout(session_id):
             # own coach layer is unconditionally free (2026-07-06 re-price).
             "audit_paid": _audit_paid,
             "readout": readout,
-        }), 200
+        }
+        # The deployed readout client restores its deck/context from the
+        # top-level setup field on a terminal poll. Keep the canonical copy
+        # nested in readout and echo that already-authorized object here.
+        if isinstance(readout, dict) and isinstance(readout.get("setup"), dict):
+            payload["setup"] = readout["setup"]
+        return jsonify(payload), 200
     except Exception as e:
         logger.error(
             "user/sessions/<id>/readout GET failed sid=%s err=%s",

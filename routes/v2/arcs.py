@@ -1046,6 +1046,24 @@ def _take_full_text(session_id):
     return " ".join(parts)
 
 
+def _take_full_text_from_rows(session_id, snippets, edits):
+    """Build one Take's display text from already-batched read rows."""
+    edits_by_snippet = {
+        str(edit.get("snippet_id")): edit.get("text")
+        for edit in (edits or [])
+        if edit.get("snippet_id") and (edit.get("text") or "").strip()
+    }
+    parts = []
+    for snippet in sorted(
+            snippets or [], key=lambda row: (row.get("start_offset_ms") or 0)):
+        text = (edits_by_snippet.get(str(snippet.get("id")))
+                or snippet.get("transcript")
+                or snippet.get("transcription_text") or "").strip()
+        if text:
+            parts.append(text)
+    return " ".join(parts)
+
+
 def _accepted_transcript_edits(session_id):
     """The user's accepted edits by snippet id, stripped; best-effort."""
     edits = {}
@@ -1094,6 +1112,79 @@ def _take_key_moments(session_id, read_session_ids=None):
             if _sid not in _key_ids:
                 continue
             out.append(_key_moment(s, d, sid, kind_default))
+    return out
+
+
+def _feedback_read_inputs(session_ids):
+    """Read all feedback-walk inputs in bounded batch queries.
+
+    The response is take-shaped, but its source rows are session-shaped. The
+    old loop read each session's snippets, drafts, edits and coach labels
+    separately. Keeping the grouping in this helper preserves the response
+    contract while making the database work scale with batches, not Takes.
+    """
+    ids = sorted({str(session_id) for session_id in (session_ids or [])
+                  if session_id})
+    if not ids:
+        return {}, {}, {}, set()
+    try:
+        snippets_by_session = db.get_snippets_by_sessions(
+            ids, include_words=True) or {}
+    except Exception:
+        logger.warning("feedback snippets unreadable", exc_info=True)
+        snippets_by_session = {}
+    try:
+        drafts_by_session = db.get_coach_snippet_drafts_by_sessions(ids) or {}
+    except Exception:
+        logger.warning("feedback drafts unreadable", exc_info=True)
+        drafts_by_session = {}
+    try:
+        edits_by_session = db.get_user_transcript_edits_by_sessions(ids) or {}
+    except Exception:
+        logger.warning("feedback transcript edits unreadable", exc_info=True)
+        edits_by_session = {}
+    snippet_ids = [
+        str(snippet.get("id"))
+        for rows in snippets_by_session.values()
+        for snippet in (rows or [])
+        if isinstance(snippet, dict) and snippet.get("id")
+    ]
+    if not snippet_ids:
+        key_ids = set()
+    else:
+        try:
+            from services.key_moments import key_snippet_ids
+            key_ids = key_snippet_ids(db, snippet_ids)
+        except Exception:
+            logger.warning("feedback confidence labels unreadable", exc_info=True)
+            key_ids = set()
+    return snippets_by_session, drafts_by_session, edits_by_session, key_ids
+
+
+def _take_key_moments_from_rows(session_id, read_session_ids, snippets_by_session,
+                                drafts_by_session, key_ids):
+    """The batched equivalent of ``_take_key_moments``; pure after reads."""
+    out = []
+    reads = read_session_ids or []
+    if isinstance(reads, str):
+        reads = [reads]
+    for sid, kind_default in ([(session_id, "spoken")]
+                              + [(read, "read") for read in reads]):
+        if not sid:
+            continue
+        drafts = {
+            str(draft.get("snippet_id")): draft
+            for draft in (drafts_by_session.get(str(sid)) or [])
+            if draft.get("snippet_id")
+        }
+        for snippet in sorted(
+                snippets_by_session.get(str(sid)) or [],
+                key=lambda row: (row.get("start_offset_ms") or 0)):
+            snippet_id = str(snippet.get("id"))
+            draft = drafts.get(snippet_id)
+            if not draft or not draft.get("surfaced") or snippet_id not in key_ids:
+                continue
+            out.append(_key_moment(snippet, draft, sid, kind_default))
     return out
 
 
@@ -1399,6 +1490,16 @@ def v2_explore_arc_feedback(arc_id):
         # Single-deliverable (founder 2026-07-17): every take's feedback is
         # FREE — the $25 arc unlock is retired, so nothing here is gated.
         spoken, reads = _spoken_takes_and_reads(sessions)
+        all_feedback_session_ids = [str(s.get("id")) for s in spoken
+                                    if s.get("id")]
+        all_feedback_session_ids.extend(
+            str(read.get("id"))
+            for read_rows in reads.values()
+            for read in (read_rows or [])
+            if read.get("id")
+        )
+        (snippets_by_session, drafts_by_session, edits_by_session,
+         key_ids) = _feedback_read_inputs(all_feedback_session_ids)
         takes = []
         for s in spoken:
             sid = str(s.get("id"))
@@ -1407,9 +1508,11 @@ def v2_explore_arc_feedback(arc_id):
             takes.append({
                 "take_index": ti, "session_id": sid,
                 "free": (ti == 1), "locked": False,
-                "full_text": _take_full_text(sid),
-                "key_moments": _take_key_moments(
-                    sid, [str(r.get("id")) for r in read_rows if r.get("id")]),
+                "full_text": _take_full_text_from_rows(
+                    sid, snippets_by_session.get(sid), edits_by_session.get(sid)),
+                "key_moments": _take_key_moments_from_rows(
+                    sid, [str(r.get("id")) for r in read_rows if r.get("id")],
+                    snippets_by_session, drafts_by_session, key_ids),
             })
         ideal = db.ideal_text.get_coach_arc_ideal_text(arc_id)
         if takes:

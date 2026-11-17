@@ -784,6 +784,11 @@ O5 -> test_what_a_speaker_tells_will_is_not_marked_for_anyone
 O6 -> test_will_reads_the_summary_he_wrote_after_the_take
 O7 -> test_will_reads_the_screen_in_the_order_it_is_drawn
 O8 -> test_a_number_typed_under_the_whatsapp_ask_answers_it","Founder 2026-10-14 to 2026-10-18 (cost, WhatsApp, privacy, context); 2026-10-20 (""the chat should be aware of the order of bubbles it displays""). Split out of test_chat_persist.py; the harness is tests/chat_route_fakes.py."
+tests/test_chat_conversation_behavior.py,Story,"As a speaker, I want Will to answer my latest question in my language, remember the visible conversation and project, and keep the structured response fields stable, so that a useful answer does not collapse into a generic acknowledgement.","O1  English and Polish golden turns mirror the typed content language.
+O2  Earlier turns and bounded project context reach the writer together.
+O3  Model and fallback responses retain the structured chat contract.","O1 -> test_language_golden_turns_follow_the_typed_message
+O2 -> test_writer_receives_conversation_and_project_context
+O3 -> test_model_and_fallback_payloads_are_shape_complete","Will conversational behavior: content language, context retention, useful framing and structured response/card compatibility."
 tests/test_chat_jokes.py,Story,"As a speaker chatting with Will, I want ""next"" after a dad joke to get another joke, and my answers to Will's questions not treated as requests, so that the chat follows the thread.","O1  ""next"", ""another"" or ""more"" after a joke gives a different joke.
 O2  ""next"" with no joke before it is left to Will.
 O3  Telling the story of my startup after Will asks about my talk is an

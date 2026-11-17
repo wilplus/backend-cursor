@@ -120,27 +120,46 @@ class _FeedbackHarness(unittest.TestCase):
                        return_value=entitled), \
                  patch.object(v2_arcs, "is_admin", return_value=False), \
                  patch.object(v2_arcs, "is_coach", return_value=False), \
-                 patch.object(db, "get_snippets_by_session",
-                              side_effect=lambda sid: _snips(sid)), \
-                 patch.object(db, "get_coach_snippet_drafts",
-                              side_effect=lambda sid: [{
-                                  "snippet_id": f"{sid}-p0",
-                                  "surfaced": surfaced,
-                                  "note": "This is the turn.",
-                                  "transcript_corrected": f"corrected {sid}",
-                              }]), \
+                 patch.object(db, "get_snippets_by_sessions",
+                              side_effect=lambda ids, **_kwargs: {
+                                  str(sid): _snips(str(sid)) for sid in ids}), \
+                 patch.object(db, "get_coach_snippet_drafts_by_sessions",
+                              side_effect=lambda ids: {
+                                  str(sid): [{
+                                      "snippet_id": f"{sid}-p0",
+                                      "surfaced": surfaced,
+                                      "note": "This is the turn.",
+                                      "transcript_corrected": f"corrected {sid}",
+                                  }] for sid in ids}), \
                  patch.object(db, "get_confidence_labels_by_snippet_ids",
                               side_effect=lambda ids: {
                                   str(i): self._ratings(confidence, peer_only)
                                   for i in ids}), \
-                 patch.object(db, "get_user_transcript_edits",
-                              return_value=[]), \
+                 patch.object(db, "get_user_transcript_edits_by_sessions",
+                              return_value={}), \
                  patch.object(db.ideal_text, "get_coach_arc_ideal_text",
                               return_value=None), \
                  patch.object(db, "v2_get_student_details",
                               return_value={"credits": 7}):
                 resp, status = v2_arcs.v2_explore_arc_feedback.__wrapped__(ARC)
                 return resp.get_json(), status
+
+    def test_feedback_reads_are_batched_across_takes_and_rereads(self):
+        with patch.object(db, "get_snippets_by_sessions",
+                          return_value={sid: _snips(sid)
+                                        for sid in (T1, T2, T3, READ1)}) as snippets, \
+             patch.object(db, "get_coach_snippet_drafts_by_sessions",
+                          return_value={}) as drafts, \
+             patch.object(db, "get_user_transcript_edits_by_sessions",
+                          return_value={}) as edits, \
+             patch.object(db, "get_confidence_labels_by_snippet_ids",
+                          return_value={}) as labels:
+            v2_arcs._feedback_read_inputs([T1, T2, T3, READ1])
+
+        snippets.assert_called_once()
+        drafts.assert_called_once()
+        edits.assert_called_once()
+        labels.assert_called_once()
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
