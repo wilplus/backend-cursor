@@ -25,6 +25,11 @@ from services.project_deletion import (
     public_view,
 )
 from services.project_archive import ProjectArchiveError, ProjectArchiveService
+from services.project_naming import (
+    PROJECT_NAME_INVALID_MESSAGE,
+    normalize_project_name,
+)
+from services.project_rename import ProjectRenameError, ProjectRenameService
 from services.lab_send import send_lab_recording_to_coach
 from routes.v2.common import _is_valid_uuid
 
@@ -67,11 +72,12 @@ def v2_create_project():
     if not isinstance(body, dict):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "project must be a JSON object"}), 400
-    display_name = str(body.get("display_name") or body.get("topic")
-                       or "Presentation").strip()
-    if not display_name or len(display_name) > 200:
+    try:
+        display_name = normalize_project_name(
+            body.get("display_name") or body.get("topic") or "Presentation")
+    except ValueError:
         return jsonify({"code": "INVALID_INPUT",
-                        "error": "display_name must be 1–200 characters"}), 400
+                        "error": PROJECT_NAME_INVALID_MESSAGE}), 400
     setup = body.get("setup") if isinstance(body.get("setup"), dict) else {}
     presentation_ref = body.get("presentation_ref")
     if presentation_ref is not None and not isinstance(presentation_ref, str):
@@ -301,6 +307,42 @@ def _archive(project_id: str, archive: bool):
                 "archived" if archive else "restored", project_id)
     return jsonify({"project_id": row["project_id"],
                     "archived": bool(row.get("archived_at"))}), 200
+
+
+@v2_bp.route("/projects/<project_id>", methods=["PATCH"])
+@require_auth
+def v2_rename_project(project_id: str):
+    """Rename one owned project; no project content or lifecycle state changes.
+
+    200 {project_id, display_name} · 400 INVALID_INPUT · 404 PROJECT_NOT_FOUND.
+    """
+    principal, failure = _deletion_owner(project_id)
+    if failure:
+        return failure
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or "display_name" not in body:
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": PROJECT_NAME_INVALID_MESSAGE}), 400
+    try:
+        display_name = normalize_project_name(body.get("display_name"))
+    except ValueError:
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": PROJECT_NAME_INVALID_MESSAGE}), 400
+    try:
+        renamed = ProjectRenameService(db).rename(
+            principal.id, project_id, display_name)
+    except ProjectRenameError as error:
+        return jsonify({"code": error.code,
+                        "error": "Project not found"
+                        if error.status == 404 else error.code}), error.status
+    except Exception as error:
+        logger.error("project rename failed project=%s: %s",
+                     project_id, error, exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not update the project"}), 500
+    logger.info("project renamed project=%s", project_id)
+    return jsonify(renamed), 200
 
 
 @v2_bp.route("/projects/<project_id>/archive", methods=["POST"])

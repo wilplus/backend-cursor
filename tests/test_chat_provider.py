@@ -8,6 +8,9 @@ OUTCOME
   O3  Missing Mistral configuration never silently falls back to OpenAI.
   O4  The speaker's provider permit and usage record name Mistral before the
       provider client is built.
+  O5  A real provider timeout, or a response that arrives after the shared
+      request budget, returns the normal fallback signal with only a stable
+      timeout category, never provider exception text.
 PROVES
   O1 -> test_openai_is_the_default_even_when_mistral_is_configured,
         test_only_an_allowlisted_cheap_surface_moves_to_mistral
@@ -15,6 +18,9 @@ PROVES
         test_mistral_uses_the_compatible_endpoint_without_hiding_its_identity
   O3 -> test_missing_mistral_credentials_never_fall_back_to_openai
   O4 -> test_chat_complete_names_mistral_before_building_the_client
+  O5 -> test_chat_complete_marks_real_timeout_in_failure_out,
+        test_chat_complete_caps_each_call_to_the_request_deadline,
+        test_chat_complete_discards_a_response_after_the_request_deadline
 WHY      Provider portability is useful only when it preserves the live loop,
          processing authorization, and a one-variable rollback path.
 """
@@ -187,3 +193,83 @@ def test_chat_complete_names_mistral_before_building_the_client(
         "mistral", "mistral-small", "A short answer.",
     )
     assert usage[0]["provider"] == "mistral"
+
+
+def test_chat_complete_marks_real_timeout_in_failure_out(monkeypatch):
+    from services.llm import chat_complete
+
+    monkeypatch.setattr("services.chat_provider.build_chat_client", lambda _target: object())
+    monkeypatch.setattr(
+        "services.llm.operational_chat_complete",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError("not exposed")),
+    )
+    state = {}
+    adapter = _PermitAdapter([])
+    spec = LLMSpec(model=CHEAP_MODEL, temperature=0.0, max_tokens=40,
+                   timeout_seconds=4.0)
+
+    with protected_provider_scope(adapter, idempotency_prefix="timeout-test"):
+        result = chat_complete(
+            spec=spec, system="Answer briefly.", user="Hello",
+            surface="chat_reply", failure_out=state,
+        )
+
+    assert result is None
+    assert state == {"last_code": "provider_timeout", "timed_out": True}
+
+
+def test_chat_complete_caps_each_call_to_the_request_deadline(monkeypatch):
+    from services.llm import chat_complete
+
+    response = SimpleNamespace(
+        id="deadline-operation", usage=None,
+        choices=[SimpleNamespace(message=SimpleNamespace(content="A short answer."))],
+    )
+    seen = {}
+    monkeypatch.setattr("services.chat_provider.build_chat_client", lambda _target: object())
+    monkeypatch.setattr(
+        "services.llm.operational_chat_complete",
+        lambda *_args, **kwargs: seen.update(timeout=kwargs["timeout"]) or response,
+    )
+    monkeypatch.setattr("services.llm.time.monotonic", lambda: 100.0)
+    adapter = _PermitAdapter([])
+    spec = LLMSpec(model=CHEAP_MODEL, temperature=0.0, max_tokens=40,
+                   timeout_seconds=4.0)
+
+    with protected_provider_scope(adapter, idempotency_prefix="deadline-test"):
+        result = chat_complete(
+            spec=spec, system="Answer briefly.", user="Hello",
+            surface="chat_reply", deadline_monotonic=101.25,
+        )
+
+    assert result is not None
+    assert seen["timeout"] == 1.25
+
+
+def test_chat_complete_discards_a_response_after_the_request_deadline(monkeypatch):
+    from services.llm import chat_complete
+
+    response = SimpleNamespace(
+        id="late-operation", usage=None,
+        choices=[SimpleNamespace(message=SimpleNamespace(content="Too late."))],
+    )
+    clock = iter((100.0, 101.5))
+    monkeypatch.setattr("services.chat_provider.build_chat_client", lambda _target: object())
+    monkeypatch.setattr("services.llm.operational_chat_complete",
+                        lambda *_args, **_kwargs: response)
+    monkeypatch.setattr("services.llm.time.monotonic", lambda: next(clock))
+    adapter = _PermitAdapter([])
+    state = {}
+    spec = LLMSpec(model=CHEAP_MODEL, temperature=0.0, max_tokens=40,
+                   timeout_seconds=4.0)
+
+    with protected_provider_scope(adapter, idempotency_prefix="late-deadline-test"):
+        result = chat_complete(
+            spec=spec, system="Answer briefly.", user="Hello",
+            surface="chat_reply", failure_out=state,
+            deadline_monotonic=101.25,
+        )
+
+    assert result is None
+    assert state == {"last_code": "request_deadline", "timed_out": True}
+    assert any(event[0][1] == "completed" for event in adapter.events)

@@ -124,6 +124,13 @@ class Config:
     OPENAI_TRANSCRIBE_TIMEOUT_SECONDS = _env_float(
         "OPENAI_TRANSCRIBE_TIMEOUT_SECONDS", 600.0)
     OPENAI_MAX_RETRIES = _env_int("OPENAI_MAX_RETRIES", 2)
+    # One Lounge turn may first classify, then write, then fall back. This
+    # shared model-call budget stops another call once it is spent and caps
+    # each started provider call; SDK/network cancellation remains provider
+    # owned. Individual model specs still cap one operation; 0 disables only
+    # this additional guard.
+    LOUNGE_CHAT_DEADLINE_SECONDS = _env_float(
+        "LOUNGE_CHAT_DEADLINE_SECONDS", 20.0)
     # Chat model overrides (runtime_config in the database wins; these are the
     # env fallbacks OpenAIService._chat_model reads before its hard default).
     OPENAI_CHAT_MODEL = (os.getenv("OPENAI_CHAT_MODEL") or "").strip() or None

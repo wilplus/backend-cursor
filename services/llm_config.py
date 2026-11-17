@@ -101,11 +101,15 @@ SPEC_MASTER_DOC_RAG = LLMSpec(
     # passed through at call time. Spec leaves response_format=None
     # so the caller wires it explicitly.
     response_format=None,
+    # A chat bubble must settle quickly enough for the composer to give the
+    # speaker a useful terminal fallback rather than an indefinite typing
+    # state.  The fallback contract is handled by master_doc_rag.
+    timeout_seconds=15.0,
 )
 """Chat reply for the post-signup FAQ surface (master_doc_rag)."""
 
 SPEC_MASTER_DOC_ROUTER = LLMSpec(
-    model=CHEAP_MODEL, temperature=0.0, max_tokens=40,
+    model=CHEAP_MODEL, temperature=0.0, max_tokens=40, timeout_seconds=5.0,
 )
 
 SPEC_COACH_COMMENT_DRAFT = LLMSpec(

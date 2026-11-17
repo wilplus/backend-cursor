@@ -91,6 +91,82 @@ class LLMResult:
     total_tokens: Optional[int]
 
 
+def _is_timeout_error(error: BaseException) -> bool:
+    """Recognise provider/client timeout classes without coupling to an SDK."""
+    return isinstance(error, TimeoutError) or "timeout" in type(error).__name__.lower()
+
+
+def _record_failure(out: Optional[dict[str, Any]], code: str, *, timeout: bool = False) -> None:
+    """Expose only a stable failure category to a caller's fallback path."""
+    if out is None:
+        return
+    out["last_code"] = code
+    if timeout:
+        out["timed_out"] = True
+
+
+def _timeout_for_request(
+    spec_timeout: Optional[float], deadline_monotonic: Optional[float],
+    failure_out: Optional[dict[str, Any]], surface: str,
+) -> tuple[Optional[float], bool]:
+    """Return this provider call's remaining timeout and whether it is spent."""
+    if deadline_monotonic is None:
+        return spec_timeout, False
+    remaining = float(deadline_monotonic) - time.monotonic()
+    if remaining <= 0:
+        _record_failure(failure_out, "request_deadline", timeout=True)
+        logger.warning("llm.chat surface=%s request_deadline_exhausted", surface)
+        return None, True
+    return (min(spec_timeout, remaining)
+            if spec_timeout is not None else remaining), False
+
+
+def _response_missed_request_deadline(
+    deadline_monotonic: Optional[float], failure_out: Optional[dict[str, Any]],
+    surface: str,
+) -> bool:
+    """Keep a completed-but-late provider response out of the chat turn."""
+    if deadline_monotonic is None or time.monotonic() < float(deadline_monotonic):
+        return False
+    _record_failure(failure_out, "request_deadline", timeout=True)
+    logger.warning("llm.chat surface=%s response_after_request_deadline", surface)
+    return True
+
+
+def _chat_create_kwargs(
+    model: str, messages: list[dict[str, str]], temperature: float,
+    max_tokens: int, response_format: Optional[dict], timeout: Optional[float],
+) -> dict[str, Any]:
+    """Build the provider payload without adding branches to the main wrapper."""
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if response_format is not None:
+        kwargs["response_format"] = response_format
+    if timeout is not None:
+        kwargs["timeout"] = timeout
+    return kwargs
+
+
+def _record_completed_chat_operation(authorization, provider_permit_id, response,
+                                     *, surface: str, provider: str, model: str) -> None:
+    """Close a provider permit for a completed operation when this route has one."""
+    if authorization is not None:
+        authorization.record_provider_event(
+            provider_permit_id,
+            "completed",
+            provider_operation_ref=str(getattr(response, "id", "") or "") or None,
+            metadata={
+                "surface": surface,
+                "provider": provider,
+                "model": model,
+            },
+        )
+
+
 def _model_the_promotion_gate_allows(
     surface: str, resolved: str, default: str,
 ) -> str:
@@ -146,6 +222,8 @@ def chat_complete(
     session_id: Optional[str] = None,
     arc_id: Optional[str] = None,
     messages_override: Optional[list[dict[str, str]]] = None,
+    failure_out: Optional[dict[str, Any]] = None,
+    deadline_monotonic: Optional[float] = None,
 ) -> Optional[LLMResult]:
     """Run one ``chat.completions.create`` against the spec.
 
@@ -174,6 +252,15 @@ def chat_complete(
         Phase 0). Purely additive — they affect nothing but which row the cost
         lands on. Pass them wherever the call site knows them; "what does one
         take actually cost?" is unanswerable without ``session_id``.
+    failure_out : dict | None
+        Optional mutable, stable failure summary for a caller that has a
+        renderable fallback. It never receives provider exception text.
+    deadline_monotonic : float | None
+        Optional request-wide monotonic deadline. When present, this call's
+        provider timeout is capped to its remaining budget; an already-spent
+        budget returns the normal ``None`` fallback signal without opening a
+        provider permit/client. It cannot interrupt a blocking SDK call, but
+        a response that arrives after the budget is not used.
 
     Returns
     -------
@@ -188,6 +275,12 @@ def chat_complete(
     )
     from services.chat_provider import build_chat_client, resolve_chat_target
     target = resolve_chat_target(surface, model)
+
+    timeout_seconds, deadline_exhausted = _timeout_for_request(
+        spec.timeout_seconds, deadline_monotonic, failure_out, surface,
+    )
+    if deadline_exhausted:
+        return None
 
     # Provider identity is resolved before authorization, but no client is
     # constructed until the permit has been issued.
@@ -204,6 +297,8 @@ def chat_complete(
     try:
         client = build_chat_client(target)
     except Exception as e:
+        _record_failure(failure_out, "provider_init_failed",
+                        timeout=_is_timeout_error(e))
         if authorization is not None:
             authorization.record_provider_event(
                 provider_permit_id, "failed", error_code=type(e).__name__,
@@ -214,6 +309,7 @@ def chat_complete(
         )
         return None
     if not client:
+        _record_failure(failure_out, "provider_unavailable")
         if authorization is not None:
             authorization.record_provider_event(
                 provider_permit_id, "failed", error_code="PROVIDER_UNAVAILABLE",
@@ -224,19 +320,17 @@ def chat_complete(
         )
         return None
     model = target.model
-    create_kwargs: dict[str, Any] = {
-        "model": model,
-        "messages": messages_override or [
+    create_kwargs = _chat_create_kwargs(
+        model,
+        messages_override or [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        "temperature": spec.temperature,
-        "max_tokens": spec.max_tokens,
-    }
-    if response_format is not None:
-        create_kwargs["response_format"] = response_format
-    if spec.timeout_seconds is not None:
-        create_kwargs["timeout"] = spec.timeout_seconds
+        spec.temperature,
+        spec.max_tokens,
+        response_format,
+        timeout_seconds,
+    )
 
     t0 = time.perf_counter()
     try:
@@ -250,6 +344,9 @@ def chat_complete(
             timeout=create_kwargs.get("timeout"),
         )
     except Exception as e:
+        _record_failure(failure_out, "provider_timeout"
+                        if _is_timeout_error(e) else "provider_error",
+                        timeout=_is_timeout_error(e))
         duration_ms = int((time.perf_counter() - t0) * 1000)
         logger.warning(
             "llm.chat surface=%s provider=%s model=%s duration_ms=%d "
@@ -273,17 +370,10 @@ def chat_complete(
     )
     total_tokens = getattr(usage, "total_tokens", None) if usage else None
 
-    if authorization is not None:
-        authorization.record_provider_event(
-            provider_permit_id,
-            "completed",
-            provider_operation_ref=str(getattr(response, "id", "") or "") or None,
-            metadata={
-                "surface": surface,
-                "provider": target.provider,
-                "model": model,
-            },
-        )
+    _record_completed_chat_operation(
+        authorization, provider_permit_id, response,
+        surface=surface, provider=target.provider, model=model,
+    )
 
     # Cost ledger (token-pricing Phase 0). THE hook that covers every surface
     # routed through this wrapper — ~15 of them, including the whole per-take
@@ -307,8 +397,16 @@ def chat_complete(
     except Exception:
         pass
 
+    # A provider can return after its requested timeout because of SDK retry
+    # behavior or a late network response. It is recorded above, but never
+    # used to answer a stale turn or start another stage in its budget.
+    if _response_missed_request_deadline(
+            deadline_monotonic, failure_out, surface):
+        return None
+
     raw = (response.choices[0].message.content or "").strip()
     if not raw:
+        _record_failure(failure_out, "empty_response")
         logger.warning(
             "llm.chat surface=%s provider=%s model=%s duration_ms=%d "
             "user=%s empty_response",

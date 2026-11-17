@@ -32,13 +32,15 @@ v2 changes vs v1:
   • MDR-18 (WIL-115, DETERMINISTIC): a nerves question about their own
     talk must not land in a lane that does not answer from the Master Document
     (``must_not_route_to`` reads the router's chosen lane from debug).
-  • 15 cases total. ~$0.08/run. Still <60s wall time.
+  • MDR-19 checks unaccented Polish input, which must still select Polish
+    generated content without consulting a UI locale.
+  • 19 cases total. ~$0.08/run. Still <60s wall time.
   • Report-only lane (2026-09-14): a rubric key ``report_only_<check>``
     is measured and printed under the verdict but never fails the run.
     MDR-14's length cap lives there — it flapped at 181–191 chars on
     four unrelated PRs.
 
-Runs 10 hard-coded synthetic cases against
+Runs 19 hard-coded synthetic cases against
 ``services.master_doc_rag.answer_question`` and grades each via:
 
   (1) Deterministic structural checks (Python `len()`, dict lookup,
@@ -52,14 +54,14 @@ Run:
     python tests/evals/master_doc_probe.py
 
 Exit codes:
-    0  all 10 cases passed
+    0  all 19 cases passed
     1  at least one case failed
 
 No DB writes. No new tables. No HTTP calls. No production code
 modified. Total wall time should be < 60 seconds. Total OpenAI
-cost should be < $0.05 per run.
+cost should be < $0.08 per run.
 
-All 10 cases are synthetic, PII-free, fictionalized — no real
+All 19 cases are synthetic, PII-free, fictionalized — no real
 user data is referenced.
 """
 from __future__ import annotations
@@ -100,7 +102,7 @@ _DEFAULT_MAX_ANSWER_CHARS = 1500
 
 
 # ─────────────────────────────────────────────────────────────────
-# Case fixtures (10 hard-coded synthetic cases)
+# Case fixtures (19 hard-coded synthetic cases)
 # ─────────────────────────────────────────────────────────────────
 
 
@@ -445,6 +447,19 @@ CASES: list[Case] = [
             "What can I do?"
         ),
         rubric={"must_not_route_to": ["my_project", "off_topic"]},
+    ),
+    Case(
+        id="MDR-19",
+        category="Unaccented Polish message still receives Polish coaching text",
+        user_message="czy mozesz wyjasnic jak to dziala?",
+        rubric={
+            "must_contain_polish_diacritic": True,
+            "semantic_intent": (
+                "Answers the immediate product question in Polish; it does "
+                "not switch to English merely because the input has no "
+                "Polish diacritics."
+            ),
+        },
     ),
 ]
 

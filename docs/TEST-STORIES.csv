@@ -359,7 +359,7 @@ ask from the CEO panel is not among them (it is in the bar at the
 top, N391); Will's next question may follow his first, only when his
 is the ask (N294 item 4); nothing comes when nothing applies.
 O3  The asks come one at a time, each under whatever closed the one
-before: a typed turn, under Will's reply; ""Yes"", tapped or typed,
+before: a typed settlement for that Take, under Will's reply; ""Yes"", tapped or typed,
 under ""We're glad it helped you.""; a reply that opens a form keeps the
 ask open. An ask that no longer applies is skipped, and so is a
 settings ask a message held from before still names. After the last
@@ -367,8 +367,8 @@ comes ""Good job. See you next time."", no push to the next Take.
 O4  A message still waiting when a newer Take is written shows where it
 stands.
 O5  After a distressed message the chat's safety reply comes and the asks
-wait: nothing lands under it until I write again (founder 2026-10-21,
-N94).
+wait: a later unrelated chat question gets its own reply and does not
+release the held Take state (founder 2026-10-21, N94).
 O6  The plan's lines after a Take wait for the ask: the ask stays the
 newest bubble, so its answers stay; after my answer come the lines,
 then ""Good job. See you next time."" (no practice day is named, N564),
@@ -388,7 +388,7 @@ it looks at, never the messages' words.","O1 -> test_after_take_one_will_else_th
 O2 -> test_from_take_two_one_ask_ceo_ask_will_the_question
 O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_goodbye
 O4 -> test_an_older_waiting_message_shows_where_it_stands
-O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
+O5 -> test_after_a_distressed_message_the_asks_wait_until_their_take_is_settled
 O6 -> test_the_plans_lines_wait_for_the_ask_then_the_goodbye_the_progress_and_its_question
 O7 -> test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar
 O8 -> test_the_first_takes_goodbye_says_so_on_any_device
@@ -784,11 +784,18 @@ O5 -> test_what_a_speaker_tells_will_is_not_marked_for_anyone
 O6 -> test_will_reads_the_summary_he_wrote_after_the_take
 O7 -> test_will_reads_the_screen_in_the_order_it_is_drawn
 O8 -> test_a_number_typed_under_the_whatsapp_ask_answers_it","Founder 2026-10-14 to 2026-10-18 (cost, WhatsApp, privacy, context); 2026-10-20 (""the chat should be aware of the order of bubbles it displays""). Split out of test_chat_persist.py; the harness is tests/chat_route_fakes.py."
-tests/test_chat_conversation_behavior.py,Story,"As a speaker, I want Will to answer my latest question in my language, remember the visible conversation and project, and keep the structured response fields stable, so that a useful answer does not collapse into a generic acknowledgement.","O1  English and Polish golden turns mirror the typed content language.
-O2  Earlier turns and bounded project context reach the writer together.
-O3  Model and fallback responses retain the structured chat contract.","O1 -> test_language_golden_turns_follow_the_typed_message
-O2 -> test_writer_receives_conversation_and_project_context
-O3 -> test_model_and_fallback_payloads_are_shape_complete","Will conversational behavior: content language, context retention, useful framing and structured response/card compatibility."
+tests/test_chat_conversation_behavior.py,Story,"As a speaker, I want Will to answer my latest question in my language, remember the visible conversation and project, and keep the structured response fields stable, so that a useful answer does not collapse into a generic acknowledgement.","O1  English and Polish golden turns mirror the typed content language,
+including unaccented Polish through the production default router.
+O2  Earlier turns and bounded project context reach the writer together,
+without crowding out the latest typed message, including the live
+default router classifier.
+O3  Model and timeout fallback responses retain the structured chat
+contract and an explicit stable failure category.","O1 -> test_language_golden_turns_follow_the_typed_message
+O2 -> test_writer_receives_conversation_and_project_context,
+test_default_router_bounds_classifier_context_and_keeps_latest_message
+O3 -> test_model_and_fallback_payloads_are_shape_complete,
+test_router_timeout_returns_a_safe_terminal_fallback_without_mega_prompt,
+test_real_provider_timeout_reaches_the_terminal_chat_contract","Will conversational behavior: content language, context retention, useful framing and structured response/card compatibility."
 tests/test_chat_jokes.py,Story,"As a speaker chatting with Will, I want ""next"" after a dad joke to get another joke, and my answers to Will's questions not treated as requests, so that the chat follows the thread.","O1  ""next"", ""another"" or ""more"" after a joke gives a different joke.
 O2  ""next"" with no joke before it is left to Will.
 O3  Telling the story of my startup after Will asks about my talk is an
@@ -824,25 +831,55 @@ tests/test_chat_persist.py,Story,"As a speaker, I want every chat turn saved wit
 with the bot's choices in its metadata; posting the same turn again
 writes the same two ids, so the table keeps it once.
 O2  A reload (GET /v2/user/lounge/messages) brings the bot's choices back.
-O3  If saving fails, the turn still answers.
+O3  If the durable turn claim cannot be saved, the composer receives an
+explicit terminal retry state and no model or stateful handler runs.
 O4  The bot's reply is saved under my turn even when my browser's clock
 runs ahead of the server's, so a reload keeps the order I saw.
 O5  A typed answer to Will's open practice question is stored in the talk
 and memory, answered by contextual Will from that question and screen,
-and persisted with the settling metadata before the chain advances once.","O1, O2 -> test_a_turn_is_saved_once_and_its_choices_come_back
-O3     -> test_the_answer_still_comes_when_saving_fails
+and persisted with the settling metadata before the chain advances once.
+O6  A retry with the same turn id replays its completed terminal result
+without another model/state/charge path; the same words with a fresh id
+are a new turn. A changed payload with the same id is rejected instead
+of being attached to the earlier answer.
+O7  A concurrent retry sees the durable pending claim and settles with an
+explicit retry state without running a second model/state/charge path.
+A bot-write failure is retained as a terminal receipt so the same id
+cannot run those side effects again; a committed answer whose write
+acknowledgement is lost, or whose later best-effort follow-on fails,
+remains the successful answer. An optimistic bubble's surrounding
+whitespace does not stop it from being claimed.
+O8  A completed walk closing is neither model context nor a response to a
+later unrelated chat message; structured reply metadata survives retry.","O1, O2 -> test_a_turn_is_saved_once_and_its_choices_come_back
+O3     -> test_a_claim_failure_is_terminal_without_running_the_turn
 O4     -> test_the_reply_is_saved_under_the_turn_it_answers
-O5     -> test_a_typed_practice_answer_is_contextual_and_settles_once",Founder #2: bubbles must never disappear; founder 2026-10-20: the chat keeps the order it shows. The harness is tests/chat_route_fakes.py; what the chat answers is pinned in test_chat_answers.py.
+O5     -> test_a_typed_practice_answer_is_contextual_and_settles_once
+O6     -> test_a_correlated_retry_replays_once_and_a_new_id_is_a_new_turn,
+test_an_optimistic_row_keeps_its_words_and_metadata_until_its_owner_claims_it,
+test_a_reused_bot_row_cannot_become_a_user_turn_claim
+O7     -> test_a_pending_claim_and_a_failed_receipt_never_reexecute_a_turn,
+test_a_committed_bot_write_with_a_lost_acknowledgement_replays_successfully,
+test_a_post_persist_follow_on_failure_replays_the_same_success,
+test_an_optimistic_whitespace_bubble_can_be_claimed_once,
+test_an_unexpected_accepted_turn_error_is_still_a_renderable_terminal
+O8     -> test_a_turn_is_saved_once_and_its_choices_come_back,
+test_a_completed_walk_closing_cannot_answer_a_later_question",Founder #2: bubbles must never disappear; founder 2026-10-20: the chat keeps the order it shows. The harness is tests/chat_route_fakes.py; what the chat answers is pinned in test_chat_answers.py.
 tests/test_chat_provider.py,Story,"As the founder, I can compare and activate Mistral one text surface at a time without moving Whisper, strong reasoning, or an unapproved production path away from OpenAI.","O1  OpenAI remains the default and strong-model calls remain on OpenAI.
 O2  Only an explicitly allowed cheap-model surface selects Mistral.
 O3  Missing Mistral configuration never silently falls back to OpenAI.
 O4  The speaker's provider permit and usage record name Mistral before the
-provider client is built.","O1 -> test_openai_is_the_default_even_when_mistral_is_configured,
+provider client is built.
+O5  A real provider timeout, or a response that arrives after the shared
+request budget, returns the normal fallback signal with only a stable
+timeout category, never provider exception text.","O1 -> test_openai_is_the_default_even_when_mistral_is_configured,
 test_only_an_allowlisted_cheap_surface_moves_to_mistral
 O2 -> test_only_an_allowlisted_cheap_surface_moves_to_mistral,
 test_mistral_uses_the_compatible_endpoint_without_hiding_its_identity
 O3 -> test_missing_mistral_credentials_never_fall_back_to_openai
-O4 -> test_chat_complete_names_mistral_before_building_the_client","Provider portability is useful only when it preserves the live loop, processing authorization, and a one-variable rollback path."
+O4 -> test_chat_complete_names_mistral_before_building_the_client
+O5 -> test_chat_complete_marks_real_timeout_in_failure_out,
+test_chat_complete_caps_each_call_to_the_request_deadline,
+test_chat_complete_discards_a_response_after_the_request_deadline","Provider portability is useful only when it preserves the live loop, processing authorization, and a one-variable rollback path."
 tests/test_chat_safety.py,Story,"As a person in a chat with someone else, I want to block them and to report what they sent, so that I stop hearing from someone abusive and the founder can act on it; and as the founder, I want every report in front of me at once.","O1  When I block the other person, what they send from then on never
 reaches me: not in my chat, not as my list's last line, not as a push,
 and not after I unblock either. They are not told: their own chat
@@ -858,6 +895,13 @@ O2 -> ChatSafetyTest::test_a_report_keeps_the_last_five_and_reaches_the_founder"
 tests/test_chat_talk.py,Story,"As a speaker, I want Will to read my whole talk slide by slide, so that his answers refer to what I actually said on each slide.","O1  Each slide lists its bullet points and what I said on it.
 O2  A slide I said nothing on reads ""(nothing yet)"".
 O3  Words not tied to a slide are listed on their own.","O1, O2, O3 -> test_each_slide_carries_its_points_and_what_they_said",Founder 2026-10-15; Privacy 3.7 section 4.
+tests/test_chat_turn_claim.py,Story,"As a speaker retrying a saved message, I want exactly one worker to own its durable turn, so that an optimistic bubble cannot be overwritten or answered twice.","O1  An optimistic user/text row is claimed once only when its logical words
+match, while its existing metadata and visible whitespace are retained.
+O2  A different payload or an existing bot row is returned untouched; it
+cannot be converted into a pending user turn.
+O3  Only the pending claim that owns the user row can mark it terminal.","O1 -> test_claim_adapter_stamps_only_the_matching_optimistic_user_row_once
+O2 -> test_claim_adapter_refuses_mismatched_or_bot_rows_without_writing
+O3 -> test_completion_adapter_compares_claim_and_pending_state",The database's unique client id and conditional update are the cross-worker arbitration point for a persisted chat retry.
 tests/test_chat_widget.py,Story,"As a person in WillpowerLab, I want my own chat on my website, so that anyone there can write to me, I answer as in any chat, and they sign up after asking to get my answer (N591).","O1  Before the visitor writes, with no card in the way, the website chat
 learns only whose chat it is, my welcome and how a visitor may write,
 as my chat's setup says: no fixed questions; a wrong or replaced link,
@@ -3385,6 +3429,15 @@ own orchestrator.","O1 -> test_every_placement_names_an_account_keyed_entry_once
 O2 -> test_a_project_purge_counts_its_project_and_stops_on_the_unplaced
 O3 -> test_neither_orchestrator_runs_the_others_request
 O4 -> test_a_project_purge_finishes_for_a_speaker_will_knows","P1-B, decisions log N8/N12: the project graph lists no principal or user, so an unplaced account-keyed table would reach no row at all. O4: found 2026-10-20, the WIL-74 tables (speaker_memory and its events, feedback checks, goal history, the coach's goal card) were never placed, so a project purge for any speaker with a note stopped for review with PROJECT_SCOPE_UNRESOLVED. Python orchestrator only, over the in-memory `PurgeDb` of tests/test_purge_user_locators.py; the real project purge runs on the released lane in tests/test_project_purge_postgres.py. Whether each re-pointed column exists in the schema is not checked here: that purge would fail on a missing column there."
+tests/test_project_rename.py,Story,"As an authenticated speaker, I want to rename my project from its project row, so that the project keeps its contents and lifecycle.","O1  A signed-in owner can rename the owned, unerased project and receives a
+stable project id/name response.
+O2  A different user or a missing project receives the existing non-
+disclosing project-not-found contract.
+O3  Blank names are rejected without a project mutation.","O1 -> test_authenticated_rename_returns_stable_contract
+test_rename_updates_only_the_owned_live_project
+O2 -> test_cross_user_rename_is_forbidden_without_project_disclosure
+test_rename_missing_or_cross_user_project_is_not_found
+O3 -> test_rename_rejects_invalid_input_before_mutation",Founder-approved project-row Edit/Rename action.
 tests/test_project_setup.py,Story,"As a speaker recording my next Take, I want the recording screen set up from my project: the words from my latest spoken Take and the project's current slides, so that I never re-enter my setup. (Critical path: next Take.)","O1  The slides and presentation come from the latest spoken Take that
 carried a deck, with the Take they were first used on; the words
 (topic, audience) from the latest spoken Take; a read-aloud Take never

@@ -3,12 +3,19 @@
          the structured response fields stable, so that a useful answer does
          not collapse into a generic acknowledgement.
 OUTCOME
-  O1  English and Polish golden turns mirror the typed content language.
-  O2  Earlier turns and bounded project context reach the writer together.
-  O3  Model and fallback responses retain the structured chat contract.
+  O1  English and Polish golden turns mirror the typed content language,
+      including unaccented Polish through the production default router.
+  O2  Earlier turns and bounded project context reach the writer together,
+      without crowding out the latest typed message, including the live
+      default router classifier.
+  O3  Model and timeout fallback responses retain the structured chat
+      contract and an explicit stable failure category.
 PROVES   O1 -> test_language_golden_turns_follow_the_typed_message
-         O2 -> test_writer_receives_conversation_and_project_context
-         O3 -> test_model_and_fallback_payloads_are_shape_complete
+         O2 -> test_writer_receives_conversation_and_project_context,
+               test_default_router_bounds_classifier_context_and_keeps_latest_message
+         O3 -> test_model_and_fallback_payloads_are_shape_complete,
+               test_router_timeout_returns_a_safe_terminal_fallback_without_mega_prompt,
+               test_real_provider_timeout_reaches_the_terminal_chat_contract
 WHY      Will conversational behavior: content language, context retention,
          useful framing and structured response/card compatibility.
 """
@@ -34,6 +41,12 @@ GOLDEN_TURNS = (
         "Czy możesz wyjaśnić, co powiedziałem o początku prezentacji?",
         "Widzę, że chodzi o początek prezentacji: chciałeś jasno powiedzieć "
         "najważniejszą rzecz przed kolejnym slajdem.",
+        "pl",
+    ),
+    (
+        "czy mozesz wyjasnic jak to dziala?",
+        "System pomaga zrozumieć, jak Twoje wystąpienie brzmi, a człowiek "
+        "pomaga wybrać, nad czym pracować dalej.",
         "pl",
     ),
 )
@@ -103,6 +116,166 @@ def test_writer_receives_conversation_and_project_context():
     assert "Q3 board pitch" in payload["answer"]
 
 
+def test_typed_language_overrides_an_older_target_and_context_stays_bounded():
+    calls = []
+
+    def complete(**kwargs):
+        calls.append(kwargs)
+        return _response("To jest odpowiedź na Twoje najnowsze pytanie.")
+
+    history = [
+        {"role": "user", "content": f"old-{i}-" + "x" * 3000}
+        for i in range(24)
+    ]
+    with patch.dict("os.environ", {"LOUNGE_ROUTER_ENABLED": "0"}), \
+            patch("services.llm.chat_complete", complete):
+        payload, _debug = answer_question(
+            "nie wiem co robisz z moim otwarciem",
+            history=history,
+            target_language="en",
+        )
+
+    assert payload["answer"].startswith("To jest")
+    system = calls[-1]["system"]
+    messages = calls[-1]["messages_override"]
+    assert "Polish (pl)" in system
+    assert messages[-1]["content"] == "nie wiem co robisz z moim otwarciem"
+    prior = messages[1:-1]
+    assert len(prior) <= 20
+    assert sum(len(m["content"]) for m in prior) <= 8000
+    assert all(len(m["content"]) <= 1200 for m in prior if m["role"] == "user")
+
+
+@pytest.mark.parametrize(("latest", "lane_answer", "language"), (
+    (
+        "What should I make clearer in the opening?",
+        "Make the main point clear before you move on.",
+        "English (en)",
+    ),
+    (
+        "czy mozesz wyjasnic jak to dziala?",
+        "Tak, system pomaga zrozumieć, jak działa analiza wystąpienia.",
+        "Polish (pl)",
+    ),
+    (
+        "nice",
+        "Thanks for saying that. What would you like to explore next?",
+        "English (en)",
+    ),
+))
+def test_default_router_bounds_classifier_context_and_keeps_latest_message(
+        monkeypatch, latest, lane_answer, language):
+    calls = []
+    history = []
+    for index in range(24):
+        history.extend([
+            {"role": "user", "content": f"user-{index}-" + "u" * 3000},
+            {"role": "assistant", "content": f"assistant-{index}-" + "a" * 3000},
+        ])
+
+    def complete(**kwargs):
+        calls.append(kwargs)
+        if kwargs["surface"] == "master_doc_rag_router":
+            return SimpleNamespace(text=json.dumps({
+                "intent": "product_faq", "confidence": 0.95,
+            }))
+        assert kwargs["surface"] == "master_doc_rag_lane"
+        return _response(lane_answer)
+
+    monkeypatch.delenv("LOUNGE_ROUTER_ENABLED", raising=False)
+    with patch("services.llm.chat_complete", complete):
+        payload, debug = answer_question(latest, history=history)
+
+    classifier, lane = calls
+    classifier_messages = classifier["messages_override"]
+    classifier_prior = classifier_messages[1:-1]
+    assert classifier_messages[-1]["content"] == latest
+    assert len(classifier_prior) <= 10
+    assert sum(len(message["content"]) for message in classifier_prior) <= 8000
+    assert all(len(message["content"]) <= 1200
+               for message in classifier_prior if message["role"] == "user")
+    assert all(len(message["content"]) <= 300
+               for message in classifier_prior if message["role"] == "assistant")
+    assert classifier["deadline_monotonic"] is not None
+    assert lane["messages_override"][-1]["content"] == latest
+    assert language in lane["system"]
+    assert payload["answer"] == lane_answer
+    assert debug["router_intent"] == "product_faq"
+
+
+@pytest.mark.parametrize(("question", "fallback_fragment"), (
+    ("What is the Readout?", "I'm having trouble"),
+    ("czy mozesz wyjasnic jak to dziala?", "Mam teraz trudność"),
+))
+def test_router_timeout_returns_a_safe_terminal_fallback_without_mega_prompt(
+        monkeypatch, question, fallback_fragment):
+    calls = []
+
+    def timed_out(**kwargs):
+        calls.append(kwargs["surface"])
+        kwargs["failure_out"].update(
+            last_code="provider_timeout", timed_out=True,
+        )
+        return None
+
+    monkeypatch.delenv("LOUNGE_ROUTER_ENABLED", raising=False)
+    with patch("services.llm.chat_complete", timed_out):
+        payload, debug = answer_question(question)
+
+    assert payload["answer"]
+    assert fallback_fragment in payload["answer"]
+    assert debug == {"error": "llm_timeout"}
+    assert calls == ["master_doc_rag_router"]
+
+
+def test_real_provider_timeout_reaches_the_terminal_chat_contract(monkeypatch):
+    """TimeoutError -> llm -> RAG fallback -> terminal fields, with no leak."""
+    from services.authorized_provider import (
+        ProviderCoordinates,
+        protected_provider_scope,
+    )
+    from services.chat_query import _failure_from_debug, terminal_response
+
+    class TimeoutPermit:
+        def __init__(self):
+            self.authorization = self
+            self.coordinates = ProviderCoordinates("speaker", "take", "recording")
+            self.events = []
+
+        def authorize_operation(self, *_args, **_kwargs):
+            return {"permit_id": "timeout-permit"}
+
+        def record_provider_event(self, *args, **kwargs):
+            self.events.append((args, kwargs))
+
+    monkeypatch.delenv("LOUNGE_ROUTER_ENABLED", raising=False)
+    monkeypatch.setattr("services.chat_provider.build_chat_client", lambda _target: object())
+    monkeypatch.setattr(
+        "services.llm.operational_chat_complete",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            TimeoutError("provider detail must not reach the chat"),
+        ),
+    )
+    adapter = TimeoutPermit()
+
+    with protected_provider_scope(adapter, idempotency_prefix="chat-timeout-golden"):
+        payload, debug = answer_question("What is the Readout?")
+
+    terminal = terminal_response({
+        **payload,
+        "failure": _failure_from_debug(debug),
+    }, "11111111-1111-4111-8111-111111111111")
+    assert terminal["terminal"] is True
+    assert terminal["outcome"] == "recoverable_error"
+    assert terminal["retryable"] is True
+    assert terminal["timeout"] is True
+    assert terminal["failure"] == {
+        "code": "CHAT_MODEL_TIMEOUT", "retryable": True, "timeout": True,
+    }
+    assert "provider detail must not reach the chat" not in json.dumps(terminal)
+    assert adapter.events
+
+
 def test_model_and_fallback_payloads_are_shape_complete():
     required = {"answer", "show_record_ui", "suggested_action", "app_action"}
 
@@ -120,3 +293,10 @@ def test_model_and_fallback_payloads_are_shape_complete():
     assert required <= fallback_payload.keys()
     assert fallback_payload["app_action"] is None
     assert debug["error"] == "llm_unavailable"
+
+    with patch.dict("os.environ", {"LOUNGE_ROUTER_ENABLED": "0"}), \
+            patch("services.llm.chat_complete", lambda **_kwargs: None):
+        polish_fallback, polish_debug = answer_question("nie wiem co robisz",
+                                                         target_language="en")
+    assert "trudność" in polish_fallback["answer"]
+    assert polish_debug["error"] == "llm_unavailable"

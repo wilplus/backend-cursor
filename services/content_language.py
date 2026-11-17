@@ -37,6 +37,22 @@ _MARKERS = {
     ),
 }
 _PL_DIACRITICS = frozenset("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ")
+# High-confidence unaccented Polish phrases.  Individual words such as
+# ``co`` are ambiguous in a short English message, but these combinations
+# are ordinary Polish and let brief typed turns avoid falling through to an
+# English fallback without consulting browser/UI locale.
+_PL_UNACCENTED_PHRASES = (
+    "nie wiem", "co robisz", "czy moge", "czy mozesz", "pomoz mi",
+    "prosze cie", "jak mam", "co mam", "nie rozumiem", "o co chodzi",
+    "co teraz", "jak zaczac", "dziekuje bardzo", "jestem gotowy",
+    "mozemy zaczac", "wytlumacz mi", "czy masz rade",
+)
+# A few single unaccented forms are unambiguously Polish in a short typed
+# turn.  Keep this deliberately small: common English words must still fall
+# back to English unless there is stronger immediate-message evidence.
+_PL_UNACCENTED_WORDS = frozenset({
+    "czesc", "dziekuje", "prosze", "pomoz", "mozemy", "zaczac", "wytlumacz",
+})
 
 
 def normalize_language(value: Any) -> Optional[str]:
@@ -60,6 +76,11 @@ def detect_typed_language(text: Any) -> Optional[str]:
     if not words:
         return None
     if any(char in _PL_DIACRITICS for char in text):
+        return "pl"
+    lowered = " ".join(words)
+    if any(phrase in lowered for phrase in _PL_UNACCENTED_PHRASES):
+        return "pl"
+    if any(word in _PL_UNACCENTED_WORDS for word in words):
         return "pl"
     scores = {
         code: sum(1 for word in words if word in markers)

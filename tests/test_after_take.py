@@ -16,7 +16,7 @@ OUTCOME
       top, N391); Will's next question may follow his first, only when his
       is the ask (N294 item 4); nothing comes when nothing applies.
   O3  The asks come one at a time, each under whatever closed the one
-      before: a typed turn, under Will's reply; "Yes", tapped or typed,
+      before: a typed settlement for that Take, under Will's reply; "Yes", tapped or typed,
       under "We're glad it helped you."; a reply that opens a form keeps the
       ask open. An ask that no longer applies is skipped, and so is a
       settings ask a message held from before still names. After the last
@@ -24,8 +24,8 @@ OUTCOME
   O4  A message still waiting when a newer Take is written shows where it
       stands.
   O5  After a distressed message the chat's safety reply comes and the asks
-      wait: nothing lands under it until I write again (founder 2026-10-21,
-      N94).
+      wait: a later unrelated chat question gets its own reply and does not
+      release the held Take state (founder 2026-10-21, N94).
   O6  The plan's lines after a Take wait for the ask: the ask stays the
       newest bubble, so its answers stay; after my answer come the lines,
       then "Good job. See you next time." (no practice day is named, N564),
@@ -46,7 +46,7 @@ PROVES   O1 -> test_after_take_one_will_else_the_question_never_a_settings_ask
          O2 -> test_from_take_two_one_ask_ceo_ask_will_the_question
          O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_goodbye
          O4 -> test_an_older_waiting_message_shows_where_it_stands
-         O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again
+         O5 -> test_after_a_distressed_message_the_asks_wait_until_their_take_is_settled
          O6 -> test_the_plans_lines_wait_for_the_ask_then_the_goodbye_the_progress_and_its_question
          O7 -> test_the_whatsapp_ask_waits_for_the_next_visit_in_the_bar
          O8 -> test_the_first_takes_goodbye_says_so_on_any_device
@@ -186,12 +186,13 @@ def test_each_ask_comes_under_what_closed_the_one_before_then_the_goodbye(monkey
     assert db.drawn()[-3:] == ["Yes", after_take.GLAD, after_take.SEE_YOU]
     assert after_take.held(db, "u") is None
 
-    # A typed turn that passes the ask advances the chain under Will's reply.
+    # An unrelated typed chat turn is answered, but cannot release this
+    # Take's held closing under the wrong conversation.
     typed = _Db()
     _waiting(typed, "take-1", ["feedback_check"])
     _typed(typed, monkeypatch, "How do I sound calmer?")
-    assert typed.drawn()[-2:] == ["Slow the first slide down.", after_take.SEE_YOU]
-    assert after_take.held(typed, "u") is None
+    assert typed.drawn()[-1] == "Slow the first slide down."
+    assert after_take.held(typed, "u") is not None
 
     # A typed "yes" is answered with the founder's sentence, the chain under it.
     glad = _Db()
@@ -256,7 +257,7 @@ def test_an_older_waiting_message_shows_where_it_stands():
     assert after_take.SEE_YOU in db.bodies() and feedback_check.COPY["ask"] in db.bodies()
 
 
-def test_after_a_distressed_message_the_asks_wait_until_i_write_again(monkeypatch):
+def test_after_a_distressed_message_the_asks_wait_until_their_take_is_settled(monkeypatch):
     _world(monkeypatch, phone=None, admin=None)
     db = _Db()
     _waiting(db, "take-1", ["feedback_check"])
@@ -265,9 +266,11 @@ def test_after_a_distressed_message_the_asks_wait_until_i_write_again(monkeypatc
     resp = _typed(db, monkeypatch, "Honestly I can't go on like this")
     assert "sorry" in resp["answer"].lower() and not resp.get("after_take")
     assert db.drawn()[-1] == resp["answer"] and after_take.held(db, "u") is not None
-    # Writing again: Will's reply, and the chain goes on under it.
+    # A later unrelated chat question receives its own answer but does not
+    # release the earlier Take's terminal state.
     _typed(db, monkeypatch, "Ok, I'm calmer now. How do I sound calmer on stage?")
-    assert db.drawn()[-2:] == ["Slow the first slide down.", after_take.SEE_YOU]
+    assert db.drawn()[-1] == "Slow the first slide down."
+    assert after_take.held(db, "u") is not None
 
 
 def _done(db, take):

@@ -48,6 +48,64 @@ their recent notes in the typed language and the following structured case row
 remains the source for the existing Not now | Investigate intervention. The
 answer is concise; the case row's metadata and follow-on lens are unchanged.
 
+### Correlated chat delivery (implementation contract)
+
+Every accepted, handler-produced `/v2/chat/query` turn is terminal for one
+server-returned `client_id` / `request_id`: `terminal`, `outcome`,
+`retryable`, `timeout` and the optional structured `failure` object let the
+composer stop its typing state without guessing from a bubble. The usual
+reply text and the existing structured intervention fields remain separate.
+Middleware/validation refusals can occur before the handler accepts a turn;
+they are not a substitute for this terminal contract.
+
+| Failure code | HTTP / fields | Composer treatment |
+|---|---|---|
+| `CHAT_MODEL_TIMEOUT` | `200`; `retryable: true`, `timeout: true` | Render the language-selected safe fallback when it exists, mark the model attempt timed out, and offer a deliberate retry rather than leaving typing active. |
+| `CHAT_MODEL_UNAVAILABLE`, `CHAT_MODEL_EMPTY_RESPONSE`, `CHAT_MODEL_INVALID_RESPONSE`, `CHAT_MODEL_LANGUAGE_REJECTED`, `CHAT_RESPONSE_UNAVAILABLE` | `200`; `retryable: true`, `timeout: false` | Render the useful safe fallback if supplied; never expose provider detail or replace it with a generic acknowledgement. |
+| `CHAT_CONTEXT_UNAVAILABLE` | `200`; `retryable: true`, `timeout: false` | Keep the language-selected contextual fallback and its existing settlement metadata; offer a deliberate retry. |
+| `CHAT_PERSIST_FAILED` | `200`; `retryable: true`, `timeout: false`, `persisted: false` | Render the explicit recoverable state. `answer` can be empty before work starts, or the safe answer when its later bot write could not be confirmed. |
+| `CHAT_TURN_IN_PROGRESS`, `CHAT_TURN_UNAVAILABLE` | `200`; `retryable: true`, `timeout: false`, `retry_after_ms: 1000`, `persisted: false` | Stop typing and show a wait/retry state for the same correlation id; no second intercept, model call, charge or walk release is run. |
+| `CHAT_TURN_CONFLICT` | `200` for an accepted reused id; `retryable: false`, `timeout: false`, `persisted: false` | Stop typing and reject changed text for that already-owned id. |
+| `CHAT_INTERNAL_ERROR` | `200`; `retryable: true`, `timeout: false`, `persisted: false` for a claimed persisted turn | Stop typing and show the explicit recoverable error; the durable failure receipt prevents duplicate state work on the same id. |
+| `INVALID_INPUT`, `INVALID_REQUEST_ID` | `400`; `retryable: false`, `timeout: false` | Validation refusal: keep the input available for correction. Contradictory `client_id` / `request_id` aliases use `INVALID_REQUEST_ID`, not `CHAT_TURN_CONFLICT`. |
+
+`failure` always contains `code`, `retryable` and `timeout`, and may contain
+`retry_after_ms`; the top-level `retryable` / `timeout` repeat those values
+for existing composer code. Every accepted failure is deliberately `200` with
+the terminal fields above, so a generic HTTP client cannot discard the
+correlation body before the composer settles its typing state. Validation
+refusals remain `400` and use the same renderable fields.
+
+For a signed-in turn with `persist: true`, that UUID is also the durable
+retry key. Reposting the same id replays the completed, stored terminal
+response without another model call, state transition, release or charge; the
+same text with a fresh id is a new turn. Reusing an id for different text is a
+conflict, not a reply to the wrong message. A caller that sends no valid UUID
+receives a new server id so repeated short text is never deduplicated by its
+words. A retry cannot disable this protection by changing a completed
+persisted turn to `persist: false`.
+
+Anonymous turns and signed turns explicitly sent with `persist: false` retain
+the returned correlation fields but intentionally do not create a durable
+receipt: preserving that privacy/storage choice takes precedence over claiming
+cross-request idempotency where the backend has no safe arbitration record.
+
+The terminal row after a Take (`metadata.next_take`) belongs to that Take,
+not to a later question. It is omitted from both stored and supplied screen
+conversation context. A held chain may advance only from explicit settlement
+metadata for its own `take_session_id`; an ordinary librarian reply therefore
+cannot let an old "Good job. See you next time." appear under an unrelated
+message. These delivery fields do not widen what reaches a provider: the
+existing Phase-1 authorization, bounded private context, fallback evidence
+rules and signed walk copy remain in force.
+
+The shared model-call budget passes its remaining timeout to each started
+provider call and discards a response that arrives after the budget. It does
+not claim to cancel a browser, proxy or already-blocking SDK call; the
+terminal timeout state is the backend result once that call returns. This is a
+reliability repair of the existing N652/N654/N656 language, conversation and
+after-Take rules, not a new feedback-walk flow or new speaker copy.
+
 **Will learns about each speaker** (founder, 2026-10-20). Their answers and
 each Take's outcome feed a private note Will reads before it chats and before
 it writes the summary. The speaker never sees their answers played back. See

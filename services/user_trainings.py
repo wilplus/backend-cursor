@@ -235,11 +235,18 @@ def list_trainings(database: Any, user_id: Any, *, every_project: bool) -> list:
         logger.warning("practice feedback evidence unreadable", exc_info=True)
         drafts_by_session = {}
     if every_project:
-        batched = database.get_coach_best_presentation_edits_for_arcs(list(by_arc.keys()))
-
-        def edits_for(aid: str) -> dict:
-            return (batched or {}).get(aid, {})
+        batched = database.get_coach_best_presentation_edits_for_arcs(
+            list(by_arc.keys()))
     else:
+        batched = database.get_coach_best_presentation_edits_for_arcs(
+            list(by_arc.keys()), strict=False)
+    if batched is not None:
+        def edits_for(aid: str) -> dict:
+            return batched.get(aid, {})
+    else:
+        # The picker historically swallowed an individual coach-edits read
+        # failure and kept the rest of the list available. Preserve that
+        # behavior if the new batch read is unavailable.
         def edits_for(aid: str) -> dict:
             return database.get_coach_best_presentation_edits(aid) or {}
     trainings = []

@@ -43,8 +43,8 @@ def test_trainings_group_by_talk_and_mark_ideal_ready():
     with patch.object(db.takes, "list_user_arc_sessions", return_value=rows), \
             patch.object(db, "list_arc_batch_deliveries", return_value={}), \
             patch.object(db, "get_coach_snippet_drafts_by_sessions", return_value={}), \
-            patch.object(db, "get_coach_best_presentation_edits",
-                         side_effect=lambda arc: edits[arc]), \
+            patch.object(db, "get_coach_best_presentation_edits_for_arcs",
+                         return_value=edits) as batched_edits, \
             patch("services.project_deletion.with_deletion_state",
                   side_effect=lambda _db, trainings, _all: trainings), \
             Flask(__name__).test_request_context():
@@ -58,6 +58,30 @@ def test_trainings_group_by_talk_and_mark_ideal_ready():
     assert cards["ready"]["take_count"] == 2
     assert cards["ready"]["ideal_ready"] is True
     assert cards["half"]["ideal_ready"] is False
+    batched_edits.assert_called_once_with(["ready", "half"], strict=False)
+
+
+def test_picker_preserves_per_project_coach_read_fallback_on_batch_failure():
+    rows = [_take("s1", "ready", 1), _take("s2", "half", 1)]
+    edits = {"ready": {0: "Edited.", 1: "Also edited."}, "half": {0: "Edited."}}
+    with patch.object(db.takes, "list_user_arc_sessions", return_value=rows), \
+            patch.object(db, "list_arc_batch_deliveries", return_value={}), \
+            patch.object(db, "get_coach_snippet_drafts_by_sessions", return_value={}), \
+            patch.object(db, "get_coach_best_presentation_edits_for_arcs",
+                         return_value=None), \
+            patch.object(db, "get_coach_best_presentation_edits",
+                         side_effect=lambda arc: edits[arc]) as per_arc_edits, \
+            patch("services.project_deletion.with_deletion_state",
+                  side_effect=lambda _db, trainings, _all: trainings), \
+            Flask(__name__).test_request_context():
+        request.user_id = "u1"
+        resp, status = inspect.unwrap(user_sessions.v2_user_list_trainings)()
+
+    assert status == 200
+    cards = {t["arc_id"]: t for t in resp.get_json()["trainings"]}
+    assert cards["ready"]["ideal_ready"] is True
+    assert cards["half"]["ideal_ready"] is False
+    assert per_arc_edits.call_count == 2
 
 
 def test_practice_history_groups_exact_ranges_and_reads_delivery_not_attempts():

@@ -85,6 +85,11 @@ same speaker. This is not the "thread never feeds profile" rule of the
 `lounge_messages` migration being relaxed: step 2, feeding the private note
 from chat history, needs the founder's OK again.
 
+A completed Take closing (`metadata.next_take`, including the existing
+"Good job. See you next time." copy) is walk state, not prior dialogue. It is
+left out of the bounded chat context before Will answers a later typed turn;
+the closing can therefore never be mistaken for an answer to that new turn.
+
 The reads run side by side (`services.parallel`): Takes and chat first,
 then the project check, the authorization check and the coach's words; the
 note is read alongside.

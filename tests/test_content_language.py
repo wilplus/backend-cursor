@@ -34,6 +34,9 @@ def test_content_language_uses_recording_before_typed_message():
 def test_content_language_detects_polish_and_english_typed_messages():
     assert detect_typed_language("Cześć, więc chcę ćwiczyć") == "pl"
     assert detect_typed_language("czy mozesz wyjasnic jak to dziala") == "pl"
+    for short_polish in ("czesc", "dziekuje", "prosze", "pomoz", "wytlumacz mi"):
+        assert detect_typed_language(short_polish) == "pl"
+    assert detect_typed_language("nice") is None
     assert detect_typed_language("This is a message for your talk") == "en"
 
 

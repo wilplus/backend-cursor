@@ -80,6 +80,16 @@ def _call(view, *args, user=USER, peel=True, token=None, **ctx):
 # ── POST /v2/chat/query ─────────────────────────────────────────────────────
 
 def _chat_patches(rec, *, intent=None, librarian=None):
+    claimed = {}
+
+    def claim(user_id, message):
+        row = dict(message)
+        claimed[(str(user_id), str(message["client_id"]))] = row
+        return row
+
+    def get(user_id, client_id):
+        return claimed.get((str(user_id), str(client_id)))
+
     return [
         patch("services.goal_update.handle_goal_update", return_value=None),
         patch("services.presentation_change_intent.handle_presentation_change",
@@ -89,6 +99,9 @@ def _chat_patches(rec, *, intent=None, librarian=None):
               return_value=librarian or ({}, {})),
         patch("services.token_account.charge", rec.charge),
         patch.object(db, "insert_lounge_messages", rec.insert),
+        patch.object(db, "claim_lounge_chat_turn", claim),
+        patch.object(db, "get_lounge_message_by_client_id", get),
+        patch.object(db, "rewrite_lounge_message", return_value=None),
         patch.object(db, "get_user_settings",
                      return_value={"private_admin_notes": "no money talk"}),
     ]
@@ -97,10 +110,11 @@ def _chat_patches(rec, *, intent=None, librarian=None):
 def test_a_chat_turn_answers_persists_and_charges():
     from routes.v2 import coaching
     rec = MagicMock()
+    rec.insert.side_effect = lambda _user, rows: rows
     p = _chat_patches(rec, intent={
         "intent": "dad_joke", "answer": "One.\n\nTwo.",
         "show_record_ui": False, "suggested_action": None})
-    with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
+    with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9]:
         status, body = _call(coaching.v2_chat_query, method="POST", json={
             "question": " tell me a joke ", "persist": True,
             "client_id": CLIENT, "client_created_at": "2026-10-12T10:00:00Z"})
@@ -109,7 +123,9 @@ def test_a_chat_turn_answers_persists_and_charges():
     assert body == {"answer": "One.\n\nTwo.", "bubbles": ["One.", "Two."],
                     "show_record_ui": False, "suggested_action": None,
                     "debug": {"intent": "dad_joke"}, "persisted": True,
-                    "persisted_client_id": bot_id}
+                    "persisted_client_id": bot_id, "client_id": CLIENT,
+                    "request_id": CLIENT, "terminal": True, "outcome": "reply",
+                    "retryable": False, "timeout": False, "failure": None}
     assert [c[0] for c in rec.mock_calls] == ["insert", "charge"]
     assert rec.insert.call_args.args == (USER, [
         {"client_id": CLIENT, "role": "user", "kind": "text",
@@ -117,7 +133,8 @@ def test_a_chat_turn_answers_persists_and_charges():
          "client_created_at": "2026-10-12T10:00:00Z"},
         {"client_id": bot_id, "role": "bot", "kind": "text",
          "body": "One.\n\nTwo.",
-         "metadata": {"intent": "dad_joke", "bubbles": ["One.", "Two."]},
+         "metadata": {"intent": "dad_joke", "bubbles": ["One.", "Two."],
+                      "chat_response": ANY, "chat_turn": ANY},
          "client_created_at": ANY}])
     rec.charge.assert_called_once_with(USER, "chat")
 
@@ -128,13 +145,16 @@ def test_the_librarian_answers_the_rest_and_a_blank_question_is_refused():
     p = _chat_patches(rec, librarian=(
         {"answer": "Record a take.", "show_record_ui": True,
          "suggested_action": "nonsense"}, {"intent": "faq", "model": "m"}))
-    with p[0], p[1], p[2], p[3] as answer, p[4], p[5], p[6]:
+    with p[0], p[1], p[2], p[3] as answer, p[4], p[5], p[6], p[7], p[8], p[9]:
         status, body = _call(coaching.v2_chat_query, method="POST",
                              json={"question": "how?", "history": [{"r": 1}]})
         assert (status, body) == (200, {
             "answer": "Record a take.", "bubbles": ["Record a take."],
             "show_record_ui": True, "suggested_action": None,
-            "debug": {"intent": "faq", "model": "m"}})
+            "debug": {"intent": "faq", "model": "m"},
+            "client_id": ANY, "request_id": ANY, "terminal": True,
+            "outcome": "reply", "retryable": False, "timeout": False,
+            "failure": None})
         answer.assert_called_once_with(
             "how?", history=[{"r": 1}], admin_dont_ask_notes="no money talk",
             life_context=None, app_context=ANY)

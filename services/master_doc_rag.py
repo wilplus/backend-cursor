@@ -35,8 +35,10 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any, Optional
 
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,22 @@ _MAX_TOKENS = 600
 # writer gets more, so a reply to the summary after a Take still reads it.
 _ROUTER_TURNS = 10
 _ANSWER_TURNS = 20
+
+
+def _chat_deadline_monotonic() -> Optional[float]:
+    """One config-backed wall-clock budget across a typed chat turn.
+
+    The router and the mega-prompt are individual bounded calls, but without
+    one shared budget their slow-path sum could outlive the chat composer.
+    This is intentionally a soft boundary: it prevents starting another call
+    and caps each started call's timeout; the approved fallback remains the
+    terminal result.
+    """
+    try:
+        seconds = float(getattr(Config, "LOUNGE_CHAT_DEADLINE_SECONDS", 20.0) or 0)
+    except (TypeError, ValueError):
+        seconds = 20.0
+    return time.monotonic() + seconds if seconds > 0 else None
 
 # The app features Will may open (services.chat_app_context.FEATURES).
 from services.chat_app_context import ACTIONS as _APP_ACTIONS  # noqa: E402
@@ -719,12 +737,12 @@ def split_answer_into_bubbles(answer: str) -> list[str]:
 
 # ─────────────────────────────────────────────────────────────────
 # Two-stage intent router (PARKED-intent-router spec) — PARALLEL path
-# behind LOUNGE_ROUTER_ENABLED, default OFF. The mega-prompt above stays
-# the live path + the safety net: on low classifier confidence or any
-# router failure, answer_question falls back to it. Each lane carries only
-# its own rules, so adding a rule to one lane no longer steals attention
-# from the others (the whole point). Promote (flip the flag on in prod)
-# only once the probe shows >= parity with the flag on.
+# behind LOUNGE_ROUTER_ENABLED, default ON. The mega-prompt above is the
+# safety net: on low classifier confidence or any router failure,
+# answer_question falls back to it. Each lane carries only its own rules, so
+# adding a rule to one lane no longer steals attention from the others (the
+# whole point). Set the flag false only to force the legacy path while
+# investigating a regression.
 # ─────────────────────────────────────────────────────────────────
 
 _ROUTER_MODEL = "gpt-4o-mini"
@@ -805,19 +823,20 @@ _CLASSIFIER_SCHEMA: dict[str, Any] = {
 }
 
 
-def _classify_intent(question, history, service=None) -> tuple[Optional[str], float]:
+def _classify_intent(
+    question, history, service=None, failure_out: Optional[dict[str, Any]] = None,
+    deadline_monotonic: Optional[float] = None,
+) -> tuple[Optional[str], float]:
     """Stage 1 — tiny cheap classifier (gpt-4o-mini, temp 0). Returns
     ``(intent, confidence)`` or ``(None, 0.0)`` on any failure so the
     caller falls back to the mega-prompt."""
     msgs: list[dict[str, str]] = [
         {"role": "system", "content": _CLASSIFIER_SYSTEM},
     ]
-    if isinstance(history, list):
-        for m in history[-_ROUTER_TURNS:]:
-            role = (m.get("role") or "").strip()
-            content = (m.get("content") or "").strip()
-            if role in ("user", "assistant") and content:
-                msgs.append({"role": role, "content": content})
+    # The classifier is live production context too. Reuse the writer's
+    # bounded, newest-first window so a long old screen bubble cannot turn a
+    # tiny routing call into the slowest part of the typed response.
+    msgs.extend(_history_messages(history)[-_ROUTER_TURNS:])
     msgs.append({"role": "user", "content": question})
     try:
         from services.llm import chat_complete
@@ -831,6 +850,8 @@ def _classify_intent(question, history, service=None) -> tuple[Optional[str], fl
             response_format_override={
                 "type": "json_schema", "json_schema": _CLASSIFIER_SCHEMA,
             },
+            failure_out=failure_out,
+            deadline_monotonic=deadline_monotonic,
         )
         if resp is None:
             return None, 0.0
@@ -1006,21 +1027,34 @@ def render_app_context(app_context) -> str:
 
 
 _HISTORY_ASSISTANT_CHARS = 300
+_HISTORY_USER_CHARS = 1200
+_HISTORY_TOTAL_CHARS = 8000
 
 
 def _history_messages(history) -> list[dict[str, str]]:
     """The last _ANSWER_TURNS user/assistant turns. Will's own past turns
-    are cut to ~300 chars so old long answers don't teach it to run long."""
+    are cut to ~300 chars so old long answers don't teach it to run long.
+
+    User turns receive a separate cap and the whole retained window has one
+    budget.  We fill it newest-first, so a large old screen bubble can never
+    crowd out the actual latest question appended by the caller.
+    """
     out: list[dict[str, str]] = []
     if not isinstance(history, list):
         return out
-    for m in history[-_ANSWER_TURNS:]:
+    remaining = _HISTORY_TOTAL_CHARS
+    for m in reversed(history[-_ANSWER_TURNS:]):
         role = (m.get("role") or "").strip()
         content = (m.get("content") or "").strip()
         if role == "assistant":
             content = content[:_HISTORY_ASSISTANT_CHARS]
-        if role in ("user", "assistant") and content:
-            out.append({"role": role, "content": content})
+        elif role == "user":
+            content = content[:_HISTORY_USER_CHARS]
+        if role not in ("user", "assistant") or not content or remaining <= 0:
+            continue
+        content = content[:remaining]
+        out.insert(0, {"role": role, "content": content})
+        remaining -= len(content)
     return out
 
 
@@ -1051,11 +1085,15 @@ def _build_lane_prompt(intent, dont_ask_block, life_context=None,
 def _answer_via_router(
     question, history, admin_dont_ask_notes, service,
     life_context=None, app_context=None, target_language=None,
+    failure_out: Optional[dict[str, Any]] = None,
+    deadline_monotonic: Optional[float] = None,
 ) -> Optional[tuple[dict[str, Any], dict[str, Any]]]:
     """Stage 1 classify → Stage 2 focused handler. Returns ``(payload,
     debug)`` or ``None`` to tell the caller to fall back to the mega-prompt
     (low confidence, classifier failure, empty/failed handler)."""
-    intent, conf = _classify_intent(question, history, service)
+    intent, conf = _classify_intent(
+        question, history, service, failure_out, deadline_monotonic,
+    )
     if intent is None or conf < _ROUTER_CONFIDENCE_FLOOR:
         logger.info("router: fallback (intent=%s conf=%.2f)", intent, conf)
         return None
@@ -1083,6 +1121,8 @@ def _answer_via_router(
             response_format_override={
                 "type": "json_schema", "json_schema": _RESPONSE_SCHEMA,
             },
+            failure_out=failure_out,
+            deadline_monotonic=deadline_monotonic,
         )
         if resp is None:
             return None
@@ -1121,6 +1161,12 @@ def _answer_via_router(
     if _guard:
         logger.warning("master_doc_rag: output guard fired: %s", _guard)
         debug["output_guard"] = _guard
+        # The existing deterministic guard strings are founder-approved
+        # English safety copy.  For Polish content, take the established
+        # Polish safe fallback instead of leaking an English guard response.
+        from services.content_language import normalize_language
+        if normalize_language(target_language) == "pl":
+            return None
     return (
         {
             "answer": answer,
@@ -1186,8 +1232,11 @@ def answer_question(
     """
     q = (question or "").strip()
     from services.content_language import resolve_content_language
+    # A chat turn is immediate typed content.  A caller's target is a
+    # fallback only: a previous recording in English must not make a fresh
+    # Polish question receive English coaching text.
     target_language = resolve_content_language(
-        recording_language=target_language, typed_message=q,
+        typed_message=q, fallback=target_language,
     )
     if not q:
         return (
@@ -1205,6 +1254,12 @@ def answer_question(
         )
 
     service = None
+    # `chat_complete` keeps its long-standing ``None`` fallback contract, so
+    # this tiny stable summary is how the chat route can distinguish a real
+    # timeout from an ordinary provider-unavailable fallback without exposing
+    # exception text to the speaker or persisting it in a turn receipt.
+    failure_out: dict[str, Any] = {}
+    deadline_monotonic = _chat_deadline_monotonic()
 
     # Runs before the mega-prompt is built, so a routed turn never pays
     # for the status card unless its lane uses it.
@@ -1214,10 +1269,16 @@ def answer_question(
     if _router_enabled():
         routed = _answer_via_router(
             q, history, admin_dont_ask_notes, service,
-            life_context, app_context, target_language,
+            life_context, app_context, target_language, failure_out,
+            deadline_monotonic,
         )
         if routed is not None:
             return routed
+        # A timeout has already consumed the shared response budget. Do not
+        # begin the legacy mega-prompt and prolong the composer state; the
+        # established language-aware fallback is the terminal answer.
+        if failure_out.get("timed_out"):
+            return (_fallback_payload(target_language), {"error": "llm_timeout"})
 
     # Compose system prompt: base + optional admin don't-ask block.
     # Shared helper so all four chat surfaces use identical wording.
@@ -1260,9 +1321,14 @@ def answer_question(
                 "type": "json_schema",
                 "json_schema": _RESPONSE_SCHEMA,
             },
+            failure_out=failure_out,
+            deadline_monotonic=deadline_monotonic,
         )
         if response is None:
-            return (_fallback_payload(target_language), {"error": "llm_unavailable"})
+            return (_fallback_payload(target_language), {
+                "error": ("llm_timeout" if failure_out.get("timed_out")
+                          else "llm_unavailable"),
+            })
         raw = response.text
     except Exception as e:
         from services.processing_authorization import rethrow_processing_authorization
@@ -1270,7 +1336,9 @@ def answer_question(
         logger.warning("master_doc_rag: llm call failed: %s", e)
         return (
             _fallback_payload(target_language),
-            {"error": "llm_error", "detail": str(e)},
+            {"error": ("llm_timeout" if isinstance(e, TimeoutError)
+                       or "timeout" in type(e).__name__.lower()
+                       else "llm_error")},
         )
 
     if not raw:
@@ -1308,6 +1376,12 @@ def answer_question(
     answer, suggested_action, _guard = _enforce_output_guards(
         answer, suggested_action,
     )
+    if _guard:
+        from services.content_language import normalize_language
+        if normalize_language(target_language) == "pl":
+            return (_fallback_payload(target_language), {
+                "output_guard": _guard,
+            })
     from services.content_language import validate_output_language
     if not _guard and not validate_output_language(answer, target_language):
         return (_fallback_payload(target_language), {"error": "output_language"})

@@ -30,6 +30,7 @@ charges after answering, never before.
 """
 from __future__ import annotations
 
+import copy
 import functools
 import logging
 import uuid
@@ -44,6 +45,341 @@ def _is_uuid(value) -> bool:
         uuid.UUID(str(value))
         return True
     except (ValueError, AttributeError, TypeError):
+        return False
+
+
+_CHAT_RESPONSE_META = "chat_response"
+_CHAT_RESPONSE_VERSION = 1
+_CHAT_TURN_META = "chat_turn"
+_CHAT_TURN_VERSION = 1
+_CHAT_TURN_PENDING = "pending"
+_CHAT_TURN_COMPLETED = "completed"
+_CHAT_TURN_FAILED = "failed"
+_CHAT_RESPONSE_FIELDS = (
+    "answer", "bubbles", "show_record_ui", "suggested_action",
+    "suggested_actions", "app_action", "offer", "take_card",
+    "row_metadata", "after_take", "persisted", "persisted_client_id",
+    "request_id", "client_id", "terminal", "outcome", "retryable",
+    "timeout", "failure",
+)
+
+
+def chat_turn_id(value=None) -> str:
+    """Return one canonical UUID for a logical chat turn.
+
+    A supplied UUID is the durable correlation key.  A missing key gets a
+    fresh UUID rather than one derived from the words: two intentional
+    ``"nice"`` messages are two turns, while a transport retry carries the
+    original UUID.  The route echoes this value so a caller that needs retry
+    safety can retain it.
+    """
+    if _is_uuid(value):
+        return str(uuid.UUID(str(value)))
+    return str(uuid.uuid4())
+
+
+def is_chat_turn_id(value) -> bool:
+    """Whether a supplied client/request id is a valid correlation UUID."""
+    return _is_uuid(value)
+
+
+def bot_client_id(user_client_id: str) -> str:
+    """The one durable bot-row identity for a correlated user turn."""
+    return str(uuid.uuid5(
+        uuid.NAMESPACE_URL, f"willab-chat-bot:{user_client_id}"))
+
+
+def _has_structured_intervention(resp: dict) -> bool:
+    return any(resp.get(key) for key in (
+        "suggested_action", "suggested_actions", "app_action", "offer",
+        "take_card", "row_metadata",
+    ))
+
+
+def terminal_response(resp: dict, request_id: str, *, replayed: bool = False) -> dict:
+    """Attach the additive terminal contract the chat UI can settle on.
+
+    ``answer`` and the established card fields stay exactly where existing
+    clients expect them.  The explicit fields mean the UI never has to infer
+    completion from a delayed/stale bubble: every route result says which
+    logical turn it belongs to, whether it is final, and whether retrying is
+    safe.  A failure is intentionally structured rather than encoded in a
+    generic acknowledgement.
+    """
+    failure = resp.get("failure")
+    failure = failure if isinstance(failure, dict) else None
+    if failure is not None:
+        failure = {
+            "code": str(failure.get("code") or "CHAT_RESPONSE_UNAVAILABLE"),
+            "retryable": bool(failure.get("retryable", True)),
+            "timeout": bool(failure.get("timeout", False)),
+            **({"retry_after_ms": int(failure["retry_after_ms"])}
+               if isinstance(failure.get("retry_after_ms"), int) else {}),
+        }
+        resp["failure"] = failure
+    else:
+        resp["failure"] = None
+    resp["client_id"] = request_id
+    resp["request_id"] = request_id
+    resp["terminal"] = True
+    resp["outcome"] = (
+        "recoverable_error" if failure else
+        ("structured" if _has_structured_intervention(resp) else "reply")
+    )
+    resp["retryable"] = bool(failure and failure["retryable"])
+    resp["timeout"] = bool(failure and failure["timeout"])
+    if replayed:
+        resp["replayed"] = True
+    return resp
+
+
+def terminal_error_response(
+    request_id: str, code: str, *, retryable: bool, timeout: bool = False,
+    retry_after_ms: Optional[int] = None,
+) -> dict:
+    """A shape-complete, non-copy-bearing terminal error for the chat UI."""
+    failure: dict[str, Any] = {
+        "code": code,
+        "retryable": retryable,
+        "timeout": timeout,
+    }
+    if retry_after_ms is not None:
+        failure["retry_after_ms"] = retry_after_ms
+    return terminal_response({
+        "answer": "", "bubbles": [], "show_record_ui": False,
+        "suggested_action": None, "suggested_actions": None,
+        "app_action": None, "failure": failure,
+    }, request_id)
+
+
+def _chat_response_receipt(resp: dict) -> dict:
+    """The JSON-safe terminal payload kept beside the bot bubble for retry.
+
+    The receipt deliberately contains response/UI metadata, not prompt
+    context, private notes, or provider data.  It lets a retry replay the
+    completed result without running intercepts, a model call, billing, or a
+    walk-state transition again.
+    """
+    return {
+        "version": _CHAT_RESPONSE_VERSION,
+        "response": copy.deepcopy({
+            key: resp[key] for key in _CHAT_RESPONSE_FIELDS if key in resp
+        }),
+    }
+
+
+def _receipt_replay(metadata: Any, turn_id: str) -> Optional[dict]:
+    """Return a terminal receipt stored on either row of a chat turn."""
+    if not isinstance(metadata, dict):
+        return None
+    receipt = metadata.get(_CHAT_RESPONSE_META)
+    cached = receipt.get("response") if isinstance(receipt, dict) else None
+    if not isinstance(cached, dict):
+        return None
+    return terminal_response(copy.deepcopy(cached), turn_id, replayed=True)
+
+
+def _turn_metadata(row: Any) -> tuple[dict, dict]:
+    """Return the raw row metadata and its chat-turn subdocument safely."""
+    metadata = row.get("metadata") if isinstance(row, dict) else None
+    metadata = dict(metadata) if isinstance(metadata, dict) else {}
+    turn = metadata.get(_CHAT_TURN_META)
+    return metadata, dict(turn) if isinstance(turn, dict) else {}
+
+
+def _read_lounge_row(database, user_id, client_id) -> Optional[dict]:
+    getter = getattr(database, "get_lounge_message_by_client_id", None)
+    if not callable(getter) or not user_id or not client_id:
+        return None
+    try:
+        row = getter(str(user_id), str(client_id))
+        return row if isinstance(row, dict) else None
+    except Exception as error:  # noqa: BLE001 -- a retry can still answer
+        logger.warning("chat/query: correlated turn unread user=%s: %s", user_id, error)
+        return None
+
+
+def replay_chat_turn(database, user_id, user_client_id, question: str) -> Optional[dict]:
+    """Return a completed correlated turn without executing it again.
+
+    This is intentionally called *before* the stateful feedback/Will
+    intercepts.  Their writes happen before ordinary chat persistence, so a
+    post-hoc UPSERT alone cannot make a retry safe.
+    """
+    if not (user_id and _is_uuid(user_client_id)):
+        return None
+    turn_id = chat_turn_id(user_client_id)
+    mine = _read_lounge_row(database, user_id, turn_id)
+    user_replay = None
+    if mine and mine.get("role") == "user":
+        stored_question = str(mine.get("body") or "").strip()
+        if stored_question and stored_question != (question or "").strip():
+            return terminal_error_response(
+                turn_id, "CHAT_TURN_CONFLICT", retryable=False,
+            )
+        user_replay = _receipt_replay((mine.get("metadata") or {}), turn_id)
+    row = _read_lounge_row(database, user_id, bot_client_id(turn_id))
+    if row and row.get("role") == "bot":
+        metadata = row.get("metadata") or {}
+        replay = _receipt_replay(metadata, turn_id)
+        if replay is not None:
+            # A committed bot response is authoritative over a stale failure
+            # receipt on the user row (for example, a network response lost
+            # after the database accepted the bot write).
+            return replay
+    if user_replay is not None:
+        return user_replay
+    if not row or row.get("role") != "bot":
+        return None
+    metadata = row.get("metadata") or {}
+
+    # Rows written before the response-receipt contract remain safe to replay:
+    # use their actual conversational bubble and the structured fields that
+    # were already persisted, never regenerate a potentially different reply.
+    from services.master_doc_rag import split_answer_into_bubbles
+    answer = str(row.get("body") or "")
+    legacy = {
+        "answer": answer,
+        "bubbles": metadata.get("bubbles") or split_answer_into_bubbles(answer),
+        "show_record_ui": False,
+        "suggested_action": metadata.get("suggested_action"),
+        "suggested_actions": metadata.get("suggested_actions"),
+        "app_action": metadata.get("app_action"),
+        "persisted": True,
+        "persisted_client_id": str(row.get("client_id") or bot_client_id(turn_id)),
+    }
+    return terminal_response(legacy, turn_id, replayed=True)
+
+
+def claim_chat_turn(database, user_id, turn_id: str, question: str, *,
+                    user_created_at=None, place=None) -> tuple[Optional[str], Optional[dict]]:
+    """Atomically reserve a persisted chat turn before it can change state.
+
+    ``lounge_messages`` already has the owner-scoped unique key we need.  A
+    one-row, ``ignore_duplicates`` write puts a random claim token beside the
+    user's message.  The process whose token survived owns the turn; another
+    transport attempt must replay its receipt (or report that it is still in
+    progress) and never rerun an intercept, model call, charge or Take
+    release.  This keeps the receipt protocol migration-free while using the
+    database, rather than an in-process lock, as the arbitration point.
+    """
+    if not (user_id and _is_uuid(turn_id)):
+        return None, terminal_error_response(
+            chat_turn_id(turn_id), "CHAT_PERSIST_FAILED", retryable=True,
+        )
+    replay = replay_chat_turn(database, user_id, turn_id, question)
+    if replay is not None:
+        return None, replay
+
+    from services.lounge_messages import PLACES
+    stamp = {"place": place} if place in PLACES else {}
+    claim_id = str(uuid.uuid4())
+    q = (question or "").strip()
+    created_at = (
+        user_created_at if isinstance(user_created_at, str)
+        and user_created_at.strip() else datetime.now(timezone.utc).isoformat()
+    )
+    pending = {
+        "client_id": turn_id, "role": "user", "kind": "text", "body": q,
+        "metadata": {
+            **stamp,
+            _CHAT_TURN_META: {
+                "version": _CHAT_TURN_VERSION,
+                "state": _CHAT_TURN_PENDING,
+                "claim_id": claim_id,
+            },
+        },
+        "client_created_at": created_at,
+    }
+    claim = getattr(database, "claim_lounge_chat_turn", None)
+    try:
+        if callable(claim):
+            stored = claim(str(user_id), pending)
+        else:  # narrow compatibility seam for older test/database adapters
+            rows = database.insert_lounge_messages(str(user_id), [pending]) or []
+            stored = next((row for row in rows if isinstance(row, dict)
+                           and str(row.get("client_id") or "") == turn_id), None)
+        stored = stored or _read_lounge_row(database, user_id, turn_id)
+    except Exception as error:  # noqa: BLE001 -- the UI gets a terminal retry state
+        logger.warning("chat/query: turn claim failed user=%s: %s", user_id, error)
+        stored = None
+    if not stored:
+        return None, terminal_error_response(
+            turn_id, "CHAT_PERSIST_FAILED", retryable=True,
+        )
+    if stored.get("role") != "user" or stored.get("kind") != "text":
+        return None, terminal_error_response(
+            turn_id, "CHAT_TURN_CONFLICT", retryable=False,
+        )
+    stored_question = str(stored.get("body") or "").strip()
+    if stored_question != q:
+        return None, terminal_error_response(
+            turn_id, "CHAT_TURN_CONFLICT", retryable=False,
+        )
+    _metadata, stored_turn = _turn_metadata(stored)
+    if (stored_turn.get("state") == _CHAT_TURN_PENDING
+            and stored_turn.get("claim_id") == claim_id):
+        return claim_id, None
+
+    replay = replay_chat_turn(database, user_id, turn_id, question)
+    if replay is not None:
+        return None, replay
+    code = ("CHAT_TURN_IN_PROGRESS" if stored_turn.get("state") == _CHAT_TURN_PENDING
+            else "CHAT_TURN_UNAVAILABLE")
+    return None, terminal_error_response(
+        turn_id, code, retryable=True, retry_after_ms=1000,
+    )
+
+
+def _claim_is_owned(database, user_id, turn_id: str, claim_id: Optional[str]) -> bool:
+    """Whether this process still owns the pending durable turn."""
+    if not claim_id:
+        return True
+    row = _read_lounge_row(database, user_id, turn_id)
+    _metadata, turn = _turn_metadata(row)
+    return (turn.get("state") == _CHAT_TURN_PENDING
+            and turn.get("claim_id") == claim_id)
+
+
+def complete_chat_turn_claim(database, user_id, turn_id: str, claim_id: Optional[str], *,
+                             state: str, response: Optional[dict] = None) -> bool:
+    """Mark a claim completed/failed and, on failure, retain its terminal receipt.
+
+    The successful response stays beside the bot bubble.  If writing that
+    bubble failed after an intercept had changed state, the user row holds the
+    terminal error receipt instead; a retry replays it rather than executing
+    the intercept a second time.
+    """
+    if not claim_id or state not in (_CHAT_TURN_COMPLETED, _CHAT_TURN_FAILED):
+        return False
+    row = _read_lounge_row(database, user_id, turn_id)
+    rewrite = getattr(database, "rewrite_lounge_message", None)
+    if not row:
+        return False
+    metadata, turn = _turn_metadata(row)
+    if (turn.get("claim_id") != claim_id
+            or turn.get("state") != _CHAT_TURN_PENDING):
+        return False
+    turn["state"] = state
+    metadata[_CHAT_TURN_META] = turn
+    if response is not None:
+        metadata[_CHAT_RESPONSE_META] = _chat_response_receipt(response)
+    complete = getattr(database, "complete_lounge_chat_turn", None)
+    if callable(complete):
+        try:
+            return bool(complete(str(user_id), turn_id, str(claim_id), metadata))
+        except Exception as error:  # noqa: BLE001 -- the route still returns its terminal result
+            logger.warning("chat/query: turn claim completion failed user=%s: %s",
+                           user_id, error)
+            return False
+    if not callable(rewrite):
+        return False
+    try:
+        written = rewrite(str(user_id), turn_id, str(row.get("body") or ""), metadata)
+        return bool(written)
+    except Exception as error:  # noqa: BLE001 -- the route still returns its terminal result
+        logger.warning("chat/query: turn claim completion failed user=%s: %s",
+                       user_id, error)
         return False
 
 
@@ -78,7 +414,8 @@ def _take_card_row(bot_client_id: str, take_card: dict, created_at: str) -> dict
 
 
 def _bot_metadata(*, intent, suggested_action, suggested_actions,
-                  bubbles, extra=None) -> dict:
+                  bubbles, app_action=None, response_receipt=None,
+                  claim_id=None, extra=None) -> dict:
     meta: dict[str, Any] = {**(extra or {}), "intent": intent}
     if suggested_action:
         meta["suggested_action"] = suggested_action
@@ -86,45 +423,31 @@ def _bot_metadata(*, intent, suggested_action, suggested_actions,
         meta["suggested_actions"] = suggested_actions
     if bubbles:
         meta["bubbles"] = bubbles
+    if app_action:
+        meta["app_action"] = app_action
+    if response_receipt:
+        meta[_CHAT_RESPONSE_META] = response_receipt
+    if claim_id:
+        meta[_CHAT_TURN_META] = {
+            "version": _CHAT_TURN_VERSION,
+            "claim_id": str(claim_id),
+        }
     return meta
 
 
-def persist_chat_turn(
+def _chat_turn_rows(
     database, user_id, question, answer, *, suggested_action=None,
     suggested_actions=None, bubbles=None, intent=None,
     user_client_id=None, user_created_at=None, offer=None, take_card=None,
-    row_metadata=None, bot_row=True, place=None,
-):
-    """BE-owned persistence of one Lounge chat turn (founder #2 — bubbles must
-    never disappear): the user message and the bot reply, in lounge_messages,
-    so the thread survives reload and relogin on any device.
-
-    Idempotent: client_ids are deterministic (uuid5), so re-posting the same
-    turn is a no-op (UNIQUE(user_id, client_id)). The user-turn id prefers the
-    FE's own client_id; the bot-turn id derives from it, so there is exactly
-    one bot row per user turn.
-
-    ``bot_row`` False stores the user's turn alone: its reply is a row
-    already in the thread (a typed "yes" lets the message after the Take go,
-    services/after_take.py).
-
-    ``place``: the chat the turn was typed in ("speaking", "principles" or
-    "will", N635): the user's row and Will's reply are stamped with it
-    (``metadata.place``), so they stay there whichever write lands first.
-
-    Returns the bot row's client_id, or None on failure. Best-effort."""
+    row_metadata=None, app_action=None, response_receipt=None,
+    claim_id=None, bot_row=True, place=None,
+) -> tuple[str, list[dict]]:
+    """Build the stable user/bot rows and their deterministic bot identity."""
     from services.lounge_messages import PLACES
     stamp = {"place": place} if place in PLACES else {}
     q = (question or "").strip()
-    a = (answer or "").strip()
-    if not user_id or not a:
-        return None
-    if user_client_id and _is_uuid(user_client_id):
-        u_id = str(user_client_id)
-    else:
-        u_id = str(uuid.uuid5(
-            uuid.NAMESPACE_URL, f"willab-chat-user:{user_id}:{q}"))
-    b_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"willab-chat-bot:{u_id}"))
+    u_id = chat_turn_id(user_client_id)
+    b_id = bot_client_id(u_id)
     u_ts = (user_created_at if isinstance(user_created_at, str)
             and user_created_at.strip() else
             datetime.now(timezone.utc).isoformat())
@@ -147,10 +470,12 @@ def persist_chat_turn(
         })
     if bot_row:
         rows.append({
-            "client_id": b_id, "role": "bot", "kind": "text", "body": a,
+            "client_id": b_id, "role": "bot", "kind": "text", "body": answer,
             "metadata": {**(_bot_metadata(
                 intent=intent, suggested_action=suggested_action,
                 suggested_actions=suggested_actions, bubbles=bubbles,
+                app_action=app_action, response_receipt=response_receipt,
+                claim_id=claim_id,
                 extra=row_metadata) or {}), **stamp} or None,
             "client_created_at": now_iso,
         })
@@ -158,12 +483,65 @@ def persist_chat_turn(
         rows.append(_offer_row(b_id, offer, stamp_after(now_iso)))
     if take_card:
         rows.append(_take_card_row(b_id, take_card, stamp_after(now_iso, gap_ms=2)))
+    return b_id, rows
+
+
+def _persisted_bot_is_ours(database, user_id, rows: list[dict], bot_id: str,
+                            *, claim_id=None, bot_row=True) -> bool:
+    """Confirm a bot receipt reached storage and belongs to this claim."""
     try:
-        database.insert_lounge_messages(str(user_id), rows)
-        return b_id
-    except Exception as e:
-        logger.warning("chat/query: persist turn failed user=%s: %s", user_id, e)
+        persisted = database.insert_lounge_messages(str(user_id), rows) or []
+    except Exception as error:
+        # The write may have reached the database even when its response did
+        # not reach us.  Read the deterministic bot id once before recording a
+        # failed receipt, otherwise a valid answer could be poisoned as a
+        # failure and replayed forever.
+        logger.warning("chat/query: persist turn failed user=%s: %s", user_id, error)
+        persisted = []
+    bot = next((row for row in persisted if isinstance(row, dict)
+                and str(row.get("client_id") or "") == bot_id), None)
+    bot = bot or _read_lounge_row(database, user_id, bot_id)
+    # A DB wrapper may absorb a write error and return [], so only claim
+    # success when the actual bot receipt is present.  A claim-aware write
+    # must additionally read back its own random claim id: a duplicate bot
+    # row belonging to another process is replayable, never permission to
+    # charge or release a Take a second time.
+    bot_meta = bot.get("metadata") if isinstance(bot, dict) else None
+    bot_turn = bot_meta.get(_CHAT_TURN_META) if isinstance(bot_meta, dict) else None
+    is_bot_row = isinstance(bot, dict) and bot.get("role") == "bot"
+    own_claim = (not claim_id or (isinstance(bot_turn, dict)
+                                  and bot_turn.get("claim_id") == claim_id))
+    return bool(bot_row and is_bot_row and own_claim)
+
+
+def persist_chat_turn(
+    database, user_id, question, answer, *, suggested_action=None,
+    suggested_actions=None, bubbles=None, intent=None,
+    user_client_id=None, user_created_at=None, offer=None, take_card=None,
+    row_metadata=None, app_action=None, response_receipt=None,
+    claim_id=None, bot_row=True, place=None,
+):
+    """Persist a Lounge turn and return its confirmed bot identity.
+
+    The client/request UUID is the user-turn id and the bot row derives from
+    it, so a repost is a no-op at the existing ``(user_id, client_id)`` key.
+    Missing IDs are deliberately fresh rather than derived from the words.
+    """
+    answer = (answer or "").strip()
+    if not user_id or not answer:
         return None
+    bot_id, rows = _chat_turn_rows(
+        database, user_id, question, answer,
+        suggested_action=suggested_action, suggested_actions=suggested_actions,
+        bubbles=bubbles, intent=intent, user_client_id=user_client_id,
+        user_created_at=user_created_at, offer=offer, take_card=take_card,
+        row_metadata=row_metadata, app_action=app_action,
+        response_receipt=response_receipt, claim_id=claim_id,
+        bot_row=bot_row, place=place,
+    )
+    return (bot_id if _persisted_bot_is_ours(
+        database, user_id, rows, bot_id, claim_id=claim_id, bot_row=bot_row,
+    ) else None)
 
 
 def _control_after_note(database, user_id) -> bool:
@@ -212,48 +590,140 @@ def _goals_after_note(database, user_id) -> bool:
         return False
 
 
+def _write_chat_response_receipt(database, user_id, bot_cid, resp: dict) -> None:
+    """Refresh the receipt after post-persist walk work has settled.
+
+    The initial receipt is written in the same batch as the bot bubble.  A
+    Take settlement can then append/release rows, so the persisted receipt is
+    refreshed in place with the final client-visible contract.  Failure here
+    is non-fatal: the original bubble and response remain valid.
+    """
+    row = _read_lounge_row(database, user_id, bot_cid)
+    rewrite = getattr(database, "rewrite_lounge_message", None)
+    if not row or not callable(rewrite):
+        return
+    try:
+        metadata = dict(row.get("metadata") or {})
+        metadata[_CHAT_RESPONSE_META] = _chat_response_receipt(resp)
+        rewrite(str(user_id), str(bot_cid), str(row.get("body") or ""), metadata)
+    except Exception as error:  # noqa: BLE001 -- the completed turn is kept
+        logger.warning("chat/query: response receipt refresh failed user=%s: %s",
+                       user_id, error)
+
+
+def _post_persist_effects(database, user_id, resp: dict, intent: Optional[str]) -> None:
+    """Run nonessential follow-on work without changing a saved turn's outcome.
+
+    Once the bot row and its initial receipt exist, that response is the
+    durable terminal result for the correlation id.  A later walk/note action
+    is useful, but it must not turn the first HTTP response into an error that
+    a retry then contradicts by replaying the saved success.
+    """
+    from services import after_take
+
+    try:
+        # ``settled_take`` only accepts an answer to the open question that
+        # owns this Take.  It replaces the old unscoped release which could
+        # release stale terminal state below an unrelated message.
+        settled_take = after_take.settled_take(resp)
+        if (intent != "crisis" and settled_take
+                and after_take.release(database, user_id, take=settled_take)):
+            resp["after_take"] = True
+    except Exception as error:  # noqa: BLE001 -- saved reply remains terminal
+        logger.warning("chat/query: after-take follow-on failed user=%s: %s",
+                       user_id, error)
+
+    # The case is a server-only instruction for the follow-on writer; do not
+    # let it leak into the returned/replayed chat contract.
+    case = resp.pop("sunday_case", None)
+    if intent == "sunday_note" and case:
+        try:
+            from services.sunday_note import after_head
+            if after_head(database, user_id, case):
+                resp["after_take"] = True
+        except Exception as error:  # noqa: BLE001 -- saved reply remains terminal
+            logger.warning("chat/query: sunday-note follow-on failed user=%s: %s",
+                           user_id, error)
+
+    if (intent == "voice_notebook"
+            and (resp.get("row_metadata") or {}).get("voice_note")):
+        try:
+            if _after_note(database, user_id):
+                resp["after_take"] = True
+        except Exception as error:  # noqa: BLE001 -- saved reply remains terminal
+            logger.warning("chat/query: voice-note follow-on failed user=%s: %s",
+                           user_id, error)
+
+
 def finish_chat_turn(database, resp: dict, *, user_id, question,
                      persist_thread, user_client_id, user_created_at,
-                     intent=None, place=None) -> dict:
-    """Persist and charge one completed turn; the response body.
+                     intent=None, place=None, request_id=None,
+                     claim_id=None) -> dict:
+    """Persist and charge one completed turn; return one terminal outcome.
 
-    A turn that passes the Take's open ask advances the chain after the
-    Take under the reply: the next ask, or the closing message (founder
-    2026-10-20, services/after_take.py)."""
+    Only a reply that explicitly settles the *same* Take may advance an
+    after-Take chain.  A normal later FAQ must never release a held closing
+    message and make ``Good job. See you next time.`` appear as its answer.
+    """
+    turn_id = chat_turn_id(request_id or user_client_id)
+    terminal_response(resp, turn_id)
+    persisted_turn = False
+    bot_cid = None
+    if (persist_thread and user_id and claim_id
+            and not _claim_is_owned(database, user_id, turn_id, claim_id)):
+        replay = replay_chat_turn(database, user_id, turn_id, question)
+        if replay is not None:
+            return replay
+        return terminal_error_response(
+            turn_id, "CHAT_TURN_IN_PROGRESS", retryable=True,
+            retry_after_ms=1000,
+        )
     if persist_thread and user_id:
+        # The receipt is initially written with the reply.  Its final fields
+        # are refreshed after the narrowly correlated walk transition below.
+        expected_bot_cid = bot_client_id(turn_id)
+        resp["persisted"] = True
+        resp["persisted_client_id"] = expected_bot_cid
         bot_cid = persist_chat_turn(
             database, user_id, question, resp.get("answer"),
             suggested_action=resp.get("suggested_action"),
             suggested_actions=resp.get("suggested_actions"),
             bubbles=resp.get("bubbles"), intent=intent,
-            user_client_id=user_client_id, user_created_at=user_created_at,
+            user_client_id=turn_id, user_created_at=user_created_at,
             offer=resp.get("offer"), take_card=resp.get("take_card"),
-            row_metadata=resp.get("row_metadata"), place=place,
+            row_metadata=resp.get("row_metadata"),
+            app_action=resp.get("app_action"),
+            response_receipt=_chat_response_receipt(resp), claim_id=claim_id,
+            place=place,
         )
-        resp["persisted"] = bool(bot_cid)
+        persisted_turn = bool(bot_cid)
+        resp["persisted"] = persisted_turn
         if bot_cid:
             resp["persisted_client_id"] = bot_cid
-        from services import after_take
-        # True tells the Lounge to read the thread again: the message is there.
-        # Never under the safety reply: after a distressed message the asks
-        # wait until the speaker writes again (founder 2026-10-21, N94).
-        if (bot_cid and intent != "crisis" and after_take.passes(resp)
-                and after_take.release(database, user_id)):
-            resp["after_take"] = True
-        # Under the asked "We spotted a pattern!", the case with Not now |
-        # Investigate (N170 L2); the same flag reads the thread again.
-        case = resp.pop("sunday_case", None)
-        if bot_cid and intent == "sunday_note" and case:
-            from services.sunday_note import after_head
-            if after_head(database, user_id, case):
-                resp["after_take"] = True
-        if (bot_cid and intent == "voice_notebook"
-                and (resp.get("row_metadata") or {}).get("voice_note")
-                and _after_note(database, user_id)):
-            resp["after_take"] = True
-    # Charge after answering, never before. Chat is repeatable, so it has no
-    # idempotency ref; billing failure must never replace the answer.
-    if user_id:
+        else:
+            resp.pop("persisted_client_id", None)
+            resp["failure"] = {
+                "code": "CHAT_PERSIST_FAILED", "retryable": True,
+                "timeout": False,
+            }
+            terminal_response(resp, turn_id)
+            complete_chat_turn_claim(
+                database, user_id, turn_id, claim_id,
+                state=_CHAT_TURN_FAILED, response=resp,
+            )
+
+        if bot_cid:
+            _post_persist_effects(database, user_id, resp, intent)
+            terminal_response(resp, turn_id)
+            _write_chat_response_receipt(database, user_id, bot_cid, resp)
+            complete_chat_turn_claim(
+                database, user_id, turn_id, claim_id,
+                state=_CHAT_TURN_COMPLETED,
+            )
+    # A durable retry is charged once: only the successful original write can
+    # reach this point.  An explicit persistence failure is not charged and
+    # does not move a Take chain.
+    if user_id and (not persist_thread or persisted_turn):
         try:
             from services.token_account import charge as _charge
             _charge(str(user_id), "chat")
@@ -281,6 +751,7 @@ _PROJECT_CONTEXT_KEYS = (
     "pattern", "take_index", "take_count", "has_pdf",
 )
 _PROJECT_CONTEXT_VALUE_CHARS = 1200
+_PROJECT_CONTEXT_TOTAL_CHARS = 4000
 
 
 def _render_project_context(context: Any) -> str:
@@ -293,14 +764,24 @@ def _render_project_context(context: Any) -> str:
     if not isinstance(context, dict):
         return ""
     lines = []
+    remaining = _PROJECT_CONTEXT_TOTAL_CHARS
     for key in _PROJECT_CONTEXT_KEYS:
+        if remaining <= 0:
+            break
         value = context.get(key)
         if value is None or isinstance(value, (dict, list, tuple, set)):
             continue
         text = str(value).strip()
         if not text:
             continue
-        lines.append(f"  • {key}: {text[:_PROJECT_CONTEXT_VALUE_CHARS]}")
+        prefix = f"  • {key}: "
+        value_limit = min(_PROJECT_CONTEXT_VALUE_CHARS,
+                          max(0, remaining - len(prefix)))
+        if value_limit <= 0:
+            break
+        line = prefix + text[:value_limit]
+        lines.append(line)
+        remaining -= len(line) + 1
     if not lines:
         return ""
     return (
@@ -395,7 +876,25 @@ def _will_question(
     except Exception as error:  # noqa: BLE001 -- the stored answer must settle
         logger.warning("chat/query: contextual will-question reply failed "
                        "user=%s: %s", user_id, error)
-        reply = _reply(turn["answer"])
+        # Keep the typed answer's state, but never replace the requested
+        # conversational continuation with a generic acknowledgement.  Reuse
+        # the established language-aware safe fallback and expose why the UI
+        # can offer a retry.
+        from services.content_language import resolve_content_language
+        from services.master_doc_rag import _fallback_payload
+        fallback = _fallback_payload(resolve_content_language(
+            typed_message=question,
+        ))
+        reply = _reply(
+            fallback["answer"],
+            show_record_ui=bool(fallback.get("show_record_ui")),
+            suggested_action=fallback.get("suggested_action"),
+            app_action=fallback.get("app_action"),
+            failure={
+                "code": "CHAT_CONTEXT_UNAVAILABLE", "retryable": True,
+                "timeout": False,
+            },
+        )
     reply["row_metadata"] = meta
     reply["debug"] = {**(reply.get("debug") or {}), "intent": "will_question"}
     return reply, "will_question"
@@ -565,6 +1064,33 @@ def _life_context(user_id, question, app_config):
     return None
 
 
+def _failure_from_debug(debug: Any) -> Optional[dict]:
+    """Map model/fallback diagnostics to a stable frontend-safe failure.
+
+    The human-facing fallback remains the approved safe text; exception
+    details stay in logs/debug and never enter the response contract.
+    """
+    if not isinstance(debug, dict) or not debug.get("error"):
+        return None
+    error = str(debug.get("error") or "")
+    timeout = error == "llm_timeout" or "timeout" in error.lower()
+    codes = {
+        "llm_timeout": "CHAT_MODEL_TIMEOUT",
+        "llm_unavailable": "CHAT_MODEL_UNAVAILABLE",
+        "llm_error": "CHAT_MODEL_UNAVAILABLE",
+        "empty_response": "CHAT_MODEL_EMPTY_RESPONSE",
+        "parse_error": "CHAT_MODEL_INVALID_RESPONSE",
+        "empty_answer": "CHAT_MODEL_EMPTY_RESPONSE",
+        "output_language": "CHAT_MODEL_LANGUAGE_REJECTED",
+    }
+    return {
+        "code": "CHAT_MODEL_TIMEOUT" if timeout else
+                codes.get(error, "CHAT_RESPONSE_UNAVAILABLE"),
+        "retryable": True,
+        "timeout": timeout,
+    }
+
+
 def _librarian(database, user_id, question, history, app_config,
                context=None) -> tuple[dict, str]:
     """Path A — the librarian's answer. S1: the one contextual button the FE
@@ -620,6 +1146,11 @@ def _librarian(database, user_id, question, history, app_config,
     if opened.get("link") and opened["link"] not in answer:
         answer = f"{answer}\n\n{opened['link']}"
     extra = {k: opened[k] for k in ("offer", "take_card") if opened.get(k)}
+    if action:
+        extra["app_action"] = action
+    failure = _failure_from_debug(debug)
+    if failure:
+        extra["failure"] = failure
     if (debug or {}).get("router_intent") == "speaker_feedback":
         # Will answers it like any other turn. Nothing marks it for a
         # person to read (founder 2026-10-15: the chat is as private as any
@@ -646,6 +1177,27 @@ def _retired(row: dict) -> bool:
     meta = row.get("metadata") or {}
     return (row.get("kind") == "cadence" and meta.get("beat") == 0) or \
         meta.get("note") in ("human_check", "coach_video_shared", "feedback_digest")
+
+
+def _walk_terminal_message(role: Any, content: Any, metadata: Any = None) -> bool:
+    """Whether a rendered assistant bubble is a completed walk closing.
+
+    Closing rows are UI state for the completed Take, never conversational
+    context for a later question.  Metadata is authoritative for stored rows;
+    the exact approved closing text protects older screen-history clients
+    that only send role/content.
+    """
+    if role != "assistant" or not isinstance(content, str):
+        return False
+    meta = metadata if isinstance(metadata, dict) else {}
+    if meta.get("next_take") is True:
+        return True
+    from services.after_take import SEE_YOU, SEE_YOU_ON
+    text = content.strip()
+    if text == SEE_YOU:
+        return True
+    prefix, suffix = SEE_YOU_ON.split("{day}")
+    return text.startswith(prefix) and text.endswith(suffix) and len(text) > len(prefix) + len(suffix)
 
 
 def _fallback_label(row: dict) -> str:
@@ -678,11 +1230,13 @@ def thread_history(database, user_id, question: str, user_client_id=None) -> lis
     turns = []
     for row in reversed(rows):
         body = (row.get("body") or "").strip()
+        role = "user" if row.get("role") == "user" else "assistant"
         if (row.get("role") not in ("user", "bot") or not body
                 or row.get("kind") not in _HISTORY_KINDS or _retired(row)
+                or _walk_terminal_message(role, body, row.get("metadata"))
                 or (user_client_id and row.get("client_id") == user_client_id)):
             continue
-        turns.append({"role": "user" if row["role"] == "user" else "assistant",
+        turns.append({"role": role,
                       "content": _fallback_label(row) + body})
     if turns and turns[-1]["role"] == "user" and turns[-1]["content"] == question:
         turns.pop()
@@ -705,6 +1259,12 @@ def screen_history(history: Any) -> list:
             continue
         content = m.get("content")
         if isinstance(content, str) and content.strip():
+            if _walk_terminal_message(
+                m["role"], content,
+                m.get("metadata") if isinstance(m.get("metadata"), dict)
+                else m.get("meta"),
+            ):
+                continue
             turns.append({"role": m["role"], "content": content.strip()[:_SCREEN_CHARS]})
     return turns[-_SCREEN_ROWS:]
 

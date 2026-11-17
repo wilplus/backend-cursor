@@ -51,10 +51,10 @@ Advancing (``release``), always under the rows that closed the ask:
     (``feedback_check``);
   - Will's question answered (a tap with no follow-up, Skip, or typed
     words), under his reply (``will_question``);
-  - a typed turn that passes the ask, under Will's reply
+  - a typed settlement tagged to the ask's own Take, under Will's reply
     (``chat_query.finish_chat_turn``); never under the chat's safety reply:
-    after a distressed message the asks wait until the speaker writes
-    again (founder 2026-10-21, N94);
+    after a distressed message, a later unrelated chat message gets its own
+    reply and cannot release an older held closing (founder 2026-10-21, N94);
   - the ask's form closing in the Lounge, whatever the choice (Save, Not
     now, See prices): POST /v2/user/lounge/after-take;
   - a newer Take's summary: an older held message is let go where it stands.
@@ -569,11 +569,26 @@ def visit(database: Any, user_id: str) -> None:
         logger.warning("after take: visit ask not made user=%s: %s", user_id, error, exc_info=True)
 
 
-def passes(resp: dict) -> bool:
-    """Does this chat reply pass the open ask? Not when it keeps an ask
-    open: "What would help?" and Will's follow-up wait for their answer, and
-    a reply that opens a form (a number without its country code) waits for
-    the form. Pure."""
+def settled_take(resp: dict) -> Optional[str]:
+    """The exact Take an in-chat reply has settled, if any.
+
+    A terminal row is owned by one Take.  The generic chat path used to treat
+    any persisted reply as permission to release whichever Take happened to
+    be held, so an unrelated later question could be followed by the old
+    ``SEE_YOU`` closing.  Only the explicit metadata written by the feedback
+    and Will-question settlement paths is allowed to advance that Take.
+    """
     meta = resp.get("row_metadata") or {}
-    return (not resp.get("offer") and meta.get("feedback_check") != "missing"
-            and meta.get("will_question_step") != "follow")
+    take = meta.get("take_session_id")
+    if not isinstance(take, str) or not take:
+        return None
+    if meta.get("feedback_check") in ("yes", "missing_answered"):
+        return take
+    if meta.get("will_question_step") in ("thanks", "skip"):
+        return take
+    return None
+
+
+def passes(resp: dict) -> bool:
+    """Backward-compatible predicate for callers that only need settlement."""
+    return settled_take(resp) is not None

@@ -8592,11 +8592,13 @@ class DatabaseService:
             return {}
 
     def get_coach_best_presentation_edits_for_arcs(
-        self, arc_ids: list[str],
-    ) -> dict[str, dict]:
+        self, arc_ids: list[str], *, strict: bool = True,
+    ) -> Optional[dict[str, dict]]:
         """{arc_id: {slide_index: text}} for many arcs in ONE read (D-CS-4):
         the every-project read asks once instead of once per project. A
-        missing table is {}; any other failure raises."""
+        missing table is {}; any other failure raises when ``strict`` is true.
+        The picker passes ``strict=False`` so it can fall back to its existing
+        per-arc best-effort reads if the batch request itself is unavailable."""
         ids = sorted({str(a) for a in arc_ids or [] if a})
         if not ids:
             return {}
@@ -8609,6 +8611,12 @@ class DatabaseService:
             if "coach_best_presentation_edits" in err_low and (
                     "does not exist" in err_low or "pgrst205" in err_low):
                 return {}
+            if not strict:
+                logger.warning(
+                    "get_coach_best_presentation_edits_for_arcs failed n=%d: %s",
+                    len(ids), e,
+                )
+                return None
             raise
         out: dict[str, dict] = {}
         for r in res.data or []:
@@ -11759,6 +11767,110 @@ class DatabaseService:
                 user_id, len(rows), e,
             )
             return []
+
+    def claim_lounge_chat_turn(
+        self, user_id: str, message: dict,
+    ) -> Optional[Dict[str, Any]]:
+        """Atomically claim one persisted Lounge chat turn.
+
+        The normal insert uses the existing ``(user_id, client_id)`` unique
+        key.  A browser may already have appended its optimistic user bubble,
+        though; when that matching legacy row has no ``metadata.chat_turn``,
+        this method performs a conditional, owner-scoped update which only
+        wins while that marker remains absent.  The returned row is therefore
+        either the caller's claim or the competing/current row for the chat
+        service to resolve.  It never overwrites a completed claim.
+        """
+        if not user_id or not isinstance(message, dict):
+            return None
+        client_id = str(message.get("client_id") or "")
+        expected_meta = message.get("metadata")
+        expected_turn = (expected_meta or {}).get("chat_turn") \
+            if isinstance(expected_meta, dict) else None
+        if not client_id or not isinstance(expected_turn, dict):
+            return None
+        expected_body = str(message.get("body") or "")
+        rows = self.insert_lounge_messages(str(user_id), [message])
+        row = next((item for item in rows if isinstance(item, dict)
+                    and str(item.get("client_id") or "") == client_id), None)
+        row = row or self.get_lounge_message_by_client_id(str(user_id), client_id)
+        if not row:
+            return None
+        metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        if isinstance(metadata.get("chat_turn"), dict):
+            return row
+
+        # An optimistic Lounge bubble is the only legacy row that may be
+        # adopted into this protocol.  Never stamp a bot/card row (or a user
+        # row for different words) merely because a client reused its UUID.
+        # The matching logical-body predicate below is also what stops Q2
+        # from claiming Q1's optimistic bubble before Q1 arrives.
+        stored_body = str(row.get("body") or "")
+        if (
+            row.get("role") != "user"
+            or row.get("kind") != "text"
+            # The route compares logical message text after trimming, while
+            # an optimistic bubble may preserve the speaker's surrounding
+            # whitespace.  Adopt only that same logical message, but retain
+            # the row's exact body and use it in the conditional update.
+            or stored_body.strip() != expected_body.strip()
+        ):
+            return row
+
+        # The pre-existing row was the client's optimistic copy.  Claim it
+        # exactly once without racing a competing HTTP retry.  JSON-path
+        # ``is null`` deliberately covers both NULL metadata and a metadata
+        # object without this additive marker.
+        merged = {**metadata, **expected_meta}
+        try:
+            res = (
+                self.client.table("lounge_messages")
+                .update({"metadata": merged})
+                .eq("user_id", str(user_id))
+                .eq("client_id", client_id)
+                .eq("role", "user")
+                .eq("kind", "text")
+                .eq("body", stored_body)
+                .is_("metadata->>chat_turn", "null")
+                .execute()
+            )
+            updated = res.data[0] if res.data else None
+            return updated if isinstance(updated, dict) else \
+                self.get_lounge_message_by_client_id(str(user_id), client_id)
+        except Exception as error:
+            logger.warning("claim_lounge_chat_turn failed user=%s: %s", user_id, error,
+                           exc_info=True)
+            return self.get_lounge_message_by_client_id(str(user_id), client_id)
+
+    def complete_lounge_chat_turn(
+        self, user_id: str, client_id: str, claim_id: str, metadata: dict,
+    ) -> Optional[Dict[str, Any]]:
+        """Compare-and-set a pending chat claim to its terminal state.
+
+        Completion must belong to the same randomly minted claim that won the
+        durable turn.  The JSON-path predicates make a late worker harmless
+        after a clear/recreate or another terminal writer; it cannot rewrite a
+        row it no longer owns.
+        """
+        if not user_id or not client_id or not claim_id or not isinstance(metadata, dict):
+            return None
+        try:
+            res = (
+                self.client.table("lounge_messages")
+                .update({"metadata": metadata})
+                .eq("user_id", str(user_id))
+                .eq("client_id", str(client_id))
+                .eq("metadata->chat_turn->>claim_id", str(claim_id))
+                .eq("metadata->chat_turn->>state", "pending")
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception as error:
+            logger.warning(
+                "complete_lounge_chat_turn failed user=%s: %s", user_id, error,
+                exc_info=True,
+            )
+            return None
 
     def has_voice_album_introduction(self, user_id: str) -> bool:
         """Whether this user has already received Voice Album onboarding."""

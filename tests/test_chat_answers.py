@@ -108,7 +108,7 @@ class ChatAnswersTests(ChatRouteHarness):
         self.post({"question": "The walk was too long for me", "persist": True})
         user_row, bot_row = self.rows[-1][1]
         self.assertEqual(bot_row["body"], "It's a voice coach.")
-        self.assertIsNone(user_row["metadata"])
+        self.assertEqual(set(user_row["metadata"]), {"chat_turn"})
         self.assertNotEqual(bot_row["metadata"].get("intent"), "speaker_feedback")
 
     def test_will_reads_the_summary_he_wrote_after_the_take(self):
