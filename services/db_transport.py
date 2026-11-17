@@ -59,7 +59,13 @@ def _short_path(url: Any) -> str:
 # in-flight call its own connection, so nobody waits for a stranger's reply.
 # ``DB_HTTP2=1`` restores the old transport without a deploy.
 
-POOL_SIZE = max(1, int((os.getenv("DB_HTTP_POOL_SIZE") or "16").strip() or 16))
+# Two web workers × four request threads already gives the application eight
+# concurrent lanes. A 16-connection pool per worker allowed avoidable bursts
+# of 32 PostgREST connections on the Nano database, which inflates Postgres'
+# committed-memory figure before those connections have used much RAM. Keep
+# the setting overridable for larger compute tiers, but make the Nano-safe
+# default match the deployed concurrency.
+POOL_SIZE = max(1, int((os.getenv("DB_HTTP_POOL_SIZE") or "8").strip() or 8))
 KEEPALIVE_S = 30.0  # drop idle sockets before Supabase does (then nothing stale is reused)
 USE_HTTP2 = (os.getenv("DB_HTTP2") or "").strip().lower() in {"1", "true", "yes"}
 
