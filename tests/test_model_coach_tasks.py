@@ -42,6 +42,8 @@ class CoachTasksTest(unittest.TestCase):
         app = Flask(__name__)
         app.register_blueprint(v2_bp, url_prefix="/v2")
         self.client = app.test_client()
+        from services.model_coach_tasks import clear_task_cache
+        clear_task_cache()
         self.rings = {"ai_models"}
         self.coach = True
         never = AssertionError("a read never fills a line")
@@ -60,6 +62,7 @@ class CoachTasksTest(unittest.TestCase):
                   patch("services.v4_coach_sheets.pick_queue", lambda *_a, **_k: _items(3)),
                   patch("services.v4_coach_sheets.surer_queue", lambda *_a, **_k: _items(0)),
                   patch("services.error_presence_audit.sample_for_coach", side_effect=never),
+                  patch("services.db.rpc_object", lambda *_a, **_k: None),
                   patch("services.v4_coach_sheets.fill_pick_sheets", side_effect=never)):
             p.start()
             self.addCleanup(p.stop)
@@ -87,6 +90,22 @@ class CoachTasksTest(unittest.TestCase):
                 self.assertLogs("services.model_coach_tasks", "WARNING"):
             got = self._read()
         self.assertEqual({t["id"]: t["waiting"] for t in got["tasks"]}["block_pick"], 0)
+
+    def test_four_loads_as_the_tab_opens_walk_the_queue_once(self):
+        """The models tab asks for this list about four times. The walk,
+        which is the slow read, runs once; the later loads are the same list."""
+        walked = {"n": 0}
+
+        def walk(*_args, **_kwargs):
+            walked["n"] += 1
+            return [{"waiting": 2}]
+
+        with patch("services.coach_moments_queue.walk_for_coach", walk):
+            first = self._read()
+            again = [self._read() for _ in range(3)]
+        self.assertEqual(walked["n"], 1)
+        self.assertEqual(again, [first, first, first])
+        self.assertEqual(first["tasks"][0]["waiting"], 2)
 
     def test_others_get_empty_lists(self):
         self.coach = False

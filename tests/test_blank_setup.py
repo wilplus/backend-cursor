@@ -489,6 +489,11 @@ class SetupTest(_Base):
         self.assertEqual(models, [{"model_id": "m1", "q": "Is it rushed?", "opts": ["Yes", "Somewhat", "No"],
                                    "by": "Piotr", "price": 3, "needs": "rec", "fits": False,
                                    "learning": False}])
+        # Without the chat builder the list is not there (the ring is checked
+        # with the read, not before it).
+        self.assertEqual(
+            self.client.get("/v2/chats/setup/models", headers=self._as(PIOTR)).status_code, 404)
+        self.assertEqual(self._put("live", True, who=PIOTR).status_code, 404)
 
     def test_two_ways_use_one_or_train_your_own(self):
         """FIRST-18: the way is kept; a used model carries its owner and
@@ -634,6 +639,49 @@ class SetupTest(_Base):
         chat = self._join(PIOTR, self._link(TOMEK).get_json()["token"]).get_json()["chat"]["id"]
         host = self.client.get(f"/v2/chats/{chat}/host", headers=self._as(PIOTR)).get_json()["host"]
         self.assertEqual((host["hello"], host["taps"], host["about"]), (own["hello"], own["taps"], own["about"]))
+
+    def test_saving_live_does_not_read_the_profile_photo_back(self):
+        """PUT /v2/chats/setup/live updates the recipe and asks the database
+        for the user id only. The profile photo (up to 5 MB) used to come
+        back with the row, which was the multi-second call."""
+        from types import SimpleNamespace
+
+        from services import chat_recipes
+
+        seen: dict = {}
+
+        class _Params(dict):
+            def add(self, key, value):
+                self[key] = value
+                return self
+
+        class _Query:
+            def __init__(self):
+                self.params = _Params()
+
+            def update(self, payload, returning=None):
+                seen["returning"] = getattr(returning, "value", returning)
+                seen["payload"] = payload
+                return self
+
+            def eq(self, _column, _value):
+                return self
+
+            def execute(self):
+                seen["select"] = self.params.get("select")
+                return SimpleNamespace(data=[{"user_id": TOMEK}])
+
+        class _Client:
+            def table(self, _name):
+                return _Query()
+
+        recipe = {"spec": "Trichologist", "hello": "Welcome.", "send": ["text"], "taps": ["One"]}
+        stored = chat_recipes._store(SimpleNamespace(client=_Client()), TOMEK, recipe)
+        self.assertEqual(seen.get("select"), "user_id")
+        self.assertEqual(seen.get("returning"), "representation")
+        self.assertNotIn("photo", stored)
+        self.assertEqual(stored["hello"], "Welcome.")
+        self.assertEqual(stored["v"], 2)
 
     def test_a_chat_has_a_name_its_first_name_until_given(self):
         """N642.1: "Your chat is called:" with three suggestions from the

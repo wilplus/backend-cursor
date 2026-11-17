@@ -221,6 +221,165 @@ def take_may_reach_a_coach_sheet(database: Any, take_session_id: Any) -> bool:
     return not _objected(database, str(take_session_id))
 
 
+def admitted_takes(database: Any, takes: Any) -> Optional[dict]:
+    """``takes_may_reach_a_coach_sheet`` for these Takes, from one read of
+    each table the per-take check reads once per Take.
+
+    None when that read cannot be done. The caller then uses the per-take
+    check, so a batch that cannot run never changes who is heard.
+    """
+    distinct = sorted({str(t) for t in (takes or []) if t})
+    if not distinct:
+        return {}
+    try:
+        return _admitted_together(database, distinct)
+    except Exception as error:  # noqa: BLE001 -- the per-take check still runs
+        _log.warning("coach sheet consent batch failed: %s", error, exc_info=True)
+        return None
+
+
+def _admitted_together(database: Any, takes: list[str]) -> dict:
+    """The per-take rule, with the Takes, projects and principals read once
+    and the consent calls shared by everyone who has the same principal."""
+    from services.account_deletion import learning_stopped
+
+    sessions = _rows_by(database, "v2_sessions",
+                        "id,user_id,owner_principal_id,project_id,arc_id,recording_id",
+                        "id", takes)
+    projects, principals = _owners_of(database, sessions)
+    take_owner = {take: _take_owner(sessions.get(take) or {}, projects, principals) for take in takes}
+    yes_ids = sorted({owner for owner in take_owner.values() if owner})
+    yes = dict(zip(yes_ids, _side_by_side(
+        [lambda owner=owner: _training_yes(database, owner, learning_stopped) for owner in yes_ids])))
+    need = [take for take in takes if yes.get(take_owner[take])]
+    keys = {_speaker_key(sessions.get(take) or {}, principals) for take in need}
+    resolved = dict(zip(keys, _side_by_side(
+        [lambda key=key: _resolve(database, key) for key in keys]))) if keys else {}
+    heard: set[str] = set()
+    for key in keys:
+        speaker = resolved.get(key)
+        if isinstance(speaker, str) and speaker:
+            heard.add(speaker)
+    speakers = sorted(heard)
+    objected = dict(zip(speakers, _side_by_side(
+        [lambda principal=principal: _objected_principal(database, principal)
+         for principal in speakers]))) if speakers else {}
+    out = {}
+    for take in takes:
+        owner = take_owner[take]
+        if not yes.get(owner):
+            out[take] = False
+            continue
+        speaker = resolved.get(_speaker_key(sessions.get(take) or {}, principals))
+        out[take] = isinstance(speaker, str) and bool(speaker) and not objected.get(speaker, True)
+    return out
+
+
+def _training_yes(database: Any, principal: str, learning_stopped: Any) -> bool:
+    """``holds_training_yes`` without importing this module into itself."""
+    if consent_for_principal(database, principal).get("active") is not True:
+        return False
+    return not learning_stopped(database, principal)
+
+
+def _rows_by(database: Any, table: str, columns: str, key: str, ids: list[str]) -> dict[str, dict]:
+    found: dict[str, dict] = {}
+    unique = list(dict.fromkeys(ids))
+    for start in range(0, len(unique), 80):
+        part = unique[start:start + 80]
+        rows = database.client.table(table).select(columns).in_(key, part).execute().data or []
+        for row in rows:
+            if isinstance(row, dict) and row.get(key):
+                found[str(row[key])] = row
+    return found
+
+
+def _owners_of(database: Any, sessions: dict[str, dict]) -> tuple[dict[str, str], dict[str, str]]:
+    projects: list[str] = []
+    users: list[str] = []
+    for session in sessions.values():
+        if not session.get("owner_principal_id"):
+            project = _uuid_text(session.get("project_id") or session.get("arc_id"))
+            if project:
+                projects.append(project)
+        user = _uuid_text(session.get("user_id"))
+        if user:
+            users.append(user)
+    project_rows = _rows_by(database, "projects", "id,owner_principal_id", "id", projects) if projects else {}
+    user_rows = _rows_by(database, "owner_principals", "id,user_id", "user_id", users) if users else {}
+    return ({pid: str(row.get("owner_principal_id") or "") for pid, row in project_rows.items()},
+            {uid: str(row.get("id") or "") for uid, row in user_rows.items() if row.get("id")})
+
+
+def _take_owner(session: dict, projects: dict[str, str], principals: dict[str, str]) -> str:
+    """``take_principal`` from a session already read."""
+    owner = str(session.get("owner_principal_id") or "")
+    if not owner:
+        project = str(session.get("project_id") or session.get("arc_id") or "")
+        owner = projects.get(project) or ""
+    if owner:
+        return owner
+    return principals.get(str(session.get("user_id") or "")) or ""
+
+
+def _speaker_key(session: dict, principals: dict[str, str]) -> tuple:
+    """The arguments ``take_speaker_principal`` resolves, without the calls."""
+    user = str(session.get("user_id") or "")
+    owner = principals.get(user) if user else ""
+    if owner:
+        return ("account", owner, user, None)
+    return ("take", str(session.get("owner_principal_id") or ""), user or None,
+            str(session.get("recording_id") or "") or None)
+
+
+def _resolve(database: Any, key: tuple) -> Optional[str]:
+    from services.processing_authorization import ProcessingAuthorizationService
+    _kind, owner, user, recording = key
+    try:
+        principal = ProcessingAuthorizationService(database).resolve_acquisition_principal(
+            owner or "", user_id=user, recording_id=recording)
+    except Exception as error:  # noqa: BLE001 -- an unreadable acquirer is not heard
+        _log.warning("coach sheet acquirer not read: %s", error, exc_info=True)
+        return None
+    return str(principal) if principal else None
+
+
+def _objected_principal(database: Any, principal: str) -> bool:
+    """``error_presence_audit._objected`` for a principal already resolved.
+    Unreadable counts as objected, as there."""
+    try:
+        result = database.client.rpc("has_blind_check_objection_v1", {
+            "p_acquisition_principal_id": str(principal),
+        }).execute()
+    except Exception as error:  # noqa: BLE001 -- unknown reads as objected
+        _log.warning("blind-check objection read failed: %s", error, exc_info=True)
+        return True
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else None
+    if isinstance(data, dict):
+        data = next(iter(data.values()), None)
+    return data is not False
+
+
+def _side_by_side(calls: list) -> list:
+    if len(calls) <= 1:
+        return [call() for call in calls]
+    import contextvars
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(8, len(calls))) as pool:
+        futures = [pool.submit(contextvars.copy_context().run, call) for call in calls]
+        return [future.result() for future in futures]
+
+
+def _uuid_text(value: Any) -> Optional[str]:
+    from uuid import UUID
+    try:
+        return str(UUID(str(value)))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
 def takes_may_reach_a_coach_sheet(database: Any, takes: Any) -> dict:
     """``take_may_reach_a_coach_sheet`` for each distinct Take, keyed by
     id, the reads side by side: each check is about five database calls

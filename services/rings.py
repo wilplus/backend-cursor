@@ -318,7 +318,7 @@ def feature_reaches(
 def principal_for_user(user_id: Any, *, database: Any = None) -> Optional[str]:
     """The owner principal behind a signed-in user, or None.
 
-    A request commonly checks more than one feature.  The owner mapping is
+    A request commonly checks more than one feature. The owner mapping is
     immutable for that request, so share the first read with every later
     feature check instead of resolving the same principal once per feature.
     The database identity is part of the key: tests and admin paths can use

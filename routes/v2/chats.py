@@ -634,10 +634,11 @@ def v2_chats_blank_setup_start():
 @v2_bp.route("/chats/setup/models", methods=["GET"])
 @require_auth
 def v2_chats_blank_setup_models():
-    """"Models you can use." (N617 item 1)."""
+    """"Models you can use." (N617 item 1). The ring is checked in the same
+    read as the models (404 without the chat builder)."""
     from services import chat_recipes
-    return _builder_or_404(lambda: _run("setup models", lambda: chat_recipes.shared_models(
-        db, str(request.user_id))))
+    return _run("setup models", lambda: chat_recipes.shared_models(
+        db, str(request.user_id)))
 
 
 @v2_bp.route("/chats/setup/try", methods=["POST"])
@@ -743,11 +744,12 @@ def v2_chats_blank_setup_dev_chart(name):
 @limiter.limit("600 per hour", scope="chats_blank_setup_part")
 @require_auth
 def v2_chats_blank_setup_part(part):
-    """One decision, Keep or Change, saved (N616 item 7)."""
+    """One decision, Keep or Change, saved (N616 item 7). The ring is checked
+    in the same read as the recipe (404 without the chat builder)."""
     from services import chat_recipes
     body = request.get_json(silent=True)
-    return _builder_or_404(lambda: _run("setup part", lambda: chat_recipes.set_part(
-        db, str(request.user_id), part, body)))
+    return _run("setup part", lambda: chat_recipes.set_part(
+        db, str(request.user_id), part, body))
 
 
 @v2_bp.route("/chats/<thread_id>/messages/<message_id>/useful", methods=["POST"])
