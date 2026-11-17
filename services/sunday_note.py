@@ -404,6 +404,11 @@ def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:
     text = (question or "").strip()
     if not text or text.startswith("#") and not _ASKED.match(text):
         return None
+    # Most conversational turns are plainly unrelated. Avoid two notebook
+    # state reads for greetings and ordinary speaking questions; ambiguous
+    # pattern language still follows the exact existing consent + model path.
+    if not _ASKED.match(text) and not _MAYBE.search(text):
+        return None
     if not voice_notebook.enabled(database, user_id) or not voice_notebook.consented(
             database, user_id):
         return None

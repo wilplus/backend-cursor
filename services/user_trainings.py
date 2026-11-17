@@ -223,23 +223,47 @@ def list_trainings(database: Any, user_id: Any, *, every_project: bool) -> list:
     for r in rows:
         if r.get("arc_id"):
             by_arc.setdefault(str(r["arc_id"]), []).append(r)
-    deliveries = database.list_arc_batch_deliveries(list(by_arc.keys())) or {}
+    from services.parallel import run_in_parallel
+
+    arc_ids = list(by_arc.keys())
     spoken_ids = [str(row.get("id")) for rows in by_arc.values()
                   for row in _spoken(rows) if row.get("id")]
-    try:
-        drafts_by_session = (
-            database.get_coach_snippet_drafts_by_sessions(spoken_ids) or {})
-    except Exception:
-        # Keep the project list available if feedback evidence is briefly
-        # unreadable; the conservative fallback is "Not yet there".
-        logger.warning("practice feedback evidence unreadable", exc_info=True)
-        drafts_by_session = {}
-    if every_project:
-        batched = database.get_coach_best_presentation_edits_for_arcs(
-            list(by_arc.keys()))
-    else:
-        batched = database.get_coach_best_presentation_edits_for_arcs(
-            list(by_arc.keys()), strict=False)
+
+    def read_drafts() -> dict:
+        try:
+            return database.get_coach_snippet_drafts_by_sessions(spoken_ids) or {}
+        except Exception:
+            # Keep the project list available if feedback evidence is briefly
+            # unreadable; the conservative fallback is "Not yet there".
+            logger.warning("practice feedback evidence unreadable", exc_info=True)
+            return {}
+
+    def read_edits() -> Any:
+        if every_project:
+            return database.get_coach_best_presentation_edits_for_arcs(arc_ids)
+        return database.get_coach_best_presentation_edits_for_arcs(
+            arc_ids, strict=False)
+
+    def read_project_states() -> list[dict]:
+        # Deletion/archive state depends only on the arc ids too. Read it on
+        # the same latency wave as the feedback batches; applying it to tiny
+        # placeholder rows preserves the existing best-effort policy while
+        # keeping a second group of database calls off the critical path.
+        return with_deletion_state(
+            database,
+            [{"arc_id": aid} for aid in arc_ids],
+            every_project,
+        )
+
+    # All four reads depend only on the session list and on none of each
+    # other's results. Overlap their database latency while preserving the
+    # same calls, fallbacks and output shape.
+    deliveries, drafts_by_session, batched, project_states = run_in_parallel(
+        lambda: database.list_arc_batch_deliveries(arc_ids) or {},
+        read_drafts,
+        read_edits,
+        read_project_states,
+    )
     if batched is not None:
         def edits_for(aid: str) -> dict:
             return batched.get(aid, {})
@@ -255,5 +279,18 @@ def list_trainings(database: Any, user_id: Any, *, every_project: bool) -> list:
         if spoken:
             trainings.append(_training(
                 aid, spoken, deliveries.get(aid), edits_for, drafts_by_session))
+    state_by_arc = {
+        str(row.get("arc_id")): row
+        for row in (project_states or [])
+        if isinstance(row, dict) and row.get("arc_id")
+    }
+    trainings = [
+        training for training in trainings
+        if str(training.get("arc_id")) in state_by_arc
+    ]
+    for training in trainings:
+        state = state_by_arc[str(training.get("arc_id"))]
+        training["deletion"] = state.get("deletion")
+        training["archived"] = bool(state.get("archived"))
     trainings.sort(key=lambda t: t.get("created_at") or "", reverse=True)
-    return with_deletion_state(database, trainings, every_project)
+    return trainings
