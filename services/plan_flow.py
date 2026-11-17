@@ -1205,16 +1205,17 @@ def _cut_voice(audio: bytes, clips: list[dict]) -> Optional[bytes]:
     start = min(s for s, _ in spans)
     length = min(max(s + d for s, d in spans) - start, FIRST_TAKE_VOICE_MAX_MS)
     import subprocess
-    from services.audio_metrics import _resolve_ffmpeg_executable
+    from services.audio_metrics import _resolve_ffmpeg_executable, ffmpeg_input
     exe = _resolve_ffmpeg_executable()
     if not exe:
         return None
     try:
-        proc = subprocess.run(
-            [exe, "-v", "error", "-i", "pipe:0", "-ss", f"{start / 1000:.3f}",
-             "-t", f"{length / 1000:.3f}", "-vn", "-ac", "1", "-ar", "24000",
-             "-b:a", "64k", "-f", "mp3", "pipe:1"],
-            input=audio, capture_output=True, timeout=60)
+        with ffmpeg_input(audio) as (source, stdin):
+            proc = subprocess.run(
+                [exe, "-v", "error", "-i", source, "-ss", f"{start / 1000:.3f}",
+                 "-t", f"{length / 1000:.3f}", "-vn", "-ac", "1", "-ar", "24000",
+                 "-b:a", "64k", "-f", "mp3", "pipe:1"],
+                input=stdin, capture_output=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return None
     return proc.stdout if proc.returncode == 0 and proc.stdout else None
