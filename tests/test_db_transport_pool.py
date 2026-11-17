@@ -94,7 +94,9 @@ def test_the_keep_warm_ping_keeps_a_few_connections_and_more_when_asked(monkeypa
     warm_connections._ping_every_lane()
     assert len(seen) == 3 and not together.broken
     monkeypatch.setenv("WARM_CONNECTIONS", "50")
-    assert warm_connections._web_connections() == 10
+    # The cap follows the available pool after the three request lanes; it is
+    # 10 on the larger default pool and 5 on the Nano-safe pool of 8.
+    assert warm_connections._web_connections() == min(10, db_transport.POOL_SIZE - 3)
 
 
 def test_a_takes_job_opens_its_connections_without_waiting(monkeypatch):
