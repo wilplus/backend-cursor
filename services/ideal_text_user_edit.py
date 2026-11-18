@@ -8,11 +8,11 @@ transaction (``compare_and_set_user_ideal_edit_v2``, D22-D24); nothing here
 writes the owner lane or a part directly, and the edit never overwrites the
 coach canonical or the legacy notebook copy (L1 — separate lanes).
 
-The v2 database door preserves the existing CAS unchanged.  If and only if
-the owner's active MLC-3 enrollment names an older authorization receipt, it
-refreshes that enrollment through the canonical authority writer and then
-runs the CAS in the same transaction.  Ownership, consent, idempotency and
-every other authority refusal remain fail-closed.
+The v2 database door delegates to the existing CAS. Its entry, replay and
+completion checks require current Phase-1 processing authority and the F1
+serving gate. Ordinary edits do not enroll owners in the retired MLC-3
+coaching loop. Ownership, consent, idempotency and protected-part checks
+remain fail-closed; strict F2 writers retain their separate authorization.
 
 Two wire shapes:
 
@@ -51,18 +51,23 @@ def _invalid(error: str) -> Refusal:
 def _error_code(error) -> str:
     """The database's typed code inside an error, or the generic one."""
     match = re.search(
-        r"\b(CONFIDENT_MOMENT_[A-Z0-9_]+|FEEDBACK_LANGUAGE_[A-Z0-9_]+|MLC3_[A-Z0-9_]+|IDEAL_TEXT_[A-Z0-9_]+)\b",
+        r"\b(CONFIDENT_MOMENT_[A-Z0-9_]+|FEEDBACK_LANGUAGE_[A-Z0-9_]+|MLC3_[A-Z0-9_]+|IDEAL_TEXT_[A-Z0-9_]+|PROCESSING_[A-Z0-9_]+)\b",
         str(error),
     )
     return match.group(1) if match else "CONFIDENT_MOMENT_DATABASE_FAILURE"
 
 
 def _refuse_typed(error) -> None:
-    """A typed Ideal Text refusal from the database is a 409 with its code;
-    anything else propagates."""
+    """Expose expected authorization/conflict refusals; propagate faults."""
     code = _error_code(error)
     if code.startswith("IDEAL_TEXT_"):
         raise Refusal(code, None, 409) from error
+    if code in {
+        "PROCESSING_AUTHORIZATION_REQUIRED", "PROCESSING_POLICY_INACTIVE",
+        "PROCESSING_SERVICE_BLOCKED", "MLC3_SERVICE_PRINCIPAL_NOT_ALLOWED",
+        "MLC3_ROLLOUT_POLICY_AUTHORITY_MISMATCH",
+    }:
+        raise Refusal(code, None, 403) from error
 
 
 def _request_shape(body: Any) -> bool:
@@ -231,6 +236,7 @@ _PART_ACTIONS = frozenset({
 })
 _PART_REVISION_KEYS = frozenset({
     "part_id", "revision_id", "action", "previous_position", "result_position",
+    "previous_revision_id",
 })
 
 
@@ -259,6 +265,9 @@ def _part_revision_order(row: Any, seen: set) -> tuple:
     seen.add(part_id)
     if not _is_bigint_string(row.get("revision_id")):
         raise TypeError("invalid part revision bigint")
+    previous_revision = row.get("previous_revision_id")
+    if previous_revision is not None and not _is_bigint_string(previous_revision):
+        raise TypeError("invalid previous part revision bigint")
     action = row.get("action")
     previous, result = row.get("previous_position"), row.get("result_position")
     if action not in _PART_ACTIONS:

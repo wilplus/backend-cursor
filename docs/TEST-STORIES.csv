@@ -2782,6 +2782,12 @@ unset it is 2, and never fewer than 1.","O1 -> test_an_orphaned_session_is_marke
 O2 -> test_a_failing_reap_does_not_abort_the_rest
 O3 -> test_config_error_is_terminal_not_retried
 O4 -> test_worker_count_starts_that_many_slots","""Processing forever"" found live 2026-08-04 (no job row to sweep), and jobs dead at fetch_audio after 3 retries on missing R2 creds, 2026-08-06."
+tests/test_owner_edits_use_current_processing_authority_postgres.py,Story,"As a speaker, I can save and reload my own words after accepting the current agreement, without joining the retired coaching loop.","O1 A committed edit reloads with the same Paragraph and revision.
+O2 Missing/stale agreement or a service block refuses the write.
+O3 Another owner cannot edit my project; strict F2 access stays closed.","O1 -> test_current_authority_saves_and_reloads_without_coaching_enrollment
+O2 -> test_current_processing_authority_is_required,
+test_a_claimed_guests_account_purge_still_blocks_an_owner_edit
+O3 -> test_another_owner_cannot_edit_the_project, O1's strict F2 check","Contract 9, N663, N664; retired MLC-3 loop (contract 66)."
 tests/test_owner_feedback_answers_route.py,Story,"As a speaker, I want my latest answer to each feedback item shown back to me, and nobody else able to read it, so that my judgements stay mine and current.","O1  I get one answer per item, at its latest change.
 O2  Someone else's Take, or a Take that does not exist, is ""not found"".","O1 -> test_the_owner_reads_each_answer_at_its_latest
 O2 -> test_someone_elses_take_or_no_take_is_not_found",Q19 A: the answered bookmark's read.

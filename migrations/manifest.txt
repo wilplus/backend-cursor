@@ -561,3 +561,4 @@
 0523	a_paid_answer_is_charged_once_within_its_limit.sql
 0524	each_model_call_names_its_provider.sql
 0525	ideal_text_save_refreshes_stale_enrollment.sql
+0526	owner_edits_use_current_processing_authority.sql

@@ -75,6 +75,15 @@ with this contract, this contract wins.
    explicitly accepted proposal, or a practice attempt adopted under 35d. The
    next Take replaces all of these with what was said; nothing is lost,
    because every version stays in the Paragraph's history (clause 16).
+   Ordinary owner editing uses the F1 serving gate and the canonical current
+   Phase-1 processing authority (N663, N664). It does not enroll the speaker
+   in the retired MLC-3 coaching loop or require its optional dual-purpose
+   receipt. The database CAS checks authority at entry, replay and completion;
+   ownership, protected Paragraphs, version/hash/lineage and immutable history
+   stay in that one transaction. Explicitly accepted rewrites share this
+   owner-document authority boundary through the same CAS; their protected-
+   Paragraph checks remain in their acceptance writer. Strict F2
+   authorization remains separate.
 10. The document hierarchy is Project -> ordered Slides -> ordered Paragraphs
     -> exact text spans.
 11. Paragraph is the canonical unit for identity, editing, protection,
