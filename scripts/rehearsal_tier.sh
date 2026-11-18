@@ -144,14 +144,15 @@ sql_file $CHAIN migrations/add_mlc3_first_client_service_d2.sql
 clone willab_service_rehearsal $CHAIN                   # First-Client Service D2
 
 echo "→ building the Confident Moment lanes via tests/integration/confident_moment_rehearsal.sh"
-# One checkpoint is cut from the narrow build (the recipe's
+# Two checkpoints are cut from the narrow build (the recipe's
 # CONFIDENT_MOMENT_CHECKPOINTS hook; docs/REHEARSAL-TIER-PENDING-LANE-RECIPES.md):
+#   narrow,   right after 0324 → D5 blind audio
 #   narrow,   right after 0326 add_mlc3_general_user_service_d4.sql         → D4 template
 # The released build used to be cut right after 0325 for the founder-canary
 # readiness lane; that lane went with the MLC-3 service loop (founder
 # 2026-09-30, L8; contract 66). The D4 suite does not run on the finished
 # chain: D5/D4 helpers trip triggers installed after their own slice.
-CKPT_narrow="add_mlc3_general_user_service_d4.sql=willab_confident_moment_narrow_0326"
+CKPT_narrow="add_mlc3_coach_inline_exercise_authoring_d5.sql=willab_confident_moment_narrow_0324 add_mlc3_general_user_service_d4.sql=willab_confident_moment_narrow_0326"
 CKPT_released=""   # no cut: the only clone of released @0325 was the retired canary lane
 for lane in narrow released; do
   ck="CKPT_$lane"
@@ -187,6 +188,7 @@ relax_append_only() {  # relax_append_only <db>
         END \$\$" >"$SOCK/apply.log" 2>&1 \
     || { echo "  relaxations on $1 failed:" >&2; grep -m3 ERROR "$SOCK/apply.log" >&2; exit 1; }
 }
+clone willab_d3_d5 willab_confident_moment_narrow_0324
 clone willab_ga_template willab_confident_moment_narrow_0326
 relax_append_only willab_ga_template
 
@@ -282,6 +284,7 @@ done
 
 # lane name | DSN variable | database | modules
 LANES=(
+  "d5|COACH_GUIDANCE_REHEARSAL_DSN|willab_d3_d5|tests/test_mlc3_coach_inline_authoring_d5_postgres.py"
   "owner-edit authority|CONFIDENT_MOMENT_REHEARSAL_DSN|willab_confident_moment_released|tests/test_owner_edits_use_current_processing_authority_postgres.py"
   "m33|MLC3_REHEARSAL_DSN|willab_m33_rehearsal|tests/test_mlc3_dark_assignments_postgres.py tests/test_mlc3_n1_source_pattern_postgres.py tests/test_rooting_phrase_qualification_postgres.py"
   "d3|COACH_GUIDANCE_REHEARSAL_DSN|willab_d3_rehearsal|tests/test_coach_guidance_delivery_d3_postgres.py"
@@ -293,12 +296,6 @@ LANES=(
   "freeze|TAKE_FEEDBACK_FREEZE_REHEARSAL_DSN|willab_freeze_rehearsal|tests/test_take_feedback_freeze_postgres.py"
   "model-gate|RUNTIME_MODEL_GATE_REHEARSAL_DSN|willab_model_gate_rehearsal|tests/test_runtime_config_model_guard_postgres.py"
 )
-# Suites with no GREEN recipe. Reported NOT RUN, never skipped, never run as
-# "expected to fail"; see docs/REHEARSAL-TIER.md "Pending lanes".
-PENDING=(
-  "tests/test_mlc3_coach_inline_authoring_d5_postgres.py|D5: narrow @0324 + the D4 relaxations reaches 11/12; the last failure is an assertion, not a fixture gap (tests/test_mlc3_coach_inline_authoring_d5_postgres.py:782 — prepare_coach_inline_blind_batch_v1 returns 1 item, 2 expected), a question for D5's owner; recipe in docs/REHEARSAL-TIER-PENDING-LANE-RECIPES.md"
-)
-
 if [ "$KEEP" = 1 ]; then
   for lane in "${LANES[@]}"; do IFS='|' read -r _ var db _ <<<"$lane"; echo "export $var='$(dsn "$db")'"; done
 fi
@@ -345,7 +342,6 @@ for lane in "${LANES[@]}"; do
 done
 echo "── rehearsal tier ─────────────────────────────────────────"
 printf '%s\n' "${SUMMARY[@]}"
-for p in "${PENDING[@]}"; do IFS='|' read -r mod why <<<"$p"; echo "  NOT RUN  $(basename "$mod"): $why"; done
-if [ "$STATUS" = 0 ]; then echo "rehearsal tier: GREEN (verified lanes); ${#PENDING[@]} suites NOT RUN, listed above"
+if [ "$STATUS" = 0 ]; then echo "rehearsal tier: GREEN (verified lanes)"
 else echo "rehearsal tier: RED"; fi
 exit "$STATUS"

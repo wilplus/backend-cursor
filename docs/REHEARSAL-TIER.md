@@ -23,10 +23,10 @@ are the tests that verified migration 0327 before it reached production.
 
 ## How it is reported
 
-| Run | What happens to the nine modules |
+| Run | What happens to the PostgreSQL suites |
 |---|---|
 | `pytest` (unit tier, CI `checks`, `local_ci.sh`) | **deselected**, and the terminal summary prints `rehearsal tier — NOT RUN: N tests in M modules (deselected, not skipped)` with the command that runs them |
-| `scripts/rehearsal_tier.sh` | verified lanes built, run, torn down; exit 0 only if every verified lane passed; pending lanes printed as `NOT RUN` with the reason |
+| `scripts/rehearsal_tier.sh` | verified lanes built, run, torn down; exit 0 only if every verified lane passed |
 | `WILLAB_REHEARSAL=1 pytest …` with a DSN missing | refuses to start (pytest usage error) — the tier never claims to have run when it did not |
 
 The mechanism is `conftest.py` (`pytest_collection_modifyitems`), keyed on
@@ -58,9 +58,7 @@ database. Every row marked *verified* was run to green on 2026-09-14.
 Checkpoints of the checked-in Confident Moment recipe are cut from the same
 build: `tests/integration/confident_moment_rehearsal.sh` reads
 `CONFIDENT_MOMENT_CHECKPOINTS` (`<released file>=<database>` pairs) and clones
-the lane right after that file applies. The canary and D4 lanes are such
-checkpoints; neither suite can run on the finished chain (see the notes under
-the table).
+the lane right after that file applies. D5 uses the checkpoint at 0324. D4 uses the later checkpoint at 0326.
 
 | Lane | Recipe | Database | DSN variable | Suites | Status |
 |---|---|---|---|---|---|
@@ -69,45 +67,11 @@ the table).
 | service | d3 → 0323 | `willab_service_rehearsal` | `MLC3_FIRST_CLIENT_REHEARSAL_DSN` | First-Client Service D2 (73) | **verified 73/73** |
 | confident-moment narrow | `tests/integration/confident_moment_rehearsal.sh narrow` (the checked-in recipe) | `willab_confident_moment_narrow` | `CONFIDENT_MOMENT_REHEARSAL_DSN` | coaching bundle (74) | **verified 74/74** |
 | confident-moment released | `… confident_moment_rehearsal.sh released` | `willab_confident_moment_released` | `CONFIDENT_MOMENT_REHEARSAL_DSN` | production-shaped fixtures (9) | **verified 9/9** |
-| canary | released lane, checkpoint right after 0325 `add_mlc3_founder_canary_security_closure.sql`, cloned; then `personalized_exercise_recommendation` and `coach_review` in `processing_purpose_registry` made operational with the five control columns the CHECK demands | `willab_d3_canary` | `MLC3_CANARY_READINESS_REHEARSAL_DSN` | founder canary readiness (9) | **verified 9/9** |
 | freeze | `take_feedback_freeze_prerequisites.sql` → 0308, 0310, 0333, 0339, 0346, 0347, 0349 (each applied twice) | `willab_freeze_rehearsal` | `TAKE_FEEDBACK_FREEZE_REHEARSAL_DSN` | the freeze an answer is judged against (12) | **verified 12/12** |
 | bake | `ideal_text_core_snapshot_prerequisites.sql` → `ideal_text_feedback_bake_prerequisites.sql` (narrow copies of the four answer tables and of `confident_voice_practice`, which the freshness rule reads) → 0290, `fix_ideal_text_core_pgcrypto_search_path`, 0345, 0351, then the coach's request chain as released (0385, 0397, 0402, 0403, 0408, which also lays down `moment_events`), then 0428 and `the_bake_knows_about_skips_and_practice` (each applied twice) | `willab_bake_rehearsal` | `IDEAL_TEXT_FEEDBACK_BAKE_REHEARSAL_DSN` | stored bookmark set and its freshness rule, a coach's answer and share, a skip and a practice included (32) | **verified 32/32 (2026-10-05)** |
 | d4 | narrow lane, checkpoint right after 0326 `add_mlc3_general_user_service_d4.sql`, cloned as the TEMPLATE the suite clones per test; two relaxations: `ml_judgments.id` gets a default, and every trigger on `reject_mlc2_immutable_mutation` / `reject_phase1_immutable_mutation` is disabled (the suite asserts nothing about immutability; the MLC-2 lanes do) | `willab_ga_template` | `MLC3_GENERAL_USER_REHEARSAL_DSN` | General-User Service D4 (34) | **verified 34/34** |
 | take-rewrite | narrow lane, cloned before any lane runs; `coach_arc_ideal_text.approved_at`/`updated_by` (0013) and `user_arc_ideal_notes.updated_at` added back as the released files define them; then 0032, 0034, 0035, 0064, 0270, 0291, 0369, 0370, 0371 (each applied twice) | `willab_confident_moment_take2` | `CONFIDENT_MOMENT_REHEARSAL_DSN` | the owner edits a Paragraph, then Take 2 rewrites the Slide; an edit on a Slide Take 2 did not speak is kept (B1-5, N29) (2) | **verified 2026-10-05** |
-
-### Pending lane (reported NOT RUN)
-
-One suite has no GREEN recipe. The runner reports it `NOT RUN` with the
-reason, never as skipped, never as passed, and never as "expected to fail":
-
-| Suite | Where it stands | Why it is not a lane yet |
-|---|---|---|
-| `test_mlc3_coach_inline_authoring_d5_postgres.py` | narrow lane, checkpoint right after 0324, plus the two D4 relaxations: **11/12**, fixture setup complete | the one failure is an assertion, not a fixture gap: `tests/test_mlc3_coach_inline_authoring_d5_postgres.py:782` expects two items in the visible blind batch and `prepare_coach_inline_blind_batch_v1` returns one. That is a behavioural question for D5's owner. 0324 is the right checkpoint: the same suite scores 5/12 at 0326. |
-
-The step-by-step recipes, including this one, are in
-`docs/REHEARSAL-TIER-PENDING-LANE-RECIPES.md` (established by execution on a
-clean rebuild, 2026-09-14). Two corrections to what this page said before
-that work:
-
-1. The canary count difference was never caused by the narrow lane dropping
-   `processing_one_active_policy_idx` (the index is present in the released
-   lane). It was the six purpose rows seeded false, which the lane now fixes.
-2. The canary suite must not run on the finished chain. 0326 supersedes
-   `reserve_exercise_practice_service_upload_v1` with `_v2` and revokes v1 from
-   `service_role` (deliberately; v2 calls v1 internally), while
-   `scripts/check_mlc3_founder_canary_readiness.py` still lists v1 in
-   `_REQUIRED_RPC_SIGNATURES`. From 0326 on, the deployed readiness audit
-   therefore reports one false missing grant, and the suite scores 7/9 there.
-   The revocation is right and the required list is stale against it. That is
-   a founder decision about a production monitor, not a lane recipe; it is
-   recorded here so nobody "fixes" the lane instead.
-
-Closing the pending lane means resolving that assertion (or the behaviour
-behind it) and then adding the checkpoint, the relaxations and the row above,
-the same way the canary and D4 lanes were added. The founder ran these suites
-by hand before their releases (#486, #487, #488, #490); the fixture databases
-those runs used were not checked in, which is why the recipes had to be
-reconstructed.
+| d5 | narrow checkpoint after 0324 | `willab_d3_d5` | `COACH_GUIDANCE_REHEARSAL_DSN` | Assigned coaches can read only the blind audio span. Revocation stops the read. | **verified 1/1 (2026-11-18)** |
 
 ### Every lane has a wall clock
 

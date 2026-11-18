@@ -12,7 +12,7 @@ OUTCOME
   O3  Once the speaker's processing is blocked, the read raises.
   O4  Resolving the audio creates no practice or draft rows.
 PROVES   O1, O2, O3, O4 -> test_blind_audio_resolver_is_assignment_bound_and_fails_after_revocation
-WHY      D5 coach inline authoring (pending lane in scripts/rehearsal_tier.sh).
+WHY      D5 coach inline authoring (0324 checkpoint in scripts/rehearsal_tier.sh).
 """
 from __future__ import annotations
 

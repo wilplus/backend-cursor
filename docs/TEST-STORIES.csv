@@ -2389,7 +2389,7 @@ sees the machine's guess before answering).
 O2  Another active coach, or the reviewer's login on someone else's
 principal, is refused.
 O3  Once the speaker's processing is blocked, the read raises.
-O4  Resolving the audio creates no practice or draft rows.","O1, O2, O3, O4 -> test_blind_audio_resolver_is_assignment_bound_and_fails_after_revocation",D5 coach inline authoring (pending lane in scripts/rehearsal_tier.sh).
+O4  Resolving the audio creates no practice or draft rows.","O1, O2, O3, O4 -> test_blind_audio_resolver_is_assignment_bound_and_fails_after_revocation",D5 coach inline authoring (0324 checkpoint in scripts/rehearsal_tier.sh).
 tests/test_mlc3_dark_assignments_postgres.py,Story,"As a speaker, I want no exercise assigned on evidence the machine did not really have, and none after I withdraw permission, so that practice is never invented or done without my permission.","O1  Unclear or unreliable audio, or missing or out-of-range measurements,
 give ""no match"" with the named reason, and that ""no match"" cannot be
 turned into a request for a new exercise.
