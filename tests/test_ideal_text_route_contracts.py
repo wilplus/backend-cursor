@@ -420,9 +420,11 @@ def _cas_result():
             "result_user_text_sha256": HASH, "desired_parts_lineage_sha256": HASH,
             "part_revisions": [
                 {"part_id": PA, "revision_id": "10",
+                 "previous_revision_id": "9",
                  "action": "owner_part_text_updated", "previous_position": 0,
                  "result_position": 0},
                 {"part_id": PB, "revision_id": "11", "action": "owner_part_created",
+                 "previous_revision_id": None,
                  "previous_position": None, "result_position": 1}],
             "dataset_eligible": False}
 
@@ -482,4 +484,18 @@ def test_a_typed_ideal_text_refusal_from_the_database_is_a_409():
         assert _call(route.v2_explore_put_ideal_user_edit, ARC, method="PUT",
                      json=_cas_body())[:2] == (
             409, {"code": "IDEAL_TEXT_PART_REQUIRES_UNLOCK"})
+    publish.assert_not_called()
+
+
+@pytest.mark.parametrize("code", [
+    "PROCESSING_AUTHORIZATION_REQUIRED", "PROCESSING_SERVICE_BLOCKED",
+    "MLC3_ROLLOUT_POLICY_AUTHORITY_MISMATCH",
+])
+def test_an_authority_refusal_is_honest_and_publishes_nothing(code):
+    """As a speaker, I keep my draft when authority refuses a save."""
+    with patch.object(db, "compare_and_set_user_ideal_edit",
+                      side_effect=RuntimeError(code)), \
+            patch("services.ideal_text_core_snapshot.publish_for_arc") as publish:
+        assert _call(route.v2_explore_put_ideal_user_edit, ARC, method="PUT",
+                     json=_cas_body())[:2] == (403, {"code": code})
     publish.assert_not_called()

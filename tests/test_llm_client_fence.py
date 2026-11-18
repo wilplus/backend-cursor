@@ -112,8 +112,13 @@ def test_direct_chat_calls_can_only_go_down(sightings):
         f"CHAT_CALLS_ALLOWED. Now: {chat_calls}")
 
 
-def test_one_client_per_process_and_a_fork_gets_its_own():
+def test_one_client_per_process_and_a_fork_gets_its_own(monkeypatch):
     from services.llm_client import build_openai_client
+
+    # This tests process ownership, with no network traffic. On macOS the
+    # system proxy lookup uses CoreFoundation, which is unsafe after fork.
+    # An explicit environment setting keeps httpx out of that OS API.
+    monkeypatch.setenv("no_proxy", "*")
 
     def build():
         return build_openai_client("sk-fence-test", timeout=5.0, max_retries=0)
@@ -126,4 +131,5 @@ def test_one_client_per_process_and_a_fork_gets_its_own():
     child = ctx.Process(target=lambda: answer.put(build() is not first))
     child.start()
     child.join(timeout=30)
+    assert child.exitcode == 0, "the forked client constructor failed"
     assert answer.get(timeout=5) is True, "a forked process reused its parent's client"

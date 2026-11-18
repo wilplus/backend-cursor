@@ -960,6 +960,14 @@ hard migrations/a_model_learns_from_its_settled_examples.sql
 hard migrations/a_paid_answer_is_charged_once_within_its_limit.sql
 hard migrations/a_paid_answer_is_charged_once_within_its_limit.sql
 
+if [ "$LANE" = "released" ]; then
+  # The narrow prerequisite notes table omits this released 0003 column.
+  psql -q -d "$DB" -v ON_ERROR_STOP=1 -c "ALTER TABLE public.user_arc_ideal_notes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()" >>"$log" 2>&1
+  hard migrations/ideal_text_save_refreshes_stale_enrollment.sql
+  hard migrations/owner_edits_use_current_processing_authority.sql
+  hard migrations/owner_edits_use_current_processing_authority.sql
+fi
+
 echo "Built $DB ($ok released migrations applied, $skipped fixture files)"
 echo "  export CONFIDENT_MOMENT_REHEARSAL_DSN=postgresql://$PGUSER@$PGHOST:$PGPORT/$DB"
 rm -f "$log"

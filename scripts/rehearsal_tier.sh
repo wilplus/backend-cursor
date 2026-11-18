@@ -282,6 +282,7 @@ done
 
 # lane name | DSN variable | database | modules
 LANES=(
+  "owner-edit authority|CONFIDENT_MOMENT_REHEARSAL_DSN|willab_confident_moment_released|tests/test_owner_edits_use_current_processing_authority_postgres.py"
   "m33|MLC3_REHEARSAL_DSN|willab_m33_rehearsal|tests/test_mlc3_dark_assignments_postgres.py tests/test_mlc3_n1_source_pattern_postgres.py tests/test_rooting_phrase_qualification_postgres.py"
   "d3|COACH_GUIDANCE_REHEARSAL_DSN|willab_d3_rehearsal|tests/test_coach_guidance_delivery_d3_postgres.py"
   "service|MLC3_FIRST_CLIENT_REHEARSAL_DSN|willab_service_rehearsal|tests/test_mlc3_first_client_service_postgres.py"
