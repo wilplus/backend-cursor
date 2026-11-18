@@ -37,10 +37,10 @@ MIN_VOICED_SEC = 3.0
 
 # A Take is captured with automatic gain control deliberately off, so a real
 # voice can sit below the acoustic pipeline's fixed -45 dBFS pause threshold.
-# The intake gate therefore adapts to this recording's own quiet floor, while
-# retaining an absolute floor that digital silence cannot cross.
+# Intake uses only this low absolute signal floor. Deriving a threshold from
+# the clip's own quiet percentile rejected a steady quiet vowel/talk because
+# every frame was equally voiced and none rose above its own baseline.
 MIN_SIGNAL_DB = -65.0
-MIN_VOICE_ABOVE_FLOOR_DB = 6.0
 
 
 def evaluate_min_content(sig: Any) -> dict:
@@ -60,9 +60,7 @@ def evaluate_min_content(sig: Any) -> dict:
     prompt keyed on ``reason`` (too_short vs no_speech read differently
     to the user).
     """
-    from services.audio_metrics import (
-        SAMPLE_RATE, FRAME_MS, SILENCE_DB_THRESHOLD, _frame_rms_db,
-    )
+    from services.audio_metrics import SAMPLE_RATE, FRAME_MS, _frame_rms_db
     import numpy as np
 
     thresholds = {
@@ -81,12 +79,7 @@ def evaluate_min_content(sig: Any) -> dict:
 
     dbs = _frame_rms_db(sig)
     if len(dbs):
-        quiet_floor_db = float(np.percentile(dbs, 20))
-        speech_threshold_db = max(
-            MIN_SIGNAL_DB,
-            min(SILENCE_DB_THRESHOLD, quiet_floor_db + MIN_VOICE_ABOVE_FLOOR_DB),
-        )
-        voiced_frames = int(np.sum(dbs >= speech_threshold_db))
+        voiced_frames = int(np.sum(dbs >= MIN_SIGNAL_DB))
     else:
         voiced_frames = 0
     voiced_sec = round(voiced_frames * (FRAME_MS / 1000.0), 1)

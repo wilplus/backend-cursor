@@ -32,7 +32,9 @@ except Exception:  # pragma: no cover
 SECONDS = 70
 
 
-def _iphone_like_m4a(*, seconds: int = SECONDS, level: float = 1.0) -> bytes | None:
+def _iphone_like_m4a(
+    *, seconds: int = SECONDS, level: float = 1.0, modulated: bool = True,
+) -> bytes | None:
     """AAC mono 48 kHz at 64 kbps with the index (moov) after the audio,
     as the iPhone app writes a Take."""
     if not _FFMPEG:
@@ -42,8 +44,9 @@ def _iphone_like_m4a(*, seconds: int = SECONDS, level: float = 1.0) -> bytes | N
         proc = subprocess.run(
             [_FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
              "-f", "lavfi", "-i",
-             ("aevalsrc='sin(220*2*PI*t)*(0.5+0.5*sin(3*t))"
-              f"*{level}':s=48000:d={seconds}"),
+             ("aevalsrc='sin(220*2*PI*t)"
+              f"*{('(0.5+0.5*sin(3*t))*' if modulated else '')}{level}'"
+              f":s=48000:d={seconds}"),
              "-ac", "1", "-c:a", "aac", "-b:a", "64k", out],
             capture_output=True, timeout=60, check=False)
         if proc.returncode != 0 or not os.path.isfile(out):
@@ -89,7 +92,9 @@ class IphoneM4aTake(unittest.TestCase):
     def test_a_quiet_voiced_iphone_take_passes_the_same_gate(self):
         from services.min_content_gate import evaluate_min_content_bytes
 
-        quiet_voice = _iphone_like_m4a(seconds=6, level=0.004)
+        # Deliberately steady: the old percentile-relative gate rejected this
+        # because no voiced frame rose 6 dB above the clip's own voiced floor.
+        quiet_voice = _iphone_like_m4a(seconds=6, level=0.004, modulated=False)
         self.assertIsNotNone(quiet_voice)
         self.assertTrue(evaluate_min_content_bytes(quiet_voice)["ok"])
 
