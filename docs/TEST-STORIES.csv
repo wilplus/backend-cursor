@@ -1963,8 +1963,11 @@ tests/test_iphone_m4a_take.py,Story,"As a speaker recording in the iPhone app, I
 it, passes the no-speech gate and decodes in full: before, ffmpeg read
 it from stdin, found nothing, and the gate refused it as ""no_audio"".
 O2  The upload keeps it as audio: it is not refused as a video, and its
-bytes are stored as sent (the WebM remux leaves an m4a alone).","O1 -> test_an_iphone_m4a_passes_the_gate_and_decodes_in_full
-O2 -> test_the_upload_keeps_an_iphone_m4a_as_audio_bytes_unchanged",
+bytes are stored as sent (the WebM remux leaves an m4a alone).
+O3  The same speech gate accepts a quiet but voiced native Take; turning
+phone-call gain processing off must not turn a voice into dead air.","O1 -> test_an_iphone_m4a_passes_the_gate_and_decodes_in_full
+O2 -> test_the_upload_keeps_an_iphone_m4a_as_audio_bytes_unchanged
+O3 -> test_a_quiet_voiced_iphone_take_passes_the_same_gate",
 tests/test_jobs_status_route.py,Story,"As a speaker, I want the processing poll to show only progress, the same for an unknown job and someone else's job, and never a score, so that waiting is private and judgement-free.","O1  The poll body carries status/stage/percent and a state from the
 readout GETs' vocabulary: processing, ready or failed.
 O2  An unknown, malformed or someone else's job gets the identical 404.
@@ -4395,13 +4398,16 @@ O2  A slide I did not speak keeps its last version, including my own
 edit made after Take 1.
 O3  Helper words and locks stay on both slides, and a reworded open
 Paragraph keeps its id and helper words through the page publish.
-O4  Every earlier version (my edit, Take 1, Take 2) stays in the history.","O1 -> test_take_two_rewrites_the_edited_slide_and_keeps_the_rest
+O4  Every earlier version (my edit, Take 1, Take 2) stays in the history.
+O5  Accepting a newer processing-authority receipt does not make the next
+owner edit fail; the stale enrollment is renewed before the same CAS.","O1 -> test_take_two_rewrites_the_edited_slide_and_keeps_the_rest
 O2 -> test_an_edit_on_a_slide_take_two_did_not_speak_is_its_last_version
 O3 -> test_take_two_rewrites_the_edited_slide_and_keeps_the_rest,
 test_a_reworded_open_paragraph_keeps_its_id_through_the_snapshot_publish
 O4 -> test_take_two_rewrites_the_edited_slide_and_keeps_the_rest,
 test_an_edit_on_a_slide_take_two_did_not_speak_is_its_last_version,
-test_a_reworded_open_paragraph_keeps_its_id_through_the_snapshot_publish","Never-rule 5; contracts 8, 9, 14, 16 (N29, N48.1 Wave 1)."
+test_a_reworded_open_paragraph_keeps_its_id_through_the_snapshot_publish
+O5 -> test_an_owner_edit_refreshes_only_a_stale_enrollment_authority","Never-rule 5; contracts 8, 9, 14, 16 (N29, N48.1 Wave 1)."
 tests/test_tempo_stretch.py,Guard,"The tempo step practises the stretch of the Take the pace scale reads furthest from the green, says whether it ran fast or slow, and names what it was about in a few plain words (founder 2026-10-26, N162, N166).","C1  a Take spoken without a pause no longer picks that clip as rushed
 C2  a Take with long pauses no longer picks that clip as slow
 C3  a Take in the green picking a stretch anyway, so the step shows for nothing
@@ -5039,9 +5045,12 @@ O2  Any remux failure (ffmpeg error or timeout) keeps the original bytes
 and never raises, so the Take still goes on (Never-3: the loop is never
 broken).
 O3  The bytes stored are the remuxed bytes, and the read-after-write
-checksum is taken on what is actually stored.","O1 -> test_timestamps_and_packets_are_preserved
+checksum is taken on what is actually stored.
+O4  A quiet but voiced browser Take survives intake and the speech gate;
+recording without automatic gain must not be mistaken for dead air.","O1 -> test_timestamps_and_packets_are_preserved
 O2 -> test_any_remux_failure_keeps_the_original_bytes
-O3 -> test_intake_remuxes_and_the_read_after_write_sha_matches",Founder 2026-10-08: Safari could not seek a clip inside its Take (MediaRecorder WebM has no Cues and no Duration).
+O3 -> test_intake_remuxes_and_the_read_after_write_sha_matches
+O4 -> test_a_quiet_voiced_web_take_survives_intake_and_the_speech_gate",Founder 2026-10-08: Safari could not seek a clip inside its Take (MediaRecorder WebM has no Cues and no Duration).
 tests/test_wedged_job_wall_clock.py,Story,"As a speaker, I want a Take stuck in processing to be recovered, so that I do not stare at ""Working on your take"" forever.","O1  A job running past its time limit, even with a fresh heartbeat, is
 flagged as stuck, released and re-queued once.",O1 -> SweeperRecoversTheWedgedJob::test_the_founder_symptom_is_recovered,"Founder 2026-09-17: ""It got stale and now it needs to function."""
 tests/test_whatsapp_number.py,Story,"As a speaker, I want to save my WhatsApp number and get one message when my coach first shares feedback, so that I know feedback arrived without spam.","O1  A valid number is saved in international form; a number without a
@@ -5080,12 +5089,15 @@ O4  a failing read gives no block and no error: Will answers as today
 O5  a signed-in speaker's chat hands the block to Will; a visitor's does not
 O6  a Take whose processing authorization is gone (withdrawn, expired)
 never reaches Will, nor what the coach sent on it; a failed check
-lets no Take through","O1 -> test_only_this_speakers_own_words_reach_will
+lets no Take through
+O7  a broad speaking-overview question receives bounded evidence from
+several authorised Takes even without literal keyword overlap","O1 -> test_only_this_speakers_own_words_reach_will
 O2 -> test_only_what_the_coach_sent_reaches_will
 O3 -> test_the_most_relevant_piece_comes_first
 O4 -> test_a_failing_read_gives_no_block_and_no_error
 O5 -> test_will_reads_the_lookup_in_the_chat
-O6 -> test_a_take_whose_authorization_is_gone_never_reaches_will","Will's answers should build on what this speaker already said and heard, without anything private to someone else, or to the coach, leaking in."
+O6 -> test_a_take_whose_authorization_is_gone_never_reaches_will
+O7 -> test_an_overview_samples_across_authorised_history_without_keyword_overlap","Will's answers should build on what this speaker already said and heard, without anything private to someone else, or to the coach, leaking in."
 tests/test_will_question.py,Story,"As a speaker, after a Take I want Will to ask me a short question about the moment the walk just worked on, only when something is off or missing, that I answer with a tap or in my own words, so that the next feedback knows my talk without a form in front of my next Take.","O1  Will asks only when something is off or missing, the first that
 holds: a breather when the practice missed or the voice dipped two
 Takes in a row; ""On purpose?"" when the clearer line I practised last

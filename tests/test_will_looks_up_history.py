@@ -13,12 +13,15 @@ OUTCOME
   O6  a Take whose processing authorization is gone (withdrawn, expired)
       never reaches Will, nor what the coach sent on it; a failed check
       lets no Take through
+  O7  a broad speaking-overview question receives bounded evidence from
+      several authorised Takes even without literal keyword overlap
 PROVES   O1 -> test_only_this_speakers_own_words_reach_will
          O2 -> test_only_what_the_coach_sent_reaches_will
          O3 -> test_the_most_relevant_piece_comes_first
          O4 -> test_a_failing_read_gives_no_block_and_no_error
          O5 -> test_will_reads_the_lookup_in_the_chat
          O6 -> test_a_take_whose_authorization_is_gone_never_reaches_will
+         O7 -> test_an_overview_samples_across_authorised_history_without_keyword_overlap
 WHY      Will's answers should build on what this speaker already said and
          heard, without anything private to someone else, or to the coach,
          leaking in.
@@ -118,6 +121,30 @@ def test_the_most_relevant_piece_comes_first():
     found = lookup(db, ME, QUESTION)
     assert [s.label for s in found] == ["Take 2 transcript", "Take 3 transcript"]
     assert all(len(s.text) <= 201 for s in found)
+
+
+def test_an_overview_samples_across_authorised_history_without_keyword_overlap():
+    db = _Db(
+        takes=[
+            _take("t3", ME, 3, "The opening begins with a concrete customer story", "2026-10-19"),
+            _take("t2", ME, 2, "I slow down before the final recommendation", "2026-10-18"),
+        ],
+        words=[{
+            "take_session_id": "t3",
+            "text": "Your pause gave the recommendation room to land.",
+            "shared_at": "2026-10-19T12:00",
+        }],
+    )
+
+    found = lookup(db, ME, "Give me a general view of my speaking skills")
+
+    assert {snippet.source for snippet in found} == {"take", "coach"}
+    assert {snippet.text for snippet in found} >= {
+        "The opening begins with a concrete customer story",
+        "I slow down before the final recommendation",
+        "Your pause gave the recommendation room to land.",
+    }
+    assert len(found) <= 8
 
 
 class _Broken(_Db):

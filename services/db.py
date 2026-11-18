@@ -6627,7 +6627,7 @@ class DatabaseService:
     ) -> Optional[dict]:
         """Atomically persist the ordinary owner edit and complete part graph."""
         result = self.client.rpc(
-            "compare_and_set_user_ideal_edit_v1",
+            "compare_and_set_user_ideal_edit_v2",
             {
                 "p_owner_user_id": owner_user_id,
                 "p_arc_id": arc_id,
@@ -6641,7 +6641,7 @@ class DatabaseService:
         ).execute()
         data = getattr(result, "data", result)
         if not isinstance(data, dict):
-            raise TypeError("compare_and_set_user_ideal_edit_v1 returned non-object")
+            raise TypeError("compare_and_set_user_ideal_edit_v2 returned non-object")
         return data
 
     def accept_rewrite_into_part(

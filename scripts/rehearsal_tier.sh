@@ -200,7 +200,7 @@ relax_append_only willab_ga_template
 # (0013's approved_at/updated_by, the notes' updated_at); they are added back
 # as the released files define them, as the recipe's widen step does. Cloned
 # before any lane runs, so no suite's rows are in it.
-echo "→ building the take-rewrite lane (narrow → 0032, 0034, 0035, 0064, 0270, 0291, 0369, 0370, 0371)"
+echo "→ building the take-rewrite lane (narrow → Ideal Text save and rewrite repairs)"
 TAKE2=willab_confident_moment_take2
 clone $TAKE2 willab_confident_moment_narrow
 "${PSQL[@]}" -d $TAKE2 \
@@ -210,7 +210,7 @@ clone $TAKE2 willab_confident_moment_narrow
 for m in add_ideal_text_auto_copy add_ideal_text_versioning add_ideal_text_versions \
          add_user_ideal_edit add_coach_arc_ideal_text_document add_take_review_lifecycle \
          helper_words_belong_to_the_slide every_take_rewrites_the_slides_it_spoke \
-         helper_words_keep_a_history; do
+         helper_words_keep_a_history ideal_text_save_refreshes_stale_enrollment; do
   sql_file $TAKE2 migrations/$m.sql; sql_file $TAKE2 migrations/$m.sql
 done
 

@@ -1783,6 +1783,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 - **O1** An iPhone m4a, whose index sits at the END of the file as iOS writes it, passes the no-speech gate and decodes in full: before, ffmpeg read it from stdin, found nothing, and the gate refused it as "no_audio".
 - **O2** The upload keeps it as audio: it is not refused as a video, and its bytes are stored as sent (the WebM remux leaves an m4a alone).
+- **O3** The same speech gate accepts a quiet but voiced native Take; turning phone-call gain processing off must not turn a voice into dead air.
 
 ### As a speaker, I want the processing poll to show only progress, the same for an unknown job and someone else's job, and never a score, so that waiting is private and judgement-free.
 
@@ -3796,6 +3797,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O2** A slide I did not speak keeps its last version, including my own edit made after Take 1.
 - **O3** Helper words and locks stay on both slides, and a reworded open Paragraph keeps its id and helper words through the page publish.
 - **O4** Every earlier version (my edit, Take 1, Take 2) stays in the history.
+- **O5** Accepting a newer processing-authority receipt does not make the next owner edit fail; the stale enrollment is renewed before the same CAS.
 
 *Why:* Never-rule 5; contracts 8, 9, 14, 16 (N29, N48.1 Wave 1).
 
@@ -4363,6 +4365,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O1** The remuxed file carries a seek index and exactly the same packets and timestamps as the recording (even one not starting at zero), so no stored offset moves.
 - **O2** Any remux failure (ffmpeg error or timeout) keeps the original bytes and never raises, so the Take still goes on (Never-3: the loop is never broken).
 - **O3** The bytes stored are the remuxed bytes, and the read-after-write checksum is taken on what is actually stored.
+- **O4** A quiet but voiced browser Take survives intake and the speech gate; recording without automatic gain must not be mistaken for dead air.
 
 *Why:* Founder 2026-10-08: Safari could not seek a clip inside its Take (MediaRecorder WebM has no Cues and no Duration).
 
@@ -4406,6 +4409,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O4** a failing read gives no block and no error: Will answers as today
 - **O5** a signed-in speaker's chat hands the block to Will; a visitor's does not
 - **O6** a Take whose processing authorization is gone (withdrawn, expired) never reaches Will, nor what the coach sent on it; a failed check lets no Take through
+- **O7** a broad speaking-overview question receives bounded evidence from several authorised Takes even without literal keyword overlap
 
 *Why:* Will's answers should build on what this speaker already said and heard, without anything private to someone else, or to the coach, leaking in.
 

@@ -7,9 +7,9 @@ willab drops the contrast requirement entirely and keeps only a
 worth processing + sending to a coach.
 
 Rule (invariant §5.5 — enforced BEFORE the pipeline runs, never trusted
-to FE): a recording passes iff
-  (a) duration ≥ MIN_DURATION_SEC (60s), AND
-  (b) it actually contains speech (≥ MIN_VOICED_SEC of voiced audio).
+to FE): a recording passes when it contains enough voiced audio for its
+length. There is no minimum recording duration; short voiced re-reads pass,
+while dead air and undecodable uploads do not.
 
 A failing recording → re-record prompt; nothing sendable is persisted.
 
@@ -34,6 +34,13 @@ MIN_DURATION_SEC = 0.0
 # short but VOICED clip passes: voiced_sec is capped by duration, so the
 # floor scales down to the clip length for sub-3s recordings.
 MIN_VOICED_SEC = 3.0
+
+# A Take is captured with automatic gain control deliberately off, so a real
+# voice can sit below the acoustic pipeline's fixed -45 dBFS pause threshold.
+# The intake gate therefore adapts to this recording's own quiet floor, while
+# retaining an absolute floor that digital silence cannot cross.
+MIN_SIGNAL_DB = -65.0
+MIN_VOICE_ABOVE_FLOOR_DB = 6.0
 
 
 def evaluate_min_content(sig: Any) -> dict:
@@ -73,7 +80,15 @@ def evaluate_min_content(sig: Any) -> dict:
     duration_sec = round(len(sig) / float(SAMPLE_RATE), 1)
 
     dbs = _frame_rms_db(sig)
-    voiced_frames = int(np.sum(dbs >= SILENCE_DB_THRESHOLD)) if len(dbs) else 0
+    if len(dbs):
+        quiet_floor_db = float(np.percentile(dbs, 20))
+        speech_threshold_db = max(
+            MIN_SIGNAL_DB,
+            min(SILENCE_DB_THRESHOLD, quiet_floor_db + MIN_VOICE_ABOVE_FLOOR_DB),
+        )
+        voiced_frames = int(np.sum(dbs >= speech_threshold_db))
+    else:
+        voiced_frames = 0
     voiced_sec = round(voiced_frames * (FRAME_MS / 1000.0), 1)
 
     # No duration minimum (founder 2026-07-15) — too_short retired. The

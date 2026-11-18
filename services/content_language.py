@@ -51,7 +51,7 @@ _PL_UNACCENTED_PHRASES = (
 # turn.  Keep this deliberately small: common English words must still fall
 # back to English unless there is stronger immediate-message evidence.
 _PL_UNACCENTED_WORDS = frozenset({
-    "czesc", "dziekuje", "prosze", "pomoz", "mozemy", "zaczac", "wytlumacz",
+    "czesc", "hej", "dziekuje", "prosze", "pomoz", "mozemy", "zaczac", "wytlumacz",
 })
 
 
