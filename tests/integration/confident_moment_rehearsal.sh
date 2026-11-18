@@ -495,6 +495,11 @@ hard migrations/a_moment_opens_before_it_is_judged.sql
 hard migrations/a_moment_opens_before_it_is_judged.sql
 hard migrations/a_practice_hears_what_changed.sql
 hard migrations/a_practice_hears_what_changed.sql
+# The released sharing view joins the Voice Album. Its migration creates
+# the view only when the album already exists.
+if [ "$LANE" = "released" ]; then
+  hard migrations/add_voice_album.sql
+fi
 hard migrations/a_moment_may_be_lent_an_ear.sql
 hard migrations/a_moment_may_be_lent_an_ear.sql
 # 0411 (the coach panel's learning additions): four tables, additive
