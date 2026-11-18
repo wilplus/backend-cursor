@@ -17723,3 +17723,6 @@ For N60, N73 and N111.
 No migration in this entry. The rules: frontend
 [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
 and the existing processing-authorization boundary.
+
+**N665 · Project questions stay in their project, not in Speaking Coach dialogue** (founder, the Codex chat, 18 November 2026: “the questions after the take, they stay per project. They do not infer into the speaking coach”). Project-tagged questions and answers remain stored and visible in their owning project, but are excluded from Speaking Coach conversation history; Speaking Coach still uses authorised Take, feedback and presentation evidence under N663, without replaying the project's conversational Q&A.
+No migration in this entry. The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), updated in frontend PR [#1437](https://github.com/wilplus/frontend-cursor/pull/1437), and the backend chat-history boundary.
