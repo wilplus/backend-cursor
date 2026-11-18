@@ -139,6 +139,24 @@ runs beside the other reads; the summary waits at most 1 second for it
 summary is written exactly as before. Guarded by `tests/test_take_summary.py`
 (O6).
 
+## Speaking Coach context, 18 November 2026
+
+Under N663 and N665, `services/speaking_coach.py` reads the existing private
+speaker note alongside owner-scoped, finished Takes across active projects,
+spoken transcripts, uploaded slide text, current Ideal Text, qualitative
+delivery cues and coach words shared with the speaker. Source labels keep
+speaker reports, observations and interpretations distinct. Sparse evidence
+still produces the best supported answer, with uncertainty stated.
+
+The note continues to shape replies privately and is never quoted or
+serialized in a response. Private admin notes and coach drafts stay out.
+Project questions and answers stay in Project Chat; they are not replayed
+as Speaking Coach conversation. This is a bounded derived packet rather
+than a new profile store. Its source fingerprint, explicit invalidation and
+short TTL refresh it. Archive/deletion and processing authority fail closed.
+The retrieval, model and retry bounds are documented in
+[`PERF-chat-and-ideal-text.md`](PERF-chat-and-ideal-text.md).
+
 ## Storage (migration 0480)
 
 - `speaker_memory_events`: the raw inputs, kept for good. They are the asset:

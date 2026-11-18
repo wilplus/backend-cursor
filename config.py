@@ -160,6 +160,18 @@ class Config:
     # exactly (_env_flag: on = "1"/"true"/"yes"; _env_not_off: default-on).
     INSTANT_IDEAL_TEXT_ENABLED = _env_flag("INSTANT_IDEAL_TEXT_ENABLED", "0")
     MOMENT_SUGGESTIONS_ENABLED = _env_flag("MOMENT_SUGGESTIONS_ENABLED", "0")
+    # Speaking Coach handles ordinary conversation. An explicit 0 restores
+    # the Master Document fallback for those turns.
+    SPEAKING_COACH_ENABLED = _env_flag("SPEAKING_COACH_ENABLED", "1")
+    SPEAKING_COACH_CONTEXT_CACHE_TTL_SECONDS = _env_int(
+        "SPEAKING_COACH_CONTEXT_CACHE_TTL_SECONDS", 60)
+    SPEAKING_COACH_MAX_DB_READS = _env_int("SPEAKING_COACH_MAX_DB_READS", 16)
+    SPEAKING_COACH_MAX_PROJECTS = _env_int("SPEAKING_COACH_MAX_PROJECTS", 4)
+    SPEAKING_COACH_MAX_EVIDENCE = _env_int("SPEAKING_COACH_MAX_EVIDENCE", 12)
+    SPEAKING_COACH_CONTEXT_LATENCY_BUDGET_MS = _env_int(
+        "SPEAKING_COACH_CONTEXT_LATENCY_BUDGET_MS", 1800)
+    SPEAKING_COACH_TOTAL_LATENCY_BUDGET_MS = _env_int(
+        "SPEAKING_COACH_TOTAL_LATENCY_BUDGET_MS", 6000)
     # THE PRAISE DETECTORS' OWN SWITCH (founder 2026-10-06, Navigation Panel
     # QA3 A: "praise detectors get their own switch, turned on in a reviewed
     # change"; ledger A045, A053b). It gates ONLY detector praise -- the

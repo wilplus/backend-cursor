@@ -730,11 +730,36 @@ def key_wanted(*, audience: str, goal: str, key_line: str, asked: set[str]) -> b
     return bool(audience and goal and not key_line and KEY_LINE not in asked)
 
 
-def _thread(database: Any, user_id: str, limit: int) -> list[dict]:
+def _thread(
+    database: Any,
+    user_id: str,
+    limit: int,
+    *,
+    arc_id: Optional[str] = None,
+) -> list[dict]:
+    """Read the relevant Lounge window, optionally inside one project.
+
+    The ordinary Will path keeps its historical global-thread behaviour.  A
+    Project Chat turn supplies ``arc_id`` and must use the database's
+    metadata-filtered reader; falling back to the global page there would let
+    another project's open question claim the answer.
+    """
     try:
+        if arc_id:
+            reader = getattr(database, "get_project_lounge_messages_page", None)
+            if not callable(reader):
+                return []
+            return reader(
+                str(user_id), str(arc_id), limit=limit,
+            ) or []
         return database.get_lounge_messages_page(str(user_id), limit=limit) or []
     except Exception as error:  # noqa: BLE001 -- an unread thread asks nothing twice
-        logger.warning("will question: thread unread user=%s: %s", user_id, error)
+        logger.warning(
+            "will question: thread unread user=%s arc=%s: %s",
+            user_id,
+            arc_id or "-",
+            error,
+        )
         return []
 
 
@@ -1329,11 +1354,16 @@ def waits(database: Any, user_id: str, take: str) -> bool:
     return steps.count("ask") > steps.count("thanks") + steps.count("skip")
 
 
-def open_question(database: Any, user_id: str) -> Optional[dict]:
+def open_question(
+    database: Any,
+    user_id: str,
+    *,
+    arc_id: Optional[str] = None,
+) -> Optional[dict]:
     """The newest bot row when it is Will's question or its follow-up, still
     open; None otherwise. The speaker's own rows are skipped (the client
     stores the turn before asking), and so is the review's card."""
-    rows = _thread(database, user_id, _LOOKBACK)
+    rows = _thread(database, user_id, _LOOKBACK, arc_id=arc_id)
     bot = next((r for r in rows if r.get("role") == "bot" and not _review_card(r)), None)
     meta = (bot or {}).get("metadata") or {}
     step, take = meta.get("will_question_step"), meta.get("take_session_id")
@@ -1363,14 +1393,21 @@ def _not_an_answer(text: str) -> bool:
     return text.lstrip().startswith("#") or (detect_chat_intent(text) or {}).get("intent") == "crisis"
 
 
-def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:
+def chat_turn(
+    database: Any,
+    user_id: str,
+    question: str,
+    *,
+    arc_id: Optional[str] = None,
+    take_id: Optional[str] = None,
+) -> Optional[dict]:
     """The chat's intercept: what the speaker types under Will's question
     (or its follow-up) is their answer. {"answer", "row_metadata"}, or None
     when no question is open (the turn goes on to the next voice)."""
     if not user_id or not question.strip() or _not_an_answer(question):
         return None
-    open_q = open_question(database, str(user_id))
-    if not open_q:
+    open_q = open_question(database, str(user_id), arc_id=arc_id)
+    if not open_q or (take_id and take_id != open_q["take_session_id"]):
         return None
     turn = _taken(database, str(user_id), open_q, question, typed=True)
     turn["asked"] = open_q.get("_asked")

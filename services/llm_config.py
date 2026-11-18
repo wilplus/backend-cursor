@@ -112,6 +112,18 @@ SPEC_MASTER_DOC_ROUTER = LLMSpec(
     model=CHEAP_MODEL, temperature=0.0, max_tokens=40, timeout_seconds=5.0,
 )
 
+SPEC_SPEAKING_COACH = LLMSpec(
+    model=CHEAP_MODEL, temperature=0.45, max_tokens=320,
+    response_format=None, timeout_seconds=15.0,
+)
+"""Speaking Coach: one grounded generation without an intent classifier."""
+
+SPEC_PROJECT_CHAT = LLMSpec(
+    model=CHEAP_MODEL, temperature=0.4, max_tokens=360,
+    response_format={"type": "json_object"}, timeout_seconds=15.0,
+)
+"""One contextual Project Chat generation, with a bounded language retry."""
+
 SPEC_COACH_COMMENT_DRAFT = LLMSpec(
     model=CHEAP_MODEL, temperature=0.6, max_tokens=320,
 )

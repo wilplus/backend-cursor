@@ -11595,6 +11595,73 @@ class DatabaseService:
             )
             return []
 
+    def get_project_lounge_messages_page(
+        self,
+        user_id: str,
+        arc_id: str,
+        *,
+        limit: int,
+        before: Optional[str] = None,
+    ) -> list[dict]:
+        """Fetch only the Lounge rows belonging to one project.
+
+        Project Chat shares the physical Lounge table with the rest of the
+        product, but its conversation boundary is the arc id.  Keep the
+        boundary in the query itself rather than fetching the global thread
+        and filtering in a caller: a foreign project's words must never be
+        used as context, even when the global thread is larger than the
+        bounded page.
+
+        The JSON metadata filter is deliberately fail-closed.  A deployment
+        with an older PostgREST schema returns an empty project thread until
+        the metadata filter is available; it must not fall back to a global
+        page that could contain another project's messages.
+        """
+        if not user_id or not arc_id:
+            return []
+        try:
+            query = (
+                self.client.table("lounge_messages")
+                .select(
+                    "id, client_id, role, kind, body, metadata, "
+                    "client_created_at"
+                )
+                .eq("user_id", str(user_id))
+                .eq("metadata->>arc_id", str(arc_id))
+            )
+            if before:
+                query = query.lt("client_created_at", before)
+            return (
+                query.order("client_created_at", desc=True)
+                .limit(max(1, int(limit or 1)) + 1)
+                .execute()
+                .data
+                or []
+            )
+        except Exception as e:
+            err_low = str(e).lower()
+            if (
+                "lounge_messages" in err_low
+                and ("does not exist" in err_low or "pgrst" in err_low)
+            ):
+                logger.warning(
+                    "get_project_lounge_messages_page: table/filter missing "
+                    "user=%s arc=%s",
+                    user_id,
+                    arc_id,
+                    exc_info=True,
+                )
+            else:
+                logger.warning(
+                    "get_project_lounge_messages_page failed user=%s arc=%s "
+                    "err=%s",
+                    user_id,
+                    arc_id,
+                    e,
+                    exc_info=True,
+                )
+            return []
+
     def get_lounge_metadata_page(
         self,
         user_id: str,

@@ -209,9 +209,13 @@ def _parse_chat_request(req) -> dict:
         "screen": False,
         # The chat the turn is typed in (N635): its rows are stamped with it.
         "place": None,
+        "project_id": None,
+        "take_id": None,
     }
     if not is_multipart:
         body = req.get_json(silent=True) or {}
+        parsed["project_id"] = body.get("arc_id") if isinstance(body.get("arc_id"), str) else None
+        parsed["take_id"] = body.get("session_id") if isinstance(body.get("session_id"), str) else None
         parsed["question"] = body.get("question")
         history = body.get("history")
         parsed["history"] = history if isinstance(history, list) else None
@@ -234,6 +238,8 @@ def _parse_chat_request(req) -> dict:
         return parsed
 
     parsed["question"] = (req.form.get("question") or "").strip()
+    parsed["project_id"] = req.form.get("arc_id") or None
+    parsed["take_id"] = req.form.get("session_id") or None
     history_raw = req.form.get("history")
     if history_raw:
         try:
@@ -421,9 +427,14 @@ def v2_chat_query():
                 return jsonify(replay), 200
 
         if persist_thread and request.user_id:
+            turn_scope = {
+                "arc_id": transport["project_id"], "project_chat": True,
+                "take_session_id": transport["take_id"],
+            } if transport["project_id"] else None
             claim_id, terminal = claim_chat_turn(
                 db, request.user_id, turn_id, question,
                 user_created_at=user_created_at, place=transport["place"],
+                scope_metadata=turn_scope,
             )
             if terminal is not None:
                 # An early terminal result did not write a bot row. Keep the
@@ -441,18 +452,26 @@ def v2_chat_query():
                 return jsonify(terminal), 200
 
         def _finalize(resp, intent):
+            meta = resp.get("row_metadata") or {}
+            scope = None
+            if transport["project_id"]:
+                scope = {
+                    "arc_id": transport["project_id"], "project_chat": True,
+                    "take_session_id": meta.get("take_session_id") or transport["take_id"],
+                }
             return jsonify(finish_chat_turn(
                 db, resp, user_id=request.user_id, question=question,
                 persist_thread=persist_thread, user_client_id=turn_id,
                 user_created_at=user_created_at, intent=intent,
                 place=transport["place"], request_id=turn_id,
-                claim_id=claim_id)), 200
+                claim_id=claim_id, scope_metadata=scope)), 200
 
         return answer_chat(
             db, user_id=request.user_id, question=question, history=history,
             context=presentation_context, app_config=config,
             finalize=_finalize, user_client_id=turn_id,
-            screen=transport["screen"])
+            screen=transport["screen"], project_id=transport["project_id"],
+            take_id=transport["take_id"], place=transport["place"])
 
     except Exception as e:
         logger.error("chat/query failed: %s", e, exc_info=True)

@@ -271,7 +271,7 @@ def _typed(db, monkeypatch, question, *, reply="Will's own reply.", history=None
                                      "body": question, "metadata": {},
                                      "client_created_at": "2026-10-20T10:00:09+00:00"}])
     monkeypatch.setattr("services.db.db", db, raising=False)
-    def librarian(_database, _user_id, current, turns, _app_config, context=None):
+    def librarian(_database, _user_id, current, turns, _app_config, context=None, **_kwargs):
         if seen is not None:
             seen.update(question=current, history=turns, context=context)
         return {"answer": reply, "debug": {"model": "test-will"}}, "faq"

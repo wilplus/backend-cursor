@@ -56,6 +56,39 @@ from tests.chat_route_fakes import CHOICE, USER, ChatRouteHarness
 class ChatTurnPersistsTests(ChatRouteHarness):
     __test__ = True
 
+    def test_project_follow_up_stays_scoped_and_retries_without_another_answer(self):
+        metadata = {"project_chat": True, "arc_id": "arc-a", "take_session_id": "take-a"}
+        reply = {"answer": "Your closing already names the decision.",
+                 "row_metadata": metadata}
+        turn = {"question": "How can I close this?", "arc_id": "arc-a",
+                "session_id": "take-a", "place": "speaking", "persist": True,
+                "client_id": str(uuid.uuid4())}
+        with patch("services.project_chat.answer", return_value=(reply, "project_chat")) as answer:
+            first = self.post(turn).get_json()
+            replay = self.post(turn).get_json()
+        self.assertEqual(answer.call_count, 1)
+        self.assertTrue(first["persisted"])
+        self.assertEqual(replay["answer"], first["answer"])
+        self.assertTrue(replay["replayed"])
+        for row in self.rows[-1][1]:
+            self.assertEqual(row["metadata"]["arc_id"], "arc-a")
+        self.assertEqual(len(self.charges), 1)
+
+    def test_speaking_coach_never_consumes_a_project_question(self):
+        from routes.v2 import coaching
+        with (
+            patch.object(coaching.config, "SPEAKING_COACH_ENABLED", True),
+            patch("services.will_question.chat_turn",
+                  side_effect=AssertionError("Project question consumed in Coach")),
+            patch("services.speaking_coach.answer",
+                  return_value=({"answer": "Your examples make the idea concrete."}, {"route": "longitudinal"})),
+        ):
+            body = self.post({"question": "What is my strongest point?",
+                              "place": "speaking", "persist": True,
+                              "client_id": str(uuid.uuid4())}).get_json()
+        self.assertEqual(body["answer"], "Your examples make the idea concrete.")
+        self.assertTrue(body["persisted"])
+
     def test_a_turn_is_saved_once_and_its_choices_come_back(self):
         turn = {
             "question": "replace my deck", "persist": True,
