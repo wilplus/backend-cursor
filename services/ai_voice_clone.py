@@ -124,10 +124,12 @@ def _transcode(audio: bytes) -> Optional[bytes]:
     exe = _ffmpeg()
     if not exe:
         return None
-    proc = subprocess.run(
-        [exe, "-i", "pipe:0", "-t", str(SAMPLE_MAX_S), "-ac", "1", "-ar", "44100",
-         "-b:a", "192k", "-f", "mp3", "pipe:1"],
-        input=audio, capture_output=True, timeout=60)
+    from services.audio_metrics import ffmpeg_input
+    with ffmpeg_input(audio) as (source, stdin):
+        proc = subprocess.run(
+            [exe, "-i", source, "-t", str(SAMPLE_MAX_S), "-ac", "1", "-ar", "44100",
+             "-b:a", "192k", "-f", "mp3", "pipe:1"],
+            input=stdin, capture_output=True, timeout=60)
     return proc.stdout if proc.returncode == 0 and proc.stdout else None
 
 

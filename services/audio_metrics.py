@@ -9,7 +9,9 @@ import math
 import os
 import subprocess
 import shutil
-from typing import Dict, Optional, Tuple
+import tempfile
+from contextlib import contextmanager
+from typing import Dict, Iterator, Optional, Tuple
 
 import numpy as np
 
@@ -61,24 +63,58 @@ def _resolve_ffmpeg_executable() -> Optional[str]:
     return None
 
 
+def is_mp4_audio(audio_bytes: bytes) -> bool:
+    """An MP4 / M4A file (an iPhone app Take, N655, N662): its box starts
+    with ``ftyp`` at byte 4."""
+    return bool(audio_bytes) and len(audio_bytes) >= 12 and audio_bytes[4:8] == b"ftyp"
+
+
+@contextmanager
+def ffmpeg_input(audio_bytes: bytes) -> Iterator[Tuple[str, Optional[bytes]]]:
+    """The ``-i`` argument and the stdin bytes for one ffmpeg read.
+
+    WHY (N655, N662). The iPhone app records a Take as an m4a, and iOS writes
+    an m4a's index (the ``moov`` box) at the END of the file. ffmpeg reading
+    from stdin cannot seek back to it, so even a 20-second m4a decoded to
+    nothing: the no-speech gate would have refused every iPhone Take as
+    "no_audio". An MP4 therefore goes to ffmpeg as a temporary file, which it
+    can seek; every other container (the web recorder's WebM) keeps stdin,
+    exactly as before. The file is deleted on the way out, whatever happens.
+    """
+    if not is_mp4_audio(audio_bytes):
+        yield "pipe:0", audio_bytes
+        return
+    fd, path = tempfile.mkstemp(suffix=".m4a")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(audio_bytes)
+        yield path, None
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
 def decode_audio_to_pcm(audio_bytes: bytes) -> Optional[np.ndarray]:
-    """Decode webm/any audio → 16kHz mono float32 PCM via ffmpeg."""
+    """Decode webm/m4a/any audio → 16kHz mono float32 PCM via ffmpeg."""
     ffmpeg_exe = _resolve_ffmpeg_executable()
     if not ffmpeg_exe:
         logger.warning("ffmpeg not found (PATH and bundled fallback unavailable)")
         return None
     try:
-        proc = subprocess.run(
-            [
-                ffmpeg_exe, "-i", "pipe:0",
-                "-f", "s16le", "-acodec", "pcm_s16le",
-                "-ar", str(SAMPLE_RATE), "-ac", "1",
-                "pipe:1",
-            ],
-            input=audio_bytes,
-            capture_output=True,
-            timeout=30,
-        )
+        with ffmpeg_input(audio_bytes) as (source, stdin):
+            proc = subprocess.run(
+                [
+                    ffmpeg_exe, "-i", source,
+                    "-f", "s16le", "-acodec", "pcm_s16le",
+                    "-ar", str(SAMPLE_RATE), "-ac", "1",
+                    "pipe:1",
+                ],
+                input=stdin,
+                capture_output=True,
+                timeout=30,
+            )
         if proc.returncode != 0:
             logger.warning("ffmpeg decode failed returncode=%d stderr=%s", proc.returncode, proc.stderr[:500].decode("utf-8", errors="replace"))
             return None
@@ -104,16 +140,17 @@ def compress_audio_for_whisper(audio_bytes: bytes) -> Optional[bytes]:
     if not ffmpeg_exe:
         return None
     try:
-        proc = subprocess.run(
-            [
-                ffmpeg_exe, "-i", "pipe:0",
-                "-ac", "1", "-ar", str(SAMPLE_RATE), "-b:a", "48k",
-                "-f", "mp3", "pipe:1",
-            ],
-            input=audio_bytes,
-            capture_output=True,
-            timeout=120,
-        )
+        with ffmpeg_input(audio_bytes) as (source, stdin):
+            proc = subprocess.run(
+                [
+                    ffmpeg_exe, "-i", source,
+                    "-ac", "1", "-ar", str(SAMPLE_RATE), "-b:a", "48k",
+                    "-f", "mp3", "pipe:1",
+                ],
+                input=stdin,
+                capture_output=True,
+                timeout=120,
+            )
         if proc.returncode != 0 or not proc.stdout:
             logger.warning(
                 "compress_audio_for_whisper: ffmpeg rc=%d stderr=%s",
