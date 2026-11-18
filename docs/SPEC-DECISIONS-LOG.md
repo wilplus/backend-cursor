@@ -17643,3 +17643,55 @@ No new words. The backend reads m4a Takes before the app ships them. No
 migration in this entry. The rules: frontend
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
 gets its line with the build.
+
+**N663 · Speaking Coach answers from the speaker's whole evidence; practice
+doors say exactly where they go** (founder, the Codex chat, 18 November 2026:
+“This speaking coach should be able to give me a general view of my speaking
+skills”, “It has an insight in all of that”, “give it a bit more freedom and
+make it source the data”; and, on the captured project and practice screens,
+“the feedback button ... should be opening the feedback walk directly”,
+“Rehearse this again / Continue practice”, “the text editing has no back
+button; and it is not saving itself”, and “this marked element should be
+deleted to decrease the complexity”). For N652, N654, N656 and N659.
+
+1. **Speaking Coach answers the question that was asked.** It uses the current
+   conversation and immediate typed-message language first. A greeting gets a
+   greeting, a follow-up keeps its referent, and an overview request gets an
+   overview; an old practice prompt or closing never substitutes for the new
+   turn.
+2. **The overview is grounded across the speaker's work.** With current
+   processing authority, Will may draw from the speaker's finished Takes and
+   transcripts across active projects, feedback outcomes, words a coach shared,
+   their own earlier chat and private speaker memory, plus the app's curated
+   source-backed speaking knowledge. A broad skills or progress question is not
+   reduced to exact keyword overlap with one recent fragment.
+3. **Insight is not invention.** Will separates observed evidence from a
+   tentative interpretation, names uncertainty when evidence is thin, and does
+   not diagnose personality, emotion, threat response or ability from voice
+   alone. It may discuss challenge-versus-threat framing or an approach to a
+   speaking challenge when the speaker's own words or repeated authorised
+   evidence support it. It never exposes the private memory note, scores or a
+   machine verdict.
+4. **Practice doors are literal.** The black **Feedback** control opens the
+   selected fragment's Feedback Walk, never Ideal Text. The end-of-fragment
+   decision is one side-by-side pair: white **Rehearse this again** and black
+   **Continue practice**. Rehearse carries one readiness dot: red for “Not yet
+   there”, yellow for intermediate/“Almost”, green for “Good” or stronger.
+5. **Closing the feelings check cancels.** Closing before choosing or skipping
+   the pre-Take feeling closes the recording flow. It creates no Take, starts no
+   upload or processing, and shows no processing bubble.
+6. **Editing the Ideal Text is navigable and durable.** Its top bar has Back as
+   the way to return. Save persists through the existing versioned user-edit
+   contract; a successful save returns to the Ideal Text with the saved words,
+   and a failed save keeps the draft and a retry. Back with unsaved changes does
+   not silently discard them.
+7. **The project result card loses the duplicate title.** The slide-range title
+   above Progress is removed; the selected range remains on its fragment row.
+   The card is proportionally tightened without removing Progress, attempts,
+   readiness, Feedback or Ideal Text.
+
+No migration in this entry. The rules: frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md),
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md) and
+[`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md);
+backend `docs/SPEAKER-MEMORY.md` and the existing chat/RAG services.
