@@ -720,8 +720,9 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O6** A reply to the summary after a Take reaches Will with that summary, read from the speaker's own thread; the signed fallback is marked as the fixed message, so Will knows the specifics are missing.
 - **O7** When the app sends what is on my screen, Will reads my bubbles in the order I see them, cards included, not the stored thread.
 - **O8** A number I type under the WhatsApp ask opens the form on its code and is not saved until the code is typed (N235); one without its country code gets the form's own words and the form, and the ask is not asked twice.
+- **O9** Project questions and answers stay in their project and are not replayed as Speaking Coach dialogue, whether history comes from storage or screen.
 
-*Why:* Founder 2026-10-14 to 2026-10-18 (cost, WhatsApp, privacy, context); 2026-10-20 ("the chat should be aware of the order of bubbles it displays"). Split out of test_chat_persist.py; the harness is tests/chat_route_fakes.py.
+*Why:* Founder 2026-10-14 to 2026-10-18 (cost, WhatsApp, privacy, context); 2026-10-20 ("the chat should be aware of the order of bubbles it displays"); 2026-11-18 (project questions stay per project). Split out of test_chat_persist.py; the harness is tests/chat_route_fakes.py.
 
 ### As a speaker, I want Will to answer my latest question in my language, remember the visible conversation and project, and keep the structured response fields stable, so that a useful answer does not collapse into a generic acknowledgement.
 

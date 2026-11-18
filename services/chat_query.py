@@ -1179,6 +1179,15 @@ def _retired(row: dict) -> bool:
         meta.get("note") in ("human_check", "coach_video_shared", "feedback_digest")
 
 
+def _project_message(row: dict) -> bool:
+    """Whether a conversation row belongs to one project's chat."""
+    meta = row.get("metadata") or row.get("meta") or {}
+    return any(
+        isinstance(meta.get(key), str) and bool(meta[key].strip())
+        for key in ("arc_id", "project_id", "projectId")
+    )
+
+
 def _walk_terminal_message(role: Any, content: Any, metadata: Any = None) -> bool:
     """Whether a rendered assistant bubble is a completed walk closing.
 
@@ -1233,6 +1242,7 @@ def thread_history(database, user_id, question: str, user_client_id=None) -> lis
         role = "user" if row.get("role") == "user" else "assistant"
         if (row.get("role") not in ("user", "bot") or not body
                 or row.get("kind") not in _HISTORY_KINDS or _retired(row)
+                or _project_message(row)
                 or _walk_terminal_message(role, body, row.get("metadata"))
                 or (user_client_id and row.get("client_id") == user_client_id)):
             continue
@@ -1256,6 +1266,8 @@ def screen_history(history: Any) -> list:
     turns = []
     for m in history if isinstance(history, list) else []:
         if not isinstance(m, dict) or m.get("role") not in ("user", "assistant"):
+            continue
+        if _project_message(m):
             continue
         content = m.get("content")
         if isinstance(content, str) and content.strip():

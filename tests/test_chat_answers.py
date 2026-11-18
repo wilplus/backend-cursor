@@ -22,6 +22,8 @@ OUTCOME
       is not saved until the code is typed (N235); one without its country
       code gets the form's own words and the form, and the ask is not asked
       twice.
+  O9  Project questions and answers stay in their project and are not replayed
+      as Speaking Coach dialogue, whether history comes from storage or screen.
 PROVES   O1 -> test_both_transports_carry_the_same_turn_to_the_answer
          O2 -> test_a_visitor_gets_two_answers_then_the_signup_line
          O3 -> test_the_whatsapp_form_opens_to_add_or_change_a_number
@@ -30,9 +32,10 @@ PROVES   O1 -> test_both_transports_carry_the_same_turn_to_the_answer
          O6 -> test_will_reads_the_summary_he_wrote_after_the_take
          O7 -> test_will_reads_the_screen_in_the_order_it_is_drawn
          O8 -> test_a_number_typed_under_the_whatsapp_ask_answers_it
+         O9 -> test_project_questions_stay_out_of_speaking_coach_history
 WHY      Founder 2026-10-14 to 2026-10-18 (cost, WhatsApp, privacy, context);
          2026-10-20 ("the chat should be aware of the order of bubbles it
-         displays").
+         displays"); 2026-11-18 (project questions stay per project).
          Split out of test_chat_persist.py; the harness is
          tests/chat_route_fakes.py.
 """
@@ -143,6 +146,29 @@ class ChatAnswersTests(ChatRouteHarness):
         self.post({"question": "what now?", "persist": True, "history": screen,
                    "history_source": "screen"})
         self.assertEqual(self.histories[-1], screen[:3])
+
+    def test_project_questions_stay_out_of_speaking_coach_history(self):
+        self.thread = [  # newest first, as the database returns it
+            {"client_id": "project-answer", "role": "user", "kind": "text",
+             "body": "The board", "metadata": {"arc_id": "arc-a"}},
+            {"client_id": "project-question", "role": "bot", "kind": "text",
+             "body": "Who were you talking to?", "metadata": {"project_id": "arc-a"}},
+            {"client_id": "coach", "role": "bot", "kind": "text",
+             "body": "What matters most today?", "metadata": None},
+        ]
+        self.post({"question": "what next?"})
+        self.assertEqual(self.histories[-1], [
+            {"role": "assistant", "content": "What matters most today?"},
+        ])
+
+        screen = [
+            {"role": "assistant", "content": "Who were you talking to?",
+             "metadata": {"projectId": "arc-a"}},
+            {"role": "assistant", "content": "What matters most today?"},
+        ]
+        self.post({"question": "and now?", "history": screen,
+                   "history_source": "screen"})
+        self.assertEqual(self.histories[-1], [screen[1]])
 
     def test_a_number_typed_under_the_whatsapp_ask_answers_it(self):
         from services.chat_app_context import OFFER_PROMPTS
