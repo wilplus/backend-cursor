@@ -251,6 +251,12 @@ def replay_chat_turn(database, user_id, user_client_id, question: str) -> Option
     return terminal_response(legacy, turn_id, replayed=True)
 
 
+def _chat_scope(place, scope_metadata=None) -> dict:
+    from services.lounge_messages import PLACES
+    return {**(scope_metadata or {}),
+            **({"place": place} if place in PLACES else {})}
+
+
 def claim_chat_turn(database, user_id, turn_id: str, question: str, *,
                     user_created_at=None, place=None,
                     scope_metadata=None) -> tuple[Optional[str], Optional[dict]]:
@@ -272,10 +278,7 @@ def claim_chat_turn(database, user_id, turn_id: str, question: str, *,
     if replay is not None:
         return None, replay
 
-    from services.lounge_messages import PLACES
-    stamp = dict(scope_metadata or {})
-    if place in PLACES:
-        stamp["place"] = place
+    stamp = _chat_scope(place, scope_metadata)
     claim_id = str(uuid.uuid4())
     q = (question or "").strip()
     created_at = (
@@ -446,10 +449,7 @@ def _chat_turn_rows(
     claim_id=None, bot_row=True, place=None, scope_metadata=None,
 ) -> tuple[str, list[dict]]:
     """Build the stable user/bot rows and their deterministic bot identity."""
-    from services.lounge_messages import PLACES
-    stamp = dict(scope_metadata or {})
-    if place in PLACES:
-        stamp["place"] = place
+    stamp = _chat_scope(place, scope_metadata)
     q = (question or "").strip()
     u_id = chat_turn_id(user_client_id)
     b_id = bot_client_id(u_id)
@@ -1321,7 +1321,9 @@ def answer_chat(database, *, user_id, question: str, history, context,
         from services.chat_intents import detect_chat_intent
         safety = detect_chat_intent(question)
         if safety and safety.get("intent") == "crisis":
-            return finalize(*_chat_intent(user_id, question, context, history))
+            claimed = _chat_intent(user_id, question, context, history)
+            if claimed:
+                return finalize(*claimed)
         return finalize(*project_chat.answer(
             database, str(user_id), str(project_id), question,
             take_session_id=take_id,
@@ -1336,7 +1338,9 @@ def answer_chat(database, *, user_id, question: str, history, context,
         from services.chat_intents import detect_chat_intent
         safety = detect_chat_intent(question)
         if safety and safety.get("intent") == "crisis":
-            return finalize(*_chat_intent(user_id, question, context, history))
+            claimed = _chat_intent(user_id, question, context, history)
+            if claimed:
+                return finalize(*claimed)
     for failure, intercept in _intercepts(user_id, app_config, ordinary_coach=ordinary_coach):
         try:
             claimed = intercept(user_id, question, context, history)

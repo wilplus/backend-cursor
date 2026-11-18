@@ -881,6 +881,7 @@ def _meaningful_slot_answer(question: str) -> bool:
         and len(value) <= 220
         and not value.endswith("?")
         and not _ACK.fullmatch(value)
+        and not re.match(r"^(?:please|tell|help|show|explain|can |could |why |how |pomóż|wyjaśnij|dlaczego|jak )", value, re.IGNORECASE)
         and value.lower() not in {"skip", "not sure", "nie wiem", "nie jestem pewien"}
     )
 
@@ -1199,7 +1200,7 @@ def _answer_general(
     slot = (
         last_meta.get("next_slot")
         if last_meta.get("next_slot") in ("audience", "goal")
-        else state.next_slot
+        else None
     )
     if slot in ("audience", "goal") and _meaningful_slot_answer(question):
         if _persist_slot(database, context, slot, question):
@@ -1261,7 +1262,7 @@ def answer(
     open_q = will_question.open_question(database, user, arc_id=arc)
     state = derive_state(context, context.project_rows, open_q)
     target_language = _target_language(context, question)
-    if open_q:
+    if open_q and _meaningful_slot_answer(question):
         signed = _answer_signed_will(
             database,
             user,

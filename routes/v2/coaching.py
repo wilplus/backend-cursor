@@ -191,6 +191,13 @@ def v2_chat_session_state():
         }), 500
 
 
+def _project_coordinates(body) -> tuple[str | None, str | None]:
+    def value(key):
+        candidate = body.get(key)
+        return candidate.strip() or None if isinstance(candidate, str) else None
+    return value("arc_id"), value("session_id")
+
+
 def _parse_chat_request(req) -> dict:
     """Normalize JSON and multipart chat requests into one transport shape.
 
@@ -214,8 +221,7 @@ def _parse_chat_request(req) -> dict:
     }
     if not is_multipart:
         body = req.get_json(silent=True) or {}
-        parsed["project_id"] = body.get("arc_id") if isinstance(body.get("arc_id"), str) else None
-        parsed["take_id"] = body.get("session_id") if isinstance(body.get("session_id"), str) else None
+        parsed["project_id"], parsed["take_id"] = _project_coordinates(body)
         parsed["question"] = body.get("question")
         history = body.get("history")
         parsed["history"] = history if isinstance(history, list) else None
@@ -238,8 +244,7 @@ def _parse_chat_request(req) -> dict:
         return parsed
 
     parsed["question"] = (req.form.get("question") or "").strip()
-    parsed["project_id"] = req.form.get("arc_id") or None
-    parsed["take_id"] = req.form.get("session_id") or None
+    parsed["project_id"], parsed["take_id"] = _project_coordinates(req.form)
     history_raw = req.form.get("history")
     if history_raw:
         try:

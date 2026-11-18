@@ -374,6 +374,14 @@ def test_unknown_arc_fails_closed():
         project_chat.build_context(FakeDB(), USER, "not-owned")
 
 
+def test_an_initial_request_is_not_saved_as_the_audience():
+    database = FakeDB()
+    with patch("services.llm.chat_complete", return_value=_config_result("Who is this talk for?")):
+        response, _ = project_chat.answer(database, USER, ARC, "Please help me with this")
+    assert database.takes.saved == []
+    assert response["row_metadata"].get("captured_slots", {}) == {}
+
+
 def test_foreign_and_withdrawn_takes_cannot_enter_project_context():
     database = FakeDB()
     foreign = {**_session("foreign-in-owned-arc", index=9), "user_id": "another-user"}

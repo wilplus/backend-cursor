@@ -44,7 +44,7 @@ surface that was never built.
 | | Value | Reads env? | Used by |
 |---|---|---|---|
 | `routes/auth.py:17` | `CURRENT_TERMS_VERSION = "1.2"` | **No — hardcoded** | **Signup.** Written to `user_consents.terms_version` (line 139) and to `user_metadata` (line 111) |
-| `config.py:218` | `os.getenv("CURRENT_TERMS_VERSION", "1.2")` | Yes | **The status check** at `user_account.py:211` |
+| `config.py:539` | `os.getenv("CURRENT_TERMS_VERSION", "1.2")` | Yes | **The status check** at `user_account.py:211` |
 
 They agree today only because both literals read `1.2`. If the environment
 variable were ever set to anything else, **a user who signs up is written at the
