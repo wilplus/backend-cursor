@@ -2,6 +2,40 @@
 
 > **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
 
+## Chat integration, 18 November 2026
+
+Under N663 and N665, the existing authorized `POST /v2/chat/query` remains
+the single transport, including its durable claim, terminal receipt,
+replay and charging. An explicit `arc_id` selects `services/project_chat.py`:
+owner-checked, currently authorized Takes, transcript, qualitative vocal/verbal
+cues, published feedback, deck, current Ideal Text and bounded conversation
+rows from that project. Both persisted rows keep the project identity.
+The shared history transport is retained; Speaking Coach filters project
+rows before rendering or using them as conversational context.
+
+Project Chat keeps the post-Take audience and desired-impact capture and
+answers subsequent project questions without closing the composer. Its
+state skips known audience/goal fields and varies language and tone from
+the actual conversation. The normal path makes one contextual generation;
+a short acknowledgement after setup has a deterministic fast path.
+
+In Speaking Coach (`place=speaking`), ordinary conversation uses deterministic
+routing and one `SPEC_SPEAKING_COACH` generation. Product questions keep their
+existing app-aware path. Project setup cannot consume a Speaking Coach turn.
+The service defaults on; `SPEAKING_COACH_ENABLED=0` restores its previous
+answer path. Retrieval is bounded to sixteen source reads, four projects
+and four Takes per project, with a sixty-second derived cache and current
+authorization checked again before reuse. Small greetings and joke requests
+avoid evidence reads. Both model specs use a fifteen-second provider timeout
+and the shared language helper. Logs expose timings and call counts without
+conversation words; no production latency improvement has been measured yet.
+
+The frontend stores unfinished turns in the current tab, with their original
+owner, project, history and UUID. Retry reuses the server receipt instead of
+regenerating or charging again. A failed terminal response stays recoverable.
+The existing feedback, transcript, Ideal Text, practice and recording doors
+remain in the project.
+
 ## 2026-11-16 backend/API performance audit
 
 Filter stamp: `JUSTIFIED-SCAFFOLDING` — category `F1-surface` — fences clear,

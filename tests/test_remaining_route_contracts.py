@@ -134,7 +134,8 @@ def test_a_chat_turn_answers_persists_and_charges():
         {"client_id": bot_id, "role": "bot", "kind": "text",
          "body": "One.\n\nTwo.",
          "metadata": {"intent": "dad_joke", "bubbles": ["One.", "Two."],
-                      "chat_response": ANY, "chat_turn": ANY},
+                      "chat_response": ANY, "chat_turn": ANY,
+                      "reply_to_client_id": CLIENT},
          "client_created_at": ANY}])
     rec.charge.assert_called_once_with(USER, "chat")
 

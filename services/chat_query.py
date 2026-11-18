@@ -251,8 +251,15 @@ def replay_chat_turn(database, user_id, user_client_id, question: str) -> Option
     return terminal_response(legacy, turn_id, replayed=True)
 
 
+def _chat_scope(place, scope_metadata=None) -> dict:
+    from services.lounge_messages import PLACES
+    return {**(scope_metadata or {}),
+            **({"place": place} if place in PLACES else {})}
+
+
 def claim_chat_turn(database, user_id, turn_id: str, question: str, *,
-                    user_created_at=None, place=None) -> tuple[Optional[str], Optional[dict]]:
+                    user_created_at=None, place=None,
+                    scope_metadata=None) -> tuple[Optional[str], Optional[dict]]:
     """Atomically reserve a persisted chat turn before it can change state.
 
     ``lounge_messages`` already has the owner-scoped unique key we need.  A
@@ -271,8 +278,7 @@ def claim_chat_turn(database, user_id, turn_id: str, question: str, *,
     if replay is not None:
         return None, replay
 
-    from services.lounge_messages import PLACES
-    stamp = {"place": place} if place in PLACES else {}
+    stamp = _chat_scope(place, scope_metadata)
     claim_id = str(uuid.uuid4())
     q = (question or "").strip()
     created_at = (
@@ -440,11 +446,10 @@ def _chat_turn_rows(
     suggested_actions=None, bubbles=None, intent=None,
     user_client_id=None, user_created_at=None, offer=None, take_card=None,
     row_metadata=None, app_action=None, response_receipt=None,
-    claim_id=None, bot_row=True, place=None,
+    claim_id=None, bot_row=True, place=None, scope_metadata=None,
 ) -> tuple[str, list[dict]]:
     """Build the stable user/bot rows and their deterministic bot identity."""
-    from services.lounge_messages import PLACES
-    stamp = {"place": place} if place in PLACES else {}
+    stamp = _chat_scope(place, scope_metadata)
     q = (question or "").strip()
     u_id = chat_turn_id(user_client_id)
     b_id = bot_client_id(u_id)
@@ -466,7 +471,14 @@ def _chat_turn_rows(
         rows.append({
             "client_id": u_id, "role": "user", "kind": "text",
             "body": q, "client_created_at": u_ts,
-            "metadata": dict(stamp) or None,
+            "metadata": {
+                **stamp,
+                **({"arc_id": row_metadata["arc_id"],
+                    "take_session_id": row_metadata.get("take_session_id"),
+                    "will_question_step": "answer"}
+                   if (row_metadata or {}).get("offer") == "will_question"
+                   and row_metadata.get("arc_id") else {}),
+            } or None,
         })
     if bot_row:
         rows.append({
@@ -476,7 +488,8 @@ def _chat_turn_rows(
                 suggested_actions=suggested_actions, bubbles=bubbles,
                 app_action=app_action, response_receipt=response_receipt,
                 claim_id=claim_id,
-                extra=row_metadata) or {}), **stamp} or None,
+                extra=row_metadata) or {}), **stamp,
+                         "reply_to_client_id": u_id},
             "client_created_at": now_iso,
         })
     if offer:
@@ -519,7 +532,7 @@ def persist_chat_turn(
     suggested_actions=None, bubbles=None, intent=None,
     user_client_id=None, user_created_at=None, offer=None, take_card=None,
     row_metadata=None, app_action=None, response_receipt=None,
-    claim_id=None, bot_row=True, place=None,
+    claim_id=None, bot_row=True, place=None, scope_metadata=None,
 ):
     """Persist a Lounge turn and return its confirmed bot identity.
 
@@ -537,7 +550,7 @@ def persist_chat_turn(
         user_created_at=user_created_at, offer=offer, take_card=take_card,
         row_metadata=row_metadata, app_action=app_action,
         response_receipt=response_receipt, claim_id=claim_id,
-        bot_row=bot_row, place=place,
+        bot_row=bot_row, place=place, scope_metadata=scope_metadata,
     )
     return (bot_id if _persisted_bot_is_ours(
         database, user_id, rows, bot_id, claim_id=claim_id, bot_row=bot_row,
@@ -658,7 +671,7 @@ def _post_persist_effects(database, user_id, resp: dict, intent: Optional[str]) 
 def finish_chat_turn(database, resp: dict, *, user_id, question,
                      persist_thread, user_client_id, user_created_at,
                      intent=None, place=None, request_id=None,
-                     claim_id=None) -> dict:
+                     claim_id=None, scope_metadata=None) -> dict:
     """Persist and charge one completed turn; return one terminal outcome.
 
     Only a reply that explicitly settles the *same* Take may advance an
@@ -694,7 +707,7 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
             row_metadata=resp.get("row_metadata"),
             app_action=resp.get("app_action"),
             response_receipt=_chat_response_receipt(resp), claim_id=claim_id,
-            place=place,
+            place=place, scope_metadata=scope_metadata,
         )
         persisted_turn = bool(bot_cid)
         resp["persisted"] = persisted_turn
@@ -871,7 +884,7 @@ def _will_question(
         reply, _model_intent = _librarian(
             db, user_id, question,
             _will_question_history(history, str(turn.get("asked") or ""), question),
-            app_config, context,
+            app_config, context, coach=False,
         )
     except Exception as error:  # noqa: BLE001 -- the stored answer must settle
         logger.warning("chat/query: contextual will-question reply failed "
@@ -1011,14 +1024,15 @@ def _chat_intent(_user_id, question, _context, history=None) -> Optional[tuple[d
                   debug={"intent": intent["intent"]}), intent["intent"]
 
 
-def _intercepts(user_id, app_config) -> list[tuple[str, Callable]]:
+def _intercepts(user_id, app_config, *, ordinary_coach=False) -> list[tuple[str, Callable]]:
     life_on = bool(user_id and getattr(app_config, "LIFE_PANEL_ENABLED", False))
     audit_on = bool(user_id and getattr(app_config, "AUDIT_SURFACE_ENABLED", False))
     chain: list[tuple[str, Callable]] = []
     if user_id:
-        chain.append(("feedback-check intercept failed user=%s: %s", _feedback_check))
-        chain.append(("will-question intercept failed user=%s: %s",
-                      functools.partial(_will_question, app_config=app_config)))
+        if not ordinary_coach:
+            chain.append(("feedback-check intercept failed user=%s: %s", _feedback_check))
+            chain.append(("will-question intercept failed user=%s: %s",
+                          functools.partial(_will_question, app_config=app_config)))
         chain.append(("whatsapp-number intercept failed user=%s: %s", _whatsapp_number))
         chain.append(("sunday-note intercept failed user=%s: %s", _sunday_note))
         chain.append(("life-goals intercept failed user=%s: %s", _life_goals))
@@ -1031,7 +1045,8 @@ def _intercepts(user_id, app_config) -> list[tuple[str, Callable]]:
     if audit_on:
         chain.append(("audit intercept failed user=%s: %s", _audit))
     chain.append(("presentation-change intercept failed: %s", _presentation_change))
-    chain.append(("chat-intent intercept failed: %s", _chat_intent))
+    if not ordinary_coach:
+        chain.append(("chat-intent intercept failed: %s", _chat_intent))
     return chain
 
 
@@ -1092,7 +1107,7 @@ def _failure_from_debug(debug: Any) -> Optional[dict]:
 
 
 def _librarian(database, user_id, question, history, app_config,
-               context=None) -> tuple[dict, str]:
+               context=None, *, coach=True) -> tuple[dict, str]:
     """Path A — the librarian's answer. S1: the one contextual button the FE
     renders is kept only when it is a known value.
 
@@ -1108,6 +1123,13 @@ def _librarian(database, user_id, question, history, app_config,
         gate = app.signup_gate(history)
         if gate:
             return _reply(gate, debug={"intent": "signup_gate"}), "signup_gate"
+    from services import speaking_coach
+    coach_reply = coach and speaking_coach.answer(
+        database, user_id, question, history=history, app_config=app_config,
+    )
+    if coach_reply:
+        payload, debug = coach_reply
+        return _reply(payload["answer"], debug=debug), "speaking_coach"
     admin_notes = _admin_notes(database, user_id)
     life_context = _life_context(user_id, question, app_config)
     # The status card costs several reads: it is read on first use, once.
@@ -1283,7 +1305,8 @@ def screen_history(history: Any) -> list:
 
 def answer_chat(database, *, user_id, question: str, history, context,
                 app_config, finalize: Callable[[dict, str], Any],
-                user_client_id=None, screen: bool = False) -> Any:
+                user_client_id=None, screen: bool = False,
+                project_id=None, take_id=None, place=None) -> Any:
     """Answer one turn and hand it to ``finalize(response, intent)``.
 
     ``screen``: the client sent the thread as the Lounge draws it
@@ -1293,11 +1316,32 @@ def answer_chat(database, *, user_id, question: str, history, context,
     own guard, exactly as the route did: a failure anywhere in it falls
     through to the next one."""
     question = question.strip()
+    if project_id and user_id:
+        from services import project_chat
+        from services.chat_intents import detect_chat_intent
+        safety = detect_chat_intent(question)
+        if safety and safety.get("intent") == "crisis":
+            claimed = _chat_intent(user_id, question, context, history)
+            if claimed:
+                return finalize(*claimed)
+        return finalize(*project_chat.answer(
+            database, str(user_id), str(project_id), question,
+            take_session_id=take_id,
+        ))
     if screen:
         history = screen_history(history)
     elif user_id:
         history = thread_history(database, user_id, question, user_client_id) or history
-    for failure, intercept in _intercepts(user_id, app_config):
+    ordinary_coach = place == "speaking" and bool(
+        getattr(app_config, "SPEAKING_COACH_ENABLED", False))
+    if ordinary_coach:
+        from services.chat_intents import detect_chat_intent
+        safety = detect_chat_intent(question)
+        if safety and safety.get("intent") == "crisis":
+            claimed = _chat_intent(user_id, question, context, history)
+            if claimed:
+                return finalize(*claimed)
+    for failure, intercept in _intercepts(user_id, app_config, ordinary_coach=ordinary_coach):
         try:
             claimed = intercept(user_id, question, context, history)
             if claimed:
@@ -1306,4 +1350,4 @@ def answer_chat(database, *, user_id, question: str, history, context,
             args = (user_id, error) if "user=%s" in failure else (error,)
             logger.warning("chat/query: " + failure, *args)
     return finalize(*_librarian(database, user_id, question, history,
-                                app_config, context))
+                                app_config, context, coach=ordinary_coach))

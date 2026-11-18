@@ -3391,6 +3391,18 @@ O2 -> test_restore_brings_it_back
 O3 -> test_not_the_owners_or_erased_is_404
 O4 -> test_the_list_hides_an_archived_project,
 test_data_and_consent_still_lists_it","Founder 2026-09-26, decisions log N14."
+tests/test_project_chat.py,Story,"As a speaker who has just completed a Take, I want Project Chat to remember this project's feedback, audience and desired impact without mixing in another project, so that the next conversation helps me act on the feedback.","O1  The opening is grounded in the current transcript, surfaced feedback,
+deck and Ideal Text, while sparse evidence is acknowledged rather than
+invented.
+O2  Audience and desired-impact setup skips known values, persists new
+answers structurally, and asks one clear question at a time.
+O3  English, Polish, formal and playful turns use one bounded model path;
+lightweight acknowledgements use the fast path.
+O4  Project Chat reads and writes only the owner-scoped arc and remembers
+scoped follow-ups without exposing the global Lounge.","O1 -> test_context_is_bounded_to_current_project_and_carries_feedback_deck_ideal_text
+O2 -> test_state_skips_known_audience_and_goal_and_asks_one_slot_at_a_time
+O3 -> test_tone_and_content_language_are_passed_to_the_single_generation
+O4 -> test_unknown_arc_fails_closed","Project Chat redesign, 2026-11-18; preserve the current-project processing boundary and the Feedback walk's record -> process -> Take loop. Project Chat contract tests. The fakes expose only one project at a time to make an accidental global thread read fail loudly.  The model is patched at the shared LLM wrapper so the tests assert the actual prompt/model path without making a provider call."
 tests/test_project_deletion.py,Story,"As a speaker, I want Delete on a project to be a request I can cancel within 7 days, with no new Takes added meanwhile, so that I can change my mind and nothing new lands in a project about to go.","O1  Asking to delete my project creates a pending request; someone
 else's project answers ""not found"".
 O2  A project waiting to be deleted refuses a new Take, but if the lock
@@ -3954,6 +3966,23 @@ C2 -> test_will_reads_the_note_in_the_chat
 C3 -> test_the_summary_after_a_take_hears_the_note
 C4 -> test_a_note_with_a_number_is_refused_and_the_founder_can_correct_it
 C5 -> test_the_note_and_its_events_go_with_the_account","If removed: Will stops learning about each speaker without anyone noticing (founder 2026-10-20: ""a permanent part of our application"")."
+tests/test_speaking_coach.py,Story,"As a speaker, I want Will to remember my speaking work across projects without turning private rows or machine labels into a verdict, so that the conversation feels longitudinal and honest.","O1  Ordinary chat, jokes and short follow-ups use deterministic routing and
+never pay for a separate intent-classifier call.
+O2  Sparse and rich histories both produce a bounded, source-labelled
+context packet, with calibrated sparse-data instructions.
+O3  Only the speaker's own visible Takes, current Ideal Text and shared
+coach words reach the prompt; project chat, foreign rows and private
+settings do not.
+O4  English and Polish target the immediate typed message language.
+O5  A source change, explicit invalidation or TTL expiry refreshes the derived
+packet; cache hits and logical DB reads are observable within a budget.
+O6  Scores, rankings, verdicts, digits and other forbidden output fail
+closed to the existing chat path.","O1 -> test_routes_without_an_llm_classifier
+O2 -> test_sparse_and_rich_contexts_are_explicit
+O3 -> test_rich_context_is_owner_scoped_and_has_no_project_chat
+O4 -> test_content_language_is_preserved_for_english_and_polish
+O5 -> test_cache_refreshes_and_respects_the_read_budget
+O6 -> test_forbidden_generated_output_falls_back","Speaking Coach redesign and activation, 2026-11-18."
 tests/test_state_ratings.py,Story,"As a coach, I want my rating stored exactly as I gave it, blind by default, so that the training data holds only real, independent human judgements.","O1  Never-2: a rating is stored as given and marked blind unless the route
 says the rater saw the machine's read.
 O2  A wrong-typed value (a truthy string, a bool) is refused, never coerced.
