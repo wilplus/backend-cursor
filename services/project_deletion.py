@@ -303,23 +303,38 @@ def with_deletion_state(
     Best effort: a failed read leaves the list as it was and logs, rather
     than failing the whole picker over a lock marker.
     """
+    from services.parallel import run_in_parallel
+
     service = ProjectDeletionService(database)
     ids = [str(t.get("arc_id") or "") for t in trainings]
-    try:
-        open_requests = service.open_for_projects(ids)
-    except Exception as error:
-        logger.warning("project deletion state unavailable: %s", error)
-        open_requests = {}
-    try:
-        erased = service.erased_projects(ids)
-    except Exception as error:
-        logger.warning("erased projects unavailable: %s", error)
-        erased = set()
-    try:
-        archived = service.archived_projects(ids)
-    except Exception as error:
-        logger.warning("archived projects unavailable: %s", error)
-        archived = set()
+
+    def read_open() -> dict[str, dict]:
+        try:
+            return service.open_for_projects(ids)
+        except Exception as error:
+            logger.warning("project deletion state unavailable: %s", error)
+            return {}
+
+    def read_erased() -> set[str]:
+        try:
+            return service.erased_projects(ids)
+        except Exception as error:
+            logger.warning("erased projects unavailable: %s", error)
+            return set()
+
+    def read_archived() -> set[str]:
+        try:
+            return service.archived_projects(ids)
+        except Exception as error:
+            logger.warning("archived projects unavailable: %s", error)
+            return set()
+
+    # The three lock-state reads are independent and best-effort. Their
+    # sequential sum dominated the project-list response even though only the
+    # slowest read needs to be on the critical path.
+    open_requests, erased, archived = run_in_parallel(
+        read_open, read_erased, read_archived,
+    )
     trainings = [
         t for t in trainings
         if str(t.get("arc_id") or "") not in erased

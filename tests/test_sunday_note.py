@@ -208,6 +208,17 @@ def test_asked_in_my_own_words(founder):
     assert sn.chat_turn(db, "someone", "sunday note") is None
 
 
+def test_an_ordinary_greeting_does_not_read_notebook_state(monkeypatch):
+    db = _Db()
+    read = pytest.fail
+    monkeypatch.setattr(voice_notebook, "enabled",
+                        lambda *_args, **_kwargs: read("notebook state was read"))
+    monkeypatch.setattr(voice_notebook, "consented",
+                        lambda *_args, **_kwargs: read("notebook consent was read"))
+
+    assert sn.chat_turn(db, "u", "Hi") is None
+
+
 def test_a_polish_pattern_question_gets_the_case_before_its_structured_card(founder):
     db = _Db()
     founder["case"] = {
