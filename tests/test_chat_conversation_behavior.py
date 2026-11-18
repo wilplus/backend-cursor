@@ -157,11 +157,6 @@ def test_typed_language_overrides_an_older_target_and_context_stays_bounded():
         "Tak, system pomaga zrozumieć, jak działa analiza wystąpienia.",
         "Polish (pl)",
     ),
-    (
-        "nice",
-        "Thanks for saying that. What would you like to explore next?",
-        "English (en)",
-    ),
 ))
 def test_default_router_bounds_classifier_context_and_keeps_latest_message(
         monkeypatch, latest, lane_answer, language):
@@ -201,6 +196,67 @@ def test_default_router_bounds_classifier_context_and_keeps_latest_message(
     assert language in lane["system"]
     assert payload["answer"] == lane_answer
     assert debug["router_intent"] == "product_faq"
+
+
+@pytest.mark.parametrize(("latest", "lane_answer", "language"), (
+    ("hej", "Hej! W czym mogę Ci dziś pomóc?", "Polish (pl)"),
+    ("nice", "Thanks — what would you like to explore next?", "English (en)"),
+))
+def test_short_social_turn_answers_itself_instead_of_replaying_old_context(
+        monkeypatch, latest, lane_answer, language):
+    calls = []
+
+    def complete(**kwargs):
+        calls.append(kwargs)
+        assert kwargs["surface"] == "master_doc_rag_lane"
+        return _response(lane_answer)
+
+    history = [
+        {"role": "user", "content": "It was just for me."},
+        {"role": "assistant", "content": "How did speaking to yourself feel?"},
+    ]
+    monkeypatch.delenv("LOUNGE_ROUTER_ENABLED", raising=False)
+    with patch("services.llm.chat_complete", complete):
+        payload, debug = answer_question(latest, history=history)
+
+    assert len(calls) == 1
+    assert calls[0]["messages_override"][-1]["content"] == latest
+    assert language in calls[0]["system"]
+    assert payload["answer"] == lane_answer
+    assert debug["router_intent"] == "conversation"
+
+
+def test_my_project_lane_combines_private_evidence_with_speaking_science(monkeypatch):
+    calls = []
+
+    def complete(**kwargs):
+        calls.append(kwargs)
+        if kwargs["surface"] == "master_doc_rag_router":
+            return SimpleNamespace(text=json.dumps({
+                "intent": "my_project", "confidence": 0.98,
+            }))
+        return _response(
+            "Your repeated pauses are directly observed; treating pressure as a challenge "
+            "is only a possibility until you tell me how it felt."
+        )
+
+    app_context = {"context": (
+        "─── FROM THIS SPEAKER'S OWN HISTORY ───\n"
+        "  • Take 2 transcript: \"I paused before the recommendation.\"\n"
+    )}
+    monkeypatch.delenv("LOUNGE_ROUTER_ENABLED", raising=False)
+    with patch("services.llm.chat_complete", complete):
+        payload, debug = answer_question(
+            "Give me an overall view of my speaking skills and approach to pressure",
+            app_context=app_context,
+        )
+
+    lane = calls[-1]
+    assert "FROM THIS SPEAKER'S OWN HISTORY" in lane["system"]
+    assert "MASTER DOCUMENT" in lane["system"]
+    assert "never infer a stable personality trait" in lane["system"].lower()
+    assert payload["answer"].startswith("Your repeated pauses")
+    assert debug["router_intent"] == "my_project"
 
 
 @pytest.mark.parametrize(("question", "fallback_fragment"), (

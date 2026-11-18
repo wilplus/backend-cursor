@@ -7,9 +7,9 @@ willab drops the contrast requirement entirely and keeps only a
 worth processing + sending to a coach.
 
 Rule (invariant §5.5 — enforced BEFORE the pipeline runs, never trusted
-to FE): a recording passes iff
-  (a) duration ≥ MIN_DURATION_SEC (60s), AND
-  (b) it actually contains speech (≥ MIN_VOICED_SEC of voiced audio).
+to FE): a recording passes when it contains enough voiced audio for its
+length. There is no minimum recording duration; short voiced re-reads pass,
+while dead air and undecodable uploads do not.
 
 A failing recording → re-record prompt; nothing sendable is persisted.
 
@@ -35,6 +35,13 @@ MIN_DURATION_SEC = 0.0
 # floor scales down to the clip length for sub-3s recordings.
 MIN_VOICED_SEC = 3.0
 
+# A Take is captured with automatic gain control deliberately off, so a real
+# voice can sit below the acoustic pipeline's fixed -45 dBFS pause threshold.
+# Intake uses only this low absolute signal floor. Deriving a threshold from
+# the clip's own quiet percentile rejected a steady quiet vowel/talk because
+# every frame was equally voiced and none rose above its own baseline.
+MIN_SIGNAL_DB = -65.0
+
 
 def evaluate_min_content(sig: Any) -> dict:
     """Evaluate the gate on an already-decoded PCM array.
@@ -53,9 +60,7 @@ def evaluate_min_content(sig: Any) -> dict:
     prompt keyed on ``reason`` (too_short vs no_speech read differently
     to the user).
     """
-    from services.audio_metrics import (
-        SAMPLE_RATE, FRAME_MS, SILENCE_DB_THRESHOLD, _frame_rms_db,
-    )
+    from services.audio_metrics import SAMPLE_RATE, FRAME_MS, _frame_rms_db
     import numpy as np
 
     thresholds = {
@@ -73,7 +78,10 @@ def evaluate_min_content(sig: Any) -> dict:
     duration_sec = round(len(sig) / float(SAMPLE_RATE), 1)
 
     dbs = _frame_rms_db(sig)
-    voiced_frames = int(np.sum(dbs >= SILENCE_DB_THRESHOLD)) if len(dbs) else 0
+    if len(dbs):
+        voiced_frames = int(np.sum(dbs >= MIN_SIGNAL_DB))
+    else:
+        voiced_frames = 0
     voiced_sec = round(voiced_frames * (FRAME_MS / 1000.0), 1)
 
     # No duration minimum (founder 2026-07-15) — too_short retired. The

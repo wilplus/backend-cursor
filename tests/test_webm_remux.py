@@ -11,9 +11,12 @@ OUTCOME
       broken).
   O3  The bytes stored are the remuxed bytes, and the read-after-write
       checksum is taken on what is actually stored.
+  O4  A quiet but voiced browser Take survives intake and the speech gate;
+      recording without automatic gain must not be mistaken for dead air.
 PROVES   O1 -> test_timestamps_and_packets_are_preserved
          O2 -> test_any_remux_failure_keeps_the_original_bytes
          O3 -> test_intake_remuxes_and_the_read_after_write_sha_matches
+         O4 -> test_a_quiet_voiced_web_take_survives_intake_and_the_speech_gate
 WHY      Founder 2026-10-08: Safari could not seek a clip inside its Take
          (MediaRecorder WebM has no Cues and no Duration).
 """
@@ -39,7 +42,9 @@ except Exception:  # pragma: no cover
 _CUES = bytes.fromhex("1C53BB6B")
 
 
-def _make_mediarecorder_like_webm(*, offset_s: float = 0.0) -> bytes | None:
+def _make_mediarecorder_like_webm(
+    *, offset_s: float = 0.0, level: float = 1.0,
+) -> bytes | None:
     """A live-style Opus WebM (no Cues, no Duration), like MediaRecorder's."""
     if not _FFMPEG:
         return None
@@ -47,7 +52,8 @@ def _make_mediarecorder_like_webm(*, offset_s: float = 0.0) -> bytes | None:
         out = os.path.join(tmp, "in.webm")
         args = [_FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
                 "-f", "lavfi", "-i",
-                "aevalsrc='sin(440*2*PI*t)*(0.5+0.5*sin(3*t))':s=48000:d=4",
+                ("aevalsrc='sin(440*2*PI*t)*(0.5+0.5*sin(3*t))"
+                 f"*{level}':s=48000:d=4"),
                 "-c:a", "libopus", "-b:a", "32k"]
         if offset_s:
             args += ["-output_ts_offset", str(offset_s)]
@@ -159,6 +165,27 @@ class TheStoredBytesAreTheRemuxedBytes(unittest.TestCase):
         self.assertEqual(stored.exact_bytes_sha256,
                          hashlib.sha256(store[stored.storage_key]).hexdigest())
         self.assertEqual(store[stored.storage_key], got.audio_bytes)
+
+    def test_a_quiet_voiced_web_take_survives_intake_and_the_speech_gate(self):
+        """A low-gain microphone must not turn real speech into dead air."""
+        from services.lab_audio_intake import read_recording_upload
+        from services.min_content_gate import evaluate_min_content_bytes
+
+        quiet_voice = _make_mediarecorder_like_webm(level=0.004)
+        self.assertIsNotNone(quiet_voice)
+        upload = SimpleNamespace(
+            stream=io.BytesIO(quiet_voice),
+            mimetype="audio/webm",
+            filename="lab.webm",
+        )
+        got = read_recording_upload(
+            {"audio_file": upload},
+            content_length=len(quiet_voice),
+            max_audio_mb=50,
+            context_max_mb=1,
+            video_extensions=set(),
+        )
+        self.assertTrue(evaluate_min_content_bytes(got.audio_bytes)["ok"])
 
 
 if __name__ == "__main__":

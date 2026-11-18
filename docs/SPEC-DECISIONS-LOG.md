@@ -17695,3 +17695,31 @@ No migration in this entry. The rules: frontend
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md) and
 [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md);
 backend `docs/SPEAKER-MEMORY.md` and the existing chat/RAG services.
+
+**N664 · The newest processing consent is a hard app gate** (founder, the
+Codex chat, 18 November 2026: “if there is a newer consent available that
+inhibits me from using the app always show the consent screen to accept it” and
+“never allow me to use the app when the most recent consent is not accepted”).
+For N60, N73 and N111.
+
+1. **A known current policy cannot be postponed.** Whenever the canonical
+   processing-authorization status says acceptance or re-acceptance is
+   required, the ordinary consent screen occupies the app until that exact
+   current policy is accepted. An older receipt never opens the Lounge or a
+   Project behind an optional update prompt.
+2. **The server remains authoritative.** The client does not compare versions
+   or invent a policy. It blocks only from the server's
+   `acceptance_required` result and sends back the current policy bytes and
+   hashes through the existing acceptance contract.
+3. **A policy change while the app is open has the same result.** A fresh
+   authorization read or an authorization refusal opens the full consent
+   screen, not a dismissible update card. The refused action can continue only
+   after acceptance succeeds.
+4. **No bypass is added.** A stale-policy response refetches and presents the
+   newer bytes. Closing, canceling or losing the old receipt never creates an
+   authorization. Account deletion and a genuinely unavailable policy keep
+   their existing separate handling.
+
+No migration in this entry. The rules: frontend
+[`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+and the existing processing-authorization boundary.

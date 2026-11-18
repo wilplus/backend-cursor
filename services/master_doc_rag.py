@@ -749,7 +749,7 @@ _ROUTER_MODEL = "gpt-4o-mini"
 _ROUTER_CONFIDENCE_FLOOR = 0.6  # below this → fall back to the mega-prompt
 
 _INTENTS = (
-    "product_faq", "upload_intent", "record_intent", "off_topic",
+    "conversation", "product_faq", "upload_intent", "record_intent", "off_topic",
     "capability_request", "library_recall", "correction",
     "app_feature", "my_project", "speaker_feedback",
 )
@@ -770,6 +770,9 @@ def _router_enabled() -> bool:
 _CLASSIFIER_SYSTEM = (
     "Classify the user's LATEST message into exactly one intent for a "
     "voice-coaching product's FAQ chat:\n"
+    "- conversation: a greeting, thanks, acknowledgement or short social "
+    "turn such as 'hi', 'hej', 'nice', or 'how are you?'. Answer this turn "
+    "naturally; never continue an older practice answer.\n"
     "- product_faq: a question about the product / philosophy / science / "
     "pricing / who's behind it, OR about speaking nerves — stage fright, "
     "a shaky voice, blanking, calming down, what helps — even nerves about "
@@ -790,7 +793,8 @@ _CLASSIFIER_SYSTEM = (
     "prices or what they pay, booking a 1-on-1 lesson or call, replacing "
     "their slides or PDF.\n"
     "- my_project: asks about their OWN talk, project, slides, Takes, "
-    "progress, Ideal Text, or whether their feedback or coach review is "
+    "progress, speaking skills, strengths, recurring patterns, approach, "
+    "or an overall view across their projects; or whether their feedback or coach review is "
     "ready ('how is my talk going', 'what's next for me', 'did my coach "
     "answer'). Nerves about their talk, or what helps with them, is "
     "product_faq.\n"
@@ -808,6 +812,18 @@ _CLASSIFIER_SYSTEM = (
     "genuinely unsure, pick product_faq with a low confidence.\n"
     + WILL_GLOSSARY
 )
+
+_CONVERSATION_TURNS = frozenset({
+    "hi", "hello", "hey", "hej", "czesc", "cześć", "dzien dobry",
+    "dzień dobry", "thanks", "thank you", "dzieki", "dzięki", "nice",
+    "ok", "okay", "how are you", "co slychac", "co słychać",
+})
+
+
+def _obvious_conversation(question: Any) -> bool:
+    """Short social turns must not inherit an older turn's intent. Pure."""
+    normalized = " ".join(re.sub(r"[^\w\s]", " ", str(question or "").casefold()).split())
+    return normalized in _CONVERSATION_TURNS
 
 _CLASSIFIER_SCHEMA: dict[str, Any] = {
     "name": "intent_classification",
@@ -830,6 +846,8 @@ def _classify_intent(
     """Stage 1 — tiny cheap classifier (gpt-4o-mini, temp 0). Returns
     ``(intent, confidence)`` or ``(None, 0.0)`` on any failure so the
     caller falls back to the mega-prompt."""
+    if _obvious_conversation(question):
+        return "conversation", 1.0
     msgs: list[dict[str, str]] = [
         {"role": "system", "content": _CLASSIFIER_SYSTEM},
     ]
@@ -893,6 +911,12 @@ _LANE_BASE = (
 
 # One focused rule-body per lane (mirrors the mega-prompt's RULEs).
 _LANE_BODIES: dict[str, str] = {
+    "conversation": (
+        "Respond only to the latest social turn, naturally and in its language. "
+        "A greeting gets a greeting; thanks gets a brief acknowledgement. Do "
+        "not repeat, repair or continue an older practice answer merely because "
+        "it appears in history. Ask a question only when it would genuinely help."
+    ),
     "product_faq": (
         "Answer EXCLUSIVELY from the MASTER DOCUMENT below — no outside "
         "knowledge, no invented prices / features / timelines / team size. "
@@ -975,13 +999,21 @@ _LANE_BODIES: dict[str, str] = {
         "Never invent a feature, a price, or a URL."
     ),
     "my_project": (
-        "The speaker asked about their own talk, project or progress. "
-        "Answer only from THIS SPEAKER below, like an interested colleague: "
-        "short, warm, specific (name the talk or a slide topic), never a "
-        "number, score, rating or verdict about how good they are. If "
-        "THIS SPEAKER is missing or does not say it, say you don't see it "
-        "yet and point them to the recording button below the chat. End "
-        "with one short question back to them. app_action may name a "
+        "The speaker asked about their own talk, progress or speaking ability. "
+        "Use THIS SPEAKER as the evidence and the MASTER DOCUMENT as the "
+        "speaking-science frame. For an overall request, synthesize across the "
+        "authorised Takes, projects, coach words and earlier conversation that "
+        "are present: name one supported strength, one recurring development "
+        "edge, and one concrete next practice move when evidence permits. "
+        "Clearly distinguish a direct observation from a tentative "
+        "interpretation. Never infer a stable personality trait, diagnose "
+        "anxiety, or declare a challenge-versus-threat state from voice alone; "
+        "you may explain that frame and say what self-report or repeated "
+        "evidence would be needed. Be warm and specific (name the talk, slide "
+        "topic, or a few of their own words), never a number, score, rating or "
+        "verdict about how good they are. If THIS SPEAKER is missing or does "
+        "not say it, say what you cannot know yet and point them to recording "
+        "another Take. Ask at most one useful question. app_action may name a "
         "feature from WHAT THE APP CAN DO only if they asked for it. When "
         "they ask to see, show or open their latest Take or Ideal Text "
         "and a Take is done, say it is right under your answer and set "
@@ -1009,7 +1041,9 @@ _LANE_BODIES: dict[str, str] = {
 }
 
 # Lanes that need the Master Document spliced in for grounding/pivots.
-_GROUNDED_LANES = {"product_faq", "off_topic", "correction", "app_feature"}
+_GROUNDED_LANES = {
+    "product_faq", "off_topic", "correction", "app_feature", "my_project",
+}
 
 
 def render_app_context(app_context) -> str:

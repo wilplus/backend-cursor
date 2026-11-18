@@ -4,9 +4,15 @@
 Moved out of ``routes.v2.explore_ideal_text`` unchanged (founder 2026-10-12).
 The route keeps the ownership gate, the cold-open publication after a save
 and the 500 boundary. Every save is ONE database-owned text/parts/revision
-transaction (``compare_and_set_user_ideal_edit``, D22-D24); nothing here
+transaction (``compare_and_set_user_ideal_edit_v2``, D22-D24); nothing here
 writes the owner lane or a part directly, and the edit never overwrites the
 coach canonical or the legacy notebook copy (L1 — separate lanes).
+
+The v2 database door preserves the existing CAS unchanged.  If and only if
+the owner's active MLC-3 enrollment names an older authorization receipt, it
+refreshes that enrollment through the canonical authority writer and then
+runs the CAS in the same transaction.  Ownership, consent, idempotency and
+every other authority refusal remain fail-closed.
 
 Two wire shapes:
 

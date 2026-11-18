@@ -42,6 +42,20 @@ Before Will answers in the chat he looks up the speaker's own history:
 `services/speaker_lookup.py`, reached through `history_for`. A simple
 lookup, no vector search, no embeddings, no AI call, no migration.
 
+**Broad speaking view (N663).** A focused question still uses word overlap.
+An explicit request for an overall view of the speaker's skills, strengths,
+patterns, progress or approach instead receives a bounded, source-diverse
+sample from the same authorised history (at most eight pieces, with repeated
+slides from one Take prevented from crowding out other evidence). This is the
+smallest useful retrieval change: it keeps one lookup path and one privacy
+gate instead of adding a second memory system. The answer combines that
+private evidence with the curated speaking-science Master Document. It must
+separate direct observation from tentative interpretation and may not infer a
+stable personality trait, diagnose anxiety, or label challenge versus threat
+from voice alone. A short greeting such as `hej` is routed as conversation
+before the model classifier, so an old project answer cannot replace the
+latest social turn; the immediate typed language still controls the reply.
+
 The chat also sends the recent visible turns and a bounded current-project
 context with the question. These are conversational context, not new
 evidence: Will may use them to resolve a follow-up or name the project, but
@@ -54,14 +68,17 @@ history and project data.
 | What their coach sent | `coach_take_words` with `shared_at` (`text`, and the video's `transcript`); `exercise_coach_requests` with `shared_at` and a written answer (`answer_text`) | only on the Takes above; moment answers also `owner_user_id` = the speaker. Never `draft_text` | 12 of each |
 | What they told Will | `lounge_messages`, role `user`, kind `text` | `user_id` = the speaker. Never Will's replies, never an answer to "Did this help?", not the newest 24 rows (Will already reads them) | 120 rows |
 
-Each piece is ranked by the words it shares with the question (lowercased,
-stopwords out, light stemming), times a small weight (coach 1.2, Take 1.0,
-chat 0.9); ties go to the newest. The top 5 reach Will, each cut to about
-200 characters, with a plain label ("Take 2 transcript, slide 3", "your
-coach's word on Take 2", "you asked earlier"). The block tells Will it is
-private, to steer by, and that he may quote at most a few of the speaker's
-own words, never their answers to "Did this help?", never a number, score
-or verdict. Its wording is drift-locked (`speaker_memory.lookup_block`).
+For a focused question, each piece is ranked by the words it shares with the
+question (lowercased, stopwords out, light stemming), times a small weight
+(coach 1.2, Take 1.0, chat 0.9); ties go to the newest. The top 5 reach Will.
+For N663's broad view, the most recent distinct source-and-Take groups go
+first and then fill to eight. In both cases each excerpt is cut to about 200
+characters, with a plain label ("Take 2 transcript, slide 3", "your coach's
+word on Take 2", "you asked earlier"). The block tells Will it is private,
+to steer by, and that he may quote at most a few of the speaker's own words,
+never their answers to "Did this help?", never a number, score or verdict,
+and never turn an interpretation into a personality or stress-state claim.
+Its wording is drift-locked (`speaker_memory.lookup_block`).
 
 **Permission (founder 2026-10-20).** Only a Take whose processing
 authorization is in force for this speaker gives excerpts, and the coach's

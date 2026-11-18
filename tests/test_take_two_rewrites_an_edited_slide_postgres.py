@@ -11,6 +11,8 @@ OUTCOME
   O3  Helper words and locks stay on both slides, and a reworded open
       Paragraph keeps its id and helper words through the page publish.
   O4  Every earlier version (my edit, Take 1, Take 2) stays in the history.
+  O5  Accepting a newer processing-authority receipt does not make the next
+      owner edit fail; the stale enrollment is renewed before the same CAS.
 PROVES   O1 -> test_take_two_rewrites_the_edited_slide_and_keeps_the_rest
          O2 -> test_an_edit_on_a_slide_take_two_did_not_speak_is_its_last_version
          O3 -> test_take_two_rewrites_the_edited_slide_and_keeps_the_rest,
@@ -18,6 +20,7 @@ PROVES   O1 -> test_take_two_rewrites_the_edited_slide_and_keeps_the_rest
          O4 -> test_take_two_rewrites_the_edited_slide_and_keeps_the_rest,
                test_an_edit_on_a_slide_take_two_did_not_speak_is_its_last_version,
                test_a_reworded_open_paragraph_keeps_its_id_through_the_snapshot_publish
+         O5 -> test_an_owner_edit_refreshes_only_a_stale_enrollment_authority
 WHY      Never-rule 5; contracts 8, 9, 14, 16 (N29, N48.1 Wave 1).
 """
 from __future__ import annotations
@@ -311,6 +314,80 @@ def _edit(s, texts: list[tuple[str, str]]) -> dict:
         idempotency_key=None)
     assert result["saved"] is True
     return result
+
+
+def _accept_newer_authority_receipt(s) -> str:
+    """Append the same owner's newer dual-purpose receipt.
+
+    The active enrollment still names the previous receipt, reproducing the
+    production P0001/MLC3_ENROLLMENT_AUTHORITY_STALE condition exactly.
+    """
+    current = _rows(s["conn"], """SELECT principal.id::text principal,
+               enrollment.authorization_receipt_id::text receipt
+          FROM owner_principals principal
+          JOIN mlc3_service_enrollment_revisions enrollment
+            ON enrollment.acquisition_principal_id=principal.id
+         WHERE principal.user_id=%s
+         ORDER BY enrollment.revision_number DESC LIMIT 1""",
+                    (s["owner"],))[0]
+    # The narrow rehearsal fixture predates accepted_at and therefore leaves
+    # it NULL.  resolve_mlc3_dual_purpose_receipt_v2 breaks that tie by UUID;
+    # use the immediately following UUID so this appended receipt is current
+    # in both the narrow fixture and production's non-NULL accepted_at shape.
+    receipt = str(uuid.UUID(int=uuid.UUID(current["receipt"]).int + 1))
+    _rows(s["conn"], """INSERT INTO processing_authorization_receipts(
+            id, acquisition_principal_id, policy_id, idempotency_key,
+            explicit_action, age_18_attested, country_of_residence, locale,
+            client_version, accepted_at, evidence_sha256,
+            pooled_learning_eligible)
+        SELECT %s, acquisition_principal_id, policy_id, %s, explicit_action,
+               age_18_attested, country_of_residence, locale, client_version,
+               accepted_at, %s, false
+          FROM processing_authorization_receipts
+         WHERE id = %s""",
+          (receipt, f"ideal-text-stale-{receipt}", uuid.uuid4().hex * 2,
+           current["receipt"]))
+    _rows(s["conn"], """INSERT INTO processing_authorization_receipt_purposes(
+            receipt_id, purpose_id, lawful_basis_code)
+        SELECT %s, purpose_id, lawful_basis_code
+          FROM processing_authorization_receipt_purposes
+         WHERE receipt_id = %s""", (receipt, current["receipt"]))
+    return receipt
+
+
+def test_an_owner_edit_refreshes_only_a_stale_enrollment_authority(speaker):
+    """The exact production P0001 is recoverable without weakening CAS."""
+    s = speaker
+    first, second = _take_one_paragraphs(s)
+    newer_receipt = _accept_newer_authority_receipt(s)
+    principal = _rows(s["conn"], "SELECT id::text FROM owner_principals "
+                      "WHERE user_id=%s", (s["owner"],))[0]["id"]
+
+    with pytest.raises(psycopg2.Error) as stale:
+        _rows(s["conn"], "SELECT require_mlc3_service_access_v2(%s,NULL,NULL)",
+              (principal,))
+    assert stale.value.pgcode == "P0001"
+    assert "MLC3_ENROLLMENT_AUTHORITY_STALE" in str(stale.value)
+
+    result = _edit(s, [(first, SLIDE0_EDITED), (second, SLIDE1_TAKE1)])
+
+    assert result["saved"] is True
+    saved = _rows(s["conn"], """SELECT user_text, user_text_revision
+          FROM user_arc_ideal_notes WHERE arc_id=%s AND user_id=%s""",
+                  (s["arc"], s["owner"]))[0]
+    assert saved == {
+        "user_text": f"{SLIDE0_EDITED}\n\n{SLIDE1_TAKE1}",
+        "user_text_revision": 1,
+    }
+    enrollment = _rows(s["conn"], """SELECT authorization_receipt_id::text receipt
+          FROM mlc3_service_enrollment_revisions
+         WHERE acquisition_principal_id=%s
+         ORDER BY revision_number DESC LIMIT 1""", (principal,))[0]
+    assert enrollment["receipt"] == newer_receipt
+    operations = _rows(s["conn"], """SELECT count(*)::integer count
+          FROM ideal_text_user_edit_cas_operations
+         WHERE arc_id=%s AND owner_user_id=%s""", (s["arc"], s["owner"]))[0]
+    assert operations["count"] == 1
 
 
 def _take_two(s, monkeypatch, spoken: list[tuple[int, str]]) -> dict:

@@ -8,8 +8,11 @@ OUTCOME
       it from stdin, found nothing, and the gate refused it as "no_audio".
   O2  The upload keeps it as audio: it is not refused as a video, and its
       bytes are stored as sent (the WebM remux leaves an m4a alone).
+  O3  The same speech gate accepts a quiet but voiced native Take; turning
+      phone-call gain processing off must not turn a voice into dead air.
 PROVES   O1 -> test_an_iphone_m4a_passes_the_gate_and_decodes_in_full
          O2 -> test_the_upload_keeps_an_iphone_m4a_as_audio_bytes_unchanged
+         O3 -> test_a_quiet_voiced_iphone_take_passes_the_same_gate
 """
 from __future__ import annotations
 
@@ -29,7 +32,9 @@ except Exception:  # pragma: no cover
 SECONDS = 70
 
 
-def _iphone_like_m4a() -> bytes | None:
+def _iphone_like_m4a(
+    *, seconds: int = SECONDS, level: float = 1.0, modulated: bool = True,
+) -> bytes | None:
     """AAC mono 48 kHz at 64 kbps with the index (moov) after the audio,
     as the iPhone app writes a Take."""
     if not _FFMPEG:
@@ -39,7 +44,9 @@ def _iphone_like_m4a() -> bytes | None:
         proc = subprocess.run(
             [_FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
              "-f", "lavfi", "-i",
-             f"aevalsrc='sin(220*2*PI*t)*(0.5+0.5*sin(3*t))':s=48000:d={SECONDS}",
+             ("aevalsrc='sin(220*2*PI*t)"
+              f"*{('(0.5+0.5*sin(3*t))*' if modulated else '')}{level}'"
+              f":s=48000:d={seconds}"),
              "-ac", "1", "-c:a", "aac", "-b:a", "64k", out],
             capture_output=True, timeout=60, check=False)
         if proc.returncode != 0 or not os.path.isfile(out):
@@ -81,6 +88,15 @@ class IphoneM4aTake(unittest.TestCase):
             max_audio_mb=100, context_max_mb=25,
             video_extensions=_VIDEO_UPLOAD_EXTS)
         self.assertEqual(got.audio_bytes, self.take)
+
+    def test_a_quiet_voiced_iphone_take_passes_the_same_gate(self):
+        from services.min_content_gate import evaluate_min_content_bytes
+
+        # Deliberately steady: the old percentile-relative gate rejected this
+        # because no voiced frame rose 6 dB above the clip's own voiced floor.
+        quiet_voice = _iphone_like_m4a(seconds=6, level=0.004, modulated=False)
+        self.assertIsNotNone(quiet_voice)
+        self.assertTrue(evaluate_min_content_bytes(quiet_voice)["ok"])
 
 
 if __name__ == "__main__":
