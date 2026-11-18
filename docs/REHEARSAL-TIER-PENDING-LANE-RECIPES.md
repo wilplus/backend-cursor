@@ -7,8 +7,7 @@
 > with the recipe's own `CONFIDENT_MOMENT_CHECKPOINTS` hook
 > (`tests/integration/confident_moment_rehearsal.sh`) instead of the awk copy
 > shown under "Shared mechanics", so the three mechanics listed there no longer
-> apply to the runner; the awk form stays valid for a by-hand checkpoint. D5
-> remains pending with the assertion located below. Current status lives in
+> apply to the runner; the awk form stays valid for a by-hand checkpoint. The D5 batch-size assertion below is historical. The surviving blind-audio story now runs at 0324. Current status lives in
 > `docs/REHEARSAL-TIER.md`; this document is the evidence trail.
 
 Date: 2026-09-14. Every result below was produced by execution on a disposable

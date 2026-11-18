@@ -2113,7 +2113,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O3** Once the speaker's processing is blocked, the read raises.
 - **O4** Resolving the audio creates no practice or draft rows.
 
-*Why:* D5 coach inline authoring (pending lane in scripts/rehearsal_tier.sh).
+*Why:* D5 coach inline authoring (0324 checkpoint in scripts/rehearsal_tier.sh).
 
 ### As a speaker, I want no exercise assigned on evidence the machine did not really have, and none after I withdraw permission, so that practice is never invented or done without my permission.
 
