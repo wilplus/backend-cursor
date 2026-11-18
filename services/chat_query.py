@@ -1029,8 +1029,8 @@ def _intercepts(user_id, app_config, *, ordinary_coach=False) -> list[tuple[str,
     audit_on = bool(user_id and getattr(app_config, "AUDIT_SURFACE_ENABLED", False))
     chain: list[tuple[str, Callable]] = []
     if user_id:
-        chain.append(("feedback-check intercept failed user=%s: %s", _feedback_check))
         if not ordinary_coach:
+            chain.append(("feedback-check intercept failed user=%s: %s", _feedback_check))
             chain.append(("will-question intercept failed user=%s: %s",
                           functools.partial(_will_question, app_config=app_config)))
         chain.append(("whatsapp-number intercept failed user=%s: %s", _whatsapp_number))

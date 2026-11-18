@@ -392,3 +392,6 @@ def test_foreign_and_withdrawn_takes_cannot_enter_project_context():
     with patch("services.speaker_lookup._takes_in_force", return_value=set()):
         with pytest.raises(project_chat.ProjectChatNotFound):
             project_chat.build_context(database, USER, ARC)
+    with patch("services.project_deletion.ProjectDeletionService.archived_projects", return_value={ARC}):
+        with pytest.raises(project_chat.ProjectChatNotFound):
+            project_chat.build_context(database, USER, ARC)

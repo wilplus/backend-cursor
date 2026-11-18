@@ -80,6 +80,8 @@ class ChatTurnPersistsTests(ChatRouteHarness):
             patch.object(coaching.config, "SPEAKING_COACH_ENABLED", True),
             patch("services.will_question.chat_turn",
                   side_effect=AssertionError("Project question consumed in Coach")),
+            patch("services.feedback_check.chat_turn",
+                  side_effect=AssertionError("Project feedback answer consumed in Coach")),
             patch("services.speaking_coach.answer",
                   return_value=({"answer": "Your examples make the idea concrete."}, {"route": "longitudinal"})),
         ):

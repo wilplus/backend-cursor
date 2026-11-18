@@ -106,6 +106,7 @@ _SYSTEM = (
     "point, then optionally ask one useful question. If the user "
     "is making ordinary conversation, respond ordinarily and do not force a "
     "coaching lesson. If they ask for a joke, answer naturally in their language. "
+    "Keep replies free of profanity and explicit sexual content. "
     "Keep the answer short and end without repeating the context.\n\n"
     "Return strict JSON with one field: {\"answer\": string}."
 )

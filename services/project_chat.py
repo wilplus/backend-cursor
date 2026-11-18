@@ -458,6 +458,12 @@ def _owned_spoken_sessions(
     ]
     if not sessions:
         raise ProjectChatNotFound("project not found")
+    from services.project_deletion import ProjectDeletionService
+    visibility = ProjectDeletionService(database)
+    erased = _read(reads, "erased_project", lambda: visibility.erased_projects([arc_id]), None)
+    archived = _read(reads, "archived_project", lambda: visibility.archived_projects([arc_id]), None)
+    if erased is None or archived is None or arc_id in erased or arc_id in archived:
+        raise ProjectChatNotFound("project not found")
     from services.speaker_lookup import _takes_in_force
     allowed = _takes_in_force(database, sessions)
     sessions = [row for row in sessions if str(row.get("id") or "") in allowed]
@@ -825,6 +831,7 @@ say so plainly instead of inventing praise. Do not ask for a value already
 known from the project setup, a previous project-chat answer, the deck, or
 the Take evidence.
 
+Keep replies free of profanity and explicit sexual content.
 Ask at most one clear question in a turn. During the audience/goal setup ask
 only the next missing slot. Once both are known, answer ordinary follow-ups as
 a capable assistant for this project; do not restart the opening arc or ask
