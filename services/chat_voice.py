@@ -117,7 +117,7 @@ def prepare(data_b64: str, name: str) -> dict:
         return {"error": "too-big" if isinstance(data_b64, str) and data_b64 else "unreadable"}
     try:
         raw = base64.b64decode(data_b64, validate=True)
-    except Exception:
+    except ValueError:
         return {"error": "unreadable"}
     if too_big(raw):
         return {"error": "too-big"}
@@ -190,6 +190,7 @@ def _rms(chunk: Any) -> float:
         frames = librosa.feature.rms(y=np.asarray(chunk, dtype=np.float32))
         return float(np.mean(frames)) if frames.size else 0.0
     except Exception:
+        logger.warning("chat_voice: loudness fell back", exc_info=True)
         return float(np.sqrt(np.mean(np.square(np.asarray(chunk, dtype=np.float32)))))
 
 

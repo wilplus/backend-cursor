@@ -208,7 +208,7 @@ def _decode(data: str, limit: int) -> dict:
         return {"error": "too-big"}
     try:
         raw = base64.b64decode(data, validate=True)
-    except Exception:
+    except ValueError:
         return {"error": "unreadable"}
     if len(raw) > limit:
         return {"error": "too-big"}
@@ -232,6 +232,7 @@ def _file_text(raw: bytes, name: str) -> dict:
         else:
             text = raw.decode("utf-8")
     except Exception:
+        logger.warning("chat_builder_reply: the file could not be read", exc_info=True)
         return {"error": "unreadable"}
     text = text.strip()
     if not text:
