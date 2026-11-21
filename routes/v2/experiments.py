@@ -2,7 +2,8 @@
 
   POST   /v2/experiments/sessions
   POST   /v2/experiments/sessions/<session_id>/takes
-  POST   /v2/experiments/analyze-take
+  POST   /v2/experiments/analyze-take   202, then
+  GET    /v2/experiments/takes/<id>/analysis
   GET    /v2/experiments/prompts
   POST   /v2/experiments/prompts
   POST   /v2/experiments/prompts/import
@@ -63,6 +64,10 @@ def _run(label: str, work):
         response.headers["Cache-Control"] = "private, no-store"
         return response
     if isinstance(result, tuple) and len(result) == 2 and result[0] == "json":
+        return _json(result[1])
+    if isinstance(result, tuple) and len(result) == 2 and result[0] == "pending":
+        return _json(result[1], 202)
+    if isinstance(result, tuple) and len(result) == 2 and result[0] == "ready":
         return _json(result[1])
     return _json(result)
 
@@ -139,10 +144,29 @@ def v2_experiments_take(session_id):
 @require_auth
 @heavy_limit
 def v2_experiments_analyze():
-    from services.experiments import analyze_take
+    """Queue analyze-take/v0.1. 202, then GET the take's analysis."""
+    from services.experiments import request_analysis
     body = request.get_json(silent=True) or {}
     take_id = body.get("take_id") if isinstance(body, dict) else None
-    return _run("analyze", lambda: analyze_take(db, str(request.user_id), str(take_id or "")))
+
+    def work():
+        return request_analysis(db, str(request.user_id), str(take_id or ""))
+
+    response = _run("analyze", work)
+    if getattr(response, "status_code", None) == 200:
+        response.status_code = 202
+    return response
+
+
+@v2_bp.route("/experiments/takes/<take_id>/analysis", methods=["GET"])
+@require_auth
+def v2_experiments_analysis(take_id):
+    from services.experiments import get_analysis
+
+    def work():
+        return get_analysis(db, str(request.user_id), take_id)
+
+    return _run("analysis", work)
 
 
 @v2_bp.route("/experiments/prompts", methods=["GET"])

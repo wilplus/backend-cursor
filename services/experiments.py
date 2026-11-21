@@ -6,8 +6,8 @@ deletion can find the row. Every other table stores the opaque
 auth id. The service-role key is the client's, and this module never reads
 or logs it.
 
-Numbers from ``analyze_take`` are the model slot for this private area.
-They are not speaker-facing feedback, and nothing here names a feeling.
+The analysis the volunteer reads is analyze-take/v0.1, without the locked
+research scores. Nothing here names a feeling.
 ``coaching_context`` builds a block the coaching chat could read later; it
 does not call that chat.
 
@@ -29,20 +29,12 @@ from typing import Any
 from services.chat_voice import safe_name, too_big, too_long, transcribe_words
 from services.experiments_config import (
     CHANNELS,
-    CONFIDENCE_FLOOR,
-    MODEL_SLOT,
-    baseline_tags,
     canonical_prompt,
-    cell_references,
     check_self_rating,
-    gate_for,
-    lexical_cue,
     load_prompt_set,
-    placeholder_value,
     prompt_tags,
     rank_interventions,
     step_of,
-    vocal_cue,
 )
 from services.experiments_config import PromptSetError
 
@@ -520,128 +512,38 @@ def add_take(
     })
 
 
-def _baseline_rms(database: Any, volunteer_id: str, take_id: str) -> float | None:
-    tags = baseline_tags(load_prompt_set())
-    values: list[float] = []
-    for row in _own(database, TAKES, volunteer_id):
-        if row.get("id") == take_id or row.get("tag") not in tags:
-            continue
-        features = row.get("features")
-        if not isinstance(features, dict):
-            continue
-        rms = features.get("rms")
-        if isinstance(rms, (int, float)) and not isinstance(rms, bool):
-            values.append(float(rms))
-    if not values:
-        return None
-    values.sort()
-    mid = len(values) // 2
-    if len(values) % 2:
-        return values[mid]
-    return (values[mid - 1] + values[mid]) / 2
-
-
-def _spans(words: list[dict[str, Any]], seconds: float) -> list[tuple[float, float]]:
-    end_all = seconds
-    if words:
-        end_all = max(end_all, float(words[-1].get("end") or 0))
-    if end_all <= 0:
-        return [(0.0, 0.0)]
-    spans: list[tuple[float, float]] = []
-    start = 0.0
-    while start < end_all:
-        end = min(end_all, start + 10.0)
-        spans.append((round(start, 3), round(end, 3)))
-        start = end
-    return spans or [(0.0, round(end_all, 3))]
-
-
-def _cell(
-    reference: str, channel: str, seed: str, vocal: dict[str, Any] | None,
-    baseline: float | None, transcript: str, case_text: str,
-) -> tuple[dict[str, Any], float]:
-    if channel == "vocal" and vocal is not None and reference == "baseline":
-        value = vocal_cue(float(vocal["rms"]), baseline)
-        confidence = 0.7 if baseline is not None else 0.4
-        return {"value": value, "reference": reference}, confidence
-    if channel == "verbal" and reference == "reference":
-        cue = lexical_cue(transcript, case_text)
-        if cue is not None:
-            return {"value": cue, "reference": reference}, 0.6
-    return {"value": placeholder_value(seed), "reference": reference}, 0.2
-
-
-def _summary(
-    totals: dict[str, list[float]], confs: dict[str, list[float]], order: list[str],
-) -> dict[str, Any]:
-    summary: dict[str, Any] = {}
-    for step in order:
-        scores = totals[step] or [0.0]
-        sure = confs[step] or [0.2]
-        summary[step] = {
-            "score": round(sum(scores) / len(scores), 4),
-            "confidence": round(sum(sure) / len(sure), 4),
-        }
-    summary["gate"] = gate_for(summary, order, CONFIDENCE_FLOOR)
-    return summary
-
-
-def analyze_take(database: Any, user_id: str, take_id: str) -> dict[str, Any]:
-    """The model slot. Shape is fixed; values are placeholders unless noted.
-
-    Vocal cells whose reference is baseline use librosa's RMS when the take
-    stored one, compared with the caller's baseline-tagged takes. Verbal
-    cells whose reference is the business case use shared words with the
-    uploaded text. Every other cell is a deterministic placeholder. Nothing
-    in the result is a feeling.
-    """
-    prompt_set = load_prompt_set()
-    order = list(prompt_set["order"])
-    refs = cell_references(prompt_set)
+def request_analysis(database: Any, user_id: str, take_id: str) -> dict[str, Any]:
+    """Queue analyze-take/v0.1. The HTTP handler answers 202."""
+    from services.experiment_analysis import calm_takes, dispatch
     volunteer_id = ensure_volunteer(database, user_id)
     take = _own_one(database, TAKES, volunteer_id, "id", str(take_id or ""))
     if take is None:
         raise ExperimentsError("NOT_FOUND", "That take is not here.", 404)
-    session = _own_one(
-        database, SESSIONS, volunteer_id, "id", str(take.get("experiment_session_id") or ""))
-    case_text = str((session or {}).get("business_case_text") or "")
-    transcript = str(take.get("transcript") or "")
-    raw_words = take.get("words")
-    words: list[dict[str, Any]] = [row for row in raw_words if isinstance(row, dict)] if isinstance(raw_words, list) else []
-    seconds = float(take.get("seconds") or 0)
-    raw_features = take.get("features")
-    features: dict[str, Any] | None = raw_features if isinstance(raw_features, dict) else None
-    rms = features.get("rms") if features else None
-    vocal: dict[str, Any] | None = features if isinstance(rms, (int, float)) and not isinstance(rms, bool) else None
-    baseline = _baseline_rms(database, volunteer_id, str(take["id"]))
-    totals: dict[str, list[float]] = {step: [] for step in order}
-    confs: dict[str, list[float]] = {step: [] for step in order}
-    moments = []
-    for start, end in _spans(words, seconds):
-        grid: dict[str, Any] = {}
-        for dimension in order:
-            grid[dimension] = {}
-            for channel in CHANNELS:
-                reference = refs[(dimension, channel)]
-                seed = f"{take['id']}:{dimension}:{channel}:{start}"
-                cell, confidence = _cell(
-                    reference, channel, seed, vocal, baseline, transcript, case_text)
-                grid[dimension][channel] = cell
-                totals[dimension].append(float(cell["value"]))
-                confs[dimension].append(confidence)
-        moments.append({"start": start, "end": end, "grid": grid})
-    result = {
-        "take_id": take["id"],
-        "model": MODEL_SLOT,
-        "moments": moments,
-        "summary": _summary(totals, confs, order),
-    }
-    try:
-        _table(database, TAKES).update({"analysis": result}).eq(
-            "volunteer_id", volunteer_id).eq("id", take["id"]).execute()
-    except Exception:
-        logger.exception("experiments: analysis was not stored")
-    return result
+    if not calm_takes(database, volunteer_id):
+        raise ExperimentsError("NO_BASELINE", "Record the calm baseline prompts first.", 409)
+    _table(database, TAKES).update(
+        {"analysis_state": "queued", "analysis_error": None}
+    ).eq("volunteer_id", volunteer_id).eq("id", take["id"]).execute()
+    dispatch(str(take["id"]), volunteer_id)
+    return {"take_id": take["id"], "status": "queued"}
+
+
+def get_analysis(database: Any, user_id: str, take_id: str) -> tuple[str, dict[str, Any]]:
+    """``pending`` while the job runs, else the volunteer read of the document."""
+    from services.experiment_analysis import for_volunteer
+    volunteer_id = ensure_volunteer(database, user_id)
+    take = _own_one(database, TAKES, volunteer_id, "id", str(take_id or ""))
+    if take is None:
+        raise ExperimentsError("NOT_FOUND", "That take is not here.", 404)
+    state = take.get("analysis_state")
+    if state in ("queued", "running"):
+        return "pending", {"take_id": take["id"], "status": state}
+    if state == "failed":
+        raise ExperimentsError("ANALYSIS_FAILED", "The analysis did not finish.", 502)
+    document = take.get("analysis")
+    if not isinstance(document, dict) or "takes" not in document:
+        raise ExperimentsError("NOT_FOUND", "That analysis is not here.", 404)
+    return "ready", for_volunteer(document)
 
 
 def _clean_prompt(body: Any, *, existing_id: str | None = None) -> dict[str, Any]:
@@ -883,7 +785,7 @@ def erase(database: Any, user_id: str, storage: Storage | None = None) -> dict[s
     volunteer_id = str(rows[0]["volunteer_id"]) if rows else volunteer_id_for(user_id)
     store = storage or _storage()
     _drop(store, _paths(database, volunteer_id))
-    for name in (TAKES, PROMPTS, INTERVENTIONS, SESSIONS):
+    for name in (TAKES, PROMPTS, INTERVENTIONS, SESSIONS, "experiment_volunteer_baselines"):
         _table(database, name).delete().eq("volunteer_id", volunteer_id).execute()
     _table(database, KEYS).delete().eq("user_id", user_id).execute()
     return {"deleted": True}
@@ -905,6 +807,7 @@ def _export_rows(database: Any, volunteer_id: str) -> dict[str, Any]:
         item = _take_out(row)
         item["has_audio"] = bool(row.get("audio_path"))
         item["analysis"] = row.get("analysis")
+        item["analysis_state"] = row.get("analysis_state")
         takes.append(item)
     return {
         "volunteer_id": volunteer_id,
@@ -931,6 +834,11 @@ def export_data(
             "Researcher export needs the researcher's consent.", 403)
     bundle = _export_rows(database, volunteer_id)
     bundle["audience"] = audience
+    if audience == "self":
+        from services.experiment_analysis import for_volunteer
+        for row in bundle.get("takes") or []:
+            if isinstance(row.get("analysis"), dict) and "takes" in row["analysis"]:
+                row["analysis"] = for_volunteer(row["analysis"])
     if fmt == "json":
         return "json", bundle
     return "csv", _csv(bundle)

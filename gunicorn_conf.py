@@ -93,3 +93,11 @@ def post_worker_init(worker):
         worker.log.info("[warmup] connection keep-warm started (pid=%s)", worker.pid)
     except Exception as e:  # never block worker boot on the keep-warm
         worker.log.warning("[warmup] keep-warm skipped: %s", e)
+    # The experiments model is off unless WPL_AROUSAL_WARMUP=1. That flag
+    # belongs on a separate worker: the download is about 3.4 GB and the
+    # package's librosa pin conflicts with this process.
+    try:
+        from services.experiment_analysis import maybe_warmup
+        maybe_warmup()
+    except Exception as e:  # never block worker boot on the model
+        worker.log.warning("[warmup] arousal warmup skipped: %s", e, exc_info=True)

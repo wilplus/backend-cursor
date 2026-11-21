@@ -1,0 +1,50 @@
+{
+ "thresholds": {
+  "engagement_score_min": -0.5,
+  "arousal_conf_min": 0.363,
+  "valence_conf_min": 0.482,
+  "clarity_conf_min": 0.5
+ },
+ "training": {
+  "arousal": {
+   "n_train_clips": 4077,
+   "n_speakers": 9,
+   "stacker_coefs": {
+    "librosa": 0.302,
+    "wavlm": 1.068,
+    "text": 0.0
+   },
+   "stacker_voice_coefs": {
+    "librosa": 0.302,
+    "wavlm": 1.068
+   },
+   "loso_bal_acc_all": 0.873,
+   "confidence_threshold": {
+    "threshold": 0.363,
+    "coverage": 0.9,
+    "bal_acc_kept": 0.909,
+    "rule": "lowest threshold reaching bal_acc>=0.9"
+   }
+  },
+  "valence": {
+   "n_train_clips": 3672,
+   "n_speakers": 9,
+   "stacker_coefs": {
+    "librosa": 0.488,
+    "wavlm": 0.763,
+    "text": 0.001
+   },
+   "stacker_voice_coefs": {
+    "librosa": 0.488,
+    "wavlm": 0.763
+   },
+   "loso_bal_acc_all": 0.804,
+   "confidence_threshold": {
+    "threshold": 0.482,
+    "coverage": 0.65,
+    "bal_acc_kept": 0.901,
+    "rule": "lowest threshold reaching bal_acc>=0.9"
+   }
+  }
+ }
+}

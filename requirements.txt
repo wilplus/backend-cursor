@@ -101,3 +101,6 @@ limits==5.8.0
 # The experiments prompt set (services/experiments/prompts_v1.yaml) is YAML.
 # Lazy-imported in services/experiments_config.py.
 PyYAML==6.0.2
+# Validates the experiments analyze-take/v0.1 example. The model itself is
+# not installed here: requirements-wpl-arousal.txt is a separate worker.
+jsonschema==4.23.0

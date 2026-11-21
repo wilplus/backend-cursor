@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wpl_arousal"
+version = "0.1.0"
+description = "Willpower Lab Step 2: engagement -> arousal -> valence -> clarity scorer for POST /analyze-take (research prototype, CPU only)"
+readme = "INTEGRATION.md"
+requires-python = ">=3.11"
+# CPU-only. Install torch from the CPU index:  pip install --extra-index-url https://download.pytorch.org/whl/cpu .
+dependencies = [
+  "numpy==2.5.5",
+  "scipy==1.18.1",
+  "librosa==1.0.1",
+  "soundfile==0.14.0",
+  "scikit-learn==1.9.1",   # must match: the joblib artifacts were pickled with 1.9.1
+  "joblib==1.6.0",
+  "pandas==3.1.1",
+  "torch==2.15.0",          # use the +cpu wheel
+  "transformers==4.57.6",
+  "huggingface_hub==0.36.2",
+  "tokenizers==0.22.2",
+  "safetensors==0.8.0",
+  "PyYAML==6.0.4",
+]
+
+[project.optional-dependencies]
+flask = ["flask>=3.0"]
+test = ["pytest>=8", "jsonschema>=4.21", "pyarrow==26.0.1"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+wpl_arousal = ["artifacts/*.joblib", "artifacts/*.json", "schema.json", "prompts_v1.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::UserWarning", "ignore::FutureWarning", "ignore::DeprecationWarning"]

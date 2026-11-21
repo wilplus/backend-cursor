@@ -14,7 +14,11 @@ target-version = "py312"
 
 # One-shot ledger generators (docs/audit/build, PR #910): throwaway docs
 # tooling, not application code. Linting them is not what the gate is for.
-extend-exclude = ["docs/audit/build"]
+extend-exclude = [
+    "docs/audit/build",
+    # Vendored model. Its pins and style are the package's, not the app's.
+    "vendor",
+]
 
 [lint]
 ignore = [
