@@ -512,20 +512,25 @@ def add_take(
     })
 
 
-def request_analysis(database: Any, user_id: str, take_id: str) -> dict[str, Any]:
-    """Queue analyze-take/v0.1. The HTTP handler answers 202."""
+def request_analysis(
+    database: Any, user_id: str, take_id: str, model_id: str | None = None,
+) -> dict[str, Any]:
+    """Queue analyze-take/v0.1 for one catalog model. The HTTP handler answers 202."""
     from services.experiment_analysis import calm_takes, dispatch
+    from services.experiment_models import resolve_model
+    model = resolve_model(database, user_id, model_id)
     volunteer_id = ensure_volunteer(database, user_id)
     take = _own_one(database, TAKES, volunteer_id, "id", str(take_id or ""))
     if take is None:
         raise ExperimentsError("NOT_FOUND", "That take is not here.", 404)
-    if not calm_takes(database, volunteer_id):
+    if model.get("needs_baseline") and not calm_takes(
+            database, volunteer_id, list(model.get("baseline_prompt_ids") or [])):
         raise ExperimentsError("NO_BASELINE", "Record the calm baseline prompts first.", 409)
-    _table(database, TAKES).update(
-        {"analysis_state": "queued", "analysis_error": None}
-    ).eq("volunteer_id", volunteer_id).eq("id", take["id"]).execute()
+    _table(database, TAKES).update({
+        "analysis_state": "queued", "analysis_error": None, "model_id": model["id"],
+    }).eq("volunteer_id", volunteer_id).eq("id", take["id"]).execute()
     dispatch(str(take["id"]), volunteer_id)
-    return {"take_id": take["id"], "status": "queued"}
+    return {"take_id": take["id"], "status": "queued", "model_id": model["id"]}
 
 
 def get_analysis(database: Any, user_id: str, take_id: str) -> tuple[str, dict[str, Any]]:
@@ -785,7 +790,8 @@ def erase(database: Any, user_id: str, storage: Storage | None = None) -> dict[s
     volunteer_id = str(rows[0]["volunteer_id"]) if rows else volunteer_id_for(user_id)
     store = storage or _storage()
     _drop(store, _paths(database, volunteer_id))
-    for name in (TAKES, PROMPTS, INTERVENTIONS, SESSIONS, "experiment_volunteer_baselines"):
+    for name in (TAKES, PROMPTS, INTERVENTIONS, SESSIONS,
+                 "experiment_volunteer_baselines", "experiment_models"):
         _table(database, name).delete().eq("volunteer_id", volunteer_id).execute()
     _table(database, KEYS).delete().eq("user_id", user_id).execute()
     return {"deleted": True}

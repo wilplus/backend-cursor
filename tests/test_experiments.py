@@ -410,6 +410,10 @@ class ExperimentsApiTests(unittest.TestCase):
         self.assertEqual(shown.status_code, 200, shown.get_json())
         body = shown.get_json()
         self.assertEqual(body["schema"], "analyze-take/v0.1")
+        self.assertEqual(body["model_id"], "wpl_arousal@0.1")
+        self.assertEqual(body["intervention"], [])
+        for step in ("engagement", "arousal", "valence", "clarity"):
+            self.assertIsInstance(body["takes"][0]["summary"][step]["unlocked"], bool)
         self.assertNotIn("score_if_unlocked", json.dumps(body))
         stored = self.store.tables["experiment_takes"][0]["analysis"]
         self.assertIn("score_if_unlocked", json.dumps(stored))
@@ -433,6 +437,102 @@ class ExperimentsApiTests(unittest.TestCase):
         self.assertEqual(refused.status_code, 409)
         self.assertEqual(refused.get_json()["code"], "NO_BASELINE")
         self.assertEqual(self.model.calls, [])
+
+    def test_a_model_is_the_callers_and_a_chat_keeps_the_hosts_choice(self):
+        listed = self.client.get("/v2/experiments/models", headers=self._headers())
+        self.assertEqual(listed.status_code, 200, listed.get_json())
+        builtin = listed.get_json()["models"][0]
+        self.assertEqual(builtin["id"], "wpl_arousal@0.1")
+        self.assertEqual(builtin["source"], "built_in")
+        self.assertEqual(builtin["research_only"], True)
+        self.assertEqual(builtin["steps"], ["engagement", "arousal", "valence", "clarity"])
+        self.assertEqual(builtin["baseline_prompt_ids"], ["b1", "b2", "b3"])
+        self.assertIn("how clear it was", builtin["measures"])
+        made = self.client.post("/v2/experiments/models", headers=self._headers(), json={
+            "name": "Mine", "base_model_id": "wpl_arousal@0.1",
+            "measures": "A short line about the four steps.",
+            "baseline_prompt_ids": ["b1"],
+            "interventions": [{
+                "name": "Join in", "text": "Say one more sentence.", "step": "engagement",
+                "threshold": 0.0, "grid": [{"step": "engagement", "cue": "loudness", "value": 0.1}],
+            }],
+        })
+        self.assertEqual(made.status_code, 200, made.get_json())
+        model_id = made.get_json()["id"]
+        self.assertEqual(made.get_json()["source"], "user")
+        session_id = self._session().get_json()["id"]
+        take_id = self._take(session_id).get_json()["id"]
+        unknown = self.client.post("/v2/experiments/analyze-take", headers=self._headers(),
+                                   json={"take_id": take_id, "model_id": "missing"})
+        self.assertEqual(unknown.status_code, 404)
+        queued = self.client.post("/v2/experiments/analyze-take", headers=self._headers(),
+                                  json={"take_id": take_id, "model_id": model_id})
+        self.assertEqual(queued.status_code, 202, queued.get_json())
+        shown = self.client.get(f"/v2/experiments/takes/{take_id}/analysis",
+                                headers=self._headers()).get_json()
+        self.assertEqual(shown["model_id"], model_id)
+        self.assertEqual(shown["intervention"], [{
+            "id": shown["intervention"][0]["id"],
+            "name": "Join in",
+            "text": "Say one more sentence.",
+            "step": "engagement",
+            "score": shown["intervention"][0]["score"],
+        }])
+        self.assertGreater(shown["intervention"][0]["score"], 0)
+        self.who = OTHER
+        hidden = self.client.get("/v2/experiments/models", headers=self._headers()).get_json()
+        self.assertEqual([row["id"] for row in hidden["models"]], ["wpl_arousal@0.1"])
+        self.assertEqual(self.client.delete(
+            f"/v2/experiments/models/{model_id}", headers=self._headers()).status_code, 404)
+        self.who = ME
+        self.assertEqual(self.client.delete(
+            f"/v2/experiments/models/{model_id}", headers=self._headers()).status_code, 200)
+
+    def test_the_host_sets_the_chat_model_and_reads_taught_answers(self):
+        saved = self.client.put("/v2/chats/own-abc/experiment-config", headers=self._headers(), json={
+            "model_id": "wpl_arousal@0.1", "baseline_prompt_ids": ["b1", "b2"],
+        })
+        self.assertEqual(saved.status_code, 200, saved.get_json())
+        body = saved.get_json()
+        self.assertEqual(body["model_id"], "wpl_arousal@0.1")
+        self.assertEqual(body["needs_baseline"], True)
+        self.assertEqual([prompt["id"] for prompt in body["baseline_prompts"]], ["b1", "b2"])
+        self.assertIn("poranek", body["baseline_prompts"][0]["text"])
+        self.who = OTHER
+        self.assertEqual(self.client.put(
+            "/v2/chats/own-abc/experiment-config", headers=self._headers(),
+            json={"model_id": "wpl_arousal@0.1"}).status_code, 200)
+        # own-abc is each caller's own builder chat. A shared thread is the host's.
+        self.who = ME
+        thread = "33333333-3333-4333-8333-333333333333"
+        self.store.table("chat_threads").insert({"id": thread, "kind": "customer", "title": "Host"}).execute()
+        self.store.table("chat_members").insert([
+            {"thread_id": thread, "user_id": ME},
+            {"thread_id": thread, "user_id": OTHER},
+        ]).execute()
+        self.store.table("chat_reply_examples").insert([
+            {"host_id": ME, "chat_id": thread, "ask": "First?", "answer": "Yes."},
+            {"host_id": ME, "chat_id": thread, "ask": "Second?", "answer": "No."},
+        ]).execute()
+        self.who = OTHER
+        seen = self.client.get(f"/v2/chats/{thread}/experiment-config", headers=self._headers())
+        self.assertEqual(seen.status_code, 200, seen.get_json())
+        self.assertEqual(seen.get_json()["baseline_prompt_ids"], ["b1", "b2"])
+        self.assertEqual(self.client.put(
+            f"/v2/chats/{thread}/experiment-config", headers=self._headers(),
+            json={"model_id": "wpl_arousal@0.1"}).status_code, 404)
+        self.assertEqual(self.client.get(
+            f"/v2/chats/{thread}/reply-examples", headers=self._headers()).status_code, 404)
+        self.who = ME
+        page = self.client.get(
+            f"/v2/chats/{thread}/reply-examples?limit=1&offset=0", headers=self._headers())
+        self.assertEqual(page.status_code, 200, page.get_json())
+        payload = page.get_json()
+        self.assertEqual(payload["count"], 2)
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertEqual(payload["items"][0]["kind"], "text")
+        self.assertEqual(payload["items"][0]["question"], payload["items"][0]["prompt"])
+        self.assertIn(payload["items"][0]["answer"], ("Yes.", "No."))
 
     def test_prompts_import_the_polish_set_and_stay_mine(self):
         imported = self.client.post(

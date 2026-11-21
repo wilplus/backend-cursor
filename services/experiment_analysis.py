@@ -76,14 +76,10 @@ def calm_prompt_ids() -> list[str]:
     return [str(prompt["id"]) for prompt in prompt_set["prompts"] if prompt["tag"] in tags]
 
 
-def calm_takes(database: Any, volunteer_id: str) -> list[dict[str, Any]]:
-    wanted = set(calm_prompt_ids())
-    tags = baseline_tags(load_prompt_set())
+def calm_takes(database: Any, volunteer_id: str, prompt_ids: list[str] | None = None) -> list[dict[str, Any]]:
+    wanted = set(prompt_ids or calm_prompt_ids())
     rows = _data(database.client.table(TAKES).select("*").eq("volunteer_id", volunteer_id).execute())
-    found = [
-        row for row in rows
-        if row.get("tag") in tags and row.get("prompt_id") in wanted and row.get("audio_path")
-    ]
+    found = [row for row in rows if row.get("prompt_id") in wanted and row.get("audio_path")]
     found.sort(key=lambda row: str(row.get("prompt_id") or ""))
     return found
 
@@ -138,9 +134,12 @@ def _save_baseline(database: Any, volunteer_id: str, baseline: dict[str, Any], s
         table.insert(row).execute()
 
 
-def ensure_baseline(database: Any, volunteer_id: str, storage: Any, folder: Path) -> dict[str, Any]:
+def ensure_baseline(
+    database: Any, volunteer_id: str, storage: Any, folder: Path,
+    prompt_ids: list[str] | None = None,
+) -> dict[str, Any]:
     """The stored baseline, rebuilt when the calm takes changed."""
-    rows = calm_takes(database, volunteer_id)
+    rows = calm_takes(database, volunteer_id, prompt_ids)
     if not rows:
         raise RuntimeError("no baseline")
     source_ids = _source_ids(rows)
@@ -180,7 +179,10 @@ def run(take_id: str, volunteer_id: str) -> None:
         storage = _storage()
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            baseline = ensure_baseline(database, volunteer_id, storage, root)
+            from services.experiment_models import finish_document, model_for_volunteer, rules_for
+            model = model_for_volunteer(database, volunteer_id, str(take.get("model_id") or ""))
+            baseline = ensure_baseline(
+                database, volunteer_id, storage, root, list(model.get("baseline_prompt_ids") or []))
             path = _audio(storage, take, root)
             case = _session_text(database, volunteer_id, str(take.get("experiment_session_id") or ""))
             with _LOCK:
@@ -195,6 +197,7 @@ def run(take_id: str, volunteer_id: str) -> None:
         if not isinstance(document, dict):
             _mark(volunteer_id, take_id, "failed", error="ANALYSIS_FAILED")
             return
+        document = finish_document(document, model, rules_for(database, volunteer_id, model))
         _mark(volunteer_id, take_id, "ready", analysis=document)
     except Exception:
         logger.exception("experiments: analysis failed")

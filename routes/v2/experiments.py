@@ -148,9 +148,10 @@ def v2_experiments_analyze():
     from services.experiments import request_analysis
     body = request.get_json(silent=True) or {}
     take_id = body.get("take_id") if isinstance(body, dict) else None
+    model_id = body.get("model_id") if isinstance(body, dict) else None
 
     def work():
-        return request_analysis(db, str(request.user_id), str(take_id or ""))
+        return request_analysis(db, str(request.user_id), str(take_id or ""), model_id)
 
     response = _run("analyze", work)
     if getattr(response, "status_code", None) == 200:
@@ -167,6 +168,39 @@ def v2_experiments_analysis(take_id):
         return get_analysis(db, str(request.user_id), take_id)
 
     return _run("analysis", work)
+
+
+@v2_bp.route("/experiments/models", methods=["GET"])
+@require_auth
+def v2_experiments_models():
+    from services.experiment_models import list_models
+    return _run("models", lambda: list_models(db, str(request.user_id)))
+
+
+@v2_bp.route("/experiments/models", methods=["POST"])
+@limiter.limit("30 per hour", scope="experiments_model")
+@require_auth
+def v2_experiments_model_create():
+    from services.experiment_models import create_model
+    return _run("model", lambda: create_model(
+        db, str(request.user_id), request.get_json(silent=True)))
+
+
+@v2_bp.route("/experiments/models/<model_id>", methods=["PUT"])
+@limiter.limit("30 per hour", scope="experiments_model")
+@require_auth
+def v2_experiments_model_update(model_id):
+    from services.experiment_models import update_model
+    return _run("model", lambda: update_model(
+        db, str(request.user_id), model_id, request.get_json(silent=True)))
+
+
+@v2_bp.route("/experiments/models/<model_id>", methods=["DELETE"])
+@limiter.limit("30 per hour", scope="experiments_model")
+@require_auth
+def v2_experiments_model_delete(model_id):
+    from services.experiment_models import delete_model
+    return _run("model", lambda: delete_model(db, str(request.user_id), model_id))
 
 
 @v2_bp.route("/experiments/prompts", methods=["GET"])
