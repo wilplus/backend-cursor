@@ -153,7 +153,7 @@ class AuthorizedProviderAdapter:
         self, audio_bytes: bytes, filename: str, *,
         vocabulary: list | None = None, language: str | None = None,
         usage_surface: str, usage_user_id: str | None,
-        usage_session_id: str,
+        usage_session_id: str, model: str = "whisper-1",
     ) -> dict | None:
         permit = self.authorization.issue_provider_permit(
             acquisition_principal_id=self.coordinates.acquisition_principal_id,
@@ -188,6 +188,7 @@ class AuthorizedProviderAdapter:
                 usage_surface=usage_surface,
                 usage_user_id=usage_user_id,
                 usage_session_id=usage_session_id,
+                model=model,
             ) or {}
             self.authorization.record_provider_event(
                 permit_id, "completed",

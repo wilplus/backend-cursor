@@ -52,6 +52,9 @@ USER_KEYED = {
     "chat_links": ("chat_links", "user_id"),
     # My profile (a_person_has_a_profile, N366).
     "people_profiles": ("people_profiles", "user_id"),
+    # Taught replies from the chat builder (a_host_keeps_taught_replies).
+    "chat_reply_examples": ("chat_reply_examples", "host_id"),
+    "chat_reply_drafts": ("chat_reply_drafts", "host_id"),
     # My website chats (a_person_s_chat_opens_on_a_website, N567): each
     # visitor's chat with me and its guest row; the chat's messages and the
     # visitor's seat go with the chat (ON DELETE CASCADE).
