@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, NoReturn
 
 from services.experiments import ExperimentsError, ensure_volunteer
 from services.experiments_config import canonical_prompt, load_prompt_set
@@ -56,7 +56,7 @@ def builtin() -> dict[str, Any]:
     """The packaged model. Its id is stable."""
     return {
         "id": BUILTIN_ID,
-        "name": "Arousal",
+        "name": "Voice and words",
         "measures": MEASURES,
         "language": "pl",
         "source": "built_in",
@@ -382,22 +382,27 @@ def _chat_id_ok(chat_id: str) -> bool:
         char.isalnum() or char in "-_" for char in text)
 
 
-def _host_of_thread(database: Any, thread: dict[str, Any], members: list[dict[str, Any]]) -> str | None:
-    owner = thread.get("widget_owner_id") or thread.get("demo_user_id")
+def _host_of_thread(database: Any, thread: dict[str, Any]) -> str | None:
+    """The widget owner, else the join-link owner. A member is not a host."""
+    owner = thread.get("widget_owner_id")
     if owner:
         return str(owner)
     link = thread.get("link_id")
-    if link:
-        rows = _rows(database.client.table("chat_links").select("user_id").eq("id", link).limit(1).execute())
-        if rows and rows[0].get("user_id"):
-            return str(rows[0]["user_id"])
-    people = [m for m in members if m.get("user_id")]
-    people.sort(key=lambda row: str(row.get("created_at") or ""))
-    return str(people[0]["user_id"]) if people else None
+    if not link:
+        return None
+    rows = _rows(database.client.table("chat_links").select("user_id").eq("id", link).limit(1).execute())
+    if rows and rows[0].get("user_id"):
+        return str(rows[0]["user_id"])
+    return None
 
 
-def chat_role(database: Any, user_id: str, chat_id: str) -> tuple[str, bool]:
-    """``(host user id, caller is the host)``. 404 when the chat is not theirs."""
+def chat_role(database: Any, user_id: str, chat_id: str) -> tuple[str | None, bool]:
+    """``(host user id or none, caller is the host)``.
+
+    A builder id that is not a thread is the caller's own chat. On a thread,
+    the host is the widget owner or the join-link owner. 404 when the caller
+    is not in that thread.
+    """
     if not _chat_id_ok(chat_id):
         raise ExperimentsError("NOT_FOUND", "Not found.", 404)
     thread_id = _uuid(chat_id)
@@ -407,14 +412,16 @@ def chat_role(database: Any, user_id: str, chat_id: str) -> tuple[str, bool]:
         thread = rows[0] if rows else None
     if thread is None:
         return str(user_id), True
-    members = _rows(database.client.table("chat_members").select("user_id,created_at")
+    members = _rows(database.client.table("chat_members").select("user_id")
                     .eq("thread_id", thread_id).execute())
     if str(user_id) not in {str(m.get("user_id")) for m in members}:
         raise ExperimentsError("NOT_FOUND", "Not found.", 404)
-    host = _host_of_thread(database, thread, members)
-    if not host:
-        raise ExperimentsError("NOT_FOUND", "Not found.", 404)
-    return host, str(user_id) == host
+    host = _host_of_thread(database, thread)
+    return host, bool(host) and str(user_id) == str(host)
+
+
+def _only_the_host() -> NoReturn:
+    raise ExperimentsError("NOT_HOST", "Only the host can do this.", 403)
 
 
 def _recipe(database: Any, host_id: str) -> dict[str, Any]:
@@ -464,6 +471,8 @@ def _config_of(recipe: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
 
 def read_config(database: Any, user_id: str, chat_id: str) -> dict[str, Any]:
     host, _is_host = chat_role(database, user_id, chat_id)
+    if not host:
+        _only_the_host()
     recipe = _recipe(database, host)
     raw = recipe.get("experiment")
     saved: dict[str, Any] = raw if isinstance(raw, dict) else {}
@@ -479,8 +488,8 @@ def read_config(database: Any, user_id: str, chat_id: str) -> dict[str, Any]:
 
 def write_config(database: Any, user_id: str, chat_id: str, body: Any) -> dict[str, Any]:
     host, is_host = chat_role(database, user_id, chat_id)
-    if not is_host:
-        raise ExperimentsError("NOT_FOUND", "Not found.", 404)
+    if not is_host or not host:
+        _only_the_host()
     if not isinstance(body, dict):
         raise ExperimentsError("MODEL", "The model is missing.")
     model = resolve_model(database, host, body.get("model_id") or BUILTIN_ID)
@@ -495,8 +504,8 @@ def write_config(database: Any, user_id: str, chat_id: str, body: Any) -> dict[s
 def reply_examples(database: Any, user_id: str, chat_id: str, *, limit: int, offset: int) -> dict[str, Any]:
     """The host's kept Test answers for this chat. Nobody else."""
     host, is_host = chat_role(database, user_id, chat_id)
-    if not is_host:
-        raise ExperimentsError("NOT_FOUND", "Not found.", 404)
+    if not is_host or not host:
+        _only_the_host()
     rows = _rows(database.client.table("chat_reply_examples").select("id,created_at,ask,answer")
                  .eq("host_id", host).eq("chat_id", str(chat_id)[:80]).execute())
     rows.sort(key=lambda row: str(row.get("created_at") or ""), reverse=True)

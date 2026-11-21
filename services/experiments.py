@@ -525,7 +525,7 @@ def request_analysis(
         raise ExperimentsError("NOT_FOUND", "That take is not here.", 404)
     if model.get("needs_baseline") and not calm_takes(
             database, volunteer_id, list(model.get("baseline_prompt_ids") or [])):
-        raise ExperimentsError("NO_BASELINE", "Record the calm baseline prompts first.", 409)
+        raise ExperimentsError("NO_BASELINE", "Record the baseline prompts first.", 409)
     _table(database, TAKES).update({
         "analysis_state": "queued", "analysis_error": None, "model_id": model["id"],
     }).eq("volunteer_id", volunteer_id).eq("id", take["id"]).execute()

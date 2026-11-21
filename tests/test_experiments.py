@@ -443,6 +443,7 @@ class ExperimentsApiTests(unittest.TestCase):
         self.assertEqual(listed.status_code, 200, listed.get_json())
         builtin = listed.get_json()["models"][0]
         self.assertEqual(builtin["id"], "wpl_arousal@0.1")
+        self.assertEqual(builtin["name"], "Voice and words")
         self.assertEqual(builtin["source"], "built_in")
         self.assertEqual(builtin["research_only"], True)
         self.assertEqual(builtin["steps"], ["engagement", "arousal", "valence", "clarity"])
@@ -505,7 +506,9 @@ class ExperimentsApiTests(unittest.TestCase):
         # own-abc is each caller's own builder chat. A shared thread is the host's.
         self.who = ME
         thread = "33333333-3333-4333-8333-333333333333"
-        self.store.table("chat_threads").insert({"id": thread, "kind": "customer", "title": "Host"}).execute()
+        self.store.table("chat_threads").insert({
+            "id": thread, "kind": "customer", "title": "Host", "widget_owner_id": ME,
+        }).execute()
         self.store.table("chat_members").insert([
             {"thread_id": thread, "user_id": ME},
             {"thread_id": thread, "user_id": OTHER},
@@ -520,9 +523,9 @@ class ExperimentsApiTests(unittest.TestCase):
         self.assertEqual(seen.get_json()["baseline_prompt_ids"], ["b1", "b2"])
         self.assertEqual(self.client.put(
             f"/v2/chats/{thread}/experiment-config", headers=self._headers(),
-            json={"model_id": "wpl_arousal@0.1"}).status_code, 404)
+            json={"model_id": "wpl_arousal@0.1"}).status_code, 403)
         self.assertEqual(self.client.get(
-            f"/v2/chats/{thread}/reply-examples", headers=self._headers()).status_code, 404)
+            f"/v2/chats/{thread}/reply-examples", headers=self._headers()).status_code, 403)
         self.who = ME
         page = self.client.get(
             f"/v2/chats/{thread}/reply-examples?limit=1&offset=0", headers=self._headers())
@@ -533,6 +536,26 @@ class ExperimentsApiTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["kind"], "text")
         self.assertEqual(payload["items"][0]["question"], payload["items"][0]["prompt"])
         self.assertIn(payload["items"][0]["answer"], ("Yes.", "No."))
+
+    def test_a_member_is_not_the_host_without_an_owner(self):
+        thread = "44444444-4444-4444-8444-444444444444"
+        self.store.table("chat_threads").insert(
+            {"id": thread, "kind": "team", "title": "No owner"}).execute()
+        self.store.table("chat_members").insert([
+            {"thread_id": thread, "user_id": ME},
+            {"thread_id": thread, "user_id": OTHER},
+        ]).execute()
+        for who in (ME, OTHER):
+            self.who = who
+            put = self.client.put(
+                f"/v2/chats/{thread}/experiment-config", headers=self._headers(),
+                json={"model_id": "wpl_arousal@0.1"})
+            examples = self.client.get(
+                f"/v2/chats/{thread}/reply-examples", headers=self._headers())
+            self.assertEqual(put.status_code, 403, put.get_json())
+            self.assertEqual(put.get_json()["code"], "NOT_HOST")
+            self.assertEqual(examples.status_code, 403)
+            self.assertEqual(examples.get_json()["code"], "NOT_HOST")
 
     def test_prompts_import_the_polish_set_and_stay_mine(self):
         imported = self.client.post(
