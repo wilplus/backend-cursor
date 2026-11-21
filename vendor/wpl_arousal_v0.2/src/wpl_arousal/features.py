@@ -1,4 +1,10 @@
-"""Explainable librosa features (identical to Step 1/2 `extract_features`, so the trained models see the same inputs)."""
+"""Explainable librosa features (identical to Step 1/2 `extract_features`, so the trained models see the same inputs).
+
+v0.2 artifacts were retrained on features extracted with librosa 0.10.2. pyin-derived cues
+(f0_mean/std/range, n_voiced_frames, voiced_ratio) differ materially under librosa 1.0.x
+(implementation change, including a new default transition_min_prob=1e-4). Onset, RMS,
+spectral centroid and MFCCs match. Stay on librosa 0.10.x at inference.
+"""
 import numpy as np
 import librosa
 

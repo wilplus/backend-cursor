@@ -10,7 +10,7 @@ import soundfile as sf
 from . import models, clarity as clarity_mod
 from .features import extract_features, LIB, WL, FEATURE_SR
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 SCHEMA = "analyze-take/v0.1"
 ORDER = ["engagement", "arousal", "valence", "clarity"]
 CHUNK_S = 2.5      # summary judges run on ~2.5 s chunks (nEMO training clips are 0.9-5.7 s, median 2.4 s)

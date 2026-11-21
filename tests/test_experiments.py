@@ -62,7 +62,7 @@ FEELING_WORDS = (
     "happy", "sad", "angry", "anger", "fear", "anxious", "anxiety",
     "stressed", "disgust", "joy", "nervous", "emotion",
 )
-_PACKAGE = Path(__file__).resolve().parents[1] / "vendor" / "wpl_arousal_v0.1"
+_PACKAGE = Path(__file__).resolve().parents[1] / "vendor" / "wpl_arousal_v0.2"
 
 
 def _fake_wav(raw, name, dest):
@@ -224,13 +224,13 @@ class PromptSetTests(unittest.TestCase):
     def test_the_example_document_matches_the_schema(self):
         import jsonschema
         schema = json.loads((_PACKAGE / "schema.json").read_text(encoding="utf-8"))
-        example = json.loads(
-            (_PACKAGE / "examples" / "example_analyze_take_v0.1.json").read_text(encoding="utf-8"))
-        jsonschema.validate(example, schema)
-        shown = analysis.for_volunteer(example)
-        self.assertNotIn("score_if_unlocked", json.dumps(shown))
-        self.assertIn("score_if_unlocked", json.dumps(example))
-        jsonschema.validate(shown, schema)
+        for name in ("example_analyze_take_v0.1.json", "example_analyze_take_v0.2.json"):
+            example = json.loads((_PACKAGE / "examples" / name).read_text(encoding="utf-8"))
+            jsonschema.validate(example, schema)
+            shown = analysis.for_volunteer(example)
+            self.assertNotIn("score_if_unlocked", json.dumps(shown))
+            self.assertIn("score_if_unlocked", json.dumps(example))
+            jsonschema.validate(shown, schema)
 
     def test_the_earlier_step_wins_and_at_most_two_fire(self):
         order = load_prompt_set()["order"]
@@ -397,9 +397,10 @@ class ExperimentsApiTests(unittest.TestCase):
         take_id = self._take(session_id).get_json()["id"]
         queued = self.client.post(
             "/v2/experiments/analyze-take", headers=self._headers(),
-            json={"take_id": take_id})
+            json={"take_id": take_id, "model_id": "wpl_arousal@0.1"})
         self.assertEqual(queued.status_code, 202, queued.get_json())
         self.assertEqual(queued.get_json()["status"], "queued")
+        self.assertEqual(queued.get_json()["model_id"], "wpl_arousal@0.2")
         self.assertEqual(self.model.calls[0]["transcript"], "cześć")
         self.assertEqual(self.model.calls[0]["business_case"], "The case.")
         self.assertEqual(self.model.calls[0]["prompt_tag"], "baseline_calm")
@@ -410,7 +411,7 @@ class ExperimentsApiTests(unittest.TestCase):
         self.assertEqual(shown.status_code, 200, shown.get_json())
         body = shown.get_json()
         self.assertEqual(body["schema"], "analyze-take/v0.1")
-        self.assertEqual(body["model_id"], "wpl_arousal@0.1")
+        self.assertEqual(body["model_id"], "wpl_arousal@0.2")
         self.assertEqual(body["intervention"], [])
         for step in ("engagement", "arousal", "valence", "clarity"):
             self.assertIsInstance(body["takes"][0]["summary"][step]["unlocked"], bool)
@@ -442,7 +443,8 @@ class ExperimentsApiTests(unittest.TestCase):
         listed = self.client.get("/v2/experiments/models", headers=self._headers())
         self.assertEqual(listed.status_code, 200, listed.get_json())
         builtin = listed.get_json()["models"][0]
-        self.assertEqual(builtin["id"], "wpl_arousal@0.1")
+        self.assertEqual(builtin["id"], "wpl_arousal@0.2")
+        self.assertEqual(builtin["version"], "0.2")
         self.assertEqual(builtin["name"], "Voice and words")
         self.assertEqual(builtin["source"], "built_in")
         self.assertEqual(builtin["research_only"], True)
@@ -482,7 +484,7 @@ class ExperimentsApiTests(unittest.TestCase):
         self.assertGreater(shown["intervention"][0]["score"], 0)
         self.who = OTHER
         hidden = self.client.get("/v2/experiments/models", headers=self._headers()).get_json()
-        self.assertEqual([row["id"] for row in hidden["models"]], ["wpl_arousal@0.1"])
+        self.assertEqual([row["id"] for row in hidden["models"]], ["wpl_arousal@0.2"])
         self.assertEqual(self.client.delete(
             f"/v2/experiments/models/{model_id}", headers=self._headers()).status_code, 404)
         self.who = ME
@@ -495,7 +497,7 @@ class ExperimentsApiTests(unittest.TestCase):
         })
         self.assertEqual(saved.status_code, 200, saved.get_json())
         body = saved.get_json()
-        self.assertEqual(body["model_id"], "wpl_arousal@0.1")
+        self.assertEqual(body["model_id"], "wpl_arousal@0.2")
         self.assertEqual(body["needs_baseline"], True)
         self.assertEqual([prompt["id"] for prompt in body["baseline_prompts"]], ["b1", "b2"])
         self.assertIn("poranek", body["baseline_prompts"][0]["text"])

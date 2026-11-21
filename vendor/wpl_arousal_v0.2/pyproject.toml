@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wpl_arousal"
-version = "0.1.0"
+version = "0.2.0"
 description = "Willpower Lab Step 2: engagement -> arousal -> valence -> clarity scorer for POST /analyze-take (research prototype, CPU only)"
 readme = "INTEGRATION.md"
 requires-python = ">=3.11"
 # CPU-only. Install torch from the CPU index:  pip install --extra-index-url https://download.pytorch.org/whl/cpu .
 dependencies = [
-  "numpy==2.5.5",
+  "numpy>=2.5.3,<3",
   "scipy==1.18.1",
-  "librosa==1.0.1",
+  "librosa>=0.10.2,<0.11",
   "soundfile==0.14.0",
   "scikit-learn==1.9.1",   # must match: the joblib artifacts were pickled with 1.9.1
   "joblib==1.6.0",
@@ -22,7 +22,7 @@ dependencies = [
   "huggingface_hub==0.36.2",
   "tokenizers==0.22.2",
   "safetensors==0.8.0",
-  "PyYAML==6.0.4",
+  "PyYAML>=6.0.2,<7",
 ]
 
 [project.optional-dependencies]

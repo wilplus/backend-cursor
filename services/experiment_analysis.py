@@ -1,13 +1,14 @@
 """Run wpl_arousal off the request.
 
-POST /v2/experiments/analyze-take queues this and answers 202. The model
-document is stored on the take. The read the volunteer gets has
-``score_if_unlocked`` removed; the stored document keeps it.
+POST /v2/experiments/analyze-take answers 202 and runs the model in this
+service, on a background thread. The model document is stored on the take.
+The read the volunteer gets has ``score_if_unlocked`` removed; the stored
+document keeps it.
 
 The package is imported only when a job runs or when WPL_AROUSAL_WARMUP=1.
-Tests and the web image do not download the models. The live-loop
-requirements file does not install this package: librosa 1.0.1 conflicts
-with the pinned 0.10.2 stack. A separate worker does.
+v0.2 uses the live loop's librosa 0.10.2, so it shares this image. The
+neural nets are not in the repo: the first call downloads them. Tests do
+not.
 
 Research and internal testing only. nEMO is CC BY-NC-SA. Not for paid use.
 """
@@ -44,6 +45,10 @@ def maybe_warmup() -> None:
 
 
 def _model() -> Any:
+    import sys
+    root = Path(__file__).resolve().parents[1] / "vendor" / "wpl_arousal_v0.2" / "src"
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
     import wpl_arousal
     return wpl_arousal
 
@@ -205,11 +210,7 @@ def run(take_id: str, volunteer_id: str) -> None:
 
 
 def dispatch(take_id: str, volunteer_id: str) -> str:
-    """Queue on the experiments queue. A thread is the fallback. Never the pipeline queue."""
-    from services import job_queue
-    queue = (os.getenv("WPL_AROUSAL_QUEUE") or "experiments").strip() or "experiments"
-    if job_queue.enqueue("services.experiment_analysis.run", take_id, volunteer_id, queue=queue):
-        return "queue"
+    """Run in this service, off the request. Never the recording pipeline queue."""
     if (os.getenv("WPL_AROUSAL_INLINE") or "").strip().lower() in ("1", "true", "yes"):
         run(take_id, volunteer_id)
         return "inline"

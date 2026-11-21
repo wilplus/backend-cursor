@@ -21,7 +21,9 @@ from services.experiments_config import canonical_prompt, load_prompt_set
 logger = logging.getLogger(__name__)
 
 MODELS = "experiment_models"
-BUILTIN_ID = "wpl_arousal@0.1"
+BUILTIN_ID = "wpl_arousal@0.2"
+#: Older clients still send the v0.1 id. It is this same packaged model.
+ALIAS_ID = "wpl_arousal@0.1"
 STEPS = ["engagement", "arousal", "valence", "clarity"]
 SCHEMA = "analyze-take/v0.1"
 #: The catalog line for the built-in model. The chat builder shows it.
@@ -63,7 +65,7 @@ def builtin() -> dict[str, Any]:
         "research_only": True,
         "needs_baseline": True,
         "steps": list(STEPS),
-        "version": "0.1",
+        "version": "0.2",
         "baseline_prompt_ids": _prompt_ids(),
         "schema": SCHEMA,
     }
@@ -140,6 +142,10 @@ def _saved_rules(row: dict[str, Any]) -> list[dict[str, Any]]:
     return list(rules) if isinstance(rules, list) else []
 
 
+def _is_builtin(model_id: str | None) -> bool:
+    return str(model_id or "").strip() in {BUILTIN_ID, ALIAS_ID}
+
+
 def _owned_row(database: Any, volunteer_id: str, model_id: str) -> dict[str, Any] | None:
     rows = _rows(database.client.table(MODELS).select("*")
                  .eq("volunteer_id", volunteer_id).eq("id", model_id).limit(1).execute())
@@ -148,13 +154,13 @@ def _owned_row(database: Any, volunteer_id: str, model_id: str) -> dict[str, Any
 
 def resolve_model(database: Any, user_id: str, model_id: str | None) -> dict[str, Any]:
     """The caller's model, or 404. The default is the built-in."""
-    chosen = (model_id or BUILTIN_ID).strip()
+    chosen = str(model_id or "").strip()
     base = builtin()
-    if chosen == base["id"]:
+    if not chosen or _is_builtin(chosen):
         return {**base, "interventions": []}
     volunteer_id = ensure_volunteer(database, user_id)
     row = _owned_row(database, volunteer_id, chosen)
-    if row is None or str(row.get("base_model_id") or "") != base["id"]:
+    if row is None or not _is_builtin(str(row.get("base_model_id") or "")):
         raise ExperimentsError("NOT_FOUND", "That model is not here.", 404)
     return {**_custom_out(row, base), "interventions": _saved_rules(row)}
 
@@ -162,10 +168,10 @@ def resolve_model(database: Any, user_id: str, model_id: str | None) -> dict[str
 def model_for_volunteer(database: Any, volunteer_id: str, model_id: str) -> dict[str, Any]:
     """The model a queued take named. The job has the volunteer id, not the user id."""
     base = builtin()
-    if not model_id or model_id == base["id"]:
+    if not model_id or _is_builtin(model_id):
         return {**base, "interventions": []}
     row = _owned_row(database, volunteer_id, model_id)
-    if row is None or str(row.get("base_model_id") or "") != base["id"]:
+    if row is None or not _is_builtin(str(row.get("base_model_id") or "")):
         raise RuntimeError("model")
     return {**_custom_out(row, base), "interventions": _saved_rules(row)}
 
@@ -182,7 +188,7 @@ def _clean_model(body: Any) -> dict[str, Any]:
     if not isinstance(body, dict):
         raise ExperimentsError("MODEL", "The model is missing.")
     base = builtin()
-    if body.get("base_model_id") != base["id"]:
+    if not _is_builtin(str(body.get("base_model_id") or "")):
         raise ExperimentsError("NOT_FOUND", "That model is not here.", 404)
     name = " ".join(str(body.get("name") or "").split())
     measures = " ".join(str(body.get("measures") or "").split())
@@ -462,7 +468,8 @@ def _prompts_for(database: Any, host_id: str, prompt_ids: list[str]) -> list[dic
 def _config_of(recipe: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
     raw = recipe.get("experiment")
     saved: dict[str, Any] = raw if isinstance(raw, dict) else {}
-    model_id = str(saved.get("model_id") or model["id"])
+    raw_id = str(saved.get("model_id") or "")
+    model_id = BUILTIN_ID if not raw_id or _is_builtin(raw_id) else raw_id
     prompts = saved.get("baseline_prompt_ids")
     if not isinstance(prompts, list) or not prompts:
         prompts = list(model["baseline_prompt_ids"])

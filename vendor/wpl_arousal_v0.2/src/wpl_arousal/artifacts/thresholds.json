@@ -1,8 +1,8 @@
 {
  "thresholds": {
   "engagement_score_min": -0.5,
-  "arousal_conf_min": 0.363,
-  "valence_conf_min": 0.482,
+  "arousal_conf_min": 0.352,
+  "valence_conf_min": 0.489,
   "clarity_conf_min": 0.5
  },
  "training": {
@@ -12,15 +12,17 @@
    "stacker_coefs": {
     "librosa": 0.302,
     "wavlm": 1.068,
-    "text": 0.0
+    "text": 0.001
    },
    "stacker_voice_coefs": {
     "librosa": 0.302,
     "wavlm": 1.068
    },
-   "loso_bal_acc_all": 0.873,
+   "loso_bal_acc_all": 0.872,
+   "loso_bal_acc_mean_speakers": 0.872,
+   "loso_macro_f1_pooled": 0.851,
    "confidence_threshold": {
-    "threshold": 0.363,
+    "threshold": 0.352,
     "coverage": 0.9,
     "bal_acc_kept": 0.909,
     "rule": "lowest threshold reaching bal_acc>=0.9"
@@ -30,19 +32,21 @@
    "n_train_clips": 3672,
    "n_speakers": 9,
    "stacker_coefs": {
-    "librosa": 0.488,
-    "wavlm": 0.763,
+    "librosa": 0.47,
+    "wavlm": 0.773,
     "text": 0.001
    },
    "stacker_voice_coefs": {
-    "librosa": 0.488,
-    "wavlm": 0.763
+    "librosa": 0.47,
+    "wavlm": 0.773
    },
-   "loso_bal_acc_all": 0.804,
+   "loso_bal_acc_all": 0.807,
+   "loso_bal_acc_mean_speakers": 0.802,
+   "loso_macro_f1_pooled": 0.801,
    "confidence_threshold": {
-    "threshold": 0.482,
+    "threshold": 0.489,
     "coverage": 0.65,
-    "bal_acc_kept": 0.901,
+    "bal_acc_kept": 0.907,
     "rule": "lowest threshold reaching bal_acc>=0.9"
    }
   }
