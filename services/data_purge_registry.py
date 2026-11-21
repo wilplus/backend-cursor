@@ -359,6 +359,12 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # name, who they are, their About and their photo.
     PurgeDependency("people_profiles", "people_profiles", "user_id", "user",
                     "delete", "database_row", 60),
+    # Taught question-and-answer pairs and unsent drafts from the chat
+    # builder's visitor try (migration a_host_keeps_taught_replies).
+    PurgeDependency("chat_reply_examples", "chat_reply_examples", "host_id",
+                    "user", "delete", "database_row", 60),
+    PurgeDependency("chat_reply_drafts", "chat_reply_drafts", "host_id",
+                    "user", "delete", "database_row", 60),
     # A Take's suggestion of someone new after it (migration
     # a_take_can_reach_someone_new_after_it, N477, N478): it goes with
     # either account, the speaker's and the one suggested.

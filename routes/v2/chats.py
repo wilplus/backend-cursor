@@ -123,7 +123,7 @@ from routes.admin import require_admin
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import phase1_provider_route
 from services.db import db
-from services.rate_limits import client_ip, limiter, llm_limit
+from services.rate_limits import client_ip, limiter, llm_limit, whisper_limit
 
 logger = logging.getLogger(__name__)
 
@@ -538,6 +538,14 @@ def v2_chats_setup_photo(thread_id, message_id):
 
 # ── The chat builder (services/assistants.py; N578, N579, N586, N588) ──
 
+def _builder_chat_id(chat_id: str) -> bool:
+    """The builder's own id (``own-…``, ``your-chat``) or a thread id."""
+    text = str(chat_id or "")
+    if not text or len(text) > 80:
+        return False
+    return text[0].isalnum() and all(char.isalnum() or char in "-_" for char in text)
+
+
 def _builder_or_404(work):
     """The chat builder's ring (N579 item 2): without it, 404, as a chat
     route answers for what is not yours."""
@@ -638,6 +646,35 @@ def v2_chats_blank_setup_models():
     from services import chat_recipes
     return _builder_or_404(lambda: _run("setup models", lambda: chat_recipes.shared_models(
         db, str(request.user_id))))
+
+
+@v2_bp.route("/chats/<chat_id>/reply", methods=["POST"])
+@require_auth
+@phase1_provider_route
+@whisper_limit
+@llm_limit
+def v2_chats_builder_reply(chat_id):
+    """The chat builder's visitor try (services/chat_builder_reply.py).
+
+    JSON ``{text, kind, data?, mime?, name?}``. 200 is the shape the
+    screen reads: shown, reply, walk, held, quiet, wait, or error
+    too-big, unreadable or too-long. 404 without the builder or a saved
+    recipe, and the screen keeps its own preview. A recording is limited
+    as Whisper is; every reply is limited as a chat turn is.
+    """
+    from services import assistants, chat_builder_reply, chat_recipes, chat_replies
+    if not _builder_chat_id(chat_id):
+        return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
+    user_id = str(request.user_id)
+    if not assistants.on(db, user_id):
+        return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
+    recipe = chat_recipes.mine(db, user_id)
+    if not recipe:
+        return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
+    body, status = chat_builder_reply.reply(
+        db, user_id, str(chat_id), request.get_json(silent=True) or {},
+        recipe=recipe, host_answers=chat_replies.own_answers(db, user_id))
+    return jsonify(body), status
 
 
 @v2_bp.route("/chats/setup/try", methods=["POST"])

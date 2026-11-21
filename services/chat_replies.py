@@ -477,12 +477,15 @@ def drafts(database: Any, host_id: Any) -> dict:
     names = {str(m["id"]): m.get("display_name")
              for m in _rows(_table(database, MEMBERS).select("id,display_name,user_id")
                             .in_("thread_id", list({str(m["thread_id"]) for m in _host_members(database, host)})))}
-    return {"drafts": [{"message_id": str(row["id"]), "thread_id": str(row["thread_id"]),
-                        "from": _first(names.get(str(row.get("author_member_id")))),
-                        "said": row.get("body") or "", "answer": d.get("answer"),
-                        "lines": [{"body": x["body"], "by": x["by"]} for x in d.get("lines") or []],
-                        "sensitive": recipe.get("sensitive") is not False}
-                       for row, d in _waiting(database, host)]}
+    listed = [{"message_id": str(row["id"]), "thread_id": str(row["thread_id"]),
+               "from": _first(names.get(str(row.get("author_member_id")))),
+               "said": row.get("body") or "", "answer": d.get("answer"),
+               "lines": [{"body": x["body"], "by": x["by"]} for x in d.get("lines") or []],
+               "sensitive": recipe.get("sensitive") is not False}
+              for row, d in _waiting(database, host)]
+    from services.chat_builder_reply import waiting_drafts
+    listed.extend(waiting_drafts(database, host, recipe))
+    return {"drafts": listed}
 
 
 def send_draft(database: Any, host_id: Any, message_id: Any, body: Any) -> dict:
@@ -491,6 +494,10 @@ def send_draft(database: Any, host_id: Any, message_id: Any, body: Any) -> dict:
     host, message = str(host_id), _uuid(message_id)
     found = next(((row, d) for row, d in _waiting(database, host) if str(row["id"]) == message), None)
     if not message or not found:
+        from services.chat_builder_reply import send_kept_draft
+        kept = send_kept_draft(database, host, str(message_id), body)
+        if kept is not None:
+            return kept
         raise _not_found()
     row, draft = found
     own = (body or {}).get("body") if isinstance(body, dict) else None
@@ -512,8 +519,11 @@ def send_draft(database: Any, host_id: Any, message_id: Any, body: Any) -> dict:
     _table(database, MESSAGES).update({"meta": meta}).eq("id", message).execute()
     if words and words != draft.get("answer"):
         # Changed before sending: the host's own words teach the models
-        # still learning on their cards (N633 item 1).
+        # still learning on their cards (N633 item 1), and the pair teaches
+        # the next reply in this chat.
         chat_recipes.teach(database, host, words)
+        from services.chat_builder_reply import remember_example
+        remember_example(database, host, str(row.get("body") or ""), words, thread)
     return {"message": made[0] if made else None, "messages": made}
 
 

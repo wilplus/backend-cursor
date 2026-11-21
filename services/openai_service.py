@@ -253,7 +253,8 @@ class OpenAIService:
     
     def transcribe_audio(self, audio_file, filename: str = "audio.webm", content_type: str | None = None, vocabulary: list | None = None, language: str | None = None,
                          usage_surface: str = "whisper_take", usage_user_id: str | None = None,
-                         usage_session_id: str | None = None, usage_arc_id: str | None = None):
+                         usage_session_id: str | None = None, usage_arc_id: str | None = None,
+                         model: str = "whisper-1"):
         """
         Transcribe audio using Whisper-1.
         Returns {text, duration, segments} — segments is the verbose_json
@@ -309,6 +310,9 @@ class OpenAIService:
             ct = _audio_content_type(filename, content_type)
             create_kwargs = _whisper_request(
                 filename, audio_data, ct, vocabulary, language)
+            # Chat-builder recordings may name OPENAI_TRANSCRIBE_MODEL. Every
+            # other caller leaves the default argument, whisper-1.
+            create_kwargs["model"] = model
             # Whisper on a long take legitimately runs minutes — give
             # transcription its own (larger, still bounded) timeout instead
             # of the client-wide LLM one.

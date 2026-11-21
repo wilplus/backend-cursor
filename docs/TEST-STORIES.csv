@@ -787,6 +787,19 @@ O6 -> test_will_reads_the_summary_he_wrote_after_the_take
 O7 -> test_will_reads_the_screen_in_the_order_it_is_drawn
 O8 -> test_a_number_typed_under_the_whatsapp_ask_answers_it
 O9 -> test_project_questions_stay_out_of_speaking_coach_history","Founder 2026-10-14 to 2026-10-18 (cost, WhatsApp, privacy, context); 2026-10-20 (""the chat should be aware of the order of bubbles it displays""); 2026-11-18 (project questions stay per project). Split out of test_chat_persist.py; the harness is tests/chat_route_fakes.py."
+tests/test_chat_builder_reply.py,Story,"As a visitor in a host's chat, I get an answer in the host's words, or a plain line when the host must see it first. A recording comes back as a walk I can tap. A score about me, or a feeling, never does.","O1  The prompt is built from what the host does, their first line, their
+questions, taps, taught answers, a photo and a document.
+O2  Only the host answers when they said so. Shadow, and health, law or
+money, stay a draft. An assistant waits for 20 answers, then sends.
+O3  A score or a feeling about the person is removed. A photo over 4 MB,
+a file that cannot be read, and a recording over 5 minutes or 25 MB
+are refused before a provider is called.
+O4  A recording's walk is a clear stretch, one place to say again, helper
+words, and the Ideal Text only when the host chose it. The facts name
+a pause at its time and no feeling.","O1 -> ChatBuilderReplyTest::test_the_prompt_uses_the_hosts_setup
+O2 -> ChatBuilderReplyTest::test_who_answers_chooses_silence_wait_draft_or_send
+O3 -> ChatBuilderReplyTest::test_a_score_or_a_feeling_is_removed_and_a_huge_file_is_refused
+O4 -> ChatBuilderReplyTest::test_a_recording_returns_a_walk_the_visitor_can_tap","The chat builder's visitor try (frontend PR 1427). The reply is POST /v2/chats/<id>/reply. Health, law or money stays a draft."
 tests/test_chat_conversation_behavior.py,Story,"As a speaker, I want Will to answer my latest question in my language, remember the visible conversation and project, and keep the structured response fields stable, so that a useful answer does not collapse into a generic acknowledgement.","O1  English and Polish golden turns mirror the typed content language,
 including unaccented Polish through the production default router.
 O2  Earlier turns and bounded project context reach the writer together,
