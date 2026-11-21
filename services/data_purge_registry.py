@@ -359,6 +359,12 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # name, who they are, their About and their photo.
     PurgeDependency("people_profiles", "people_profiles", "user_id", "user",
                     "delete", "database_row", 60),
+    # The private experiments area (a_volunteer_keeps_their_experiments).
+    # Only the key row names the account. Sessions, takes, prompts and
+    # interventions cascade from it. Stored audio is removed by
+    # DELETE /v2/experiments/me; this row delete does not reach the bucket.
+    PurgeDependency("experiment_volunteer_keys", "experiment_volunteer_keys",
+                    "user_id", "user", "delete", "database_row", 60),
     # Taught question-and-answer pairs and unsent drafts from the chat
     # builder's visitor try (migration a_host_keeps_taught_replies).
     PurgeDependency("chat_reply_examples", "chat_reply_examples", "host_id",
