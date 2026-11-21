@@ -317,6 +317,17 @@ class ExperimentsApiTests(unittest.TestCase):
     def _headers(self):
         return {"Authorization": "Bearer t"}
 
+    def _refused_as_guest(self, chat_id):
+        put = self.client.put(
+            f"/v2/chats/{chat_id}/experiment-config", headers=self._headers(),
+            json={"model_id": "wpl_arousal@0.2"})
+        examples = self.client.get(
+            f"/v2/chats/{chat_id}/reply-examples", headers=self._headers())
+        for response in (put, examples):
+            self.assertEqual(response.status_code, 403, response.get_json())
+            self.assertEqual(response.get_json()["code"], "NOT_HOST")
+            self.assertEqual(response.get_json()["error"], "Only the host can change this.")
+
     def _session(self, consent=None, **extra):
         return self.client.post(
             "/v2/experiments/sessions", headers=self._headers(),
@@ -446,6 +457,7 @@ class ExperimentsApiTests(unittest.TestCase):
         self.assertEqual(builtin["id"], "wpl_arousal@0.2")
         self.assertEqual(builtin["version"], "0.2")
         self.assertEqual(builtin["name"], "Voice and words")
+        self.assertNotIn("arousal", builtin["name"].lower())
         self.assertEqual(builtin["source"], "built_in")
         self.assertEqual(builtin["research_only"], True)
         self.assertEqual(builtin["steps"], ["engagement", "arousal", "valence", "clarity"])
@@ -523,11 +535,7 @@ class ExperimentsApiTests(unittest.TestCase):
         seen = self.client.get(f"/v2/chats/{thread}/experiment-config", headers=self._headers())
         self.assertEqual(seen.status_code, 200, seen.get_json())
         self.assertEqual(seen.get_json()["baseline_prompt_ids"], ["b1", "b2"])
-        self.assertEqual(self.client.put(
-            f"/v2/chats/{thread}/experiment-config", headers=self._headers(),
-            json={"model_id": "wpl_arousal@0.1"}).status_code, 403)
-        self.assertEqual(self.client.get(
-            f"/v2/chats/{thread}/reply-examples", headers=self._headers()).status_code, 403)
+        self._refused_as_guest(thread)
         self.who = ME
         page = self.client.get(
             f"/v2/chats/{thread}/reply-examples?limit=1&offset=0", headers=self._headers())
@@ -549,15 +557,34 @@ class ExperimentsApiTests(unittest.TestCase):
         ]).execute()
         for who in (ME, OTHER):
             self.who = who
+            self._refused_as_guest(thread)
+
+    def test_a_member_is_refused_when_someone_else_is_host(self):
+        thread = "55555555-5555-4555-8555-555555555555"
+        link = "66666666-6666-4666-8666-666666666666"
+        self.store.table("chat_links").insert({"id": link, "user_id": ME}).execute()
+        self.store.table("chat_threads").insert({
+            "id": thread, "kind": "customer", "title": "Link", "link_id": link,
+        }).execute()
+        self.store.table("chat_members").insert([
+            {"thread_id": thread, "user_id": ME},
+            {"thread_id": thread, "user_id": OTHER},
+        ]).execute()
+        self.who = OTHER
+        self._refused_as_guest(thread)
+        missing = "77777777-7777-4777-8777-777777777777"
+        stranger = "88888888-8888-4888-8888-888888888888"
+        for chat_id, who in ((missing, ME), (thread, stranger)):
+            self.who = who
             put = self.client.put(
-                f"/v2/chats/{thread}/experiment-config", headers=self._headers(),
-                json={"model_id": "wpl_arousal@0.1"})
+                f"/v2/chats/{chat_id}/experiment-config", headers=self._headers(),
+                json={"model_id": "wpl_arousal@0.2"})
             examples = self.client.get(
-                f"/v2/chats/{thread}/reply-examples", headers=self._headers())
-            self.assertEqual(put.status_code, 403, put.get_json())
-            self.assertEqual(put.get_json()["code"], "NOT_HOST")
-            self.assertEqual(examples.status_code, 403)
-            self.assertEqual(examples.get_json()["code"], "NOT_HOST")
+                f"/v2/chats/{chat_id}/reply-examples", headers=self._headers())
+            self.assertEqual(put.status_code, 404, put.get_json())
+            self.assertEqual(put.get_json()["code"], "NOT_FOUND")
+            self.assertEqual(examples.status_code, 404)
+            self.assertEqual(examples.get_json()["code"], "NOT_FOUND")
 
     def test_prompts_import_the_polish_set_and_stay_mine(self):
         imported = self.client.post(

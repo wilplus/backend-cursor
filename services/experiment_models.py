@@ -405,19 +405,19 @@ def _host_of_thread(database: Any, thread: dict[str, Any]) -> str | None:
 def chat_role(database: Any, user_id: str, chat_id: str) -> tuple[str | None, bool]:
     """``(host user id or none, caller is the host)``.
 
-    A builder id that is not a thread is the caller's own chat. On a thread,
-    the host is the widget owner or the join-link owner. 404 when the caller
-    is not in that thread.
+    A builder id that is not a thread is the caller's own chat. A thread id
+    with no row is 404, and so is a caller who is not a member. On a thread,
+    the host is the widget owner or the join-link owner.
     """
     if not _chat_id_ok(chat_id):
         raise ExperimentsError("NOT_FOUND", "Not found.", 404)
     thread_id = _uuid(chat_id)
-    thread = None
-    if thread_id:
-        rows = _rows(database.client.table("chat_threads").select("*").eq("id", thread_id).limit(1).execute())
-        thread = rows[0] if rows else None
-    if thread is None:
+    if thread_id is None:
         return str(user_id), True
+    rows = _rows(database.client.table("chat_threads").select("*").eq("id", thread_id).limit(1).execute())
+    thread = rows[0] if rows else None
+    if thread is None:
+        raise ExperimentsError("NOT_FOUND", "Not found.", 404)
     members = _rows(database.client.table("chat_members").select("user_id")
                     .eq("thread_id", thread_id).execute())
     if str(user_id) not in {str(m.get("user_id")) for m in members}:
@@ -427,7 +427,7 @@ def chat_role(database: Any, user_id: str, chat_id: str) -> tuple[str | None, bo
 
 
 def _only_the_host() -> NoReturn:
-    raise ExperimentsError("NOT_HOST", "Only the host can do this.", 403)
+    raise ExperimentsError("NOT_HOST", "Only the host can change this.", 403)
 
 
 def _recipe(database: Any, host_id: str) -> dict[str, Any]:
