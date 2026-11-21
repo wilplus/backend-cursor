@@ -1615,6 +1615,26 @@ to a stored version is refused.
 O3  Browser roles reach neither the table nor the writer functions.","O1 -> test_a_version_is_written_once_with_the_three_texts_and_the_lineage
 O2 -> test_only_the_transcript_arrives_later_and_only_once
 O3 -> test_browser_roles_reach_nothing","Founder 2026-09-29, decision 4 (0399)."
+tests/test_experiments.py,Story,"As a volunteer in the chat builder's experiments area, I keep my own sessions, takes, prompts and interventions, and nobody else's, and I can delete all of it.","O1  The shipped prompts_v1.yaml loads as UTF-8 Polish, and the gate order,
+each cell's reference and the self-rating choices come from that file.
+O2  A session stores my consent and, when I send one, a single PDF page or
+slides. My volunteer id is not my auth id.
+O3  A take keeps the tag, the rating, the words Whisper returned, and the
+audio in the private bucket. A rating outside the prompt set is refused.
+O4  analyze-take returns the fixed grid. Baseline vocal cells can use a
+measured loudness. The gate is the first unsure step in the file's order.
+No feeling is named.
+O5  My prompt library and my interventions are mine. The picker returns at
+most two, and the earlier step in the file's order wins.
+O6  Export is my rows only. A researcher export needs my explicit consent.
+O7  Deleting me removes my rows and my stored files. Someone else cannot
+read or delete them.","O1 -> test_the_shipped_prompt_set_loads
+O2 -> test_a_session_stores_consent_and_not_my_auth_id
+O3 -> test_a_take_keeps_the_words_and_the_rating
+O4 -> test_analyze_take_follows_the_prompt_set
+O5 -> test_the_earlier_step_wins_and_at_most_two_fire
+O6 -> test_export_is_only_mine_and_researcher_needs_consent
+O7 -> test_delete_me_removes_my_rows_and_files",
 tests/test_exposure_bundle_names_the_gate.py,Guard,"A V3 Take whose feedback exposure bundle is not built logs the exact gate that closed (build_feedback_exposure_bundle's `detail` list), naming the condition, not just the step.","One reason name covering several unrelated conditions again: on
 2026-09-19 `exposure_bundle_membership_c...` covered seven, six of
 them not a count mismatch, and pointed the on-call reader at the

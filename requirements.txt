@@ -98,3 +98,6 @@ psycopg2-binary==2.9.12
 # dead broker falls back to per-worker counting, never a crash (live loop).
 flask-limiter==3.8.0
 limits==5.8.0
+# The experiments prompt set (services/experiments/prompts_v1.yaml) is YAML.
+# Lazy-imported in services/experiments_config.py.
+PyYAML==6.0.2
