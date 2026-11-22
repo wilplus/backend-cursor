@@ -3580,6 +3580,9 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O4** English and Polish target the immediate typed message language.
 - **O5** A source change, explicit invalidation or TTL expiry refreshes the derived packet; cache hits and logical DB reads are observable within a budget.
 - **O6** Scores, rankings, verdicts, digits and other forbidden output fail closed to the existing chat path.
+- **O7** An older named talk keeps its exact Take, saved audience and goal, and source links.
+- **O8** Similar talks require a clear choice, and comparable passages stay on the same slide.
+- **O9** When feedback is missing, the coach uses available passages and one relevant reviewed exercise.
 
 *Why:* Speaking Coach redesign and activation, 2026-11-18.
 
