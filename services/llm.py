@@ -450,7 +450,8 @@ def chat_complete(
 
 
 def embed(texts: list[str], *, surface: str, model: Optional[str] = None,
-          user_id: Optional[str] = None) -> Optional[list[list[float]]]:
+          user_id: Optional[str] = None,
+          timeout_seconds: Optional[float] = None) -> Optional[list[list[float]]]:
     """Read texts into vectors with the shared reader (N616 item 8): ONE
     provider call for all of them, under the caller's processing
     authorization (a permit for the call, as ``chat_complete``), each text
@@ -479,7 +480,10 @@ def embed(texts: list[str], *, surface: str, model: Optional[str] = None,
         return None
     name = model or READER_MODEL
     try:
-        response = service.client.embeddings.create(model=name, input=inputs)
+        client = service.client
+        if timeout_seconds is not None:
+            client = client.with_options(timeout=timeout_seconds, max_retries=0)
+        response = client.embeddings.create(model=name, input=inputs)
         vectors = [list(map(float, d.embedding)) for d in response.data]
     except Exception as e:
         logger.warning("llm.embed surface=%s user=%s failed", surface, user_id or "-", exc_info=True)

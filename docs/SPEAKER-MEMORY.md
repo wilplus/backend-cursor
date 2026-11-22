@@ -157,6 +157,20 @@ short TTL refresh it. Archive/deletion and processing authority fail closed.
 The retrieval, model and retry bounds are documented in
 [`PERF-chat-and-ideal-text.md`](PERF-chat-and-ideal-text.md).
 
+Talk-specific requests find the project and Take in the speaker's index
+before reading their words. This reaches older named projects and keeps the
+recording on a follow-up. The coach uses the talk's saved audience and call
+to action, compares matching slides or deckless openings and endings, and
+asks for clarification when a talk is ambiguous.
+
+The scoped lookup ranks transcript passages, current Ideal Text and shared
+coach feedback by keywords and by meaning. It uses one authorized batch of
+up to 48 passages with a two-second timeout and falls back to keyword ranking.
+Coach references resolve to the cited Take transcript, Ideal Text or shared
+feedback. A practice request may add one matching exercise from the reviewed
+catalogue. Private speaker memory guides coaching preferences and stays out
+of search and source links.
+
 ## Storage (migration 0480)
 
 - `speaker_memory_events`: the raw inputs, kept for good. They are the asset:

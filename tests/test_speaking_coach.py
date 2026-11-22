@@ -15,17 +15,24 @@ O5  A source change, explicit invalidation or TTL expiry refreshes the derived
      packet; cache hits and logical DB reads are observable within a budget.
   O6  Scores, rankings, verdicts, digits and other forbidden output fail
       closed to the existing chat path.
+  O7  An older named talk keeps its exact Take, saved audience and goal, and source links.
+  O8  Similar talks require a clear choice, and comparable passages stay on the same slide.
+  O9  When feedback is missing, the coach uses available passages and one relevant reviewed exercise.
 PROVES   O1 -> test_routes_without_an_llm_classifier
          O2 -> test_sparse_and_rich_contexts_are_explicit
          O3 -> test_rich_context_is_owner_scoped_and_has_no_project_chat
          O4 -> test_content_language_is_preserved_for_english_and_polish
          O5 -> test_cache_refreshes_and_respects_the_read_budget
          O6 -> test_forbidden_generated_output_falls_back
+         O7 -> test_named_older_talk_uses_exact_take_and_hybrid_retrieval
+         O8 -> test_similar_talks_are_disambiguated_before_retrieval, test_comparison_links_the_same_slide_without_feedback
+         O9 -> test_missing_feedback_uses_one_relevant_library_exercise
 WHY      Speaking Coach redesign and activation, 2026-11-18.
 """
 from __future__ import annotations
 
 import json
+import re
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -156,9 +163,9 @@ def _config(**overrides):
     return SimpleNamespace(**values)
 
 
-def _result(answer):
+def _result(answer, evidence=()):
     return SimpleNamespace(
-        text=json.dumps({"answer": answer}), parsed=None,
+        text=json.dumps({"answer": answer, "evidence": list(evidence)}), parsed=None,
         model="gpt-4o-mini", duration_ms=12,
     )
 
@@ -252,7 +259,7 @@ def test_sparse_and_rich_contexts_are_explicit():
     rich_database = FakeDB(rich=True)
     with patch("services.llm.chat_complete", generate):
         result = speaking_coach.answer(
-            rich_database, USER, "what changed in my opening?", history=[],
+            rich_database, USER, "what changed in my opening across my talks?", history=[],
             app_config=_config(),
         )
     assert result is not None
@@ -301,8 +308,8 @@ def test_screen_history_drops_project_bubbles_when_metadata_is_present():
 @pytest.mark.parametrize(
     ("question", "generated", "language_marker"),
     [
-        ("What changed in my opening?", "Your opening is clearer now.", "English (en)"),
-        ("Co zmieniło się w moim początku?", "Twój początek jest teraz jaśniejszy.", "Polish (pl)"),
+        ("What changed in my opening overall?", "Your opening is clearer now.", "English (en)"),
+        ("Co ogólnie zmieniło się w moim początku?", "Twój początek jest teraz jaśniejszy.", "Polish (pl)"),
     ],
 )
 def test_content_language_is_preserved_for_english_and_polish(
@@ -405,4 +412,185 @@ def test_forbidden_generated_output_falls_back():
         )
     assert result is None
     assert len(calls) == 1
+
+
+def _saved_projects(*takes):
+    database = FakeDB(rich=False)
+    database.takes.sessions = {}
+    for take in takes:
+        database.takes.sessions.setdefault(take["arc_id"], []).append(take)
+        database.takes.index_rows.append({key: value for key, value in take.items()
+                                          if key != "slide_transcripts"})
+    return database
+
+
+def _named_take(title, arc, number, created_at, text, *, deck=None):
+    take = _take(f"{arc}-take-{number}", arc, created_at, text, index=number)
+    take["intake_context"]["topic"] = title
+    if deck:
+        take["intake_context"]["slides"] = [{"id": value, "title": value} for value in deck]
+    return take
+
+
+def _reference(system, phrase):
+    return next(match[1] for line in system.splitlines()
+                if phrase in line and (match := re.match(r"- \[(E\d+);", line)))
+
+
+def test_named_older_talk_uses_exact_take_and_hybrid_retrieval():
+    from services.chat_query import _librarian
+
+    speaking_coach.clear_cache()
+    selected = _named_take("School Garden", "garden", 1, "2025-01-01", "")
+    selected["intake_context"].update(
+        audience="student council",
+        strategic_context="Desired call to action: Approve a garden trial.",
+    )
+    exact_words = "We can water the raised beds after class."
+    selected["slide_transcripts"] = [
+        {"index": 0, "transcript": "I'd like you to hear our garden plan. " * 40},
+        {"index": 1, "transcript": exact_words},
+    ]
+    later_takes = [_named_take("School Garden", "garden", number, f"2025-01-0{number}",
+                              "THIS IS A DIFFERENT TAKE.") for number in range(2, 7)]
+    newer_projects = [_named_take(f"School Club {i}", f"new-{i}", 1, f"2026-01-0{i}",
+                                  "DIFFERENT PROJECT.") for i in range(1, 6)]
+    db = _saved_projects(selected, *later_takes, *newer_projects)
+    db.ideal["garden"] = {
+        "source_take_session_id": "garden-take-6",
+        "payload": {"text": "The current garden proposal."},
+    }
+    provider_inputs = []
+
+    def embed(texts, **_kwargs):
+        provider_inputs.extend(texts)
+        return [[1.0, 0.0], *([1.0, 0.0] if exact_words in text else [0.0, 1.0]
+                              for text in texts[1:])]
+
+    def generate(**kwargs):
+        prompt = kwargs["system"]
+        assert "student council" in prompt and "Approve a garden trial." in prompt
+        assert "THIS IS A DIFFERENT TAKE" not in prompt and "DIFFERENT PROJECT" not in prompt
+        return _result("You made the upkeep sound manageable.", [_reference(prompt, exact_words), "E999"])
+
+    question = "What makes the upkeep feel manageable in School Garden Take 1?"
+    config = _config(SPEAKING_COACH_MAX_EVIDENCE=2)
+    with patch("services.llm.embed", embed), patch("services.llm.chat_complete", generate):
+        reply, intent = _librarian(db, USER, question, [], config)
+        follow_up = speaking_coach.answer(
+            db, USER, "What about the ending?", history=[{"role": "user", "content": question}],
+            app_config=config,
+        )
+    assert intent == "speaking_coach"
+    debug = reply["debug"]
+    assert debug["scope"] == "resolved" and debug["take_count"] == 1 and debug["semantic_search"]
+    assert "/chat/take/garden-take-1?slide=1" in reply["answer"]
+    assert any("/chat/take/garden-take-1?slide=1" in bubble for bubble in reply["bubbles"])
+    assert follow_up is not None and "/chat/take/garden-take-1?slide=1" in follow_up[0]["answer"]
+    assert reply["answer"].count("https://") + reply["answer"].count("http://") == 1
+    assert any("The current garden proposal." in item for item in provider_inputs)
+    assert any("Lead with the customer problem." in item for item in provider_inputs)
+    assert not any("DIFFERENT PROJECT" in item or "THIS IS A DIFFERENT TAKE" in item
+                   for item in provider_inputs)
+
+
+def test_similar_talks_are_disambiguated_before_retrieval():
+    speaking_coach.clear_cache()
+    db = _saved_projects(
+        _named_take("Board Update", "board", 1, "2026-01-01", "Unrelated board words."),
+        _named_take("Board Update Europe", "europe", 1, "2025-01-01", "The Europe remarks."),
+    )
+    question = "What should I change in my presentation?"
+    with patch("services.llm.chat_complete", side_effect=AssertionError("ask before generating")):
+        unclear = speaking_coach.answer(db, USER, question, app_config=_config())
+    assert unclear is not None and unclear[1]["scope"] == "clarify"
+    assert unclear[0]["answer"].endswith("?")
+    assert db.takes.calls["many"] == 0 and db.takes.calls["slides"] == 0
+
+    def generate(**kwargs):
+        assert "The Europe remarks." in kwargs["system"]
+        assert "Unrelated board words." not in kwargs["system"]
+        assert any(question in row["content"] for row in kwargs["messages_override"])
+        return _result("Let’s focus on the Europe remarks.")
+
+    with patch("services.llm.embed", return_value=None), patch("services.llm.chat_complete", generate):
+        scoped = speaking_coach.answer(
+            db, USER, "Board Update Europe", history=[{"role": "user", "content": question}],
+            app_config=_config(),
+        )
+    assert scoped is not None and scoped[1]["project_count"] == 1
+
+    with patch("services.llm.chat_complete", side_effect=AssertionError("the requested Take is absent")):
+        unavailable = speaking_coach.answer(db, USER, "Board Update Europe Take 4", app_config=_config())
+    assert unavailable is not None and unavailable[1]["scope"] == "unavailable"
+    assert db.takes.calls["slides"] == 1
+
+
+def test_comparison_links_the_same_slide_without_feedback():
+    speaking_coach.clear_cache()
+    first = _named_take("Campus Pitch", "campus", 1, "2026-01-01", "", deck=["ask", "plan"])
+    second = _named_take("Campus Pitch", "campus", 2, "2026-01-02", "", deck=["plan", "ask"])
+    first["slide_transcripts"] = [
+        {"index": 0, "transcript": "Please support the idea."},
+        {"index": 1, "transcript": "Unrelated archived plan."},
+    ]
+    second["slide_transcripts"] = [
+        {"index": 0, "transcript": "The proposed layout is small."},
+        {"index": 1, "transcript": "Please approve the pilot today."},
+    ]
+    db = _saved_projects(first, second)
+
+    def generate(**kwargs):
+        prompt = kwargs["system"]
+        assert "earlier spoken passage: Please support the idea." in prompt
+        assert "more recent spoken passage: Please approve the pilot today." in prompt
+        assert "Unrelated archived plan." not in prompt
+        assert "shared_coach_feedback" not in prompt
+        return _result("Your ask now names the decision.", [_reference(prompt, "earlier spoken passage:")])
+
+    with (
+        patch.object(db, "list_sent_coach_take_words", return_value=[]),
+        patch.object(db, "list_shared_moment_answers", return_value=[]),
+        patch("services.llm.embed", return_value=None),
+        patch("services.llm.chat_complete", generate),
+    ):
+        result = speaking_coach.answer(
+            db, USER, "Compare slide 2 in Campus Pitch between Takes 1 and 2.",
+            app_config=_config(),
+        )
+    assert result is not None
+    assert not result[1]["semantic_search"]
+    assert "/chat/take/campus-take-1?slide=0" in result[0]["answer"]
+    assert "/chat/take/campus-take-2?slide=1" in result[0]["answer"]
+    assert "&feedback=" not in result[0]["answer"]
+
+
+def test_missing_feedback_uses_one_relevant_library_exercise():
+    speaking_coach.clear_cache()
+    db = _saved_projects(_named_take("Campus Pitch", "campus", 1, "2026-01-01",
+                                    "Please approve the pilot today."))
+    catalogue = [
+        {"title": "Land the full stop", "instruction": "Pause after your request.",
+         "acoustic_problem_tags": ["rushing"]},
+        {"title": "Clear syllables", "instruction": "Separate your words.",
+         "acoustic_problem_tags": ["word_compression"]},
+    ]
+
+    def generate(**kwargs):
+        prompt = kwargs["system"]
+        assert "Land the full stop" in prompt and "Pause after your request." in prompt
+        assert "Clear syllables" not in prompt
+        assert "shared_coach_feedback" not in prompt
+        return _result("Try Land the full stop. Pause after your request.")
+
+    with (
+        patch.object(db, "list_active_diagnostic_exercises", return_value=catalogue, create=True),
+        patch.object(db, "list_sent_coach_take_words", return_value=[]),
+        patch.object(db, "list_shared_moment_answers", return_value=[]),
+        patch("services.llm.chat_complete", generate),
+    ):
+        result = speaking_coach.answer(
+            db, USER, "What exercise can I try for rushing in Campus Pitch?", app_config=_config(),
+        )
+    assert result is not None and "Pause after your request." in result[0]["answer"]
 

@@ -2,9 +2,10 @@
 
 When enabled it replaces the FAQ classifier/RAG path for ordinary conversation
 with one small-model generation grounded in a short-lived, owner-scoped
-context packet.  Product/app questions still fall through to the existing
-Master Document path, and deterministic safety/joke intercepts run before
-this module in ``services.chat_query``.
+context packet. Talk-specific questions resolve their recording before reading
+verbatim passages or using the shared semantic reader. Product/app questions
+still fall through to the existing Master Document path, and deterministic
+safety/joke intercepts run before this module in ``services.chat_query``.
 
 The packet is a derived read model, not a second source of truth.  It reads
 only the speaker's own visible Takes, current Ideal Text, shared coach words,
@@ -24,9 +25,15 @@ import time
 from dataclasses import dataclass, replace
 from typing import Any, Callable, Optional
 
+from services.speaking_coach_passages import (
+    Evidence, Source, comparison_evidence, excerpts, practice_tags, rank_evidence,
+    transcript_evidence,
+)
+from services.speaking_coach_scope import TalkScope, resolve_scope, select_takes
+
 logger = logging.getLogger(__name__)
 
-CONTEXT_VERSION = "speaking-coach-context-v1"
+CONTEXT_VERSION = "speaking-coach-context-v2"
 DEFAULT_CACHE_TTL_SECONDS = 60
 DEFAULT_MAX_DB_READS = 16
 DEFAULT_MAX_PROJECTS = 4
@@ -39,13 +46,12 @@ DEFAULT_MAX_ANSWER_CHARS = 600
 _PRODUCT_HINTS = re.compile(
     r"\b(willab|app|price|pricing|subscription|upload|voice album|whatsapp|"
     r"settings|feature|how does it work|what can you do|what is this)\b|"
-    r"\b(?:how|where|can|could|should)\b.{0,40}\b(?:record|recording|"
-    r"training|trainings)\b|"
+    r"\b(?:(?:how|where) (?:do|can|should) i|can i|could i) "
+    r"(?:(?:start|make|find|open|see) (?:a |my )?)?(?:record|recording|recordings|trainings?)\b|"
     r"\b(?:record|recording|training|trainings)\b.{0,30}\b(?:here|in the app|"
     r"available|library)\b|"
     r"(ile koszt|cena|aplikac|prześlij|ustawieni|co potrafisz)|"
-    r"\b(?:jak|gdzie|czy|mogę|można)\b.{0,40}\b(?:nagrać|nagranie|"
-    r"trening|przesłać)\b",
+    r"\b(?:jak|gdzie|czy) (?:mogę |można )?(?:nagrać|przesłać)\b",
     re.IGNORECASE,
 )
 _LONGITUDINAL_HINTS = re.compile(
@@ -63,17 +69,18 @@ _JOKE_HINTS = re.compile(
 _FORBIDDEN_OUTPUT = re.compile(
     r"\b(?:kpi|score|scored|rating|rank(?:ed|ing)?|verdict|charisma|"
     r"stress\s+level|personality\s+(?:type|profile)|diagnos(?:e|is)|"
-    r"wpm|hz|percent|percentage)\b|\d",
+    r"wpm|hz|percent|percentage)\b|\d|https?://|\bwww\.",
     re.IGNORECASE,
 )
-_WORD = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)?", re.UNICODE)
+_PRACTICE_REQUEST = re.compile(r"\b(?:practi[cs]\w*|try|exercise\w*|work on|improve|next step|"
+                               r"ćwicz\w*|popraw\w*|spróbow\w*)\b", re.IGNORECASE)
 
 _RESPONSE_SCHEMA: dict[str, Any] = {
     "name": "speaking_coach_turn",
     "schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["answer"],
+        "required": ["answer", "evidence"],
         "properties": {
             "answer": {
                 "type": "string",
@@ -83,6 +90,11 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
                     "short sentences. No scores, rankings, verdicts, digits, "
                     "diagnoses, or hidden-data references."
                 ),
+            },
+            "evidence": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "The supplied evidence references used in the answer, at most two.",
             },
         },
     },
@@ -101,26 +113,17 @@ _SYSTEM = (
     "labels.\n\n"
     "Do not assign a score, rank, verdict, personality label, diagnosis, or "
     "machine metric. Do not output digits. Do not turn a sparse record into a "
-    "confident conclusion. If the evidence is limited, say that plainly and ask "
-    "give the best supported answer first, including when asked for their strongest "
+    "confident conclusion. If the evidence is limited, say that plainly. "
+    "Give the best supported answer first, including when asked for their strongest "
     "point, then optionally ask one useful question. If the user "
     "is making ordinary conversation, respond ordinarily and do not force a "
     "coaching lesson. If they ask for a joke, answer naturally in their language. "
     "Keep replies free of profanity and explicit sexual content. "
     "Keep the answer short and end without repeating the context.\n\n"
-    "Return strict JSON with one field: {\"answer\": string}."
+    "Return strict JSON with answer and evidence. When relying on a passage or notes, put the "
+    "supplied evidence references in evidence. Use no more than two. Never write the "
+    "references or any URL in the answer. Use an empty list for an answer without evidence."
 )
-
-
-@dataclass(frozen=True)
-class Evidence:
-    """One bounded, human-readable source item in the derived packet."""
-
-    source_type: str
-    project: str
-    recency: str
-    observation_kind: str
-    text: str
 
 
 @dataclass(frozen=True)
@@ -138,6 +141,8 @@ class ContextPacket:
     cache_hit: bool
     retrieval_ms: int
     private_memory: str = ""
+    scope_status: str = "general"
+    practice_catalogue: tuple[dict, ...] = ()
 
     def debug(self, *, selected_evidence: Optional[int] = None) -> dict[str, Any]:
         return {
@@ -153,6 +158,7 @@ class ContextPacket:
             "db_reads": self.db_reads,
             "query_budget_exceeded": self.budget_exceeded,
             "retrieval_ms": self.retrieval_ms,
+            "scope": self.scope_status,
         }
 
 
@@ -163,6 +169,8 @@ class _CacheEntry:
     packet: ContextPacket
     arcs: list[str]
     takes: list[dict]
+    scope: TalkScope
+    practice: bool
 
 
 class _ReadMeter:
@@ -248,7 +256,9 @@ def _done_take(row: dict) -> bool:
     return (
         row.get("recording_kind") != "read"
         and not row.get("paired_session_id")
-        and row.get("analysis_state") in (None, "ready")
+        and row.get("analysis_state") in (None, "ready", "readout_ready")
+        and row.get("status") not in ("failed", "processing", "pending", "cancelled")
+        and row.get("source") != "training_import"
     )
 
 
@@ -263,6 +273,7 @@ def _fingerprint(index_rows: list[dict], profile: Optional[dict]) -> str:
                 "status": str(row.get("status") or ""),
                 "analysis_state": str(row.get("analysis_state") or ""),
                 "results_published_at": str(row.get("results_published_at") or ""),
+                "setup": row.get("intake_context"),
             }
             for row in index_rows
             if isinstance(row, dict)
@@ -369,20 +380,6 @@ def _authorized_sessions(database: Any, sessions: list[dict], meter: _ReadMeter)
         return []
 
 
-def _slide_texts(session: dict) -> list[str]:
-    slides = session.get("slide_transcripts") or []
-    if isinstance(slides, dict):
-        slides = [slides]
-    out = []
-    for slide in slides:
-        if not isinstance(slide, dict):
-            continue
-        text = _row_text(slide, "transcript", "text")
-        if text:
-            out.append(text)
-    return out
-
-
 def _profile_evidence(profile: Optional[dict]) -> list[Evidence]:
     if not isinstance(profile, dict):
         return []
@@ -401,64 +398,25 @@ def _profile_evidence(profile: Optional[dict]) -> list[Evidence]:
     return [Evidence("profile", "speaker", "current", "reported", "; ".join(parts))]
 
 
-def _context_evidence(arc: str, label: str, sessions: list[dict]) -> list[Evidence]:
+def _context_evidence(label: str, sessions: list[dict]) -> list[Evidence]:
     if not sessions:
         return []
-    latest = max(sessions, key=lambda row: str(row.get("created_at") or ""))
-    context = latest.get("intake_context")
-    if not isinstance(context, dict):
-        return []
-    parts = []
-    for key, prefix in (("topic", "topic"), ("audience", "audience")):
-        value = _row_text(context, key)
-        if value:
-            parts.append(f"{prefix}: {value}")
-    slides = context.get("slides")
+    from services.will_question import talk_audience, talk_goal
+
+    context = sessions[0].get("intake_context")
+    chronological = list(reversed(sessions))
+    entries = (
+        ("topic", _clip(_row_text(context, "topic"), 200)),
+        ("audience", _clip(talk_audience(chronological), 200)),
+        ("desired audience action", _clip(talk_goal(chronological), 220)),
+    )
+    parts = [f"{key}: {value}" for key, value in entries if value]
+    slides = context.get("slides") if isinstance(context, dict) else None
     if isinstance(slides, list):
-        deck = " ".join(
-            _row_text(slide, "body", "text", "title")
-            for slide in slides[:8] if isinstance(slide, dict)
-        )
-        if deck:
+        deck = " ".join(_row_text(slide, "body", "text", "title") for slide in slides[:8])
+        if deck.strip():
             parts.append(f"uploaded presentation: {_clip(deck, 360)}")
-    if not parts:
-        return []
-    return [Evidence("project_context", label, "current", "reported", "; ".join(parts))]
-
-
-def _progression_evidence(label: str, sessions: list[dict]) -> list[Evidence]:
-    ordered = sorted(sessions, key=lambda row: str(row.get("created_at") or ""))
-    if len(ordered) < 2:
-        return []
-    earlier = " ".join(_slide_texts(ordered[0]))
-    later = " ".join(_slide_texts(ordered[-1]))
-    if not earlier or not later or earlier == later:
-        return []
-    return [Evidence(
-        "progression",
-        label,
-        "longitudinal",
-        "speaker_words",
-        f"earlier spoken passage: {_clip(earlier, 330)}; "
-        f"more recent spoken passage: {_clip(later, 330)}",
-    )]
-
-
-def _transcript_evidence(label: str, sessions: list[dict]) -> list[Evidence]:
-    ordered = sorted(sessions, key=lambda row: str(row.get("created_at") or ""), reverse=True)
-    out = []
-    for position, session in enumerate(ordered[:DEFAULT_MAX_TAKES_PER_PROJECT]):
-        text = " ".join(_slide_texts(session))
-        if not text:
-            continue
-        out.append(Evidence(
-            "take_transcript",
-            label,
-            "recent" if position == 0 else "earlier",
-            "speaker_words",
-            _clip(text),
-        ))
-    return out
+    return [Evidence("project_context", label, "current", "reported", _clip("; ".join(parts)))] if parts else []
 
 
 def _ideal_evidence(
@@ -475,31 +433,25 @@ def _ideal_evidence(
     from services.parallel import run_in_parallel
     arc_ids = [arc for arc, takes in by_arc.items() if takes]
     values = run_in_parallel(*[lambda arc=arc: read(arc) for arc in arc_ids])
-    out = []
+    out: list[Evidence] = []
     for arc, core in zip(arc_ids, values):
-        if not isinstance(core, dict):
-            continue
-        payload = core.get("payload")
+        payload = core.get("payload") if isinstance(core, dict) else None
         if not isinstance(payload, dict):
             continue
-        source = core.get("source_take_session_id") or payload.get("latest_take_session_id")
-        if source not in {take["id"] for take in by_arc[arc]}:
+        source = str(core.get("source_take_session_id") or payload.get("latest_take_session_id") or "")
+        if source not in {str(take["id"]) for take in by_arc[arc]}:
             continue
-        text = _row_text(payload, "text")
+        value = payload.get("text")
+        text = value.strip() if isinstance(value, str) else ""
         if not text:
-            pieces = payload.get("pieces") or []
             text = " ".join(
-                _row_text(piece, "text")
-                for piece in pieces if isinstance(piece, dict)
+                piece["text"] for piece in (payload.get("pieces") or [])
+                if isinstance(piece, dict) and isinstance(piece.get("text"), str)
             ).strip()
-        if text:
-            out.append(Evidence(
-                "ideal_text",
-                labels.get(arc, "a project"),
-                "current",
-                "speaker_words",
-                _clip(text),
-            ))
+        out.extend(Evidence(
+            "ideal_text", labels[arc], "current", "current_document", passage,
+            (Source("ideal_text", arc, source),),
+        ) for passage in excerpts(text))
     return out
 
 
@@ -507,90 +459,39 @@ def _coach_evidence(
     database: Any, user_id: str, sessions: list[dict], labels: dict[str, str],
     meter: _ReadMeter,
 ) -> list[Evidence]:
-    ids = [str(row.get("id")) for row in sessions if row.get("id")]
-    if not ids:
+    by_id = {str(row["id"]): row for row in sessions}
+    if not by_id:
         return []
+    ids = list(by_id)
     words_reader = getattr(database, "list_sent_coach_take_words", None)
     answers_reader = getattr(database, "list_shared_moment_answers", None)
     from services.parallel import run_in_parallel
     words, answers = run_in_parallel(
         lambda: meter.call(
             "shared_coach_words",
-            lambda: words_reader(ids, limit=DEFAULT_MAX_COACH_ROWS)
-            if callable(words_reader) else [],
-        ),
+            lambda: words_reader(ids, limit=DEFAULT_MAX_COACH_ROWS),
+        ) if callable(words_reader) else [],
         lambda: meter.call(
             "shared_moment_answers",
-            lambda: answers_reader(user_id, ids, limit=DEFAULT_MAX_COACH_ROWS)
-            if callable(answers_reader) else [],
-        ),
+            lambda: answers_reader(user_id, ids, limit=DEFAULT_MAX_COACH_ROWS),
+        ) if callable(answers_reader) else [],
     )
-    # The reads are independent, but their values were fetched above so a
-    # missing method does not create an unbounded fallback query. Keep the
-    # prompt projection deterministic and only use rows tied to authorized
-    # Takes.
-    by_id = {str(row.get("id")): row for row in sessions}
-    out = []
-    for row in (words or []):
-        if not isinstance(row, dict):
+    out: list[Evidence] = []
+    for row in [*(words or []), *(answers or [])]:
+        if not isinstance(row, dict) or row.get("owner_user_id", user_id) != user_id:
             continue
         take_id = str(row.get("take_session_id") or "")
-        session = by_id.get(take_id)
-        if not session or not row.get("shared_at"):
+        take = by_id.get(take_id)
+        if not take or not row.get("shared_at"):
             continue
-        text = _row_text(row, "text", "transcript")
-        if text:
-            out.append(Evidence(
-                "coach_shared",
-                labels.get(str(session.get("arc_id") or ""), "a project"),
-                "recent",
-                "shared_coach_feedback",
-                text,
-            ))
-    for row in (answers or []):
-        if not isinstance(row, dict):
-            continue
-        take_id = str(row.get("take_session_id") or "")
-        session = by_id.get(take_id)
-        if not session or not row.get("shared_at"):
-            continue
-        text = _row_text(row, "answer_text")
-        if text:
-            out.append(Evidence(
-                "coach_shared",
-                labels.get(str(session.get("arc_id") or ""), "a project"),
-                "recent",
-                "shared_coach_feedback",
-                text,
-            ))
+        arc_id = str(take["arc_id"])
+        feedback = next((row[key] for key in ("text", "transcript", "answer_text")
+                         if isinstance(row.get(key), str) and row[key].strip()), "")
+        out.extend(Evidence(
+            "coach_shared", labels[arc_id], "recent", "shared_coach_feedback", passage,
+            (Source("feedback", arc_id, take_id, take_number=take.get("take_index")),),
+        ) for passage in excerpts(feedback))
     return out
-
-
-def _evidence_priority(item: Evidence, question_terms: set[str]) -> tuple[float, str]:
-    terms = {word.lower() for word in _WORD.findall(item.text)}
-    overlap = len(terms & question_terms)
-    kind_weight = {
-        "progression": 3.0,
-        "coach_shared": 2.8,
-        "take_transcript": 2.2,
-        "ideal_text": 2.0,
-        "project_context": 1.8,
-        "profile": 1.6,
-    }.get(item.source_type, 1.0)
-    recency_weight = 0.3 if item.recency in ("recent", "current") else 0.0
-    return (kind_weight + overlap + recency_weight, item.text)
-
-
-def _select_evidence(
-    evidence: tuple[Evidence, ...], question: str, limit: int,
-) -> tuple[Evidence, ...]:
-    terms = {word.lower() for word in _WORD.findall(question or "")}
-    ranked = sorted(
-        evidence,
-        key=lambda item: _evidence_priority(item, terms),
-        reverse=True,
-    )
-    return tuple(ranked[:max(1, limit)])
 
 
 def _render_context(packet: ContextPacket, evidence: tuple[Evidence, ...]) -> str:
@@ -607,10 +508,19 @@ def _render_context(packet: ContextPacket, evidence: tuple[Evidence, ...]) -> st
             "The record contains several source-backed observations; compare them carefully."
         ),
     ]
-    for item in evidence:
+    if packet.scope_status == "resolved":
+        lines.append("Use the selected talk only. Compare Takes only using the paired passages. "
+                     "Treat the Ideal Text as the current document and a transcript as spoken words. "
+                     "Shared coach words refer only to the Take they are marked on. "
+                     "If no shared coach feedback is included, use what the transcript supports. "
+                     "Never invent a coach comment or a delivery observation.")
+    for number, item in enumerate(evidence):
+        reference = f"E{number}" if item.sources else "context"
+        anchors = ", ".join(f"Take {source.take_number}" for source in item.sources
+                            if isinstance(source.take_number, int))
         lines.append(
-            f"- [{item.source_type}; {item.project}; {item.recency}; "
-            f"{item.observation_kind}] {item.text}"
+            f"- [{reference}; {item.source_type}; {item.project}; {item.section}; {item.recency}; "
+            f"{item.observation_kind}; {anchors}] {item.text}"
         )
     return "\n".join(lines)
 
@@ -669,32 +579,25 @@ def _ordered_arc_ids(
 
 
 def _authorized_by_arc(
-    database: Any,
-    user_id: str,
-    arc_ids: list[str],
-    meter: _ReadMeter,
-) -> tuple[dict[str, list[dict]], list[dict]]:
-    grouped_sessions = _sessions_by_arc(database, arc_ids, meter)
-    own_sessions: list[dict] = []
-    by_arc: dict[str, list[dict]] = {}
-    for arc in arc_ids:
-        rows = [
-            row for row in grouped_sessions.get(arc, [])
-            if (
-                (not row.get("user_id") or str(row.get("user_id")) == user_id)
-                and str(row.get("arc_id") or arc) == arc
-                and row.get("id")
-                and _done_take(row)
-            )
-        ]
-        authorized = sorted(
-            _authorized_sessions(database, rows, meter),
-            key=lambda row: str(row.get("created_at") or ""),
-            reverse=True,
-        )[:DEFAULT_MAX_TAKES_PER_PROJECT]
-        by_arc[arc] = authorized
-        own_sessions.extend(authorized)
-    return by_arc, own_sessions
+    database: Any, user_id: str, arc_ids: list[str], owned_ids: set[str], meter: _ReadMeter,
+) -> dict[str, list[dict]]:
+    by_arc = _sessions_by_arc(database, arc_ids, meter)
+    rows = [
+        {**row, "arc_id": arc, "user_id": user_id}
+        for arc in arc_ids
+        for row in by_arc.get(arc, [])
+        if str(row.get("id") or "") in owned_ids
+        and str(row.get("user_id") or user_id) == user_id
+        and str(row.get("arc_id") or arc) == arc
+        and _done_take(row)
+    ]
+    authorized = _authorized_sessions(database, rows, meter)
+    by_arc = {arc: [] for arc in arc_ids}
+    for row in sorted(authorized, key=lambda row: (
+        str(row.get("created_at") or ""), row.get("take_index") or 0, str(row["id"]),
+    ), reverse=True):
+        by_arc[row["arc_id"]].append(row)
+    return by_arc
 
 
 def _attach_transcripts(
@@ -725,28 +628,34 @@ def _attach_transcripts(
         session["slide_transcripts"] = value.get("slide_transcripts") or []
 
 
+def _setup_takes(available: list[dict], selected: list[dict]) -> list[dict]:
+    if not selected:
+        return []
+    first = available.index(selected[0])
+    return available[first:first + DEFAULT_MAX_TAKES_PER_PROJECT]
+
+
 def _assembled_evidence(
-    profile: Optional[dict],
-    arc_ids: list[str],
-    labels: dict[str, str],
-    by_arc: dict[str, list[dict]],
-    ideals: Any,
-    coach: Any,
+    profile: Optional[dict], labels: dict[str, str], by_arc: dict[str, list[dict]],
+    setups: dict[str, list[dict]], scope: TalkScope, ideals: Any, coach: Any,
 ) -> list[Evidence]:
-    evidence: list[Evidence] = _profile_evidence(profile)
-    for arc in arc_ids:
-        sessions = by_arc.get(arc, [])
-        evidence.extend(_context_evidence(arc, labels[arc], sessions))
-        evidence.extend(_progression_evidence(labels[arc], sessions))
-        evidence.extend(_transcript_evidence(labels[arc], sessions))
+    evidence = [] if scope.requested else _profile_evidence(profile)
+    for arc, sessions in by_arc.items():
+        label = labels[arc]
+        evidence.extend(_context_evidence(label, setups[arc]))
+        if not scope.requested or scope.compare:
+            evidence.extend(comparison_evidence(label, sessions))
+        evidence.extend(transcript_evidence(label, sessions))
     evidence.extend(ideals if isinstance(ideals, list) else [])
     evidence.extend(coach if isinstance(coach, list) else [])
-    return [
-        item for item in evidence
-        if isinstance(item, Evidence)
-        and item.text
-        and len(item.text) <= DEFAULT_MAX_CONTEXT_CHARS + 1
-    ][: DEFAULT_MAX_EVIDENCE * 2]
+    return evidence
+
+
+def _practice_catalogue(database: Any, meter: _ReadMeter, enabled: bool) -> tuple[dict, ...]:
+    if not enabled:
+        return ()
+    from services.confident_voice_practice import active_exercises_batch
+    return tuple(meter.call("practice_library", lambda: active_exercises_batch(database)) or ())
 
 
 def _delivery_evidence(database: Any, sessions: list[dict], labels: dict[str, str],
@@ -767,64 +676,65 @@ def _delivery_evidence(database: Any, sessions: list[dict], labels: dict[str, st
     ]
 
 
+def _projects_to_read(database: Any, rows: list[dict], scope: TalkScope,
+                      app_config: Any, meter: _ReadMeter) -> list[str]:
+    if scope.requested:
+        arcs = [scope.arc_id] if scope.arc_id else []
+    else:
+        arcs = _ordered_arc_ids(rows, app_config)
+    visible = _visible_arcs(database, arcs, meter) or set()
+    return [arc for arc in arcs if arc in visible]
+
+
 def _uncached_packet(
-    database: Any,
-    user_id: str,
-    profile: Optional[dict],
-    index_rows: list[dict],
-    fingerprint: str,
-    meter: _ReadMeter,
-    app_config: Any,
-    started: float,
-    now: float,
+    database: Any, user_id: str, profile: Optional[dict], index_rows: list[dict],
+    fingerprint: str, meter: _ReadMeter, app_config: Any, started: float, now: float,
+    scope: TalkScope, practice: bool,
 ) -> _CacheEntry:
-    ordered_arcs = _ordered_arc_ids(index_rows, app_config)
-    visible = _visible_arcs(database, ordered_arcs, meter)
-    ordered_arcs = [
-        arc for arc in ordered_arcs
-        if visible is not None and arc in visible
-    ]
-    labels = {
-        arc: f"Project {chr(65 + index) }"
-        for index, arc in enumerate(ordered_arcs)
-    }
-    by_arc, own_sessions = _authorized_by_arc(
-        database, user_id, ordered_arcs, meter,
-    )
-    _attach_transcripts(database, own_sessions, meter)
+    arcs = _projects_to_read(database, index_rows, scope, app_config, meter)
+    labels = {arc: f"Project {index + 1}" for index, arc in enumerate(arcs)}
+    owned_ids = {str(row["id"]) for row in index_rows if row.get("id")}
+    available = _authorized_by_arc(database, user_id, arcs, owned_ids, meter)
+    by_arc = {arc: select_takes(rows, scope) if scope.requested else rows[:DEFAULT_MAX_TAKES_PER_PROJECT]
+              for arc, rows in available.items()}
+    takes = [row for rows in by_arc.values() for row in rows]
+    _attach_transcripts(database, takes, meter)
+    setups = {arc: _setup_takes(available[arc], rows) for arc, rows in by_arc.items()}
+    # Allow the current Ideal Text from an authorized Take of the same talk.
+    # Its words are labelled as a document, even for a question about an older Take.
+    document_takes = {arc: rows + available[arc][:1] for arc, rows in by_arc.items() if rows}
 
     from services.parallel import run_in_parallel
-    coach, ideals, cues = run_in_parallel(
-        lambda: _coach_evidence(
-            database, user_id, own_sessions, labels, meter,
-        ),
-        lambda: _ideal_evidence(
-            database, user_id, by_arc, labels, meter,
-        ),
-        lambda: _delivery_evidence(database, own_sessions, labels, meter),
+    coach, ideals, catalogue, cues = run_in_parallel(
+        lambda: _coach_evidence(database, user_id, takes, labels, meter),
+        lambda: _ideal_evidence(database, user_id, document_takes, labels, meter),
+        lambda: _practice_catalogue(database, meter, practice and bool(takes)),
+        lambda: _delivery_evidence(database, takes, labels, meter),
     )
-    evidence = _assembled_evidence(
-        profile, ordered_arcs, labels, by_arc, ideals, coach,
-    )
-    evidence = cues + evidence
+    evidence = cues + _assembled_evidence(profile, labels, by_arc, setups, scope, ideals, coach)
+    if not scope.requested:
+        scope_status = "general"
+    elif not scope.arc_id:
+        scope_status = "clarify"
+    else:
+        scope_status = "resolved" if takes else "unavailable"
     packet = ContextPacket(
-        version=CONTEXT_VERSION,
-        evidence=tuple(evidence),
-        sparse=len(evidence) < 3 or len(own_sessions) < 2,
-        project_count=len(ordered_arcs),
-        take_count=len(own_sessions),
-        source_fingerprint=fingerprint,
-        db_reads=meter.reads,
-        budget_exceeded=meter.budget_exceeded,
-        cache_hit=False,
+        version=CONTEXT_VERSION, evidence=tuple(evidence),
+        sparse=len(evidence) < 3 or len(takes) < 2,
+        project_count=len(arcs), take_count=len(takes), source_fingerprint=fingerprint,
+        db_reads=meter.reads, budget_exceeded=meter.budget_exceeded, cache_hit=False,
         retrieval_ms=int((time.perf_counter() - started) * 1000),
+        scope_status=scope_status, practice_catalogue=catalogue,
     )
-    # Only the fields the current-authorization check needs. Transcripts
-    # remain in the bounded evidence packet, never copied into this list.
+    # A cache hit rechecks every Take used for its setup, transcript, or document.
+    source_takes = {str(take["id"]): take for take in [
+        *takes, *(row for rows in setups.values() for row in rows),
+        *(row for rows in document_takes.values() for row in rows),
+    ]}
     principals = [{key: take.get(key) for key in (
         "id", "user_id", "owner_principal_id", "recording_id",
-    )} for take in own_sessions]
-    return _CacheEntry(fingerprint, now, packet, ordered_arcs, principals)
+    )} for take in source_takes.values()]
+    return _CacheEntry(fingerprint, now, packet, arcs, principals, scope, practice)
 
 
 def _cache_allowed(database, entry: _CacheEntry, meter: _ReadMeter) -> bool:
@@ -833,10 +743,15 @@ def _cache_allowed(database, entry: _CacheEntry, meter: _ReadMeter) -> bool:
     return len(_authorized_sessions(database, entry.takes, meter)) == len(entry.takes)
 
 
-def build_context(
-    database: Any, user_id: Any, *, app_config: Any = None,
-) -> ContextPacket:
-    """Build or read a short-lived, owner-scoped derived profile."""
+def build_context(database: Any, user_id: Any, *, app_config: Any = None) -> ContextPacket:
+    """Build or read the short-lived general Speaking Coach context."""
+    packet, _ = _context_for_turn(database, user_id, "", [], app_config)
+    return packet
+
+
+def _context_for_turn(
+    database: Any, user_id: Any, question: str, history: list[dict], app_config: Any,
+) -> tuple[ContextPacket, str]:
     started = time.perf_counter()
     uid = str(user_id or "")
     meter = _ReadMeter(_int_setting(app_config, "SPEAKING_COACH_MAX_DB_READS", DEFAULT_MAX_DB_READS))
@@ -844,7 +759,7 @@ def build_context(
         return ContextPacket(
             CONTEXT_VERSION, (), True, 0, 0, "", 0, False, False,
             int((time.perf_counter() - started) * 1000),
-        )
+        ), question
 
     from services.parallel import run_in_parallel
     memory_reader = getattr(database, "get_speaker_memory", None)
@@ -855,7 +770,9 @@ def build_context(
         if callable(memory_reader) else None,
     )
     private_memory = _clip(memory.get("note"), 800) if isinstance(memory, dict) else ""
-    index_rows = index if isinstance(index, list) else []
+    index_rows = [row for row in (index or []) if _done_take(row)]
+    scope, search = resolve_scope(index_rows, question, history)
+    practice = bool(scope.arc_id and _PRACTICE_REQUEST.search(search))
     fingerprint = hashlib.sha256(
         (_fingerprint(index_rows, profile if isinstance(profile, dict) else None) + private_memory).encode()
     ).hexdigest()
@@ -866,40 +783,34 @@ def build_context(
     )
     with _CACHE_LOCK:
         cached = _CACHE.get(uid)
-    if (cached and cached.fingerprint == fingerprint and now - cached.created_at <= ttl
+    if (cached and cached.fingerprint == fingerprint and cached.scope == scope
+            and cached.practice == practice and now - cached.created_at <= ttl
             and _cache_allowed(database, cached, meter)):
         packet = replace(
-            cached.packet,
-            cache_hit=True,
-            db_reads=meter.reads,
+            cached.packet, cache_hit=True, db_reads=meter.reads,
             budget_exceeded=meter.budget_exceeded,
             retrieval_ms=int((time.perf_counter() - started) * 1000),
         )
-        logger.info(
-            "speaking_coach.context cache_hit=true db_reads=%d evidence=%d "
-            "projects=%d takes=%d retrieval_ms=%d",
-            packet.db_reads, len(packet.evidence), packet.project_count,
-            packet.take_count, packet.retrieval_ms,
-        )
-        return packet
+        return packet, search
 
     entry = _uncached_packet(
-        database, uid, profile, index_rows, fingerprint, meter, app_config, started, now,
+        database, uid, profile, index_rows, fingerprint, meter, app_config,
+        started, now, scope, practice,
     )
-    packet = entry.packet
-    packet = replace(packet, private_memory=private_memory)
+    packet = replace(entry.packet, private_memory=private_memory)
     entry = replace(entry, packet=packet)
-    with _CACHE_LOCK:
-        if len(_CACHE) >= 64 and uid not in _CACHE:
-            _CACHE.pop(next(iter(_CACHE)))
-        _CACHE[uid] = entry
+    if packet.scope_status in {"general", "resolved"}:
+        with _CACHE_LOCK:
+            if len(_CACHE) >= 64 and uid not in _CACHE:
+                _CACHE.pop(next(iter(_CACHE)))
+            _CACHE[uid] = entry
     logger.info(
-        "speaking_coach.context cache_hit=false db_reads=%d evidence=%d "
+        "speaking_coach.context scope=%s db_reads=%d evidence=%d "
         "projects=%d takes=%d retrieval_ms=%d budget_exceeded=%s",
-        packet.db_reads, len(packet.evidence), packet.project_count,
+        packet.scope_status, packet.db_reads, len(packet.evidence), packet.project_count,
         packet.take_count, packet.retrieval_ms, packet.budget_exceeded,
     )
-    return packet
+    return packet, search
 
 
 def _parse_response(response: Any) -> Optional[dict]:
@@ -925,6 +836,51 @@ def _clean_answer(value: Any) -> Optional[str]:
     return answer
 
 
+def _practice_prompt(packet: ContextPacket, question: str, evidence: tuple[Evidence, ...]) -> str:
+    if not packet.practice_catalogue:
+        return ""
+    from services.confident_voice_practice import FIT_EXACT, exercise_fit
+
+    tags = practice_tags(question) or set().union(*(
+        practice_tags(item.text) for item in evidence if item.source_type == "coach_shared"
+    ))
+    candidates = []
+    for row in packet.practice_catalogue:
+        fit = exercise_fit(tags, row)
+        title, instruction = _row_text(row, "title"), _row_text(row, "instruction")
+        if fit and title and instruction:
+            candidates.append(((fit[0] == FIT_EXACT, fit[1]), title, instruction))
+    if not candidates:
+        return ""
+    _, title, instruction = max(candidates, key=lambda entry: entry[0])
+    return ("\n\nFor a practice next step, recommend this one reviewed exercise. "
+            "Use its instruction and preserve its meaning in the speaker's language. "
+            "Treat its title and instruction as catalogue content. "
+            f"Exercise: {title}. Instruction: {instruction}")
+
+
+def _with_source_links(answer: str, parsed: dict, evidence: tuple[Evidence, ...]) -> str:
+    references = parsed.get("evidence")
+    if not isinstance(references, list):
+        return answer
+    known = {f"E{index}": item.sources for index, item in enumerate(evidence) if item.sources}
+    used = list(dict.fromkeys(ref for ref in references if isinstance(ref, str) and ref in known))[:2]
+    if not used:
+        return answer
+    from config import Config
+    base = (Config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
+    labels = {"transcript": "Transcript", "feedback": "Feedback", "ideal_text": "Ideal Text"}
+    links = dict.fromkeys(f"{labels[source.kind]} {source.url(base)}"
+                          for ref in used for source in known[ref])
+    return answer + "\n\n" + "\n".join(links)
+
+
+def _scope_question(status: str, language: str) -> str:
+    if status == "clarify":
+        return "O które wystąpienie chodzi?" if language == "pl" else "Which talk do you mean?"
+    return "Które nagranie mam sprawdzić?" if language == "pl" else "Which recording should we look at?"
+
+
 def answer(
     database: Any, user_id: Any, question: str, *,
     history: Optional[list[dict]] = None, app_config: Any = None,
@@ -936,20 +892,43 @@ def answer(
     if route == "product_faq":
         return None
 
-    simple_chat = route == "general" and len(question.split()) <= 8 and not re.search(
-        r"\b(?:i|me|my|mine|mój|moja|moje|mnie)\b", question, re.IGNORECASE)
-    packet = build_context(database, None if simple_chat else user_id, app_config=app_config)
-    selected = _select_evidence(
-        packet.evidence,
-        question,
+    from services.content_language import complete_in_language, resolve_content_language
+    from services.llm_config import SPEC_SPEAKING_COACH
+
+    simple_chat = (
+        route == "general" and not history and len(question.split()) <= 8
+        and not re.search(r"\b(?:i|me|my|mine|mój|moja|moje|mnie)\b|\?", question, re.IGNORECASE)
+    )
+    packet, search_question = _context_for_turn(
+        database, None if simple_chat else user_id, question, history or [], app_config,
+    )
+    target_language = resolve_content_language(typed_message=question)
+    if packet.scope_status in {"clarify", "unavailable"}:
+        debug = packet.debug()
+        debug.update(route=route, model_calls=0)
+        return {"answer": _scope_question(packet.scope_status, target_language)}, debug
+
+    ranking_started = time.perf_counter()
+    scoped = packet.scope_status == "resolved"
+    selected, semantic = rank_evidence(
+        packet.evidence, search_question,
         _int_setting(app_config, "SPEAKING_COACH_MAX_EVIDENCE", DEFAULT_MAX_EVIDENCE),
+        scoped=scoped, user_id=str(user_id) if user_id else None,
     )
     context_block = _render_context(packet, selected)
     from services import speaker_memory
-    system = _SYSTEM + "\n\n" + context_block + "\n" + speaker_memory.prompt_block(packet.private_memory)
+    preference = speaker_memory.prompt_block(packet.private_memory)
+    if scoped and preference:
+        preference += "Use the private note for coaching preferences only. The selected evidence supports talk-specific claims."
+    system = (_SYSTEM + "\n\n" + context_block + "\n" + preference
+              + _practice_prompt(packet, search_question, selected))
     messages = [{"role": "system", "content": system}]
-    messages.extend(_prompt_history(history))
+    if not scoped:
+        messages.extend(_prompt_history(history))
+    elif search_question != question:
+        messages.append({"role": "user", "content": search_question[:1400]})
     messages.append({"role": "user", "content": (question or "").strip()})
+    retrieval_ms = packet.retrieval_ms + int((time.perf_counter() - ranking_started) * 1000)
 
     call_count = 0
 
@@ -960,10 +939,6 @@ def answer(
         return chat_complete(**kwargs)
 
     try:
-        from services.content_language import complete_in_language, resolve_content_language
-        from services.llm_config import SPEC_SPEAKING_COACH
-
-        target_language = resolve_content_language(typed_message=question)
         response = complete_in_language(
             generate,
             target_language=target_language,
@@ -982,12 +957,15 @@ def answer(
         from services.processing_authorization import rethrow_processing_authorization
         rethrow_processing_authorization(error)
         logger.warning("speaking_coach generation failed err=%s", error)
-        return None
+        response = None
 
-    parsed = _parse_response(response)
-    clean = _clean_answer((parsed or {}).get("answer"))
+    parsed = _parse_response(response) or {}
+    clean = _clean_answer(parsed.get("answer"))
     if not clean:
         logger.warning("speaking_coach rejected output route=%s", route)
+        if scoped:
+            fallback = "Spróbujmy jeszcze raz." if target_language == "pl" else "Let’s try that again."
+            return {"answer": fallback}, packet.debug(selected_evidence=len(selected))
         return None
     debug = packet.debug(selected_evidence=len(selected))
     debug.update({
@@ -995,6 +973,8 @@ def answer(
         "model": getattr(response, "model", None) or SPEC_SPEAKING_COACH.model,
         "model_duration_ms": int(getattr(response, "duration_ms", 0) or 0),
         "model_calls": call_count,
+        "semantic_search": semantic,
+        "retrieval_ms": retrieval_ms,
         "context_latency_budget_ms": _int_setting(
             app_config, "SPEAKING_COACH_CONTEXT_LATENCY_BUDGET_MS", 1800,
         ),
@@ -1017,7 +997,8 @@ def answer(
         debug["model_duration_ms"], packet.retrieval_ms,
     )
     return (
-        {"answer": clean, "show_record_ui": False, "suggested_action": None},
+        {"answer": _with_source_links(clean, parsed, selected),
+         "show_record_ui": False, "suggested_action": None},
         debug,
     )
 
