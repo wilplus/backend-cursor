@@ -31,7 +31,7 @@ from services.ai_voice_language import require as require_language
 from services.ai_voice_language import tokens as word_tokens
 from services.rater_languages import normalize_provider_language
 
-VALIDATOR_VERSION = "ai-voice-validator-v3"
+VALIDATOR_VERSION = "ai-voice-validator-v4"
 
 CLIPPED_SAMPLE = 0.999
 MAX_CLIPPED_SHARE = 0.001
@@ -190,7 +190,8 @@ def _check_pause(words: list[dict], dbs: list[float], index: int) -> dict:
     return {"passed": not failed, "measurements": m, "failed": failed}
 
 
-def _check_stress(words: list[dict], dbs: list[float], index: int, phrase: str) -> dict:
+def _check_stress(words: list[dict], dbs: list[float], index: int, phrase: str, *,
+                  opening_emphasis: bool = False) -> dict:
     n = len(_tokens(phrase))
     start, end = words[index]["start"], words[index + n - 1]["end"]
     inside = _span_db(dbs, start, end)
@@ -202,6 +203,14 @@ def _check_stress(words: list[dict], dbs: list[float], index: int, phrase: str) 
     m = {"contrast_db": round(contrast, 2)}
     failed = (["not_stressed"] if contrast < STRESS_MIN_DB
               else ["exaggerated"] if contrast > STRESS_MAX_DB else [])
+    if opening_emphasis:
+        # Measure through the emphasized phrase, including the lead-in. Pauses
+        # later in the example can still give the rest of the thought room.
+        opening = dbs[:int(end / _FRAME_S)]
+        gap = round(_longest_run([db <= SILENT_DB for db in opening]) * _FRAME_S, 3)
+        m["opening_gap_s"] = gap
+        if gap > Config.AI_VOICE_OPENING_MAX_GAP_S:
+            failed.append("opening_gap")
     return {"passed": not failed, "measurements": m, "failed": failed}
 
 
@@ -216,7 +225,7 @@ def _check_fillers(words: list[dict], language: str) -> dict:
 
 def check_exercise(problem: str, *, words: list[dict], dbs: list[float],
                    phrase: Optional[str], original_wpm: Optional[float],
-                   language: str) -> dict:
+                   language: str, opening_emphasis: bool = False) -> dict:
     """``{"passed", "measurements", "failed"}`` for the one exercise."""
     if len(words) < 3:
         return {"passed": False, "measurements": {}, "failed": ["no_timed_words"]}
@@ -227,11 +236,29 @@ def check_exercise(problem: str, *, words: list[dict], dbs: list[float],
     if problem not in ("pause", "stress"):
         return {"passed": False, "measurements": {}, "failed": ["unknown_exercise"]}
     index = _find_phrase(words, phrase or "")
-    if index is None or index == 0:
+    if index is None or (index == 0 and (problem == "pause" or not opening_emphasis)):
         return {"passed": False, "measurements": {}, "failed": ["target_not_found"]}
     if problem == "pause":
         return _check_pause(words, dbs, index)
-    return _check_stress(words, dbs, index, phrase or "")
+    return _check_stress(words, dbs, index, phrase or "", opening_emphasis=opening_emphasis)
+
+
+def _check_duration(duration: float, original: Optional[float], *,
+                    opening_emphasis: bool) -> tuple[dict[str, float], list[str]]:
+    measurements = {"duration_s": round(duration, 2)}
+    failed = []
+    if duration > Config.AI_VOICE_MAX_CLIP_SECONDS:
+        failed.append("too_long")
+    if original and original > 0:
+        ratio = duration / original
+        measurements["duration_ratio"] = round(ratio, 3)
+        if not MIN_DURATION_RATIO <= ratio <= MAX_DURATION_RATIO:
+            failed.append("duration")
+        elif opening_emphasis and abs(ratio - 1) > Config.AI_VOICE_OPENING_MAX_DURATION_DRIFT:
+            failed.append("opening_pace")
+    elif opening_emphasis:
+        failed.append("pace_unmeasurable")
+    return measurements, failed
 
 
 def validate(*, audio: bytes, transcription: Optional[dict], spoken_words: list[str],
@@ -242,6 +269,7 @@ def validate(*, audio: bytes, transcription: Optional[dict], spoken_words: list[
     ``failed_checks``, ``reason`` (the first failed check), ``version``."""
     language = require_language(language)
     problem = str((exercise or {}).get("exercise") or "")
+    opening_emphasis = problem == "stress" and bool(exercise.get("opening_emphasis"))
     result: dict[str, Any] = {"passed": False, "exercise": problem,
                               "measurements": {}, "failed_checks": [],
                               "reason": None, "version": VALIDATOR_VERSION,
@@ -258,8 +286,6 @@ def validate(*, audio: bytes, transcription: Optional[dict], spoken_words: list[
         if pcm is None or len(pcm) < sample_rate // 2:
             failed.append("undecodable")
         else:
-            duration = len(pcm) / float(sample_rate)
-            m["duration_s"] = round(duration, 2)
             clipped = float((abs(pcm) >= CLIPPED_SAMPLE).mean())
             m["clipped_share"] = round(clipped, 5)
             if clipped > MAX_CLIPPED_SHARE:
@@ -272,13 +298,12 @@ def validate(*, audio: bytes, transcription: Optional[dict], spoken_words: list[
                 failed.append("mostly_silence")
             if m["longest_silence_s"] > MAX_DEAD_AIR_S:
                 failed.append("dead_air")
-            if duration > float(Config.AI_VOICE_MAX_CLIP_SECONDS):
-                failed.append("too_long")
-            if original_duration_s and original_duration_s > 0:
-                ratio = duration / original_duration_s
-                m["duration_ratio"] = round(ratio, 3)
-                if not MIN_DURATION_RATIO <= ratio <= MAX_DURATION_RATIO:
-                    failed.append("duration")
+            duration_metrics, duration_failures = _check_duration(
+                len(pcm) / float(sample_rate), original_duration_s,
+                opening_emphasis=opening_emphasis,
+            )
+            m.update(duration_metrics)
+            failed.extend(duration_failures)
             if transcription is None:
                 failed.append("not_transcribed")
             else:
@@ -294,7 +319,8 @@ def validate(*, audio: bytes, transcription: Optional[dict], spoken_words: list[
                 verdict = check_exercise(
                     problem, words=_timed_words(transcription), dbs=dbs,
                     phrase=(exercise or {}).get("target_phrase"),
-                    original_wpm=original_wpm, language=language)
+                    original_wpm=original_wpm, language=language,
+                    opening_emphasis=opening_emphasis)
                 m.update(verdict["measurements"])
                 failed.extend(verdict["failed"])
     result["passed"] = not failed

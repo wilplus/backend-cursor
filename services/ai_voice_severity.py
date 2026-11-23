@@ -44,7 +44,8 @@ import statistics
 from typing import Any, Iterable, Optional
 
 from config import Config
-from services.ai_voice_language import require as require_language
+from services.ai_voice_language import TOKEN_RE, require as require_language
+from services.ai_voice_language import tokens as word_tokens
 
 PROBLEMS = ("pace", "pause", "stress", "fillers")
 #: v2 (2026-10-18): the fillers problem joined the three.
@@ -334,6 +335,54 @@ def _selection(problem: str, phrase: Optional[str], scores: dict, snippet: dict,
         "held_back": sorted(held),
         "rules_version": RULES_VERSION,
     }
+
+
+def with_opening_emphasis(selection: dict, snippet: dict, medians: dict, *,
+                          sentence: str, language: str) -> dict:
+    """Model early emphasis on a comfortably paced, low-contrast moment.
+
+    This adjustment serves the plain AI demo of a whole moment. Reusing the
+    source duration gives the rendered opening a like-for-like pace check.
+    """
+    from services.ai_voice_prompt import fits_clip, starts_with_greeting
+
+    if selection["exercise"] not in ("pace", "pause", "stress"):
+        return selection
+    if selection["exercise"] == "stress" and not starts_with_greeting(sentence):
+        return selection
+    wpm = _metric(snippet, "wpm")
+    pause_ratio = _metric(snippet, "pause_ratio")
+    stress = selection["severity_scores"]["stress"]
+    comfortable_wpm = Config.AI_VOICE_PACE_COMFORT_NO_MEDIAN
+    enough_pause = Config.AI_VOICE_PAUSE_FLOOR_RATIO + Config.AI_VOICE_PAUSE_GAP_RATIO
+    if (wpm is None or not 0 < wpm <= comfortable_wpm
+            or pause_ratio is None or not enough_pause <= pause_ratio <= 1
+            or stress <= 0 or stress < Config.AI_VOICE_MIN_SEVERITY
+            or (_number(snippet.get("duration_ms")) or 0) <= 0):
+        return selection
+    spoken_words = word_tokens(sentence)
+    if (len(spoken_words) < 4 or spoken_words != word_tokens(snippet.get("transcript"))
+            or not fits_clip(sentence)):
+        return selection
+
+    for part in re.split(r"(?<=[.!?])\s+", sentence.strip()):
+        words = list(TOKEN_RE.finditer(part))
+        if len(words) >= 3:
+            phrase = part[words[0].start():words[2].end()]
+            break
+    else:
+        return selection
+
+    selection = _selection(
+        "stress", phrase, selection["severity_scores"], snippet, medians,
+        set(selection["held_back"]), explored=False, default=False,
+        sentence=sentence, language=language,
+    )
+    selection["opening_emphasis"] = True
+    selection["generation_intent"]["delivery"] = (
+        "the first phrase stands out at the original pace, with a short opening gap"
+    )
+    return selection
 
 
 def outcome(problem: str, before: dict, after: dict, medians: dict) -> str:

@@ -34,7 +34,7 @@ from config import Config
 from services.ai_voice_language import require as require_language
 from services.ai_voice_language import tokens as word_tokens
 
-BUILDER_VERSION = "ai-voice-prompt-v2"
+BUILDER_VERSION = "ai-voice-prompt-v3"
 ALLOWED_TAGS = frozenset({"[slowly]", "[pause]"})
 VOICE_SETTINGS = {"stability": 0.55, "similarity_boost": 0.9}
 OUTPUT_FORMAT = "mp3_44100_128"
@@ -95,11 +95,23 @@ def _pause(text: str, phrase: str) -> str:
     return f"{before}... [pause] {text[match.start():]}".strip()
 
 
-def _stress(text: str, phrase: str) -> str:
+_OPENING_GREETING = re.compile(
+    r"^(hi|hello|good morning|cześć|hej|dzień dobry|witam)[.!]\s+", re.IGNORECASE,
+)
+
+
+def starts_with_greeting(text: str) -> bool:
+    return bool(_OPENING_GREETING.match(text))
+
+
+def _stress(text: str, phrase: str, *, opening_emphasis: bool = False) -> str:
     match = _locate(text, phrase)
     if match is None:
         raise PromptRejected("TARGET_PHRASE_NOT_IN_SENTENCE")
-    return text[:match.start()] + match.group(0).upper() + text[match.end():]
+    before = text[:match.start()]
+    if opening_emphasis:
+        before = _OPENING_GREETING.sub(r"\1! ", before)
+    return before + match.group(0).upper() + text[match.end():]
 
 
 def check_text(prepared: str, original: str) -> None:
@@ -152,7 +164,9 @@ def build(*, sentence: str, exercise: dict, practice_id: str, language: str) -> 
     elif problem == "pause" and phrase:
         prepared = _pause(text, str(phrase))
     elif problem == "stress" and phrase:
-        prepared = _stress(text, str(phrase))
+        prepared = _stress(
+            text, str(phrase), opening_emphasis=bool(exercise.get("opening_emphasis")),
+        )
     elif problem == "fillers":
         prepared = text
     else:
