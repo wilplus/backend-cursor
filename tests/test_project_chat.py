@@ -298,6 +298,9 @@ def test_a_review_question_uses_the_exact_old_moment_without_capturing_setup():
     words = json.loads(complete.call_args.kwargs["user"])["speaker_is_reviewing"]
     assert words == {"anchor": focus, "exact_take_words": "The old opening."}
     assert result["row_metadata"]["review_focus"] == focus
+    assert result["row_metadata"]["coach_moment"] == {
+        "arc_id": ARC, "take_session_id": "take-a1", "snippet_id": "s1", "practise": True,
+    }
     assert result["row_metadata"]["take_session_id"] == "take-a1"
     assert result["row_metadata"]["next_slot"] == ""
     assert database.takes.saved == []
@@ -316,6 +319,20 @@ def test_sparse_evidence_is_acknowledged_without_inventing_feedback():
 
     assert "don't have a published coach note yet" in response["answer"]
     assert "pause before the ask" not in response["answer"]
+
+
+def test_project_chat_only_attaches_a_published_moment_from_this_take():
+    database = FakeDB(audience="the board", goal="approve the plan")
+    result = _config_result("The pause gives your ask room.")
+    result.parsed = {**json.loads(result.text), "moment": "M0", "practise": True}
+    with patch("services.llm.chat_complete", return_value=result):
+        response, _ = project_chat.answer(database, USER, ARC, "How did the ask land?", take_session_id=TAKE)
+        assert response["row_metadata"]["coach_moment"] == {
+            "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "s2", "practise": True,
+        }
+        result.parsed["moment"] = "M1"
+        response, _ = project_chat.answer(database, USER, ARC, "How did the ask land?", take_session_id=TAKE)
+    assert "coach_moment" not in response["row_metadata"]
 
 
 def test_lightweight_follow_up_uses_fast_path_without_a_model_call():

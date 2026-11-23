@@ -17765,3 +17765,51 @@ The rules: [`docs/SPEAKER-MEMORY.md`](SPEAKER-MEMORY.md).
 A newly ready project Take opens its review in the conversation with its evidence, optional practice and Ideal Text. Minimise and leaving the project fold the review into one clickable preview beside its recording. Reopening shows the same Take and its saved attempts. Project updates belong in the owning chat; the Speaking Coach chat is for general guidance. Existing project entrances and review actions remain available. A small arrow collapses and reopens the project chat's left menu.
 
 The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md).
+
+**N671 · One sidebar for the chat workspace** (founder, the Codex chat, 23 November 2026, asking that “every chat is in the left panel”, projects sit “under the speaking coach”, and setup is at the bottom). Updates the navigation in N666 and N670.
+
+Speaking Coach, its project conversations, and the owner's chats and subchats share the workspace sidebar. Selecting a row changes the conversation beside it. A sidebar icon at the top left opens and hides the sidebar. Speaking Coach and own-chat setup are available at the bottom. The sidebar replaces the full-page chat list, the Projects selector in Speaking Coach, and the menu inside a project conversation. The Take review, its recording handoff, contextual feedback history, and existing chat and project management continue in their active conversation.
+
+The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/chat-builder/flow.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/chat-builder/flow.md).
+
+**N672 · Coaching replies can play a moment and offer its intervention in chat** (founder, the Speaking Coach Codex chat, 23 November 2026, asking to replace the transcript link with a playable fragment and to surface the real intervention where it helps). Extends N669 and N670.
+
+A reply can play the exact authorized fragment it uses as evidence. The chat omits the automatic transcript footer. An applicable intervention already selected for that moment can show its existing demonstration and practice controls in the reply. The same treatment applies on eligible chat surfaces. Take ownership, the Picker's serving rules and practice permissions govern the card.
+
+The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/SPEAKER-MEMORY.md`](SPEAKER-MEMORY.md).
+
+**N673 · One lightweight artifact in every chat** (founder, the Codex chat, 23 November 2026, approving the minimal Moment → Intervention → Output design and asking that future specialist chats inherit it). Extends N670 and N672.
+
+Feedback stays in the conversation. One compact preview opens the artifact beneath the reply. The open artifact follows the order Moment, Intervention, Output and shows the sections that have content. A thin line binds its sections. A Moment can play its exact authorized recording. The Intervention displays the selected action and any available example. A rewrite keeps the original and proposal legible and uses the existing decision before saving a change. An AI example and a speaker's retry have distinct labels. The Sniper shows the existing pace guide during practice and keeps its trace and feedback. The Output keeps actual saved work and available Ideal Text.
+
+Cited replies arrive compact. The newly ready Take opens its review in the owning project as in N670. Minimise and returning to a conversation leave one preview. Reopening reads the saved work for the same source. Guided practice keeps the shared composer and its consent and completion rules. The artifact is reusable across chat types, including published specialist chats and their website chat. It displays eligible material delivered with the reply in that conversation. Ordinary replies use their existing messages.
+
+The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/chat-builder/flow.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/chat-builder/flow.md).
+
+**N674 · The iPhone app: no website footer, and tap targets of 44 points (founder, the Claude Code chat, 23 November 2026: "do 1, 2 and 3", on the page "Native Feel Review", <https://claude.ai/artifact/BHrLFbBQAZqvcMD6sJL9nE>).** For N365 and N661:
+1. **No website footer in the app.** "WillpowerLab 2026 · EN/PL · About us · Blog · Privacy" no longer shows inside the iPhone app; on the website it stays. In the app the language follows the iPhone's own language (as the website already does when no language was picked), and the menu (☰) carries About us, Blog and Privacy, with those names. No new words.
+2. **Every tap target on the first page and on Sign in is at least 44 points** ("Sign in", "No link yet? Join the waitlist", "Sign up"): invisible padding around the same words, in the app and on the website. No new words.
+3. **Drawing under the clock and the home bar** (the page's item 3): approved; building waits until the founder has seen a corrected estimate of what it gives, since the page overstated it (the app's screens are white under both strips).
+The rules: frontend [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md) (the menu and the invite landing are its files).
+
+**N675 · The iPhone app keeps its edges as they are (founder, the Claude Code chat, 23 November 2026: "skip 3", after the corrected estimate on the page "Native Feel Review", <https://claude.ai/artifact/BHrLFbBQAZqvcMD6sJL9nE>).** Corrects N674 item 3: the app does not draw under the clock and the home bar; `contentInset` stays "always". The gain was about 12 points at the bottom of the recording screen, for a new app build and a check of every screen. N674 items 1 and 2 stand.
+No rules page: nothing changes on screen. No migration.
+
+**N676 · Retire the Speaking Coach setup shortcut** (founder, the Codex chat, 23 November 2026, asking to remove unused sidebar screens shown in the screenshot). Updates N671.
+
+The separate **Set up Speaking Coach** shortcut is removed from the sidebar. Speaking Coach and its projects are entered from the workspace. The plan opens from its prompts in the coach conversation. **Start a new project** remains available to a person who deleted their Speaking Coach, and **Archived chats** restores an archived coach.
+
+The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N677 · The project Feedback Walk opens on a specific strength** (founder, Speaking Coach Codex chat, 23 November 2026, calibrating the post-Take bubbles and the project chat). Extends N670 and N672. Updates the automatic questions in N294 for the inline project review.
+
+Open with the Picker's strongest supported positive moment in the Take. Give a short, natural reaction about what worked and play the exact fragment. Give the speaker room to react. If they ask for more strengths, continue through the available published moments in order. If only one strength has been served, say more recording would help and explain more precisely what worked in the existing clip. When they want to work on a moment, offer a concrete observation and its matching available intervention. End with the Take's Ideal Text and helper words when that fits the exchange, so the speaker can remember what worked and how it sounded. The actions stay available in the project chat.
+
+Use what the speaker already said about the audience and goal, including the difference between the main audience and the decision-maker. Ask when an unresolved detail would change the advice. Match the speaker's language and use the recorded words and delivery for the observation. The founder's Polish pitch example reacts to how much the pilot request seems to matter to the speaker. In the team example, the coach tells them to focus the talk on the team.
+
+The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N678 · The iPhone app: haptics at the recording moments, and dark mode (founder, the Claude Code chat, 23 November 2026: "do 6 and 5 next", on the page "Native Feel Review", <https://claude.ai/artifact/BHrLFbBQAZqvcMD6sJL9nE>).** For N365, N674 and N675:
+1. **Haptics, in the iPhone app only** (the page's item 6): a medium tick when recording starts, a light tick on Next slide and Back, a success tick on Finish take, a warning tick on Discard take. A sent message keeps its light tick (N368 item 3). Felt, never seen or heard: nothing on screen changes, no new words. The browser and the home-screen app stay silent.
+2. **Dark mode** (the page's item 5): the app follows the iPhone's light or dark setting. Every screen, the locked ones included, gets a dark palette; the palette is shown to the founder on every main screen before it is built, since it changes every locked screen's look. No new words.
+The rules: frontend [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md) (item 1); item 2's rules pages get their lines when it is built.

@@ -44,6 +44,28 @@ def v2_user_product_discoveries_get():
     return jsonify(shape_product_discoveries(rows)), 200
 
 
+@v2_bp.route("/user/lounge/moment/<snippet_id>", methods=["GET"])
+@require_auth
+def v2_user_lounge_moment_get(snippet_id):
+    """Refresh playback for one referenced fragment in the caller's Take."""
+    from routes.v2.common import _is_valid_uuid
+    from services.lounge_clips import read_chat_moment
+
+    take = request.args.get("take_session_id") or ""
+    if not (_is_valid_uuid(snippet_id) and _is_valid_uuid(take)):
+        return jsonify({"code": "INVALID_INPUT"}), 400
+    try:
+        moment = read_chat_moment(db, str(request.user_id), take, snippet_id)
+    except Exception:
+        logger.warning("chat moment could not be read", exc_info=True)
+        return jsonify({"code": "MOMENT_UNAVAILABLE"}), 503
+    if moment is None:
+        return jsonify({"code": "NOT_FOUND"}), 404
+    response = jsonify(moment)
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
 @v2_bp.route("/user/lounge/messages", methods=["GET"])
 @require_auth
 def v2_user_lounge_messages_get():
