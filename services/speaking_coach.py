@@ -73,7 +73,8 @@ _FORBIDDEN_OUTPUT = re.compile(
     re.IGNORECASE,
 )
 _PRACTICE_REQUEST = re.compile(r"\b(?:practi[cs]\w*|try|exercise\w*|work on|improve|next step|"
-                               r"ćwicz\w*|popraw\w*|spróbow\w*)\b", re.IGNORECASE)
+                               r"sound more confident|ćwicz\w*|popraw\w*|spróbow\w*|"
+                               r"brzmieć pewniej)\b", re.IGNORECASE)
 
 _RESPONSE_SCHEMA: dict[str, Any] = {
     "name": "speaking_coach_turn",
@@ -139,9 +140,12 @@ _SYSTEM = (
     "include it in their own terms. A speaker who says prayer gives them "
     "support can be asked how that support helps them take their stated "
     "next step. Attribute quoted beliefs to the person who expressed them.\n\n"
-    "Return strict JSON with answer and evidence. When relying on a passage or notes, put the "
+    "Return strict JSON with answer, evidence, and practise (boolean). When relying on a passage or notes, put the "
     "supplied evidence references in evidence. Use no more than two. Never write the "
-    "references or any URL in the answer. Use an empty list for an answer without evidence."
+    "references or any URL in the answer. Use an empty list for an answer without evidence. "
+    "Set practise to true when a real exercise on the cited passage would help the speaker, "
+    "including when you suggest working on that habit. The app checks for an activity on "
+    "that passage. Respond naturally without promising an exercise or a recording link."
 )
 
 
@@ -528,6 +532,7 @@ _DELIVERY_EVIDENCE_RULES = (
     "action, show that move. Give the impression with its cue, then acknowledge "
     "their actual commitment, such as what they say they'll do tomorrow. "
     "Recognize any support they name and end by asking what helps them act. "
+    "Include the delivery passage's evidence reference when you use its cue. "
     "Never invent a coach comment or a delivery observation. "
     "Example of the style, for a recording with a firmer repetition and faster "
     "emphasis on the closing phrase. Mocniejsze drugie „Nie chcę” oraz szybsze "
@@ -831,7 +836,7 @@ def _context_for_turn(
     private_memory = _clip(memory.get("note"), 800) if isinstance(memory, dict) else ""
     index_rows = [row for row in (index or []) if _done_take(row)]
     scope, search = resolve_scope(index_rows, question, history)
-    practice = bool(scope.arc_id and _PRACTICE_REQUEST.search(search))
+    practice = bool(scope.arc_id and wants_practice(search))
     fingerprint = hashlib.sha256(
         (_fingerprint(index_rows, profile if isinstance(profile, dict) else None) + private_memory).encode()
     ).hexdigest()
@@ -898,6 +903,9 @@ def _clean_answer(value: Any) -> Optional[str]:
 def _practice_prompt(packet: ContextPacket, question: str, evidence: tuple[Evidence, ...]) -> str:
     if not packet.practice_catalogue:
         return ""
+    # A cited clip can carry the Picker's own intervention in chat.
+    if any(source.snippet_id for item in evidence for source in item.sources):
+        return ""
     from services.confident_voice_practice import FIT_EXACT, exercise_fit
 
     tags = practice_tags(question) or set().union(*(
@@ -921,20 +929,40 @@ def _practice_prompt(packet: ContextPacket, question: str, evidence: tuple[Evide
             f"Exercise: {title}. Instruction: {instruction}")
 
 
-def _with_source_links(answer: str, parsed: dict, evidence: tuple[Evidence, ...]) -> str:
+def _cited_sources(parsed: dict, evidence: tuple[Evidence, ...]) -> list[Source]:
     references = parsed.get("evidence")
     if not isinstance(references, list):
-        return answer
+        return []
     known = {f"E{index}": item.sources for index, item in enumerate(evidence) if item.sources}
     used = list(dict.fromkeys(ref for ref in references if isinstance(ref, str) and ref in known))[:2]
-    if not used:
-        return answer
-    from config import Config
-    base = (Config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
-    labels = {"transcript": "Transcript", "feedback": "Feedback", "ideal_text": "Ideal Text"}
-    links = dict.fromkeys(f"{labels[source.kind]} {source.url(base)}"
-                          for ref in used for source in known[ref])
-    return answer + "\n\n" + "\n".join(links)
+    return [source for ref in used for source in known[ref]]
+
+
+def wants_practice(question: str) -> bool:
+    return bool(_PRACTICE_REQUEST.search(question or ""))
+
+
+def _reply_payload(answer: str, parsed: dict, evidence: tuple[Evidence, ...],
+                   question: str) -> dict:
+    sources = _cited_sources(parsed, evidence)
+    documents = [source for source in sources if source.kind != "transcript"]
+    if documents:
+        from config import Config
+
+        base = (Config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
+        labels = {"feedback": "Feedback", "ideal_text": "Ideal Text"}
+        links = dict.fromkeys(f"{labels[source.kind]} {source.url(base)}" for source in documents)
+        answer += "\n\n" + "\n".join(links)
+    payload = {"answer": answer, "show_record_ui": False, "suggested_action": None}
+    moment = next((source for source in sources if source.snippet_id), None)
+    if moment:
+        from services.lounge_clips import chat_moment_reference
+
+        payload["row_metadata"] = {"coach_moment": chat_moment_reference(
+            moment.arc_id, moment.take_id, str(moment.snippet_id),
+            practise=parsed.get("practise") is True or wants_practice(question),
+        )}
+    return payload
 
 
 def _scope_question(status: str, language: str) -> str:
@@ -1060,8 +1088,7 @@ def answer(
         debug["model_duration_ms"], retrieval_ms,
     )
     return (
-        {"answer": _with_source_links(clean, parsed, selected),
-         "show_record_ui": False, "suggested_action": None},
+        _reply_payload(clean, parsed, selected, search_question),
         debug,
     )
 

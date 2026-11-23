@@ -1133,7 +1133,9 @@ def _librarian(database, user_id, question, history, app_config,
     )
     if coach_reply:
         payload, debug = coach_reply
-        return _reply(payload["answer"], debug=debug), "speaking_coach"
+        row_metadata = payload.get("row_metadata")
+        extra = {"row_metadata": row_metadata} if row_metadata else {}
+        return _reply(payload["answer"], debug=debug, **extra), "speaking_coach"
     admin_notes = _admin_notes(database, user_id)
     life_context = _life_context(user_id, question, app_config)
     # The status card costs several reads: it is read on first use, once.

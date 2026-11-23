@@ -583,6 +583,7 @@ def _feedback_moments(current: dict, drafts: list[dict], snippets: list[dict]) -
             "moment": moment,
             "feedback": _text(draft.get("note"), 800),
             "kind": _text(draft.get("kind") or draft.get("device"), 80),
+            **({"snippet_id": str(snippet["id"])} if snippet.get("id") else {}),
         })
         if len(feedback) >= MAX_FEEDBACK_MOMENTS:
             break
@@ -797,7 +798,13 @@ def _prompt_context(context: ProjectChatContext, state: ProjectChatState) -> dic
         },
         "current_take": context.current_take,
         "recent_takes_same_project": list(context.recent_takes),
-        "published_feedback_moments": list(context.feedback_moments),
+        "published_feedback_moments": [
+            {
+                **{key: value for key, value in moment.items() if key != "snippet_id"},
+                **({"reference": f"M{index}"} if moment.get("snippet_id") else {}),
+            }
+            for index, moment in enumerate(context.feedback_moments)
+        ],
         "ideal_text": {
             "text": context.ideal_text,
             "approved": context.ideal_approved,
@@ -845,8 +852,13 @@ Take's evidence first. Use exact_take_words when available. Leave the earlier
 audience and goal questions for their own turns.
 
 Return strict JSON with this shape:
-{"answer": string, "chips": [string]}
+{"answer": string, "chips": [string], "moment": string or null, "practise": boolean}
 The answer is short conversational prose, normally one to four paragraphs.
+Set moment to a published feedback reference only when the answer cites that
+exact passage. Use null for general advice.
+Set practise to true when a rehearsable activity on the cited moment would
+help the speaker. The app checks which activity is available. Do not promise
+a recording link, a particular exercise, or an example.
 Chips are optional, grounded suggested replies for the one current question;
 use an empty array when they would feel canned. Do not put a second question
 inside a chip or answer.
@@ -1252,8 +1264,36 @@ def _answer_general(
         model=getattr(result, "model", None),
         model_ms=getattr(result, "duration_ms", model_ms),
         captured_slots=captured_slots,
-        extra_metadata={"review_focus": review["anchor"]} if review else None,
+        extra_metadata=_answer_metadata(context, question, parsed if model_answer else None, review),
     )
+
+
+def _answer_metadata(context: ProjectChatContext, question: str,
+                     parsed: Optional[dict], review: Optional[dict]) -> dict:
+    from services.lounge_clips import chat_moment_reference
+    from services.speaking_coach import wants_practice
+
+    anchor = review["anchor"] if review else None
+    metadata = {"review_focus": anchor} if anchor else {}
+    if not parsed:
+        return metadata
+    snippet = anchor.get("snippet_id") if anchor and anchor.get("step") != "ideal" else None
+    if not anchor:
+        reference = parsed.get("moment")
+        snippet = next((
+            item.get("snippet_id")
+            for index, item in enumerate(context.feedback_moments)
+            if reference == f"M{index}"
+        ), None)
+    if snippet:
+        metadata["coach_moment"] = chat_moment_reference(
+            context.arc_id, context.take_session_id, snippet,
+            practise=(
+                parsed.get("practise") is True or wants_practice(question) or
+                bool(anchor and anchor.get("step") == "practise")
+            ),
+        )
+    return metadata
 
 
 def review_anchor(value: Any) -> dict | None:
@@ -1361,7 +1401,10 @@ def _public_context(context: ProjectChatContext) -> dict:
             "status": context.practice_status.get("status") or None,
             "analysis_state": context.practice_status.get("analysis_state") or None,
         },
-        "feedback_moments": list(context.feedback_moments),
+        "feedback_moments": [
+            {key: value for key, value in moment.items() if key != "snippet_id"}
+            for moment in context.feedback_moments
+        ],
         "ideal_text": {
             "available": bool(context.ideal_text),
             "approved": context.ideal_approved,

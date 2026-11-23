@@ -26,7 +26,7 @@ PROVES   O1 -> test_routes_without_an_llm_classifier
          O5 -> test_cache_refreshes_and_respects_the_read_budget
          O6 -> test_forbidden_generated_output_falls_back
          O7 -> test_named_older_talk_uses_exact_take_and_hybrid_retrieval
-         O8 -> test_similar_talks_are_disambiguated_before_retrieval, test_comparison_links_the_same_slide_without_feedback
+         O8 -> test_similar_talks_are_disambiguated_before_retrieval, test_comparison_grounds_the_same_slide_without_feedback
          O9 -> test_missing_feedback_uses_one_relevant_library_exercise
          O10 -> test_selected_take_supplies_passage_and_delivery_without_shared_feedback
 WHY      Speaking Coach redesign and activation, 2026-11-18.
@@ -165,9 +165,9 @@ def _config(**overrides):
     return SimpleNamespace(**values)
 
 
-def _result(answer, evidence=()):
+def _result(answer, evidence=(), **extra):
     return SimpleNamespace(
-        text=json.dumps({"answer": answer, "evidence": list(evidence)}), parsed=None,
+        text=json.dumps({"answer": answer, "evidence": list(evidence), **extra}), parsed=None,
         model="gpt-4o-mini", duration_ms=12,
     )
 
@@ -489,10 +489,10 @@ def test_named_older_talk_uses_exact_take_and_hybrid_retrieval():
     assert intent == "speaking_coach"
     debug = reply["debug"]
     assert debug["scope"] == "resolved" and debug["take_count"] == 1 and debug["semantic_search"]
-    assert "/chat/take/garden-take-1?slide=1" in reply["answer"]
-    assert any("/chat/take/garden-take-1?slide=1" in bubble for bubble in reply["bubbles"])
-    assert follow_up is not None and "/chat/take/garden-take-1?slide=1" in follow_up[0]["answer"]
-    assert reply["answer"].count("https://") + reply["answer"].count("http://") == 1
+    assert reply["answer"] == "You made the upkeep sound manageable."
+    assert reply["bubbles"] == [reply["answer"]]
+    assert follow_up is not None and follow_up[0]["answer"] == reply["answer"]
+    assert "coach_moment" not in reply.get("row_metadata", {})
     assert any("The current garden proposal." in item for item in provider_inputs)
     assert any("Lead with the customer problem." in item for item in provider_inputs)
     assert not any("DIFFERENT PROJECT" in item or "THIS IS A DIFFERENT TAKE" in item
@@ -544,7 +544,7 @@ def test_selected_take_supplies_passage_and_delivery_without_shared_feedback():
     def snippets(ids):
         reads.append(ids)
         return {selected["id"]: [
-            {"session_id": selected["id"], "transcript": words,
+            {"id": "selected-clip", "session_id": selected["id"], "transcript": words,
              "metrics": {"wpm": 188, "pause_ratio": 0.04, "stickiness": {"composite": 0.9}}},
             {"session_id": later["id"], "transcript": "LATER TAKE WORDS",
              "metrics": {"vocal_cues": ["UNRELATED LOUD ENDING"]}},
@@ -561,7 +561,7 @@ def test_selected_take_supplies_passage_and_delivery_without_shared_feedback():
         assert "shared_coach_feedback" not in prompt
         reference = _reference(prompt, "Delivery across the whole passage")
         return _result("You made the request directly and spoke quickly. Where could you give it more room?",
-                       [reference])
+                       [reference], practise=True)
 
     with (
         patch.object(db, "get_snippets_by_sessions", snippets, create=True),
@@ -576,10 +576,14 @@ def test_selected_take_supplies_passage_and_delivery_without_shared_feedback():
         )
     assert reads == [[selected["id"]]]
     assert result is not None
-    assert "/chat/take/campus-take-1?slide=0" in result[0]["answer"]
+    assert "/chat/take/" not in result[0]["answer"]
+    assert result[0]["row_metadata"]["coach_moment"] == {
+        "arc_id": "campus", "take_session_id": selected["id"], "snippet_id": "selected-clip",
+        "practise": True,
+    }
 
 
-def test_comparison_links_the_same_slide_without_feedback():
+def test_comparison_grounds_the_same_slide_without_feedback():
     speaking_coach.clear_cache()
     first = _named_take("Campus Pitch", "campus", 1, "2026-01-01", "", deck=["ask", "plan"])
     second = _named_take("Campus Pitch", "campus", 2, "2026-01-02", "", deck=["plan", "ask"])
@@ -624,9 +628,8 @@ def test_comparison_links_the_same_slide_without_feedback():
         )
     assert result is not None
     assert not result[1]["semantic_search"]
-    assert "/chat/take/campus-take-1?slide=0" in result[0]["answer"]
-    assert "/chat/take/campus-take-2?slide=1" in result[0]["answer"]
-    assert "&feedback=" not in result[0]["answer"]
+    assert result[0]["answer"] == "Your ask now names the decision."
+    assert "coach_moment" not in result[0].get("row_metadata", {})
 
 
 def test_missing_feedback_uses_one_relevant_library_exercise():

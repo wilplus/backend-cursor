@@ -21,7 +21,9 @@ PROVES   O1 -> test_own_clip_is_resigned_and_another_users_is_not
          O4 -> test_a_coach_video_plays_only_while_it_is_the_word_s_current_one
          O5 -> test_practice_tries_from_several_practices_are_read_side_by_side
 """
-from services.lounge_clips import refresh_walk_clips
+from unittest.mock import Mock
+
+from services.lounge_clips import read_chat_moment, refresh_walk_clips
 
 
 class _Db:
@@ -41,6 +43,38 @@ def test_own_clip_is_resigned_and_another_users_is_not():
     assert mine["metadata"]["clip"] == {"src": "fresh-s1", "snippet_id": "s1",
                                         "start_ms": 10, "duration_ms": 20}
     assert theirs["metadata"]["clip"]["src"] == "old"
+
+
+def test_chat_moment_is_signed_only_for_the_authorized_exact_take(monkeypatch):
+    from services.project_deletion import ProjectDeletionService
+
+    database = Mock(client=None)
+    database.takes.v2_get_session.return_value = {
+        "id": "t1", "user_id": "me", "arc_id": "project", "take_index": 2,
+    }
+    snippet = {"session_id": "t1", "start_offset_ms": 1200, "duration_ms": 3800}
+    database.get_snippet_by_id.return_value = snippet
+    sign = Mock(return_value="https://audio.example/take?signature=fresh")
+    monkeypatch.setattr("services.snippet_audio_url.resolve_snippet_audio_url", sign)
+    authorized = Mock(return_value={"t1"})
+    monkeypatch.setattr("services.speaker_lookup._takes_in_force", authorized)
+
+    assert read_chat_moment(database, "me", "t1", "s1") == {
+        "arc_id": "project", "take_index": 2, "audio_url": sign.return_value,
+        "start_offset_ms": 1200, "duration_ms": 3800,
+    }
+    database.takes.v2_get_session.assert_called_once_with("t1", "me")
+    database.get_snippet_by_id.assert_called_once_with("s1", user_id="me")
+    assert read_chat_moment(database, "other", "t1", "s1") is None
+    snippet["session_id"] = "other-take"
+    assert read_chat_moment(database, "me", "t1", "s1") is None
+    snippet["session_id"] = "t1"
+    authorized.return_value = set()
+    assert read_chat_moment(database, "me", "t1", "s1") is None
+    authorized.return_value = {"t1"}
+    monkeypatch.setattr(ProjectDeletionService, "archived_projects", lambda *_: {"project"})
+    assert read_chat_moment(database, "me", "t1", "s1") is None
+    sign.assert_called_once()
 
 
 class _Takes:
