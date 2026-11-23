@@ -128,6 +128,56 @@ def test_a_take_review_reads_past_a_storage_page_in_conversation_order():
     query.gt.assert_called_once_with("id", "499")
 
 
+def test_take_exchange_restores_older_turns_only_in_their_room():
+    import inspect
+    from flask import Flask, request
+    from services import lounge_messages, take_review_history
+
+    app = Flask(__name__)
+    sessions = [{**SESSIONS[0], "user_id": USER}]
+    rooms = lounge_messages.Rooms(takes={TAKE: "host-chat"})
+    rows = [
+        {"client_id": "reply", "metadata": {"take_session_id": TAKE, "arc_id": ARC}, "role": "bot", "kind": "text"},
+        {"client_id": "speaking", "metadata": {"take_session_id": TAKE, "arc_id": ARC, "place": "speaking"},
+         "role": "bot", "kind": "text"},
+    ]
+    for chat, ids in [("host-chat", ["reply"]), (None, ["speaking"])]:
+        query = f"/?take={TAKE}&exchange=1" + (f"&chat={chat}" if chat else "")
+        with app.test_request_context(query), patch.object(route, "_arc_owned_by_caller", return_value=(True, sessions)), \
+                patch.object(lounge_messages, "host_rooms", return_value=rooms), \
+                patch.object(take_review_history, "walk_steps", return_value=rows) as history:
+            request.user_id = USER
+            view = inspect.unwrap(route.v2_take_review_runs)
+            assert [row["client_id"] for row in view(ARC).get_json()["messages"]] == ids
+            history.assert_called_once_with(db, USER, ARC, TAKE, exchange=True)
+
+
+def test_spoken_follow_up_uses_the_owned_take_transcriber_then_returns_words():
+    import inspect
+    from io import BytesIO
+    from flask import Flask, request
+    from routes.v2 import voice_notebook
+    from services import will_question
+
+    app = Flask(__name__)
+    adapter = object()
+    form = {"take_session_id": TAKE, "transcribe_only": "1",
+            "duration_ms": "1800", "audio": (BytesIO(b"recording"), "answer.webm")}
+    with app.test_request_context("/", method="POST", data=form), \
+            patch.object(route, "_arc_owned_by_caller", return_value=(True, SESSIONS)), \
+            patch.object(voice_notebook, "_adapter", return_value=adapter), \
+            patch.object(will_question, "hear_answer_words", return_value=("Why did that work?", 1800)) as heard, \
+            patch.object(will_question, "answer_voice") as answer:
+        request.user_id = USER
+        view = inspect.unwrap(route.v2_explore_arc_will_question_voice)
+        response, status = view(ARC)
+        assert status == 200
+        assert response.get_json() == {"text": "Why did that work?", "duration_ms": 1800}
+        heard.assert_called_once_with(adapter, b"recording", user_id=USER, take=TAKE,
+                                      filename="answer.webm", duration_ms=1800)
+        answer.assert_not_called()
+
+
 # ── GET /explore/arc/<arc>/ideal-text ───────────────────────────────────────
 
 MACHINE = "Para one new.\n\nPara two.\n\nPara three new."

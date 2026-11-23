@@ -110,7 +110,20 @@ def v2_take_review_runs(arc_id):
     if take is not None:
         if take not in take_ids:
             return jsonify({"code": "NOT_FOUND"}), 404
-        page = {"messages": take_review_history.walk_steps(db, actor, str(arc_id), take)}
+        exchange = request.args.get("exchange") == "1"
+        chat = request.args.get("chat")
+        if exchange:
+            from services.lounge_messages import host_rooms
+            rooms = host_rooms(db, actor)
+            if chat is not None and chat not in rooms.chats:
+                return jsonify({"code": "NOT_FOUND"}), 404
+            messages = take_review_history.walk_steps(db, actor, str(arc_id), take, exchange=True)
+            messages = [row for row in messages if rooms.in_chat(row, chat)] if chat is not None else [
+                row for row in messages if rooms.chat_of(row) is None
+            ]
+        else:
+            messages = take_review_history.walk_steps(db, actor, str(arc_id), take)
+        page = {"messages": messages}
         enrich_page(page, actor, db, resolve_snippet=_resolve_snippet_audio_url,
                     resolve_ref=resolve_playable_ref, with_flags=False)
         return jsonify(page)
@@ -695,7 +708,7 @@ def v2_explore_arc_will_question_voice(arc_id):
     speaker's voice bubble with the words and Will's reply. The recording is
     not kept. 200 {messages} · 400 · 404 · 413 · 422 · 500"""
     from routes.v2.voice_notebook import _adapter
-    from services.will_question import QuestionError, answer_voice
+    from services.will_question import QuestionError, answer_voice, hear_answer_words
     try:
         owned, sessions = _arc_owned_by_caller(arc_id)
         take = str(request.form.get("take_session_id") or "")
@@ -709,6 +722,12 @@ def v2_explore_arc_will_question_voice(arc_id):
         except ValueError:
             duration = None
         user_id = str(request.user_id)
+        if request.form.get("transcribe_only") == "1":
+            words, duration_ms = hear_answer_words(
+                _adapter(user_id), upload.read(), user_id=user_id, take=take,
+                filename=upload.filename or "answer.webm", duration_ms=duration,
+            )
+            return jsonify({"text": words, "duration_ms": duration_ms}), 200
         messages = answer_voice(db, _adapter(user_id), upload.read(), user_id=user_id,
                                 arc_id=str(arc_id), take_session_id=take,
                                 filename=upload.filename or "answer.webm", duration_ms=duration)

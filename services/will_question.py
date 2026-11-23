@@ -1459,7 +1459,7 @@ def answer_voice(database: Any, adapter: Any, audio: bytes, *, user_id: str, arc
     open_q = open_question(database, str(user_id))
     if not open_q or open_q["take_session_id"] != take:
         raise QuestionError("NOT_FOUND", "No question for this Take.", 404)
-    words, duration = _heard_words(adapter, audio, user_id=str(user_id), take=take,
+    words, duration = hear_answer_words(adapter, audio, user_id=str(user_id), take=take,
                                    filename=filename, duration_ms=duration_ms)
     from services.feedback_check import _after
     from services.lounge_messages import thread_stamp
@@ -1481,8 +1481,8 @@ def answer_voice(database: Any, adapter: Any, audio: bytes, *, user_id: str, arc
     return rows if follows else rows + _let_go(database, user_id, take)
 
 
-def _heard_words(adapter: Any, audio: bytes, *, user_id: str, take: str, filename: str,
-                 duration_ms: Optional[int]) -> tuple[str, Optional[int]]:
+def hear_answer_words(adapter: Any, audio: bytes, *, user_id: str, take: str, filename: str,
+                      duration_ms: Optional[int]) -> tuple[str, Optional[int]]:
     """The words of a voice answer and its length, heard under the caller's
     authorization (the plan's own transcriber call). Raises
     ``QuestionError`` when it is empty, too long, or no words are heard."""
