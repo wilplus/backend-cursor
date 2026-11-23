@@ -387,7 +387,7 @@ def prewarm(user_id: str, take_session_id: str, snippet_id: str, principal_id: s
 
 
 def _choose(database: Any, practice: dict, cycle: dict) -> tuple[Optional[dict], dict]:
-    from services.ai_voice_severity import own_medians, select
+    from services.ai_voice_severity import own_medians, select, with_opening_emphasis
     snippet = database.get_snippet_by_id(str(practice.get("snippet_id"))) or {}
     language = _recording_language(database, practice, snippet)
     take = database.get_snippets_by_session(str(practice.get("take_session_id"))) or []
@@ -408,6 +408,10 @@ def _choose(database: Any, practice: dict, cycle: dict) -> tuple[Optional[dict],
                        explore=not fix, allow_default=not fix, hold_back=not fix,
                        language=language)
     if fix and selection:
+        if practice.get("kind") == "plain":
+            selection = with_opening_emphasis(
+                selection, snippet, medians, sentence=sentence, language=language,
+            )
         sentence = _fit_passage(database, practice, sentence, selection, language)
     before = {k: (snippet.get("metrics") or {}).get(k)
               for k in ("wpm", "pause_ratio", "dynamic_db")}

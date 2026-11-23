@@ -35,6 +35,9 @@ OUTCOME
   O8  On a plan, the clip practises the level's own problem whenever my
       clip shows it; where it doesn't, the pick is as without a plan (G7,
       N209).
+  O9  When my whole moment has a comfortable pace, enough pauses and low
+      vocal contrast, the AI example can emphasize the first phrase at
+      my pace. I only hear an example if its opening moves along.
 PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
                test_raw_units_are_never_compared_and_the_phrase_has_a_fallback,
                test_the_sentence_under_the_clip_comes_from_the_transcript_and_their_own_numbers,
@@ -66,6 +69,7 @@ PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
          O6 -> test_a_ready_clip_names_its_problem_and_phrase
          O7 -> test_a_praised_moments_practice_gets_a_clip
          O8 -> test_on_a_plan_the_clip_practises_the_levels_problem
+         O9 -> test_opening_emphasis_keeps_a_comfortable_pace
 WHY      Founder lock 2026-10-12 (N71); Never-rule 1 for the sentence under
          the clip; 2026-10-23 (N120, the short bubble; N122, "do we practice
          the confident moments? I think yes we should!").
@@ -528,6 +532,50 @@ def test_the_sentence_under_the_clip_comes_from_the_transcript_and_their_own_num
         if quotes:
             assert quotes in SENTENCE and cycle["selection"]["target_phrase"] == quotes
         assert not re.search(r"\d", why)
+
+@pytest.mark.parametrize("duration, early_gap, failed_checks", [
+    (3.96, 0.24, []),
+    (5.54, 0.24, ["opening_pace"]),
+    (3.96, 0.64, ["opening_gap"]),
+    (5.54, 0.64, ["opening_pace", "opening_gap"]),
+])
+def test_opening_emphasis_keeps_a_comfortable_pace(duration, early_gap, failed_checks):
+    # Take 3 calibration measurements on synthetic Polish words and audio.
+    sentence = "Cześć. Mój lokalny park zaczął odżywać gdy zasadziliśmy tam drzewa."
+    phrase = "Mój lokalny park"
+    source = {
+        **_snip(151.5, pause_ratio=0.495, dynamic_db=6.5),
+        "transcript": sentence,
+        "duration_ms": 3960,
+    }
+    usual = _snip(104.7, pause_ratio=0.772, dynamic_db=10.5)
+    practice = {**_practice(language="pl"), "exact_passage": sentence}
+    db = _Db(practice, source, [source, usual, usual])
+    _ready_voice(db)
+    heard = _heard_sentence(sentence, phrase, gap_before_target=0.84, step=0.28)
+    heard["language"] = "pl"
+    heard["words"][0].update(start=0.16, end=0.72)
+
+    times = np.arange(round(duration * 16000)) / 16000
+    pcm = (0.12 * np.sin(2 * np.pi * 180 * times)).astype(np.float32)
+    pcm[(times >= heard["words"][1]["start"]) & (times < heard["words"][3]["end"])] *= 2
+    pcm[(times < 0.16) | ((times >= 0.88) & (times < 0.88 + early_gap))] = 0
+
+    voices = _Voices()
+    with _on():
+        out = _run_pipeline(db, practice, voices, heard, pcm=pcm)
+
+    cycle = db.client.tables["ai_voice_cycles"][0]
+    assert cycle["exercise"] == "stress"
+    assert cycle["selection"]["opening_emphasis"]
+    assert cycle["selection"]["target_phrase"] == phrase
+    assert voices.bodies[0]["text"].startswith("Cześć, MÓJ LOKALNY PARK ")
+    assert cycle["generation_metadata"]["tags"] == []
+    assert cycle["validation"]["measurements"]["opening_gap_s"] == early_gap
+    assert cycle["validation"]["failed_checks"] == failed_checks
+    assert out["clip"]["state"] == ("unavailable" if failed_checks else "ready")
+    assert voices.spoken == (2 if failed_checks else 1)
+
 
 def test_the_walks_fix_gets_no_clip_when_nothing_was_off_and_never_the_runner_up():
     """Founder 2026-11-03 (N425, "go for A, B and C"): as the walk's one fix

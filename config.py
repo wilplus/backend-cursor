@@ -1026,6 +1026,8 @@ class Config:
     AI_VOICE_PAUSE_FLOOR_RATIO = _env_float("AI_VOICE_PAUSE_FLOOR_RATIO", 0.08)
     AI_VOICE_PAUSE_GAP_RATIO = _env_float("AI_VOICE_PAUSE_GAP_RATIO", 0.06)
     AI_VOICE_STRESS_GAP_DB = _env_float("AI_VOICE_STRESS_GAP_DB", 4.0)
+    AI_VOICE_OPENING_MAX_GAP_S = _env_float("AI_VOICE_OPENING_MAX_GAP_S", 0.4)
+    AI_VOICE_OPENING_MAX_DURATION_DRIFT = _env_float("AI_VOICE_OPENING_MAX_DURATION_DRIFT", 0.15)
     # Fillers (founder 2026-10-18): hesitations per 100 words above the
     # speaker's own usual at which the fillers exercise reaches the line.
     AI_VOICE_FILLER_GAP_PER_100 = _env_float("AI_VOICE_FILLER_GAP_PER_100", 5.0)

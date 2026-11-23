@@ -329,6 +329,26 @@ hold-back now only touch a clearer version's example.
 | 9 | Decide the global moment-cap and playable-audio-card contracts, then update stale V3/manager applicability descriptions. | Medium feedback consistency; high confidence; low-medium effort after decision. | Candidate-count and no-audio-card evaluation across legacy and V3 scenarios. | Choose global cap vs lane budgets; choose reject/no-card vs visual card; approve a migration/deprecation window. |
 | 10 | Align processing-stage/feedback lifecycle vocabulary and remove only proven dead compatibility paths. | Medium operability; high confidence; low-medium effort. | Trace tables and alert tests across queue/retry/readout; confirm zero callers before removal. | Approve a migration/deprecation window for persisted historic rows. |
 
+## Opening emphasis
+
+A plain AI demo can choose emphasis when a relative comparison would
+otherwise slow a whole moment down or add pauses. The clip must be within
+the existing comfort pace, have enough pause time, and show measurably
+lower vocal contrast than the speaker's usual delivery on that Take. The
+demo emphasizes the first substantial phrase and uses a comma after a
+short greeting to guide a quicker transition into it.
+
+To be offered, the demo must pass the current emphasis check, finish
+within 15% of the original clip's duration, and keep the longest quiet
+gap through the emphasis at or below 0.4 seconds. Those two new limits
+have defaults in the AI voice configuration.
+
+The Take 3 regression uses a comfortably paced clip with lower loudness
+contrast and a longer demo that spent 0.64 seconds quiet at the start.
+Synthetic audio with those timings is rejected. A demo with the same
+duration as the original, audible emphasis and a 0.24-second early gap
+passes.
+
 ## What Eleven v4 can and cannot do
 
 No SSML; no `speed` or `style` on v4 (only `stability` and
