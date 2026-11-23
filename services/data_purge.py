@@ -640,6 +640,10 @@ class DataPurgeOrchestrator:
         existing = frozenset(
             str(item) for item in catalog.get("existing_allowlisted_relations", [])
         )
+        if self.scope != "project" and "owner_chat_section_turns" in existing:
+            # 0531 installs this column together with the guarded writers.
+            # Wait before freezing an account inventory if the migration is pending.
+            self.client.table("owner_chat_section_turns").select("artifact").limit(0).execute()
         graph = self.build_subject_graph(
             str(request["acquisition_principal_id"]), existing,
         )

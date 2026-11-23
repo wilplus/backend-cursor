@@ -19,20 +19,31 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.owner_chat_may_write_v1(p_user uuid)
 RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
-DECLARE principal uuid;
+DECLARE principals uuid[];
 BEGIN
-    -- The account-deletion request takes this same row lock before it
-    -- starts. A writer goes before the request or sees its committed state.
-    SELECT id INTO principal FROM public.owner_principals
-    WHERE user_id = p_user FOR UPDATE;
+    -- Account erasure follows guest claims in both directions. Lock those
+    -- same identities so a write precedes erasure or sees its committed request.
+    WITH RECURSIVE linked(id) AS (
+        SELECT id FROM public.owner_principals WHERE user_id = p_user
+        UNION
+        SELECT CASE WHEN event.source_owner_principal_id = linked.id
+                    THEN event.target_owner_principal_id ELSE event.source_owner_principal_id END
+        FROM linked JOIN public.owner_claim_events event
+          ON linked.id IN (event.source_owner_principal_id, event.target_owner_principal_id)
+    )
+    SELECT ARRAY (
+        SELECT owner.id FROM public.owner_principals owner
+        WHERE owner.id IN (SELECT id FROM linked)
+        ORDER BY owner.user_id NULLS FIRST, owner.id FOR UPDATE OF owner
+    ) INTO principals;
     RETURN EXISTS (SELECT 1 FROM auth.users WHERE id = p_user AND deleted_at IS NULL)
       AND NOT EXISTS (
         SELECT 1 FROM public.account_deletion_requests
-        WHERE acquisition_principal_id = principal AND state IN ('pending', 'started', 'done')
+        WHERE acquisition_principal_id = ANY(principals) AND state IN ('pending', 'started', 'done')
       )
       AND NOT EXISTS (
-        SELECT 1 FROM public.processing_service_blocks
-        WHERE acquisition_principal_id = principal AND block_kind = 'account_deletion' AND effective_at <= now()
+        SELECT 1 FROM public.data_purge_requests
+        WHERE acquisition_principal_id = ANY(principals) AND project_id IS NULL
       );
 END;
 $$;

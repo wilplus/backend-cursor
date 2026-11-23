@@ -194,7 +194,7 @@ def _artifact(value: Any) -> dict | None:
         return None
     def text(key: str, limit: int) -> str:
         line = _words(value.get(key), limit)
-        return "" if "\x00" in line else line
+        return "" if "\x00" in line else line.encode("utf-8", "ignore").decode("utf-8").strip()
 
     title = text("title", 120)
     parts = {key: line for key in ("moment", "intervention", "output")
