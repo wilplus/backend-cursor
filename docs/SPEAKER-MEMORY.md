@@ -171,6 +171,19 @@ feedback. A practice request may add one matching exercise from the reviewed
 catalogue. Private speaker memory guides coaching preferences and stays out
 of search and source links.
 
+The [Speaking Coach golden cases](../tests/evals/golden/speaking_coach.jsonl)
+exercise questions about what a Take reveals about the speaker's communication.
+They grade observations about specific words and delivery, tentative readings
+the speaker can confirm, and a follow-up that helps understand the speaker.
+The same transcript has firmer, measured, and missing delivery evidence.
+Other cases cover choosing a fitting exercise and reflecting faith in the
+speaker's own terms when they bring it up. The cases use invented Takes and
+saved cue descriptions and run through the existing coach reply path.
+
+```sh
+python tests/evals/run_prompt_evals.py --surface speaking_coach
+```
+
 ## Storage (migration 0480)
 
 - `speaker_memory_events`: the raw inputs, kept for good. They are the asset:
