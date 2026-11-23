@@ -17765,3 +17765,9 @@ The rules: [`docs/SPEAKER-MEMORY.md`](SPEAKER-MEMORY.md).
 A newly ready project Take opens its review in the conversation with its evidence, optional practice and Ideal Text. Minimise and leaving the project fold the review into one clickable preview beside its recording. Reopening shows the same Take and its saved attempts. Project updates belong in the owning chat; the Speaking Coach chat is for general guidance. Existing project entrances and review actions remain available. A small arrow collapses and reopens the project chat's left menu.
 
 The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md).
+
+**N671 · One sidebar for the chat workspace** (founder, the Codex chat, 23 November 2026, asking that “every chat is in the left panel”, projects sit “under the speaking coach”, and setup is at the bottom). Updates the navigation in N666 and N670.
+
+Speaking Coach, its project conversations, and the owner's chats and subchats share the workspace sidebar. Selecting a row changes the conversation beside it. A sidebar icon at the top left opens and hides the sidebar. Speaking Coach and own-chat setup are available at the bottom. The sidebar replaces the full-page chat list, the Projects selector in Speaking Coach, and the menu inside a project conversation. The Take review, its recording handoff, contextual feedback history, and existing chat and project management continue in their active conversation.
+
+The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/chat-builder/flow.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/chat-builder/flow.md).
