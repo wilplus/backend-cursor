@@ -17794,3 +17794,9 @@ The rules: frontend [`docs/flows/consent-screens.md`](https://github.com/wilplus
 
 **N675 · The iPhone app keeps its edges as they are (founder, the Claude Code chat, 23 November 2026: "skip 3", after the corrected estimate on the page "Native Feel Review", <https://claude.ai/artifact/BHrLFbBQAZqvcMD6sJL9nE>).** Corrects N674 item 3: the app does not draw under the clock and the home bar; `contentInset` stays "always". The gain was about 12 points at the bottom of the recording screen, for a new app build and a check of every screen. N674 items 1 and 2 stand.
 No rules page: nothing changes on screen. No migration.
+
+**N676 · Retire the Speaking Coach setup shortcut** (founder, the Codex chat, 23 November 2026, asking to remove unused sidebar screens shown in the screenshot). Updates N671.
+
+The separate **Set up Speaking Coach** shortcut is removed from the sidebar. Speaking Coach and its projects are entered from the workspace. The plan opens from its prompts in the coach conversation. **Start a new project** remains available to a person who deleted their Speaking Coach, and **Archived chats** restores an archived coach.
+
+The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
