@@ -339,14 +339,16 @@ def _selection(problem: str, phrase: Optional[str], scores: dict, snippet: dict,
 
 def with_opening_emphasis(selection: dict, snippet: dict, medians: dict, *,
                           sentence: str, language: str) -> dict:
-    """Prefer measured flat delivery when the timing pick is only relative.
+    """Model early emphasis on a comfortably paced, low-contrast moment.
 
     This adjustment serves the plain AI demo of a whole moment. Reusing the
     source duration gives the rendered opening a like-for-like pace check.
     """
-    from services.ai_voice_prompt import fits_clip
+    from services.ai_voice_prompt import fits_clip, starts_with_greeting
 
-    if selection["exercise"] not in ("pace", "pause"):
+    if selection["exercise"] not in ("pace", "pause", "stress"):
+        return selection
+    if selection["exercise"] == "stress" and not starts_with_greeting(sentence):
         return selection
     wpm = _metric(snippet, "wpm")
     pause_ratio = _metric(snippet, "pause_ratio")

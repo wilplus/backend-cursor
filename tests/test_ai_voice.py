@@ -533,13 +533,15 @@ def test_the_sentence_under_the_clip_comes_from_the_transcript_and_their_own_num
             assert quotes in SENTENCE and cycle["selection"]["target_phrase"] == quotes
         assert not re.search(r"\d", why)
 
+@pytest.mark.parametrize("usual_wpm,usual_pause", [(104.7, 0.772), (151.5, 0.495)])
 @pytest.mark.parametrize("duration, early_gap, failed_checks", [
     (3.96, 0.24, []),
     (5.54, 0.24, ["opening_pace"]),
     (3.96, 0.64, ["opening_gap"]),
     (5.54, 0.64, ["opening_pace", "opening_gap"]),
 ])
-def test_opening_emphasis_keeps_a_comfortable_pace(duration, early_gap, failed_checks):
+def test_opening_emphasis_keeps_a_comfortable_pace(duration, early_gap, failed_checks,
+                                                   usual_wpm, usual_pause):
     # Take 3 calibration measurements on synthetic Polish words and audio.
     sentence = "Cześć. Mój lokalny park zaczął odżywać gdy zasadziliśmy tam drzewa."
     phrase = "Mój lokalny park"
@@ -548,7 +550,7 @@ def test_opening_emphasis_keeps_a_comfortable_pace(duration, early_gap, failed_c
         "transcript": sentence,
         "duration_ms": 3960,
     }
-    usual = _snip(104.7, pause_ratio=0.772, dynamic_db=10.5)
+    usual = _snip(usual_wpm, pause_ratio=usual_pause, dynamic_db=10.5)
     practice = {**_practice(language="pl"), "exact_passage": sentence}
     db = _Db(practice, source, [source, usual, usual])
     _ready_voice(db)
@@ -569,12 +571,37 @@ def test_opening_emphasis_keeps_a_comfortable_pace(duration, early_gap, failed_c
     assert cycle["exercise"] == "stress"
     assert cycle["selection"]["opening_emphasis"]
     assert cycle["selection"]["target_phrase"] == phrase
-    assert voices.bodies[0]["text"].startswith("Cześć, MÓJ LOKALNY PARK ")
+    assert voices.bodies[0]["text"].startswith("Cześć! MÓJ LOKALNY PARK ")
     assert cycle["generation_metadata"]["tags"] == []
     assert cycle["validation"]["measurements"]["opening_gap_s"] == early_gap
     assert cycle["validation"]["failed_checks"] == failed_checks
     assert out["clip"]["state"] == ("unavailable" if failed_checks else "ready")
     assert voices.spoken == (2 if failed_checks else 1)
+
+
+def test_a_fast_opening_with_short_pauses_keeps_its_pace_exercise():
+    sentence = "Hello. The trees in our park give us shade."
+    source = {**_snip(215, pause_ratio=0.04, dynamic_db=9.0), "transcript": sentence}
+    medians = {"wpm": 150, "pause_ratio": 0.05, "dynamic_db": 11}
+    selection = ai_voice_severity.select(source, medians, sentence=sentence,
+                                         seed="fast", language="en", explore=False)
+    assert selection["exercise"] == "pace"
+    assert ai_voice_severity.with_opening_emphasis(
+        selection, source, medians, sentence=sentence, language="en") is selection
+
+
+def test_the_approved_demo_names_its_change_and_keeps_the_previous_practice_outcome():
+    cycle = {"status": "completed", "storage_key": "approved.wav", "content_sha256": "wav",
+             "exercise": "pace", "outcome": "similar", "selection": {"exercise": "pace"},
+             "generation_metadata": {"approved_demo_sha256": "wav",
+                                     "approved_demo_selection": {"exercise": "stress",
+                                                                 "target_phrase": "our park"}}}
+    def shown():
+        return ai_voice_clip.state(None, {}, cycle, sign=lambda *args: "signed")["clip"]
+    assert (shown()["problem"], shown()["phrase"]) == ("stress", "our park")
+    assert (cycle["exercise"], cycle["outcome"]) == ("pace", "similar")
+    cycle["content_sha256"] = "other"
+    assert shown()["problem"] == "pace"
 
 
 def test_the_walks_fix_gets_no_clip_when_nothing_was_off_and_never_the_runner_up():

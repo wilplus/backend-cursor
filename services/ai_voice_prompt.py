@@ -96,8 +96,12 @@ def _pause(text: str, phrase: str) -> str:
 
 
 _OPENING_GREETING = re.compile(
-    r"^(hi|hello|good morning|cześć|hej|dzień dobry|witam)[.!]\s+$", re.IGNORECASE,
+    r"^(hi|hello|good morning|cześć|hej|dzień dobry|witam)[.!]\s+", re.IGNORECASE,
 )
+
+
+def starts_with_greeting(text: str) -> bool:
+    return bool(_OPENING_GREETING.match(text))
 
 
 def _stress(text: str, phrase: str, *, opening_emphasis: bool = False) -> str:
@@ -106,7 +110,7 @@ def _stress(text: str, phrase: str, *, opening_emphasis: bool = False) -> str:
         raise PromptRejected("TARGET_PHRASE_NOT_IN_SENTENCE")
     before = text[:match.start()]
     if opening_emphasis:
-        before = _OPENING_GREETING.sub(r"\1, ", before)
+        before = _OPENING_GREETING.sub(r"\1! ", before)
     return before + match.group(0).upper() + text[match.end():]
 
 

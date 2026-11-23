@@ -632,14 +632,22 @@ def _speak_until_checked(job: _Job, voice_id: str, request: dict, selection: dic
         audio = speech.audio
         job.lap("generation")
         job.update({"status": "validating"})
-        result = validate(
-            audio=audio, spoken_words=request["spoken_words"], exercise=selection,
-            transcription=_hear(job.db, job.principal_id, job.practice, audio,
-                                job.tools["transcribe"], context["language"]),
-            language=context["language"],
-            decode=job.tools["decode"],
-            original_wpm=(snippet.get("metrics") or {}).get("wpm"),
-            original_duration_s=(snippet.get("duration_ms") or 0) / 1000.0 or None)
+        def check(candidate):
+            heard = _hear(job.db, job.principal_id, job.practice, candidate,
+                          job.tools["transcribe"], context["language"])
+            return heard, validate(
+                audio=candidate, spoken_words=request["spoken_words"], exercise=selection,
+                transcription=heard, language=context["language"], decode=job.tools["decode"],
+                original_wpm=(snippet.get("metrics") or {}).get("wpm"),
+                original_duration_s=(snippet.get("duration_ms") or 0) / 1000.0 or None)
+
+        heard, result = check(audio)
+        if not result["passed"] and selection.get("opening_emphasis"):
+            from services.ai_voice_opening import polish
+            candidate = polish(audio, context["sentence"], selection, heard, result)
+            if candidate:
+                audio = candidate
+                _, result = check(candidate)
         job.lap("validation")
         if result["passed"]:
             break
@@ -736,6 +744,15 @@ def _put(key: str, audio: bytes) -> str:
 
 # ── what the walk may know ───────────────────────────────────────────────
 
+def _displayed_cycle(cycle: dict) -> dict:
+    metadata = cycle.get("generation_metadata") or {}
+    selection = metadata.get("approved_demo_selection")
+    if (cycle.get("content_sha256") and metadata.get("approved_demo_sha256") == cycle["content_sha256"]
+            and isinstance(selection, dict) and selection.get("exercise") == "stress"):
+        return {**cycle, "exercise": "stress", "selection": selection}
+    return cycle
+
+
 def state(database: Any, practice: dict, cycle: Optional[dict], *, sign=None) -> dict:
     if not cycle:
         return {"demo": "video" if _has_video(practice) else "none", "clip": None}
@@ -750,10 +767,11 @@ def state(database: Any, practice: dict, cycle: Optional[dict], *, sign=None) ->
         demo = "ai_voice"
     if status == "completed" and cycle.get("storage_key"):
         url = (sign or _sign)(str(cycle.get("bucket") or ""), str(cycle["storage_key"]))
+        displayed = _displayed_cycle(cycle)
         clip = {"state": "ready" if url else "unavailable", "url": url,
                 "duration_ms": cycle.get("duration_ms"),
-                "max_appearances": MAX_APPEARANCES, "why": why_of(cycle),
-                **problem_of(cycle)}
+                "max_appearances": MAX_APPEARANCES, "why": why_of(displayed),
+                **problem_of(displayed)}
     elif status in ("pending", "analyzing", "choosing_exercise", "generating", "validating"):
         clip = {"state": "pending", "url": None, "max_appearances": MAX_APPEARANCES}
         if (cycle.get("selection") or {}).get("exercise"):

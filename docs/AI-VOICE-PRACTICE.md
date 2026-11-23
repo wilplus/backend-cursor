@@ -335,8 +335,10 @@ A plain AI demo can choose emphasis when a relative comparison would
 otherwise slow a whole moment down or add pauses. The clip must be within
 the existing comfort pace, have enough pause time, and show measurably
 lower vocal contrast than the speaker's usual delivery on that Take. The
-demo emphasizes the first substantial phrase and uses a comma after a
-short greeting to guide a quicker transition into it.
+demo emphasizes the first substantial phrase. A short greeting gets an
+exclamation mark to give the opening more presence. The same checks apply
+when low contrast already selected emphasis and the moment starts with a
+greeting. The reference recording's playback gain is specific to that file.
 
 To be offered, the demo must pass the current emphasis check, finish
 within 15% of the original clip's duration, and keep the longest quiet
@@ -348,6 +350,12 @@ contrast and a longer demo that spent 0.64 seconds quiet at the start.
 Synthetic audio with those timings is rejected. A demo with the same
 duration as the original, audible emphasis and a 0.24-second early gap
 passes.
+
+If a generated one-word greeting still leaves a long quiet gap, the worker
+can shorten that gap, gently lift the next word and lower the render's pitch
+slightly while keeping its pace. It checks the edited audio again before
+offering it. An owner-approved replacement demo carries its own display
+selection so earlier practice outcomes keep their original exercise.
 
 ## What Eleven v4 can and cannot do
 
