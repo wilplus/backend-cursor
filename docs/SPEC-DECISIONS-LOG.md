@@ -17759,3 +17759,9 @@ The rules: frontend [`docs/chat-builder/flow.md`](https://github.com/wilplus/fro
 When a speaker asks what their Take shows about them, Will points to specific spoken words or a move in the speech and connects it to observed delivery from that passage. It offers any listener impression as a possibility and asks a focused question that helps the speaker confirm it or understand the habit. With words alone, Will names that basis for the reflection. When useful, it offers one rehearsable action, using a fitting reviewed intervention when available. It reflects the speaker's stated values in their own terms and attributes quoted beliefs to their source.
 
 The rules: [`docs/SPEAKER-MEMORY.md`](SPEAKER-MEMORY.md).
+
+**N670 · Feedback Walk lives inside its project chat** (founder, Speaking Coach project review design chat, 23 November 2026, approving the inline prototype, asking to retain the current buttons and to make the left menu hideable with a small arrow). Updates the project review presentation in N666; N665 and N667 apply.
+
+A newly ready project Take opens its review in the conversation with its evidence, optional practice and Ideal Text. Minimise and leaving the project fold the review into one clickable preview beside its recording. Reopening shows the same Take and its saved attempts. Project updates belong in the owning chat; the Speaking Coach chat is for general guidance. Existing project entrances and review actions remain available. A small arrow collapses and reopens the project chat's left menu.
+
+The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md).
