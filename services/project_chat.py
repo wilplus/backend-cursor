@@ -30,7 +30,7 @@ from services.content_language import (
     recording_target_language,
     resolve_content_language,
 )
-from services.llm_config import SPEC_PROJECT_CHAT
+from services.llm_config import SPEC_PROJECT_CHAT, SPEC_PROJECT_CHAT_REVIEW
 
 logger = logging.getLogger(__name__)
 
@@ -1128,6 +1128,7 @@ def _review_instruction(context: ProjectChatContext, question: str, review: dict
         return ("The speaker is asking how to carry their practice into the next recording. "
                 "In the answer, invite them to open their existing Ideal Text and explain that "
                 "its helper words cue both what they said and how it felt to say it. "
+                "Use the existing name 'słowa pomocnicze' in Polish. Keep it to two short sentences. "
                 "Set next_review_step to 'ideal', moment and wording to null, and practise to false.")
     if anchor["step"] == "feedback" and _MORE_STRENGTHS.search(question):
         strengths = {item.get("snippet_id") for item in context.feedback_moments
@@ -1174,7 +1175,7 @@ def _model_turn(
             target_language=target_language,
             system=system,
             user=user_prompt,
-            spec=SPEC_PROJECT_CHAT,
+            spec=SPEC_PROJECT_CHAT_REVIEW if review else SPEC_PROJECT_CHAT,
             surface="project_chat",
             user_id=user_id,
             session_id=context.take_session_id,

@@ -354,7 +354,7 @@
     "project_chat.review": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "981e48400b3402aa9ef3894d139d67f0e3d140ec5e6ac24531b21adb6ea185cd"
+      "sha256": "e4ee421740779e8d37dde310c0afa1f12f2c474a0b386c22d5edeb59c526bb47"
     },
     "project_chat.system": {
       "kind": "source_ref",
