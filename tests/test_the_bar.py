@@ -1,7 +1,7 @@
 """
 STORY    As someone in a host's chat, I want to type to them where their chat
-         takes typing and to add the photo their chat asks for, so that the
-         bar's middle is always the one thing to do now (N610).
+         takes typing and to add the requested photo, so I can answer with
+         the formats the chat accepts (N610, N667).
 OUTCOME
   O1  BAR-N610-1. Where my host's chat takes typing, I type to them and
       they type back; the three emoji stay as they are; what I type after
@@ -30,9 +30,8 @@ PROVES   O1 -> TheBarTest::test_people_type_only_where_the_hosts_chat_takes_typi
          O3 -> TheBarTest::test_a_question_of_my_recipe_asks_for_a_photo_and_the_read_says_so
          O4 -> TheBarTest::test_the_photo_answers_the_question_and_the_host_sees_it
          O5 -> TheBarTest::test_only_a_signed_in_member_with_authority_adds_the_photo
-WHY      The founder, 10 November 2026 (N610): "if someone has typing on, then
-         you can literally type to them thank you"; "A photo asked for: the
-         middle is 'Add a photo'".
+WHY      The chat's permitted formats still apply in the shared composer.
+         A required photo uses Files and its question-specific endpoint (N667).
 """
 from __future__ import annotations
 

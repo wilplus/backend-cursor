@@ -3897,7 +3897,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 *Why:* 2026-11-05, the wait. Driven through the public generate_for_session; only the Take's readout and the speaker's cross-Take cue baseline are faked, and the store itself.
 
-### As someone in a host's chat, I want to type to them where their chat takes typing and to add the photo their chat asks for, so that I can answer with the formats the chat accepts (N610, N667).
+### As someone in a host's chat, I want to type to them where their chat takes typing and to add the requested photo, so I can answer with the formats the chat accepts (N610, N667).
 
 `tests/test_the_bar.py` · Story
 
@@ -3907,7 +3907,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O4** BAR-N610-4. The photo answers the question: it is kept as any photo, I (the host) see it and can open it, my next line follows; a file that is no photo, a tap, a second photo, or a photo for a question that asks for none is refused.
 - **O5** BAR-N610-5. Only a signed-in member with current processing authority adds the photo: a website visitor has no way to before signing up, nobody signed out does, and a refused authority writes nothing.
 
-*Why:* The founder, 10 November 2026 (N610): "if someone has typing on, then you can literally type to them thank you"; The photo uses Files in the frontend [shared composer](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md#shared-composer-n667).
+*Why:* The chat's permitted formats still apply in the shared composer. A required photo uses Files and its question-specific endpoint (N667).
 
 ### As a speaker, I want my recordings used for training only after my own training yes, so that an old bundled yes or a withdrawal is respected. (Critical path: consent.)
 
