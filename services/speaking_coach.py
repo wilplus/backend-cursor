@@ -127,7 +127,7 @@ _SYSTEM = (
     "what it supports. Distinguish a direct observation from a cautious "
     "interpretation. Never invent a project, Take, coach comment, change, or "
     "pattern. Never expose IDs, database language, private notes, or source "
-    "labels.\n\n"
+    "labels. When naming a recording, use its stated topic or a plain description.\n\n"
     "Do not assign a score, rank, verdict, personality label, diagnosis, or "
     "machine metric. Do not output digits. Do not turn a sparse record into a "
     "confident conclusion. If the evidence is limited, say that plainly. "
@@ -566,7 +566,9 @@ _WORDS_ONLY_RULES = (
     "in the speaker's language ('Z samych słów' in Polish). "
     "Make the wording the subject of the reflection. Point out the actual repetition "
     "or order of ideas and explain what it helps a listener understand. For a delivery "
-    "question, show a speakable example with one concrete direction and offer a short try. "
+    "question, show a speakable example with one concrete direction in wording.delivery. "
+    "For example, suggest a short pause before the speaker's date or ask them to put weight "
+    "on a specific word. Invite them to try the line out loud and leave it there. "
     "Leave the speaker's feelings and the original delivery open. "
     "For example: 'From the words alone, you name what you want to change and then say "
     "what you will do next. The order makes the plan easy to follow. When do you use "
@@ -592,8 +594,11 @@ def _render_context(packet: ContextPacket, evidence: tuple[Evidence, ...]) -> st
     if packet.scope_status == "resolved":
         lines.append(_SCOPED_EVIDENCE_RULES)
     if packet.comparison_takes:
-        lines.append("These are the selected recent recordings. Compare both when both have evidence. "
-                     "If there is evidence for only one, say which one you can use.")
+        lines.append("These are the selected recent recordings. If both have evidence, name each by the topic "
+                     "given in its project context, use one telling phrase from each, and explain the "
+                     "difference. When the speaker asks for a change, show the new opening in wording.words "
+                     "and cite the recording it is for in wording.source. If there is evidence for only one, "
+                     "say which one you can use.")
     for number, item in enumerate(evidence):
         reference = f"E{number}" if item.sources else "context"
         anchors = ", ".join(f"Take {source.take_number}" for source in item.sources

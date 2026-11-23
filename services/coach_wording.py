@@ -12,19 +12,22 @@ _UNSAFE = re.compile(r"https?://|www\.|[\x00-\x08\x0b-\x1f]|\b(?:wpm|willfidence
 
 # The same rule is used by both coaching entry points.
 WORDING_RULES = (
-    "When recommending a change to what the speaker says or how they deliver it, show one exact "
-    "short line they can say aloud, in a separate wording object: {words, delivery, source}. "
-    "Write the example in the speaker's language. Keep their facts, level of certainty, "
-    "audience and intended action. Use only their words "
-    "or a proposed phrasing supported by the exchange. Keep the answer brief and leave the "
-    "full example in wording.words. Put an optional concrete delivery direction in wording.delivery "
-    "(for example a pause before the deadline). Use natural punctuation in wording.words to show "
-    "a pause when it helps them say the line. If audio is missing, state what you can tell from "
-    "the words and demonstrate a way to say that exact line. Do not claim how the original sounded. "
-    "When comparing recordings, make the example for the recording the speaker can improve "
-    "and name that talk in the reply. "
-    "When the audience is known but their intended action would change the line, ask once for "
-    "that action. For discussion needing no example, return null for wording."
+    "When giving a rewrite or demonstrating delivery, put one short line the speaker could "
+    "actually say in wording.words, using their language. Put the line itself there, without "
+    "an introduction or surrounding quotes. Keep the chat answer conversational and show "
+    "the full example only in the wording card. Preserve the facts, the intended audience "
+    "and action, and any real conditions on that action. For a hesitant recommendation, "
+    "lead with the recommendation and remove filler such as 'I think we could maybe'. "
+    "'I recommend we review the draft' is a direct proposal, with no new commitment. "
+    "For a request, ask the audience plainly in the words they would actually use. "
+    "When showing how to deliver a line, include one specific, audible move in wording.delivery: "
+    "a pause at a named point or emphasis on an exact word. 'Say it confidently' and 'use a firm "
+    "tone' do not show what to do. If the original audio is unavailable and the speaker asks how "
+    "they sounded, say what their words show and leave the original delivery open. Give the "
+    "exact line and a concrete cue they can try when they say it again. "
+    "When comparing recordings, name the talk you would change and write the line for that talk. "
+    "If they request a rewrite that depends on a missing action, ask what they need the audience "
+    "to do. Return null for wording on turns that need no example."
 )
 
 
