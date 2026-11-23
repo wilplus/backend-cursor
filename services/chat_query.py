@@ -1324,9 +1324,11 @@ def answer_chat(database, *, user_id, question: str, history, context,
             claimed = _chat_intent(user_id, question, context, history)
             if claimed:
                 return finalize(*claimed)
+        focus = context.get("review_focus") if isinstance(context, dict) else None
         return finalize(*project_chat.answer(
             database, str(user_id), str(project_id), question,
             take_session_id=take_id,
+            **({"review_focus": focus} if focus is not None else {}),
         ))
     if screen:
         history = screen_history(history)

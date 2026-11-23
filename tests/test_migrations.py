@@ -173,6 +173,9 @@ class DestructiveDetectionTests(unittest.TestCase):
             # the now-empty guest principal after its complete entity graph is
             # transferred to an already-existing permanent owner principal.
             "add_canonical_project_ownership.sql",
+            # Defines owner-scoped chat deletion RPCs. The migration creates
+            # the functions. A user's explicit delete invokes them later.
+            "a_person_keeps_their_chat_structure.sql",
             # Flagged on three patterns, none of which destroys user data.
             # DROP COLUMN drops begin_idempotency_key from
             # feedback_language_delivery_scan_runs — a table this same file

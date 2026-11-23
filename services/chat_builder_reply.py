@@ -146,6 +146,7 @@ def build_prompt(setup: dict, message: str, extra: Optional[dict] = None) -> str
         *_example_lines(list(setup.get("examples") or [])),
         *_pick_lines(list(extra.get("picks") or [])),
         *_attachment_lines(extra),
+        *_lines("Recent messages from this conversation:", extra.get("conversation", [])),
         f"The person sent: {message.strip()}",
     ]
     return "\n".join(part for part in parts if part)
@@ -422,7 +423,7 @@ def _with_voice(upload: dict, user_id: str, message: str, extra: dict) -> tuple[
 
 
 def reply(database: Any, user_id: str, chat_id: str, payload: Any, *,
-          recipe: dict, host_answers: int) -> tuple[dict, int]:
+          recipe: dict, host_answers: int, conversation: Optional[list[dict]] = None) -> tuple[dict, int]:
     """The visitor's answer. ``(body, status)`` in the shape the builder reads."""
     payload = payload if isinstance(payload, dict) else {}
     kind = str(payload.get("kind") or "text")
@@ -439,6 +440,11 @@ def reply(database: Any, user_id: str, chat_id: str, payload: Any, *,
         return {"shown": False, "wait": True, "reply": None}, 200
     message = str(upload.get("message") or "")
     extra: dict[str, Any] = {"picks": setup["picks"]}
+    if conversation:
+        extra["conversation"] = [
+            f"Visitor: {turn['question'][:500]}\nChat: {turn['answer'][:500]}"
+            for turn in conversation
+        ]
     measures = None
     if kind == "rec":
         message, measures, extra = _with_voice(upload, user_id, message, extra)

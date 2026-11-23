@@ -25,7 +25,7 @@ from flask import Flask, request
 
 from routes.v2 import user_sessions
 from services.db import db
-from services.user_trainings import _practice_summary
+from services.user_trainings import _coverage, _practice_summary
 
 SLIDES = {"topic": "T", "slides": [{"title": "A"}, {"title": "B"}]}
 
@@ -59,6 +59,16 @@ def test_trainings_group_by_talk_and_mark_ideal_ready():
     assert cards["ready"]["ideal_ready"] is True
     assert cards["half"]["ideal_ready"] is False
     batched_edits.assert_called_once_with(["ready", "half"], strict=False)
+
+
+def test_coverage_uses_distinct_spoken_sections_in_completed_takes():
+    takes = [
+        {"analysis_state": "ready", "intake_context": {"slide_advances": [{"index": 0}, {"index": 2}]}},
+        {"status": "completed", "intake_context": {"slide_advances": [{"index": 0}, {"index": 2}, {"index": 9}]}},
+        {"analysis_state": "failed", "intake_context": {"slide_advances": [{"index": 1}]}},
+    ]
+    assert _coverage(takes, 8, True) == {"practised": 2, "total": 8, "unit": "slides"}
+    assert _coverage(takes, 0, False) == {"practised": 2, "total": 3, "unit": "sections"}
 
 
 def test_picker_preserves_per_project_coach_read_fallback_on_batch_failure():

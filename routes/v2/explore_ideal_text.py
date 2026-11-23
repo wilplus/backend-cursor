@@ -90,6 +90,40 @@ def _completed_spoken_sessions(sessions):
     ]
 
 
+@v2_bp.route("/explore/arc/<arc_id>/review/runs", methods=["GET"])
+@require_auth
+def v2_take_review_runs(arc_id):
+    from services import take_review_history
+
+    owned, sessions = _arc_owned_by_caller(arc_id)
+    if not owned:
+        return jsonify({"code": "NOT_FOUND"}), 404
+    actor = str(request.user_id)
+    take_ids = {
+        str(item["id"]) for item in _completed_spoken_sessions(sessions)
+        if item.get("id") and str(item.get("user_id")) == actor and take_review_history.is_ready(item)
+    }
+    return jsonify({"runs": take_review_history.practice_runs(db, actor, str(arc_id), take_ids)})
+
+
+@v2_bp.route("/explore/arc/<arc_id>/review/notes/<take_id>", methods=["GET", "PUT"])
+@require_auth
+def v2_take_review_notes(arc_id, take_id):
+    from services import take_review_history
+
+    owned, sessions = _arc_owned_by_caller(arc_id)
+    actor = str(request.user_id)
+    if not owned or not any(
+        str(t.get("id")) == take_id and str(t.get("user_id")) == actor and take_review_history.is_ready(t)
+        for t in _completed_spoken_sessions(sessions)
+    ):
+        return jsonify({"code": "NOT_FOUND"}), 404
+    if request.method == "GET":
+        return jsonify(take_review_history.read(db, actor, take_id))
+    payload, status = take_review_history.save(db, actor, take_id, request.get_json(silent=True))
+    return jsonify(payload), status
+
+
 # The /talks/<talk_id>/ideal-text route (Paid Audits A7) was DELETED here
 # (founder 2026-08-10: "older feedback system should be ripped off"). It had
 # no FE caller and no BFF proxy — the audits product it served is retired,

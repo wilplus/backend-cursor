@@ -256,6 +256,7 @@ never an edit.
 | flag | gates |
 |---|---|
 | `LLM_USAGE_ENABLED` | LLM call accounting |
+| `SPEAKING_COACH_ENABLED` | Scoped and general Speaking Coach answers |
 | `PIECES_CANONICAL_ENABLED` | pieces as the canonical document unit |
 | `SENTENCE_BOUNDARY_SPLIT_ENABLED` | sentence-boundary piece splitting |
 | `VOICE_CONFIDENCE_ENABLED` | the voice-confidence measure (computed) |
