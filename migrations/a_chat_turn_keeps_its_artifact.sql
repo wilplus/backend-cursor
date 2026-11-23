@@ -17,12 +17,8 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION public.owner_chat_may_write_v1(p_user uuid)
-RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
-DECLARE principals uuid[];
-BEGIN
-    -- Account erasure follows guest claims in both directions. Lock those
-    -- same identities so a write precedes erasure or sees its committed request.
+CREATE OR REPLACE FUNCTION public.owner_chat_linked_principals_v1(p_user uuid)
+RETURNS uuid[] LANGUAGE sql STABLE SET search_path = '' AS $$
     WITH RECURSIVE linked(id) AS (
         SELECT id FROM public.owner_principals WHERE user_id = p_user
         UNION
@@ -31,12 +27,31 @@ BEGIN
         FROM linked JOIN public.owner_claim_events event
           ON linked.id IN (event.source_owner_principal_id, event.target_owner_principal_id)
     )
-    SELECT ARRAY (
-        SELECT owner.id FROM public.owner_principals owner
-        WHERE owner.id IN (SELECT id FROM linked)
-        ORDER BY owner.user_id NULLS FIRST, owner.id FOR UPDATE OF owner
-    ) INTO principals;
-    RETURN EXISTS (SELECT 1 FROM auth.users WHERE id = p_user AND deleted_at IS NULL)
+    SELECT ARRAY(SELECT id FROM linked ORDER BY id);
+$$;
+
+REVOKE ALL ON FUNCTION public.owner_chat_linked_principals_v1(uuid) FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.owner_chat_may_write_v1(p_user uuid)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE principals uuid[] := public.owner_chat_linked_principals_v1(p_user);
+BEGIN
+    IF cardinality(principals) = 0 THEN
+        -- A first chat can precede the canonical product owner. The auth
+        -- row's lock makes creating or claiming that owner wait. If one
+        -- appeared while we waited, retry without the auth lock first.
+        PERFORM 1 FROM auth.users WHERE id = p_user AND deleted_at IS NULL FOR UPDATE;
+        RETURN FOUND AND cardinality(public.owner_chat_linked_principals_v1(p_user)) = 0;
+    END IF;
+
+    -- Follow the erasure graph and take guest locks before the account lock,
+    -- as the guest claim does. Recheck on a fresh statement snapshot in
+    -- case a claim committed while this writer was waiting.
+    PERFORM 1 FROM public.owner_principals owner
+    WHERE owner.id = ANY(principals)
+    ORDER BY owner.user_id NULLS FIRST, owner.id FOR UPDATE OF owner;
+    RETURN principals = public.owner_chat_linked_principals_v1(p_user)
+      AND EXISTS (SELECT 1 FROM auth.users WHERE id = p_user AND deleted_at IS NULL)
       AND NOT EXISTS (
         SELECT 1 FROM public.account_deletion_requests
         WHERE acquisition_principal_id = ANY(principals) AND state IN ('pending', 'started', 'done')
