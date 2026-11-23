@@ -94,15 +94,17 @@ def practice_runs(database, user_id: str, arc_id: str, take_ids: set[str]) -> di
         cursor = rows[-1]["id"]
 
 
-def walk_steps(database, user_id: str, arc_id: str, take_id: str) -> list[dict]:
-    """The visible messages saved during one Take's walk, oldest first."""
+def walk_steps(database, user_id: str, arc_id: str, take_id: str, *, exchange: bool = False) -> list[dict]:
+    """A Take's saved walk, or its complete exchange, oldest first."""
     rows: list[dict] = []
     cursor = None
     while True:
         query = (database.client.table("lounge_messages")
                  .select("id, client_id, role, kind, body, metadata, client_created_at")
-                 .eq("user_id", user_id).eq("chat_erased", False).eq("kind", "walk_step")
+                 .eq("user_id", user_id).eq("chat_erased", False)
                  .eq("metadata->>arc_id", arc_id).eq("metadata->>take_session_id", take_id))
+        if not exchange:
+            query = query.eq("kind", "walk_step")
         if cursor is not None:
             query = query.gt("id", cursor)
         batch = query.order("id").limit(500).execute().data or []

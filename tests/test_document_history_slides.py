@@ -17,7 +17,8 @@ WHY      Founder 2026-11-03, N375, N376, N380; a Take's deck is its own (N257).
 from services.paragraph_history import document_history
 
 SESSIONS = [
-    {"id": "take-1", "intake_context": {"presentation_ref": "decks/first.pdf"}},
+    {"id": "take-1", "intake_context": {"presentation_ref": "decks/first.pdf",
+                                       "slides": [{"title": "First"}]}},
     {"id": "take-2", "intake_context": {"presentation_ref": "decks/second.pdf"}},
 ]
 
@@ -39,8 +40,10 @@ def test_each_version_carries_its_slides_and_its_own_takes_deck():
     head, older = rows
     assert older["slides"] == [0, 0, 1]
     assert older["presentation_ref"] == "decks/first.pdf"
+    assert older["deck_known"] is True and older["slide_titles"] == ["First"]
     assert head["is_head"] and head["slides"] == [0, None]
     assert head["presentation_ref"] == "decks/second.pdf"
+    assert head["deck_known"] is True and head["slide_titles"] == []
 
 
 def test_an_unproved_slide_map_or_unknown_take_is_not_guessed():
@@ -50,6 +53,7 @@ def test_an_unproved_slide_map_or_unknown_take_is_not_guessed():
     ], SESSIONS)
     assert rows[0]["slides"] is None
     assert rows[0]["presentation_ref"] is None
+    assert rows[0]["deck_known"] is False
     assert rows[0]["text"] == "One.\n\nTwo."
 
 
