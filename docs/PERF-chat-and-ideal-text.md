@@ -20,13 +20,15 @@ the actual conversation. The normal path makes one contextual generation;
 a short acknowledgement after setup has a deterministic fast path.
 
 In Speaking Coach (`place=speaking`), ordinary conversation uses deterministic
-routing and one `SPEC_SPEAKING_COACH` generation. Product questions keep their
-existing app-aware path. Project setup cannot consume a Speaking Coach turn.
+routing and one `SPEC_SPEAKING_COACH` generation. Questions scoped to a Take
+use one `SPEC_SPEAKING_COACH_TAKE` generation to ground the reflection in its
+words and delivery. Product questions keep their existing app-aware path.
+Project setup cannot consume a Speaking Coach turn.
 The service defaults on; `SPEAKING_COACH_ENABLED=0` restores its previous
 answer path. Retrieval is bounded to sixteen source reads, four projects
 and four Takes per project, with a sixty-second derived cache and current
 authorization checked again before reuse. Small greetings and joke requests
-avoid evidence reads. Both model specs use a fifteen-second provider timeout
+avoid evidence reads. The model specs use a fifteen-second provider timeout
 and the shared language helper. Logs expose timings and call counts without
 conversation words; no production latency improvement has been measured yet.
 

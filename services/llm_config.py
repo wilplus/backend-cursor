@@ -118,6 +118,12 @@ SPEC_SPEAKING_COACH = LLMSpec(
 )
 """Speaking Coach: one grounded generation without an intent classifier."""
 
+SPEC_SPEAKING_COACH_TAKE = LLMSpec(
+    model=STRONG_MODEL, temperature=0.25, max_tokens=320,
+    response_format=None, timeout_seconds=15.0,
+)
+"""Focused reflection on a selected Take and its words and delivery."""
+
 SPEC_PROJECT_CHAT = LLMSpec(
     model=CHEAP_MODEL, temperature=0.4, max_tokens=360,
     response_format={"type": "json_object"}, timeout_seconds=15.0,

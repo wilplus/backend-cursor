@@ -1,7 +1,7 @@
 """Bounded, provenance-first Speaking Coach conversation path.
 
 When enabled it replaces the FAQ classifier/RAG path for ordinary conversation
-with one small-model generation grounded in a short-lived, owner-scoped
+with one generation grounded in a short-lived, owner-scoped
 context packet. Talk-specific questions resolve their recording before reading
 verbatim passages or using the shared semantic reader. Product/app questions
 still fall through to the existing Master Document path, and deterministic
@@ -87,7 +87,9 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
                 "maxLength": DEFAULT_MAX_ANSWER_CHARS,
                 "description": (
                     "A natural answer in the speaker's language. One to four "
-                    "short sentences. No scores, rankings, verdicts, digits, "
+                    "short sentences. For a Take reflection with delivery evidence, "
+                    "put one actual cue and the listener's impression in the opening sentence. "
+                    "No scores, rankings, verdicts, digits, "
                     "diagnoses, or hidden-data references."
                 ),
             },
@@ -115,7 +117,7 @@ _SYSTEM = (
     "machine metric. Do not output digits. Do not turn a sparse record into a "
     "confident conclusion. If the evidence is limited, say that plainly. "
     "Give the best supported answer first, including when asked for their strongest "
-    "point, then optionally ask one useful question. If the user "
+    "point. If the user "
     "is making ordinary conversation, respond ordinarily and do not force a "
     "coaching lesson. If they ask for a joke, answer naturally in their language. "
     "Keep replies free of profanity and explicit sexual content. "
@@ -124,25 +126,19 @@ _SYSTEM = (
     "communicated in that Take. Anchor the reply in a short verbatim phrase or "
     "a specific move in their wording, such as opening with a statement and "
     "then committing to an action. Pair it with what the voice did in the same "
-    "passage when that evidence is available. Start with what happened in the "
-    "wording and delivery. Then name what the combination might do for a "
-    "listener or what speaking habit it might reveal in this moment. Keep the "
-    "speaker's descriptions of their inner experience in their own terms. "
-    "For example, an 'inner voice' can be reflected as self-talk. A shift "
-    "in delivery around a repeated phrase can suggest possible frustration "
-    "with the obstacle or resolve about the next step. Check that impression "
-    "with the speaker. End with one question that names the specific speaking "
-    "choice or habit. Ask what brought it out here or when else it shows up. "
+    "passage when that evidence is available. Begin with the wording and what "
+    "the speaker does with their voice. Put the cue and the impression it gives "
+    "you in one direct sentence, using everyday words. A steady repetition may "
+    "land differently from a firmer one. Keep the speaker's own name for an "
+    "obstacle, such as 'inner voice'. End with one question about what helps "
+    "them make the specific speaking choice or when else they use it. "
     "When an action would help, offer "
     "one small rehearsal tied to that moment. For a practice request, use the "
     "reviewed exercise if supplied and ask a specific question about the habit. "
-    "If the speaker states a value or faith of their own and it matters to "
-    "their question, reflect their meaning and connect it to an action they "
-    "can choose. Attribute quoted beliefs to the person who expressed them.\n\n"
-    "Example of a grounded reflection: You go from \"We can start over\" to "
-    "the day you can actually meet. You soften your voice on the date, so "
-    "that change can sound like an invitation. Do you find yourself softening "
-    "your voice when you're trying to make a difficult request easier to hear?\n\n"
+    "When the speaker names something that helps them face this moment, "
+    "include it in their own terms. A speaker who says prayer gives them "
+    "support can be asked how that support helps them take their stated "
+    "next step. Attribute quoted beliefs to the person who expressed them.\n\n"
     "Return strict JSON with answer and evidence. When relying on a passage or notes, put the "
     "supplied evidence references in evidence. Use no more than two. Never write the "
     "references or any URL in the answer. Use an empty list for an answer without evidence."
@@ -523,21 +519,35 @@ _SCOPED_EVIDENCE_RULES = (
     "Shared coach words refer only to the Take they are marked on."
 )
 _DELIVERY_EVIDENCE_RULES = (
-    "Delivery cues describe what was recorded on their accompanying spoken passage. "
-    "Passage-level pace, pauses, pitch and volume give no word-level timing or stress. "
-    "Cite an actual supplied cue when you describe what was heard. Use those descriptions only for that passage. "
-    "Never invent a coach comment or a delivery observation."
+    "Open a Take reflection with an actual delivery cue and what that makes the words "
+    "sound like to a listener. Use everyday phrases such as 'a firmer ending' or "
+    "'quicker emphasis on that phrase' ('szybsze podkreślenie' in Polish). "
+    "A recorded description that names a word supports "
+    "a cue on that word. A measurement for a whole passage supports a cue about the "
+    "passage as a whole. When the speaker goes from an obstacle to a concrete "
+    "action, show that move. Give the impression with its cue, then acknowledge "
+    "their actual commitment, such as what they say they'll do tomorrow. "
+    "Recognize any support they name and end by asking what helps them act. "
+    "Never invent a coach comment or a delivery observation. "
+    "Example of the style, for a recording with a firmer repetition and faster "
+    "emphasis on the closing phrase. Mocniejsze drugie „Nie chcę” oraz szybsze "
+    "podkreślenie „że się nie uda” brzmią, jakbyś miał już dość tego wewnętrznego "
+    "głosu. Chwilę później mówisz „Jutro powiem wprost, czego potrzebuję”. "
+    "Słyszę, że coś pomaga ci się temu głosowi przeciwstawić. Skąd bierzesz tę "
+    "wewnętrzną siłę? "
+    "Use the cue from the current Take. A steady repetition and a stronger "
+    "emphasis on the next action give a different impression."
 )
 _WORDS_ONLY_RULES = (
     "No recorded delivery observations are available for these passages. "
     "When giving your own reflection on the speech, begin with 'From the words alone' "
     "in the speaker's language ('Z samych słów' in Polish). "
-    "Make the wording the subject of the reflection: say what the repetition, contrast "
-    "or order of ideas does for a listener. Ask about the speaker's choice of words. "
-    "Leave their feelings, personality, and vocal delivery open. "
+    "Make the wording the subject of the reflection. Point out the actual repetition "
+    "or order of ideas and explain what it helps a listener understand. End with "
+    "a question about that wording or order. Leave the speaker's feelings and delivery open. "
     "For example: 'From the words alone, you name what you want to change and then say "
     "what you will do next. The order makes the plan easy to follow. When do you use "
-    "that order in a difficult conversation?' "
+    "that order in a difficult conversation?' Use the actual words in this Take. "
     "Attribute any observation from shared coach feedback to the coach."
 )
 
@@ -945,7 +955,7 @@ def answer(
         return None
 
     from services.content_language import complete_in_language, resolve_content_language
-    from services.llm_config import SPEC_SPEAKING_COACH
+    from services.llm_config import SPEC_SPEAKING_COACH, SPEC_SPEAKING_COACH_TAKE
 
     simple_chat = (
         route == "general" and not history and len(question.split()) <= 8
@@ -962,6 +972,7 @@ def answer(
 
     ranking_started = time.perf_counter()
     scoped = packet.scope_status == "resolved"
+    spec = SPEC_SPEAKING_COACH_TAKE if scoped else SPEC_SPEAKING_COACH
     selected, semantic = rank_evidence(
         packet.evidence, search_question,
         _int_setting(app_config, "SPEAKING_COACH_MAX_EVIDENCE", DEFAULT_MAX_EVIDENCE),
@@ -994,7 +1005,7 @@ def answer(
         response = complete_in_language(
             generate,
             target_language=target_language,
-            spec=SPEC_SPEAKING_COACH,
+            spec=spec,
             system=system,
             user=(question or "").strip(),
             surface="speaking_coach",
@@ -1022,7 +1033,7 @@ def answer(
     debug = packet.debug(selected_evidence=len(selected))
     debug.update({
         "route": route,
-        "model": getattr(response, "model", None) or SPEC_SPEAKING_COACH.model,
+        "model": getattr(response, "model", None) or spec.model,
         "model_duration_ms": int(getattr(response, "duration_ms", 0) or 0),
         "model_calls": call_count,
         "semantic_search": semantic,
