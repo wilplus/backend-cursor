@@ -354,7 +354,7 @@
     "project_chat.delivery_evidence": {
       "kind": "static",
       "module": "coaching_evidence",
-      "sha256": "efeb85fa9ceb3a85c02755b84078cd2db8c0a4479344a178685a00f65bc4a87f"
+      "sha256": "b37d1272d2ae4b5637161e95d8d89d13acbcd8b9401a4283150ddc6883f074ec"
     },
     "project_chat.reflection": {
       "kind": "static",
@@ -439,7 +439,7 @@
     "speaking_coach.delivery_evidence": {
       "kind": "static",
       "module": "coaching_evidence",
-      "sha256": "efeb85fa9ceb3a85c02755b84078cd2db8c0a4479344a178685a00f65bc4a87f"
+      "sha256": "b37d1272d2ae4b5637161e95d8d89d13acbcd8b9401a4283150ddc6883f074ec"
     },
     "speaking_coach.practice": {
       "kind": "source_ref",
@@ -464,7 +464,7 @@
     "speaking_coach.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "e1ee30e1103f9fc20ecd0a252e038971bf019ef1cfd6609d8e168a7c86508241"
+      "sha256": "fd79dc339427ce7c7a0fb1b026c1193139fc65da686378719d27eea8959ab4d6"
     },
     "speaking_coach.wording": {
       "kind": "source_ref",

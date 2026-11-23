@@ -144,7 +144,7 @@ _SYSTEM = (
     + REFLECTION_RULES +
     "This is the general Speaking Coach conversation. If the speaker asks to open a "
     "recording, intervention or Ideal Text, guide them to the owning project conversation. "
-    "Give useful spoken examples here in plain text.\n\n"
+    "The app will display wording.words and wording.delivery here as ordinary text.\n\n"
     "Return strict JSON with answer, evidence, practise (boolean), and wording. "
     "Choose a wording.source from the exact recording you are helping them improve. "
     "Use a single-recording source, even when comparing. When relying on a passage or notes, put the "
@@ -545,7 +545,9 @@ def _render_context(packet: ContextPacket, evidence: tuple[Evidence, ...]) -> st
         lines.append("These are the selected recent recordings. If both have evidence, name each by the topic "
                      "given in its project context, use one telling phrase from each, and explain the "
                      "difference. When the speaker asks for a change, show the new opening in wording.words "
-                     "and cite the recording it is for in wording.source. If there is evidence for only one, "
+                     "and cite the recording it is for in wording.source. For a tentative proposal, keep the "
+                     "action and use a recommendation such as 'I recommend we...' rather than saying it "
+                     "will happen. If there is evidence for only one, "
                      "say which one you can use.")
     for number, item in enumerate(evidence):
         reference = f"E{number}" if item.sources else "context"

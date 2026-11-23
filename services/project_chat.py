@@ -613,7 +613,7 @@ def _current_take_packet(current: dict, current_transcript: str) -> dict:
 def _delivery_passages(arc_id: str, current: dict, recent: list[dict], snippets_by_id: dict) -> tuple[Evidence, ...]:
     current_id = str(current["id"])
     takes = [current, *(row for row in reversed(recent) if str(row.get("id")) != current_id)]
-    passages = []
+    passages: list[Evidence] = []
     for take in takes:
         take_id = str(take["id"])
         rows = sorted(snippets_by_id.get(take_id, ()), key=lambda row: row.get("start_offset_ms") or 0)
@@ -1199,8 +1199,9 @@ def _model_turn(
         prompt["speaker_is_reviewing"] = review
     user_prompt = json.dumps(prompt, ensure_ascii=False, sort_keys=True)
     system = _SYSTEM + "\n" + REFLECTION_RULES + coach_wording.WORDING_RULES + f"\nRequested tone: {_tone(question)}."
-    on_passage = review and (review["anchor"].get("snippet_id") or "slide_index" in review["anchor"])
-    has_delivery = review.get("delivery_observations") if on_passage else passages
+    has_delivery = bool(passages)
+    if review and (review["anchor"].get("snippet_id") or "slide_index" in review["anchor"]):
+        has_delivery = bool(review.get("delivery_observations"))
     if context.current_take.get("transcript") or passages:
         system += "\n\n" + (DELIVERY_RULES if has_delivery else WORDS_ONLY_RULES)
     if review and (instruction := _review_instruction(context, state, question, review)):

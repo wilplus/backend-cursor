@@ -266,7 +266,8 @@ def _speaking_coach(inp: dict) -> str | dict | None:
     answer_text = reply[0]["answer"]
     if inp.get("include_wording"):
         meta = reply[0].get("row_metadata") or {}
-        return {"answer": answer_text, "wording": meta.get("coach_wording"), "moment": meta.get("coach_moment")}
+        artifacts = ("coach_wording", "coach_moment", "chat_artifact", "review_destination")
+        return {"answer": answer_text, "project_artifact": any(key in meta for key in artifacts)}
     return answer_text
 
 
