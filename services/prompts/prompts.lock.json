@@ -429,7 +429,7 @@
     "speaking_coach.words_only": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "5012868caa38e1d33ed2005dfa9ff0180adf4d920d0e4ffd4c2f62511e425ca9"
+      "sha256": "5534fe0de91b44fc62aa4119c3727e5dd3cec84ae4a71be1cbc940fd61ad0fbf"
     },
     "structural_star.system": {
       "kind": "static",
