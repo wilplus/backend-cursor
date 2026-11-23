@@ -17800,3 +17800,8 @@ No rules page: nothing changes on screen. No migration.
 The separate **Set up Speaking Coach** shortcut is removed from the sidebar. Speaking Coach and its projects are entered from the workspace. The plan opens from its prompts in the coach conversation. **Start a new project** remains available to a person who deleted their Speaking Coach, and **Archived chats** restores an archived coach.
 
 The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N677 · The iPhone app: haptics at the recording moments, and dark mode (founder, the Claude Code chat, 23 November 2026: "do 6 and 5 next", on the page "Native Feel Review", <https://claude.ai/artifact/BHrLFbBQAZqvcMD6sJL9nE>).** For N365, N674 and N675:
+1. **Haptics, in the iPhone app only** (the page's item 6): a medium tick when recording starts, a light tick on Next slide and Back, a success tick on Finish take, a warning tick on Discard take. A sent message keeps its light tick (N368 item 3). Felt, never seen or heard: nothing on screen changes, no new words. The browser and the home-screen app stay silent.
+2. **Dark mode** (the page's item 5): the app follows the iPhone's light or dark setting. Every screen, the locked ones included, gets a dark palette; the palette is shown to the founder on every main screen before it is built, since it changes every locked screen's look. No new words.
+The rules: frontend [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md) (item 1); item 2's rules pages get their lines when it is built.
