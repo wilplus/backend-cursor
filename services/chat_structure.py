@@ -2,6 +2,8 @@
 from typing import Any
 from uuid import UUID, uuid4
 
+from postgrest.exceptions import APIError
+
 DEFAULT: dict[str, Any] = {
     "coach": "active", "builder": "active", "subchats": [],
     "published_chat": None, "main_chat_id": "main",
@@ -169,12 +171,38 @@ def turns(database, user_id: str, section_id: str) -> tuple[dict, int]:
     return {"turns": read_turns(database, user_id, section_id)}, 200
 
 
-def read_turns(database, user_id: str, section_id: str, *, limit: int = 100) -> list[dict]:
-    result = (database.client.table("owner_chat_section_turns")
-              .select("client_id,question,answer").eq("user_id", user_id)
+def _read_turns(database, user_id: str, section_id: str, limit: int, columns: str) -> list[dict]:
+    result = (database.client.table("owner_chat_section_turns").select(columns).eq("user_id", user_id)
               .eq("section_id", section_id).not_.is_("question", "null").order("created_at", desc=True)
               .order("client_id", desc=True).limit(limit).execute())
     return list(reversed(result.data or []))
+
+
+def read_turns(database, user_id: str, section_id: str, *, limit: int = 100) -> list[dict]:
+    columns = "client_id,question,answer"
+    try:
+        return _read_turns(database, user_id, section_id, limit, columns + ",artifact")
+    except APIError as exc:
+        if exc.code not in ("42703", "PGRST204"):
+            raise
+        return _read_turns(database, user_id, section_id, limit, columns)
+
+
+def _artifact(value: Any) -> dict | None:
+    """Only display text travels with a turn. Media and actions keep their own access checks."""
+    if not isinstance(value, dict) or type(value.get("version")) is not int or value["version"] != 1:
+        return None
+    def text(key: str, limit: int) -> str:
+        line = _words(value.get(key), limit)
+        return "" if "\x00" in line else line
+
+    title = text("title", 120)
+    parts = {key: line for key in ("moment", "intervention", "output")
+             if (line := text(key, 3000))}
+    if not title or not parts:
+        return None
+    preview = text("preview", 240)
+    return {"version": 1, "title": title, **({"preview": preview} if preview else {}), **parts}
 
 
 def keep_turn(database, user_id: str, section_id: str, body: Any) -> tuple[dict, int]:
@@ -188,8 +216,21 @@ def keep_turn(database, user_id: str, section_id: str, body: Any) -> tuple[dict,
     answer = _words(body.get("answer"), 16000)
     if not question or not answer:
         return {"code": "INVALID_INPUT"}, 400
-    result = database.client.rpc("append_owner_chat_section_v1", {
+    artifact = _artifact(body.get("artifact"))
+    parameters: dict[str, Any] = {
         "p_user": user_id, "p_section": section_id, "p_client": client_id,
         "p_question": question, "p_answer": answer,
-    }).execute()
-    return ({"saved": True}, 200) if result.data is True else ({"code": "NOT_FOUND"}, 404)
+    }
+    writer = "append_owner_chat_section_v1"
+    if artifact:
+        writer = "append_owner_chat_section_v2"
+        parameters["p_artifact"] = artifact
+    try:
+        result = database.client.rpc(writer, parameters).execute()
+    except APIError as exc:
+        if artifact and exc.code in ("42883", "PGRST202"):
+            return {"code": "ARTIFACT_STORAGE_UNAVAILABLE"}, 503
+        raise
+    if result.data is not True:
+        return {"code": "NOT_FOUND"}, 404
+    return ({"saved": True, "artifact_saved": True} if artifact else {"saved": True}), 200

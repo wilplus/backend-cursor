@@ -186,6 +186,7 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # Taught replies from the chat builder's visitor try: the host's, never
     # a project's.
     "chat_reply_examples", "chat_reply_drafts",
+    "owner_chat_section_turns", "owner_chat_structures",
     # A Take's suggestion of someone new (N477, N478): the account's, as
     # the chats are, whether the person recorded the Take or was suggested.
     "take_matches", "take_matches_suggested",

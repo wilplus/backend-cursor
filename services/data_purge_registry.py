@@ -371,6 +371,10 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "user", "delete", "database_row", 60),
     PurgeDependency("chat_reply_drafts", "chat_reply_drafts", "host_id",
                     "user", "delete", "database_row", 60),
+    PurgeDependency("owner_chat_section_turns", "owner_chat_section_turns", "user_id",
+                    "user", "delete", "database_row", 59),
+    PurgeDependency("owner_chat_structures", "owner_chat_structures", "user_id",
+                    "user", "delete", "database_row", 60),
     # A Take's suggestion of someone new after it (migration
     # a_take_can_reach_someone_new_after_it, N477, N478): it goes with
     # either account, the speaker's and the one suggested.
