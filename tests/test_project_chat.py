@@ -326,6 +326,37 @@ def test_a_review_can_point_to_its_practice_or_ideal_text_from_the_reply():
         assert "coach_moment" not in response["row_metadata"]
 
 
+def test_live_feedback_pairs_an_improvement_with_an_intervention_and_offers_the_ideal_text():
+    database = FakeDB(audience="the board", goal="approve the plan")
+    database.drafts[TAKE][0]["kind"] = "fix"
+    focus = {"step": "feedback", "snippet_id": "s2"}
+    result = _config_result("Give the decision a little more space.")
+    result.parsed = {"answer": "Give the decision a little more space.",
+                     "moment": "reviewed", "intervention": "Say the ask again and pause before 'approve'."}
+    with patch("services.llm.chat_complete", return_value=result):
+        reply, _ = project_chat.answer(
+            database, USER, ARC, "What can I work on?", take_session_id=TAKE,
+            review_focus=focus, live_take_feedback=True,
+        )
+    meta = reply["row_metadata"]
+    assert meta["coach_moment"]["snippet_id"] == "s2"
+    assert meta["coach_moment"]["practise"] is True
+    assert meta["chat_artifact"]["intervention"] == result.parsed["intervention"]
+
+    result = _config_result("Spójrz na swój Ideal Text i wybierz słowa pomocnicze.")
+    result.parsed = {"answer": "Spójrz na swój Ideal Text i wybierz słowa pomocnicze.",
+                     "next_review_step": "ideal", "offer_next_take": True,
+                     "after_ideal_text": "Prośba jest jasna. Warto przećwiczyć pauzę. Chcesz spróbować jeszcze raz?"}
+    with patch("services.llm.chat_complete", return_value=result):
+        reply, _ = project_chat.answer(
+            database, USER, ARC, "Myślę, że na dziś wystarczy.", take_session_id=TAKE,
+            review_focus=focus, live_take_feedback=True,
+        )
+    assert reply["row_metadata"]["review_destination"] == {"step": "ideal"}
+    assert reply["row_metadata"]["after_ideal_text"] == result.parsed["after_ideal_text"]
+    assert reply["suggested_action"] == "record_again"
+
+
 def test_sparse_evidence_is_acknowledged_without_inventing_feedback():
     database = FakeDB()
     database.snippets[TAKE] = []
