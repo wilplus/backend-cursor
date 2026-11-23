@@ -1234,7 +1234,7 @@ def _answer_general(
         target_language,
         user_id,
         arc_id,
-        **({"review": review} if review else {}),
+        review=review,
     )
     model_answer = _model_answer(parsed)
     if review and not model_answer:

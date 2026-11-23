@@ -2,7 +2,10 @@
 from typing import Any
 from uuid import UUID, uuid4
 
-DEFAULT = {"coach": "active", "builder": "active", "subchats": [], "published_chat": None, "main_chat_id": "main"}
+DEFAULT: dict[str, Any] = {
+    "coach": "active", "builder": "active", "subchats": [],
+    "published_chat": None, "main_chat_id": "main",
+}
 
 
 def read(database, user_id: str) -> tuple[int, dict]:
@@ -46,6 +49,8 @@ def _short_lines(value: Any) -> list[str]:
 def change(layout: dict, body: dict) -> tuple[dict, list[str]] | None:
     action = body.get("action")
     section = body.get("section")
+    if not isinstance(action, str):
+        return None
     rows = [dict(item) for item in layout["subchats"]]
     layout = {**layout, "subchats": rows}
     removed: list[str] = []
@@ -62,6 +67,8 @@ def change(layout: dict, body: dict) -> tuple[dict, list[str]] | None:
         if any(item["title"] == title and item["question"] == question for item in rows):
             return layout, removed
         rows.append({"id": str(uuid4()), "title": title, "question": question, "archived": False})
+    elif not isinstance(section, str):
+        return None
     elif section in ("coach", "builder"):
         return _change_parent(layout, section, action)
     else:
