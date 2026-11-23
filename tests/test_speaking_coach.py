@@ -173,6 +173,8 @@ def _result(answer, evidence=()):
 
 
 def test_routes_without_an_llm_classifier():
+    from services.llm_config import SPEC_SPEAKING_COACH
+
     assert speaking_coach.classify_turn("tell me a joke") == "general"
     assert speaking_coach.classify_turn("powiedz mi żart") == "general"
     assert speaking_coach.classify_turn("what changed between my takes?") == "longitudinal"
@@ -200,6 +202,7 @@ def test_routes_without_an_llm_classifier():
     assert answer is not None
     assert len(calls) == 1
     assert calls[0]["surface"] == "speaking_coach"
+    assert calls[0]["spec"] is SPEC_SPEAKING_COACH
 
 
 def test_chat_librarian_uses_the_coach_before_private_legacy_context():
@@ -529,6 +532,8 @@ def test_similar_talks_are_disambiguated_before_retrieval():
 
 
 def test_selected_take_supplies_passage_and_delivery_without_shared_feedback():
+    from services.llm_config import SPEC_SPEAKING_COACH_TAKE
+
     speaking_coach.clear_cache()
     words = "Please approve the pilot today."
     selected = _named_take("Campus Pitch", "campus", 1, "2026-01-01", words)
@@ -546,6 +551,7 @@ def test_selected_take_supplies_passage_and_delivery_without_shared_feedback():
         ]}
 
     def generate(**kwargs):
+        assert kwargs["spec"] is SPEC_SPEAKING_COACH_TAKE
         prompt = kwargs["system"]
         line = next(line for line in prompt.splitlines() if "; delivery_cues;" in line)
         assert "Take 1" in line and words in line

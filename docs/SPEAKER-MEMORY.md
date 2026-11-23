@@ -172,13 +172,18 @@ feedback. A practice request may add one matching exercise from the reviewed
 catalogue. Private speaker memory guides coaching preferences and stays out
 of search and source links.
 
-When a speaker asks what a Take shows about them, the coach describes a
-specific move in their words and uses the delivery recorded on the same
-passage when it is available. It turns that observation into a possible
-listener impression and asks one question about the moment or habit. A
-practice request can connect the moment to one reviewed exercise and a
-follow-up. The coach can reflect a value the speaker has stated, including
-faith, and ask about an action the speaker can choose.
+When a speaker asks what a Take shows about them, the coach gives a direct
+listener impression in everyday language. A short cue from the same passage
+ties that impression to what the speaker said and how they said it. When
+the speaker shows resolve or names a next step, the follow-up asks what
+helps them draw on that strength. A practice request can connect the moment
+to one reviewed exercise. The coach can reflect a value the speaker has
+stated, including faith, and ask about an action the speaker can choose.
+
+The approved example combines the cue, the takeaway, and the follow-up in
+the speaker's everyday language.
+
+> Mocniejsze drugie „Nie chcę” oraz szybsze podkreślenie „że się nie uda” brzmią, jakbyś miał już dość tego wewnętrznego głosu. Chwilę później mówisz „Jutro powiem wprost, czego potrzebuję”. Słyszę, że coś pomaga ci się temu głosowi przeciwstawić. Skąd bierzesz tę wewnętrzną siłę?
 
 One batch reads the saved snippets for the selected, authorized Takes.
 Existing qualitative delivery descriptions and plain-language readings of
