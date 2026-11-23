@@ -17842,7 +17842,13 @@ The founder's 20:56 follow-up puts each recorded slide immediately above its Ide
 
 The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [Ideal Text](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md).
 
-**N683 · Close processing into the Take's chat** (founder, Take design Codex chat, 23 November 2026, with the 23:16 Warsaw screenshots). Centers the waiting screen and updates its close behavior for project Takes.
+**N683 · Project Chat gets the same coaching, with its own Take artifacts** (founder, Speaking Coach Codex chat, 23 November 2026). Updates N672, N673, N679 and N682 for Speaking Coach and its project chats.
+
+Both chats give concrete advice from the speaker's words, available vocal cues and relevant context. Project Chat uses this project's authorised Takes and can show their moments, interventions, Ideal Text and saved wording in the conversation. Speaking Coach can discuss and compare authorised recordings in ordinary replies. Open the owning project for a Take's artifacts. Speaker-wide Strengths, weekly principles and their prompts live in Speaking Coach. Project replies can still describe a supported strength in that Take and suggest what to try on this talk.
+
+The rules: frontend [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [Principles](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md).
+
+**N684 · Close processing into the Take's chat** (founder, Take design Codex chat, 23 November 2026, with the 23:16 Warsaw screenshots). Centers the waiting screen and updates its close behavior for project Takes.
 
 Finish makes the Take available in its own chat. Closing progress opens that chat immediately, including when its first recording is still uploading. A new chat appears under Speaking Coach in the sidebar. The speaker's recording comes first, followed by the processing bubble. Tapping the processing bubble reopens the same progress screen. A Take recorded in an existing project opens that project's chat. Setup cancellation and the explicit discard action keep their existing behavior.
 
