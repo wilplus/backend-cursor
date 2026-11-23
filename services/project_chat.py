@@ -501,9 +501,11 @@ def _load_sources(
     reads: list[int],
 ) -> dict[str, Any]:
     recent = spoken[-MAX_TAKE_HISTORY:]
-    ids = [str(row.get("id") or "") for row in recent if row.get("id")]
-    snippets_by_id = _snippets_by_session(database, ids, reads)
     current_id = str(current.get("id") or "")
+    ids = [str(row["id"]) for row in recent if row.get("id")]
+    if current_id and current_id not in ids:
+        ids.append(current_id)
+    snippets_by_id = _snippets_by_session(database, ids, reads)
     current_snippets = snippets_by_id.get(current_id) or []
     project = _read(
         reads,
@@ -829,14 +831,19 @@ fact. Never invent a feedback moment, praise, improvement, audience, goal,
 deck detail, or Take result. Do not expose IDs, database terms, hidden
 metrics, scores, rankings, verdicts, diagnoses, or internal labels.
 
-On the first response after a Take, make the arc feel human and specific: say
-congratulations in context, refer to the exact feedback moment or spoken
-passage that was just addressed, and then establish the audience and the
-desired action/feeling. Combine or defer those moves when the context already
-knows one of them. If feedback is not published or the evidence is sparse,
-say so plainly instead of inventing praise. Do not ask for a value already
-known from the project setup, a previous project-chat answer, the deck, or
-the Take evidence.
+Respond to the speaker's latest turn first. If you are opening the review,
+start with one specific strength supported by a published moment and the
+speaker's words or delivery. If the speaker is asking a question, answer it
+directly. When a missing detail would change the advice, ask just for that
+detail. Read the Take's words and any existing answer before asking. Separate
+the intended listeners from a person or group mentioned as a decision-maker.
+When the speaker says they are addressing the team and mentions the board,
+you can recommend focusing on the team. When the listener is genuinely
+unclear and it matters, ask one focused question. Do not invent a listener,
+an emotion, a positive moment, or a sound. Delivery observations belong to
+their own passage. Stick to what the words support when there is no sound
+evidence. Give the listening impression in plain language. The clip can
+show the delivery detail.
 
 Keep replies free of profanity and explicit sexual content.
 Ask at most one clear question in a turn. During the audience/goal setup ask
@@ -847,18 +854,35 @@ useful and vary the wording naturally. Match the requested formal, warm, or
 playful tone. Preserve Polish and the speaker's quoted words; do not translate
 source phrases.
 
-When speaker_is_reviewing is present, answer that question in the selected
-Take's evidence first. Use exact_take_words when available. Leave the earlier
-audience and goal questions for their own turns.
+When speaker_is_reviewing is present, this is the conversation inside the
+selected Take's Feedback Walk. Use its exact words and available delivery
+observations. Follow the speaker's reaction. If they want more strengths,
+use the next distinct published strength from this Take when there is one.
+If there is only the reviewed strength, say you would need to hear more to
+point to another. Keep the same clip and explain one more precise thing its
+words or delivery support. Use "reviewed" as the moment to play it again.
+When they ask what to
+work on, offer one specific change tied to the passage that supports it. After
+practice, or if they ask for the output, offer the existing Ideal Text and
+explain how its helper words can remind them what to say and how they just
+said it. Do not name helper words you haven't been given. Do not make the
+speaker go through the stages in order if their question takes you elsewhere.
+If they answer with a simple reaction, continue from the current review step.
+They might want to talk about the strength, another published moment, or what
+to try next. Follow that lead without moving them on by default.
+Do not bring an earlier setup question into this exchange.
 
 Return strict JSON with this shape:
-{"answer": string, "chips": [string], "moment": string or null, "practise": boolean}
-The answer is short conversational prose, normally one to four paragraphs.
-Set moment to a published feedback reference only when the answer cites that
-exact passage. Use null for general advice.
-Set practise to true when a rehearsable activity on the cited moment would
-help the speaker. The app checks which activity is available. Do not promise
-a recording link, a particular exercise, or an example.
+{"answer": string, "chips": [string], "moment": string or null, "practise": boolean,
+ "next_review_step": "practise" or "ideal" or null}
+Keep the answer short and conversational. Use a published moment reference
+only when the answer actually addresses that passage. Use "reviewed" for the
+exact clip in speaker_is_reviewing when it is the one you address, and null
+for advice that needs no clip. Set practise to true when a matching tool on
+the cited moment would help. The app checks which tool is available. Do not
+promise a particular exercise or a demonstration. Set next_review_step only
+in the review and only when you are offering the speaker that step in this
+reply. Otherwise return null.
 Chips are optional, grounded suggested replies for the one current question;
 use an empty array when they would feel canned. Do not put a second question
 inside a chip or answer.
@@ -1277,14 +1301,20 @@ def _answer_metadata(context: ProjectChatContext, question: str,
     metadata = {"review_focus": anchor} if anchor else {}
     if not parsed:
         return metadata
-    snippet = anchor.get("snippet_id") if anchor and anchor.get("step") != "ideal" else None
-    if not anchor:
-        reference = parsed.get("moment")
-        snippet = next((
-            item.get("snippet_id")
-            for index, item in enumerate(context.feedback_moments)
-            if reference == f"M{index}"
-        ), None)
+    reference = parsed.get("moment")
+    snippet = next((
+        item.get("snippet_id")
+        for index, item in enumerate(context.feedback_moments)
+        if reference == f"M{index}"
+    ), None)
+    if anchor and anchor.get("step") != "ideal" and (reference == "reviewed" or "moment" not in parsed):
+        snippet = anchor.get("snippet_id")
+    if anchor:
+        next_step = parsed.get("next_review_step")
+        if next_step == "practise" and not snippet:
+            metadata["review_destination"] = {"step": "practise"}
+        if next_step == "ideal":
+            metadata["review_destination"] = {"step": "ideal"}
     if snippet:
         metadata["coach_moment"] = chat_moment_reference(
             context.arc_id, context.take_session_id, snippet,
@@ -1323,13 +1353,17 @@ def _review_focus(database: Any, context: ProjectChatContext, anchor: dict) -> d
         real_slide = _dict(_dict(selected.get("metrics")).get("piece")).get("slide_index")
         if type(real_slide) is int:
             anchor = {**anchor, "slide_index": real_slide}
-        text = _transcript([selected], 900)
+        passage = [selected]
     else:
-        text = _transcript([
+        passage = [
             r for r in rows if slide is not None and
             _dict(_dict(r.get("metrics")).get("piece")).get("slide_index") == slide
-        ], 900)
-    return {"anchor": anchor, "exact_take_words": text}
+        ]
+    cues = _safe_cues(passage)
+    return {
+        "anchor": anchor, "exact_take_words": _transcript(passage, 900),
+        **({"delivery_observations": cues} if cues else {}),
+    }
 
 
 def answer(

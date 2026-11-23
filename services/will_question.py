@@ -252,8 +252,9 @@ def _chips(*groups: Any) -> list[str]:
 _HEARD_SYSTEM = (
     "You read the title and the transcript of a talk someone is practising. "
     "Find two things, only when the speaker's own words say them:\n"
-    "- audience: who the talk is for (for example \"the board\", \"new "
-    "customers\").\n"
+    "- audience: who the speaker is addressing (for example \"the board\", \"new customers\"). "
+    "Use the explicitly named main audience when there are several people or groups. "
+    "A decision-maker mentioned in the talk may be someone other than its listener.\n"
     "- ask: what the speaker wants the audience to do or feel (for example "
     "\"approve the budget\").\n"
     "Copy each one word for word from the title or the transcript: at most "
@@ -284,7 +285,7 @@ def times_said(phrase: str, title: str, said: str) -> int:
     return f" {_norm(said)} ".count(padded) + (1 if padded in f" {_norm(title)} " else 0)
 
 
-def read_heard(text: Optional[str], title: str, said: str) -> dict:
+def read_heard(text: Optional[str], title: str, said: str, *other_passages: str) -> dict:
     """The heard call's answer, kept only where the Take says it word for
     word: {"audience", "audience_times", "ask"}. Pure."""
     try:
@@ -292,10 +293,31 @@ def read_heard(text: Optional[str], title: str, said: str) -> dict:
     except (TypeError, ValueError):
         body = {}
     body = body if isinstance(body, dict) else {}
-    audience = verbatim(body.get("audience"), title, said)
-    ask = verbatim(body.get("ask"), title, said)
+    passages = (said, *other_passages)
+    audience = verbatim(body.get("audience"), title, *passages)
+    ask = verbatim(body.get("ask"), title, *passages)
     return {"audience": audience, "ask": ask,
-            "audience_times": times_said(audience, title, said) if audience else 0}
+            "audience_times": (
+                times_said(audience, title, said)
+                + sum(times_said(audience, "", passage) for passage in other_passages)
+            ) if audience else 0}
+
+
+def take_words(snippets: list[dict]) -> str:
+    passages = (row.get("transcript") or row.get("transcription_text")
+                for row in snippets if isinstance(row, dict))
+    return " ".join(text.strip() for text in passages if isinstance(text, str) and text.strip())
+
+
+def _heard_passages(said: str) -> tuple[str, ...]:
+    words = " ".join(said.split())
+    if len(words) <= _HEARD_CHARS:
+        return (words,)
+    # The introduction can name the audience. The request is often at the end.
+    half = _HEARD_CHARS // 2
+    opening = words[:half].rpartition(" ")[0]
+    ending = words[-half:].partition(" ")[2]
+    return opening, ending
 
 
 def heard(title: str, said: str, *, user_id: Optional[str], take: Optional[str],
@@ -305,13 +327,15 @@ def heard(title: str, said: str, *, user_id: Optional[str], take: Optional[str],
     from services.llm import chat_complete
     from services.llm_config import SPEC_WILL_QUESTION_HEARD
     from services.content_language import complete_in_language
-    user = f"Title: \"{title}\"\nTranscript: {said[:_HEARD_CHARS]}"
+    passages = _heard_passages(said)
+    transcript = "\n".join(f"Transcript excerpt: {part}" for part in passages)
+    user = f"Title: \"{title}\"\n{transcript}"
     result = complete_in_language(
         chat_complete, target_language=target_language, spec=SPEC_WILL_QUESTION_HEARD,
         system=_HEARD_SYSTEM, user=user, surface=_SURFACE, user_id=user_id,
         session_id=take, arc_id=arc_id,
     )
-    return read_heard(getattr(result, "text", None) if result else None, title, said)
+    return read_heard(getattr(result, "text", None) if result else None, title, *passages)
 
 
 def start_heard(database: Any, *, user_id: str, arc_id: str, take: str, title: str,
@@ -398,7 +422,7 @@ def read_varied(key: str, text: Optional[str], signed: str) -> Optional[str]:
     body = " ".join(str(text or "").strip().strip('"“”').split())
     if not body or body == signed or len(body) > _MAX_QUESTION:
         return None
-    if _DIGIT.search(body) or "?" not in body:
+    if _DIGIT.search(body) or not 0 < body.count("?") <= signed.count("?"):
         return None
     inner = _SHOWN.get(key, ("", ""))[0]
     if inner and body.count(inner) != 1:
@@ -694,6 +718,7 @@ class Plan:
     then_earlier: list[str] = field(default_factory=list)
     #: Who the talk is for, for the key-line question (N294 item 2).
     who: Optional[str] = None
+    inline_review: bool = False
 
 
 def two_off(now: tuple, before: tuple) -> bool:
@@ -842,7 +867,7 @@ def carried_over(database: Any, *, user_id: str, takes: list[dict], take_index: 
     """The clearer line practised on the Take before, and whether this Take
     says it (the practice attempt's own match, no AI guess):
     {"passage", "used"}; None when there was none."""
-    if take_index < 2:
+    if take_index < 2 or not take_words(snippets):
         return None
     before = str(takes[take_index - 2].get("id"))
     try:
@@ -873,29 +898,41 @@ def carried_fact(carried: Optional[dict]) -> list[str]:
             f"\"{str(carried['passage'])[:300]}\". Worth saying in words."]
 
 
+def _question_context(takes: list[dict], heard: Callable[[], dict],
+                      inline_review: bool) -> tuple[str, str, Callable[[], dict]]:
+    audience, goal = talk_audience(takes), talk_goal(takes)
+    if not inline_review or (audience and goal):
+        return audience, goal, heard
+    # Use the speaker's explicit words for this turn without marking them
+    # as setup answers they confirmed.
+    detected = heard() or {}
+    return audience or detected.get("audience") or "", goal or detected.get("ask") or "", lambda: detected
+
+
 def plan(database: Any, *, user_id: str, arc_id: str, take: str, take_index: int,
          now: tuple, before: Optional[tuple], takes: list[dict],
          carried: Optional[dict], heard_call: Callable[[], dict],
-         snippets: Optional[list[dict]] = None) -> Optional[Plan]:
+         snippets: Optional[list[dict]] = None, inline_review: bool = False) -> Optional[Plan]:
     """What Will asks after this Take, or None. Best-effort: never raises."""
     try:
-        rows = _thread(database, user_id, _SCAN)
+        rows = _thread(database, user_id, _SCAN, arc_id=arc_id)
         asked, asked_last = asked_on_talk(rows, arc_id)
         words = bank(database)
-        goal, audience = talk_goal(takes), talk_audience(takes)
+        audience, goal, heard = _question_context(takes, heard_call, inline_review)
         key_line = known_key_line(database, user_id, takes)
         key = choose_key(take_index=take_index, now=now, before=before, carried=carried,
                          audience=audience, goal=goal, key_line=key_line,
                          asked=asked, asked_last=asked_last,
                          deeper=tuple(k for k in PRINCIPLES if words[k]["question"]))
-        if not key:
+        if not key or (inline_review and key in (KEY_LINE, *PRINCIPLES)):
             return None
-        found = Plan(key=key, arc_id=str(arc_id), take=str(take), heard=heard_call,
+        found = Plan(key=key, arc_id=str(arc_id), take=str(take), heard=heard,
                      passage=(carried or {}).get("passage"), words=words,
-                     moment=moment_of(rows, str(take), snippets or []), who=audience or None)
+                     moment=None if inline_review else moment_of(rows, str(take), snippets or []),
+                     who=audience or None, inline_review=inline_review)
         # The key line follows an answered first question when, with it,
         # both are known (N294 items 2 and 4); its who is read when it comes.
-        key_next = not key_line and KEY_LINE not in asked
+        key_next = not inline_review and not key_line and KEY_LINE not in asked
         if key == "audience":
             found.field_name = _field(database, user_id)
             found.earlier = earlier_answers(database, user_id, "audience")

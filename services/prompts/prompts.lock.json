@@ -351,6 +351,11 @@
       "module": "coach_answer_drafts",
       "sha256": "29b84443b1ce8b65a04d1d1def1a477e5c1542e3c3119c7a3b410ea69d4e7b93"
     },
+    "project_chat.system": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "b7fd38302f2787bac03ef0e77eec5d8afd0bafa79be8047cc0952f661c3a2f6a"
+    },
     "question_kind.system": {
       "kind": "static",
       "module": "question_kind",
@@ -474,7 +479,7 @@
     "walk_voice.system": {
       "kind": "static",
       "module": "walk_voice",
-      "sha256": "689d76f8cb265447423a564dc360487a5d0aad6d5edfb0db463a586695b69577"
+      "sha256": "1e34b5656de064811bf5fe624447421b15121af26fce3afe181ddcc0bab5f503"
     },
     "whisper_snippet.priming": {
       "kind": "source_ref",
@@ -484,12 +489,12 @@
     "will_question.heard": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "2d43d64e92955f904d9cabd3dafb49c913271495cf7dcbf1dadfcc9a0f886e6a"
+      "sha256": "9435ed445d9e09ef3fdf09d92e1e007d0d7e0f936ff42458060ea768ca6e208f"
     },
     "will_question.heard_user": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "b866999ba2c5551c3d73a7ca4ddb40f7616cdc89b528a9ea967310ed654de2fc"
+      "sha256": "120c570b796f58fe7f8510b9a1831dce2fefccae9e5db7c4adb984220b3bbbcc"
     },
     "will_question.lead_in": {
       "kind": "source_ref",

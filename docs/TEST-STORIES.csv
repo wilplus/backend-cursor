@@ -5240,7 +5240,16 @@ refused.
 O7  Will says a question with a light touch only when it still means the
 signed one and keeps my own words in it once, one line, no number,
 still a question; otherwise he says the signed words. The tap answers
-never change.","O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_missing
+never change.
+O13 Other chats cannot push my earlier project questions out of the history
+Will checks before he asks.
+O14 Will can hear the audience and request in my Take's own transcript,
+even if feedback has not selected a moment for those words.
+O15 Will does not infer that I dropped the practised line when the Take's
+words are unavailable.
+O16 The inline review uses an explicitly named audience and stated request.
+It asks only for the missing detail without a stock bridge or an unrelated clip.","O16 -> test_inline_review_uses_the_stated_audience_and_only_asks_whats_missing
+O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_missing
 O2 -> test_the_taps_come_from_what_will_heard,
 test_only_words_the_take_says_are_kept_from_the_read
 O3 -> test_a_tap_is_kept_fills_the_setup_and_lets_the_message_go,
@@ -5256,7 +5265,11 @@ O8 -> test_the_question_opens_on_the_moment_the_walk_just_worked_on
 O9 -> test_what_they_should_do_follows_an_answered_who
 O10 -> test_the_key_line_is_asked_last_by_voice_and_kept
 O11 -> test_a_voice_answer_answers_wills_question
-O12 -> test_will_says_who_from_my_side_and_the_goodbye_waits","Founder 2026-10-20 (N82): ""ask me a lot of questions … a natural flow in the walk and in the lounge""; the bank signed the same day. 2026-10-31 (N294): ""these questions, they should be related to the moment""; ""they can be only one at a time. Only once you answer""."
+O12 -> test_will_says_who_from_my_side_and_the_goodbye_waits
+O13 -> test_a_busy_other_chat_does_not_make_will_repeat_the_audience_question
+O14 -> test_the_context_question_reads_the_take_without_a_feedback_frame,
+test_heard_checks_the_opening_and_closing_separately
+O15 -> test_missing_take_words_do_not_count_as_a_dropped_practised_line","Founder 2026-10-20 (N82): ""ask me a lot of questions … a natural flow in the walk and in the lounge""; the bank signed the same day. 2026-10-31 (N294): ""these questions, they should be related to the moment""; ""they can be only one at a time. Only once you answer""."
 tests/test_withdrawal_erases_sheets.py,Story,"As a speaker, I want the coach sheets about my Takes deleted when I turn training off, so that my withdrawal is real.","O1  Turning training off deletes my Takes' rows from all three coach
 sheet tables, and only mine.
 O2  If my Takes cannot be read, the switch still turns off, and the

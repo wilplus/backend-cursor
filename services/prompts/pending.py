@@ -82,6 +82,7 @@ REGISTER = {
     "session_cadence.beats": SourceRef("services/session_cadence.py", "BEATS"),
     "goal_update.builder": SourceRef("services/goal_update.py", "_classify_goal_update"),
     "speaker_memory.system": SourceRef("services/speaker_memory.py", "_SYSTEM"),
+    "project_chat.system": SourceRef("services/project_chat.py", "_SYSTEM"),
     "speaking_coach.system": SourceRef("services/speaking_coach.py", "_SYSTEM"),
     "speaking_coach.scoped_evidence": SourceRef("services/speaking_coach.py", "_SCOPED_EVIDENCE_RULES"),
     "speaking_coach.delivery_evidence": SourceRef("services/speaking_coach.py", "_DELIVERY_EVIDENCE_RULES"),

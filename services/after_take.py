@@ -231,8 +231,8 @@ def ask_rows(database: Any, ask: Optional[str], *, user_id: str, arc_id: str,
     if ask == "will_question":
         from services.will_question import ask_rows as will_rows
         wills = will_rows(will, user_id=user_id, at=_after(at, 1))
-        if not wills:
-            return []
+        if not wills or will.inline_review:
+            return wills
         return [bridge_row(user_id=user_id, arc_id=arc_id, take=take,
                            take_index=take_index, at=at)] + wills
     if ask == "will_next":

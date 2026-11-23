@@ -306,6 +306,23 @@ def test_a_review_question_uses_the_exact_old_moment_without_capturing_setup():
     assert database.takes.saved == []
 
 
+def test_a_review_can_point_to_its_practice_or_ideal_text_from_the_reply():
+    database = FakeDB(audience="the board", goal="approve the plan")
+    focus = {"step": "feedback", "snippet_id": "s2"}
+    for offered in ("practise", "ideal"):
+        result = _config_result("Here is the next step for this passage.")
+        result.parsed = {**json.loads(result.text), "moment": None, "next_review_step": offered}
+        with patch("services.llm.chat_complete", return_value=result) as complete:
+            response, _ = project_chat.answer(
+                database, USER, ARC, "What comes next?", take_session_id=TAKE, review_focus=focus,
+            )
+        review = json.loads(complete.call_args.kwargs["user"])["speaker_is_reviewing"]
+        assert review["delivery_observations"] == ["deliberate pause before the ask"]
+        assert response["row_metadata"]["review_focus"] == focus
+        assert response["row_metadata"]["review_destination"] == {"step": offered}
+        assert "coach_moment" not in response["row_metadata"]
+
+
 def test_sparse_evidence_is_acknowledged_without_inventing_feedback():
     database = FakeDB()
     database.snippets[TAKE] = []

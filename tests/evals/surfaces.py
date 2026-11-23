@@ -159,6 +159,47 @@ def _walk_voice(inp: dict) -> Any:
     return compose(inp.get("context") or {}, inp.get("step") or {})
 
 
+def _project_chat(inp: dict) -> dict:
+    """Answer in a synthetic project using the same scoped context and attachments."""
+    from services import project_chat
+
+    user_id, arc_id, take_id = "project-chat-eval", "eval-project", "eval-take"
+    take = {
+        "id": take_id, "user_id": user_id, "arc_id": arc_id,
+        "take_index": 1, "status": "completed", "analysis_state": "ready",
+        "results_published_at": "2026-11-23T12:00:00Z",
+        "transcription_language": inp.get("language"),
+        "intake_context": {"topic": inp.get("topic")},
+    }
+    snippets = [{
+        "id": "opening", "session_id": take_id, "transcript": inp["transcript"],
+        "metrics": {"vocal_cues": inp.get("vocal_cues", [])},
+    }]
+    for item in inp.get("feedback", []):
+        if item["snippet_id"] != "opening":
+            snippets.append({
+                "id": item["snippet_id"], "session_id": take_id, "transcript": item["transcript_corrected"],
+            })
+    database = SimpleNamespace(
+        client=None,
+        get_arc_sessions=lambda arc: [take] if arc == arc_id else [],
+        get_snippets_by_sessions=lambda ids: {take_id: snippets} if take_id in ids else {},
+        get_coach_snippet_drafts=lambda sid: inp.get("feedback", []) if sid == take_id else [],
+        get_project_lounge_messages_page=lambda *_args, **_kwargs: [],
+        get_coach_arc_ideal_text=lambda arc: {"text": inp.get("ideal_text")} if arc == arc_id else {},
+    )
+    reply, _ = project_chat.answer(
+        database, user_id, arc_id, inp["question"], take_session_id=take_id,
+        review_focus=inp.get("focus", {"step": "feedback", "snippet_id": "opening"}),
+    )
+    metadata = reply["row_metadata"]
+    return {
+        "answer": reply["answer"], "moment": (metadata.get("coach_moment") or {}).get("snippet_id"),
+        "practise": bool((metadata.get("coach_moment") or {}).get("practise")),
+        "destination": (metadata.get("review_destination") or {}).get("step"),
+    }
+
+
 def _speaking_coach(inp: dict) -> str | None:
     """Run the shipped coach over a synthetic Take and saved delivery cues."""
     from services.speaking_coach import answer, invalidate
@@ -223,5 +264,6 @@ ADAPTERS: dict[str, Callable[[dict], Any]] = {
     "will_question": _will_question,
     "question_kind": _question_kind,
     "walk_voice": _walk_voice,
+    "project_chat": _project_chat,
     "speaking_coach": _speaking_coach,
 }
