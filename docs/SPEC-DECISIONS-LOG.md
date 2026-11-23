@@ -17747,3 +17747,9 @@ The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/
 4. Speaking Coach, scoped projects and review follow-ups, people chats, Chat Builder, its widget, experiments, and practice use the same composer. Their own message handling, processing consent, and recording permissions still apply.
 
 The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md), and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
+
+**N668 · Start your own chat uses the app's confirmation styles** (founder, the Codex chat, 23 November 2026, approving the desktop and mobile preview with the app's spacing, backdrop and sheet handle). Applies N659 to this prompt.
+
+One backdrop dims the whole viewport. On a computer, the brief prompt is a centered confirmation dialog. On a phone, it opens as a full-width bottom sheet with the small handle used by Add someone. Confirming opens Chat Builder.
+
+The rules: frontend [`docs/chat-builder/flow.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/chat-builder/flow.md).
