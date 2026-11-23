@@ -182,15 +182,21 @@ def _speaking_coach(inp: dict) -> str | None:
         "user_id": user_id,
         "slide_transcripts": [{"index": 0, "transcript": inp["transcript"]}],
     }
-    snippets = [{"metrics": {"vocal_cues": cue}} for cue in inp.get("vocal_cues", [])]
+    snippets = [{"session_id": take_id, **row} for row in inp.get("snippets", [])]
+    if inp.get("vocal_cues"):
+        snippets.append({
+            "session_id": take_id,
+            "transcript": inp["transcript"],
+            "metrics": {"vocal_cues": inp["vocal_cues"]},
+        })
     takes = SimpleNamespace(
         list_user_arc_sessions=lambda owner: [take] if owner == user_id else [],
         get_arc_sessions_many=lambda arcs: {arc_id: [take]} if arc_id in arcs else {},
         get_slide_transcripts_many=lambda ids: {take_id: transcript} if take_id in ids else {},
-        get_snippets_by_sessions=lambda ids: {take_id: snippets} if take_id in ids else {},
     )
     database = SimpleNamespace(
         client=None, takes=takes,
+        get_snippets_by_sessions=lambda ids: {take_id: snippets} if take_id in ids else {},
         list_active_diagnostic_exercises=lambda: inp.get("exercises", []),
     )
     # Paired cases keep the same Take and change its delivery evidence.
