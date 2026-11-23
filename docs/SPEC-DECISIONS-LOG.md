@@ -17791,3 +17791,6 @@ The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/
 2. **Every tap target on the first page and on Sign in is at least 44 points** ("Sign in", "No link yet? Join the waitlist", "Sign up"): invisible padding around the same words, in the app and on the website. No new words.
 3. **Drawing under the clock and the home bar** (the page's item 3): approved; building waits until the founder has seen a corrected estimate of what it gives, since the page overstated it (the app's screens are white under both strips).
 The rules: frontend [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md) (the menu and the invite landing are its files).
+
+**N675 · The iPhone app keeps its edges as they are (founder, the Claude Code chat, 23 November 2026: "skip 3", after the corrected estimate on the page "Native Feel Review", <https://claude.ai/artifact/BHrLFbBQAZqvcMD6sJL9nE>).** Corrects N674 item 3: the app does not draw under the clock and the home bar; `contentInset` stays "always". The gain was about 12 points at the bottom of the recording screen, for a new app build and a check of every screen. N674 items 1 and 2 stand.
+No rules page: nothing changes on screen. No migration.
