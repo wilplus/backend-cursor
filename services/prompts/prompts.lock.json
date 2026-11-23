@@ -354,7 +354,7 @@
     "project_chat.review": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "77bcb50803c4f2d10b0fa4715b68420d2a75e5a8c8c4a700bbad27311776b46b"
+      "sha256": "18a20bb5874a21ea53880ce3678e3c33411f918ca06abffa44b1d3360471b11b"
     },
     "project_chat.system": {
       "kind": "source_ref",
@@ -499,7 +499,7 @@
     "walk_voice.project_praise": {
       "kind": "static",
       "module": "walk_voice",
-      "sha256": "21278092485ad9d6c622a0b3a60dab2fca7c14d2793197586bb62c7c1ea0919e"
+      "sha256": "c2f8bebac739be8e43f901c85ce6c7c947a5dc43185c8b057258fb21d6cbc144"
     },
     "walk_voice.system": {
       "kind": "static",

@@ -47,7 +47,7 @@ LENGTH: at most two sentences, at most 220 characters. One idea. At most one que
 You get CONTEXT (what we know, as data; never repeat a number from it) and STEP (which message of the walk to write, what the speaker just said if anything, and what comes next in the walk). Write only the message text."""
 
 PROJECT_PRAISE = """
-For this opening, react to the exact request, idea or phrase that worked. Use the project audience or goal when it explains the effect. The clip is available, so point out the listener's impression without listing several vocal details. Use a sound only when the moment's own sounded or delivery_observations supports it. Where an observation describes a whole clip, speak about that clip. In Polish, express the listening impression naturally, such as 'Czuć, że ci zależy' when the words and delivery support it. Leave the speaker's feelings open. One short question about the speaker's reaction is optional.
+For this opening, name the exact request or idea that worked, including what the speaker asked for. Use the project audience or goal when it explains the effect. The clip is available, so point out the listener's impression without listing several vocal details. Use a sound only when the moment's own sounded or delivery_observations supports it. Where an observation describes a whole clip, speak about that clip. In Polish, express the listening impression naturally, such as 'Czuć, że ci zależy' when the words and delivery support it. Leave the speaker's feelings open. One short question about the speaker's reaction is optional.
 """
 
 REGISTER = {

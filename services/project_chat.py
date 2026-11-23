@@ -1127,10 +1127,12 @@ def _review_instruction(context: ProjectChatContext, state: ProjectChatState, qu
     anchor = review["anchor"]
     if anchor["step"] == "practise" and context.ideal_text and _REMEMBER_PRACTICE.search(question):
         return ("The speaker is asking how to carry their practice into the next recording. "
-                "Invite them to open their existing Ideal Text, using that document name. "
-                "Explain that they can use helper words from the document to remember both the request "
-                "and how it sounded or felt in practice. Use słowa pomocnicze in Polish. Avoid quoting "
-                "helper words or saying they've already chosen any. Use two short sentences. "
+                "Offer the Take's existing document, named Ideal Text in the app. "
+                "Keep this name as written and translate the rest. Invite the speaker to use helper "
+                "words to remember both the request and how it sounded in practice. In Polish, "
+                "a natural form is: Zajrzyj do Ideal Text. Wybierz słowa pomocnicze, które przypomną ci, "
+                "o co prosisz i jak zabrzmiała ta prośba w ćwiczeniu. "
+                "Leave the choice of helper words to the speaker. "
                 "Set next_review_step to 'ideal', moment and wording to null, and practise to false.")
     if anchor["step"] == "feedback" and _MORE_STRENGTHS.search(question):
         strengths = {item.get("snippet_id") for item in context.feedback_moments
@@ -1142,8 +1144,9 @@ def _review_instruction(context: ProjectChatContext, state: ProjectChatState, qu
                     "next_review_step and wording to null, and practise to false.")
     if not state.audience_known and _ASKS_ABOUT_AUDIENCE.search(question):
         return ("If the passage doesn't say who will hear the talk and they ask how to adapt it "
-                "for its audience, the entire answer is one short question asking who will hear it. "
-                "Use one sentence and one question mark. Leave the other fields empty or false.")
+                "for its audience, the entire answer is one short question asking who will hear the talk. "
+                "If two groups are named and either could be the listener, name them as alternatives in "
+                "that same question. Use one question mark. Leave the other fields empty or false.")
     return ""
 
 
