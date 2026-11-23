@@ -787,8 +787,8 @@
   "status": "built",
   "screen": "setup",
   "prototype": null,
-  "given": "the first Take's goodbye",
-  "when": "the speaker taps \"Record Take 2\" (it is there at once, no extra tap)",
+  "given": "the chat offers to record again after the first Take",
+  "when": "the speaker taps \"Record the next take\"",
   "then": [
    "\"How do you feel?\" with its Skip, then the set-up afresh with the plan's topic",
    "the slides step says \"Skip for now\" when no slides were added",
@@ -797,10 +797,11 @@
   "rules": [
    "N449 items 1 to 3",
    "N401 item 4",
-   "N257"
+   "N257",
+   "N682"
   ],
   "code": [
-   "fe:src/components/willab/Lounge.tsx::\"Record Take N\": after the first Take",
+   "fe:src/components/willab/Lounge.tsx::onStartPlanRecording(plan.topic, { afterFirstTake: true })",
    "fe:src/components/willab/RecordingSetup.tsx::export function setupSteps"
   ],
   "tests": [
