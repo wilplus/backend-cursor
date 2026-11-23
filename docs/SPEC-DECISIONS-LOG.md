@@ -17825,3 +17825,11 @@ The rules: frontend [feedback-walk-and-chat.md](https://github.com/wilplus/front
 2. **In the iPhone app, following the iPhone's own setting**, and only while the ring row `dark_mode` is on (the founder first). The website stays light. Because the app pins itself to light today (`UIUserInterfaceStyle Light`), the app reads the iPhone's setting through a small native piece that ships in app version 1.1 (N661); until then nothing changes.
 3. **Built area by area** (the chats, recording, the walk, the Ideal Text, sign-in and settings, the coach panel), each checked in light and dark before it merges, the locked screens with the founder's line. No new words.
 The rules: frontend [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md) and each area's rules page as it is built.
+
+**N681 · Reopen the Take's conversation as a full-width review** (founder, Take design Codex chat, 23 November 2026, including the artifact reference at 20:06 Warsaw time). Updates N670 and N673. N677 and N679 continue to govern the wording and interventions the coach serves.
+
+The active Take uses the usual chat bubbles. When the speaker leaves, a single clickable recap gives a short preview of the exchange. Reopening restores the same Take's messages and saved practice in order, including supplied clips, coach video, AI audio and pace traces. Saved practice is replayable. The open review uses the chat's full reading area and one scroll. Ideal Text sits below the practice with its editing, copy and export tools. Other long documents use the same width. Later messages continue in the chat below.
+
+A selected moment carries its Take and available clip reference into the regular composer. Typed and spoken follow-ups enter the existing chat path. The view displays authored or saved material from the selected conversation and its Take. The same layout applies to any chat that carries a Take.
+
+The rules are [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [Ideal Text](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md).
