@@ -17841,3 +17841,9 @@ A selected moment carries its Take and available clip reference into the regular
 The founder's 20:56 follow-up puts each recorded slide immediately above its Ideal Text. The same document layout opens from every entry. The document menu holds its tools. Readiness and rehearsal choices leave the document. The attachment menu has a solid background. The chat mic records an answer there. A reply carrying the explicit next Take action shows one line, **Record the next take ›**, which opens that project's recorder.
 
 The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [Ideal Text](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md).
+
+**N683 · Project Chat gets the same coaching, with its own Take artifacts** (founder, Speaking Coach Codex chat, 23 November 2026). Updates N672, N673, N679 and N682 for Speaking Coach and its project chats.
+
+Both chats give concrete advice from the speaker's words, available vocal cues and relevant context. Project Chat uses this project's authorised Takes and can show their moments, interventions, Ideal Text and saved wording in the conversation. Speaking Coach can discuss and compare authorised recordings in ordinary replies. Open the owning project for a Take's artifacts. Speaker-wide Strengths, weekly principles and their prompts live in Speaking Coach. Project replies can still describe a supported strength in that Take and suggest what to try on this talk.
+
+The rules: frontend [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [Principles](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md).
