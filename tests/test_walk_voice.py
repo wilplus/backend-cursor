@@ -59,6 +59,11 @@ def test_only_plain_kind_words_reach_me():
     }
     for why, text in refused.items():
         assert check(text, _CONTEXT) is not None, why
+    polish = {"moment": {"words": "Chcę, żebyśmy dziś zatwierdzili pilota."}}
+    assert check("Czuć, że zależy Ci na tym, żeby zatwierdzić pilota.", polish) is None
+    assert check("Słychać, że podkreślasz „dziś”.", polish) is None
+    assert check("Słychać, że podkreślasz „jutro”.", polish) is not None
+    assert check("Dobrze. Świetnie. Żeby tak dalej.", polish) is not None
     # A quote of my words, with a full stop inside it, is one sentence.
     assert check('"So that you can learn together." came out slower. Want to try it once more?',
                  _CONTEXT) is None

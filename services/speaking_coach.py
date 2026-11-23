@@ -25,6 +25,7 @@ import time
 from dataclasses import dataclass, replace
 from typing import Any, Callable, Optional
 
+from services import coach_wording
 from services.speaking_coach_passages import (
     Evidence, Source, comparison_evidence, delivery_evidence, excerpts, practice_tags,
     rank_evidence, transcript_evidence,
@@ -75,13 +76,16 @@ _FORBIDDEN_OUTPUT = re.compile(
 _PRACTICE_REQUEST = re.compile(r"\b(?:practi[cs]\w*|try|exercise\w*|work on|improve|next step|"
                                r"sound more confident|ćwicz\w*|popraw\w*|spróbow\w*|"
                                r"brzmieć pewniej)\b", re.IGNORECASE)
+_DELIVERY_QUESTION = re.compile(
+    r"\b(?:did i sound|how (?:did|do) i sound|brzmiał[ae]m|jak brzm\w*)\b", re.IGNORECASE,
+)
 
 _RESPONSE_SCHEMA: dict[str, Any] = {
     "name": "speaking_coach_turn",
     "schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["answer", "evidence"],
+        "required": ["answer", "evidence", "practise", "wording"],
         "properties": {
             "answer": {
                 "type": "string",
@@ -99,6 +103,19 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
                 "items": {"type": "string"},
                 "description": "The supplied evidence references used in the answer, at most two.",
             },
+            "practise": {"type": "boolean"},
+            "wording": {
+                "type": ["object", "null"],
+                "additionalProperties": False,
+                "required": ["words", "delivery", "source"],
+                "properties": {
+                    "words": {"type": "string"},
+                    "delivery": {"type": ["string", "null"]},
+                    "source": {"type": ["string", "null"], "description": (
+                        "Evidence reference for the recording this wording is for, or null for general advice."
+                    )},
+                },
+            },
         },
     },
     "strict": True,
@@ -113,7 +130,7 @@ _SYSTEM = (
     "what it supports. Distinguish a direct observation from a cautious "
     "interpretation. Never invent a project, Take, coach comment, change, or "
     "pattern. Never expose IDs, database language, private notes, or source "
-    "labels.\n\n"
+    "labels. When naming a recording, use its stated topic or a plain description.\n\n"
     "Do not assign a score, rank, verdict, personality label, diagnosis, or "
     "machine metric. Do not output digits. Do not turn a sparse record into a "
     "confident conclusion. If the evidence is limited, say that plainly. "
@@ -140,7 +157,9 @@ _SYSTEM = (
     "include it in their own terms. A speaker who says prayer gives them "
     "support can be asked how that support helps them take their stated "
     "next step. Attribute quoted beliefs to the person who expressed them.\n\n"
-    "Return strict JSON with answer, evidence, and practise (boolean). When relying on a passage or notes, put the "
+    "Return strict JSON with answer, evidence, practise (boolean), and wording. "
+    "Choose a wording.source from the exact recording you are helping them improve. "
+    "Use a single-recording source, even when comparing. When relying on a passage or notes, put the "
     "supplied evidence references in evidence. Use no more than two. Never write the "
     "references or any URL in the answer. Use an empty list for an answer without evidence. "
     "Set practise to true when a real exercise on the cited passage would help the speaker, "
@@ -166,6 +185,7 @@ class ContextPacket:
     private_memory: str = ""
     scope_status: str = "general"
     practice_catalogue: tuple[dict, ...] = ()
+    comparison_takes: tuple[str, ...] = ()
 
     def debug(self, *, selected_evidence: Optional[int] = None) -> dict[str, Any]:
         return {
@@ -518,7 +538,7 @@ def _coach_evidence(
 
 
 _SCOPED_EVIDENCE_RULES = (
-    "Use the selected talk only. Compare Takes only using the paired passages. "
+    "Use only the selected recordings. Compare a passage over time only when the passages match. "
     "Treat the Ideal Text as the current document and a transcript as spoken words. "
     "Shared coach words refer only to the Take they are marked on."
 )
@@ -548,8 +568,11 @@ _WORDS_ONLY_RULES = (
     "When giving your own reflection on the speech, begin with 'From the words alone' "
     "in the speaker's language ('Z samych słów' in Polish). "
     "Make the wording the subject of the reflection. Point out the actual repetition "
-    "or order of ideas and explain what it helps a listener understand. End with "
-    "a question about that wording or order. Leave the speaker's feelings and delivery open. "
+    "or order of ideas and explain what it helps a listener understand. For a delivery "
+    "question, show a speakable example with one concrete direction in wording.delivery. "
+    "For example, suggest a short pause before the speaker's date or ask them to put weight "
+    "on a specific word. Invite them to try the line out loud and leave it there. "
+    "Leave the speaker's feelings and the original delivery open. "
     "For example: 'From the words alone, you name what you want to change and then say "
     "what you will do next. The order makes the plan easy to follow. When do you use "
     "that order in a difficult conversation?' Use the actual words in this Take. "
@@ -573,6 +596,12 @@ def _render_context(packet: ContextPacket, evidence: tuple[Evidence, ...]) -> st
     ]
     if packet.scope_status == "resolved":
         lines.append(_SCOPED_EVIDENCE_RULES)
+    if packet.comparison_takes:
+        lines.append("These are the selected recent recordings. If both have evidence, name each by the topic "
+                     "given in its project context, use one telling phrase from each, and explain the "
+                     "difference. When the speaker asks for a change, show the new opening in wording.words "
+                     "and cite the recording it is for in wording.source. If there is evidence for only one, "
+                     "say which one you can use.")
     for number, item in enumerate(evidence):
         reference = f"E{number}" if item.sources else "context"
         anchors = ", ".join(f"Take {source.take_number}" for source in item.sources
@@ -742,12 +771,31 @@ def _delivery_evidence(database: Any, sessions: list[dict], labels: dict[str, st
 
 def _projects_to_read(database: Any, rows: list[dict], scope: TalkScope,
                       app_config: Any, meter: _ReadMeter) -> list[str]:
-    if scope.requested:
+    if scope.requested and not (scope.recent_pair and not scope.arc_id):
         arcs = [scope.arc_id] if scope.arc_id else []
     else:
         arcs = _ordered_arc_ids(rows, app_config)
     visible = _visible_arcs(database, arcs, meter) or set()
     return [arc for arc in arcs if arc in visible]
+
+
+def _selected_takes(available: dict[str, list[dict]], scope: TalkScope) -> dict[str, list[dict]]:
+    if scope.recent_pair:
+        latest = sorted(
+            (row for rows in available.values() for row in rows),
+            key=lambda row: (str(row.get("created_at") or ""), str(row["id"])), reverse=True,
+        )[:2]
+        return {arc: [take for take in latest if take["arc_id"] == arc] for arc in available}
+    return {arc: select_takes(rows, scope) if scope.requested else rows[:DEFAULT_MAX_TAKES_PER_PROJECT]
+            for arc, rows in available.items()}
+
+
+def _packet_scope_status(scope: TalkScope, take_count: int) -> str:
+    if not scope.requested:
+        return "general"
+    if not scope.arc_id and not scope.recent_pair:
+        return "clarify"
+    return "resolved" if take_count else "unavailable"
 
 
 def _uncached_packet(
@@ -759,14 +807,13 @@ def _uncached_packet(
     labels = {arc: f"Project {index + 1}" for index, arc in enumerate(arcs)}
     owned_ids = {str(row["id"]) for row in index_rows if row.get("id")}
     available = _authorized_by_arc(database, user_id, arcs, owned_ids, meter)
-    by_arc = {arc: select_takes(rows, scope) if scope.requested else rows[:DEFAULT_MAX_TAKES_PER_PROJECT]
-              for arc, rows in available.items()}
+    by_arc = _selected_takes(available, scope)
     takes = [row for rows in by_arc.values() for row in rows]
     _attach_transcripts(database, takes, meter)
-    setups = {arc: _setup_takes(available[arc], rows) for arc, rows in by_arc.items()}
-    # Allow the current Ideal Text from an authorized Take of the same talk.
-    # Its words are labelled as a document, even for a question about an older Take.
-    document_takes = {arc: rows + available[arc][:1] for arc, rows in by_arc.items() if rows}
+    setups = by_arc if scope.recent_pair else {arc: _setup_takes(available[arc], rows) for arc, rows in by_arc.items()}
+    # A cross-recording question keeps the two selected recordings' boundary.
+    document_takes = {arc: rows + ([] if scope.recent_pair else available[arc][:1])
+                      for arc, rows in by_arc.items() if rows}
 
     from services.parallel import run_in_parallel
     coach, ideals, catalogue, cues = run_in_parallel(
@@ -776,19 +823,14 @@ def _uncached_packet(
         lambda: _delivery_evidence(database, takes, labels, meter),
     )
     evidence = cues + _assembled_evidence(profile, labels, by_arc, setups, scope, ideals, coach)
-    if not scope.requested:
-        scope_status = "general"
-    elif not scope.arc_id:
-        scope_status = "clarify"
-    else:
-        scope_status = "resolved" if takes else "unavailable"
     packet = ContextPacket(
         version=CONTEXT_VERSION, evidence=tuple(evidence),
         sparse=len(evidence) < 3 or len(takes) < 2,
         project_count=len(arcs), take_count=len(takes), source_fingerprint=fingerprint,
         db_reads=meter.reads, budget_exceeded=meter.budget_exceeded, cache_hit=False,
         retrieval_ms=int((time.perf_counter() - started) * 1000),
-        scope_status=scope_status, practice_catalogue=catalogue,
+        scope_status=_packet_scope_status(scope, len(takes)), practice_catalogue=catalogue,
+        comparison_takes=tuple(str(row["id"]) for row in takes) if scope.recent_pair else (),
     )
     # A cache hit rechecks every Take used for its setup, transcript, or document.
     source_takes = {str(take["id"]): take for take in [
@@ -942,6 +984,28 @@ def wants_practice(question: str) -> bool:
     return bool(_PRACTICE_REQUEST.search(question or ""))
 
 
+def _response_format(packet: ContextPacket, evidence: tuple[Evidence, ...], question: str) -> dict:
+    schema = _RESPONSE_SCHEMA
+    references = [f"E{index}" for index, item in enumerate(evidence)
+                  if item.source_type in ("take_transcript", "delivery_cues") and len(item.sources) == 1]
+    words_only = (bool(_DELIVERY_QUESTION.search(question))
+                  and not any(item.source_type == "delivery_cues" for item in evidence))
+    if packet.scope_status == "resolved" and references and (
+        words_only or (len(packet.comparison_takes) == 2 and wants_practice(question))
+    ):
+        # These turns call for a demonstration. A real source keeps the line
+        # saveable and ties it to the right recording even in comparisons.
+        schema_fields = schema["schema"]["properties"]
+        wording = schema_fields["wording"]
+        wording_fields = {**wording["properties"], "source": {"type": "string", "enum": references}}
+        if words_only:
+            wording_fields["delivery"] = {"type": "string", "description": "One concrete cue for this line."}
+        schema = {**schema, "schema": {**schema["schema"], "properties": {
+            **schema_fields, "wording": {**wording, "type": "object", "properties": wording_fields},
+        }}}
+    return {"type": "json_schema", "json_schema": schema}
+
+
 def _reply_payload(answer: str, parsed: dict, evidence: tuple[Evidence, ...],
                    question: str) -> dict:
     sources = _cited_sources(parsed, evidence)
@@ -953,7 +1017,7 @@ def _reply_payload(answer: str, parsed: dict, evidence: tuple[Evidence, ...],
         labels = {"feedback": "Feedback", "ideal_text": "Ideal Text"}
         links = dict.fromkeys(f"{labels[source.kind]} {source.url(base)}" for source in documents)
         answer += "\n\n" + "\n".join(links)
-    payload = {"answer": answer, "show_record_ui": False, "suggested_action": None}
+    payload: dict[str, Any] = {"answer": answer, "show_record_ui": False, "suggested_action": None}
     moment = next((source for source in sources if source.snippet_id), None)
     if moment:
         from services.lounge_clips import chat_moment_reference
@@ -962,7 +1026,22 @@ def _reply_payload(answer: str, parsed: dict, evidence: tuple[Evidence, ...],
             moment.arc_id, moment.take_id, str(moment.snippet_id),
             practise=parsed.get("practise") is True or wants_practice(question),
         )}
+    if wording := _proposed_wording(parsed.get("wording"), evidence):
+        payload.setdefault("row_metadata", {})[coach_wording.META] = wording
     return payload
+
+
+def _proposed_wording(value: Any, evidence: tuple[Evidence, ...]) -> dict | None:
+    if not isinstance(value, dict):
+        return None
+    source = value.get("source")
+    by_reference = {f"E{i}": item.sources for i, item in enumerate(evidence)}
+    origins = {(origin.arc_id, origin.take_id) for origin in by_reference.get(source, ())
+               if origin.arc_id and origin.take_id} if isinstance(source, str) else set()
+    if len(origins) == 1:
+        arc, take = next(iter(origins))
+        return coach_wording.proposal(value, arc_id=arc, take_id=take)
+    return coach_wording.proposal(value)
 
 
 def _scope_question(status: str, language: str) -> str:
@@ -1005,13 +1084,14 @@ def answer(
         packet.evidence, search_question,
         _int_setting(app_config, "SPEAKING_COACH_MAX_EVIDENCE", DEFAULT_MAX_EVIDENCE),
         scoped=scoped, user_id=str(user_id) if user_id else None,
+        comparison_takes=packet.comparison_takes,
     )
     context_block = _render_context(packet, selected)
     from services import speaker_memory
     preference = speaker_memory.prompt_block(packet.private_memory)
     if scoped and preference:
         preference += "Use the private note for coaching preferences only. The selected evidence supports talk-specific claims."
-    system = (_SYSTEM + "\n\n" + context_block + "\n" + preference
+    system = (_SYSTEM + "\n" + coach_wording.WORDING_RULES + "\n\n" + context_block + "\n" + preference
               + _practice_prompt(packet, search_question, selected))
     messages = [{"role": "system", "content": system}]
     if not scoped:
@@ -1040,9 +1120,7 @@ def answer(
             user_id=str(user_id) if user_id else None,
             messages_override=messages,
             return_last_on_failure=True,
-            response_format_override={
-                "type": "json_schema", "json_schema": _RESPONSE_SCHEMA,
-            },
+            response_format_override=_response_format(packet, selected, search_question),
         )
     except Exception as error:  # noqa: BLE001 - preserve auth hard failures
         from services.processing_authorization import rethrow_processing_authorization

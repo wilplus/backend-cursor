@@ -69,7 +69,16 @@ OUTCOME
       signed one and keeps my own words in it once, one line, no number,
       still a question; otherwise he says the signed words. The tap answers
       never change.
-PROVES   O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_missing
+  O13 Other chats cannot push my earlier project questions out of the history
+      Will checks before he asks.
+  O14 Will can hear the audience and request in my Take's own transcript,
+      even if feedback has not selected a moment for those words.
+  O15 Will does not infer that I dropped the practised line when the Take's
+      words are unavailable.
+  O16 The inline review uses an explicitly named audience and stated request.
+      It asks only for the missing detail without a stock bridge or an unrelated clip.
+PROVES   O16 -> test_inline_review_uses_the_stated_audience_and_only_asks_whats_missing
+         O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_missing
          O2 -> test_the_taps_come_from_what_will_heard,
                test_only_words_the_take_says_are_kept_from_the_read
          O3 -> test_a_tap_is_kept_fills_the_setup_and_lets_the_message_go,
@@ -86,6 +95,10 @@ PROVES   O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_m
          O10 -> test_the_key_line_is_asked_last_by_voice_and_kept
          O11 -> test_a_voice_answer_answers_wills_question
          O12 -> test_will_says_who_from_my_side_and_the_goodbye_waits
+         O13 -> test_a_busy_other_chat_does_not_make_will_repeat_the_audience_question
+         O14 -> test_the_context_question_reads_the_take_without_a_feedback_frame,
+                test_heard_checks_the_opening_and_closing_separately
+         O15 -> test_missing_take_words_do_not_count_as_a_dropped_practised_line
 WHY      Founder 2026-10-20 (N82): "ask me a lot of questions … a natural
          flow in the walk and in the lounge"; the bank signed the same day.
          2026-10-31 (N294): "these questions, they should be related to the
@@ -93,6 +106,8 @@ WHY      Founder 2026-10-20 (N82): "ask me a lot of questions … a natural
 """
 import json
 import uuid
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 from services import after_take, chat_query, speaker_memory, take_summary, will_question
 import pytest
@@ -131,6 +146,10 @@ class _Db:
     def get_lounge_messages_page(self, user_id, limit=50, before=None):
         rows = sorted(self.thread.values(), key=lambda r: r["client_created_at"])
         return list(reversed(rows))[:limit]  # newest first
+
+    def get_project_lounge_messages_page(self, user_id, arc_id, *, limit, before=None):
+        project_rows = [row for row in self.thread.values() if row.get("metadata", {}).get("arc_id") == arc_id]
+        return sorted(project_rows, key=lambda row: row["client_created_at"], reverse=True)[:limit]
 
     def get_lounge_message_by_client_id(self, user_id, client_id):
         return self.thread.get(client_id)
@@ -227,6 +246,28 @@ def test_only_words_the_take_says_are_kept_from_the_read():
     assert read(json.dumps({"ask": "approve two hires by March 2027"}), "", said)["ask"] is None
     assert read(json.dumps({"audience": "everyone"}), "", "hello everyone")["audience"] is None
     assert read("not json", "", said) == {"audience": None, "ask": None, "audience_times": 0}
+
+
+def test_heard_checks_the_opening_and_closing_separately(monkeypatch):
+    seen = {}
+
+    def complete(*_args, **kwargs):
+        seen["prompt"] = kwargs["user"]
+        return SimpleNamespace(text=json.dumps({"audience": "the school board", "ask": "release the pilot"}))
+
+    monkeypatch.setattr("services.content_language.complete_in_language", complete)
+    transcript = (
+        "Hello to the school board. " + "We shared the pilot results and looked at the details. " * 160
+        + "I ask you to release the pilot."
+    )
+    heard = will_question.heard("Project update", transcript, user_id="u", take="t1", arc_id="arc")
+    assert heard == {"audience": "the school board", "ask": "release the pilot", "audience_times": 1}
+    assert seen["prompt"].count("Transcript excerpt:") == 2
+    assert len(seen["prompt"]) < will_question._HEARD_CHARS + 100
+    # Phrases assembled from the end of one excerpt and the start of the other were never spoken.
+    assert will_question.read_heard(
+        '{"ask":"release the pilot"}', "", "We'll release", "the pilot ended last week."
+    )["ask"] is None
 
 
 def _asked(db, key="audience", chips=("The board", "My team", "A buyer"), take="t1", **rest):
@@ -378,7 +419,7 @@ class _SummaryDb(_Db):
 TAKES = [{"id": "t1", "intake_context": {"topic": "Q3 Board pitch"}}]
 
 
-def _summary(db, monkeypatch, takes=TAKES, take="t1", heard=None, carried=None):
+def _summary(db, monkeypatch, takes=TAKES, take="t1", heard=None, carried=None, inline_review=False):
     seen = {}
 
     def write(anchor, facts, **kw):
@@ -388,12 +429,15 @@ def _summary(db, monkeypatch, takes=TAKES, take="t1", heard=None, carried=None):
     monkeypatch.setattr("services.person_asks.next_for", lambda _u: None)
     monkeypatch.setattr(take_summary, "_under_authority", lambda _db, _take, w: w())
     monkeypatch.setattr(take_summary, "write_summary", write)
-    monkeypatch.setattr(will_question, "heard", lambda *a, **k: heard or {})
+    def hear(_title, said, **_scope):
+        seen["heard_words"] = said
+        return heard or {}
+    monkeypatch.setattr(will_question, "heard", hear)
     monkeypatch.setattr(will_question, "vary", lambda *a, **k: None)
     monkeypatch.setattr(will_question, "carried_over", lambda *a, **k: carried)
     monkeypatch.setattr("services.parallel.start_scoped_thread", lambda run, name=None: run())
     msg = take_summary.summary_message(db, user_id="u", arc_id="arc", takes=takes,
-                                       take_session_id=take, body={"practice": "better"})
+                                       take_session_id=take, body={"practice": "better", "inline_project_review": inline_review})
     return msg, seen
 
 
@@ -410,6 +454,58 @@ def test_the_summary_holds_its_message_under_wills_question(monkeypatch):
     bridge = next(r for r in db.thread.values() if (r.get("metadata") or {}).get("bridge"))
     assert bridge["body"] in after_take.BRIDGE
     assert msg["client_created_at"] < bridge["client_created_at"] < asked[0]["client_created_at"]
+
+
+def test_a_busy_other_chat_does_not_make_will_repeat_the_audience_question():
+    db = _Db()
+    _asked(db)
+    # The earlier question is outside the global page. The project page still has it.
+    db.get_lounge_messages_page = lambda *_args, **_kwargs: []
+    found = will_question.plan(
+        db, user_id="u", arc_id="arc", take="t2", take_index=2,
+        now=("better", None), before=None, takes=TAKES,
+        carried=None, heard_call=lambda: {},
+    )
+    assert found is not None and found.key == "goal"
+
+
+def test_the_context_question_reads_the_take_without_a_feedback_frame(monkeypatch):
+    _quiet(monkeypatch)
+    db = _SummaryDb()
+    monkeypatch.setattr(db, "get_v4_dark_frame", lambda _take: None)
+    _, seen = _summary(db, monkeypatch, heard={"audience": "the board", "audience_times": 2})
+    assert "The board decides today." in seen["heard_words"]
+    assert any(row["metadata"].get("will_question") == "audience_check" for row in db.thread.values())
+
+
+def test_inline_review_uses_the_stated_audience_and_only_asks_whats_missing(monkeypatch):
+    _quiet(monkeypatch)
+    for ask, expected in (("approve the pilot", []), (None, ["goal"])):
+        db = _SummaryDb()
+        unrelated = {
+            "client_id": "clip", "role": "bot", "kind": "walk_step", "body": "The price is fixed.",
+            "metadata": {"arc_id": "arc", "take_session_id": "t1", "clip": {"snippet_id": "s1"}},
+            "client_created_at": "2026-11-22T12:00:00+00:00",
+        }
+        db.thread["clip"] = unrelated
+        _summary(db, monkeypatch, heard={"audience": "my team", "ask": ask, "audience_times": 1},
+                 inline_review=True)
+
+        rows = list(db.thread.values())
+        questions = [r for r in rows if r["metadata"].get("offer") == "will_question"]
+        assert [r["metadata"]["will_question"] for r in questions] == expected
+        assert all("We just worked on" not in r["body"] for r in questions)
+        assert not any(r["metadata"].get("bridge") for r in rows)
+        assert "audience" not in db.takes.get_session_intake_context("t1")
+
+
+def test_missing_take_words_do_not_count_as_a_dropped_practised_line():
+    db = SimpleNamespace(client=Mock())
+    assert will_question.carried_over(
+        db, user_id="u", takes=[{"id": "t1"}, {"id": "t2"}], take_index=2,
+        snippets=[{"id": "s1", "transcript": ""}],
+    ) is None
+    db.client.table.assert_not_called()
 
 
 def test_what_they_should_do_follows_an_answered_who(monkeypatch):

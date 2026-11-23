@@ -525,7 +525,8 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
     moved = _move(_mean(now, "s"), _mean(before, "s")) if before is not None else None
     will, carried = (None, []) if held else _will_plan(
         database, user_id=str(user_id), arc_id=str(arc_id), takes=takes, take=take,
-        take_index=take_index, now=(practice, moved), moments=moments)
+        take_index=take_index, now=(practice, moved),
+        inline_review=body.get("inline_project_review") is True)
     facts = talk_facts(takes) + said_facts(moments, now) + earlier() + carried + rest
     asks, lead_ins = _chain_plan(database, user_id=str(user_id), arc_id=str(arc_id), take=take,
                                  take_index=take_index, practice=practice, moved=moved, will=will,
@@ -608,7 +609,7 @@ def _before_outcome(database: Any, user_id: str, arc_id: str, take_index: int) -
 
 
 def _will_plan(database: Any, *, user_id: str, arc_id: str, takes: list[dict], take: str,
-               take_index: int, now: tuple, moments: list[dict]) -> tuple:
+               take_index: int, now: tuple, inline_review: bool = False) -> tuple:
     """Will's question after this Take (``will_question``), its heard call
     and its light touch started beside the summary's own; and, for the
     summary, the line practised last Take when this Take said it. Never
@@ -618,16 +619,25 @@ def _will_plan(database: Any, *, user_id: str, arc_id: str, takes: list[dict], t
         snippets = database.get_snippets_by_session(take) or []
         carried = will_question.carried_over(database, user_id=user_id, takes=takes,
                                              take_index=take_index, snippets=snippets)
+        def start_heard():
+            from services.chat_app_context import talk_title
+            return will_question.start_heard(
+                database, user_id=user_id, arc_id=arc_id, take=take,
+                title="" if inline_review else talk_title(
+                    [t.get("intake_context") or {} for t in takes]),
+                said=will_question.take_words(snippets))
+
+        def hear_inline() -> dict:
+            collect = start_heard()
+            return collect()
+
         found = will_question.plan(
             database, user_id=user_id, arc_id=arc_id, take=take, take_index=take_index,
             now=now, before=_before_outcome(database, user_id, arc_id, take_index),
-            takes=takes, carried=carried, heard_call=lambda: {}, snippets=snippets)
-        if found and found.key in ("audience", "goal"):
-            from services.chat_app_context import talk_title
-            found.heard = will_question.start_heard(
-                database, user_id=user_id, arc_id=arc_id, take=take,
-                title=talk_title([t.get("intake_context") or {} for t in takes]),
-                said=" ".join(m["text"] for m in moments if m.get("text")))
+            takes=takes, carried=carried, snippets=snippets, inline_review=inline_review,
+            heard_call=hear_inline if inline_review else (lambda: {}))
+        if found and found.key in ("audience", "goal") and not inline_review:
+            found.heard = start_heard()
         if found:
             keys = ([found.key] + (["audience_check"] if found.key == "audience" else [])
                     + ([found.then] if found.then else []))

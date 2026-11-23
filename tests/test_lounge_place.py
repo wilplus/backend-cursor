@@ -55,6 +55,9 @@ WRITERS: dict[str, list[tuple[dict, str]]] = {
         ({"role": "bot", "kind": "text", "metadata": {"arc_id": "a", "take_session_id": "t",
                                                        "first_take": True}}, SPEAKING),
         ({"role": "bot", "kind": "text", "metadata": {"bridge": True, "arc_id": "a"}}, SPEAKING)],
+    "services/coach_wording.py": [
+        ({"role": "system", "kind": "text",
+          "metadata": {"coach_wording_saved": True, "arc_id": "a", "take_session_id": "t", "place": SPEAKING}}, SPEAKING)],
     "services/take_summary.py": [  # the cadence after a Take; the coach's word on a Take
         ({"role": "bot", "kind": "cadence", "metadata": {"arc_id": "a"}}, SPEAKING),
         ({"role": "bot", "kind": "walk_step", "metadata": {"step": "coachnote"}}, SPEAKING)],

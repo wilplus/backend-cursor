@@ -1235,6 +1235,11 @@ test_editing_only_the_words_never_sends_the_video_again
 test_a_null_video_removes_it
 test_a_word_only_edit_leaves_the_video_out_of_the_write
 test_a_failed_read_stops_the_save","PLF1 (founder 2026-10-05, N48.1): the video went to Whisper with no permit; N79 (founder 2026-10-19): only for the training yes."
+tests/test_coach_wording.py,Story,"As a speaker, I can save the exact words in a coaching reply and reopen the line in the project at my next recording.","O1 The project retains one wording entry from an explicitly saved
+reply, even when the request is sent again.
+O2 Wording is scoped to the project and Take in the offer and the
+current actor's access to the source.","O1 -> test_a_reply_saves_exactly_once_and_is_read_for_the_next_take
+O2 -> test_only_the_owned_project_and_current_source_can_save_or_read","Speaking Coach Codex decision, 2026-11-23."
 tests/test_communities.py,Story,"As a speaker, I want to share a Take only with communities I belong to, revocably, with listeners hearing audio only, so that sharing is my choice and listeners judge blind.","O1  Clips the listener answered or labelled, clips the quorum settled,
 and clips that can no longer settle (unresolved, quarantined for
 unclear audio) are not queued again.
@@ -4018,7 +4023,11 @@ closed to the existing chat path.
 O7  An older named talk keeps its exact Take, saved audience and goal, and source links.
 O8  Similar talks require a clear choice, and comparable passages stay on the same slide.
 O9  When feedback is missing, the coach uses available passages and one relevant reviewed exercise.
-O10 Saved vocal observations reach the coach with the exact spoken passage from the selected Take.","O1 -> test_routes_without_an_llm_classifier
+O10 Saved vocal observations reach the coach with the exact spoken passage from the selected Take.
+O11 A comparison uses the two requested recent Takes. Its wording belongs to the intended project.
+O12 A missing clip can receive a speakable example with a delivery direction from words alone.","O11 -> test_last_two_recordings_get_one_sayable_line_for_its_target_project
+O12 -> test_missing_audio_can_offer_the_words_and_an_example_delivery
+O1 -> test_routes_without_an_llm_classifier
 O2 -> test_sparse_and_rich_contexts_are_explicit
 O3 -> test_rich_context_is_owner_scoped_and_has_no_project_chat
 O4 -> test_content_language_is_preserved_for_english_and_polish
@@ -5244,7 +5253,16 @@ refused.
 O7  Will says a question with a light touch only when it still means the
 signed one and keeps my own words in it once, one line, no number,
 still a question; otherwise he says the signed words. The tap answers
-never change.","O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_missing
+never change.
+O13 Other chats cannot push my earlier project questions out of the history
+Will checks before he asks.
+O14 Will can hear the audience and request in my Take's own transcript,
+even if feedback has not selected a moment for those words.
+O15 Will does not infer that I dropped the practised line when the Take's
+words are unavailable.
+O16 The inline review uses an explicitly named audience and stated request.
+It asks only for the missing detail without a stock bridge or an unrelated clip.","O16 -> test_inline_review_uses_the_stated_audience_and_only_asks_whats_missing
+O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_missing
 O2 -> test_the_taps_come_from_what_will_heard,
 test_only_words_the_take_says_are_kept_from_the_read
 O3 -> test_a_tap_is_kept_fills_the_setup_and_lets_the_message_go,
@@ -5260,7 +5278,11 @@ O8 -> test_the_question_opens_on_the_moment_the_walk_just_worked_on
 O9 -> test_what_they_should_do_follows_an_answered_who
 O10 -> test_the_key_line_is_asked_last_by_voice_and_kept
 O11 -> test_a_voice_answer_answers_wills_question
-O12 -> test_will_says_who_from_my_side_and_the_goodbye_waits","Founder 2026-10-20 (N82): ""ask me a lot of questions … a natural flow in the walk and in the lounge""; the bank signed the same day. 2026-10-31 (N294): ""these questions, they should be related to the moment""; ""they can be only one at a time. Only once you answer""."
+O12 -> test_will_says_who_from_my_side_and_the_goodbye_waits
+O13 -> test_a_busy_other_chat_does_not_make_will_repeat_the_audience_question
+O14 -> test_the_context_question_reads_the_take_without_a_feedback_frame,
+test_heard_checks_the_opening_and_closing_separately
+O15 -> test_missing_take_words_do_not_count_as_a_dropped_practised_line","Founder 2026-10-20 (N82): ""ask me a lot of questions … a natural flow in the walk and in the lounge""; the bank signed the same day. 2026-10-31 (N294): ""these questions, they should be related to the moment""; ""they can be only one at a time. Only once you answer""."
 tests/test_withdrawal_erases_sheets.py,Story,"As a speaker, I want the coach sheets about my Takes deleted when I turn training off, so that my withdrawal is real.","O1  Turning training off deletes my Takes' rows from all three coach
 sheet tables, and only mine.
 O2  If my Takes cannot be read, the switch still turns off, and the

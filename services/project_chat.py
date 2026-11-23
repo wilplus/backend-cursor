@@ -24,12 +24,13 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any, Optional
 
+from services import coach_wording
 from services.content_language import (
     complete_in_language,
     recording_target_language,
     resolve_content_language,
 )
-from services.llm_config import SPEC_PROJECT_CHAT
+from services.llm_config import SPEC_PROJECT_CHAT, SPEC_PROJECT_CHAT_REVIEW
 
 logger = logging.getLogger(__name__)
 
@@ -126,9 +127,10 @@ _FORBIDDEN_OUTPUT = re.compile(
     re.IGNORECASE,
 )
 _AUDIENCE_EVIDENCE = re.compile(
-    r"\b(?:my audience is|i(?:'m| am) speaking to|this is for|"
-    r"i(?:'m| am) talking to)\s+([^.!?;\n]{2,90})"
-    r"|(?:mówię do|to jest dla|moja publiczność to)\s+([^.!?;\n]{2,90})",
+    r"\b(?:my audience is|i(?:'m| am) (?:speaking|talking) (?:mainly |primarily )?to|"
+    r"this is for)\s+([^.!?;\n]{2,90})"
+    r"|(?:mówię (?:to )?(?:(?:głównie|przede wszystkim) )?do|to jest dla|"
+    r"moja publiczność to)\s+([^.!?;\n]{2,90})",
     re.IGNORECASE,
 )
 _GOAL_EVIDENCE = re.compile(
@@ -137,6 +139,15 @@ _GOAL_EVIDENCE = re.compile(
     r"|(?:chcę,? żeby|chciałbym,? żeby|chciałabym,? żeby|mają)\s+([^.!?;\n]{2,100})",
     re.IGNORECASE,
 )
+_MORE_STRENGTHS = re.compile(
+    r"\b(?:more|another|other|else|second)\b.{0,40}\b(?:strengths?|good|positive|work\w*)\b|"
+    r"\bwhat (?:else|more) (?:went well|worked)\b|"
+    r"\b(?:jeszcze|kolejn\w*|inn\w*|drug\w*)\b.{0,35}\b(?:dobr\w*|mocn\w*|udał\w*|wyszł\w*)\b",
+    re.IGNORECASE,
+)
+_REMEMBER_PRACTICE = re.compile(r"\b(?:remember\w*|zapamięt\w*|utrwal\w*)\b", re.IGNORECASE)
+_ASKS_ABOUT_AUDIENCE = re.compile(r"\b(?:audience|listeners?|odbiorc\w*|słuchacz\w*)\b", re.IGNORECASE)
+_STRENGTH_KINDS = {"praise", "strength", "strong", "great_formulation"}
 
 
 def clear_cache(*, user_id: Optional[str] = None, arc_id: Optional[str] = None) -> None:
@@ -396,6 +407,7 @@ def _draft_signature(drafts: list[dict]) -> list[dict]:
             "snippet": str(row.get("snippet_id") or ""),
             "surfaced": bool(row.get("surfaced")),
             "note": row.get("note") or "",
+            "kind": _feedback_kind(row),
             "updated": str(row.get("updated_at") or row.get("created_at") or ""),
         }
         for row in drafts
@@ -501,9 +513,11 @@ def _load_sources(
     reads: list[int],
 ) -> dict[str, Any]:
     recent = spoken[-MAX_TAKE_HISTORY:]
-    ids = [str(row.get("id") or "") for row in recent if row.get("id")]
-    snippets_by_id = _snippets_by_session(database, ids, reads)
     current_id = str(current.get("id") or "")
+    ids = [str(row["id"]) for row in recent if row.get("id")]
+    if current_id and current_id not in ids:
+        ids.append(current_id)
+    snippets_by_id = _snippets_by_session(database, ids, reads)
     current_snippets = snippets_by_id.get(current_id) or []
     project = _read(
         reads,
@@ -560,6 +574,10 @@ def _setup_values(
     }
 
 
+def _feedback_kind(draft: dict) -> str:
+    return _text(draft.get("feedback_family") or draft.get("tag") or draft.get("kind") or draft.get("device"), 80)
+
+
 def _feedback_moments(current: dict, drafts: list[dict], snippets: list[dict]) -> list[dict]:
     if not current.get("results_published_at"):
         return []
@@ -582,7 +600,7 @@ def _feedback_moments(current: dict, drafts: list[dict], snippets: list[dict]) -
         feedback.append({
             "moment": moment,
             "feedback": _text(draft.get("note"), 800),
-            "kind": _text(draft.get("kind") or draft.get("device"), 80),
+            "kind": _feedback_kind(draft),
             **({"snippet_id": str(snippet["id"])} if snippet.get("id") else {}),
         })
         if len(feedback) >= MAX_FEEDBACK_MOMENTS:
@@ -829,14 +847,22 @@ fact. Never invent a feedback moment, praise, improvement, audience, goal,
 deck detail, or Take result. Do not expose IDs, database terms, hidden
 metrics, scores, rankings, verdicts, diagnoses, or internal labels.
 
-On the first response after a Take, make the arc feel human and specific: say
-congratulations in context, refer to the exact feedback moment or spoken
-passage that was just addressed, and then establish the audience and the
-desired action/feeling. Combine or defer those moves when the context already
-knows one of them. If feedback is not published or the evidence is sparse,
-say so plainly instead of inventing praise. Do not ask for a value already
-known from the project setup, a previous project-chat answer, the deck, or
-the Take evidence.
+Respond to the speaker's latest turn first. If you are opening the review,
+start with one specific strength supported by a published moment and the
+speaker's words or delivery. If the speaker is asking a question, answer it
+directly. When a missing detail would change the advice, ask just for that
+detail. Read the Take's words and any existing answer before asking. Separate
+the intended listeners from a person or group mentioned as a decision-maker.
+When they ask for edits and already name a primary listener and a separate
+decision-maker, give a direct edit: address the intended audience and leave
+the decision for the separate conversation. Say which part to leave out and
+keep each group's role. If they only ask what to change, give that edit as
+a statement before asking for new information. When they ask how to tailor a line and the listener
+is unclear, ask one short question about who will hear it and wait for their
+answer. Do not invent a listener, an emotion, a positive moment, or a sound.
+Delivery observations belong to their own passage. Stick to what the words
+support when there is no sound evidence. Give the listening impression in
+plain language.
 
 Keep replies free of profanity and explicit sexual content.
 Ask at most one clear question in a turn. During the audience/goal setup ask
@@ -847,18 +873,36 @@ useful and vary the wording naturally. Match the requested formal, warm, or
 playful tone. Preserve Polish and the speaker's quoted words; do not translate
 source phrases.
 
-When speaker_is_reviewing is present, answer that question in the selected
-Take's evidence first. Use exact_take_words when available. Leave the earlier
-audience and goal questions for their own turns.
+When speaker_is_reviewing is present, this is the conversation inside the
+selected Take's Feedback Walk. Use its exact words and available delivery
+observations. Follow the speaker's request:
+- For another strength, use the next distinct published strength from this Take.
+  If the reviewed clip is the only published strength, say you'd need to hear
+  more and explain one detail that works on that same clip. Set moment to
+  "reviewed" and practise to false. Do not present that same clip as a new one.
+- For a request to hear or practise a particular passage, pick the matching
+  published moment even when the current review is on a different passage.
+  Copy its reference (such as M0) into moment. For a practice request, set
+  practise to true and offer one specific change grounded in that moment.
+- If they just practised and ask how to remember it, or ask for the output,
+  offer the existing Ideal Text when available and set next_review_step to
+  "ideal". Explain how its helper words can remind them what to say and how
+  it felt to say it. Use only supplied helper words. This is the output step.
+- For a reaction or general advice, stay with the speaker's question. Leave
+  next_review_step null unless the reply is explicitly offering that step.
+Do not bring an earlier setup question into the review.
 
 Return strict JSON with this shape:
-{"answer": string, "chips": [string], "moment": string or null, "practise": boolean}
-The answer is short conversational prose, normally one to four paragraphs.
-Set moment to a published feedback reference only when the answer cites that
-exact passage. Use null for general advice.
-Set practise to true when a rehearsable activity on the cited moment would
-help the speaker. The app checks which activity is available. Do not promise
-a recording link, a particular exercise, or an example.
+{"answer": string, "chips": [string], "moment": string or null, "practise": boolean,
+ "next_review_step": "practise" or "ideal" or null, "wording": object or null}
+Keep the answer short and conversational. Use a published moment reference
+only when the answer actually addresses that passage. Use "reviewed" for the
+exact clip in speaker_is_reviewing when it is the one you address, and null
+for advice that needs no clip. Set practise to true when a matching tool on
+the cited moment would help. The app checks which tool is available. Do not
+promise a particular exercise or a demonstration. Set next_review_step only
+in the review and only when you are offering the speaker that step in this
+reply. Otherwise return null.
 Chips are optional, grounded suggested replies for the one current question;
 use an empty array when they would feel canned. Do not put a second question
 inside a chip or answer.
@@ -1080,6 +1124,33 @@ def _lightweight(question: str, state: ProjectChatState) -> bool:
     return state.phase == ConversationPhase.CONVERSATION and bool(_ACK.fullmatch(question.strip()))
 
 
+def _review_instruction(context: ProjectChatContext, state: ProjectChatState, question: str, review: dict) -> str:
+    anchor = review["anchor"]
+    if anchor["step"] == "practise" and context.ideal_text and _REMEMBER_PRACTICE.search(question):
+        return ("The speaker is asking how to carry their practice into the next recording. "
+                "Offer the Take's existing document, named Ideal Text in the app. "
+                "Keep this name as written and translate the rest. Invite the speaker to use helper "
+                "words to remember both the request and how it sounded in practice. In Polish, "
+                "a natural form is: Zajrzyj do Ideal Text. Wybierz słowa pomocnicze, które przypomną ci, "
+                "o co prosisz i jak zabrzmiała ta prośba w ćwiczeniu. "
+                "Leave the choice of helper words to the speaker. "
+                "Set next_review_step to 'ideal', moment and wording to null, and practise to false.")
+    if anchor["step"] == "feedback" and _MORE_STRENGTHS.search(question):
+        strengths = {item.get("snippet_id") for item in context.feedback_moments
+                     if item.get("kind") in _STRENGTH_KINDS and item.get("snippet_id")}
+        if strengths == {anchor.get("snippet_id")}:
+            return ("There is only one published strength and the speaker just heard it. "
+                    "Start by saying you need to hear more to point out another one. Then explain "
+                    "what worked in the current clip using one concrete detail. Set moment to 'reviewed', "
+                    "next_review_step and wording to null, and practise to false.")
+    if not state.audience_known and _ASKS_ABOUT_AUDIENCE.search(question):
+        return ("If the passage doesn't say who will hear the talk and they ask how to adapt it "
+                "for its audience, the entire answer is one short question asking who will hear the talk. "
+                "If two groups are named and either could be the listener, name them as alternatives in "
+                "that same question. Use one question mark. Leave the other fields empty or false.")
+    return ""
+
+
 def _model_turn(
     context: ProjectChatContext,
     state: ProjectChatState,
@@ -1102,7 +1173,9 @@ def _model_turn(
     if review:
         prompt["speaker_is_reviewing"] = review
     user_prompt = json.dumps(prompt, ensure_ascii=False, sort_keys=True)
-    system = _SYSTEM + f"\nRequested tone: {_tone(question)}."
+    system = _SYSTEM + "\n" + coach_wording.WORDING_RULES + f"\nRequested tone: {_tone(question)}."
+    if review and (instruction := _review_instruction(context, state, question, review)):
+        system += f"\n\nFor this turn: {instruction}"
     started = time.perf_counter()
     try:
         from services import llm
@@ -1112,7 +1185,7 @@ def _model_turn(
             target_language=target_language,
             system=system,
             user=user_prompt,
-            spec=SPEC_PROJECT_CHAT,
+            spec=SPEC_PROJECT_CHAT_REVIEW if review else SPEC_PROJECT_CHAT,
             surface="project_chat",
             user_id=user_id,
             session_id=context.take_session_id,
@@ -1199,7 +1272,7 @@ def _answer_signed_will(
         model=getattr(result, "model", None),
         model_ms=getattr(result, "duration_ms", model_ms),
         captured_slots=captured,
-        extra_metadata=meta,
+        extra_metadata={**meta, **_answer_metadata(refreshed, question, parsed if model_answer else None, None)},
     )
 
 
@@ -1250,7 +1323,11 @@ def _answer_general(
     )
     model_answer = _model_answer(parsed)
     if review and not model_answer:
-        raise RuntimeError("The selected review question did not produce an answer")
+        if state.audience_known or not _ASKS_ABOUT_AUDIENCE.search(question):
+            raise RuntimeError("The selected review question did not produce an answer")
+        answer_state = replace(state, next_slot="audience")
+        model_answer = _setup_fallback(answer_state, target_language)
+        parsed = None
     answer = model_answer or (
         _opening_fallback(context, state, target_language)
         if state.phase == ConversationPhase.OPENING
@@ -1277,14 +1354,24 @@ def _answer_metadata(context: ProjectChatContext, question: str,
     metadata = {"review_focus": anchor} if anchor else {}
     if not parsed:
         return metadata
-    snippet = anchor.get("snippet_id") if anchor and anchor.get("step") != "ideal" else None
-    if not anchor:
-        reference = parsed.get("moment")
-        snippet = next((
-            item.get("snippet_id")
-            for index, item in enumerate(context.feedback_moments)
-            if reference == f"M{index}"
-        ), None)
+    wording = coach_wording.proposal(parsed.get("wording"), arc_id=context.arc_id,
+                                     take_id=context.take_session_id)
+    if wording:
+        metadata[coach_wording.META] = wording
+    reference = parsed.get("moment")
+    snippet = next((
+        item.get("snippet_id")
+        for index, item in enumerate(context.feedback_moments)
+        if reference == f"M{index}"
+    ), None)
+    if anchor and anchor.get("step") != "ideal" and (reference == "reviewed" or "moment" not in parsed):
+        snippet = anchor.get("snippet_id")
+    if anchor:
+        next_step = parsed.get("next_review_step")
+        if next_step == "practise" and not snippet:
+            metadata["review_destination"] = {"step": "practise"}
+        if next_step == "ideal":
+            metadata["review_destination"] = {"step": "ideal"}
     if snippet:
         metadata["coach_moment"] = chat_moment_reference(
             context.arc_id, context.take_session_id, snippet,
@@ -1323,13 +1410,17 @@ def _review_focus(database: Any, context: ProjectChatContext, anchor: dict) -> d
         real_slide = _dict(_dict(selected.get("metrics")).get("piece")).get("slide_index")
         if type(real_slide) is int:
             anchor = {**anchor, "slide_index": real_slide}
-        text = _transcript([selected], 900)
+        passage = [selected]
     else:
-        text = _transcript([
+        passage = [
             r for r in rows if slide is not None and
             _dict(_dict(r.get("metrics")).get("piece")).get("slide_index") == slide
-        ], 900)
-    return {"anchor": anchor, "exact_take_words": text}
+        ]
+    cues = _safe_cues(passage)
+    return {
+        "anchor": anchor, "exact_take_words": _transcript(passage, 900),
+        **({"delivery_observations": cues} if cues else {}),
+    }
 
 
 def answer(

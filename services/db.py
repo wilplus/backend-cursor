@@ -11596,6 +11596,15 @@ class DatabaseService:
             )
             return []
 
+    def get_saved_coach_wording(self, user_id: str, arc_id: str) -> list[dict]:
+        """Recent saved lines for the recording prompt, independent of chat paging."""
+        return (
+            self.client.table("lounge_messages").select("metadata")
+            .eq("user_id", user_id).eq("chat_erased", False)
+            .eq("metadata->>arc_id", arc_id).eq("metadata->>coach_wording_saved", "true")
+            .order("client_created_at", desc=True).limit(20).execute().data or []
+        )
+
     def get_project_lounge_messages_page(
         self,
         user_id: str,

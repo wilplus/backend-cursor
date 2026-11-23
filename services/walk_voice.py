@@ -73,12 +73,12 @@ BANNED_PHRASES: tuple[str, ...] = (
     "moment to settle", "time to settle", "let it settle", "as if you", "you should", "you need to",
     "great job", "good job", "you've got this",
 )
-_WORD_RE = re.compile(r"[a-z']+")
-_QUOTE_RE = re.compile(r"[\"“”]([^\"“”]{2,})[\"“”]")
+_WORD_RE = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)*")
+_QUOTE_RE = re.compile(r"[\"„“”«»]([^\"„“”«»]{2,})[\"„“”«»]")
 #: A sentence ends at . ! or ? (and any closing quote) before a capital
 #: letter or the end; a full stop inside a quotation followed by more of the
 #: sentence ('"...how." came through') is no end.
-_SENTENCE_END = re.compile(r"[.!?]+[\"”)]*(?=\s+[A-Z\"“]|\s*$)")
+_SENTENCE_END = re.compile(r"[.!?]+[\"“”»)]*(?=\s+[A-ZĄĆĘŁŃÓŚŹŻ\"„“«]|\s*$)")
 
 
 def check(text: Optional[str], context: Optional[dict] = None) -> Optional[str]:
@@ -105,7 +105,8 @@ def check(text: Optional[str], context: Optional[dict] = None) -> Optional[str]:
         return f"more than {MAX_SENTENCES} sentences"
     spoken = _spoken_text(context)
     for quoted in _QUOTE_RE.findall(said):
-        if _norm(quoted) not in spoken:
+        quote = _norm(quoted)
+        if not quote or f" {quote} " not in f" {spoken} ":
             return f"quote not in their words: {quoted}"
     echo = _note_echo(said, (context or {}).get("speaker_note"), spoken)
     if echo:
@@ -161,7 +162,7 @@ def compose(context: dict, step: dict) -> Optional[str]:
     fails or its words fail ``check``. No database."""
     from services.llm import chat_complete
     from services.llm_config import SPEC_WALK_VOICE
-    from services.prompts.walk_voice import SYSTEM
+    from services.prompts.walk_voice import PROJECT_PRAISE, SYSTEM
     from services.content_language import complete_in_language, resolve_content_language
     target_language = resolve_content_language(
         recording_language=context.get("target_language")
@@ -171,11 +172,16 @@ def compose(context: dict, step: dict) -> Optional[str]:
             if isinstance(value, str)
         ),
     )
+    moment = context.get("moment") or {}
+    contextual_praise = step.get("message") == _STEP_ASK["praise"] and (
+        target_language == "pl" or context.get("project") or moment.get("delivery_observations")
+    )
+    system = SYSTEM + PROJECT_PRAISE if contextual_praise else SYSTEM
     user = ("CONTEXT:\n" + json.dumps(context, indent=1, ensure_ascii=False)
             + "\n\nSTEP:\n" + json.dumps(step, indent=1, ensure_ascii=False))
     for attempt in range(ATTEMPTS):
         result = complete_in_language(
-            chat_complete, target_language=target_language, system=SYSTEM,
+            chat_complete, target_language=target_language, system=system,
             user=user, spec=SPEC_WALK_VOICE, surface=_SURFACE,
         )
         text = _unwrapped((getattr(result, "text", None) or "") if result else "")
@@ -257,6 +263,8 @@ def write(database: Any, user_id: Any, take_id: Any, step: Any,
         if str(take.get("user_id") or "") != str(user_id):
             return None
         context = context_for(database, user_id, take, snippet_id)
+        if step == "praise" and not (context.get("moment") or {}).get("words"):
+            return None
         if tool in _TOOLS:
             context["exercise"] = _TOOLS[tool]
         try_said = _their_try(their_try) if step == "after_try" else None
@@ -313,8 +321,19 @@ def context_for(database: Any, user_id: Any, take: dict, snippet_id: Any) -> dic
     snippets = _safe(lambda: database.get_snippets_by_session(take_id), []) or []
     moment = next((s for s in snippets if str(s.get("id")) == str(snippet_id or "")), None)
     if moment is not None:
-        context["moment"] = {"words": str(moment.get("transcript") or "").strip(),
-                             "sounded": sounded(moment, snippets)}
+        from services.project_chat import _safe_cues
+        words = str(moment.get("transcript") or moment.get("transcription_text") or "").strip()
+        observations = _safe_cues([moment])
+        context["moment"] = {
+            "words": words, "sounded": sounded(moment, snippets),
+            **({"delivery_observations": observations} if observations else {}),
+        }
+    from services.take_context import SURE, assemble
+    slots = assemble(intake_context, {})
+    project = {key: slots[key]["value"][:200] for key in ("what", "who", "success")
+               if slots[key]["state"] == SURE}
+    if project:
+        context["project"] = project
     note = _safe(lambda: _note(database, user_id), "")
     if note:
         context["speaker_note"] = note
