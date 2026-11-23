@@ -2972,19 +2972,19 @@
   "given": "the Take's Ideal Text card under its Feedback walk",
   "when": "the speaker taps it",
   "then": [
-   "the page opens on the text from the top; it is never the landing screen and never shows before the walk",
-   "\"Record Take N\" is the main button with a grey \"Close\" under it; the ✕ beside ⋯ closes too; history is under ⋯"
+   "the full-width document shows each recorded slide immediately above its text",
+   "the document menu holds its tools; a reply with the recording action offers the next Take in the chat"
   ],
   "rules": [
    "feedback-walk-and-chat.md F1, F2, F6",
-   "ideal-text.md \"Record Take N and sharing\""
+   "N682"
   ],
   "code": [
-   "fe:src/components/willab/IdealTextActions.tsx",
+   "fe:src/components/willab/IdealTextDocument.tsx",
    "fe:src/components/willab/IdealTextOverlay.tsx"
   ],
   "tests": [
-   "src/components/willab/idealTextActions.test.tsx",
+   "src/components/willab/nextTakeOffer.test.tsx",
    "src/lib/willab/lensScreen.test.ts"
   ],
   "evals": []
