@@ -982,9 +982,9 @@ def answer(
             app_config, "SPEAKING_COACH_TOTAL_LATENCY_BUDGET_MS", 6000,
         ),
     })
-    debug["total_latency_ms"] = packet.retrieval_ms + debug["model_duration_ms"]
+    debug["total_latency_ms"] = retrieval_ms + debug["model_duration_ms"]
     debug["retrieval_over_budget"] = (
-        packet.retrieval_ms > debug["context_latency_budget_ms"]
+        retrieval_ms > debug["context_latency_budget_ms"]
     )
     debug["total_latency_over_budget"] = (
         debug["total_latency_ms"]
@@ -994,7 +994,7 @@ def answer(
         "speaking_coach.turn route=%s cache_hit=%s db_reads=%d evidence=%d "
         "model_calls=%d model_duration_ms=%d retrieval_ms=%d",
         route, packet.cache_hit, packet.db_reads, len(selected), call_count,
-        debug["model_duration_ms"], packet.retrieval_ms,
+        debug["model_duration_ms"], retrieval_ms,
     )
     return (
         {"answer": _with_source_links(clean, parsed, selected),
