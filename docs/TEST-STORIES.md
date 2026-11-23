@@ -442,6 +442,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O6** A clip names its problem (pace, pause, stress, fillers or default) and the phrase it is made with as soon as they are chosen, ready or still being made; never a number (N120).
 - **O7** A praised moment's practice gets its clip too, started early like a corrected moment's (N122).
 - **O8** On a plan, the clip practises the level's own problem whenever my clip shows it; where it doesn't, the pick is as without a plan (G7, N209).
+- **O9** When my whole moment has a comfortable pace, enough pauses and low vocal contrast, the AI example can emphasize the first phrase at my pace. I only hear an example if its opening moves along.
 
 *Why:* Founder lock 2026-10-12 (N71); Never-rule 1 for the sentence under the clip; 2026-10-23 (N120, the short bubble; N122, "do we practice the confident moments? I think yes we should!").
 
