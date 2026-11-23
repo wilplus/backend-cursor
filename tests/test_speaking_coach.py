@@ -15,13 +15,13 @@ O5  A source change, explicit invalidation or TTL expiry refreshes the derived
      packet; cache hits and logical DB reads are observable within a budget.
   O6  Scores, rankings, verdicts, digits and other forbidden output fail
       closed to the existing chat path.
-  O7  An older named talk keeps its exact Take, saved audience and goal, and source links.
+  O7  An older named talk keeps its exact Take, saved audience and goal.
   O8  Similar talks require a clear choice, and comparable passages stay on the same slide.
   O9  When feedback is missing, the coach uses available passages and one relevant reviewed exercise.
   O10 Saved vocal observations reach the coach with the exact spoken passage from the selected Take.
-  O11 A comparison uses the two requested recent Takes. Its wording belongs to the intended project.
+  O11 A comparison uses the two requested recent Takes and gives its example in the reply text.
   O12 A missing clip can receive a speakable example with a delivery direction from words alone.
-PROVES   O11 -> test_last_two_recordings_get_one_sayable_line_for_its_target_project
+PROVES   O11 -> test_last_two_recordings_get_one_sayable_line_in_speaking_coach_text
          O12 -> test_missing_audio_can_offer_the_words_and_an_example_delivery
          O1 -> test_routes_without_an_llm_classifier
          O2 -> test_sparse_and_rich_contexts_are_explicit
@@ -581,10 +581,7 @@ def test_selected_take_supplies_passage_and_delivery_without_shared_feedback():
     assert reads == [[selected["id"]]]
     assert result is not None
     assert "/chat/take/" not in result[0]["answer"]
-    assert result[0]["row_metadata"]["coach_moment"] == {
-        "arc_id": "campus", "take_session_id": selected["id"], "snippet_id": "selected-clip",
-        "practise": True,
-    }
+    assert not result[0].get("row_metadata")
 
 
 def test_comparison_grounds_the_same_slide_without_feedback():
@@ -667,7 +664,7 @@ def test_missing_feedback_uses_one_relevant_library_exercise():
 
 
 
-def test_last_two_recordings_get_one_sayable_line_for_its_target_project():
+def test_last_two_recordings_get_one_sayable_line_in_speaking_coach_text():
     speaking_coach.clear_cache()
     pitch = _named_take("Board pitch", "board", 1, "2026-11-20", "I’m asking for approval today.")
     demo = _named_take("Demo", "demo", 2, "2026-11-21", "I think we could maybe start the pilot with support.")
@@ -692,10 +689,8 @@ def test_last_two_recordings_get_one_sayable_line_for_its_target_project():
         result = speaking_coach.answer(database, USER,
             "Across my last two recordings, what would make me sound more confident?", app_config=_config())
     assert result is not None
-    assert result[0]["row_metadata"]["coach_wording"] == {
-        "words": "I recommend we start the pilot with support.",
-        "arc_id": "demo", "take_session_id": demo["id"],
-    }
+    assert not result[0].get("row_metadata")
+    assert result[0]["answer"].split("\n\n")[-1] == "I recommend we start the pilot with support."
 
 
 def test_missing_audio_can_offer_the_words_and_an_example_delivery():
@@ -717,8 +712,7 @@ def test_missing_audio_can_offer_the_words_and_an_example_delivery():
     with patch("services.llm.embed", return_value=None), patch("services.llm.chat_complete", generate):
         result = speaking_coach.answer(database, USER, "Czy na końcu brzmiałem pewnie?", app_config=_config())
     assert result is not None
-    metadata = result[0]["row_metadata"]
-    assert "coach_moment" not in metadata
-    assert metadata["coach_wording"]["words"] == "Zacznijmy w piątek."
-    assert metadata["coach_wording"]["delivery"] == "Zrób krótką pauzę przed „w piątek”."
-    assert metadata["coach_wording"]["arc_id"] == "pilot"
+    assert not result[0].get("row_metadata")
+    assert result[0]["answer"].split("\n\n")[1:] == [
+        "Zacznijmy w piątek.", "Zrób krótką pauzę przed „w piątek”.",
+    ]

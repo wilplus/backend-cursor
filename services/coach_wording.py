@@ -53,6 +53,17 @@ def proposal(value: Any, *, arc_id: str = "", take_id: str = "") -> dict | None:
     return result
 
 
+def reply_text(answer: str, wording: dict) -> str:
+    """Keep the speakable example in the general chat's text."""
+    paragraphs = {" ".join(part.casefold().split()) for part in answer.split("\n\n")}
+    parts = [answer]
+    for field in ("words", "delivery"):
+        text = wording.get(field)
+        if text and " ".join(text.casefold().split()) not in paragraphs:
+            parts.append(text)
+    return "\n\n".join(parts)
+
+
 def _sources_in_force(database: Any, user: str, arc: str, sessions: list[dict], take_ids: set[str]) -> set[str]:
     from services.project_deletion import ProjectDeletionService
     from services.speaker_lookup import _takes_in_force

@@ -13,10 +13,13 @@ OUTCOME
       lightweight acknowledgements use the fast path.
   O4  Project Chat reads and writes only the owner-scoped arc and remembers
       scoped follow-ups without exposing the global Lounge.
+  O5  A regular project reply can use the word and vocal evidence for its
+      exact passage and show it without bringing weekly principles into the project.
 PROVES   O1 -> test_context_is_bounded_to_current_project_and_carries_feedback_deck_ideal_text
          O2 -> test_state_skips_known_audience_and_goal_and_asks_one_slot_at_a_time
          O3 -> test_tone_and_content_language_are_passed_to_the_single_generation
          O4 -> test_unknown_arc_fails_closed
+         O5 -> test_ordinary_project_reply_uses_its_own_vocal_evidence_and_attaches_the_passage
 WHY      Project Chat redesign, 2026-11-18; preserve the current-project
          processing boundary and the Feedback walk's record -> process -> Take loop.
 
@@ -182,7 +185,7 @@ def test_context_is_bounded_to_current_project_and_carries_feedback_deck_ideal_t
     assert context.take_session_id == TAKE
     assert context.current_take["transcript"].startswith("I am speaking to the board")
     assert context.feedback_moments[0]["moment"] == "I am speaking to the board."
-    assert "pause before the ask" in context.current_take["spoken_cues"][0]
+    assert "pause before the ask" in context.delivery_passages[0].text
     assert context.ideal_text.startswith("A clear decision")
     assert context.deck[0]["title"] == "Decision"
     assert "FOREIGN PROJECT SECRET" not in json.dumps(context, default=str)
@@ -466,4 +469,33 @@ def test_coaching_advice_contains_the_actual_line_and_uses_the_project_scope():
     assert wording == {
         "words": "Jeśli dostaniemy zgodę, kto z was chciałby poprowadzić pilotaż?",
         "arc_id": ARC, "take_session_id": TAKE,
+    }
+
+
+def test_ordinary_project_reply_uses_its_own_vocal_evidence_and_attaches_the_passage():
+    from services.llm_config import SPEC_PROJECT_CHAT_TAKE
+
+    database = FakeDB(audience="the board", goal="approve the plan")
+    words = "Please approve the pilot today."
+    database.snippets[TAKE] = [{"id": "closing", "transcript": words,
+                                "metrics": {"wpm": 188, "pause_ratio": 0.04}}]
+    database.project_rows.append({"role": "bot", "kind": "text", "body": "PRIVATE WEEKLY PRINCIPLE",
+                                  "metadata": {"arc_id": ARC, "project_chat": True, "sunday_step": "suggested"}})
+
+    def generate(**kwargs):
+        assert kwargs["spec"] is SPEC_PROJECT_CHAT_TAKE
+        prompt = json.loads(kwargs["user"])
+        passage, = prompt["project_context"]["recorded_passages"]
+        assert words in passage["evidence"]
+        assert "pace: a bit fast" in passage["evidence"] and "188" not in passage["evidence"]
+        assert "PRIVATE WEEKLY PRINCIPLE" not in kwargs["user"]
+        assert "FOREIGN PROJECT SECRET" not in kwargs["user"]
+        result = _config_result("The direct request is clear. Give it a short pause before today.")
+        result.parsed = {**json.loads(result.text), "moment": passage["reference"], "practise": True}
+        return result
+
+    with patch("services.llm.chat_complete", generate):
+        response, _ = project_chat.answer(database, USER, ARC, "How can I practise the ending?")
+    assert response["row_metadata"]["coach_moment"] == {
+        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "closing", "practise": True,
     }

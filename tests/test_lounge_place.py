@@ -91,9 +91,9 @@ WRITERS: dict[str, list[tuple[dict, str]]] = {
     "services/sales_framing.py": [
         ({"role": "bot", "kind": "text", "metadata": {"offer": "sales_step", "sales_note": "n"}},PRINCIPLES)],
     "services/strengths.py": [
-        ({"role": "bot", "kind": "text", "metadata": {"offer": "strengths", "strength_id": "s"}},PRINCIPLES)],
+        ({"role": "bot", "kind": "text", "metadata": {"offer": "strengths", "strength_id": "s"}}, SPEAKING)],
     "services/sunday_note.py": [
-        ({"role": "bot", "kind": "text", "metadata": {"offer": "sunday_note", "sunday_note_id": "n"}},PRINCIPLES)],
+        ({"role": "bot", "kind": "text", "metadata": {"offer": "sunday_note", "sunday_note_id": "n"}}, SPEAKING)],
     "services/voice_notebook.py": [({"role": "bot", "kind": "text", "metadata": {"offer": "voice_notebook"}},PRINCIPLES)],
     "services/your_why.py": [({"role": "bot", "kind": "text", "metadata": {"offer": "your_why"}},PRINCIPLES)],
     # The app's own rows (POST /v2/user/lounge/messages): a Take's readout,
@@ -166,7 +166,11 @@ class LoungePlaceTest(unittest.TestCase):
         rows = []
         for i in range(12):
             speaking = i % 3 == 0
-            meta = {"plan": "p"} if speaking else {"offer": "sunday_note"} if i == 4 else {"chat_setup": {}}
+            meta = {"plan": "p"} if speaking else {"chat_setup": {}}
+            if i == 4:
+                meta = {"offer": "sunday_note", "place": "principles"}
+            elif i == 5:
+                meta = {"offer": "life_goals"}
             rows.append({"id": str(i), "client_id": f"c{i}", "role": "bot", "kind": "text",
                          "body": f"row {i}", "client_created_at": f"2026-11-10T10:00:{i:02d}+00:00",
                          "metadata": meta})
@@ -186,10 +190,10 @@ class LoungePlaceTest(unittest.TestCase):
             self.assertEqual([m["body"] for m in speaking["messages"]], ["row 6", "row 9"])
             self.assertTrue(speaking["has_more"])
             older = get(f"place=speaking&limit=2&before={quote(speaking['oldest_cursor'])}")
-            self.assertEqual([m["body"] for m in older["messages"]], ["row 0", "row 3"])
-            self.assertEqual([m["body"] for m in get("place=principles&limit=50")["messages"]], ["row 4"])
+            self.assertEqual([m["body"] for m in older["messages"]], ["row 3", "row 4"])
+            self.assertEqual([m["body"] for m in get("place=principles&limit=50")["messages"]], ["row 5"])
             will = get("place=will&limit=50")
-            self.assertEqual(len(will["messages"]), 7)
+            self.assertEqual(len(will["messages"]), 6)
             self.assertTrue(all(m["place"] == WILL for m in will["messages"]))
             self.assertEqual(client.get("/v2/user/lounge/messages?place=coach",
                                         headers={"Authorization": "Bearer t"}).status_code, 400)

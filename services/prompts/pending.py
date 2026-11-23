@@ -89,8 +89,6 @@ REGISTER = {
     "speaking_coach.response": SourceRef("services/speaking_coach.py", "_RESPONSE_SCHEMA"),
     "speaking_coach.system": SourceRef("services/speaking_coach.py", "_SYSTEM"),
     "speaking_coach.scoped_evidence": SourceRef("services/speaking_coach.py", "_SCOPED_EVIDENCE_RULES"),
-    "speaking_coach.delivery_evidence": SourceRef("services/speaking_coach.py", "_DELIVERY_EVIDENCE_RULES"),
-    "speaking_coach.words_only": SourceRef("services/speaking_coach.py", "_WORDS_ONLY_RULES"),
     "speaking_coach.practice": SourceRef("services/speaking_coach.py", "_practice_prompt"),
     "sunday_note.system": SourceRef("services/sunday_note.py", "_SYSTEM"),
     "sunday_note.ask": SourceRef("services/sunday_note.py", "_ASK_SYSTEM"),

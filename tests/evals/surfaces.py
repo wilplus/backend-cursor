@@ -173,7 +173,7 @@ def _project_chat(inp: dict) -> dict:
     }
     snippets = [{
         "id": "opening", "session_id": take_id, "transcript": inp["transcript"],
-        "metrics": {"vocal_cues": inp.get("vocal_cues", [])},
+        "metrics": {"vocal_cues": inp.get("vocal_cues", []), **(inp.get("metrics") or {})},
     }]
     for item in inp.get("feedback", []):
         if item["snippet_id"] != "opening":
@@ -186,7 +186,9 @@ def _project_chat(inp: dict) -> dict:
         get_snippets_by_sessions=lambda ids: {take_id: snippets} if take_id in ids else {},
         get_coach_snippet_drafts=lambda sid: inp.get("feedback", []) if sid == take_id else [],
         get_project_lounge_messages_page=lambda *_args, **_kwargs: [],
-        get_coach_arc_ideal_text=lambda arc: {"text": inp.get("ideal_text")} if arc == arc_id else {},
+        get_ideal_text_document_core=lambda arc, owner: {
+            "source_take_session_id": take_id, "payload": {"text": inp["ideal_text"]},
+        } if arc == arc_id and owner == user_id and inp.get("ideal_text") else None,
     )
     reply, _ = project_chat.answer(
         database, user_id, arc_id, inp["question"], take_session_id=take_id,
@@ -261,8 +263,7 @@ def _speaking_coach(inp: dict) -> str | dict | None:
                    app_config=SimpleNamespace(SPEAKING_COACH_ENABLED=True))
     if not reply:
         return None
-    # Provenance links are appended after the generated answer.
-    answer_text = reply[0]["answer"].partition("\n\n")[0]
+    answer_text = reply[0]["answer"]
     if inp.get("include_wording"):
         meta = reply[0].get("row_metadata") or {}
         return {"answer": answer_text, "wording": meta.get("coach_wording"), "moment": meta.get("coach_moment")}

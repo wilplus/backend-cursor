@@ -285,12 +285,12 @@ def shape_lounge_page(rows_desc: list[dict], limit: int) -> dict:
 # the Take's rows, "Your feedback is ready.", the way into the Feedback
 # walk, the plan's questions and its card, the feelings check, the line
 # after the walk); the principles coaching in its own chat, "Principles"
-# (the # notebook and what Will reads in it: the Sunday note, strengths,
-# what is in your control, the sales step, your why, life goals; frontend
+# (the # notebook, what is in your control, the sales step, your why, life goals; frontend
 # docs/flows/principles.md); and the rest in Will's chat (the model, the
 # chat's setup, what needs you). Nothing is stored differently: a row is placed by
 # what it already carries. THIS IS THE ONE LIST; tests/test_lounge_place.py
 # names every writer of the Lounge and fails on one this list does not place.
+# N683 places the weekly note and Strengths in the person's Speaking Coach.
 
 SPEAKING, PRINCIPLES, WILL = "speaking", "principles", "will"
 PLACES = (SPEAKING, PRINCIPLES, WILL)
@@ -317,16 +317,26 @@ SPEAKING_NOTES = frozenset({"feedback_digest"})
 #: (services/goal_history.py, ``metadata.card``).
 SPEAKING_CARDS = frozenset({"goal_change"})
 #: The principles coaching (frontend docs/flows/principles.md): the offers
-#: of the voice notebook, the Sunday note, life goals, the sales step, your
-#: why and strengths, and the keys their rows carry.
+#: of the voice notebook, life goals, the sales step, your
+#: why, and the keys their rows carry.
 PRINCIPLES_OFFERS = frozenset({
-    "voice_notebook", "sunday_note", "life_goals", "life_goals_quarter", "life_goals_change",
-    "sales_step", "your_why", "strengths",
+    "voice_notebook", "life_goals", "life_goals_quarter", "life_goals_change",
+    "sales_step", "your_why",
 })
 PRINCIPLES_KEYS = frozenset({
-    "sunday_note_id", "sunday_step", "sales_note", "life_goal_quarter", "life_goal_change",
-    "strength_id", "strength_talk", "in_control", "your_why_ask", "your_why_answer", "held_note",
+    "sales_note", "life_goal_quarter", "life_goal_change",
+    "in_control", "your_why_ask", "your_why_answer", "held_note",
 })
+_SPEAKER_WIDE_OFFERS = ("strengths", "sunday_note")
+_SPEAKER_WIDE_KEYS = ("strength_id", "strength_talk", "sunday_note_id", "sunday_step", "sunday_empty")
+
+
+def speaking_coach_feature(meta: Any) -> bool:
+    """Weekly principles and Strengths belong to the speaker's main coach chat."""
+    return isinstance(meta, dict) and (
+        meta.get("offer") in _SPEAKER_WIDE_OFFERS
+        or any(meta.get(key) not in (None, "", False) for key in _SPEAKER_WIDE_KEYS)
+    )
 
 
 def place_of(row: dict) -> str:
@@ -334,6 +344,8 @@ def place_of(row: dict) -> str:
     stamped with the chat it was typed in (``metadata.place``, a typed turn
     and Will's reply to it) stays in that chat."""
     meta = row.get("metadata")
+    if speaking_coach_feature(meta):
+        return SPEAKING
     if isinstance(meta, dict) and meta.get("place") in PLACES:
         return str(meta["place"])
     if row.get("kind") in SPEAKING_KINDS:
@@ -394,7 +406,7 @@ class Rooms:
         if not self.chats or place_of(row) != SPEAKING:
             return None
         meta = row.get("metadata")
-        if not isinstance(meta, dict) or meta.get("place") in PLACES:
+        if not isinstance(meta, dict) or speaking_coach_feature(meta) or meta.get("place") in PLACES:
             return None
         for key in _TAKE_KEYS:
             if meta.get(key) and str(meta[key]) in self.takes:
@@ -409,6 +421,8 @@ class Rooms:
         if not self.door or place_of(row) != SPEAKING:
             return None
         meta = row.get("metadata")
+        if speaking_coach_feature(meta):
+            return None
         if isinstance(meta, dict) and any(meta.get(k) not in (None, "", False) for k in _CARRIES_A_TAKE):
             return None
         return self.door

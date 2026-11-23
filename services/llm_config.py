@@ -130,11 +130,11 @@ SPEC_PROJECT_CHAT = LLMSpec(
 )
 """One contextual Project Chat generation, with a bounded language retry."""
 
-SPEC_PROJECT_CHAT_REVIEW = LLMSpec(
+SPEC_PROJECT_CHAT_TAKE = LLMSpec(
     model=STRONG_MODEL, temperature=0.2, max_tokens=360,
     response_format={"type": "json_object"}, timeout_seconds=15.0,
 )
-"""Track the passage, audience and available actions in inline Take review."""
+"""Track the passage, audience and available actions in a recorded project's chat."""
 
 SPEC_COACH_COMMENT_DRAFT = LLMSpec(
     model=CHEAP_MODEL, temperature=0.6, max_tokens=320,

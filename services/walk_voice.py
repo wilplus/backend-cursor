@@ -321,9 +321,9 @@ def context_for(database: Any, user_id: Any, take: dict, snippet_id: Any) -> dic
     snippets = _safe(lambda: database.get_snippets_by_session(take_id), []) or []
     moment = next((s for s in snippets if str(s.get("id")) == str(snippet_id or "")), None)
     if moment is not None:
-        from services.project_chat import _safe_cues
+        from services.speaking_coach_passages import recorded_delivery_cues
         words = str(moment.get("transcript") or moment.get("transcription_text") or "").strip()
-        observations = _safe_cues([moment])
+        observations = recorded_delivery_cues([moment])
         context["moment"] = {
             "words": words, "sounded": sounded(moment, snippets),
             **({"delivery_observations": observations} if observations else {}),
