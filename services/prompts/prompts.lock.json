@@ -351,6 +351,16 @@
       "module": "coach_answer_drafts",
       "sha256": "29b84443b1ce8b65a04d1d1def1a477e5c1542e3c3119c7a3b410ea69d4e7b93"
     },
+    "project_chat.delivery_evidence": {
+      "kind": "static",
+      "module": "coaching_evidence",
+      "sha256": "b37d1272d2ae4b5637161e95d8d89d13acbcd8b9401a4283150ddc6883f074ec"
+    },
+    "project_chat.reflection": {
+      "kind": "static",
+      "module": "coaching_evidence",
+      "sha256": "a601b294b5d89d267a8bc02c2f40baee80878245bd0d58e6e23be7315bf4a7a4"
+    },
     "project_chat.review": {
       "kind": "source_ref",
       "module": "pending",
@@ -359,12 +369,17 @@
     "project_chat.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "b3deced08ef3e99aba6b693091bd4d1787a9302004994170a881a16e565f2131"
+      "sha256": "c7f494dcc64c887dd0de6cf23ac9a412746abbb2d97583c794e376aa9e6445d6"
     },
     "project_chat.wording": {
       "kind": "source_ref",
       "module": "pending",
       "sha256": "69d9581fc34150a034636a670cf915ee045f7a15cf322b98d573b5ad8d78485b"
+    },
+    "project_chat.words_only": {
+      "kind": "static",
+      "module": "coaching_evidence",
+      "sha256": "77244e39e5d51d44f4d03663faa73b3a94356c927d4098ada32fa2aa870bdabd"
     },
     "question_kind.system": {
       "kind": "static",
@@ -422,14 +437,19 @@
       "sha256": "0ed70e325034250a108d1361090f77abfb885f7963af986248de9f042c570a51"
     },
     "speaking_coach.delivery_evidence": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "59a4f50268c93898fb894b3a2394453056241af3865a779f3fca4c3789932e55"
+      "kind": "static",
+      "module": "coaching_evidence",
+      "sha256": "b37d1272d2ae4b5637161e95d8d89d13acbcd8b9401a4283150ddc6883f074ec"
     },
     "speaking_coach.practice": {
       "kind": "source_ref",
       "module": "pending",
       "sha256": "d8052f16b3b8a92c96f2d131351772b01e9182f146b215368bf979e14a0aa638"
+    },
+    "speaking_coach.reflection": {
+      "kind": "static",
+      "module": "coaching_evidence",
+      "sha256": "a601b294b5d89d267a8bc02c2f40baee80878245bd0d58e6e23be7315bf4a7a4"
     },
     "speaking_coach.response": {
       "kind": "source_ref",
@@ -444,7 +464,7 @@
     "speaking_coach.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "df0b159800eecdd95f5991ed31e5b880ba39a8aca6a48ae8ebc3f382e7d32620"
+      "sha256": "fd79dc339427ce7c7a0fb1b026c1193139fc65da686378719d27eea8959ab4d6"
     },
     "speaking_coach.wording": {
       "kind": "source_ref",
@@ -452,9 +472,9 @@
       "sha256": "69d9581fc34150a034636a670cf915ee045f7a15cf322b98d573b5ad8d78485b"
     },
     "speaking_coach.words_only": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "4ec81287e193fcdffb275da422779e9a66dd48ff005e0fe18a4ad3b6ee97e2a0"
+      "kind": "static",
+      "module": "coaching_evidence",
+      "sha256": "77244e39e5d51d44f4d03663faa73b3a94356c927d4098ada32fa2aa870bdabd"
     },
     "structural_star.system": {
       "kind": "static",

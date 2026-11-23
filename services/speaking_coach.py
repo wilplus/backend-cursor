@@ -26,8 +26,9 @@ from dataclasses import dataclass, replace
 from typing import Any, Callable, Optional
 
 from services import coach_wording
+from services.prompts.coaching_evidence import DELIVERY_RULES, REFLECTION_RULES, WORDS_ONLY_RULES
 from services.speaking_coach_passages import (
-    Evidence, Source, comparison_evidence, delivery_evidence, excerpts, practice_tags,
+    Evidence, Source, comparison_evidence, delivery_evidence, excerpts, ideal_document_text, practice_tags,
     rank_evidence, transcript_evidence,
 )
 from services.speaking_coach_scope import TalkScope, resolve_scope, select_takes
@@ -140,23 +141,10 @@ _SYSTEM = (
     "coaching lesson. If they ask for a joke, answer naturally in their language. "
     "Keep replies free of profanity and explicit sexual content. "
     "Keep the answer short and end without repeating the context.\n\n"
-    "When the speaker asks what a Take shows about them, reflect how they "
-    "communicated in that Take. Anchor the reply in a short verbatim phrase or "
-    "a specific move in their wording, such as opening with a statement and "
-    "then committing to an action. Pair it with what the voice did in the same "
-    "passage when that evidence is available. Begin with the wording and what "
-    "the speaker does with their voice. Put the cue and the impression it gives "
-    "you in one direct sentence, using everyday words. A steady repetition may "
-    "land differently from a firmer one. Keep the speaker's own name for an "
-    "obstacle, such as 'inner voice'. End with one question about what helps "
-    "them make the specific speaking choice or when else they use it. "
-    "When an action would help, offer "
-    "one small rehearsal tied to that moment. For a practice request, use the "
-    "reviewed exercise if supplied and ask a specific question about the habit. "
-    "When the speaker names something that helps them face this moment, "
-    "include it in their own terms. A speaker who says prayer gives them "
-    "support can be asked how that support helps them take their stated "
-    "next step. Attribute quoted beliefs to the person who expressed them.\n\n"
+    + REFLECTION_RULES +
+    "This is the general Speaking Coach conversation. If the speaker asks to open a "
+    "recording, intervention or Ideal Text, guide them to the owning project conversation. "
+    "The app will display wording.words and wording.delivery here as ordinary text.\n\n"
     "Return strict JSON with answer, evidence, practise (boolean), and wording. "
     "Choose a wording.source from the exact recording you are helping them improve. "
     "Use a single-recording source, even when comparing. When relying on a passage or notes, put the "
@@ -484,17 +472,10 @@ def _ideal_evidence(
         source = str(core.get("source_take_session_id") or payload.get("latest_take_session_id") or "")
         if source not in {str(take["id"]) for take in by_arc[arc]}:
             continue
-        value = payload.get("text")
-        text = value.strip() if isinstance(value, str) else ""
-        if not text:
-            text = " ".join(
-                piece["text"] for piece in (payload.get("pieces") or [])
-                if isinstance(piece, dict) and isinstance(piece.get("text"), str)
-            ).strip()
         out.extend(Evidence(
             "ideal_text", labels[arc], "current", "current_document", passage,
             (Source("ideal_text", arc, source),),
-        ) for passage in excerpts(text))
+        ) for passage in excerpts(ideal_document_text(payload)))
     return out
 
 
@@ -542,42 +523,6 @@ _SCOPED_EVIDENCE_RULES = (
     "Treat the Ideal Text as the current document and a transcript as spoken words. "
     "Shared coach words refer only to the Take they are marked on."
 )
-_DELIVERY_EVIDENCE_RULES = (
-    "Open a Take reflection with an actual delivery cue and what that makes the words "
-    "sound like to a listener. Use everyday phrases such as 'a firmer ending' or "
-    "'quicker emphasis on that phrase' ('szybsze podkreślenie' in Polish). "
-    "A recorded description that names a word supports "
-    "a cue on that word. A measurement for a whole passage supports a cue about the "
-    "passage as a whole. When the speaker goes from an obstacle to a concrete "
-    "action, show that move. Give the impression with its cue, then acknowledge "
-    "their actual commitment, such as what they say they'll do tomorrow. "
-    "Recognize any support they name and end by asking what helps them act. "
-    "Include the delivery passage's evidence reference when you use its cue. "
-    "Never invent a coach comment or a delivery observation. "
-    "Example of the style, for a recording with a firmer repetition and faster "
-    "emphasis on the closing phrase. Mocniejsze drugie „Nie chcę” oraz szybsze "
-    "podkreślenie „że się nie uda” brzmią, jakbyś miał już dość tego wewnętrznego "
-    "głosu. Chwilę później mówisz „Jutro powiem wprost, czego potrzebuję”. "
-    "Słyszę, że coś pomaga ci się temu głosowi przeciwstawić. Skąd bierzesz tę "
-    "wewnętrzną siłę? "
-    "Use the cue from the current Take. A steady repetition and a stronger "
-    "emphasis on the next action give a different impression."
-)
-_WORDS_ONLY_RULES = (
-    "No recorded delivery observations are available for these passages. "
-    "When giving your own reflection on the speech, begin with 'From the words alone' "
-    "in the speaker's language ('Z samych słów' in Polish). "
-    "Make the wording the subject of the reflection. Point out the actual repetition "
-    "or order of ideas and explain what it helps a listener understand. For a delivery "
-    "question, show a speakable example with one concrete direction in wording.delivery. "
-    "For example, suggest a short pause before the speaker's date or ask them to put weight "
-    "on a specific word. Invite them to try the line out loud and leave it there. "
-    "Leave the speaker's feelings and the original delivery open. "
-    "For example: 'From the words alone, you name what you want to change and then say "
-    "what you will do next. The order makes the plan easy to follow. When do you use "
-    "that order in a difficult conversation?' Use the actual words in this Take. "
-    "Attribute any observation from shared coach feedback to the coach."
-)
 
 
 def _render_context(packet: ContextPacket, evidence: tuple[Evidence, ...]) -> str:
@@ -600,7 +545,9 @@ def _render_context(packet: ContextPacket, evidence: tuple[Evidence, ...]) -> st
         lines.append("These are the selected recent recordings. If both have evidence, name each by the topic "
                      "given in its project context, use one telling phrase from each, and explain the "
                      "difference. When the speaker asks for a change, show the new opening in wording.words "
-                     "and cite the recording it is for in wording.source. If there is evidence for only one, "
+                     "and cite the recording it is for in wording.source. For a tentative proposal, keep the "
+                     "action and use a recommendation such as 'I recommend we...' rather than saying it "
+                     "will happen. If there is evidence for only one, "
                      "say which one you can use.")
     for number, item in enumerate(evidence):
         reference = f"E{number}" if item.sources else "context"
@@ -611,9 +558,9 @@ def _render_context(packet: ContextPacket, evidence: tuple[Evidence, ...]) -> st
             f"{item.observation_kind}; {anchors}] {item.text}"
         )
     if any(item.source_type == "delivery_cues" for item in evidence):
-        lines.append(_DELIVERY_EVIDENCE_RULES)
+        lines.append(DELIVERY_RULES)
     elif any(item.source_type == "take_transcript" for item in evidence):
-        lines.append(_WORDS_ONLY_RULES)
+        lines.append(WORDS_ONLY_RULES)
     return "\n".join(lines)
 
 
@@ -971,15 +918,6 @@ def _practice_prompt(packet: ContextPacket, question: str, evidence: tuple[Evide
             f"Exercise: {title}. Instruction: {instruction}")
 
 
-def _cited_sources(parsed: dict, evidence: tuple[Evidence, ...]) -> list[Source]:
-    references = parsed.get("evidence")
-    if not isinstance(references, list):
-        return []
-    known = {f"E{index}": item.sources for index, item in enumerate(evidence) if item.sources}
-    used = list(dict.fromkeys(ref for ref in references if isinstance(ref, str) and ref in known))[:2]
-    return [source for ref in used for source in known[ref]]
-
-
 def wants_practice(question: str) -> bool:
     return bool(_PRACTICE_REQUEST.search(question or ""))
 
@@ -1006,42 +944,10 @@ def _response_format(packet: ContextPacket, evidence: tuple[Evidence, ...], ques
     return {"type": "json_schema", "json_schema": schema}
 
 
-def _reply_payload(answer: str, parsed: dict, evidence: tuple[Evidence, ...],
-                   question: str) -> dict:
-    sources = _cited_sources(parsed, evidence)
-    documents = [source for source in sources if source.kind != "transcript"]
-    if documents:
-        from config import Config
-
-        base = (Config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
-        labels = {"feedback": "Feedback", "ideal_text": "Ideal Text"}
-        links = dict.fromkeys(f"{labels[source.kind]} {source.url(base)}" for source in documents)
-        answer += "\n\n" + "\n".join(links)
-    payload: dict[str, Any] = {"answer": answer, "show_record_ui": False, "suggested_action": None}
-    moment = next((source for source in sources if source.snippet_id), None)
-    if moment:
-        from services.lounge_clips import chat_moment_reference
-
-        payload["row_metadata"] = {"coach_moment": chat_moment_reference(
-            moment.arc_id, moment.take_id, str(moment.snippet_id),
-            practise=parsed.get("practise") is True or wants_practice(question),
-        )}
-    if wording := _proposed_wording(parsed.get("wording"), evidence):
-        payload.setdefault("row_metadata", {})[coach_wording.META] = wording
-    return payload
-
-
-def _proposed_wording(value: Any, evidence: tuple[Evidence, ...]) -> dict | None:
-    if not isinstance(value, dict):
-        return None
-    source = value.get("source")
-    by_reference = {f"E{i}": item.sources for i, item in enumerate(evidence)}
-    origins = {(origin.arc_id, origin.take_id) for origin in by_reference.get(source, ())
-               if origin.arc_id and origin.take_id} if isinstance(source, str) else set()
-    if len(origins) == 1:
-        arc, take = next(iter(origins))
-        return coach_wording.proposal(value, arc_id=arc, take_id=take)
-    return coach_wording.proposal(value)
+def _reply_payload(answer: str, parsed: dict) -> dict:
+    if wording := coach_wording.proposal(parsed.get("wording")):
+        answer = coach_wording.reply_text(answer, wording)
+    return {"answer": answer, "show_record_ui": False, "suggested_action": None}
 
 
 def _scope_question(status: str, language: str) -> str:
@@ -1166,7 +1072,7 @@ def answer(
         debug["model_duration_ms"], retrieval_ms,
     )
     return (
-        _reply_payload(clean, parsed, selected, search_question),
+        _reply_payload(clean, parsed),
         debug,
     )
 

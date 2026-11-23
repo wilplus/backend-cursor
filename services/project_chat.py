@@ -30,16 +30,28 @@ from services.content_language import (
     recording_target_language,
     resolve_content_language,
 )
-from services.llm_config import SPEC_PROJECT_CHAT, SPEC_PROJECT_CHAT_REVIEW
+from services.llm_config import SPEC_PROJECT_CHAT, SPEC_PROJECT_CHAT_TAKE
+from services.lounge_messages import speaking_coach_feature
+from services.prompts.coaching_evidence import DELIVERY_RULES, REFLECTION_RULES, WORDS_ONLY_RULES
+from services.speaking_coach_passages import (
+    Evidence,
+    Source,
+    delivery_description,
+    delivery_evidence,
+    ideal_document_text,
+    rank_evidence,
+    recorded_delivery_cues,
+)
 
 logger = logging.getLogger(__name__)
 
-CONTEXT_VERSION = "project-chat-context-v1"
+CONTEXT_VERSION = "project-chat-context-v2"
 MAX_CACHE_ENTRIES = 64
 MAX_HISTORY_ROWS = 40
 MAX_CONTEXT_CHARS = 1800
 MAX_TAKE_HISTORY = 3
 MAX_FEEDBACK_MOMENTS = 6
+MAX_DELIVERY_PASSAGES = 6
 MAX_DECK_SLIDES = 16
 MAX_ANSWER_CHARS = 1400
 MAX_CHIPS = 4
@@ -82,6 +94,7 @@ class ProjectChatContext:
     key_line: str
     current_take: dict
     recent_takes: tuple[dict, ...]
+    delivery_passages: tuple[Evidence, ...]
     feedback_moments: tuple[dict, ...]
     ideal_text: str
     ideal_approved: bool
@@ -147,6 +160,11 @@ _MORE_STRENGTHS = re.compile(
 )
 _REMEMBER_PRACTICE = re.compile(r"\b(?:remember\w*|zapamięt\w*|utrwal\w*)\b", re.IGNORECASE)
 _ASKS_ABOUT_AUDIENCE = re.compile(r"\b(?:audience|listeners?|odbiorc\w*|słuchacz\w*)\b", re.IGNORECASE)
+_COACHING_QUESTION_START = re.compile(
+    r"^(?:please|tell|help|show|explain|can|could|what|which|why|how|when|where|"
+    r"pomóż|pokaż|wyjaśnij|dlaczego|jak|czy|kiedy|gdzie|co (?:mogę|byś|poprawić|zmienić|myślisz))\b",
+    re.IGNORECASE,
+)
 _STRENGTH_KINDS = {"praise", "strength", "strong", "great_formulation"}
 
 
@@ -264,13 +282,21 @@ def _project_rows(database: Any, user_id: str, arc_id: str, reads: list[int]) ->
         [],
     )
     ordered = sorted(
-        [row for row in (rows or []) if isinstance(row, dict)],
+        [row for row in (rows or []) if isinstance(row, dict) and not speaking_coach_feature(row.get("metadata"))],
         key=lambda row: str(row.get("client_created_at") or row.get("created_at") or ""),
     )
     return ordered[-MAX_HISTORY_ROWS:]
 
 
-def _ideal(database: Any, arc_id: str, reads: list[int]) -> Optional[dict]:
+def _ideal(database: Any, arc_id: str, user_id: str, spoken: list[dict], reads: list[int]) -> Optional[dict]:
+    current = getattr(database, "get_ideal_text_document_core", None)
+    if callable(current):
+        snapshot = _dict(_read(reads, "ideal_text", lambda: current(arc_id, user_id), None))
+        payload = _dict(snapshot.get("payload"))
+        source = str(snapshot.get("source_take_session_id") or payload.get("latest_take_session_id") or "")
+        if not any(source == str(take.get("id")) for take in spoken):
+            return None
+        return {"text": ideal_document_text(payload), "source_take_session_id": source}
     repository = getattr(database, "ideal_text", None)
     reader = getattr(repository, "get_coach_arc_ideal_text", None)
     if not callable(reader):
@@ -288,43 +314,6 @@ def _transcript(rows: list[dict], limit: int = MAX_CONTEXT_CHARS) -> str:
         if text:
             parts.append(text)
     return _clip(" ".join(parts), limit)
-
-
-def _safe_cues(rows: list[dict]) -> list[str]:
-    """Keep human-readable cue labels, never numeric acoustic metrics."""
-    found: list[str] = []
-
-    def visit(value: Any, depth: int = 0) -> None:
-        if depth > 2:
-            return
-        if isinstance(value, str) and value.strip():
-            cleaned = _clip(value, 180)
-            if cleaned and cleaned not in found:
-                found.append(cleaned)
-            return
-        if isinstance(value, list):
-            for item in value[:8]:
-                visit(item, depth + 1)
-            return
-        if not isinstance(value, dict):
-            return
-        for key, item in value.items():
-            name = str(key).lower()
-            if not any(
-                marker in name
-                for marker in (
-                    "verbal", "vocal", "delivery", "pace", "pause",
-                    "emphasis", "filler", "intonation",
-                )
-            ):
-                continue
-            visit(item, depth + 1)
-
-    for row in rows:
-        metrics = row.get("metrics")
-        if isinstance(metrics, dict):
-            visit(metrics)
-    return found[:8]
 
 
 def _evidence(text: str, pattern: re.Pattern[str]) -> str:
@@ -533,7 +522,7 @@ def _load_sources(
         "current_snippets": current_snippets,
         "project": project if isinstance(project, dict) else {},
         "drafts": _drafts(database, current_id, reads),
-        "ideal": _ideal(database, arc_id, reads),
+        "ideal": _ideal(database, arc_id, user_id, spoken, reads),
         "project_rows": _project_rows(database, user_id, arc_id, reads),
     }
 
@@ -608,18 +597,31 @@ def _feedback_moments(current: dict, drafts: list[dict], snippets: list[dict]) -
     return feedback
 
 
-def _current_take_packet(current: dict, current_transcript: str, snippets: list[dict]) -> dict:
+def _current_take_packet(current: dict, current_transcript: str) -> dict:
     intake = _dict(current.get("intake_context"))
     return {
         "index": current.get("take_index"),
         "transcript": current_transcript,
-        "spoken_cues": _safe_cues(snippets),
         "transcription_language": current.get("transcription_language")
         or intake.get("transcription_language"),
         "status": _text(current.get("status"), 80),
         "analysis_state": _text(current.get("analysis_state"), 80),
         "feedback_published": bool(current.get("results_published_at")),
     }
+
+
+def _delivery_passages(arc_id: str, current: dict, recent: list[dict], snippets_by_id: dict) -> tuple[Evidence, ...]:
+    current_id = str(current["id"])
+    takes = [current, *(row for row in reversed(recent) if str(row.get("id")) != current_id)]
+    passages: list[Evidence] = []
+    for take in takes:
+        take_id = str(take["id"])
+        rows = sorted(snippets_by_id.get(take_id, ()), key=lambda row: row.get("start_offset_ms") or 0)
+        # The batch is keyed by the authorised Take. Older rows may omit the session column.
+        rows = [{"session_id": take_id, **row} for row in rows]
+        evidence = delivery_evidence("current project", {**take, "arc_id": arc_id}, rows)
+        passages.extend(item if take_id == current_id else replace(item, recency="earlier") for item in evidence)
+    return tuple(passages)
 
 
 def build_context(
@@ -673,7 +675,7 @@ def build_context(
     feedback = _feedback_moments(current, drafts, current_snippets)
     ideal_text = _text(_dict(ideal).get("text"), 1800)
     deck = _deck(database, project, spoken, current_context)
-    current_take = _current_take_packet(current, current_transcript, current_snippets)
+    current_take = _current_take_packet(current, current_transcript)
     recent_takes = tuple(
         {
             "index": row.get("take_index"),
@@ -695,6 +697,7 @@ def build_context(
         key_line=_text(setup.get("key_line"), 300),
         current_take=current_take,
         recent_takes=recent_takes,
+        delivery_passages=_delivery_passages(arc, current, recent, snippets_by_id),
         feedback_moments=tuple(feedback),
         ideal_text=ideal_text,
         ideal_approved=bool(_dict(ideal).get("approved_at")),
@@ -785,9 +788,8 @@ def _target_language(context: ProjectChatContext, question: str) -> str:
         "transcription_language"
     )
     return resolve_content_language(
-        recording_language=recording_language,
         typed_message=question,
-        fallback=recording_target_language({}, context.source_context),
+        fallback=recording_language or recording_target_language({}, context.source_context),
     )
 
 
@@ -804,7 +806,18 @@ def _project_history(rows: list[dict] | tuple[dict, ...]) -> list[dict]:
     return turns[-20:]
 
 
-def _prompt_context(context: ProjectChatContext, state: ProjectChatState) -> dict:
+def _passage_references(context: ProjectChatContext, question: str) -> dict[str, Evidence]:
+    selected, _ = rank_evidence(context.delivery_passages, question, MAX_DELIVERY_PASSAGES,
+                                scoped=False, user_id=None)
+    return {f"D{index}": item for index, item in enumerate(selected)}
+
+
+def _passage_source(passages: dict[str, Evidence], reference: Any) -> Optional[Source]:
+    item = passages.get(reference) if isinstance(reference, str) else None
+    return item.sources[0] if item else None
+
+
+def _prompt_context(context: ProjectChatContext, state: ProjectChatState, passages: dict[str, Evidence]) -> dict:
     return {
         "project": {
             "topic": context.topic,
@@ -816,6 +829,11 @@ def _prompt_context(context: ProjectChatContext, state: ProjectChatState) -> dic
         },
         "current_take": context.current_take,
         "recent_takes_same_project": list(context.recent_takes),
+        "recorded_passages": [
+            {"reference": reference, "take": item.sources[0].take_number,
+             "recency": item.recency, "section": item.section, "evidence": item.text}
+            for reference, item in passages.items()
+        ],
         "published_feedback_moments": [
             {
                 **{key: value for key, value in moment.items() if key != "snippet_id"},
@@ -825,7 +843,6 @@ def _prompt_context(context: ProjectChatContext, state: ProjectChatState) -> dic
         ],
         "ideal_text": {
             "text": context.ideal_text,
-            "approved": context.ideal_approved,
         },
         "deck": list(context.deck),
         "practice_status": context.practice_status,
@@ -862,7 +879,11 @@ is unclear, ask one short question about who will hear it and wait for their
 answer. Do not invent a listener, an emotion, a positive moment, or a sound.
 Delivery observations belong to their own passage. Stick to what the words
 support when there is no sound evidence. Give the listening impression in
-plain language.
+plain language. In recorded_passages, the words and cues belong to the same
+passage and Take. For a comparison, use matching parts of the authorised Takes.
+Keep speaker-wide Strengths and weekly principles in Speaking Coach. A
+project reply can describe the strength you hear in this Take and what to try
+on this talk.
 
 Keep replies free of profanity and explicit sexual content.
 Ask at most one clear question in a turn. During the audience/goal setup ask
@@ -895,14 +916,18 @@ Do not bring an earlier setup question into the review.
 Return strict JSON with this shape:
 {"answer": string, "chips": [string], "moment": string or null, "practise": boolean,
  "next_review_step": "practise" or "ideal" or null, "wording": object or null}
-Keep the answer short and conversational. Use a published moment reference
-only when the answer actually addresses that passage. Use "reviewed" for the
-exact clip in speaker_is_reviewing when it is the one you address, and null
-for advice that needs no clip. Set practise to true when a matching tool on
-the cited moment would help. The app checks which tool is available. Do not
-promise a particular exercise or a demonstration. Set next_review_step only
-in the review and only when you are offering the speaker that step in this
-reply. Otherwise return null.
+Keep the answer short and conversational. When the reply uses an exact clip,
+put that passage's supplied reference into moment. Published feedback has M
+references, recorded delivery passages have D references, and "reviewed"
+names the exact clip in speaker_is_reviewing. Use a published M reference for
+the Picker's praise or intervention when one applies. Return null for advice
+that needs no clip. Set practise to true when a matching tool on the cited
+moment would help. The app checks which tool is available. Do not promise a
+particular exercise or demonstration. A supplied ideal_text.text is the project's
+existing Ideal Text. When they ask to see it, offer it directly and set
+next_review_step to "ideal". For the review's practice step,
+use "practise". Otherwise return null. When wording is for a specific
+recorded passage, put its D reference in wording.source.
 Chips are optional, grounded suggested replies for the one current question;
 use an empty array when they would feel canned. Do not put a second question
 inside a chip or answer.
@@ -948,7 +973,7 @@ def _meaningful_slot_answer(question: str) -> bool:
         and len(value) <= 220
         and not value.endswith("?")
         and not _ACK.fullmatch(value)
-        and not re.match(r"^(?:please|tell|help|show|explain|can |could |why |how |pomóż|wyjaśnij|dlaczego|jak )", value, re.IGNORECASE)
+        and not _COACHING_QUESTION_START.match(value)
         and value.lower() not in {"skip", "not sure", "nie wiem", "nie jestem pewien"}
     )
 
@@ -1166,14 +1191,19 @@ def _model_turn(
     prompt = {
         "latest_user_message": question,
         "project_chat_history": history,
-        "project_context": _prompt_context(context, state),
+        "project_context": _prompt_context(context, state, passages := _passage_references(context, question)),
     }
     if signed_question is not None:
         prompt["this_turn_answers_signed_question"] = signed_question
     if review:
         prompt["speaker_is_reviewing"] = review
     user_prompt = json.dumps(prompt, ensure_ascii=False, sort_keys=True)
-    system = _SYSTEM + "\n" + coach_wording.WORDING_RULES + f"\nRequested tone: {_tone(question)}."
+    system = _SYSTEM + "\n" + REFLECTION_RULES + coach_wording.WORDING_RULES + f"\nRequested tone: {_tone(question)}."
+    has_delivery = bool(passages)
+    if review and (review["anchor"].get("snippet_id") or "slide_index" in review["anchor"]):
+        has_delivery = bool(review.get("delivery_observations"))
+    if context.current_take.get("transcript") or passages:
+        system += "\n\n" + (DELIVERY_RULES if has_delivery else WORDS_ONLY_RULES)
     if review and (instruction := _review_instruction(context, state, question, review)):
         system += f"\n\nFor this turn: {instruction}"
     started = time.perf_counter()
@@ -1185,7 +1215,7 @@ def _model_turn(
             target_language=target_language,
             system=system,
             user=user_prompt,
-            spec=SPEC_PROJECT_CHAT_REVIEW if review else SPEC_PROJECT_CHAT,
+            spec=SPEC_PROJECT_CHAT_TAKE if review or context.current_take.get("transcript") else SPEC_PROJECT_CHAT,
             surface="project_chat",
             user_id=user_id,
             session_id=context.take_session_id,
@@ -1354,27 +1384,33 @@ def _answer_metadata(context: ProjectChatContext, question: str,
     metadata = {"review_focus": anchor} if anchor else {}
     if not parsed:
         return metadata
-    wording = coach_wording.proposal(parsed.get("wording"), arc_id=context.arc_id,
-                                     take_id=context.take_session_id)
+    passages = _passage_references(context, question)
+    raw_wording = _dict(parsed.get("wording"))
+    wording_source = _passage_source(passages, raw_wording.get("source"))
+    wording_take = wording_source.take_id if wording_source else context.take_session_id
+    wording = coach_wording.proposal(raw_wording, arc_id=context.arc_id, take_id=wording_take)
     if wording:
         metadata[coach_wording.META] = wording
     reference = parsed.get("moment")
+    source = _passage_source(passages, reference)
     snippet = next((
         item.get("snippet_id")
         for index, item in enumerate(context.feedback_moments)
         if reference == f"M{index}"
     ), None)
+    moment_take = context.take_session_id
+    if source and source.snippet_id:
+        snippet, moment_take = source.snippet_id, source.take_id
     if anchor and anchor.get("step") != "ideal" and (reference == "reviewed" or "moment" not in parsed):
         snippet = anchor.get("snippet_id")
-    if anchor:
-        next_step = parsed.get("next_review_step")
-        if next_step == "practise" and not snippet:
-            metadata["review_destination"] = {"step": "practise"}
-        if next_step == "ideal":
-            metadata["review_destination"] = {"step": "ideal"}
+    next_step = parsed.get("next_review_step")
+    if anchor and next_step == "practise" and not snippet:
+        metadata["review_destination"] = {"step": "practise"}
+    if next_step == "ideal" and (anchor or context.ideal_text):
+        metadata["review_destination"] = {"step": "ideal"}
     if snippet:
         metadata["coach_moment"] = chat_moment_reference(
-            context.arc_id, context.take_session_id, snippet,
+            context.arc_id, moment_take, snippet,
             practise=(
                 parsed.get("practise") is True or wants_practice(question) or
                 bool(anchor and anchor.get("step") == "practise")
@@ -1416,7 +1452,13 @@ def _review_focus(database: Any, context: ProjectChatContext, anchor: dict) -> d
             r for r in rows if slide is not None and
             _dict(_dict(r.get("metrics")).get("piece")).get("slide_index") == slide
         ]
-    cues = _safe_cues(passage)
+    if len(passage) == 1:
+        cues = recorded_delivery_cues(passage)
+        if not cues and (delivery := delivery_description(passage[0])):
+            cues = [delivery]
+    else:
+        cues = [f"«{_transcript([row], 240)}». {delivery}" for row in passage
+                if (delivery := delivery_description(row))][:MAX_DELIVERY_PASSAGES]
     return {
         "anchor": anchor, "exact_take_words": _transcript(passage, 900),
         **({"delivery_observations": cues} if cues else {}),
@@ -1510,6 +1552,8 @@ def _visible_rows(rows: list[dict] | tuple[dict, ...]) -> list[dict]:
     visible = []
     for row in rows:
         meta = _dict(row.get("metadata"))
+        if speaking_coach_feature(meta):
+            continue
         if meta.get("project_chat") is True:
             visible.append(row)
             continue

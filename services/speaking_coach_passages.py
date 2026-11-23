@@ -6,7 +6,6 @@ import re
 import textwrap
 from collections import Counter
 from dataclasses import dataclass
-from urllib.parse import urlencode
 
 from services.speaking_coach_scope import normalize, requested_passage
 
@@ -39,13 +38,6 @@ class Source:
     take_number: int | None = None
     snippet_id: str | None = None
 
-    def url(self, base: str) -> str:
-        if self.kind == "feedback":
-            from services.coach_feedback_email import feedback_url
-            return feedback_url(self.arc_id, self.take_id)
-        return f"{base}/chat?" + urlencode({"idealArc": self.arc_id})
-
-
 @dataclass(frozen=True)
 class Evidence:
     source_type: str
@@ -62,6 +54,14 @@ def excerpts(text: str) -> list[str]:
     """Keep word boundaries and the original wording, including later slides."""
     return textwrap.wrap(text, width=MAX_EVIDENCE_CHARS, expand_tabs=False,
                          replace_whitespace=False, break_on_hyphens=False)
+
+
+def ideal_document_text(payload: dict) -> str:
+    text = payload.get("text")
+    if isinstance(text, str) and text.strip():
+        return text.strip()
+    return " ".join(piece["text"] for piece in (payload.get("pieces") or [])
+                    if isinstance(piece, dict) and isinstance(piece.get("text"), str)).strip()
 
 
 def _transcripts(take: dict) -> dict[int, str]:
@@ -109,37 +109,80 @@ def transcript_evidence(label: str, takes: list[dict]) -> list[Evidence]:
     return out
 
 
+def recorded_delivery_cues(rows: list[dict]) -> list[str]:
+    """Keep human-readable cue labels, never numeric acoustic metrics."""
+    found: list[str] = []
+
+    def visit(value: object, depth: int = 0) -> None:
+        if depth > 2:
+            return
+        if isinstance(value, str) and value.strip():
+            cleaned = textwrap.shorten(value, width=180, placeholder="…")
+            if cleaned and cleaned not in found:
+                found.append(cleaned)
+            return
+        if isinstance(value, list):
+            for item in value[:8]:
+                visit(item, depth + 1)
+            return
+        if not isinstance(value, dict):
+            return
+        for key, item in value.items():
+            name = str(key).lower()
+            if not any(
+                marker in name
+                for marker in (
+                    "verbal", "vocal", "delivery", "pace", "pause",
+                    "emphasis", "filler", "intonation",
+                )
+            ):
+                continue
+            visit(item, depth + 1)
+
+    for row in rows:
+        metrics = row.get("metrics")
+        if isinstance(metrics, dict):
+            visit(metrics)
+    return found[:8]
+
+
+def delivery_description(row: dict) -> str:
+    """Describe recorded delivery at the resolution the source supports."""
+    from services.coach_comment_drafter import metric_observations
+
+    if cues := recorded_delivery_cues([row]):
+        return f"Recorded delivery cues: {'; '.join(cues[:3])}"
+    metrics = row.get("metrics")
+    if not isinstance(metrics, dict):
+        return ""
+    observations = metric_observations(metrics)
+    if pause_copy := _PAUSING_COPY.get(observations.get("pauses", "")):
+        observations["pauses"] = pause_copy
+    delivery = [f"{key}: {observations[key]}"
+                for key in ("pace", "pauses", "pitch", "volume") if key in observations]
+    return f"Delivery across the whole passage: {'; '.join(delivery)}" if delivery else ""
+
+
 def delivery_evidence(label: str, take: dict, rows: list[dict]) -> list[Evidence]:
     """Keep each spoken moment together with its own saved delivery."""
-    from services.coach_comment_drafter import metric_observations
-    from services.project_chat import _safe_cues
-
     passages = {index: f" {normalize(text)} " for index, text in _transcripts(take).items()}
     has_deck = bool(_deck(take))
     rows = [row for row in rows if isinstance(row, dict)
             and str(row.get("session_id")) == str(take["id"])]
     out = []
     for position, row in enumerate(rows):
-        spoken = " ".join(str(row.get("transcript") or "").split())
-        metrics = row.get("metrics")
-        if not spoken or not isinstance(metrics, dict):
+        spoken = " ".join(str(row.get("transcript") or row.get("transcription_text") or "").split())
+        if not spoken or not (description := delivery_description(row)):
             continue
-        cues = _safe_cues([row])
-        if cues:
-            description = f"Recorded delivery cues: {'; '.join(cues[:3])}"
-        else:
-            observations = metric_observations(metrics)
-            if pause_copy := _PAUSING_COPY.get(observations.get("pauses", "")):
-                observations["pauses"] = pause_copy
-            delivery = [f"{key}: {observations[key]}"
-                        for key in ("pace", "pauses", "pitch", "volume") if key in observations]
-            if not delivery:
-                continue
-            description = f"Delivery across the whole passage: {'; '.join(delivery)}"
         # A moment that spans slides or matches several has only Take-level provenance.
         needle = f" {normalize(spoken)} "
         matches = [index for index, passage in passages.items() if needle in passage]
-        index = matches[0] if len(matches) == 1 else None
+        metrics = row["metrics"]
+        piece = metrics.get("piece")
+        recorded_slide = piece.get("slide_index") if isinstance(piece, dict) else None
+        index = recorded_slide if type(recorded_slide) is int and recorded_slide >= 0 else (
+            matches[0] if len(matches) == 1 else None
+        )
         section = " ".join(name for name, boundary in (("opening", 0), ("ending", len(rows) - 1))
                            if position == boundary)
         quote = textwrap.shorten(spoken, width=MAX_EVIDENCE_CHARS - len(description) - 24,
@@ -148,7 +191,7 @@ def delivery_evidence(label: str, take: dict, rows: list[dict]) -> list[Evidence
             "delivery_cues", label, "recent", "observed_cues",
             f"Spoken passage: «{quote}». {description}",
             (_transcript_source(take, index, str(row["id"]) if row.get("id") else None),),
-            section, index if has_deck else None,
+            section, index if has_deck or type(recorded_slide) is int else None,
         ))
     return list(dict.fromkeys(out))
 

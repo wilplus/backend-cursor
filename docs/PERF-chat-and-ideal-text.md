@@ -16,8 +16,12 @@ rows before rendering or using them as conversational context.
 Project Chat keeps the post-Take audience and desired-impact capture and
 answers subsequent project questions without closing the composer. Its
 state skips known audience/goal fields and varies language and tone from
-the actual conversation. The normal path makes one contextual generation;
-a short acknowledgement after setup has a deterministic fast path.
+the actual conversation. A recorded project uses the Take coaching model
+and the same delivery evidence and reflection rules as Speaking Coach.
+The project ranks a bounded set of passages from the existing snippet read
+without an embedding call, and reads Ideal Text through the owner-checked
+document core. A short acknowledgement after setup has a deterministic fast
+path (N683).
 
 In Speaking Coach (`place=speaking`), ordinary conversation uses deterministic
 routing and one `SPEC_SPEAKING_COACH` generation. Questions scoped to a Take
