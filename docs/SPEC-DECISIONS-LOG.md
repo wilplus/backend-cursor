@@ -17736,3 +17736,12 @@ No migration in this entry. The rules: frontend [`docs/flows/feedback-walk-and-c
 5. Asking the coach from review carries the project, Take, and the selected slide or moment into its chat. A return link opens that spot again. Processing consent, source ownership, the original evidence, and the record-to-next-Take path govern these actions.
 
 The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md).
+
+**N667 · One composer across chats and recording steps** (founder, the Codex chat, 23 November 2026, approving the shared bottom bar and asking to “apply it universally across the app”). Supersedes N666's one-input-mode bar and earlier rules that switch between a text bar and a recording bar.
+
+1. Files are on the left, the message field is in the middle, and the mic is on the right. Send appears for a sendable draft without moving the mic. Quick choices sit above the composer. Each chat keeps its own draft and scope.
+2. When the step requires voice, the mic is emphasized and the text field shows the recording prompt. During capture the middle shows the timer, and the same mic slot becomes Stop. Returning to typing restores the draft.
+3. The files slot uses the surface's supported attachments. Voice-only prompts keep eligible files for a later message. A stopped voice message can be reviewed, continued, or discarded before sending. A guided Take or exercise uses its existing completion path, discard behavior, and authorization.
+4. Speaking Coach, scoped projects and review follow-ups, people chats, Chat Builder, its widget, experiments, and practice use the same composer. Their own message handling, processing consent, and recording permissions still apply.
+
+The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md), and [`docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md).
