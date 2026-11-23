@@ -1,6 +1,9 @@
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 
+ALTER TABLE public.lounge_messages
+    ADD COLUMN IF NOT EXISTS chat_erased boolean NOT NULL DEFAULT false;
+
 CREATE TABLE IF NOT EXISTS public.owner_chat_structures (
     user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     revision integer NOT NULL DEFAULT 0 CHECK (revision >= 0),
@@ -10,9 +13,10 @@ CREATE TABLE IF NOT EXISTS public.owner_chat_section_turns (
     user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     section_id text NOT NULL,
     client_id uuid NOT NULL,
-    question text NOT NULL CHECK (char_length(question) BETWEEN 1 AND 4000),
-    answer text NOT NULL CHECK (char_length(answer) BETWEEN 1 AND 16000),
+    question text CHECK (char_length(question) BETWEEN 1 AND 4000),
+    answer text CHECK (char_length(answer) BETWEEN 1 AND 16000),
     created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK ((question IS NULL) = (answer IS NULL)),
     PRIMARY KEY (user_id, section_id, client_id)
 );
 CREATE INDEX IF NOT EXISTS owner_chat_section_turns_recent
@@ -23,8 +27,8 @@ ALTER TABLE public.owner_chat_section_turns ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.owner_chat_structures, public.owner_chat_section_turns FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.owner_chat_structures, public.owner_chat_section_turns TO service_role;
 
--- A group lifecycle write and the conversations it removes form one
--- transaction. Resume checks the same locked structure before adding a turn.
+-- Remove the conversation content in the same transaction as the lifecycle
+-- change. Retain the turn key so an old delivery cannot recreate it.
 CREATE OR REPLACE FUNCTION public.write_owner_chat_structure_v1(
     p_user uuid, p_expected integer, p_document jsonb, p_removed text[]
 ) RETURNS boolean LANGUAGE plpgsql SET search_path = public AS $$
@@ -33,7 +37,7 @@ BEGIN
     UPDATE owner_chat_structures SET revision = p_expected + 1, document = p_document
     WHERE user_id = p_user AND revision = p_expected;
     IF NOT FOUND THEN RETURN false; END IF;
-    DELETE FROM owner_chat_section_turns
+    UPDATE owner_chat_section_turns SET question = NULL, answer = NULL
     WHERE user_id = p_user AND section_id = ANY(p_removed);
     RETURN true;
 END;
@@ -80,7 +84,8 @@ BEGIN
             p_principal, project, 'speaking-coach:' || p_expected || ':' || project::text
         );
     END LOOP;
-    DELETE FROM lounge_messages WHERE user_id = p_user AND kind = 'text'
+    UPDATE lounge_messages SET body = '', metadata = NULL, chat_erased = true
+    WHERE user_id = p_user AND kind = 'text'
         AND metadata->>'place' = 'speaking' AND metadata->>'arc_id' IS NULL;
     UPDATE owner_chat_structures SET document = layout || '{"coach":"deleted"}'::jsonb,
         revision = p_expected + 1 WHERE user_id = p_user;

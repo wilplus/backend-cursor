@@ -17735,6 +17735,8 @@ No migration in this entry. The rules: frontend [`docs/flows/feedback-walk-and-c
 4. Feedback, Practise, and Ideal text are equal doors into one Take review. Feedback plays the exact selected moment, Practise serves the selected intervention and accepts repeat runs with a quiet completion note, and Ideal text is the last step. It shows the actual slide images, per-slide text, and orange helper words. The same header serves each step. Edits belong to the selected Take and survive closing or reopening.
 5. Asking the coach from review carries the project, Take, and the selected slide or moment into its chat. A return link opens that spot again. Processing consent, source ownership, the original evidence, and the record-to-next-Take path govern these actions.
 
+Confirmed chat deletion erases the conversation content with its layout change. The stored turn keys prevent a stale delivery from recreating the erased conversation. Project removal follows the owner-confirmed project deletion request.
+
 The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md).
 
 **N667 · One composer across chats and recording steps** (founder, the Codex chat, 23 November 2026, approving the shared bottom bar and asking to “apply it universally across the app”). Supersedes the earlier layout in N666 and earlier rules that switch between a text bar and a recording bar.

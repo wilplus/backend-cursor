@@ -317,6 +317,22 @@ class ChatTurnPersistsTests(ChatRouteHarness):
         self.assertEqual(stored["metadata"]["chat_turn"]["state"], "completed")
         self.assertEqual(len(self.histories), 1)
 
+    def test_an_erased_turn_cannot_be_replayed(self):
+        turn_id = str(uuid.uuid4())
+        self.stored[(USER, turn_id)] = {
+            "client_id": turn_id, "role": "user", "kind": "text",
+            "body": "", "metadata": None, "chat_erased": True,
+        }
+
+        body = self.post({
+            "question": "The old question", "persist": True, "client_id": turn_id,
+        }).get_json()
+
+        self.assertEqual(body["failure"]["code"], "CHAT_TURN_DELETED")
+        self.assertFalse(body["failure"]["retryable"])
+        self.assertEqual(self.histories, [])
+        self.assertEqual(self.stored[(USER, turn_id)]["body"], "")
+
     def test_an_optimistic_whitespace_bubble_can_be_claimed_once(self):
         turn_id = str(uuid.uuid4())
         self.stored[(USER, turn_id)] = {
