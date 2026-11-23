@@ -178,6 +178,39 @@ def test_spoken_follow_up_uses_the_owned_take_transcriber_then_returns_words():
         answer.assert_not_called()
 
 
+def test_chat_voice_without_a_take_checks_recording_authority_and_returns_only_words():
+    from io import BytesIO
+    from flask import Flask, request
+    from routes.v2 import coaching, voice_notebook
+    from services import will_question
+    from services.processing_authorization import ProcessingAuthorizationError
+
+    app = Flask(__name__)
+    adapter = MagicMock()
+    adapter.coordinates.acquisition_principal_id = "speaker"
+    view = inspect.unwrap(coaching.v2_chat_voice)
+
+    with app.test_request_context(method="POST", data={
+            "duration_ms": "1800", "audio": (BytesIO(b"recording"), "answer.webm")}), \
+            patch.object(voice_notebook, "_adapter", return_value=adapter), \
+            patch.object(will_question, "hear_answer_words", return_value=("Why did that work?", 1800)) as heard, \
+            patch.object(coaching, "answer_chat") as answer:
+        request.user_id = USER
+        response, status = view()
+        assert status == 200
+        assert response.get_json() == {"text": "Why did that work?", "duration_ms": 1800}
+        adapter.authorization.require_current.assert_called_once_with("speaker", operation="recording")
+        assert heard.call_args.args == (adapter, b"recording")
+        assert heard.call_args.kwargs["user_id"] == USER
+        answer.assert_not_called()
+
+        adapter.authorization.require_current.side_effect = ProcessingAuthorizationError(
+            "PROCESSING_RECORDING_WITHDRAWN", "Recording is off")
+        response, status = view()
+        assert (response.get_json()["code"], status) == ("PROCESSING_RECORDING_WITHDRAWN", 403)
+        assert heard.call_count == 1
+
+
 # ── GET /explore/arc/<arc>/ideal-text ───────────────────────────────────────
 
 MACHINE = "Para one new.\n\nPara two.\n\nPara three new."

@@ -864,8 +864,11 @@ def v2_explore_ideal_revisions(arc_id):
     # read serves the words without them.
     logs = db.list_slide_helper_words_log_for_slides(
         arc_id, str(request.user_id), history_slides(versions))
-    response = jsonify({"revisions": document_history(
-        versions, sessions, logs)})
+    revisions = document_history(versions, sessions, logs)
+    for revision in revisions:
+        if revision["presentation_ref"]:
+            revision["presentation_ref"] = refreshed_media_url(revision["presentation_ref"])
+    response = jsonify({"revisions": revisions})
     response.headers["Cache-Control"] = "private, no-store"
     return response
 

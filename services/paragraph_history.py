@@ -109,10 +109,8 @@ def _paragraph_slides(version: Mapping) -> Optional[list]:
     return out
 
 
-def _take_deck(version: Mapping, sessions: Any) -> Optional[str]:
-    """The deck this version's Take was said on: that Take's own
-    ``intake_context.presentation_ref`` (N257: a Take's deck is its own);
-    None for a deckless Take or one that cannot be found."""
+def _take_context(version: Mapping, sessions: Any) -> Optional[Mapping]:
+    """Recording setup belonging to this version's Take (N257)."""
     doc = version.get("document")
     take = doc.get("take_session_id") if isinstance(doc, Mapping) else None
     if not take:
@@ -120,9 +118,7 @@ def _take_deck(version: Mapping, sessions: Any) -> Optional[str]:
     for session in sessions or []:
         if isinstance(session, Mapping) and str(session.get("id")) == str(take):
             context = session.get("intake_context")
-            ref = context.get("presentation_ref") \
-                if isinstance(context, Mapping) else None
-            return ref if isinstance(ref, str) and ref else None
+            return context if isinstance(context, Mapping) else None
     return None
 
 
@@ -169,6 +165,8 @@ def document_history(versions: Any, sessions: Any = None,
     deck and the helper words of its time (N380); the newest is the head.
     Read only: an old version is never brought back, because the Ideal Text
     is what the latest Take said. Pure."""
+    from services.slide_deck_update import slide_titles
+
     kept = [row for row in versions or [] if isinstance(row, Mapping)
             and isinstance(row.get("version"), int)
             and isinstance(row.get("text"), str) and row["text"].strip()]
@@ -176,13 +174,17 @@ def document_history(versions: Any, sessions: Any = None,
     for at, row in enumerate(kept):
         text = row["text"]
         slides = _paragraph_slides(row)
+        context = _take_context(row, sessions)
+        ref = (context or {}).get("presentation_ref")
         until = _when(kept[at + 1].get("created_at")) \
             if at + 1 < len(kept) else None
         rows.append({"revision": row.get("version"),
                      "take_index": _take_index(row),
                      "text": text,
                      "slides": slides,
-                     "presentation_ref": _take_deck(row, sessions),
+                     "presentation_ref": ref if isinstance(ref, str) and ref else None,
+                     "slide_titles": slide_titles(context),
+                     "deck_known": context is not None,
                      "helper_words": _helper_words_then(
                          slides, helper_logs, until),
                      "created_at": row.get("created_at")})

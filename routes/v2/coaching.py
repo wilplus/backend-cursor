@@ -1,4 +1,4 @@
-"""The conversational surface: /chat/query and /chat/session-state.
+"""The conversational surface: /chat/query, /chat/voice and /chat/session-state.
 
 The coaching lane that lived beside them (start / get / turn / the 9-step
 state-machine turn / intro bubble / snippet follow-up) lost its route
@@ -306,6 +306,44 @@ def _claim_project_scope(transport, context):
         "arc_id": transport["project_id"], "project_chat": True,
         "take_session_id": transport["take_id"], **({"review_focus": focus} if focus else {}),
     }
+
+
+@v2_bp.route("/chat/voice", methods=["POST"])
+@phase1_provider_route
+@llm_limit
+@require_auth
+def v2_chat_voice():
+    """Transcribe a chat answer without creating a Take or writing a turn."""
+    from uuid import uuid4
+
+    from routes.v2.voice_notebook import _adapter
+    from services.processing_authorization import ProcessingAuthorizationError
+    from services.will_question import QuestionError, hear_answer_words
+
+    user_id = str(request.user_id)
+    try:
+        adapter = _adapter(user_id)
+        adapter.authorization.require_current(adapter.coordinates.acquisition_principal_id, operation="recording")
+        upload = request.files.get("audio")
+        if upload is None:
+            return jsonify({"code": "EMPTY_AUDIO", "error": "No audio."}), 400
+        try:
+            duration = int(request.form.get("duration_ms") or 0) or None
+        except ValueError:
+            duration = None
+        text, duration_ms = hear_answer_words(
+            adapter, upload.read(), user_id=user_id, take=str(uuid4()),
+            filename=upload.filename or "answer.webm", duration_ms=duration,
+        )
+        return jsonify({"text": text, "duration_ms": duration_ms}), 200
+    except QuestionError as error:
+        return jsonify({"code": error.code, "error": str(error)}), error.status
+    except ProcessingAuthorizationError as error:
+        return jsonify({"code": error.code, "error": error.message}), error.status
+    except Exception as error:
+        logger.error("chat answer transcription failed", exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to transcribe the answer"}), 500
 
 
 @v2_bp.route("/chat/query", methods=["POST"])
