@@ -296,6 +296,18 @@ def _correlated_request_id(client_id: Any, request_id: Any) -> tuple[Any, bool]:
     )
 
 
+def _claim_project_scope(transport, context):
+    if not transport["project_id"]:
+        return None
+    from services.project_chat import review_anchor
+
+    focus = review_anchor(context.get("review_focus")) if isinstance(context, dict) else None
+    return {
+        "arc_id": transport["project_id"], "project_chat": True,
+        "take_session_id": transport["take_id"], **({"review_focus": focus} if focus else {}),
+    }
+
+
 @v2_bp.route("/chat/query", methods=["POST"])
 @phase1_provider_route
 @llm_limit
@@ -432,14 +444,10 @@ def v2_chat_query():
                 return jsonify(replay), 200
 
         if persist_thread and request.user_id:
-            turn_scope = {
-                "arc_id": transport["project_id"], "project_chat": True,
-                "take_session_id": transport["take_id"],
-            } if transport["project_id"] else None
             claim_id, terminal = claim_chat_turn(
                 db, request.user_id, turn_id, question,
                 user_created_at=user_created_at, place=transport["place"],
-                scope_metadata=turn_scope,
+                scope_metadata=_claim_project_scope(transport, presentation_context),
             )
             if terminal is not None:
                 # An early terminal result did not write a bot row. Keep the
@@ -463,6 +471,7 @@ def v2_chat_query():
                 scope = {
                     "arc_id": transport["project_id"], "project_chat": True,
                     "take_session_id": meta.get("take_session_id") or transport["take_id"],
+                    **({"review_focus": meta["review_focus"]} if meta.get("review_focus") else {}),
                 }
             return jsonify(finish_chat_turn(
                 db, resp, user_id=request.user_id, question=question,

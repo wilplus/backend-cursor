@@ -21,6 +21,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Optional
 
+from services.take_review_history import is_ready as _review_ready
+
 
 _DELIVERY_LABELS = (
     (80, "Strong delivery"),
@@ -30,6 +32,7 @@ _DELIVERY_LABELS = (
 )
 
 logger = logging.getLogger(__name__)
+_DECKLESS_PARTS = 3
 
 
 def _context(session: dict) -> dict:
@@ -76,25 +79,42 @@ def _take(s: dict) -> dict:
         # The take opens its FEEDBACK page once published (founder
         # 2026-07-15) — alias kept beside coach_reviewed for the FE.
         "feedback_available": published,
+        "review_available": _review_ready(s),
     }
 
 
-def _practice_range(session: dict) -> tuple[int, int] | None:
-    """The actual first/last slide shown during this recording, one-based."""
+def _practised_parts(session: dict) -> set[int]:
+    """The actual slide or section advances, one-based."""
     advances = _context(session).get("slide_advances")
     if not isinstance(advances, list):
-        return None
-    slides: list[int] = []
+        return set()
+    slides: set[int] = set()
     for advance in advances:
         if not isinstance(advance, dict):
             continue
         index = advance.get("index")
         slide = advance.get("slide")
         if isinstance(index, int) and not isinstance(index, bool) and index >= 0:
-            slides.append(index + 1)
+            slides.add(index + 1)
         elif isinstance(slide, int) and not isinstance(slide, bool) and slide >= 1:
-            slides.append(slide)
+            slides.add(slide)
+    return slides
+
+
+def _practice_range(session: dict) -> tuple[int, int] | None:
+    slides = _practised_parts(session)
     return (min(slides), max(slides)) if slides else None
+
+
+def _coverage(sessions: list, total: int, has_deck: bool) -> dict:
+    """Coverage is the union of parts in delivered, spoken Takes."""
+    total = total or _DECKLESS_PARTS
+    parts: set[int] = set()
+    for take in sessions:
+        if _review_ready(take):
+            parts.update(part for part in _practised_parts(take) if part <= total)
+    return {"practised": len(parts), "total": total,
+            "unit": "slides" if has_deck else "sections"}
 
 
 def _delivery_read(rows: list[dict]) -> tuple[int, str]:
@@ -206,6 +226,7 @@ def _training(aid: str, sess: list, delivered: Optional[dict],
         "batch_verified": bool(delivered),
         "delivered_at": (delivered or {}).get("published_at"),
         "ideal_ready": bool(delivered) or finalized,
+        "practice_coverage": _coverage(sess, n_slides, bool(cover_ref)),
         "practice_progress": practice_progress,
         "practice_chunks": practice_chunks,
     }

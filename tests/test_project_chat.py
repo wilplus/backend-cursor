@@ -284,6 +284,25 @@ def test_structured_answer_is_saved_and_follow_up_uses_project_history():
     assert "Who were you talking to?" in calls[0]["user"]
 
 
+def test_a_review_question_uses_the_exact_old_moment_without_capturing_setup():
+    database = FakeDB()
+    database.project_rows.append({
+        "role": "bot", "kind": "text", "body": "Who are you speaking to?",
+        "metadata": {"arc_id": ARC, "project_chat": True, "next_slot": "audience"},
+    })
+    focus = {"step": "feedback", "snippet_id": "s1"}
+    with patch("services.llm.chat_complete", return_value=_config_result("Try saying the decision first.")) as complete:
+        result, _ = project_chat.answer(
+            database, USER, ARC, "How do I improve that?", take_session_id="take-a1", review_focus=focus,
+        )
+    words = json.loads(complete.call_args.kwargs["user"])["speaker_is_reviewing"]
+    assert words == {"anchor": focus, "exact_take_words": "The old opening."}
+    assert result["row_metadata"]["review_focus"] == focus
+    assert result["row_metadata"]["take_session_id"] == "take-a1"
+    assert result["row_metadata"]["next_slot"] == ""
+    assert database.takes.saved == []
+
+
 def test_sparse_evidence_is_acknowledged_without_inventing_feedback():
     database = FakeDB()
     database.snippets[TAKE] = []

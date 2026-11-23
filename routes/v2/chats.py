@@ -625,6 +625,39 @@ def v2_chats_blank_setup():
         db, str(request.user_id), payload)))
 
 
+@v2_bp.route("/chats/structure", methods=["GET", "POST"])
+@require_auth
+def v2_chats_structure():
+    from services import chat_structure
+
+    owner = str(request.user_id)
+    if request.method == "GET":
+        return jsonify(chat_structure.read(db, owner)[1])
+    payload, status = chat_structure.update(db, owner, request.get_json(silent=True))
+    return jsonify(payload), status
+
+
+@v2_bp.route("/chats/structure/coach/projects", methods=["GET"])
+@require_auth
+def v2_chats_structure_projects():
+    from services import chat_structure
+
+    return jsonify({"projects": chat_structure.coach_projects(db, str(request.user_id))})
+
+
+@v2_bp.route("/chats/structure/<section_id>/turns", methods=["GET", "POST"])
+@require_auth
+def v2_chats_section_turns(section_id):
+    from services import chat_structure
+
+    owner = str(request.user_id)
+    if request.method == "GET":
+        payload, status = chat_structure.turns(db, owner, section_id)
+    else:
+        payload, status = chat_structure.keep_turn(db, owner, section_id, request.get_json(silent=True))
+    return jsonify(payload), status
+
+
 @v2_bp.route("/chats/setup/start", methods=["POST"])
 @limiter.limit("30 per hour", scope="chats_blank_setup_start")
 @require_auth
@@ -662,18 +695,30 @@ def v2_chats_builder_reply(chat_id):
     recipe, and the screen keeps its own preview. A recording is limited
     as Whisper is; every reply is limited as a chat turn is.
     """
-    from services import assistants, chat_builder_reply, chat_recipes, chat_replies
+    from services import assistants, chat_builder_reply, chat_recipes, chat_replies, chat_structure
     if not _builder_chat_id(chat_id):
         return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
     user_id = str(request.user_id)
     if not assistants.on(db, user_id):
         return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
+    incoming = request.get_json(silent=True) or {}
+    section_id = incoming.get("section_id") if isinstance(incoming, dict) else None
     recipe = chat_recipes.mine(db, user_id)
+    options = {}
+    if section_id is not None:
+        layout = chat_structure.read(db, user_id)[1]
+        branch = chat_structure.section(layout, section_id)
+        if branch is None:
+            return jsonify({"code": "NOT_FOUND"}), 404
+        recipe = recipe or layout.get("published_chat")
+        if recipe and branch.get("question"):
+            recipe = {**recipe, "questions": [{"q": branch["question"]}], "taps": []}
+        options["conversation"] = chat_structure.read_turns(db, user_id, section_id, limit=6)
     if not recipe:
         return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
     body, status = chat_builder_reply.reply(
-        db, user_id, str(chat_id), request.get_json(silent=True) or {},
-        recipe=recipe, host_answers=chat_replies.own_answers(db, user_id))
+        db, user_id, str(chat_id), incoming,
+        recipe=recipe, host_answers=chat_replies.own_answers(db, user_id), **options)
     return jsonify(body), status
 
 

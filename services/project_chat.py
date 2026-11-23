@@ -840,6 +840,10 @@ useful and vary the wording naturally. Match the requested formal, warm, or
 playful tone. Preserve Polish and the speaker's quoted words; do not translate
 source phrases.
 
+When speaker_is_reviewing is present, answer that question in the selected
+Take's evidence first. Use exact_take_words when available. Leave the earlier
+audience and goal questions for their own turns.
+
 Return strict JSON with this shape:
 {"answer": string, "chips": [string]}
 The answer is short conversational prose, normally one to four paragraphs.
@@ -1073,6 +1077,7 @@ def _model_turn(
     arc_id: str,
     *,
     signed_question: Optional[str] = None,
+    review: Optional[dict] = None,
 ) -> tuple[Optional[dict], Any, int]:
     history = _project_history(context.project_rows)
     prompt = {
@@ -1082,6 +1087,8 @@ def _model_turn(
     }
     if signed_question is not None:
         prompt["this_turn_answers_signed_question"] = signed_question
+    if review:
+        prompt["speaker_is_reviewing"] = review
     user_prompt = json.dumps(prompt, ensure_ascii=False, sort_keys=True)
     system = _SYSTEM + f"\nRequested tone: {_tone(question)}."
     started = time.perf_counter()
@@ -1192,6 +1199,7 @@ def _answer_general(
     target_language: str,
     context: ProjectChatContext,
     state: ProjectChatState,
+    review: Optional[dict] = None,
 ) -> tuple[dict, str]:
     captured_slots: dict[str, str] = {}
     last_bot = next(
@@ -1209,7 +1217,7 @@ def _answer_general(
         if last_meta.get("next_slot") in ("audience", "goal")
         else None
     )
-    if slot in ("audience", "goal") and _meaningful_slot_answer(question):
+    if not review and slot in ("audience", "goal") and _meaningful_slot_answer(question):
         if _persist_slot(database, context, slot, question):
             captured_slots[slot] = question
             context = build_context(
@@ -1226,8 +1234,11 @@ def _answer_general(
         target_language,
         user_id,
         arc_id,
+        **({"review": review} if review else {}),
     )
     model_answer = _model_answer(parsed)
+    if review and not model_answer:
+        raise RuntimeError("The selected review question did not produce an answer")
     answer = model_answer or (
         _opening_fallback(context, state, target_language)
         if state.phase == ConversationPhase.OPENING
@@ -1241,7 +1252,44 @@ def _answer_general(
         model=getattr(result, "model", None),
         model_ms=getattr(result, "duration_ms", model_ms),
         captured_slots=captured_slots,
+        extra_metadata={"review_focus": review["anchor"]} if review else None,
     )
+
+
+def review_anchor(value: Any) -> dict | None:
+    value = _dict(value)
+    step = value.get("step")
+    if step not in ("feedback", "practise", "ideal"):
+        return None
+    anchor = {"step": step}
+    slide = value.get("slide_index")
+    snippet = value.get("snippet_id")
+    if type(slide) is int and 0 <= slide < 500:
+        anchor["slide_index"] = slide
+    if isinstance(snippet, str) and 1 <= len(snippet) <= 80:
+        anchor["snippet_id"] = snippet
+    return anchor
+
+
+def _review_focus(database: Any, context: ProjectChatContext, anchor: dict) -> dict:
+    """Ground a review question in the already authorized Take's snippets."""
+    rows = _snippets_by_session(database, [context.take_session_id], [0]).get(context.take_session_id, [])
+    requested = anchor.get("snippet_id")
+    slide = anchor.get("slide_index")
+    selected = next((r for r in rows if requested and str(r.get("id")) == requested), None)
+    if requested and selected is None:
+        raise ProjectChatNotFound("review moment not found")
+    if selected is not None:
+        real_slide = _dict(_dict(selected.get("metrics")).get("piece")).get("slide_index")
+        if type(real_slide) is int:
+            anchor = {**anchor, "slide_index": real_slide}
+        text = _transcript([selected], 900)
+    else:
+        text = _transcript([
+            r for r in rows if slide is not None and
+            _dict(_dict(r.get("metrics")).get("piece")).get("slide_index") == slide
+        ], 900)
+    return {"anchor": anchor, "exact_take_words": text}
 
 
 def answer(
@@ -1251,6 +1299,7 @@ def answer(
     question: str,
     *,
     take_session_id: Optional[str] = None,
+    review_focus: Any = None,
 ) -> tuple[dict, str]:
     """Answer a Project Chat turn without entering the global chat router."""
     question = " ".join((question or "").split()).strip()
@@ -1266,8 +1315,12 @@ def answer(
     )
     from services import will_question
 
-    open_q = will_question.open_question(database, user, arc_id=arc)
+    anchor = review_anchor(review_focus)
+    review = _review_focus(database, context, anchor) if anchor else None
+    open_q = None if review else will_question.open_question(database, user, arc_id=arc)
     state = derive_state(context, context.project_rows, open_q)
+    if review:
+        state = replace(state, phase=ConversationPhase.CONVERSATION, next_slot="", open_question=None)
     target_language = _target_language(context, question)
     if open_q and _meaningful_slot_answer(question):
         signed = _answer_signed_will(
@@ -1283,7 +1336,7 @@ def answer(
         if signed:
             return signed
 
-    if _lightweight(question, state):
+    if not review and _lightweight(question, state):
         return _reply(context, state, will_question.THANKS, fast_path=True)
     return _answer_general(
         database,
@@ -1293,6 +1346,7 @@ def answer(
         target_language,
         context,
         state,
+        **({"review": review} if review else {}),
     )
 
 

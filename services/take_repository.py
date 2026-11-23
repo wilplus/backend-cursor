@@ -1628,7 +1628,7 @@ class TakeRepository(TableRepository):
         # upload_idempotency_key: a Take kept on the phone (N556 item 3) asks
         # whether it arrived, and whether a newer Take of its project did.
         _full_cols = (_legacy_cols + ", recording_kind, paired_session_id, source, "
-                      "upload_idempotency_key")
+                      "upload_idempotency_key, analysis_state")
         try:
             try:
                 res = (
@@ -1646,6 +1646,7 @@ class TakeRepository(TableRepository):
                 if not ("recording_kind" in _lowf
                         or "paired_session_id" in _lowf
                         or "source" in _lowf
+                        or "analysis_state" in _lowf
                         or "upload_idempotency_key" in _lowf):
                     raise
             res = (

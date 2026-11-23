@@ -564,3 +564,5 @@
 0526	owner_edits_use_current_processing_authority.sql
 0527	a_host_keeps_taught_replies.sql
 0528	a_volunteer_keeps_their_experiments.sql
+0529	a_take_keeps_the_speakers_review_edits.sql
+0530	a_person_keeps_their_chat_structure.sql
