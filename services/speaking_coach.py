@@ -76,6 +76,9 @@ _FORBIDDEN_OUTPUT = re.compile(
 _PRACTICE_REQUEST = re.compile(r"\b(?:practi[cs]\w*|try|exercise\w*|work on|improve|next step|"
                                r"sound more confident|ćwicz\w*|popraw\w*|spróbow\w*|"
                                r"brzmieć pewniej)\b", re.IGNORECASE)
+_DELIVERY_QUESTION = re.compile(
+    r"\b(?:did i sound|how (?:did|do) i sound|brzmiał[ae]m|jak brzm\w*)\b", re.IGNORECASE,
+)
 
 _RESPONSE_SCHEMA: dict[str, Any] = {
     "name": "speaking_coach_turn",
@@ -981,6 +984,28 @@ def wants_practice(question: str) -> bool:
     return bool(_PRACTICE_REQUEST.search(question or ""))
 
 
+def _response_format(packet: ContextPacket, evidence: tuple[Evidence, ...], question: str) -> dict:
+    schema = _RESPONSE_SCHEMA
+    references = [f"E{index}" for index, item in enumerate(evidence)
+                  if item.source_type in ("take_transcript", "delivery_cues") and len(item.sources) == 1]
+    words_only = (bool(_DELIVERY_QUESTION.search(question))
+                  and not any(item.source_type == "delivery_cues" for item in evidence))
+    if packet.scope_status == "resolved" and references and (
+        words_only or (len(packet.comparison_takes) == 2 and wants_practice(question))
+    ):
+        # These turns call for a demonstration. A real source keeps the line
+        # saveable and ties it to the right recording even in comparisons.
+        schema_fields = schema["schema"]["properties"]
+        wording = schema_fields["wording"]
+        wording_fields = {**wording["properties"], "source": {"type": "string", "enum": references}}
+        if words_only:
+            wording_fields["delivery"] = {"type": "string", "description": "One concrete cue for this line."}
+        schema = {**schema, "schema": {**schema["schema"], "properties": {
+            **schema_fields, "wording": {**wording, "type": "object", "properties": wording_fields},
+        }}}
+    return {"type": "json_schema", "json_schema": schema}
+
+
 def _reply_payload(answer: str, parsed: dict, evidence: tuple[Evidence, ...],
                    question: str) -> dict:
     sources = _cited_sources(parsed, evidence)
@@ -1095,9 +1120,7 @@ def answer(
             user_id=str(user_id) if user_id else None,
             messages_override=messages,
             return_last_on_failure=True,
-            response_format_override={
-                "type": "json_schema", "json_schema": _RESPONSE_SCHEMA,
-            },
+            response_format_override=_response_format(packet, selected, search_question),
         )
     except Exception as error:  # noqa: BLE001 - preserve auth hard failures
         from services.processing_authorization import rethrow_processing_authorization

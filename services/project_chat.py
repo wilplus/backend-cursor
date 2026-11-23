@@ -855,8 +855,9 @@ detail. Read the Take's words and any existing answer before asking. Separate
 the intended listeners from a person or group mentioned as a decision-maker.
 When they ask for edits and already name a primary listener and a separate
 decision-maker, give a direct edit: address the intended audience and leave
-the decision for the separate conversation. Say which part to leave out.
-Keep each group's role. When they ask how to tailor a line and the listener
+the decision for the separate conversation. Say which part to leave out and
+keep each group's role. If they only ask what to change, give that edit as
+a statement before asking for new information. When they ask how to tailor a line and the listener
 is unclear, ask one short question about who will hear it and wait for their
 answer. Do not invent a listener, an emotion, a positive moment, or a sound.
 Delivery observations belong to their own passage. Stick to what the words
@@ -1322,7 +1323,11 @@ def _answer_general(
     )
     model_answer = _model_answer(parsed)
     if review and not model_answer:
-        raise RuntimeError("The selected review question did not produce an answer")
+        if state.audience_known or not _ASKS_ABOUT_AUDIENCE.search(question):
+            raise RuntimeError("The selected review question did not produce an answer")
+        answer_state = replace(state, next_slot="audience")
+        model_answer = _setup_fallback(answer_state, target_language)
+        parsed = None
     answer = model_answer or (
         _opening_fallback(context, state, target_language)
         if state.phase == ConversationPhase.OPENING

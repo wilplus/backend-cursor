@@ -680,6 +680,9 @@ def test_last_two_recordings_get_one_sayable_line_for_its_target_project():
         assert "start the pilot with support." in prompt
         assert "Old wording outside the comparison." not in prompt
         source = _reference(prompt, "I think we could maybe")
+        wording = kwargs["response_format_override"]["json_schema"]["schema"]["properties"]["wording"]
+        assert wording["type"] == "object"
+        assert source in wording["properties"]["source"]["enum"]
         return _result("In the demo, lead with the recommendation.", [source], wording={
             "words": "I recommend we start the pilot with support.", "delivery": None, "source": source,
             "arc_id": "a-model-cannot-choose-an-id",
@@ -704,6 +707,9 @@ def test_missing_audio_can_offer_the_words_and_an_example_delivery():
         prompt = kwargs["system"]
         assert "No recorded delivery observations are available" in prompt
         source = _reference(prompt, "Zacznijmy w piątek.")
+        wording = kwargs["response_format_override"]["json_schema"]["schema"]["properties"]["wording"]
+        assert wording["properties"]["delivery"]["type"] == "string"
+        assert wording["properties"]["source"]["enum"] == [source]
         return _result("Z samych słów prośba jest jasna. Spróbuj tak.", [source], wording={
             "words": "Zacznijmy w piątek.", "delivery": "Zrób krótką pauzę przed „w piątek”.", "source": source,
         })

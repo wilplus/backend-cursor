@@ -359,7 +359,7 @@
     "project_chat.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "7738645ac137483199d05f3c0d29c107866196ed71a994b112420d5ad3f62616"
+      "sha256": "b3deced08ef3e99aba6b693091bd4d1787a9302004994170a881a16e565f2131"
     },
     "project_chat.wording": {
       "kind": "source_ref",
