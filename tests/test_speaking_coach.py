@@ -18,6 +18,7 @@ O5  A source change, explicit invalidation or TTL expiry refreshes the derived
   O7  An older named talk keeps its exact Take, saved audience and goal, and source links.
   O8  Similar talks require a clear choice, and comparable passages stay on the same slide.
   O9  When feedback is missing, the coach uses available passages and one relevant reviewed exercise.
+  O10 Saved vocal observations reach the coach with the exact spoken passage from the selected Take.
 PROVES   O1 -> test_routes_without_an_llm_classifier
          O2 -> test_sparse_and_rich_contexts_are_explicit
          O3 -> test_rich_context_is_owner_scoped_and_has_no_project_chat
@@ -27,6 +28,7 @@ PROVES   O1 -> test_routes_without_an_llm_classifier
          O7 -> test_named_older_talk_uses_exact_take_and_hybrid_retrieval
          O8 -> test_similar_talks_are_disambiguated_before_retrieval, test_comparison_links_the_same_slide_without_feedback
          O9 -> test_missing_feedback_uses_one_relevant_library_exercise
+         O10 -> test_selected_take_supplies_passage_and_delivery_without_shared_feedback
 WHY      Speaking Coach redesign and activation, 2026-11-18.
 """
 from __future__ import annotations
@@ -526,6 +528,51 @@ def test_similar_talks_are_disambiguated_before_retrieval():
     assert db.takes.calls["slides"] == 1
 
 
+def test_selected_take_supplies_passage_and_delivery_without_shared_feedback():
+    speaking_coach.clear_cache()
+    words = "Please approve the pilot today."
+    selected = _named_take("Campus Pitch", "campus", 1, "2026-01-01", words)
+    later = _named_take("Campus Pitch", "campus", 2, "2026-01-02", "LATER TAKE WORDS")
+    db = _saved_projects(selected, later)
+    reads = []
+
+    def snippets(ids):
+        reads.append(ids)
+        return {selected["id"]: [
+            {"session_id": selected["id"], "transcript": words,
+             "metrics": {"wpm": 188, "pause_ratio": 0.04, "stickiness": {"composite": 0.9}}},
+            {"session_id": later["id"], "transcript": "LATER TAKE WORDS",
+             "metrics": {"vocal_cues": ["UNRELATED LOUD ENDING"]}},
+        ]}
+
+    def generate(**kwargs):
+        prompt = kwargs["system"]
+        line = next(line for line in prompt.splitlines() if "; delivery_cues;" in line)
+        assert "Take 1" in line and words in line
+        assert "pace: a bit fast" in line
+        assert "188" not in line and "stickiness" not in line
+        assert "UNRELATED LOUD ENDING" not in prompt and "LATER TAKE WORDS" not in prompt
+        assert "shared_coach_feedback" not in prompt
+        reference = _reference(prompt, "Delivery across the whole passage")
+        return _result("You made the request directly and spoke quickly. Where could you give it more room?",
+                       [reference])
+
+    with (
+        patch.object(db, "get_snippets_by_sessions", snippets, create=True),
+        patch.object(db, "list_sent_coach_take_words", return_value=[]),
+        patch.object(db, "list_shared_moment_answers", return_value=[]),
+        patch("services.llm.embed", return_value=None),
+        patch("services.llm.chat_complete", generate),
+    ):
+        result = speaking_coach.answer(
+            db, USER, "What can you tell me about my delivery in Campus Pitch Take 1?",
+            app_config=_config(),
+        )
+    assert reads == [[selected["id"]]]
+    assert result is not None
+    assert "/chat/take/campus-take-1?slide=0" in result[0]["answer"]
+
+
 def test_comparison_links_the_same_slide_without_feedback():
     speaking_coach.clear_cache()
     first = _named_take("Campus Pitch", "campus", 1, "2026-01-01", "", deck=["ask", "plan"])
@@ -540,15 +587,26 @@ def test_comparison_links_the_same_slide_without_feedback():
     ]
     db = _saved_projects(first, second)
 
+    def snippets(_ids):
+        return {first["id"]: [
+            {"session_id": first["id"], "transcript": "Please support the idea.",
+             "metrics": {"vocal_cues": ["Steady delivery on the ask."]}},
+            {"session_id": first["id"], "transcript": "Unrelated archived plan.",
+             "metrics": {"vocal_cues": ["Quicker delivery on the plan."]}},
+        ]}
+
     def generate(**kwargs):
         prompt = kwargs["system"]
         assert "earlier spoken passage: Please support the idea." in prompt
         assert "more recent spoken passage: Please approve the pilot today." in prompt
+        assert "Steady delivery on the ask." in prompt
+        assert "Quicker delivery on the plan." not in prompt
         assert "Unrelated archived plan." not in prompt
         assert "shared_coach_feedback" not in prompt
         return _result("Your ask now names the decision.", [_reference(prompt, "earlier spoken passage:")])
 
     with (
+        patch.object(db, "get_snippets_by_sessions", snippets, create=True),
         patch.object(db, "list_sent_coach_take_words", return_value=[]),
         patch.object(db, "list_shared_moment_answers", return_value=[]),
         patch("services.llm.embed", return_value=None),

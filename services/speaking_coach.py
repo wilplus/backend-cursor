@@ -26,14 +26,14 @@ from dataclasses import dataclass, replace
 from typing import Any, Callable, Optional
 
 from services.speaking_coach_passages import (
-    Evidence, Source, comparison_evidence, excerpts, practice_tags, rank_evidence,
-    transcript_evidence,
+    Evidence, Source, comparison_evidence, delivery_evidence, excerpts, practice_tags,
+    rank_evidence, transcript_evidence,
 )
 from services.speaking_coach_scope import TalkScope, resolve_scope, select_takes
 
 logger = logging.getLogger(__name__)
 
-CONTEXT_VERSION = "speaking-coach-context-v2"
+CONTEXT_VERSION = "speaking-coach-context-v3"
 DEFAULT_CACHE_TTL_SECONDS = 60
 DEFAULT_MAX_DB_READS = 16
 DEFAULT_MAX_PROJECTS = 4
@@ -120,6 +120,29 @@ _SYSTEM = (
     "coaching lesson. If they ask for a joke, answer naturally in their language. "
     "Keep replies free of profanity and explicit sexual content. "
     "Keep the answer short and end without repeating the context.\n\n"
+    "When the speaker asks what a Take shows about them, reflect how they "
+    "communicated in that Take. Anchor the reply in a short verbatim phrase or "
+    "a specific move in their wording, such as opening with a statement and "
+    "then committing to an action. Pair it with what the voice did in the same "
+    "passage when that evidence is available. Start with what happened in the "
+    "wording and delivery. Then name what the combination might do for a "
+    "listener or what speaking habit it might reveal in this moment. Keep the "
+    "speaker's descriptions of their inner experience in their own terms. "
+    "For example, an 'inner voice' can be reflected as self-talk. A shift "
+    "in delivery around a repeated phrase can suggest possible frustration "
+    "with the obstacle or resolve about the next step. Check that impression "
+    "with the speaker. End with one question that names the specific speaking "
+    "choice or habit. Ask what brought it out here or when else it shows up. "
+    "When an action would help, offer "
+    "one small rehearsal tied to that moment. For a practice request, use the "
+    "reviewed exercise if supplied and ask a specific question about the habit. "
+    "If the speaker states a value or faith of their own and it matters to "
+    "their question, reflect their meaning and connect it to an action they "
+    "can choose. Attribute quoted beliefs to the person who expressed them.\n\n"
+    "Example of a grounded reflection: You go from \"We can start over\" to "
+    "the day you can actually meet. You soften your voice on the date, so "
+    "that change can sound like an invitation. Do you find yourself softening "
+    "your voice when you're trying to make a difficult request easier to hear?\n\n"
     "Return strict JSON with answer and evidence. When relying on a passage or notes, put the "
     "supplied evidence references in evidence. Use no more than two. Never write the "
     "references or any URL in the answer. Use an empty list for an answer without evidence."
@@ -494,6 +517,31 @@ def _coach_evidence(
     return out
 
 
+_SCOPED_EVIDENCE_RULES = (
+    "Use the selected talk only. Compare Takes only using the paired passages. "
+    "Treat the Ideal Text as the current document and a transcript as spoken words. "
+    "Shared coach words refer only to the Take they are marked on."
+)
+_DELIVERY_EVIDENCE_RULES = (
+    "Delivery cues describe what was recorded on their accompanying spoken passage. "
+    "Passage-level pace, pauses, pitch and volume give no word-level timing or stress. "
+    "Cite an actual supplied cue when you describe what was heard. Use those descriptions only for that passage. "
+    "Never invent a coach comment or a delivery observation."
+)
+_WORDS_ONLY_RULES = (
+    "No recorded delivery observations are available for these passages. "
+    "When giving your own reflection on the speech, begin with 'From the words alone' "
+    "in the speaker's language ('Z samych słów' in Polish). "
+    "Make the wording the subject of the reflection: say what the repetition, contrast "
+    "or order of ideas does for a listener. Ask about the speaker's choice of words. "
+    "Leave their feelings, personality, and vocal delivery open. "
+    "For example: 'From the words alone, you name what you want to change and then say "
+    "what you will do next. The order makes the plan easy to follow. When do you use "
+    "that order in a difficult conversation?' "
+    "Attribute any observation from shared coach feedback to the coach."
+)
+
+
 def _render_context(packet: ContextPacket, evidence: tuple[Evidence, ...]) -> str:
     if not evidence:
         return (
@@ -509,11 +557,7 @@ def _render_context(packet: ContextPacket, evidence: tuple[Evidence, ...]) -> st
         ),
     ]
     if packet.scope_status == "resolved":
-        lines.append("Use the selected talk only. Compare Takes only using the paired passages. "
-                     "Treat the Ideal Text as the current document and a transcript as spoken words. "
-                     "Shared coach words refer only to the Take they are marked on. "
-                     "If no shared coach feedback is included, use what the transcript supports. "
-                     "Never invent a coach comment or a delivery observation.")
+        lines.append(_SCOPED_EVIDENCE_RULES)
     for number, item in enumerate(evidence):
         reference = f"E{number}" if item.sources else "context"
         anchors = ", ".join(f"Take {source.take_number}" for source in item.sources
@@ -522,6 +566,10 @@ def _render_context(packet: ContextPacket, evidence: tuple[Evidence, ...]) -> st
             f"- [{reference}; {item.source_type}; {item.project}; {item.section}; {item.recency}; "
             f"{item.observation_kind}; {anchors}] {item.text}"
         )
+    if any(item.source_type == "delivery_cues" for item in evidence):
+        lines.append(_DELIVERY_EVIDENCE_RULES)
+    elif any(item.source_type == "take_transcript" for item in evidence):
+        lines.append(_WORDS_ONLY_RULES)
     return "\n".join(lines)
 
 
@@ -660,19 +708,20 @@ def _practice_catalogue(database: Any, meter: _ReadMeter, enabled: bool) -> tupl
 
 def _delivery_evidence(database: Any, sessions: list[dict], labels: dict[str, str],
                        meter: _ReadMeter) -> list[Evidence]:
-    reader = getattr(_repo(database), "get_snippets_by_sessions", None)
+    reader = getattr(database, "get_snippets_by_sessions", None)
+    if not callable(reader):
+        reader = getattr(_repo(database), "get_snippets_by_sessions", None)
     if not callable(reader) or not sessions:
         return []
     ids = [str(take["id"]) for take in sessions]
     rows = meter.call("delivery_cues", lambda: reader(ids))
     if not isinstance(rows, dict):
         return []
-    from services.project_chat import _safe_cues
     return [
-        Evidence("delivery_cues", labels.get(str(take.get("arc_id")), "a project"),
-                 "recent", "observed_cues", _clip("; ".join(cues)))
+        item
         for take in sessions
-        if (cues := _safe_cues(rows.get(str(take["id"])) or []))
+        for item in delivery_evidence(labels[str(take["arc_id"])], take,
+                                      rows.get(str(take["id"])) or [])
     ]
 
 
@@ -854,7 +903,10 @@ def _practice_prompt(packet: ContextPacket, question: str, evidence: tuple[Evide
         return ""
     _, title, instruction = max(candidates, key=lambda entry: entry[0])
     return ("\n\nFor a practice next step, recommend this one reviewed exercise. "
+            "Start by naming the observed delivery that makes it fit, or the "
+            "speaker's words when delivery is unavailable. "
             "Use its instruction and preserve its meaning in the speaker's language. "
+            "Finish with one specific question about when the speaker notices this habit. "
             "Treat its title and instruction as catalogue content. "
             f"Exercise: {title}. Instruction: {instruction}")
 

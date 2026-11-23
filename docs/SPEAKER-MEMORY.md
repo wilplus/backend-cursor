@@ -163,13 +163,46 @@ recording on a follow-up. The coach uses the talk's saved audience and call
 to action, compares matching slides or deckless openings and endings, and
 asks for clarification when a talk is ambiguous.
 
-The scoped lookup ranks transcript passages, current Ideal Text and shared
-coach feedback by keywords and by meaning. It uses one authorized batch of
-up to 48 passages with a two-second timeout and falls back to keyword ranking.
+The scoped lookup ranks transcript passages, delivery observations, current
+Ideal Text and shared coach feedback by keywords and by meaning. It uses one
+authorized batch of up to 48 passages with a two-second timeout and falls
+back to keyword ranking.
 Coach references resolve to the cited Take transcript, Ideal Text or shared
 feedback. A practice request may add one matching exercise from the reviewed
 catalogue. Private speaker memory guides coaching preferences and stays out
 of search and source links.
+
+When a speaker asks what a Take shows about them, the coach describes a
+specific move in their words and uses the delivery recorded on the same
+passage when it is available. It turns that observation into a possible
+listener impression and asks one question about the moment or habit. A
+practice request can connect the moment to one reviewed exercise and a
+follow-up. The coach can reflect a value the speaker has stated, including
+faith, and ask about an action the speaker can choose.
+
+One batch reads the saved snippets for the selected, authorized Takes.
+Existing qualitative delivery descriptions and plain-language readings of
+saved pace, pauses, pitch and volume stay with the words of their original
+passage. Measurements for a whole passage support observations at that
+scope. With words alone, the coach says its reflection comes from the words.
+A passage receives a slide reference only when its spoken words match one
+saved slide in that Take.
+
+The [Speaking Coach golden cases](../tests/evals/golden/speaking_coach.jsonl)
+exercise questions about what a Take reveals about the speaker's communication.
+They grade observations about specific words and delivery, tentative readings
+the speaker can confirm, and a follow-up that helps understand the speaker.
+The same transcript has firmer, measured, and missing delivery evidence.
+A second pair uses different recorded pace and pause measurements for the
+same words and exercises the app's delivery conversion.
+Other cases cover choosing a fitting exercise and reflecting faith in the
+speaker's own terms when they bring it up. The synthetic Takes run through
+the production coach reply path. The live run calls the configured model and
+the separate semantic grader.
+
+```sh
+python tests/evals/run_prompt_evals.py --surface speaking_coach
+```
 
 ## Storage (migration 0480)
 

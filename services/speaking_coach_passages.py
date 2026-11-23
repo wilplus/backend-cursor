@@ -23,6 +23,11 @@ _PRACTICE_TAGS = {
     "rushing": re.compile(r"\b(?:rush\w*|too fast|pace|pacing|paus\w*|tempo|za szybko|pauz\w*)\b"),
     "word_compression": re.compile(r"\b(?:mumbl\w*|enunciat\w*|word separation|articulat\w*|artykul\w*|niewyrazn\w*)\b"),
 }
+_PAUSING_COPY = {
+    "rushed": "little time spent pausing",
+    "well-balanced": "some time spent pausing",
+    "a lot of pausing": "more time spent pausing",
+}
 
 
 @dataclass(frozen=True)
@@ -81,7 +86,7 @@ def _deck(take: dict) -> list:
     return slides if isinstance(slides, list) else []
 
 
-def _transcript_source(take: dict, slide: int) -> Source:
+def _transcript_source(take: dict, slide: int | None) -> Source:
     return Source("transcript", str(take["arc_id"]), str(take["id"]), slide, take.get("take_index"))
 
 
@@ -103,6 +108,49 @@ def transcript_evidence(label: str, takes: list[dict]) -> list[Evidence]:
                     section, index if _deck(take) else None,
                 ))
     return out
+
+
+def delivery_evidence(label: str, take: dict, rows: list[dict]) -> list[Evidence]:
+    """Keep each spoken moment together with its own saved delivery."""
+    from services.coach_comment_drafter import metric_observations
+    from services.project_chat import _safe_cues
+
+    passages = {index: f" {normalize(text)} " for index, text in _transcripts(take).items()}
+    has_deck = bool(_deck(take))
+    rows = [row for row in rows if isinstance(row, dict)
+            and str(row.get("session_id")) == str(take["id"])]
+    out = []
+    for position, row in enumerate(rows):
+        spoken = " ".join(str(row.get("transcript") or "").split())
+        metrics = row.get("metrics")
+        if not spoken or not isinstance(metrics, dict):
+            continue
+        cues = _safe_cues([row])
+        if cues:
+            description = f"Recorded delivery cues: {'; '.join(cues[:3])}"
+        else:
+            observations = metric_observations(metrics)
+            if pause_copy := _PAUSING_COPY.get(observations.get("pauses", "")):
+                observations["pauses"] = pause_copy
+            delivery = [f"{key}: {observations[key]}"
+                        for key in ("pace", "pauses", "pitch", "volume") if key in observations]
+            if not delivery:
+                continue
+            description = f"Delivery across the whole passage: {'; '.join(delivery)}"
+        # A moment that spans slides or matches several has only Take-level provenance.
+        needle = f" {normalize(spoken)} "
+        matches = [index for index, passage in passages.items() if needle in passage]
+        index = matches[0] if len(matches) == 1 else None
+        section = " ".join(name for name, boundary in (("opening", 0), ("ending", len(rows) - 1))
+                           if position == boundary)
+        quote = textwrap.shorten(spoken, width=MAX_EVIDENCE_CHARS - len(description) - 24,
+                                 placeholder="…")
+        out.append(Evidence(
+            "delivery_cues", label, "recent", "observed_cues",
+            f"Spoken passage: «{quote}». {description}",
+            (_transcript_source(take, index),), section, index if has_deck else None,
+        ))
+    return list(dict.fromkeys(out))
 
 
 def _slide_key(slide: dict) -> tuple[str, ...]:
@@ -207,9 +255,9 @@ def _sources_for_slide(evidence: tuple[Evidence, ...], slide: int | None) -> lis
     aligned = {source for item in sources if item.source_type == "progression" and item.slide == slide
                for source in item.sources}
     return [item for item in sources
-            if item.source_type not in ("take_transcript", "progression")
+            if item.source_type not in ("take_transcript", "delivery_cues", "progression")
             or (item.source_type == "progression" and item.slide == slide)
-            or (item.source_type == "take_transcript" and (
+            or (item.source_type in ("take_transcript", "delivery_cues") and (
                 any(source in aligned for source in item.sources) if aligned else item.slide == slide
             ))]
 

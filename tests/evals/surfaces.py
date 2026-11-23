@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import sys
+from types import SimpleNamespace
 from typing import Any, Callable
 
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -158,6 +159,54 @@ def _walk_voice(inp: dict) -> Any:
     return compose(inp.get("context") or {}, inp.get("step") or {})
 
 
+def _speaking_coach(inp: dict) -> str | None:
+    """Run the shipped coach over a synthetic Take and saved delivery cues."""
+    from services.speaking_coach import answer, invalidate
+
+    user_id = "speaking-coach-eval"
+    arc_id = "eval-project"
+    take_id = "eval-take"
+    take = {
+        "id": take_id,
+        "user_id": user_id,
+        "arc_id": arc_id,
+        "take_index": 1,
+        "status": "completed",
+        "recording_kind": "spoken",
+        "analysis_state": "ready",
+        "created_at": "2026-01-02T00:00:00Z",
+        "intake_context": {"topic": inp["project_title"]},
+    }
+    transcript = {
+        "id": take_id,
+        "user_id": user_id,
+        "slide_transcripts": [{"index": 0, "transcript": inp["transcript"]}],
+    }
+    snippets = [{"session_id": take_id, **row} for row in inp.get("snippets", [])]
+    if inp.get("vocal_cues"):
+        snippets.append({
+            "session_id": take_id,
+            "transcript": inp["transcript"],
+            "metrics": {"vocal_cues": inp["vocal_cues"]},
+        })
+    takes = SimpleNamespace(
+        list_user_arc_sessions=lambda owner: [take] if owner == user_id else [],
+        get_arc_sessions_many=lambda arcs: {arc_id: [take]} if arc_id in arcs else {},
+        get_slide_transcripts_many=lambda ids: {take_id: transcript} if take_id in ids else {},
+    )
+    database = SimpleNamespace(
+        client=None, takes=takes,
+        get_snippets_by_sessions=lambda ids: {take_id: snippets} if take_id in ids else {},
+        list_active_diagnostic_exercises=lambda: inp.get("exercises", []),
+    )
+    # Paired cases keep the same Take and change its delivery evidence.
+    invalidate(user_id)
+    reply = answer(database, user_id, inp["question"], history=inp.get("history"),
+                   app_config=SimpleNamespace(SPEAKING_COACH_ENABLED=True))
+    # Provenance links are appended after the generated answer.
+    return reply[0]["answer"].partition("\n\n")[0] if reply else None
+
+
 ADAPTERS: dict[str, Callable[[dict], Any]] = {
     "praise_line": _coach_answer("praise_line"),
     "clearer_version": _coach_answer("clearer_version"),
@@ -174,4 +223,5 @@ ADAPTERS: dict[str, Callable[[dict], Any]] = {
     "will_question": _will_question,
     "question_kind": _question_kind,
     "walk_voice": _walk_voice,
+    "speaking_coach": _speaking_coach,
 }
